@@ -45,4 +45,10 @@ android {
 
 dependencies {
     implementation("org.mozilla.geckoview:geckoview-armeabi-v7a:159.0.20261102144711")
+    // Voice satellite: openWakeWord inference (ships armeabi-v7a, minSdk 19).
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
+
+    // JVM unit tests for the Wyoming framing / satellite flow / openWakeWord buffering.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20250517")
 }
