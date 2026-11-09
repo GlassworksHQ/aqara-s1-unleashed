@@ -81,7 +81,12 @@ def main():
     start = c.request({"to": console, "type": "evaluateJSAsync", "text": js, "mapped": {"await": True}})
     rid = start.get("resultID")
     res = c.wait(lambda r: r.get("type") == "evaluationResult" and r.get("resultID") == rid)
-    out = {"url": target.get("url"), "result": res.get("result")}
+    result = res.get("result")
+    # Large strings come back as a longString actor; fetch the full text.
+    if isinstance(result, dict) and result.get("type") == "longString":
+        result = c.request({"to": result["actor"], "type": "substring",
+                            "start": 0, "end": result["length"]})["substring"]
+    out = {"url": target.get("url"), "result": result}
     if res.get("exception") is not None:
         out["exception"] = res.get("exceptionMessage") or res.get("exception")
     print(json.dumps(out, indent=1, ensure_ascii=False))
