@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Re-opens the recorder after errors.
  */
 class Microphone(
-    private val gain: Float,
+    gain: Float,
     private val frameSamples: Int = OwwFeatures.FRAME,
     private val onError: (String) -> Unit,
     private val onFrame: (ShortArray) -> Unit,
@@ -22,6 +22,9 @@ class Microphone(
     companion object {
         const val RATE = 16_000
     }
+
+    /** Linear gain applied to every sample; may be changed while running. */
+    @Volatile var gain: Float = gain
 
     private val running = AtomicBoolean(false)
     private var thread: Thread? = null
@@ -102,7 +105,8 @@ class Microphone(
             }
             filled += n
             if (filled < frameSamples) continue
-            if (gain != 1f) applyGain(frame)
+            val g = gain
+            if (g != 1f) applyGain(frame, g)
             try {
                 onFrame(frame)
             } catch (e: Exception) {
@@ -113,7 +117,7 @@ class Microphone(
         }
     }
 
-    private fun applyGain(frame: ShortArray) {
+    private fun applyGain(frame: ShortArray, gain: Float) {
         for (i in frame.indices) {
             frame[i] = (frame[i] * gain).toInt().coerceIn(-32768, 32767).toShort()
         }

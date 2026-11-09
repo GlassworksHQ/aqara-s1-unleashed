@@ -81,6 +81,7 @@ class MainActivity : Activity() {
             }
         }
         ScreenController.onStateChanged = { pushState() }
+        commandSink = { applyIntent(it, fromNewIntent = true) }
         startSession()
         requestRuntimePermissions()
         hideSystemUi()
@@ -125,6 +126,8 @@ class MainActivity : Activity() {
     //   --es secure_hosts a,b   extra secure-context hosts; restarts the process
     //   --ez remote_debug true  Gecko remote debugging; restarts the process
     //   --ez reload true        reload the page
+    //   --ez restart true       restart the app process
+    //   --es api_key <base64>   ESPHome API encryption key (32 bytes); --ez api_encryption true|false
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -152,8 +155,11 @@ class MainActivity : Activity() {
             prefs.remoteDebugging = intent.getBooleanExtra("remote_debug", false)
             needsRestart = true
         }
-        if (intent.hasExtra("hide_header")) prefs.hideHeader = intent.getBooleanExtra("hide_header", true)
-        if (intent.hasExtra("hide_sidebar")) prefs.hideSidebar = intent.getBooleanExtra("hide_sidebar", true)
+        if (intent.hasExtra("hide_header") || intent.hasExtra("hide_sidebar")) {
+            if (intent.hasExtra("hide_header")) prefs.hideHeader = intent.getBooleanExtra("hide_header", true)
+            if (intent.hasExtra("hide_sidebar")) prefs.hideSidebar = intent.getBooleanExtra("hide_sidebar", true)
+            pushConfig()
+        }
         intent.getStringExtra("screen_mode")?.let { prefs.screenMode = it }
         if (intent.hasExtra("idle_off_sec")) prefs.idleOffSec = intent.getIntExtra("idle_off_sec", 120)
         if (intent.hasExtra("night_idle_off_sec")) prefs.nightIdleOffSec = intent.getIntExtra("night_idle_off_sec", 20)
@@ -163,17 +169,27 @@ class MainActivity : Activity() {
             ScreenController.applyPresenceRange()
         }
         if (intent.hasExtra("voice_enabled")) { prefs.voiceEnabled = intent.getBooleanExtra("voice_enabled", true); needsRestart = true }
-        intent.getStringExtra("wake_model")?.let { prefs.wakeModel = it; needsRestart = true }
-        if (intent.hasExtra("wake_threshold")) { prefs.wakeThreshold = intent.getFloatExtra("wake_threshold", 0.5f); needsRestart = true }
-        if (intent.hasExtra("mic_gain")) { prefs.micGain = intent.getFloatExtra("mic_gain", 1f); needsRestart = true }
-        if (intent.hasExtra("auto_brightness")) prefs.autoBrightness = intent.getBooleanExtra("auto_brightness", true)
+        // Applied live by PanelDevice (it listens to the prefs).
+        intent.getStringExtra("wake_model")?.let { prefs.wakeModel = it }
+        if (intent.hasExtra("wake_threshold")) prefs.wakeThreshold = intent.getFloatExtra("wake_threshold", 0.5f)
+        if (intent.hasExtra("mic_gain")) prefs.micGain = intent.getFloatExtra("mic_gain", 1f)
+        if (intent.hasExtra("mic_muted")) prefs.micMuted = intent.getBooleanExtra("mic_muted", false)
+        intent.getStringExtra("api_key")?.let { key ->
+            if (KioskPrefs.decodeApiKey(key) != null) prefs.apiKey = key
+            else Log.w(TAG, "api_key must be base64 of exactly 32 bytes; ignored")
+        }
+        if (intent.hasExtra("api_encryption")) prefs.apiEncryption = intent.getBooleanExtra("api_encryption", false)
+        if (intent.hasExtra("auto_brightness")) {
+            prefs.autoBrightness = intent.getBooleanExtra("auto_brightness", true)
+            ScreenController.refreshBrightness()
+        }
         when (intent.getStringExtra("screen")) {
             "off" -> ScreenController.sleep("intent")
             "on" -> ScreenController.wake("intent")
         }
         if (intent.getBooleanExtra("remove_admin", false)) ScreenController.removeAdmin()
         if (fromNewIntent && intent.getBooleanExtra("settings", false)) showSettings()
-        if (fromNewIntent && needsRestart) {
+        if (fromNewIntent && (needsRestart || intent.getBooleanExtra("restart", false))) {
             restartProcess()
             return
         }
@@ -456,6 +472,11 @@ class MainActivity : Activity() {
         .put("night", ScreenController.isNight())
         .put("voice", KioskService.voiceState)
 
+    private fun pushConfig() {
+        val msg = JSONObject().put("type", "config").put("config", configJson())
+        ports.toList().forEach { runCatching { it.postMessage(msg) } }
+    }
+
     private fun pushState() {
         val msg = JSONObject().put("type", "state").put("state", stateJson())
         ports.toList().forEach { runCatching { it.postMessage(msg) } }
@@ -485,12 +506,20 @@ class MainActivity : Activity() {
         ScreenController.onKeepScreenOn = null
         ScreenController.onBrightness = null
         ScreenController.onStateChanged = null
+        commandSink = null
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
 
     companion object {
         private const val TAG = "S1Kiosk"
+
+        /**
+         * Applies an intent's extras in the running activity (main thread), like onNewIntent.
+         * Used by the ESPHome device so Home Assistant can drive the kiosk without starting
+         * activities from the background.
+         */
+        @Volatile var commandSink: ((Intent) -> Unit)? = null
         private const val REQ_STARTUP = 1
         private const val REQ_GECKO = 2
         private const val RETRY_MS = 10_000L

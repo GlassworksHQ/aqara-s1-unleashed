@@ -56,7 +56,7 @@ object ScreenController : SensorEventListener {
     @Volatile var proximityRaw = Float.NaN; private set
     @Volatile var lux = Float.NaN; private set
     @Volatile var brightness = -1f; private set
-    var screenOn = true; private set
+    @Volatile var screenOn = true; private set
     private var lastActivity = SystemClock.elapsedRealtime()
 
     /** Activity hooks: keep-screen-on flag and window brightness (0..1, or -1 = system). */
@@ -66,6 +66,17 @@ object ScreenController : SensorEventListener {
         set(v) { field = v; v?.invoke(brightness) }
     /** Fired on any state change (presence/lux/screen); used to push updates to the page. */
     var onStateChanged: (() -> Unit)? = null
+
+    /** Extra state listeners (e.g. the ESPHome API), fired with [onStateChanged]; main thread. */
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    fun addListener(l: () -> Unit) { listeners += l }
+    fun removeListener(l: () -> Unit) { listeners -= l }
+
+    private fun notifyChanged() {
+        onStateChanged?.invoke()
+        listeners.forEach { it() }
+    }
 
     private var keepOn = true
 
@@ -199,7 +210,7 @@ object ScreenController : SensorEventListener {
                 lastActivity = SystemClock.elapsedRealtime()
                 setKeepOn(true)
             }
-            onStateChanged?.invoke()
+            notifyChanged()
         }
     }
 
@@ -215,23 +226,40 @@ object ScreenController : SensorEventListener {
                         lastActivity = SystemClock.elapsedRealtime()
                         if (!screenOn && prefs.wakeOnApproach) wake("approach")
                     }
-                    onStateChanged?.invoke()
+                    notifyChanged()
                 }
             }
             Sensor.TYPE_LIGHT -> {
                 val prev = lux
                 lux = e.values[0]
                 updateBrightness()
-                if (prev.isNaN() || kotlin.math.abs(prev - lux) > maxOf(5f, prev * 0.2f)) onStateChanged?.invoke()
+                if (prev.isNaN() || kotlin.math.abs(prev - lux) > maxOf(5f, prev * 0.2f)) notifyChanged()
             }
         }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
+    /** Re-applies the brightness policy after a settings change (main thread). */
+    fun refreshBrightness() {
+        if (started) updateBrightness()
+    }
+
+    /** Fixed brightness from Home Assistant: turns auto brightness off (main thread). */
+    fun setManualBrightness(b: Float) {
+        prefs.manualBrightness = b.coerceIn(0.01f, 1f)
+        prefs.autoBrightness = false
+        refreshBrightness()
+    }
+
     private fun updateBrightness() {
         if (!prefs.autoBrightness || lux.isNaN()) {
-            if (brightness != -1f) { brightness = -1f; onBrightness?.invoke(-1f) }
+            val manual = if (prefs.autoBrightness) -1f else prefs.manualBrightness.let { if (it > 0f) it else -1f }
+            if (brightness != manual) {
+                brightness = manual
+                onBrightness?.invoke(manual)
+                notifyChanged()
+            }
             return
         }
         val max = if (isNight()) minOf(prefs.maxBrightness, prefs.nightMaxBrightness) else prefs.maxBrightness
