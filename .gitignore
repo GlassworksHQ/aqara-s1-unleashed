@@ -1,0 +1,11 @@
+build/
+sdkconfig
+sdkconfig.old
+*.bin
+*.img
+*.pcap
+*.log
+.DS_Store
+# never commit device-unique dumps or secrets
+dumps/
+*adb_key*
