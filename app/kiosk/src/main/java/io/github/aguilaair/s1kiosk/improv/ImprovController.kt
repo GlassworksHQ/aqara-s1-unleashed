@@ -52,6 +52,11 @@ object ImprovController {
     private var session: ImprovSession? = null
     private var initialized = false
 
+    /** Improv's state while it is running (advertising), else null. For the setup screen. */
+    val activeState: ImprovState? get() = if (ble != null) session?.state else null
+    /** SSID being joined while provisioning ("" if none). */
+    val joiningSsid: String get() = connectingSsid
+
     private var windowEndsAt = 0L
     private var auto = false
     private var reason = ""
@@ -70,6 +75,7 @@ object ImprovController {
     val active: Boolean get() = session?.started == true
 
     fun init(ctx: Context) {
+        io.github.aguilaair.s1kiosk.setup.WifiSetupStatus.provider = { c -> ImprovWifiStatus(c) }
         if (initialized) return
         initialized = true
         app = ctx.applicationContext
