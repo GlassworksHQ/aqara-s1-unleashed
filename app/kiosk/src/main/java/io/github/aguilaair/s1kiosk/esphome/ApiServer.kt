@@ -81,8 +81,9 @@ class ApiServer(
     /** Called after a command message was handled (state may have changed). */
     @Volatile var onCommand: (() -> Unit)? = null
 
-    private val entities = entities.toList()
-    private val byKey = entities.associateBy { it.key }
+    // Replaced as a whole by setEntities (the wall base adds/removes entities at runtime).
+    @Volatile private var entities: List<ApiEntity> = entities.toList()
+    @Volatile private var byKey: Map<Int, ApiEntity> = entities.associateBy { it.key }
     private val connections = CopyOnWriteArrayList<Connection>()
     private val ids = AtomicInteger()
     private var serverSocket: ServerSocket? = null
@@ -98,6 +99,39 @@ class ApiServer(
 
     init {
         require(byKey.size == entities.size) { "duplicate entity keys" }
+    }
+
+    /**
+     * Replaces the entity set and asks every connected client to disconnect (`DisconnectRequest`,
+     * socket closed after the ack or 2 s). Home Assistant reconnects and lists the entities again,
+     * which is how it picks up added ones, like after an ESPHome firmware update.
+     */
+    fun setEntities(newEntities: List<ApiEntity>) {
+        val list = newEntities.toList()
+        val map = list.associateBy { it.key }
+        require(map.size == list.size) { "duplicate entity keys" }
+        synchronized(stateLock) {
+            entities = list
+            byKey = map
+            lastStates.keys.retainAll(map.keys)
+        }
+        ApiLog.i("Entity set changed (${list.size} entities); asking ${connections.size} client(s) to reconnect")
+        for (c in connections) c.requestDisconnect()
+    }
+
+    /** Fires an event entity on every subscribed connection (no-op if it isn't in the current set). */
+    fun sendEvent(entity: EventEntity, type: String): Boolean {
+        if (byKey[entity.key] !== entity) return false
+        if (type !in entity.eventTypes) {
+            ApiLog.w("event type '$type' not declared by ${entity.objectId}")
+            return false
+        }
+        val frame = Frame(Msg.EVENT_RESPONSE, entity.event(type).toByteArray())
+        var sent = false
+        synchronized(stateLock) {
+            for (c in connections) if (c.subscribedStates) sent = c.send(listOf(frame)) || sent
+        }
+        return sent
     }
 
     @Throws(IOException::class)
@@ -137,6 +171,7 @@ class ApiServer(
         synchronized(stateLock) {
             val changed = ArrayList<Frame>()
             for (e in entities) {
+                if (e is EventEntity) continue
                 val st = safeState(e) ?: continue
                 val prev = lastStates[e.key]
                 if (prev == null || !prev.contentEquals(st)) {
@@ -213,6 +248,16 @@ class ApiServer(
 
         private fun reply(type: Int, w: ProtoWriter = ProtoWriter()) = send(listOf(Frame(type, w.toByteArray())))
 
+        /** Server-initiated disconnect (entity set changed): ask, then close after the ack or 2 s. */
+        fun requestDisconnect() {
+            subscribedStates = false
+            if (!reply(Msg.DISCONNECT_REQUEST)) { close(); return }
+            Thread({
+                try { Thread.sleep(2_000) } catch (_: InterruptedException) {}
+                close()
+            }, "esphome-disc-$id").apply { isDaemon = true; start() }
+        }
+
         fun close() {
             if (!isOpen) return
             isOpen = false
@@ -257,6 +302,7 @@ class ApiServer(
                     // Current state of everything (and refresh the cache, so other connections get
                     // whatever changed on the next publish).
                     val frames = entities.mapNotNull { e ->
+                        if (e is EventEntity) return@mapNotNull null
                         val st = safeState(e) ?: return@mapNotNull null
                         val prev = lastStates[e.key]
                         lastStates[e.key] = st

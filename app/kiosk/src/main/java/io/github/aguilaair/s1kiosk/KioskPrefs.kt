@@ -129,6 +129,11 @@ class KioskPrefs(context: Context) {
         get() = sp.getString("device_mac", "") ?: ""
         set(v) = sp.edit().putString("device_mac", v).apply()
 
+    /** Last applied wall base layout (BaseLayout.encode), so HA sees the same entities after a restart. */
+    var baseLayout: String
+        get() = sp.getString("base_layout", "") ?: ""
+        set(v) = sp.edit().putString("base_layout", v).apply()
+
     var speakerVolume: Float
         get() = sp.getFloat("speaker_volume", 1.0f)
         set(v) = sp.edit().putFloat("speaker_volume", v).apply()

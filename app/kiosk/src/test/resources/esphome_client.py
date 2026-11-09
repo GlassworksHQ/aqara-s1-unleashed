@@ -37,7 +37,12 @@ async def wait_for(pred, what, timeout=5.0):
 
 async def plaintext(port):
     cli = APIClient("127.0.0.1", port, None, client_info="Home Assistant test")
-    await cli.connect(login=True)
+    stopped = []
+
+    async def on_stop(expected_disconnect):
+        stopped.append(expected_disconnect)
+
+    await cli.connect(on_stop=on_stop, login=True)
     check((cli.api_version.major, cli.api_version.minor) == (1, 20), f"api version {cli.api_version}")
     info = await cli.device_info()
     R["device_info"] = {
@@ -58,10 +63,12 @@ async def plaintext(port):
           "media formats")
     check(by_id["illuminance"].unit_of_measurement == "lx", "sensor unit")
     check(by_id["presence"].device_class == "occupancy", "binary sensor class")
+    check(by_id["base_button_1"].event_types == ["single", "double"], "event types")
+    check(by_id["base_button_1"].device_class == "button", "event device class")
 
     states = {}
     cli.subscribe_states(lambda s: states.__setitem__(s.key, s))
-    with_state = [e for e in entities if type(e).__name__ != "ButtonInfo"]
+    with_state = [e for e in entities if type(e).__name__ not in ("ButtonInfo", "EventInfo")]
     await wait_for(lambda: all(e.key in states for e in with_state), "initial states")
     st = lambda oid: states[by_id[oid].key]
     check(st("illuminance").missing_state, "lux unknown -> missing_state")
@@ -83,6 +90,10 @@ async def plaintext(port):
     await wait_for(lambda: abs(st("speaker").volume - 0.5) < 0.01, "media volume")
     cli.media_player_command(by_id["speaker"].key, media_url="http://ha.test:8123/x.mp3", announcement=True)
     await asyncio.sleep(0.3)
+    check(by_id["base_button_1"].key not in states, "events have no initial state")
+    print("FIRE_EVENT", flush=True)
+    await wait_for(lambda: by_id["base_button_1"].key in states, "event")
+    R["event_type"] = states[by_id["base_button_1"].key].event_type
 
     # ---- voice assistant, the way homeassistant/components/esphome/assist_satellite.py drives it
     starts, audio, stops, finished = [], [], [], []
@@ -143,7 +154,22 @@ async def plaintext(port):
     cli.send_voice_assistant_timer_event(
         VoiceAssistantTimerEventType.VOICE_ASSISTANT_TIMER_FINISHED, "t1", "pasta", 60, 0, False)
     await asyncio.sleep(0.3)
-    await cli.disconnect()
+
+    # ---- entity set change (wall base attached): the server asks us to disconnect, a new
+    # connection lists the new entity, as Home Assistant's reconnect logic would.
+    print("REBUILD", flush=True)
+    await wait_for(lambda: stopped, "server-initiated disconnect")
+    await cli.disconnect(force=True)
+    cli2 = APIClient("127.0.0.1", port, None, client_info="Home Assistant test")
+    await cli2.connect(login=True)
+    entities2, _ = await cli2.list_entities_services()
+    R["entities_after_rebuild"] = len(entities2)
+    relay = next(e for e in entities2 if e.object_id == "base_relay_1")
+    states2 = {}
+    cli2.subscribe_states(lambda s: states2.__setitem__(s.key, s))
+    await wait_for(lambda: relay.key in states2, "new entity state")
+    R["rebuild_relay_state"] = states2[relay.key].state
+    await cli2.disconnect()
 
 
 async def noise(port, key):

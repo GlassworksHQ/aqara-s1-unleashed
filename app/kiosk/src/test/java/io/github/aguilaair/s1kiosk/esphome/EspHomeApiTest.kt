@@ -71,6 +71,7 @@ class EspHomeApiTest {
                 handle = { c -> c.volume?.let { volume = it } }),
             SwitchEntity("mute_microphone", "Mute microphone", get = { muted }, set = { muted = it }),
             TextSensorEntity("ip_address", "IP address", category = EntityCategory.DIAGNOSTIC, get = { "192.0.2.10" }),
+            EventEntity("base_button_1", "Base button 1", deviceClass = "button", eventTypes = listOf("single", "double")),
         )
     }
 
@@ -100,7 +101,9 @@ class EspHomeApiTest {
             resolveUrl = { if (it.startsWith("/")) "http://ha.test:8123$it" else it },
             onTimerFinished = { timers += it },
         )
-        plain = ApiServer(0, { identity }, entities(), psk = null)
+        val plainEntities = entities()
+        val button = plainEntities.filterIsInstance<EventEntity>().single()
+        plain = ApiServer(0, { identity }, plainEntities, psk = null)
         plain.voice = controller
         plain.onCommand = { plain.publishStates() }
         val noise = ApiServer(0, { identity }, entities(), psk = key)
@@ -124,6 +127,10 @@ class EspHomeApiTest {
                                 repeat(100) { controller.onMicAudio(ByteArray(2560)); Thread.sleep(20) }
                             }.start()
                         }
+                        line == "FIRE_EVENT" -> assertTrue(plain.sendEvent(button, "double"))
+                        line == "REBUILD" -> plain.setEntities(
+                            plainEntities + SwitchEntity("base_relay_1", "Base relay 1", get = { true }, set = {}),
+                        )
                         line.startsWith("RESULT ") -> result = JSONObject(line.removePrefix("RESULT "))
                     }
                 }
@@ -141,7 +148,10 @@ class EspHomeApiTest {
             assertEquals("02:11:22:33:44:55", di.getString("mac"))
             assertEquals(61, di.getInt("voice_flags"))
             assertEquals(61, r.getInt("caps_voice_flags"))
-            assertEquals(12, r.getJSONArray("entities").length())
+            assertEquals(13, r.getJSONArray("entities").length())
+            assertEquals("double", r.getString("event_type"))
+            assertEquals(14, r.getInt("entities_after_rebuild"))
+            assertTrue(r.getBoolean("rebuild_relay_state"))
 
             assertEquals("[\"hey_jarvis_v0.1\"]", r.getJSONArray("active_before").toString())
             assertEquals("[\"alexa_v0.1\"]", r.getJSONArray("active_after").toString())

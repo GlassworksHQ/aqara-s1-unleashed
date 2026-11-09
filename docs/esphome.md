@@ -92,8 +92,35 @@ is FNV-1a of the `object_id` (stable).
 | text_sensor `IP address` | `ip_address` | diagnostic |
 | text_sensor `App version` | `app_version` | diagnostic |
 
-Plus the entities HA adds itself for a voice device: `assist_satellite.s1_panel_assist_satellite`,
+Plus the wall base entities below, and the entities HA adds itself for a voice device: `assist_satellite.s1_panel_assist_satellite`,
 *Assist pipeline* and *Wake word* selects (two of each), *Finished speaking detection*.
+
+### Wall base entities
+
+Built from the base detected through the stock LocalService ([bases.md](bases.md#implementation-s1-kiosk)).
+Only *Base* is always present; the rest exist only while a matching base is detected.
+
+| Entity | object_id | When | What it does |
+|---|---|---|---|
+| text_sensor `Base` (diagnostic) | `base` | always | `none`, `switch (2ch)`, `ethernet`, `unknown (0xNN)`, or `unavailable` (LocalService can't be bound) |
+| text_sensor `Base firmware` (diagnostic) | `base_firmware` | any base | `8.0.2022`, raw |
+| switch `Base relay N` | `base_relay_1`..`3` | switch base, per channel | writes `4.N.85` = 0/1, then re-reads to confirm |
+| sensor `Base power` (W, power, measurement) | `base_power` | switch base | `0.12.85` |
+| sensor `Base energy` (total_increasing, no unit) | `base_energy` | switch base | `0.13.85`, raw: unit unknown until seen on a real base |
+| text_sensor `Base protection` | `base_protection` | switch base | `8.0.2014`: `normal`, `over_temperature`, `over_load`, `over_temperature_error`, `over_load_error`, `over_temperature_removed`, `over_load_removed` |
+| event `Base button N` (button) | `base_button_1`..`3` | switch base, per channel | `13.N.85` clicks; event types `single`, `double`, `triple`, `long`, `release`, `unknown` (mapping unverified, raw value logged) |
+
+With the friendly name "S1 Panel" the entity ids are `switch.s1_panel_base_relay_1`,
+`event.s1_panel_base_button_1`, and so on. The names are fixed and don't follow the channel names
+configured in the Aqara app: HA 2026.11 derives the ESPHome unique id from the entity *name*
+(aioesphomeapi `build_unique_id` v3), so a rename on the Aqara side would orphan the HA entity.
+Rename them in HA.
+
+When the detected base changes (none ↔ switch, channel count) and stays changed for 5 s, the panel
+rebuilds its entity list and sends `DisconnectRequest` to every API client. HA reconnects (after
+its short "expected disconnect" cool-down), lists the entities again and adds the new ones. Removed
+entities stay in HA's registry, shown as unavailable/removed. The last layout is persisted, so
+restarting the app with the same base doesn't trigger this.
 
 Kiosk actions are applied in the running activity exactly like the `adb am start` extras
 (`MainActivity.commandSink`). State changes made on the panel (settings dialog, `adb` extras,
@@ -179,6 +206,12 @@ with the Python TFLite runtime that the patched model gives bit-identical output
   (`bcprov-jdk18on`, lightweight API).
 - Protobuf is hand-written (`Proto.kt`, `Entities.kt`, `ApiServer.kt`), with field numbers from
   aioesphomeapi `api.proto`. Unknown messages are ignored, as ESPHome does.
+- **Event entities**: `ListEntitiesEventResponse` (107: object_id 1, key 2, name 3, icon 5,
+  disabled_by_default 6, entity_category 7, device_class 8, event_types 9) and `EventResponse`
+  (108: key 1, event_type 2). Events have no state: nothing is sent on `SubscribeStates`, one
+  `EventResponse` per occurrence (`ApiServer.sendEvent`).
+- **Entity set changes**: `ApiServer.setEntities` swaps the list and asks every client to
+  disconnect (`DisconnectRequest`, closed after the ack or 2 s).
 - aioesphomeapi sends `SubscribeVoiceAssistantRequest.flags = 4` for API audio while `api.proto`
   defines `VOICE_ASSISTANT_SUBSCRIBE_API_AUDIO = 1`; like ESPHome, the panel ignores the flags and
   uses `VoiceAssistantResponse.port` (0 = API audio).
@@ -198,8 +231,13 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   type, voice assistant subscribe, wake word configuration get/set, a full pipeline run (wake →
   start → mic audio → events → TTS playback → `AnnounceFinished`), an announcement with
   pre-announce, a timer event, and Noise with the right key, a wrong key, no key, and a Noise
-  client against the plaintext server. Skipped without `ESPHOME_PYTHON`. Also passes with
+  client against the plaintext server, an event entity (list + fired event), and an entity set
+  change (server-initiated disconnect, reconnect lists the new entity). Skipped without
+  `ESPHOME_PYTHON`. Also passes with
   aioesphomeapi 46.28.0.
+- `BaseProtocolTest` / `BaseTrackerTest`: wall base dock class decoding, mask/count to channels,
+  LocalService reply/event parsing (all known shapes, foreign DIDs, garbage), DID redaction,
+  debounce (no rebuild loop on flapping), click de-duplication, entity ids per layout.
 - `VoiceAssistantControllerTest`: pre-roll, "never mind" runs, pipeline errors, the max-stream
   cap, continue-conversation.
 - `OwwFeaturesTest`: compares the Kotlin feature buffering with openWakeWord's own

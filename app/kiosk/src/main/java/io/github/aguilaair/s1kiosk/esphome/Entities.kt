@@ -64,7 +64,7 @@ class BinarySensorEntity(
 class SensorEntity(
     objectId: String, name: String, icon: String = "",
     private val unit: String = "", private val accuracy: Int = 0, private val deviceClass: String = "",
-    /** `SensorStateClass`: 1 = measurement. */
+    /** `SensorStateClass`: 0 none, 1 measurement, 2 total_increasing, 3 total. */
     private val stateClass: Int = 1,
     category: EntityCategory = EntityCategory.NONE,
     private val get: () -> Float?,
@@ -182,6 +182,23 @@ class ButtonEntity(
     override fun info() = base().string(5, icon).bool(6, disabledByDefault).uint32(7, category.value)
         .string(8, deviceClass)
     override fun command(msg: ProtoMessage) = press()
+}
+
+/**
+ * An event entity (`ListEntitiesEventResponse` 107 / `EventResponse` 108). Events have no state:
+ * nothing is sent on subscribe; [ApiServer.sendEvent] pushes one `EventResponse` per occurrence and
+ * Home Assistant fires `event_type` (which must be one of [eventTypes]).
+ */
+class EventEntity(
+    objectId: String, name: String, icon: String = "", category: EntityCategory = EntityCategory.NONE,
+    private val deviceClass: String = "",
+    val eventTypes: List<String>,
+) : ApiEntity(objectId, name, icon, category) {
+    override val listType = Msg.LIST_ENTITIES_EVENT
+    override val stateType = Msg.EVENT_RESPONSE
+    override fun info() = base().string(5, icon).bool(6, disabledByDefault).uint32(7, category.value)
+        .string(8, deviceClass).strings(9, eventTypes)
+    fun event(type: String): ProtoWriter = ProtoWriter().fixed32(1, key, true).string(2, type)
 }
 
 /** A light with on/off + brightness only (`COLOR_MODE_BRIGHTNESS` = 3). */

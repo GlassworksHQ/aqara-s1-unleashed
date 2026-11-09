@@ -79,28 +79,90 @@ Property names used internally (`DockConstant`) show what a base can report: `SW
 
 The default name in the code is "三键开关底座 Pro" ("3-switch base Pro").
 
-## Plan for S1 Kiosk
+## Implementation (S1 Kiosk)
 
-1. **Detect.** Poll `14.160.85` through `bracket_cli` every few seconds and on boot. When it changes,
-   read `13.8.85` / `14.21.85` for the channel count, plus model, firmware and the metering
-   resources.
-2. **Expose through ESPHome.** The entity list is built from the detected base:
-   - a `switch` per relay;
-   - `sensor`s for power, energy, voltage and current when present;
-   - a protection `text_sensor`;
-   - `event` entities for button clicks (needs the event feed, see below).
+Code: `app/kiosk/src/main/java/io/github/aguilaair/s1kiosk/base/`. Logs: `adb logcat -s S1Base`.
 
-   When the base changes, the app updates its entity list and drops the API connection. HA
-   reconnects and picks up the new entities, just as it does after an ESPHome firmware update.
-3. **Button events.** Unsolicited click frames are read by `ha_master`, not `bracket_cli`.
-   - Option A: subscribe to the stock event path (`ha_master` → `com.lumi.systemmanager`;
-     transport not yet identified, D-Bus `gateway_dbus` is the likely candidate).
-   - Option B: stop `ha_master` (root) and speak the framed protocol ourselves. That needs the
-     frame format reversed from `libha_bracket.so`.
+### How it talks to the base
 
-   With the base's default coupled mode, a press toggles the relay locally, and polling sees it.
-4. **Ethernet base.** Exposes Ethernet only; Android sees it as a network interface. Report it as
-   detected; no extra entities.
+Not through `bracket_cli` or the UART: the kiosk binds to the stock **LocalService** in
+`com.lumi.systemmanager` (`systemmanager.intent.action.LOCAL_SERVER`,
+`com.lumi.systemmanager.service.gateway.LocalService`; exported, no permission), the same path the
+stock Settings app uses (`com.lumi.common.Local.LocalServer`). `ha_master` stays in charge of the
+serial link, so stock behaviour (cloud, scenes, base OTA) is untouched.
 
-**Status:** research only, nothing implemented yet. Validating this needs a panel mounted on a
-powered base.
+- `LocalServiceClient` is a hand-written AIDL proxy for `com.lumi.systemmanager.service.ILocalService`
+  (read=1, write=2, register=5, unregister=6; two-way, `readException` + `readInt`) and a `Binder`
+  implementing the `ILocal` callback (onReadDone=1, onWriteDone=2, onStartSceneDone=3, onEvent=4,
+  onReportDone=5, onKeepAlive=6, onSubdeviceJoinDone=7, onSubdeviceRemoved=8, write=9, read=10).
+  The callbacks are **not oneway** in the decompiled stub, so ours writes `writeNoException` into
+  the reply and hands the payload to a worker thread.
+- Requests: read `{"did":<DID>,"res":"14.160.85"}` (or `"res":[...]` for a batch), write
+  `{"did":<DID>,"res":"4.1.85","src":"3,,<epoch ms>,,,","value":1}`. `<DID>` is
+  `persist.sys.did` (readable by an ordinary app through `SystemProperties.get` reflection). It is
+  never logged: payloads are logged with the DID replaced by `<did>`.
+- The service broadcasts **every** reply/event to every registered callback, including Zigbee
+  sub-devices that reuse the same resource ids (`4.1.85`, `13.1.85`). Payloads whose `did` isn't
+  the panel's are ignored.
+- `WallBase` reads the dock class on connect, every 60 s, and when an event/report mentions
+  `14.160.85` / `200.1.10003` / `13.8.85` / `14.21.85` / `3.7.85`. No reply within 15 s counts as
+  "none". With a switch base it reads `13.8.85`, `14.21.85`, `8.0.2022`, `4.x.85`, `0.12.85`,
+  `0.13.85`, `8.0.2014` and `4.x.28` on attach, then relays/power/energy/protection every 10 s;
+  events and reports update values immediately. Channels come from the relay mask bits, else the
+  channel count, capped at 3.
+- The entity set (see [esphome.md](esphome.md#wall-base-entities)) changes only when the detected
+  layout has been stable for 5 s and its entity set differs from the applied one. The API server
+  then sends `DisconnectRequest` to every client; Home Assistant reconnects and re-lists. The last
+  applied layout is persisted (`base_layout` pref), so a restart with the same base doesn't change
+  the entity set.
+- If the service can't be bound (package missing/disabled on another firmware), or `persist.sys.did`
+  can't be read, it logs once, reports "Base: unavailable" and retries every 60 s. It rebinds on
+  binding death and after 60 s without a connection.
+- The only write is a relay command from Home Assistant (`4.x.85` = 0/1), followed by reads after
+  0.5 s and 2 s to confirm. Re-detect (`200.1.10003`) is not used.
+- The pure logic (dock class decode, mask to channels, reply parsing, debounce, entity ids) is in
+  `BaseProtocol` / `BaseTracker` / `BaseEntities`, covered by `BaseProtocolTest` /
+  `BaseTrackerTest`. `EspHomeApiTest` covers event entities and the entity set change against the
+  real aioesphomeapi client.
+
+### Verified on the panel (2026-11-09, no base mounted)
+
+- The service binds, `registerILocalCallback` succeeds, and `read` returns `0`.
+- The first `read 14.160.85` was answered by `onReadDone` about 2.3 s later (later reads take about 5 ms).
+  Raw payload (DID redacted):
+
+  ```json
+  {"did":"<did>","result":{"14.160.85":0}}
+  ```
+
+  0 decodes to **none**. Over the API, `text_sensor` *Base* = `none` and no other base entities are
+  listed (22 entities in total). It stays like that across the 60 s re-reads, with no rebuilds.
+- Unsolicited events also arrive through `onEvent`, all for the panel's own DID, in the shape
+  `LocalServer.parseEvent` expects:
+
+  ```json
+  {"action":"report","did":"<did>","res":"8.0.2006","src":"10,,<epoch ms>,0.trg=0,,","value":"30"}
+  ```
+
+  Values are strings. Resources seen with no base mounted: `14.6.113`, `8.0.2006`, `8.0.2024`,
+  `8.0.2157`, `8.0.2333`, `13.201.85`, `13.201.700` (Matter fabric list).
+- Home Assistant dropped its connection once, about 2 s after the first connect following the
+  install that added the *Base* entity, then reconnected about 11 s later. It didn't happen on the
+  next restart, so it looks like HA's one-time reaction to the new entity, not a loop.
+
+### Still needs a mounted base
+
+- The dock class value of a real base (expected `0x01xxxxxx`) and whether `13.8.85` / `14.21.85`
+  answer through the LocalService at all (on the S1 Plus they are served by `ha_master` /
+  `libha_bracket.so`, not by the Java `dock` package, which only runs on the S1M "multi-dock"
+  firmware).
+- The **click event format** for `13.x.85` (source of the `single`/`double`/`long` mapping is
+  Aqara's usual multistate convention, not an observation). The raw value is logged at info
+  (`button N: raw ...`).
+- Units of `0.13.85` (energy; exposed raw, no unit) and the value type of `0.12.85` (power) and
+  `8.0.2022` (firmware).
+- Whether relay writes through the LocalService reach the base, and whether a write reports back
+  (`onWriteDone` / `onEvent`) or only the confirmation reads update the state.
+- Whether the channel names (`4.x.28`) are readable (they are read and kept, not used for entity
+  names; see esphome.md).
+- Ethernet base: detected as `ethernet` with a firmware sensor only.

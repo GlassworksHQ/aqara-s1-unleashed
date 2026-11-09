@@ -14,6 +14,9 @@ import io.github.aguilaair.s1kiosk.KioskPrefs
 import io.github.aguilaair.s1kiosk.MainActivity
 import io.github.aguilaair.s1kiosk.RadioController
 import io.github.aguilaair.s1kiosk.ScreenController
+import io.github.aguilaair.s1kiosk.base.BaseEntities
+import io.github.aguilaair.s1kiosk.base.BaseLayout
+import io.github.aguilaair.s1kiosk.base.WallBase
 import io.github.aguilaair.s1kiosk.voice.TfliteWakeWord
 import io.github.aguilaair.s1kiosk.voice.TtsPlayer
 import io.github.aguilaair.s1kiosk.voice.ExoAudioPlayer
@@ -65,6 +68,8 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
     private var controller: VoiceAssistantController? = null
     private lateinit var identity: DeviceIdentity
     private lateinit var entities: List<ApiEntity>
+    private lateinit var coreEntities: List<ApiEntity>
+    private var wallBase: WallBase? = null
     private val voicePlayer = ExoAudioPlayer(context, "voice", AudioAttributes.USAGE_ASSISTANT)
     private val mediaPlayer = ExoAudioPlayer(context, "media", AudioAttributes.USAGE_MEDIA)
     private var chimePlayer: TtsPlayer? = null
@@ -85,6 +90,8 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
     fun stop() {
         prefs.unregisterListener(prefListener)
         ScreenController.removeListener(screenListener)
+        wallBase?.stop()
+        wallBase = null
         exec.shutdownNow()
         mdns.stop()
         server?.stop()
@@ -112,7 +119,10 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
             voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
         )
         ApiLog.i("ESPHome device '${identity.name}' mac ${identity.macAddress}, voice=${voiceEnabled}")
-        entities = buildEntities()
+        coreEntities = buildEntities()
+        val base = WallBase(ctx, BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE, baseListener)
+        wallBase = base
+        entities = coreEntities + baseEntities(base, base.tracker.applied())
         acquireLocks()
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
@@ -124,6 +134,34 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
         ScreenController.addListener(screenListener)
         exec.scheduleWithFixedDelay({ controller?.tick() }, 1, 1, TimeUnit.SECONDS)
         exec.scheduleWithFixedDelay({ server?.publishStates() }, 5, 5, TimeUnit.SECONDS)
+        base.start()
+    }
+
+    // ------------------------------------------------------------------ wall base
+
+    private fun baseEntities(base: WallBase, layout: BaseLayout): List<ApiEntity> =
+        BaseEntities.build(layout, base.tracker, base::setRelay)
+
+    /** Called on the "s1-base" thread; everything is handed to esphome-main. */
+    private val baseListener = object : WallBase.Listener {
+        override fun onStates() { exec.execute { server?.publishStates() } }
+
+        override fun onLayout(layout: BaseLayout) {
+            exec.execute {
+                val base = wallBase ?: return@execute
+                entities = coreEntities + baseEntities(base, layout)
+                prefs.baseLayout = layout.encode()
+                server?.setEntities(entities)
+            }
+        }
+
+        override fun onButton(channel: Int, type: String) {
+            exec.execute {
+                val e = entities.firstOrNull { it.objectId == BaseEntities.buttonId(channel) } as? EventEntity
+                if (e == null) ApiLog.w("base button $channel ($type): no event entity in the current set")
+                else server?.sendEvent(e, type)
+            }
+        }
     }
 
     private fun startVoice() {

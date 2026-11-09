@@ -53,6 +53,8 @@ object Msg {
     const val TEXT_STATE = 98
     const val TEXT_COMMAND = 99
     const val VOICE_ASSISTANT_AUDIO = 106
+    const val LIST_ENTITIES_EVENT = 107
+    const val EVENT_RESPONSE = 108
     const val VOICE_ASSISTANT_TIMER_EVENT = 115
     const val VOICE_ASSISTANT_ANNOUNCE_REQUEST = 119
     const val VOICE_ASSISTANT_ANNOUNCE_FINISHED = 120
