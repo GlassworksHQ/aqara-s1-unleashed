@@ -74,8 +74,26 @@ adb shell service call alarm 3 s16 America/Los_Angeles      # IAlarmManager.setT
 Home Assistant's UI language is a **per-user HA profile setting** (Profile → Localization), not the
 Android locale.
 
+### Keyboard
+
+The stock IME was `com.baidu.input_auto` (Baidu, branded "Aqara"). Replaced with
+[Simple Keyboard](https://f-droid.org/packages/rkr.simplekeyboard.inputmethod/) (Apache-2.0, F-Droid
+build, only permission is VIBRATE):
+
+```sh
+adb install rkr.simplekeyboard.inputmethod_148.apk
+adb shell ime enable rkr.simplekeyboard.inputmethod/.latin.LatinIME
+adb shell ime set rkr.simplekeyboard.inputmethod/.latin.LatinIME
+adb shell pm disable-user --user 0 com.baidu.input_auto      # undo: pm enable + ime set back
+```
+
+### Do Not Disturb / night screen-off
+
+Aqara's DND schedule (22:00–07:00) forces the screen off 15 s after every wake. It's disabled through
+Lumi's own service (`service call A_device_control 7 i32 0 i32 0`; undo with `i32 1`), and the kiosk's
+`ScreenController` handles night behaviour instead. See [screen-policy.md](screen-policy.md).
+
 ### Still on the list
 
-- `com.baidu.input_auto` is the only IME (branded "Aqara" keyboard). Candidate to replace with an open IME.
 - `com.lumi.dream` is disabled, so Lumi's screensaver toggle `secure screensave_enable` was set to `0`.
 - Night behaviour: see [screen-policy.md](screen-policy.md) (DND 22:00–07:00 forces the screen off).

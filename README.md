@@ -70,6 +70,7 @@ docs/
   findings.md    Root, SELinux, AVB, partitions, what's unlocked
   debloat.md     Reversible Aqara de-bloat, locale/time-zone fixes
   screen-policy.md  Why the panel turns its screen off (Lumi DND night mode)
+  sensors.md     VI5300 ToF presence, MK6212 light, SC7A20 accel; how the kiosk uses them
 app/             S1 Kiosk: MIT GeckoView kiosk app (HA dashboard, mic over http, HOME launcher)
 tools/
   debloat/             Reversible `pm disable-user` de-bloat script
@@ -91,7 +92,10 @@ tools/
 - [x] MIT GeckoView kiosk app ([app/](app/README.md)), renders the current HA frontend full-screen on the 32-bit panel
 - [x] Mic over plain http in the kiosk (`getUserMedia` via Gecko secure-context allowlist)
 - [x] Validate end-state manually: kiosk as HOME launcher, Aqara launcher + bloat disabled (reversible), survives reboot
-- [ ] Wake-word voice satellite (native audio service → HA Assist pipeline)
+- [x] Screen policy from the panel's own sensors (wake on approach, idle off, night window, auto-brightness); Aqara DND disabled
+- [x] HA kiosk mode (header/sidebar hidden) via a built-in Gecko extension; open-source keyboard replaces the Baidu IME
+- [ ] Wake-word voice satellite (Wyoming + on-device openWakeWord) — in progress
+- [ ] Publish presence/lux/screen to HA over MQTT, and accept screen commands from HA
 - [ ] Build `provisioning.img` (stock kernel + first-boot ramdisk that installs HA + sets kiosk) and run it via `fastboot boot` (nothing permanently flashed)
 - [ ] One-command `install.sh`: FEL → U-Boot → `fastboot boot provisioning.img` → done
 - [ ] Optional: full custom image variant

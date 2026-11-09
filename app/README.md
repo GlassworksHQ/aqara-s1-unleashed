@@ -21,8 +21,19 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
 - Back button navigates inside the page and never leaves the kiosk.
 - If the page fails to load (HA restarting, Wi-Fi not up yet), it retries every 10 s.
   Crashed or killed content processes are restarted.
-- Hidden settings: **tap the top-left corner 5 times within 3 s** to set the URL, zoom
-  and extra secure hosts, open Android settings, or reload.
+- Hidden settings: **tap the top-left corner 5 times within 3 s** (or `--ez settings true`) to set the
+  URL, zoom, secure hosts, kiosk/screen options, open Android settings, or reload. The dialog also shows
+  live sensor status.
+- **Kiosk mode for HA**: a built-in Gecko web extension (`assets/extension/`) hides the HA dashboard
+  header and the sidebar. Add `?kiosk=0` to the URL to show them for one page; while you're editing a
+  dashboard they're left visible.
+- **Screen policy from the panel's own sensors** (`ScreenController`, see
+  [docs/sensors.md](../docs/sensors.md)): wake on approach (VI5300 ToF), off after idle, a night window
+  with a shorter timeout and lower brightness cap, auto-brightness from the MK6212 light sensor. Runs in
+  a foreground `KioskService`, so it works while the screen is off. It replaces Aqara's DND
+  screen-off ([docs/screen-policy.md](../docs/screen-policy.md)).
+- The page sees live panel state as `window.s1kiosk` (`{presence, proximityRaw, lux, screenOn, night}`)
+  plus a `s1kiosk-state` event, so dashboards can react to presence.
 
 ## Build
 
@@ -52,12 +63,24 @@ adb shell cmd package set-home-activity io.github.aguilaair.s1kiosk/.MainActivit
 adb shell appops set io.github.aguilaair.s1kiosk SYSTEM_ALERT_WINDOW allow
 ```
 
+Optional extras (recommended):
+
+```sh
+# instant screen-off (DevicePolicyManager.lockNow); undo with --ez remove_admin true
+adb shell dpm set-active-admin io.github.aguilaair.s1kiosk/.AdminReceiver
+# lets the app set the proximity sensor's presence range
+adb shell pm grant io.github.aguilaair.s1kiosk android.permission.WRITE_SECURE_SETTINGS
+# stop Aqara's 22:00-07:00 DND from forcing the screen off (undo: ... 7 i32 1 i32 0)
+adb shell service call A_device_control 7 i32 0 i32 0
+```
+
 Then de-bloat with [`tools/debloat/debloat.sh`](../tools/debloat/debloat.sh)
 (`disable`, then `disable-launcher`).
 
 **Undo:** `debloat.sh enable`, then
 `adb shell cmd package set-home-activity com.aqara.inhome.launcher/.MainActivity`,
-and optionally `adb uninstall io.github.aguilaair.s1kiosk`.
+and optionally `adb shell am start -n io.github.aguilaair.s1kiosk/.MainActivity --ez remove_admin true`
+followed by `adb uninstall io.github.aguilaair.s1kiosk` (an active device admin can't be uninstalled).
 
 ## Configure over ADB
 
@@ -69,6 +92,12 @@ $A --ef zoom 1.25          # CSS px ratio; 0 = auto (device density 1.5). Restar
 $A --es secure_hosts a.lan,b.lan   # extra secure-context hosts. Restarts the app.
 $A --ez remote_debug true  # Gecko remote debugging. Restarts the app.
 $A --ez reload true
+$A --ez settings true      # open the settings dialog
+$A --ez hide_header false  # show HA header/sidebar
+$A --es screen_mode always # or presence (default)
+$A --ei idle_off_sec 120 --ei night_idle_off_sec 20 --es night_window 22:00-07:00
+$A --ef presence_range_m 1.0   # VI5300 range (needs WRITE_SECURE_SETTINGS)
+$A --es screen off         # or on
 ```
 
 Do **not** change `wm density` to scale the UI. On this panel it breaks GeckoView's surface

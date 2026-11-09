@@ -44,5 +44,15 @@ secure  dark_screen_off      1
 secure  proximity_wakeup_enable 1
 ```
 
-TODO: decide the kiosk's night behaviour: keep Aqara's DND night clock, disable the `lumi_zen` rule,
-or have the kiosk register with `IDeviceControlService` to keep the screen on.
+## Decision (2026-11-09)
+
+The `lumi_zen` rule is disabled through Lumi's own API (`IDeviceControlService.setDisturbMode`,
+transaction 7 on service `A_device_control`):
+
+```sh
+adb shell service call A_device_control 7 i32 0 i32 0   # disable DND (2nd arg: don't sync to cloud)
+adb shell service call A_device_control 7 i32 1 i32 0   # restore
+```
+
+Night behaviour now lives in the kiosk's `ScreenController`: a configurable night window, a shorter
+idle timeout and a lower brightness cap, with wake on approach. See [sensors.md](sensors.md).

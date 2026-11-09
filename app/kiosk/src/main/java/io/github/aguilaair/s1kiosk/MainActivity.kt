@@ -20,7 +20,9 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.ScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -31,6 +33,8 @@ import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.MediaSource
 import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.GeckoView
+import org.mozilla.geckoview.WebExtension
+import org.json.JSONObject
 import kotlin.system.exitProcess
 
 class MainActivity : Activity() {
@@ -65,6 +69,18 @@ class MainActivity : Activity() {
 
         geckoView = GeckoView(this)
         setContentView(geckoView)
+        KioskService.start(this)
+        ScreenController.start(this)
+        ScreenController.onKeepScreenOn = { on ->
+            if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        ScreenController.onBrightness = { b ->
+            window.attributes = window.attributes.apply {
+                screenBrightness = if (b < 0f) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else b
+            }
+        }
+        ScreenController.onStateChanged = { pushState() }
         startSession()
         requestRuntimePermissions()
         hideSystemUi()
@@ -85,6 +101,9 @@ class MainActivity : Activity() {
         s.navigationDelegate = navigationDelegate
         s.progressDelegate = progressDelegate
         s.open(KioskApp.runtime(this))
+        KioskApp.helperExtension(this).accept({ ext ->
+            if (ext != null) s.webExtensionController.setMessageDelegate(ext, messageDelegate, "s1kiosk")
+        }, { e -> Log.e(TAG, "helper extension failed", e) })
         geckoView.setSession(s)
         session = s
         s.loadUri(prefs.url)
@@ -133,6 +152,23 @@ class MainActivity : Activity() {
             prefs.remoteDebugging = intent.getBooleanExtra("remote_debug", false)
             needsRestart = true
         }
+        if (intent.hasExtra("hide_header")) prefs.hideHeader = intent.getBooleanExtra("hide_header", true)
+        if (intent.hasExtra("hide_sidebar")) prefs.hideSidebar = intent.getBooleanExtra("hide_sidebar", true)
+        intent.getStringExtra("screen_mode")?.let { prefs.screenMode = it }
+        if (intent.hasExtra("idle_off_sec")) prefs.idleOffSec = intent.getIntExtra("idle_off_sec", 120)
+        if (intent.hasExtra("night_idle_off_sec")) prefs.nightIdleOffSec = intent.getIntExtra("night_idle_off_sec", 20)
+        intent.getStringExtra("night_window")?.let { prefs.nightWindow = it }
+        if (intent.hasExtra("presence_range_m")) {
+            prefs.presenceRangeM = intent.getFloatExtra("presence_range_m", 0f)
+            ScreenController.applyPresenceRange()
+        }
+        if (intent.hasExtra("auto_brightness")) prefs.autoBrightness = intent.getBooleanExtra("auto_brightness", true)
+        when (intent.getStringExtra("screen")) {
+            "off" -> ScreenController.sleep("intent")
+            "on" -> ScreenController.wake("intent")
+        }
+        if (intent.getBooleanExtra("remove_admin", false)) ScreenController.removeAdmin()
+        if (fromNewIntent && intent.getBooleanExtra("settings", false)) showSettings()
         if (fromNewIntent && needsRestart) {
             restartProcess()
             return
@@ -176,6 +212,7 @@ class MainActivity : Activity() {
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            ScreenController.userActivity()
             val corner = 80 * resources.displayMetrics.density
             if (ev.x < corner && ev.y < corner) {
                 val now = SystemClock.uptimeMillis()
@@ -212,23 +249,61 @@ class MainActivity : Activity() {
             hint = "e.g. homeassistant.local,192.168.1.100"
             setSingleLine()
         }
+        val hideHeader = CheckBox(this).apply { text = "Hide HA header & sidebar"; isChecked = prefs.hideHeader }
+        val presence = CheckBox(this).apply {
+            text = "Screen follows presence (off when idle)"; isChecked = prefs.screenMode == "presence"
+        }
+        val idleField = EditText(this).apply {
+            setText(prefs.idleOffSec.toString()); inputType = InputType.TYPE_CLASS_NUMBER; setSingleLine()
+        }
+        val nightField = EditText(this).apply { setText(prefs.nightWindow); hint = "22:00-07:00 (empty = off)"; setSingleLine() }
+        val nightIdleField = EditText(this).apply {
+            setText(prefs.nightIdleOffSec.toString()); inputType = InputType.TYPE_CLASS_NUMBER; setSingleLine()
+        }
+        val rangeField = EditText(this).apply {
+            setText(if (prefs.presenceRangeM > 0f) prefs.presenceRangeM.toString() else "")
+            hint = "firmware default (1.5 m)"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; setSingleLine()
+        }
+        val autoBright = CheckBox(this).apply { text = "Auto brightness (light sensor)"; isChecked = prefs.autoBrightness }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad, pad, 0)
+            addView(TextView(context).apply { text = ScreenController.statusLine(); textSize = 12f })
             addView(TextView(context).apply { text = "Dashboard URL" })
             addView(urlField)
             addView(TextView(context).apply { text = "Zoom (CSS px ratio, e.g. 1.0 – 2.0)" })
             addView(zoomField)
             addView(TextView(context).apply { text = "Extra secure-context hosts" })
             addView(hostsField)
+            addView(hideHeader)
+            addView(presence)
+            addView(TextView(context).apply { text = "Screen off after idle (s, 0 = never)" })
+            addView(idleField)
+            addView(TextView(context).apply { text = "Night window" })
+            addView(nightField)
+            addView(TextView(context).apply { text = "Night: screen off after idle (s)" })
+            addView(nightIdleField)
+            addView(TextView(context).apply { text = "Presence range (m, 0.1 – 2.5)" })
+            addView(rangeField)
+            addView(autoBright)
         }
+        val scroll = ScrollView(this).apply { addView(layout) }
         AlertDialog.Builder(this)
             .setTitle("S1 Kiosk ${BuildConfig.VERSION_NAME}")
-            .setView(layout)
+            .setView(scroll)
             .setPositiveButton("Save & restart") { _, _ ->
                 prefs.url = urlField.text.toString().ifBlank { BuildConfig.DEFAULT_URL }
                 prefs.zoom = zoomField.text.toString().toFloatOrNull() ?: 0f
                 prefs.extraSecureHosts = hostsField.text.toString()
+                prefs.hideHeader = hideHeader.isChecked
+                prefs.hideSidebar = hideHeader.isChecked
+                prefs.screenMode = if (presence.isChecked) "presence" else "always"
+                prefs.idleOffSec = idleField.text.toString().toIntOrNull() ?: 120
+                prefs.nightWindow = nightField.text.toString()
+                prefs.nightIdleOffSec = nightIdleField.text.toString().toIntOrNull() ?: 20
+                prefs.autoBrightness = autoBright.isChecked
+                prefs.presenceRangeM = rangeField.text.toString().toFloatOrNull() ?: 0f
                 restartProcess()
             }
             .setNeutralButton("Android settings") { _, _ ->
@@ -359,7 +434,50 @@ class MainActivity : Activity() {
         }
     }
 
+    // ---- page <-> app messaging (assets/extension/content.js)
+
+    private val ports = mutableSetOf<WebExtension.Port>()
+
+    private fun configJson() = JSONObject()
+        .put("hideHeader", prefs.hideHeader)
+        .put("hideSidebar", prefs.hideSidebar)
+
+    private fun stateJson() = JSONObject()
+        .put("presence", ScreenController.near)
+        .put("proximityRaw", ScreenController.proximityRaw.let { if (it.isNaN()) JSONObject.NULL else it.toDouble() })
+        .put("lux", ScreenController.lux.let { if (it.isNaN()) JSONObject.NULL else it.toDouble() })
+        .put("screenOn", ScreenController.screenOn)
+        .put("night", ScreenController.isNight())
+
+    private fun pushState() {
+        val msg = JSONObject().put("type", "state").put("state", stateJson())
+        ports.toList().forEach { runCatching { it.postMessage(msg) } }
+    }
+
+    private val messageDelegate = object : WebExtension.MessageDelegate {
+        override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
+            val type = (message as? JSONObject)?.optString("type")
+            return when (type) {
+                "config" -> GeckoResult.fromValue(configJson())
+                "state" -> GeckoResult.fromValue(stateJson())
+                "activity" -> { ScreenController.userActivity(); null }
+                else -> null
+            }
+        }
+
+        override fun onConnect(port: WebExtension.Port) {
+            ports += port
+            port.setDelegate(object : WebExtension.PortDelegate {
+                override fun onDisconnect(port: WebExtension.Port) { ports -= port }
+            })
+            port.postMessage(JSONObject().put("type", "state").put("state", stateJson()))
+        }
+    }
+
     override fun onDestroy() {
+        ScreenController.onKeepScreenOn = null
+        ScreenController.onBrightness = null
+        ScreenController.onStateChanged = null
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }

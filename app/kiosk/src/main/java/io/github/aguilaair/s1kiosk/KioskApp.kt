@@ -3,8 +3,10 @@ package io.github.aguilaair.s1kiosk
 import android.app.Application
 import android.content.Context
 import android.util.Log
+import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
+import org.mozilla.geckoview.WebExtension
 import java.io.File
 
 class KioskApp : Application() {
@@ -29,6 +31,16 @@ class KioskApp : Application() {
                 .remoteDebuggingEnabled(prefs.remoteDebugging)
                 .build()
             return GeckoRuntime.create(app, settings).also { runtime = it }
+        }
+
+        private var helper: GeckoResult<WebExtension>? = null
+
+        /** Built-in helper extension (assets/extension): HA kiosk tweaks + page<->app messaging. */
+        fun helperExtension(context: Context): GeckoResult<WebExtension> {
+            helper?.let { return it }
+            return runtime(context).webExtensionController
+                .ensureBuiltIn("resource://android/assets/extension/", "helper@s1kiosk.aguilaair.github.io")
+                .also { helper = it }
         }
 
         private fun writeGeckoConfig(context: Context, prefs: KioskPrefs): File {

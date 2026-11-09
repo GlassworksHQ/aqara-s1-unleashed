@@ -1,0 +1,18 @@
+{
+  "manifest_version": 2,
+  "name": "S1 Kiosk helper",
+  "version": "1.0",
+  "description": "Hides Home Assistant's header/sidebar in kiosk mode and exposes panel state to the page.",
+  "browser_specific_settings": {
+    "gecko": { "id": "helper@s1kiosk.aguilaair.github.io" }
+  },
+  "permissions": ["nativeMessaging", "nativeMessagingFromContent", "geckoViewAddons"],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}

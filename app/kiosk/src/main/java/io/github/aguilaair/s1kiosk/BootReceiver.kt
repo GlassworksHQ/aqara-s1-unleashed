@@ -9,6 +9,11 @@ import android.util.Log
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.i("S1Kiosk", "BootReceiver: ${intent.action}")
+        try {
+            KioskService.start(context)
+        } catch (e: Exception) {
+            Log.w("S1Kiosk", "Could not start KioskService", e)
+        }
         val launch = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         try {
