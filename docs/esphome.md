@@ -126,7 +126,11 @@ connection, TTS is played from a URL. Checked against esphome `voice_assistant.c
 | HA → panel | `VoiceAssistantAnnounceRequest{media_id, text, preannounce_media_id, start_conversation}` | Play the pre-announce chime then the media, reply `AnnounceFinished`, optionally start a conversation. |
 | HA → panel | `VoiceAssistantTimerEventResponse` | Tracked and logged; a finished timer plays a short chime. |
 
-Playback uses Android `MediaPlayer` (streams mp3/flac/wav/ogg over HTTP). Because the media
+Playback uses **Media3 ExoPlayer** (`ExoAudioPlayer`), which streams mp3/flac/aac/ogg/wav over HTTP
+in-process, including endless streams. Android's `MediaPlayer` is deliberately avoided: on this
+panel it is backed by Allwinner's CedarX player inside `mediaserver`, whose HTTP code aborts
+(`FORTIFY: FD_SET: file descriptor 1024 >= FD_SETSIZE`, `libcdx_base CdxSockAsynConnect`) and kills
+`mediaserver` on the first stream. Because the media
 player entity declares mp3 as its announcement format, HA asks the TTS engine for mp3 and routes
 other media through its ffmpeg proxy as mp3. URLs from HA are absolute (HA's internal URL);
 relative ones are resolved against the dashboard URL. Music on the media player is paused while the
@@ -217,9 +221,10 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 
 ## Limitations / known gaps
 
-- **Not yet tested on the panel.** Unknowns: MediaPlayer with HA's streaming TTS URL (chunked mp3)
-  on Android 10, real wake word accuracy and the right mic gain, Android 10 `NsdManager` TXT records
-  reaching HA.
+- **Verified on the panel (2026-11-09):** HA adds it (by IP; the panel sits on a separate VLAN so
+  mDNS didn't reach HA), all entities report live values, `announce` with pre-announce chime plays,
+  `media_player.play_media` plays and reports playing → idle. **Not yet verified:** real-speech
+  wake word accuracy / mic gain, Music Assistant playback, mDNS discovery on a flat network.
 - The mDNS SRV target is the Android hostname, not `s1-panel.local`; HA uses the IP it discovered and
   replaces the name with `DeviceInfoResponse.name` once connected.
 - No `SPEAKER` flag: TTS is fetched by URL, not streamed as PCM over the API.
@@ -229,5 +234,10 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 - No acoustic echo cancellation / barge-in: detections are ignored while listening or speaking.
 - Shared microphone with GeckoView: if the dashboard's in-browser Assist uses the mic at the same
   time, one of the two captures may get silence. *Mute microphone* releases it.
+- Music Assistant: the speaker is a normal HA media player, so MA can use it through its
+  *Home Assistant* player provider (enable `S1 Panel Speaker` there). That's MA → HA → panel, so
+  no MA-synced multi-room. A native MA protocol (e.g. a Snapcast/Squeezelite client in the app)
+  would be needed for that.
+- Chromecast: not possible. A Cast receiver must be a Google-certified device.
 - `RadioController` only logs; the radio mode is stored but nothing is switched yet.
 - No dynamic key provisioning from HA (`NoiseEncryptionSetKeyRequest`).

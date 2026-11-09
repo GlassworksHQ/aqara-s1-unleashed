@@ -49,6 +49,9 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     // ESPHome API Noise encryption: X25519 + ChaCha20-Poly1305 (lightweight API, no JCA provider).
     implementation("org.bouncycastle:bcprov-jdk18on:1.80")
+    // Audio playback (TTS, announcements, media player): streams over HTTP in-process, avoiding the
+    // vendor CedarX HTTP stack. Same version GeckoView already ships.
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
 
     // JVM unit tests for the ESPHome API (against aioesphomeapi) and openWakeWord buffering.
     testImplementation("junit:junit:4.13.2")

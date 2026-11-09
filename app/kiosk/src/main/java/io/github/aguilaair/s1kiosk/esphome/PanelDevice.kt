@@ -16,7 +16,7 @@ import io.github.aguilaair.s1kiosk.RadioController
 import io.github.aguilaair.s1kiosk.ScreenController
 import io.github.aguilaair.s1kiosk.voice.TfliteWakeWord
 import io.github.aguilaair.s1kiosk.voice.TtsPlayer
-import io.github.aguilaair.s1kiosk.voice.UrlAudioPlayer
+import io.github.aguilaair.s1kiosk.voice.ExoAudioPlayer
 import io.github.aguilaair.s1kiosk.voice.VoiceConfig
 import io.github.aguilaair.s1kiosk.voice.VoiceEngine
 import io.github.aguilaair.s1kiosk.voice.VoiceEvent
@@ -65,8 +65,8 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
     private var controller: VoiceAssistantController? = null
     private lateinit var identity: DeviceIdentity
     private lateinit var entities: List<ApiEntity>
-    private val voicePlayer = UrlAudioPlayer("voice", AudioAttributes.USAGE_ASSISTANT)
-    private val mediaPlayer = UrlAudioPlayer("media", AudioAttributes.USAGE_MEDIA)
+    private val voicePlayer = ExoAudioPlayer(context, "voice", AudioAttributes.USAGE_ASSISTANT)
+    private val mediaPlayer = ExoAudioPlayer(context, "media", AudioAttributes.USAGE_MEDIA)
     private var chimePlayer: TtsPlayer? = null
     @Volatile private var announcing = false
     @Volatile private var mediaPausedForVoice = false
