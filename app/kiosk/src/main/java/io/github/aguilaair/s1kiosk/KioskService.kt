@@ -12,39 +12,26 @@ import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import io.github.aguilaair.s1kiosk.voice.VoiceConfig
+import io.github.aguilaair.s1kiosk.esphome.PanelDevice
 import io.github.aguilaair.s1kiosk.voice.VoiceEvent
-import io.github.aguilaair.s1kiosk.voice.VoiceSatellite
 
 /**
- * Long-lived foreground service that owns the sensor/screen policy (and, later, the voice satellite),
- * so they keep running while the screen is off and the activity is stopped.
+ * Long-lived foreground service that owns the sensor/screen policy and the ESPHome device
+ * (native API server + voice assistant), so they keep running while the screen is off and the
+ * activity is stopped.
  */
 class KioskService : Service() {
 
     private val main = Handler(Looper.getMainLooper())
-    private var voice: VoiceSatellite? = null
+    private var device: PanelDevice? = null
 
     override fun onCreate() {
         super.onCreate()
         startForeground(NOTIFICATION_ID, buildNotification())
         ScreenController.start(this)
-        startVoice()
+        voiceState = if (KioskPrefs(this).voiceEnabled) "idle" else "off"
+        device = PanelDevice(this) { e -> main.post { onVoiceEvent(e) } }.also { it.start() }
         Log.i("S1Kiosk", "KioskService started")
-    }
-
-    private fun startVoice() {
-        val p = KioskPrefs(this)
-        if (!p.voiceEnabled) return
-        val cfg = VoiceConfig(
-            wakeModel = p.wakeModel,
-            threshold = p.wakeThreshold,
-            micGain = p.micGain,
-        )
-        voice = VoiceSatellite(this, cfg).also { v ->
-            v.listener = { e -> main.post { onVoiceEvent(e) } }
-            v.start()
-        }
     }
 
     private fun onVoiceEvent(e: VoiceEvent) {
@@ -63,8 +50,8 @@ class KioskService : Service() {
     }
 
     override fun onDestroy() {
-        voice?.stop()
-        voice = null
+        device?.stop()
+        device = null
         super.onDestroy()
     }
 
@@ -88,7 +75,7 @@ class KioskService : Service() {
         else Notification.Builder(this)
         return b.setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle("S1 Kiosk")
-            .setContentText("Screen, sensors & voice satellite running")
+            .setContentText("Screen, sensors & ESPHome API running")
             .setContentIntent(open)
             .setOngoing(true)
             .build()
@@ -98,7 +85,7 @@ class KioskService : Service() {
         private const val CHANNEL = "kiosk"
         private const val NOTIFICATION_ID = 1
 
-        /** Last voice satellite state, exposed to the page via MainActivity.stateJson(). */
+        /** Last voice assistant state, exposed to the page via MainActivity.stateJson(). */
         @Volatile var voiceState: String = "off"
 
         fun start(context: Context) {

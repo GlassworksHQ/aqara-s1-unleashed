@@ -32,6 +32,8 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   with a shorter timeout and lower brightness cap, auto-brightness from the MK6212 light sensor. Runs in
   a foreground `KioskService`, so it works while the screen is off. It replaces Aqara's DND
   screen-off ([docs/screen-policy.md](../docs/screen-policy.md)).
+- **Home Assistant integration as an ESPHome device** (native API, voice assistant, screen and kiosk
+  controls), see below and [docs/esphome.md](../docs/esphome.md).
 - The page sees live panel state as `window.s1kiosk` (`{presence, proximityRaw, lux, screenOn, night}`)
   plus a `s1kiosk-state` event, so dashboards can react to presence.
 
@@ -98,6 +100,9 @@ $A --es screen_mode always # or presence (default)
 $A --ei idle_off_sec 120 --ei night_idle_off_sec 20 --es night_window 22:00-07:00
 $A --ef presence_range_m 1.0   # VI5300 range (needs WRITE_SECURE_SETTINGS)
 $A --es screen off         # or on
+$A --ez restart true       # restart the app process
+$A --es wake_model alexa_v0.1.tflite --ef wake_threshold 0.6 --ef mic_gain 2.0 --ez mic_muted false
+$A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # ESPHome API Noise encryption
 ```
 
 Do **not** change `wm density` to scale the UI. On this panel it breaks GeckoView's surface
@@ -120,23 +125,30 @@ Gecko's prefs are written to `files/geckoview-config.yaml` at startup and logged
 > surface while the screen sleeps. Check `adb shell dumpsys power | grep mWakefulness`.
 > See [docs/screen-policy.md](../docs/screen-policy.md) for why the panel turns itself off.
 
-## Voice satellite
+## Home Assistant: ESPHome device + voice assistant
 
-The app is a Home Assistant **Wyoming voice satellite** with an **on-device wake word**
-(openWakeWord on TFLite, default "Hey Jarvis"). It runs in `KioskService`, so it keeps listening
-while the screen is off, and saying the wake word wakes the screen. See [docs/voice.md](../docs/voice.md).
+The app exposes the panel to Home Assistant as **one ESPHome device** over the ESPHome native API
+(TCP **6053**, advertised as `_esphomelib._tcp`): an Assist satellite with an **on-device wake word**
+(openWakeWord on TFLite, default "Hey Jarvis"), a media player, the screen as a light, presence and
+illuminance sensors, and the kiosk/screen settings. It runs in `KioskService`, so it keeps listening
+while the screen is off, and talking to it wakes the screen. See [docs/esphome.md](../docs/esphome.md).
 
 ```sh
 tools/voice/fetch-models.sh            # downloads the openWakeWord models on the host and adb-pushes them
-# HA: Settings -> Devices & services -> Add integration -> Wyoming Protocol -> <panel IP>, port 10700
+# HA: the panel is auto-discovered (Settings -> Devices & services -> ESPHome "S1 Panel" -> Add), or
+#     Add integration -> ESPHome -> <panel IP>, port 6053
 ```
 
-The panel shows up as `assist_satellite.<name>` and uses your preferred Assist pipeline (select
-entity). Tune it with `--es wake_model alexa_v0.1.tflite`, `--ef wake_threshold 0.6`,
-`--ef mic_gain 2.0`, or turn it off with `--ez voice_enabled false`.
+Entity ids look like `light.s1_panel_screen`, `select.s1_panel_screen_mode`,
+`media_player.s1_panel_speaker`; pick the wake word and the Assist pipeline on the device page.
+Encryption is off by default; enable it with `--es api_key <base64 32 bytes> --ez api_encryption true`
+(a key is generated on first start and logged under `S1ESPHome`). Tune the mic with
+`--ef mic_gain 2.0` / `--ef wake_threshold 0.6`, or turn the voice assistant off with
+`--ez voice_enabled false` (the API and the other entities stay).
 
-Verified on the panel: HA connects, `announce` TTS plays through the speaker, wake-word inference uses
-about 40% of one core. Real-speech wake-word accuracy hasn't been tested yet.
+Not yet tested on the panel. The previous Wyoming satellite was verified there (HA connected,
+`announce` TTS played, wake-word inference used about 40% of one core); remove its Wyoming entry
+from HA when switching.
 
 ## License
 

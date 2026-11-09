@@ -6,10 +6,42 @@ import android.media.AudioTrack
 import android.os.Process
 import java.util.concurrent.LinkedBlockingQueue
 
+/** Sink for PCM audio (chimes and other locally generated sounds). */
+interface AudioOutput {
+    /** Starts a new stream (cancels any stream still playing). */
+    fun begin(rate: Int, width: Int, channels: Int)
+
+    /** Queues raw PCM in the format given to [begin]. Must not block for long. */
+    fun write(pcm: ByteArray)
+
+    /** Marks the end of the stream; [onDone] runs once everything queued has been played. */
+    fun end(onDone: () -> Unit)
+
+    /** Stops playback immediately and drops queued audio. */
+    fun cancel()
+}
+
+/** Plays a short three-beep chime (used when a timer finishes). */
+fun AudioOutput.chime(onDone: () -> Unit = {}) {
+    val rate = 16_000
+    val beep = 0.15
+    val gap = 0.10
+    val samples = ((beep + gap) * 3 * rate).toInt()
+    val pcm = ByteArray(samples * 2)
+    for (i in 0 until samples) {
+        val t = i.toDouble() / rate
+        val inBeep = (t % (beep + gap)) < beep
+        val v = if (inBeep) (Math.sin(2 * Math.PI * 880.0 * t) * 0.4 * 32767).toInt() else 0
+        pcm[2 * i] = v.toByte()
+        pcm[2 * i + 1] = (v shr 8).toByte()
+    }
+    begin(rate, 2, 1)
+    write(pcm)
+    end(onDone)
+}
+
 /**
- * Plays the PCM that Home Assistant streams (`audio-start` / `audio-chunk` / `audio-stop`) with
- * [AudioTrack] on its own thread, so the Wyoming reader thread never blocks (it must keep
- * answering HA's pings, which time out after 5 s).
+ * Plays raw PCM with [AudioTrack] on its own thread, so callers never block.
  *
  * Honours the stream's rate/width/channels: 8-bit (unsigned, as in WAV) and 16-bit are played
  * natively; 24/32-bit integer samples are reduced to 16-bit; more than 2 channels are reduced

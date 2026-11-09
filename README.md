@@ -95,7 +95,7 @@ tools/
 - [x] Screen policy from the panel's own sensors (wake on approach, idle off, night window, auto-brightness); Aqara DND disabled
 - [x] HA kiosk mode (header/sidebar hidden) via a built-in Gecko extension; open-source keyboard replaces the Baidu IME
 - [x] Wake-word voice satellite (Wyoming + on-device openWakeWord); added to HA, TTS verified. Wake-word accuracy with real speech still to test
-- [ ] Publish presence/lux/screen to HA over MQTT, and accept screen commands from HA
+- [ ] Panel as one ESPHome device in HA (native API: voice assistant + screen/sensors + kiosk settings), replacing Wyoming ([docs/esphome.md](docs/esphome.md)); implemented, on-device test pending
 - [ ] Build `provisioning.img` (stock kernel + first-boot ramdisk that installs HA + sets kiosk) and run it via `fastboot boot` (nothing permanently flashed)
 - [ ] One-command `install.sh`: FEL → U-Boot → `fastboot boot provisioning.img` → done
 - [ ] Optional: full custom image variant

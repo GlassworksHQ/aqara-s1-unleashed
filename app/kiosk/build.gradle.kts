@@ -45,10 +45,12 @@ android {
 
 dependencies {
     implementation("org.mozilla.geckoview:geckoview-armeabi-v7a:159.0.20261102144711")
-    // Voice satellite: openWakeWord inference (ships armeabi-v7a, minSdk 19).
+    // Voice assistant: openWakeWord inference (ships armeabi-v7a, minSdk 19).
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
+    // ESPHome API Noise encryption: X25519 + ChaCha20-Poly1305 (lightweight API, no JCA provider).
+    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
 
-    // JVM unit tests for the Wyoming framing / satellite flow / openWakeWord buffering.
+    // JVM unit tests for the ESPHome API (against aioesphomeapi) and openWakeWord buffering.
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")
 }
