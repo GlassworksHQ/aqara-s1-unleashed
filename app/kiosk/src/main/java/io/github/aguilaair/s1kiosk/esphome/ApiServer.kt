@@ -95,6 +95,13 @@ class ApiServer(
     /** Called (on a connection thread) for every HelloRequest: client_info and the peer address. */
     @Volatile var onClientHello: ((clientInfo: String, remote: InetAddress?) -> Unit)? = null
 
+    /**
+     * Called (on a connection thread) when a client subscribes to states, with its Hello
+     * client_info. Home Assistant only does this once it has added the device (its config flow's
+     * discovery probe just reads DeviceInfo), so it is the "HA has added the panel" signal.
+     */
+    @Volatile var onStatesSubscribed: ((clientInfo: String) -> Unit)? = null
+
     /** Called after a provisioned key became active (or was cleared), e.g. to update the mDNS TXT. */
     @Volatile var onKeyActivated: (() -> Unit)? = null
 
@@ -259,6 +266,8 @@ class ApiServer(
         private lateinit var transport: FrameTransport
         @Volatile var subscribedStates = false
         @Volatile var isOpen = true
+        /** HelloRequest.client_info ("" until the Hello). */
+        @Volatile var clientInfo = ""
         /** Set when the key changed: only the disconnect handshake is processed from now on. */
         @Volatile private var retired = false
         private val remote = socket.remoteSocketAddress?.toString() ?: "?"
@@ -374,6 +383,7 @@ class ApiServer(
             when (f.type) {
                 Msg.HELLO_REQUEST -> {
                     ApiLog.i("[$id] hello from '${m.string(1)}' API ${m.uint32(2)}.${m.uint32(3)} ($remote)")
+                    clientInfo = m.string(1)
                     try { onClientHello?.invoke(m.string(1), socket.inetAddress) } catch (t: Throwable) {
                         ApiLog.w("onClientHello failed", t)
                     }
@@ -409,22 +419,9 @@ class ApiServer(
                         Frame(Msg.LIST_ENTITIES_DONE, ByteArray(0))
                     send(frames)
                 }
-                Msg.SUBSCRIBE_STATES_REQUEST -> synchronized(stateLock) {
-                    // Current state of everything (and refresh the cache, so other connections get
-                    // whatever changed on the next publish).
-                    val frames = entities.mapNotNull { e ->
-                        if (e is EventEntity) return@mapNotNull null
-                        val st = safeState(e) ?: return@mapNotNull null
-                        val prev = lastStates[e.key]
-                        lastStates[e.key] = st
-                        if (prev != null && !prev.contentEquals(st)) {
-                            connections.filter { it !== this && it.subscribedStates }
-                                .forEach { it.send(listOf(Frame(e.stateType, st))) }
-                        }
-                        Frame(e.stateType, st)
-                    }
-                    send(frames)
-                    subscribedStates = true
+                Msg.SUBSCRIBE_STATES_REQUEST -> {
+                    subscribeStates()
+                    try { onStatesSubscribed?.invoke(clientInfo) } catch (t: Throwable) { ApiLog.w("onStatesSubscribed failed", t) }
                 }
                 Msg.LIGHT_COMMAND, Msg.SWITCH_COMMAND, Msg.NUMBER_COMMAND, Msg.SELECT_COMMAND,
                 Msg.BUTTON_COMMAND, Msg.TEXT_COMMAND, Msg.MEDIA_PLAYER_COMMAND -> {
@@ -439,6 +436,24 @@ class ApiServer(
                 }
                 else -> handleVoice(f.type, m)
             }
+        }
+
+        private fun subscribeStates() = synchronized(stateLock) {
+            // Current state of everything (and refresh the cache, so other connections get
+            // whatever changed on the next publish).
+            val frames = entities.mapNotNull { e ->
+                if (e is EventEntity) return@mapNotNull null
+                val st = safeState(e) ?: return@mapNotNull null
+                val prev = lastStates[e.key]
+                lastStates[e.key] = st
+                if (prev != null && !prev.contentEquals(st)) {
+                    connections.filter { it !== this && it.subscribedStates }
+                        .forEach { it.send(listOf(Frame(e.stateType, st))) }
+                }
+                Frame(e.stateType, st)
+            }
+            send(frames)
+            subscribedStates = true
         }
 
         private fun handleVoice(type: Int, m: ProtoMessage) {

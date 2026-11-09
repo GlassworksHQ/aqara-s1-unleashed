@@ -28,8 +28,15 @@ import android.widget.TextView
 import android.widget.Toast
 import io.github.aguilaair.s1kiosk.auth.FrontendUrls
 import io.github.aguilaair.s1kiosk.auth.HaAuth
-import io.github.aguilaair.s1kiosk.auth.OAuth
+import io.github.aguilaair.s1kiosk.dashboard.DashboardOptions
+import io.github.aguilaair.s1kiosk.dashboard.Dashboards
 import io.github.aguilaair.s1kiosk.discovery.HaUrls
+import io.github.aguilaair.s1kiosk.setup.SetupInputs
+import io.github.aguilaair.s1kiosk.setup.SetupOverlay
+import io.github.aguilaair.s1kiosk.setup.SetupSignals
+import io.github.aguilaair.s1kiosk.setup.SetupState
+import io.github.aguilaair.s1kiosk.setup.SetupStep
+import io.github.aguilaair.s1kiosk.setup.WifiSetupStatus
 import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
@@ -48,7 +55,8 @@ class MainActivity : Activity() {
     private lateinit var geckoView: GeckoView
     private lateinit var voiceOverlay: VoiceOverlay
     private lateinit var timerOverlay: TimerOverlay
-    private lateinit var signinOverlay: SignInOverlay
+    private lateinit var setupOverlay: SetupOverlay
+    private lateinit var wifiStatus: WifiSetupStatus
     private var session: GeckoSession? = null
     private val handler = Handler(Looper.getMainLooper())
     private var pendingAndroidPermission: PermissionDelegate.Callback? = null
@@ -58,17 +66,37 @@ class MainActivity : Activity() {
     /** "Sign in on this panel instead" was chosen: don't cover HA's login page again (this process). */
     private var usePanelLogin = false
 
+    /** Signed out on this panel (HA button / frontend logout) and not signed in again (this process). */
+    private var signedOutHere = false
+
+    /** Setup screen preview (`--ez show_setup true`, `--es setup_step …`): never changes state. */
+    private var setupPreview = false
+    private var setupPreviewStep: SetupStep? = null
+    private var offlineSince = 0L
+    private var lastSetupReasons: List<String> = emptyList()
+
     private val authListener: (Boolean) -> Unit = { signedIn ->
         if (signedIn) {
             Log.i(TAG, "Signed in with the QR code; loading the dashboard with external auth")
             usePanelLogin = false
-            signinOverlay.hide()
+            signedOutHere = false
+            if (setupPreview) closeSetupPreview()
             loadDashboard()
         } else {
             Log.i(TAG, "Signed out; showing the sign-in screen")
             usePanelLogin = false
-            showSignin()
+            signedOutHere = true
             prefs.url.takeIf { it.isNotEmpty() }?.let { session?.loadUri(it) }
+        }
+        refreshSetup()
+    }
+
+    private val setupSignalListener: () -> Unit = { refreshSetup() }
+
+    private val setupTick = object : Runnable {
+        override fun run() {
+            refreshSetup()
+            handler.postDelayed(this, SETUP_TICK_MS)
         }
     }
 
@@ -97,17 +125,23 @@ class MainActivity : Activity() {
         geckoView = GeckoView(this)
         voiceOverlay = VoiceOverlay(this)
         timerOverlay = TimerOverlay(this)
-        signinOverlay = SignInOverlay(this).apply {
+        setupOverlay = SetupOverlay(this).apply {
             onUsePanel = ::onUsePanelLogin
             onManualUrl = ::onManualHaUrl
+            onChooseNetwork = ::openWifiSettings
+            onSkipHa = ::onSkipHaSetup
+            onClosePreview = ::closeSetupPreview
         }
+        wifiStatus = WifiSetupStatus.create(this)
         setContentView(android.widget.FrameLayout(this).apply {
             addView(geckoView, android.widget.FrameLayout.LayoutParams(-1, -1))
-            addView(signinOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
+            addView(setupOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
             addView(voiceOverlay, voiceOverlay.layoutParams())
             addView(timerOverlay, timerOverlay.layoutParams())
         })
         HaAuth.addListener(authListener)
+        SetupSignals.addListener(setupSignalListener)
+        wifiStatus.observe { refreshSetup() }
         KioskService.start(this)
         ScreenController.start(this)
         ScreenController.onKeepScreenOn = { on ->
@@ -126,6 +160,8 @@ class MainActivity : Activity() {
         }
         commandSink = { applyIntent(it, fromNewIntent = true) }
         startSession()
+        intent?.let { i -> handler.post { applySetupPreview(i) } }
+        handler.post(setupTick)
         requestRuntimePermissions()
         hideSystemUi()
     }
@@ -151,7 +187,6 @@ class MainActivity : Activity() {
         geckoView.setSession(s)
         session = s
         loadDashboard()
-        if (intent?.getBooleanExtra("show_signin", false) == true) handler.post { showSignin() }
     }
 
     // ---- dashboard, discovery, sign-in screen (docs/onboarding.md)
@@ -165,47 +200,168 @@ class MainActivity : Activity() {
         val url = prefs.url
         if (url.isEmpty()) {
             Log.i(TAG, "No dashboard URL yet (auto, Home Assistant not found)")
-            showSignin()
+            refreshSetup()
             return
         }
+        dashboardLoadAt = SystemClock.elapsedRealtime()
         session?.loadUri(externalize(url))
     }
+
+    private var dashboardLoadAt = 0L
 
     private fun externalize(url: String): String =
         if (HaAuth.signedIn && FrontendUrls.sameOrigin(url, HaAuth.signedInBase)) FrontendUrls.withFlag(url) else url
 
-    private fun showSignin() {
-        val ha = prefs.haBase
-        if (ha == null) {
-            signinOverlay.showManual("")
+    // ---- first-boot setup screen (docs/onboarding.md step 4; rules in setup/SetupState.kt)
+
+    private fun setupInputs(): SetupInputs {
+        val w = wifiStatus.snapshot()
+        val now = SystemClock.elapsedRealtime()
+        if (w.online) offlineSince = 0L else if (offlineSince == 0L) offlineSince = now
+        return SetupInputs(
+            online = w.online,
+            offlineForMs = if (w.online) 0L else now - offlineSince,
+            haKnown = prefs.haBase != null,
+            haSeen = prefs.haSeen || SetupSignals.haSubscribed,
+            apiKeySet = prefs.apiEncryption,
+            haSkipped = prefs.haSetupSkipped,
+            haHelloThisProcess = SetupSignals.haHello,
+            uptimeMs = now - android.os.Process.getStartElapsedRealtime(),
+            signedIn = HaAuth.signedIn,
+            onAuthPage = FrontendUrls.isAuthorizePage(currentUrl, prefs.haBase),
+            signedOut = signedOutHere,
+            usePanelLogin = usePanelLogin,
+            showing = setupOverlay.isShowing && !setupPreview,
+        )
+    }
+
+    /** Re-evaluates the setup screen; cheap, called on every relevant change and every 2 s. */
+    private fun refreshSetup() {
+        if (!::setupOverlay.isInitialized) return
+        val d = SetupState.decide(setupInputs())
+        if (setupPreview) {
+            val forced = setupPreviewStep
+            val m = if (forced == null) setupModel(d.step, d.wifiDone, d.haDone, d.signinDone, preview = true)
+            else setupModel(forced, forced > SetupStep.WIFI, forced > SetupStep.HA, forced > SetupStep.SIGNIN, preview = true)
+            if (m.step == SetupStep.DONE) {
+                if (setupOverlay.model?.step != SetupStep.DONE) setupOverlay.finish(m) { setupPreview = false; setupPreviewStep = null }
+            } else {
+                setupOverlay.render(m)
+            }
             return
         }
-        val ip = HaUrls.localIpv4() ?: "<panel-ip>"
-        signinOverlay.showQr("http://$ip:${OAuth.SIGNIN_PORT}/signin", ha)
+        if (d.reasons != lastSetupReasons) {
+            if (d.reasons.isNotEmpty()) Log.i(TAG, "Setup screen: ${d.reasons.joinToString()} (step ${d.step.id})")
+            lastSetupReasons = d.reasons
+        }
+        if (d.show) {
+            setupOverlay.render(setupModel(d.step, d.wifiDone, d.haDone, d.signinDone, preview = false))
+        } else if (setupOverlay.isShowing && setupOverlay.model?.step != SetupStep.DONE) {
+            Log.i(TAG, "Setup complete; loading the dashboard")
+            setupOverlay.finish { loadDashboardIfNeeded() }
+        }
+    }
+
+    private fun setupModel(step: SetupStep, wifiDone: Boolean, haDone: Boolean, signinDone: Boolean, preview: Boolean) =
+        SetupOverlay.Model(
+            step = step,
+            wifiDone = wifiDone,
+            haDone = haDone,
+            signinDone = signinDone,
+            wifi = wifiStatus.snapshot(),
+            haUrl = prefs.haBase,
+            haSource = if (prefs.isAutoUrl) prefs.haUrlSource else "",
+            panelIp = HaUrls.localIpv4(),
+            signedIn = HaAuth.signedIn,
+            preview = preview,
+        )
+
+    /** After setup: (re)load the dashboard unless it is already showing. */
+    private fun loadDashboardIfNeeded() {
+        val cur = currentUrl
+        val onDashboard = cur != null && FrontendUrls.sameOrigin(cur, prefs.haBase) &&
+            !FrontendUrls.isAuthorizePage(cur, prefs.haBase)
+        // (just signed in: the auth listener already started the load)
+        val justLoaded = SystemClock.elapsedRealtime() - dashboardLoadAt < 5_000
+        if (!onDashboard && !justLoaded) loadDashboard()
+    }
+
+    /** `--ez show_setup true [--es setup_step wifi|ha|signin|done]`, `--ez show_signin true` (= signin). */
+    private fun applySetupPreview(intent: Intent) {
+        val step = SetupStep.parse(intent.getStringExtra("setup_step"))
+        when {
+            intent.getBooleanExtra("show_signin", false) -> startSetupPreview(SetupStep.SIGNIN)
+            intent.hasExtra("show_setup") && !intent.getBooleanExtra("show_setup", false) -> closeSetupPreview()
+            intent.getBooleanExtra("show_setup", false) || step != null -> startSetupPreview(step)
+        }
+    }
+
+    private fun startSetupPreview(step: SetupStep?) {
+        Log.i(TAG, "Setup screen preview (step ${step?.id ?: "live"})")
+        setupPreview = true
+        setupPreviewStep = step
+        refreshSetup()
+    }
+
+    private fun closeSetupPreview() {
+        if (!setupPreview) return
+        setupPreview = false
+        setupPreviewStep = null
+        setupOverlay.hide()
+        refreshSetup() // shows the real screen again if the panel isn't set up
+    }
+
+    private fun openWifiSettings() {
+        val intents = listOfNotNull(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) Intent(Settings.Panel.ACTION_WIFI) else null,
+            Intent(Settings.ACTION_WIFI_SETTINGS),
+        )
+        for (i in intents) {
+            try {
+                startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return
+            } catch (e: Exception) {
+                Log.w(TAG, "Cannot open ${i.action}: $e")
+            }
+        }
+        Toast.makeText(this, "No Wi-Fi settings on this device", Toast.LENGTH_LONG).show()
+    }
+
+    private fun onSkipHaSetup() {
+        if (setupPreview) { closeSetupPreview(); return }
+        Log.i(TAG, "Setup: adding to Home Assistant skipped")
+        prefs.haSetupSkipped = true
+        refreshSetup()
     }
 
     private fun onUsePanelLogin() {
+        if (setupPreview) closeSetupPreview()
         usePanelLogin = true
-        signinOverlay.hide()
+        setupOverlay.hide()
         // Show HA's own login page (or the dashboard if the GeckoView session is still logged in).
         if (!HaAuth.signedIn && !FrontendUrls.isAuthorizePage(currentUrl, prefs.haBase)) {
             prefs.url.takeIf { it.isNotEmpty() }?.let { session?.loadUri(it) }
         }
+        refreshSetup()
     }
 
     private fun onManualHaUrl(raw: String) {
+        if (setupPreview) {
+            setupOverlay.manualResult(false, "Preview: nothing was saved.")
+            return
+        }
         val d = KioskService.discoveryRef
         if (d == null) {
-            signinOverlay.manualResult(false, "The kiosk service isn't running yet; try again in a moment.")
+            setupOverlay.manualResult(false, "The kiosk service isn't running yet; try again in a moment.")
             return
         }
         d.setManual(raw) { ok, url ->
             handler.post {
                 if (ok && url != null) {
-                    signinOverlay.manualResult(true, "Found Home Assistant at $url")
+                    setupOverlay.manualResult(true, "Found Home Assistant at $url")
                     onHaFound(url)
                 } else {
-                    signinOverlay.manualResult(false, "No Home Assistant answered at ${url ?: raw}.")
+                    setupOverlay.manualResult(false, "No Home Assistant answered at ${url ?: raw}.")
                 }
             }
         }
@@ -214,7 +370,7 @@ class MainActivity : Activity() {
     /** Discovery (or manual entry) found Home Assistant. */
     private fun onHaFound(url: String) {
         Log.i(TAG, "Home Assistant at $url (dashboard setting: ${prefs.urlSetting})")
-        if (signinOverlay.mode == SignInOverlay.Mode.MANUAL) signinOverlay.hide()
+        refreshSetup()
         if (!prefs.isAutoUrl) return
         if (prefs.secureHosts() != KioskApp.startupSecureHosts) {
             // The HA host must be in dom.securecontext.allowlist (mic), which Gecko reads at startup.
@@ -242,6 +398,7 @@ class MainActivity : Activity() {
     //   --ez reload true        reload the page
     //   --ez restart true       restart the app process
     //   --es api_key <base64>   ESPHome API encryption key (32 bytes); --ez api_encryption true|false
+    //   --ez show_setup true    preview the setup screen (--es setup_step wifi|ha|signin|done); false closes it
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -258,7 +415,7 @@ class MainActivity : Activity() {
             if (fromNewIntent) loadDashboard()
         }
         intent.getStringExtra("ha_discovered")?.let { if (fromNewIntent) onHaFound(it) }
-        if (fromNewIntent && intent.getBooleanExtra("show_signin", false)) showSignin()
+        if (fromNewIntent) applySetupPreview(intent)
         if (intent.hasExtra("zoom")) {
             prefs.zoom = intent.getFloatExtra("zoom", 0f)
             needsRestart = true
@@ -565,11 +722,9 @@ class MainActivity : Activity() {
             hasUserGesture: Boolean,
         ) {
             currentUrl = url
-            // An unauthenticated HA frontend redirects to /auth/authorize: cover it with the QR code
-            // (unless the user asked for the panel's own login page).
-            if (FrontendUrls.isAuthorizePage(url, prefs.haBase) && !HaAuth.signedIn && !usePanelLogin) {
-                handler.post { showSignin() }
-            }
+            // An unauthenticated HA frontend redirects to /auth/authorize: the setup screen covers it
+            // with the QR code (unless the user asked for the panel's own login page).
+            handler.post { refreshSetup() }
         }
 
         // Once signed in, every top-level HA page gets external_auth=1, so the content script
@@ -659,6 +814,7 @@ class MainActivity : Activity() {
      */
     private fun onPortRequest(message: Any, port: WebExtension.Port) {
         val m = message as? JSONObject ?: return
+        if (m.optString("type") == "dashboards") { onDashboards(m, port.sender); return }
         val id = m.optInt("id", -1)
         if (id < 0) return
         fun reply(o: Any?) {
@@ -673,6 +829,21 @@ class MainActivity : Activity() {
             "revokeExternalAuth" -> revokeExternalAuth(port.sender).accept { r -> reply(r) }
             else -> reply(null)
         }
+    }
+
+    /**
+     * `{type: "dashboards", json: "[{url_path,title}]"}` from the HA frontend (content.js, the page's
+     * own `lovelace/dashboards/list`), for the ESPHome "Dashboard" select. Only the top-level page on
+     * the Home Assistant the panel uses is believed.
+     */
+    private fun onDashboards(m: JSONObject, sender: WebExtension.MessageSender) {
+        if (!sender.isTopLevel || !FrontendUrls.sameOrigin(sender.url, prefs.haBase)) {
+            Log.w(TAG, "dashboard list from ${sender.url} ignored (not the Home Assistant in use)")
+            return
+        }
+        val list = DashboardOptions.parse(m.optString("json")) ?: return
+        Log.d(TAG, "${list.size} dashboard(s) from the frontend")
+        Dashboards.report(list)
     }
 
     /** Only the signed-in HA origin may ask for tokens. */
@@ -716,6 +887,8 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         HaAuth.removeListener(authListener)
+        SetupSignals.removeListener(setupSignalListener)
+        wifiStatus.observe(null)
         ScreenController.onKeepScreenOn = null
         ScreenController.onBrightness = null
         ScreenController.onStateChanged = null
@@ -736,5 +909,6 @@ class MainActivity : Activity() {
         private const val REQ_STARTUP = 1
         private const val REQ_GECKO = 2
         private const val RETRY_MS = 10_000L
+        private const val SETUP_TICK_MS = 2_000L
     }
 }

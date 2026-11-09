@@ -8,6 +8,8 @@
  *   externalBus, the "V1" interface the HA frontend uses for the Android Companion app
  *   (frontend src/external_app/external_auth.ts, external_messaging.ts; src/data/external.ts).
  *   Tokens come from the app over native messaging; the app checks the page origin.
+ * - Reports the Lovelace dashboard list (`lovelace/dashboards/list` over the page's own HA
+ *   connection) to the app on load and every 10 min, for the ESPHome "Dashboard" select.
  */
 (() => {
   "use strict";
@@ -192,6 +194,48 @@
     if (m && m.type === "state") publishState(m.state);
     if (m && m.type === "config") { cfg = Object.assign(cfg, m.config); apply(); }
   });
+
+  // ---- Lovelace dashboards for the panel's ESPHome "Dashboard" select ------------------------------
+  // Asked through the page's own HA connection (`hass.callWS`), so it works with the cookie session
+  // and with external auth alike. Sent fire-and-forget on the port as a JSON string (no GeckoBundle
+  // typing issues); the app only believes the top-level page on the HA it uses.
+  const DASH_RETRY_MS = 5000, DASH_REFRESH_MS = 10 * 60 * 1000, DASH_MAX_TRIES = 36;
+  let dashTries = 0;
+
+  function reportDashboards() {
+    let hass = null;
+    try {
+      const ha = document.querySelector("home-assistant");
+      hass = ha && ha.wrappedJSObject && ha.wrappedJSObject.hass;
+    } catch (e) { hass = null; }
+    if (!port || !hass || !hass.connected || typeof hass.callWS !== "function") return false;
+    let isAdmin = false;
+    try { isAdmin = !!(hass.user && hass.user.is_admin); } catch (e) { /* ignore */ }
+    const onResult = (res) => {
+      let list;
+      try { list = JSON.parse(window.wrappedJSObject.JSON.stringify(res)); } catch (e) { return; }
+      if (!Array.isArray(list)) return;
+      const out = list
+        .filter((d) => d && typeof d.url_path === "string" && d.url_path && (isAdmin || !d.require_admin))
+        .map((d) => ({ url_path: d.url_path, title: typeof d.title === "string" ? d.title : "" }));
+      try { port.postMessage({ type: "dashboards", json: JSON.stringify(out) }); } catch (e) { /* port gone */ }
+    };
+    try {
+      hass.callWS(cloneInto({ type: "lovelace/dashboards/list" }, window))
+        .then(exportFunction(onResult, window), exportFunction(() => {}, window));
+    } catch (e) { return false; }
+    return true;
+  }
+
+  function scheduleDashboards() {
+    // Not a Home Assistant page (its index.html has <home-assistant> from the start): stop.
+    if (!document.querySelector("home-assistant") && document.readyState === "complete") return;
+    const ok = reportDashboards();
+    dashTries++;
+    if (ok) setTimeout(scheduleDashboards, DASH_REFRESH_MS);
+    else if (dashTries < DASH_MAX_TRIES) setTimeout(scheduleDashboards, DASH_RETRY_MS);
+  }
+  setTimeout(scheduleDashboards, DASH_RETRY_MS);
 
   // HA renders lazily and re-renders on navigation; re-apply cheaply.
   setInterval(apply, 1000);

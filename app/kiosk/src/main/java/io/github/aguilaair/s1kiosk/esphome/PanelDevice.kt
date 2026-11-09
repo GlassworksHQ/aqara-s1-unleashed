@@ -19,6 +19,12 @@ import io.github.aguilaair.s1kiosk.ScreenController
 import io.github.aguilaair.s1kiosk.base.BaseEntities
 import io.github.aguilaair.s1kiosk.base.BaseLayout
 import io.github.aguilaair.s1kiosk.base.WallBase
+import io.github.aguilaair.s1kiosk.dashboard.Dashboard
+import io.github.aguilaair.s1kiosk.dashboard.DashboardOptions
+import io.github.aguilaair.s1kiosk.dashboard.Dashboards
+import io.github.aguilaair.s1kiosk.dashboard.StableChange
+import io.github.aguilaair.s1kiosk.discovery.HaUrls
+import io.github.aguilaair.s1kiosk.setup.SetupSignals
 import io.github.aguilaair.s1kiosk.voice.TfliteWakeWord
 import io.github.aguilaair.s1kiosk.voice.TtsPlayer
 import io.github.aguilaair.s1kiosk.voice.ExoAudioPlayer
@@ -92,6 +98,12 @@ class PanelDevice(
     }
     private val screenListener: () -> Unit = { exec.execute { server?.publishStates() } }
     private val authListener: (Boolean) -> Unit = { exec.execute { server?.publishStates() } }
+    private val dashboardsListener: (List<Dashboard>) -> Unit = { exec.execute { checkDashboards() } }
+
+    // "Dashboard" select (docs/onboarding.md step 5): built from [appliedDashboards]; a changed
+    // option list rebuilds the entity set (debounced, like the wall base) so HA re-lists it.
+    @Volatile private var appliedDashboards: List<Dashboard> = emptyList()
+    private lateinit var dashboardRebuild: StableChange<List<String>>
 
     fun start() {
         exec.execute { startInternal() }
@@ -101,6 +113,7 @@ class PanelDevice(
         prefs.unregisterListener(prefListener)
         ScreenController.removeListener(screenListener)
         HaAuth.removeListener(authListener)
+        Dashboards.removeListener(dashboardsListener)
         wallBase?.stop()
         wallBase = null
         exec.shutdownNow()
@@ -130,9 +143,11 @@ class PanelDevice(
         )
         ApiLog.i("ESPHome device '${identity.name}' mac ${identity.macAddress}, voice=${voiceEnabled}")
         coreEntities = buildEntities()
+        appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
+        dashboardRebuild = StableChange(dashboardOptions(appliedDashboards))
         val base = WallBase(ctx, BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE, baseListener)
         wallBase = base
-        entities = coreEntities + baseEntities(base, base.tracker.applied())
+        entities = assemble(base, base.tracker.applied())
         acquireLocks()
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
@@ -143,7 +158,9 @@ class PanelDevice(
         prefs.registerListener(prefListener)
         ScreenController.addListener(screenListener)
         HaAuth.addListener(authListener)
+        Dashboards.addListener(dashboardsListener)
         exec.scheduleWithFixedDelay({ controller?.tick() }, 1, 1, TimeUnit.SECONDS)
+        exec.scheduleWithFixedDelay({ checkDashboards() }, 2, 2, TimeUnit.SECONDS)
         exec.scheduleWithFixedDelay({ server?.publishStates() }, 5, 5, TimeUnit.SECONDS)
         base.start()
     }
@@ -160,7 +177,7 @@ class PanelDevice(
         override fun onLayout(layout: BaseLayout) {
             exec.execute {
                 val base = wallBase ?: return@execute
-                entities = coreEntities + baseEntities(base, layout)
+                entities = assemble(base, layout)
                 prefs.baseLayout = layout.encode()
                 server?.setEntities(entities)
             }
@@ -173,6 +190,57 @@ class PanelDevice(
                 else server?.sendEvent(e, type)
             }
         }
+    }
+
+    // ------------------------------------------------------------------ dashboard select
+
+    private fun assemble(base: WallBase, layout: BaseLayout): List<ApiEntity> =
+        coreEntities + dashboardSelect(dashboardRebuild.applied()) + baseEntities(base, layout)
+
+    private fun currentDashboardOption(list: List<Dashboard>) =
+        DashboardOptions.currentOption(prefs.urlSetting, prefs.haBase, list)
+
+    private fun dashboardOptions(list: List<Dashboard>) = DashboardOptions.options(list, currentDashboardOption(list))
+
+    /** Fixed object_id (so the key never changes); only the options change between rebuilds. */
+    private fun dashboardSelect(options: List<String>) = SelectEntity(
+        "dashboard", "Dashboard", "mdi:view-dashboard", options = options,
+        get = { currentDashboardOption(appliedDashboards) },
+        set = { option ->
+            val url = DashboardOptions.urlFor(option, prefs.urlSetting, prefs.haBase, prefs.haUrl, appliedDashboards)
+            if (url != null) {
+                ApiLog.i("Dashboard select: '$option'")
+                toActivity { putExtra("url", url) } // saves the setting and reloads
+            }
+        },
+    )
+
+    /**
+     * esphome-main, every 2 s and on new lists: rebuild the entity set when the option list really
+     * changed and has been stable for 10 s (at most once a minute); a list change that keeps the
+     * same options only updates the option → url_path mapping.
+     */
+    private fun checkDashboards() {
+        val base = wallBase ?: return
+        val list = Dashboards.latest ?: appliedDashboards
+        val wanted = dashboardOptions(list)
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (wanted == dashboardRebuild.applied()) {
+            if (list != appliedDashboards) adoptDashboards(list)
+            dashboardRebuild.offer(wanted, now)
+            return
+        }
+        val due = dashboardRebuild.offer(wanted, now) ?: return
+        adoptDashboards(list)
+        dashboardRebuild.markApplied(due, now)
+        ApiLog.i("Dashboard options changed (${due.size}); rebuilding the entity list")
+        entities = assemble(base, base.tracker.applied())
+        server?.setEntities(entities)
+    }
+
+    private fun adoptDashboards(list: List<Dashboard>) {
+        appliedDashboards = list
+        prefs.dashboardsJson = DashboardOptions.toJson(list)
     }
 
     private fun startVoice() {
@@ -211,7 +279,17 @@ class PanelDevice(
         val s = ApiServer(ApiServer.DEFAULT_PORT, { identity }, entities, noiseKeys)
         s.voice = controller
         s.onCommand = { exec.execute { s.publishStates() } }
-        s.onClientHello = { info, addr -> onApiHello(info, addr) }
+        s.onClientHello = { info, addr ->
+            if (HaUrls.isHomeAssistantHello(info)) SetupSignals.onHaHello()
+            onApiHello(info, addr)
+        }
+        // HA subscribes only after it has added the panel: remember that (setup screen, step 2).
+        s.onStatesSubscribed = { info ->
+            if (HaUrls.isHomeAssistantHello(info)) {
+                if (!prefs.haSeen) { prefs.haSeen = true; ApiLog.i("Home Assistant has added the panel") }
+                SetupSignals.onHaSubscribed()
+            }
+        }
         // A provisioned (or cleared) key changes the mDNS TXT records; re-register after the
         // unregistration has gone out so the name doesn't collide with our own old record.
         s.onKeyActivated = { exec.execute { readvertise() } }

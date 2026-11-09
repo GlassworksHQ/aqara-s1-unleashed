@@ -83,6 +83,7 @@ is FNV-1a of the `object_id` (stable).
 | text `Night window` | `night_window` | `HH:MM-HH:MM`, empty = off |
 | number `Presence range` (m, 0–2.5, step 0.1) | `presence_range` | VI5300 threshold (needs `WRITE_SECURE_SETTINGS`); 0 = firmware default |
 | text `Dashboard URL` | `dashboard_url` | sets + loads the dashboard; `auto` (default) = HA's root on the discovered instance |
+| select `Dashboard` | `dashboard` | `Default` + every Lovelace dashboard (by title) + `Custom` only while the saved URL matches none; choosing one saves the URL and reloads ([onboarding.md](onboarding.md#5-which-dashboard-)). The list comes from the HA frontend on the panel; when the options change the entity list is rebuilt (debounced 10 s, at most once a minute) and HA reconnects |
 | number `Zoom` (0 = auto) | `zoom` | CSS px ratio; restarts the app |
 | button `Reload dashboard` | `reload_dashboard` | |
 | button `Restart app` | `restart_app` | restarts the kiosk process |
@@ -129,6 +130,15 @@ rebuilds its entity list and sends `DisconnectRequest` to every API client. HA r
 its short "expected disconnect" cool-down), lists the entities again and adds the new ones. Removed
 entities stay in HA's registry, shown as unavailable/removed. The last layout is persisted, so
 restarting the app with the same base doesn't trigger this.
+
+The **Dashboard** select uses the same mechanism: its options are only sent in the entity listing,
+so a changed dashboard list triggers the same rebuild + `DisconnectRequest` (same object_id, so the
+entity keeps its key and its id in HA). The list it was built from is persisted (`dashboards`).
+
+Two hooks feed the setup screen ([onboarding.md](onboarding.md#setup-screen-)): a Hello from a
+client whose `client_info` starts with "Home Assistant", and `SubscribeStatesRequest` from one
+(`ApiServer.onStatesSubscribed`). HA only subscribes after it has added the panel, so that is
+persisted as `ha_seen`.
 
 Kiosk actions are applied in the running activity exactly like the `adb am start` extras
 (`MainActivity.commandSink`). State changes made on the panel (settings dialog, `adb` extras,

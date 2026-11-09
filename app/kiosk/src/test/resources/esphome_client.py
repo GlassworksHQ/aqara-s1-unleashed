@@ -173,10 +173,16 @@ async def plaintext(port):
     entities2, _ = await cli2.list_entities_services()
     R["entities_after_rebuild"] = len(entities2)
     relay = next(e for e in entities2 if e.object_id == "base_relay_1")
+    dash2 = next(e for e in entities2 if e.object_id == "dashboard")
     states2 = {}
     cli2.subscribe_states(lambda s: states2.__setitem__(s.key, s))
-    await wait_for(lambda: relay.key in states2, "new entity state")
+    await wait_for(lambda: relay.key in states2 and dash2.key in states2, "new entity state")
     R["rebuild_relay_state"] = states2[relay.key].state
+    # The "Dashboard" select: new options after the rebuild, same key, so HA keeps the entity.
+    R["dashboard_select"] = {
+        "before": list(by_id["dashboard"].options), "after": list(dash2.options),
+        "same_key": dash2.key == by_id["dashboard"].key, "state_after": states2[dash2.key].state,
+    }
     await cli2.disconnect()
 
 

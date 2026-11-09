@@ -4,8 +4,9 @@ Goal: a user who has just installed S1 Kiosk never types a URL, token, IP or key
 Everything rides on standard Home Assistant mechanisms (ESPHome discovery, HA OAuth, Improv),
 not on a custom integration.
 
-Status: build-order steps 1–3 are ✅ implemented (dynamic key, HA discovery, QR sign-in + external
-auth); the rest is still the plan. Nothing below is implemented unless marked ✅.
+Status: build-order steps 1–6 are ✅ implemented (dynamic key, HA discovery, QR sign-in + external
+auth, setup screen, dashboard select, Improv). The setup screen and the dashboard select are not yet
+verified on the panel. Nothing below is implemented unless marked ✅.
 
 ## The flow the user sees
 
@@ -20,7 +21,7 @@ auth); the rest is still the plan. Nothing below is implemented unless marked �
    dashboard).
 
 A first-boot **setup screen** (same visual style as the dashboard) walks through these and moves on
-by itself as each step completes.
+by itself as each step completes ✅ (see [Setup screen](#setup-screen-)).
 
 ## Pieces and how they work
 
@@ -243,7 +244,8 @@ overwritten. ESPHome exposes the URL the panel uses as the text_sensor **Home As
 ### 4. Login without typing on the panel: QR sign-in + external auth ✅
 
 This is the part that removes the login screen. Implemented in `auth/` (`OAuth.kt`,
-`SignInServer.kt`, `HaAuth.kt`), `SignInOverlay.kt`, `MainActivity` and
+`SignInServer.kt`, `HaAuth.kt`), the setup screen's Sign-in step (`setup/SetupOverlay.kt`, formerly
+`SignInOverlay.kt`), `MainActivity` and
 `assets/extension/content.js`. Verified details:
 
 - **IndieAuth** (HA 2026.11.0 `components/auth/indieauth.py`): `verify_redirect_uri` accepts a
@@ -283,10 +285,9 @@ This is the part that removes the login screen. Implemented in `auth/` (`OAuth.k
   refresh token exists (`onLoadRequest`). Tokens are only given to top-level pages on the
   signed-in HA origin. **Without a refresh token nothing changes**: the GeckoView's own
   cookie/localStorage session works as before.
-- The sign-in screen appears when the GeckoView lands on HA's `/auth/authorize` (logged out) and
-  there is no refresh token, after a sign-out, or when HA isn't known yet (manual URL field). It
-  goes away by itself when the token arrives. `--ez show_signin true` previews it without
-  touching the session.
+- The sign-in screen (now the setup screen's Sign-in step) appears when the GeckoView lands on HA's
+  `/auth/authorize` (logged out) and there is no refresh token, or after a sign-out. It goes away by
+  itself when the token arrives. `--ez show_signin true` previews it without touching the session.
 
 The original design notes:
 
@@ -324,11 +325,88 @@ on the way:
   `MainActivity.onPortRequest`).
 - `GeckoBundle` has no `Long`; reply fields must be Int, Double, String or Boolean (`expires_in` is sent as Int).
 
-### 5. Which dashboard
+### 5. Which dashboard ✅
 
-- With a token, the app can list dashboards (`lovelace/dashboards/list`) and expose them as an
-  ESPHome **select** "Dashboard" on the device page (plus "Default"). Changing it reloads the panel.
+- ✅ ESPHome **select** `Dashboard` (`select.s1_panel_dashboard`, object_id `dashboard`) on the
+  device page. Options: **Default** (HA's root, i.e. the user's default dashboard), then every
+  Lovelace dashboard by title (duplicates get the `url_path` appended), then **Custom** only while
+  the saved URL matches none of them. Choosing one saves the dashboard URL and reloads; the URL stays
+  on the same HA host, so no restart for the secure-context hosts. Default goes back to `auto` when
+  discovery found that same HA, else to `<ha>/`. Code: `dashboard/DashboardOptions.kt` (pure,
+  `DashboardOptionsTest`), `PanelDevice`.
+- ✅ Current state: `auto`, `<ha>/` and `<ha>/lovelace…` → Default; `<ha>/<url_path>[/view][?…]` → that
+  dashboard; any other path or host → Custom.
+- ✅ **Where the list comes from:** the logged-in HA frontend in the GeckoView, so it works with
+  today's cookie session as well as with external auth. `content.js` calls the page's own
+  `document.querySelector('home-assistant').hass.callWS({type: 'lovelace/dashboards/list'})`
+  (through `wrappedJSObject`, callbacks via `exportFunction`) 5 s after an HA page loads (retrying
+  every 5 s for 3 min until `hass.connected`), then every 10 min. It sends
+  `{type: "dashboards", json: "[{url_path,title}]"}` fire-and-forget on the native port (a JSON
+  string, so no GeckoBundle typing issues). `MainActivity.onPortRequest` only accepts it from the
+  top-level page on the HA the panel uses. For non-admin users, `require_admin` dashboards are left
+  out. HA 2026.11.0 `lovelace/dashboard.py` `DashboardsCollectionWebSocket.ws_list_item` returns
+  `dashboard.config` for every dashboard that has one (storage and YAML). The built-in default has
+  none, so it is never listed.
+- **Not done:** the app-side fallback (fetching the list over HA's websocket with the refresh token
+  when no HA page is open). There's no websocket client in the app, and a hand-written one isn't
+  trivial. The frontend path covers both session types, so the list only goes stale while the panel
+  shows a non-HA page; the last list is kept in the prefs (`dashboards`).
+- ✅ **Options are static per entity listing**, so a changed option list rebuilds the entity set and
+  drops the API connections (`ApiServer.setEntities`, the same mechanism as the wall base), and HA
+  re-lists. It's debounced in `dashboard/StableChange.kt` (`StableChangeTest`): only when the
+  options really changed, stayed stable for 10 s, and at most once a minute. A list change that
+  keeps the same options only updates the mapping. The key never changes (fixed object_id). The
+  list the options were built from is persisted, so a restart doesn't rebuild. Expect **one**
+  rebuild (an HA reconnect) the first time the list arrives after updating to this version, and
+  one each time "Custom" appears or disappears.
 - ✅ The existing `text.s1_panel_dashboard_url` stays for anything custom.
+
+### Setup screen ✅
+
+`setup/SetupOverlay.kt` (UI), `setup/SetupState.kt` (rules, pure, `SetupStateTest`), wired in
+`MainActivity`. A native full-screen overlay over the GeckoView in the dashboard's design tokens
+(`#0a0b0f` with sky/violet radial glows, glass cards `rgba(255,255,255,.045)` / border `.07`,
+22–26 px radii, uppercase letter-spaced `#63636b` labels, light headings, amber `#fbbf24` current
+step, green `#34d399` checks). Left: the four steps with checks. Right: a card for the current step.
+Laid out for 960×480 dp.
+
+1. **Wi-Fi**: "Connected to <SSID>" (Ethernet too), or "Not connected: set up Wi-Fi over Bluetooth
+   from Home Assistant, or [Choose network]". The button opens `Settings.Panel.ACTION_WIFI` (falls
+   back to `Settings.ACTION_WIFI_SETTINGS`). The status comes from the `WifiSetupStatus` interface
+   (`setup/WifiSetupStatus.kt`: state `CONNECTED | NOT_CONNECTED | CONNECTING`, SSID, optional
+   message). The default is plain Android connectivity. Improv can set `WifiSetupStatus.provider` to
+   feed its own progress (not wired yet). The SSID needs location permission on Android 10; without
+   it the step shows "Connected".
+2. **Add to Home Assistant**: done once an ESPHome client whose Hello says "Home Assistant"
+   **subscribes to states**. HA's config flow only probes DeviceInfo during discovery, so a plain
+   Hello doesn't count. `ApiServer.onStatesSubscribed` → `PanelDevice` persists `ha_seen` and
+   notifies `SetupSignals`. Until then the step shows "In Home Assistant: Settings → Devices &
+   services → S1 Panel discovered → Add", the panel's IP + port 6053 for a manual ESPHome add, and
+   the HA URL (or the manual URL field from step 3 when HA wasn't found). **Skip for now** persists
+   `setup_ha_skipped` (for kiosk-only use without the ESPHome device).
+3. **Sign in**: the QR code and texts of the former sign-in screen, plus "Sign in on this panel
+   instead".
+4. **Done**: a check and "You're all set". The dashboard loads (unless it's already showing), then
+   the screen fades out.
+
+**When it shows** (`SetupState.decide`). Only strong evidence counts, so it never covers a panel
+that already works (the desk panel: Wi-Fi, ESPHome connection from HA, a saved URL, a cookie
+session without a refresh token):
+- offline for 30 s (boot grace; a short Wi-Fi dropout doesn't trigger it);
+- online but HA isn't known at all (no saved URL, nothing discovered);
+- HA never added the panel: no HA client connected within 2 min of startup *and* no `ha_seen`, no
+  API key, not skipped;
+- no refresh token *and* the GeckoView actually reached HA's `/auth/authorize` (or the user signed
+  out on the panel), unless "Sign in on this panel instead" was chosen.
+
+The current step is the first one not done (Wi-Fi → HA → Sign in). Once shown, the screen stays
+until all steps are done, so it doesn't flicker between steps. It is re-evaluated on connectivity,
+sign-in, HA connection and page changes, and every 2 s. The trigger is logged (`S1Kiosk`:
+"Setup screen: <reasons> (step …)").
+
+Preview without changing state: `--ez show_setup true` (live step), `--es setup_step
+wifi|ha|signin|done` (a given step), `--ez show_setup false` to close. In preview, Skip / manual URL
+save nothing, and a "Preview · Close" chip is shown. `--ez show_signin true` = the Sign-in step.
 
 ## Build order
 
@@ -336,9 +414,9 @@ on the way:
 |---|---|---|---|
 | 1 | ✅ Dynamic encryption key (`api_encryption_provisionable` + set-key over zero-PSK Noise) | S | aioesphomeapi test of HA's exact flow |
 | 2 | ✅ HA URL discovery (`_home-assistant._tcp` + ESPHome peer) | S | Found HA over mDNS on the panel |
-| 3 | ✅ QR sign-in (mini HTTP server + IndieAuth code exchange) + external-auth bridge | M | Real end-to-end sign-in still to be done by hand |
-| 4 | First-boot setup screen | M | Ties 1–3 together |
-| 5 | Dashboard select entity | S | Needs 3 |
+| 3 | ✅ QR sign-in (mini HTTP server + IndieAuth code exchange) + external-auth bridge | M | Verified end to end on the panel |
+| 4 | ✅ First-boot setup screen | M | Rules unit-tested (desk panel must not show it); not yet seen on the panel |
+| 5 | ✅ Dashboard select entity | S | List from the HA frontend (cookie session OK); aioesphomeapi test of the option rebuild; no app-side websocket fallback |
 | 6 | Improv via BLE ✅ | M | Advertising verified on the RTL8821CS; real connect test pending |
 
 ## Open questions

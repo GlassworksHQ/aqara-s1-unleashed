@@ -58,6 +58,7 @@ class EspHomeApiTest {
             BinarySensorEntity("presence", "Presence", deviceClass = "occupancy", get = { true }),
             SensorEntity("illuminance", "Illuminance", unit = "lx", deviceClass = "illuminance", get = { Float.NaN }),
             SelectEntity("screen_mode", "Screen mode", options = listOf("presence", "always"), get = { mode }, set = { mode = it }),
+            dashboardSelect(listOf("Default")),
             NumberEntity("idle_timeout", "Idle timeout", min = 0f, max = 3600f, step = 5f, unit = "s",
                 get = { idle }, set = { idle = it }),
             NumberEntity("presence_range", "Presence range", min = 0f, max = 2.5f, step = 0.1f, unit = "m",
@@ -74,6 +75,10 @@ class EspHomeApiTest {
             EventEntity("base_button_1", "Base button 1", deviceClass = "button", eventTypes = listOf("single", "double")),
         )
     }
+
+    /** Like PanelDevice's "Dashboard" select: same object_id (key) whatever the options. */
+    private fun dashboardSelect(options: List<String>) =
+        SelectEntity("dashboard", "Dashboard", options = options, get = { "Default" }, set = {})
 
     @Test
     fun homeAssistantClient() {
@@ -106,6 +111,8 @@ class EspHomeApiTest {
         plain = ApiServer(0, { identity }, plainEntities, psk = null)
         plain.voice = controller
         plain.onCommand = { plain.publishStates() }
+        val subscribed = Collections.synchronizedList(ArrayList<String>())
+        plain.onStatesSubscribed = { subscribed += it }
         val noise = ApiServer(0, { identity }, entities(), psk = key)
         noise.onCommand = { noise.publishStates() }
         // Unprovisioned (no key yet), with a persistent store, as on a fresh panel.
@@ -143,8 +150,10 @@ class EspHomeApiTest {
                             }.start()
                         }
                         line == "FIRE_EVENT" -> assertTrue(plain.sendEvent(button, "double"))
+                        // Wall base attached + the dashboard list changed (the select's options).
                         line == "REBUILD" -> plain.setEntities(
-                            plainEntities + SwitchEntity("base_relay_1", "Base relay 1", get = { true }, set = {}),
+                            plainEntities.map { if (it.objectId == "dashboard") dashboardSelect(listOf("Default", "Tablet")) else it } +
+                                SwitchEntity("base_relay_1", "Base relay 1", get = { true }, set = {}),
                         )
                         line.startsWith("PROVISIONED ") -> provisionedKey = line.removePrefix("PROVISIONED ")
                         line == "RESTART" -> {
@@ -171,10 +180,17 @@ class EspHomeApiTest {
             assertEquals("02:11:22:33:44:55", di.getString("mac"))
             assertEquals(61, di.getInt("voice_flags"))
             assertEquals(61, r.getInt("caps_voice_flags"))
-            assertEquals(13, r.getJSONArray("entities").length())
+            assertEquals(14, r.getJSONArray("entities").length())
             assertEquals("double", r.getString("event_type"))
-            assertEquals(14, r.getInt("entities_after_rebuild"))
+            assertEquals(15, r.getInt("entities_after_rebuild"))
             assertTrue(r.getBoolean("rebuild_relay_state"))
+            val dash = r.getJSONObject("dashboard_select")
+            assertEquals("[\"Default\"]", dash.getJSONArray("before").toString())
+            assertEquals("[\"Default\",\"Tablet\"]", dash.getJSONArray("after").toString())
+            assertTrue("same key after the rebuild", dash.getBoolean("same_key"))
+            assertEquals("Default", dash.getString("state_after"))
+            assertTrue("states subscription reported with client_info: $subscribed",
+                subscribed.isNotEmpty() && subscribed.all { it == "Home Assistant test" })
 
             assertEquals("[\"hey_jarvis_v0.1\"]", r.getJSONArray("active_before").toString())
             assertEquals("[\"alexa_v0.1\"]", r.getJSONArray("active_after").toString())

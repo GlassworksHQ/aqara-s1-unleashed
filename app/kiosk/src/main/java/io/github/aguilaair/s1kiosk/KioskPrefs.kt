@@ -54,6 +54,23 @@ class KioskPrefs(context: Context) {
     val haBase: String?
         get() = (if (isAutoUrl) null else OAuth.origin(urlSetting)) ?: haUrl.takeIf { it.isNotEmpty() }
 
+    // ---- first-boot setup screen + dashboard select (docs/onboarding.md, steps 4-5)
+
+    /** Home Assistant has subscribed to the panel's ESPHome states at least once (it added the panel). */
+    var haSeen: Boolean
+        get() = sp.getBoolean(KEY_HA_SEEN, false)
+        set(v) = sp.edit().putBoolean(KEY_HA_SEEN, v).apply()
+
+    /** "Skip" on the setup screen's Add-to-Home-Assistant step. */
+    var haSetupSkipped: Boolean
+        get() = sp.getBoolean("setup_ha_skipped", false)
+        set(v) = sp.edit().putBoolean("setup_ha_skipped", v).apply()
+
+    /** Lovelace dashboards the "Dashboard" select was last built from (`[{url_path,title}]`). */
+    var dashboardsJson: String
+        get() = sp.getString("dashboards", "") ?: ""
+        set(v) = sp.edit().putString("dashboards", v).apply()
+
     // ---- Home Assistant sign-in (QR + OAuth, see auth/HaAuth.kt). Never log these values.
 
     var auth: StoredAuth?
@@ -263,7 +280,8 @@ class KioskPrefs(context: Context) {
             null
         }
 
-        private const val KEY_URL = "url"
+        const val KEY_URL = "url"
+        const val KEY_HA_SEEN = "ha_seen"
         private const val KEY_ZOOM = "zoom"
         private const val KEY_SECURE_HOSTS = "secure_hosts"
         private const val KEY_REMOTE_DEBUG = "remote_debug"

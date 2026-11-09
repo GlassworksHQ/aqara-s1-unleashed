@@ -1,0 +1,105 @@
+package io.github.aguilaair.s1kiosk.setup
+
+/**
+ * Decides whether the first-boot setup screen is shown and which step it is on (pure JVM, see
+ * SetupStateTest). docs/onboarding.md, step 4.
+ *
+ * Two separate questions:
+ * - **Is the panel "not set up"?** ([SetupDecision.show]) Only strong evidence counts, so the screen
+ *   never covers a panel that already works (the desk panel: Wi-Fi, an ESPHome connection from HA,
+ *   a saved dashboard URL and a cookie-based HA session without a refresh token):
+ *   1. no network for [SetupRules.offlineGraceMs] (boot takes a few seconds to join Wi-Fi);
+ *   2. Home Assistant isn't known at all (no saved dashboard URL, nothing discovered);
+ *   3. Home Assistant never added the panel: no HA client connected within
+ *      [SetupRules.haGraceMs] of startup *and* nothing was ever recorded (no `ha_seen`, no API key,
+ *      not skipped by the user);
+ *   4. no HA session: no refresh token *and* the page actually landed on HA's login page (or the
+ *      user signed out on this panel), unless "Sign in on this panel instead" was chosen.
+ *   Once shown, it stays until every step is done (no flicker between steps).
+ * - **Which step is current while it's shown?** The first one that isn't done, in order Wi-Fi →
+ *   Add to HA → Sign in. Done means: online; HA has subscribed to the panel's states (it added the
+ *   panel) or the user skipped it; signed in or not needed.
+ */
+enum class SetupStep(val id: String) {
+    WIFI("wifi"), HA("ha"), SIGNIN("signin"), DONE("done");
+
+    companion object {
+        fun parse(s: String?): SetupStep? = entries.firstOrNull { it.id.equals(s?.trim(), ignoreCase = true) }
+    }
+}
+
+data class SetupInputs(
+    /** A network with internet/LAN connectivity is up. */
+    val online: Boolean,
+    /** How long the panel has been offline (0 when online). */
+    val offlineForMs: Long,
+    /** Home Assistant's base URL is known (saved dashboard URL, discovery, or manual entry). */
+    val haKnown: Boolean,
+    /** Persisted: an HA client subscribed to the panel's states at some point (`ha_seen`). */
+    val haSeen: Boolean,
+    /** An ESPHome API key is set (HA provisioned one, or it was set by hand). */
+    val apiKeySet: Boolean,
+    /** Persisted: the user chose "Skip" on the Add-to-HA step. */
+    val haSkipped: Boolean,
+    /** A client identifying as Home Assistant said Hello in this process (also HA's discovery probe). */
+    val haHelloThisProcess: Boolean,
+    /** Time since the app process started. */
+    val uptimeMs: Long,
+    /** A refresh token from the QR sign-in is stored. */
+    val signedIn: Boolean,
+    /** The GeckoView is on HA's `/auth/authorize` page. */
+    val onAuthPage: Boolean,
+    /** The user signed out on this panel (this process) and hasn't signed in again. */
+    val signedOut: Boolean,
+    /** "Sign in on this panel instead" was chosen (this process). */
+    val usePanelLogin: Boolean,
+    /** The setup screen is already up (not a preview): it stays until every step is done. */
+    val showing: Boolean = false,
+)
+
+data class SetupRules(
+    val offlineGraceMs: Long = 30_000,
+    val haGraceMs: Long = 120_000,
+)
+
+data class SetupDecision(
+    val show: Boolean,
+    /** The current step while shown ([SetupStep.DONE] when nothing is left). */
+    val step: SetupStep,
+    val wifiDone: Boolean,
+    val haDone: Boolean,
+    val signinDone: Boolean,
+    /** Why it is shown (for the log), empty when hidden. */
+    val reasons: List<String>,
+)
+
+object SetupState {
+
+    fun decide(i: SetupInputs, rules: SetupRules = SetupRules()): SetupDecision {
+        val wantsSignin = !i.signedIn && !i.usePanelLogin && (i.onAuthPage || i.signedOut)
+        val haEverRecorded = i.haSeen || i.apiKeySet || i.haSkipped
+
+        val reasons = ArrayList<String>(4)
+        if (!i.online && i.offlineForMs >= rules.offlineGraceMs) reasons += "offline"
+        if (i.online && !i.haKnown) reasons += "home assistant not found"
+        if (i.online && i.haKnown && !haEverRecorded && !i.haHelloThisProcess && i.uptimeMs >= rules.haGraceMs) {
+            reasons += "not added to home assistant"
+        }
+        if (i.online && i.haKnown && wantsSignin) reasons += "sign-in needed"
+
+        val wifiDone = i.online
+        val haDone = i.haKnown && haEverRecorded
+        val signinDone = i.signedIn || !wantsSignin
+        val step = when {
+            !wifiDone -> SetupStep.WIFI
+            !i.haKnown -> SetupStep.HA
+            !haDone -> SetupStep.HA
+            !signinDone -> SetupStep.SIGNIN
+            else -> SetupStep.DONE
+        }
+        // Once up, the screen stays until everything is done, so it doesn't flicker away between
+        // steps (e.g. Wi-Fi joined, HA not discovered yet). It can't start on its own though.
+        val show = reasons.isNotEmpty() || (i.showing && step != SetupStep.DONE)
+        return SetupDecision(show, step, wifiDone, haDone, signinDone, reasons)
+    }
+}

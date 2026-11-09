@@ -12,6 +12,13 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
 - Full-screen immersive `GeckoView`, landscape, `FLAG_KEEP_SCREEN_ON`.
 - Loads a configurable URL. The default `auto` finds Home Assistant (mDNS `_home-assistant._tcp`,
   or the address of HA's ESPHome connection) and loads its default dashboard. A saved URL is kept.
+- **First-boot setup screen** (native, in the dashboard's style): Wi-Fi → Add to Home Assistant →
+  Sign in → Done, with checks; it moves on by itself. It only appears when the panel is really not
+  set up (offline for 30 s, HA unknown, HA never added the panel within 2 min of startup, or HA's
+  login page with no refresh token), never on a working panel. See
+  [docs/onboarding.md](../docs/onboarding.md#setup-screen-).
+- **Dashboard select** in HA (`select.s1_panel_dashboard`): Default + your Lovelace dashboards,
+  listed by the HA frontend on the panel.
 - **Sign in with your phone**: if HA shows its login page, the panel covers it with a QR code for
   `http://<panel-ip>:8099/signin`. Signing in on the phone gives the panel a refresh token (HA OAuth /
   IndieAuth), and the dashboard then runs with HA's external auth (`external_auth=1`, like the
@@ -100,7 +107,10 @@ followed by `adb uninstall io.github.aguilaair.s1kiosk` (an active device admin 
 ```sh
 A="adb shell am start -n io.github.aguilaair.s1kiosk/.MainActivity"
 $A --es url http://homeassistant.local:8123/my-dashboard   # set + persist the URL ("auto" = discover HA)
-$A --ez show_signin true   # preview the QR sign-in screen (doesn't touch the session)
+$A --ez show_setup true    # preview the setup screen at its live step (changes nothing)
+$A --ez show_setup true --es setup_step wifi   # ... or a given step: wifi|ha|signin|done
+$A --ez show_setup false   # close the preview
+$A --ez show_signin true   # preview the QR sign-in step (doesn't touch the session)
 $A --es open http://192.168.1.100:8123/profile/general      # navigate once (not persisted)
 $A --ef zoom 1.25          # CSS px ratio; 0 = auto (device density 1.5). Restarts the app.
 $A --es secure_hosts a.lan,b.lan   # extra secure-context hosts. Restarts the app.
