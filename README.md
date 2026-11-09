@@ -94,7 +94,7 @@ tools/
 - [x] Validate end-state manually: kiosk as HOME launcher, Aqara launcher + bloat disabled (reversible), survives reboot
 - [x] Screen policy from the panel's own sensors (wake on approach, idle off, night window, auto-brightness); Aqara DND disabled
 - [x] HA kiosk mode (header/sidebar hidden) via a built-in Gecko extension; open-source keyboard replaces the Baidu IME
-- [ ] Wake-word voice satellite (Wyoming + on-device openWakeWord) — in progress
+- [x] Wake-word voice satellite (Wyoming + on-device openWakeWord); added to HA, TTS verified. Wake-word accuracy with real speech still to test
 - [ ] Publish presence/lux/screen to HA over MQTT, and accept screen commands from HA
 - [ ] Build `provisioning.img` (stock kernel + first-boot ramdisk that installs HA + sets kiosk) and run it via `fastboot boot` (nothing permanently flashed)
 - [ ] One-command `install.sh`: FEL → U-Boot → `fastboot boot provisioning.img` → done

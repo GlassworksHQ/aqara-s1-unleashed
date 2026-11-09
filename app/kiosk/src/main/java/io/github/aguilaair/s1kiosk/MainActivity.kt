@@ -162,6 +162,10 @@ class MainActivity : Activity() {
             prefs.presenceRangeM = intent.getFloatExtra("presence_range_m", 0f)
             ScreenController.applyPresenceRange()
         }
+        if (intent.hasExtra("voice_enabled")) { prefs.voiceEnabled = intent.getBooleanExtra("voice_enabled", true); needsRestart = true }
+        intent.getStringExtra("wake_model")?.let { prefs.wakeModel = it; needsRestart = true }
+        if (intent.hasExtra("wake_threshold")) { prefs.wakeThreshold = intent.getFloatExtra("wake_threshold", 0.5f); needsRestart = true }
+        if (intent.hasExtra("mic_gain")) { prefs.micGain = intent.getFloatExtra("mic_gain", 1f); needsRestart = true }
         if (intent.hasExtra("auto_brightness")) prefs.autoBrightness = intent.getBooleanExtra("auto_brightness", true)
         when (intent.getStringExtra("screen")) {
             "off" -> ScreenController.sleep("intent")
@@ -269,7 +273,9 @@ class MainActivity : Activity() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad, pad, 0)
-            addView(TextView(context).apply { text = ScreenController.statusLine(); textSize = 12f })
+            addView(TextView(context).apply {
+                text = ScreenController.statusLine() + " · voice=" + KioskService.voiceState; textSize = 12f
+            })
             addView(TextView(context).apply { text = "Dashboard URL" })
             addView(urlField)
             addView(TextView(context).apply { text = "Zoom (CSS px ratio, e.g. 1.0 – 2.0)" })
@@ -448,6 +454,7 @@ class MainActivity : Activity() {
         .put("lux", ScreenController.lux.let { if (it.isNaN()) JSONObject.NULL else it.toDouble() })
         .put("screenOn", ScreenController.screenOn)
         .put("night", ScreenController.isNight())
+        .put("voice", KioskService.voiceState)
 
     private fun pushState() {
         val msg = JSONObject().put("type", "state").put("state", stateJson())

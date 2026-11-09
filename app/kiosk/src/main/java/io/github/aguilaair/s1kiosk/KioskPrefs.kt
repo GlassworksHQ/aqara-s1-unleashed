@@ -84,6 +84,24 @@ class KioskPrefs(context: Context) {
         get() = sp.getFloat("night_max_brightness", 0.2f)
         set(v) = sp.edit().putFloat("night_max_brightness", v).apply()
 
+    // ---- voice satellite (Wyoming + on-device openWakeWord)
+
+    var voiceEnabled: Boolean
+        get() = sp.getBoolean("voice_enabled", true)
+        set(v) = sp.edit().putBoolean("voice_enabled", v).apply()
+
+    var wakeModel: String
+        get() = sp.getString("wake_model", "hey_jarvis_v0.1.tflite") ?: "hey_jarvis_v0.1.tflite"
+        set(v) = sp.edit().putString("wake_model", v.trim()).apply()
+
+    var wakeThreshold: Float
+        get() = sp.getFloat("wake_threshold", 0.5f)
+        set(v) = sp.edit().putFloat("wake_threshold", v).apply()
+
+    var micGain: Float
+        get() = sp.getFloat("mic_gain", 1.0f)
+        set(v) = sp.edit().putFloat("mic_gain", v).apply()
+
     /** Hosts that Gecko should treat as a secure context, so getUserMedia/AudioWorklet work over http. */
     fun secureHosts(): List<String> {
         val hosts = mutableListOf<String>()

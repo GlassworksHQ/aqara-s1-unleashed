@@ -120,12 +120,23 @@ Gecko's prefs are written to `files/geckoview-config.yaml` at startup and logged
 > surface while the screen sleeps. Check `adb shell dumpsys power | grep mWakefulness`.
 > See [docs/screen-policy.md](../docs/screen-policy.md) for why the panel turns itself off.
 
-## Voice
+## Voice satellite
 
-The browser side works: Home Assistant's in-dashboard Assist (mic button) can capture
-audio over http. A wake-word **voice satellite** (always listening, ESPHome/Wyoming protocol)
-is not implemented yet. That's the next step: a foreground service using `AudioRecord`, plus
-on-device wake word or streaming to HA's Assist pipeline.
+The app is a Home Assistant **Wyoming voice satellite** with an **on-device wake word**
+(openWakeWord on TFLite, default "Hey Jarvis"). It runs in `KioskService`, so it keeps listening
+while the screen is off, and saying the wake word wakes the screen. See [docs/voice.md](../docs/voice.md).
+
+```sh
+tools/voice/fetch-models.sh            # downloads the openWakeWord models on the host and adb-pushes them
+# HA: Settings -> Devices & services -> Add integration -> Wyoming Protocol -> <panel IP>, port 10700
+```
+
+The panel shows up as `assist_satellite.<name>` and uses your preferred Assist pipeline (select
+entity). Tune it with `--es wake_model alexa_v0.1.tflite`, `--ef wake_threshold 0.6`,
+`--ef mic_gain 2.0`, or turn it off with `--ez voice_enabled false`.
+
+Verified on the panel: HA connects, `announce` TTS plays through the speaker, wake-word inference uses
+about 40% of one core. Real-speech wake-word accuracy hasn't been tested yet.
 
 ## License
 

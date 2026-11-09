@@ -9,7 +9,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import io.github.aguilaair.s1kiosk.voice.VoiceConfig
+import io.github.aguilaair.s1kiosk.voice.VoiceEvent
+import io.github.aguilaair.s1kiosk.voice.VoiceSatellite
 
 /**
  * Long-lived foreground service that owns the sensor/screen policy (and, later, the voice satellite),
@@ -17,11 +22,50 @@ import android.util.Log
  */
 class KioskService : Service() {
 
+    private val main = Handler(Looper.getMainLooper())
+    private var voice: VoiceSatellite? = null
+
     override fun onCreate() {
         super.onCreate()
         startForeground(NOTIFICATION_ID, buildNotification())
         ScreenController.start(this)
+        startVoice()
         Log.i("S1Kiosk", "KioskService started")
+    }
+
+    private fun startVoice() {
+        val p = KioskPrefs(this)
+        if (!p.voiceEnabled) return
+        val cfg = VoiceConfig(
+            wakeModel = p.wakeModel,
+            threshold = p.wakeThreshold,
+            micGain = p.micGain,
+        )
+        voice = VoiceSatellite(this, cfg).also { v ->
+            v.listener = { e -> main.post { onVoiceEvent(e) } }
+            v.start()
+        }
+    }
+
+    private fun onVoiceEvent(e: VoiceEvent) {
+        voiceState = when (e) {
+            is VoiceEvent.WakeDetected -> "wake"
+            is VoiceEvent.Listening -> "listening"
+            is VoiceEvent.Thinking -> "thinking"
+            is VoiceEvent.Speaking -> "speaking"
+            is VoiceEvent.Idle -> "idle"
+            is VoiceEvent.Error -> "error: ${e.message}"
+        }
+        Log.i("S1Kiosk.Voice", "voice: $voiceState")
+        // Talking to the panel counts as activity: wake the screen and keep it on.
+        if (e !is VoiceEvent.Idle && e !is VoiceEvent.Error) ScreenController.wake("voice")
+        ScreenController.onStateChanged?.invoke()
+    }
+
+    override fun onDestroy() {
+        voice?.stop()
+        voice = null
+        super.onDestroy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
@@ -44,7 +88,7 @@ class KioskService : Service() {
         else Notification.Builder(this)
         return b.setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle("S1 Kiosk")
-            .setContentText("Screen & sensor control running")
+            .setContentText("Screen, sensors & voice satellite running")
             .setContentIntent(open)
             .setOngoing(true)
             .build()
@@ -53,6 +97,9 @@ class KioskService : Service() {
     companion object {
         private const val CHANNEL = "kiosk"
         private const val NOTIFICATION_ID = 1
+
+        /** Last voice satellite state, exposed to the page via MainActivity.stateJson(). */
+        @Volatile var voiceState: String = "off"
 
         fun start(context: Context) {
             val i = Intent(context, KioskService::class.java)

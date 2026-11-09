@@ -113,6 +113,9 @@ class TtsPlayer : AudioOutput {
         val encoding = if (outWidth == 1) AudioFormat.ENCODING_PCM_8BIT else AudioFormat.ENCODING_PCM_16BIT
         val mask = if (outChannels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
         val minBuf = AudioTrack.getMinBufferSize(rate, mask, encoding)
+        // Must be a whole number of frames: e.g. 22050 Hz mono 16-bit -> 250 ms = 11025 bytes (odd).
+        val frame = outWidth * outChannels
+        val bufBytes = (maxOf(minBuf, rate * frame / 4) + frame - 1) / frame * frame
         val t = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -124,7 +127,7 @@ class TtsPlayer : AudioOutput {
                 AudioFormat.Builder().setSampleRate(rate).setEncoding(encoding).setChannelMask(mask).build()
             )
             .setTransferMode(AudioTrack.MODE_STREAM)
-            .setBufferSizeInBytes(maxOf(minBuf, rate * outWidth * outChannels / 4)) // >= 250 ms
+            .setBufferSizeInBytes(bufBytes) // >= 250 ms
             .build()
         t.play()
         synchronized(trackLock) { track = t }
