@@ -90,3 +90,31 @@ and are backed up outside the repo. Strings in the binary show these USB paths:
 
 The environment has no burn-delay or USB-update variable, so `delay time` is set elsewhere
 (device-tree / sys_config or secure storage). Under investigation.
+
+### Verdict: no-button USB entry is not practical (source-confirmed)
+
+Allwinner BSP U-Boot 2018.05 source (`LubanCat/u-boot-allwinner` v2018.07, the shared BSP) was read
+to settle this:
+
+- The panel opens a USB gadget at every power-on because **`burn_key=1`** is set (vendor enabled
+  key-burning) and secure storage has no `key_burned_flag`. VID/PID `1f3a:efe8`, product
+  "USB Mass Storage", USB Mass-Storage Bulk-Only transport.
+- It is a **key-burning tool**, not a general entry point. Vendor SCSI opcodes `0xf0` (burn/read/erase
+  keys to secure storage; sub-9 reboot, sub-10 erase misc → Android recovery), `0xf3` (raw read/write of
+  the `private` partition only). **No fastboot, no arbitrary partition flashing.** FEL (`0xf8` sub-2)
+  only exists when `auto_fel=1` in the device tree — it is **not** set here.
+- The host wait window is **~300 ms to enumerate + ~400 ms for the first command**, and `delay time 0`
+  (the burn path) is a compile-time constant, not configurable without rebuilding U-Boot.
+- **macOS (and any host without custom software) cannot drive it**: it enumerates the gadget as a USB
+  disk and sends only standard SCSI, never the `0xf0` handshake, so U-Boot prints
+  `have no handshake` → `exit usb burn from boot` → normal boot (exactly our log).
+- **No open-source tool speaks this protocol.** `sunxi-fel`/`xfel` speak BROM-FEL, a different protocol
+  reachable only via the FEL button / unbootable media.
+
+Other no-button paths (`reboot efex`, RTC FEL flag, `boot-recovery`/`boot-efex` in `misc`, `auto_fel=1`)
+all need **on-device root or a DT reflash first** — which on a sealed panel needs the FEL button anyway.
+
+**Conclusion: the FEL button (hold PCB button + power) stays the entry point for a fresh panel.** No
+soldering, no Aqara app/account — but the back cover must be opened once. A button-free USB installer
+is not feasible on this firmware without custom host software for a mode that still can't flash the
+system.
