@@ -111,18 +111,19 @@ Plus the wall base entities below, and the entities HA adds itself for a voice d
 
 ### Wall base entities
 
-Built from the base detected through the stock LocalService ([bases.md](bases.md#implementation-s1-kiosk)).
+Built from the detected base, through the app's own UART driver (default) or the stock LocalService
+([bases.md](bases.md#implementation-s1-kiosk)); both backends produce the same entities.
 Only *Base* is always present; the rest exist only while a matching base is detected.
 
 | Entity | object_id | When | What it does |
 |---|---|---|---|
-| text_sensor `Base` (diagnostic) | `base` | always | `none`, `switch (2ch)`, `ethernet`, `unknown (0xNN)`, or `unavailable` (LocalService can't be bound) |
+| text_sensor `Base` (diagnostic) | `base` | always | `none`, `switch (2ch)`, `ethernet`, `unknown (0xNN)` (`0x7f` = UART: an unsupported model answered), or `unavailable` (port/LocalService not usable) |
 | text_sensor `Base firmware` (diagnostic) | `base_firmware` | any base | `8.0.2022`, raw |
-| switch `Base relay N` | `base_relay_1`..`3` | switch base, per channel | writes `4.N.85` = 0/1, then re-reads to confirm |
+| switch `Base relay N` | `base_relay_1`..`3` | switch base, per channel | writes `4.N.85` = 0/1. UART: the ack (else a re-read) confirms it; LocalService: re-reads |
 | sensor `Base power` (W, power, measurement) | `base_power` | switch base | `0.12.85` |
-| sensor `Base energy` (total_increasing, no unit) | `base_energy` | switch base | `0.13.85`, raw: unit unknown until seen on a real base |
+| sensor `Base energy` (total_increasing, no unit) | `base_energy` | switch base | `0.13.85`. UART: integrated in the app from power, Wh (as libha_bracket does); LocalService: ha_master's value |
 | text_sensor `Base protection` | `base_protection` | switch base | `8.0.2014`: `normal`, `over_temperature`, `over_load`, `over_temperature_error`, `over_load_error`, `over_temperature_removed`, `over_load_removed` |
-| event `Base button N` (button) | `base_button_1`..`3` | switch base, per channel | `13.N.85` clicks; event types `single`, `double`, `triple`, `long`, `release`, `unknown` (mapping unverified, raw value logged) |
+| event `Base button N` (button) | `base_button_1`..`3` | switch base, per channel | `13.N.85` clicks (LocalService only; the UART protocol has no click frames); event types `single`, `double`, `triple`, `long`, `release`, `unknown` (mapping unverified, raw value logged) |
 
 With the friendly name "S1 Panel" the entity ids are `switch.s1_panel_base_relay_1`,
 `event.s1_panel_base_button_1`, and so on. The names are fixed and don't follow the channel names
@@ -271,6 +272,13 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 - `BaseProtocolTest` / `BaseTrackerTest`: wall base dock class decoding, mask/count to channels,
   LocalService reply/event parsing (all known shapes, foreign DIDs, garbage), DID redaction,
   debounce (no rebuild loop on flapping), click de-duplication, entity ids per layout.
+- `BracketProtocolTest` / `BracketSessionTest`: the wall base UART protocol. CRC-16/MODBUS, frames
+  byte-identical to Aqara's `bracket_cli` output, resource ids/types, a resyncing framer (noise,
+  bad/swapped CRC), identity → dock class, protection mapping, termios verification; the handshake
+  sequence, retries (200 ms, 3 sends, new seq), unsupported model, reports/energy, an unacked write
+  → read, and silence → probe → removal. `UartBaseLinkEmulatorTest`: the real `UartBaseLink` over
+  TCP against `tools/bracket/base_emulator.py` (needs only python3; uses `BRACKET_PYTHON` /
+  `ESPHOME_PYTHON` / `python3`).
 - `VoiceAssistantControllerTest`: pre-roll, "never mind" runs, pipeline errors, the max-stream
   cap, continue-conversation.
 - `OwwFeaturesTest`: compares the Kotlin feature buffering with openWakeWord's own
@@ -313,7 +321,9 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 
 ### Aqara cloud
 
-- switch `Block Aqara cloud` (`block_aqara_cloud`, default on): stops Aqara's cloud daemon `ha_master`
-  unless a wall base needs it. See docs/debloat.md.
+- switch `Block Aqara cloud` (`block_aqara_cloud`, default on): stops Aqara's cloud daemon `ha_master`.
+  With the UART wall-base backend (default) it is always stopped; with the LocalService backend it is
+  kept while a base is attached. See docs/debloat.md.
 - text_sensor `Aqara cloud daemon` (`aqara_cloud`): `blocked`, `running`,
-  `running (needed by the wall base)`, or `error (…)`.
+  `stopped (UART wall base backend owns /dev/ttyS3)`, `running (needed by the wall base, LocalService
+  backend)`, or `error (…)`.

@@ -47,6 +47,10 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   screen-off ([docs/screen-policy.md](../docs/screen-policy.md)).
 - **Home Assistant integration as an ESPHome device** (native API, voice assistant, screen and kiosk
   controls), see below and [docs/esphome.md](../docs/esphome.md).
+- **Wall base (relay base) without Aqara's daemon**: the app speaks the base's UART protocol on
+  `/dev/ttyS3` itself (relays, power, energy, protection), so `ha_master` and Aqara's cloud stay stopped.
+  The LocalService path through `ha_master` remains as a fallback (`base_backend`). See
+  [docs/bases.md](../docs/bases.md) and [docs/base-protocol.md](../docs/base-protocol.md).
 - **Native Music Assistant player (Sendspin)**: MA sees the panel as its own player "S1 Panel" and plays
   to it in sync with your other Sendspin speakers (groupable). It pairs automatically: HA hands MA the
   panel's pairing token over the ESPHome API. See below and [docs/sendspin.md](../docs/sendspin.md).
@@ -131,6 +135,8 @@ $A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # manual E
 $A --ez sendspin_enabled false        # Music Assistant player (Sendspin) off/on (default on)
 $A --es sendspin_server 192.168.1.100 # Sendspin server: auto (default: mDNS, else <HA host>:8927) or host[:port][/path] / ws://
 $A --ez sendspin_unpaired_access true # let a server play without pairing (guest mode; default off)
+$A --es base_backend auto      # wall base: auto (UART unless Aqara cloud blocking is off) | uart | localservice
+$A --es base_transport tcp:127.0.0.1:9999   # UART backend on tools/bracket/base_emulator.py (adb reverse); "" = /dev/ttyS3
 ```
 
 Do **not** change `wm density` to scale the UI. On this panel it breaks GeckoView's surface

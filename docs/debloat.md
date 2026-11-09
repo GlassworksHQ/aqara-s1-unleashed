@@ -117,8 +117,9 @@ One trigger is restarting the S1 Kiosk app, through this chain:
 
 Any Aqara cloud hiccup triggers it the same way.
 
-**Built in (S1 Kiosk, default on): `switch.<panel>_block_aqara_cloud`.** About 20 s after start the app
-runs `setprop ctl.stop ha_master`. This firmware is SELinux-permissive, so the app's own uid may control
+**Built in (S1 Kiosk, default on): `switch.<panel>_block_aqara_cloud`.** As soon as it starts, the app
+runs `setprop ctl.stop ha_master` (with the LocalService base backend this used to happen ~20 s after
+start; that delay is now only used with that backend). This firmware is SELinux-permissive, so the app's own uid may control
 init services; no root needed. It re-applies after every boot, because init starts the daemon again.
 Verified on device:
 - the panel holds zero internet connections afterwards;
@@ -126,12 +127,21 @@ Verified on device:
 - after a reboot it is blocked again within ~30 s;
 - HA, voice and Music Assistant are unaffected.
 
-Kept running while a wall base is attached, because `ha_master` also carries the base link. The status
-shows in `sensor.<panel>_aqara_cloud_daemon`. Known gap: the daemon is online for the first ~20–30 s after
-each boot, before the app stops it.
+**It is blocked always**, wall base or not. `ha_master` also holds the wall-base UART `/dev/ttyS3`, but the
+app now speaks that protocol itself (UART base backend, the default; see [bases.md](bases.md) and
+[base-protocol.md](base-protocol.md)). With the UART backend, the app stops `ha_master` right at start, before
+it opens the port, instead of after 20 s. Only the LocalService base backend
+(`--es base_backend localservice`, or `auto` with blocking off) still keeps `ha_master` running while a
+base is attached. With `base_backend uart`, ha_master is stopped even if blocking is off, because the two
+can't share the port.
+
+The status shows in `sensor.<panel>_aqara_cloud_daemon`: `blocked`,
+`stopped (UART wall base backend owns /dev/ttyS3)`, `running`,
+`running (needed by the wall base, LocalService backend)` or `error (…)`. Known gap: the daemon is online
+from boot until the app starts and stops it (a few seconds after the app's process starts).
 
 **For zero phone-home, also** block the panel's internet access at the router and allow only the LAN (HA, Music
 Assistant). That stops the phone-home **and** the watchdog: it checks `isInternetConnected()` first and does
 nothing without internet. Then point time sync at a LAN NTP server, e.g.
-`adb shell settings put global ntp_server 192.168.3.1`. Stopping `ha_master` itself needs persistent root,
-and it also carries the wall-base link (see bases.md).
+`adb shell settings put global ntp_server 192.168.3.1`. Keeping `ha_master` from starting at all at boot would need
+persistent root. The app stops it shortly after boot; the wall base no longer needs it (see bases.md).

@@ -33,15 +33,20 @@ The Ambient and HomeKitNews reviews, absent42/Aqara-Firmware-Archive.
 - At runtime the port is held open by Aqara's native gateway daemon:
   `ha_master -H -M /dev/i2c-3 -C -a /vendor/lib/libha_auto.so -k /vendor/lib/libha_bracket.so -g /vendor/lib/libha_energy.so`
   (started by init; it keeps running after the de-bloat because it isn't an APK).
-- `libha_bracket.so` implements the protocol: framed messages (`pack_msg_head` / `msg_head_parse`)
-  with **CRC16**, a periodic `bracket_tick` / `bracket_sync` keepalive, `bracket offline` /
-  `bracket status %d`, writes cached while the serial port is busy, and base firmware OTA
-  (`bracket_ota_launch`).
+- `libha_bracket.so` implements the protocol. **Full reference: [base-protocol.md](base-protocol.md).**
+  In short: frames `55 80 02 seq type len hcksum payload crc16`, CRC-16/MODBUS sent low byte first,
+  3-byte resource ids from a fixed table, and a handshake read of `200.1.159` (model 0xF110 + channel
+  count, from which the dock class is derived). There is no keepalive; the host goes "offline" after
+  ~61 s without frames, and a power report brings it back. Aqara's own `bracket_cli` accepted an
+  emulator built from this analysis.
 - `ha_master` also opens **`/dev/i2c-3`** (`twi3`, root-only, no kernel driver bound). Its purpose
   is unknown. It might be a second link to the base.
 - **Base firmware tools** ship in `/vendor/bin`: `bracket_ota`, `bracket_isp.sh`. Don't run them.
 
 ## Access without root: `bracket_cli`
+
+(Its table only knows 16 resources. `14.160.85` is not one of them, so
+`bracket_cli … 14.160.85` fails before writing anything; see base-protocol.md.)
 
 Aqara's own Java code (`com.lumi.common.utils.DockExecUtils`) controls the base by executing:
 
@@ -85,11 +90,42 @@ Code: `app/kiosk/src/main/java/sh/edm/s1kiosk/base/`. Logs: `adb logcat -s S1Bas
 
 ### How it talks to the base
 
-Not through `bracket_cli` or the UART: the kiosk binds to the stock **LocalService** in
-`com.lumi.systemmanager` (`systemmanager.intent.action.LOCAL_SERVER`,
-`com.lumi.systemmanager.service.gateway.LocalService`; exported, no permission), the same path the
-stock Settings app uses (`com.lumi.common.Local.LocalServer`). `ha_master` stays in charge of the
-serial link, so stock behaviour (cloud, scenes, base OTA) is untouched.
+There are two backends (`WallBase` + a `BaseLink`), chosen by the pref `base_backend`
+(`--es base_backend auto|uart|localservice`):
+
+- **`uart` (default via `auto`): `UartBaseLink`**, the app's own driver for the UART protocol
+  ([base-protocol.md](base-protocol.md)). `ha_master` is not needed, so it is always stopped.
+  - **Port ownership.** `ha_master` grabs `/dev/ttyS3` at boot. On start, PanelDevice first runs
+    `setprop ctl.stop ha_master` and waits for init to report `stopped`; only then does the link
+    open the port. Before opening, and every 10 s while the port is open, the link asks a guard
+    that reads `init.svc.ha_master`. If the daemon is `running`/`restarting` again, the link closes
+    the port, reports *Base: unavailable* and has PanelDevice stop it again; it retries every 5 s.
+    When switching away from UART, the port is closed **before** ha_master may start. The two
+    never hold the port at the same time.
+  - **Setup.** The port is opened with File streams, then
+    `/vendor/bin/busybox stty -F /dev/ttyS3 115200 raw cs8 -parenb -cstopb -crtscts clocal cread
+    -hupcl ignbrk -brkint -icrnl -ixon -ixoff -opost -onlcr -isig -icanon -iexten -echo … min 0
+    time 1` (ha_master's own termios, plus a 100 ms read timeout). The result is checked with
+    `stty -g`, and a port that doesn't verify is not used. Toybox `stty` is only a fallback: it
+    corrupts iflags on this firmware.
+  - **Protocol.** `BracketSession` mirrors libha_bracket: handshake (`200.1.159`), then the config
+    writes ha_master does, then firmware and relay reads; one request in flight, 200 ms timeout,
+    3 tries. Reports update relays, power and protection immediately. Energy is integrated from
+    power in the app (Wh, persisted). Detection works without ha_master: a dock class read runs
+    the handshake, and a power report from a newly mounted base starts it too. A base that has
+    been silent for 61 s is probed, and only an unanswered probe reports it as removed.
+  - **Debug transport.** `--es base_transport tcp:127.0.0.1:9999` (or `""` for `/dev/ttyS3`)
+    points the link at [`tools/bracket/base_emulator.py`](../tools/bracket/base_emulator.py) via
+    `adb reverse tcp:9999 tcp:9999`. The emulator's energy goes to a separate counter.
+- **`localservice`: `LocalServiceLink`**, the original path. The kiosk binds to the stock
+  **LocalService** in `com.lumi.systemmanager` (`systemmanager.intent.action.LOCAL_SERVER`,
+  `com.lumi.systemmanager.service.gateway.LocalService`; exported, no permission), the same path the
+  stock Settings app uses (`com.lumi.common.Local.LocalServer`). `ha_master` stays in charge of the
+  serial link, so the stock behaviour (cloud, scenes, base OTA) is untouched. `auto` selects this
+  when *Block Aqara cloud* is off: then ha_master runs and owns the port.
+
+The rest of this section describes the LocalService backend; the entity layer (`BaseTracker`,
+`BaseEntities`) is shared by both backends.
 
 - `LocalServiceClient` is a hand-written AIDL proxy for `com.lumi.systemmanager.service.ILocalService`
   (read=1, write=2, register=5, unregister=6; two-way, `readException` + `readInt`) and a `Binder`
@@ -150,13 +186,25 @@ serial link, so stock behaviour (cloud, scenes, base OTA) is untouched.
   install that added the *Base* entity, then reconnected about 11 s later. It didn't happen on the
   next restart, so it looks like HA's one-time reaction to the new entity, not a loop.
 
+### Verified with the UART backend (2026-11-09, no base mounted)
+
+- The order on boot is: `Aqara cloud (startup, before opening the wall base port): blocked`, then
+  `opened /dev/ttyS3` (termios verified), then 3 × `read 200.1.159` 200 ms apart, no answer, and
+  *Base* = `none`. ha_master stays stopped.
+- Against the emulator on the panel (`base_transport tcp:…`): handshake, config writes, firmware
+  and relay reads, then layout `switch (2ch)` and the entities are rebuilt. Physical-toggle,
+  power and over-load reports update the entities. Switching back to `/dev/ttyS3` closes the TCP
+  link, gives `none` and rebuilds the entities. Transcripts are in base-protocol.md.
+
 ### Still needs a mounted base
 
 - The dock class value of a real base (expected `0x01xxxxxx`) and whether `13.8.85` / `14.21.85`
   answer through the LocalService at all (on the S1 Plus they are served by `ha_master` /
   `libha_bracket.so`, not by the Java `dock` package, which only runs on the S1M "multi-dock"
   firmware).
-- The **click event format** for `13.x.85` (source of the `single`/`double`/`long` mapping is
+- UART backend: everything listed under "Limitations" in base-protocol.md (reply latency, report
+  period, meaning of the config resources). The UART carries **no click events at all**.
+- The **click event format** for `13.x.85` (LocalService backend) (source of the `single`/`double`/`long` mapping is
   Aqara's usual multistate convention, not an observation). The raw value is logged at info
   (`button N: raw ...`).
 - Units of `0.13.85` (energy; exposed raw, no unit) and the value type of `0.12.85` (power) and
