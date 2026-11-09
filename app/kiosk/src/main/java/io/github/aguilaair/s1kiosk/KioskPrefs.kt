@@ -6,6 +6,8 @@ import android.net.Uri
 import android.util.Base64
 import io.github.aguilaair.s1kiosk.auth.OAuth
 import io.github.aguilaair.s1kiosk.auth.StoredAuth
+import io.github.aguilaair.s1kiosk.base.BaseBackend
+import io.github.aguilaair.s1kiosk.base.UartBaseLink
 import io.github.aguilaair.s1kiosk.esphome.NoiseKeyStore
 
 /**
@@ -254,10 +256,23 @@ class KioskPrefs(context: Context) {
     // (identity, pairing PSK, pairing records) live in `sendspin.xml` (PrefsSsStore).
 
     /** Run the native Sendspin player (ESPHome switch "Music Assistant player (Sendspin)"). */
-    /** Stop Aqara's cloud daemon (ha_master) unless a wall base needs it. See AqaraCloud. */
+    /**
+     * Stop Aqara's cloud daemon (ha_master). With the UART wall-base backend it is never needed;
+     * with the LocalService backend it is kept while a base is attached. See AqaraCloud.
+     */
     var blockAqaraCloud: Boolean
         get() = sp.getBoolean(KEY_BLOCK_AQARA_CLOUD, true)
         set(v) = sp.edit().putBoolean(KEY_BLOCK_AQARA_CLOUD, v).apply()
+
+    /** Wall-base backend: `auto` (UART unless cloud blocking is off), `uart`, `localservice`. See BaseBackend. */
+    var baseBackend: String
+        get() = sp.getString(KEY_BASE_BACKEND, BaseBackend.AUTO) ?: BaseBackend.AUTO
+        set(v) = sp.edit().putString(KEY_BASE_BACKEND, v.trim().lowercase().takeIf { it in BaseBackend.PREF_VALUES } ?: BaseBackend.AUTO).apply()
+
+    /** UART backend port: `/dev/ttyS3` (default, "") or `tcp:host:port` for tools/bracket/base_emulator.py. */
+    var baseTransport: String
+        get() = sp.getString(KEY_BASE_TRANSPORT, "")?.trim()?.takeIf { it.isNotEmpty() } ?: UartBaseLink.SERIAL_PATH
+        set(v) = sp.edit().putString(KEY_BASE_TRANSPORT, v.trim()).apply()
 
     var sendspinEnabled: Boolean
         get() = sp.getBoolean(KEY_SENDSPIN_ENABLED, true)
@@ -310,6 +325,8 @@ class KioskPrefs(context: Context) {
         const val KEY_HA_SEEN = "ha_seen"
         const val KEY_SENDSPIN_ENABLED = "sendspin_enabled"
         const val KEY_BLOCK_AQARA_CLOUD = "block_aqara_cloud"
+        const val KEY_BASE_BACKEND = "base_backend"
+        const val KEY_BASE_TRANSPORT = "base_transport"
         const val KEY_SENDSPIN_SERVER = "sendspin_server"
         const val KEY_SENDSPIN_UNPAIRED = "sendspin_unpaired_access"
         private const val KEY_ZOOM = "zoom"

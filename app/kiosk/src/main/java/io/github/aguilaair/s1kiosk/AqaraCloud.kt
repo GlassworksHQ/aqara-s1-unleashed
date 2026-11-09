@@ -12,7 +12,9 @@ import java.util.concurrent.TimeUnit
  * app's own uid may control init services (verified on device); no root needed. Not persistent by
  * itself: init starts it again on every boot, so [PanelDevice] re-applies the choice after each start.
  *
- * `ha_master` also carries the wall-base (relay) link, so it is kept running while a base is attached.
+ * `ha_master` also holds `/dev/ttyS3`, the wall-base UART. With the UART base backend (default) the
+ * app speaks that protocol itself (base/UartBaseLink), so ha_master is never needed and is stopped
+ * before the port is opened; only the LocalService backend keeps it running while a base is attached.
  * Stopping it does not trip com.lumi.systemmanager's cloud watchdog (Wi-Fi reassociate): that only
  * fires on a cloud-state *change* event, which the dead daemon never sends.
  */

@@ -1,6 +1,5 @@
 package io.github.aguilaair.s1kiosk.base
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
@@ -9,20 +8,25 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * Wall base support: talks to the stock LocalService ([LocalServiceClient]), detects the mounted
- * base, polls its values and reports to [Listener] (owned by PanelDevice, which turns it into
- * ESPHome entities). All state changes run on one thread ("s1-base").
+ * Wall base support: detects the mounted base through a [BaseLink], polls its values and reports
+ * to [Listener] (owned by PanelDevice, which turns it into ESPHome entities). All state changes run
+ * on one thread ("s1-base").
+ *
+ * Links ([config] / [reconfigure]):
+ * - [BaseBackend.UART]: [UartBaseLink], the base's own UART protocol on `/dev/ttyS3` (needs
+ *   `ha_master` stopped; [Config.portGuard] says when the port may be used) or a TCP emulator.
+ * - [BaseBackend.LOCALSERVICE]: [LocalServiceLink], through the stock LocalService / ha_master.
  *
  * - dock class `14.160.85` is read on connect, every 60 s, and when an event/report mentions a dock
- *   resource; no reply within 15 s counts as "none";
+ *   resource; no reply within 15 s counts as "none" (the UART link answers 0 itself after an
+ *   unanswered handshake);
  * - with a switch base: channel count/mask, firmware, relays, power, energy, protection on attach,
- *   then relays/power/energy/protection every 10 s; reports update immediately;
- * - binding failures: logged once, "Base: unavailable", retried every 60 s.
+ *   then the link's poll list; reports update immediately;
+ * - link failures: logged, "Base: unavailable", retried by the link.
  *
- * Every raw callback payload is logged at debug level (tag `S1Base`) with the DID redacted.
  * The only write is [setRelay] (from Home Assistant).
  */
-class WallBase(context: Context, initial: BaseLayout, private val listener: Listener) {
+class WallBase(context: Context, initial: BaseLayout, private val listener: Listener, config: Config) {
 
     interface Listener {
         /** Some value changed: publish states. */
@@ -30,67 +34,88 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
         /** The entity set must change (debounced). */
         fun onLayout(layout: BaseLayout)
         fun onButton(channel: Int, type: String)
+        /** The UART link may not open its port now (ha_master runs). */
+        fun onPortBlocked(reason: String) {}
     }
+
+    data class Config(
+        val backend: BaseBackend,
+        /** UART only: `/dev/ttyS3` or `tcp:host:port` (debug: base_emulator.py). */
+        val transport: String = UartBaseLink.SERIAL_PATH,
+        /** UART only: null when `/dev/ttyS3` may be opened, else why not. */
+        val portGuard: () -> String? = { null },
+    )
 
     companion object {
         private const val TAG = "S1Base"
-        private const val DID_PROP = "persist.sys.did"
         private const val DOCK_INTERVAL_MS = 60_000L
-        private const val POLL_INTERVAL_MS = 10_000L
-        private const val RETRY_MS = 60_000L
         private const val NO_REPLY_MS = 15_000L
         private const val MIN_DOCK_READ_GAP_MS = 2_000L
-        /** Callbacks whose values describe the panel's resources (the others are requests to it). */
-        private val VALUE_CALLBACKS = setOf("onReadDone", "onWriteDone", "onEvent", "onReportDone")
-        private val TRIGGER_CALLBACKS = setOf("onEvent", "onReportDone")
+        private const val ENERGY_PREFS = "s1base"
+        private const val KEY_ENERGY = "uart_energy_wh"
     }
 
     private val ctx = context.applicationContext
     private val exec: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "s1-base").apply { isDaemon = true } }
     val tracker = BaseTracker(initial)
-    private val client = LocalServiceClient(ctx, exec, ClientListener())
+    private var link: BaseLink? = null
+    @Volatile var config: Config = config
+        private set
 
-    private var did: String? = null
-    private var unavailableLogged = false
-    private var nextBindAt = 0L
-    private var disconnectedSince = 0L
     private var nextDockReadAt = 0L
     private var lastDockReadAt = 0L
     private var dockReadPendingSince = 0L
     private var nextPollAt = 0L
     private var lastKind: BaseKind? = null
-    private var firstReplyLogged = false
-    private val loggedResultCodes = HashSet<Int>()
 
     private fun now() = SystemClock.elapsedRealtime()
 
     fun start() {
-        exec.execute { tryBind() }
+        exec.execute { startLink() }
         exec.scheduleWithFixedDelay({ safe("tick") { tick() } }, 1, 1, TimeUnit.SECONDS)
     }
 
     fun stop() {
         try {
-            exec.submit { client.unbind() }.get(2, TimeUnit.SECONDS)
+            exec.submit { link?.stop(); link = null }.get(3, TimeUnit.SECONDS)
         } catch (_: Exception) {}
         exec.shutdownNow()
     }
 
+    /** Swap the link (blocking until the old one closed its port). The tracker and its values stay. */
+    fun reconfigure(c: Config) {
+        try {
+            exec.submit {
+                if (c == config && link != null) return@submit
+                Log.i(TAG, "wall base backend ${link?.describe ?: "-"} -> ${c.backend.pref} ${if (c.backend == BaseBackend.UART) c.transport else ""}")
+                link?.stop()
+                link = null
+                config = c
+                startLink()
+            }.get(5, TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            Log.w(TAG, "reconfigure failed: $e")
+        }
+    }
+
+    val backendDescription: String get() = link?.describe ?: config.backend.pref
+
     /** From Home Assistant (API connection thread). */
     fun setRelay(channel: Int, on: Boolean) {
         exec.execute {
-            val d = did
-            if (d == null || !client.isConnected) {
-                Log.w(TAG, "relay $channel -> $on ignored: LocalService not connected")
+            val l = link
+            if (l == null || !l.isConnected) {
+                Log.w(TAG, "relay $channel -> $on ignored: no link to the base")
                 return@execute
             }
             val res = BaseRes.relay(channel)
-            val rc = client.write(BaseProtocol.writeRequest(d, res, if (on) 1 else 0, System.currentTimeMillis()))
-            Log.i(TAG, "write $res=${if (on) 1 else 0} -> $rc")
-            // Confirm (the base or a report may also answer by itself).
-            exec.schedule({ read(listOf(res)) }, 500, TimeUnit.MILLISECONDS)
-            exec.schedule({ read(listOf(res, BaseRes.POWER)) }, 2_000, TimeUnit.MILLISECONDS)
+            l.write(res, if (on) 1 else 0)
+            if (l.confirmWrites) {
+                // Confirm (the base or a report may also answer by itself).
+                exec.schedule({ link?.read(listOf(res)) }, 500, TimeUnit.MILLISECONDS)
+                exec.schedule({ link?.read(listOf(res, BaseRes.POWER)) }, 2_000, TimeUnit.MILLISECONDS)
+            }
         }
     }
 
@@ -100,54 +125,47 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
         try { block() } catch (t: Throwable) { Log.w(TAG, "$what failed", t) }
     }
 
-    private fun tryBind() {
-        nextBindAt = now() + RETRY_MS
-        if (did == null) {
-            did = readDid()
-            if (did == null) {
-                markUnavailable("system property $DID_PROP not readable")
-                return
+    private fun startLink() {
+        val c = config
+        val l: BaseLink = when (c.backend) {
+            BaseBackend.LOCALSERVICE -> LocalServiceLink(ctx, exec, LinkListener())
+            BaseBackend.UART -> {
+                val sp = ctx.getSharedPreferences(ENERGY_PREFS, Context.MODE_PRIVATE)
+                val tcp = c.transport.startsWith("tcp:")
+                // The emulator's energy must not end up in the real counter.
+                val key = if (tcp) "${KEY_ENERGY}_test" else KEY_ENERGY
+                UartBaseLink(
+                    exec, LinkListener(), c.transport,
+                    portGuard = if (tcp) ({ null }) else c.portGuard,
+                    initialEnergyWh = sp.getFloat(key, 0f),
+                    saveEnergy = { sp.edit().putFloat(key, it).apply() },
+                    log = { level, msg -> Log.println(level, TAG, msg) },
+                )
             }
-            Log.i(TAG, "DID found ($DID_PROP)")
         }
-        if (client.bind()) {
-            disconnectedSince = now()
-            Log.d(TAG, "binding LocalService")
-        }
-    }
-
-    private fun markUnavailable(reason: String) {
-        if (!unavailableLogged) {
-            Log.w(TAG, "Wall base support unavailable: $reason; retrying every ${RETRY_MS / 1000} s")
-            unavailableLogged = true
-        }
-        tracker.setServiceAvailable(false)
-        listener.onStates()
+        link = l
+        Log.i(TAG, "wall base link: ${l.describe}")
+        l.start()
     }
 
     private fun tick() {
         val now = now()
-        if (!client.isConnected) {
-            if (!client.isBound) {
-                if (now >= nextBindAt) tryBind()
-            } else if (disconnectedSince > 0 && now - disconnectedSince > RETRY_MS) {
-                Log.w(TAG, "LocalService not (re)connected after ${RETRY_MS / 1000} s; rebinding")
-                client.unbind()
-                markUnavailable("LocalService not connected")
-                tryBind()
-            }
-        } else {
-            if (now >= nextDockReadAt) readDock()
-            if (tracker.current()?.kind == BaseKind.SWITCH && now >= nextPollAt) {
-                nextPollAt = now + POLL_INTERVAL_MS
-                read(BaseRes.POLL_READ)
-            }
-            if (dockReadPendingSince > 0 && now - dockReadPendingSince > NO_REPLY_MS) {
-                dockReadPendingSince = 0
-                if (!tracker.hasDockClass()) {
-                    Log.w(TAG, "no reply to the dock class read within ${NO_REPLY_MS / 1000} s; assuming no base")
-                    tracker.markDockNoReply()
-                    onDetectionMaybeChanged()
+        val l = link
+        if (l != null) {
+            l.tick(now)
+            if (l.isConnected) {
+                if (now >= nextDockReadAt) readDock()
+                if (tracker.current()?.kind == BaseKind.SWITCH && now >= nextPollAt) {
+                    nextPollAt = now + l.pollIntervalMs
+                    l.read(l.pollRes)
+                }
+                if (dockReadPendingSince > 0 && now - dockReadPendingSince > NO_REPLY_MS) {
+                    dockReadPendingSince = 0
+                    if (!tracker.hasDockClass()) {
+                        Log.w(TAG, "no reply to the dock class read within ${NO_REPLY_MS / 1000} s; assuming no base")
+                        tracker.markDockNoReply()
+                        onDetectionMaybeChanged()
+                    }
                 }
             }
         }
@@ -164,44 +182,28 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
         lastDockReadAt = now
         nextDockReadAt = now + DOCK_INTERVAL_MS
         if (dockReadPendingSince == 0L) dockReadPendingSince = now
-        read(listOf(BaseRes.DOCK_CLASS))
+        link?.read(listOf(BaseRes.DOCK_CLASS))
     }
 
-    private fun read(res: List<String>) {
-        val d = did ?: return
-        val rc = client.read(BaseProtocol.readRequest(d, res)) ?: return
-        Log.d(TAG, "read ${res.joinToString(",")} -> $rc")
-        if (rc != 0 && loggedResultCodes.add(rc)) Log.w(TAG, "LocalService.read returned $rc (logged once per code)")
-    }
-
-    private fun onCallback(method: String, payload: String?) {
-        Log.d(TAG, "$method: ${payload?.let { BaseProtocol.redact(it, did) }}")
-        // onKeepAlive / onStartSceneDone / onSubdevice*: logged only.
-        if (method !in VALUE_CALLBACKS && method != "write" && method != "read") return
-        val parsed = BaseProtocol.parse(payload, did) ?: return
-        if (parsed.foreign) return // another device (e.g. a Zigbee sub-device): same resource ids
-        if (!firstReplyLogged && method == "onReadDone" && parsed.values.isNotEmpty()) {
-            firstReplyLogged = true
-            Log.i(TAG, "LocalService answers reads (${parsed.values.keys.joinToString(",")})")
-        }
-        if (method in VALUE_CALLBACKS) {
-            val update = tracker.apply(parsed.values, now())
-            if (BaseRes.DOCK_CLASS in parsed.values) {
+    private fun onValues(values: Map<String, Any>, via: String, apply: Boolean, dockTrigger: Boolean) {
+        if (apply) {
+            val update = tracker.apply(values, now())
+            if (BaseRes.DOCK_CLASS in values) {
                 dockReadPendingSince = 0
-                val msg = "dock class ${parsed.values[BaseRes.DOCK_CLASS]} -> ${tracker.current()?.describe()}"
+                val msg = "dock class ${values[BaseRes.DOCK_CLASS]} -> ${tracker.current()?.describe()} (via $via)"
                 if (BaseRes.DOCK_CLASS in update.changed) Log.i(TAG, msg) else Log.d(TAG, msg)
             }
             for (c in update.clicks) {
-                Log.i(TAG, "button ${c.channel}: raw ${c.raw} -> ${c.type} (via $method)")
+                Log.i(TAG, "button ${c.channel}: raw ${c.raw} -> ${c.type} (via $via)")
                 listener.onButton(c.channel, c.type)
             }
             if (update.changed.isNotEmpty()) {
+                Log.d(TAG, "changed ${update.changed.joinToString(",")} (via $via)")
                 onDetectionMaybeChanged()
                 listener.onStates()
             }
         }
-        val dockMentioned = parsed.values.keys.any { it in BaseRes.DOCK_TRIGGERS }
-        if (dockMentioned && method in TRIGGER_CALLBACKS + setOf("write", "read")) readDock()
+        if (dockTrigger && values.keys.any { it in BaseRes.DOCK_TRIGGERS }) readDock()
     }
 
     private fun onDetectionMaybeChanged() {
@@ -212,39 +214,17 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
         lastKind = kind
         when (kind) {
             BaseKind.SWITCH -> {
-                nextPollAt = now() + POLL_INTERVAL_MS
-                read(BaseRes.ATTACH_READ)
+                nextPollAt = now() + (link?.pollIntervalMs ?: 10_000L)
+                link?.read(BaseRes.ATTACH_READ)
             }
-            BaseKind.ETHERNET, BaseKind.UNKNOWN -> read(listOf(BaseRes.FIRMWARE))
+            BaseKind.ETHERNET, BaseKind.UNKNOWN -> link?.read(listOf(BaseRes.FIRMWARE))
             else -> Unit
         }
         listener.onStates()
     }
 
-    @SuppressLint("PrivateApi")
-    private fun readDid(): String? {
-        val viaReflection = try {
-            Class.forName("android.os.SystemProperties").getMethod("get", String::class.java)
-                .invoke(null, DID_PROP) as? String
-        } catch (_: Throwable) {
-            null
-        }
-        if (!viaReflection.isNullOrBlank()) return viaReflection.trim()
-        return try {
-            val p = ProcessBuilder("getprop", DID_PROP).redirectErrorStream(true).start()
-            val out = p.inputStream.bufferedReader().readText().trim()
-            p.waitFor(2, TimeUnit.SECONDS)
-            out.takeIf { it.isNotEmpty() }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private inner class ClientListener : LocalServiceClient.Listener {
+    private inner class LinkListener : BaseLink.Listener {
         override fun onConnected() {
-            Log.i(TAG, "LocalService connected, callback registered")
-            unavailableLogged = false
-            disconnectedSince = 0
             tracker.setServiceAvailable(true)
             nextDockReadAt = 0
             lastDockReadAt = 0
@@ -253,17 +233,17 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
         }
 
         override fun onDisconnected() {
-            Log.w(TAG, "LocalService disconnected; waiting for it to come back")
-            if (disconnectedSince == 0L) disconnectedSince = now()
+            // Keep the last layout until the link reports unavailable or another dock class.
         }
 
         override fun onUnavailable(reason: String) {
-            nextBindAt = now() + RETRY_MS
-            markUnavailable(reason)
+            tracker.setServiceAvailable(false)
+            listener.onStates()
         }
 
-        override fun onCallback(method: String, payload: String?) = safe("callback $method") {
-            this@WallBase.onCallback(method, payload)
-        }
+        override fun onValues(values: Map<String, Any>, via: String, apply: Boolean, dockTrigger: Boolean) =
+            safe("values via $via") { this@WallBase.onValues(values, via, apply, dockTrigger) }
+
+        override fun onBlocked(reason: String) = listener.onPortBlocked(reason)
     }
 }

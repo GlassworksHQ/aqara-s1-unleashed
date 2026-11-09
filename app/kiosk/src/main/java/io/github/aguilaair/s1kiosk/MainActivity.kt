@@ -450,6 +450,9 @@ class MainActivity : Activity() {
         if (intent.hasExtra("sendspin_enabled")) prefs.sendspinEnabled = intent.getBooleanExtra("sendspin_enabled", true)
         intent.getStringExtra("sendspin_server")?.let { prefs.sendspinServer = it }
         if (intent.hasExtra("sendspin_unpaired_access")) prefs.sendspinUnpairedAccess = intent.getBooleanExtra("sendspin_unpaired_access", false)
+        // Wall base (docs/bases.md): auto|uart|localservice, and "" (/dev/ttyS3) or tcp:host:port (emulator).
+        intent.getStringExtra("base_backend")?.let { prefs.baseBackend = it }
+        intent.getStringExtra("base_transport")?.let { prefs.baseTransport = it }
         intent.getStringExtra("api_key")?.let { key ->
             if (KioskPrefs.decodeApiKey(key) != null) prefs.apiKey = key
             else Log.w(TAG, "api_key must be base64 of exactly 32 bytes; ignored")

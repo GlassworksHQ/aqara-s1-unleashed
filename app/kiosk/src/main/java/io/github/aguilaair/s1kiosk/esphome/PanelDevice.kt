@@ -11,6 +11,7 @@ import android.os.Looper
 import android.os.PowerManager
 import io.github.aguilaair.s1kiosk.BuildConfig
 import io.github.aguilaair.s1kiosk.KioskPrefs
+import io.github.aguilaair.s1kiosk.base.BaseBackend
 import io.github.aguilaair.s1kiosk.base.BaseKind
 import io.github.aguilaair.s1kiosk.AqaraCloud
 import io.github.aguilaair.s1kiosk.MainActivity
@@ -20,6 +21,7 @@ import io.github.aguilaair.s1kiosk.RadioController
 import io.github.aguilaair.s1kiosk.ScreenController
 import io.github.aguilaair.s1kiosk.base.BaseEntities
 import io.github.aguilaair.s1kiosk.base.BaseLayout
+import io.github.aguilaair.s1kiosk.base.UartBaseLink
 import io.github.aguilaair.s1kiosk.base.WallBase
 import io.github.aguilaair.s1kiosk.dashboard.Dashboard
 import io.github.aguilaair.s1kiosk.dashboard.DashboardOptions
@@ -153,7 +155,13 @@ class PanelDevice(
         coreEntities = buildEntities()
         appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
         dashboardRebuild = StableChange(dashboardOptions(appliedDashboards))
-        val base = WallBase(ctx, BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE, baseListener)
+        val baseConfig = wantedBaseConfig()
+        if (baseConfig.backend == BaseBackend.UART) {
+            // ha_master grabbed /dev/ttyS3 at boot: stop it *before* the UART link opens the port
+            // (the link's port guard also refuses to open it while init reports it running).
+            applyAqaraCloud("startup, before opening the wall base port", baseConfig.backend)
+        }
+        val base = WallBase(ctx, BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE, baseListener, baseConfig)
         wallBase = base
         entities = assemble(base, base.tracker.applied())
         acquireLocks()
@@ -172,8 +180,42 @@ class PanelDevice(
         exec.scheduleWithFixedDelay({ checkDashboards() }, 2, 2, TimeUnit.SECONDS)
         exec.scheduleWithFixedDelay({ server?.publishStates() }, 5, 5, TimeUnit.SECONDS)
         base.start()
-        // Give the wall-base check time to read the dock class (it needs ha_master), then apply.
-        exec.schedule({ applyAqaraCloud("startup") }, 20, TimeUnit.SECONDS)
+        if (baseConfig.backend == BaseBackend.LOCALSERVICE) {
+            // Give the wall-base check time to read the dock class (it needs ha_master), then apply.
+            exec.schedule({ applyAqaraCloud("startup") }, 20, TimeUnit.SECONDS)
+        }
+    }
+
+    // ------------------------------------------------------------------ wall base backend
+
+    /** One instance, so WallBase.Config equality works across re-applies. */
+    private val ttyGuard: () -> String? = {
+        when (val st = AqaraCloud.daemonState()) {
+            "running", "restarting" -> "ha_master is $st and owns ${UartBaseLink.SERIAL_PATH}"
+            else -> null
+        }
+    }
+
+    private fun wantedBaseConfig(): WallBase.Config {
+        val backend = BaseBackend.resolve(prefs.baseBackend, prefs.blockAqaraCloud)
+        return WallBase.Config(backend, prefs.baseTransport, ttyGuard)
+    }
+
+    /**
+     * esphome-main: apply backend/transport/cloud-blocking changes so that ha_master and the UART
+     * link never hold /dev/ttyS3 at the same time: to UART, stop ha_master first, then open; away
+     * from UART, close the port first, then let ha_master run.
+     */
+    private fun reconfigureBase(why: String) {
+        val base = wallBase ?: return
+        val c = wantedBaseConfig()
+        if (c.backend == BaseBackend.UART) {
+            applyAqaraCloud(why, c.backend)
+            base.reconfigure(c)
+        } else {
+            base.reconfigure(c)
+            applyAqaraCloud(why, c.backend)
+        }
     }
 
     // ------------------------------------------------------------------ wall base
@@ -193,6 +235,11 @@ class PanelDevice(
                 server?.setEntities(entities)
                 applyAqaraCloud("wall base ${layout.kind}")
             }
+        }
+
+        override fun onPortBlocked(reason: String) {
+            // Something (re)started ha_master while the UART backend should own the port.
+            exec.execute { applyAqaraCloud("wall base port blocked: $reason") }
         }
 
         override fun onButton(channel: Int, type: String) {
@@ -238,15 +285,23 @@ class PanelDevice(
      * esphome-main: stop Aqara's cloud daemon when blocking is on and no wall base needs it, else
      * make sure it runs. Re-applied after every start (init restarts it on boot) and on changes.
      */
-    private fun applyAqaraCloud(why: String) {
-        val layout = wallBase?.tracker?.current() ?: BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE
-        val baseNeedsIt = layout.kind == BaseKind.SWITCH || layout.kind == BaseKind.UNKNOWN
-        val run = !prefs.blockAqaraCloud || baseNeedsIt
+    private fun applyAqaraCloud(why: String, backend: BaseBackend = wallBase?.config?.backend ?: wantedBaseConfig().backend) {
+        val run = when {
+            // The UART link owns /dev/ttyS3: ha_master is never needed (and must not run).
+            backend == BaseBackend.UART -> false
+            !prefs.blockAqaraCloud -> true
+            else -> {
+                // LocalService backend: the base link goes through ha_master.
+                val layout = wallBase?.tracker?.current() ?: BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE
+                layout.kind == BaseKind.SWITCH || layout.kind == BaseKind.UNKNOWN
+            }
+        }
         val ok = AqaraCloud.setDaemon(run)
         aqaraCloudStatus = when {
             !ok -> "error (${AqaraCloud.daemonState().ifBlank { "unknown" }})"
+            !run && !prefs.blockAqaraCloud -> "stopped (UART wall base backend owns ${UartBaseLink.SERIAL_PATH})"
             !run -> "blocked"
-            prefs.blockAqaraCloud -> "running (needed by the wall base)"
+            prefs.blockAqaraCloud -> "running (needed by the wall base, LocalService backend)"
             else -> "running"
         }
         ApiLog.i("Aqara cloud ($why): $aqaraCloudStatus")
@@ -377,7 +432,8 @@ class PanelDevice(
             "wake_model" -> v?.setActive(listOfNotNull(prefs.wakeModel.takeIf { it.isNotEmpty() }?.let(TfliteWakeWord::modelName)))
             "speaker_volume", "speaker_muted" -> applyVolume()
             "radio_mode" -> RadioController.apply(prefs.radioMode)
-            KioskPrefs.KEY_BLOCK_AQARA_CLOUD -> applyAqaraCloud("setting changed")
+            KioskPrefs.KEY_BLOCK_AQARA_CLOUD, KioskPrefs.KEY_BASE_BACKEND, KioskPrefs.KEY_BASE_TRANSPORT ->
+                reconfigureBase("setting $key changed")
             KioskPrefs.KEY_SENDSPIN_ENABLED -> if (prefs.sendspinEnabled) sendspin?.start() else sendspin?.stop("user_request")
             // A new client/hello must carry the changed setting: reconnect.
             KioskPrefs.KEY_SENDSPIN_UNPAIRED, KioskPrefs.KEY_SENDSPIN_SERVER -> sendspin?.restartSession()
