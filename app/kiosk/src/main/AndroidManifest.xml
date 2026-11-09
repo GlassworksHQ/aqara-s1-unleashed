@@ -22,6 +22,18 @@
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Improv Wi-Fi via BLE (improv/): LE advertising + GATT server, Wi-Fi scan/connect.
+         BLUETOOTH/BLUETOOTH_ADMIN are install-time on API <= 30; ADVERTISE/CONNECT replace them on 31+.
+         Scan results and the current SSID need ACCESS_FINE_LOCATION + location mode on Android 10
+         (a device-owner app grants it to itself; otherwise `pm grant`). -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
     <!-- Wall base support binds to the stock LocalService (package visibility, targetSdk 30+). -->
     <queries>
         <package android:name="com.lumi.systemmanager" />
@@ -30,6 +42,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
     <application
         android:name=".KioskApp"
@@ -80,6 +93,16 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
+
+        <!-- Improv intent extras from adb (improv=true, release_device_owner=true; see ImprovActivity).
+             WRITE_SECURE_SETTINGS: adb shell holds it, normal apps can't. -->
+        <activity
+            android:name=".improv.ImprovActivity"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay" />
 
         <receiver
             android:name=".BootReceiver"

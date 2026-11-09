@@ -145,78 +145,7 @@
   browser.runtime.sendNativeMessage(APP, { type: "config" }).then((r) => {
     if (r && typeof r === "object") {
       cfg = Object.assign(cfg, r);
-      // ---- external auth bridge ------------------------------------------------------------------
-  // The frontend computes `isExternal` once at startup from window.externalApp / ?external_auth=1,
-  // so the object must exist before its module scripts run: install it synchronously here
-  // (document_start), never after an async round trip.
-  // Callbacks the frontend installs on window and asks us to call (external_auth.ts constants).
-  const AUTH_CALLBACKS = ["externalAuthSetToken", "externalAuthRevokeToken"];
-
-  function callPage(name, ...args) {
-    try {
-      const fn = window.wrappedJSObject[name];
-      if (typeof fn !== "function") return;
-      fn(...args.map((a) => (a !== null && typeof a === "object" ? cloneInto(a, window) : a)));
-    } catch (e) { console.warn("s1kiosk: page callback " + name + " failed", e); }
-  }
-
-  function parsePayload(payload) {
-    try { return typeof payload === "string" ? JSON.parse(payload) : null; } catch (e) { return null; }
-  }
-
-  function installExternalApp() {
-    const ext = createObjectIn(window, { defineAs: "externalApp" });
-
-    // getExternalAuth('{"callback":"externalAuthSetToken","force":true}')
-    // -> window.externalAuthSetToken(true, {access_token, expires_in}) or (false)
-    exportFunction(function (payload) {
-      const p = parsePayload(payload);
-      if (!p || !AUTH_CALLBACKS.includes(p.callback)) return;
-      browser.runtime.sendNativeMessage(APP, { type: "getExternalAuth", force: !!p.force }).then((r) => {
-        if (r && r.success) callPage(p.callback, true, { access_token: r.access_token, expires_in: r.expires_in });
-        else callPage(p.callback, false);
-      }, () => callPage(p.callback, false));
-    }, ext, { defineAs: "getExternalAuth" });
-
-    // revokeExternalAuth('{"callback":"externalAuthRevokeToken"}'): the user logged out in HA.
-    exportFunction(function (payload) {
-      const p = parsePayload(payload);
-      if (!p || !AUTH_CALLBACKS.includes(p.callback)) return;
-      browser.runtime.sendNativeMessage(APP, { type: "revokeExternalAuth" }).then(
-        (r) => callPage(p.callback, !!(r && r.success)),
-        () => callPage(p.callback, false));
-    }, ext, { defineAs: "revokeExternalAuth" });
-
-    // externalBus(JSON): with this method present the frontend creates ExternalMessaging and
-    // *awaits* `config/get` before it finishes loading, so that one must be answered. Replies go to
-    // window.externalBus({id, type: "result", success, result|error}) and must be async: the
-    // frontend registers the pending id right after calling us.
-    const CONFIG = {
-      hasSettingsScreen: false, hasSidebar: false, canWriteTag: false, hasExoPlayer: false,
-      canCommissionMatter: false, canImportThreadCredentials: false, hasAssist: false,
-      hasBarCodeScanner: 0, canSetupImprov: false, hasEntityAddTo: false, appVersion: "S1 Kiosk",
-    };
-    // Messages that expect an answer (EMOutgoingMessageWithAnswer); everything else is fire-and-forget.
-    const NEEDS_ANSWER = ["entity/add_to/get_actions", "matter/share_device", "webrtc/stream/start"];
-    exportFunction(function (raw) {
-      const msg = parsePayload(raw);
-      if (!msg || typeof msg.id !== "number" || msg.type === "result") return;
-      let reply = null;
-      if (msg.type === "config/get") {
-        reply = { id: msg.id, type: "result", success: true, result: CONFIG };
-      } else if (NEEDS_ANSWER.includes(msg.type)) {
-        reply = { id: msg.id, type: "result", success: false,
-          error: { code: "not_supported", message: "Not supported by S1 Kiosk" } };
-      }
-      if (reply) setTimeout(() => callPage("externalBus", reply), 0);
-    }, ext, { defineAs: "externalBus" });
-  }
-
-  if (params.get("external_auth") === "1") {
-    try { installExternalApp(); } catch (e) { console.warn("s1kiosk: external auth bridge failed", e); }
-  }
-
-  hideSidebar();
+      hideSidebar();
       apply();
     }
   }).catch(() => {});

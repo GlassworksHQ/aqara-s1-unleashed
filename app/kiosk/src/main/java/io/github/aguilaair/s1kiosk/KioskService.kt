@@ -16,6 +16,7 @@ import io.github.aguilaair.s1kiosk.auth.HaAuth
 import io.github.aguilaair.s1kiosk.auth.UrlConnectionPoster
 import io.github.aguilaair.s1kiosk.discovery.HaDiscovery
 import io.github.aguilaair.s1kiosk.esphome.PanelDevice
+import io.github.aguilaair.s1kiosk.improv.ImprovController
 import io.github.aguilaair.s1kiosk.voice.VoiceEvent
 
 /**
@@ -43,6 +44,7 @@ class KioskService : Service() {
         discoveryRef = d
         d.start()
         device = PanelDevice(this, { e -> main.post { onVoiceEvent(e) } }, d::onApiHello).also { it.start() }
+        ImprovController.init(this) // Improv Wi-Fi via BLE (provisioning mode; see improv/)
         Log.i("S1Kiosk", "KioskService started")
     }
 
@@ -62,6 +64,7 @@ class KioskService : Service() {
     }
 
     override fun onDestroy() {
+        ImprovController.shutdown()
         device?.stop()
         device = null
         discovery?.stop()
@@ -71,7 +74,10 @@ class KioskService : Service() {
         super.onDestroy()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        ImprovController.handleIntent(intent) // --ez improv / release_device_owner (via ImprovActivity)
+        return START_STICKY
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
