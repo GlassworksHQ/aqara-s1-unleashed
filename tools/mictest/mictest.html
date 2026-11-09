@@ -1,0 +1,38 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>S1 Kiosk mic test</title>
+<style>body{font:20px sans-serif;background:#111;color:#eee;padding:16px}pre{white-space:pre-wrap}</style>
+</head><body>
+<h2>S1 Kiosk mic / secure-context test</h2>
+<pre id="out"></pre>
+<script>
+const out = document.getElementById('out');
+function log(m){ out.textContent += m + "\n"; console.log("MICTEST " + m); }
+(async () => {
+  log("UA: " + navigator.userAgent);
+  log("isSecureContext: " + window.isSecureContext);
+  log("navigator.mediaDevices: " + !!navigator.mediaDevices);
+  log("AudioWorklet: " + (typeof AudioWorkletNode !== 'undefined'));
+  try {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    log("devices: " + devs.map(d => d.kind + ":" + (d.label || "?")).join(", "));
+  } catch (e) { log("enumerateDevices ERR: " + e); }
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({audio: true});
+    const t = s.getAudioTracks()[0];
+    log("getUserMedia OK: " + t.label + " settings=" + JSON.stringify(t.getSettings()));
+    const ctx = new AudioContext();
+    const src = ctx.createMediaStreamSource(s);
+    const an = ctx.createAnalyser(); an.fftSize = 2048; src.connect(an);
+    const buf = new Float32Array(an.fftSize);
+    let peak = 0;
+    const t0 = performance.now();
+    await new Promise(r => { (function tick(){ an.getFloatTimeDomainData(buf);
+      for (const v of buf) peak = Math.max(peak, Math.abs(v));
+      if (performance.now() - t0 < 3000) requestAnimationFrame(tick); else r(); })(); });
+    log("AudioContext state=" + ctx.state + " sampleRate=" + ctx.sampleRate + " peak(3s)=" + peak.toFixed(4));
+    log("RESULT: PASS");
+  } catch (e) { log("getUserMedia ERR: " + e.name + ": " + e.message); log("RESULT: FAIL"); }
+})();
+</script>
+</body></html>

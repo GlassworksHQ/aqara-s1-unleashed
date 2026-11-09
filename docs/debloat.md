@@ -50,3 +50,32 @@ All ship in read-only `/vendor/app` (one in `/system/app`), so all are restorabl
 A reversible script lives at [`tools/debloat/debloat.sh`](../tools/debloat/debloat.sh)
 (`disable` / `enable` / `status`). It disables the safe set and leaves
 system-critical packages alone.
+
+## Applied on the reference unit (2026-11-09)
+
+- S1 Kiosk ([app/](../app/README.md)) installed and set as HOME with
+  `cmd package set-home-activity io.github.aguilaair.s1kiosk/.MainActivity`.
+- `debloat.sh disable` + `disable-launcher` applied: all 9 packages in the safe set and the Aqara launcher
+  are disabled. `com.lumi.settings` and `com.lumi.systemmanager` are still enabled.
+- Survives reboot: the panel boots straight into the kiosk, USB ADB comes back, and Wi-Fi rejoins.
+- Package/HOME state was snapshotted before any change (kept outside the repo with the APK backups).
+
+### Locale / time zone
+
+The unit shipped with Android's locale on `es-ES` (`settings system system_locales`), even though
+`persist.sys.locale=en`. Its time zone was `Africa/Algiers`. Both are fixable without root:
+
+```sh
+adb shell settings put system system_locales en-US          # applies after reboot
+adb shell settings put global auto_time_zone 0
+adb shell service call alarm 3 s16 America/Los_Angeles      # IAlarmManager.setTimeZone, immediate
+```
+
+Home Assistant's UI language is a **per-user HA profile setting** (Profile → Localization), not the
+Android locale.
+
+### Still on the list
+
+- `com.baidu.input_auto` is the only IME (branded "Aqara" keyboard). Candidate to replace with an open IME.
+- `com.lumi.dream` is disabled, so Lumi's screensaver toggle `secure screensave_enable` was set to `0`.
+- Night behaviour: see [screen-policy.md](screen-policy.md) (DND 22:00–07:00 forces the screen off).

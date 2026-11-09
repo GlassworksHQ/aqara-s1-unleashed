@@ -68,7 +68,13 @@ docs/
   hardware.md    Board, FEL button, 3-pin UART console pinout
   boot-log.md    Annotated stock boot log (DRAM, secure-boot, partitions)
   findings.md    Root, SELinux, AVB, partitions, what's unlocked
+  debloat.md     Reversible Aqara de-bloat, locale/time-zone fixes
+  screen-policy.md  Why the panel turns its screen off (Lumi DND night mode)
+app/             S1 Kiosk: MIT GeckoView kiosk app (HA dashboard, mic over http, HOME launcher)
 tools/
+  debloat/             Reversible `pm disable-user` de-bloat script
+  gecko-eval/          Evaluate JS in the kiosk page over Firefox remote debugging
+  mictest/             getUserMedia / secure-context test page
   esp32-uart-bridge/   ESP-IDF firmware turning any ESP32-S3 into a
                        3.3 V USB↔UART bridge for the panel's debug console
                        (dev-only; end users won't need UART)
@@ -82,7 +88,10 @@ tools/
 - [x] Extract real DRAM parameters
 - [ ] Build DRAM-correct U-Boot-with-SPL for A133 and boot it via FEL (RAM only)
 - [ ] Bring up `fastboot` from that U-Boot
-- [ ] Validate end-state manually: sideload Home Assistant, set as kiosk launcher, disable Aqara launcher, voice/mic satellite
+- [x] MIT GeckoView kiosk app ([app/](app/README.md)), renders the current HA frontend full-screen on the 32-bit panel
+- [x] Mic over plain http in the kiosk (`getUserMedia` via Gecko secure-context allowlist)
+- [x] Validate end-state manually: kiosk as HOME launcher, Aqara launcher + bloat disabled (reversible), survives reboot
+- [ ] Wake-word voice satellite (native audio service → HA Assist pipeline)
 - [ ] Build `provisioning.img` (stock kernel + first-boot ramdisk that installs HA + sets kiosk) and run it via `fastboot boot` (nothing permanently flashed)
 - [ ] One-command `install.sh`: FEL → U-Boot → `fastboot boot provisioning.img` → done
 - [ ] Optional: full custom image variant
