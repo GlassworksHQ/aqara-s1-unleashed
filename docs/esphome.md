@@ -153,7 +153,7 @@ connection, TTS is played from a URL. Checked against esphome `voice_assistant.c
 | HA → panel | `ERROR{code,message}` | Stop (`VoiceAssistantRequest{start=false}`) and go idle; wake-word codes are ignored like ESPHome. |
 | panel → HA | `VoiceAssistantAnnounceFinished{success}` | After the TTS / announcement finished playing; HA marks the response finished. If `continue_conversation` was set, a new run starts without a wake word. |
 | HA → panel | `VoiceAssistantAnnounceRequest{media_id, text, preannounce_media_id, start_conversation}` | Play the pre-announce chime then the media, reply `AnnounceFinished`, optionally start a conversation. |
-| HA → panel | `VoiceAssistantTimerEventResponse` | Tracked and logged; a finished timer plays a short chime. |
+| HA → panel | `VoiceAssistantTimerEventResponse` | Shown as a live countdown pill (top right). When a timer finishes the screen wakes, a chime plays 3× and a "Timer done" banner shows until tapped (max 60 s). |
 
 Playback uses **Media3 ExoPlayer** (`ExoAudioPlayer`), which streams mp3/flac/aac/ogg/wav over HTTP
 in-process, including endless streams. Android's `MediaPlayer` is deliberately avoided: on this
@@ -270,7 +270,6 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 - No `SPEAKER` flag: TTS is fetched by URL, not streamed as PCM over the API.
 - One wake word at a time (`max_active_wake_words = 1`); HA's custom (microWakeWord) wake words
   are ignored.
-- Timers only chime; there is no on-screen timer UI.
 - No acoustic echo cancellation / barge-in: detections are ignored while listening or speaking.
 - Shared microphone with GeckoView: if the dashboard's in-browser Assist uses the mic at the same
   time, one of the two captures may get silence. *Mute microphone* releases it.

@@ -42,6 +42,7 @@ class MainActivity : Activity() {
     private lateinit var prefs: KioskPrefs
     private lateinit var geckoView: GeckoView
     private lateinit var voiceOverlay: VoiceOverlay
+    private lateinit var timerOverlay: TimerOverlay
     private var session: GeckoSession? = null
     private val handler = Handler(Looper.getMainLooper())
     private var pendingAndroidPermission: PermissionDelegate.Callback? = null
@@ -70,9 +71,11 @@ class MainActivity : Activity() {
 
         geckoView = GeckoView(this)
         voiceOverlay = VoiceOverlay(this)
+        timerOverlay = TimerOverlay(this)
         setContentView(android.widget.FrameLayout(this).apply {
             addView(geckoView, android.widget.FrameLayout.LayoutParams(-1, -1))
             addView(voiceOverlay, voiceOverlay.layoutParams())
+            addView(timerOverlay, timerOverlay.layoutParams())
         })
         KioskService.start(this)
         ScreenController.start(this)
@@ -88,6 +91,7 @@ class MainActivity : Activity() {
         ScreenController.onStateChanged = {
             pushState()
             voiceOverlay.update(KioskService.voiceState, prefs.voiceOverlay)
+            timerOverlay.refresh()
         }
         commandSink = { applyIntent(it, fromNewIntent = true) }
         startSession()

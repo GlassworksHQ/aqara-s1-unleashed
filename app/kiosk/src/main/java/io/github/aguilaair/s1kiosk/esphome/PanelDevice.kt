@@ -12,6 +12,7 @@ import android.os.PowerManager
 import io.github.aguilaair.s1kiosk.BuildConfig
 import io.github.aguilaair.s1kiosk.KioskPrefs
 import io.github.aguilaair.s1kiosk.MainActivity
+import io.github.aguilaair.s1kiosk.TimerBoard
 import io.github.aguilaair.s1kiosk.RadioController
 import io.github.aguilaair.s1kiosk.ScreenController
 import io.github.aguilaair.s1kiosk.base.BaseEntities
@@ -177,8 +178,17 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
             resolveUrl = ::resolveUrl,
             onTimerFinished = { name ->
                 ApiLog.i("Timer '$name' finished")
+                TimerBoard.finished(name)
+                ui { ScreenController.wake("timer"); ScreenController.onStateChanged?.invoke() }
                 val p = chimePlayer ?: TtsPlayer().also { chimePlayer = it }
+                // Three chimes ~3 s apart so it's noticeable across the room.
                 p.chime()
+                exec.schedule({ p.chime() }, 3, TimeUnit.SECONDS)
+                exec.schedule({ p.chime() }, 6, TimeUnit.SECONDS)
+            },
+            onTimersChanged = { list ->
+                TimerBoard.update(list.map { TimerBoard.Entry(it.id, it.name, it.totalSeconds, it.secondsLeft, it.active) })
+                ui { ScreenController.onStateChanged?.invoke() }
             },
             maxStreamMs = cfg.maxStreamMs,
         )

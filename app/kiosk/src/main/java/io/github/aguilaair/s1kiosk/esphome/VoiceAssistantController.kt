@@ -43,6 +43,8 @@ class VoiceAssistantController(
     private val emit: (VoiceEvent) -> Unit,
     private val resolveUrl: (String) -> String = { it },
     private val onTimerFinished: (String) -> Unit = {},
+    /** Called (off the lock) with a snapshot whenever the set of timers changes. */
+    private val onTimersChanged: (List<Timer>) -> Unit = {},
     private val maxStreamMs: Long = 15_000L,
     private val clock: () -> Long = ::nowMs,
 ) : VoiceAssistantHandler {
@@ -316,6 +318,8 @@ class VoiceAssistantController(
                     add { onTimerFinished(name) }
                 }
             }
+            val snapshot = timers.values.toList()
+            add { onTimersChanged(snapshot) }
         }
     }
 
