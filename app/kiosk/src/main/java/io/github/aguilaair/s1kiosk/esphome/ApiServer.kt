@@ -23,6 +23,15 @@ internal object ApiLog {
         if (onAndroid) { android.util.Log.w(TAG, msg, t); Unit } else println("W/$TAG: $msg ${t ?: ""}")
 }
 
+/** The device's Sendspin client as the ESPHome API exposes it (DeviceCapabilities + pairing token). */
+interface SendspinTokenSource {
+    /** The Sendspin client_id, or "" until the client has started since boot. */
+    fun clientIdIfStarted(): String
+
+    /** (SendspinApi.STATUS_*, token when OK). The token is a credential: never log it. */
+    fun pairingToken(): Pair<Int, String?>
+}
+
 /** What `DeviceInfoResponse` / `HelloResponse` / mDNS report. */
 data class DeviceIdentity(
     /** ESPHome node name (hostname-style), e.g. `s1-panel`. */
@@ -88,6 +97,12 @@ class ApiServer(
     }
 
     @Volatile var voice: VoiceAssistantHandler? = null
+
+    /**
+     * The device's Sendspin client, for Home Assistant's pairing-token hand-off to Music Assistant
+     * (HA `esphome/sendspin.py`, `websocket_api.py` `sendspin/get_pairing_token`). Null = no Sendspin.
+     */
+    @Volatile var sendspin: SendspinTokenSource? = null
 
     /** Called after a command message was handled (state may have changed). */
     @Volatile var onCommand: (() -> Unit)? = null
@@ -409,11 +424,8 @@ class ApiServer(
                 }
                 Msg.PING_RESPONSE, Msg.GET_TIME_RESPONSE -> Unit
                 Msg.DEVICE_INFO_REQUEST -> reply(Msg.DEVICE_INFO_RESPONSE, deviceInfo())
-                Msg.DEVICE_CAPABILITIES_REQUEST -> reply(
-                    Msg.DEVICE_CAPABILITIES_RESPONSE,
-                    // voice_assistant = 2 { feature_flags = 1 }
-                    ProtoWriter().message(2, ProtoWriter().uint32(1, identity().voiceFeatures)),
-                )
+                Msg.DEVICE_CAPABILITIES_REQUEST -> reply(Msg.DEVICE_CAPABILITIES_RESPONSE, capabilities())
+                Msg.SENDSPIN_PAIRING_TOKEN_REQUEST -> reply(Msg.SENDSPIN_PAIRING_TOKEN_RESPONSE, sendspinToken())
                 Msg.LIST_ENTITIES_REQUEST -> {
                     val frames = entities.map { Frame(it.listType, it.info().toByteArray()) } +
                         Frame(Msg.LIST_ENTITIES_DONE, ByteArray(0))
@@ -436,6 +448,32 @@ class ApiServer(
                 }
                 else -> handleVoice(f.type, m)
             }
+        }
+
+        private fun capabilities(): ProtoWriter {
+            // voice_assistant = 2 { feature_flags = 1 }
+            val w = ProtoWriter().message(2, ProtoWriter().uint32(1, identity().voiceFeatures))
+            // sendspin = 6 { feature_flags = 1, client_id = 2 } (client id empty until the client has started)
+            sendspin?.let { ss ->
+                w.message(6, ProtoWriter().uint32(1, SendspinApi.FEATURE_PAIRING_TOKEN).string(2, ss.clientIdIfStarted()))
+            }
+            return w
+        }
+
+        /**
+         * `SendspinPairingTokenResponse` (ESPHome sendspin_hub.cpp semantics): only over an encrypted
+         * session with a provisioned key, since the token is a long-lived credential. Never logged.
+         */
+        private fun sendspinToken(): ProtoWriter {
+            val ss = sendspin
+            val encrypted = keys?.hasKey == true && transport is NoiseTransport
+            val (status, token) = when {
+                ss == null -> SendspinApi.STATUS_DISABLED to null
+                !encrypted -> SendspinApi.STATUS_ENCRYPTION_REQUIRED to null
+                else -> ss.pairingToken()
+            }
+            ApiLog.i("[$id] Sendspin pairing token requested: status $status")
+            return ProtoWriter().uint32(1, status).string(2, token)
         }
 
         private fun subscribeStates() = synchronized(stateLock) {

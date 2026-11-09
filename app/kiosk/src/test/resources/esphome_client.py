@@ -60,6 +60,11 @@ async def plaintext(port):
     }
     caps = await cli.device_capabilities_compat(info)
     R["caps_voice_flags"] = caps.voice_assistant.feature_flags
+    # Sendspin (HA esphome/sendspin.py): the client id for Music Assistant's auto-pairing; the token
+    # itself is refused on a plaintext connection.
+    R["caps_sendspin"] = {"flags": int(caps.sendspin.feature_flags), "client_id": caps.sendspin.client_id}
+    tok = await cli.sendspin_pairing_token()
+    R["sendspin_token_plain"] = {"status": int(tok.status) if tok.status is not None else None, "token": tok.token}
 
     entities, _ = await cli.list_entities_services()
     by_id = {e.object_id: e for e in entities}
@@ -197,7 +202,9 @@ async def noise(port, key):
     await wait_for(lambda: sw.key in states, "noise states")
     cli.switch_command(sw.key, True)
     await wait_for(lambda: states[sw.key].state is True, "noise switch")
-    R["noise"] = {"name": info.name, "entities": len(entities)}
+    tok = await cli.sendspin_pairing_token()
+    R["noise"] = {"name": info.name, "entities": len(entities),
+                  "sendspin_status": int(tok.status) if tok.status is not None else None, "sendspin_token": tok.token}
     await cli.disconnect()
 
     errors = {}

@@ -47,6 +47,9 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   screen-off ([docs/screen-policy.md](../docs/screen-policy.md)).
 - **Home Assistant integration as an ESPHome device** (native API, voice assistant, screen and kiosk
   controls), see below and [docs/esphome.md](../docs/esphome.md).
+- **Native Music Assistant player (Sendspin)**: MA sees the panel as its own player "S1 Panel" and plays
+  to it in sync with your other Sendspin speakers (groupable). It pairs automatically: HA hands MA the
+  panel's pairing token over the ESPHome API. See below and [docs/sendspin.md](../docs/sendspin.md).
 - **Wi-Fi setup over Bluetooth (Improv via BLE)**: a panel with no network (30 s after boot), or one
   told to (`--ez improv true` / the HA button "Start Wi-Fi setup (Bluetooth)"), advertises the Improv
   service for 10 minutes, so HA's `improv_ble` integration or improv-wifi.com can send it Wi-Fi
@@ -125,6 +128,9 @@ $A --es screen off         # or on
 $A --ez restart true       # restart the app process
 $A --es wake_model alexa_v0.1.tflite --ef wake_threshold 0.6 --ef mic_gain 2.0 --ez mic_muted false
 $A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # manual ESPHome API key (HA normally provisions one)
+$A --ez sendspin_enabled false        # Music Assistant player (Sendspin) off/on (default on)
+$A --es sendspin_server 192.168.1.100 # Sendspin server: auto (default: mDNS, else <HA host>:8927) or host[:port][/path] / ws://
+$A --ez sendspin_unpaired_access true # let a server play without pairing (guest mode; default off)
 ```
 
 Do **not** change `wm density` to scale the UI. On this panel it breaks GeckoView's surface
@@ -162,7 +168,8 @@ python3 tools/gecko-eval/gecko_eval.py 'JSON.stringify({w: innerWidth, h: innerH
 ```
 
 Gecko's prefs are written to `files/geckoview-config.yaml` at startup and logged under the
-`S1Kiosk` tag. Sign-in and HA discovery log under `S1Auth` / `S1Discovery` (never tokens or keys). Page console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
+`S1Kiosk` tag. Sign-in and HA discovery log under `S1Auth` / `S1Discovery`, the Music Assistant player
+under `S1Sendspin` (with a `sync:` line every 10 s while playing). None of them log tokens or keys. Page console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
 
 > If the screen is blank/white and `innerWidth` is 0, the **display is off**. Gecko drops its
 > surface while the screen sleeps. Check `adb shell dumpsys power | grep mWakefulness`.
@@ -194,8 +201,22 @@ Not yet tested on the panel. The previous Wyoming satellite was verified there (
 `announce` TTS played, wake-word inference used about 40% of one core); remove its Wyoming entry
 from HA when switching.
 
+## Music Assistant: native Sendspin player
+
+The panel is a Sendspin client (the protocol behind Music Assistant's own players): Noise-encrypted
+WebSocket to MA's server (`_sendspin-server._tcp`, else `ws://<HA host>:8927/sendspin`), Kalman clock
+sync, PCM 48 kHz stereo into an `AudioTrack` scheduled from `getTimestamp()` with single-frame drift
+correction. MA pairs with it automatically through HA (ESPHome pairing-token hand-off). Its entity in HA
+is `media_player.s1_panel` (from the Music Assistant integration). The ESPHome switch
+**Music Assistant player (Sendspin)** turns it off. While the voice assistant listens or talks, the
+Sendspin output is muted locally and stays in sync. Verified on the panel against MA 2.10.9 (clock
+±0.43 ms, ~0.9 corrected frames/s). Details, sources and tests: [docs/sendspin.md](../docs/sendspin.md).
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Clean-room implementation. It contains no code from
 `jxlarrea/kiosk-satellite` (CC BY-NC-ND), which was only used to prove that GeckoView works on this panel.
 GeckoView is MPL-2.0 and is pulled as a Maven dependency. The QR code uses ZXing core (Apache-2.0).
+The Sendspin client is a clean-room implementation from the Sendspin specification (Community
+Specification License 1.0), cross-checked against aiosendspin (Apache-2.0). It contains no code from
+either.

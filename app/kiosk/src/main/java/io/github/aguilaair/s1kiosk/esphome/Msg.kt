@@ -65,6 +65,18 @@ object Msg {
     const val NOISE_ENCRYPTION_SET_KEY_RESPONSE = 125
     const val DEVICE_CAPABILITIES_REQUEST = 149
     const val DEVICE_CAPABILITIES_RESPONSE = 150
+    const val SENDSPIN_PAIRING_TOKEN_REQUEST = 159
+    const val SENDSPIN_PAIRING_TOKEN_RESPONSE = 160
+}
+
+/** `SendspinFeature` / `SendspinPairingTokenStatus` (aioesphomeapi 46.25.0 model.py / api.proto). */
+object SendspinApi {
+    const val FEATURE_PAIRING_TOKEN = 1 shl 0
+    const val STATUS_NOT_READY = 0
+    const val STATUS_OK = 1
+    const val STATUS_ENCRYPTION_REQUIRED = 2
+    const val STATUS_DISABLED = 3
+    const val STATUS_FAILED = 4
 }
 
 /** `VoiceAssistantFeature` (aioesphomeapi model.py; ESPHome voice_assistant.h). */

@@ -6,7 +6,9 @@ The kiosk app makes the panel look like **one ESPHome device** to Home Assistant
 - an **Assist satellite** with an on-device wake word (openWakeWord on TFLite), like Home Assistant
   Voice PE: wake word select, pipeline select, VAD sensitivity, announcements, timers;
 - a **media player** (`media_player.s1_panel_speaker`) for TTS, announcements and audio;
-- the **screen** as a light, the presence and light sensors, and the kiosk/screen settings.
+- the **screen** as a light, the presence and light sensors, and the kiosk/screen settings;
+- the switch for the panel's native **Music Assistant player** (Sendspin, [sendspin.md](sendspin.md)),
+  and the Sendspin pairing-token hand-off that lets Music Assistant pair with it automatically.
 
 One integration, discovered automatically, no Wyoming or MQTT. It replaces the earlier Wyoming
 satellite (remove that Wyoming entry from HA when you switch).
@@ -63,6 +65,7 @@ Details and sources: [onboarding.md](onboarding.md#2-adoption--encryption-esphom
 | manufacturer / model | `Aqara` / `Panel Hub S1 Plus (S1 Kiosk)` |
 | esphome_version / compilation_time | `2026.10.2` / `S1 Kiosk <app version>` (HA shows "2026.10.2 (S1 Kiosk 0.1.0)") |
 | API version | 1.20 (as ESPHome 2026.10/11); `DeviceCapabilitiesRequest` is answered |
+| Sendspin | `DeviceCapabilitiesResponse.sendspin` = `{feature_flags: PAIRING_TOKEN, client_id}`; `SendspinPairingTokenRequest` (159) → `SendspinPairingTokenResponse` (160), token only over Noise with a key ([sendspin.md](sendspin.md#esphome-hand-off-how-ha-gives-ma-the-token)) |
 | voice_assistant_feature_flags | 61 = VOICE_ASSISTANT 1 + API_AUDIO 4 + TIMERS 8 + ANNOUNCE 16 + START_CONVERSATION 32 (0 when `voice_enabled` is false) |
 
 ## Entities
@@ -89,6 +92,8 @@ is FNV-1a of the `object_id` (stable).
 | button `Restart app` | `restart_app` | restarts the kiosk process |
 | switch `Hide HA header` | `hide_ha_header` | header + sidebar, applied live |
 | media_player `Speaker` | `speaker` | play/pause/stop, volume, mute, play media, announce; formats: mp3 (default + announcement) |
+| switch `Music Assistant player (Sendspin)` | `sendspin` | the native Sendspin player ([sendspin.md](sendspin.md)), default on; off sends `client/goodbye` `user_request` |
+| text_sensor `Music Assistant player status` | `sendspin_status` | diagnostic; e.g. `ready, paired with Music Assistant (…)`, `playing from …: Artist – Title`, `waiting for pairing or approval by …`, `off` |
 | switch `Mute microphone` | `mute_microphone` | releases the microphone entirely |
 | switch `Wake sound` | `wake_sound` | short two-tone chime when the wake word is detected (default on) |
 | switch `Voice overlay` | `voice_overlay` | "Listening… / Speaking" pill at the bottom of the screen during voice runs (default on) |
@@ -256,7 +261,8 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   change (server-initiated disconnect, reconnect lists the new entity), and HA 2026.11's dynamic
   key provisioning (keyless connect, zero-PSK `noise_encryption_set_key`, the keyless session is
   dropped, plaintext and zero PSK are refused, reconnect with the key, bad/same/empty keys, key
-  survives a restart). Skipped without
+  survives a restart), and the Sendspin capability (client id) and pairing token (`OK` over Noise,
+  `ENCRYPTION_REQUIRED` over plaintext). Skipped without
   `ESPHOME_PYTHON`. Also passes with
   aioesphomeapi 46.28.0.
 - `NoiseKeysTest`: the key state machine. `OAuthTest` / `SignInServerTest`: authorize URL, state
@@ -298,9 +304,9 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 - No acoustic echo cancellation / barge-in: detections are ignored while listening or speaking.
 - Shared microphone with GeckoView: if the dashboard's in-browser Assist uses the mic at the same
   time, one of the two captures may get silence. *Mute microphone* releases it.
-- Music Assistant: the speaker is a normal HA media player, so MA can use it through its
-  *Home Assistant* player provider (enable `S1 Panel Speaker` there). That's MA → HA → panel, so
-  no MA-synced multi-room. A native MA protocol (e.g. a Snapcast/Squeezelite client in the app)
-  would be needed for that.
+- Music Assistant: the panel is a native, synced Sendspin player (`media_player.s1_panel`, see
+  [sendspin.md](sendspin.md)), so MA's *Home Assistant* player provider is no longer needed for it.
+  `media_player.s1_panel_speaker` stays for TTS, announcements and HA media; while it announces,
+  the Sendspin output is muted locally.
 - Chromecast: not possible. A Cast receiver must be a Google-certified device.
 - `RadioController` only logs; the radio mode is stored but nothing is switched yet.

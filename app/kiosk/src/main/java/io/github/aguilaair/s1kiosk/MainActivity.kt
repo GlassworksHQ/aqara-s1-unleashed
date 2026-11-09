@@ -447,6 +447,9 @@ class MainActivity : Activity() {
         if (intent.hasExtra("wake_threshold")) prefs.wakeThreshold = intent.getFloatExtra("wake_threshold", 0.5f)
         if (intent.hasExtra("mic_gain")) prefs.micGain = intent.getFloatExtra("mic_gain", 1f)
         if (intent.hasExtra("mic_muted")) prefs.micMuted = intent.getBooleanExtra("mic_muted", false)
+        if (intent.hasExtra("sendspin_enabled")) prefs.sendspinEnabled = intent.getBooleanExtra("sendspin_enabled", true)
+        intent.getStringExtra("sendspin_server")?.let { prefs.sendspinServer = it }
+        if (intent.hasExtra("sendspin_unpaired_access")) prefs.sendspinUnpairedAccess = intent.getBooleanExtra("sendspin_unpaired_access", false)
         intent.getStringExtra("api_key")?.let { key ->
             if (KioskPrefs.decodeApiKey(key) != null) prefs.apiKey = key
             else Log.w(TAG, "api_key must be base64 of exactly 32 bytes; ignored")

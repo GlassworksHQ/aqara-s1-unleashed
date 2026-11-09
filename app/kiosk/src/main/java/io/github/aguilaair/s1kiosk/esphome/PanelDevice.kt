@@ -24,6 +24,7 @@ import io.github.aguilaair.s1kiosk.dashboard.DashboardOptions
 import io.github.aguilaair.s1kiosk.dashboard.Dashboards
 import io.github.aguilaair.s1kiosk.dashboard.StableChange
 import io.github.aguilaair.s1kiosk.discovery.HaUrls
+import io.github.aguilaair.s1kiosk.sendspin.SendspinPlayer
 import io.github.aguilaair.s1kiosk.setup.SetupSignals
 import io.github.aguilaair.s1kiosk.voice.TfliteWakeWord
 import io.github.aguilaair.s1kiosk.voice.TtsPlayer
@@ -88,6 +89,8 @@ class PanelDevice(
     private val voicePlayer = ExoAudioPlayer(context, "voice", AudioAttributes.USAGE_ASSISTANT)
     private val mediaPlayer = ExoAudioPlayer(context, "media", AudioAttributes.USAGE_MEDIA)
     private var chimePlayer: TtsPlayer? = null
+    /** Native Music Assistant player (Sendspin, docs/sendspin.md); created in startInternal. */
+    @Volatile private var sendspin: SendspinPlayer? = null
     @Volatile private var announcing = false
     @Volatile private var mediaPausedForVoice = false
     private var wakeLock: PowerManager.WakeLock? = null
@@ -122,6 +125,8 @@ class PanelDevice(
         server = null
         voice?.stop()
         voice = null
+        sendspin?.stop("shutdown")
+        sendspin = null
         voicePlayer.release()
         mediaPlayer.release()
         chimePlayer?.release()
@@ -142,6 +147,7 @@ class PanelDevice(
             voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
         )
         ApiLog.i("ESPHome device '${identity.name}' mac ${identity.macAddress}, voice=${voiceEnabled}")
+        sendspin = SendspinPlayer(ctx, prefs, identity.macAddress) { exec.execute { server?.publishStates() } }
         coreEntities = buildEntities()
         appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
         dashboardRebuild = StableChange(dashboardOptions(appliedDashboards))
@@ -154,6 +160,7 @@ class PanelDevice(
         voicePlayer.onStateChanged = mediaPlayer.onStateChanged
 
         if (voiceEnabled) startVoice()
+        if (prefs.sendspinEnabled) sendspin?.start()
         startServer()
         prefs.registerListener(prefListener)
         ScreenController.addListener(screenListener)
@@ -278,6 +285,17 @@ class PanelDevice(
     private fun startServer() {
         val s = ApiServer(ApiServer.DEFAULT_PORT, { identity }, entities, noiseKeys)
         s.voice = controller
+        s.sendspin = object : SendspinTokenSource {
+            override fun clientIdIfStarted() = sendspin?.takeIf { it.started }?.clientId ?: ""
+            override fun pairingToken(): Pair<Int, String?> {
+                val p = sendspin
+                return when {
+                    p == null || !p.started ->
+                        (if (prefs.sendspinEnabled) SendspinApi.STATUS_NOT_READY else SendspinApi.STATUS_DISABLED) to null
+                    else -> SendspinApi.STATUS_OK to p.pairingToken()
+                }
+            }
+        }
         s.onCommand = { exec.execute { s.publishStates() } }
         s.onClientHello = { info, addr ->
             if (HaUrls.isHomeAssistantHello(info)) SetupSignals.onHaHello()
@@ -333,6 +351,9 @@ class PanelDevice(
             "wake_model" -> v?.setActive(listOfNotNull(prefs.wakeModel.takeIf { it.isNotEmpty() }?.let(TfliteWakeWord::modelName)))
             "speaker_volume", "speaker_muted" -> applyVolume()
             "radio_mode" -> RadioController.apply(prefs.radioMode)
+            KioskPrefs.KEY_SENDSPIN_ENABLED -> if (prefs.sendspinEnabled) sendspin?.start() else sendspin?.stop("user_request")
+            // A new client/hello must carry the changed setting: reconnect.
+            KioskPrefs.KEY_SENDSPIN_UNPAIRED, KioskPrefs.KEY_SENDSPIN_SERVER -> sendspin?.restartSession()
         }
         server?.publishStates()
     }
@@ -343,10 +364,15 @@ class PanelDevice(
             (chimePlayer ?: TtsPlayer().also { chimePlayer = it }).wakeChime()
         }
         when (e) {
-            is VoiceEvent.WakeDetected, is VoiceEvent.Listening, is VoiceEvent.Speaking ->
+            is VoiceEvent.WakeDetected, is VoiceEvent.Listening, is VoiceEvent.Speaking -> {
                 if (mediaPlayer.isPlaying && !announcing) { mediaPausedForVoice = true; mediaPlayer.pause() }
-            is VoiceEvent.Idle, is VoiceEvent.Error ->
+                // Sendspin keeps its timeline (the group plays on); the panel just goes quiet locally.
+                sendspin?.setDucked(true)
+            }
+            is VoiceEvent.Idle, is VoiceEvent.Error -> {
                 if (mediaPausedForVoice) { mediaPausedForVoice = false; mediaPlayer.resume() }
+                if (!announcing) sendspin?.setDucked(false)
+            }
             else -> Unit
         }
         try { onVoiceEvent(e) } catch (t: Throwable) { ApiLog.w("voice listener failed", t) }
@@ -468,6 +494,15 @@ class PanelDevice(
             },
             handle = ::onMediaCommand,
         ),
+        // --- Music Assistant (Sendspin): native, synced player (docs/sendspin.md)
+        SwitchEntity(
+            "sendspin", "Music Assistant player (Sendspin)", "mdi:speaker-wireless", EntityCategory.CONFIG,
+            get = { prefs.sendspinEnabled }, set = { prefs.sendspinEnabled = it },
+        ),
+        TextSensorEntity(
+            "sendspin_status", "Music Assistant player status", "mdi:speaker-wireless", EntityCategory.DIAGNOSTIC,
+            get = { sendspin?.statusText() ?: "off" },
+        ),
         SwitchEntity(
             "mute_microphone", "Mute microphone", "mdi:microphone-off", EntityCategory.CONFIG,
             get = { prefs.micMuted }, set = { prefs.micMuted = it },
@@ -545,8 +580,10 @@ class PanelDevice(
         val resume = mediaPlayer.isPlaying
         if (resume) mediaPlayer.pause()
         announcing = true
+        sendspin?.setDucked(true)
         voicePlayer.play(listOf(url)) {
             announcing = false
+            sendspin?.setDucked(false)
             if (resume) mediaPlayer.resume()
             exec.execute { server?.publishStates() }
         }

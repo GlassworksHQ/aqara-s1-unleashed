@@ -250,6 +250,27 @@ class KioskPrefs(context: Context) {
         get() = sp.getBoolean("mic_muted", false)
         set(v) = sp.edit().putBoolean("mic_muted", v).apply()
 
+    // ---- Music Assistant player (Sendspin, see sendspin/ and docs/sendspin.md). Its secrets
+    // (identity, pairing PSK, pairing records) live in `sendspin.xml` (PrefsSsStore).
+
+    /** Run the native Sendspin player (ESPHome switch "Music Assistant player (Sendspin)"). */
+    var sendspinEnabled: Boolean
+        get() = sp.getBoolean(KEY_SENDSPIN_ENABLED, true)
+        set(v) = sp.edit().putBoolean(KEY_SENDSPIN_ENABLED, v).apply()
+
+    /** `auto` (mDNS `_sendspin-server._tcp`, else `ws://<HA host>:8927/sendspin`) or a host[:port][/path] / ws:// URL. */
+    var sendspinServer: String
+        get() = sp.getString(KEY_SENDSPIN_SERVER, AUTO)?.takeIf { it.isNotBlank() } ?: AUTO
+        set(v) = sp.edit().putString(KEY_SENDSPIN_SERVER, v.trim().ifEmpty { AUTO }).apply()
+
+    /**
+     * Sendspin "unpaired access" (guest mode): a server may play without pairing. Off by default:
+     * Home Assistant hands Music Assistant the pairing token over the ESPHome API instead.
+     */
+    var sendspinUnpairedAccess: Boolean
+        get() = sp.getBoolean(KEY_SENDSPIN_UNPAIRED, false)
+        set(v) = sp.edit().putBoolean(KEY_SENDSPIN_UNPAIRED, v).apply()
+
     // ---- Improv Wi-Fi via BLE (see improv/ImprovController)
 
     /** Start Improv provisioning automatically when there's no network 30 s after boot. */
@@ -282,6 +303,9 @@ class KioskPrefs(context: Context) {
 
         const val KEY_URL = "url"
         const val KEY_HA_SEEN = "ha_seen"
+        const val KEY_SENDSPIN_ENABLED = "sendspin_enabled"
+        const val KEY_SENDSPIN_SERVER = "sendspin_server"
+        const val KEY_SENDSPIN_UNPAIRED = "sendspin_unpaired_access"
         private const val KEY_ZOOM = "zoom"
         private const val KEY_SECURE_HOSTS = "secure_hosts"
         private const val KEY_REMOTE_DEBUG = "remote_debug"

@@ -110,10 +110,16 @@ class EspHomeApiTest {
         val button = plainEntities.filterIsInstance<EventEntity>().single()
         plain = ApiServer(0, { identity }, plainEntities, psk = null)
         plain.voice = controller
+        val sendspin = object : SendspinTokenSource {
+            override fun clientIdIfStarted() = "A".repeat(42) + "Q"
+            override fun pairingToken(): Pair<Int, String?> = SendspinApi.STATUS_OK to "SP:0TESTTOKEN"
+        }
+        plain.sendspin = sendspin
         plain.onCommand = { plain.publishStates() }
         val subscribed = Collections.synchronizedList(ArrayList<String>())
         plain.onStatesSubscribed = { subscribed += it }
         val noise = ApiServer(0, { identity }, entities(), psk = key)
+        noise.sendspin = sendspin
         noise.onCommand = { noise.publishStates() }
         // Unprovisioned (no key yet), with a persistent store, as on a fresh panel.
         val store = MemoryKeyStore()
@@ -180,6 +186,10 @@ class EspHomeApiTest {
             assertEquals("02:11:22:33:44:55", di.getString("mac"))
             assertEquals(61, di.getInt("voice_flags"))
             assertEquals(61, r.getInt("caps_voice_flags"))
+            assertEquals(1, r.getJSONObject("caps_sendspin").getInt("flags"))
+            assertEquals("A".repeat(42) + "Q", r.getJSONObject("caps_sendspin").getString("client_id"))
+            assertEquals(SendspinApi.STATUS_ENCRYPTION_REQUIRED, r.getJSONObject("sendspin_token_plain").getInt("status"))
+            assertEquals("", r.getJSONObject("sendspin_token_plain").getString("token"))
             assertEquals(14, r.getJSONArray("entities").length())
             assertEquals("double", r.getString("event_type"))
             assertEquals(15, r.getInt("entities_after_rebuild"))
@@ -224,6 +234,8 @@ class EspHomeApiTest {
             assertEquals(VoiceAssistantController.State.IDLE, controller.currentState)
 
             assertEquals("s1-panel", r.getJSONObject("noise").getString("name"))
+            assertEquals(SendspinApi.STATUS_OK, r.getJSONObject("noise").getInt("sendspin_status"))
+            assertEquals("SP:0TESTTOKEN", r.getJSONObject("noise").getString("sendspin_token"))
             val errs = r.getJSONObject("noise_errors")
             assertEquals("s1-panel", errs.getString("wrong_key_name"))
             assertEquals("021122334455", errs.getString("wrong_key_mac"))
