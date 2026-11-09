@@ -41,9 +41,8 @@ All ship in read-only `/vendor/app` (one in `/system/app`), so all are restorabl
 
 > Order matters: set a replacement HOME **before** disabling `com.aqara.inhome.launcher`, or the device has no launcher.
 
-> Note: this panel's Wi-Fi ("Sol IoT") is an isolated VLAN with no internet, so
-> the phone-home apps can't currently reach Aqara's servers anyway — disabling
-> them is hygiene + portability, not an urgent block.
+> Correction (2026-11-09): the panel's Wi-Fi **does** have internet, and disabling the APKs does
+> **not** stop the phone-home: see "Aqara cloud: still connected" below.
 
 ## Apply / undo
 
@@ -97,3 +96,29 @@ Lumi's own service (`service call A_device_control 7 i32 0 i32 0`; undo with `i3
 
 - `com.lumi.dream` is disabled, so Lumi's screensaver toggle `secure screensave_enable` was set to `0`.
 - Night behaviour: see [screen-policy.md](screen-policy.md) (DND 22:00–07:00 forces the screen off).
+
+### Aqara cloud: still connected, and its Wi-Fi watchdog
+
+The native gateway daemon **`ha_master`** (started by init, not an APK, so `pm disable-user` can't touch it)
+keeps a connection to Aqara's cloud (`43.131.7.8:15050`, `cloud_aiot.cpp`), mirrored in the Android
+property `sys.cloud_connected`.
+
+`com.lumi.systemmanager` (`PropReceiver.onPropCloudConnect`) runs a **watchdog**. When the cloud
+connection drops while the internet is reachable, it waits 6 s and then **forces a Wi-Fi reassociate**
+(`NetUtils.reassociateWiFi`), or toggles Ethernet. On this panel the reassociate fails once, which causes
+a 6–10 s network outage. The watchdog only runs when the gateway property
+`persist.app.cloud_provisioned` is true, meaning the panel was set up with an Aqara account. **A panel
+never registered with Aqara skips it.**
+
+One trigger is restarting the S1 Kiosk app, through this chain:
+1. Our process was Android `NsdService`'s only client, so NsdService stops `mdnsd`.
+2. `ha_master` loses mdnsd, errors out and is restarted by init.
+3. Its cloud connection drops, the watchdog fires, and Wi-Fi reassociates.
+
+Any Aqara cloud hiccup triggers it the same way.
+
+**Recommended:** block the panel's internet access at the router and allow only the LAN (HA, Music
+Assistant). That stops the phone-home **and** the watchdog: it checks `isInternetConnected()` first and does
+nothing without internet. Then point time sync at a LAN NTP server, e.g.
+`adb shell settings put global ntp_server 192.168.3.1`. Stopping `ha_master` itself needs persistent root,
+and it also carries the wall-base link (see bases.md).
