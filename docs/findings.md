@@ -70,3 +70,23 @@ Because secure boot is off, FEL is open, SELinux is permissive, and root is avai
 3. Provision Home Assistant as the kiosk launcher from that image — persisting in `/data` like a normal install, with nothing permanently reflashed.
 
 > Device-unique values (serial, MAC, SID, vbmeta hash) are intentionally omitted from this repo.
+
+## Bootloader USB entry points (stock U-Boot 2018.05, read from the binary)
+
+The stock boot package (`sunxi-package` at eMMC sector 32800) and `env` partition were dumped read-only
+and are backed up outside the repo. Strings in the binary show these USB paths:
+
+- **`usb burn from boot`** runs on every boot (`delay time 0`, then `usb prepare/sof/probe/setup ok`,
+  `exit usb burn from boot`, `next work 1` = `SUNXI_UPDATE_NEXT_ACTION_NULL`). Its other exit path is
+  `out of usb burn from boot: not need burn key`. It appears to be a **key-burning** hook (PC tool burns
+  MAC/serials into secure storage) rather than a general entry point. Protocol strings: `sunxi pburn`,
+  `SUNXI_USB_PBURN_EXIT`, `pburn [mode]`.
+- **efex** (Allwinner's in-U-Boot USB flashing mode, as used by PhoenixSuit / LiveSuit): reached via the
+  `misc` partition (`[boot efex] set misc : boot efex` → `## jump to efex ...` → `run usb efex`), magic
+  `AWUSBFEX`. Writing a `boot-efex` bootloader message into `misc` requires root on a running panel.
+- **fastboot**: `boot_fastboot=fastboot` in env; `FAIL:secure mode,fastboot limited used` only in secure
+  mode (off here).
+- Also present: `[boot recovery]`, `[boot factory] ... wipe data`, `[ir sysrecovery]` misc commands.
+
+The environment has no burn-delay or USB-update variable, so `delay time` is set elsewhere
+(device-tree / sys_config or secure storage). Under investigation.
