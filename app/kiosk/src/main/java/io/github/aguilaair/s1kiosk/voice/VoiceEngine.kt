@@ -41,6 +41,10 @@ class VoiceEngine(
     @Volatile private var phrase: String = friendlyName(initialModel)
     private var mic: Microphone? = null
     @Volatile private var gain = config.micGain
+    // Mic thread only: level stats for the current pipeline run.
+    private var runPeak = 0
+    private var runSumSq = 0.0
+    private var runSamples = 0L
     @Volatile private var muted = false
     @Volatile private var running = false
     private var refractoryUntil = Long.MIN_VALUE
@@ -151,8 +155,21 @@ class VoiceEngine(
     private fun onMicFrame(frame: ShortArray) {
         val c = controller
         val state = c?.currentState
-        if (state == VoiceAssistantController.State.STARTING || state == VoiceAssistantController.State.STREAMING) {
+        val streaming = state == VoiceAssistantController.State.STARTING || state == VoiceAssistantController.State.STREAMING
+        if (streaming) {
             c?.onMicAudio(toBytes(frame))
+            for (v in frame) {
+                val a = kotlin.math.abs(v.toInt())
+                if (a > runPeak) runPeak = a
+                runSumSq += a.toDouble() * a
+            }
+            runSamples += frame.size
+        } else if (runSamples > 0) {
+            // Level of the audio HA received for the last run (helps tune mic gain).
+            val rms = kotlin.math.sqrt(runSumSq / runSamples) / 32768.0
+            VoiceLog.i("Run audio: %.1f s, peak %.3f, rms %.4f (gain %.1f)".format(
+                runSamples / 16000.0, runPeak / 32768.0, rms, gain))
+            runPeak = 0; runSumSq = 0.0; runSamples = 0
         }
         val t0 = nowMs()
         val score = synchronized(wwLock) {
