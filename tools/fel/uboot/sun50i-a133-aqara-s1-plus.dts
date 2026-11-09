@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Aqara Panel Hub S1 Plus (MP-K03D, "MagicPad S1 Plus"), Allwinner A133.
+ * Minimal description for running U-Boot from FEL: console UART0 on PB9/PB10,
+ * 8-bit eMMC on mmc2 (IO at 3.3 V from AXP806 DCDC-E), AXP806 PMIC on R_I2C @0x36.
+ */
+
+/dts-v1/;
+
+#include "sun50i-a100.dtsi"
+#include "sun50i-a100-cpu-opp.dtsi"
+
+/{
+	model = "Aqara Panel Hub S1 Plus";
+	compatible = "aqara,s1-plus", "allwinner,sun50i-a100";
+
+	aliases {
+		serial0 = &uart0;
+		mmc0 = &mmc2;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	/* AXP806 DCDC-E, measured 3.3 V on the running stock system (eMMC, UART0, touch). */
+	reg_vcc3v3: vcc3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc-3v3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
+	};
+};
+
+&mmc2 {
+	vmmc-supply = <&reg_vcc3v3>;
+	vqmmc-supply = <&reg_vcc3v3>;
+	cap-mmc-hw-reset;
+	non-removable;
+	bus-width = <8>;
+	status = "okay";
+};
+
+&r_i2c0 {
+	status = "okay";
+
+	axp806: pmic@36 {
+		compatible = "x-powers,axp806";
+		reg = <0x36>;
+		x-powers,self-working-mode;
+	};
+};
+
+&uart0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart0_pb_pins>;
+	status = "okay";
+};
