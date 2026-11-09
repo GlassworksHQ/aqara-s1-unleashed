@@ -254,6 +254,11 @@ class KioskPrefs(context: Context) {
     // (identity, pairing PSK, pairing records) live in `sendspin.xml` (PrefsSsStore).
 
     /** Run the native Sendspin player (ESPHome switch "Music Assistant player (Sendspin)"). */
+    /** Stop Aqara's cloud daemon (ha_master) unless a wall base needs it. See AqaraCloud. */
+    var blockAqaraCloud: Boolean
+        get() = sp.getBoolean(KEY_BLOCK_AQARA_CLOUD, true)
+        set(v) = sp.edit().putBoolean(KEY_BLOCK_AQARA_CLOUD, v).apply()
+
     var sendspinEnabled: Boolean
         get() = sp.getBoolean(KEY_SENDSPIN_ENABLED, true)
         set(v) = sp.edit().putBoolean(KEY_SENDSPIN_ENABLED, v).apply()
@@ -304,6 +309,7 @@ class KioskPrefs(context: Context) {
         const val KEY_URL = "url"
         const val KEY_HA_SEEN = "ha_seen"
         const val KEY_SENDSPIN_ENABLED = "sendspin_enabled"
+        const val KEY_BLOCK_AQARA_CLOUD = "block_aqara_cloud"
         const val KEY_SENDSPIN_SERVER = "sendspin_server"
         const val KEY_SENDSPIN_UNPAIRED = "sendspin_unpaired_access"
         private const val KEY_ZOOM = "zoom"

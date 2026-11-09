@@ -310,3 +310,10 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   the Sendspin output is muted locally.
 - Chromecast: not possible. A Cast receiver must be a Google-certified device.
 - `RadioController` only logs; the radio mode is stored but nothing is switched yet.
+
+### Aqara cloud
+
+- switch `Block Aqara cloud` (`block_aqara_cloud`, default on): stops Aqara's cloud daemon `ha_master`
+  unless a wall base needs it. See docs/debloat.md.
+- text_sensor `Aqara cloud daemon` (`aqara_cloud`): `blocked`, `running`,
+  `running (needed by the wall base)`, or `error (…)`.

@@ -11,6 +11,8 @@ import android.os.Looper
 import android.os.PowerManager
 import io.github.aguilaair.s1kiosk.BuildConfig
 import io.github.aguilaair.s1kiosk.KioskPrefs
+import io.github.aguilaair.s1kiosk.base.BaseKind
+import io.github.aguilaair.s1kiosk.AqaraCloud
 import io.github.aguilaair.s1kiosk.MainActivity
 import io.github.aguilaair.s1kiosk.TimerBoard
 import io.github.aguilaair.s1kiosk.auth.HaAuth
@@ -170,6 +172,8 @@ class PanelDevice(
         exec.scheduleWithFixedDelay({ checkDashboards() }, 2, 2, TimeUnit.SECONDS)
         exec.scheduleWithFixedDelay({ server?.publishStates() }, 5, 5, TimeUnit.SECONDS)
         base.start()
+        // Give the wall-base check time to read the dock class (it needs ha_master), then apply.
+        exec.schedule({ applyAqaraCloud("startup") }, 20, TimeUnit.SECONDS)
     }
 
     // ------------------------------------------------------------------ wall base
@@ -187,6 +191,7 @@ class PanelDevice(
                 entities = assemble(base, layout)
                 prefs.baseLayout = layout.encode()
                 server?.setEntities(entities)
+                applyAqaraCloud("wall base ${layout.kind}")
             }
         }
 
@@ -227,6 +232,27 @@ class PanelDevice(
      * changed and has been stable for 10 s (at most once a minute); a list change that keeps the
      * same options only updates the option → url_path mapping.
      */
+    @Volatile private var aqaraCloudStatus = "unknown"
+
+    /**
+     * esphome-main: stop Aqara's cloud daemon when blocking is on and no wall base needs it, else
+     * make sure it runs. Re-applied after every start (init restarts it on boot) and on changes.
+     */
+    private fun applyAqaraCloud(why: String) {
+        val layout = wallBase?.tracker?.current() ?: BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE
+        val baseNeedsIt = layout.kind == BaseKind.SWITCH || layout.kind == BaseKind.UNKNOWN
+        val run = !prefs.blockAqaraCloud || baseNeedsIt
+        val ok = AqaraCloud.setDaemon(run)
+        aqaraCloudStatus = when {
+            !ok -> "error (${AqaraCloud.daemonState().ifBlank { "unknown" }})"
+            !run -> "blocked"
+            prefs.blockAqaraCloud -> "running (needed by the wall base)"
+            else -> "running"
+        }
+        ApiLog.i("Aqara cloud ($why): $aqaraCloudStatus")
+        server?.publishStates()
+    }
+
     private fun checkDashboards() {
         val base = wallBase ?: return
         val list = Dashboards.latest ?: appliedDashboards
@@ -351,6 +377,7 @@ class PanelDevice(
             "wake_model" -> v?.setActive(listOfNotNull(prefs.wakeModel.takeIf { it.isNotEmpty() }?.let(TfliteWakeWord::modelName)))
             "speaker_volume", "speaker_muted" -> applyVolume()
             "radio_mode" -> RadioController.apply(prefs.radioMode)
+            KioskPrefs.KEY_BLOCK_AQARA_CLOUD -> applyAqaraCloud("setting changed")
             KioskPrefs.KEY_SENDSPIN_ENABLED -> if (prefs.sendspinEnabled) sendspin?.start() else sendspin?.stop("user_request")
             // A new client/hello must carry the changed setting: reconnect.
             KioskPrefs.KEY_SENDSPIN_UNPAIRED, KioskPrefs.KEY_SENDSPIN_SERVER -> sendspin?.restartSession()
@@ -530,6 +557,14 @@ class PanelDevice(
         ),
         // --- diagnostics
         TextSensorEntity("ip_address", "IP address", "mdi:ip-network", EntityCategory.DIAGNOSTIC, get = ::ipAddress),
+        SwitchEntity(
+            "block_aqara_cloud", "Block Aqara cloud", "mdi:cloud-off-outline", EntityCategory.CONFIG,
+            get = { prefs.blockAqaraCloud }, set = { prefs.blockAqaraCloud = it },
+        ),
+        TextSensorEntity(
+            "aqara_cloud", "Aqara cloud daemon", "mdi:cloud-outline", EntityCategory.DIAGNOSTIC,
+            get = { aqaraCloudStatus },
+        ),
         TextSensorEntity(
             "app_version", "App version", "mdi:new-box", EntityCategory.DIAGNOSTIC,
             get = { BuildConfig.VERSION_NAME },

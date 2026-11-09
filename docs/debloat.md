@@ -117,7 +117,20 @@ One trigger is restarting the S1 Kiosk app, through this chain:
 
 Any Aqara cloud hiccup triggers it the same way.
 
-**Recommended:** block the panel's internet access at the router and allow only the LAN (HA, Music
+**Built in (S1 Kiosk, default on): `switch.<panel>_block_aqara_cloud`.** About 20 s after start the app
+runs `setprop ctl.stop ha_master`. This firmware is SELinux-permissive, so the app's own uid may control
+init services; no root needed. It re-applies after every boot, because init starts the daemon again.
+Verified on device:
+- the panel holds zero internet connections afterwards;
+- the cloud watchdog doesn't fire, since the dead daemon never reports a cloud-state change;
+- after a reboot it is blocked again within ~30 s;
+- HA, voice and Music Assistant are unaffected.
+
+Kept running while a wall base is attached, because `ha_master` also carries the base link. The status
+shows in `sensor.<panel>_aqara_cloud_daemon`. Known gap: the daemon is online for the first ~20–30 s after
+each boot, before the app stops it.
+
+**For zero phone-home, also** block the panel's internet access at the router and allow only the LAN (HA, Music
 Assistant). That stops the phone-home **and** the watchdog: it checks `isInternetConnected()` first and does
 nothing without internet. Then point time sync at a LAN NTP server, e.g.
 `adb shell settings put global ntp_server 192.168.3.1`. Stopping `ha_master` itself needs persistent root,
