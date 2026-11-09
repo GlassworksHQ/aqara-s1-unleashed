@@ -73,6 +73,7 @@ docs/
   sensors.md     VI5300 ToF presence, MK6212 light, SC7A20 accel; how the kiosk uses them
 app/             S1 Kiosk: MIT GeckoView kiosk app (HA dashboard, mic over http, HOME launcher)
 tools/
+  install.sh           One-shot panel setup over ADB (and --undo)
   debloat/             Reversible `pm disable-user` de-bloat script
   gecko-eval/          Evaluate JS in the kiosk page over Firefox remote debugging
   mictest/             getUserMedia / secure-context test page
@@ -80,6 +81,26 @@ tools/
                        3.3 V USB↔UART bridge for the panel's debug console
                        (dev-only; end users won't need UART)
 ```
+
+## Setting up a panel (current state)
+
+Once ADB is enabled on the panel (today that takes the debug UART; a UART-free FEL route is in
+progress, see `tools/fel/`):
+
+```sh
+cd app && ./gradlew :kiosk:assembleDebug && cd ..
+export ANDROID_SERIAL=<panel serial>
+tools/install.sh --url http://homeassistant.local:8123/my-dashboard \
+    --timezone America/Los_Angeles --locale en-US \
+    --keyboard rkr.simplekeyboard.inputmethod_148.apk   # optional, from F-Droid
+```
+
+`install.sh` installs the [S1 Kiosk](app/README.md) app, grants its permissions, makes it the home
+screen, disables Aqara's DND screen-off and bloat, and pushes the wake-word models. Then log in to
+HA on the panel once and add it in HA as an **ESPHome** device (port 6053). The panel then shows up
+in HA with its screen, presence, light sensor, speaker, voice assistant and wall base.
+Everything is reversible: `tools/install.sh --undo`.
+`--dry-run` prints what it would do.
 
 ## Roadmap
 
