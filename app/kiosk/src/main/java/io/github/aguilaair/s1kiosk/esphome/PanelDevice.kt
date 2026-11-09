@@ -24,6 +24,7 @@ import io.github.aguilaair.s1kiosk.voice.VoiceConfig
 import io.github.aguilaair.s1kiosk.voice.VoiceEngine
 import io.github.aguilaair.s1kiosk.voice.VoiceEvent
 import io.github.aguilaair.s1kiosk.voice.chime
+import io.github.aguilaair.s1kiosk.voice.wakeChime
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -229,6 +230,9 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
 
     private fun dispatchVoice(e: VoiceEvent) {
         // Pause music while the assistant listens/talks, resume afterwards.
+        if (e is VoiceEvent.WakeDetected && prefs.wakeSound) {
+            (chimePlayer ?: TtsPlayer().also { chimePlayer = it }).wakeChime()
+        }
         when (e) {
             is VoiceEvent.WakeDetected, is VoiceEvent.Listening, is VoiceEvent.Speaking ->
                 if (mediaPlayer.isPlaying && !announcing) { mediaPausedForVoice = true; mediaPlayer.pause() }
@@ -354,6 +358,14 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
         SwitchEntity(
             "mute_microphone", "Mute microphone", "mdi:microphone-off", EntityCategory.CONFIG,
             get = { prefs.micMuted }, set = { prefs.micMuted = it },
+        ),
+        SwitchEntity(
+            "wake_sound", "Wake sound", "mdi:bell-ring-outline", EntityCategory.CONFIG,
+            get = { prefs.wakeSound }, set = { prefs.wakeSound = it },
+        ),
+        SwitchEntity(
+            "voice_overlay", "Voice overlay", "mdi:message-badge-outline", EntityCategory.CONFIG,
+            get = { prefs.voiceOverlay }, set = { prefs.voiceOverlay = it },
         ),
         NumberEntity(
             "mic_gain", "Mic gain", "mdi:microphone-plus", min = 0.5f, max = 4f, step = 0.1f, unit = "x",

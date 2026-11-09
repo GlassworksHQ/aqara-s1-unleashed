@@ -162,6 +162,16 @@ class KioskPrefs(context: Context) {
         get() = sp.getFloat("wake_threshold", 0.5f)
         set(v) = sp.edit().putFloat("wake_threshold", v).apply()
 
+    /** Play a short chime when the wake word is detected. */
+    var wakeSound: Boolean
+        get() = sp.getBoolean("wake_sound", true)
+        set(v) = sp.edit().putBoolean("wake_sound", v).apply()
+
+    /** Show the "Listening… / Thinking…" overlay on screen during voice runs. */
+    var voiceOverlay: Boolean
+        get() = sp.getBoolean("voice_overlay", true)
+        set(v) = sp.edit().putBoolean("voice_overlay", v).apply()
+
     var micGain: Float
         get() = sp.getFloat("mic_gain", 1.0f)
         set(v) = sp.edit().putFloat("mic_gain", v).apply()

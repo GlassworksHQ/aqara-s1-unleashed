@@ -40,6 +40,26 @@ fun AudioOutput.chime(onDone: () -> Unit = {}) {
     end(onDone)
 }
 
+/** Short rising two-tone "I'm listening" sound for wake word detection (~0.2 s, quiet). */
+fun AudioOutput.wakeChime(onDone: () -> Unit = {}) {
+    val rate = 16_000
+    val tones = listOf(660.0 to 0.09, 990.0 to 0.11)
+    val total = tones.sumOf { (it.second * rate).toInt() }
+    val pcm = ByteArray(total * 2)
+    var i = 0
+    for ((f, d) in tones) {
+        val n = (d * rate).toInt()
+        for (k in 0 until n) {
+            val env = minOf(1.0, k / 80.0, (n - k) / 160.0)   // click-free attack/release
+            val v = (Math.sin(2 * Math.PI * f * k / rate) * 0.25 * env * 32767).toInt()
+            pcm[2 * i] = v.toByte(); pcm[2 * i + 1] = (v shr 8).toByte(); i++
+        }
+    }
+    begin(rate, 2, 1)
+    write(pcm)
+    end(onDone)
+}
+
 /**
  * Plays raw PCM with [AudioTrack] on its own thread, so callers never block.
  *
