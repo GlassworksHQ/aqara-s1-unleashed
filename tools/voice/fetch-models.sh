@@ -7,7 +7,7 @@
 # flatbuffer (and not an HTML error page), then `adb push`es them into the kiosk's
 # app-specific external storage, which needs no root:
 #
-#   /sdcard/Android/data/io.github.aguilaair.s1kiosk/files/models/
+#   /sdcard/Android/data/sh.edm.s1kiosk/files/models/
 #
 # Usage:
 #   export ANDROID_SERIAL=<panel serial>     # optional if only one device is attached
@@ -21,7 +21,7 @@ set -euo pipefail
 
 OWW_VERSION="${OWW_VERSION:-v0.5.1}"
 BASE_URL="https://github.com/dscripka/openWakeWord/releases/download/${OWW_VERSION}"
-PKG="io.github.aguilaair.s1kiosk"
+PKG="sh.edm.s1kiosk"
 REMOTE_DIR="/sdcard/Android/data/${PKG}/files/models"
 CACHE="${MODELS_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/s1kiosk/openwakeword-${OWW_VERSION}}"
 

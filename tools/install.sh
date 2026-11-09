@@ -22,7 +22,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-PKG=io.github.aguilaair.s1kiosk
+PKG=sh.edm.s1kiosk
 ACT="$PKG/.MainActivity"
 APK="$ROOT/app/kiosk/build/outputs/apk/debug/kiosk-debug.apk"
 URL="" TZ_="" LOCALE="" KEYBOARD="" MODELS=1 DEBLOAT=1 DND_OFF=1 UNDO=0 DRY=0

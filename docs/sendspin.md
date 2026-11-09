@@ -5,7 +5,7 @@ own players, called **S1 Panel**, plays to it in sync with your other Sendspin s
 group it with them. You no longer need MA's "Home Assistant MediaPlayers" bridge for the panel.
 That bridge goes MA → HA → `media_player.s1_panel_speaker` and has no sync.
 
-Code: `app/kiosk/src/main/java/io/github/aguilaair/s1kiosk/sendspin/`. The protocol core is pure
+Code: `app/kiosk/src/main/java/sh/edm/s1kiosk/sendspin/`. The protocol core is pure
 JVM (`SendspinSession`, `SsCrypto`, `TimeFilter`, `PlaybackScheduler`, `WsClient`) and
 `SendspinPlayer` is the Android glue. It is owned by `PanelDevice` and runs in the foreground
 `KioskService`. Logs: `adb logcat -s S1Sendspin`.
@@ -48,7 +48,7 @@ web player and for the HA Voice PE.
 | `--es sendspin_server <host[:port][/path] or ws://…>` | Server address; `auto` = discovery | `auto` |
 | `--ez sendspin_unpaired_access true` | Let a server play **without pairing** (Sendspin "unpaired access", guest mode). MA then approves it automatically | off |
 
-`--e…` extras go to `adb shell am start -n io.github.aguilaair.s1kiosk/.MainActivity`, as in
+`--e…` extras go to `adb shell am start -n sh.edm.s1kiosk/.MainActivity`, as in
 [app/README.md](../app/README.md). Changing the server address or unpaired access reconnects
 (`client/goodbye` `restart`) so the new `client/hello` carries the new value. Volume, mute and
 the output delay are the Sendspin player's own (stored in `sendspin.xml`). They don't affect the

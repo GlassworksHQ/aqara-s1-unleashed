@@ -81,18 +81,18 @@ The APK is ~98 MB (debug, unminified, Gecko native libs for `armeabi-v7a` only).
 ```sh
 export ANDROID_SERIAL=<your panel serial>
 adb install -r -g kiosk/build/outputs/apk/debug/kiosk-debug.apk
-adb shell cmd package set-home-activity io.github.aguilaair.s1kiosk/.MainActivity
+adb shell cmd package set-home-activity sh.edm.s1kiosk/.MainActivity
 # optional: lets the BootReceiver start the activity from the background on Android 10
-adb shell appops set io.github.aguilaair.s1kiosk SYSTEM_ALERT_WINDOW allow
+adb shell appops set sh.edm.s1kiosk SYSTEM_ALERT_WINDOW allow
 ```
 
 Optional extras (recommended):
 
 ```sh
 # instant screen-off (DevicePolicyManager.lockNow); undo with --ez remove_admin true
-adb shell dpm set-active-admin io.github.aguilaair.s1kiosk/.AdminReceiver
+adb shell dpm set-active-admin sh.edm.s1kiosk/.AdminReceiver
 # lets the app set the proximity sensor's presence range
-adb shell pm grant io.github.aguilaair.s1kiosk android.permission.WRITE_SECURE_SETTINGS
+adb shell pm grant sh.edm.s1kiosk android.permission.WRITE_SECURE_SETTINGS
 # stop Aqara's 22:00-07:00 DND from forcing the screen off (undo: ... 7 i32 1 i32 0)
 adb shell service call A_device_control 7 i32 0 i32 0
 ```
@@ -102,13 +102,13 @@ Then de-bloat with [`tools/debloat/debloat.sh`](../tools/debloat/debloat.sh)
 
 **Undo:** `debloat.sh enable`, then
 `adb shell cmd package set-home-activity com.aqara.inhome.launcher/.MainActivity`,
-and optionally `adb shell am start -n io.github.aguilaair.s1kiosk/.MainActivity --ez remove_admin true`
-followed by `adb uninstall io.github.aguilaair.s1kiosk` (an active device admin can't be uninstalled).
+and optionally `adb shell am start -n sh.edm.s1kiosk/.MainActivity --ez remove_admin true`
+followed by `adb uninstall sh.edm.s1kiosk` (an active device admin can't be uninstalled).
 
 ## Configure over ADB
 
 ```sh
-A="adb shell am start -n io.github.aguilaair.s1kiosk/.MainActivity"
+A="adb shell am start -n sh.edm.s1kiosk/.MainActivity"
 $A --es url http://homeassistant.local:8123/my-dashboard   # set + persist the URL ("auto" = discover HA)
 $A --ez show_setup true    # preview the setup screen at its live step (changes nothing)
 $A --ez show_setup true --es setup_step wifi   # ... or a given step: wifi|ha|signin|done
@@ -139,7 +139,7 @@ size until reboot. Use `zoom` instead.
 ## Wi-Fi setup over Bluetooth (Improv)
 
 ```sh
-I="adb shell am start -n io.github.aguilaair.s1kiosk/.improv.ImprovActivity"
+I="adb shell am start -n sh.edm.s1kiosk/.improv.ImprovActivity"
 $I --ez improv true        # start provisioning mode (10 min); false = stop
 $I --ez improv_auto false  # don't auto-start when there's no network after boot (default true)
 $I --ez improv_proximity_auth true   # also authorize by approaching the panel (default false)
@@ -150,10 +150,10 @@ adb logcat -s S1Kiosk.Improv          # BLE support report at startup, states, R
 `ImprovActivity` only accepts callers holding `WRITE_SECURE_SETTINGS` (i.e. `adb shell`).
 Joining the new network uses `WifiManager.addNetwork`, which Android 10 allows because the app holds
 the SYSTEM_ALERT_WINDOW app-op (see the install step), or because it's device owner
-(`adb shell dpm set-device-owner io.github.aguilaair.s1kiosk/.AdminReceiver`; release with the extra
+(`adb shell dpm set-device-owner sh.edm.s1kiosk/.AdminReceiver`; release with the extra
 above). Otherwise it falls back to a network suggestion the user must approve. Scanning and checking
 the current SSID also need the location permission:
-`adb shell pm grant io.github.aguilaair.s1kiosk android.permission.ACCESS_FINE_LOCATION` (already
+`adb shell pm grant sh.edm.s1kiosk android.permission.ACCESS_FINE_LOCATION` (already
 granted by `adb install -g`, or self-granted when device owner). Details, sources and limits:
 [docs/onboarding.md](../docs/onboarding.md).
 
@@ -163,7 +163,7 @@ Debug builds enable Gecko remote debugging. [`tools/gecko-eval`](../tools/gecko-
 is a tiny Firefox Remote Debugging Protocol client that evaluates JS in the page:
 
 ```sh
-adb forward tcp:6000 localabstract:io.github.aguilaair.s1kiosk/firefox-debugger-socket
+adb forward tcp:6000 localabstract:sh.edm.s1kiosk/firefox-debugger-socket
 python3 tools/gecko-eval/gecko_eval.py 'JSON.stringify({w: innerWidth, h: innerHeight, sc: isSecureContext})'
 ```
 

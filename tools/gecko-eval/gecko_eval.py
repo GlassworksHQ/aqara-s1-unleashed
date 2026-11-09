@@ -3,9 +3,9 @@
 Remote Debugging Protocol (no Firefox desktop needed).
 
 Prereqs: kiosk built with remote debugging on (debug builds default to on, or
-`am start -n io.github.aguilaair.s1kiosk/.MainActivity --ez remote_debug true`), then:
+`am start -n sh.edm.s1kiosk/.MainActivity --ez remote_debug true`), then:
 
-    adb forward tcp:6000 localabstract:io.github.aguilaair.s1kiosk/firefox-debugger-socket
+    adb forward tcp:6000 localabstract:sh.edm.s1kiosk/firefox-debugger-socket
     python3 gecko_eval.py 'document.title'
     python3 gecko_eval.py -f snippet.js
 

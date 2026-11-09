@@ -13,7 +13,7 @@ The kiosk app makes the panel look like **one ESPHome device** to Home Assistant
 One integration, discovered automatically, no Wyoming or MQTT. It replaces the earlier Wyoming
 satellite (remove that Wyoming entry from HA when you switch).
 
-Code: `app/kiosk/src/main/java/io/github/aguilaair/s1kiosk/esphome/` (protocol core, pure JVM) and
+Code: `app/kiosk/src/main/java/sh/edm/s1kiosk/esphome/` (protocol core, pure JVM) and
 `PanelDevice` (Android glue), owned by the foreground `KioskService`, so it keeps working while the
 screen is off. Logs: `adb logcat -s S1ESPHome S1Voice`.
 
@@ -28,7 +28,7 @@ screen is off. Logs: `adb logcat -s S1ESPHome S1Voice`.
 
    The script downloads `melspectrogram.tflite`, `embedding_model.tflite`, `hey_jarvis_v0.1`,
    `alexa_v0.1` and `hey_mycroft_v0.1` from the openWakeWord **v0.5.1** release, checks they are
-   TFLite files, and pushes them to `/sdcard/Android/data/io.github.aguilaair.s1kiosk/files/models/`
+   TFLite files, and pushes them to `/sdcard/Android/data/sh.edm.s1kiosk/files/models/`
    (no root). Without models the API still works; the engine retries loading every 30 s.
 2. **Discovery**: the panel advertises `s1-panel._esphomelib._tcp` over mDNS. If mDNS reaches HA,
    **Settings → Devices & services** shows a discovered **ESPHome** device "S1 Panel". Click
