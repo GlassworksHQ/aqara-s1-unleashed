@@ -34,6 +34,11 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   screen-off ([docs/screen-policy.md](../docs/screen-policy.md)).
 - **Home Assistant integration as an ESPHome device** (native API, voice assistant, screen and kiosk
   controls), see below and [docs/esphome.md](../docs/esphome.md).
+- **Wi-Fi setup over Bluetooth (Improv via BLE)**: a panel with no network (30 s after boot), or one
+  told to (`--ez improv true` / the HA button "Start Wi-Fi setup (Bluetooth)"), advertises the Improv
+  service for 10 minutes, so HA's `improv_ble` integration or improv-wifi.com can send it Wi-Fi
+  details after someone taps **Allow** on the panel. See below and
+  [docs/onboarding.md](../docs/onboarding.md) (step 1).
 - The page sees live panel state as `window.s1kiosk` (`{presence, proximityRaw, lux, screenOn, night}`)
   plus a `s1kiosk-state` event, so dashboards can react to presence.
 
@@ -107,6 +112,27 @@ $A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # ESPHome 
 
 Do **not** change `wm density` to scale the UI. On this panel it breaks GeckoView's surface
 size until reboot. Use `zoom` instead.
+
+## Wi-Fi setup over Bluetooth (Improv)
+
+```sh
+I="adb shell am start -n io.github.aguilaair.s1kiosk/.improv.ImprovActivity"
+$I --ez improv true        # start provisioning mode (10 min); false = stop
+$I --ez improv_auto false  # don't auto-start when there's no network after boot (default true)
+$I --ez improv_proximity_auth true   # also authorize by approaching the panel (default false)
+$I --ez release_device_owner true    # escape hatch: clearDeviceOwnerApp()
+adb logcat -s S1Kiosk.Improv          # BLE support report at startup, states, RPCs
+```
+
+`ImprovActivity` only accepts callers holding `WRITE_SECURE_SETTINGS` (i.e. `adb shell`).
+Joining the new network uses `WifiManager.addNetwork`, which Android 10 allows because the app holds
+the SYSTEM_ALERT_WINDOW app-op (see the install step), or because it's device owner
+(`adb shell dpm set-device-owner io.github.aguilaair.s1kiosk/.AdminReceiver`; release with the extra
+above). Otherwise it falls back to a network suggestion the user must approve. Scanning and checking
+the current SSID also need the location permission:
+`adb shell pm grant io.github.aguilaair.s1kiosk android.permission.ACCESS_FINE_LOCATION` (already
+granted by `adb install -g`, or self-granted when device owner). Details, sources and limits:
+[docs/onboarding.md](../docs/onboarding.md).
 
 ## Debugging
 

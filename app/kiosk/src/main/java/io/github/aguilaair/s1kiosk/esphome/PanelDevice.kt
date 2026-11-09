@@ -336,6 +336,10 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
             "restart_app", "Restart app", "mdi:restart", EntityCategory.CONFIG, deviceClass = "restart",
             press = { toActivity { putExtra("restart", true) } },
         ),
+        ButtonEntity(
+            "improv_ble", "Start Wi-Fi setup (Bluetooth)", "mdi:bluetooth-settings", EntityCategory.CONFIG,
+            press = { ui { io.github.aguilaair.s1kiosk.improv.ImprovController.startOnDemand("Home Assistant button") } },
+        ),
         SwitchEntity(
             "hide_ha_header", "Hide HA header", "mdi:page-layout-header", EntityCategory.CONFIG,
             get = { prefs.hideHeader },

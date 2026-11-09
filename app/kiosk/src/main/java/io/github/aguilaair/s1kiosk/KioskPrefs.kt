@@ -181,6 +181,18 @@ class KioskPrefs(context: Context) {
         get() = sp.getBoolean("mic_muted", false)
         set(v) = sp.edit().putBoolean("mic_muted", v).apply()
 
+    // ---- Improv Wi-Fi via BLE (see improv/ImprovController)
+
+    /** Start Improv provisioning automatically when there's no network 30 s after boot. */
+    var improvAuto: Boolean
+        get() = sp.getBoolean("improv_auto", true)
+        set(v) = sp.edit().putBoolean("improv_auto", v).apply()
+
+    /** Also accept a proximity approach (VI5300 far -> near) as the Improv authorization. */
+    var improvProximityAuth: Boolean
+        get() = sp.getBoolean("improv_proximity_auth", false)
+        set(v) = sp.edit().putBoolean("improv_proximity_auth", v).apply()
+
     /** Hosts that Gecko should treat as a secure context, so getUserMedia/AudioWorklet work over http. */
     fun secureHosts(): List<String> {
         val hosts = mutableListOf<String>()

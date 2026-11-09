@@ -13,6 +13,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import io.github.aguilaair.s1kiosk.esphome.PanelDevice
+import io.github.aguilaair.s1kiosk.improv.ImprovController
 import io.github.aguilaair.s1kiosk.voice.VoiceEvent
 
 /**
@@ -31,6 +32,7 @@ class KioskService : Service() {
         ScreenController.start(this)
         voiceState = if (KioskPrefs(this).voiceEnabled) "idle" else "off"
         device = PanelDevice(this) { e -> main.post { onVoiceEvent(e) } }.also { it.start() }
+        ImprovController.init(this) // Improv Wi-Fi via BLE (provisioning mode; see improv/)
         Log.i("S1Kiosk", "KioskService started")
     }
 
@@ -50,12 +52,16 @@ class KioskService : Service() {
     }
 
     override fun onDestroy() {
+        ImprovController.shutdown()
         device?.stop()
         device = null
         super.onDestroy()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        ImprovController.handleIntent(intent) // --ez improv / release_device_owner (via ImprovActivity)
+        return START_STICKY
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
