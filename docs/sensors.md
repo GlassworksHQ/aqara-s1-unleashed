@@ -45,9 +45,9 @@ See `ScreenController.kt`:
   via `service call A_device_control 7 i32 0 i32 0`.
 - **Auto-brightness** from lux (log curve, capped lower at night), applied as window brightness.
 - **Presence range** is configurable in metres. It needs
-  `pm grant io.github.aguilaair.s1kiosk android.permission.WRITE_SECURE_SETTINGS`.
+  `pm grant sh.edm.s1kiosk android.permission.WRITE_SECURE_SETTINGS`.
 - Instant screen-off uses `DevicePolicyManager.lockNow()` if the app is a device admin
-  (`dpm set-active-admin io.github.aguilaair.s1kiosk/.AdminReceiver`). Otherwise it falls back
+  (`dpm set-active-admin sh.edm.s1kiosk/.AdminReceiver`). Otherwise it falls back
   to the system screen-off timeout.
 - The live state is exposed to the dashboard page as `window.s1kiosk`
   (`{presence, proximityRaw, lux, screenOn, night}`) plus a `s1kiosk-state` DOM event.

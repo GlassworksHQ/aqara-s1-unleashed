@@ -1,0 +1,51 @@
+package sh.edm.s1kiosk
+
+import android.util.Log
+import java.util.concurrent.TimeUnit
+
+/**
+ * Aqara's cloud link on the stock firmware is the native gateway daemon `ha_master` (an init
+ * service, so `pm disable-user` can't touch it). It is the only process that talks to the internet
+ * (Aqara AIoT cloud, incl. location-based weather) — see docs/debloat.md.
+ *
+ * Stopping it is just `setprop ctl.stop ha_master`. This firmware runs SELinux permissive, so the
+ * app's own uid may control init services (verified on device); no root needed. Not persistent by
+ * itself: init starts it again on every boot, so [PanelDevice] re-applies the choice after each start.
+ *
+ * `ha_master` also carries the wall-base (relay) link, so it is kept running while a base is attached.
+ * Stopping it does not trip com.lumi.systemmanager's cloud watchdog (Wi-Fi reassociate): that only
+ * fires on a cloud-state *change* event, which the dead daemon never sends.
+ */
+object AqaraCloud {
+    private const val TAG = "S1Kiosk.AqaraCloud"
+    private const val SERVICE = "ha_master"
+
+    /** init's view of the daemon: "running", "stopped", "restarting", or "" if unknown. */
+    fun daemonState(): String = run("getprop", "init.svc.$SERVICE")
+
+    /** Starts or stops the daemon; returns true if init reports the wanted state afterwards. */
+    fun setDaemon(running: Boolean): Boolean {
+        val want = if (running) "running" else "stopped"
+        if (daemonState() == want) return true
+        run("setprop", if (running) "ctl.start" else "ctl.stop", SERVICE)
+        for (i in 0 until 20) {
+            if (daemonState() == want) {
+                Log.i(TAG, "$SERVICE -> $want")
+                return true
+            }
+            Thread.sleep(100)
+        }
+        Log.w(TAG, "$SERVICE did not reach '$want' (now '${daemonState()}')")
+        return false
+    }
+
+    private fun run(vararg cmd: String): String = try {
+        val p = ProcessBuilder(*cmd).redirectErrorStream(true).start()
+        val out = p.inputStream.bufferedReader().readText().trim()
+        p.waitFor(3, TimeUnit.SECONDS)
+        out
+    } catch (e: Exception) {
+        Log.w(TAG, "${cmd.joinToString(" ")} failed: ${e.message}")
+        ""
+    }
+}

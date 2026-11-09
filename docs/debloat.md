@@ -53,7 +53,7 @@ system-critical packages alone.
 ## Applied on the reference unit (2026-11-09)
 
 - S1 Kiosk ([app/](../app/README.md)) installed and set as HOME with
-  `cmd package set-home-activity io.github.aguilaair.s1kiosk/.MainActivity`.
+  `cmd package set-home-activity sh.edm.s1kiosk/.MainActivity`.
 - `debloat.sh disable` + `disable-launcher` applied: all 9 packages in the safe set and the Aqara launcher
   are disabled. `com.lumi.settings` and `com.lumi.systemmanager` are still enabled.
 - Survives reboot: the panel boots straight into the kiosk, USB ADB comes back, and Wi-Fi rejoins.

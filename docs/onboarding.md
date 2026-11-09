@@ -51,7 +51,7 @@ manifest (permissions + `ImprovActivity`), and one ESPHome button in `PanelDevic
 **When it runs** (never permanently):
 - automatically if the panel has **no network 30 s after `KioskService` starts** (boot), unless
   `improv_auto` is off;
-- on demand: `adb shell am start -n io.github.aguilaair.s1kiosk/.improv.ImprovActivity --ez improv true`
+- on demand: `adb shell am start -n sh.edm.s1kiosk/.improv.ImprovActivity --ez improv true`
   (`--ez improv false` stops), or the HA button **"Start Wi-Fi setup (Bluetooth)"**
   (`button.s1_panel_start_wi_fi_setup_bluetooth`, config category);
 - for **10 minutes** (extended while connecting / after a failure), then advertising and the GATT
@@ -146,7 +146,7 @@ needs `ACCESS_FINE_LOCATION` **and** location mode on (`WifiPermissionsUtil.enfo
 Location mode is on (`location_mode=3`) on the panel; the permission is not granted. Without it the
 app refuses to change networks while already on Wi-Fi (it couldn't tell the new network from the old
 one) and the scan RPC returns an empty list. Grant it once with
-`adb shell pm grant io.github.aguilaair.s1kiosk android.permission.ACCESS_FINE_LOCATION`
+`adb shell pm grant sh.edm.s1kiosk android.permission.ACCESS_FINE_LOCATION`
 (`adb install -g` also grants it), or make the app device owner, which grants it to itself
 (`setPermissionGrantState`).
 
@@ -157,12 +157,12 @@ policies (device-owner Wi-Fi rights aren't policy-gated); the existing `AdminRec
 
 ```sh
 # needs: no accounts on the device (verified: 0) and a single user (verified)
-adb shell dpm set-device-owner io.github.aguilaair.s1kiosk/.AdminReceiver
+adb shell dpm set-device-owner sh.edm.s1kiosk/.AdminReceiver
 adb shell dumpsys device_policy | grep -A3 "Device Owner"
 # rollback (escape hatch; `dpm remove-active-admin` doesn't work for non-testOnly apps):
-adb shell am start -n io.github.aguilaair.s1kiosk/.improv.ImprovActivity --ez release_device_owner true
+adb shell am start -n sh.edm.s1kiosk/.improv.ImprovActivity --ez release_device_owner true
 # clearDeviceOwnerApp also removes the active admin: re-enable lockNow screen-off with
-adb shell dpm set-active-admin io.github.aguilaair.s1kiosk/.AdminReceiver
+adb shell dpm set-active-admin sh.edm.s1kiosk/.AdminReceiver
 ```
 
 While device owner, the app can't be uninstalled (release first), and Settings shows "managed by your

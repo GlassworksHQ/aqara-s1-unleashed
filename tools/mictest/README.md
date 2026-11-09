@@ -6,7 +6,7 @@ Results are shown on screen and logged to the console (logcat lines starting wit
 
 To test against your HA origin, temporarily copy it to `/config/www/` and open
 `http://<ha>:8123/local/mictest.html` with
-`adb shell am start -n io.github.aguilaair.s1kiosk/.MainActivity --es open <url>`.
+`adb shell am start -n sh.edm.s1kiosk/.MainActivity --es open <url>`.
 Delete it afterwards.
 
 Result on the S1 Plus (GeckoView 159, HA over plain http):

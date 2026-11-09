@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "io.github.aguilaair.s1kiosk"
+    namespace = "sh.edm.s1kiosk"
     // GeckoView 159 requires compileSdk 37.2 (and pulls androidx.core 1.19 -> AGP 9.1+).
     // This only affects compilation; the app still runs on the panel's Android 10 (API 29).
     compileSdk {
@@ -11,7 +11,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "io.github.aguilaair.s1kiosk"
+        applicationId = "sh.edm.s1kiosk"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
