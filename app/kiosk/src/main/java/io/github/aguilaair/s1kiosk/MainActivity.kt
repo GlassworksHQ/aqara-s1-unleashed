@@ -26,6 +26,11 @@ import android.widget.ScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import io.github.aguilaair.s1kiosk.auth.FrontendUrls
+import io.github.aguilaair.s1kiosk.auth.HaAuth
+import io.github.aguilaair.s1kiosk.auth.OAuth
+import io.github.aguilaair.s1kiosk.discovery.HaUrls
+import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate
@@ -43,10 +48,29 @@ class MainActivity : Activity() {
     private lateinit var geckoView: GeckoView
     private lateinit var voiceOverlay: VoiceOverlay
     private lateinit var timerOverlay: TimerOverlay
+    private lateinit var signinOverlay: SignInOverlay
     private var session: GeckoSession? = null
     private val handler = Handler(Looper.getMainLooper())
     private var pendingAndroidPermission: PermissionDelegate.Callback? = null
     private var canGoBack = false
+    private var currentUrl: String? = null
+
+    /** "Sign in on this panel instead" was chosen: don't cover HA's login page again (this process). */
+    private var usePanelLogin = false
+
+    private val authListener: (Boolean) -> Unit = { signedIn ->
+        if (signedIn) {
+            Log.i(TAG, "Signed in with the QR code; loading the dashboard with external auth")
+            usePanelLogin = false
+            signinOverlay.hide()
+            loadDashboard()
+        } else {
+            Log.i(TAG, "Signed out; showing the sign-in screen")
+            usePanelLogin = false
+            showSignin()
+            prefs.url.takeIf { it.isNotEmpty() }?.let { session?.loadUri(it) }
+        }
+    }
 
     // Hidden settings gesture: 5 taps in the top-left corner within 3 s.
     private var cornerTaps = 0
@@ -54,12 +78,13 @@ class MainActivity : Activity() {
 
     private val retryLoad = Runnable {
         Log.i(TAG, "Retrying dashboard load")
-        session?.loadUri(prefs.url)
+        loadDashboard()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = KioskPrefs(this)
+        HaAuth.init(this)
         applyIntent(intent, fromNewIntent = false)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -72,11 +97,17 @@ class MainActivity : Activity() {
         geckoView = GeckoView(this)
         voiceOverlay = VoiceOverlay(this)
         timerOverlay = TimerOverlay(this)
+        signinOverlay = SignInOverlay(this).apply {
+            onUsePanel = ::onUsePanelLogin
+            onManualUrl = ::onManualHaUrl
+        }
         setContentView(android.widget.FrameLayout(this).apply {
             addView(geckoView, android.widget.FrameLayout.LayoutParams(-1, -1))
+            addView(signinOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
             addView(voiceOverlay, voiceOverlay.layoutParams())
             addView(timerOverlay, timerOverlay.layoutParams())
         })
+        HaAuth.addListener(authListener)
         KioskService.start(this)
         ScreenController.start(this)
         ScreenController.onKeepScreenOn = { on ->
@@ -119,7 +150,78 @@ class MainActivity : Activity() {
         }, { e -> Log.e(TAG, "helper extension failed", e) })
         geckoView.setSession(s)
         session = s
-        s.loadUri(prefs.url)
+        loadDashboard()
+        if (intent?.getBooleanExtra("show_signin", false) == true) handler.post { showSignin() }
+    }
+
+    // ---- dashboard, discovery, sign-in screen (docs/onboarding.md)
+
+    /**
+     * Loads the dashboard. Signed in with the QR code → with `external_auth=1` (the frontend then
+     * gets tokens from the app); otherwise as before (the GeckoView's own login session). No URL
+     * yet (setting "auto", HA not found) → the "Where is Home Assistant?" screen.
+     */
+    private fun loadDashboard() {
+        val url = prefs.url
+        if (url.isEmpty()) {
+            Log.i(TAG, "No dashboard URL yet (auto, Home Assistant not found)")
+            showSignin()
+            return
+        }
+        session?.loadUri(externalize(url))
+    }
+
+    private fun externalize(url: String): String =
+        if (HaAuth.signedIn && FrontendUrls.sameOrigin(url, HaAuth.signedInBase)) FrontendUrls.withFlag(url) else url
+
+    private fun showSignin() {
+        val ha = prefs.haBase
+        if (ha == null) {
+            signinOverlay.showManual("")
+            return
+        }
+        val ip = HaUrls.localIpv4() ?: "<panel-ip>"
+        signinOverlay.showQr("http://$ip:${OAuth.SIGNIN_PORT}/signin", ha)
+    }
+
+    private fun onUsePanelLogin() {
+        usePanelLogin = true
+        signinOverlay.hide()
+        // Show HA's own login page (or the dashboard if the GeckoView session is still logged in).
+        if (!HaAuth.signedIn && !FrontendUrls.isAuthorizePage(currentUrl, prefs.haBase)) {
+            prefs.url.takeIf { it.isNotEmpty() }?.let { session?.loadUri(it) }
+        }
+    }
+
+    private fun onManualHaUrl(raw: String) {
+        val d = KioskService.discoveryRef
+        if (d == null) {
+            signinOverlay.manualResult(false, "The kiosk service isn't running yet; try again in a moment.")
+            return
+        }
+        d.setManual(raw) { ok, url ->
+            handler.post {
+                if (ok && url != null) {
+                    signinOverlay.manualResult(true, "Found Home Assistant at $url")
+                    onHaFound(url)
+                } else {
+                    signinOverlay.manualResult(false, "No Home Assistant answered at ${url ?: raw}.")
+                }
+            }
+        }
+    }
+
+    /** Discovery (or manual entry) found Home Assistant. */
+    private fun onHaFound(url: String) {
+        Log.i(TAG, "Home Assistant at $url (dashboard setting: ${prefs.urlSetting})")
+        if (signinOverlay.mode == SignInOverlay.Mode.MANUAL) signinOverlay.hide()
+        if (!prefs.isAutoUrl) return
+        if (prefs.secureHosts() != KioskApp.startupSecureHosts) {
+            // The HA host must be in dom.securecontext.allowlist (mic), which Gecko reads at startup.
+            restartProcess()
+            return
+        }
+        loadDashboard()
     }
 
     private fun restartSession() {
@@ -151,10 +253,12 @@ class MainActivity : Activity() {
         var needsRestart = false
         intent.getStringExtra("url")?.takeIf { it.isNotBlank() }?.let {
             val oldHosts = prefs.secureHosts()
-            prefs.url = it
+            prefs.urlSetting = it // a URL, or "auto"
             needsRestart = needsRestart || prefs.secureHosts() != oldHosts
-            if (fromNewIntent) session?.loadUri(it)
+            if (fromNewIntent) loadDashboard()
         }
+        intent.getStringExtra("ha_discovered")?.let { if (fromNewIntent) onHaFound(it) }
+        if (fromNewIntent && intent.getBooleanExtra("show_signin", false)) showSignin()
         if (intent.hasExtra("zoom")) {
             prefs.zoom = intent.getFloatExtra("zoom", 0f)
             needsRestart = true
@@ -266,7 +370,8 @@ class MainActivity : Activity() {
     private fun showSettings() {
         val pad = (16 * resources.displayMetrics.density).toInt()
         val urlField = EditText(this).apply {
-            setText(prefs.url)
+            setText(prefs.urlSetting)
+            hint = "auto (find Home Assistant)"
             inputType = InputType.TYPE_TEXT_VARIATION_URI
             setSingleLine()
         }
@@ -327,7 +432,7 @@ class MainActivity : Activity() {
             .setTitle("S1 Kiosk ${BuildConfig.VERSION_NAME}")
             .setView(scroll)
             .setPositiveButton("Save & restart") { _, _ ->
-                prefs.url = urlField.text.toString().ifBlank { BuildConfig.DEFAULT_URL }
+                prefs.urlSetting = urlField.text.toString().ifBlank { KioskPrefs.AUTO }
                 prefs.zoom = zoomField.text.toString().toFloatOrNull() ?: 0f
                 prefs.extraSecureHosts = hostsField.text.toString()
                 prefs.hideHeader = hideHeader.isChecked
@@ -347,7 +452,7 @@ class MainActivity : Activity() {
                     Toast.makeText(this, "No settings app: $e", Toast.LENGTH_LONG).show()
                 }
             }
-            .setNegativeButton("Reload") { _, _ -> session?.loadUri(prefs.url) }
+            .setNegativeButton("Reload") { _, _ -> loadDashboard() }
             .show()
     }
 
@@ -452,6 +557,34 @@ class MainActivity : Activity() {
             session.loadUri(uri)
             return null
         }
+
+        override fun onLocationChange(
+            session: GeckoSession,
+            url: String?,
+            perms: MutableList<PermissionDelegate.ContentPermission>,
+            hasUserGesture: Boolean,
+        ) {
+            currentUrl = url
+            // An unauthenticated HA frontend redirects to /auth/authorize: cover it with the QR code
+            // (unless the user asked for the panel's own login page).
+            if (FrontendUrls.isAuthorizePage(url, prefs.haBase) && !HaAuth.signedIn && !usePanelLogin) {
+                handler.post { showSignin() }
+            }
+        }
+
+        // Once signed in, every top-level HA page gets external_auth=1, so the content script
+        // installs window.externalApp before the frontend starts (also after reloads and redirects).
+        override fun onLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny>? {
+            if (!HaAuth.signedIn || request.target != GeckoSession.NavigationDelegate.TARGET_WINDOW_CURRENT) return null
+            val base = HaAuth.signedInBase
+            val target = when {
+                FrontendUrls.isAuthorizePage(request.uri, base) -> prefs.url.takeIf { it.isNotEmpty() }?.let(::externalize)
+                FrontendUrls.needsFlag(request.uri, base) -> FrontendUrls.withFlag(request.uri)
+                else -> null
+            } ?: return null
+            handler.post { session.loadUri(target) }
+            return GeckoResult.fromValue(AllowOrDeny.DENY)
+        }
     }
 
     private val progressDelegate = object : GeckoSession.ProgressDelegate {
@@ -501,6 +634,8 @@ class MainActivity : Activity() {
                 "config" -> GeckoResult.fromValue(configJson())
                 "state" -> GeckoResult.fromValue(stateJson())
                 "activity" -> { ScreenController.userActivity(); null }
+                "getExternalAuth" -> externalAuth(message as JSONObject, sender)
+                "revokeExternalAuth" -> revokeExternalAuth(sender)
                 else -> null
             }
         }
@@ -514,7 +649,43 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Only the signed-in HA origin may ask for tokens. */
+    private fun senderAllowed(sender: WebExtension.MessageSender): Boolean =
+        sender.isTopLevel && FrontendUrls.sameOrigin(sender.url, HaAuth.signedInBase)
+
+    /** `externalApp.getExternalAuth` → `{success, access_token, expires_in}` (never logged). */
+    private fun externalAuth(msg: JSONObject, sender: WebExtension.MessageSender): GeckoResult<Any> {
+        if (!senderAllowed(sender)) {
+            Log.w(TAG, "getExternalAuth from ${sender.url} refused (not the signed-in Home Assistant)")
+            return GeckoResult.fromValue(JSONObject().put("success", false))
+        }
+        val result = GeckoResult<Any>()
+        HaAuth.accessToken(force = msg.optBoolean("force")) { a ->
+            val reply = when (a) {
+                is HaAuth.Access.Ok -> JSONObject().put("success", true)
+                    .put("access_token", a.accessToken).put("expires_in", a.expiresIn)
+                is HaAuth.Access.Failed -> {
+                    Log.w(TAG, "getExternalAuth failed: ${a.reason}")
+                    JSONObject().put("success", false)
+                }
+            }
+            handler.post { result.complete(reply) }
+        }
+        return result
+    }
+
+    /** `externalApp.revokeExternalAuth`: the user logged out in the HA frontend. */
+    private fun revokeExternalAuth(sender: WebExtension.MessageSender): GeckoResult<Any> {
+        if (!senderAllowed(sender)) return GeckoResult.fromValue(JSONObject().put("success", false))
+        val result = GeckoResult<Any>()
+        HaAuth.signOut("logged out in the frontend") {
+            handler.post { result.complete(JSONObject().put("success", true)) }
+        }
+        return result
+    }
+
     override fun onDestroy() {
+        HaAuth.removeListener(authListener)
         ScreenController.onKeepScreenOn = null
         ScreenController.onBrightness = null
         ScreenController.onStateChanged = null

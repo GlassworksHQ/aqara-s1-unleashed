@@ -36,20 +36,23 @@ screen is off. Logs: `adb logcat -s S1ESPHome S1Voice`.
 4. On the device page pick the **Assist pipeline** and the **Wake word** (one select per pipeline;
    the options are the models found on the panel). Say the wake word.
 
-### Encryption (optional)
+### Encryption (automatic)
 
-Noise encryption (`Noise_NNpsk0_25519_ChaChaPoly_SHA256`, the same as ESPHome) is **off by
-default**. A random 32-byte key is generated on first start and logged once
-(`adb logcat -s S1ESPHome | grep "encryption key"`).
+Noise encryption (`Noise_NNpsk0_25519_ChaChaPoly_SHA256`, the same as ESPHome) works like an
+ESPHome device built with `api: encryption:` and no key in YAML:
 
-```sh
-A="adb shell am start -n io.github.aguilaair.s1kiosk/.MainActivity"
-$A --es api_key $(openssl rand -base64 32)    # or keep the generated one
-$A --ez api_encryption true                     # restarts the API server; mDNS then advertises api_encryption
-```
+- **No key yet** (fresh panel): plaintext and zero-PSK Noise clients are accepted. DeviceInfo
+  reports `api_encryption_supported` and `api_encryption_provisionable`. mDNS advertises
+  `api_encryption_supported` + `api_provisioning=zero-psk`. When you add the panel in HA (2026.11+),
+  HA generates a key and sends it over a zero-PSK Noise session (`NoiseEncryptionSetKeyRequest`).
+  The panel stores it, activates it 100 ms later and drops every older session. HA reconnects with
+  the key. You never see the key.
+- **With a key**: only Noise with that key (as before). Logs show only a 4-hex fingerprint.
+- Removing the device in HA sends an empty key, which puts the panel back to "no key".
+- Manual key, as before: `$A --es api_key $(openssl rand -base64 32) --ez api_encryption true`
+  (applied live; all sessions are dropped). Then enter the same key in HA.
 
-HA then asks for the key (or shows a re-auth flow for an existing entry). The device does not
-offer HA's automatic key provisioning (`api_encryption_supported` is false).
+Details and sources: [onboarding.md](onboarding.md#2-adoption--encryption-esphome-dynamic-keys-).
 
 ## Device identity
 
@@ -79,7 +82,7 @@ is FNV-1a of the `object_id` (stable).
 | number `Night idle timeout` (s) | `night_idle_timeout` | same, inside the night window |
 | text `Night window` | `night_window` | `HH:MM-HH:MM`, empty = off |
 | number `Presence range` (m, 0–2.5, step 0.1) | `presence_range` | VI5300 threshold (needs `WRITE_SECURE_SETTINGS`); 0 = firmware default |
-| text `Dashboard URL` | `dashboard_url` | sets + loads the dashboard |
+| text `Dashboard URL` | `dashboard_url` | sets + loads the dashboard; `auto` (default) = HA's root on the discovered instance |
 | number `Zoom` (0 = auto) | `zoom` | CSS px ratio; restarts the app |
 | button `Reload dashboard` | `reload_dashboard` | |
 | button `Restart app` | `restart_app` | restarts the kiosk process |
@@ -93,6 +96,9 @@ is FNV-1a of the `object_id` (stable).
 | select `Radio mode` | `radio_mode` | `Aqara (stock)`, `Off`, `Zigbee router`, `Zigbee coordinator (TCP)`, `Thread (future)`; stored only (`RadioController` is a stub) |
 | text_sensor `IP address` | `ip_address` | diagnostic |
 | text_sensor `App version` | `app_version` | diagnostic |
+| text_sensor `Home Assistant URL` | `home_assistant_url` | diagnostic; the HA the panel uses: the origin of a configured dashboard URL, else the discovered one ([onboarding.md](onboarding.md)) |
+| text_sensor `Signed in` | `signed_in` | diagnostic; `yes` / `no`: whether a QR sign-in refresh token is stored (never the token) |
+| button `Sign out` | `sign_out` | revokes the refresh token at HA (`/auth/revoke`), deletes it, shows the sign-in screen |
 
 Plus the wall base entities below, and the entities HA adds itself for a voice device: `assist_satellite.s1_panel_assist_satellite`,
 *Assist pipeline* and *Wake word* selects (two of each), *Finished speaking detection*.
@@ -197,6 +203,9 @@ with the Python TFLite runtime that the patched model gives bit-identical output
 
 ## Wire protocol notes
 
+- **Unprovisioned**: the first byte picks the transport: `0x00` plaintext, `0x01` Noise with the
+  all-zeros PSK (esphome `api_frame_helper_plaintext.cpp` hand-off). `NoiseEncryptionSetKeyRequest`
+  (124, base64 text of 32 bytes) → `NoiseEncryptionSetKeyResponse` (125).
 - **Plaintext framing**: `0x00`, varint payload length, varint message type, protobuf payload. A
   Noise client gets `0x00 "Bad indicator byte"` back (aioesphomeapi reports "device is using
   plaintext").
@@ -234,9 +243,15 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   start → mic audio → events → TTS playback → `AnnounceFinished`), an announcement with
   pre-announce, a timer event, and Noise with the right key, a wrong key, no key, and a Noise
   client against the plaintext server, an event entity (list + fired event), and an entity set
-  change (server-initiated disconnect, reconnect lists the new entity). Skipped without
+  change (server-initiated disconnect, reconnect lists the new entity), and HA 2026.11's dynamic
+  key provisioning (keyless connect, zero-PSK `noise_encryption_set_key`, the keyless session is
+  dropped, plaintext and zero PSK are refused, reconnect with the key, bad/same/empty keys, key
+  survives a restart). Skipped without
   `ESPHOME_PYTHON`. Also passes with
   aioesphomeapi 46.28.0.
+- `NoiseKeysTest`: the key state machine. `OAuthTest` / `SignInServerTest`: authorize URL, state
+  store, token replies, access token cache, external-auth URL flag, and `/signin` → `/callback`
+  over sockets against a fake HA token endpoint. `HaUrlsTest`: mDNS TXT parsing, manifest probe.
 - `BaseProtocolTest` / `BaseTrackerTest`: wall base dock class decoding, mask/count to channels,
   LocalService reply/event parsing (all known shapes, foreign DIDs, garbage), DID redaction,
   debounce (no rebuild loop on flapping), click de-duplication, entity ids per layout.
@@ -279,4 +294,3 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   would be needed for that.
 - Chromecast: not possible. A Cast receiver must be a Google-certified device.
 - `RadioController` only logs; the radio mode is stored but nothing is switched yet.
-- No dynamic key provisioning from HA (`NoiseEncryptionSetKeyRequest`).

@@ -1,0 +1,178 @@
+package io.github.aguilaair.s1kiosk.auth
+
+import com.sun.net.httpserver.HttpServer
+import org.json.JSONObject
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.URI
+import java.net.URL
+import java.util.Collections
+
+/**
+ * The /signin → HA → /callback flow over real sockets against a fake Home Assistant that mimics
+ * components/auth/__init__.py TokenView (form-encoded POST, single-use codes bound to client_id).
+ */
+class SignInServerTest {
+    private lateinit var ha: HttpServer
+    private lateinit var haBase: String
+    private val codes = Collections.synchronizedMap(HashMap<String, String>()) // code -> client_id
+    private val tokenRequests = Collections.synchronizedList(ArrayList<Map<String, String>>())
+    private lateinit var server: SignInServer
+    private var signedIn: Pair<StoredAuth, TokenResult.Ok>? = null
+    @Volatile private var haKnown = true
+
+    @Before
+    fun setUp() {
+        ha = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        ha.createContext("/auth/token") { ex ->
+            val form = OAuth.parseQuery(ex.requestBody.readBytes().toString(Charsets.UTF_8))
+            tokenRequests += form
+            val ct = ex.requestHeaders.getFirst("Content-Type")
+            val (status, body) = when {
+                ex.requestMethod != "POST" || ct != "application/x-www-form-urlencoded" -> 400 to """{"error":"invalid_request"}"""
+                form["grant_type"] == "authorization_code" -> {
+                    val cid = codes.remove(form["code"])
+                    if (cid == null || cid != form["client_id"]) 400 to """{"error":"invalid_request","error_description":"Invalid code"}"""
+                    else 200 to """{"access_token":"AT","token_type":"Bearer","refresh_token":"RT","expires_in":1800,"ha_auth_provider":"homeassistant"}"""
+                }
+                form["grant_type"] == "refresh_token" ->
+                    if (form["refresh_token"] == "RT" && form["client_id"] == signedIn?.first?.clientId)
+                        200 to """{"access_token":"AT2","token_type":"Bearer","expires_in":1800}"""
+                    else 400 to """{"error":"invalid_grant"}"""
+                else -> 400 to """{"error":"unsupported_grant_type"}"""
+            }
+            val b = body.toByteArray()
+            ex.responseHeaders.add("Content-Type", "application/json")
+            ex.sendResponseHeaders(status, b.size.toLong())
+            ex.responseBody.use { it.write(b) }
+        }
+        ha.start()
+        haBase = "http://127.0.0.1:${ha.address.port}"
+        server = SignInServer(0, { if (haKnown) "$haBase/" else null }, HaTokenClient(UrlConnectionPoster()),
+            { auth, ok -> signedIn = auth to ok })
+        server.start()
+    }
+
+    @After
+    fun tearDown() {
+        server.stop()
+        ha.stop(0)
+    }
+
+    private fun get(path: String, host: String? = null): Triple<Int, String?, String> {
+        val c = URL("http://127.0.0.1:${server.localPort}$path").openConnection() as HttpURLConnection
+        c.instanceFollowRedirects = false
+        if (host != null) c.setRequestProperty("Host", host)
+        val code = c.responseCode
+        val body = (if (code >= 400) c.errorStream else c.inputStream)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
+        return Triple(code, c.getHeaderField("Location"), body)
+    }
+
+    @Test
+    fun fullFlow() {
+        System.setProperty("sun.net.http.allowRestrictedHeaders", "true")
+        val (code, location, _) = get("/signin")
+        assertEquals(302, code)
+        assertNotNull(location)
+        val loc = URI(location!!)
+        assertEquals("$haBase/auth/authorize", "${loc.scheme}://${loc.rawAuthority}${loc.rawPath}")
+        val q = OAuth.parseQuery(loc.rawQuery)
+        val panel = "127.0.0.1:${server.localPort}"
+        assertEquals("code", q["response_type"])
+        assertEquals("http://$panel/", q["client_id"])
+        assertEquals("http://$panel/callback", q["redirect_uri"])
+        val state = q["state"]!!
+
+        // The user signs in on the phone; HA stores a code for this client_id and the frontend
+        // redirects to <redirect_uri>?code=..&state=.. (data/auth.ts redirectWithAuthCode).
+        codes["c0de"] = q["client_id"]!!
+        val (cb, _, body) = get("/callback?code=c0de&state=${OAuth.enc(state)}&storeToken=true")
+        assertEquals(200, cb)
+        assertTrue(body.contains("Panel signed in"))
+        assertTrue(body.contains("#0a0b0f"))
+        val (auth, ok) = signedIn!!
+        assertEquals("RT", auth.refreshToken)
+        assertEquals("http://$panel/", auth.clientId)
+        assertEquals(haBase, auth.haBase)
+        assertEquals("AT", ok.accessToken)
+        val req = tokenRequests.single()
+        assertEquals(mapOf("grant_type" to "authorization_code", "code" to "c0de", "client_id" to "http://$panel/"), req)
+        assertTrue("the page never shows tokens", !body.contains("RT") && !body.contains("\"AT\""))
+
+        // Reusing the state fails gracefully.
+        val (again, _, againBody) = get("/callback?code=c0de&state=${OAuth.enc(state)}")
+        assertEquals(400, again)
+        assertTrue(againBody.contains("expired"))
+
+        // Refresh with the stored token and client_id.
+        val r = HaTokenClient(UrlConnectionPoster()).refresh(auth) as TokenResult.Ok
+        assertEquals("AT2", r.accessToken)
+    }
+
+    @Test
+    fun expiredOrUsedCode() {
+        val (_, location, _) = get("/signin")
+        val state = OAuth.parseQuery(URI(location!!).rawQuery)["state"]!!
+        val (cb, _, body) = get("/callback?code=unknown&state=${OAuth.enc(state)}")
+        assertEquals(400, cb)
+        assertTrue(body.contains("expired"))
+        assertNull(signedIn)
+    }
+
+    @Test
+    fun badRequests() {
+        assertEquals(400, get("/callback?code=x&state=forged").first)
+        assertEquals(400, get("/callback?code=x").first)
+        val (_, location, _) = get("/signin")
+        val state = OAuth.parseQuery(URI(location!!).rawQuery)["state"]!!
+        assertEquals(400, get("/callback?state=${OAuth.enc(state)}").first) // no code
+        assertEquals(400, get("/callback?error=access_denied").first)
+        assertEquals(404, get("/nope").first)
+        assertEquals(200, get("/").first)
+        assertNull(signedIn)
+    }
+
+    @Test
+    fun haNotFound() {
+        haKnown = false
+        val (code, location, body) = get("/signin")
+        assertEquals(503, code)
+        assertNull(location)
+        assertTrue(body.contains("Home Assistant not found"))
+    }
+
+    @Test
+    fun haUnreachableAtCallback() {
+        val (_, location, _) = get("/signin")
+        val state = OAuth.parseQuery(URI(location!!).rawQuery)["state"]!!
+        ha.stop(0)
+        val (cb, _, body) = get("/callback?code=c&state=${OAuth.enc(state)}")
+        assertEquals(502, cb)
+        assertTrue(body.contains("reach Home Assistant"))
+    }
+
+    @Test
+    fun handlerRejectsBadHost() {
+        val r = server.handle(SignInServer.Request("GET", "/signin", emptyMap(), mapOf("host" to "a@b")))
+        assertEquals(400, r.status)
+        val ok = server.handle(SignInServer.Request("GET", "/signin", emptyMap(), mapOf("host" to "192.168.3.39:8099")))
+        assertEquals(302, ok.status)
+        val q = OAuth.parseQuery(URI(ok.headers["Location"]).rawQuery)
+        assertEquals("http://192.168.3.39:8099/", q["client_id"])
+        assertEquals("http://192.168.3.39:8099/callback", q["redirect_uri"])
+    }
+
+    @Test
+    fun tokenRequestIsFormEncoded() {
+        JSONObject() // org.json available in tests
+        val r = HaTokenClient(UrlConnectionPoster()).exchangeCode(haBase, "http://x/", "nope")
+        assertTrue((r as TokenResult.Error).isInvalidCode)
+    }
+}

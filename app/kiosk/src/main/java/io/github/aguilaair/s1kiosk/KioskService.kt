@@ -12,6 +12,9 @@ import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import io.github.aguilaair.s1kiosk.auth.HaAuth
+import io.github.aguilaair.s1kiosk.auth.UrlConnectionPoster
+import io.github.aguilaair.s1kiosk.discovery.HaDiscovery
 import io.github.aguilaair.s1kiosk.esphome.PanelDevice
 import io.github.aguilaair.s1kiosk.voice.VoiceEvent
 
@@ -24,13 +27,22 @@ class KioskService : Service() {
 
     private val main = Handler(Looper.getMainLooper())
     private var device: PanelDevice? = null
+    private var discovery: HaDiscovery? = null
 
     override fun onCreate() {
         super.onCreate()
         startForeground(NOTIFICATION_ID, buildNotification())
         ScreenController.start(this)
         voiceState = if (KioskPrefs(this).voiceEnabled) "idle" else "off"
-        device = PanelDevice(this) { e -> main.post { onVoiceEvent(e) } }.also { it.start() }
+        HaAuth.startServer(this)
+        val d = HaDiscovery(this, UrlConnectionPoster(timeoutMs = 5_000)) { url, source ->
+            // Applied by the activity (dashboard URL "auto": load it, or restart for secure-context hosts).
+            main.post { MainActivity.commandSink?.invoke(Intent().putExtra("ha_discovered", url).putExtra("ha_source", source)) }
+        }
+        discovery = d
+        discoveryRef = d
+        d.start()
+        device = PanelDevice(this, { e -> main.post { onVoiceEvent(e) } }, d::onApiHello).also { it.start() }
         Log.i("S1Kiosk", "KioskService started")
     }
 
@@ -52,6 +64,10 @@ class KioskService : Service() {
     override fun onDestroy() {
         device?.stop()
         device = null
+        discovery?.stop()
+        discovery = null
+        discoveryRef = null
+        HaAuth.stopServer()
         super.onDestroy()
     }
 
@@ -87,6 +103,9 @@ class KioskService : Service() {
 
         /** Last voice assistant state, exposed to the page via MainActivity.stateJson(). */
         @Volatile var voiceState: String = "off"
+
+        /** Set while the service runs; the sign-in screen uses it for manual HA URL entry. */
+        @Volatile var discoveryRef: HaDiscovery? = null
 
         fun start(context: Context) {
             val i = Intent(context, KioskService::class.java)

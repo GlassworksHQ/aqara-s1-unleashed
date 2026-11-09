@@ -10,7 +10,13 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
 ## Features
 
 - Full-screen immersive `GeckoView`, landscape, `FLAG_KEEP_SCREEN_ON`.
-- Loads a configurable URL (default `http://192.168.1.100:8123/tablet-home`).
+- Loads a configurable URL. The default `auto` finds Home Assistant (mDNS `_home-assistant._tcp`,
+  or the address of HA's ESPHome connection) and loads its default dashboard. A saved URL is kept.
+- **Sign in with your phone**: if HA shows its login page, the panel covers it with a QR code for
+  `http://<panel-ip>:8099/signin`. Signing in on the phone gives the panel a refresh token (HA OAuth /
+  IndieAuth), and the dashboard then runs with HA's external auth (`external_auth=1`, like the
+  Companion app). "Sign in on this panel instead" keeps HA's normal login page. See
+  [docs/onboarding.md](../docs/onboarding.md).
 - **Microphone/camera work over plain `http://`.** The dashboard host is added to
   Gecko's `dom.securecontext.allowlist`, so `window.isSecureContext` is true and
   `navigator.mediaDevices.getUserMedia()` / AudioWorklet are available. Mic, camera and
@@ -88,7 +94,8 @@ followed by `adb uninstall io.github.aguilaair.s1kiosk` (an active device admin 
 
 ```sh
 A="adb shell am start -n io.github.aguilaair.s1kiosk/.MainActivity"
-$A --es url http://homeassistant.local:8123/my-dashboard   # set + persist the URL
+$A --es url http://homeassistant.local:8123/my-dashboard   # set + persist the URL ("auto" = discover HA)
+$A --ez show_signin true   # preview the QR sign-in screen (doesn't touch the session)
 $A --es open http://192.168.1.100:8123/profile/general      # navigate once (not persisted)
 $A --ef zoom 1.25          # CSS px ratio; 0 = auto (device density 1.5). Restarts the app.
 $A --es secure_hosts a.lan,b.lan   # extra secure-context hosts. Restarts the app.
@@ -102,7 +109,7 @@ $A --ef presence_range_m 1.0   # VI5300 range (needs WRITE_SECURE_SETTINGS)
 $A --es screen off         # or on
 $A --ez restart true       # restart the app process
 $A --es wake_model alexa_v0.1.tflite --ef wake_threshold 0.6 --ef mic_gain 2.0 --ez mic_muted false
-$A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # ESPHome API Noise encryption
+$A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # manual ESPHome API key (HA normally provisions one)
 ```
 
 Do **not** change `wm density` to scale the UI. On this panel it breaks GeckoView's surface
@@ -119,7 +126,7 @@ python3 tools/gecko-eval/gecko_eval.py 'JSON.stringify({w: innerWidth, h: innerH
 ```
 
 Gecko's prefs are written to `files/geckoview-config.yaml` at startup and logged under the
-`S1Kiosk` tag. Page console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
+`S1Kiosk` tag. Sign-in and HA discovery log under `S1Auth` / `S1Discovery` (never tokens or keys). Page console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
 
 > If the screen is blank/white and `innerWidth` is 0, the **display is off**. Gecko drops its
 > surface while the screen sleeps. Check `adb shell dumpsys power | grep mWakefulness`.
@@ -141,8 +148,9 @@ tools/voice/fetch-models.sh            # downloads the openWakeWord models on th
 
 Entity ids look like `light.s1_panel_screen`, `select.s1_panel_screen_mode`,
 `media_player.s1_panel_speaker`; pick the wake word and the Assist pipeline on the device page.
-Encryption is off by default; enable it with `--es api_key <base64 32 bytes> --ez api_encryption true`
-(a key is generated on first start and logged under `S1ESPHome`). Tune the mic with
+Encryption is automatic: a panel without a key lets HA 2026.11+ provision one when you add it
+(ESPHome dynamic encryption key). You can also set a key by hand with
+`--es api_key <base64 32 bytes> --ez api_encryption true`. Keys are never logged. Tune the mic with
 `--ef mic_gain 2.0` / `--ef wake_threshold 0.6`, or turn the voice assistant off with
 `--ez voice_enabled false` (the API and the other entities stay).
 
@@ -154,4 +162,4 @@ from HA when switching.
 
 MIT, see [LICENSE](LICENSE). Clean-room implementation. It contains no code from
 `jxlarrea/kiosk-satellite` (CC BY-NC-ND), which was only used to prove that GeckoView works on this panel.
-GeckoView is MPL-2.0 and is pulled as a Maven dependency.
+GeckoView is MPL-2.0 and is pulled as a Maven dependency. The QR code uses ZXing core (Apache-2.0).

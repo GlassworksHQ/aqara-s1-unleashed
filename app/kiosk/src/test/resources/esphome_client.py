@@ -1,15 +1,20 @@
 """Plays Home Assistant against the panel's ESPHome API server, using the real aioesphomeapi client.
 
-Usage: esphome_client.py <plaintext port> <noise port> <noise key b64>
+Usage: esphome_client.py <plaintext port> <noise port> <noise key b64> <unprovisioned port>
 Driven by EspHomeApiTest. Prints "WAKE" when the test should fire the wake word, and a final
-line "RESULT <json>". Any failed check raises, so the exit code is non-zero.
+line "RESULT <json>". Any failed check raises, so the exit code is non-zero. "RESTART" asks the
+test to restart the unprovisioned server (same port, same key store); it answers "RESTARTED" on
+stdin.
 """
 
 import asyncio
+import base64
 import json
+import secrets
 import sys
 
 from aioesphomeapi import (
+    ZERO_NOISE_PSK,
     APIClient,
     EncryptionPlaintextAPIError,
     InvalidEncryptionKeyAPIError,
@@ -17,6 +22,9 @@ from aioesphomeapi import (
     VoiceAssistantEventType as E,
     VoiceAssistantTimerEventType,
 )
+
+# homeassistant/components/esphome/const.py: CLIENT_INFO = f"Home Assistant {ha_version}"
+HA_CLIENT_INFO = "Home Assistant 2026.11.0"
 
 R = {}
 
@@ -219,11 +227,110 @@ async def noise_to_plain(port, key):
     check(R["noise_to_plain"] == EncryptionPlaintextAPIError.__name__, R["noise_to_plain"])
 
 
+async def connect_error(port, psk):
+    c = APIClient("127.0.0.1", port, None, noise_psk=psk, client_info=HA_CLIENT_INFO)
+    try:
+        await asyncio.wait_for(c.connect(login=True), 5)
+        return "connected"
+    except Exception as err:  # noqa: BLE001
+        return type(err).__name__
+    finally:
+        await c.disconnect(force=True)
+
+
+async def provisioning(port):
+    """Home Assistant 2026.11's dynamic encryption key flow, step by step.
+
+    config_flow.py: a device without a key is added over plaintext (mDNS has no api_encryption).
+    manager.py on_connect -> _handle_dynamic_encryption_key: entry has no key and
+    device_info.api_encryption_supported -> generate base64(token_bytes(32)); since
+    api_encryption_provisionable, _async_provision_key_over_noise opens a second client with
+    noise_psk=ZERO_NOISE_PSK and calls noise_encryption_set_key(new_key). The device then drops the
+    keyless session and HA (reauth flow) reconnects with the stored key.
+    """
+    P = {}
+    stopped = []
+
+    async def on_stop(expected_disconnect):
+        stopped.append(expected_disconnect)
+
+    cli = APIClient("127.0.0.1", port, None, client_info=HA_CLIENT_INFO)
+    await cli.connect(on_stop=on_stop, login=True)
+    info = await cli.device_info()
+    P["before"] = {"supported": info.api_encryption_supported, "provisionable": info.api_encryption_provisionable}
+    check(info.api_encryption_supported and info.api_encryption_provisionable, f"unprovisioned device info {P}")
+
+    # A second keyless session is fine too (zero-PSK Noise, as HA's provisioning client).
+    new_key = base64.b64encode(secrets.token_bytes(32))
+    z = APIClient("127.0.0.1", port, None, noise_psk=ZERO_NOISE_PSK, client_info=HA_CLIENT_INFO)
+    try:
+        await z.connect()
+        zinfo = await z.device_info()
+        P["zero_psk_name"] = zinfo.name
+        P["set_key"] = await z.noise_encryption_set_key(new_key)
+    finally:
+        await z.disconnect(force=True)
+    check(P["set_key"] is True, "device accepted the key")
+    print("PROVISIONED " + new_key.decode(), flush=True)
+
+    # The keyless main session is dropped once the key is active (esphome: 100 ms later).
+    await wait_for(lambda: stopped, "keyless session dropped", timeout=5)
+    P["dropped_expected"] = stopped[0]
+    await cli.disconnect(force=True)
+
+    P["plaintext_after"] = await connect_error(port, None)
+    P["zero_psk_after"] = await connect_error(port, ZERO_NOISE_PSK)
+    check(P["plaintext_after"] == RequiresEncryptionAPIError.__name__, f"plaintext after: {P}")
+    check(P["zero_psk_after"] == InvalidEncryptionKeyAPIError.__name__, f"zero psk after: {P}")
+
+    # HA reconnects with the key from its storage.
+    k = APIClient("127.0.0.1", port, None, noise_psk=new_key.decode(), client_info=HA_CLIENT_INFO)
+    await k.connect(login=True)
+    info = await k.device_info()
+    P["after"] = {"supported": info.api_encryption_supported, "provisionable": info.api_encryption_provisionable}
+    check(info.api_encryption_supported and not info.api_encryption_provisionable, f"provisioned device info {P}")
+    # Bad keys are refused and don't change anything.
+    P["set_bad_length"] = await k.noise_encryption_set_key(base64.b64encode(b"short"))
+    P["set_all_zero"] = await k.noise_encryption_set_key(ZERO_NOISE_PSK.encode())
+    P["set_same"] = await k.noise_encryption_set_key(new_key)
+    check(P["set_bad_length"] is False and P["set_all_zero"] is False and P["set_same"] is True, f"bad keys {P}")
+    await k.disconnect()
+
+    # The key survives a restart of the server (same store).
+    print("RESTART", flush=True)
+    line = await asyncio.get_running_loop().run_in_executor(None, sys.stdin.readline)
+    check(line.strip() == "RESTARTED", f"restart ack {line!r}")
+    P["plaintext_after_restart"] = await connect_error(port, None)
+    check(P["plaintext_after_restart"] == RequiresEncryptionAPIError.__name__, f"after restart {P}")
+    stopped2 = []
+
+    async def on_stop2(expected_disconnect):
+        stopped2.append(expected_disconnect)
+
+    k = APIClient("127.0.0.1", port, None, noise_psk=new_key.decode(), client_info=HA_CLIENT_INFO)
+    await k.connect(on_stop=on_stop2, login=True)
+    P["restart_name"] = (await k.device_info()).name
+
+    # Removing the entry in HA (_async_clear_dynamic_encryption_key) sends an empty key.
+    P["clear"] = await k.noise_encryption_set_key(b"")
+    check(P["clear"] is True, "clear key")
+    await wait_for(lambda: stopped2, "keyed session dropped after clear", timeout=5)
+    await k.disconnect(force=True)
+    p = APIClient("127.0.0.1", port, None, client_info=HA_CLIENT_INFO)
+    await p.connect(login=True)
+    info = await p.device_info()
+    P["cleared"] = {"supported": info.api_encryption_supported, "provisionable": info.api_encryption_provisionable}
+    check(info.api_encryption_provisionable, f"provisionable again {P}")
+    await p.disconnect()
+    R["provisioning"] = P
+
+
 async def main():
-    plain_port, noise_port, key = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
+    plain_port, noise_port, key, prov_port = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3], int(sys.argv[4])
     await plaintext(plain_port)
     await noise(noise_port, key)
     await noise_to_plain(plain_port, key)
+    await provisioning(prov_port)
     print("RESULT " + json.dumps(R), flush=True)
 
 

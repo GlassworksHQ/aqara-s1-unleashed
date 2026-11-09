@@ -4,15 +4,18 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Base64
-import android.util.Log
-import java.security.SecureRandom
+import io.github.aguilaair.s1kiosk.auth.OAuth
+import io.github.aguilaair.s1kiosk.auth.StoredAuth
+import io.github.aguilaair.s1kiosk.esphome.NoiseKeyStore
 
 /**
- * Persisted kiosk settings (plain SharedPreferences, private to the app). The only secret is the
- * ESPHome API encryption key, which Home Assistant needs anyway.
+ * Persisted kiosk settings (SharedPreferences, private to the app). Secrets: the ESPHome API
+ * encryption key (`kiosk.xml`, which Home Assistant provisions) and the HA refresh token
+ * (`auth.xml`, see [auth]). Neither is ever logged.
  */
 class KioskPrefs(context: Context) {
     private val sp = context.getSharedPreferences("kiosk", Context.MODE_PRIVATE)
+    private val authSp = context.getSharedPreferences("auth", Context.MODE_PRIVATE)
 
     fun registerListener(l: SharedPreferences.OnSharedPreferenceChangeListener) =
         sp.registerOnSharedPreferenceChangeListener(l)
@@ -20,9 +23,53 @@ class KioskPrefs(context: Context) {
     fun unregisterListener(l: SharedPreferences.OnSharedPreferenceChangeListener) =
         sp.unregisterOnSharedPreferenceChangeListener(l)
 
+    /**
+     * The dashboard URL setting: a URL, or [AUTO] (the default) to use Home Assistant's root on the
+     * discovered [haUrl]. A URL saved by an earlier version is kept as is.
+     */
+    var urlSetting: String
+        get() = sp.getString(KEY_URL, null)?.takeIf { it.isNotBlank() } ?: AUTO
+        set(v) = sp.edit().putString(KEY_URL, v.trim().ifEmpty { AUTO }).apply()
+
+    val isAutoUrl: Boolean get() = urlSetting.equals(AUTO, ignoreCase = true)
+
+    /** The dashboard URL to load, or "" while [isAutoUrl] and Home Assistant hasn't been found. */
     var url: String
-        get() = sp.getString(KEY_URL, null) ?: BuildConfig.DEFAULT_URL
-        set(v) = sp.edit().putString(KEY_URL, v.trim()).apply()
+        get() = if (isAutoUrl) haUrl.takeIf { it.isNotEmpty() }?.let { "$it/" } ?: "" else urlSetting
+        set(v) { urlSetting = v }
+
+    /** Home Assistant base URL found by discovery or entered on the sign-in screen (`http://h:8123`). */
+    val haUrl: String get() = sp.getString("ha_url", "") ?: ""
+
+    /** How [haUrl] was learnt: `mdns`, `esphome`, `manual` (HaDiscovery.SOURCE_*), or "". */
+    val haUrlSource: String get() = sp.getString("ha_url_source", "") ?: ""
+
+    fun setHaUrl(url: String, source: String) =
+        sp.edit().putString("ha_url", url).putString("ha_url_source", source).commit()
+
+    /**
+     * The Home Assistant the panel talks to (sign-in, relative media URLs): the origin of a
+     * configured dashboard URL, else the discovered [haUrl]. Null if neither is known.
+     */
+    val haBase: String?
+        get() = (if (isAutoUrl) null else OAuth.origin(urlSetting)) ?: haUrl.takeIf { it.isNotEmpty() }
+
+    // ---- Home Assistant sign-in (QR + OAuth, see auth/HaAuth.kt). Never log these values.
+
+    var auth: StoredAuth?
+        get() {
+            val rt = authSp.getString("refresh_token", null) ?: return null
+            val base = authSp.getString("ha_base", null) ?: return null
+            val cid = authSp.getString("client_id", null) ?: return null
+            return StoredAuth(base, cid, rt)
+        }
+        set(v) {
+            val e = authSp.edit().clear()
+            if (v != null) e.putString("refresh_token", v.refreshToken).putString("ha_base", v.haBase).putString("client_id", v.clientId)
+            e.commit()
+        }
+
+    val hasAuth: Boolean get() = authSp.contains("refresh_token")
 
     /**
      * Page zoom as a CSS device-pixel ratio override (Gecko pref `layout.css.devPixelsPerPx`).
@@ -104,24 +151,29 @@ class KioskPrefs(context: Context) {
 
     // ---- ESPHome native API (see docs/esphome.md)
 
-    /** Noise encryption for the API; off by default (plaintext). */
+    /**
+     * Noise encryption for the API. True once a key is set (by Home Assistant's provisioning or
+     * `--es api_key`); false = no key yet: plaintext + zero-PSK Noise, key provisionable.
+     */
     var apiEncryption: Boolean
         get() = sp.getBoolean("api_encryption", false)
         set(v) = sp.edit().putBoolean("api_encryption", v).apply()
 
-    /** 32-byte Noise PSK, base64. Generated on first use; see [ensureApiKey]. */
+    /** 32-byte Noise PSK, base64. */
     var apiKey: String
         get() = sp.getString("api_key", "") ?: ""
         set(v) = sp.edit().putString("api_key", v.trim()).apply()
 
-    /** Returns the API key, generating (and logging, once) a random one if none is set. */
-    fun ensureApiKey(): String {
-        apiKey.takeIf { decodeApiKey(it) != null }?.let { return it }
-        val key = ByteArray(32).also { SecureRandom().nextBytes(it) }
-        val b64 = Base64.encodeToString(key, Base64.NO_WRAP)
-        apiKey = b64
-        Log.i("S1ESPHome", "Generated ESPHome API encryption key: $b64")
-        return b64
+    /** The active Noise key: [apiKey] while [apiEncryption] is on, else null (unprovisioned). */
+    fun effectiveApiKey(): ByteArray? = if (apiEncryption) decodeApiKey(apiKey) else null
+
+    /** Persists the key HA provisions over the API (synchronously, like ESPHome's pref sync). */
+    val noiseKeyStore: NoiseKeyStore = object : NoiseKeyStore {
+        override fun load(): ByteArray? = effectiveApiKey()
+        override fun save(key: ByteArray?): Boolean =
+            if (key == null) sp.edit().remove("api_key").putBoolean("api_encryption", false).commit()
+            else sp.edit().putString("api_key", Base64.encodeToString(key, Base64.NO_WRAP))
+                .putBoolean("api_encryption", true).commit()
     }
 
     /** Stable MAC reported to Home Assistant (its config entry is keyed by it). */
@@ -190,6 +242,8 @@ class KioskPrefs(context: Context) {
     }
 
     companion object {
+        const val AUTO = "auto"
+
         /** Decodes a base64 API key; null unless it is exactly 32 bytes. */
         fun decodeApiKey(b64: String): ByteArray? = try {
             Base64.decode(b64.trim(), Base64.DEFAULT).takeIf { it.size == 32 }

@@ -20,8 +20,8 @@ android {
         // The Panel Hub S1 Plus runs 32-bit Android 10 (A133 with an armeabi-v7a userspace).
         ndk { abiFilters += listOf("armeabi-v7a") }
 
-        // Default dashboard; overridable at runtime (intent extra / settings dialog).
-        buildConfigField("String", "DEFAULT_URL", "\"http://192.168.1.100:8123/tablet-home\"")
+        // No hard-coded dashboard: the default URL setting is "auto" (Home Assistant is discovered,
+        // see docs/onboarding.md). A URL saved in the prefs is kept.
     }
 
     buildFeatures { buildConfig = true }
@@ -52,6 +52,8 @@ dependencies {
     // Audio playback (TTS, announcements, media player): streams over HTTP in-process, avoiding the
     // vendor CedarX HTTP stack. Same version GeckoView already ships.
     implementation("androidx.media3:media3-exoplayer:1.11.1")
+    // QR code on the sign-in screen (encoder only, pure Java, Apache-2.0).
+    implementation("com.google.zxing:core:3.5.3")
 
     // JVM unit tests for the ESPHome API (against aioesphomeapi) and openWakeWord buffering.
     testImplementation("junit:junit:4.13.2")

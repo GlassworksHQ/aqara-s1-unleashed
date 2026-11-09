@@ -108,17 +108,32 @@ class EspHomeApiTest {
         plain.onCommand = { plain.publishStates() }
         val noise = ApiServer(0, { identity }, entities(), psk = key)
         noise.onCommand = { noise.publishStates() }
+        // Unprovisioned (no key yet), with a persistent store, as on a fresh panel.
+        val store = MemoryKeyStore()
+        val hellos = Collections.synchronizedList(ArrayList<String>())
+        var activations = 0
+        fun provServer(port: Int) = ApiServer(port, { identity }, entities(), NoiseKeys(store)).apply {
+            onClientHello = { info, addr -> hellos += "$info@${addr?.hostAddress}" }
+            onKeyActivated = { activations++ }
+        }
+        var prov = provServer(0)
         plain.start()
         noise.start()
+        prov.start()
+        val provPort = prov.localPort
+        var provisionedKey: String? = null
+        var keyAtRestart: ByteArray? = null
         try {
             val script = File(javaClass.classLoader!!.getResource("esphome_client.py")!!.toURI())
             val proc = ProcessBuilder(python, "-I", script.absolutePath, plain.localPort.toString(),
-                noise.localPort.toString(), keyB64).redirectErrorStream(true).start()
+                noise.localPort.toString(), keyB64, provPort.toString()).redirectErrorStream(true).start()
+            val stdin = proc.outputStream.bufferedWriter()
             val log = StringBuilder()
             var result: JSONObject? = null
             val reader = Thread {
                 proc.inputStream.bufferedReader().forEachLine { line ->
-                    synchronized(log) { log.appendLine(line) }
+                    // (the provisioned test key is not echoed, like the app never logs keys)
+                    if (!line.startsWith("PROVISIONED ")) synchronized(log) { log.appendLine(line) }
                     when {
                         line == "WAKE" -> {
                             assertTrue(controller.onWakeWord("Hey Jarvis"))
@@ -131,6 +146,14 @@ class EspHomeApiTest {
                         line == "REBUILD" -> plain.setEntities(
                             plainEntities + SwitchEntity("base_relay_1", "Base relay 1", get = { true }, set = {}),
                         )
+                        line.startsWith("PROVISIONED ") -> provisionedKey = line.removePrefix("PROVISIONED ")
+                        line == "RESTART" -> {
+                            keyAtRestart = store.key
+                            prov.stop()
+                            prov = provServer(provPort)
+                            prov.start()
+                            stdin.write("RESTARTED\n"); stdin.flush()
+                        }
                         line.startsWith("RESULT ") -> result = JSONObject(line.removePrefix("RESULT "))
                     }
                 }
@@ -189,9 +212,28 @@ class EspHomeApiTest {
             assertEquals("s1-panel", errs.getString("wrong_key_name"))
             assertEquals("021122334455", errs.getString("wrong_key_mac"))
             assertEquals("EncryptionPlaintextAPIError", r.getString("noise_to_plain"))
+
+            // Dynamic key provisioning (HA 2026.11 manager.py _async_provision_key_over_noise).
+            val p = r.getJSONObject("provisioning")
+            assertTrue(p.getBoolean("set_key"))
+            assertEquals("s1-panel", p.getString("zero_psk_name"))
+            assertTrue("keyless session dropped as an expected disconnect", p.getBoolean("dropped_expected"))
+            assertEquals("RequiresEncryptionAPIError", p.getString("plaintext_after"))
+            assertEquals("InvalidEncryptionKeyAPIError", p.getString("zero_psk_after"))
+            assertEquals("RequiresEncryptionAPIError", p.getString("plaintext_after_restart"))
+            assertEquals("s1-panel", p.getString("restart_name"))
+            assertTrue(p.getJSONObject("cleared").getBoolean("provisionable"))
+            assertTrue("key was provisioned", provisionedKey != null)
+            assertTrue("the provisioned key was persisted",
+                Base64.getDecoder().decode(provisionedKey).contentEquals(keyAtRestart))
+            assertEquals(2, activations) // set, then clear (after the restart: new server instance counts)
+            assertEquals("cleared at the end", null, store.key)
+            assertTrue("hello client_info + peer address reported: $hellos",
+                hellos.any { it == "Home Assistant 2026.11.0@127.0.0.1" })
         } finally {
             plain.stop()
             noise.stop()
+            prov.stop()
         }
     }
 }

@@ -13,6 +13,7 @@ import io.github.aguilaair.s1kiosk.BuildConfig
 import io.github.aguilaair.s1kiosk.KioskPrefs
 import io.github.aguilaair.s1kiosk.MainActivity
 import io.github.aguilaair.s1kiosk.TimerBoard
+import io.github.aguilaair.s1kiosk.auth.HaAuth
 import io.github.aguilaair.s1kiosk.RadioController
 import io.github.aguilaair.s1kiosk.ScreenController
 import io.github.aguilaair.s1kiosk.base.BaseEntities
@@ -44,7 +45,12 @@ import java.util.concurrent.TimeUnit
  * the screen or the activity is posted to the main thread. Kiosk actions (URL, reload, zoom,
  * header, restart) go to [MainActivity] as intents, exactly like the `adb am start` extras.
  */
-class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Unit) {
+class PanelDevice(
+    context: Context,
+    private val onVoiceEvent: (VoiceEvent) -> Unit,
+    /** HelloRequest from an API client (Home Assistant discovery, HaDiscovery.onApiHello). */
+    private val onApiHello: (String, java.net.InetAddress?) -> Unit = { _, _ -> },
+) {
 
     companion object {
         const val NAME = "s1-panel"
@@ -66,6 +72,7 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
     private val voiceEnabled = prefs.voiceEnabled
 
     private var server: ApiServer? = null
+    private val noiseKeys = NoiseKeys(prefs.noiseKeyStore)
     private var voice: VoiceEngine? = null
     private var controller: VoiceAssistantController? = null
     private lateinit var identity: DeviceIdentity
@@ -84,6 +91,7 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
         exec.execute { onPrefChanged(key) }
     }
     private val screenListener: () -> Unit = { exec.execute { server?.publishStates() } }
+    private val authListener: (Boolean) -> Unit = { exec.execute { server?.publishStates() } }
 
     fun start() {
         exec.execute { startInternal() }
@@ -92,6 +100,7 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
     fun stop() {
         prefs.unregisterListener(prefListener)
         ScreenController.removeListener(screenListener)
+        HaAuth.removeListener(authListener)
         wallBase?.stop()
         wallBase = null
         exec.shutdownNow()
@@ -109,7 +118,6 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
     // ------------------------------------------------------------------ setup
 
     private fun startInternal() {
-        prefs.ensureApiKey() // generated (and logged) on first run so it can be copied into HA later
         identity = DeviceIdentity(
             name = NAME,
             friendlyName = FRIENDLY_NAME,
@@ -134,6 +142,7 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
         startServer()
         prefs.registerListener(prefListener)
         ScreenController.addListener(screenListener)
+        HaAuth.addListener(authListener)
         exec.scheduleWithFixedDelay({ controller?.tick() }, 1, 1, TimeUnit.SECONDS)
         exec.scheduleWithFixedDelay({ server?.publishStates() }, 5, 5, TimeUnit.SECONDS)
         base.start()
@@ -199,10 +208,13 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
     }
 
     private fun startServer() {
-        val psk = if (prefs.apiEncryption) KioskPrefs.decodeApiKey(prefs.ensureApiKey()) else null
-        val s = ApiServer(ApiServer.DEFAULT_PORT, { identity }, entities, psk)
+        val s = ApiServer(ApiServer.DEFAULT_PORT, { identity }, entities, noiseKeys)
         s.voice = controller
         s.onCommand = { exec.execute { s.publishStates() } }
+        s.onClientHello = { info, addr -> onApiHello(info, addr) }
+        // A provisioned (or cleared) key changes the mDNS TXT records; re-register after the
+        // unregistration has gone out so the name doesn't collide with our own old record.
+        s.onKeyActivated = { exec.execute { readvertise() } }
         try {
             s.start()
         } catch (e: IOException) {
@@ -211,23 +223,32 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
             return
         }
         server = s
-        mdns.start(identity, s.localPort, encrypted = psk != null)
+        mdns.start(identity, s.localPort, encrypted = s.encrypted, provisionable = s.provisionable)
     }
 
-    private fun restartServer() {
-        ApiLog.i("API encryption settings changed; restarting the API server")
+    private fun readvertise() {
+        val s = server ?: return
         mdns.stop()
-        server?.stop()
-        server = null
-        startServer()
+        exec.schedule({
+            if (server === s) mdns.start(identity, s.localPort, encrypted = s.encrypted, provisionable = s.provisionable)
+        }, 1500, TimeUnit.MILLISECONDS)
+    }
+
+    /** Key changed in the panel settings (adb extras): apply it unless it is the one HA just provisioned. */
+    private fun onApiKeyPrefChanged() {
+        val k = prefs.effectiveApiKey()
+        val latest = noiseKeys.latest
+        val same = if (k == null || latest == null) k == null && latest == null else k.contentEquals(latest)
+        if (same) return
+        ApiLog.i(if (k == null) "API key removed in the panel settings" else "API key set in the panel settings (fingerprint ${NoiseKeys.fingerprint(k)})")
+        server?.replaceKey(k)
     }
 
     /** esphome-main thread. */
     private fun onPrefChanged(key: String?) {
         val v = voice
         when (key) {
-            "api_encryption" -> restartServer()
-            "api_key" -> if (prefs.apiEncryption) restartServer()
+            "api_encryption", "api_key" -> onApiKeyPrefChanged()
             "mic_muted" -> v?.setMuted(prefs.micMuted)
             "mic_gain" -> v?.setGain(prefs.micGain)
             "wake_threshold" -> v?.threshold = prefs.wakeThreshold
@@ -324,7 +345,7 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
         // --- kiosk
         TextEntity(
             "dashboard_url", "Dashboard URL", "mdi:web", minLength = 1, maxLength = 255,
-            get = { prefs.url }, set = { url -> toActivity { putExtra("url", url) } },
+            get = { prefs.urlSetting }, set = { url -> toActivity { putExtra("url", url) } },
         ),
         NumberEntity(
             "zoom", "Zoom", "mdi:magnify-plus-outline", min = 0f, max = 3f, step = 0.05f, mode = 1,
@@ -396,6 +417,22 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
             "app_version", "App version", "mdi:new-box", EntityCategory.DIAGNOSTIC,
             get = { BuildConfig.VERSION_NAME },
         ),
+        // --- Home Assistant sign-in (docs/onboarding.md)
+        TextSensorEntity(
+            "home_assistant_url", "Home Assistant URL", "mdi:home-assistant", EntityCategory.DIAGNOSTIC,
+            get = { prefs.haBase ?: "" },
+        ),
+        TextSensorEntity(
+            "signed_in", "Signed in", "mdi:account-key", EntityCategory.DIAGNOSTIC,
+            get = { if (HaAuth.signedIn) "yes" else "no" },
+        ),
+        ButtonEntity(
+            "sign_out", "Sign out", "mdi:logout", EntityCategory.CONFIG,
+            press = {
+                // The activity shows the sign-in screen through its HaAuth listener.
+                HaAuth.signOut("Home Assistant button") { exec.execute { server?.publishStates() } }
+            },
+        ),
     )
 
     private fun onMediaCommand(c: MediaPlayerCommandData) {
@@ -445,7 +482,8 @@ class PanelDevice(context: Context, private val onVoiceEvent: (VoiceEvent) -> Un
      */
     private fun resolveUrl(url: String): String {
         if (url.startsWith("http://") || url.startsWith("https://")) return url
-        return try { URI(prefs.url).resolve(url).toString() } catch (e: Exception) { url }
+        val base = prefs.url.ifEmpty { prefs.haBase?.let { "$it/" } ?: return url }
+        return try { URI(base).resolve(url).toString() } catch (e: Exception) { url }
     }
 
     // ------------------------------------------------------------------ helpers

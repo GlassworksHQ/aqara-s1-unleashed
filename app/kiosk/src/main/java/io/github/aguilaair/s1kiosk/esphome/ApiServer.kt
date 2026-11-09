@@ -3,6 +3,7 @@ package io.github.aguilaair.s1kiosk.esphome
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.IOException
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -60,26 +61,42 @@ interface VoiceAssistantHandler {
  * DeviceInfo, DeviceCapabilities, ListEntities, SubscribeStates, commands, Ping, Disconnect and the
  * voice assistant messages. Unknown messages are ignored, as ESPHome does.
  *
- * @param psk 32-byte Noise PSK, or null for plaintext.
+ * Encryption follows an ESPHome build with `api: encryption:` but no YAML key ([NoiseKeys]):
+ * without a key the server accepts plaintext and zero-PSK Noise clients and lets Home Assistant
+ * provision a key (`NoiseEncryptionSetKeyRequest`); with a key, only Noise with that key.
+ *
+ * @param keys Noise key state, or null for a plaintext-only server (no encryption support at all).
  */
 class ApiServer(
     private val port: Int,
     private val identity: () -> DeviceIdentity,
     entities: List<ApiEntity>,
-    private val psk: ByteArray?,
+    private val keys: NoiseKeys?,
 ) {
+    /** A server with a fixed key (or plaintext-only for null), as before dynamic keys. */
+    constructor(port: Int, identity: () -> DeviceIdentity, entities: List<ApiEntity>, psk: ByteArray?) :
+        this(port, identity, entities, psk?.let { NoiseKeys(MemoryKeyStore(it)) })
+
     companion object {
         const val DEFAULT_PORT = 6053
         const val API_MAJOR = 1
         /** ESPHome 2026.10/11 reports 1.20 (api_connection.cpp); we implement DeviceCapabilities (1.15+). */
         const val API_MINOR = 20
         private const val READ_TIMEOUT_MS = 90_000 // aioesphomeapi pings every 20 s
+        /** ESPHome activates a newly saved PSK 100 ms after answering (api_server.cpp update_noise_psk_). */
+        const val KEY_ACTIVATION_DELAY_MS = 100L
     }
 
     @Volatile var voice: VoiceAssistantHandler? = null
 
     /** Called after a command message was handled (state may have changed). */
     @Volatile var onCommand: (() -> Unit)? = null
+
+    /** Called (on a connection thread) for every HelloRequest: client_info and the peer address. */
+    @Volatile var onClientHello: ((clientInfo: String, remote: InetAddress?) -> Unit)? = null
+
+    /** Called after a provisioned key became active (or was cleared), e.g. to update the mDNS TXT. */
+    @Volatile var onKeyActivated: (() -> Unit)? = null
 
     // Replaced as a whole by setEntities (the wall base adds/removes entities at runtime).
     @Volatile private var entities: List<ApiEntity> = entities.toList()
@@ -142,7 +159,47 @@ class ApiServer(
         serverSocket = ss
         running = true
         Thread({ acceptLoop(ss) }, "esphome-accept").apply { isDaemon = true; start() }
-        ApiLog.i("API server listening on ${ss.localPort} (${if (psk != null) "Noise" else "plaintext"})")
+        ApiLog.i("API server listening on ${ss.localPort} (${modeName()})")
+    }
+
+    private fun modeName() = when {
+        keys == null -> "plaintext only"
+        keys.hasKey -> "Noise, key fingerprint ${NoiseKeys.fingerprint(keys.active!!)}"
+        else -> "no key yet: plaintext + zero-PSK Noise, key provisionable"
+    }
+
+    /** True while the server accepts new connections without a key (unprovisioned). */
+    val provisionable: Boolean get() = keys?.provisionable == true
+
+    /** True if a Noise key is active. */
+    val encrypted: Boolean get() = keys?.hasKey == true
+
+    /**
+     * Applies a key change made outside the API (panel settings): every open session is dropped, as
+     * ESPHome does when a key is activated.
+     */
+    fun replaceKey(key: ByteArray?) {
+        val k = keys ?: return
+        if (!k.replace(key)) return
+        ApiLog.i("API key replaced locally; now ${modeName()}")
+        retireAll()
+        onKeyActivated?.invoke()
+    }
+
+    private fun scheduleActivation() {
+        Thread({
+            try { Thread.sleep(KEY_ACTIVATION_DELAY_MS) } catch (_: InterruptedException) {}
+            if (keys?.activatePending() == true) {
+                ApiLog.i("Encryption key activated; disconnecting all clients to reset the PSK (${modeName()})")
+                retireAll()
+                try { onKeyActivated?.invoke() } catch (t: Throwable) { ApiLog.w("onKeyActivated failed", t) }
+            }
+        }, "esphome-key-activate").apply { isDaemon = true; start() }
+    }
+
+    /** Sessions opened before a key change must not survive it (esphome `flags_.next_close`). */
+    private fun retireAll() {
+        for (c in connections) c.retire()
     }
 
     fun stop() {
@@ -202,6 +259,8 @@ class ApiServer(
         private lateinit var transport: FrameTransport
         @Volatile var subscribedStates = false
         @Volatile var isOpen = true
+        /** Set when the key changed: only the disconnect handshake is processed from now on. */
+        @Volatile private var retired = false
         private val remote = socket.remoteSocketAddress?.toString() ?: "?"
 
         fun run() {
@@ -211,8 +270,25 @@ class ApiServer(
                 val input = BufferedInputStream(socket.getInputStream(), 8 * 1024)
                 val output = BufferedOutputStream(socket.getOutputStream(), 16 * 1024)
                 val ident = identity()
-                transport = if (psk != null) NoiseTransport(input, output, psk, ident.name, ident.macHex)
-                else PlaintextTransport(input, output)
+                val k = keys
+                val active = k?.active
+                transport = when {
+                    k == null -> PlaintextTransport(input, output)
+                    active != null -> NoiseTransport(input, output, active, ident.name, ident.macHex)
+                    else -> {
+                        // No key yet (esphome api_frame_helper_plaintext.cpp): a 0x01 first byte is a
+                        // Noise ClientHello and is handed to a Noise helper with the all-zeros PSK.
+                        input.mark(1)
+                        val first = input.read()
+                        input.reset()
+                        if (first == 0x01) {
+                            ApiLog.i("[$id] $remote: Noise client on an unprovisioned device (zero PSK)")
+                            NoiseTransport(input, output, NoiseKeys.ZERO_PSK, ident.name, ident.macHex)
+                        } else {
+                            PlaintextTransport(input, output)
+                        }
+                    }
+                }
                 if (!transport.handshake()) {
                     ApiLog.w("[$id] handshake with $remote failed")
                     return
@@ -258,6 +334,22 @@ class ApiServer(
             }, "esphome-disc-$id").apply { isDaemon = true; start() }
         }
 
+        /** Asks the client to disconnect and closes after the ack or 500 ms; ignores everything else. */
+        fun retire() {
+            if (retired) return
+            retired = true
+            subscribedStates = false
+            if (voiceConn === this) {
+                voiceConn = null
+                voice?.onSubscribe(false)
+            }
+            if (!reply(Msg.DISCONNECT_REQUEST)) { close(); return }
+            Thread({
+                try { Thread.sleep(500) } catch (_: InterruptedException) {}
+                close()
+            }, "esphome-retire-$id").apply { isDaemon = true; start() }
+        }
+
         fun close() {
             if (!isOpen) return
             isOpen = false
@@ -272,9 +364,19 @@ class ApiServer(
 
         private fun handle(f: Frame) {
             val m = ProtoMessage(f.data)
+            if (retired) {
+                when (f.type) {
+                    Msg.DISCONNECT_REQUEST -> { reply(Msg.DISCONNECT_RESPONSE); close() }
+                    Msg.DISCONNECT_RESPONSE -> close()
+                }
+                return
+            }
             when (f.type) {
                 Msg.HELLO_REQUEST -> {
                     ApiLog.i("[$id] hello from '${m.string(1)}' API ${m.uint32(2)}.${m.uint32(3)} ($remote)")
+                    try { onClientHello?.invoke(m.string(1), socket.inetAddress) } catch (t: Throwable) {
+                        ApiLog.w("onClientHello failed", t)
+                    }
                     val ident = identity()
                     reply(
                         Msg.HELLO_RESPONSE,
@@ -286,6 +388,15 @@ class ApiServer(
                 Msg.DISCONNECT_REQUEST -> { reply(Msg.DISCONNECT_RESPONSE); close() }
                 Msg.DISCONNECT_RESPONSE -> close()
                 Msg.PING_REQUEST -> reply(Msg.PING_RESPONSE)
+                Msg.NOISE_ENCRYPTION_SET_KEY_REQUEST -> {
+                    // esphome api_connection.cpp send_noise_encryption_set_key_response_
+                    val k = keys
+                    val r = k?.handleSetKey(m.bytes(1)) ?: SetKeyResult(false, false, "encryption not supported")
+                    val how = if (transport is NoiseTransport) "Noise" else "plaintext (deprecated by ESPHome)"
+                    ApiLog.i("[$id] NoiseEncryptionSetKeyRequest over $how: ${r.message}")
+                    reply(Msg.NOISE_ENCRYPTION_SET_KEY_RESPONSE, ProtoWriter().bool(1, r.success))
+                    if (r.activate) scheduleActivation()
+                }
                 Msg.PING_RESPONSE, Msg.GET_TIME_RESPONSE -> Unit
                 Msg.DEVICE_INFO_REQUEST -> reply(Msg.DEVICE_INFO_RESPONSE, deviceInfo())
                 Msg.DEVICE_CAPABILITIES_REQUEST -> reply(
@@ -389,6 +500,10 @@ class ApiServer(
                 .string(12, d.manufacturer, force = true)
                 .string(13, d.friendlyName, force = true)
                 .uint32(17, d.voiceFeatures)
+                // api_encryption_supported (19) / api_encryption_provisionable (26), as an ESPHome
+                // build with `api: encryption:` and no YAML key (api_connection.cpp device_info).
+                .bool(19, keys != null)
+                .bool(26, keys?.provisionable == true)
         }
     }
 }

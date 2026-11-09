@@ -15,6 +15,10 @@ class KioskApp : Application() {
         private const val TAG = "S1Kiosk"
         private var runtime: GeckoRuntime? = null
 
+        /** `dom.securecontext.allowlist` hosts written at startup (changing them needs a restart). */
+        @Volatile var startupSecureHosts: List<String> = emptyList()
+            private set
+
         /**
          * One GeckoRuntime per process. Gecko prefs are injected through a YAML config file,
          * which GeckoView reads once at startup; changing them requires a process restart.
@@ -44,7 +48,8 @@ class KioskApp : Application() {
         }
 
         private fun writeGeckoConfig(context: Context, prefs: KioskPrefs): File {
-            val hosts = prefs.secureHosts().joinToString(",")
+            startupSecureHosts = prefs.secureHosts()
+            val hosts = startupSecureHosts.joinToString(",")
             val p = linkedMapOf<String, Any>(
                 // HA is usually plain http on the LAN. Treat its host as a secure context so
                 // navigator.mediaDevices / getUserMedia / AudioWorklet are exposed.
