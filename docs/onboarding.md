@@ -313,6 +313,17 @@ Alternatives, kept as options:
 - **`trusted_networks` auth provider** with `allow_bypass_login`. Truly zero-touch, but needs YAML
   edits, a static panel IP and a security trade-off. Document only.
 
+**Verified end to end on the panel (2026-11-09):** QR flow → HA login (as a non-admin user) →
+`/callback` stores the refresh token → the panel reloads HA with `?external_auth=1` and the frontend
+connects with app-minted access tokens (no login page). The sign-in survives a full app restart
+(fresh refresh), and HA shows `sensor.<panel>_signed_in = yes`. Two GeckoView 159 quirks were found and fixed
+on the way:
+- Replies to `browser.runtime.sendNativeMessage` never reach the page (the parent logs
+  "Invalid event data for callback", and the promise rejects with `undefined`). All app ↔ page
+  request/response now goes over the long-lived native port with request ids (`content.js` `request()`,
+  `MainActivity.onPortRequest`).
+- `GeckoBundle` has no `Long`; reply fields must be Int, Double, String or Boolean (`expires_in` is sent as Int).
+
 ### 5. Which dashboard
 
 - With a token, the app can list dashboards (`lovelace/dashboards/list`) and expose them as an

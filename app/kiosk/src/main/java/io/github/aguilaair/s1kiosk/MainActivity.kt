@@ -630,6 +630,8 @@ class MainActivity : Activity() {
     private val messageDelegate = object : WebExtension.MessageDelegate {
         override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
             val type = (message as? JSONObject)?.optString("type")
+            if (type != "config" && type != "state" && type != "activity")
+                Log.d(TAG, "ext message '$type' from ${sender.url} topLevel=${sender.isTopLevel}")
             return when (type) {
                 "config" -> GeckoResult.fromValue(configJson())
                 "state" -> GeckoResult.fromValue(stateJson())
@@ -644,8 +646,32 @@ class MainActivity : Activity() {
             ports += port
             port.setDelegate(object : WebExtension.PortDelegate {
                 override fun onDisconnect(port: WebExtension.Port) { ports -= port }
+                override fun onPortMessage(message: Any, port: WebExtension.Port) = onPortRequest(message, port)
             })
             port.postMessage(JSONObject().put("type", "state").put("state", stateJson()))
+        }
+    }
+
+    /**
+     * Request/response over the native port (content.js `request()`): `{type, id, ...}` in,
+     * `{type: "reply", id, ...}` out. Used instead of sendNativeMessage replies, which don't reach
+     * the page in this GeckoView build ("Invalid event data for callback").
+     */
+    private fun onPortRequest(message: Any, port: WebExtension.Port) {
+        val m = message as? JSONObject ?: return
+        val id = m.optInt("id", -1)
+        if (id < 0) return
+        fun reply(o: Any?) {
+            val out = (o as? JSONObject) ?: JSONObject().put("success", false)
+            out.put("type", "reply").put("id", id)
+            handler.post { runCatching { port.postMessage(out) } }
+        }
+        when (m.optString("type")) {
+            "config" -> reply(JSONObject().put("config", configJson()))
+            "state" -> reply(JSONObject().put("state", stateJson()))
+            "getExternalAuth" -> externalAuth(m, port.sender).accept { r -> reply(r) }
+            "revokeExternalAuth" -> revokeExternalAuth(port.sender).accept { r -> reply(r) }
+            else -> reply(null)
         }
     }
 
@@ -663,12 +689,16 @@ class MainActivity : Activity() {
         HaAuth.accessToken(force = msg.optBoolean("force")) { a ->
             val reply = when (a) {
                 is HaAuth.Access.Ok -> JSONObject().put("success", true)
-                    .put("access_token", a.accessToken).put("expires_in", a.expiresIn)
+                    .put("access_token", a.accessToken)
+                    // GeckoView native-message replies go through GeckoBundle, which has no Long:
+                    // a Long here fails with "Invalid event data for callback" and the page never hears back.
+                    .put("expires_in", a.expiresIn.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt())
                 is HaAuth.Access.Failed -> {
                     Log.w(TAG, "getExternalAuth failed: ${a.reason}")
                     JSONObject().put("success", false)
                 }
             }
+            Log.d(TAG, "getExternalAuth -> success=${reply.optBoolean("success")}")
             handler.post { result.complete(reply) }
         }
         return result

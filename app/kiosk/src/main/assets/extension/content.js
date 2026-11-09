@@ -68,6 +68,45 @@
     } catch (e) { /* not fatal */ }
   }
 
+  // ---- native port: request/response ------------------------------------------------------------
+  // Replies to browser.runtime.sendNativeMessage don't reach the page in this GeckoView build (the
+  // parent logs "Invalid event data for callback" and the promise rejects with undefined), so every
+  // app <-> page exchange goes over one long-lived native port: requests carry an id, the app answers
+  // with {type: "reply", id, ...} on the same port. The app also pushes state/config on it.
+  let port = null;
+  let nextId = 1;
+  const pending = new Map();
+  const portListeners = [];
+  try {
+    port = browser.runtime.connectNative(APP);
+    port.onMessage.addListener((m) => {
+      if (m && m.type === "reply" && pending.has(m.id)) {
+        const done = pending.get(m.id);
+        pending.delete(m.id);
+        done(m);
+        return;
+      }
+      portListeners.forEach((l) => { try { l(m); } catch (e) { /* ignore */ } });
+    });
+    port.onDisconnect.addListener(() => {
+      port = null;
+      pending.forEach((done) => done(null));
+      pending.clear();
+    });
+  } catch (e) { port = null; }
+
+  /** Sends {type, ...extra} to the app; resolves with the reply object, or null on failure/timeout. */
+  function request(type, extra, timeoutMs) {
+    return new Promise((resolve) => {
+      if (!port) { resolve(null); return; }
+      const id = nextId++;
+      const t = setTimeout(() => { if (pending.delete(id)) resolve(null); }, timeoutMs || 15000);
+      pending.set(id, (m) => { clearTimeout(t); resolve(m); });
+      try { port.postMessage(Object.assign({ type, id }, extra || {})); }
+      catch (e) { pending.delete(id); clearTimeout(t); resolve(null); }
+    });
+  }
+
   // ---- external auth bridge ------------------------------------------------------------------
   // The frontend computes `isExternal` once at startup from window.externalApp / ?external_auth=1,
   // so the object must exist before its module scripts run: install it synchronously here
@@ -95,19 +134,17 @@
     exportFunction(function (payload) {
       const p = parsePayload(payload);
       if (!p || !AUTH_CALLBACKS.includes(p.callback)) return;
-      browser.runtime.sendNativeMessage(APP, { type: "getExternalAuth", force: !!p.force }).then((r) => {
+      request("getExternalAuth", { force: !!p.force }).then((r) => {
         if (r && r.success) callPage(p.callback, true, { access_token: r.access_token, expires_in: r.expires_in });
         else callPage(p.callback, false);
-      }, () => callPage(p.callback, false));
+      });
     }, ext, { defineAs: "getExternalAuth" });
 
     // revokeExternalAuth('{"callback":"externalAuthRevokeToken"}'): the user logged out in HA.
     exportFunction(function (payload) {
       const p = parsePayload(payload);
       if (!p || !AUTH_CALLBACKS.includes(p.callback)) return;
-      browser.runtime.sendNativeMessage(APP, { type: "revokeExternalAuth" }).then(
-        (r) => callPage(p.callback, !!(r && r.success)),
-        () => callPage(p.callback, false));
+      request("revokeExternalAuth").then((r) => callPage(p.callback, !!(r && r.success)));
     }, ext, { defineAs: "revokeExternalAuth" });
 
     // externalBus(JSON): with this method present the frontend creates ExternalMessaging and
@@ -142,22 +179,19 @@
   hideSidebar();
 
   // Ask the app for settings (falls back to defaults if the app hasn't wired up messaging yet).
-  browser.runtime.sendNativeMessage(APP, { type: "config" }).then((r) => {
-    if (r && typeof r === "object") {
-      cfg = Object.assign(cfg, r);
+  request("config", null, 5000).then((r) => {
+    if (r && r.config && typeof r.config === "object") {
+      cfg = Object.assign(cfg, r.config);
       hideSidebar();
       apply();
     }
-  }).catch(() => {});
+  });
 
-  // Live state push from the app (presence, lux, screen) over a native port.
-  try {
-    const port = browser.runtime.connectNative(APP);
-    port.onMessage.addListener((m) => {
-      if (m && m.type === "state") publishState(m.state);
-      if (m && m.type === "config") { cfg = Object.assign(cfg, m.config); apply(); }
-    });
-  } catch (e) { /* not fatal */ }
+  // Live pushes from the app (presence, lux, screen state; config changes) on the same port.
+  portListeners.push((m) => {
+    if (m && m.type === "state") publishState(m.state);
+    if (m && m.type === "config") { cfg = Object.assign(cfg, m.config); apply(); }
+  });
 
   // HA renders lazily and re-renders on navigation; re-apply cheaply.
   setInterval(apply, 1000);
