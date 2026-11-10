@@ -14,6 +14,8 @@
 #   overlay.d/sbin/s1kiosk_adb_keys      this computer's adb public key, authorized on first boot so a
 #                                        factory panel (no adb) can continue with tools/install.sh
 #                                        (ADB_PUBKEY=<file>, default ~/.android/adbkey.pub; none = skip)
+#   overlay.d/s1kiosk_branding.rc        boot animation, bind-mounted over /system/media/bootanimation.zip
+#   overlay.d/sbin/s1kiosk_bootanimation.zip   (BOOT_ANIMATION=<zip>, default branding/glass-tile; none = stock)
 # Nothing is flashed here; see docs/root.md.
 #
 # Magisk is GPLv3 and is not redistributed by this repo: the official release is downloaded and its
@@ -27,6 +29,7 @@ IN=${1:?stock boot.img}; OUT=${2:?output boot.img}
 HERE="$(cd "$(dirname "$0")" && pwd)"
 RADIO="$HERE/../radio"
 ADB_PUBKEY=${ADB_PUBKEY:-$HOME/.android/adbkey.pub}
+BOOT_ANIMATION=${BOOT_ANIMATION:-$HERE/../../branding/glass-tile/bootanimation.zip}
 
 for b in otbr-agent ot-ctl; do
   [ -x "$RADIO/out/$b" ] || { echo "missing $RADIO/out/$b: run OTBR_RUNTIME_DIR=/data/s1kiosk/radio/run tools/radio/build-otbr.sh"; exit 1; }
@@ -52,9 +55,22 @@ elif [ -s "$ADB_PUBKEY" ]; then
   cp "$ADB_PUBKEY" "$W/p/s1kiosk_adb_keys"
 else echo "no adb public key at $ADB_PUBKEY (run 'adb start-server' once, or ADB_PUBKEY=none)"; exit 1
 fi
+BRANDING_CPIO=""
+if [ "$BOOT_ANIMATION" != none ]; then
+  [ -s "$BOOT_ANIMATION" ] || { echo "no boot animation at $BOOT_ANIMATION (BOOT_ANIMATION=none for stock)"; exit 1; }
+  python3 - "$BOOT_ANIMATION" <<'PY' || exit 1
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+bad = [i.filename for i in z.infolist() if i.compress_type != zipfile.ZIP_STORED]
+assert not bad, f"bootanimation.zip entries must be STORED, not compressed: {bad[:3]}"
+PY
+  cp "$BOOT_ANIMATION" "$W/p/s1kiosk_bootanimation.zip"
+  cp "$HERE/s1kiosk_branding.rc" "$W/p/"
+  BRANDING_CPIO='"add 0644 overlay.d/s1kiosk_branding.rc s1kiosk_branding.rc" "add 0644 overlay.d/sbin/s1kiosk_bootanimation.zip s1kiosk_bootanimation.zip"'
+fi
 cp "$IN" "$W/p/boot.img"
 
-docker run --rm --platform linux/arm64 -e PREINITDEVICE="$PREINITDEVICE" -v "$W/p":/w -w /w \
+docker run --rm --platform linux/arm64 -e PREINITDEVICE="$PREINITDEVICE" -e BRANDING_CPIO="$BRANDING_CPIO" -v "$W/p":/w -w /w \
   arm64v8/ubuntu:22.04 sh -euc '
   chmod 755 magiskboot magiskinit magisk init-ld
   # Outside Android: boot_patch.sh needs dos2unix (its grep_prop reads the stock SHA1/PREINITDEVICE
@@ -72,6 +88,7 @@ docker run --rm --platform linux/arm64 -e PREINITDEVICE="$PREINITDEVICE" -v "$W/
     "add 0644 overlay.d/s1kiosk_firstboot.rc s1kiosk_firstboot.rc" \
     "add 0700 overlay.d/sbin/s1kiosk_firstboot.sh s1kiosk_firstboot.sh" \
     "add 0600 overlay.d/sbin/s1kiosk_adb_keys s1kiosk_adb_keys"
+  [ -z "$BRANDING_CPIO" ] || eval "./magiskboot cpio ramdisk.cpio $BRANDING_CPIO"
   ./magiskboot cpio ramdisk.cpio "extract .backup/.magisk magisk.cfg"
   echo "--- Magisk config:"; cat magisk.cfg
   echo "--- overlay.d:"; ./magiskboot cpio ramdisk.cpio "ls -r overlay.d"

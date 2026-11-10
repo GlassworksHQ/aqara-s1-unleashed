@@ -1,0 +1,6 @@
+# S1 Unleashed boot animation (branding/glass-tile/bootanimation.zip). Injected by Magisk as
+# overlay.d/s1kiosk_branding.rc; the zip ships in the boot image (overlay.d/sbin -> ${MAGISKTMP}).
+# A bind mount over the stock file: nothing is written to /system, and flashing the stock boot image
+# brings the stock animation back. post-fs-data runs before surfaceflinger starts the boot animation.
+on post-fs-data
+    mount none ${MAGISKTMP}/s1kiosk_bootanimation.zip /system/media/bootanimation.zip bind
