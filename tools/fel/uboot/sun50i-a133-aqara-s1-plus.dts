@@ -57,3 +57,13 @@
 	pinctrl-0 = <&uart0_pb_pins>;
 	status = "okay";
 };
+
+/* USB-C is the OTG port (the same one FEL uses): peripheral mode for fastboot. */
+&usb_otg {
+	dr_mode = "peripheral";
+	status = "okay";
+};
+
+&usbphy {
+	status = "okay";
+};

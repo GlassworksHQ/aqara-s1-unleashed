@@ -2,7 +2,8 @@
 
 **Status (2026-11-09): working.** Mainline U-Boot 2027.01-rc1 boots on the S1 Plus from FEL to a
 `=>` prompt with full eMMC access. It is loaded over USB and runs from RAM, so nothing is written
-to the panel. This is the base for a UART-free installer (fastboot is next).
+to the panel. U-Boot then starts **USB fastboot** on the USB-C port by itself, so a host can
+flash partitions with only the PCB button and a cable, no UART needed.
 
 ```
 U-Boot 2027.01-rc1 ... Allwinner Technology
@@ -22,7 +23,11 @@ MMC:   mmc@4022000: 1        (8-bit, 52 MHz, 7.3 GiB, GPT with the Android parti
    stays black.
 3. Boot: `NO_BL31=1 SUNXI_FEL=sunxi-fel tools/fel/fel-boot.sh ~/src/u-boot/build-s1`.
    Watch the console on the debug UART at 115200 8N1.
-4. Unplug and replug *without* the button to get back to Android.
+   After 2 s, U-Boot runs `fastboot usb 0`. Press a key on the UART during the countdown to get a
+   prompt instead.
+4. On the host: `fastboot devices`, then `fastboot getvar partition-size:boot`. Partitions are
+   addressed by their GPT names (`boot`, `vbmeta`, `super`, ...). The download buffer is 512 MiB.
+5. Unplug and replug *without* the button to get back to Android.
 
 ## What had to be fixed
 
@@ -72,8 +77,8 @@ work again with patch 0001. That is untested.
 - U-Boot reaches the prompt; `mmc info` and `mmc part` work (read-only).
 
 ## Next
-- Enable USB fastboot (MUSB gadget) for flashing from a host, with no UART.
 - Retest TF-A BL31 with the DRAM fix, then upstream the fix to the U-Boot list. It probably
   affects every A133 DDR4 board.
-- Use `env` = nowhere so `saveenv` can't touch the panel's Android `env` partition. U-Boot currently
-  looks for the environment on FAT on mmc 0, which doesn't exist; that lookup is harmless.
+- `ENV_IS_NOWHERE` is set, so `saveenv` can never write to the panel's Android `env` partition.
+- Build the installer flow on top of fastboot (persistent root / boot image), behind explicit
+  backups.
