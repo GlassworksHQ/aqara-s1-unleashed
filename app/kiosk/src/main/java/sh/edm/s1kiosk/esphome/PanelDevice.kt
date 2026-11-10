@@ -713,22 +713,40 @@ class PanelDevice(
 
     // ------------------------------------------------------------------ helpers
 
-    /** The Wi-Fi MAC if readable, else a random locally administered one; persisted either way. */
+    /**
+     * The Home Assistant device identity (ESPHome "MAC"). Must survive a reinstall or factory reset, or
+     * HA sees a new device (merge prompt, duplicate entities). Order: the saved value; the Wi-Fi MAC
+     * if readable; else one derived from the chip's serial (ro.serialno, from the SoC's SID), so it no
+     * longer depends on Wi-Fi being up at first start (factory-fresh panels boot with Wi-Fi off).
+     * Random only if neither exists.
+     */
     private fun stableMac(): String {
         prefs.deviceMac.takeIf { MAC_RE.matches(it) }?.let { return it }
         val hw = try { NetworkInterface.getByName("wlan0")?.hardwareAddress } catch (_: Exception) { null }
         val usable = hw?.takeIf { a ->
             a.size == 6 && a.any { it != 0.toByte() } && !(a[0] == 2.toByte() && a.drop(1).all { it == 0.toByte() })
         }
-        val bytes = usable ?: ByteArray(6).also {
-            SecureRandom().nextBytes(it)
-            it[0] = ((it[0].toInt() and 0xFC) or 0x02).toByte() // unicast, locally administered
+        val serial = systemProperty("ro.serialno").takeIf { it.length >= 8 && it != "unknown" }
+        val (bytes, source) = when {
+            usable != null -> usable to "wlan0"
+            serial != null -> java.security.MessageDigest.getInstance("SHA-256")
+                .digest("s1kiosk-device-mac:$serial".toByteArray()).copyOf(6).also {
+                    it[0] = ((it[0].toInt() and 0xFC) or 0x02).toByte() // unicast, locally administered
+                } to "serial"
+            else -> ByteArray(6).also {
+                SecureRandom().nextBytes(it)
+                it[0] = ((it[0].toInt() and 0xFC) or 0x02).toByte()
+            } to "random"
         }
         val mac = bytes.joinToString(":") { "%02X".format(it.toInt() and 0xFF) }
         prefs.deviceMac = mac
-        ApiLog.i("Device MAC $mac (${if (usable != null) "wlan0" else "random"})")
+        ApiLog.i("Device MAC $mac ($source)")
         return mac
     }
+
+    private fun systemProperty(name: String): String = try {
+        Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, name) as? String ?: ""
+    } catch (_: Exception) { "" }
 
     private fun ipAddress(): String? = try {
         NetworkInterface.getNetworkInterfaces().toList()
