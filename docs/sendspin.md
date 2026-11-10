@@ -6,8 +6,8 @@ group it with them. You no longer need MA's "Home Assistant MediaPlayers" bridge
 That bridge goes MA → HA → `media_player.s1_panel_speaker` and has no sync.
 
 Code: `app/kiosk/src/main/java/sh/edm/s1kiosk/sendspin/`. The protocol core is pure
-JVM (`SendspinSession`, `SsCrypto`, `TimeFilter`, `PlaybackScheduler`, `WsClient`) and
-`SendspinPlayer` is the Android glue. It is owned by `PanelDevice` and runs in the foreground
+JVM (`SendspinSession`, `SsCrypto`, `TimeFilter`, `PlaybackScheduler`, `WsClient`, `Flac`,
+`AudioPipeline`) and `SendspinPlayer` and `MediaCodecFlacDecoder` are the Android glue. It is owned by `PanelDevice` and runs in the foreground
 `KioskService`. Logs: `adb logcat -s S1Sendspin`.
 
 ## Setup
@@ -44,13 +44,14 @@ web player and for the HA Voice PE.
 | Where | Setting | Default |
 |---|---|---|
 | HA switch `switch.s1_panel_music_assistant_player_sendspin` / `--ez sendspin_enabled` | Run the player | on |
-| HA diagnostic `sensor.s1_panel_music_assistant_player_status` | e.g. `ready, paired with Music Assistant (…)`, `playing from …: Artist – Title`, `waiting for pairing or approval by …` | |
+| HA diagnostic `sensor.s1_panel_music_assistant_player_status` | e.g. `ready, paired with Music Assistant (…)`, `playing from … (FLAC): Artist – Title`, `waiting for pairing or approval by …`; `…; FLAC off, using PCM: <reason>` after a [FLAC fallback](#flac) | |
 | `--es sendspin_server <host[:port][/path] or ws://…>` | Server address; `auto` = discovery | `auto` |
 | `--ez sendspin_unpaired_access true` | Let a server play **without pairing** (Sendspin "unpaired access", guest mode). MA then approves it automatically | off |
+| `--ez sendspin_flac false` | Offer only PCM (no FLAC). Switching it back on also retries FLAC after a fallback | on (FLAC first, PCM fallback) |
 
 `--e…` extras go to `adb shell am start -n sh.edm.s1kiosk/.MainActivity`, as in
 [app/README.md](../app/README.md). Changing the server address or unpaired access reconnects
-(`client/goodbye` `restart`) so the new `client/hello` carries the new value. Volume, mute and
+(`client/goodbye` `restart`) so the new `client/hello` carries the new value (also for `sendspin_flac`). Volume, mute and
 the output delay are the Sendspin player's own (stored in `sendspin.xml`). They don't affect the
 voice/TTS volume of `media_player.s1_panel_speaker`, and vice versa. Android's media volume
 (stream 3) still scales everything.
@@ -84,7 +85,7 @@ It also follows later spec changes when they don't break that server. Example: i
 Read and cross-checked: the spec's `README.md` (at `c281aeb`); in aiosendspin 10.2.1, `noise/`
 (`driver.py`, `session.py`, `wire.py`, `keys.py`, `pairing.py`, `pairing_token.py`),
 `client/connection.py`, `models/core.py`, `models/player.py` and `server/connection.py`; MA's
-`providers/sendspin/{provider.py,hass_auto_pair.py,security.py}`; HA 2026.11.0
+`providers/sendspin/{provider.py,hass_auto_pair.py,security.py,player.py}`; HA 2026.11.0
 `components/esphome/{sendspin.py,websocket_api.py}`; aioesphomeapi 46.25.0 `api.proto` and
 `model.py`; `sendspin-js` (time sync bursts); `sendspin-cpp` (default unpaired access off).
 
@@ -130,8 +131,10 @@ Read and cross-checked: the spec's `README.md` (at `c281aeb`); in aiosendspin 10
 
 - `client/hello`: `name` "S1 Panel", `device_info` (Aqara / Panel Hub S1 Plus (S1 Kiosk) / app
   version / MAC), `supported_roles` `["player@v1", "metadata@v1"]`, and
-  `player@v1_support {supported_formats: [{codec: pcm, channels: 2, sample_rate: 48000,
-  bit_depth: 16}], buffer_capacity: 1500000}`. It also sends
+  `player@v1_support {supported_formats: [{codec: flac, channels: 2, sample_rate: 48000,
+  bit_depth: 16}, {codec: pcm, channels: 2, sample_rate: 48000, bit_depth: 16}],
+  buffer_capacity: 1500000}`. FLAC is first (preferred) and PCM is the fallback; PCM only when
+  `sendspin_flac` is off, the device has no FLAC decoder, or after a [FLAC fallback](#flac). It also sends
   `supported_pair_methods: {"pairing_psk": {}}` (an object, not a list) and
   `unpaired_access: {enabled: false}`. It sends none of the keys MA flagged on other clients:
   no `trust_level`, no hello-level `supported_commands`, no `static_delay_ms`.
@@ -187,13 +190,90 @@ until it appears.
   the filter. It is resent after every activation that keeps or adds the player role, and whenever
   volume, mute or the delay change.
 
+### FLAC
+
+Verified against aiosendspin 10.2.1 (`server/roles/player/v1.py`, `capabilities.py`,
+`audio/codecs.py` `FlacEncoder`, `server/connection.py`), the spec `README.md` at `c281aeb`
+("player@v1 support object", "Codec framing", "stream/start player object", "stream/clear player",
+"Player Buffer Accounting"), MA 2.10.9 `providers/sendspin/player.py`, `sendspin-js`
+(`src/audio/decoder.ts`, `src/core/codec-support.ts`) and `sendspin-cpp` (`src/protocol.cpp`,
+`src/decoder.cpp`), and Android 10's decoder (`frameworks/av` `android10-release`:
+`media/codec2/components/flac/C2SoftFlacDec.cpp`, `media/libstagefright/flac/dec/FLACDecoder.cpp`).
+
+- **Negotiation.** The client lists formats in priority order; the server picks the first one it
+  can encode (`filter_encodable_formats(...)[0]`; FLAC needs PyAV with FFmpeg's encoder, which MA
+  has). A `client/state` `format` or an operator override in MA (per-player "preferred format",
+  default *automatic*) would take precedence; the panel sends no `format`. In automatic mode MA
+  only considers formats in the codec of the client's first entry and plays at their sample rate.
+  The hello must list FLAC or PCM, or aiosendspin flags "listed neither flac nor pcm".
+- **`stream/start`** `player: {codec: "flac", sample_rate: 48000, channels: 2, bit_depth: 16,
+  codec_header}`. `codec_header` is standard Base64 (padded) of `fLaC` + `0x80` (last-metadata-block
+  flag, type 0 = STREAMINFO) + 24-bit length `0x000022` + the 34-byte STREAMINFO: 42 bytes,
+  56 characters. aiosendspin builds it from FFmpeg's extradata
+  (`b"fLaC\x80" + len(header).to_bytes(3, "big") + header`); sendspin-cpp accepts exactly that.
+  MA's STREAMINFO: block size 4608..4608, min frame size 0, max frame size 19032, 48000 Hz, 2 ch,
+  16-bit, total samples 0, MD5 zero. The panel accepts `fLaC` + any blocks starting with
+  STREAMINFO, or a bare STREAMINFO, and checks it against the `stream/start` fields.
+- **Chunks.** Spec: "Each binary audio chunk carries whole codec units; a unit never spans
+  chunks", FLAC = "one or more complete FLAC frames". aiosendspin sends exactly one frame per
+  chunk: FFmpeg picks the block size (4608 samples = 96 ms at 48 kHz, under the 150 ms cap), and
+  each `process()` output is one encoded frame. The chunk timestamp is its first sample:
+  `stream_start + cumulative_samples * 1e6 // sample_rate`, so consecutive chunks are contiguous.
+  FLAC has no codec delay (`lookahead_us` 0), so decoded samples map 1:1 onto that timeline.
+- **Format changes.** A new `stream/start` mid-stream switches format for the chunks after it.
+  The client must keep the chunks it already has and decode each in the format it came in, without
+  a gap. aiosendspin skips `stream/start` when codec, rate, channels, depth and header are all
+  unchanged.
+- **`stream/clear`** keeps the format (no new `stream/start`, often the same running encoder) and
+  frames stay independently decodable. **`stream/end`** ends the stream; the next one starts with
+  a new `stream/start`.
+- **Buffer accounting** counts encoded bytes, so with FLAC the 1.5 MB `buffer_capacity` covers
+  about 13–15 s instead of 7.8 s (aiosendspin also caps it at 30 s). MA in fact keeps 1.5–4 s
+  queued during the first half minute (below).
+
+What the panel does (`Flac.kt`, `AudioPipeline.kt`, `MediaCodecFlacDecoder.kt`):
+
+- **Decoder:** MediaCodec `audio/flac` (`c2.android.flac.decoder` on the panel, libFLAC in
+  `media.swcodec`), synchronous mode, 16-bit output (`pcm-encoding` 2). `csd-0` = `fLaC` + the
+  STREAMINFO block marked last, the same 42 bytes as the header. `C2SoftFlacDec` hands the
+  first (`FLAG_CODEC_CONFIG`) buffer to `FLACDecoder::parseMetadata`, which runs libFLAC's
+  `process_until_end_of_metadata` and needs the `fLaC` marker and a non-zero max block size.
+- **One frame per input buffer.** `C2SoftFlacDec::process` calls `decodeOneFrame` once per input
+  (`process_single`); extra frames in a buffer would stay queued and shift the output by a frame.
+  So each chunk is split into frames first (`FlacFrames.split`: a boundary is where a valid frame
+  header, sync + CRC-8, follows a matching CRC-16 footer). Each frame is checked against
+  STREAMINFO (block size ≤ max, rate, channels, depth), which `decodeOneFrame` enforces by failing
+  the component. A partial frame would also leave libFLAC at end-of-stream for good, so
+  truncated/corrupt chunks are dropped instead of being queued.
+- **Timestamps:** frame *i* of a chunk is scheduled at `chunk_ts + Σ previous block sizes / rate`.
+  Each frame is queued with a serial number as `presentationTimeUs`; `C2SoftFlacDec` copies the
+  input ordinal to its one output buffer, and the pipeline looks the frame up by it. Decoded PCM
+  then enters the unchanged jitter buffer and `PlaybackScheduler` exactly like PCM chunks, so the
+  sync maths doesn't know the codec.
+- **Codec switches** (PCM ↔ FLAC): everything still in the decoder is drained first; the output
+  stays 48 kHz/2 ch/16-bit PCM, so the AudioTrack keeps running and there is no gap.
+- **`stream/clear`:** frames still in the decoder are forgotten by tag (with `from_timestamp`,
+  only those at or after it). The codec is not flushed: one whole frame per input leaves the
+  decoder with no partial state, and Android 10's C2 `flush()` resets libFLAC and drops the
+  STREAMINFO (`FLACDecoder::flush` → `mStreamInfoValid = false`) without reliably resubmitting
+  `csd-0`. **`stream/end`** releases the codec; a new or changed `codec_header` gets a new one.
+- **Errors:** an exception, a frame inconsistent with STREAMINFO, a corrupt chunk or a stalled
+  decoder (frames in, nothing out for 1.5 s) is logged and the codec is released; the next frame
+  opens a fresh one. **3 errors within 60 s**, a missing/invalid `codec_header`, or a decoder that
+  can't be opened disable FLAC for the rest of the app run. The player then reconnects
+  (`client/goodbye` `restart`) with a PCM-only hello, and the status sensor says
+  `…; FLAC off, using PCM: <reason>`. `--ez sendspin_flac true` (or an app restart) retries.
+- The log line every 10 s while streaming: `decode: flac <kbit/s> on the wire | FLAC frames N,
+  decoder latency avg/max, errors, dropped`.
+
 ### Audio and scheduling
 
-- Formats: PCM 48 kHz, stereo, 16-bit only. It is one of the formats every server must produce, and
-  the panel's mixer runs at 48 kHz, so MA resamples and the panel never has to switch rates.
-  The panel has no FLAC or Opus decoder.
-- Chunks (`[4][timestamp i64][send_ahead u32][pcm]`; one shorter than 13 bytes is a protocol
-  error) go into a jitter buffer ordered by server timestamp. A chunk that has already ended
+- Formats: FLAC or PCM, both 48 kHz, stereo, 16-bit. These are formats every server must produce
+  (spec: FLAC at 16/24-bit, 1–2 ch, 44.1/48 kHz; PCM at 16-bit, same rates). The panel's mixer runs
+  at 48 kHz, so MA resamples and the panel never has to switch rates. No Opus. See [FLAC](#flac).
+- Chunks (`[4][timestamp i64][send_ahead u32][audio]`; one shorter than 13 bytes is a protocol
+  error) are decoded to 16-bit PCM on their own thread (`AudioPipeline`, `ss-decode`), in arrival
+  order, and go into a jitter buffer ordered by server timestamp. A chunk that has already ended
   locally on arrival is dropped (counted as late).
 - `PlaybackScheduler` feeds an `AudioTrack` (`USAGE_MEDIA`, 100 ms buffer, blocking writes, audio
   thread at `URGENT_AUDIO`) in 10 ms blocks. For each block it compares two times:
@@ -244,6 +324,45 @@ sync: offset 675603141.084 ms ±430 µs drift -19.05 ppm | err 139 µs (smoothed
 - A volume change from HA (`media_player.volume_set` 0.4) came back to HA as 0.4 through
   `client/state`. `media_stop` → `stream/end` → `activities: []`.
 
+### FLAC vs PCM (2026-11-09)
+
+Same library track (AJR – 100 Bad Days; MA delivers it at 48 kHz) to
+`media_player.s1_panel` only, media volume 2/15, three plays of ~20–35 s. The first FLAC play
+came after a minute of clock sync; the PCM play and the second FLAC play followed a reconnect
+(`sendspin_flac false` / `true`), so their filters were still converging (drift unused).
+
+```
+Stream started: flac 48000 Hz 2 ch 16-bit (codec_header 42 bytes)
+FLAC stream: block size 4608..4608, 48000 Hz 2 ch 16-bit
+CCodec: Created component [c2.android.flac.decoder]
+C2SoftFlacDec: process: decoder configuration : 48000 Hz, 2 channels, 0 samples, 4608 block size
+decode: flac 810 kbit/s on the wire | FLAC frames 114, decoder latency avg 8740 µs max 20.2 ms, errors 0, dropped 0
+sync: offset 689201933.446 ms ±380 µs drift -17.91 ppm | err 154 µs (smoothed 137) buffer 2340 ms | per 10 s: +9/-0 frames, snaps 0/0, underrun blocks 0, late chunks 0, chunks 114
+decode: flac 924 kbit/s on the wire | FLAC frames 114, decoder latency avg 9734 µs max 49.1 ms, errors 0, dropped 0
+sync: offset 689201933.239 ms ±357 µs drift -18.22 ppm | err 124 µs (smoothed 116) buffer 3234 ms | per 10 s: +11/-0 frames, snaps 0/0, underrun blocks 0, late chunks 0, chunks 114
+```
+
+| | PCM | FLAC |
+|---|---|---|
+| Audio on the wire (chunk bytes incl. headers, steady 10 s windows) | 1686–1702 kbit/s | 740–930 kbit/s (**−45–55 %**) |
+| wlan0 receive, ~12–14 s window from 2 s after start (includes the start-up burst) | 1905 kbit/s | 1172 kbit/s |
+| Sendspin CPU, % of one A53 core (`ss-conn` + `ss-decode` + `ss-audio` + `MediaCodec_loop` + `media.swcodec`) | ≈ 10 % (7.3 + 1.8 + 1.2) | ≈ 18 % (4.2 + 4.6 + ~1.2 + 3.4 + 4.5) |
+| Scheduling error, steady state | 47–179 µs | 124–179 µs |
+| Corrections per 10 s, converged filter | 9 (earlier PCM run, above) | 9–11 |
+| Underruns / late chunks / decode errors | 0 / 0 / – | 0 / 0 / 0 |
+
+- MA negotiated FLAC by itself (FLAC is the hello's first entry) and logged no non-compliance for
+  the panel, neither for FLAC nor for the reconnects.
+- FLAC halves the Wi-Fi traffic (less ChaCha20 work on `ss-conn`). It costs about 8 % of one core
+  more for decoding (≈ 2 % of the quad-core), next to ~45–50 % of one core for wake-word
+  inference (`voice-mic`), which runs either way.
+- "Decoder latency" is from queueing a frame to getting its PCM back (C2 runs in `media.swcodec`),
+  ~10 ms against 1.5–4 s of buffer. It doesn't affect timing, since each frame keeps its server
+  timestamp.
+- Sync is unchanged: the scheduler sees the same PCM it saw before. The 9–11 frames per 10 s are
+  the clock drift (~18 ppm), as with PCM.
+- Measured with `/proc/<pid>/task/*/stat` and `/proc/net/dev` deltas over adb.
+
 These figures come from the panel's own clock model. Acoustic sync against another speaker was
 not measured (the test played to the panel only). The remaining unknown is how accurate the
 Allwinner HAL's `getTimestamp` is, that is, whether it really reports the DAC presentation time.
@@ -258,11 +377,13 @@ python3 -m venv /tmp/sendspin-venv && /tmp/sendspin-venv/bin/pip install 'aiosen
 SENDSPIN_PYTHON=/tmp/sendspin-venv/bin/python ./gradlew :kiosk:testDebugUnitTest
 ```
 
+`aiosendspin[server]` brings PyAV with FFmpeg's FLAC encoder, which the FLAC stream test needs.
+
 - `SsCryptoTest`: the Sentinel PSK and `psk_id` constants, the pairing-token reference vector,
   base32, peer-id parsing, the **KKpsk2 responder byte for byte against `noiseprotocol`** (message
   2, handshake hash, both transport directions), a wrong static key, and record eviction.
-- `SsMessagesTest`: exact `client/init`, `client/hello` and `client/state` shapes (including the
-  keys that must not be there), pairing messages, envelope parsing, the audio header (signed
+- `SsMessagesTest`: exact `client/init`, `client/hello` (FLAC then PCM, and PCM only) and
+  `client/state` shapes (including the keys that must not be there), `codec_header` Base64, pairing messages, envelope parsing, the audio header (signed
   int64, saturated `send_ahead`), fragment reassembly and every malformed fragment sequence.
 - `TimeFilterTest`: the measurement formulas and truncation, rounding, the first two updates, the
   conversions as inverses, tracking a 3.2 s offset with +40 ppm drift under 1.5–9.5 ms asymmetric
@@ -273,12 +394,27 @@ SENDSPIN_PYTHON=/tmp/sendspin-venv/bin/python ./gradlew :kiosk:testDebugUnitTest
   < 0.5 ms, with the correction count matching the drift. 400 µs timestamp jitter: < 1 ms max,
   < 0.3 ms RMS. Also output delay, late chunks, gaps, clear/realign, the jitter buffer and PCM
   decoding.
+- `FlacTest`: the 42-byte header aiosendspin's `FlacEncoder` produces (fields, `csd-0` equal to
+  it), headers with more metadata blocks, invalid headers, CRC-8/CRC-16 check values, every block
+  size and sample rate code, and splitting a real FFmpeg FLAC file
+  (`src/test/resources/tone48k.flac`, 3 frames: 4608/4608/2784) into its frames, alone or
+  together; truncated, bit-flipped and non-FLAC chunks are rejected.
+- `AudioPipelineTest` (a fake decoder fed those real frames): frames land on the chunk timeline
+  despite decoder latency and multi-frame chunks, PCM ↔ FLAC switches keep order and the output
+  format, `stream/clear` (with and without `from_timestamp`) forgets in-flight frames, a lost frame
+  is skipped, one error recovers with a new decoder, three fall back exactly once (and can be
+  re-armed), a bad `codec_header` falls back without a decoder, corrupt chunks are dropped, a
+  stalled decoder is replaced, `stream/end` releases it.
 - `SendspinServerTest` (needs `SENDSPIN_PYTHON`): the JVM client against a **real, strict
   aiosendspin 10.2.1 server** (`src/test/resources/sendspin_server.py`):
   - held while unpaired, then Pairing PSK flow with the client's token on the open connection,
     both re-handshakes, player role, `client/state` fields as the server parsed them, 1.5 s of
     PCM chunks, volume and mute commands, `stream/end`, and reconnecting on the long-term PSK;
-  - guest access with operator approval;
+  - guest access with operator approval, offering **FLAC then PCM**: the server picks FLAC and
+    sends the 42-byte `fLaC` + STREAMINFO header; every chunk is whole frames consistent with it,
+    on a contiguous timeline (each chunk starts where the previous one's samples end, ±1 µs);
+    the received stream decodes with PyAV to the server's 440 Hz tone (sample count, peak,
+    frequency). The pair test uses the PCM-only hello (the fallback);
   - fails if the server logs any non-compliance.
 - `EspHomeApiTest` (needs `ESPHOME_PYTHON`): the real aioesphomeapi 46.25.0 client reads
   `DeviceCapabilities.sendspin` and gets the token over Noise (`OK`) but not over plaintext
@@ -297,8 +433,12 @@ SENDSPIN_PYTHON=/tmp/sendspin-venv/bin/python ./gradlew :kiosk:testDebugUnitTest
 
 ## Limitations
 
-- Only PCM 48 kHz/16-bit stereo, about 1.5 Mbit/s on Wi-Fi. No FLAC/Opus decoding yet; a
-  `MediaCodec` FLAC decoder would cut that roughly in half.
+- FLAC and PCM at 48 kHz/16-bit stereo only; no Opus, no 24-bit (the output is 16-bit). FLAC
+  decoding relies on the platform's `audio/flac` decoder behaving like Android 10's
+  `C2SoftFlacDec` (one output per input frame, the input timestamp passed through); other
+  devices fall back to PCM after 3 errors.
+- With FLAC the 1.5 MB `buffer_capacity` allows ~13–15 s queued (decoded eagerly: up to ~3 MB of
+  PCM in memory). MA kept 1.5–4 s queued in the tests.
 - Sync is checked only by the panel's own clock model (see above). The panel was not grouped with
   another speaker during the test, by design.
 - The panel doesn't offer `dynamic_pairing_code` or `static_pairing_code`. Pairing is by token

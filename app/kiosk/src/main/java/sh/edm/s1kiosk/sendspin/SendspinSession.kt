@@ -24,7 +24,8 @@ enum class PskCategory(val code: String) {
 
 /** The player side of a session: what the session hands to the audio pipeline and asks of it. */
 interface SsPlayerHooks {
-    fun onStreamStart(format: SsFormat)
+    /** `stream/start` (new stream or format update); [codecHeader] is the decoded `codec_header`, if any. */
+    fun onStreamStart(format: SsFormat, codecHeader: ByteArray?)
     fun onStreamClear(fromTimestampUs: Long?)
     fun onStreamEnd()
     /** Called on the network thread for every audio chunk of the active stream. */
@@ -72,6 +73,8 @@ class SendspinSession(
         val roles: List<String> = emptyList(),
         val groupName: String? = null,
         val closeReason: String? = null,
+        /** Codec of the active stream. */
+        val codec: String? = null,
     )
 
     class Result(val established: Boolean, val activated: Boolean, val reason: String)
@@ -98,6 +101,8 @@ class SendspinSession(
     @Volatile var activities: List<String> = emptyList(); private set
     @Volatile var activeRoles: List<String> = emptyList(); private set
     @Volatile var streamActive = false; private set
+    /** The latest `stream/start` format (kept after the stream ends, for the status). */
+    @Volatile var streamFormat: SsFormat? = null; private set
     @Volatile private var stateSent = false
     @Volatile private var groupName: String? = null
     private var pairingIndex = 0
@@ -120,7 +125,7 @@ class SendspinSession(
             playerActive -> Phase.READY
             else -> Phase.HELD
         }
-        return Status(phase, serverName, serverId, matched == PskCategory.LONG_TERM, matched, activities, activeRoles, groupName, closeReason)
+        return Status(phase, serverName, serverId, matched == PskCategory.LONG_TERM, matched, activities, activeRoles, groupName, closeReason, streamFormat?.codec?.takeIf { streamActive })
     }
 
     private fun publish() = try { hooks.onStatus(status()) } catch (t: Throwable) { SsLog.w("status listener failed", t) }
@@ -354,10 +359,15 @@ class SendspinSession(
         if (!playerActive || !playback) return // inactive role / no playback activity: ignore unvalidated
         val f = SsFormat.fromJson(pl) ?: throw SsProtocolException("malformed stream/start player object")
         if (hello.formats.none { it == f }) throw SsProtocolException("stream/start format $f was not offered")
+        val header = SsMessages.codecHeader(pl)
         val wasActive = streamActive
+        val changed = f != streamFormat
         streamActive = true
-        hooks.onStreamStart(f)
-        if (!wasActive) { SsLog.i("Stream started: ${f.codec} ${f.sampleRate} Hz ${f.channels} ch ${f.bitDepth}-bit"); publish() }
+        streamFormat = f
+        hooks.onStreamStart(f, header)
+        val what = "${f.codec} ${f.sampleRate} Hz ${f.channels} ch ${f.bitDepth}-bit" + (header?.let { " (codec_header ${it.size} bytes)" } ?: "")
+        if (!wasActive) { SsLog.i("Stream started: $what"); publish() }
+        else if (changed) { SsLog.i("Stream format changed: $what"); publish() }
     }
 
     private fun onServerCommand(p: JSONObject) {

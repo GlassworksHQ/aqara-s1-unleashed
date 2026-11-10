@@ -52,6 +52,33 @@ class SsMessagesTest {
         assertEquals(setOf("name", "device_info", "supported_roles", "player@v1_support", "supported_pair_methods", "unpaired_access"), p.keyNames())
     }
 
+    /** The default hello: FLAC preferred (first), PCM as the fallback, same rate and channels. */
+    @Test
+    fun clientHelloOffersFlacThenPcm() {
+        val o = JSONObject(SsMessages.clientHello(info.copy(formats = listOf(SsFormat.FLAC_48K_STEREO_16, SsFormat.PCM_48K_STEREO_16)), unpairedAccess = false))
+        val f = o.getJSONObject("payload").getJSONObject("player@v1_support").getJSONArray("supported_formats")
+        assertEquals(2, f.length())
+        assertEquals("flac", f.getJSONObject(0).getString("codec"))
+        assertEquals("pcm", f.getJSONObject(1).getString("codec"))
+        for (i in 0..1) {
+            val e = f.getJSONObject(i)
+            assertEquals(setOf("codec", "channels", "sample_rate", "bit_depth"), e.keyNames())
+            assertEquals(48000, e.getInt("sample_rate")); assertEquals(2, e.getInt("channels")); assertEquals(16, e.getInt("bit_depth"))
+        }
+    }
+
+    @Test
+    fun streamStartCodecHeader() {
+        val h = FlacTest.hex(FlacTest.AIOSENDSPIN_HEADER)
+        val b64 = java.util.Base64.getEncoder().encodeToString(h) // standard alphabet, padded
+        assertArrayEquals(h, SsMessages.codecHeader(JSONObject().put("codec", "flac").put("codec_header", b64)))
+        assertNull(SsMessages.codecHeader(JSONObject().put("codec", "pcm")))
+        assertNull(SsMessages.codecHeader(JSONObject().put("codec_header", JSONObject.NULL)))
+        assertNull(SsMessages.codecHeader(JSONObject().put("codec_header", "not base64!")))
+        assertNull(SsMessages.codecHeader(JSONObject().put("codec_header", 5)))
+        assertEquals(SsFormat.FLAC_48K_STEREO_16, SsFormat.fromJson(JSONObject().put("codec", "flac").put("channels", 2).put("sample_rate", 48000).put("bit_depth", 16).put("codec_header", b64)))
+    }
+
     @Test
     fun clientStateCarriesEveryRequiredField() {
         val o = JSONObject(SsMessages.clientState(true, SsPlayerState(42, true, 120, 300, 200)))

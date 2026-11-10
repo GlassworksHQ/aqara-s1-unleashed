@@ -158,7 +158,7 @@ class PlaybackScheduler(
     private val deadUs: Double = 150.0,
     private val smoothAlpha: Double = 0.05,
     private val timestampEveryBlocks: Int = 5,
-) {
+) : PcmOutput {
     class Stats {
         var duplicated = 0L; var dropped = 0L; var snapsEarly = 0L; var snapsLate = 0L
         var silenceBlocks = 0L; var underrunBlocks = 0L; var lateChunks = 0L; var chunks = 0L
@@ -195,7 +195,7 @@ class PlaybackScheduler(
     fun stats(): Stats = synchronized(lock) { stats.copy() }
 
     /** `stream/start`: begin (or, with the same format, continue) a stream. */
-    fun start(f: SsFormat) = synchronized(lock) {
+    override fun start(f: SsFormat): Unit = synchronized(lock) {
         if (!active || f != format) {
             if (active && f != format) jb.clear() // format change we can't splice: restart cleanly
             format = f
@@ -206,7 +206,7 @@ class PlaybackScheduler(
     }
 
     /** `stream/end`: stop output and clear buffers. */
-    fun end() = synchronized(lock) {
+    override fun end(): Unit = synchronized(lock) {
         active = false
         jb.clear()
         reopen = true
@@ -214,13 +214,13 @@ class PlaybackScheduler(
     }
 
     /** `stream/clear`: without [fromUs] drop everything (and what the output already holds); with it, only audio at or after it. */
-    fun clear(fromUs: Long?) = synchronized(lock) {
+    override fun clear(fromUs: Long?): Unit = synchronized(lock) {
         if (fromUs == null) { jb.clear(); reopen = true } else jb.clearFrom(fromUs)
         lock.notifyAll()
     }
 
     /** Adds a decoded chunk; drops it if it has already ended (late). */
-    fun push(c: PcmChunk) = synchronized(lock) {
+    override fun push(c: PcmChunk): Unit = synchronized(lock) {
         if (!active) return@synchronized
         stats.chunks++
         val snap = timeFilter()

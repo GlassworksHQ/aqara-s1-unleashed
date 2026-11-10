@@ -437,6 +437,7 @@ class PanelDevice(
             KioskPrefs.KEY_SENDSPIN_ENABLED -> if (prefs.sendspinEnabled) sendspin?.start() else sendspin?.stop("user_request")
             // A new client/hello must carry the changed setting: reconnect.
             KioskPrefs.KEY_SENDSPIN_UNPAIRED, KioskPrefs.KEY_SENDSPIN_SERVER -> sendspin?.restartSession()
+            KioskPrefs.KEY_SENDSPIN_FLAC -> sendspin?.onFlacSettingChanged()
         }
         server?.publishStates()
     }
