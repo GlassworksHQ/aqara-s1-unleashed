@@ -178,7 +178,7 @@ class Installer {
     };
     $('#bk-dl').onclick = () => this.downloadBackup();
     $('#finish').onclick = () => this.finishApp();
-    $('#err-home').onclick = () => location.reload();
+    $('#err-home').onclick = () => { history.replaceState(null, '', location.pathname); location.reload(); }; // back to the start, not the route
     $('#err-retry').onclick = () => this.show('fel');
     $('#undo-back').onclick = () => { this.mode = 'install'; this.show('welcome'); };
     $('#undo-go').onclick = () => this.undoContinue();
