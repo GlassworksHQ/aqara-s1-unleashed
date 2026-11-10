@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.database.ContentObserver
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -89,6 +90,7 @@ object ScreenController : SensorEventListener {
         dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         admin = ComponentName(ctx, AdminReceiver::class.java)
         screenOn = pm.isInteractive
+        watchSystemBrightness()
 
         val sm = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         sm.getDefaultSensor(Sensor.TYPE_PROXIMITY)?.let {
@@ -243,6 +245,28 @@ object ScreenController : SensorEventListener {
     /** Re-applies the brightness policy after a settings change (main thread). */
     fun refreshBrightness() {
         if (started) updateBrightness()
+    }
+
+    /**
+     * The system brightness slider (notification shade) only writes Settings.System.SCREEN_BRIGHTNESS;
+     * our own brightness is a window override that beats it. This app never writes that setting, so a
+     * change there is the user moving the slider: switch auto brightness off and follow the system
+     * value. Turning auto brightness back on (Home Assistant or app settings) resumes it.
+     */
+    private fun watchSystemBrightness() {
+        val startedAt = SystemClock.elapsedRealtime()
+        val uri = android.provider.Settings.System.getUriFor(android.provider.Settings.System.SCREEN_BRIGHTNESS)
+        ctx.contentResolver.registerContentObserver(uri, false, object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                if (SystemClock.elapsedRealtime() - startedAt < 30_000) return // boot-time writes by the firmware
+                if (!prefs.autoBrightness && prefs.manualBrightness <= 0f) return // already following the system
+                Log.i(TAG, "system brightness slider moved: following it (auto brightness off)")
+                prefs.autoBrightness = false
+                prefs.manualBrightness = 0f // <= 0: no window override, i.e. the system value
+                refreshBrightness()
+                notifyChanged()
+            }
+        })
     }
 
     /** Fixed brightness from Home Assistant: turns auto brightness off (main thread). */

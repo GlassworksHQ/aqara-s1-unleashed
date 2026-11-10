@@ -23,6 +23,7 @@ import android.view.WindowManager
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ScrollView
+import android.net.Uri
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -31,6 +32,7 @@ import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.dashboard.DashboardOptions
 import sh.edm.s1kiosk.dashboard.Dashboards
 import sh.edm.s1kiosk.discovery.HaUrls
+import sh.edm.s1kiosk.setup.LoadingOverlay
 import sh.edm.s1kiosk.setup.SetupInputs
 import sh.edm.s1kiosk.setup.SetupOverlay
 import sh.edm.s1kiosk.setup.SetupSignals
@@ -53,6 +55,7 @@ class MainActivity : Activity() {
 
     private lateinit var prefs: KioskPrefs
     private lateinit var geckoView: GeckoView
+    private lateinit var loadingOverlay: LoadingOverlay
     private lateinit var voiceOverlay: VoiceOverlay
     private lateinit var timerOverlay: TimerOverlay
     private lateinit var setupOverlay: SetupOverlay
@@ -123,6 +126,7 @@ class MainActivity : Activity() {
         }
 
         geckoView = GeckoView(this)
+        loadingOverlay = LoadingOverlay(this)
         voiceOverlay = VoiceOverlay(this)
         timerOverlay = TimerOverlay(this)
         setupOverlay = SetupOverlay(this).apply {
@@ -135,10 +139,13 @@ class MainActivity : Activity() {
         wifiStatus = WifiSetupStatus.create(this)
         setContentView(android.widget.FrameLayout(this).apply {
             addView(geckoView, android.widget.FrameLayout.LayoutParams(-1, -1))
+            addView(loadingOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // under the setup screen
             addView(setupOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
             addView(voiceOverlay, voiceOverlay.layoutParams())
             addView(timerOverlay, timerOverlay.layoutParams())
         })
+        // Visible from the first frame: the dashboard's first paint or the setup screen replaces it.
+        loadingOverlay.show("Starting up", if (hasNetwork()) "Connecting to Home Assistant…" else "Waiting for a network…")
         HaAuth.addListener(authListener)
         SetupSignals.addListener(setupSignalListener)
         wifiStatus.observe { refreshSetup() }
@@ -185,6 +192,7 @@ class MainActivity : Activity() {
             if (ext != null) s.webExtensionController.setMessageDelegate(ext, messageDelegate, "s1kiosk")
         }, { e -> Log.e(TAG, "helper extension failed", e) })
         geckoView.setSession(s)
+        geckoView.coverUntilFirstPaint(BACKGROUND) // dark, not white, until the page paints
         session = s
         loadDashboard()
     }
@@ -311,10 +319,19 @@ class MainActivity : Activity() {
         refreshSetup() // shows the real screen again if the panel isn't set up
     }
 
+    private val hideLoading = Runnable { loadingOverlay.hide() }
+
+    private fun hasNetwork(): Boolean {
+        val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return true
+        return cm.activeNetwork != null
+    }
+
     private fun openWifiSettings() {
         val intents = listOfNotNull(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) Intent(Settings.Panel.ACTION_WIFI) else null,
             Intent(Settings.ACTION_WIFI_SETTINGS),
+            // The S1's firmware has no Android Settings app; its own settings app has Network -> WLAN.
+            Intent("lumi.settings.SETTINGS").setPackage("com.lumi.settings"),
         )
         for (i in intents) {
             try {
@@ -700,6 +717,10 @@ class MainActivity : Activity() {
     // ---- content / navigation / progress
 
     private val contentDelegate = object : GeckoSession.ContentDelegate {
+        override fun onFirstContentfulPaint(session: GeckoSession) {
+            handler.post { loadingOverlay.hide() }
+        }
+
         override fun onCrash(session: GeckoSession) {
             Log.e(TAG, "Content process crashed; restarting session")
             handler.post { restartSession() }
@@ -752,10 +773,18 @@ class MainActivity : Activity() {
     private val progressDelegate = object : GeckoSession.ProgressDelegate {
         override fun onPageStart(session: GeckoSession, url: String) {
             handler.removeCallbacks(retryLoad)
+            handler.removeCallbacks(hideLoading)
+            if (url.startsWith("http")) loadingOverlay.show("Connecting to Home Assistant", Uri.parse(url).host ?: "")
         }
 
         override fun onPageStop(session: GeckoSession, success: Boolean) {
-            if (!success) {
+            if (success) {
+                handler.postDelayed(hideLoading, 1500) // in case first-contentful-paint was missed
+            } else {
+                loadingOverlay.show(
+                    if (hasNetwork()) "Can't reach Home Assistant" else "No network yet",
+                    if (hasNetwork()) "Retrying every few seconds…" else "Connect Wi-Fi from the setup screen, or over Bluetooth (Improv)",
+                )
                 // HA restarting / Wi-Fi not up yet after boot: keep retrying.
                 handler.removeCallbacks(retryLoad)
                 handler.postDelayed(retryLoad, RETRY_MS)
@@ -905,6 +934,8 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        /** Onboarding/dashboard background (#0a0b0f), also used to cover the page until first paint. */
+        private const val BACKGROUND = 0xFF0A0B0F.toInt()
         private const val TAG = "S1Kiosk"
 
         /**

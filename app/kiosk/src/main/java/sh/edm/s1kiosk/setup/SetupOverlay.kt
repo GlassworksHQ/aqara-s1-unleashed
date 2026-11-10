@@ -489,7 +489,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     }
 
     /** #0a0b0f with the dashboard's two soft glows (sky top-left, violet bottom-right). */
-    private class Backdrop : Drawable() {
+    internal class Backdrop : Drawable() {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         override fun draw(canvas: Canvas) {
             val b = bounds

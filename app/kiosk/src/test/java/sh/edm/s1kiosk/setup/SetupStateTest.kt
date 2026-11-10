@@ -69,6 +69,17 @@ class SetupStateTest {
     }
 
     @Test
+    fun freshOfflinePanelDoesNotShowSigninAsDone() {
+        // Factory-reset panel, no Wi-Fi yet: nothing is known about sign-in, so it must not be ticked.
+        val d = SetupState.decide(fresh.copy(online = false, offlineForMs = 60_000))
+        assertTrue(d.show)
+        assertEquals(SetupStep.WIFI, d.step)
+        assertFalse(d.wifiDone)
+        assertFalse(d.haDone)
+        assertFalse(d.signinDone)
+    }
+
+    @Test
     fun loginPageShowsSignin() {
         val i = deskPanel(5 * min, haSeen = true, apiKey = true, hello = true).copy(onAuthPage = true)
         val d = SetupState.decide(i)

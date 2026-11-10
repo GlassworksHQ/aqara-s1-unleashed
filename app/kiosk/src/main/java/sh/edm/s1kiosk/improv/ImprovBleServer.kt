@@ -19,7 +19,10 @@ import android.bluetooth.le.AdvertisingSet
 import android.bluetooth.le.AdvertisingSetCallback
 import android.bluetooth.le.AdvertisingSetParameters
 import android.bluetooth.le.BluetoothLeAdvertiser
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
@@ -103,11 +106,40 @@ class ImprovBleServer(
             .all { ctx.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
     } else true
 
+    private var btReceiver: BroadcastReceiver? = null
+
+    @SuppressLint("MissingPermission")
+    @Suppress("DEPRECATION")
+    private fun enableBluetoothThenStart(a: BluetoothAdapter, initial: ImprovState, caps: Int): Boolean {
+        if (Build.VERSION.SDK_INT >= 33) return false // enable() is a no-op for apps on 33+
+        if (btReceiver == null) {
+            val r = object : BroadcastReceiver() {
+                override fun onReceive(c: Context, i: Intent) {
+                    if (i.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1) != BluetoothAdapter.STATE_ON) return
+                    runCatching { ctx.unregisterReceiver(this) }
+                    btReceiver = null
+                    Log.i(TAG, "Bluetooth is on: starting Improv")
+                    start(initial, caps)
+                }
+            }
+            btReceiver = r
+            ctx.registerReceiver(r, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
+        }
+        return runCatching { a.enable() }.getOrDefault(false).also { Log.i(TAG, "BluetoothAdapter.enable() = $it") }
+    }
+
     /** Opens the GATT server and, once the service is registered, starts advertising. */
     fun start(initial: ImprovState, caps: Int): Boolean {
         if (running) return true
         val a = adapter
-        if (a == null || !a.isEnabled) { listener.onAdvertising(false, "Bluetooth is off or missing"); return false }
+        if (a == null) { listener.onAdvertising(false, "no Bluetooth adapter"); return false }
+        if (!a.isEnabled) {
+            // A factory-reset panel boots with Bluetooth off, and Improv is how it gets Wi-Fi: turn it on
+            // (BLUETOOTH_ADMIN, API <= 32) and start as soon as it's up.
+            if (enableBluetoothThenStart(a, initial, caps)) listener.onAdvertising(false, "turning Bluetooth on")
+            else listener.onAdvertising(false, "Bluetooth is off and could not be turned on")
+            return false
+        }
         if (!permissionsOk()) { listener.onAdvertising(false, "missing BLUETOOTH_ADVERTISE/CONNECT"); return false }
         advertiser = a.bluetoothLeAdvertiser
         if (advertiser == null) { listener.onAdvertising(false, "bluetoothLeAdvertiser is null (no LE peripheral mode)"); return false }

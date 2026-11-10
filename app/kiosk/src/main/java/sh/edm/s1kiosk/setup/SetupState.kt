@@ -89,7 +89,9 @@ object SetupState {
 
         val wifiDone = i.online
         val haDone = i.haKnown && haEverRecorded
-        val signinDone = i.signedIn || !wantsSignin
+        // Only "done" once it's actually known: a stored sign-in, or Wi-Fi + HA are done and nothing
+        // asks for one. (Before, a fresh offline panel showed sign-in as complete.)
+        val signinDone = i.signedIn || (wifiDone && haDone && !wantsSignin)
         val step = when {
             !wifiDone -> SetupStep.WIFI
             !i.haKnown -> SetupStep.HA
