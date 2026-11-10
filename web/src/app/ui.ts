@@ -53,6 +53,13 @@ const ASK: Record<AskKind, { lead: string; title: string; body: string; pick: st
     pick: 'QUAD-CORE R818 EVB2',
     note: 'That\'s the panel\'s name over USB. If it isn\'t in the list yet, keep the list open: it appears once the panel has started (up to a minute).',
   },
+  connect: {
+    lead: 'Connect to your installed panel to continue setting it up. Nothing is reflashed.',
+    title: 'Allow this page to connect to the panel',
+    body: 'The panel should be running S1 Kiosk and plugged in to this computer. Your browser asks once; after that it reconnects by itself.',
+    pick: 'QUAD-CORE R818 EVB2',
+    note: 'That\'s the panel\'s name over USB. Not in the list? Check the cable, and run "adb kill-server" if adb is open on this computer.',
+  },
 };
 const LOCK = '<svg class="lock" viewBox="0 0 24 24" aria-label="needs a password"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
 
@@ -163,6 +170,12 @@ class Installer {
     $('#fel-connect').onclick = () => this.connectFel();
     $('#go-resume').onclick = () => void this.resume();
     $('#disc').onclick = () => this.setDetails($('#disc').getAttribute('aria-expanded') !== 'true');
+    $('#disc-app').onclick = () => {
+      const open = $('#disc-app').getAttribute('aria-expanded') !== 'true';
+      $('#details-app').classList.toggle('open', open);
+      $('#disc-app').setAttribute('aria-expanded', String(open));
+      $('#disc-app').firstElementChild!.textContent = open ? 'Hide details' : 'Show details';
+    };
     $('#bk-dl').onclick = () => this.downloadBackup();
     $('#finish').onclick = () => this.finishApp();
     $('#err-home').onclick = () => location.reload();
@@ -170,7 +183,11 @@ class Installer {
     $('#undo-back').onclick = () => { this.mode = 'install'; this.show('welcome'); };
     $('#undo-go').onclick = () => this.undoContinue();
     this.panelSettings();
+    const initial = location.hash; // showing welcome records '#/', so keep the address the user came with
     this.show('welcome');
+    if (initial) history.replaceState(null, '', initial);
+    addEventListener('hashchange', () => this.route());
+    if (!new URLSearchParams(location.search).has('demo')) this.route();
     if (import.meta.env.DEV) this.demo(new URLSearchParams(location.search).get('demo'));
   }
 
@@ -187,6 +204,10 @@ class Installer {
       else s.classList.remove('on');
     }
     document.body.dataset.cur = id;
+    if (id === 'welcome') this.setRoute('');
+    else if (id === 'fel') this.setRoute(this.mode === 'undo' ? 'undo' : 'install');
+    else if (id === 'undo') this.setRoute('undo');
+    else if (id === 'app' && !this.routing) this.setRoute('resume'); // a reload reconnects instead of starting over
     this.renderSteps();
     scrollTo({ top: 0 });
   }
@@ -284,25 +305,71 @@ class Installer {
     }
   }
 
-  /** An installed panel (design §8.2): skip FEL, connect over adb, then the app step as usual. */
-  private async resume() {
+  // ---- routes: #/resume, #/wifi, #/home-assistant, #/radio, #/undo, #/install ----------------
+  private routing = false;
+
+  /** Records where the user is, without a hashchange event (so it doesn't route again). */
+  private setRoute(r: string) {
+    const h = r ? `#/${r}` : ' ';
+    if (location.hash !== h.trim()) history.replaceState(null, '', h === ' ' ? location.pathname + location.search : h);
+  }
+
+  private async route() {
+    if (this.routing || this.cur === 'install') return; // never leave a running install
+    const r = location.hash.replace(/^#\/?/, '');
+    this.routing = true;
+    try {
+      switch (r) {
+        case '': if (this.cur !== 'welcome') this.show('welcome'); break;
+        case 'install': this.mode = 'install'; this.show('fel'); break;
+        case 'undo': await this.openUndo(); break;
+        case 'resume': await this.resume(); break;
+        case 'wifi': if (await this.connectPanel()) await this.wifiStep(); break;
+        case 'home-assistant': if (await this.connectPanel()) await this.haStep(); break;
+        case 'radio':
+          if (await this.connectPanel()) {
+            this.setup ??= await this.openSetup();
+            if (this.setup) await this.radioStep();
+            else this.adbRow('err', 'S1 Kiosk isn\'t answering', 'Is the app installed and running? Try #/resume to update it.', 'No answer');
+          }
+          break;
+        default: this.show('welcome'); this.setRoute('');
+      }
+    } finally {
+      this.routing = false;
+    }
+  }
+
+  /** Connects to an installed, running panel over adb (asks for a click if needed), on the app step. */
+  private async connectPanel(): Promise<boolean> {
     this.mode = 'install';
     for (const n of [0, 1, 2]) this.stepDetail.set(n, STEPS.install[n]!.done);
     this.show('app');
-    this.adbRow('wait', 'Connecting to the panel', 'Pick QUAD-CORE R818 EVB2 in the browser\'s list', 'Waiting');
+    if (this.panel) return true;
+    this.adbRow('wait', 'Connecting to the panel', 'It should be running and plugged in', 'Waiting');
     try {
-      const flow = await this.getFlow();
-      void flow;
-      this.panel = (await webUsbDevices.knownAdb(this.key!)) ?? (await webUsbDevices.requestAdb(this.key!));
-      this.adbRow('ok', 'Connected over adb', 'Ready to update S1 Kiosk and finish setting up', 'Connected');
+      await this.getFlow();
+      this.panel = (await webUsbDevices.knownAdb(this.key!).catch(() => undefined))
+        ?? (await this.ask('connect', () => webUsbDevices.requestAdb(this.key!), new AbortController().signal));
+      this.adbRow('ok', 'Connected over adb', 'S1 Kiosk is installed', 'Connected');
       $('#hands').hidden = true;
-      ($('#finish') as HTMLButtonElement).disabled = false;
-      $('#finish').textContent = 'Update and continue';
-      $('#finish-hint').textContent = '';
+      return true;
     } catch (e) {
       const msg = e instanceof DOMException && e.name === 'NotFoundError' ? 'Nothing was picked.' : (e as Error).message;
       this.adbRow('err', 'Could not connect to the panel', `${msg} Is it running and plugged in? Run "adb kill-server" if adb is open on this computer.`, 'Not connected');
+      return false;
     }
+  }
+
+  /** An installed panel (design §8.2): skip FEL, connect over adb, update the app, then the rest. */
+  private async resume() {
+    if (!(await this.connectPanel())) return;
+    this.phase('settings', 'Set up the panel', 'Connected to your installed panel. Check these settings, then update S1 Kiosk and finish setting up.', 'Settings');
+    this.adbRow('ok', 'Connected over adb', 'Ready to update S1 Kiosk and finish setting up', 'Connected');
+    ($('#finish') as HTMLButtonElement).disabled = false;
+    $('#finish').textContent = 'Update and continue';
+    $('#finish').onclick = () => this.finishApp();
+    this.setRoute('resume');
   }
 
   private async getFlow(): Promise<InstallFlow> {
@@ -464,10 +531,11 @@ class Installer {
     const t = document.createElement('span');
     t.textContent = line.slice(0, sp);
     div.append(t, line.slice(sp));
-    const log = $('#log');
-    log.prepend(div); // newest at the top
-    while (log.childElementCount > 400) log.lastElementChild!.remove();
-    if (log.scrollTop < 40) log.scrollTop = 0; // follow new lines unless the reader scrolled down
+    for (const log of $$('.log')) {
+      log.prepend(log === $('#log') ? div : div.cloneNode(true)); // newest at the top
+      while (log.childElementCount > 400) log.lastElementChild!.remove();
+      if (log.scrollTop < 40) log.scrollTop = 0; // follow new lines unless the reader scrolled down
+    }
   }
 
   // ---- app ------------------------------------------------------------------------------------
@@ -661,6 +729,7 @@ class Installer {
     document.querySelector<HTMLElement>('[data-s="app"] h2')!.textContent = title;
     document.querySelector<HTMLElement>('[data-s="app"] .body')!.textContent = lead;
     this.setStepDetail(3, detail);
+    this.setRoute(which === 'settings' ? 'resume' : which === 'ha' ? 'home-assistant' : which);
     const sk = $('#wifi-skip') as HTMLButtonElement;
     sk.hidden = !skip;
     sk.textContent = which === 'radio' ? 'Skip: leave it off for now' : 'Skip: do this on the panel';

@@ -137,6 +137,23 @@ Home Assistant discovers the panel as an ESPHome device and sets up encryption b
 What you get in HA: [esphome.md](esphome.md). Music Assistant pairs with the panel automatically:
 [sendspin.md](sendspin.md).
 
+### Resume, or jump to a step
+
+Already installed? You never need to reflash to finish or redo setup. Open the installer with one of
+these at the end of its address (or use **Already installed? Finish setting it up** on the first
+screen); each connects to the running panel over USB first:
+
+| Address | Does |
+|---|---|
+| `#/resume` | Updates S1 Kiosk with your settings, then Wi-Fi, Home Assistant and radio |
+| `#/wifi` | Just the Wi-Fi step |
+| `#/home-assistant` | Address, sign-in and the Add-to-Home-Assistant link |
+| `#/radio` | The Zigbee/Thread radio role |
+| `#/undo` | Put the original software back |
+| `#/install` | Start a full install (FEL mode) |
+
+The address follows you through the installer, so reloading the page picks up where you were.
+
 ## Command line
 
 Use this path to script the install, or if you don't want to use WebUSB. It runs on macOS or

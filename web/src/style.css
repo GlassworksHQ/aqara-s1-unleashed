@@ -383,3 +383,4 @@ code{font-family:var(--mono);font-size:12.5px}
 
 #ha-block,#radio-block{margin-top:22px}
 .opt .tag.soon{color:var(--mu);background:rgba(255,255,255,.07)}
+.applog{margin-top:20px;display:flex;flex-direction:column;gap:20px}

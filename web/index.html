@@ -173,6 +173,10 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
           <div class="well nets" id="radio-list" role="radiogroup" aria-label="Radio mode"></div>
           <div class="status" id="radio-st"></div>
         </div>
+        <div class="applog">
+          <button class="disc" id="disc-app" aria-expanded="false" aria-controls="details-app"><span>Show details</span><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></button>
+          <div class="details" id="details-app"><div><div class="well" style="padding:14px 16px"><div class="label">Log</div><div class="log" id="log-app"></div></div></div></div>
+        </div>
       <div class="actions"><button class="btn quiet" id="wifi-skip" hidden>Skip: set up Wi-Fi on the panel</button><span class="sp"></span><span class="hint" id="finish-hint">Waiting for the panel…</span><button class="btn primary" id="finish" disabled>Set up the panel</button></div>
     </section>
 

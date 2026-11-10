@@ -22,7 +22,8 @@ export interface Progress { overall: number; phase: Phase; phasePct: number; tit
 export type PartState = 'pend' | 'cur' | 'done';
 
 /** Where the flow needs a click: WebUSB only opens a newly seen device from one. */
-export type AskKind = 'fastboot' | 'adb';
+/** `connect`: an installed panel reached from a route (#/wifi…), not the first boot after flashing. */
+export type AskKind = 'fastboot' | 'adb' | 'connect';
 
 export interface FlowUi {
   log(line: string): void;
