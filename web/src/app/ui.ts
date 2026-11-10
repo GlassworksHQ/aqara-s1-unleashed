@@ -913,17 +913,30 @@ class Installer {
     btn.disabled = true;
     ($('#wifi-skip') as HTMLButtonElement).hidden = true;
     this.wifiView('busy', ssid, 'sent');
-    try {
-      await this.improv!.provision(ssid, psk, () => this.wifiView('busy', ssid, 'join'));
+    const succeeded = () => {
       ($('#wifi-psk') as HTMLInputElement).value = '';
       this.wifiView('ok', ssid, 'ok');
       this.log(`${new Date().toTimeString().slice(0, 8)} panel connected to Wi-Fi ${ssid}`);
-      void this.improv!.close();
+      void this.improv?.close();
       this.wifiSsid = ssid;
       btn.textContent = 'Continue';
       btn.disabled = false;
       btn.onclick = () => void this.haStep();
+    };
+    try {
+      await this.improv!.provision(ssid, psk, () => this.wifiView('busy', ssid, 'join'));
+      succeeded();
     } catch (e) {
+      // The app can restart right after joining (it found Home Assistant and must reload its engine),
+      // which cuts this connection before the result arrives. Reconnect and ask: Provisioned = on Wi-Fi.
+      this.log(`${new Date().toTimeString().slice(0, 8)} Wi-Fi: ${(e as Error).message}; asking the panel again`);
+      const again = await this.openImprov((m) => this.wifiView('busy', ssid, 'join', m === 'Connecting to S1 Kiosk…' ? '' : m));
+      const state = again ? await again.requestState().catch(() => 0) : 0;
+      if (again && state === ImprovState.Provisioned) {
+        this.improv = again;
+        succeeded();
+        return;
+      }
       this.wifiView('err', ssid, 'join', (e as Error).message);
       btn.textContent = 'Try again';
       btn.disabled = false;
