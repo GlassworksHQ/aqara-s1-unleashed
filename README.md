@@ -262,6 +262,7 @@ S1 Unleashed's own code is **MIT** ([LICENSE](LICENSE)). Third-party parts keep 
 | U-Boot (with our A133 patches) | GPL-2.0-or-later | Built from source in [`tools/fel/`](tools/fel); runs from RAM only |
 | Magisk v31.1 | GPL-3.0 | The official release APK, pinned by SHA-256 (the CLI downloads it, the web installer serves the same file); [source](https://github.com/topjohnwu/Magisk/tree/v31.1) |
 | ot-br-posix (`otbr-agent`, `ot-ctl`) | BSD-3-Clause | Built by [`tools/radio/`](tools/radio) |
+| cJSON, cpp-httplib (in the border-router `otbr-agent`) | MIT | Bundled by ot-br-posix's REST server |
 | Simple Keyboard | Apache-2.0 | Optional on-screen keyboard |
 | GeckoView | MPL-2.0 | Maven dependency of S1 Kiosk |
 | TensorFlow Lite, Media3 ExoPlayer, ZXing | Apache-2.0 | Wake word inference, audio, QR codes |

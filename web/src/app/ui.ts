@@ -954,44 +954,93 @@ class Installer {
   }
 
   /**
-   * After the radio role is applied: what to do in Home Assistant to use it. Zigbee coordinator: add
-   * ZHA with the panel's socket path, then pair devices (HA's Zigbee "Add device" starts permit-join).
+   * After the radio role is applied: what to do in Home Assistant to use it, per mode (docs/radio.md).
    * Returns false when there is nothing to do (Off).
    */
   private radioNextSteps(mode: string): boolean {
     const btn = $('#finish') as HTMLButtonElement;
-    const st = $('#radio-st');
     const state = this.setup?.state;
-    const ip = state?.ip ?? this.ip;
+    const ip = state?.ip ?? this.ip ?? '<panel IP>';
     const ha = state?.ha.url ? new URL(state.ha.url).origin : '';
-    if (mode === 'zigbee_tcp') {
-      $('#radio-list').hidden = true;
-      $('#radio-next').hidden = false;
-      document.querySelector<HTMLElement>('[data-s="app"] h2')!.textContent = 'Use the radio in Home Assistant';
-      document.querySelector<HTMLElement>('[data-s="app"] .body')!.textContent = 'The panel is now a Zigbee coordinator. Add it to Home Assistant, then pair your devices.';
-      const path = `socket://${ip ?? '<panel IP>'}:6638`;
-      $('#zha-path').textContent = path;
-      $('#zha-copy').onclick = async () => {
-        try { await navigator.clipboard.writeText(path); $('#zha-copy').textContent = 'Copied'; } catch { $('#zha-copy').textContent = 'Select it'; }
-        setTimeout(() => { $('#zha-copy').textContent = 'Copy'; }, 1600);
-      };
-      ($('#zha-pair') as HTMLAnchorElement).href = ha ? `${ha}/config/zha/add` : 'https://my.home-assistant.io/redirect/integration/?domain=zha';
-      $('#zha-add').onclick = () => { $('#zha-add-dot').className = 'dot sm done'; };
-      $('#zha-pair').onclick = () => { $('#zha-pair-dot').className = 'dot sm done'; };
-      btn.textContent = 'Finish';
-      btn.disabled = false;
-      btn.onclick = () => { void this.setup?.close(); this.showDone(this.ip, this.wifiSsid); };
-      return true;
+    type Step = { title: string; body: string; kv?: [string, string, boolean?][]; link?: string };
+    const zhaAdd = ha ? `${ha}/config/zha/add` : 'https://my.home-assistant.io/redirect/integration/?domain=zha';
+    const plans: Record<string, { title: string; lead: string; steps: Step[] }> = {
+      zigbee_tcp: {
+        title: 'Use the radio in Home Assistant', lead: 'The panel is now a Zigbee coordinator. Add it to Home Assistant, then pair your devices.',
+        steps: [
+          { title: '1 · Add the radio to Home Assistant', body: 'Opens Zigbee (ZHA) setup. Choose Enter manually, then use these values. When ZHA asks about network settings, keep the radio\'s current ones: creating a new network from ZHA doesn\'t work with this radio yet.',
+            kv: [['Radio type', 'EZSP'], ['Serial path', `socket://${ip}:6638`, true], ['Port speed', 'Leave as is (115200)']],
+            link: 'https://my.home-assistant.io/redirect/config_flow_start/?domain=zha' },
+          { title: '2 · Pair your Zigbee devices', body: 'Opens Home Assistant\'s Zigbee “Add device”, which starts pairing for a few minutes. Put each device in pairing mode.', link: zhaAdd },
+        ],
+      },
+      thread: {
+        title: 'Use the border router in Home Assistant', lead: 'The panel is now a Thread border router (experimental). Add it to Home Assistant.',
+        steps: [
+          { title: 'Add OpenThread Border Router', body: 'Opens the integration setup in Home Assistant. Enter this address. If you already have a border router, Home Assistant can use both.',
+            kv: [['URL', `http://${ip}:8081`, true]], link: 'https://my.home-assistant.io/redirect/config_flow_start/?domain=otbr' },
+        ],
+      },
+      zigbee_router: {
+        title: 'Join your Zigbee network', lead: 'The panel is now a Zigbee router (experimental). It joins your existing network as a repeater.',
+        steps: [
+          { title: '1 · Open pairing in Home Assistant', body: 'Opens your Zigbee “Add device”, which lets new devices join for a few minutes.', link: zhaAdd },
+          { title: '2 · Tell the panel to join', body: 'In Home Assistant, open the panel\'s device (S1 Panel, under ESPHome) and press Join Zigbee network. It shows up in ZHA as a router.' },
+        ],
+      },
+      thread_router: {
+        title: 'Join your Thread network', lead: 'The panel is now a Thread router (experimental). It joins your existing Thread network as a repeater.',
+        steps: [
+          { title: '1 · Copy your Thread network\'s dataset', body: 'Opens Thread in Home Assistant. Open your network\'s details and copy its active dataset (the long hex string of TLVs).', link: 'https://my.home-assistant.io/redirect/integration/?domain=thread' },
+          { title: '2 · Give it to the panel', body: 'On the panel\'s device (S1 Panel, under ESPHome), paste it into Thread dataset. The panel joins on its own; the dataset is never shown again.' },
+        ],
+      },
+    };
+    const plan = plans[mode];
+    if (!plan) return false;
+    $('#radio-list').hidden = true;
+    const box = $('#radio-next');
+    box.innerHTML = '';
+    box.hidden = false;
+    document.querySelector<HTMLElement>('[data-s="app"] h2')!.textContent = plan.title;
+    document.querySelector<HTMLElement>('[data-s="app"] .body')!.textContent = plan.lead;
+    for (const st of plan.steps) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML = '<i class="dot sm"></i><div class="t"><b></b><span></span></div>';
+      row.querySelector('b')!.textContent = st.title;
+      row.querySelector('span')!.textContent = st.body;
+      if (st.kv) {
+        const dl = document.createElement('dl');
+        dl.className = 'kv';
+        for (const [k, v, copy] of st.kv) {
+          const dt = document.createElement('dt'); dt.textContent = k;
+          const dd = document.createElement('dd');
+          if (copy) {
+            const code = document.createElement('code'); code.textContent = v;
+            const c = document.createElement('button'); c.className = 'copy'; c.type = 'button'; c.textContent = 'Copy';
+            c.onclick = async () => {
+              try { await navigator.clipboard.writeText(v); c.textContent = 'Copied'; } catch { c.textContent = 'Select it'; }
+              setTimeout(() => { c.textContent = 'Copy'; }, 1600);
+            };
+            dd.append(code, c);
+          } else dd.textContent = v;
+          dl.append(dt, dd);
+        }
+        row.querySelector('.t')!.append(dl);
+      }
+      if (st.link) {
+        const a = document.createElement('a');
+        a.className = 'btn'; a.target = '_blank'; a.rel = 'noopener'; a.href = st.link; a.textContent = 'Open';
+        a.onclick = () => { row.querySelector('.dot')!.className = 'dot sm done'; };
+        row.append(a);
+      }
+      box.append(row);
     }
-    if (mode === 'thread') {
-      st.className = 'status';
-      st.textContent = 'Thread border router is experimental: this build runs the Thread radio, but Home Assistant can\'t use it as a border router yet. That is coming in a later update.';
-      btn.textContent = 'Finish';
-      btn.disabled = false;
-      btn.onclick = () => { void this.setup?.close(); this.showDone(this.ip, this.wifiSsid); };
-      return true;
-    }
-    return false;
+    btn.textContent = 'Finish';
+    btn.disabled = false;
+    btn.onclick = () => { void this.setup?.close(); this.showDone(this.ip, this.wifiSsid); };
+    return true;
   }
 
   private async finishApp() {

@@ -18,7 +18,7 @@ import type { ByteStream } from '../improv/serial';
 
 export const SETUP_SOCKET = 'localabstract:s1kiosk_setup';
 
-export interface RadioOption { id: string; label: string; detail: string; experimental?: boolean }
+export interface RadioOption { id: string; label: string; detail: string; experimental?: boolean; repeater?: boolean }
 
 export interface SetupState {
   /** Panel's Wi-Fi IPv4 address, if connected. */

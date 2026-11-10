@@ -172,15 +172,7 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
           <div class="sub"><div class="label">Zigbee / Thread radio</div><span>Change it any time in Home Assistant</span></div>
           <div class="well nets" id="radio-list" role="radiogroup" aria-label="Radio mode"></div>
           <div class="status" id="radio-st"></div>
-          <div class="well rows" id="radio-next" hidden>
-            <div class="row"><i class="dot sm" id="zha-add-dot"></i><div class="t"><b>1 · Add the radio to Home Assistant</b><span>Opens Zigbee (ZHA) setup. Choose <i>Enter manually</i>, then:</span>
-              <dl class="kv">
-                <dt>Radio type</dt><dd>EZSP</dd>
-                <dt>Serial path</dt><dd><code id="zha-path"></code> <button class="copy" id="zha-copy" type="button">Copy</button></dd>
-                <dt>Port speed</dt><dd>Leave as is (115200)</dd>
-              </dl></div><a class="btn" id="zha-add" target="_blank" rel="noopener" href="https://my.home-assistant.io/redirect/config_flow_start/?domain=zha">Open</a></div>
-            <div class="row"><i class="dot sm" id="zha-pair-dot"></i><div class="t"><b>2 · Pair your Zigbee devices</b><span>Opens Home Assistant's Zigbee “Add device”, which starts pairing for a few minutes. Put each device in pairing mode. You can always pair more later from the same page.</span></div><a class="btn" id="zha-pair" target="_blank" rel="noopener">Open</a></div>
-          </div>
+          <div class="well rows" id="radio-next" hidden></div>
         </div>
         <div class="applog">
           <button class="disc" id="disc-app" aria-expanded="false" aria-controls="details-app"><span>Show details</span><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></button>
