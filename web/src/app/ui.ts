@@ -489,8 +489,7 @@ class Installer {
     try { networks = await this.improv.scan(); } catch { /* typed by hand then */ }
     sel.innerHTML = '';
     for (const n of networks) {
-      const signal = n.rssi >= -60 ? 'strong' : n.rssi >= -72 ? 'good' : 'weak';
-      const o = new Option(`${n.ssid} · ${signal}${n.secure ? '' : ' · open'}`, n.ssid);
+      const o = new Option(n.ssid, n.ssid); // strongest first; open networks just hide the password
       o.dataset.secure = String(n.secure);
       sel.append(o);
     }
