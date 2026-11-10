@@ -72,6 +72,8 @@ data class SetupInputs(
     val radioModeStored: Boolean = false,
     /** Improv (Wi-Fi over Bluetooth), for the Wi-Fi step. */
     val improv: ImprovFacts = ImprovFacts(),
+    /** No trace of an earlier setup at all (see [SetupState.neverSetUp]): a fresh panel. */
+    val neverSetUp: Boolean = false,
     /** A Wi-Fi join sent from the computer (web installer) in this process, if any. */
     val installer: InstallerWifi? = null,
 )
@@ -108,7 +110,8 @@ object SetupState {
         val reasons = ArrayList<String>(4)
         // Improv's Allow prompt and the installer's join progress live in the Wi-Fi step: no grace then.
         val wifiSetupActive = i.improv.running || (i.installer != null && i.installer.phase != InstallerWifi.Phase.CONNECTED)
-        if (!i.online && (i.offlineForMs >= rules.offlineGraceMs || wifiSetupActive)) reasons += "offline"
+        // A fresh panel has no network to wait for: show setup at once instead of a "waiting" screen.
+        if (!i.online && (i.offlineForMs >= rules.offlineGraceMs || wifiSetupActive || i.neverSetUp)) reasons += "offline"
         if (i.online && !i.haKnown) reasons += "home assistant not found"
         if (i.online && i.haKnown && !haEverRecorded && !i.haHelloThisProcess && i.uptimeMs >= rules.haGraceMs) {
             reasons += "not added to home assistant"
@@ -140,6 +143,15 @@ object SetupState {
      * provisioned an API key, the HA step was skipped, or a radio mode was chosen in HA. A fresh
      * install has none of these at its first start.
      */
+    /**
+     * True when nothing shows this panel was ever set up: no Home Assistant known or recorded, no API
+     * key, no skipped or answered steps, no sign-in. Such a panel skips the offline grace period.
+     */
+    fun neverSetUp(
+        haKnown: Boolean, haSeen: Boolean, apiKeySet: Boolean, haSkipped: Boolean, radioStepDone: Boolean,
+        radioModeStored: Boolean, signedIn: Boolean,
+    ): Boolean = !(haKnown || haSeen || apiKeySet || haSkipped || radioStepDone || radioModeStored || signedIn)
+
     fun radioStepDoneOnUpgrade(
         haKnown: Boolean, haSeen: Boolean, apiKeySet: Boolean, haSkipped: Boolean, radioModeStored: Boolean,
     ): Boolean = haKnown || haSeen || apiKeySet || haSkipped || radioModeStored

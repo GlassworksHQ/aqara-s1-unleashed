@@ -177,7 +177,7 @@ class MainActivity : Activity() {
         // views have drawn, a plain colour behind them costs the GPU nothing on every later frame.
         window.decorView.post { window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0xFF0A0B0F.toInt())) }
         // Visible from the first frame: the dashboard's first paint or the setup screen replaces it.
-        loadingOverlay.show("Starting up", if (hasNetwork()) "Connecting to Home Assistant…" else "Waiting for a network…")
+        loadingOverlay.show("Starting up", if (hasNetwork()) "Connecting to Home Assistant…" else "Reconnecting to Wi-Fi…")
         HaAuth.addListener(authListener)
         SetupSignals.addListener(setupSignalListener)
         wifiStatus.observe { refreshSetup() }
@@ -277,6 +277,11 @@ class MainActivity : Activity() {
             radioModeStored = prefs.radioMode != null,
             improv = ImprovController.setupFacts,
             installer = ImprovController.installerWifi,
+            neverSetUp = SetupState.neverSetUp(
+                haKnown = prefs.haBase != null, haSeen = prefs.haSeen || SetupSignals.haSubscribed,
+                apiKeySet = prefs.apiEncryption, haSkipped = prefs.haSetupSkipped, radioStepDone = prefs.radioStepDone,
+                radioModeStored = prefs.radioMode != null, signedIn = HaAuth.signedIn,
+            ),
         )
     }
 

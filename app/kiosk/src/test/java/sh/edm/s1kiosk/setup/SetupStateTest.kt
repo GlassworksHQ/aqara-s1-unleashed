@@ -30,6 +30,30 @@ class SetupStateTest {
     )
 
     @Test
+    fun freshOfflinePanelShowsSetupAtOnce() {
+        // First boot after the installer: nothing set up, no Wi-Fi yet. No 30 s "waiting" screen.
+        val first = fresh.copy(online = false, offlineForMs = 0, uptimeMs = 1_000, neverSetUp = true)
+        val d = SetupState.decide(first)
+        assertTrue(d.reasons.toString(), d.show)
+        assertEquals(SetupStep.WIFI, d.step)
+    }
+
+    @Test
+    fun neverSetUpIsFalseForAnyTraceOfSetup() {
+        assertTrue(SetupState.neverSetUp(false, false, false, false, false, false, false))
+        val traces = listOf(
+            SetupState.neverSetUp(true, false, false, false, false, false, false),
+            SetupState.neverSetUp(false, true, false, false, false, false, false),
+            SetupState.neverSetUp(false, false, true, false, false, false, false),
+            SetupState.neverSetUp(false, false, false, true, false, false, false),
+            SetupState.neverSetUp(false, false, false, false, true, false, false),
+            SetupState.neverSetUp(false, false, false, false, false, true, false),
+            SetupState.neverSetUp(false, false, false, false, false, false, true),
+        )
+        assertTrue(traces.none { it })
+    }
+
+    @Test
     fun deskPanelNeverShowsSetup() {
         // Every combination the desk panel can be in after an update to this build: just booted,
         // before HA reconnects, before ha_seen was ever written, with or without the old API key.

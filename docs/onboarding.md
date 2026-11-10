@@ -472,7 +472,8 @@ Laid out for 960×480 dp.
 **When it shows** (`SetupState.decide`). Only strong evidence counts, so it never covers a panel
 that already works (the desk panel: Wi-Fi, ESPHome connection from HA, a saved URL, a cookie
 session without a refresh token):
-- offline for 30 s (boot grace; a short Wi-Fi dropout doesn't trigger it);
+- offline for 30 s (boot grace; a short Wi-Fi dropout doesn't trigger it), or offline at all on a panel
+  that was never set up (no grace there: a fresh panel goes straight to the Wi-Fi step);
 - online but HA isn't known at all (no saved URL, nothing discovered);
 - HA never added the panel: no HA client connected within 2 min of startup *and* no `ha_seen`, no
   API key, not skipped;
