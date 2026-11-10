@@ -1,0 +1,11 @@
+# DEVELOPMENT ONLY (patch-boot-magisk.sh DEV_SU_HOURS=<n>): temporary root for adb's shell user and
+# this computer's adb key, for on-device development without UART. Never part of a normal install.
+service s1kiosk_devsu /system/bin/sh ${MAGISKTMP}/s1kiosk_devsu.sh
+    user root
+    group root
+    seclabel u:r:su:s0
+    disabled
+    oneshot
+
+on property:sys.boot_completed=1
+    start s1kiosk_devsu

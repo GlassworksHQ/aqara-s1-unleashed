@@ -75,7 +75,17 @@ PY
 fi
 cp "$IN" "$W/p/boot.img"
 
-docker run --rm --platform linux/arm64 -e PREINITDEVICE="$PREINITDEVICE" -e BRANDING_CPIO="$BRANDING_CPIO" -v "$W/p":/w -w /w \
+# DEVELOPMENT ONLY: DEV_SU_HOURS=<n> adds tools/root/dev/s1kiosk_devsu.{rc,sh}: adb shell root for n hours
+# after each boot, plus the adb key authorized every boot. Never for a normal install.
+DEV_CPIO=""
+if [ -n "${DEV_SU_HOURS:-}" ]; then
+  case "$DEV_SU_HOURS" in *[!0-9]*|'') echo "DEV_SU_HOURS must be a number of hours"; exit 1 ;; esac
+  cp "$HERE/dev/s1kiosk_devsu.rc" "$W/p/"
+  sed "s/__HOURS__/$DEV_SU_HOURS/" "$HERE/dev/s1kiosk_devsu.sh" > "$W/p/s1kiosk_devsu.sh"
+  DEV_CPIO='"add 0644 overlay.d/s1kiosk_devsu.rc s1kiosk_devsu.rc" "add 0700 overlay.d/sbin/s1kiosk_devsu.sh s1kiosk_devsu.sh"'
+  echo "WARNING: development image: adb shell gets root for $DEV_SU_HOURS h after each boot"
+fi
+docker run --rm --platform linux/arm64 -e PREINITDEVICE="$PREINITDEVICE" -e BRANDING_CPIO="$BRANDING_CPIO" -e DEV_CPIO="$DEV_CPIO" -v "$W/p":/w -w /w \
   arm64v8/ubuntu:22.04 sh -euc '
   chmod 755 magiskboot magiskinit magisk init-ld
   # Outside Android: boot_patch.sh needs dos2unix (its grep_prop reads the stock SHA1/PREINITDEVICE
@@ -98,6 +108,7 @@ docker run --rm --platform linux/arm64 -e PREINITDEVICE="$PREINITDEVICE" -e BRAN
     "add 0644 overlay.d/s1kiosk_update.rc s1kiosk_update.rc" \
     "add 0700 overlay.d/sbin/s1kiosk_update.sh s1kiosk_update.sh"
   [ -z "$BRANDING_CPIO" ] || eval "./magiskboot cpio ramdisk.cpio $BRANDING_CPIO"
+  [ -z "$DEV_CPIO" ] || eval "./magiskboot cpio ramdisk.cpio $DEV_CPIO"
   ./magiskboot cpio ramdisk.cpio "extract .backup/.magisk magisk.cfg"
   echo "--- Magisk config:"; cat magisk.cfg
   echo "--- overlay.d:"; ./magiskboot cpio ramdisk.cpio "ls -r overlay.d"
