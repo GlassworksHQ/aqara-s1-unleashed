@@ -1,0 +1,12 @@
+bootpatch.wasm is our own build (build-wasm.sh) of src/lib.rs (MIT, this repo) statically linked with
+these crates from crates.io, at the exact versions in Cargo.lock (the ones Magisk v31.1 uses):
+
+  flate2        1.1.10  MIT OR Apache-2.0   https://github.com/rust-lang/flate2-rs
+  zlib-rs       0.6.8   Zlib                https://github.com/trifectatechfoundation/zlib-rs
+  lzma-rust2    0.21.0  Apache-2.0          https://github.com/hasenbanck/lzma-rust2
+  sha2 0.11.1, digest 0.11.3, block-buffer 0.12.1, crypto-common 0.2.2, const-oid 0.10.2,
+  hybrid-array 0.4.15, typenum 1.20.1, cfg-if 1.0.5   MIT OR Apache-2.0
+  Rust standard library (rustc 1.91.1)              MIT OR Apache-2.0
+
+No Magisk (GPLv3) code is included: only the same third-party compression crates, so the output
+bytes match magiskboot's. The full licence texts ship with each crate's source (crates.io).

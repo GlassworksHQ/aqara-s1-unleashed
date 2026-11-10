@@ -1,0 +1,4 @@
+node_modules/
+dist/
+public/assets/blobs/
+public/assets/manifest.json

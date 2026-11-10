@@ -1,0 +1,27 @@
+# magiskboot's compressors, built to wasm32-unknown-unknown for the web installer.
+# Versions and features are pinned to exactly what Magisk v31.1's native/src/boot uses
+# (native/Cargo.toml + native/src/boot/Cargo.toml + native/Cargo.lock), because the boot patch must be
+# byte-identical to `magiskboot`'s output. Rebuild with ./build-wasm.sh (Docker, reproducible).
+[package]
+name = "s1-bootpatch-wasm"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+flate2 = { version = "=1.1.10", default-features = false, features = ["zlib-rs"] }
+zlib-rs = "=0.6.8"
+lzma-rust2 = { version = "=0.21.0", default-features = false, features = ["xz", "std", "encoder", "optimization"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
