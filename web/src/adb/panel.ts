@@ -78,7 +78,11 @@ export class Panel implements PanelShell {
   }
 
   async openStream(service: string): Promise<ByteStream> {
-    const socket = await this.adb.createSocket(service);
+    // Android 10's adbd reads the OPEN payload as a C string. Tango omits the NUL terminator for
+    // protocol >= 0x01000001, so adbd can read past the name into garbage and refuse the service
+    // (seen on the panel: localabstract:s1kiosk_improv refused, with the NUL it opens). Real adb
+    // always sends it.
+    const socket = await this.adb.createSocket(service.endsWith('\0') ? service : `${service}\0`);
     const writer = socket.writable.getWriter();
     return {
       write: (data) => writer.write(data),
