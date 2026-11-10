@@ -7,7 +7,7 @@
 # because init.svc.s1kiosk_radio only exists once the service has run, and the app uses that property
 # to detect the helper.
 #
-# App side: setprop persist.s1kiosk.radio_mode <off|zigbee_tcp|zigbee_router|thread>
+# App side: setprop persist.s1kiosk.radio_mode <off|zigbee_tcp|zigbee_router|thread|thread_router>
 #           setprop ctl.restart s1kiosk_radio
 # Helper side: sys.s1kiosk.radio.status = "<applying|ok|error> <mode>[: detail]", sys.s1kiosk.radio.version = 1
 

@@ -8,13 +8,15 @@
 # The app changes mode with: setprop persist.s1kiosk.radio_mode <id>; setprop ctl.restart s1kiosk_radio
 # (init kills the whole process group on restart, so our children go with it.)
 #
-# Mode ids: off (default) | zigbee_tcp | zigbee_router | thread
+# Mode ids: off (default) | zigbee_tcp | zigbee_router | thread | thread_router
 #   experimental, not offered by the app: zigbee_tcp_thread (Zigbee + Thread on one multi-PAN radio)
 # There is no stock mode: Aqara's services are init services, so removing this helper (or the app,
 # tools/install.sh --undo) and rebooting brings the stock stack back.
 #
 # Optional root-owned overrides in $DIR/radio.conf (sourced):
 #   ZIGBEE_PORT=6638  ZIGBEE_RANGE=192.168.1.0/24  BACKBONE=wlan0  OTBR_ARGS="..."  RADIO_URL=...
+# thread_router joins with the active dataset (hex TLVs, as exported from HA) in $DIR/thread-dataset
+# (root 0600; a secret: never log it). Without that file the mode reports an error and joins nothing.
 # otbr-agent/ot-ctl come from tools/radio/build-otbr.sh; build them with OTBR_RUNTIME_DIR=$DIR/run
 # (socket dir, compiled in). The proof build has border routing/REST/mDNS off: set BACKBONE only
 # with a border-routing build.
@@ -48,7 +50,7 @@ START_ORDER="zigbee_cpcd zigbee_socat zigbee_zigbeed"
 case "$MODE" in
   off)                                        WANT="" ;;
   zigbee_tcp|zigbee_router|zigbee_tcp_thread) WANT="zigbee_cpcd zigbee_socat zigbee_zigbeed" ;;
-  thread)                                     WANT="zigbee_cpcd" ;;
+  thread|thread_router)                       WANT="zigbee_cpcd" ;;
   *) status error "unknown mode"; exec sleep 2147483647 ;;
 esac
 
@@ -116,6 +118,19 @@ start_otbr() {
   OTBR_PID=$!
 }
 
+# thread_router: same agent without backbone (the proof build: no border routing/REST/mDNS), then
+# join the user's existing network with the dataset from HA. Never forms a network.
+start_thread_router() {
+  [ -s "$DIR/thread-dataset" ] || { status error "no Thread dataset ($DIR/thread-dataset)"; return 1; }
+  BACKBONE=""
+  start_otbr || return 1
+  i=0; while ! "$DIR/ot-ctl" state >/dev/null 2>&1 && [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done
+  "$DIR/ot-ctl" dataset set active "$(cat "$DIR/thread-dataset")" >/dev/null 2>&1 &&
+    "$DIR/ot-ctl" ifconfig up >/dev/null 2>&1 &&
+    "$DIR/ot-ctl" thread start >/dev/null 2>&1 ||
+    { status error "ot-ctl join steps failed"; kill "$OTBR_PID" 2>/dev/null; return 1; }
+}
+
 start_router() {
   # Router mode needs an EZSP host that joins as EMBER_ROUTER (docs/radio.md "Zigbee router").
   [ -x "$DIR/zigbee-router" ] || { status error "zigbee router host not installed ($DIR/zigbee-router)"; return 1; }
@@ -131,6 +146,7 @@ children_ok() {
     zigbee_tcp)        alive "$BRIDGE_PID" || start_bridge || return 1 ;;
     zigbee_router)     alive "$ROUTER_PID" || start_router || return 1 ;;
     thread)            alive "$OTBR_PID"   || start_otbr   || return 1 ;;
+    thread_router)     alive "$OTBR_PID"   || start_thread_router || return 1 ;;
     zigbee_tcp_thread) alive "$BRIDGE_PID" || start_bridge || return 1
                        alive "$OTBR_PID"   || start_otbr   || return 1 ;;
   esac
@@ -143,6 +159,7 @@ detail() {
     zigbee_tcp) echo "EZSP on tcp:$ZIGBEE_PORT" ;;
     zigbee_router) echo "router host running" ;;
     thread) echo "otbr-agent on wpan0${BACKBONE:+ (backbone $BACKBONE)}" ;;
+    thread_router) echo "Thread router on wpan0 ($("$DIR/ot-ctl" state 2>/dev/null | head -1))" ;;
     zigbee_tcp_thread) echo "EZSP on tcp:$ZIGBEE_PORT; otbr-agent on wpan0" ;;
   esac
 }

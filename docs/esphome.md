@@ -99,7 +99,7 @@ is FNV-1a of the `object_id` (stable).
 | switch `Voice overlay` | `voice_overlay` | "Listening… / Speaking" pill at the bottom of the screen during voice runs (default on) |
 | number `Mic gain` | `mic_gain` | 0.5–4× |
 | number `Wake word threshold` | `wake_word_threshold` | 0.1–0.95 (default 0.5) |
-| select `Radio mode` | `radio_mode` | `Off` (default), `Zigbee coordinator (TCP)`, `Zigbee router`, `Thread border router` ([radio.md](radio.md)); without the root helper only `Off` applies, other choices are refused and snap back |
+| select `Radio mode` | `radio_mode` | `Off` (default), `Zigbee coordinator (TCP)`, `Zigbee router`, `Thread border router`, `Thread router` ([radio.md](radio.md)); without the root helper only `Off` applies, other choices are refused and snap back |
 | text_sensor `Radio status` | `radio_status` | diagnostic; e.g. `Off: Aqara's radio services stopped, radio idle. …`, or the root helper's `ok zigbee_tcp: EZSP on tcp:6638` |
 | text_sensor `IP address` | `ip_address` | diagnostic |
 | text_sensor `App version` | `app_version` | diagnostic |

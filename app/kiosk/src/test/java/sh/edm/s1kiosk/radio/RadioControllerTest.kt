@@ -42,7 +42,11 @@ class RadioControllerTest {
 
     @Test
     fun selectOptionsAndDefault() {
-        assertEquals(listOf("Off", "Zigbee coordinator (TCP)", "Zigbee router", "Thread border router"), RadioMode.LABELS)
+        assertEquals(
+            listOf("Off", "Zigbee coordinator (TCP)", "Zigbee router", "Thread border router", "Thread router"),
+            RadioMode.LABELS,
+        )
+        assertEquals(listOf("off", "zigbee_tcp", "zigbee_router", "thread", "thread_router"), RadioMode.entries.map { it.id })
         assertEquals(RadioMode.OFF, RadioMode.DEFAULT)
     }
 
@@ -66,7 +70,8 @@ class RadioControllerTest {
         assertEquals(zigbee, running(RadioMode.ZIGBEE_TCP))
         assertEquals(zigbee, running(RadioMode.ZIGBEE_ROUTER))
         assertEquals(listOf(AqaraRadio.CPCD), running(RadioMode.THREAD))
-        assertEquals(setOf(RadioMode.ZIGBEE_TCP, RadioMode.ZIGBEE_ROUTER, RadioMode.THREAD), RadioMode.entries.filter { it.needsHelper }.toSet())
+        assertEquals(listOf(AqaraRadio.CPCD), running(RadioMode.THREAD_ROUTER))
+        assertEquals(RadioMode.entries.toSet() - RadioMode.OFF, RadioMode.entries.filter { it.needsHelper }.toSet())
     }
 
     @Test

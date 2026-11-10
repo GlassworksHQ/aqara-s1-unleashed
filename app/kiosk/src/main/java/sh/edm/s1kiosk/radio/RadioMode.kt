@@ -8,6 +8,9 @@ package sh.edm.s1kiosk.radio
  * can use the hub's own Zigbee network. Stock comes back by uninstalling the app (or
  * `tools/install.sh --undo`): Aqara's services are init services started on every boot.
  *
+ * Roles: Zigbee coordinator (EZSP over TCP for ZHA), Zigbee router (repeater in an existing mesh, no
+ * endpoints), Thread border router, Thread router (repeater joining an existing network).
+ *
  * [needsHelper]: the mode runs processes as root (TCP bridge on the root-only EZSP pty, otbr-agent on
  * the root-only CPC socket) and so needs the root helper service [RadioHelper.SERVICE]. [OFF] only
  * stops Aqara's init services, which the app uid can do (SELinux permissive).
@@ -16,7 +19,9 @@ enum class RadioMode(val id: String, val label: String, val needsHelper: Boolean
     OFF("off", "Off", false),
     ZIGBEE_TCP("zigbee_tcp", "Zigbee coordinator (TCP)", true),
     ZIGBEE_ROUTER("zigbee_router", "Zigbee router", true),
-    THREAD("thread", "Thread border router", true);
+    THREAD("thread", "Thread border router", true),
+    /** Thread repeater (FTD) joining an existing network with a dataset from HA; no BR/REST/mDNS. */
+    THREAD_ROUTER("thread_router", "Thread router", true);
 
     // Concurrent Zigbee + Thread on the one multi-PAN radio (shared channel) is deliberately not a
     // mode here: Home Assistant deprecated multiprotocol for the same hardware design (docs/radio.md).
