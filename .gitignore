@@ -6,6 +6,7 @@ sdkconfig.old
 *.pcap
 *.log
 .DS_Store
+__pycache__/
 # never commit device-unique dumps or secrets
 dumps/
 *adb_key*
