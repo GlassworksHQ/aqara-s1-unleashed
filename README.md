@@ -1,170 +1,287 @@
-# Aqara S1 Unleashed
+<p align="center">
+  <img src="branding/social-preview.png" alt="S1 Unleashed: the Glass Tile mark on a dark background with sky and violet glows. Your S1 Plus, unleashed." width="100%">
+</p>
 
-Opening up the **Aqara Panel Hub S1 Plus** (model **MP-K03D**, internally **MagicPad S1 Plus**) so it can run your own Android apps — the end goal being a **Home Assistant voice-satellite kiosk** that replaces the stock Aqara launcher.
+<h1 align="center">S1 Unleashed</h1>
 
-> **Status: working on the reference panel; installer for fresh panels in progress.** The S1 Kiosk app
-> runs the panel as a Home Assistant kiosk + voice assistant + Music Assistant speaker, with Aqara's
-> launcher, apps and cloud disabled. Getting it onto a *sealed* panel without the debug UART (FEL
-> installer) is the remaining big step. See [Roadmap](#roadmap).
+<p align="center">
+  <b>Turn the Aqara Panel Hub S1 Plus into a Home Assistant wall panel.</b><br>
+  Dashboard, voice assistant, music, presence and the built-in Zigbee/Thread radio, all local.<br>
+  Installed from your browser over one USB cable, with a backup first and undo built in.
+</p>
 
-> ⚠️ **Disclaimer.** This modifies hardware you own, at your own risk. It can brick the device if you deviate from tested steps. Not affiliated with or endorsed by Aqara/Lumi. No warranty. Don't publish device-unique secrets (MAC, serial, SID, keys).
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#what-you-get">Features</a> ·
+  <a href="#status">Status</a> ·
+  <a href="#undo-and-safety">Undo &amp; safety</a> ·
+  <a href="#faq">FAQ</a> ·
+  <a href="docs/research/README.md">How we got here</a>
+</p>
 
 ---
 
-## The device
+## Why
+
+The S1 Plus is good wall hardware: a 1440×720 touchscreen, a microphone and a speaker, a
+time-of-flight presence sensor, an ambient light sensor, a Zigbee/Thread radio and a mains relay
+base. Out of the box it only runs Aqara's launcher and talks to Aqara's cloud. Its system
+WebView is Chromium 74, which is too old for the current Home Assistant frontend.
+
+S1 Unleashed replaces the software layer and leaves the hardware alone. The panel boots into
+**S1 Kiosk**, a small open-source app built on GeckoView (Firefox's engine). It shows your
+dashboard and appears in Home Assistant as a single ESPHome device. You don't need an Aqara
+account, soldering, or a terminal.
+
+## What you get
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/img/voice/ambient-stage.webp" alt="The voice overlay on the panel: a glowing orb over a dimmed dashboard, the spoken request, and the assistant's reply in large type.">
+</td>
+<td width="50%" valign="top">
+
+**Your dashboard, full screen.** A current Home Assistant frontend in a kiosk that is the panel's
+home screen. HA's header and sidebar are hidden. You sign in by scanning a QR code with your
+phone, so you never type a password on the wall. You pick which dashboard it shows in HA.
+
+**A voice assistant.** On-device wake word (openWakeWord), Assist pipelines, timers and
+announcements, with the full-screen overlay shown here.
+
+</td>
+</tr>
+</table>
 
 | | |
 |---|---|
-| Product | Aqara Panel Hub S1 Plus (MP-K03D) / "MagicPad S1 Plus" |
-| SoC | **Allwinner A133** (aka R818) — quad Cortex-A53, `sun50iw10` |
-| RAM | 2 GiB DDR4 (792 MHz) |
-| Storage | ~8 GB eMMC (MMC 5.1) |
-| PMIC | X-Powers AXP806 |
-| OS | **Android 10** (`QP1A.191105.004`), board `peony_evb2`, **test-keys** |
-| Bootloader | BOOT0 → ARM Trusted Firmware (BL31) → **U-Boot 2018.05** (Allwinner) |
+| 🏠 **One ESPHome device** | HA discovers the panel and sets up encryption automatically. You get the screen as a light, presence, light level, a speaker, voice settings and the wall base, plus the dashboard and radio selects. [More](docs/esphome.md) |
+| 🎵 **Music Assistant player** | A native Sendspin player that plays in sync with your other speakers. [More](docs/sendspin.md) |
+| 👋 **Wakes when you walk up** | The screen wakes as you approach, turns off when the room is empty, and dims at night. It is driven by the panel's own sensors. [More](docs/sensors.md) |
+| 📡 **Radio for Home Assistant** | The panel's EFR32 radio can serve HA as a Zigbee coordinator (ZHA) or, experimentally, as a Thread border router. You switch modes from HA. [More](docs/radio.md) |
+| 🔌 **Wall base relays** | A driver for the mains relay base that speaks its UART protocol directly, with no Aqara daemon. Not yet tried on a real base. [More](docs/research/bases.md) |
+| 🔒 **No Aqara cloud** | Aqara's launcher, apps, updater and cloud daemon are switched off (reversibly), so the panel stops talking to Aqara. |
+| ✨ **Its own boot screen** | The Glass Tile splash and boot animation. [More](branding/glass-tile/README.md) |
 
-## Why this is tractable (the good news)
+<p align="center">
+  <img src="branding/glass-tile/preview.webp" alt="The Glass Tile boot animation: light sweeps across a glass card that reads S1 Unleashed, and an amber Starting dot appears." width="60%">
+</p>
 
-From the stock boot log and a root shell, the device is wide open:
+## Install
 
-- **Secure boot is OFF** — `secure enable bit: 0`, and the verified-boot root key (ROTPK) was never fused (`tool did not set rotpk burn flag, skip rotpk burn`). The SoC boots unsigned bootloaders.
-- **FEL works unauthenticated** — the Allwinner BROM USB recovery mode (FEL) accepts code with no signing. This is the universal, UART-free entry point.
-- **AVB (Android Verified Boot) is present but not hardware-enforced** — `avbtool 1.1.0`, `vbmeta` flag `0`. Because secure boot is off, AVB can be disabled (vbmeta "verification disabled" flag) or re-signed.
-- **Root is available out of the box** — an AOSP `su` binary ships at `/system/xbin/su` (syntax: `su 0 <cmd>`).
-- **SELinux is permissive** (`/sys/fs/selinux/enforce` = `0`).
-- **U-Boot offers fastboot** — it probes for USB fastboot/burn at boot (`usb burn from boot`) and has an interruptible `Hit any key to stop autoboot`.
+### What you need
 
-See [docs/findings.md](docs/findings.md) and [docs/boot-log.md](docs/boot-log.md) for the evidence.
+- An **Aqara Panel Hub S1 Plus** ([supported hardware](#supported-hardware)).
+- A **USB-C data cable** and a **small screwdriver** to open the back cover once.
+- **Chrome or Edge** on Windows, macOS or Linux. The installer uses WebUSB, which Firefox and
+  Safari don't support.
+- About **10 minutes**.
 
-## Entering FEL mode
+### The web installer (recommended)
 
-FEL is the Allwinner mask-ROM USB recovery mode. It lives in silicon and **cannot be erased**, which also makes the device very hard to permanently brick (you can always re-enter FEL and rewrite).
+<!-- TODO(launch): confirm the hosted installer URL before publishing. -->
+**[Open the installer →](https://aguilaair.github.io/aqara-s1-unleashed/)**
 
-1. Power the panel off (unplug USB-C).
-2. **Open the back cover.** On the PCB there is a single **unlabeled tactile button** (not the external reset button — that one does nothing for this).
-3. **Hold that button** and plug USB-C back in while holding, for ~10 s.
-4. The screen stays **black**. On a host, `sunxi-fel -l` now lists an Allwinner device (reports as `A133`, SoC id `0x1855`).
+The installer runs entirely in your browser and uploads nothing. It walks you through five steps:
 
-![FEL button on the S1 Plus PCB, back cover removed](docs/img/fel-button.jpg)
+1. **Check this browser.** One-time setup on Windows (a Zadig driver) or Linux (a udev rule). On
+   macOS there is nothing to set up.
+2. **Enter FEL mode.** With the back cover off, hold the small button on the board while you plug
+   in USB-C. FEL is the chip's built-in recovery mode.
+3. **Back up and install.** The installer starts its own bootloader in RAM, then backs up the
+   panel's partitions to your computer. Only after that does it patch `boot` (Magisk plus the S1
+   helper), flash it and read it back to verify.
+4. **Set up the app.** S1 Kiosk is installed as the home screen. From the same page you set the
+   panel's Wi-Fi (sent over USB), sign it in to Home Assistant, and choose the radio mode,
+   language and time zone.
+5. **Done.** Home Assistant finds the panel as an ESPHome device. Click **Add**.
 
-*The FEL button (circled): a small tactile switch right of the shield can's notch, just below the round sensor window.*
+<table>
+<tr>
+<td width="50%"><img src="docs/img/installer/fel.webp" alt="Installer step 2: a photo of the board with the FEL button circled, and the steps hold, plug in, keep holding for 10 seconds."></td>
+<td width="50%"><img src="docs/img/installer/install.webp" alt="Installer step 3: a progress ring at 80 percent with the phases back up, patch, flash and verify."></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/img/installer/wifi.webp" alt="Installer step 4: a list of Wi-Fi networks in range of the panel and a password field."></td>
+<td width="50%"><img src="docs/img/installer/radio.webp" alt="Installer step 4: the radio choice, with Off selected, Zigbee coordinator, Thread border router marked experimental, and Zigbee router marked coming soon."></td>
+</tr>
+</table>
 
-The external case button and the Aqara app pairing button do **not** trigger FEL.
+The full walkthrough, per-OS setup and troubleshooting are in **[docs/install.md](docs/install.md)**.
 
-## FEL U-Boot
+> [!NOTE]
+> **The web installer is new.** It has been tested end to end on simulated hardware using the
+> panel's real partitions, and it is now being tested on real panels. The command-line installer
+> below has already run on a real panel. If anything looks wrong, stop and
+> [open an issue](https://github.com/aguilaair/aqara-s1-unleashed/issues). Your backup is safe.
 
-Mainline U-Boot now boots from FEL (USB, RAM only) to a prompt with full eMMC access, after
-fixing the mainline A133 DDR4 controller setup. See [docs/fel.md](docs/fel.md).
+### The command line
 
-Persistent root (Magisk + the radio root helper as an init service), flashed through that FEL
-fastboot path: [docs/root.md](docs/root.md).
-
-**Install on a factory panel** (PCB button + USB-C only): `tools/install/fel-install.sh`, then
-`tools/install.sh`. See [docs/root.md](docs/root.md#one-command-toolsinstallfel-installsh).
-
-## DRAM parameters (needed to build a working FEL U-Boot)
-
-The generic mainline A133 configs don't match this board; these are the real values read from BOOT0:
-
-```
-SoC          : sun50iw10 (A133)
-DRAM type    : DDR4
-DRAM clock   : 792 MHz
-DRAM voltage : 1200 mV   (PMU: AXP806)
-Size         : 2048 MiB
-para1        : 0x610a
-para2        : 0x8000000
-tpr11        : 0xf101612
-tpr12        : 0xc0c110f
-tpr13        : 0x107501
-```
-
-## Repo layout
-
-```
-docs/
-  hardware.md    Board, FEL button, 3-pin UART console pinout
-  boot-log.md    Annotated stock boot log (DRAM, secure-boot, partitions)
-  findings.md    Root, SELinux, AVB, partitions, what's unlocked
-  debloat.md     Reversible Aqara de-bloat, locale/time-zone fixes
-  screen-policy.md  Why the panel turns its screen off (Lumi DND night mode)
-  sensors.md     VI5300 ToF presence, MK6212 light, SC7A20 accel; how the kiosk uses them
-  esphome.md     The panel as an ESPHome device in HA (all entities, voice assistant)
-  onboarding.md  Fresh-panel setup: Improv Wi-Fi, auto key, HA discovery, QR sign-in
-  sendspin.md    Native Music Assistant player (synced playback)
-  bases.md       Wall bases (relay modules); base-protocol.md = the UART protocol
-  radio.md       EFR32 Zigbee/Thread radio: firmware facts, modes, root-helper contract
-app/             S1 Kiosk: MIT GeckoView kiosk app (sh.edm.s1kiosk)
-tools/
-  install.sh           One-shot panel setup over ADB (and --undo)
-  fel/                 U-Boot board config, DRAM fix patch, FEL boot scripts (docs/fel.md)
-  bracket/             Wall-base emulator (proves the UART protocol against Aqara's bracket_cli)
-  radio/               Radio root helper (script + init .rc, not in any image yet), otbr-agent build
-  voice/               Fetch + push the openWakeWord models
-  debloat/             Reversible `pm disable-user` de-bloat script
-  gecko-eval/          Evaluate JS in the kiosk page over Firefox remote debugging
-  mictest/             getUserMedia / secure-context test page
-  esp32-uart-bridge/   ESP-IDF firmware turning any ESP32-S3 into a
-                       3.3 V USB↔UART bridge for the panel's debug console
-                       (dev-only; end users won't need UART)
-```
-
-## Setting up a panel (current state)
-
-Once ADB is enabled on the panel (today that takes the debug UART; a UART-free FEL route is in
-progress, see `tools/fel/`):
+The same steps as shell scripts, for people who would rather run them by hand (macOS or Linux;
+needs `sunxi-fel`, `fastboot`, `adb`, Docker and a U-Boot build):
 
 ```sh
-cd app && ./gradlew :kiosk:assembleDebug && cd ..
-export ANDROID_SERIAL=<panel serial>
-tools/install.sh --url http://homeassistant.local:8123/my-dashboard \
-    --timezone America/Los_Angeles --locale en-US \
-    --keyboard rkr.simplekeyboard.inputmethod_148.apk   # optional, from F-Droid
+tools/install/fel-install.sh ~/s1-backup          # FEL → back up → patch → flash → verify
+tools/install.sh --url http://homeassistant.local:8123 \
+    --timezone America/Los_Angeles --locale en-US # install and configure S1 Kiosk over adb
 ```
 
-`install.sh` installs the [S1 Kiosk](app/README.md) app, grants its permissions, makes it the home
-screen, disables Aqara's DND screen-off and bloat, and pushes the wake-word models. Then log in to
-HA on the panel once and add it in HA as an **ESPHome** device (port 6053). The panel then shows up
-in HA with its screen, presence, light sensor, speaker, voice assistant and wall base.
-Everything is reversible: `tools/install.sh --undo`.
-`--dry-run` prints what it would do.
+See [docs/install.md](docs/install.md#command-line) for the details.
 
-## Roadmap
+## Undo and safety
 
-**Reverse engineering / access**
-- [x] Identify SoC, confirm FEL entry (PCB button + power)
-- [x] Confirm secure boot off / FEL unauthenticated
-- [x] Debug UART console (115200 8N1) + root shell; real DRAM parameters
-- [x] U-Boot board config for the S1 Plus built (`tools/fel/`)
-- [ ] Boot it via FEL (RAM only); bring up fastboot ⟵ *needs the PCB-button test*
-- [ ] `provisioning.img` + one-command `install.sh --fel` for sealed panels (no Aqara app/account)
-- [ ] Persistent root (boot-image patch), needed for the Zigbee/Thread radio modes
-- ~~Button-free USB entry~~: not feasible on this firmware (see docs/findings.md)
+- **The backup comes first.** Nothing is written until the panel's own partitions are on your
+  computer: in the browser and as a `.zip` with a `SHA256SUMS` file, which the CLI's `--undo`
+  also accepts. Keep the backup from your **first** install, because it is the only copy of the
+  original software.
+- **Every write is verified.** The installer reads each partition back after flashing it and
+  stops if anything differs. It refuses hardware it doesn't recognise (SoC id, partition layout)
+  before it writes anything.
+- **Small footprint.** It changes three partitions: `boot`, the `vbmeta` flags and the boot
+  splash. Android, `system` and `vendor` are never modified, and everything Aqara ships is
+  disabled rather than deleted.
+- **Undo is built in.** In the installer, choose *Undo a previous install*. It writes your backed-up
+  partitions back over FEL. Then a factory reset on the panel removes S1 Kiosk and its settings.
+  From the CLI, run `tools/install/fel-install.sh --undo <backup-dir>`.
+- **Hard to brick.** FEL lives in the chip's mask ROM, so it can't be erased. As long as you
+  have your backup, you can always get back in.
 
-**S1 Kiosk app (verified on the reference panel)**
-- [x] GeckoView kiosk rendering the current HA frontend full-screen; HA header/sidebar hidden
-- [x] HOME launcher; Aqara launcher, bloat, DND screen-off and **cloud daemon** disabled (reversible)
-- [x] Screen policy from the panel's own sensors (presence wake, idle off, night window, auto-brightness)
-- [x] One ESPHome device in HA: screen, sensors, settings, encryption with automatic key
-- [x] Voice assistant with on-device wake word, timers, announcements, on-screen feedback
-- [x] Native Music Assistant player (Sendspin, synced playback)
-- [x] Onboarding: setup screen, QR sign-in (no login page), dashboard picker, Improv Wi-Fi over BLE
-- [x] Wall-base driver straight over UART (no Aqara daemon); proven against Aqara's own tool
-- [ ] Real-world checks: real wall base, Improv Wi-Fi switch, wake word from across the room, multi-room sync by ear
-- [ ] Zigbee / Thread radio modes (EFR32 radio; user-selectable, [docs/radio.md](docs/radio.md)): `Off` done; coordinator-over-TCP and Thread proven with temporary root, need the root helper
-- [ ] Release build (after the real-world checks)
+> [!WARNING]
+> This modifies a device you own, at your own risk, and probably voids its warranty. It has
+> been tested on a small number of panels. Follow the steps as written.
 
-## Design goal for end users
+## Supported hardware
 
-No soldering, no UART, no teardown of the software:
+| Device | Status |
+|---|---|
+| **Aqara Panel Hub S1 Plus, MP-K03D** (wall-mounted; EU, UK, AU and other regions) | ✅ Tested on firmware 4.5.80 |
+| S1 Plus for China, JYMKP01LM (86-box) | ❓ Untested. The installer refuses it if the layout doesn't match. |
+| S1 Plus Desktop, MP-K05D | ❓ Untested |
+| Other Aqara panels and hubs | ❌ Not supported |
 
-```
-# hold the PCB button, plug in USB-C, then:
-./install.sh
-```
+Inside: Allwinner A133 (quad Cortex-A53), 2 GiB DDR4, 8 GB eMMC, Android 10, a 1440×720 screen,
+an EFR32 802.15.4 radio, a VI5300 time-of-flight sensor and an ambient light sensor.
 
-UART is only used here as a **development tool** to reverse-engineer and verify; the shipped flow is pure FEL over the USB-C port.
+## Status
 
-## Credits
+| Feature | Status |
+|---|---|
+| Kiosk, HA dashboard, QR sign-in, dashboard picker | ✅ Works |
+| ESPHome device with automatic encryption | ✅ Works |
+| Voice assistant with on-device wake word, timers, announcements | ✅ Works · far-field tuning ongoing |
+| Music Assistant player (Sendspin, synced) | ✅ Works |
+| Presence wake, idle-off, night mode, auto-brightness | ✅ Works |
+| Aqara cloud and bloat disabled (reversible) | ✅ Works |
+| Glass Tile boot splash and animation | ✅ Works |
+| Command-line installer and undo | ✅ Works · used on a factory-fresh panel (firmware 4.5.80) |
+| **Web installer** | 🆕 **New.** Tested on simulated hardware with the panel's real partitions; now being tested on real panels |
+| Radio: Zigbee coordinator for ZHA (over the network) | ✅ Works on the reference panel · ZHA only |
+| Radio: **Thread border router** | 🧪 **Experimental** |
+| Radio: **Zigbee router, Thread router** | 🔜 **Coming soon** |
+| Wall base relays | 🧪 Driver done and checked against Aqara's own tool, but not yet tried on a real base |
+| Wi-Fi setup over Bluetooth (Improv) | 🧪 Implemented; lightly tested |
 
-Reverse-engineering and tooling by [@aguilaair](https://github.com/aguilaair). Built on the [linux-sunxi](https://linux-sunxi.org/) project (`sunxi-tools`, U-Boot, ARM Trusted Firmware).
+## FAQ
+
+<details>
+<summary><b>Do I need to solder or use a serial console?</b></summary>
+
+No. You open the back cover once to press a button on the board while you plug in USB-C. A
+serial console was only used during development.
+</details>
+
+<details>
+<summary><b>Can I go back to stock?</b></summary>
+
+Yes. *Undo a previous install* (or `fel-install.sh --undo`) restores `boot`, `vbmeta` and the
+splash from your backup, and a factory reset afterwards brings back Aqara's setup. See
+[docs/install.md](docs/install.md#undo).
+</details>
+
+<details>
+<summary><b>Do I need an Aqara account or the Aqara app?</b></summary>
+
+No. A panel that was never set up with Aqara works fine. If it was, it keeps its Wi-Fi.
+</details>
+
+<details>
+<summary><b>Will my Aqara Zigbee devices keep working?</b></summary>
+
+Not through Aqara: its hub software is switched off. The panel's radio can instead act as a
+Zigbee coordinator for Home Assistant (ZHA), and you re-pair your devices there.
+</details>
+
+<details>
+<summary><b>Does the panel still talk to Aqara's cloud?</b></summary>
+
+No. The kiosk stops Aqara's cloud daemon a few seconds after boot and disables Aqara's apps and
+updater. For zero internet access, also block the panel at your router; it only needs your LAN.
+The panel downloads the openWakeWord models from GitHub once.
+</details>
+
+<details>
+<summary><b>Will Aqara firmware updates still arrive?</b></summary>
+
+No. Aqara's updater is disabled while S1 Unleashed is installed. Undo first if you want stock
+updates back.
+</details>
+
+<details>
+<summary><b>Why GeckoView and not the built-in browser?</b></summary>
+
+The panel's system WebView is Chromium 74 and can't run the current Home Assistant frontend.
+GeckoView ships its own up-to-date engine inside the app.
+</details>
+
+<details>
+<summary><b>Which Home Assistant version do I need?</b></summary>
+
+A current one: development and testing use HA 2026.11 and Music Assistant 2.10. Voice needs an
+Assist pipeline; music needs Music Assistant with Sendspin.
+</details>
+
+<details>
+<summary><b>How was this figured out?</b></summary>
+
+FEL bring-up, a DRAM controller fix for mainline U-Boot, a byte-exact Magisk patch in the
+browser, the radio and the wall base protocol: it's all written up in
+**[How we got here](docs/research/README.md)**.
+</details>
+
+## Repository
+
+| Path | What |
+|---|---|
+| [`web/`](web/src/README.md) | The browser (WebUSB) installer |
+| [`app/`](app/README.md) | S1 Kiosk, the Android app (GeckoView, ESPHome API, voice, Sendspin) |
+| `tools/` | Command-line installer, U-Boot/FEL build, boot patch, radio helper, dev tools |
+| [`branding/`](branding/glass-tile/README.md) | Glass Tile boot splash and animation, social preview |
+| [`docs/`](docs/README.md) | User guides, plus [research](docs/research/README.md) |
+
+## Credits and licenses
+
+Built by [@aguilaair](https://github.com/aguilaair). It stands on the work of
+[linux-sunxi](https://linux-sunxi.org/) (sunxi-tools, U-Boot), [Magisk](https://github.com/topjohnwu/Magisk),
+[Home Assistant](https://www.home-assistant.io/), [ESPHome](https://esphome.io/),
+[Music Assistant](https://music-assistant.io/), [OpenThread](https://openthread.io/),
+[openWakeWord](https://github.com/dscripka/openWakeWord) and
+[Tango / ya-webadb](https://github.com/yume-chan/ya-webadb).
+
+S1 Unleashed's own code is **MIT** ([LICENSE](LICENSE)). Third-party parts keep their licenses:
+
+| Component | License | How it's used |
+|---|---|---|
+| U-Boot (with our A133 patches) | GPL-2.0-or-later | Built from source in [`tools/fel/`](tools/fel); runs from RAM only |
+| Magisk v31.1 | GPL-3.0 | The official release APK, pinned by SHA-256 (the CLI downloads it, the web installer serves the same file); [source](https://github.com/topjohnwu/Magisk/tree/v31.1) |
+| ot-br-posix (`otbr-agent`, `ot-ctl`) | BSD-3-Clause | Built by [`tools/radio/`](tools/radio) |
+| Simple Keyboard | Apache-2.0 | Optional on-screen keyboard |
+| GeckoView | MPL-2.0 | Maven dependency of S1 Kiosk |
+| TensorFlow Lite, Media3 ExoPlayer, ZXing | Apache-2.0 | Wake word inference, audio, QR codes |
+| Bouncy Castle | MIT-style | ESPHome API encryption |
+| Tango (ya-webadb) | MIT | adb over WebUSB in the installer |
+| Inter | SIL OFL 1.1 | Boot branding, fetched at build time |
+| openWakeWord models | **CC BY-NC-SA 4.0** | **Not shipped.** The panel downloads them itself. Non-commercial. |
+
+**Not affiliated with Aqara or Lumi United.** Aqara and the product names are trademarks of their
+owners and are used here only to say which device this works with. No Aqara software is
+included in this repository.
