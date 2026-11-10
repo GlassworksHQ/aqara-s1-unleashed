@@ -1,5 +1,5 @@
 # S1 Kiosk radio helper (docs/radio.md "Root helper contract", v1). Injected into init by Magisk as
-# overlay.d/s1kiosk_radio.rc (tools/root/patch-boot-magisk.sh, docs/root.md). The script, otbr-agent and
+# overlay.d/s1kiosk_radio.rc (tools/root/patch-boot-magisk.sh, docs/research/root.md). The script, otbr-agent and
 # ot-ctl ship in the boot image (overlay.d/sbin -> ${MAGISKTMP}). State, config and optional newer
 # binaries live in /data/s1kiosk/radio (root:root 0700), which the script creates on first run.
 #

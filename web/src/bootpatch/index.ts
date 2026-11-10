@@ -1,5 +1,5 @@
 // bootpatch: byte-exact boot image + partition edits for the web installer (pure, no USB).
-// patchBoot() == tools/root/patch-boot-magisk.sh, byte for byte. See docs/web-installer.md §4, §6.
+// patchBoot() == tools/root/patch-boot-magisk.sh, byte for byte. See docs/research/web-installer.md §4, §6.
 
 import { describeBootImage, findBytes, parseBootImage, repackBootImage, sha1Hex } from './bootimg';
 import { loadCompressor } from './compress';

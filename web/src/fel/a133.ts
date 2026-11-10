@@ -1,5 +1,5 @@
 // Allwinner A133 constants for FEL, from sunxi-tools soc_info.c (A133 entry and
-// a133_sram_swap_buffers) and our own U-Boot build (tools/fel/fel-boot.sh, docs/fel.md).
+// a133_sram_swap_buffers) and our own U-Boot build (tools/fel/fel-boot.sh, docs/research/fel.md).
 
 export interface SwapBuffer { buf1: number; buf2: number; size: number }
 

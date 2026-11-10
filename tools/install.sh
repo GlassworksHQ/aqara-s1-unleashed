@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # One-shot setup of an Aqara Panel Hub S1 Plus as a Home Assistant kiosk, over ADB (no root).
 #
-# Prerequisite: ADB reachable (USB or Wi-Fi). Stock firmware exposes no ADB; see README for how to
-# enable it. Everything below is reversible: see --undo.
+# Prerequisite: ADB reachable (USB or Wi-Fi). Stock firmware exposes no ADB; see
+# docs/install.md#command-line for how to enable it. Everything below is reversible: see --undo.
 #
 #   export ANDROID_SERIAL=<panel serial>        # if more than one device is attached
 #   tools/install.sh --url http://homeassistant.local:8123/my-dashboard [options]

@@ -143,5 +143,5 @@ from boot until the app starts and stops it (a few seconds after the app's proce
 **For zero phone-home, also** block the panel's internet access at the router and allow only the LAN (HA, Music
 Assistant). That stops the phone-home **and** the watchdog: it checks `isInternetConnected()` first and does
 nothing without internet. Then point time sync at a LAN NTP server, e.g.
-`adb shell settings put global ntp_server 192.168.3.1`. Keeping `ha_master` from starting at all at boot would need
+`adb shell settings put global ntp_server 192.168.1.1`. Keeping `ha_master` from starting at all at boot would need
 persistent root. The app stops it shortly after boot; the wall base no longer needs it (see bases.md).

@@ -18,7 +18,7 @@
 #   overlay.d/sbin/s1kiosk_netwatch.sh
 #   overlay.d/s1kiosk_branding.rc        boot animation, bind-mounted over /system/media/bootanimation.zip
 #   overlay.d/sbin/s1kiosk_bootanimation.zip   (BOOT_ANIMATION=<zip>, default branding/glass-tile; none = stock)
-# Nothing is flashed here; see docs/root.md.
+# Nothing is flashed here; see docs/research/root.md.
 #
 # Magisk is GPLv3 and is not redistributed by this repo: the official release is downloaded and its
 # SHA-256 checked against the digest GitHub publishes for the asset.

@@ -172,7 +172,6 @@ The UI went through five mockups before *option E*, the one that shipped.
   Assist satellite, and the *Ambient Stage* overlay shows the conversation.
 
 <p align="center">
-  <img src="../img/voice/ambient-stage-reply.webp" alt="Ambient Stage: the assistant's reply in large type over the dimmed dashboard, with the user's request above it." width="80%">
 </p>
 
 ## 7. The radio

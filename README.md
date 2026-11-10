@@ -35,23 +35,12 @@ account, soldering, or a terminal.
 
 ## What you get
 
-<table>
-<tr>
-<td width="50%" valign="top">
-<img src="docs/img/voice/ambient-stage.webp" alt="The voice overlay on the panel: a glowing orb over a dimmed dashboard, the spoken request, and the assistant's reply in large type.">
-</td>
-<td width="50%" valign="top">
-
 **Your dashboard, full screen.** A current Home Assistant frontend in a kiosk that is the panel's
 home screen. HA's header and sidebar are hidden. You sign in by scanning a QR code with your
 phone, so you never type a password on the wall. You pick which dashboard it shows in HA.
 
 **A voice assistant.** On-device wake word (openWakeWord), Assist pipelines, timers and
-announcements, with the full-screen overlay shown here.
-
-</td>
-</tr>
-</table>
+announcements, with a calm full-screen overlay while you talk.
 
 | | |
 |---|---|
