@@ -166,7 +166,7 @@ an EFR32 802.15.4 radio, a VI5300 time-of-flight sensor and an ambient light sen
 | **Web installer** | ✅ Tested end to end on a real panel (firmware 4.5.80); boot patch tested on two firmware versions |
 | Radio: Zigbee coordinator for ZHA (over the network) | ✅ Works on the reference panel · ZHA only |
 | Radio: **Thread border router** | 🧪 **Experimental** |
-| Radio: **Zigbee router, Thread router** (repeaters) | 🧪 **Experimental**: not yet tried joining a real network |
+| Radio: **Zigbee router, Thread router** (repeaters) | 🧪 **Experimental**: both joined a real home network (ZHA, and Home Assistant's Thread network as a router) |
 | Wall base relays | 🧪 Driver done and checked against Aqara's own tool, but not yet tried on a real base |
 | Wi-Fi setup over Bluetooth (Improv) | 🧪 Implemented; lightly tested |
 
