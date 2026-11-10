@@ -1,0 +1,100 @@
+# Signed kiosk release on a version tag (docs/releasing.md):
+#   git tag v1.2.3 && git push origin v1.2.3
+# Builds app/kiosk with the release key from the repository secrets, names the APK
+# s1-kiosk-<version>.apk, writes its .sha256 and publishes both on a GitHub Release with
+# auto-generated notes. Panels find it through the app's update entity in Home Assistant.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the release and upload its assets (GITHUB_TOKEN only)
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Version from the tag
+        id: version
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          # Same rule as app/kiosk/build.gradle.kts: MAJOR.MINOR.PATCH, minor and patch below 100.
+          # No pre-release tags: the app ignores them, so they would only confuse.
+          if ! [[ "$v" =~ ^(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)$ ]]; then
+            echo "::error::tag $GITHUB_REF_NAME is not vMAJOR.MINOR.PATCH (minor/patch < 100)"; exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      # AGP 9.3 / Gradle 9.8 / Kotlin 2.4 (app/build.gradle.kts, gradle-wrapper.properties) need JDK 17+;
+      # the app is developed on Temurin 21.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      # compileSdk 37.2 (app/kiosk/build.gradle.kts: release(37) { minorApiLevel = 2 }); AGP fetches
+      # its default build-tools itself once the licenses are accepted (setup-android does that).
+      - name: Android SDK platform
+        run: sdkmanager --install "platforms;android-37.2"
+
+      - name: Release keystore
+        env:
+          S1_KEYSTORE_B64: ${{ secrets.S1_KEYSTORE_B64 }}
+        run: |
+          [ -n "$S1_KEYSTORE_B64" ] || { echo "::error::secret S1_KEYSTORE_B64 is not set (docs/releasing.md)"; exit 1; }
+          umask 077
+          printf '%s' "$S1_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/s1kiosk-release.jks"
+          echo "S1_KEYSTORE_FILE=$RUNNER_TEMP/s1kiosk-release.jks" >> "$GITHUB_ENV"
+
+      - name: Build the release APK
+        working-directory: app
+        env:
+          S1_VERSION: ${{ steps.version.outputs.version }}
+          S1_REQUIRE_RELEASE_SIGNING: 'true'
+          S1_KEYSTORE_PASSWORD: ${{ secrets.S1_KEYSTORE_PASSWORD }}
+          S1_KEY_ALIAS: ${{ secrets.S1_KEY_ALIAS }}
+          S1_KEY_PASSWORD: ${{ secrets.S1_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon :kiosk:assembleRelease
+
+      - name: Name, verify and checksum
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir dist
+          apk="dist/s1-kiosk-$VERSION.apk"
+          cp app/kiosk/build/outputs/apk/release/kiosk-release.apk "$apk"
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)/apksigner"
+          "$apksigner" verify --verbose --print-certs "$apk"
+          aapt2="$(dirname "$apksigner")/aapt2"
+          badging="$("$aapt2" dump badging "$apk" | head -n 1)"
+          echo "$badging"
+          case "$badging" in
+            *"name='sh.edm.s1kiosk'"*"versionName='$VERSION'"*) ;;
+            *) echo "::error::APK package/version is not sh.edm.s1kiosk $VERSION"; exit 1 ;;
+          esac
+          (cd dist && sha256sum "s1-kiosk-$VERSION.apk" > "s1-kiosk-$VERSION.apk.sha256" && cat "s1-kiosk-$VERSION.apk.sha256")
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/s1-kiosk-$VERSION.apk" "dist/s1-kiosk-$VERSION.apk.sha256" \
+            --verify-tag --title "S1 Kiosk $VERSION" --generate-notes
+
+      - name: Remove the keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/s1kiosk-release.jks"

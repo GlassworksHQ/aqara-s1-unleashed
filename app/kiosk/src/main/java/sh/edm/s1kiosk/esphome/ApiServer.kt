@@ -436,7 +436,7 @@ class ApiServer(
                     try { onStatesSubscribed?.invoke(clientInfo) } catch (t: Throwable) { ApiLog.w("onStatesSubscribed failed", t) }
                 }
                 Msg.LIGHT_COMMAND, Msg.SWITCH_COMMAND, Msg.NUMBER_COMMAND, Msg.SELECT_COMMAND,
-                Msg.BUTTON_COMMAND, Msg.TEXT_COMMAND, Msg.MEDIA_PLAYER_COMMAND -> {
+                Msg.BUTTON_COMMAND, Msg.TEXT_COMMAND, Msg.MEDIA_PLAYER_COMMAND, Msg.UPDATE_COMMAND -> {
                     val e = byKey[m.fixed32(1)]
                     if (e == null || e.commandType != f.type) {
                         ApiLog.w("[$id] command type ${f.type} for unknown key ${m.fixed32(1)}")

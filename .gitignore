@@ -10,3 +10,7 @@ __pycache__/
 # never commit device-unique dumps or secrets
 dumps/
 *adb_key*
+
+# release signing keys: never commit (docs/releasing.md)
+*.jks
+*.keystore

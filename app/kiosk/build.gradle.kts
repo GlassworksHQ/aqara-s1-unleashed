@@ -2,6 +2,25 @@ plugins {
     id("com.android.application")
 }
 
+// Release version: -Ps1Version=1.2.3 or S1_VERSION=1.2.3 (the release workflow sets it from the tag).
+// versionCode = major*10000 + minor*100 + patch, the same rule the app uses to compare releases
+// (update/AppVersion.kt). Unset: the development defaults below, so debug builds are unchanged.
+val s1Version: String? = ((findProperty("s1Version") as String?) ?: System.getenv("S1_VERSION"))
+    ?.trim()?.removePrefix("v")?.takeIf { it.isNotEmpty() }
+val s1VersionCode: Int? = s1Version?.let { v ->
+    val m = Regex("""^(0|[1-9]\d{0,3})\.(0|[1-9]\d?)\.(0|[1-9]\d?)$""").matchEntire(v)
+        ?: throw GradleException("S1_VERSION '$v' must be MAJOR.MINOR.PATCH with minor and patch below 100")
+    val (major, minor, patch) = m.destructured
+    major.toInt() * 10000 + minor.toInt() * 100 + patch.toInt()
+}
+
+// Release signing comes only from the environment (CI secrets or a local shell; docs/releasing.md).
+// Nothing set: the release APK is unsigned (never signed with the debug key). Partly set, or
+// S1_REQUIRE_RELEASE_SIGNING=true without a key: the release build fails (checkReleaseSigning).
+val signingEnv = listOf("S1_KEYSTORE_FILE", "S1_KEYSTORE_PASSWORD", "S1_KEY_ALIAS", "S1_KEY_PASSWORD")
+    .associateWith { System.getenv(it)?.takeIf(String::isNotEmpty) }
+val haveReleaseKey = signingEnv.values.all { it != null }
+
 android {
     namespace = "sh.edm.s1kiosk"
     // GeckoView 159 requires compileSdk 37.2 (and pulls androidx.core 1.19 -> AGP 9.1+).
@@ -14,8 +33,8 @@ android {
         applicationId = "sh.edm.s1kiosk"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = s1VersionCode ?: 1
+        versionName = s1Version ?: "0.1.0"
 
         // The Panel Hub S1 Plus runs 32-bit Android 10 (A133 with an armeabi-v7a userspace).
         ndk { abiFilters += listOf("armeabi-v7a") }
@@ -26,10 +45,22 @@ android {
 
     buildFeatures { buildConfig = true }
 
+    signingConfigs {
+        if (haveReleaseKey) {
+            create("release") {
+                storeFile = file(signingEnv.getValue("S1_KEYSTORE_FILE")!!)
+                storePassword = signingEnv.getValue("S1_KEYSTORE_PASSWORD")
+                keyAlias = signingEnv.getValue("S1_KEY_ALIAS")
+                keyPassword = signingEnv.getValue("S1_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // No release keystore is committed; sign release builds yourself, or use the debug APK.
+            // No keystore is committed: signed only with the S1_* environment above, else unsigned.
+            signingConfig = if (haveReleaseKey) signingConfigs.getByName("release") else null
         }
     }
 
@@ -59,3 +90,18 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")
 }
+
+// Fails a release build early and clearly instead of producing an APK nobody can install as an update.
+val checkReleaseSigning by tasks.registering {
+    val partial = signingEnv.filterValues { it == null }.keys.takeIf { it.size in 1..3 }
+    val required = System.getenv("S1_REQUIRE_RELEASE_SIGNING") == "true"
+    val keyFile = signingEnv["S1_KEYSTORE_FILE"]
+    val keyFileMissing = keyFile != null && !file(keyFile).isFile
+    doLast {
+        if (partial != null) throw GradleException("release signing: missing ${partial.joinToString()} (see docs/releasing.md)")
+        if (keyFileMissing) throw GradleException("release signing: S1_KEYSTORE_FILE does not exist")
+        if (required && keyFile == null) throw GradleException("release signing required (S1_REQUIRE_RELEASE_SIGNING) but no S1_KEYSTORE_* set")
+        if (keyFile == null) logger.warn("release APK is UNSIGNED: set S1_KEYSTORE_FILE, S1_KEYSTORE_PASSWORD, S1_KEY_ALIAS, S1_KEY_PASSWORD to sign it")
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(checkReleaseSigning) }

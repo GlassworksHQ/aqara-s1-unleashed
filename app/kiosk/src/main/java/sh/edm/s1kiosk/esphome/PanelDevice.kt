@@ -31,6 +31,7 @@ import sh.edm.s1kiosk.dashboard.StableChange
 import sh.edm.s1kiosk.discovery.HaUrls
 import sh.edm.s1kiosk.sendspin.SendspinPlayer
 import sh.edm.s1kiosk.setup.SetupSignals
+import sh.edm.s1kiosk.update.UpdateManager
 import sh.edm.s1kiosk.voice.TfliteWakeWord
 import sh.edm.s1kiosk.voice.TtsPlayer
 import sh.edm.s1kiosk.voice.ExoAudioPlayer
@@ -103,6 +104,11 @@ class PanelDevice(
         store = { prefs.radioMode = it },
         onChange = { exec.execute { server?.publishStates() } },
     )
+    /**
+     * App updates from GitHub Releases (docs/releasing.md); the "App update" entity. runCatching:
+     * the update thread may still report while [stop] has already shut [exec] down.
+     */
+    private val updates = UpdateManager(ctx, onChange = { runCatching { exec.execute { server?.publishStates() } } })
     @Volatile private var announcing = false
     @Volatile private var mediaPausedForVoice = false
     private var wakeLock: PowerManager.WakeLock? = null
@@ -140,6 +146,7 @@ class PanelDevice(
         sendspin?.stop("shutdown")
         sendspin = null
         radio.stop()
+        updates.stop()
         voicePlayer.release()
         mediaPlayer.release()
         chimePlayer?.release()
@@ -184,6 +191,7 @@ class PanelDevice(
         if (voiceEnabled) startVoice()
         if (prefs.sendspinEnabled) sendspin?.start()
         radio.start()
+        updates.start()
         startServer()
         prefs.registerListener(prefListener)
         ScreenController.addListener(screenListener)
@@ -648,6 +656,15 @@ class PanelDevice(
         TextSensorEntity(
             "app_version", "App version", "mdi:new-box", EntityCategory.DIAGNOSTIC,
             get = { BuildConfig.VERSION_NAME },
+        ),
+        // --- app updates (GitHub Releases; update/UpdateManager.kt)
+        UpdateEntity(
+            "app_update", "App update", "mdi:cellphone-arrow-down",
+            get = { updates.model.view() }, onCommand = updates::onCommand,
+        ),
+        TextSensorEntity(
+            "update_status", "Update status", "mdi:update", EntityCategory.DIAGNOSTIC,
+            get = { updates.statusText() },
         ),
         // --- Home Assistant sign-in (docs/onboarding.md)
         TextSensorEntity(

@@ -16,6 +16,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- App updates without the boot image's root update service (update/UpdateManager.kt): a
+         PackageInstaller session, confirmed on the panel's screen. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Optional, granted over adb (`pm grant <pkg> android.permission.WRITE_SECURE_SETTINGS`):
          lets the app set the proximity sensor's presence range (secure proximity_threshold). -->
     <uses-permission
@@ -103,6 +106,11 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:theme="@android:style/Theme.NoDisplay" />
+
+        <!-- PackageInstaller session status for app updates (update/UpdateInstallReceiver.kt). -->
+        <receiver
+            android:name=".update.UpdateInstallReceiver"
+            android:exported="false" />
 
         <receiver
             android:name=".BootReceiver"

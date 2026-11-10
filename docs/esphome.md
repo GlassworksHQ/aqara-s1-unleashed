@@ -103,6 +103,8 @@ is FNV-1a of the `object_id` (stable).
 | text_sensor `Radio status` | `radio_status` | diagnostic; e.g. `Off: Aqara's radio services stopped, radio idle. …`, or the root helper's `ok zigbee_tcp: EZSP on tcp:6638` |
 | text_sensor `IP address` | `ip_address` | diagnostic |
 | text_sensor `App version` | `app_version` | diagnostic |
+| update `App update` (firmware) | `app_update` | the latest GitHub release vs this app; install from HA ([app updates](#app-updates)) |
+| text_sensor `Update status` | `update_status` | diagnostic; e.g. `up to date (1.2.0)`, `1.3.0 available`, `Downloading 1.3.0: 42%`, `Install of 1.3.0 failed: …` |
 | text_sensor `Home Assistant URL` | `home_assistant_url` | diagnostic; the HA the panel uses: the origin of a configured dashboard URL, else the discovered one ([onboarding.md](onboarding.md)) |
 | text_sensor `Signed in` | `signed_in` | diagnostic; `yes` / `no`: whether a QR sign-in refresh token is stored (never the token) |
 | button `Sign out` | `sign_out` | revokes the refresh token at HA (`/auth/revoke`), deletes it, shows the sign-in screen |
@@ -151,6 +153,39 @@ Kiosk actions are applied in the running activity exactly like the `adb am start
 (`MainActivity.commandSink`). State changes made on the panel (settings dialog, `adb` extras,
 sensors) are pushed to HA right away (pref listener + `ScreenController` listeners), with a 5 s
 poll as a safety net.
+
+### App updates
+
+`update/UpdateManager.kt`; releases and signing in [releasing.md](releasing.md).
+
+- **State:** `current_version` is the app's versionName and `title` is `S1 Kiosk`. `missing_state`
+  stays set until the first successful check. Then `latest_version`, `release_url`, and
+  `release_summary` (the release notes, cut to HA's 255 characters). A status line goes on top of
+  the summary when there is one, e.g. a failed install.
+- **Check:** `GET https://api.github.com/repos/aguilaair/aqara-s1-unleashed/releases/latest`.
+  - When: 30 s after start, when a network comes up, every 24 h, and on HA's check command
+    (`homeassistant.update_entity`, at most once a minute).
+  - ETag'd, so an unchanged answer costs no rate limit.
+  - Failures back off from 15 min to 6 h, or until GitHub's rate-limit reset. They are logged once
+    per new reason, not on every retry.
+  - Ignored: drafts, pre-releases (GitHub's flag or a `-rc` tag), and releases without both
+    `s1-kiosk-<version>.apk` and `.sha256`. Assets must download from github.com over HTTPS.
+- **Install:**
+  1. Download the `.sha256`, then the APK over HTTPS into `files/update/`. `in_progress` is set and
+     `progress` goes 0-100 %.
+  2. Check the SHA-256 against the `.sha256` file and against GitHub's own asset digest.
+  3. `PackageManager.getPackageArchiveInfo(GET_SIGNING_CERTIFICATES)` must give package
+     `sh.edm.s1kiosk`, the release's version and versionCode, and the installed app's signing
+     certificate. Otherwise the install is refused with the reason.
+  4. The verified file becomes `files/update/pending.apk`, and the root update service installs it
+     ([research/root.md](research/root.md)). On success the app is replaced and restarted, and the
+     new version reports the result in *Update status*.
+  5. Boot images from before the service (`sys.s1kiosk.update.version` unset) use a
+     PackageInstaller session instead. Android then asks for confirmation on the panel's screen,
+     which the summary says while an update waits.
+  6. Any failure, or a phase stuck for 30 min (download) or 10 min (verify/install), ends with
+     `in_progress` off and the reason on top of the summary.
+- A debug build can't update to a release: the keys differ, and the entity says so.
 
 ## Voice assistant
 
@@ -238,6 +273,12 @@ with the Python TFLite runtime that the patched model gives bit-identical output
   disabled_by_default 6, entity_category 7, device_class 8, event_types 9) and `EventResponse`
   (108: key 1, event_type 2). Events have no state: nothing is sent on `SubscribeStates`, one
   `EventResponse` per occurrence (`ApiServer.sendEvent`).
+- **Update entities**: `ListEntitiesUpdateResponse` (116: object_id 1, key 2, name 3, icon 5,
+  disabled_by_default 6, entity_category 7, device_class 8), `UpdateStateResponse` (117: key 1,
+  missing_state 2, in_progress 3, has_progress 4, progress 5 (float, percent), current_version 6,
+  latest_version 7, title 8, release_summary 9, release_url 10) and `UpdateCommandRequest` (118:
+  key 1, command 2 = `UpdateCommand` NONE 0 / INSTALL 1 / CHECK 2). From aioesphomeapi 46.25.0's
+  `api_pb2` descriptors.
 - **Entity set changes**: `ApiServer.setEntities` swaps the list and asks every client to
   disconnect (`DisconnectRequest`, closed after the ack or 2 s).
 - aioesphomeapi sends `SubscribeVoiceAssistantRequest.flags = 4` for API audio while `api.proto`
@@ -264,7 +305,8 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   key provisioning (keyless connect, zero-PSK `noise_encryption_set_key`, the keyless session is
   dropped, plaintext and zero PSK are refused, reconnect with the key, bad/same/empty keys, key
   survives a restart), and the Sendspin capability (client id) and pairing token (`OK` over Noise,
-  `ENCRYPTION_REQUIRED` over plaintext). Skipped without
+  `ENCRYPTION_REQUIRED` over plaintext), and the update entity (missing state, check and install
+  commands, release fields, progress). Skipped without
   `ESPHOME_PYTHON`. Also passes with
   aioesphomeapi 46.28.0.
 - `NoiseKeysTest`: the key state machine. `OAuthTest` / `SignInServerTest`: authorize URL, state
@@ -280,6 +322,10 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   → read, and silence → probe → removal. `UartBaseLinkEmulatorTest`: the real `UartBaseLink` over
   TCP against `tools/bracket/base_emulator.py` (needs only python3; uses `BRACKET_PYTHON` /
   `ESPHOME_PYTHON` / `python3`).
+- `update/*Test`: version comparison and versionCode, GitHub release parsing (fixture shaped like
+  the real `releases/latest` response), asset selection and URL checks, `.sha256` parsing, the
+  pre-install APK checks, the root service status, check scheduling and rate limits, and the update
+  entity's state machine.
 - `VoiceAssistantControllerTest`: pre-roll, "never mind" runs, pipeline errors, the max-stream
   cap, continue-conversation.
 - `OwwFeaturesTest`: compares the Kotlin feature buffering with openWakeWord's own

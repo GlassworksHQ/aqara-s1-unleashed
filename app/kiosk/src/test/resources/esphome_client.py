@@ -19,6 +19,7 @@ from aioesphomeapi import (
     EncryptionPlaintextAPIError,
     InvalidEncryptionKeyAPIError,
     RequiresEncryptionAPIError,
+    UpdateCommand,
     VoiceAssistantEventType as E,
     VoiceAssistantTimerEventType,
 )
@@ -78,6 +79,8 @@ async def plaintext(port):
     check(by_id["presence"].device_class == "occupancy", "binary sensor class")
     check(by_id["base_button_1"].event_types == ["single", "double"], "event types")
     check(by_id["base_button_1"].device_class == "button", "event device class")
+    check(type(by_id["app_update"]).__name__ == "UpdateInfo", "update entity type")
+    check(by_id["app_update"].device_class == "firmware", "update device class")
 
     states = {}
     cli.subscribe_states(lambda s: states.__setitem__(s.key, s))
@@ -87,6 +90,19 @@ async def plaintext(port):
     check(st("illuminance").missing_state, "lux unknown -> missing_state")
     check(st("presence").state is True, "presence")
     check(st("ip_address").state == "192.0.2.10", "text sensor")
+    # App update entity (homeassistant/components/esphome/update.py): missing until the first check,
+    # then "check" and "install" commands.
+    u = st("app_update")
+    check(u.missing_state and u.current_version == "1.2.0" and not u.in_progress, f"update before check {u}")
+    cli.update_command(by_id["app_update"].key, UpdateCommand.CHECK)
+    await wait_for(lambda: not st("app_update").missing_state, "update check")
+    u = st("app_update")
+    R["update_checked"] = {"latest": u.latest_version, "title": u.title, "summary": u.release_summary,
+                           "url": u.release_url, "current": u.current_version}
+    cli.update_command(by_id["app_update"].key, UpdateCommand.INSTALL)
+    await wait_for(lambda: st("app_update").in_progress, "update install")
+    u = st("app_update")
+    R["update_installing"] = {"has_progress": u.has_progress, "progress": u.progress}
 
     cli.light_command(by_id["screen"].key, state=False, brightness=0.4)
     await wait_for(lambda: st("screen").state is False and abs(st("screen").brightness - 0.4) < 0.01, "light")

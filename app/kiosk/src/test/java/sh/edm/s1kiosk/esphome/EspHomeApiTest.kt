@@ -41,8 +41,14 @@ class EspHomeApiTest {
         override fun setActive(ids: List<String>) { current = ids }
     }
 
+    private val updateCommands = Collections.synchronizedList(ArrayList<Int>())
+
     /** In-memory stand-ins for the panel's entities (same object ids as PanelDevice). */
     private fun entities(): List<ApiEntity> {
+        var update = UpdateStateData(
+            missingState = true, inProgress = false, hasProgress = false, progress = 0f, currentVersion = "1.2.0",
+            latestVersion = "", title = "S1 Kiosk", releaseSummary = "", releaseUrl = "",
+        )
         var screenOn = true
         var brightness = 0.8f
         var auto = true
@@ -73,6 +79,15 @@ class EspHomeApiTest {
             SwitchEntity("mute_microphone", "Mute microphone", get = { muted }, set = { muted = it }),
             TextSensorEntity("ip_address", "IP address", category = EntityCategory.DIAGNOSTIC, get = { "192.0.2.10" }),
             EventEntity("base_button_1", "Base button 1", deviceClass = "button", eventTypes = listOf("single", "double")),
+            UpdateEntity("app_update", "App update", get = { update }, onCommand = { c ->
+                updateCommands += c
+                update = when (c) {
+                    2 -> update.copy(missingState = false, latestVersion = "1.3.0", releaseSummary = "* new things",
+                        releaseUrl = "https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v1.3.0")
+                    1 -> update.copy(inProgress = true, hasProgress = true, progress = 42f)
+                    else -> update
+                }
+            }),
         )
     }
 
@@ -190,9 +205,20 @@ class EspHomeApiTest {
             assertEquals("A".repeat(42) + "Q", r.getJSONObject("caps_sendspin").getString("client_id"))
             assertEquals(SendspinApi.STATUS_ENCRYPTION_REQUIRED, r.getJSONObject("sendspin_token_plain").getInt("status"))
             assertEquals("", r.getJSONObject("sendspin_token_plain").getString("token"))
-            assertEquals(14, r.getJSONArray("entities").length())
+            assertEquals(15, r.getJSONArray("entities").length())
             assertEquals("double", r.getString("event_type"))
-            assertEquals(15, r.getInt("entities_after_rebuild"))
+            // Update entity: UpdateCommand CHECK (2) then INSTALL (1), decoded by the real client.
+            assertEquals(listOf(2, 1), updateCommands.toList())
+            val checked = r.getJSONObject("update_checked")
+            assertEquals("1.3.0", checked.getString("latest"))
+            assertEquals("1.2.0", checked.getString("current"))
+            assertEquals("S1 Kiosk", checked.getString("title"))
+            assertEquals("* new things", checked.getString("summary"))
+            assertEquals("https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v1.3.0", checked.getString("url"))
+            val installing = r.getJSONObject("update_installing")
+            assertTrue(installing.getBoolean("has_progress"))
+            assertEquals(42.0, installing.getDouble("progress"), 0.001)
+            assertEquals(16, r.getInt("entities_after_rebuild"))
             assertTrue(r.getBoolean("rebuild_relay_state"))
             val dash = r.getJSONObject("dashboard_select")
             assertEquals("[\"Default\"]", dash.getJSONArray("before").toString())

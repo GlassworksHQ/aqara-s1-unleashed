@@ -88,6 +88,9 @@ bundled ones.
   one-shot root service. It authorizes the installing computer's adb key, which is baked into the
   image (`ADB_PUBKEY`, default `~/.android/adbkey.pub`), and turns USB adb on. It runs once and
   leaves a marker in `/data/s1kiosk`.
+- **Extra in the boot image: the app update service.** `tools/root/s1kiosk_update.{sh,rc}` is a
+  disabled one-shot root service. At boot init sets `sys.s1kiosk.update.version=1`, so the app knows
+  it exists. Details under [App update service](#app-update-service).
 - **Extra in the helper: updatable without a new boot image.** It hands over to a root-owned
   `/data/s1kiosk/radio/s1kiosk_radio.sh` if one exists.
 
@@ -112,6 +115,33 @@ bundled ones.
 
 Gotcha: `fastboot` also honours `ANDROID_SERIAL`, and our U-Boot's fastboot serial is not the
 panel's adb serial. The scripts keep `ANDROID_SERIAL` for adb only.
+
+## App update service
+
+`s1kiosk_update` installs app updates that the app downloaded and verified ([esphome.md](../esphome.md#app-updates)).
+
+- **App side:**
+  1. write `/data/data/sh.edm.s1kiosk/files/update/pending.apk`;
+  2. `setprop sys.s1kiosk.update.status requested`;
+  3. `setprop ctl.start s1kiosk_update`.
+- **Service side:** `sys.s1kiosk.update.status` = `running: …`, then `ok: sh.edm.s1kiosk <old> -> <new>`
+  or `error: <why>`.
+- **Threat model.** SELinux is permissive, so other apps may be able to start init services and
+  set properties. The service therefore takes no input except that one file, and checks:
+  - the kiosk's uid from `pm list packages -U`, which must match the owner of `/data/data/sh.edm.s1kiosk`;
+  - `files`, `files/update` and `pending.apk`: no symlinks, all owned by that uid (only the kiosk
+    can write its private dir), and `pending.apk` is a single-link regular file of at most 256 MiB;
+  - it copies the file into root-only `/data/s1kiosk/update` and installs the copy over stdin with
+    `pm install -r -S <size>`, without `-d`. Android refuses another signing key for the same
+    package, and refuses downgrades;
+  - afterwards, the kiosk's versionCode must have gone up, and no other package may have changed.
+    A package that appeared is uninstalled again, and the status says `refused`.
+  - At worst, another app can make it install what the kiosk itself staged, or spoof the status
+    property the app displays.
+- **Afterwards:** the old process is gone. The kiosk is HOME and restarts on `MY_PACKAGE_REPLACED`;
+  the service also runs `am start` of MainActivity if it isn't running after 3 s.
+- **No service** (boot images from before it): the app falls back to a PackageInstaller session
+  with an on-screen confirmation.
 
 ## Next
 - Browser installer (WebUSB): built, in [`web/`](../../web/src/README.md); design in

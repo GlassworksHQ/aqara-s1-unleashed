@@ -201,6 +201,44 @@ class EventEntity(
     fun event(type: String): ProtoWriter = ProtoWriter().fixed32(1, key, true).string(2, type)
 }
 
+/** `UpdateStateResponse` fields (api.proto 117); [progress] is a percentage (0..100). */
+data class UpdateStateData(
+    val missingState: Boolean,
+    val inProgress: Boolean,
+    val hasProgress: Boolean,
+    val progress: Float,
+    val currentVersion: String,
+    val latestVersion: String,
+    val title: String,
+    val releaseSummary: String,
+    val releaseUrl: String,
+)
+
+/**
+ * An update entity (`ListEntitiesUpdateResponse` 116 / `UpdateStateResponse` 117 /
+ * `UpdateCommandRequest` 118). HA's ESPHome update platform offers install, progress and the
+ * release summary/URL; [command] gets the `UpdateCommand` (1 install, 2 check).
+ */
+class UpdateEntity(
+    objectId: String, name: String, icon: String = "", category: EntityCategory = EntityCategory.CONFIG,
+    private val deviceClass: String = "firmware",
+    private val get: () -> UpdateStateData,
+    private val onCommand: (Int) -> Unit,
+) : ApiEntity(objectId, name, icon, category) {
+    override val listType = Msg.LIST_ENTITIES_UPDATE
+    override val stateType = Msg.UPDATE_STATE
+    override val commandType = Msg.UPDATE_COMMAND
+    override fun info() = base().string(5, icon).bool(6, disabledByDefault).uint32(7, category.value)
+        .string(8, deviceClass)
+    override fun state(): ProtoWriter {
+        val s = get()
+        return ProtoWriter().fixed32(1, key, true).bool(2, s.missingState).bool(3, s.inProgress)
+            .bool(4, s.hasProgress).float(5, s.progress).string(6, s.currentVersion).string(7, s.latestVersion)
+            .string(8, s.title).string(9, s.releaseSummary).string(10, s.releaseUrl)
+    }
+    override fun command(msg: ProtoMessage) = onCommand(msg.uint32(2))
+}
+
 /** A light with on/off + brightness only (`COLOR_MODE_BRIGHTNESS` = 3). */
 class BrightnessLightEntity(
     objectId: String, name: String, icon: String = "",
