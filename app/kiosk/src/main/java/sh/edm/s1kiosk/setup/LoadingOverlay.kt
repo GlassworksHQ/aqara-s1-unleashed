@@ -58,17 +58,39 @@ class LoadingOverlay(context: Context) : FrameLayout(context) {
         visibility = View.GONE
     }
 
-    /** Shows (or updates) the loading state. */
+    /** Shows (or updates) the loading state; state changes cross-fade instead of snapping. */
     fun show(heading: String, sub: String) {
+        if (!isShowing) {
+            isShowing = true
+            setTexts(heading, sub)
+            animate().cancel()
+            if (visibility != View.VISIBLE) alpha = 0f
+            visibility = View.VISIBLE
+            animate().alpha(1f).setDuration(250).setInterpolator(AccelerateDecelerateInterpolator()).start()
+            pulse.start()
+            return
+        }
+        if (title.text.toString() == heading && detail.text.toString() == sub) return
+        // Old text fades and drifts up a touch, then the new text fades in from slightly below.
+        val texts = listOf(title, detail)
+        texts.forEach { it.animate().cancel() }
+        title.animate().alpha(0f).translationY(-px(6f).toFloat()).setDuration(150)
+            .setInterpolator(AccelerateDecelerateInterpolator())
+            .withEndAction {
+                setTexts(heading, sub)
+                texts.forEach { v ->
+                    v.translationY = px(6f).toFloat()
+                    v.animate().alpha(1f).translationY(0f).setDuration(220)
+                        .setInterpolator(AccelerateDecelerateInterpolator()).start()
+                }
+            }.start()
+        detail.animate().alpha(0f).translationY(-px(6f).toFloat()).setDuration(150).start()
+    }
+
+    private fun setTexts(heading: String, sub: String) {
         title.text = heading
         detail.text = sub
         detail.visibility = if (sub.isEmpty()) View.GONE else View.VISIBLE
-        if (isShowing) return
-        isShowing = true
-        animate().cancel()
-        alpha = 1f
-        visibility = View.VISIBLE
-        pulse.start()
     }
 
     /** Fades out once the dashboard has painted. */
