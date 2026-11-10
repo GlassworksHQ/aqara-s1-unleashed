@@ -13,13 +13,14 @@ class VoiceAssistantControllerTest {
     private val events = ArrayList<VoiceEvent>()
     private val played = ArrayList<List<String>>()
     private var pendingDone: ((Boolean) -> Unit)? = null
+    private var stops = 0
     private var now = 0L
 
     private val controller = VoiceAssistantController(
         send = { t, p -> sent += t to ProtoMessage(p.toByteArray()); true },
         player = object : UrlPlayer {
             override fun play(urls: List<String>, onDone: (Boolean) -> Unit) { played += urls; pendingDone = onDone }
-            override fun stop() {}
+            override fun stop() { stops++ }
         },
         wakeWords = object : WakeWordCatalog {
             override fun available() = emptyList<WakeWordInfo>()
@@ -102,5 +103,70 @@ class VoiceAssistantControllerTest {
         assertEquals("c1", again.string(2))
         assertEquals("", again.string(5)) // no wake word phrase
         assertEquals(listOf(listOf("http://ha/t.mp3")), played)
+    }
+
+    // ---------------------------------------------------------------- texts and cancel (voice overlay)
+
+    @Test
+    fun transcriptAndResponseTextAreEmitted() {
+        startRun()
+        controller.onEvent(VoiceEventType.STT_END, mapOf("text" to "turn off the lights"))
+        controller.onEvent(VoiceEventType.TTS_START, mapOf("text" to "Turned off the lights"))
+        assertTrue(VoiceEvent.Heard("turn off the lights") in events)
+        assertTrue(VoiceEvent.Reply("Turned off the lights", announcement = false) in events)
+        assertTrue(events.indexOf(VoiceEvent.Heard("turn off the lights")) < events.indexOf(VoiceEvent.Thinking))
+    }
+
+    @Test
+    fun announcementTextComesBeforeSpeaking() {
+        controller.onSubscribe(true)
+        controller.onAnnounce("http://ha/a.mp3", "Dinner is ready", "", startConversation = false)
+        assertEquals(listOf(VoiceEvent.Reply("Dinner is ready", announcement = true), VoiceEvent.Speaking), events)
+    }
+
+    @Test
+    fun cancelWhileStreamingStopsTheRunAndIgnoresItsLateEvents() {
+        startRun()
+        controller.onEvent(VoiceEventType.RUN_START, mapOf("url" to "http://ha/stream.mp3"))
+        assertTrue(controller.cancel())
+        assertEquals(State.IDLE, controller.currentState)
+        assertFalse("stop request sent", requests().last().bool(1))
+        assertEquals(VoiceEvent.Idle, events.last())
+        // No more audio goes to HA, and a late transcript/response is neither shown nor played.
+        val audio = sent.count { it.first == Msg.VOICE_ASSISTANT_AUDIO }
+        controller.onMicAudio(ByteArray(2560))
+        assertEquals(audio, sent.count { it.first == Msg.VOICE_ASSISTANT_AUDIO })
+        val n = events.size
+        controller.onEvent(VoiceEventType.STT_END, mapOf("text" to "late"))
+        controller.onEvent(VoiceEventType.INTENT_PROGRESS, mapOf("tts_start_streaming" to "1"))
+        controller.onEvent(VoiceEventType.TTS_START, mapOf("text" to "late"))
+        controller.onEvent(VoiceEventType.TTS_END, mapOf("url" to "http://ha/t.mp3"))
+        controller.onEvent(VoiceEventType.RUN_END, emptyMap())
+        assertEquals(n, events.size)
+        assertTrue(played.isEmpty())
+        assertFalse(controller.cancel()) // nothing left to cancel
+        // The next run works normally again.
+        assertTrue(controller.onWakeWord("Hey Jarvis"))
+        controller.onStartResponse(0, false)
+        controller.onEvent(VoiceEventType.TTS_END, mapOf("url" to "http://ha/t2.mp3"))
+        assertEquals(listOf(listOf("http://ha/t2.mp3")), played)
+    }
+
+    @Test
+    fun cancelWhileSpeakingStopsPlaybackAndSkipsTheFollowUp() {
+        startRun()
+        controller.onEvent(VoiceEventType.INTENT_END, mapOf("conversation_id" to "c1", "continue_conversation" to "1"))
+        controller.onEvent(VoiceEventType.TTS_END, mapOf("url" to "http://ha/t.mp3"))
+        assertEquals(State.RESPONDING, controller.currentState)
+        val requestsBefore = requests().size
+        assertTrue(controller.cancel())
+        assertEquals(1, stops)
+        assertEquals(State.IDLE, controller.currentState)
+        assertTrue(sent.last().first == Msg.VOICE_ASSISTANT_ANNOUNCE_FINISHED && !sent.last().second.bool(1))
+        // The stopped player reports done: ignored, no follow-up run.
+        pendingDone!!(false)
+        assertEquals(State.IDLE, controller.currentState)
+        assertEquals(requestsBefore, requests().size)
+        assertEquals(1, events.count { it == VoiceEvent.Idle })
     }
 }

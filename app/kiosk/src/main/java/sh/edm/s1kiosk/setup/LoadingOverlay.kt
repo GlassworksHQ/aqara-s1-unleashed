@@ -37,7 +37,7 @@ class LoadingOverlay(context: Context) : FrameLayout(context) {
         private set
 
     init {
-        background = SetupOverlay.Backdrop()
+        background = Backdrop()
         isClickable = true // swallow touches while the page underneath is blank
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL

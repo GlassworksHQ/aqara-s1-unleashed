@@ -52,6 +52,15 @@ sealed class VoiceEvent {
     /** Waiting for the wake word. */
     data object Idle : VoiceEvent()
 
-    /** Something went wrong (missing models, mic failure, pipeline error, ...). */
-    data class Error(val message: String) : VoiceEvent()
+    /**
+     * Something went wrong (missing models, mic failure, pipeline error, ...). [local] errors come
+     * from the panel itself (microphone, wake word models), not from a pipeline run.
+     */
+    data class Error(val message: String, val local: Boolean = false) : VoiceEvent()
+
+    /** Home Assistant's final transcript of what the user said (STT_END). Not a state change. */
+    data class Heard(val text: String) : VoiceEvent()
+
+    /** The text being spoken: a response (TTS_START) or an [announcement]. Not a state change. */
+    data class Reply(val text: String, val announcement: Boolean) : VoiceEvent()
 }

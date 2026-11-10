@@ -73,6 +73,8 @@ class VoiceAssistantController(
     private var runStartUrl: String? = null
     private var streamingTts = false
     private var playGen = 0
+    /** The user cancelled the current run: ignore its late events (transcript, response, TTS). */
+    private var discardRun = false
     private val timers = LinkedHashMap<String, Timer>()
 
     val currentState: State get() = synchronized(lock) { state }
@@ -120,6 +122,7 @@ class VoiceAssistantController(
         runStartUrl = null
         streamingTts = false
         continueConversation = false
+        discardRun = false
         setState(State.STARTING)
         if (!send(Msg.VOICE_ASSISTANT_REQUEST, req)) {
             setState(State.IDLE)
@@ -155,6 +158,35 @@ class VoiceAssistantController(
         send(Msg.VOICE_ASSISTANT_AUDIO, ProtoWriter().bool(2, true))
         setState(State.AWAITING)
         fx += { emit(VoiceEvent.Thinking) }
+    }
+
+    /**
+     * The user cancelled (tapped the voice overlay): stop streaming and playback and go idle, like
+     * esphome `request_stop()`. Late events of the cancelled run are ignored. Returns true if
+     * something was running.
+     */
+    fun cancel(): Boolean {
+        var cancelled = false
+        locked {
+            when (state) {
+                State.IDLE -> return@locked
+                State.STARTING, State.STREAMING, State.AWAITING ->
+                    send(Msg.VOICE_ASSISTANT_REQUEST, ProtoWriter()) // start=false: HA stops the pipeline
+                State.RESPONDING, State.ANNOUNCING -> {
+                    playGen++ // the player's onDone (stopped) is ignored
+                    send(Msg.VOICE_ASSISTANT_ANNOUNCE_FINISHED, ProtoWriter().bool(1, false))
+                    add { player.stop() }
+                }
+            }
+            VoiceLog.i("voice: cancelled by the user in $state")
+            cancelled = true
+            discardRun = true
+            continueConversation = false
+            streamingTts = false
+            setState(State.IDLE)
+            add { emit(VoiceEvent.Idle) }
+        }
+        return cancelled
     }
 
     /** Called about once a second: watchdogs. */
@@ -220,7 +252,10 @@ class VoiceAssistantController(
                     add { emit(VoiceEvent.Thinking) }
                 }
                 VoiceEventType.STT_END -> {
-                    VoiceLog.i("voice: heard \"${data["text"].orEmpty()}\"")
+                    val text = data["text"].orEmpty()
+                    VoiceLog.i("voice: heard \"$text\"")
+                    if (discardRun) return@locked
+                    add { emit(VoiceEvent.Heard(text)) }
                     if (state == State.STREAMING || state == State.STARTING) {
                         setState(State.AWAITING)
                         add { emit(VoiceEvent.Thinking) }
@@ -228,7 +263,7 @@ class VoiceAssistantController(
                 }
                 VoiceEventType.INTENT_PROGRESS -> {
                     val url = runStartUrl
-                    if (data["tts_start_streaming"] == "1" && url != null && !streamingTts) {
+                    if (data["tts_start_streaming"] == "1" && url != null && !streamingTts && !discardRun) {
                         streamingTts = true
                         playResponse(url, this)
                     }
@@ -237,10 +272,14 @@ class VoiceAssistantController(
                     data["conversation_id"]?.let { conversationId = it; conversationAt = clock() }
                     continueConversation = data["continue_conversation"] == "1"
                 }
-                VoiceEventType.TTS_START -> VoiceLog.i("voice: response \"${data["text"].orEmpty()}\"")
+                VoiceEventType.TTS_START -> {
+                    val text = data["text"].orEmpty()
+                    VoiceLog.i("voice: response \"$text\"")
+                    if (!discardRun) add { emit(VoiceEvent.Reply(text, announcement = false)) }
+                }
                 VoiceEventType.TTS_END -> {
                     val url = data["url"]?.takeIf { it.isNotEmpty() }
-                    if (url != null && !streamingTts && state != State.RESPONDING) playResponse(url, this)
+                    if (url != null && !streamingTts && state != State.RESPONDING && !discardRun) playResponse(url, this)
                 }
                 VoiceEventType.RUN_END -> when (state) {
                     State.STARTING, State.STREAMING, State.AWAITING -> {
@@ -300,6 +339,7 @@ class VoiceAssistantController(
             setState(State.ANNOUNCING)
             val urls = listOf(preannounceMediaId, mediaId).filter { it.isNotEmpty() }.map(resolveUrl)
             add {
+                emit(VoiceEvent.Reply(text, announcement = true))
                 emit(VoiceEvent.Speaking)
                 player.play(urls) { ok -> onPlaybackDone(gen, ok, startConversation) }
             }

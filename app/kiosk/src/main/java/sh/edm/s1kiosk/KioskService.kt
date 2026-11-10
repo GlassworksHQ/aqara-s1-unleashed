@@ -18,6 +18,7 @@ import sh.edm.s1kiosk.discovery.HaDiscovery
 import sh.edm.s1kiosk.esphome.PanelDevice
 import sh.edm.s1kiosk.improv.ImprovController
 import sh.edm.s1kiosk.voice.VoiceEvent
+import sh.edm.s1kiosk.voice.VoiceUi
 
 /**
  * Long-lived foreground service that owns the sensor/screen policy and the ESPHome device
@@ -35,6 +36,8 @@ class KioskService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
         ScreenController.start(this)
         voiceState = if (KioskPrefs(this).voiceEnabled) "idle" else "off"
+        voiceUi = VoiceUi(voiceState)
+        voiceCancel = { device?.cancelVoice() }
         HaAuth.startServer(this)
         val d = HaDiscovery(this, UrlConnectionPoster(timeoutMs = 5_000)) { url, source ->
             // Applied by the activity (dashboard URL "auto": load it, or restart for secure-context hosts).
@@ -49,14 +52,10 @@ class KioskService : Service() {
     }
 
     private fun onVoiceEvent(e: VoiceEvent) {
-        voiceState = when (e) {
-            is VoiceEvent.WakeDetected -> "wake"
-            is VoiceEvent.Listening -> "listening"
-            is VoiceEvent.Thinking -> "thinking"
-            is VoiceEvent.Speaking -> "speaking"
-            is VoiceEvent.Idle -> "idle"
-            is VoiceEvent.Error -> "error: ${e.message}"
-        }
+        voiceUi = voiceUi.on(e)
+        try { onVoiceUi?.invoke() } catch (t: Throwable) { Log.w("S1Kiosk.Voice", "voice overlay failed", t) }
+        if (e is VoiceEvent.Heard || e is VoiceEvent.Reply) return // texts only, no state change
+        voiceState = voiceUi.state
         Log.i("S1Kiosk.Voice", "voice: $voiceState")
         // Talking to the panel counts as activity: wake the screen and keep it on.
         if (e !is VoiceEvent.Idle && e !is VoiceEvent.Error) ScreenController.wake("voice")
@@ -64,6 +63,7 @@ class KioskService : Service() {
     }
 
     override fun onDestroy() {
+        voiceCancel = null
         ImprovController.shutdown()
         device?.stop()
         device = null
@@ -115,6 +115,17 @@ class KioskService : Service() {
 
         /** Last voice assistant state, exposed to the page via MainActivity.stateJson(). */
         @Volatile var voiceState: String = "off"
+
+        /** What the voice overlay shows (state, heard text, reply). Main thread. */
+        var voiceUi = VoiceUi()
+            private set
+
+        /** Called on the main thread after every voice event (the activity's voice overlay). */
+        var onVoiceUi: (() -> Unit)? = null
+
+        /** Cancels the current voice run (stops streaming and playback); null while the service isn't running. */
+        @Volatile var voiceCancel: (() -> Unit)? = null
+            private set
 
         /** Set while the service runs; the sign-in screen uses it for manual HA URL entry. */
         @Volatile var discoveryRef: HaDiscovery? = null

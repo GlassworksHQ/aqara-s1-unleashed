@@ -37,6 +37,7 @@ import sh.edm.s1kiosk.voice.ExoAudioPlayer
 import sh.edm.s1kiosk.voice.VoiceConfig
 import sh.edm.s1kiosk.voice.VoiceEngine
 import sh.edm.s1kiosk.voice.VoiceEvent
+import sh.edm.s1kiosk.voice.VoiceLevels
 import sh.edm.s1kiosk.voice.chime
 import sh.edm.s1kiosk.voice.wakeChime
 import java.io.IOException
@@ -175,7 +176,10 @@ class PanelDevice(
         acquireLocks()
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
-        voicePlayer.onStateChanged = mediaPlayer.onStateChanged
+        voicePlayer.onStateChanged = {
+            VoiceLevels.ttsPlaying = voicePlayer.isPlaying // drives the voice overlay's speaking pulse
+            exec.execute { server?.publishStates() }
+        }
 
         if (voiceEnabled) startVoice()
         if (prefs.sendspinEnabled) sendspin?.start()
@@ -343,7 +347,7 @@ class PanelDevice(
     private fun startVoice() {
         val cfg = VoiceConfig(threshold = prefs.wakeThreshold, micGain = prefs.micGain)
         val engine = VoiceEngine(ctx, cfg, prefs.wakeModel) { model -> prefs.wakeModel = model }
-        engine.onError = { msg -> dispatchVoice(VoiceEvent.Error(msg)) }
+        engine.onError = { msg -> dispatchVoice(VoiceEvent.Error(msg, local = true)) }
         val c = VoiceAssistantController(
             send = { type, payload -> server?.sendVoice(type, payload) ?: false },
             player = voicePlayer,
@@ -448,6 +452,11 @@ class PanelDevice(
             KioskPrefs.KEY_SENDSPIN_FLAC -> sendspin?.onFlacSettingChanged()
         }
         server?.publishStates()
+    }
+
+    /** The user cancelled the current voice run (tap on the overlay): stop streaming and playback. */
+    fun cancelVoice() {
+        exec.execute { controller?.cancel() }
     }
 
     private fun dispatchVoice(e: VoiceEvent) {

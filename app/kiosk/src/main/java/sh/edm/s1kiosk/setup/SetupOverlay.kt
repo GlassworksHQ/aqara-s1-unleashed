@@ -4,14 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.ColorFilter
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.PixelFormat
-import android.graphics.RadialGradient
-import android.graphics.Shader
 import android.graphics.Typeface
-import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.text.TextUtils
@@ -490,24 +485,6 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         setPadding(px(20f), px(13f), px(20f), px(13f))
         isClickable = true
         isFocusable = true
-    }
-
-    /** #0a0b0f with the dashboard's two soft glows (sky top-left, violet bottom-right). */
-    internal class Backdrop : Drawable() {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        override fun draw(canvas: Canvas) {
-            val b = bounds
-            canvas.drawColor(BG)
-            val w = b.width().toFloat(); val h = b.height().toFloat()
-            paint.shader = RadialGradient(-0.1f * w, -0.2f * h, 0.85f * w, Color.argb(33, 56, 189, 248), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-            canvas.drawRect(b, paint)
-            paint.shader = RadialGradient(1.1f * w, 1.2f * h, 0.65f * w, Color.argb(36, 167, 139, 250), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-            canvas.drawRect(b, paint)
-        }
-        override fun setAlpha(alpha: Int) = Unit
-        override fun setColorFilter(colorFilter: ColorFilter?) = Unit
-        @Deprecated("Deprecated in Java")
-        override fun getOpacity() = PixelFormat.OPAQUE
     }
 
     companion object {

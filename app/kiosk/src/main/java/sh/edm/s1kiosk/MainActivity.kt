@@ -7,6 +7,7 @@ import android.app.AlertDialog
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -119,6 +120,8 @@ class MainActivity : Activity() {
         applyIntent(intent, fromNewIntent = false)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // 8 bits per channel: the dithered backdrop/voice glows would band again on an RGB565 surface.
+        window.setFormat(PixelFormat.RGBA_8888)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes = window.attributes.apply {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -127,7 +130,7 @@ class MainActivity : Activity() {
 
         geckoView = GeckoView(this)
         loadingOverlay = LoadingOverlay(this)
-        voiceOverlay = VoiceOverlay(this)
+        voiceOverlay = VoiceOverlay(this).apply { onCancel = { KioskService.voiceCancel?.invoke() } }
         timerOverlay = TimerOverlay(this)
         setupOverlay = SetupOverlay(this).apply {
             onUsePanel = ::onUsePanelLogin
@@ -141,8 +144,9 @@ class MainActivity : Activity() {
             addView(geckoView, android.widget.FrameLayout.LayoutParams(-1, -1))
             addView(loadingOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // under the setup screen
             addView(setupOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
-            addView(voiceOverlay, voiceOverlay.layoutParams())
+            // Z order (elevation): setup 20 dp > voice 16 dp > timers 12 dp > page.
             addView(timerOverlay, timerOverlay.layoutParams())
+            addView(voiceOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
         })
         // Visible from the first frame: the dashboard's first paint or the setup screen replaces it.
         loadingOverlay.show("Starting up", if (hasNetwork()) "Connecting to Home Assistant…" else "Waiting for a network…")
@@ -162,9 +166,9 @@ class MainActivity : Activity() {
         }
         ScreenController.onStateChanged = {
             pushState()
-            voiceOverlay.update(KioskService.voiceState, prefs.voiceOverlay)
             timerOverlay.refresh()
         }
+        KioskService.onVoiceUi = { voiceOverlay.update(KioskService.voiceUi, prefs.voiceOverlay) }
         commandSink = { applyIntent(it, fromNewIntent = true) }
         startSession()
         intent?.let { i -> handler.post { applySetupPreview(i) } }
@@ -433,6 +437,11 @@ class MainActivity : Activity() {
         }
         intent.getStringExtra("ha_discovered")?.let { if (fromNewIntent) onHaFound(it) }
         if (intent.getBooleanExtra("open_settings", false)) DeviceSettings.open(this)
+        // From the web installer: the panel's language (it recreates this activity if it changes).
+        intent.getStringExtra("set_locale")?.let { tag ->
+            intent.removeExtra("set_locale")
+            SystemLocale.set(tag)
+        }
         if (fromNewIntent) applySetupPreview(intent)
         if (intent.hasExtra("zoom")) {
             prefs.zoom = intent.getFloatExtra("zoom", 0f)
@@ -929,6 +938,7 @@ class MainActivity : Activity() {
         ScreenController.onKeepScreenOn = null
         ScreenController.onBrightness = null
         ScreenController.onStateChanged = null
+        KioskService.onVoiceUi = null
         commandSink = null
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()

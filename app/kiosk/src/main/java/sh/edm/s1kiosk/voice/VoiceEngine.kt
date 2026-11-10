@@ -167,6 +167,8 @@ class VoiceEngine(
         val streaming = state == VoiceAssistantController.State.STARTING || state == VoiceAssistantController.State.STREAMING
         if (streaming) {
             c?.onMicAudio(toBytes(frame))
+            // For the voice overlay's orb (after micGain, i.e. what Home Assistant receives).
+            VoiceLevels.mic = AudioLevel.fromRms(AudioLevel.rms(frame))
             for (v in frame) {
                 val a = kotlin.math.abs(v.toInt())
                 if (a > runPeak) runPeak = a
@@ -174,6 +176,7 @@ class VoiceEngine(
             }
             runSamples += frame.size
         } else if (runSamples > 0) {
+            VoiceLevels.mic = 0f
             // Level of the audio HA received for the last run (helps tune mic gain).
             val rms = kotlin.math.sqrt(runSumSq / runSamples) / 32768.0
             VoiceLog.i("Run audio: %.1f s, peak %.3f, rms %.4f (gain %.1f)".format(

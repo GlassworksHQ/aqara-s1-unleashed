@@ -229,7 +229,7 @@ class EspHomeApiTest {
             assertEquals(
                 listOf(VoiceEvent.WakeDetected, VoiceEvent.Listening, VoiceEvent.Thinking, VoiceEvent.Speaking,
                     VoiceEvent.Idle, VoiceEvent.Speaking, VoiceEvent.Idle),
-                events.toList(),
+                events.filter { it !is VoiceEvent.Heard && it !is VoiceEvent.Reply }, // texts for the overlay
             )
             assertEquals(VoiceAssistantController.State.IDLE, controller.currentState)
 

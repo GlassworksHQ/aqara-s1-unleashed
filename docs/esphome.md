@@ -96,7 +96,7 @@ is FNV-1a of the `object_id` (stable).
 | text_sensor `Music Assistant player status` | `sendspin_status` | diagnostic; e.g. `ready, paired with Music Assistant (…)`, `playing from …: Artist – Title`, `waiting for pairing or approval by …`, `off` |
 | switch `Mute microphone` | `mute_microphone` | releases the microphone entirely |
 | switch `Wake sound` | `wake_sound` | short two-tone chime when the wake word is detected (default on) |
-| switch `Voice overlay` | `voice_overlay` | "Listening… / Speaking" pill at the bottom of the screen during voice runs (default on) |
+| switch `Voice overlay` | `voice_overlay` | Full-screen overlay during voice runs: an orb that follows the voice, what was heard and the reply; tap anywhere to cancel the run (default on) |
 | number `Mic gain` | `mic_gain` | 0.5–4× |
 | number `Wake word threshold` | `wake_word_threshold` | 0.1–0.95 (default 0.5) |
 | select `Radio mode` | `radio_mode` | `Off` (default), `Zigbee coordinator (TCP)`, `Zigbee router`, `Thread border router`, `Thread router` ([radio.md](radio.md)); without the root helper only `Off` applies, other choices are refused and snap back |
