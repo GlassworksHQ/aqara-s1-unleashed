@@ -173,6 +173,9 @@ class MainActivity : Activity() {
             addView(timerOverlay, timerOverlay.layoutParams())
             addView(voiceOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
         })
+        // The launch backdrop (res/drawable/launch_backdrop.xml) covers the cold start; once our own
+        // views have drawn, a plain colour behind them costs the GPU nothing on every later frame.
+        window.decorView.post { window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0xFF0A0B0F.toInt())) }
         // Visible from the first frame: the dashboard's first paint or the setup screen replaces it.
         loadingOverlay.show("Starting up", if (hasNetwork()) "Connecting to Home Assistant…" else "Waiting for a network…")
         HaAuth.addListener(authListener)

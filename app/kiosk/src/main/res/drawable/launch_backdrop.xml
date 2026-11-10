@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shown by the window from the instant the app launches until its first frame (GeckoView takes a
+     few seconds to start on this panel), so there is never a black screen: the same dark base and
+     sky/violet glows as the setup and loading screens (setup/Backdrop.kt), drawn by the system. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android" android:dither="true">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#0A0B0F" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle" android:dither="true">
+            <gradient android:type="radial" android:centerX="0.0" android:centerY="0.0"
+                android:gradientRadius="85%p" android:startColor="#2238BDF8" android:centerColor="#0C38BDF8"
+                android:endColor="#0038BDF8" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle" android:dither="true">
+            <gradient android:type="radial" android:centerX="1.0" android:centerY="1.0"
+                android:gradientRadius="70%p" android:startColor="#24A78BFA" android:centerColor="#0DA78BFA"
+                android:endColor="#00A78BFA" />
+        </shape>
+    </item>
+</layer-list>
