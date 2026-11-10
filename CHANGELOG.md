@@ -7,6 +7,25 @@ below as the release notes.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-10
+
+**Only Home Assistant can reach the radio now, and update notes no longer get cut off.**
+
+### Changed
+- **The radio's network ports only accept Home Assistant.** The Zigbee coordinator (port 6638) and the
+  Thread border router's REST API (port 8081, which can hand out the Thread network key) used to accept
+  anyone on the network. The panel now learns Home Assistant's address from its encrypted ESPHome
+  connection and lets only that address in. *Radio status* says who is allowed. To allow other
+  computers, set *Radio allowed clients* in Home Assistant (addresses or ranges, or `any`). This needs the
+  new root helper from the web installer; panels with the older helper keep working as before, and
+  *Radio status* says so.
+- The web installer reminds you to add the panel to Home Assistant first when you pick a radio role.
+
+### Fixed
+- The update card in Home Assistant showed release notes cut off mid-sentence. It now shows whole
+  sections, and no longer shows a "Last update" line.
+- Long radio status messages could leave *Radio status* stuck on "applying".
+
 ## [0.3.0] - 2026-11-10
 
 **Zigbee and Thread: the panel's built-in radio can now work for Home Assistant.**
@@ -61,6 +80,7 @@ below as the release notes.
 - Panels running a development build need a one-time reinstall to switch to release builds (Android
   won't update an app across signing keys). That resets the app's settings.
 
-[Unreleased]: https://github.com/aguilaair/aqara-s1-unleashed/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/aguilaair/aqara-s1-unleashed/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.1
 [0.3.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.0
 [0.2.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.2.0

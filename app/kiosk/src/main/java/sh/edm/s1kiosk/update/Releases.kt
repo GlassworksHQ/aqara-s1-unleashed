@@ -134,19 +134,72 @@ object Releases {
     fun hex(b: ByteArray): String = b.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
 
     /**
-     * Release notes for HA's `release_summary`: [status] (if any) on top, then the notes without
-     * GitHub's "Full Changelog" footer, whitespace tidied, cut at [max] characters with an ellipsis.
+     * Release notes for HA's `release_summary` (at most [max] characters; the full notes are behind
+     * `release_url`). Built from whole pieces, never cutting inside markdown: [status] (if any), the
+     * notes' first paragraph (the one-line summary in CHANGELOG.md), then `###` headings and top-level
+     * `- ` bullets in order. A bullet goes in whole if it fits, else as its bold lead (`- **X**`), and
+     * the summary stops at the first piece that doesn't fit. Only a first paragraph that alone is too
+     * long gets cut, at a word, with its markdown markers removed. GitHub's "Full Changelog" footer is
+     * dropped.
      */
     fun summary(notes: String, status: String = "", max: Int = MAX_SUMMARY): String {
-        val body = notes.replace("\r\n", "\n").replace('\r', '\n').lines()
+        val lines = notes.replace("\r\n", "\n").replace('\r', '\n').lines()
+            .map { it.trimEnd() }
             .filterNot { it.trim().startsWith("**Full Changelog**") }
-            .joinToString("\n") { it.trimEnd() }
-            .replace(Regex("\n{3,}"), "\n\n")
-            .trim()
-        val text = listOf(status.trim(), body).filter { it.isNotEmpty() }.joinToString("\n\n")
-        if (text.length <= max) return text
+        val out = ArrayList<String>()
+        fun text(extra: List<String> = emptyList()) = (out + extra).joinToString("\n").trim()
+        fun fits(vararg add: String) = text(add.toList()).length <= max
+        if (status.isNotBlank()) { out += status.trim(); out += "" }
+
+        // first paragraph
+        var i = 0
+        while (i < lines.size && lines[i].isBlank()) i++
+        val para = ArrayList<String>()
+        while (i < lines.size && lines[i].isNotBlank()) para += lines[i++].trim()
+        val first = para.joinToString(" ")
+        if (first.isEmpty()) return text().let { if (it.length <= max) it else cutPlain(it, max) }
+        if (!fits(first)) return cutPlain(text(listOf(plain(first))), max)
+        out += first
+
+        // headings and top-level bullets (a bullet's continuation lines are indented)
+        while (i < lines.size) {
+            val line = lines[i]
+            when {
+                line.startsWith("### ") -> {
+                    if (!fits("", line)) break
+                    out += ""; out += line; i++
+                }
+                line.startsWith("- ") -> {
+                    val item = StringBuilder(line)
+                    i++
+                    while (i < lines.size && lines[i].startsWith("  ") && !lines[i].trimStart().startsWith("- ")) {
+                        item.append(' ').append(lines[i].trim()); i++
+                    }
+                    while (i < lines.size && lines[i].startsWith("  ")) i++ // nested bullets: left out
+                    val full = item.toString()
+                    val lead = Regex("^- \\*\\*[^*]+\\*\\*").find(full)?.value
+                    when {
+                        fits(full) -> out += full
+                        lead != null && fits(lead) -> out += lead
+                        else -> return text()
+                    }
+                }
+                else -> i++
+            }
+        }
+        return text()
+    }
+
+    /** Markdown emphasis and link syntax removed, for when plain text must be cut. */
+    private fun plain(s: String) = s.replace(Regex("\\[([^]]*)]\\([^)]*\\)"), "$1").replace(Regex("[*_`]"), "")
+
+    /** Cut at a word boundary with an ellipsis, without splitting a surrogate pair. */
+    private fun cutPlain(s: String, max: Int): String {
+        if (s.length <= max) return s
         var cut = max - 1
-        if (text[cut - 1].isHighSurrogate()) cut-- // don't split an emoji
-        return text.take(cut).trimEnd() + "…"
+        if (s[cut - 1].isHighSurrogate()) cut--
+        val space = s.lastIndexOf(' ', cut)
+        if (space > max / 2) cut = space
+        return s.take(cut).trimEnd() + "…"
     }
 }

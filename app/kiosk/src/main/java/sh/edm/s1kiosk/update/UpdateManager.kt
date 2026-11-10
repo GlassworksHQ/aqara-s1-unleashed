@@ -358,7 +358,8 @@ class UpdateManager(
     private fun reportPreviousRootInstall() {
         val st = UpdateHelper.parseStatus(props.get(UpdateHelper.PROP_STATUS)) ?: return
         when (st.state) {
-            "ok" -> { Log.i(TAG, "last root install: ok ${st.detail}"); model.onInfo("Last update: ${st.detail}") }
+            // success shows as the new installed version; only failures need a line on the card
+            "ok" -> Log.i(TAG, "last root install: ok ${st.detail}")
             "error" -> { Log.w(TAG, "last root install failed: ${st.detail}"); model.onInfo("Last update failed: ${st.detail}") }
         }
     }

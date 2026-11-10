@@ -145,4 +145,22 @@ class ReleasesTest {
         val emoji = Releases.summary("a".repeat(253) + "🚀" + "b")
         assertFalse(emoji.dropLast(1).last().isHighSurrogate())
     }
+
+    @Test fun summaryFromTheChangelogNeverCutsInsideMarkdown() {
+        // The v0.3.0 section of CHANGELOG.md (read from the repo when available).
+        val notes = java.io.File("../../CHANGELOG.md").takeIf { it.isFile }?.readText()
+            ?.substringAfter("## [0.3.0]")?.substringAfter("\n")?.substringBefore("\n## [")
+            ?: "**Summary line.**\n\n### Added\n- **Radio modes**, chosen in the setup or in Home Assistant, with\n  a long continuation line that does not fit in the limit at all when added to the rest of it.\n  - nested\n- Another bullet."
+        val s = Releases.summary(notes)
+        assertTrue(s, s.length <= Releases.MAX_SUMMARY)
+        assertTrue(s, s.startsWith("**"))
+        assertEquals(s, 0, Regex("\\*\\*").findAll(s).count() % 2)   // bold markers balanced
+        assertFalse(s, s.contains("…"))                              // whole pieces, no mid-text cut
+        assertFalse(s, s.lines().any { it.startsWith("  ") })        // no nested bullets
+    }
+
+    @Test fun summaryWithStatusAndShortNotes() {
+        val s = Releases.summary("**One line.**\n\n### Fixed\n- A thing.\n- Another thing.", "Install failed: x")
+        assertEquals("Install failed: x\n\n**One line.**\n\n### Fixed\n- A thing.\n- Another thing.", s)
+    }
 }
