@@ -43,6 +43,9 @@ jobs:
           cache: gradle
 
       - uses: android-actions/setup-android@v3
+        with:
+          # The default ("tools platform-tools") fails: current sdkmanager has no "tools" package.
+          packages: platform-tools
 
       # compileSdk 37.2 (app/kiosk/build.gradle.kts: release(37) { minorApiLevel = 2 }); AGP fetches
       # its default build-tools itself once the licenses are accepted (setup-android does that).
