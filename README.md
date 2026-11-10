@@ -78,11 +78,13 @@ docs/
   onboarding.md  Fresh-panel setup: Improv Wi-Fi, auto key, HA discovery, QR sign-in
   sendspin.md    Native Music Assistant player (synced playback)
   bases.md       Wall bases (relay modules); base-protocol.md = the UART protocol
+  radio.md       EFR32 Zigbee/Thread radio: firmware facts, modes, root-helper contract
 app/             S1 Kiosk: MIT GeckoView kiosk app (sh.edm.s1kiosk)
 tools/
   install.sh           One-shot panel setup over ADB (and --undo)
   fel/                 U-Boot board config + RAM-only FEL test for the S1 Plus
   bracket/             Wall-base emulator (proves the UART protocol against Aqara's bracket_cli)
+  radio/               Radio root helper (script + init .rc, not in any image yet), otbr-agent build
   voice/               Fetch + push the openWakeWord models
   debloat/             Reversible `pm disable-user` de-bloat script
   gecko-eval/          Evaluate JS in the kiosk page over Firefox remote debugging
@@ -134,7 +136,7 @@ Everything is reversible: `tools/install.sh --undo`.
 - [x] Onboarding: setup screen, QR sign-in (no login page), dashboard picker, Improv Wi-Fi over BLE
 - [x] Wall-base driver straight over UART (no Aqara daemon); proven against Aqara's own tool
 - [ ] Real-world checks: real wall base, Improv Wi-Fi switch, wake word from across the room, multi-room sync by ear
-- [ ] Zigbee / Thread radio modes (EFR32 radio; user-selectable)
+- [ ] Zigbee / Thread radio modes (EFR32 radio; user-selectable, [docs/radio.md](docs/radio.md)): `Off` done; coordinator-over-TCP and Thread proven with temporary root, need the root helper
 - [ ] Release build (after the real-world checks)
 
 ## Design goal for end users

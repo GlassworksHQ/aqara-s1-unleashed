@@ -17,7 +17,8 @@ import sh.edm.s1kiosk.AqaraCloud
 import sh.edm.s1kiosk.MainActivity
 import sh.edm.s1kiosk.TimerBoard
 import sh.edm.s1kiosk.auth.HaAuth
-import sh.edm.s1kiosk.RadioController
+import sh.edm.s1kiosk.radio.RadioController
+import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.ScreenController
 import sh.edm.s1kiosk.base.BaseEntities
 import sh.edm.s1kiosk.base.BaseLayout
@@ -95,6 +96,12 @@ class PanelDevice(
     private var chimePlayer: TtsPlayer? = null
     /** Native Music Assistant player (Sendspin, docs/sendspin.md); created in startInternal. */
     @Volatile private var sendspin: SendspinPlayer? = null
+    /** Zigbee/Thread radio modes (docs/radio.md); applies the stored mode after every start. */
+    private val radio = RadioController(
+        load = { prefs.radioMode },
+        store = { prefs.radioMode = it },
+        onChange = { exec.execute { server?.publishStates() } },
+    )
     @Volatile private var announcing = false
     @Volatile private var mediaPausedForVoice = false
     private var wakeLock: PowerManager.WakeLock? = null
@@ -131,6 +138,7 @@ class PanelDevice(
         voice = null
         sendspin?.stop("shutdown")
         sendspin = null
+        radio.stop()
         voicePlayer.release()
         mediaPlayer.release()
         chimePlayer?.release()
@@ -171,6 +179,7 @@ class PanelDevice(
 
         if (voiceEnabled) startVoice()
         if (prefs.sendspinEnabled) sendspin?.start()
+        radio.start()
         startServer()
         prefs.registerListener(prefListener)
         ScreenController.addListener(screenListener)
@@ -431,7 +440,6 @@ class PanelDevice(
             "wake_threshold" -> v?.threshold = prefs.wakeThreshold
             "wake_model" -> v?.setActive(listOfNotNull(prefs.wakeModel.takeIf { it.isNotEmpty() }?.let(TfliteWakeWord::modelName)))
             "speaker_volume", "speaker_muted" -> applyVolume()
-            "radio_mode" -> RadioController.apply(prefs.radioMode)
             KioskPrefs.KEY_BLOCK_AQARA_CLOUD, KioskPrefs.KEY_BASE_BACKEND, KioskPrefs.KEY_BASE_TRANSPORT ->
                 reconfigureBase("setting $key changed")
             KioskPrefs.KEY_SENDSPIN_ENABLED -> if (prefs.sendspinEnabled) sendspin?.start() else sendspin?.stop("user_request")
@@ -609,8 +617,12 @@ class PanelDevice(
         ),
         // --- radio
         SelectEntity(
-            "radio_mode", "Radio mode", "mdi:zigbee", options = RadioController.MODES,
-            get = { prefs.radioMode }, set = { prefs.radioMode = it },
+            "radio_mode", "Radio mode", "mdi:zigbee", options = RadioMode.LABELS,
+            get = { radio.mode.label }, set = { radio.request(it) },
+        ),
+        TextSensorEntity(
+            "radio_status", "Radio status", "mdi:radio-tower", EntityCategory.DIAGNOSTIC,
+            get = { radio.statusText() },
         ),
         // --- diagnostics
         TextSensorEntity("ip_address", "IP address", "mdi:ip-network", EntityCategory.DIAGNOSTIC, get = ::ipAddress),
