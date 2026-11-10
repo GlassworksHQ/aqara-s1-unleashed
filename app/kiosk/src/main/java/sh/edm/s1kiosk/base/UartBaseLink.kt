@@ -51,7 +51,7 @@ class UartBaseLink(
         const val DEBUG = 3
         const val INFO = 4
         const val WARN = 5
-        /** termios of ha_master / bracket_cli (see the class doc and docs/base-protocol.md). */
+        /** termios of ha_master / bracket_cli (see the class doc and docs/research/base-protocol.md). */
         val SERIAL_STTY = listOf(
             "115200", "raw", "cs8", "-parenb", "-cstopb", "-crtscts", "clocal", "cread", "-hupcl",
             "ignbrk", "-brkint", "-icrnl", "-ixon", "-ixoff", "-opost", "-onlcr", "-isig", "-icanon", "-iexten",

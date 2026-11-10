@@ -9,7 +9,7 @@ import org.junit.Test
 
 /**
  * Vectors: frames written by Aqara's own `/vendor/bin/bracket_cli` (panel -> base) and the
- * emulator replies it accepted, from the transcripts in docs/base-protocol.md.
+ * emulator replies it accepted, from the transcripts in docs/research/base-protocol.md.
  */
 class BracketProtocolTest {
 

@@ -21,6 +21,18 @@ class RadioStepTest {
     }
 
     @Test
+    fun comingSoonRolesMatchTheInstaller() {
+        assertEquals(listOf(RadioMode.ZIGBEE_ROUTER, RadioMode.THREAD_ROUTER), RadioStep.COMING_SOON.map { it.mode })
+        assertEquals(listOf("Zigbee router", "Thread router"), RadioStep.COMING_SOON.map { it.title })
+        assertEquals(
+            listOf("Extends an existing Zigbee network as a repeater.", "Extends an existing Thread network as a repeater."),
+            RadioStep.COMING_SOON.map { it.line },
+        )
+        // Never selectable: not among the options.
+        assertTrue(RadioStep.OPTIONS.none { o -> RadioStep.COMING_SOON.any { it.mode == o.mode } })
+    }
+
+    @Test
     fun zhaPath() {
         assertEquals("socket://10.0.0.5:6638", RadioStep.zhaPath("10.0.0.5"))
         assertEquals("socket://<panel IP>:6638", RadioStep.zhaPath(null))

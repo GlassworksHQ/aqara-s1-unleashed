@@ -30,7 +30,7 @@ data class ImprovFacts(
     val needsApproval: Boolean = false,
 )
 
-/** Wi-Fi details sent from the computer (web installer, `--es wifi_ssid`): one attempt. */
+/** Wi-Fi details sent from the computer (web installer, over Improv Serial): one attempt. */
 data class InstallerWifi(val ssid: String, val phase: Phase, val detail: String? = null) {
     enum class Phase { CONNECTING, CONNECTED, FAILED }
 }

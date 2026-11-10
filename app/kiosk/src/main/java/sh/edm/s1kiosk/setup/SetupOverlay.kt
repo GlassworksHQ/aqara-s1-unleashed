@@ -163,10 +163,20 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     private val improvTile = ImprovTile()
     private val radioTiles = RadioStep.OPTIONS.map { RadioTile(it) }
     private val radioRow = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        radioTiles.forEachIndexed { i, t ->
-            addView(t.view, LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = px(10f) })
-        }
+        orientation = LinearLayout.VERTICAL
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            radioTiles.forEachIndexed { i, t ->
+                addView(t.view, LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = px(10f) })
+            }
+        }, LinearLayout.LayoutParams(-1, -2))
+        // Roles that aren't ready yet: a compact, dimmed row under the real options, not selectable.
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            RadioStep.COMING_SOON.forEachIndexed { i, o ->
+                addView(soonTile(o), LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = px(10f) })
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
     }
 
     private val cardColumn = LinearLayout(context).apply {
@@ -591,6 +601,34 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
                 setStroke(px(if (selected) 2f else 1f).coerceAtLeast(1), if (selected) AMBER else BD)
             }
             title.setTextColor(if (selected) TX else MU)
+        }
+    }
+
+    /** A "Coming soon" radio role: title + tag on one line, its one line under it; no click. */
+    private fun soonTile(o: RadioStep.Soon): View {
+        val title = text(14f, MU, MEDIUM).apply { text = o.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
+        val tag = label("Coming soon").apply { setTextColor(FA) }
+        val head = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(title, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(tag, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(8f) })
+        }
+        val line = text(12f, FA, REGULAR).apply { text = o.line; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(px(14f), px(8f), px(14f), px(8f))
+            addView(head)
+            addView(line, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(2f) })
+            isClickable = false
+            isFocusable = false
+            contentDescription = "${o.title}, coming soon"
+            background = GradientDrawable().apply {
+                cornerRadius = 14 * dp
+                setColor(S1)
+                setStroke(px(1f).coerceAtLeast(1), BD)
+            }
+            alpha = 0.8f
         }
     }
 

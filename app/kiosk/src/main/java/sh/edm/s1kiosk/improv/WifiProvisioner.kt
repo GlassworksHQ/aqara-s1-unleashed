@@ -88,9 +88,10 @@ class WifiProvisioner(private val ctx: Context, private val main: Handler) {
         }
     }
 
-    fun requestScan() {
+    /** False when the scan was refused (e.g. throttled): the cached results are all there is. */
+    fun requestScan(): Boolean {
         @Suppress("DEPRECATION")
-        runCatching { wm.startScan() }
+        return runCatching { wm.startScan() }.getOrDefault(false)
     }
 
     /** Cached scan results as Improv triples; empty without location access. */
@@ -104,6 +105,40 @@ class WifiProvisioner(private val ctx: Context, private val main: Handler) {
             wm.scanResults.filter { !it.SSID.isNullOrEmpty() }
                 .map { ScannedNetwork(it.SSID, it.level, WifiSecurityRules.improvAuth(it.capabilities ?: "")) }
         }.getOrElse { Log.w(TAG, "getScanResults failed", it); emptyList() }
+    }
+
+    /**
+     * A fresh scan: turns Wi-Fi on if it is off, starts a scan and reports [scan] once results
+     * arrive (SCAN_RESULTS_AVAILABLE) or after [timeoutMs], whichever is first. Main thread.
+     */
+    fun scanFresh(timeoutMs: Long, cb: (List<ScannedNetwork>) -> Unit) {
+        var finished = false
+        lateinit var receiver: BroadcastReceiver
+        val finish = Runnable {
+            if (finished) return@Runnable
+            finished = true
+            runCatching { ctx.unregisterReceiver(receiver) }
+            cb(scan())
+        }
+        receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) {
+                val updated = i.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, true)
+                if (updated && !finished) { main.removeCallbacks(finish); main.post(finish) }
+            }
+        }
+        runCatching { ctx.registerReceiver(receiver, IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)) }
+        main.postDelayed(finish, timeoutMs)
+        if (!wm.isWifiEnabled) {
+            @Suppress("DEPRECATION")
+            val ok = runCatching { wm.setWifiEnabled(true) }.getOrDefault(false)
+            Log.i(TAG, "scan: Wi-Fi is off: setWifiEnabled(true) -> $ok")
+            // Wi-Fi scans by itself once it is on; ask again shortly in case it doesn't.
+            if (ok) main.postDelayed({ if (!finished) requestScan() }, 3_000L)
+        } else if (!requestScan()) {
+            Log.i(TAG, "scan: startScan refused (throttled?); using cached results")
+            main.removeCallbacks(finish)
+            main.post(finish)
+        }
     }
 
     fun cancel() {

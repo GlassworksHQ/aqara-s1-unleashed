@@ -7,7 +7,7 @@ import org.json.JSONObject
 /**
  * Pure (JVM-testable) side of the wall base ("bracket"/"dock") support: resource ids, the JSON the
  * stock `com.lumi.systemmanager` LocalService expects, and defensive parsing of its callbacks.
- * See docs/bases.md for where each of these comes from in the stock firmware.
+ * See docs/research/bases.md for where each of these comes from in the stock firmware.
  */
 object BaseRes {
     /** Dock class; `value >>> 24`: 1 = switch base, 0x10 = Ethernet base, 0 = none. */

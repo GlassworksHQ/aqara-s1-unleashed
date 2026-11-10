@@ -21,7 +21,6 @@ import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.ScreenController
 import sh.edm.s1kiosk.setup.ImprovFacts
 import sh.edm.s1kiosk.setup.InstallerWifi
-import sh.edm.s1kiosk.setup.WifiSetupLog
 import java.lang.ref.WeakReference
 
 /**
@@ -38,8 +37,9 @@ import java.lang.ref.WeakReference
  * Wi-Fi step ([setupFacts] → setup/WifiStep) and the [ImprovOverlay] window stays hidden. Otherwise
  * (started later on demand, from the intent or HA's button) the overlay is shown as before.
  *
- * It also runs Wi-Fi joins sent from the computer ([connectFromInstaller]) on the same
- * [WifiProvisioner], so the two never fight over the Wi-Fi configuration.
+ * It also runs Wi-Fi joins sent from the computer over Improv Serial ([connectFromInstaller],
+ * [ImprovSerialServer]) on the same [WifiProvisioner], so the two never fight over the Wi-Fi
+ * configuration.
  *
  * Main thread only.
  */
@@ -240,36 +240,53 @@ object ImprovController {
     }
 
     /**
-     * Joins [ssid] with the Wi-Fi details sent from the computer (MainActivity's `wifi_ssid` /
-     * `wifi_psk` / `wifi_hidden` extras), on the same [WifiProvisioner] as Improv (it turns Wi-Fi on
-     * first if it is off). Progress is in [installerWifi]; the outcome is logged for the installer in
-     * the [WifiSetupLog] format (the caller logs `result=connecting`). [psk] is never logged.
-     * Returns false if the controller isn't up yet (KioskService not created): call again shortly.
+     * Joins [ssid] with the Wi-Fi details sent from the computer (the web installer, over Improv
+     * Serial: [ImprovSerialServer]), on the same [WifiProvisioner] as Improv via BLE (it turns Wi-Fi
+     * on first if it is off). Progress shows in the setup screen's Wi-Fi step through
+     * [installerWifi]; [done] gets the outcome (main thread), also when a newer request superseded
+     * this one. [psk] is never logged. Returns false if the controller isn't up yet (KioskService
+     * not created).
      */
-    fun connectFromInstaller(ssid: String, psk: String, hidden: Boolean?): Boolean {
+    fun connectFromInstaller(
+        ssid: String,
+        psk: String,
+        hidden: Boolean? = null,
+        done: ((WifiProvisioner.Outcome) -> Unit)? = null,
+    ): Boolean {
         if (!initialized) return false
         if (session?.state == ImprovState.PROVISIONING) {
             // The installer wins; Improv's attempt reports "superseded" and asks for the details again.
             Log.i(TAG, "installer Wi-Fi supersedes the Improv attempt")
         }
         val seq = ++installerSeq
+        Log.i(TAG, "installer Wi-Fi: joining '$ssid'")
         installerWifi = InstallerWifi(ssid, InstallerWifi.Phase.CONNECTING)
         installerJoining = true
         ScreenController.wake("installer wifi")
         refreshOverlay()
-        wifi.connect(ssid, psk, hidden) { outcome -> main.post { onInstallerOutcome(seq, ssid, outcome) } }
+        wifi.connect(ssid, psk, hidden) { outcome -> main.post { onInstallerOutcome(seq, ssid, outcome); done?.invoke(outcome) } }
+        return true
+    }
+
+    /**
+     * A fresh Wi-Fi scan for the installer (turns Wi-Fi on if it is off); [done] on the main thread
+     * with what WifiManager reports. False if the controller isn't up yet.
+     */
+    fun scanFromInstaller(done: (List<ScannedNetwork>) -> Unit): Boolean {
+        if (!initialized) return false
+        wifi.scanFresh(ImprovSerialServer.SCAN_TIMEOUT_MS, done)
         return true
     }
 
     private fun onInstallerOutcome(seq: Int, ssid: String, o: WifiProvisioner.Outcome) {
         val result = when (o) {
             is WifiProvisioner.Outcome.Connected -> {
-                Log.i(WifiSetupLog.TAG, WifiSetupLog.connected(ssid, o.ip))
+                Log.i(TAG, "installer Wi-Fi: connected to '$ssid'")
                 InstallerWifi(ssid, InstallerWifi.Phase.CONNECTED, o.ip)
             }
             is WifiProvisioner.Outcome.Failed -> {
                 val why = o.reason + (o.restored?.let { ". Back on $it" } ?: "")
-                Log.i(WifiSetupLog.TAG, WifiSetupLog.failed(ssid, why))
+                Log.i(TAG, "installer Wi-Fi: '$ssid' failed: $why")
                 InstallerWifi(ssid, InstallerWifi.Phase.FAILED, why)
             }
         }

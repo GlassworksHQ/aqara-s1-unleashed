@@ -6,7 +6,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Aqara's cloud link on the stock firmware is the native gateway daemon `ha_master` (an init
  * service, so `pm disable-user` can't touch it). It is the only process that talks to the internet
- * (Aqara AIoT cloud, incl. location-based weather) — see docs/debloat.md.
+ * (Aqara AIoT cloud, incl. location-based weather) — see docs/research/debloat.md.
  *
  * Stopping it is just `setprop ctl.stop ha_master`. This firmware runs SELinux permissive, so the
  * app's own uid may control init services (verified on device); no root needed. Not persistent by

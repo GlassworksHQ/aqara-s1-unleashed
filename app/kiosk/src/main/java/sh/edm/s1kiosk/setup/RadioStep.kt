@@ -8,7 +8,8 @@ import sh.edm.s1kiosk.radio.RadioMode
  * explanations, and how RadioController's answer is read back. Pure Kotlin (RadioStepTest).
  *
  * Only modes that work are offered: Off (default), Zigbee coordinator (ZHA over TCP) and, marked
- * experimental, Thread border router. Zigbee router and Thread router are left out until they work.
+ * experimental, Thread border router. Zigbee router and Thread router are listed under them as
+ * [COMING_SOON], not selectable, until they work (the web installer lists the same two).
  * Skipping the step means Off. Everything can be changed later with the panel's `Radio mode` select
  * in Home Assistant, which is the same RadioController path.
  */
@@ -32,6 +33,15 @@ object RadioStep {
             "The panel runs a Thread border router for Thread and Matter devices. Not finished yet.",
             experimental = true,
         ),
+    )
+
+    /** A role that isn't ready yet: shown, tagged "Coming soon", not selectable. */
+    data class Soon(val mode: RadioMode, val title: String, val line: String)
+
+    /** Same titles and lines as the web installer's radio step (web/src/app/ui.ts COMING_SOON). */
+    val COMING_SOON: List<Soon> = listOf(
+        Soon(RadioMode.ZIGBEE_ROUTER, "Zigbee router", "Extends an existing Zigbee network as a repeater."),
+        Soon(RadioMode.THREAD_ROUTER, "Thread router", "Extends an existing Thread network as a repeater."),
     )
 
     const val LATER = "You can change this later in Home Assistant: the panel's “Radio mode” select."

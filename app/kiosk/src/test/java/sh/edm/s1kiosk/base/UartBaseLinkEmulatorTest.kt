@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * The real [UartBaseLink] (TCP transport) against `tools/bracket/base_emulator.py`, the emulator
- * Aqara's bracket_cli accepted on the panel (docs/base-protocol.md). Needs only a plain python3;
+ * Aqara's bracket_cli accepted on the panel (docs/research/base-protocol.md). Needs only a plain python3;
  * uses BRACKET_PYTHON, else ESPHOME_PYTHON, else `python3`. Skipped if none runs.
  */
 class UartBaseLinkEmulatorTest {

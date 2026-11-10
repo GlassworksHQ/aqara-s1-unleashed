@@ -11,7 +11,9 @@ verified on the panel. Nothing below is implemented unless marked ✅.
 ## The flow the user sees
 
 1. **Wi-Fi.** Usually already done: a panel that was set up with the Aqara app keeps its Wi-Fi
-   after our install. A fresh or reset panel gets Wi-Fi through **Improv via BLE**, with an on-screen
+   after our install. The web installer sends it from the computer over USB (**Improv Serial**
+   through adb, see [From the web installer](#from-the-web-installer-improv-serial--setup-channel-over-adb-)).
+   Without it, a fresh or reset panel gets Wi-Fi through **Improv via BLE**, with an on-screen
    picker as fallback.
 2. **HA finds it.** "New device discovered: S1 Panel" appears in HA → click **Add**. HA generates
    and pushes the encryption key itself.
@@ -177,6 +179,60 @@ organization". `adb install -r` updates keep working.
   password; a failure then removes it.
 - The suggestion fallback needs someone to open the notification shade on a kiosk with hidden bars.
 - Only one Improv client at a time is tested; notifications go to every subscribed client.
+
+### From the web installer: Improv Serial + setup channel (over adb) ✅
+
+After installing the app, the web installer (web/, Tango over WebUSB) does the rest of onboarding
+from the computer through two byte streams it opens with adb's `localabstract:<name>` service. Both
+are abstract Unix sockets in the app, started by `KioskService` (`AdbSocketServer`), and only accept
+adb: the peer uid (`LocalSocket.peerCredentials`) must be 2000 (adbd as shell) or 0 (`adb root`)
+(`AdbPeer`, `AdbPeerTest`); anything else is closed and logged. The USB connection, authorized with
+the installer's adb key, is the physical authorization, so there is no Allow tap. Connections can
+come one after another (or side by side, up to 4). The client side is the protocol source of truth:
+`web/src/improv/serial.ts` and `web/src/setup/channel.ts`.
+
+**Wi-Fi: Improv Serial on `@s1kiosk_improv`** (`improv/ImprovSerial.kt`, pure, `ImprovSerialTest`;
+glue `improv/ImprovSerialServer.kt`). [Improv Serial](https://www.improv-wifi.com/serial/) framing
+(`IMPROV`, version 1, type, length, data, checksum) over the stream instead of a UART.
+- State: Ready (authorized) from the start, or Provisioned when the panel is already on Wi-Fi (the
+  installer then says so; new Wi-Fi settings are still accepted).
+- Wi-Fi settings: state Provisioning, then joins through `ImprovController.connectFromInstaller` on
+  the same `WifiProvisioner` as Improv via BLE (it turns Wi-Fi on first). Then state Provisioned +
+  an RPC result with `http://<ip>:8099/signin`, or error 0x03 and back to Ready.
+- Request state (+ the URL as a result when provisioned), request device info (`S1 Kiosk`, app
+  version, `Allwinner A133`, `S1 Panel`).
+- Scan: a fresh WifiManager scan (Wi-Fi turned on if off; results on `SCAN_RESULTS_AVAILABLE` or after
+  15 s at most, cached ones at once if the scan is throttled). Hidden SSIDs are skipped, one entry per
+  SSID keeping the strongest, strongest first; one RPC result `[ssid, rssi, YES|NO]` each, then an
+  empty result.
+- A malformed packet (bad checksum or version, bad lengths, wrong strings) gets error 0x01, an
+  unknown command 0x02. Passwords are never logged (only their length, by `WifiProvisioner`).
+
+While the installer's join runs, the panel's setup screen shows it in its Wi-Fi step like any join
+from the computer (`ImprovController.installerWifi`: connecting to <SSID> with WifiProvisioner's
+progress, e.g. "Turning Wi-Fi on…", then connected or failed with the reason).
+
+**Home Assistant and radio: the setup channel on `@s1kiosk_setup`** (`setup/SetupChannel.kt`, pure,
+`SetupChannelTest`; glue `setup/SetupChannelServer.kt`). One JSON object per line, both ways:
+- `{"id":1,"op":"state"}` → `{"id":1,"ok":true,"state":…}`. The state is channel.ts's `SetupState`:
+  `ip` (wlan0 IPv4), `ha.discovered` (the HA address the app found itself: `ha_url_source` `mdns` or
+  `esphome`, not `manual`), `ha.url` (the address in use, `KioskPrefs.haBase`, "" until known),
+  `ha.signedIn`, `ha.signinUrl` (`http://<ip>:8099/signin` once there is an ip and an HA address),
+  `radio.mode` (RadioMode id), `radio.status` (RadioController's status text), `radio.options` (the
+  panel's radio step options: id, label, detail, `experimental` only when true) and `radio.helper`
+  (root helper installed). Unknown optional fields are left out.
+- `set_ha` with `url` (http/https only): applied on the main thread exactly as the `url` intent extra
+  (dashboard URL setting saved, then the dashboard reloads, or the process restarts when the
+  secure-context hosts change, after the reply). The panel's setup screen moves on by itself.
+- `set_radio` with `mode` (one of the offered ids): through `RadioController.request`, like the
+  panel's radio step. The reply waits for its outcome: success (or still applying after 10 s) marks
+  the panel's radio step answered (`setup_radio_done`); a refusal or error is `ok:false` with
+  RadioController's reason (e.g. the missing root helper).
+- While connected, `{"event":"state","state":…}` is pushed whenever the serialized state changes
+  (checked every 1.5 s, once the client has asked for the state).
+- No secrets ever: no tokens, no API key, no passwords.
+
+The intent hand-off this replaces (`--es wifi_ssid/wifi_psk`, results on logcat) is gone.
 
 ### 2. Adoption + encryption: ESPHome dynamic keys ✅
 
@@ -386,12 +442,10 @@ Laid out for 960×480 dp.
    connected and asking [Allow] [Not now] · allowed m:ss, waiting for Wi-Fi details [Stop] ·
    connecting to <SSID> · connected · failed (reason, still allowed). Allow / Not now mean the same
    as the overlay's. Improv running (or an installer join) shows the screen without the 30 s grace.
-   **Wi-Fi from the computer.** `--es wifi_ssid <ssid> --es wifi_psk <psk> [--ez wifi_hidden true]`
-   on MainActivity joins with the same `WifiProvisioner.connect` as Improv (it turns Wi-Fi on
-   first), shows progress here, and logs the outcome on tag `S1Kiosk.WifiSetup` for `adb logcat -d
-   -s S1Kiosk.WifiSetup`: `result=connecting|connected|failed ssid=<percent-encoded> [ip=…]
-   [reason=…]` (exact format: `setup/WifiSetupLog.kt`). The extras are removed once read; the
-   password is never logged.
+   **Wi-Fi from the computer.** The web installer sends Wi-Fi over Improv Serial (see
+   [From the web installer](#from-the-web-installer-improv-serial--setup-channel-over-adb-)); the
+   join uses the same `WifiProvisioner.connect` as Improv (it turns Wi-Fi on first) and its progress
+   shows here: connecting to <SSID> (with the provisioner's progress), then connected or failed.
 2. **Add to Home Assistant**: done once an ESPHome client whose Hello says "Home Assistant"
    **subscribes to states**. HA's config flow only probes DeviceInfo during discovery, so a plain
    Hello doesn't count. `ApiServer.onStatesSubscribed` → `PanelDevice` persists `ha_seen` and
@@ -401,9 +455,11 @@ Laid out for 960×480 dp.
    `setup_ha_skipped` (for kiosk-only use without the ESPHome device).
 3. **Radio** (`setup/RadioStep.kt`, `RadioStepTest`): Off (default), Zigbee coordinator (ZHA,
    network radio over TCP, `socket://<panel-ip>:6638`), Thread border router (experimental). Zigbee
-   router and Thread router aren't offered until they work. Apply goes through `RadioController`
+   router and Thread router are listed under them, tagged "Coming soon" and not selectable, with the
+   web installer's one-liners (`RadioStep.COMING_SOON`). Apply goes through `RadioController`
    (the same path as HA's `Radio mode` select) and shows what it reports, e.g. the missing root
-   helper; Skip = Off. Answering persists `setup_radio_done`. A panel set up before this step
+   helper; Skip = Off. Answering persists `setup_radio_done` (so does a mode set from the web
+   installer over the setup channel). A panel set up before this step
    existed has it marked done once at the first start of the new build (`migrateRadioStep`: a known
    HA, `ha_seen`, an API key, a skipped HA step or a stored radio mode), so it never sees it. It
    comes before Sign in because it belongs with adding the panel (ZHA is added on the same Devices &

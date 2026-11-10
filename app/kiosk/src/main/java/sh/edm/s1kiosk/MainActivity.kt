@@ -40,7 +40,6 @@ import sh.edm.s1kiosk.setup.SetupSignals
 import sh.edm.s1kiosk.setup.SetupState
 import sh.edm.s1kiosk.setup.SetupStep
 import sh.edm.s1kiosk.setup.WifiSetupStatus
-import sh.edm.s1kiosk.setup.WifiSetupLog
 import sh.edm.s1kiosk.setup.WifiStep
 import sh.edm.s1kiosk.setup.RadioStep
 import sh.edm.s1kiosk.improv.ImprovController
@@ -480,48 +479,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---- Wi-Fi from the computer (web installer)
-
-    /**
-     * `--es wifi_ssid <ssid> --es wifi_psk <password> [--ez wifi_hidden true]`: joins that network
-     * with ImprovController's WifiProvisioner (turning Wi-Fi on if needed), shows the progress in the
-     * setup screen's Wi-Fi step, and logs the outcome for the installer (format: [WifiSetupLog]).
-     * The extras are removed at once, so a recreated activity doesn't join again; the password is
-     * never logged.
-     */
-    private fun applyWifiExtras(intent: Intent) {
-        if (!intent.hasExtra("wifi_ssid")) return
-        val ssid = intent.getStringExtra("wifi_ssid").orEmpty()
-        val psk = intent.getStringExtra("wifi_psk").orEmpty()
-        val hidden = when (val h = intent.extras?.get("wifi_hidden")) {
-            is Boolean -> h
-            is String -> h.trim().equals("true", ignoreCase = true) || h.trim() == "1"
-            else -> null
-        }
-        intent.removeExtra("wifi_ssid")
-        intent.removeExtra("wifi_psk")
-        intent.removeExtra("wifi_hidden")
-        Log.i(WifiSetupLog.TAG, WifiSetupLog.connecting(ssid))
-        when {
-            ssid.isEmpty() -> Log.i(WifiSetupLog.TAG, WifiSetupLog.failed(ssid, "wifi_ssid is empty"))
-            ssid.toByteArray(Charsets.UTF_8).size > 32 -> Log.i(WifiSetupLog.TAG, WifiSetupLog.failed(ssid, "wifi_ssid is longer than 32 bytes"))
-            else -> joinFromInstaller(ssid, psk, hidden, tries = 0)
-        }
-    }
-
-    /** KioskService (and with it ImprovController) may not be up yet right after a launch: retry. */
-    private fun joinFromInstaller(ssid: String, psk: String, hidden: Boolean?, tries: Int) {
-        if (ImprovController.connectFromInstaller(ssid, psk, hidden)) {
-            refreshSetup()
-            return
-        }
-        if (tries >= INSTALLER_WIFI_TRIES) {
-            Log.i(WifiSetupLog.TAG, WifiSetupLog.failed(ssid, "the kiosk service did not start"))
-            return
-        }
-        handler.postDelayed({ joinFromInstaller(ssid, psk, hidden, tries + 1) }, 500)
-    }
-
     private fun onSkipHaSetup() {
         if (setupPreview) { closeSetupPreview(); return }
         Log.i(TAG, "Setup: adding to Home Assistant skipped")
@@ -594,8 +551,8 @@ class MainActivity : Activity() {
     //   --ez restart true       restart the app process
     //   --es api_key <base64>   ESPHome API encryption key (32 bytes); --ez api_encryption true|false
     //   --ez show_setup true    preview the setup screen (--es setup_step wifi|ha|radio|signin|done); false closes it
-    //   --es wifi_ssid <ssid> --es wifi_psk <psk> [--ez wifi_hidden true]
-    //                           join Wi-Fi (web installer); result in `logcat -s S1Kiosk.WifiSetup`
+    // (Wi-Fi, Home Assistant and radio from the web installer go over adb sockets instead:
+    //  improv/ImprovSerialServer, setup/SetupChannelServer.)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -618,8 +575,6 @@ class MainActivity : Activity() {
             intent.removeExtra("set_locale")
             SystemLocale.set(tag)
         }
-        // From the web installer: Wi-Fi details (see applyWifiExtras / setup/WifiSetupLog.kt).
-        applyWifiExtras(intent)
         if (fromNewIntent) applySetupPreview(intent)
         if (intent.hasExtra("zoom")) {
             prefs.zoom = intent.getFloatExtra("zoom", 0f)
@@ -656,7 +611,7 @@ class MainActivity : Activity() {
         intent.getStringExtra("sendspin_server")?.let { prefs.sendspinServer = it }
         if (intent.hasExtra("sendspin_unpaired_access")) prefs.sendspinUnpairedAccess = intent.getBooleanExtra("sendspin_unpaired_access", false)
         if (intent.hasExtra("sendspin_flac")) prefs.sendspinFlac = intent.getBooleanExtra("sendspin_flac", true)
-        // Wall base (docs/bases.md): auto|uart|localservice, and "" (/dev/ttyS3) or tcp:host:port (emulator).
+        // Wall base (docs/research/bases.md): auto|uart|localservice, and "" (/dev/ttyS3) or tcp:host:port (emulator).
         intent.getStringExtra("base_backend")?.let { prefs.baseBackend = it }
         intent.getStringExtra("base_transport")?.let { prefs.baseTransport = it }
         intent.getStringExtra("api_key")?.let { key ->
@@ -1141,7 +1096,5 @@ class MainActivity : Activity() {
         private const val REQ_GECKO = 2
         private const val RETRY_MS = 10_000L
         private const val SETUP_TICK_MS = 2_000L
-        /** Wait up to 15 s (every 500 ms) for KioskService before giving up on installer Wi-Fi. */
-        private const val INSTALLER_WIFI_TRIES = 30
     }
 }

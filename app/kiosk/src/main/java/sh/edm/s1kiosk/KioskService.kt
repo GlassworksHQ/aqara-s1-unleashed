@@ -17,7 +17,9 @@ import sh.edm.s1kiosk.auth.UrlConnectionPoster
 import sh.edm.s1kiosk.discovery.HaDiscovery
 import sh.edm.s1kiosk.esphome.PanelDevice
 import sh.edm.s1kiosk.improv.ImprovController
+import sh.edm.s1kiosk.improv.ImprovSerialServer
 import sh.edm.s1kiosk.radio.RadioController
+import sh.edm.s1kiosk.setup.SetupChannelServer
 import sh.edm.s1kiosk.voice.VoiceEvent
 import sh.edm.s1kiosk.voice.VoiceUi
 
@@ -53,6 +55,9 @@ class KioskService : Service() {
             radioRef = it.radio
         }
         ImprovController.init(this) // Improv Wi-Fi via BLE (provisioning mode; see improv/)
+        // The web installer, over adb (docs/onboarding.md): Wi-Fi via Improv Serial, then HA + radio.
+        ImprovSerialServer.start()
+        SetupChannelServer.start(this)
         Log.i("S1Kiosk", "KioskService started")
     }
 
@@ -69,6 +74,8 @@ class KioskService : Service() {
 
     override fun onDestroy() {
         voiceCancel = null
+        SetupChannelServer.stop()
+        ImprovSerialServer.stop()
         ImprovController.shutdown()
         device?.stop()
         device = null
