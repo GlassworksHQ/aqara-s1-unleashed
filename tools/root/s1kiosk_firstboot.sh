@@ -33,4 +33,8 @@ if [ -s "$KEYS" ]; then
 else
   log "no installer adb key in the boot image; adb left as is"
 fi
+# A factory-reset panel boots with Wi-Fi off, and Android 10 won't let the kiosk app (targetSdk > 28)
+# turn it on, so Improv (over Bluetooth or from the installer) and "Choose network" couldn't join.
+# Turn it on once here; the user can still switch it off later.
+if [ "$(settings get global wifi_on)" != 1 ]; then svc wifi enable && log "Wi-Fi turned on"; fi
 touch "$MARK"
