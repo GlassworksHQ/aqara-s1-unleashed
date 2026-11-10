@@ -282,11 +282,40 @@ Blockers / not done:
 needed, but it means flashing, losing CPC/Thread, and no stock image to go back to (see below).
 Not recommended.
 
+## Flash path, verified (2026-11-09)
+
+This was a dry run: the **identical** stock image was reflashed with Aqara's own tools, as root over
+adb, with the radio helper in `off`. The plan and its sources are kept with the backups (not in
+this repo, because they quote Aqara binaries).
+
+| Step | Command (root) | Result |
+|---|---|---|
+| Versions | `/vendor/bin/cpcd -c /etc/cpcd.conf -p` | protocol v4, CPC v4.3.3, APP `0017` |
+| Bootloader info, no write (pins off, `-a 0017`, 128-byte zero "image") | `cpcd -c <cpcd.conf with recovery pins off> -f <zeros> -a 0017` | `Secondary bootloader: Gecko SDK`, "Firmware up to date". `PROP_BOOTLOADER_INFO` = type 3 (Gecko), version `0x02030001` (**v2.3**, customer 1), capabilities 0 (always 0 over CPC) |
+| Pin entry, no transfer | `cpcd -c /etc/cpcd_ota.conf -e`, then `setprop sys.zigbee.ota 1` | "Secondary is in bootloader"; the quit reset brought back APP `0017` |
+| Reflash | `cpcd -c /etc/cpcd_ota.conf -f '/vendor/firmware/lichun#30000000#17#20250821#8f636f.bin'` | "Firmware upgrade successful" in 19.5 s (2 MHz SPI, progress 0→100) |
+| Confirm | `cpcd -p`; Thread mode, `ot-ctl rcp version` | APP `0017`; `0017/2.3.3.0_GitHub-e6df00dd6; EFR32; Dec 12 2024 17:59:01` |
+
+What this proves:
+- The PB7 (reset) / PB8 (wake) recovery path works, so a broken app can always be reflashed.
+- The bootloader accepts **unsigned, LZ4-compressed** GBLs.
+- Bootloader secure boot is not enforced: the running app declares no signature.
+- An app-only GBL cannot touch the bootloader. The Gecko bootloader drops writes outside the app
+  area, and this image has no bootloader or SE-upgrade tag.
+
+Rules for any future flash:
+- Use **only `/vendor/bin/cpcd`** for `-e`/`-f`. Aqara's build drives the reset pin inverted
+  compared with upstream (PB7=1 holds the EFR32 in reset), so an upstream or self-built cpcd would
+  keep the radio in reset.
+- With the recovery pins enabled, `-f` skips all version checks and always flashes.
+- Don't set `persist.sys.zb_ver`; Aqara's OTA logic reads it.
+
 ## Firmware per mode
 
 **Recommendation: keep the current multi-PAN RCP firmware and run one protocol at a time.** Every
-alternative needs a custom image for this board, and there is no stock GBL on the device to roll
-back to (see [OTA path](#ota-path-not-run)). Nothing was flashed.
+alternative needs a custom image for this board. The stock GBL *is* on the device, and the flash
+path has been proven by reflashing it (see [Flash path, verified](#flash-path-verified-2026-11-09)),
+so a custom image is now possible but still not needed.
 
 | Mode | Recommendation | Risk |
 |---|---|---|
@@ -333,11 +362,11 @@ Why one protocol at a time on a multi-PAN RCP is fine, while concurrent use is n
 - **Recovery and signing:**
   - `cpcd -f` enters the Gecko bootloader with the reset and wake pins (gpio 39/40) and uploads the
     GBL over SPI. The bootloader survives an incompatible app image, so the pins can still reach it.
-  - The Gecko bootloader can be configured to **require signed (and encrypted) GBLs** (UG489), and
-    whether Aqara's does can't be determined from the host without trying. If unsigned images are
-    rejected, only Aqara-signed images can be installed, and there is none on the device.
-  - Rule: **don't flash without proof that unsigned images are accepted and a known-good fallback
-    GBL in hand.**
+  - **Unsigned GBLs are accepted:** the stock GBL is unsigned and unencrypted, and it flashed
+    successfully. A known-good fallback GBL is on the device. Both preconditions of the old
+    "don't flash" rule are now met (see [Flash path, verified](#flash-path-verified-2026-11-09)).
+  - Any custom image must still match this board's pinout and CTUNE location, and ship with a
+    matching host cpcd/zigbeed.
 
 Sources: Nabu Casa ZBT-1 multiprotocol docs; home-assistant/core#92904; home-assistant/addons#3833,
 #4850; darkxst/silabs-firmware-builder discussion #41; zigpy#894; SiLabs EZSP-SPI host guide
@@ -372,8 +401,9 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
   `cpcd -c /etc/cpcd_ota.conf -f $(getprop sys.aqara.rcp_path)`. `cpcd_ota.conf` differs from
   `cpcd.conf` only in SPI bitrate (2 MHz) and `disable_encryption: false`.
 - Because SELinux is permissive, the app uid could set `sys.aqara.rcp_path` and `sys.zigbee.ota=20`,
-  or `ctl.start start_rcp_ota`, i.e. flash the radio without root. **Don't**: there is no stock GBL
-  to recover with, and a wrong image bricks the radio until reflashed.
+  or `ctl.start start_rcp_ota`, i.e. flash the radio without root. **Don't do this from the app:** a
+  wrong image leaves the radio without a working app until it is reflashed with the stock GBL as
+  root (see [Flash path, verified](#flash-path-verified-2026-11-09)).
 - `sys.zigbee.ota=0/1` run `zigbee_ota_enter.sh` / `zigbee_ota_quit.sh`, which toggle PB8 (ISP /
   bootloader select) and pulse PB7 (reset) via debugfs pinctrl. `zigbee_isp.sh` and
   `zigbee_reset.sh` set them individually. cpcd uses gpio 40 (wake) / 39 (reset) as bootloader
