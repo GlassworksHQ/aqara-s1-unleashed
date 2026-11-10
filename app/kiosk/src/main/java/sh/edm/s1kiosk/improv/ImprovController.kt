@@ -46,6 +46,8 @@ import java.lang.ref.WeakReference
 @SuppressLint("StaticFieldLeak")
 object ImprovController {
     private const val TAG = "S1Kiosk.Improv"
+    /** How long after a join's result a process restart still waits (the result must get out first). */
+    private const val SETTLE_MS = 8_000L
     const val WINDOW_MS = 10 * 60_000L
     const val BOOT_GRACE_MS = 30_000L
     /** Keep advertising PROVISIONED this long so clients see it (ESPHome STOP_ADVERTISING_DELAY). */
@@ -118,6 +120,18 @@ object ImprovController {
     private var startError: String? = null
     /** The Wi-Fi attempt in flight belongs to the installer (progress goes there), not to Improv. */
     private var installerJoining = false
+
+    /** Until when a finished join's result may still be on its way to the installer or HA (ms, elapsedRealtime). */
+    @Volatile private var settleUntil = 0L
+
+    /**
+     * A Wi-Fi join (from the installer or over Bluetooth) is in flight, or its result was sent moments
+     * ago. MainActivity must not restart the process then: joining Wi-Fi is exactly when Home Assistant
+     * gets discovered, and a restart would cut the Improv connection before the result arrives.
+     */
+    val busy: Boolean
+        get() = installerJoining || session?.state == ImprovState.PROVISIONING ||
+            SystemClock.elapsedRealtime() < settleUntil
     /** Installer requests in this process; an outcome only updates [installerWifi] if it's the latest. */
     private var installerSeq = 0
     private var notifying = false
@@ -279,6 +293,7 @@ object ImprovController {
     }
 
     private fun onInstallerOutcome(seq: Int, ssid: String, o: WifiProvisioner.Outcome) {
+        settleUntil = SystemClock.elapsedRealtime() + SETTLE_MS
         val result = when (o) {
             is WifiProvisioner.Outcome.Connected -> {
                 Log.i(TAG, "installer Wi-Fi: connected to '$ssid'")
@@ -331,6 +346,7 @@ object ImprovController {
     private val effects = object : ImprovSession.Effects {
         override fun publishState(state: ImprovState) {
             Log.i(TAG, "state -> $state")
+            if (state == ImprovState.PROVISIONED) settleUntil = SystemClock.elapsedRealtime() + SETTLE_MS
             ble?.setState(state)
             status = "${state.name.lowercase()} ($reason)"
             if (state == ImprovState.PROVISIONED) {

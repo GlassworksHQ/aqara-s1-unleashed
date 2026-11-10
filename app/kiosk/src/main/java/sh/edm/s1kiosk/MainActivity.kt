@@ -788,8 +788,24 @@ class MainActivity : Activity() {
             .show()
     }
 
-    /** Gecko prefs are read once per process, so restart the process to apply them. */
+    private var restartWaitingSince = 0L
+
+    /**
+     * Gecko prefs are read once per process, so restart the process to apply them. Not while a Wi-Fi
+     * join is in flight (installer or Bluetooth): joining is when HA gets discovered, and restarting
+     * then would cut the Improv connection before its result arrives. Waits up to a minute for that.
+     */
     private fun restartProcess() {
+        val now = SystemClock.elapsedRealtime()
+        if (ImprovController.busy && (restartWaitingSince == 0L || now - restartWaitingSince < 60_000)) {
+            if (restartWaitingSince == 0L) {
+                restartWaitingSince = now
+                Log.i(TAG, "restart deferred: Wi-Fi setup in progress")
+            }
+            window.decorView.postDelayed({ restartProcess() }, 1000)
+            return
+        }
+        restartWaitingSince = 0L
         val pi = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
