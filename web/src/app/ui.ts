@@ -838,6 +838,8 @@ class Installer {
     this.phase('radio', 'Choose what the radio does', 'The panel has a Zigbee/Thread radio. Leave it off, or let Home Assistant use it.', 'Radio');
     const list = $('#radio-list');
     const st = $('#radio-st');
+    list.hidden = false;
+    $('#radio-next').hidden = true;
     const s = c.state!;
     let chosen = s.radio.mode;
     list.innerHTML = '';
@@ -882,6 +884,7 @@ class Installer {
           return;
         }
       }
+      if (this.radioNextSteps(chosen)) return; // next: add it to HA and pair; Finish appears there
       void this.setup?.close();
       this.showDone(this.ip, this.wifiSsid);
     };
@@ -948,6 +951,47 @@ class Installer {
         btn.onclick = () => void this.sendWifi();
       };
     }
+  }
+
+  /**
+   * After the radio role is applied: what to do in Home Assistant to use it. Zigbee coordinator: add
+   * ZHA with the panel's socket path, then pair devices (HA's Zigbee "Add device" starts permit-join).
+   * Returns false when there is nothing to do (Off).
+   */
+  private radioNextSteps(mode: string): boolean {
+    const btn = $('#finish') as HTMLButtonElement;
+    const st = $('#radio-st');
+    const state = this.setup?.state;
+    const ip = state?.ip ?? this.ip;
+    const ha = state?.ha.url ? new URL(state.ha.url).origin : '';
+    if (mode === 'zigbee_tcp') {
+      $('#radio-list').hidden = true;
+      $('#radio-next').hidden = false;
+      document.querySelector<HTMLElement>('[data-s="app"] h2')!.textContent = 'Use the radio in Home Assistant';
+      document.querySelector<HTMLElement>('[data-s="app"] .body')!.textContent = 'The panel is now a Zigbee coordinator. Add it to Home Assistant, then pair your devices.';
+      const path = `socket://${ip ?? '<panel IP>'}:6638`;
+      $('#zha-path').textContent = path;
+      $('#zha-copy').onclick = async () => {
+        try { await navigator.clipboard.writeText(path); $('#zha-copy').textContent = 'Copied'; } catch { $('#zha-copy').textContent = 'Select it'; }
+        setTimeout(() => { $('#zha-copy').textContent = 'Copy'; }, 1600);
+      };
+      ($('#zha-pair') as HTMLAnchorElement).href = ha ? `${ha}/config/zha/add` : 'https://my.home-assistant.io/redirect/integration/?domain=zha';
+      $('#zha-add').onclick = () => { $('#zha-add-dot').className = 'dot sm done'; };
+      $('#zha-pair').onclick = () => { $('#zha-pair-dot').className = 'dot sm done'; };
+      btn.textContent = 'Finish';
+      btn.disabled = false;
+      btn.onclick = () => { void this.setup?.close(); this.showDone(this.ip, this.wifiSsid); };
+      return true;
+    }
+    if (mode === 'thread') {
+      st.className = 'status';
+      st.textContent = 'Thread border router is experimental: this build runs the Thread radio, but Home Assistant can\'t use it as a border router yet. That is coming in a later update.';
+      btn.textContent = 'Finish';
+      btn.disabled = false;
+      btn.onclick = () => { void this.setup?.close(); this.showDone(this.ip, this.wifiSsid); };
+      return true;
+    }
+    return false;
   }
 
   private async finishApp() {

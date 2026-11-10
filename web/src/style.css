@@ -384,3 +384,13 @@ code{font-family:var(--mono);font-size:12.5px}
 #ha-block,#radio-block{margin-top:22px}
 .opt .tag.soon{color:var(--mu);background:rgba(255,255,255,.07)}
 .applog{margin-top:20px;display:flex;flex-direction:column;gap:20px}
+
+/* radio next steps */
+#radio-next .row{align-items:flex-start}
+#radio-next .row .btn{margin-top:2px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin-top:10px;font-size:14px}
+.kv dt{color:var(--fa)}
+.kv dd{color:var(--tx);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.kv code{font-size:13px;background:rgba(0,0,0,.3);border:1px solid var(--bd);border-radius:8px;padding:3px 8px}
+.copy{border:1px solid var(--bd);background:var(--s2);color:var(--mu);border-radius:8px;padding:3px 9px;font-size:12px;cursor:pointer}
+.copy:hover{color:var(--tx)}
