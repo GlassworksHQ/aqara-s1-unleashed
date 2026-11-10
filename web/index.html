@@ -131,13 +131,30 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
           </div>
         </div>
         <div id="wifi-block" hidden>
-          <div class="sub"><div class="label">Wi-Fi</div><span>Sent to the panel over USB</span></div>
-          <div class="well settings">
-            <label class="set"><span class="t"><b>Network</b><span id="wifi-scan-st">Looking for networks the panel can see…</span></span><select id="wifi-ssid" aria-label="Wi-Fi network"></select></label>
-            <label class="set" id="wifi-other-row" hidden><span class="t"><b>Network name</b><span>Exactly as it is spelled</span></span><input id="wifi-other" class="txt" type="text" autocomplete="off" spellcheck="false" aria-label="Network name"></label>
-            <label class="set" id="wifi-psk-row"><span class="t"><b>Password</b><span>Goes straight to the panel; never stored here</span></span><input id="wifi-psk" class="txt" type="password" autocomplete="off" aria-label="Wi-Fi password"></label>
+          <div id="wifi-pick">
+            <div class="sub"><div class="label">Wi-Fi</div><span id="wifi-scan-st">Looking for networks the panel can see…</span></div>
+            <div class="well nets" id="wifi-list" role="listbox" aria-label="Wi-Fi networks"></div>
+            <div class="well settings wifi-form">
+              <label class="set" id="wifi-other-row" hidden><span class="t"><b>Network name</b><span>Exactly as it is spelled</span></span><input id="wifi-other" class="txt" type="text" autocomplete="off" spellcheck="false" aria-label="Network name"></label>
+              <label class="set" id="wifi-psk-row" hidden><span class="t"><b>Password</b><span>Goes straight to the panel over USB; never stored here</span></span><input id="wifi-psk" class="txt" type="password" autocomplete="off" aria-label="Wi-Fi password"></label>
+            </div>
+            <div class="status" id="wifi-st"></div>
           </div>
-          <div class="status" id="wifi-st"></div>
+          <div class="well wconn" id="wifi-connect" hidden>
+            <div class="wico" aria-hidden="true">
+              <svg viewBox="0 0 64 64"><path class="a3" d="M8 26a34 34 0 0 1 48 0"/><path class="a2" d="M16 34a23 23 0 0 1 32 0"/><path class="a1" d="M24 42a12 12 0 0 1 16 0"/><circle class="a0" cx="32" cy="50" r="3.2"/><path class="chk" d="M24 33l6 6 11-12"/></svg>
+            </div>
+            <div class="wtext">
+              <div class="label" id="wc-label">Connecting</div>
+              <b id="wc-title"></b>
+              <ol class="wsteps">
+                <li data-k="sent"><i></i>Details sent to the panel</li>
+                <li data-k="join"><i></i>Joining the network</li>
+                <li data-k="ok"><i></i>Connected</li>
+              </ol>
+              <span class="wc-err" id="wc-err"></span>
+            </div>
+          </div>
         </div>
       </div>
       <div class="actions"><button class="btn quiet" id="wifi-skip" hidden>Skip: set up Wi-Fi on the panel</button><span class="sp"></span><span class="hint" id="finish-hint">Waiting for the panel…</span><button class="btn primary" id="finish" disabled>Set up the panel</button></div>

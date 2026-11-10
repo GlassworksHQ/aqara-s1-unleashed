@@ -14,10 +14,10 @@ export const PacketType = { State: 0x01, Error: 0x02, Rpc: 0x03, RpcResult: 0x04
 export const Rpc = { WifiSettings: 0x01, RequestState: 0x02, RequestInfo: 0x03, ScanWifi: 0x04 } as const;
 export const State = { Ready: 0x02, Provisioning: 0x03, Provisioned: 0x04 } as const;
 const ERRORS: Record<number, string> = {
-  0x01: 'the panel did not understand the request',
-  0x02: 'the panel does not support that request',
-  0x03: 'the panel could not connect to that network (wrong password, or out of range?)',
-  0xff: 'unknown error on the panel',
+  0x01: 'The panel did not understand the request.',
+  0x02: 'The panel does not support that request.',
+  0x03: 'The panel could not join that network. Check the password, or that the network is in range.',
+  0xff: 'Something went wrong on the panel.',
 };
 
 export interface Packet { type: number; data: Uint8Array }

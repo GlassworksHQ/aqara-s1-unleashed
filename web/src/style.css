@@ -304,3 +304,63 @@ code{font-family:var(--mono);font-size:12.5px}
 .set input.txt:focus{border-color:rgba(255,255,255,.3)}
 .status.err{color:var(--rose)}
 @media (max-width:899px){.set input.txt{max-width:none;width:100%}}
+
+/* Wi-Fi: network list */
+.nets{display:flex;flex-direction:column;max-height:264px;overflow-y:auto;scrollbar-width:thin}
+.net{display:flex;align-items:center;gap:14px;padding:12px 18px;border:0;background:none;color:var(--tx);text-align:left;font:inherit;font-size:15px;cursor:pointer;transition:background .2s}
+.net+.net{border-top:1px solid var(--bd)}
+.net:hover{background:rgba(255,255,255,.03)}
+.net[aria-selected=true]{background:rgba(251,191,36,.07)}
+.net .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.net[aria-selected=true] .nm{font-weight:500}
+.net .rad{flex:none;width:16px;height:16px;border-radius:50%;border:1.5px solid rgba(255,255,255,.25);transition:all .2s}
+.net[aria-selected=true] .rad{border-color:var(--amber);box-shadow:inset 0 0 0 3.5px var(--bg);background:var(--amber)}
+.net svg{flex:none;width:20px;height:20px;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.net .sig path,.net .sig circle{stroke:rgba(255,255,255,.18);stroke-width:2.2}
+.net .sig circle{fill:rgba(255,255,255,.18);stroke:none}
+.net .sig .on{stroke:var(--mu)}
+.net .sig circle.on{fill:var(--mu)}
+.net[aria-selected=true] .sig .on{stroke:var(--tx)}
+.net[aria-selected=true] .sig circle.on{fill:var(--tx)}
+.net .lock{stroke:var(--fa);stroke-width:1.8;width:15px;height:15px}
+.net.other .nm{color:var(--mu)}
+.nets:empty::before{content:"Looking for networks…";padding:14px 18px;color:var(--fa);font-size:14px}
+.wifi-form:not(:has(.set:not([hidden]))){display:none}
+.wifi-form{margin-top:12px}
+
+/* Wi-Fi: connecting */
+.wconn{display:flex;align-items:center;gap:28px;padding:26px 28px;animation:fadein .3s ease}
+.wico{flex:none;width:112px;height:112px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle,rgba(251,191,36,.16),rgba(251,191,36,0) 70%);transition:background .5s}
+.wico svg{width:64px;height:64px;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-width:4}
+.wico path,.wico circle{stroke:var(--amber);transition:stroke .5s,opacity .4s}
+.wico circle{fill:var(--amber);stroke:none;transition:fill .5s}
+.wico .chk{stroke:var(--bg);stroke-width:4.5;stroke-dasharray:30;stroke-dashoffset:30;opacity:0}
+.wconn.busy .a1{animation:ripple 1.6s ease-in-out infinite .15s}
+.wconn.busy .a2{animation:ripple 1.6s ease-in-out infinite .3s}
+.wconn.busy .a3{animation:ripple 1.6s ease-in-out infinite .45s}
+.wconn.busy .a0{animation:ripple 1.6s ease-in-out infinite}
+@keyframes ripple{0%,100%{opacity:.18}35%{opacity:1}}
+.wconn.ok .wico{background:radial-gradient(circle,var(--green) 0 46%,rgba(52,211,153,.18) 47%,rgba(52,211,153,0) 70%)}
+.wconn.ok .wico path:not(.chk),.wconn.ok .wico circle{opacity:0}
+.wconn.ok .wico .chk{opacity:1;stroke-dashoffset:0;transition:stroke-dashoffset .5s var(--ease) .15s,opacity .2s}
+.wconn.err .wico{background:radial-gradient(circle,rgba(251,113,133,.16),rgba(251,113,133,0) 70%)}
+.wconn.err .wico path:not(.chk){stroke:var(--rose);opacity:.35}
+.wconn.err .wico circle{fill:var(--rose)}
+.wtext{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.wtext b{font-size:26px;font-weight:300;letter-spacing:-.01em;line-height:1.2}
+.wconn.ok #wc-label{color:var(--green)}
+.wconn.err #wc-label{color:var(--rose)}
+.wconn.busy #wc-label{color:var(--amber)}
+.wsteps{list-style:none;display:flex;flex-direction:column;gap:7px;margin-top:8px}
+.wsteps li{display:flex;align-items:center;gap:10px;font-size:14.5px;color:var(--fa);transition:color .3s}
+.wsteps i{flex:none;width:16px;height:16px;border-radius:50%;border:1.5px solid rgba(255,255,255,.18);position:relative;transition:all .3s}
+.wsteps li.cur{color:var(--tx)}
+.wsteps li.cur i{border-color:rgba(251,191,36,.25);border-top-color:var(--amber);animation:spin 1s linear infinite}
+.wsteps li.done{color:var(--mu)}
+.wsteps li.done i{background:var(--green);border-color:var(--green)}
+.wsteps li.done i::after{content:"";position:absolute;left:4.5px;top:2px;width:3.5px;height:7px;border:solid var(--bg);border-width:0 1.8px 1.8px 0;transform:rotate(45deg)}
+.wsteps li.fail{color:var(--rose)}
+.wsteps li.fail i{border-color:var(--rose)}
+.wc-err{font-size:14px;color:var(--mu);margin-top:4px}
+.wc-err:empty{display:none}
+@media (max-width:899px){.wconn{flex-direction:column;text-align:center;gap:16px}.wsteps{align-items:center}}

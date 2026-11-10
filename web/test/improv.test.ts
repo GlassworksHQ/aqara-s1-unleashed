@@ -81,6 +81,6 @@ describe('ImprovSerialClient against a simulated panel', () => {
     const progress: string[] = [];
     expect(await c.provision('Home Net', 'right', (s) => progress.push(s))).toBe('http://192.168.1.50:6053');
     expect(progress).toEqual(['Connecting to Home Net…']);
-    await expect(c.provision('Home Net', 'wrong')).rejects.toThrow(/could not connect/);
+    await expect(c.provision('Home Net', 'wrong')).rejects.toThrow(/could not join/);
   });
 });

@@ -4,7 +4,7 @@ import { loadOrCreateAdbKey, type AdbKey, type PanelShell } from '../adb';
 import { Assets } from '../assets';
 import { FelDevice } from '../fel';
 import { unprovision } from '../provision';
-import { IMPROV_SOCKET, ImprovSerialClient, State as ImprovState } from '../improv';
+import { IMPROV_SOCKET, ImprovSerialClient, PacketReader, PacketType, Rpc, State as ImprovState, frame, parseResult, strings, type ByteStream } from '../improv';
 import { BackupStore, backupZip, readBackupZip, type BackupFile, type BackupMeta } from './backup';
 import { webUsbDevices } from './devices';
 import { InstallFlow, fmtSize, restoreFromBackup, type AskKind, type Bar, type FlowUi, type PartState, type Progress } from './flow';
@@ -53,6 +53,49 @@ const ASK: Record<AskKind, { lead: string; title: string; body: string; pick: st
     note: 'That\'s the panel\'s name over USB. If it isn\'t in the list yet, keep the list open: it appears once the panel has started (up to a minute).',
   },
 };
+const LOCK = '<svg class="lock" viewBox="0 0 24 24" aria-label="needs a password"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+
+/** Wi-Fi mark (dot + 3 arcs) with as many parts lit as the signal deserves. */
+function signalIcon(rssi: number): string {
+  const level = rssi >= -55 ? 4 : rssi >= -67 ? 3 : rssi >= -78 ? 2 : 1;
+  const on = (n: number) => (level >= n ? ' class="on"' : '');
+  return `<svg class="sig" viewBox="0 0 24 24" aria-label="signal ${level} of 4">`
+    + `<path${on(4)} d="M2.5 9.5a13.5 13.5 0 0 1 19 0"/><path${on(3)} d="M5.5 12.8a9 9 0 0 1 13 0"/>`
+    + `<path${on(2)} d="M8.6 16a4.6 4.6 0 0 1 6.8 0"/><circle${on(1)} cx="12" cy="19.2" r="1.6"/></svg>`;
+}
+
+/** Development only: a panel answering Improv Serial, for ?demo=wifi. */
+function demoImprov(fail: boolean): ByteStream {
+  const reader = new PacketReader();
+  let cb: (c: Uint8Array) => void = () => {};
+  const send = (t: number, d: Uint8Array, ms = 0) => setTimeout(() => cb(frame(t, d)), ms);
+  const result = (cmd: number, ss: string[], ms = 0) => {
+    const b = strings(...ss);
+    send(PacketType.RpcResult, Uint8Array.of(cmd, b.length, ...b), ms);
+  };
+  return {
+    onData: (f) => { cb = f; },
+    close: async () => {},
+    write: async (data) => {
+      for (const p of reader.push(data)) {
+        const cmd = p.data[0];
+        if (cmd === Rpc.RequestState) send(PacketType.State, Uint8Array.of(ImprovState.Ready));
+        if (cmd === Rpc.ScanWifi) {
+          [['Home Net', '-48', 'YES'], ['Home Net 5G', '-62', 'YES'], ['Neighbours', '-74', 'YES'], ['Cafe Guest', '-83', 'NO']]
+            .forEach((n, i) => result(Rpc.ScanWifi, n, 600 + i * 40));
+          result(Rpc.ScanWifi, [], 800);
+        }
+        if (cmd === Rpc.WifiSettings) {
+          void parseResult(p.data);
+          send(PacketType.State, Uint8Array.of(ImprovState.Provisioning), 900);
+          if (fail) send(PacketType.Error, Uint8Array.of(0x03), 4200);
+          else { send(PacketType.State, Uint8Array.of(ImprovState.Provisioned), 4200); result(Rpc.WifiSettings, ['http://192.168.1.50:6053'], 4250); }
+        }
+      }
+    },
+  };
+}
+
 const BARS: Bar[] = ['backup', 'patch', 'flash', 'verify'];
 const TITLE = 'S1 Unleashed Installer';
 
@@ -402,6 +445,15 @@ class Installer {
       if (which === 'install') this.progress({ overall: 0.8, phase: 'verify', phasePct: 0.5, title: 'Writing the new software', sub: 'Reading boot back to check it', bars: { backup: 1, patch: 1, flash: 0.8, verify: 0.6 } });
       if (which === 'ask-fastboot') void this.ask('fastboot', () => new Promise(() => {}), never);
     }
+    if (which.startsWith('wifi')) {
+      // a simulated panel speaking Improv Serial: ?demo=wifi (works) or ?demo=wifi-fail (wrong password)
+      this.show('app');
+      this.adbRow('ok', 'S1 Kiosk installed', 'Set as the home screen', 'Done');
+      $('#hands').hidden = true;
+      this.panel = { run: async () => ({ out: '', code: 0 }), push: async () => {}, openStream: async () => demoImprov(which === 'wifi-fail') };
+      void this.wifiStep();
+      return;
+    }
     if (which === 'app' || which === 'ask-adb') {
       this.show('app');
       if (which === 'ask-adb') void this.ask('adb', () => new Promise(() => {}), never);
@@ -471,10 +523,10 @@ class Installer {
     btn.textContent = 'Connect';
     btn.disabled = true;
     $('#finish-hint').textContent = '';
-    const sel = $('#wifi-ssid') as HTMLSelectElement;
-    sel.innerHTML = '';
-    sel.append(new Option('Looking…', ''));
-    sel.disabled = true;
+    const list = $('#wifi-list');
+    list.innerHTML = '';
+    $('#wifi-pick').hidden = false;
+    $('#wifi-connect').hidden = true;
     this.improv = await this.openImprov();
     if (!this.improv) {
       $('#wifi-scan-st').textContent = 'This app version can\'t take Wi-Fi from the computer';
@@ -487,50 +539,88 @@ class Installer {
     if (this.improv.state === ImprovState.Provisioned) $('#wifi-st').textContent = 'The panel is already on Wi-Fi; pick another network to change it, or skip.';
     let networks: { ssid: string; rssi: number; secure: boolean }[] = [];
     try { networks = await this.improv.scan(); } catch { /* typed by hand then */ }
-    sel.innerHTML = '';
-    for (const n of networks) {
-      const o = new Option(n.ssid, n.ssid); // strongest first; open networks just hide the password
-      o.dataset.secure = String(n.secure);
-      sel.append(o);
-    }
-    sel.append(new Option('Other network…', '\u0000other'));
-    sel.disabled = false;
-    $('#wifi-scan-st').textContent = networks.length ? `${networks.length} network${networks.length === 1 ? '' : 's'} in range of the panel` : 'None found: type the name';
-    const sync = () => {
-      const other = sel.value === '\u0000other';
-      $('#wifi-other-row').hidden = !other;
-      const secure = other || sel.selectedOptions[0]?.dataset.secure !== 'false';
-      $('#wifi-psk-row').hidden = !secure;
+    $('#wifi-scan-st').textContent = networks.length ? `${networks.length} in range of the panel` : 'None found: type the name';
+    const pick = (row: HTMLElement) => {
+      for (const r of list.children) r.setAttribute('aria-selected', String(r === row));
+      this.wifiChoice = row.dataset.other ? { other: true, secure: true } : { ssid: row.dataset.ssid!, secure: row.dataset.secure === 'true' };
+      $('#wifi-other-row').hidden = !row.dataset.other;
+      $('#wifi-psk-row').hidden = !this.wifiChoice.secure;
       btn.disabled = false;
+      (row.dataset.other ? $('#wifi-other') : this.wifiChoice.secure ? $('#wifi-psk') : btn).focus();
     };
-    sel.onchange = sync;
-    sync();
+    for (const n of networks) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'net';
+      row.setAttribute('role', 'option');
+      row.dataset.ssid = n.ssid;
+      row.dataset.secure = String(n.secure);
+      row.innerHTML = `<i class="rad"></i><span class="nm"></span>${n.secure ? LOCK : ''}${signalIcon(n.rssi)}`;
+      row.querySelector('.nm')!.textContent = n.ssid;
+      row.title = `${n.ssid} · ${n.rssi} dBm${n.secure ? ' · password' : ' · open'}`;
+      row.onclick = () => pick(row);
+      list.append(row);
+    }
+    const other = document.createElement('button');
+    other.type = 'button';
+    other.className = 'net other';
+    other.setAttribute('role', 'option');
+    other.dataset.other = '1';
+    other.innerHTML = '<i class="rad"></i><span class="nm">Other network…</span>';
+    other.onclick = () => pick(other);
+    list.append(other);
+    if (list.firstElementChild) pick(list.firstElementChild as HTMLElement);
     btn.onclick = () => void this.sendWifi();
+  }
+
+  private wifiChoice: { ssid?: string; secure: boolean; other?: boolean } = { secure: true };
+
+  /** The connecting view: animated Wi-Fi mark + three steps; ok / err end states. */
+  private wifiView(state: 'busy' | 'ok' | 'err', title: string, step: 'sent' | 'join' | 'ok', err = '') {
+    $('#wifi-pick').hidden = true;
+    const v = $('#wifi-connect');
+    v.hidden = false;
+    v.className = `well wconn ${state}`;
+    $('#wc-label').textContent = state === 'ok' ? 'Connected' : state === 'err' ? 'Could not connect' : 'Connecting';
+    $('#wc-title').textContent = title;
+    $('#wc-err').textContent = err;
+    const order = ['sent', 'join', 'ok'];
+    const at = order.indexOf(step);
+    v.querySelectorAll<HTMLElement>('.wsteps li').forEach((li, i) => {
+      li.className = state === 'ok' || i < at ? 'done' : i === at ? (state === 'err' ? 'fail' : 'cur') : '';
+    });
   }
 
   private async sendWifi() {
     const btn = $('#finish') as HTMLButtonElement;
-    const sel = $('#wifi-ssid') as HTMLSelectElement;
-    const ssid = sel.value === '\u0000other' ? ($('#wifi-other') as HTMLInputElement).value : sel.value;
-    const psk = $('#wifi-psk-row').hidden ? '' : ($('#wifi-psk') as HTMLInputElement).value;
+    const c = this.wifiChoice;
+    const ssid = c.other ? ($('#wifi-other') as HTMLInputElement).value : c.ssid ?? '';
+    const psk = c.secure ? ($('#wifi-psk') as HTMLInputElement).value : '';
     const st = $('#wifi-st');
     if (!ssid) { st.className = 'status err'; st.textContent = 'Pick or type a network.'; return; }
     btn.disabled = true;
-    st.className = 'status';
-    st.textContent = `Sending to the panel…`;
+    ($('#wifi-skip') as HTMLButtonElement).hidden = true;
+    this.wifiView('busy', ssid, 'sent');
     try {
-      await this.improv!.provision(ssid, psk, (s) => { st.textContent = s; });
-      this.wifiDone = true;
+      await this.improv!.provision(ssid, psk, () => this.wifiView('busy', ssid, 'join'));
       ($('#wifi-psk') as HTMLInputElement).value = '';
-      st.className = 'status ok';
-      st.textContent = `Connected to ${ssid}`;
+      this.wifiView('ok', ssid, 'ok');
       this.log(`${new Date().toTimeString().slice(0, 8)} panel connected to Wi-Fi ${ssid}`);
       void this.improv!.close();
-      setTimeout(() => this.showDone(this.ip, ssid), 900);
-    } catch (e) {
-      st.className = 'status err';
-      st.textContent = (e as Error).message;
+      btn.textContent = 'Finish';
       btn.disabled = false;
+      btn.onclick = () => this.showDone(this.ip, ssid);
+    } catch (e) {
+      this.wifiView('err', ssid, 'join', (e as Error).message);
+      btn.textContent = 'Try again';
+      btn.disabled = false;
+      ($('#wifi-skip') as HTMLButtonElement).hidden = false;
+      btn.onclick = () => {
+        $('#wifi-connect').hidden = true;
+        $('#wifi-pick').hidden = false;
+        btn.textContent = 'Connect';
+        btn.onclick = () => void this.sendWifi();
+      };
     }
   }
 
