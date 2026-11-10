@@ -67,6 +67,11 @@ else
   [ -n "${v:-}" ] || die "no FEL device found"
   echo "$v"
   case "$v" in *soc=00001855*) ;; *) die "not an A133 (expected soc=00001855)";; esac
+  # Secure-boot status word in the SID (A133: SID 0x03006000 + 0xa0, as sunxi-fel's soc_info uses).
+  # Non-zero means the boot ROM only runs signed (TOC0) code: our unsigned SPL would be refused.
+  sb=$("$FEL" readl 0x030060a0 2>/dev/null) || die "could not read the secure-boot status from FEL"
+  echo "secure boot status: $sb"
+  [ "$((sb))" -eq 0 ] || die "secure boot is ENABLED on this chip (SID+0xa0=$sb): unsigned code can't run, so this installer can't work"
 
   say "2/8 Booting our U-Boot from RAM (nothing is written)"
   NO_BL31=1 SUNXI_FEL="$FEL" "$HERE/../fel/fel-boot.sh" "$UBUILD"
