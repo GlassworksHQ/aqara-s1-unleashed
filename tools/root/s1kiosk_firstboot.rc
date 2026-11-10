@@ -1,0 +1,13 @@
+# S1 Kiosk first-boot provisioning (tools/root/s1kiosk_firstboot.sh), injected by Magisk as
+# overlay.d/s1kiosk_firstboot.rc; the script ships in overlay.d/sbin (${MAGISKTMP}). One-shot; the
+# script itself exits at once after the first successful run.
+service s1kiosk_firstboot /system/bin/sh ${MAGISKTMP}/s1kiosk_firstboot.sh
+    user root
+    group root system
+    seclabel u:r:su:s0
+    oneshot
+    disabled
+
+# settings(1) needs system_server, hence boot_completed.
+on property:sys.boot_completed=1
+    start s1kiosk_firstboot

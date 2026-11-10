@@ -30,6 +30,13 @@ OTBR_ARGS=""
 EZSP_PTY=/dev/ttyZigbeeNCP               # host side of Aqara's socat pty pair (zigbeed is on /tmp/ttyZigbeeNCP)
 CPC_SOCK=/dev/shm/cpcd/cpcd_0/ctrl.cpcd.sock
 BUNDLE=${0%/*}                           # binaries shipped next to this script (boot image: ${MAGISKTMP})
+# A newer helper in $DIR (root-owned, root-only dir) replaces the one baked into the boot image, so
+# fixes and new modes ship as a file instead of a new boot image. S1R_NO_OVERRIDE stops the hand-off loop.
+if [ -z "$S1R_NO_OVERRIDE" ] && [ "$0" != "$DIR/s1kiosk_radio.sh" ] && [ -f "$DIR/s1kiosk_radio.sh" ] &&
+   [ "$(stat -c %u "$DIR/s1kiosk_radio.sh")" = 0 ] && [ "$(stat -c %u "$DIR")" = 0 ]; then
+  S1R_NO_OVERRIDE=1 S1R_BUNDLE="$BUNDLE" exec /system/bin/sh "$DIR/s1kiosk_radio.sh" "$@"
+fi
+BUNDLE=${S1R_BUNDLE:-$BUNDLE}            # an override still uses the boot image's bundled binaries
 # Root-only state dir; created on first run so a freshly flashed boot image needs no other install step.
 [ -d "$DIR" ] || { mkdir -p "$DIR" && chown root:root "$DIR" && chmod 700 "$DIR"; }
 # A binary in $DIR (user-installed) wins over the bundled copy.
