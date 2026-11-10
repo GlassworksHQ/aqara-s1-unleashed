@@ -1,1 +1,1 @@
-export { DEBLOAT, PKG, deviceInfo, provision, q, unprovision, type ProvisionOptions, type StepFn } from './provision';
+export { DEBLOAT, PKG, deviceInfo, parseWifiScan, provision, q, scanWifi, unprovision, type ProvisionOptions, type StepFn, type WifiNetwork } from './provision';

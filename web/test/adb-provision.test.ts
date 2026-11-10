@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryKeyStorage, loadOrCreateAdbKey, type PanelShell } from '../src/adb';
-import { DEBLOAT, provision, q, unprovision } from '../src/provision';
+import { DEBLOAT, parseWifiScan, provision, q, unprovision } from '../src/provision';
 
 describe('adb key', () => {
   it('is created once, kept, and its public key is an adb_keys line for the same modulus', async () => {
@@ -133,3 +133,26 @@ class UndoPanel implements PanelShell {
   }
   async push() {}
 }
+
+describe('Wi-Fi from the computer', () => {
+  const dump = [
+    'some header',
+    'Latest scan results:',
+    '    BSSID              Frequency      RSSI           Age(sec)     SSID                                 Flags',
+    '  aa:bb:cc:dd:ee:01       2437        -61          3.456      Home Net                             [WPA2-PSK-CCMP][RSN-PSK-CCMP][ESS]',
+    '  aa:bb:cc:dd:ee:02       5180        -48          1.002      Home Net                             [WPA2-PSK-CCMP][ESS]',
+    '  aa:bb:cc:dd:ee:03       2412        -70          9.100      Cafe                                 [ESS]',
+    '  aa:bb:cc:dd:ee:04       2462        -55         >1000.0                                           [WPA2-PSK-CCMP][ESS]',
+    '',
+    'Locked networks: ...',
+  ].join('\n');
+
+  it('parses the scan: one entry per SSID, strongest first, hidden skipped, security from flags', () => {
+    expect(parseWifiScan(dump)).toEqual([
+      { ssid: 'Home Net', rssi: -48, secure: true },
+      { ssid: 'Cafe', rssi: -70, secure: false },
+    ]);
+    expect(parseWifiScan('no scan here')).toEqual([]);
+  });
+
+});

@@ -121,7 +121,7 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
           <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5m0 3.5h0M10.3 3.9 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
           <div class="t"><b>Don't touch the panel's screen</b><span>It may show Aqara's setup (language, Wi-Fi, terms). Leave it alone: don't pick anything or agree to anything. S1 Kiosk replaces it in a moment.</span></div>
         </div>
-        <div>
+        <div id="settings-block">
           <div class="sub"><div class="label">Panel settings</div><span>From this computer; change any of them</span></div>
           <div class="well settings">
             <label class="set"><span class="t"><b>Language &amp; region</b><span>Menus, dates and numbers</span></span><select id="opt-locale" aria-label="Language and region"></select></label>
@@ -130,8 +130,17 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
             <label class="set"><span class="t"><b>On-screen keyboard</b><span>Simple Keyboard (Apache-2.0) instead of Aqara's</span></span><input type="checkbox" id="opt-kb" checked class="sw" aria-label="Install Simple Keyboard"></label>
           </div>
         </div>
+        <div id="wifi-block" hidden>
+          <div class="sub"><div class="label">Wi-Fi</div><span>Sent to the panel over USB</span></div>
+          <div class="well settings">
+            <label class="set"><span class="t"><b>Network</b><span id="wifi-scan-st">Looking for networks the panel can see…</span></span><select id="wifi-ssid" aria-label="Wi-Fi network"></select></label>
+            <label class="set" id="wifi-other-row" hidden><span class="t"><b>Network name</b><span>Exactly as it is spelled</span></span><input id="wifi-other" class="txt" type="text" autocomplete="off" spellcheck="false" aria-label="Network name"></label>
+            <label class="set" id="wifi-psk-row"><span class="t"><b>Password</b><span>Goes straight to the panel; never stored here</span></span><input id="wifi-psk" class="txt" type="password" autocomplete="off" aria-label="Wi-Fi password"></label>
+          </div>
+          <div class="status" id="wifi-st"></div>
+        </div>
       </div>
-      <div class="actions"><span class="sp"></span><span class="hint" id="finish-hint">Waiting for the panel…</span><button class="btn primary" id="finish" disabled>Set up the panel</button></div>
+      <div class="actions"><button class="btn quiet" id="wifi-skip" hidden>Skip: set up Wi-Fi on the panel</button><span class="sp"></span><span class="hint" id="finish-hint">Waiting for the panel…</span><button class="btn primary" id="finish" disabled>Set up the panel</button></div>
     </section>
 
     <!-- 5 · Done -->

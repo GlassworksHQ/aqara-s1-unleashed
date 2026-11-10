@@ -295,3 +295,12 @@ code{font-family:var(--mono);font-size:12.5px}
 .note span{display:block;font-size:13.5px;color:var(--mu)}
 .note.err{border-color:rgba(251,113,133,.3);background:rgba(251,113,133,.05)}
 .note.err b{color:var(--rose)}
+
+/* the log keeps its size: newest line on top, scroll for older ones */
+.log{height:212px;overflow-y:auto;overscroll-behavior:contain;padding-right:6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+.det .well:has(.log){align-self:start}
+
+.set input.txt{max-width:56%;width:300px;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:9px 12px;font:inherit;font-size:14.5px;color:var(--tx);outline:none}
+.set input.txt:focus{border-color:rgba(255,255,255,.3)}
+.status.err{color:var(--rose)}
+@media (max-width:899px){.set input.txt{max-width:none;width:100%}}

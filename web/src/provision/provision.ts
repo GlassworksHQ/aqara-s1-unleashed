@@ -35,9 +35,46 @@ export interface ProvisionOptions {
   locale?: string;
   /** 24-hour clock (true) or 12-hour (false); unchanged if undefined. */
   clock24?: boolean;
+
   keyboardApk?: Uint8Array;
   debloat?: boolean;   // default true
   dndOff?: boolean;    // default true
+}
+
+export interface WifiNetwork { ssid: string; rssi: number; secure: boolean }
+
+/**
+ * Parses the "Latest scan results" table of `dumpsys wifi` (Android 10):
+ *   BSSID  Frequency  RSSI  Age(sec)  SSID  Flags
+ * The SSID may contain spaces: it is whatever lies between the age and the first `[` of the flags.
+ * Returns one entry per SSID (strongest signal), strongest first; hidden networks are skipped.
+ */
+export function parseWifiScan(dump: string): WifiNetwork[] {
+  const i = dump.indexOf('Latest scan results:');
+  if (i < 0) return [];
+  const best = new Map<string, WifiNetwork>();
+  for (const line of dump.slice(i).split(/\r?\n/).slice(1)) {
+    const m = /^\s*([0-9a-f]{2}(?::[0-9a-f]{2}){5})\s+\d+\s+(-?\d+)\s+[\d.>]+\s+(.*?)\s*(\[.*)?$/i.exec(line);
+    if (!m) { if (best.size && line.trim() === '') break; continue; }
+    const ssid = m[3]!.trim();
+    if (!ssid) continue;
+    const rssi = Number(m[2]);
+    const secure = /WPA|WEP|SAE|EAP|PSK/.test(m[4] ?? '');
+    const prev = best.get(ssid);
+    if (!prev || rssi > prev.rssi) best.set(ssid, { ssid, rssi, secure });
+  }
+  return [...best.values()].sort((a, b) => b.rssi - a.rssi);
+}
+
+/** Turns Wi-Fi on and reads what the panel can see (best effort: empty if nothing yet). */
+export async function scanWifi(p: PanelShell, sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<WifiNetwork[]> {
+  await p.run('svc wifi enable');
+  for (let i = 0; i < 6; i++) {
+    const found = parseWifiScan((await p.run('dumpsys wifi')).out);
+    if (found.length) return found;
+    await sleep(2500);
+  }
+  return [];
 }
 
 export type StepFn = (step: string, detail?: string) => void;

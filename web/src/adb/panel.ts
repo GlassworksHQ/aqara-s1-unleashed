@@ -2,6 +2,7 @@
 import { Adb, AdbDaemonTransport } from '@yume-chan/adb';
 import { AdbDaemonWebUsbDevice, AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb';
 import { ReadableStream } from '@yume-chan/stream-extra';
+import type { ByteStream } from '../improv/serial';
 import type { AdbKey } from './key';
 
 /** What provisioning needs from a panel. Panel implements it over adb; the tests use a fake. */
@@ -9,6 +10,8 @@ export interface PanelShell {
   /** Runs a shell command; returns its output (stdout + stderr) and exit code. */
   run(cmd: string): Promise<{ out: string; code: number }>;
   push(path: string, data: Uint8Array, mode?: number): Promise<void>;
+  /** A raw stream to a service on the panel (e.g. 'localabstract:…'), if the transport has one. */
+  openStream?(service: string): Promise<ByteStream>;
 }
 
 const RC = '__S1RC=';
@@ -72,6 +75,27 @@ export class Panel implements PanelShell {
     } finally {
       await sync.dispose();
     }
+  }
+
+  async openStream(service: string): Promise<ByteStream> {
+    const socket = await this.adb.createSocket(service);
+    const writer = socket.writable.getWriter();
+    return {
+      write: (data) => writer.write(data),
+      onData: (cb) => {
+        void (async () => {
+          const reader = socket.readable.getReader();
+          try {
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              cb(value);
+            }
+          } catch { /* closed */ }
+        })();
+      },
+      close: async () => { try { await socket.close(); } catch { /* already closed */ } },
+    };
   }
 
   async close(): Promise<void> {

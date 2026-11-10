@@ -4,6 +4,7 @@ import { loadOrCreateAdbKey, type AdbKey, type PanelShell } from '../adb';
 import { Assets } from '../assets';
 import { FelDevice } from '../fel';
 import { unprovision } from '../provision';
+import { IMPROV_SOCKET, ImprovSerialClient, State as ImprovState } from '../improv';
 import { BackupStore, backupZip, readBackupZip, type BackupFile, type BackupMeta } from './backup';
 import { webUsbDevices } from './devices';
 import { InstallFlow, fmtSize, restoreFromBackup, type AskKind, type Bar, type FlowUi, type PartState, type Progress } from './flow';
@@ -20,7 +21,7 @@ const STEPS: Record<Mode, { name: string; done: string; cur: string }[]> = {
     { name: 'Check this browser', done: 'WebUSB ready', cur: 'WebUSB ready' },
     { name: 'Enter FEL mode', done: 'A133 found over USB', cur: 'Hold the button, plug in' },
     { name: 'Back up & install', done: 'Backed up · flashed · verified', cur: 'Backing up' },
-    { name: 'Set up the app', done: 'Kiosk installed', cur: 'Home Assistant address' },
+    { name: 'Set up the app', done: 'Kiosk installed', cur: 'Settings, then Wi-Fi' },
     { name: 'Done', done: 'Panel ready', cur: '' },
   ],
   undo: [
@@ -362,9 +363,9 @@ class Installer {
     t.textContent = line.slice(0, sp);
     div.append(t, line.slice(sp));
     const log = $('#log');
-    log.append(div);
-    while (log.childElementCount > 400) log.firstElementChild!.remove();
-    log.scrollTop = log.scrollHeight;
+    log.prepend(div); // newest at the top
+    while (log.childElementCount > 400) log.lastElementChild!.remove();
+    if (log.scrollTop < 40) log.scrollTop = 0; // follow new lines unless the reader scrolled down
   }
 
   // ---- app ------------------------------------------------------------------------------------
@@ -437,6 +438,103 @@ class Installer {
     set(!new Intl.DateTimeFormat(here, { hour: 'numeric' }).resolvedOptions().hour12);
   }
 
+  private ip?: string;
+  private improv?: ImprovSerialClient;
+  private wifiDone = false;
+
+  /** Opens Improv Serial to the app over adb (it may take a moment to start listening). */
+  private async openImprov(): Promise<ImprovSerialClient | undefined> {
+    const open = this.panel?.openStream?.bind(this.panel);
+    if (!open) return undefined;
+    for (let i = 0; i < 10; i++) {
+      try {
+        const c = new ImprovSerialClient(await open(IMPROV_SOCKET));
+        await c.requestState(3000);
+        return c;
+      } catch { await new Promise((r) => setTimeout(r, 1000)); }
+    }
+    return undefined;
+  }
+
+  /** After the app is in: Wi-Fi from this computer, over Improv Serial through adb. */
+  private async wifiStep() {
+    const btn = $('#finish') as HTMLButtonElement;
+    $('#settings-block').hidden = true;
+    $('#wifi-block').hidden = false;
+    ($('#wifi-skip') as HTMLButtonElement).hidden = false;
+    $('#wifi-skip').onclick = () => this.showDone(this.ip);
+    const h2 = document.querySelector<HTMLElement>('[data-s="app"] h2')!;
+    const lead = document.querySelector<HTMLElement>('[data-s="app"] .body')!;
+    h2.textContent = 'Connect it to Wi-Fi';
+    this.setStepDetail(3, 'Wi-Fi');
+    lead.textContent = 'Pick the network the panel should use. The password goes straight to the panel over USB.';
+    btn.textContent = 'Connect';
+    btn.disabled = true;
+    $('#finish-hint').textContent = '';
+    const sel = $('#wifi-ssid') as HTMLSelectElement;
+    sel.innerHTML = '';
+    sel.append(new Option('Looking…', ''));
+    sel.disabled = true;
+    this.improv = await this.openImprov();
+    if (!this.improv) {
+      $('#wifi-scan-st').textContent = 'This app version can\'t take Wi-Fi from the computer';
+      $('#wifi-st').textContent = 'Set up Wi-Fi on the panel instead: it shows Wi-Fi as the first step.';
+      btn.textContent = 'Finish';
+      btn.disabled = false;
+      btn.onclick = () => this.showDone(this.ip);
+      return;
+    }
+    if (this.improv.state === ImprovState.Provisioned) $('#wifi-st').textContent = 'The panel is already on Wi-Fi; pick another network to change it, or skip.';
+    let networks: { ssid: string; rssi: number; secure: boolean }[] = [];
+    try { networks = await this.improv.scan(); } catch { /* typed by hand then */ }
+    sel.innerHTML = '';
+    for (const n of networks) {
+      const signal = n.rssi >= -60 ? 'strong' : n.rssi >= -72 ? 'good' : 'weak';
+      const o = new Option(`${n.ssid} · ${signal}${n.secure ? '' : ' · open'}`, n.ssid);
+      o.dataset.secure = String(n.secure);
+      sel.append(o);
+    }
+    sel.append(new Option('Other network…', '\u0000other'));
+    sel.disabled = false;
+    $('#wifi-scan-st').textContent = networks.length ? `${networks.length} network${networks.length === 1 ? '' : 's'} in range of the panel` : 'None found: type the name';
+    const sync = () => {
+      const other = sel.value === '\u0000other';
+      $('#wifi-other-row').hidden = !other;
+      const secure = other || sel.selectedOptions[0]?.dataset.secure !== 'false';
+      $('#wifi-psk-row').hidden = !secure;
+      btn.disabled = false;
+    };
+    sel.onchange = sync;
+    sync();
+    btn.onclick = () => void this.sendWifi();
+  }
+
+  private async sendWifi() {
+    const btn = $('#finish') as HTMLButtonElement;
+    const sel = $('#wifi-ssid') as HTMLSelectElement;
+    const ssid = sel.value === '\u0000other' ? ($('#wifi-other') as HTMLInputElement).value : sel.value;
+    const psk = $('#wifi-psk-row').hidden ? '' : ($('#wifi-psk') as HTMLInputElement).value;
+    const st = $('#wifi-st');
+    if (!ssid) { st.className = 'status err'; st.textContent = 'Pick or type a network.'; return; }
+    btn.disabled = true;
+    st.className = 'status';
+    st.textContent = `Sending to the panel…`;
+    try {
+      await this.improv!.provision(ssid, psk, (s) => { st.textContent = s; });
+      this.wifiDone = true;
+      ($('#wifi-psk') as HTMLInputElement).value = '';
+      st.className = 'status ok';
+      st.textContent = `Connected to ${ssid}`;
+      this.log(`${new Date().toTimeString().slice(0, 8)} panel connected to Wi-Fi ${ssid}`);
+      void this.improv!.close();
+      setTimeout(() => this.showDone(this.ip, ssid), 900);
+    } catch (e) {
+      st.className = 'status err';
+      st.textContent = (e as Error).message;
+      btn.disabled = false;
+    }
+  }
+
   private async finishApp() {
     const btn = $('#finish') as HTMLButtonElement;
     btn.disabled = true;
@@ -451,17 +549,20 @@ class Installer {
       });
       this.adbRow('ok', 'S1 Kiosk installed', 'Set as the home screen', 'Done');
       $('#hands').hidden = true;
-      this.showDone(res.ip);
+      this.ip = res.ip;
+      await this.wifiStep();
     } catch (e) {
       this.fail(3, e);
     }
   }
 
-  private showDone(ip?: string) {
+  private showDone(ip?: string, wifi?: string) {
     const r = this.result;
     $('#done-title').textContent = 'You\'re all set';
-    $('#done-body').textContent = 'On the panel, connect to Wi-Fi and sign in to Home Assistant. Home Assistant then finds the panel by itself as an ESPHome device'
-      + (ip ? ` (${ip}, port 6053).` : '.');
+    $('#done-body').textContent = (wifi
+      ? `The panel is on ${wifi}. On the panel, add it to Home Assistant and sign in; Home Assistant also finds it by itself as an ESPHome device.`
+      : 'On the panel, connect to Wi-Fi and sign in to Home Assistant. Home Assistant then finds the panel by itself as an ESPHome device'
+        + (ip ? ` (${ip}, port 6053).` : '.'));
     $('#bk').hidden = !r;
     if (r) {
       const total = r.meta.files.reduce((n, f) => n + f.size, 0);
