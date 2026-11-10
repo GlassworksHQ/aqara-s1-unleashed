@@ -601,8 +601,6 @@ class Installer {
     list.innerHTML = '';
     $('#wifi-pick').hidden = false;
     $('#wifi-connect').hidden = true;
-    // After a factory reset Wi-Fi is off, and Android 10 won't let the app turn it on; adb's shell may.
-    await this.panel?.run('svc wifi enable').catch(() => undefined);
     this.improv = await this.openImprov((m) => { $('#wifi-scan-st').textContent = m; });
     if (!this.improv) {
       $('#wifi-scan-st').textContent = 'Couldn\'t reach S1 Kiosk on the panel';
