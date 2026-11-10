@@ -125,7 +125,16 @@ class VoiceEngine(
             return
         }
         try {
-            val ww = TfliteWakeWord.load(modelsDir, model)
+            val ww = try {
+                TfliteWakeWord.load(modelsDir, model)
+            } catch (e: ModelsMissingException) {
+                // A web install (or a wiped app) has no models yet: fetch them on the panel itself.
+                val fetched = try { ModelFetcher().ensure(modelsDir) } catch (io: java.io.IOException) {
+                    throw ModelsMissingException("${e.message}; downloading them failed: ${io.message}")
+                }
+                if (fetched.isEmpty()) throw e
+                TfliteWakeWord.load(modelsDir, model)
+            }
             if (model != activeModel) { ww.close(); return }
             synchronized(wwLock) { wakeWord?.close(); wakeWord = ww }
             lastError = null
