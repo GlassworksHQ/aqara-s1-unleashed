@@ -100,7 +100,8 @@ The full walkthrough, per-OS setup and troubleshooting are in **[docs/install.md
 > [!NOTE]
 > **The web installer is new.** It has been tested end to end on a real S1 Plus (firmware 4.5.80),
 > from FEL mode through the backup, the install and the app setup. The boot patch has been tested
-> on two firmware versions: 4.5.80 and the earlier release the panel shipped with. If anything looks wrong, stop and
+> on two firmware versions: 4.5.80 and the December 2025
+> firmware the panel shipped with. If anything looks wrong, stop and
 > [open an issue](https://github.com/aguilaair/aqara-s1-unleashed/issues). Your backup is safe.
 
 ### The command line
