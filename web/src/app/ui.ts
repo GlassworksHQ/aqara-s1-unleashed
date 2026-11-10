@@ -4,6 +4,7 @@ import { loadOrCreateAdbKey, type AdbKey, type PanelShell } from '../adb';
 import { Assets } from '../assets';
 import { FelDevice } from '../fel';
 import { unprovision } from '../provision';
+import { SETUP_SOCKET, SetupChannel, validHaUrl, type SetupState } from '../setup/channel';
 import { IMPROV_SOCKET, ImprovSerialClient, PacketReader, PacketType, Rpc, State as ImprovState, frame, parseResult, strings, type ByteStream } from '../improv';
 import { BackupStore, backupZip, readBackupZip, type BackupFile, type BackupMeta } from './backup';
 import { webUsbDevices } from './devices';
@@ -62,6 +63,36 @@ function signalIcon(rssi: number): string {
   return `<svg class="sig" viewBox="0 0 24 24" aria-label="signal ${level} of 4">`
     + `<path${on(4)} d="M2.5 9.5a13.5 13.5 0 0 1 19 0"/><path${on(3)} d="M5.5 12.8a9 9 0 0 1 13 0"/>`
     + `<path${on(2)} d="M8.6 16a4.6 4.6 0 0 1 6.8 0"/><circle${on(1)} cx="12" cy="19.2" r="1.6"/></svg>`;
+}
+
+/** Development only: the app's setup channel, for ?demo=wifi. */
+function demoSetup(): ByteStream {
+  let cb: (c: Uint8Array) => void = () => {};
+  const state: SetupState = {
+    ip: '192.168.1.50',
+    ha: { discovered: 'http://homeassistant.local:8123', url: '', signedIn: false, signinUrl: 'http://192.168.1.50:8099/signin' },
+    radio: {
+      mode: 'off', status: 'Off: radio idle', helper: true,
+      options: [
+        { id: 'off', label: 'Off', detail: 'The radio stays idle. Choose this if you don\'t use Zigbee or Thread here.' },
+        { id: 'zigbee_tcp', label: 'Zigbee coordinator', detail: 'Home Assistant runs a Zigbee network (ZHA) on this panel\'s radio, over the network.' },
+        { id: 'thread', label: 'Thread border router', detail: 'Home Assistant uses the panel as a Thread border router for Matter devices.', experimental: true },
+      ],
+    },
+  };
+  const send = (o: object, ms = 0) => setTimeout(() => cb(new TextEncoder().encode(`${JSON.stringify(o)}\n`)), ms);
+  return {
+    onData: (f) => { cb = f; },
+    close: async () => {},
+    write: async (data) => {
+      for (const line of new TextDecoder().decode(data).split('\n').filter(Boolean)) {
+        const m = JSON.parse(line) as { id: number; op: string; url?: string; mode?: string };
+        if (m.op === 'set_ha') { state.ha.url = m.url; setTimeout(() => { state.ha.signedIn = true; send({ event: 'state', state }); }, 6000); }
+        if (m.op === 'set_radio') { state.radio.mode = m.mode!; state.radio.status = m.mode === 'off' ? 'Off: radio idle' : 'Zigbee coordinator: listening on 192.168.1.50:6638'; }
+        send({ id: m.id, ok: true, state }, m.op === 'set_radio' ? 1500 : 200);
+      }
+    },
+  };
 }
 
 /** Development only: a panel answering Improv Serial, for ?demo=wifi. */
@@ -450,7 +481,8 @@ class Installer {
       this.show('app');
       this.adbRow('ok', 'S1 Kiosk installed', 'Set as the home screen', 'Done');
       $('#hands').hidden = true;
-      this.panel = { run: async () => ({ out: '', code: 0 }), push: async () => {}, openStream: async () => demoImprov(which === 'wifi-fail') };
+      this.panel = { run: async () => ({ out: '', code: 0 }), push: async () => {},
+        openStream: async (svc: string) => (svc === SETUP_SOCKET ? demoSetup() : demoImprov(which === 'wifi-fail')) };
       void this.wifiStep();
       return;
     }
@@ -511,15 +543,7 @@ class Installer {
   /** After the app is in: Wi-Fi from this computer, over Improv Serial through adb. */
   private async wifiStep() {
     const btn = $('#finish') as HTMLButtonElement;
-    $('#settings-block').hidden = true;
-    $('#wifi-block').hidden = false;
-    ($('#wifi-skip') as HTMLButtonElement).hidden = false;
-    $('#wifi-skip').onclick = () => this.showDone(this.ip);
-    const h2 = document.querySelector<HTMLElement>('[data-s="app"] h2')!;
-    const lead = document.querySelector<HTMLElement>('[data-s="app"] .body')!;
-    h2.textContent = 'Connect it to Wi-Fi';
-    this.setStepDetail(3, 'Wi-Fi');
-    lead.textContent = 'Pick the network the panel should use. The password goes straight to the panel over USB.';
+    this.phase('wifi', 'Connect it to Wi-Fi', 'Pick the network the panel should use. The password goes straight to the panel over USB.', 'Wi-Fi', () => void this.haStep());
     btn.textContent = 'Connect';
     btn.disabled = true;
     $('#finish-hint').textContent = '';
@@ -531,9 +555,9 @@ class Installer {
     if (!this.improv) {
       $('#wifi-scan-st').textContent = 'This app version can\'t take Wi-Fi from the computer';
       $('#wifi-st').textContent = 'Set up Wi-Fi on the panel instead: it shows Wi-Fi as the first step.';
-      btn.textContent = 'Finish';
+      btn.textContent = 'Continue';
       btn.disabled = false;
-      btn.onclick = () => this.showDone(this.ip);
+      btn.onclick = () => void this.haStep();
       return;
     }
     if (this.improv.state === ImprovState.Provisioned) $('#wifi-st').textContent = 'The panel is already on Wi-Fi; pick another network to change it, or skip.';
@@ -574,6 +598,143 @@ class Installer {
   }
 
   private wifiChoice: { ssid?: string; secure: boolean; other?: boolean } = { secure: true };
+  private wifiSsid?: string;
+  private setup?: SetupChannel;
+
+  /** Shows one phase of the app step (settings → Wi-Fi → Home Assistant → radio). */
+  private phase(which: 'settings' | 'wifi' | 'ha' | 'radio', title: string, lead: string, detail: string, skip?: () => void) {
+    for (const [k, id] of [['settings', '#settings-block'], ['wifi', '#wifi-block'], ['ha', '#ha-block'], ['radio', '#radio-block']] as const) {
+      $(id).hidden = k !== which;
+    }
+    document.querySelector<HTMLElement>('[data-s="app"] h2')!.textContent = title;
+    document.querySelector<HTMLElement>('[data-s="app"] .body')!.textContent = lead;
+    this.setStepDetail(3, detail);
+    const sk = $('#wifi-skip') as HTMLButtonElement;
+    sk.hidden = !skip;
+    sk.textContent = which === 'radio' ? 'Skip: leave it off for now' : 'Skip: do this on the panel';
+    if (skip) sk.onclick = skip;
+    $('#finish-hint').textContent = '';
+  }
+
+  private async openSetup(): Promise<SetupChannel | undefined> {
+    const open = this.panel?.openStream?.bind(this.panel);
+    if (!open) return undefined;
+    for (let i = 0; i < 5; i++) {
+      try {
+        const c = new SetupChannel(await open(SETUP_SOCKET));
+        await c.getState();
+        return c;
+      } catch { await new Promise((r) => setTimeout(r, 1000)); }
+    }
+    return undefined;
+  }
+
+  /** Home Assistant from the computer: address (prefilled from what the panel found), sign-in, add. */
+  private async haStep() {
+    const btn = $('#finish') as HTMLButtonElement;
+    this.setup ??= await this.openSetup();
+    if (!this.setup) return this.showDone(this.ip, this.wifiSsid); // older app: the panel's own setup does the rest
+    const c = this.setup;
+    this.phase('ha', 'Connect it to Home Assistant', 'Tell the panel where Home Assistant is, then sign in. You can also do this on the panel.', 'Home Assistant', () => void this.radioStep());
+    const input = $('#ha-url') as HTMLInputElement;
+    const st = $('#ha-st');
+    const render = (s: SetupState) => {
+      this.ip = s.ip ?? this.ip;
+      $('#ha-found').textContent = s.ha.discovered ? 'Found on your network' : 'Not found automatically: type it';
+      if (!input.value) input.value = s.ha.url || s.ha.discovered || 'http://homeassistant.local:8123';
+      const row = $('#ha-signin');
+      row.querySelector('.dot')!.className = `dot sm${s.ha.signedIn ? ' done' : ''}`;
+      row.querySelector('b')!.textContent = s.ha.signedIn ? 'Signed in' : 'Sign in';
+      ($('#ha-signin-btn') as HTMLButtonElement).hidden = s.ha.signedIn;
+      if (s.ha.signedIn) { btn.textContent = 'Continue'; st.className = 'status ok'; st.textContent = 'The panel is signed in to Home Assistant.'; }
+    };
+    c.onState = render;
+    render(c.state!);
+    btn.textContent = 'Continue';
+    btn.disabled = false;
+    // Sign in: the popup must open inside the click, so open it first and point it after saving the address.
+    $('#ha-signin-btn').onclick = () => {
+      const url = input.value.trim();
+      if (!validHaUrl(url)) { st.className = 'status err'; st.textContent = 'That doesn\'t look like a web address (http://… or https://…).'; return; }
+      const tab = window.open('about:blank', '_blank');
+      st.className = 'status';
+      st.textContent = 'Sign in on the tab that opened; this page notices when you are done.';
+      void (async () => {
+        try {
+          const s = url === c.state?.ha.url ? c.state! : await c.setHa(url);
+          if (!s.ha.signinUrl) throw new Error('the panel has no sign-in page yet (is it on Wi-Fi?)');
+          if (tab) tab.location.href = s.ha.signinUrl; else window.open(s.ha.signinUrl, '_blank');
+        } catch (e) {
+          tab?.close();
+          st.className = 'status err';
+          st.textContent = (e as Error).message;
+        }
+      })();
+    };
+    $('#ha-add').onclick = () => { $('#ha-add-dot').className = 'dot sm done'; };
+    btn.onclick = async () => {
+      const url = input.value.trim();
+      if (url && url !== c.state?.ha.url) {
+        if (!validHaUrl(url)) { st.className = 'status err'; st.textContent = 'That doesn\'t look like a web address (http://… or https://…).'; return; }
+        btn.disabled = true;
+        try { await c.setHa(url); } catch (e) { st.className = 'status err'; st.textContent = (e as Error).message; btn.disabled = false; return; }
+      }
+      void this.radioStep();
+    };
+  }
+
+  /** The radio role, from the computer (also offered on the panel and in Home Assistant). */
+  private async radioStep() {
+    const c = this.setup!;
+    const btn = $('#finish') as HTMLButtonElement;
+    this.phase('radio', 'Choose what the radio does', 'The panel has a Zigbee/Thread radio. Leave it off, or let Home Assistant use it.', 'Radio', () => this.showDone(this.ip, this.wifiSsid));
+    const list = $('#radio-list');
+    const st = $('#radio-st');
+    const s = c.state!;
+    let chosen = s.radio.mode;
+    list.innerHTML = '';
+    for (const o of s.radio.options) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'opt';
+      row.setAttribute('role', 'radio');
+      row.innerHTML = '<i class="rad"></i><span class="t"><b></b><span></span></span>';
+      row.querySelector('b')!.textContent = o.label;
+      if (o.experimental) row.querySelector('b')!.insertAdjacentHTML('beforeend', '<em class="tag">Experimental</em>');
+      row.querySelector('.t > span')!.textContent = o.detail;
+      const usable = s.radio.helper || o.id === 'off';
+      row.setAttribute('aria-disabled', String(!usable));
+      row.setAttribute('aria-checked', String(o.id === chosen));
+      row.onclick = () => {
+        if (!usable) return;
+        chosen = o.id;
+        for (const r of list.children) r.setAttribute('aria-checked', String(r === row));
+      };
+      list.append(row);
+    }
+    st.className = 'status';
+    st.textContent = s.radio.helper ? `Now: ${s.radio.status}` : 'Only Off is available: this panel has no root helper for the radio.';
+    btn.textContent = 'Finish';
+    btn.disabled = false;
+    btn.onclick = async () => {
+      if (chosen !== c.state!.radio.mode) {
+        btn.disabled = true;
+        st.textContent = 'Switching the radio…';
+        try {
+          const r = await c.setRadio(chosen);
+          st.className = 'status ok';
+          st.textContent = r.radio.status;
+        } catch (e) {
+          st.className = 'status err';
+          st.textContent = (e as Error).message;
+          btn.disabled = false;
+          return;
+        }
+      }
+      void c.close();
+      this.showDone(this.ip, this.wifiSsid);
+    };
+  }
 
   /** The connecting view: animated Wi-Fi mark + three steps; ok / err end states. */
   private wifiView(state: 'busy' | 'ok' | 'err', title: string, step: 'sent' | 'join' | 'ok', err = '') {
@@ -607,9 +768,10 @@ class Installer {
       this.wifiView('ok', ssid, 'ok');
       this.log(`${new Date().toTimeString().slice(0, 8)} panel connected to Wi-Fi ${ssid}`);
       void this.improv!.close();
-      btn.textContent = 'Finish';
+      this.wifiSsid = ssid;
+      btn.textContent = 'Continue';
       btn.disabled = false;
-      btn.onclick = () => this.showDone(this.ip, ssid);
+      btn.onclick = () => void this.haStep();
     } catch (e) {
       this.wifiView('err', ssid, 'join', (e as Error).message);
       btn.textContent = 'Try again';
