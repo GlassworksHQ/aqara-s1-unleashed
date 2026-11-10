@@ -2,7 +2,7 @@
 #   git tag v1.2.3 && git push origin v1.2.3
 # Builds app/kiosk with the release key from the repository secrets, names the APK
 # s1-kiosk-<version>.apk, writes its .sha256 and publishes both on a GitHub Release with
-# auto-generated notes. Panels find it through the app's update entity in Home Assistant.
+# notes from CHANGELOG.md. Panels find it through the app's update entity in Home Assistant.
 name: Release
 
 on:
@@ -33,6 +33,14 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME is not vMAJOR.MINOR.PATCH (minor/patch < 100)"; exit 1
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Release notes from CHANGELOG.md
+        # Every release needs its section in CHANGELOG.md; checked before the slow build.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          tools/release/changelog-section.sh "$VERSION" > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
 
       # AGP 9.3 / Gradle 9.8 / Kotlin 2.4 (app/build.gradle.kts, gradle-wrapper.properties) need JDK 17+;
       # the app is developed on Temurin 21.
@@ -96,7 +104,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "dist/s1-kiosk-$VERSION.apk" "dist/s1-kiosk-$VERSION.apk.sha256" \
-            --verify-tag --title "S1 Kiosk $VERSION" --generate-notes
+            --verify-tag --title "S1 Kiosk $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
 
       - name: Rebuild the web installer
         # The installer (https://s1.edm.sh, Vercel) picks the latest release at build time.

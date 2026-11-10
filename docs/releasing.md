@@ -70,6 +70,10 @@ Versions are `MAJOR.MINOR.PATCH`, with minor and patch below 100. The versionCod
 than the last one. Pre-release tags (`v1.2.3-rc.1`) are refused by the workflow, and the app would
 ignore them anyway.
 
+First add a `## [1.0.0] - <date>` section to [CHANGELOG.md](../CHANGELOG.md) (move the
+*Unreleased* entries into it). Its first line is what Home Assistant shows on the update card, so make
+it a one-sentence summary. The release fails early if the section is missing.
+
 ```sh
 git switch main && git pull
 git tag -a v1.0.0 -m "S1 Kiosk 1.0.0"
@@ -85,10 +89,9 @@ The workflow then:
 3. runs `apksigner verify --print-certs`, so the certificate fingerprint is in the log, and checks
    the package name and version;
 4. writes the `.sha256`;
-5. creates the release, with notes generated from the merged PRs.
+5. creates the release, with that version's CHANGELOG.md section as the notes.
 
-Edit the notes on GitHub afterwards if you like. HA shows the first 255 characters, with a link to
-the full release.
+HA shows the first 255 characters of the notes, with a link to the full release.
 
 Panels see the release within 24 hours. To check right away, call `homeassistant.update_entity`
 on `update.s1_panel_app_update`: HA sends the entity's "check" command.
