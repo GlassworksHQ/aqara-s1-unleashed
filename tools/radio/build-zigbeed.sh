@@ -6,7 +6,10 @@
 #
 # BUILD ONLY. This script never talks to the device (no adb). Nothing is vendored in the repo.
 #
-# Output: tools/radio/out/zigbeed-sisdk/  (gitignored)
+# Output: $ZIGBEED_OUT (default /tmp/zigbeed-sisdk). Deliberately OUTSIDE the repo tree:
+# the bundle contains SiLabs' MSLA binary, which must never be committed or hosted. Downloads and
+# intermediates go to $ZIGBEED_BUILD (default /tmp/zigbeed-sisdk-build). Both must be
+# outside the checkout; the script refuses paths inside it.
 #   bin/zigbeed           SiLabs' armhf glibc binary, unmodified (from zigbeed_8.2.2_armhf.deb)
 #   lib/libcpc.so.3       libcpc built from cpc-daemon v4.3.3: Aqara's cpcd is 4.3.3.0 and libcpc
 #                         refuses a daemon whose version string differs ("libcpc version (v4.7.1.0)
@@ -41,8 +44,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="$SCRIPT_DIR/.build/zigbeed-sisdk"
-OUT_DIR="$SCRIPT_DIR/out/zigbeed-sisdk"
+TMP_BASE=/tmp
+BUILD_DIR="${ZIGBEED_BUILD:-$TMP_BASE/zigbeed-sisdk-build}"
+OUT_DIR="${ZIGBEED_OUT:-$TMP_BASE/zigbeed-sisdk}"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+mkdir -p "$BUILD_DIR" "$OUT_DIR"
+BUILD_DIR="$(cd "$BUILD_DIR" && pwd -P)"; OUT_DIR="$(cd "$OUT_DIR" && pwd -P)"
+for d in "$BUILD_DIR" "$OUT_DIR"; do
+  case "$d/" in "$(cd "$REPO_ROOT" && pwd -P)/"*)
+    echo "refusing $d: inside the repo (zigbeed is MSLA object code; keep it out of the tree)" >&2; exit 1;;
+  esac
+done
 
 SISDK_TAG=v2025.6.3
 DEB_ZIP_URL=https://github.com/SiliconLabs/simplicity_sdk/releases/download/$SISDK_TAG/debian-bookworm.zip
@@ -89,7 +101,7 @@ fi
 cat > "$BUILD_DIR/inner.sh" <<'INNER'
 #!/usr/bin/env bash
 set -euo pipefail
-W=/work/.build/zigbeed-sisdk; OUT=/work/out/zigbeed-sisdk
+W=/build; OUT=/out
 cd "$W"
 log() { printf '\n=== %s\n' "$*"; }
 
@@ -153,7 +165,7 @@ echo "zigbeed imports: $(echo $need)"
 [ -z "$missing" ] || { echo "libcpc $ver lacks: $missing" >&2; exit 1; }
 
 log "assemble $OUT"
-rm -rf "$OUT"; mkdir -p "$OUT/bin" "$OUT/lib"
+rm -rf "$OUT"/* && mkdir -p "$OUT/bin" "$OUT/lib"   # $OUT is a bind mount: empty it, don't remove it
 install -m 0755 "$ZB" "$OUT/bin/zigbeed"
 install -m 0755 "$LB/libcpc.so.3" "$OUT/lib/"
 S=/usr/arm-linux-gnueabihf/lib
@@ -166,12 +178,18 @@ cat > "$OUT/zigbeed.sh" <<'SH'
 # Runs SiLabs zigbeed (glibc) on Android through the bundled loader. Args are zigbeed's own, e.g.
 #   zigbeed.sh -r 'spinel+cpc://cpcd_0?iid=1&iid-list=0' -p /tmp/ttyZigbeeNCP -v 1 -d 3
 # NVM: ./host_token.nvm in $ZIGBEED_STATE (never Aqara's /data/zigbee_host).
-D=${0%/*}
+D=$(cd "${0%/*}" && pwd) || exit 1
 ST=${ZIGBEED_STATE:-/data/s1kiosk/radio/zigbeed-sisdk}
 [ -d "$ST" ] || { mkdir -p "$ST" && chmod 700 "$ST"; }
 cd "$ST" || exit 1
 # -c /dev/null: no /usr/local/etc/zigbeed.conf on Android; everything comes from the command line.
-exec "$D/lib/ld-linux-armhf.so.3" --library-path "$D/lib" "$D/bin/zigbeed" -c /dev/null "$@"
+# Added once only: zigbeed re-execs itself through this script (below), with the args it already has.
+[ "$1" = -c ] || set -- -c /dev/null "$@"
+# --argv0: on every ASH reset (each EZSP host connect) zigbeed longjmps back into main(), prints
+# "Restarting" and calls execvp(argv[0], argv). argv[0] would be bin/zigbeed, whose ELF interpreter
+# /lib/ld-linux-armhf.so.3 doesn't exist on Android: execvp fails, zigbeed falls through and
+# segfaults. With argv[0] = this script, the re-exec comes back here and through the bundled loader.
+exec "$D/lib/ld-linux-armhf.so.3" --library-path "$D/lib" --argv0 "$D/zigbeed.sh" "$D/bin/zigbeed" "$@"
 SH
 chmod 0755 "$OUT/zigbeed.sh"
 {
@@ -189,12 +207,12 @@ INNER
 chmod +x "$BUILD_DIR/inner.sh"
 
 log "assemble in $BUILDER_IMAGE"
-docker run --rm --platform linux/arm64 -v "$SCRIPT_DIR":/work \
+docker run --rm --platform linux/arm64 -v "$BUILD_DIR":/build -v "$OUT_DIR":/out \
   -e ZIGBEED_DEB="$ZIGBEED_DEB" -e ZIGBEED_DEB_SHA256="$ZIGBEED_DEB_SHA256" \
   -e CPCD_REPO="$CPCD_REPO" -e CPCD_TAG="$CPCD_TAG" -e CPCD_COMMIT="$CPCD_COMMIT" \
   -e CPCD_EXPECTED_VERSION="$CPCD_EXPECTED_VERSION" -e CPC_SOCKET_DIR="$CPC_SOCKET_DIR" \
   -e SISDK_TAG="$SISDK_TAG" -e DEB_ZIP_SHA256="$DEB_ZIP_SHA256" \
-  "$BUILDER_IMAGE" /work/.build/zigbeed-sisdk/inner.sh
+  "$BUILDER_IMAGE" /build/inner.sh
 
 if [ "$SMOKE" = 1 ]; then
   # In a plain arm32v7 container (its own glibc ignored: everything comes from the bundle). With no

@@ -4,15 +4,16 @@ Goal: make the panel's Zigbee coordinator usable by **Zigbee2MQTT** (zigbee-herd
 Starting point is [../radio.md](../radio.md): EFR32 with Aqara's multi-PAN RCP over CPC, Aqara's
 zigbeed 7.3.3 (**EZSP 12**) on spinel IID 1, EZSP over TCP :6638 from the root helper.
 
-Status: offline research and a prototype build. **Nothing here has run on the panel yet.** No radio
-firmware was flashed, and none needs to be for the recommended path.
+Status: research plus **panel tests of steps 1 and 2 (2026-11-10, results in [section 6](#6-panel-results-2026-11-10))**.
+Both work: Z2M's `ezsp` adapter on today's zigbeed, and Z2M's `ember` adapter on SiLabs' zigbeed 8.2.2
+running against the **stock RCP**. No radio firmware was flashed, and none is needed for path B.
 
 ## Summary
 
 | Path | Z2M adapter | Flash? | Thread kept? | Verdict |
 |---|---|---|---|---|
-| A. Today's zigbeed 7.3.3 (EZSP 12) | `ezsp` (deprecated) | no | yes | works on paper; panel test prepared. Stopgap only: the adapter is on its way out and has no backup restore |
-| **B. SiLabs zigbeed 8.2.2 (EZSP 18) on the stock RCP** | `ember` | **no** | yes | **recommended**: prebuilt armhf binary from Silicon Labs + our libcpc 4.3.3 + bundled glibc. Bundle built and smoke-tested; the RCP compatibility test on the panel is still open |
+| A. Today's zigbeed 7.3.3 (EZSP 12) | `ezsp` (deprecated) | no | yes | **works on the panel** (start, form, resume, permit join). Stopgap only: the adapter is on its way out and has no backup restore |
+| **B. SiLabs zigbeed 8.2.2 (EZSP 18) on the stock RCP** | `ember` | **no** | yes | **recommended, works on the panel** (start, form, resume after a zigbeed restart, permit join; Thread on IID 2 unaffected). Prebuilt armhf binary from Silicon Labs + our libcpc 4.3.3 + bundled glibc. Two host-side fixes needed: the wrapper's `--argv0` (done) and a pty drain before the bridge (helper, step 3) |
 | C. New multi-PAN RCP + matching host stack | `ember` | yes (custom GBL) | yes | only if B fails on the RCP; heavy: custom MG21 SPI image, new cpcd/libcpc/otbr |
 | D. Zigbee-only NCP on the EFR32 | `ember` | yes, per mode switch | **no** | not recommended: custom SPI image + our own SPI-or-CPC-to-ASH bridge |
 
@@ -36,19 +37,23 @@ Caveats: deprecated, no new features. Its backup/restore is the old `EZSPAdapter
 network later from `ezsp` to `ember` is a Z2M-documented path (discussion Koenkk/zigbee2mqtt#21462).
 Good enough for a test, not as the product answer.
 
-**Panel test (prepared, not run: the panel was busy).** Throwaway harness outside the repo:
-`/tmp/z2m-ezsp/` (herdsman 11.2.1 via a local `npm install`, nothing global) and `probe.cjs`:
+**Panel test (run 2026-11-10, results in [section 6](#6-panel-results-2026-11-10)).** Throwaway
+harness outside the repo: `/tmp/z2m-ezsp/` (herdsman 11.2.1 via a local `npm install`, nothing
+global) and `probe.cjs`:
 
 ```
-node probe.cjs <panel-ip>:6638 version   # read-only: ASH reset, EZSP version, EmberZNet version, networkState
-node probe.cjs <panel-ip>:6638 form      # Controller.start() with fresh random PAN/EPID/key on ch 25 -> forms a test network
-node probe.cjs <panel-ip>:6638 resume    # second start with the same params -> expect "resumed"
+node probe.cjs <host:port> version            # read-only: ASH reset, EZSP version, EmberZNet version, networkState
+node probe.cjs <host:port> form               # Controller.start() with fresh random PAN/EPID/key on ch 25 -> forms a test network
+PERMIT=1 node probe.cjs <host:port> resume    # second start with the same params -> expect "resumed"; PERMIT=1 adds permitJoin(10), then permitJoin(0)
+ADAPTER=ember ...                             # the current adapter instead of the deprecated `ezsp` one
 ```
 
-Joining is refused (`acceptJoiningDeviceHandler` returns false), and `permitJoin` is never called.
-Params, the database and the debug log (it contains keys) stay in `/tmp/z2m-ezsp/state-ezsp/` (0700).
-Precondition: helper mode `zigbee_tcp`, and a root copy of zigbeed's NVM taken first, because `form`
-replaces the throwaway ZHA test network now in it.
+Joining is refused (`acceptJoiningDeviceHandler` returns false); `permitJoin` is only called with
+`PERMIT=1`, for 10 s at most, on the fresh test network. Params, the database and the debug log (it
+contains keys) stay in `/tmp/z2m-ezsp/state-<adapter>/` (0700). Since helper v3 only Home Assistant
+may reach :6638, so the computer goes through `adb forward tcp:16638 tcp:6638` (loopback is always
+allowed) and uses `127.0.0.1:16638`; the allow-list stays untouched. Precondition: helper mode
+`zigbee_tcp`, and a root copy of zigbeed's NVM taken first, because `form` replaces the network in it.
 
 ## 2. Newer zigbeed
 
@@ -108,6 +113,15 @@ GBLs), not zigbeed.
 2. **glibc on bionic:** the script bundles `ld-linux-armhf.so.3`, `libc.so.6`, `libm.so.6`,
    `libstdc++.so.6` and `libgcc_s.so.1` (Ubuntu 22.04 armhf cross runtime, glibc 2.35, GCC 12).
    `zigbeed.sh` runs the unmodified binary through the bundled loader (`--library-path`).
+   - **Self-restart needs `--argv0` (found on the panel).** On every ASH reset, i.e. every EZSP host
+     connect, zigbeed 8.2.2 `longjmp`s back into `main()`, prints `Restarting` and calls
+     `execvp(argv[0], argv)` (disassembly: `_setjmp`, then `fwrite "Restarting"`, then `execvp`).
+     Through the loader, `argv[0]` is `bin/zigbeed`, whose ELF interpreter `/lib/ld-linux-armhf.so.3`
+     doesn't exist on Android. `execvp` fails, zigbeed falls through into half-initialised code and
+     dies with `FATAL ERROR: Caught signal: 11 (Segmentation fault)`. The wrapper now passes
+     `--argv0 <abs path of zigbeed.sh>`, so the re-exec comes back through the wrapper and the loader.
+     The wrapper adds `-c /dev/null` only once, so the args don't grow with each restart. Verified: same
+     PID, `Restarting`, `Zigbeed started` again ~4.2 s later.
 3. **Its own NVM:** zigbeed 8.x keeps `host_token.nvm` in its **current directory**. The wrapper cd's
    to `$ZIGBEED_STATE` (default `/data/s1kiosk/radio/zigbeed-sisdk`), so Aqara's
    `/data/zigbee_host/zigbeed_host_token.nvm` is never touched. 8.x can't read 7.3.3's v1 token format
@@ -117,10 +131,13 @@ GBLs), not zigbeed.
    - `-h` prints zigbeed's usage.
    - A start with no cpcd fails cleanly: `CPC init failed Error: -2` at `cpc_interface.cpp:99`.
 
-   That proves loading, linking and argument parsing. It does **not** prove the RCP talks to it.
+   That proves loading, linking and argument parsing; it calls the loader directly, so it doesn't
+   cover the wrapper or the re-exec. The RCP side is proven on the panel ([section 6](#6-panel-results-2026-11-10)).
 
-Output: `tools/radio/out/zigbeed-sisdk/` (gitignored; ~4 MB with the runtime), plus `BUILD-INFO.txt`
-with all hashes.
+Output: `/tmp/zigbeed-sisdk/` (`$ZIGBEED_OUT`; ~4 MB with the runtime) plus `BUILD-INFO.txt` with all
+hashes. Downloads and intermediates go to `/tmp/zigbeed-sisdk-build/` (`$ZIGBEED_BUILD`). Both are
+**outside the repo tree** on purpose, because the bundle holds the MSLA binary, and the script refuses
+paths inside the checkout. (An earlier version wrote to the gitignored `tools/radio/out/`.)
 
 ### Licensing
 
@@ -156,7 +173,10 @@ teardown:
   an inference; A010 vs A020 (TX power) is unknown.
 - App range `0x4000-0x215F0`.
 
-**Does a newer zigbeed work with the existing RCP? Probably, but untested.**
+**Does a newer zigbeed work with the existing RCP? Yes, on the panel (2026-11-10, [section 6](#6-panel-results-2026-11-10)).**
+zigbeed 8.2.2 accepts RCP `0017/2.3.3.0` (spinel protocol 4.3, RCP API 9, min host API 4, radio
+caps 255), forms and resumes networks, and opens and closes permit-join. The reasoning below was the
+prediction; the soak test (hours or days, real devices joining) is still open.
 
 - **Spinel:** zigbeed's lower MAC is OpenThread's own RadioSpinel plus SiLabs' vendor interface (both
   open source, see above). Our otbr-agent build is OpenThread `ecd308b` (2026-11) with the Simplicity
@@ -241,39 +261,44 @@ recommended while path B is open.
 **Path B: SiLabs zigbeed 8.2.2 on the existing RCP, no flashing.** Thread mode is unaffected (otbr on
 IID 2 never meets zigbeed, one protocol at a time). ZHA works too: bellows supports EZSP 4-19.
 
-### Step 1 (needs the panel, no flashing): the `ezsp` adapter against today's zigbeed
+### Step 1 (needs the panel, no flashing): the `ezsp` adapter against today's zigbeed — **done, passed**
 
 1. Mode `zigbee_tcp` via the app/helper.
 2. Back up the NVM (root):
-   `cp /data/zigbee_host/zigbeed_host_token.nvm /data/s1kiosk/radio/zigbee-nvm/pre-z2m.nvm`.
-3. From the Mac: `node /tmp/z2m-ezsp/probe.cjs <panel-ip>:6638 version`, then `form`, then `resume`.
+   `cp -p /data/zigbee_host/zigbeed_host_token.nvm /data/s1kiosk/radio/zigbee-nvm/pre-z2m-<date>.nvm`.
+3. From the Mac: `adb forward tcp:16638 tcp:6638`, then
+   `node /tmp/z2m-ezsp/probe.cjs 127.0.0.1:16638 version`, then `form`, then `PERMIT=1 … resume`.
 4. Done means: EZSP 12 / 7.3.3 read; `start()` → `reset`, then `resumed`; `backup()` written;
    `permitJoin` false. Restore: copy the NVM back with zigbeed stopped (or just leave the throwaway
    network).
 
-### Step 2 (needs the panel, no flashing): zigbeed 8.2.2 against the stock RCP
+### Step 2 (needs the panel, no flashing): zigbeed 8.2.2 against the stock RCP — **done, passed**
 
-1. Build: `tools/radio/build-zigbeed.sh` (done). Push `out/zigbeed-sisdk/` to
-   `/data/s1kiosk/radio/zigbeed-sisdk-bin/` (root 0700).
+1. Build: `tools/radio/build-zigbeed.sh` (output in `/tmp/zigbeed-sisdk/`). Push `bin/ lib/
+   zigbeed.sh` to `/data/local/tmp/zigbeed-sisdk/` and make it root 0700. The MSLA binary only ever
+   lives in `/tmp` / `/data/local/tmp` during a test and is deleted afterwards.
 2. Hold Aqara's stack the way the test needs it:
-   1. `setprop ctl.stop s1kiosk_radio`. Without the helper nothing restarts Aqara's services
-      (radio.md, 15-minute watch).
-   2. Stop all six in consumer order.
-   3. `setprop ctl.start zigbee_cpcd`, then `setprop ctl.start zigbee_socat` (the pty pair). **Not**
-      `zigbee_zigbeed`.
+   1. Mode Off via the app (the helper stops all six and removes the firewall chain), then
+      `setprop ctl.stop s1kiosk_radio`. Without the helper nothing restarts Aqara's services
+      (radio.md, 15-minute watch), and the app only re-applies the mode at startup or on a request.
+   2. `setprop ctl.start zigbee_cpcd`, wait ~6 s, then `setprop ctl.start zigbee_socat` (the pty
+      pair). **Not** `zigbee_zigbeed`.
 3. Root:
-   `ZIGBEED_STATE=/data/s1kiosk/radio/zigbeed-sisdk …/zigbeed.sh -r 'spinel+cpc://cpcd_0?iid=1&iid-list=0' -p /tmp/ttyZigbeeNCP -v 1 -d 4 2>&1 | tee /data/local/tmp/zigbeed8.log`
+   `ZIGBEED_STATE=/data/local/tmp/zigbeed-sisdk-state setsid nohup /data/local/tmp/zigbeed-sisdk/zigbeed.sh -r 'spinel+cpc://cpcd_0?iid=1&iid-list=0' -p /tmp/ttyZigbeeNCP -v 1 -d 4 > /data/local/tmp/zigbeed8.log 2>&1 &`
    1. Pass: RCP version logged, no spinel errors or asserts within 60 s.
-   2. Then the bridge:
-      `/vendor/bin/socat TCP-LISTEN:6638,reuseaddr,fork,max-children=1 FILE:/dev/ttyZigbeeNCP,raw,echo=0`.
-4. From the Mac: `ADAPTER=ember node /tmp/z2m-ezsp/probe.cjs <panel-ip>:6638 form`, then `resume`.
+   2. Then the bridge, **loopback only**, because the firewall is gone while the helper is stopped:
+      `/vendor/bin/socat TCP-LISTEN:6638,bind=127.0.0.1,reuseaddr,fork,max-children=1 FILE:/dev/ttyZigbeeNCP,raw,echo=0`.
+   3. After every fresh zigbeed start, drain the pty once before the first client:
+      `timeout 1 /vendor/bin/socat -u FILE:/dev/ttyZigbeeNCP,raw,echo=0 -` (see section 6).
+4. From the Mac (through `adb forward tcp:16638 tcp:6638`):
+   `ADAPTER=ember node /tmp/z2m-ezsp/probe.cjs 127.0.0.1:16638 form`, then `PERMIT=1 … resume`.
    1. Expect EZSP 18 / 8.2.2.
    2. The network is formed on a fresh `host_token.nvm` and resumes after a zigbeed restart.
    3. Watch that the ember adapter's RSTACK wait (5 s, `ember/uart/ash.js:23`) covers zigbeed's reset
       time.
-5. Also check bellows/ZHA against it (read-only probe) and an energy scan. Then kill zigbeed,
-   run otbr `--radio-version` on IID 2, and confirm Thread is unaffected.
-6. Rollback: kill our zigbeed and socat, then `setprop ctl.start s1kiosk_radio`.
+5. Also check bellows/ZHA against it (read-only probe; the energy scan was not run). Then kill
+   zigbeed, run otbr `--radio-version` on IID 2, and confirm Thread is unaffected.
+6. Rollback: kill our zigbeed and socat, then set a mode through the app (`ctl.restart`s the helper).
    - The helper restores whatever mode it holds, with Aqara's zigbeed 7.3.3 and its untouched NVM.
    - **Nothing persistent changes on the radio:** the RCP keeps no Zigbee state, and a cpcd restart
      resets it.
@@ -283,6 +308,16 @@ IID 2 never meets zigbeed, one protocol at a time). ZHA works too: bellows suppo
 - Helper: an opt-in `ZIGBEED=sisdk` in `radio.conf`, or a new mode id. In that mode it starts
   `zigbee_cpcd` and `zigbee_socat`, but runs our wrapper instead of `zigbee_zigbeed`. It is supervised
   and restarted like the other children, with NVM copies in `$DIR/zigbee-nvm/`.
+  - **Drain the pty after each zigbeed (re)start, before the bridge serves anyone.** zigbeed writes
+    an RSTACK at boot. Nobody reads it, so it waits in `/dev/ttyZigbeeNCP` until the first client
+    connects. herdsman's `ember` adapter takes it as the answer to its own RST, then treats zigbeed's
+    real RSTACK ~4.3 s later as an NCP crash (`ASH_NCP_FATAL_ERROR`), and `start()` fails. Z2M would
+    exit and only succeed on its next start. Draining first fixes it (verified). This applies equally
+    to the helper's existing `zigbee_tcp` bridge; `ezsp` and bellows only tolerate it (CRC errors in
+    the log).
+  - Keep the wrapper's `--argv0`: without it zigbeed segfaults on the first host connect.
+  - RSTACK timing: zigbeed answers an RST in 4.1-4.4 s (measured), and herdsman's `ember` adapter waits
+    5 s. That margin is thin; watch it in the soak test.
 - App: label the mode "Zigbee coordinator (Zigbee2MQTT / ZHA)" and show the Z2M config snippet
   (`adapter: ember`, `port: tcp://<ip>:6638`).
 - The zigbeed binary is fetched from Silicon Labs' release at install time and checked by hash, never
@@ -308,11 +343,83 @@ IID 2 never meets zigbeed, one protocol at a time). ZHA works too: bellows suppo
 
 | Step | Effort | Risk |
 |---|---|---|
-| 1 (ezsp adapter test) | 30 min on the panel | none beyond replacing the throwaway test network (NVM backed up) |
-| 2 (zigbeed 8.2.2 test) | 1-2 h on the panel | low: no flash; the worst case is zigbeed failing to start or misbehaving, fixed by killing it |
+| 1 (ezsp adapter test) | done | none (NVM backed up and restored byte-identical) |
+| 2 (zigbeed 8.2.2 test) | done | low: no flash; the crash found was host-side (wrapper), fixed |
 | 3 (helper/app mode, docs) | 1-2 days | medium-low: unsupported SiLabs pairing (8.2.2 host on a 4.3.3 RCP), so soak-test before offering it; zigbeed watchdog via the helper |
 | C (new RCP) | 3-6 days | medium: custom pin config; recoverable via the stock GBL as long as the bootloader is untouched |
 | D (NCP) | weeks | medium-high, and loses Thread; not recommended |
+
+## 6. Panel results (2026-11-10)
+
+Reference panel: helper v3 (root override, sha256 equal to `tools/radio/s1kiosk_radio.sh`), stock RCP
+`0017/2.3.3.0_GitHub-e6df00dd6`, Aqara's cpcd 4.3.3. Host: the Mac, zigbee-herdsman 11.2.1 (one patch above
+the 11.2.0 that Zigbee2MQTT 2.14.3 pins), Node 24, through `adb forward` to the panel's loopback, so the
+firewall allow-list was never changed. Only fresh random test networks on channel 25; nothing joined.
+No firmware, bootloader or token writes.
+
+### Step 1: `ezsp` adapter, Aqara's zigbeed 7.3.3, helper mode `zigbee_tcp`
+
+| Run | Result |
+|---|---|
+| `version` | ASH reset ok; first DATA frame times out once (`{"sequence":1} after 4000ms`, zigbeed's slow first ACK) and the retry works; **EZSP 12, EmberZNet 7.3.3.0 build 0**, `networkState` 0 before `networkInit` |
+| `form` | `Leaving current network and forming new network`, `Form network`; `start() -> reset` in 10.6 s; coordinator `EZSP v12` / `7.3.3.0 build 0`; channel 25, PAN and ext PAN as configured; `backup()` written |
+| `PERMIT=1 resume` | `start() -> resumed` in 14.9 s; `permitJoin(10)` → `getPermitJoin` true, `permitJoin(0)` → false; `backup()` written |
+
+Noise, harmless: `setValue(VALUE_CCA_THRESHOLD)` returns status 55 (`0x37`, EZSP_ERROR_INVALID_ID:
+zigbeed has no CCA threshold value) on every start. A second connect logs a few `CRC error` frames
+from stale pty bytes before the reset.
+
+### Step 2: `ember` adapter, SiLabs zigbeed 8.2.2 on the stock RCP
+
+zigbeed start on IID 1 (`-v 1 -d 4`, redacted):
+
+```
+P-SpinelDrive-: Received ... key:PROTOCOL_VERSION, major:4, minor:3
+P-SpinelDrive-: Received ... key:NCP_VERSION, version:VERSION:0017/2.3.3.0_GitHub-e6df00dd6;
+P-SpinelDrive-: Received ... key:CAPS, caps:COUNTERS UNSOL_UPDATE_FILTER 802_15_4_2450MHZ_OQP
+P-SpinelDrive-: Received ... key:HWADDR, eui64:<eui64>
+P-SpinelDrive-: Received ... key:RCP_API_VERSION, version:9
+P-SpinelDrive-: Received ... key:RCP_MIN_HOST_API_VERSION, min-host-version:4
+P-SpinelDrive-: Received ... key:RADIO_CAPS, caps:255
+Zigbeed started
+RCP version: VERSION:0017/2.3.3.0_GitHub-e6df00dd6; EFR32; Dec 12 2024 17:59:01
+Zigbeed Version: GSDK 8.2.2 - Feb 16 2026 - 21:27:51
+```
+
+No spinel errors or asserts in the following 60 s.
+
+| Run | Result |
+|---|---|
+| `form` #1 (original wrapper) | **zigbeed crashed** on the host's ASH RST: `Restarting`, then `*** FATAL ERROR: Caught signal: 11 (Segmentation fault)` (`zigbeed(+0x3cfa2)`). Cause: the failed `execvp` (section 2); fixed with `--argv0` |
+| `form` #2 (fixed wrapper) | zigbeed re-execs fine (same PID, `Restarting`, `Zigbeed started`), but herdsman fails: `Received unexpected reset from adapter, with reason=RESET_SOFTWARE` → `ASH_NCP_FATAL_ERROR` → `VERSION` `ASH_ERROR_TIMEOUTS`. Cause: zigbeed's boot RSTACK still in the pty (step 3, drain) |
+| `form` #3 | RSTACK after 4.1 s; `Adapter EZSP protocol version (18) lower than Host. Switched.`; **EZSP 18, `8.2.2 [GA]` build 532**; `[INIT FORM] New network formed!`, `Network up`; `start() -> reset` in 6.2 s; `backup()` written; ASH counters: 0 CRC/comm/retry errors |
+| `PERMIT=1 resume` ×2 | `Adapter network matches config`, `start() -> resumed` in 5.6-5.8 s; `Network opened` / `Network closed` for `permitJoin(10)` / `permitJoin(0)`; `backup()` written |
+| zigbeed process killed and restarted, then `resume` | without a drain: the stale-RSTACK failure again (reproducible on every fresh start). Drained first (bytes `c1 02 0b 0a 52 7e` = RSTACK with reset code `0x0b`, plus one more frame): `start() -> resumed`, so the network persists in `./host_token.nvm` across zigbeed restarts |
+| bellows 1.2.1 `ControllerApplication.probe` (ZHA's probe, read-only) | ok |
+
+### Thread and rollback
+
+- With our zigbeed stopped and only cpcd running: `otbr-agent --radio-version` on IID 2 →
+  `VERSION:0017/2.3.3.0_GitHub-e6df00dd6; EFR32; Dec 12 2024 17:59:01`.
+- Then helper mode `thread` via the app: `ok thread: border router on wpan0, backbone wlan0, REST :8081 (disabled)`.
+  `ot-ctl state` → `disabled` (no dataset brought up), `rcp version` as above, `version`
+  `OPENTHREAD/ecd308b`.
+- Then `zigbee_tcp` via the app: Aqara's `zigbeed` (7.3.3) is back under `zigbee_zigbeed.sh`, and the
+  probe reads EZSP 12 / 7.3.3.0.
+- Then Off.
+- Aqara's NVM was restored from `pre-z2m-20261110.nvm` (kept in `/data/s1kiosk/radio/zigbee-nvm/`)
+  and is byte-identical to the pre-test file. The bundle, zigbeed 8.2.2's state dir and logs were
+  deleted from `/data/local/tmp`.
+- No `S1RADIO` rules are left, `persist.s1kiosk.radio_allow` is unchanged, and the kiosk stays in
+  front.
+
+### Not tested yet
+
+- Real devices joining and traffic.
+- A soak test (hours or days) of the mismatched 8.2.2 host / 2.3.3.0 RCP pair.
+- An energy scan, ZHA `form`/restore on 8.2.2, and Z2M's `ember` backup restore into a fresh
+  `host_token.nvm`.
+- The helper integration (step 3).
 
 ## Sources
 
