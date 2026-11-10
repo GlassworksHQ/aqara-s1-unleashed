@@ -61,19 +61,25 @@ echo "  model=$MODEL sdk=$SDK"
 if [[ $UNDO -eq 1 ]]; then
   step "Undo"
   try adb shell am start -n "$ACT" --ez remove_admin true
-  try adb shell cmd package set-home-activity com.aqara.inhome.launcher/.MainActivity
   run env ADB_SERIAL="${ANDROID_SERIAL:-}" "$HERE/debloat/debloat.sh" enable
+  # after debloat re-enabled the launcher: set-home-activity fails on a disabled package
+  try adb shell cmd package set-home-activity com.aqara.inhome.launcher/.MainActivity
   try adb shell service call A_device_control 7 i32 1 i32 0
   try adb shell pm enable com.baidu.input_auto
   try adb shell ime set com.baidu.input_auto/.ImeService
   # Radio (docs/radio.md): the app keeps Aqara's radio services stopped ("Off" mode). Stop the app so
   # it doesn't stop them again (a force-stopped app also gets no BOOT_COMPLETED), then start them now
   # in provider-first order; they are init services, so a reboot would bring them back as well.
+  # Disable, not just force-stop: the app restarts itself (foreground service) and would block the
+  # Aqara stack again. Reversible: a reinstall (or pm enable) brings it back.
   try adb shell am force-stop "$PKG"
-  for svc in zigbee_cpcd zigbee_socat zigbee_zigbeed zigbee_host zigbee_agent ha_matter; do
+  try adb shell pm disable-user --user 0 "$PKG"
+  # ha_master is Aqara's cloud link, which the app blocks ("Block Aqara cloud"); the Aqara app and its
+  # firmware updates need it back.
+  for svc in zigbee_cpcd zigbee_socat zigbee_zigbeed zigbee_host zigbee_agent ha_matter ha_master; do
     try adb shell setprop ctl.start "$svc"
   done
-  echo "Done. The kiosk app is still installed (stopped): adb uninstall $PKG"
+  echo "Done. The kiosk app is still installed but disabled (pm enable $PKG, or adb uninstall $PKG)."
   exit 0
 fi
 
