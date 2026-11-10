@@ -127,6 +127,12 @@ function demoImprov(fail: boolean): ByteStream {
   };
 }
 
+/** Radio roles that aren't ready yet: listed, not selectable (docs/radio.md). */
+const COMING_SOON = [
+  { id: 'zigbee_router', label: 'Zigbee router', detail: 'Extends an existing Zigbee network as a repeater.' },
+  { id: 'thread_router', label: 'Thread router', detail: 'Extends an existing Thread network as a repeater.' },
+];
+
 const BARS: Bar[] = ['backup', 'patch', 'flash', 'verify'];
 const TITLE = 'S1 Unleashed Installer';
 
@@ -687,13 +693,15 @@ class Installer {
   private async radioStep() {
     const c = this.setup!;
     const btn = $('#finish') as HTMLButtonElement;
-    this.phase('radio', 'Choose what the radio does', 'The panel has a Zigbee/Thread radio. Leave it off, or let Home Assistant use it.', 'Radio', () => this.showDone(this.ip, this.wifiSsid));
+    this.phase('radio', 'Choose what the radio does', 'The panel has a Zigbee/Thread radio. Leave it off, or let Home Assistant use it.', 'Radio');
     const list = $('#radio-list');
     const st = $('#radio-st');
     const s = c.state!;
     let chosen = s.radio.mode;
     list.innerHTML = '';
-    for (const o of s.radio.options) {
+    const offered = new Set(s.radio.options.map((o) => o.id));
+    const soon = COMING_SOON.filter((o) => !offered.has(o.id)).map((o) => ({ ...o, experimental: false, soon: true }));
+    for (const o of [...s.radio.options.map((x) => ({ ...x, experimental: !!x.experimental, soon: false })), ...soon]) {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'opt';
@@ -701,8 +709,9 @@ class Installer {
       row.innerHTML = '<i class="rad"></i><span class="t"><b></b><span></span></span>';
       row.querySelector('b')!.textContent = o.label;
       if (o.experimental) row.querySelector('b')!.insertAdjacentHTML('beforeend', '<em class="tag">Experimental</em>');
+      if (o.soon) row.querySelector('b')!.insertAdjacentHTML('beforeend', '<em class="tag soon">Coming soon</em>');
       row.querySelector('.t > span')!.textContent = o.detail;
-      const usable = s.radio.helper || o.id === 'off';
+      const usable = !o.soon && (s.radio.helper || o.id === 'off');
       row.setAttribute('aria-disabled', String(!usable));
       row.setAttribute('aria-checked', String(o.id === chosen));
       row.onclick = () => {
