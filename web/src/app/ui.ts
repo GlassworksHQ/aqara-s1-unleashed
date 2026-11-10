@@ -161,6 +161,7 @@ class Installer {
     $('#go-undo').onclick = $('#done-undo').onclick = () => this.openUndo();
     $('#fel-back').onclick = () => this.show(this.mode === 'undo' ? 'undo' : 'welcome');
     $('#fel-connect').onclick = () => this.connectFel();
+    $('#go-resume').onclick = () => void this.resume();
     $('#disc').onclick = () => this.setDetails($('#disc').getAttribute('aria-expanded') !== 'true');
     $('#bk-dl').onclick = () => this.downloadBackup();
     $('#finish').onclick = () => this.finishApp();
@@ -280,6 +281,27 @@ class Installer {
       void this.waitForPanel();
     } catch (e) {
       this.fail(2, e);
+    }
+  }
+
+  /** An installed panel (design §8.2): skip FEL, connect over adb, then the app step as usual. */
+  private async resume() {
+    this.mode = 'install';
+    for (const n of [0, 1, 2]) this.stepDetail.set(n, STEPS.install[n]!.done);
+    this.show('app');
+    this.adbRow('wait', 'Connecting to the panel', 'Pick QUAD-CORE R818 EVB2 in the browser\'s list', 'Waiting');
+    try {
+      const flow = await this.getFlow();
+      void flow;
+      this.panel = (await webUsbDevices.knownAdb(this.key!)) ?? (await webUsbDevices.requestAdb(this.key!));
+      this.adbRow('ok', 'Connected over adb', 'Ready to update S1 Kiosk and finish setting up', 'Connected');
+      $('#hands').hidden = true;
+      ($('#finish') as HTMLButtonElement).disabled = false;
+      $('#finish').textContent = 'Update and continue';
+      $('#finish-hint').textContent = '';
+    } catch (e) {
+      const msg = e instanceof DOMException && e.name === 'NotFoundError' ? 'Nothing was picked.' : (e as Error).message;
+      this.adbRow('err', 'Could not connect to the panel', `${msg} Is it running and plugged in? Run "adb kill-server" if adb is open on this computer.`, 'Not connected');
     }
   }
 
@@ -532,16 +554,38 @@ class Installer {
   private improv?: ImprovSerialClient;
   private wifiDone = false;
 
-  /** Opens Improv Serial to the app over adb (it may take a moment to start listening). */
-  private async openImprov(): Promise<ImprovSerialClient | undefined> {
+  /**
+   * Waits until the app on the panel listens on `socket` (it cold-starts after the install, which can
+   * take a while on this panel), then connects. Errors go to the log instead of disappearing.
+   */
+  private async waitForAppSocket(socket: string, say: (s: string) => void, timeoutMs = 90_000): Promise<boolean> {
+    const name = socket.replace(/^localabstract:/, '@');
+    const until = Date.now() + timeoutMs;
+    say('Starting S1 Kiosk on the panel…');
+    while (Date.now() < until) {
+      const r = await this.panel!.run(`grep -c ' ${name}$' /proc/net/unix`).catch(() => ({ out: '0', code: 1 }));
+      if (Number.parseInt(r.out.trim(), 10) > 0) return true;
+      await new Promise((ok) => setTimeout(ok, 1500));
+    }
+    this.log(`${new Date().toTimeString().slice(0, 8)} ${name} never started listening on the panel`);
+    return false;
+  }
+
+  private async openImprov(say: (s: string) => void = () => {}): Promise<ImprovSerialClient | undefined> {
     const open = this.panel?.openStream?.bind(this.panel);
     if (!open) return undefined;
-    for (let i = 0; i < 10; i++) {
+    const demo = import.meta.env.DEV && new URLSearchParams(location.search).has('demo'); // simulated panel
+    if (!demo && !(await this.waitForAppSocket(IMPROV_SOCKET, say))) return undefined;
+    say('Connecting to S1 Kiosk…');
+    for (let i = 0; i < 5; i++) {
       try {
         const c = new ImprovSerialClient(await open(IMPROV_SOCKET));
-        await c.requestState(3000);
+        await c.requestState(5000);
         return c;
-      } catch { await new Promise((r) => setTimeout(r, 1000)); }
+      } catch (e) {
+        this.log(`${new Date().toTimeString().slice(0, 8)} Improv over adb, try ${i + 1}: ${(e as Error).message ?? e}`);
+        await new Promise((r) => setTimeout(r, 1500));
+      }
     }
     return undefined;
   }
@@ -557,15 +601,17 @@ class Installer {
     list.innerHTML = '';
     $('#wifi-pick').hidden = false;
     $('#wifi-connect').hidden = true;
-    this.improv = await this.openImprov();
+    this.improv = await this.openImprov((m) => { $('#wifi-scan-st').textContent = m; });
     if (!this.improv) {
-      $('#wifi-scan-st').textContent = 'This app version can\'t take Wi-Fi from the computer';
-      $('#wifi-st').textContent = 'Set up Wi-Fi on the panel instead: it shows Wi-Fi as the first step.';
-      btn.textContent = 'Continue';
+      $('#wifi-scan-st').textContent = 'Couldn\'t reach S1 Kiosk on the panel';
+      $('#wifi-st').className = 'status err';
+      $('#wifi-st').textContent = 'Try again, or set up Wi-Fi on the panel: it shows Wi-Fi as the first step. Details are in the log.';
+      btn.textContent = 'Try again';
       btn.disabled = false;
-      btn.onclick = () => void this.haStep();
+      btn.onclick = () => { $('#wifi-st').textContent = ''; $('#wifi-st').className = 'status'; void this.wifiStep(); };
       return;
     }
+    $('#wifi-scan-st').textContent = 'Looking for networks the panel can see…';
     if (this.improv.state === ImprovState.Provisioned) $('#wifi-st').textContent = 'The panel is already on Wi-Fi; pick another network to change it, or skip.';
     let networks: { ssid: string; rssi: number; secure: boolean }[] = [];
     try { networks = await this.improv.scan(); } catch { /* typed by hand then */ }
