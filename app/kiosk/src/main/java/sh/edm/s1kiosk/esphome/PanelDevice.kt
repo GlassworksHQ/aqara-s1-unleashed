@@ -549,6 +549,8 @@ class PanelDevice(
             set = { z -> if (kotlin.math.abs(z - prefs.zoom) > 0.001f) toActivity { putExtra("zoom", z) } },
         ),
         ButtonEntity("reload_dashboard", "Reload dashboard", "mdi:refresh", press = { toActivity { putExtra("reload", true) } }),
+        ButtonEntity("open_settings", "Open device settings", "mdi:cog", EntityCategory.CONFIG,
+            press = { toActivity { putExtra("open_settings", true) } }),
         ButtonEntity(
             "restart_app", "Restart app", "mdi:restart", EntityCategory.CONFIG, deviceClass = "restart",
             press = { toActivity { putExtra("restart", true) } },

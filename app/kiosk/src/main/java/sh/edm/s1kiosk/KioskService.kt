@@ -95,12 +95,18 @@ class KioskService : Service() {
         @Suppress("DEPRECATION")
         val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, CHANNEL)
         else Notification.Builder(this)
-        return b.setSmallIcon(R.drawable.ic_launcher)
+        b.setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle("S1 Kiosk")
             .setContentText("Screen, sensors & ESPHome API running")
             .setContentIntent(open)
             .setOngoing(true)
-            .build()
+        // The shade has no settings gear until Aqara's own onboarding ran: offer the way in here.
+        DeviceSettings.intent(this)?.let { settings ->
+            val pi = PendingIntent.getActivity(this, 1, settings, PendingIntent.FLAG_IMMUTABLE)
+            @Suppress("DEPRECATION")
+            b.addAction(Notification.Action.Builder(android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_launcher), "Settings", pi).build())
+        }
+        return b.build()
     }
 
     companion object {

@@ -432,6 +432,7 @@ class MainActivity : Activity() {
             if (fromNewIntent) loadDashboard()
         }
         intent.getStringExtra("ha_discovered")?.let { if (fromNewIntent) onHaFound(it) }
+        if (intent.getBooleanExtra("open_settings", false)) DeviceSettings.open(this)
         if (fromNewIntent) applySetupPreview(intent)
         if (intent.hasExtra("zoom")) {
             prefs.zoom = intent.getFloatExtra("zoom", 0f)
