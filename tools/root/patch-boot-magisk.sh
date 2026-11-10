@@ -14,6 +14,8 @@
 #   overlay.d/sbin/s1kiosk_adb_keys      this computer's adb public key, authorized on first boot so a
 #                                        factory panel (no adb) can continue with tools/install.sh
 #                                        (ADB_PUBKEY=<file>, default ~/.android/adbkey.pub; none = skip)
+#   overlay.d/s1kiosk_netwatch.rc        network watchdog (cycles Wi-Fi if the link wedges)
+#   overlay.d/sbin/s1kiosk_netwatch.sh
 #   overlay.d/s1kiosk_branding.rc        boot animation, bind-mounted over /system/media/bootanimation.zip
 #   overlay.d/sbin/s1kiosk_bootanimation.zip   (BOOT_ANIMATION=<zip>, default branding/glass-tile; none = stock)
 # Nothing is flashed here; see docs/root.md.
@@ -48,7 +50,7 @@ cp "$W/x/assets/boot_patch.sh" "$W/x/assets/util_functions.sh" "$W/p/"
 cp "$W/x/lib/arm64-v8a/libmagiskboot.so" "$W/p/magiskboot"           # runs on the host
 for b in magiskinit magisk init-ld; do cp "$W/x/lib/$PAYLOAD_ABI/lib$b.so" "$W/p/$b"; done  # go in the image
 cp "$RADIO/s1kiosk_radio.rc" "$RADIO/s1kiosk_radio.sh" "$RADIO/out/otbr-agent" "$RADIO/out/ot-ctl" "$W/p/"
-cp "$HERE/s1kiosk_firstboot.rc" "$HERE/s1kiosk_firstboot.sh" "$W/p/"
+cp "$HERE/s1kiosk_firstboot.rc" "$HERE/s1kiosk_firstboot.sh" "$HERE/s1kiosk_netwatch.rc" "$HERE/s1kiosk_netwatch.sh" "$W/p/"
 if [ "$ADB_PUBKEY" = none ]; then : > "$W/p/s1kiosk_adb_keys"
 elif [ -s "$ADB_PUBKEY" ]; then
   grep -q '^QAAAA' "$ADB_PUBKEY" || { echo "$ADB_PUBKEY does not look like an adb public key"; exit 1; }
@@ -87,7 +89,9 @@ docker run --rm --platform linux/arm64 -e PREINITDEVICE="$PREINITDEVICE" -e BRAN
     "add 0700 overlay.d/sbin/ot-ctl ot-ctl" \
     "add 0644 overlay.d/s1kiosk_firstboot.rc s1kiosk_firstboot.rc" \
     "add 0700 overlay.d/sbin/s1kiosk_firstboot.sh s1kiosk_firstboot.sh" \
-    "add 0600 overlay.d/sbin/s1kiosk_adb_keys s1kiosk_adb_keys"
+    "add 0600 overlay.d/sbin/s1kiosk_adb_keys s1kiosk_adb_keys" \
+    "add 0644 overlay.d/s1kiosk_netwatch.rc s1kiosk_netwatch.rc" \
+    "add 0700 overlay.d/sbin/s1kiosk_netwatch.sh s1kiosk_netwatch.sh"
   [ -z "$BRANDING_CPIO" ] || eval "./magiskboot cpio ramdisk.cpio $BRANDING_CPIO"
   ./magiskboot cpio ramdisk.cpio "extract .backup/.magisk magisk.cfg"
   echo "--- Magisk config:"; cat magisk.cfg

@@ -28,16 +28,17 @@ class DashboardOptionsTest {
 
     @Test
     fun optionsAreDefaultThenDashboards() {
-        assertEquals(listOf(DEFAULT, "Tablet", "Energy", "map-x"), DashboardOptions.options(list, DEFAULT))
-        assertEquals(listOf(DEFAULT), DashboardOptions.options(emptyList(), DEFAULT))
-        // "Custom" only when the current URL needs it.
-        assertEquals(listOf(DEFAULT, "Tablet", "Energy", "map-x", CUSTOM), DashboardOptions.options(list, CUSTOM))
+        // "Custom" is always last, whatever the current URL: the list must not change with the URL
+        // (an option-list change makes Home Assistant reconnect).
+        assertEquals(listOf(DEFAULT, "Tablet", "Energy", "map-x", CUSTOM), DashboardOptions.options(list, DEFAULT))
+        assertEquals(listOf(DEFAULT, CUSTOM), DashboardOptions.options(emptyList(), DEFAULT))
+        assertEquals(DashboardOptions.options(list, DEFAULT), DashboardOptions.options(list, CUSTOM))
     }
 
     @Test
     fun duplicateAndReservedTitlesAreDisambiguated() {
         val l = listOf(Dashboard("a", "Home"), Dashboard("b", "Home"), Dashboard("c", "Default"), Dashboard("d", "custom"))
-        assertEquals(listOf(DEFAULT, "Home", "Home (b)", "Default (c)", "custom (d)"), DashboardOptions.options(l, DEFAULT))
+        assertEquals(listOf(DEFAULT, "Home", "Home (b)", "Default (c)", "custom (d)", CUSTOM), DashboardOptions.options(l, DEFAULT))
     }
 
     @Test

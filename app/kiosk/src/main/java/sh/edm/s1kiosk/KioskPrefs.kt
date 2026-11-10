@@ -31,7 +31,9 @@ class KioskPrefs(context: Context) {
      */
     var urlSetting: String
         get() = sp.getString(KEY_URL, null)?.takeIf { it.isNotBlank() } ?: AUTO
-        set(v) = sp.edit().putString(KEY_URL, v.trim().ifEmpty { AUTO }).apply()
+        // commit(), not apply(): a URL change can be followed by an app restart (secure-context hosts),
+        // and an async write could be lost with the process, leaving the old URL ("auto").
+        set(v) { sp.edit().putString(KEY_URL, v.trim().ifEmpty { AUTO }).commit() }
 
     val isAutoUrl: Boolean get() = urlSetting.equals(AUTO, ignoreCase = true)
 

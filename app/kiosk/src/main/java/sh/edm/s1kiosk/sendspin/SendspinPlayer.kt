@@ -5,6 +5,8 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTimestamp
 import android.media.AudioTrack
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Process
@@ -146,6 +148,8 @@ class SendspinPlayer(
     @Volatile private var audioThread: Thread? = null
     @Volatile private var statsThread: Thread? = null
     private val wake = Object()
+    @Volatile private var backoffMs = 1_000L
+    private var netCallback: ConnectivityManager.NetworkCallback? = null
     @Volatile var status: SendspinSession.Status = SendspinSession.Status(SendspinSession.Phase.CLOSED); private set
     /** True once the client has started since boot (ESPHome reports the client id only then). */
     @Volatile var started = false; private set
@@ -207,12 +211,25 @@ class SendspinPlayer(
         audioThread = Thread({ audioLoop() }, "ss-audio").apply { isDaemon = true; start() }
         connThread = Thread({ connectLoop() }, "ss-conn").apply { isDaemon = true; start() }
         statsThread = Thread({ statsLoop() }, "ss-stats").apply { isDaemon = true; start() }
+        // After a Wi-Fi drop, reconnect as soon as the network is back instead of waiting out the
+        // back-off (which grows to 60 s): a wedged link left the player silent for a minute or more.
+        val cm = ctx.getSystemService(ConnectivityManager::class.java)
+        netCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                if (session != null) return
+                SsLog.i("Network is back: reconnecting now")
+                backoffMs = 1_000L
+                synchronized(wake) { wake.notifyAll() }
+            }
+        }.also { cb -> runCatching { cm?.registerDefaultNetworkCallback(cb) } }
     }
 
     /** Stops, telling the server why (`user_request` when switched off, `shutdown` when the app stops). */
     @Synchronized fun stop(reason: String = "user_request") {
         if (!running) return
         running = false
+        netCallback?.let { cb -> runCatching { ctx.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) } }
+        netCallback = null
         session?.close(reason)
         synchronized(wake) { wake.notifyAll() }
         connThread?.interrupt(); audioThread?.interrupt(); statsThread?.interrupt()
@@ -260,7 +277,7 @@ class SendspinPlayer(
     // ------------------------------------------------------------------ threads
 
     private fun connectLoop() {
-        var backoffMs = 1_000L
+        backoffMs = 1_000L
         while (running) {
             val url = resolveUrl()
             if (url == null) {

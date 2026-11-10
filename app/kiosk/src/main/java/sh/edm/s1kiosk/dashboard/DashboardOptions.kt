@@ -80,12 +80,17 @@ object DashboardOptions {
         return if (first.isEmpty() || first == DEFAULT_PATH) DEFAULT else CUSTOM
     }
 
-    /** The options for the select: [DEFAULT], the dashboards, and [CUSTOM] when the current one needs it. */
+    /**
+     * The options for the select: [DEFAULT], the dashboards, then [CUSTOM] (always: if it came and went
+     * with the URL, every switch to or from a custom URL would change the option list, and ESPHome can
+     * only apply that by making Home Assistant reconnect, so the panel's entities blinked unavailable).
+     */
+    @Suppress("UNUSED_PARAMETER")
     fun options(list: List<Dashboard>, current: String): List<String> {
         val out = ArrayList<String>()
         out += DEFAULT
         out += labels(list).keys
-        if (current == CUSTOM) out += CUSTOM
+        out += CUSTOM
         return out
     }
 
