@@ -41,6 +41,8 @@ const assets = [
   { name: 'firstboot-sh', file: repo('tools/root/s1kiosk_firstboot.sh'), license: 'MIT', source: SRC },
   { name: 'netwatch-rc', file: repo('tools/root/s1kiosk_netwatch.rc'), license: 'MIT', source: SRC },
   { name: 'netwatch-sh', file: repo('tools/root/s1kiosk_netwatch.sh'), license: 'MIT', source: SRC },
+  { name: 'update-rc', file: repo('tools/root/s1kiosk_update.rc'), license: 'MIT', source: SRC },
+  { name: 'update-sh', file: repo('tools/root/s1kiosk_update.sh'), license: 'MIT', source: SRC },
   { name: 'branding-rc', file: repo('tools/root/s1kiosk_branding.rc'), license: 'MIT', source: SRC },
   { name: 'bootanimation', file: repo('branding/glass-tile/bootanimation.zip'), license: 'MIT', source: `${SRC}/tree/main/branding/glass-tile` },
   { name: 'bootlogo', file: repo('branding/glass-tile/bootlogo.bmp'), license: 'MIT', source: `${SRC}/tree/main/branding/glass-tile` },

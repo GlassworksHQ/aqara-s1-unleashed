@@ -16,6 +16,8 @@ export interface S1OverlayInputs {
   adbKeys: Uint8Array;
   netwatchRc: Uint8Array;     // tools/root/s1kiosk_netwatch.rc
   netwatchSh: Uint8Array;     // tools/root/s1kiosk_netwatch.sh
+  updateRc: Uint8Array;       // tools/root/s1kiosk_update.rc
+  updateSh: Uint8Array;       // tools/root/s1kiosk_update.sh
   /** Boot animation (all entries STORED) + tools/root/s1kiosk_branding.rc; omit both for stock. */
   branding?: { rc: Uint8Array; bootAnimation: Uint8Array };
 }
@@ -35,6 +37,8 @@ export function s1Overlay(i: S1OverlayInputs): OverlayFile[] {
     { path: 'overlay.d/sbin/s1kiosk_adb_keys', mode: 0o600, data: i.adbKeys },
     { path: 'overlay.d/s1kiosk_netwatch.rc', mode: 0o644, data: i.netwatchRc },
     { path: 'overlay.d/sbin/s1kiosk_netwatch.sh', mode: 0o700, data: i.netwatchSh },
+    { path: 'overlay.d/s1kiosk_update.rc', mode: 0o644, data: i.updateRc },
+    { path: 'overlay.d/sbin/s1kiosk_update.sh', mode: 0o700, data: i.updateSh },
   ];
   if (i.branding) {
     if (!i.branding.bootAnimation.length) throw new Error('empty boot animation');

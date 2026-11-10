@@ -151,10 +151,11 @@ describe('vbmeta (unit)', () => {
 
 describe('s1Overlay (unit)', () => {
   const base = { radioRc: enc.encode('a'), radioSh: enc.encode('b'), otbrAgent: enc.encode('c'), otCtl: enc.encode('d'),
-    firstbootRc: enc.encode('e'), firstbootSh: enc.encode('f'), netwatchRc: enc.encode('g'), netwatchSh: enc.encode('h') };
+    firstbootRc: enc.encode('e'), firstbootSh: enc.encode('f'), netwatchRc: enc.encode('g'), netwatchSh: enc.encode('h'),
+    updateRc: enc.encode('i'), updateSh: enc.encode('j') };
   it('refuses a key that is not an adb public key, accepts none', () => {
     expect(() => s1Overlay({ ...base, adbKeys: enc.encode('ssh-rsa AAAA') })).toThrow(/QAAAA/);
-    expect(s1Overlay({ ...base, adbKeys: new Uint8Array(0) })).toHaveLength(9);
+    expect(s1Overlay({ ...base, adbKeys: new Uint8Array(0) })).toHaveLength(11);
   });
 });
 
@@ -179,6 +180,7 @@ describe.skipIf(!HAVE_GOLDEN)('golden: patchBoot == tools/root/patch-boot-magisk
     firstbootRc: ov('s1kiosk_firstboot.rc'), firstbootSh: ov('s1kiosk_firstboot.sh'),
     adbKeys: opts.key === false ? new Uint8Array(0) : g('fixtures/test_adbkey.pub'),
     netwatchRc: ov('s1kiosk_netwatch.rc'), netwatchSh: ov('s1kiosk_netwatch.sh'),
+    updateRc: ov('s1kiosk_update.rc'), updateSh: ov('s1kiosk_update.sh'),
     branding: opts.anim === false ? undefined : { rc: ov('s1kiosk_branding.rc'), bootAnimation: ov('s1kiosk_bootanimation.zip') },
   });
   /** The config the CLI printed ("--- Magisk config:" in out/<case>.log). */
