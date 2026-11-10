@@ -56,6 +56,8 @@ CONFIG_FASTBOOT_FLASH_MMC=y
 CONFIG_FASTBOOT_FLASH_MMC_DEV=1
 # 'oem run' + our 'upload' (patch 0002): read partitions to the host (fastboot get_staged)
 CONFIG_FASTBOOT_OEM_RUN=y
+# MS OS descriptors: Windows 10/11 binds WinUSB to the fastboot gadget by itself (no driver install)
+CONFIG_USB_GADGET_OS_DESCRIPTORS=y
 # Never save U-Boot's environment: the panel's "env" partition belongs to stock Android.
 CONFIG_ENV_IS_NOWHERE=y
 # CONFIG_ENV_IS_IN_FAT is not set

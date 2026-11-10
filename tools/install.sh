@@ -138,7 +138,8 @@ else
   sh_ am start -n "$ACT"
 fi
 
-IP=$(adb shell ip -4 -o addr show wlan0 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -1)
+# A factory-fresh panel has no Wi-Fi yet (no wlan0): that must not fail the run under set -e.
+IP=$(adb shell ip -4 -o addr show wlan0 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -1 || true)
 cat <<EOF
 
 Done.

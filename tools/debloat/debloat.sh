@@ -36,6 +36,9 @@ LAUNCHER=com.aqara.inhome.launcher
 
 op() { # op <disable|enable> <pkg>
   if [ "$1" = "disable" ]; then
+    # Already disabled by the firmware itself (state 2, e.g. vassistant on 4.5.80): the shell may not
+    # turn that into disabled-user, and doesn't need to.
+    if $ADB shell pm list packages -d "$2" 2>/dev/null | grep -qx "package:$2"; then echo "already   $2 (disabled)"; return; fi
     $ADB shell pm disable-user --user 0 "$2" >/dev/null 2>&1 && echo "disabled  $2" || echo "skip/err  $2"
   else
     $ADB shell pm enable "$2" >/dev/null 2>&1 && echo "enabled   $2" || echo "skip/err  $2"
