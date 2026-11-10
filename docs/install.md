@@ -107,7 +107,8 @@ S1 Kiosk is installed and made the home screen. Then, from the same page:
   panel. Then click **Add** on the discovered *S1 Panel* in *Settings → Devices & services*.
 - **Radio.** Choose what the Zigbee/Thread radio does. You can change it any time in Home Assistant.
 - **Panel settings.** Language, time zone, 12- or 24-hour clock, and optionally Simple Keyboard
-  (Apache-2.0) instead of Aqara's keyboard.
+  (Apache-2.0) instead of Aqara's keyboard. The time zone is also kept from then on: see
+  [Time zone](#time-zone).
 
 <img src="img/installer/radio.webp" alt="The radio choice: Off (selected), Zigbee coordinator, Thread border router (experimental), Zigbee router (coming soon)." width="100%">
 
@@ -182,6 +183,22 @@ tools/install.sh --url http://homeassistant.local:8123 \
   get the radio modes with the root helper from `fel-install.sh`.
 
 How each step works, and why: [research/root.md](research/root.md) and [research/fel.md](research/fel.md).
+
+## Time zone
+
+Aqara's system software sets the time zone again at every boot. Its own (cloud-side) setting is empty
+on a panel without Aqara's cloud, so it falls back to UTC+8 and picks the first zone with that offset,
+`Antarctica/Casey`. The panel's root helper (boot image with helper v4) puts the zone you chose back
+within seconds after boot, and whenever it changes later.
+
+- The installer records your choice (`persist.s1kiosk.timezone`) along with setting it.
+- To change it later: the panel's ESPHome device in Home Assistant, Configuration, **Time zone**: an id
+  like `Europe/Berlin` or `America/New_York`. It only accepts zones the panel knows, and only from Home
+  Assistant's encrypted connection. **Time zone status** (Diagnostic) says whether the zone is being
+  kept.
+- Panels set up before this: on their first boot with the new helper it keeps the zone that is in place
+  then, unless that is Aqara's `Antarctica/Casey`; then set **Time zone** once.
+- With an older boot image the reset still happens; Time zone status says so.
 
 ## Undo
 

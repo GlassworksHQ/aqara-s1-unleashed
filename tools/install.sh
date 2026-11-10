@@ -130,9 +130,13 @@ if [[ -n "$KEYBOARD" ]]; then
 fi
 
 if [[ -n "$TZ_" ]]; then
+  # adb shell runs it through the panel's shell: only Olson-id characters (same rule as the web installer)
+  [[ "$TZ_" =~ ^[A-Za-z0-9_+/-]+$ ]] || { echo "bad --timezone '$TZ_' (an id like Europe/Berlin)" >&2; exit 1; }
   step "Time zone $TZ_"
   sh_ settings put global auto_time_zone 0
   sh_ service call alarm 3 s16 "$TZ_"
+  # kept by the root helper (v4): Aqara's SystemManager resets the zone at every boot
+  sh_ setprop persist.s1kiosk.timezone "$TZ_"
 fi
 if [[ -n "$LOCALE" ]]; then
   step "Locale $LOCALE (applies after reboot)"

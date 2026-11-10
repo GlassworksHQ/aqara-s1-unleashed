@@ -67,6 +67,7 @@ describe('provision (install.sh port)', () => {
       .toBeGreaterThan(p.cmds.indexOf('cmd package set-home-activity sh.edm.s1kiosk/.MainActivity'));
     expect(p.cmds).toContain(`ime set 'rkr.simplekeyboard.inputmethod/.latin.LatinIME'`);
     expect(p.cmds).toContain(`service call alarm 3 s16 'America/Los_Angeles'`);
+    expect(p.cmds).toContain(`setprop persist.s1kiosk.timezone 'America/Los_Angeles'`);
     expect(p.cmds.at(-2)).toBe(`am start -n sh.edm.s1kiosk/.MainActivity --es url 'http://ha.local:8123/panel'`);
     expect(p.cmds).toContain('rm -f /data/local/tmp/s1kiosk.apk');
   });

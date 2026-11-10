@@ -50,6 +50,23 @@ w "$T/bin/pidof" <<'EOF'
 #!/bin/sh
 p=$(pgrep -x "$1" | tr '\n' ' '); [ -n "$p" ] && echo "${p% }"
 EOF
+# AlarmManager.setTimeZone as `service call alarm 3 s16 <id>`: Android takes known zones, and falls
+# back to GMT for anything else (zones listed in /t/tz-unknown).
+w "$T/bin/service" <<'EOF'
+#!/bin/sh
+[ "$1 $2 $3 $4" = "call alarm 3 s16" ] || exit 1
+echo "$5" >> /t/tz-calls
+if grep -qx -- "$5" /t/tz-unknown 2>/dev/null; then printf GMT > /t/props/persist.sys.timezone
+else printf '%s' "$5" > /t/props/persist.sys.timezone; fi
+echo "Result: Parcel(00000000    '....')"
+EOF
+w "$T/bin/settings" <<'EOF'
+#!/bin/sh
+case "$1" in
+  get) cat "/t/settings.$2.$3" 2>/dev/null || echo 1 ;;
+  put) echo "$4" > "/t/settings.$2.$3" ;;
+esac
+EOF
 for b in iptables ip6tables iptables-restore ip6tables-restore iptables-save ip6tables-save; do printf '#!/bin/sh\nexit 0\n' | w "$T/bin/$b"; done
 w "$T/bin/ip" <<'EOF'
 #!/bin/sh
@@ -434,6 +451,41 @@ rm -f "$APP/files/update/pending.apk"; mkfifo "$APP/files/update/pending.apk"; c
 timeout 30 /system/bin/sh "$TB/s1kiosk_update.sh" >/dev/null 2>&1
 check "update service: a FIFO is refused, no hang" test $? != 124
 check "...with an error status" has "$(prop sys.s1kiosk.update.status)" "error"
+
+# ---------------------------------------------------------------------------------- time zone
+echo "--- time zone"
+reset_radio; echo off > "$T/props/persist.s1kiosk.radio_mode"
+rm -f "$T/props/persist.s1kiosk.timezone" "$T/tz-calls" "$T/tz-unknown"
+printf 'Antarctica/Casey' > "$T/props/persist.sys.timezone"
+LOOPS=1 helper
+check "no zone chosen and Aqara's default in place: nothing done" test ! -e "$T/tz-calls" -a ! -e "$T/props/persist.s1kiosk.timezone"
+check "...status says what to do" has "$(prop sys.s1kiosk.timezone.status)" "none: no time zone chosen"
+printf 'Europe/Berlin' > "$T/props/persist.s1kiosk.timezone"
+LOOPS=1 helper
+check "Aqara's reset is undone at start" test "$(prop persist.sys.timezone)" = Europe/Berlin -a "$(cat "$T/tz-calls")" = Europe/Berlin
+check "...auto time zone switched off" test "$(cat "$T/settings.global.auto_time_zone")" = 0
+check "...status ok" test "$(prop sys.s1kiosk.timezone.status)" = "ok Europe/Berlin"
+: > "$T/tz-calls"; LOOPS=1 helper
+check "already right: no call" test ! -s "$T/tz-calls"
+# Aqara's sync running later (its gateway prop changed, or a slow boot): caught by the loop
+LOOPS=4 S1R_SLEEP=3 env S1R_ONCE=4 S1R_SLEEP=3 S1R_LOADER_ONCE=1 /system/bin/sh "$TB/s1kiosk_radio.sh" >/dev/null 2>&1 &
+H=$!; sleep 2; printf 'Antarctica/Casey' > "$T/props/persist.sys.timezone"; wait $H
+check "a later reset is re-applied by the watch loop" test "$(prop persist.sys.timezone)" = Europe/Berlin
+sleep 1; check "...and the loop ends with the helper" test -z "$(pgrep -f 's1kiosk_radio.sh' | head -1)"
+printf 'Mars/Olympus_Mons' > "$T/props/persist.s1kiosk.timezone"; echo Mars/Olympus_Mons > "$T/tz-unknown"; : > "$T/tz-calls"
+LOOPS=1 helper
+check "a zone Android doesn't know is reported" has "$(prop sys.s1kiosk.timezone.status)" "error Mars/Olympus_Mons: Android did not accept it (now GMT)"
+check "...after one try" test "$(wc -l < "$T/tz-calls")" = 1
+printf 'Europe/Berlin; reboot' > "$T/props/persist.s1kiosk.timezone"; : > "$T/tz-calls"
+LOOPS=1 helper
+check "a malformed value is never passed on" test ! -s "$T/tz-calls"
+check "...and reported" has "$(prop sys.s1kiosk.timezone.status)" "is not a time zone id"
+# migration: a panel set up before this, booting with the installer's zone still in place
+rm -f "$T/props/persist.s1kiosk.timezone"; printf 'America/Los_Angeles' > "$T/props/persist.sys.timezone"
+LOOPS=1 helper
+check "the zone in place at boot is adopted when none was chosen" test "$(prop persist.s1kiosk.timezone)" = America/Los_Angeles
+check "...and kept from then on" test "$(prop sys.s1kiosk.timezone.status)" = "ok America/Los_Angeles"
+pkill -f "sleep 1000"
 
 echo
 echo "shell tests: $PASS passed, $FAILS failed"

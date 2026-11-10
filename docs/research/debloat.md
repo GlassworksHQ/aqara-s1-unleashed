@@ -70,6 +70,16 @@ adb shell settings put global auto_time_zone 0
 adb shell service call alarm 3 s16 America/Los_Angeles      # IAlarmManager.setTimeZone, immediate
 ```
 
+**It doesn't stick (found 2026-11-10):** Aqara's SystemManager (`/vendor/app/SystemManager`,
+`com.lumi.systemmanager.service.gateway.PropReceiver`) runs `syncTimeZone()` at boot and whenever its own
+gateway property `persist.app.time_zone` changes. That property lives in Aqara's native gateway store, not
+in Android's properties, and is empty without Aqara's cloud, so it defaults to `GMT+08:00`; `setTimeZone()`
+then calls `AlarmManager.setTimeZone` with the first `TimeZone.getAvailableIDs()` entry whose current
+offset matches: `Antarctica/Casey` (logcat tag `PropReceiver`, "syncTimeZone … / setTimeZoneOffset id …").
+The app can't set the zone (`SET_TIME_ZONE` is signature|privileged), so the root helper (v4) keeps the
+owner's zone (`persist.s1kiosk.timezone`) with the same `service call alarm 3` and re-applies it whenever
+`persist.sys.timezone` drifts ([../radio.md](../radio.md#root-helper-contract-v4), [../install.md](../install.md#time-zone)).
+
 Home Assistant's UI language is a **per-user HA profile setting** (Profile → Localization), not the
 Android locale.
 

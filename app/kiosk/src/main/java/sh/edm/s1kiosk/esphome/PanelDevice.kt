@@ -124,6 +124,8 @@ class PanelDevice(
             SisdkZigbeed.fetch(dest, ctx.cacheDir, "s1-kiosk/${BuildConfig.VERSION_NAME} (+https://github.com/aguilaair/aqara-s1-unleashed)", progress)
         },
     )
+    /** The time zone to keep (Aqara resets it at every boot; the root helper puts it back). */
+    private val timeZone = sh.edm.s1kiosk.TimeZoneKeeper(onChange = { runCatching { exec.execute { server?.publishStates() } } })
     /**
      * App updates from GitHub Releases (docs/releasing.md); the "App update" entity. runCatching:
      * the update thread may still report while [stop] has already shut [exec] down.
@@ -166,6 +168,7 @@ class PanelDevice(
         sendspin?.stop("shutdown")
         sendspin = null
         radio.stop()
+        timeZone.stop()
         updates.stop()
         voicePlayer.release()
         mediaPlayer.release()
@@ -211,6 +214,7 @@ class PanelDevice(
         if (voiceEnabled) startVoice()
         if (prefs.sendspinEnabled) sendspin?.start()
         radio.start()
+        timeZone.start()
         updates.start()
         startServer()
         prefs.registerListener(prefListener)
@@ -715,6 +719,16 @@ class PanelDevice(
             "aqara_cloud", "Aqara cloud daemon", "mdi:cloud-outline", EntityCategory.DIAGNOSTIC,
             get = { aqaraCloudStatus },
         ),
+        // Time zone (docs/install.md "Time zone"): the zone the root helper keeps. Authenticated only.
+        TextEntity(
+            "time_zone", "Time zone", "mdi:map-clock", maxLength = 64, pattern = "^[A-Za-z0-9_+/-]*$",
+            get = { timeZone.text() },
+            set = { v ->
+                timeZone.set(v)?.let { Log.w(sh.edm.s1kiosk.TimeZoneKeeper.TAG, "Time zone: $it") }
+                exec.execute { server?.publishStates() }
+            },
+        ).apply { authOnly = true },
+        TextSensorEntity("time_zone_status", "Time zone status", "mdi:clock-check-outline", EntityCategory.DIAGNOSTIC, get = { timeZone.statusText() }),
         TextSensorEntity(
             "app_version", "App version", "mdi:new-box", EntityCategory.DIAGNOSTIC,
             get = { BuildConfig.VERSION_NAME },

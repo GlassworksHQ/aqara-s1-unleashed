@@ -176,6 +176,8 @@ export async function provision(p: PanelShell, opts: ProvisionOptions, onStep: S
     r.step(`Time zone ${opts.timezone}`);
     await r.run('settings put global auto_time_zone 0');
     await r.run(`service call alarm 3 s16 ${q(opts.timezone)}`);
+    // Kept by the root helper (v4): Aqara's SystemManager resets the zone at every boot (docs/install.md).
+    await r.run(`setprop persist.s1kiosk.timezone ${q(opts.timezone)}`);
   }
   if (opts.locale && !/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(opts.locale)) throw new Error(`bad locale ${opts.locale}`);
   if (opts.locale) {

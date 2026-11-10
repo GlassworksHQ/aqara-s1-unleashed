@@ -58,6 +58,16 @@
 #   RADIO_ALLOW="<ip|cidr> ..."|any|none   (wins over the app's list; empty = the app's list)
 #   ZIGBEE_STACK=aqara|sisdk               (wins over the app's choice; empty = the app's choice)
 #   ZIGBEED_ARGS="..."                     (extra arguments for Silicon Labs' zigbeed, e.g. "-v 1 -d 3")
+# Time zone (contract v4): Aqara's SystemManager resets the zone at every boot (and whenever its own
+# gateway time-zone setting changes): with that setting empty, as on our panels with Aqara's cloud
+# blocked, it picks the first zone at UTC+8, Antarctica/Casey. A background loop of this helper keeps
+# the owner's zone instead: persist.s1kiosk.timezone (an Olson id, set by the installer or the app's
+# `Time zone` entity) is re-applied with `service call alarm 3 s16 <id>` (AlarmManager.setTimeZone)
+# whenever persist.sys.timezone differs, every 5 s for the first 10 minutes, then every 15 s. A zone
+# Android doesn't accept is reported once and not retried until the wanted zone changes. Status:
+# sys.s1kiosk.timezone.status = "<ok|error|none> [<id>][: detail]". The loop runs whatever the radio
+# mode does (also after "giving up"), and is restarted with the helper.
+#
 # Developer override: with a root-made $DIR/dev-override file, a root-owned $DIR/s1kiosk_radio.sh runs
 # instead of everything else, and binaries in $DIR win. (Before v4 those were honoured without the
 # marker; a leftover copy would otherwise shadow every update.)
@@ -204,6 +214,55 @@ otbr_kind() {
 OTBR_KIND=$(otbr_kind)
 setprop sys.s1kiosk.radio.otbr "$OTBR_KIND"
 [ "$OTBR_KIND" = br ] && [ -z "$BACKBONE" ] && BACKBONE=wlan0
+
+# --- time zone ------------------------------------------------------------------------------------
+TZ_PROP=persist.s1kiosk.timezone          # wanted: an Olson id ("" = not managed)
+TZ_STATUS=sys.s1kiosk.timezone.status
+# What Aqara's sync picks for its default "GMT+08:00" (never adopted as the owner's choice).
+TZ_AQARA_DEFAULT="Antarctica/Casey"
+TZ_PID=""; TZ_BAD=""; TZ_SHOWN=""
+tz_valid() { # an Olson id: letters/digits/_+- in up to 3 /-separated parts, or UTC/GMT forms
+  case "$1" in ""|/*|*/|*//*|*[!A-Za-z0-9_+/-]*) return 1 ;; esac
+  [ ${#1} -le 64 ] && [ "$(echo "$1" | tr -cd / | wc -c)" -le 2 ]
+}
+tz_say() { [ "$1" = "$TZ_SHOWN" ] && return 0; TZ_SHOWN=$1; setp $TZ_STATUS "$1"; say "time zone: $1"; }
+tz_check() {
+  want_=$(getprop $TZ_PROP); have_=$(getprop persist.sys.timezone)
+  if [ -z "$want_" ]; then
+    # Panels set up before this existed: the zone the installer set is still in persist.sys.timezone
+    # at boot, until Aqara's sync overwrites it. Adopt it once if it is a real choice.
+    if tz_valid "$have_" && [ "$have_" != "$TZ_AQARA_DEFAULT" ] && [ "$have_" != GMT ] && [ "$have_" != UTC ]; then
+      setprop $TZ_PROP "$have_"; say "time zone: adopted $have_ as the zone to keep"; want_=$have_
+    else
+      tz_say "none: no time zone chosen (Time zone in Home Assistant, or the installer)"; return 0
+    fi
+  fi
+  if ! tz_valid "$want_"; then tz_say "error: '$(printf '%.24s' "$want_")' is not a time zone id"; return 0; fi
+  if [ "$want_" = "$have_" ]; then TZ_BAD=""; tz_say "ok $want_"; return 0; fi
+  [ "$want_" = "$TZ_BAD" ] && return 0     # Android refused it before: don't loop on it
+  [ "$(settings get global auto_time_zone 2>/dev/null)" = 0 ] || settings put global auto_time_zone 0 2>/dev/null
+  service call alarm 3 s16 "$want_" >/dev/null 2>&1
+  i_=0; while [ "$(getprop persist.sys.timezone)" != "$want_" ] && [ $i_ -lt 20 ]; do sleep 0.1; i_=$((i_ + 1)); done
+  now_=$(getprop persist.sys.timezone)
+  if [ "$now_" = "$want_" ]; then
+    say "time zone: ${have_:-unset} -> $want_ (re-applied)"; tz_say "ok $want_"
+  else
+    TZ_BAD=$want_; tz_say "error $want_: Android did not accept it (now ${now_:-unset})"
+  fi
+}
+tz_start() { # one check now (so the first pass is done before the radio work), then the loop
+  tz_check
+  parent_=$$   # the helper; the loop ends with it (also if it exits without tz_stop)
+  ( t0_=$(date +%s)
+    while :; do
+      if [ $(( $(date +%s) - t0_ )) -lt 600 ]; then sleep 5; else sleep 15; fi
+      kill -0 "$parent_" 2>/dev/null || exit 0
+      tz_check
+    done ) &
+  TZ_PID=$!
+}
+tz_stop() { alive "$TZ_PID" && kill "$TZ_PID"; TZ_PID=""; }
+tz_start
 
 alive() { [ -n "$1" ] && kill -0 "$1" 2>/dev/null; }
 sha256() { set -- $(sha256sum "$1" 2>/dev/null); echo "$1"; }
@@ -886,6 +945,7 @@ fw_do() { # id sha-prefix: the whole explicit operation; the helper restarts aft
   fi
   # Start over cleanly (children are gone; the loop state belongs to the old services).
   say "firmware: restarting the helper"
+  tz_stop
   exec /system/bin/sh "$0"
 }
 
@@ -921,6 +981,7 @@ fw_recover() {
       echo "stock $FW_APP $FW_SPINEL" > "$FW_DIR/current"
       fwdone "error $i_: the flash was interrupted; restored stock (APP $FW_APP)"
       say "firmware: restarting the helper"
+      tz_stop
       exec /system/bin/sh "$0"
     fi
   fi
@@ -1012,7 +1073,7 @@ while true; do
     # radio without a trusted application after an interrupted flash: everything stays off
     WANT=""; enforce; br_net_off; fw_off
     status error "radio firmware missing after an interrupted flash: flash Aqara stock"
-    if [ -n "$LOOPS" ]; then LOOPS=$((LOOPS - 1)); [ $LOOPS -le 0 ] && exit 0; fi
+    if [ -n "$LOOPS" ]; then LOOPS=$((LOOPS - 1)); [ $LOOPS -le 0 ] && { tz_stop; exit 0; }; fi
     sleep ${S1R_SLEEP:-3}; continue
   fi
   # Re-enforce every 3 s, in every mode incl. off: Aqara's boot sequence (zigbee_cpcd_factory ->
@@ -1037,6 +1098,6 @@ while true; do
     status error "services not in wanted state:$bad"
   fi
   if [ $FAILS -gt 20 ]; then status error "giving up after repeated failures"; exec sleep 2147483647; fi
-  if [ -n "$LOOPS" ]; then LOOPS=$((LOOPS - 1)); [ $LOOPS -le 0 ] && exit 0; fi
+  if [ -n "$LOOPS" ]; then LOOPS=$((LOOPS - 1)); [ $LOOPS -le 0 ] && { tz_stop; exit 0; }; fi
   sleep ${S1R_SLEEP:-3}
 done
