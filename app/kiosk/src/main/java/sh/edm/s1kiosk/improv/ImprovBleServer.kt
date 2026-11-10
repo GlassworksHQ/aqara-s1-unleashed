@@ -110,7 +110,7 @@ class ImprovBleServer(
 
     @SuppressLint("MissingPermission")
     @Suppress("DEPRECATION")
-    private fun enableBluetoothThenStart(a: BluetoothAdapter, initial: ImprovState, caps: Int): Boolean {
+    private fun enableBluetoothThenStart(a: BluetoothAdapter): Boolean {
         if (Build.VERSION.SDK_INT >= 33) return false // enable() is a no-op for apps on 33+
         if (btReceiver == null) {
             val r = object : BroadcastReceiver() {
@@ -119,7 +119,8 @@ class ImprovBleServer(
                     runCatching { ctx.unregisterReceiver(this) }
                     btReceiver = null
                     Log.i(TAG, "Bluetooth is on: starting Improv")
-                    start(initial, caps)
+                    // the session may have moved on (e.g. authorized) while Bluetooth came up
+                    if (!start(state, capabilities)) Log.e(TAG, "Improv did not start after Bluetooth came on")
                 }
             }
             btReceiver = r
@@ -135,9 +136,16 @@ class ImprovBleServer(
         if (a == null) { listener.onAdvertising(false, "no Bluetooth adapter"); return false }
         if (!a.isEnabled) {
             // A factory-reset panel boots with Bluetooth off, and Improv is how it gets Wi-Fi: turn it on
-            // (BLUETOOTH_ADMIN, API <= 32) and start as soon as it's up.
-            if (enableBluetoothThenStart(a, initial, caps)) listener.onAdvertising(false, "turning Bluetooth on")
-            else listener.onAdvertising(false, "Bluetooth is off and could not be turned on")
+            // (BLUETOOTH_ADMIN, API <= 32) and start as soon as it's up. That is a pending start, not a
+            // failure: the session (and its Allow button) stays up meanwhile; setState() keeps `state`
+            // current so advertising begins with the session's state at that moment.
+            state = initial
+            capabilities = caps
+            if (enableBluetoothThenStart(a)) {
+                Log.i(TAG, "Bluetooth is off: turning it on; Improv starts when it is up")
+                return true
+            }
+            listener.onAdvertising(false, "Bluetooth is off and could not be turned on")
             return false
         }
         if (!permissionsOk()) { listener.onAdvertising(false, "missing BLUETOOTH_ADVERTISE/CONNECT"); return false }
@@ -177,6 +185,8 @@ class ImprovBleServer(
     }
 
     fun stop() {
+        btReceiver?.let { runCatching { ctx.unregisterReceiver(it) } } // a pending start must not fire later
+        btReceiver = null
         stopAdvertising()
         main.removeCallbacks(inFlightTimeout)
         queue.clear()
