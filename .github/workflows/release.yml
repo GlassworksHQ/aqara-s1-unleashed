@@ -98,6 +98,14 @@ jobs:
             "dist/s1-kiosk-$VERSION.apk" "dist/s1-kiosk-$VERSION.apk.sha256" \
             --verify-tag --title "S1 Kiosk $VERSION" --generate-notes
 
+      - name: Rebuild the web installer
+        # The installer (https://s1.edm.sh, Vercel) picks the latest release at build time.
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$VERCEL_DEPLOY_HOOK" ]; then echo "::warning::VERCEL_DEPLOY_HOOK not set: redeploy the installer by hand"; exit 0; fi
+          curl -fsS -X POST "$VERCEL_DEPLOY_HOOK" > /dev/null && echo "installer rebuild requested"
+
       - name: Remove the keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/s1kiosk-release.jks"
