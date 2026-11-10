@@ -4,11 +4,13 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import sh.edm.s1kiosk.setup.ConnectivityWifiStatus
+import sh.edm.s1kiosk.setup.InstallerWifi
 import sh.edm.s1kiosk.setup.WifiSetupStatus
 
 /**
- * Setup-screen Wi-Fi status that adds Improv's progress on top of plain connectivity:
- * "Waiting for Wi-Fi details over Bluetooth" while advertising, "Joining <ssid>…" while provisioning.
+ * Setup-screen Wi-Fi status on top of plain connectivity: CONNECTING with the SSID while Improv is
+ * provisioning or a join sent from the computer (web installer) is running. Improv's own status
+ * (Allow, waiting, errors) is shown by the Wi-Fi step from [ImprovController.setupFacts].
  */
 class ImprovWifiStatus(context: Context) : WifiSetupStatus {
     private val base = ConnectivityWifiStatus(context.applicationContext)
@@ -20,14 +22,13 @@ class ImprovWifiStatus(context: Context) : WifiSetupStatus {
 
     override fun snapshot(): WifiSetupStatus.Snapshot {
         val s = base.snapshot()
-        return when (ImprovController.activeState) {
-            ImprovState.PROVISIONING -> s.copy(
+        if (s.online) return s
+        val inst = ImprovController.installerWifi
+        return when {
+            inst?.phase == InstallerWifi.Phase.CONNECTING -> s.copy(state = WifiSetupStatus.State.CONNECTING, ssid = inst.ssid)
+            ImprovController.activeState == ImprovState.PROVISIONING -> s.copy(
                 state = WifiSetupStatus.State.CONNECTING,
-                message = "Joining ${ImprovController.joiningSsid.ifBlank { "the network" }}…",
-            )
-            ImprovState.AUTHORIZATION_REQUIRED, ImprovState.AUTHORIZED -> if (s.online) s else s.copy(
-                message = "Waiting for Wi-Fi details over Bluetooth: Home Assistant will show " +
-                    "\"Improv via BLE\" discovered, or use improv-wifi.com on a phone.",
+                ssid = ImprovController.joiningSsid.ifBlank { null },
             )
             else -> s
         }
@@ -37,6 +38,6 @@ class ImprovWifiStatus(context: Context) : WifiSetupStatus {
         this.onChange = onChange
         base.observe(onChange)
         main.removeCallbacks(poll)
-        if (onChange != null) main.postDelayed(poll, 1000) // Improv state has no listener; poll cheaply
+        if (onChange != null) main.postDelayed(poll, 1000) // the countdown; changes also arrive via InlineHost
     }
 }

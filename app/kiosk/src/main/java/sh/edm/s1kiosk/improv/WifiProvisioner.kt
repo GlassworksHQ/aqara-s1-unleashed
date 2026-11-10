@@ -107,11 +107,77 @@ class WifiProvisioner(private val ctx: Context, private val main: Handler) {
     }
 
     fun cancel() {
+        preparing?.let { finishPreparing(it, Outcome.Failed("cancelled", null)) }
         job?.finish(Outcome.Failed("cancelled", null))
     }
 
-    fun connect(ssid: String, password: String, cb: (Outcome) -> Unit) {
+    /** A connect waiting for Wi-Fi to turn on (and for a first scan) before [connectNow]. */
+    private inner class Preparing(
+        val ssid: String,
+        val password: String,
+        val hidden: Boolean?,
+        val cb: (Outcome) -> Unit,
+    ) : Runnable {
+        val enableDeadline = SystemClock.elapsedRealtime() + WIFI_ENABLE_TIMEOUT_MS
+        var scanDeadline = 0L
+
+        override fun run() {
+            if (preparing !== this) return
+            val now = SystemClock.elapsedRealtime()
+            if (!wm.isWifiEnabled) {
+                if (now > enableDeadline) return finishPreparing(this, Outcome.Failed("Wi-Fi is turned off and could not be turned on", null))
+                main.postDelayed(this, 500)
+                return
+            }
+            if (scanDeadline == 0L) {
+                // Just turned on: give the first scan a moment, so the network's security type is known.
+                Log.i(TAG, "Wi-Fi is on")
+                scanDeadline = now + FIRST_SCAN_WAIT_MS
+                requestScan()
+            }
+            val seen = hasLocationAccess && runCatching { wm.scanResults.any { it.SSID == ssid } }.getOrDefault(false)
+            if (!seen && now < scanDeadline) {
+                main.postDelayed(this, 500)
+                return
+            }
+            preparing = null
+            connectNow(ssid, password, hidden, cb)
+        }
+    }
+
+    private var preparing: Preparing? = null
+
+    private fun finishPreparing(p: Preparing, o: Outcome) {
+        if (preparing !== p) return
+        preparing = null
+        main.removeCallbacks(p)
+        Log.i(TAG, "outcome: $o")
+        p.cb(o)
+    }
+
+    /**
+     * Joins [ssid]. Turns Wi-Fi on first if it is off (allowed on API 29 for the same callers as
+     * addNetwork, see the class comment). [hidden]: null = decide from the scan (not seen = hidden),
+     * else as given. [password] is never logged, only its length.
+     */
+    fun connect(ssid: String, password: String, hidden: Boolean? = null, cb: (Outcome) -> Unit) {
+        preparing?.let { finishPreparing(it, Outcome.Failed("superseded", null)) }
         job?.finish(Outcome.Failed("superseded", null))
+        if (!wm.isWifiEnabled) {
+            @Suppress("DEPRECATION")
+            val ok = runCatching { wm.setWifiEnabled(true) }.getOrDefault(false)
+            Log.i(TAG, "Wi-Fi is off: setWifiEnabled(true) -> $ok")
+            if (!ok) return cb(Outcome.Failed("Wi-Fi is turned off and could not be turned on", null))
+            onProgress?.invoke("Turning Wi-Fi on…")
+            val p = Preparing(ssid, password, hidden, cb)
+            preparing = p
+            main.postDelayed(p, 500)
+            return
+        }
+        connectNow(ssid, password, hidden, cb)
+    }
+
+    private fun connectNow(ssid: String, password: String, hidden: Boolean?, cb: (Outcome) -> Unit) {
         ensureLocationIfDeviceOwner()
         Log.i(TAG, "connect '$ssid' (${password.length} char password); ${status()}")
         if (!wm.isWifiEnabled) return cb(Outcome.Failed("Wi-Fi is turned off", null))
@@ -141,8 +207,9 @@ class WifiProvisioner(private val ctx: Context, private val main: Handler) {
 
         val attempt = Attempt(ssid, loc, wifiUpAtStart, prevNetId, prevSsid, cb)
         job = attempt
-        if (legacyApiAllowed && attempt.startLegacy(security, password, hidden = scan == null)) return
-        attempt.startSuggestion(security, password, hidden = scan == null)
+        val isHidden = hidden ?: (scan == null)
+        if (legacyApiAllowed && attempt.startLegacy(security, password, hidden = isHidden)) return
+        attempt.startSuggestion(security, password, hidden = isHidden)
     }
 
     /**
@@ -329,5 +396,9 @@ class WifiProvisioner(private val ctx: Context, private val main: Handler) {
         const val CONNECT_TIMEOUT_MS = 30_000L
         /** Suggestions wait for the user to approve a notification. */
         const val SUGGESTION_TIMEOUT_MS = 120_000L
+        /** setWifiEnabled(true) → WIFI_STATE_ENABLED takes a few seconds on the panel. */
+        const val WIFI_ENABLE_TIMEOUT_MS = 15_000L
+        /** After turning Wi-Fi on: wait this long at most for the network to show up in a scan. */
+        const val FIRST_SCAN_WAIT_MS = 6_000L
     }
 }

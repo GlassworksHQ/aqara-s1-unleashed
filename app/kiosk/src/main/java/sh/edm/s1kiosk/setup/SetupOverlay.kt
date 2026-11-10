@@ -25,6 +25,7 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import sh.edm.s1kiosk.auth.OAuth
+import sh.edm.s1kiosk.radio.RadioMode
 
 /**
  * The first-boot setup screen (docs/onboarding.md, step 4): a native, full-screen overlay over the
@@ -32,9 +33,11 @@ import sh.edm.s1kiosk.auth.OAuth
  * sky/violet radial glows, glass cards rgba(255,255,255,.045) + .07 border, 22-26 px radii,
  * uppercase letter-spaced labels in #63636b, big light headings, amber / green accents).
  *
- * Left: the four steps (Wi-Fi, Add to Home Assistant, Sign in, Done) with checks. Right: a glass
+ * Left: the steps (Wi-Fi, Add to Home Assistant, Radio, Sign in, Done) with checks. Right: a glass
  * card for the current step. It replaces the earlier SignInOverlay (its QR code and texts are the
- * Sign-in step). Laid out for 960×480 dp (1440×720 px at density 1.5). Main thread only.
+ * Sign-in step). The Wi-Fi step shows Improv (Wi-Fi over Bluetooth) inline, Allow included, so no
+ * separate ImprovOverlay window covers this screen. Laid out for 960×480 dp (1440×720 px at
+ * density 1.5). Main thread only.
  */
 class SetupOverlay(context: Context) : FrameLayout(context) {
 
@@ -51,6 +54,20 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         val panelIp: String?,
         val signedIn: Boolean,
         val preview: Boolean = false,
+        val radioDone: Boolean = true,
+        /** Improv's status block for the Wi-Fi step (SetupDecision.improv). */
+        val improv: WifiStep.ImprovLine = WifiStep.improv(ImprovFacts()),
+        /** A Wi-Fi join sent from the computer (web installer), if any. */
+        val installer: InstallerWifi? = null,
+        val radio: Radio = Radio(),
+    )
+
+    /** The radio step: the mode now in effect, and what the last "Apply" did (null = not yet). */
+    data class Radio(
+        val current: RadioMode = RadioMode.DEFAULT,
+        val applied: RadioStep.Applied? = null,
+        /** A request is running on the radio thread. */
+        val busy: Boolean = false,
     )
 
     var onChooseNetwork: (() -> Unit)? = null
@@ -60,6 +77,14 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     /** Manual URL submitted; call [manualResult] with the outcome. */
     var onManualUrl: ((String) -> Unit)? = null
     var onClosePreview: (() -> Unit)? = null
+    /** An inline Improv button (Allow / Not now / Stop / Use Bluetooth / Try again). */
+    var onImprovAction: ((WifiStep.Action) -> Unit)? = null
+    /** Radio step: apply this mode (RadioController path); re-render with [Model.radio] to show the result. */
+    var onRadioApply: ((RadioMode) -> Unit)? = null
+    /** Radio step: skip (= Off). */
+    var onRadioSkip: (() -> Unit)? = null
+    /** Radio step: the applied mode is fine, go on. */
+    var onRadioContinue: (() -> Unit)? = null
 
     /** True while visible (including the Done fade-out). */
     var isShowing = false
@@ -72,12 +97,14 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     private fun px(v: Float) = (v * dp).toInt()
     private var finishing: Runnable? = null
     private var qrFor: String? = null
+    private var radioSelected: RadioMode = RadioMode.DEFAULT
 
     // ---- left: the steps
     private val brand = label("S1 Panel · Setup")
-    private val railTitle = text(34f, TX, LIGHT).apply { letterSpacing = -0.02f; text = "Let's set up\nyour panel"; setLineSpacing(0f, 1.0f) }
+    private val railTitle = text(30f, TX, LIGHT).apply { letterSpacing = -0.02f; text = "Let's set up\nyour panel"; setLineSpacing(0f, 1.0f) }
+    /** One row per [SetupStep], in its order (index = ordinal). */
     private val rows = listOf(
-        StepRow("Wi-Fi"), StepRow("Add to Home Assistant"), StepRow("Sign in"), StepRow("Done"),
+        StepRow("Wi-Fi"), StepRow("Add to Home Assistant"), StepRow("Radio"), StepRow("Sign in"), StepRow("Done"),
     )
     private val previewChip = button("Preview · Close", Kind.GHOST).apply { setOnClickListener { onClosePreview?.invoke() } }
 
@@ -86,8 +113,8 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         addView(brand)
         addView(railTitle, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10f) })
         val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        rows.forEachIndexed { i, r -> list.addView(r.view, LinearLayout.LayoutParams(-1, -2).apply { if (i > 0) topMargin = px(14f) }) }
-        addView(list, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(28f) })
+        rows.forEachIndexed { i, r -> list.addView(r.view, LinearLayout.LayoutParams(-1, -2).apply { if (i > 0) topMargin = px(10f) }) }
+        addView(list, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(22f) })
         addView(View(context), LinearLayout.LayoutParams(-1, 0, 1f))
         addView(previewChip, LinearLayout.LayoutParams(-2, -2))
     }
@@ -133,6 +160,14 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         addView(qrImage, LayoutParams(-1, -1))
     }
     private val bigCheck = CheckDot(filled = true).apply { visibility = View.GONE }
+    private val improvTile = ImprovTile()
+    private val radioTiles = RadioStep.OPTIONS.map { RadioTile(it) }
+    private val radioRow = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        radioTiles.forEachIndexed { i, t ->
+            addView(t.view, LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = px(10f) })
+        }
+    }
 
     private val cardColumn = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
@@ -142,6 +177,8 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         addView(cardBody, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10f) })
         addView(cardNote, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
         addView(tiles, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(18f) })
+        addView(improvTile.view, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(16f) })
+        addView(radioRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(16f) })
         addView(urlField, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(18f) })
         addView(status, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
         addView(buttons, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(20f) })
@@ -184,7 +221,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
      * Shows the Done step, calls [loaded] (load the dashboard behind it), then fades out.
      */
     fun finish(from: Model? = model, holdMs: Long = 1_800, loaded: () -> Unit) {
-        val m = (from ?: return).copy(step = SetupStep.DONE, wifiDone = true, haDone = true, signinDone = true)
+        val m = (from ?: return).copy(step = SetupStep.DONE, wifiDone = true, haDone = true, radioDone = true, signinDone = true)
         cancelFinish()
         model = m
         bindRail(m)
@@ -201,6 +238,18 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         status.visibility = View.VISIBLE
         status.setTextColor(if (ok) GREEN else ROSE)
         status.text = message
+    }
+
+    /** Improv identify: pulse the Bluetooth block a few times. */
+    fun flashImprov() {
+        val v = improvTile.view
+        if (!isShowing || v.visibility != View.VISIBLE) return
+        v.animate().cancel()
+        android.animation.ObjectAnimator.ofFloat(v, "scaleX", 1f, 1.04f).apply {
+            duration = 220; repeatMode = android.animation.ValueAnimator.REVERSE; repeatCount = 7
+            addUpdateListener { v.scaleY = v.scaleX }
+            start()
+        }
     }
 
     fun hide() {
@@ -226,7 +275,13 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
             m.wifiDone && w.ethernet -> "Ethernet"
             m.wifiDone -> w.ssid ?: "Connected"
             w.state == WifiSetupStatus.State.CONNECTING -> w.ssid?.let { "Joining $it…" } ?: "Connecting…"
+            m.improv.phase == WifiStep.Phase.ASKING -> "Allow Bluetooth setup"
+            m.improv.phase in setOf(WifiStep.Phase.READY, WifiStep.Phase.AUTHORIZED) -> "Bluetooth setup is on"
             else -> "Not connected"
+        }
+        val radioDetail = when {
+            m.radioDone -> RadioStep.OPTIONS.firstOrNull { it.mode == m.radio.current }?.title ?: m.radio.current.label
+            else -> "Zigbee, Thread or off"
         }
         val haDetail = when {
             m.haDone -> "Added"
@@ -238,8 +293,8 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
             m.signinDone -> "Session active"
             else -> "Scan the QR code"
         }
-        val done = listOf(m.wifiDone, m.haDone, m.signinDone, m.step == SetupStep.DONE)
-        val details = listOf(wifiDetail, haDetail, signinDetail, if (m.step == SetupStep.DONE) "Loading your dashboard" else "")
+        val done = listOf(m.wifiDone, m.haDone, m.radioDone, m.signinDone, m.step == SetupStep.DONE)
+        val details = listOf(wifiDetail, haDetail, radioDetail, signinDetail, if (m.step == SetupStep.DONE) "Loading your dashboard" else "")
         rows.forEachIndexed { i, r ->
             val current = m.step.ordinal == i
             r.bind(i + 1, if (done[i]) Dot.DONE else if (current) Dot.CURRENT else Dot.PENDING, details[i])
@@ -255,6 +310,10 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         cardNote.setTextColor(AMBER)
         tiles.visibility = View.GONE
         tileB.view.visibility = View.VISIBLE
+        improvTile.view.visibility = View.GONE
+        radioRow.visibility = View.GONE
+        primary.isEnabled = true
+        primary.alpha = 1f
         // The URL field is never reset to GONE and back: a view that goes GONE (even for one frame)
         // loses focus, and this runs on every discovery/Wi-Fi refresh, i.e. while the user types.
         var showUrl = false
@@ -264,25 +323,15 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         primary.setOnClickListener(null)
         secondary.setOnClickListener(null)
         if (stepChanged) status.visibility = View.GONE
-        cardTitle.textSize = if (m.step == SetupStep.SIGNIN) 26f else 30f // the QR takes ~240 dp of the card
+        cardTitle.textSize = when (m.step) {
+            SetupStep.SIGNIN -> 26f // the QR takes ~240 dp of the card
+            SetupStep.WIFI, SetupStep.RADIO -> 26f // room for the Bluetooth block / the three options
+            else -> 30f
+        }
 
         when (m.step) {
-            SetupStep.WIFI -> {
-                cardLabel.text = "Step 1 · Wi-Fi"
-                val w = m.wifi
-                if (w.online) {
-                    cardTitle.text = if (w.ethernet) "Connected over Ethernet" else "Connected to ${w.ssid ?: "Wi-Fi"}"
-                    cardBody.text = "The panel is on the network."
-                } else {
-                    cardTitle.text = if (w.state == WifiSetupStatus.State.CONNECTING) "Connecting to ${w.ssid ?: "Wi-Fi"}…" else "Not connected"
-                    cardBody.text = "Set up Wi-Fi over Bluetooth from Home Assistant (it shows the panel as an " +
-                        "Improv device), or choose a network here."
-                }
-                w.message?.let { cardNote.text = it; cardNote.visibility = View.VISIBLE }
-                primary.text = "Choose network"
-                primary.visibility = View.VISIBLE
-                primary.setOnClickListener { onChooseNetwork?.invoke() }
-            }
+            SetupStep.WIFI -> bindWifi(m)
+            SetupStep.RADIO -> bindRadio(m, stepChanged)
             SetupStep.HA -> {
                 cardLabel.text = "Step 2 · Home Assistant"
                 if (m.haUrl == null) {
@@ -320,7 +369,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
                     qrFor = url
                 }
                 qrTile.visibility = View.VISIBLE
-                cardLabel.text = "Step 3 · Sign in"
+                cardLabel.text = "Step 4 · Sign in"
                 cardTitle.text = "Scan with your phone to sign in to Home Assistant"
                 cardBody.text = "Or open $url on a phone or computer on the same network."
                 tiles.visibility = View.VISIBLE
@@ -341,6 +390,92 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         val urlVis = if (showUrl) View.VISIBLE else View.GONE
         if (urlField.visibility != urlVis) urlField.visibility = urlVis
         if (!showUrl) hideKeyboard()
+    }
+
+    private fun bindWifi(m: Model) {
+        cardLabel.text = "Step 1 · Wi-Fi"
+        val w = m.wifi
+        val inst = m.installer
+        if (w.online) {
+            cardTitle.text = if (w.ethernet) "Connected over Ethernet" else "Connected to ${w.ssid ?: "Wi-Fi"}"
+            cardBody.text = "The panel is on the network."
+        } else if (inst?.phase == InstallerWifi.Phase.CONNECTING) {
+            cardTitle.text = "Connecting to ${inst.ssid}…"
+            cardBody.text = "Wi-Fi details sent from your computer." + (inst.detail?.let { " $it" } ?: " This takes up to 30 seconds.")
+        } else {
+            cardTitle.text = if (w.state == WifiSetupStatus.State.CONNECTING) "Connecting to ${w.ssid ?: "Wi-Fi"}…" else "Not connected"
+            cardBody.text = "Send the Wi-Fi details over Bluetooth from Home Assistant, or choose a network here."
+        }
+        if (!w.online && inst?.phase == InstallerWifi.Phase.FAILED) {
+            cardNote.text = "Couldn't join ${inst.ssid}: ${inst.detail ?: "unknown error"}"
+            cardNote.setTextColor(ROSE)
+            cardNote.visibility = View.VISIBLE
+        } else {
+            w.message?.let { cardNote.text = it; cardNote.visibility = View.VISIBLE }
+        }
+        if (!w.online) {
+            improvTile.bind(m.improv) { a -> onImprovAction?.invoke(a) }
+        }
+        // The alternative to Bluetooth: Android's Wi-Fi picker. Ghost style, so it doesn't compete
+        // with the Bluetooth block's Allow.
+        secondary.text = "Choose network"
+        secondary.visibility = View.VISIBLE
+        secondary.setOnClickListener { onChooseNetwork?.invoke() }
+    }
+
+    private fun bindRadio(m: Model, stepChanged: Boolean) {
+        val r = m.radio
+        if (stepChanged) {
+            radioSelected = RadioStep.OPTIONS.firstOrNull { it.mode == r.current }?.mode ?: RadioMode.DEFAULT
+        }
+        cardLabel.text = "Step 3 · Radio"
+        cardTitle.text = "What should the panel's radio do?"
+        cardBody.text = "The panel has a Zigbee and Thread radio. ${RadioStep.LATER}"
+        radioRow.visibility = View.VISIBLE
+        status.visibility = View.GONE
+        radioTiles.forEach { t -> t.bind(t.option.mode == radioSelected) }
+
+        val applied = r.applied?.takeIf { it.mode == radioSelected }
+        when {
+            r.busy -> showRadioNote("Applying ${titleOf(radioSelected)}…", AMBER)
+            applied != null -> when (applied.result) {
+                RadioStep.Result.OK -> showRadioNote(applied.status, GREEN)
+                RadioStep.Result.APPLYING -> showRadioNote("Applying: ${applied.status}", AMBER)
+                RadioStep.Result.REFUSED, RadioStep.Result.ERROR -> showRadioNote(applied.status, ROSE)
+            }
+            radioSelected == RadioMode.ZIGBEE_TCP -> showRadioNote(
+                "Then in Home Assistant: add ZHA, radio type EZSP, serial path ${RadioStep.zhaPath(m.panelIp)}", FA,
+            )
+            else -> {}
+        }
+        if (RadioStep.canContinue(applied) && !r.busy) {
+            primary.text = "Continue"
+            primary.setOnClickListener { onRadioContinue?.invoke() }
+        } else {
+            primary.text = if (r.busy) "Applying…" else "Apply"
+            primary.isEnabled = !r.busy
+            primary.alpha = if (r.busy) 0.5f else 1f
+            primary.setOnClickListener { if (!r.busy) onRadioApply?.invoke(radioSelected) }
+        }
+        primary.visibility = View.VISIBLE
+        secondary.text = "Skip (Off)"
+        secondary.visibility = if (r.busy) View.GONE else View.VISIBLE
+        secondary.setOnClickListener { onRadioSkip?.invoke() }
+    }
+
+    /** The line under the options (the `status` view, which only the HA step uses otherwise). */
+    private fun showRadioNote(text: String, color: Int) {
+        status.text = text
+        status.setTextColor(color)
+        status.visibility = View.VISIBLE
+    }
+
+    private fun titleOf(mode: RadioMode) = RadioStep.OPTIONS.firstOrNull { it.mode == mode }?.title ?: mode.label
+
+    private fun selectRadio(mode: RadioMode) {
+        if (radioSelected == mode) return
+        radioSelected = mode
+        model?.let { bindCard(it, stepChanged = false) }
     }
 
     private fun reveal() {
@@ -372,6 +507,100 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     // ------------------------------------------------------------------ pieces
 
     private enum class Dot { DONE, CURRENT, PENDING }
+
+    /** Improv inline: a toned dot + label, a title, one detail line and up to two buttons. */
+    private inner class ImprovTile {
+        private val dot = View(context)
+        private val l = label("").apply { setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
+        private val title = text(17f, TX, MEDIUM).apply { setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
+        private val detail = text(14f, MU, REGULAR).apply { setLineSpacing(0f, 1.2f); maxLines = 3; ellipsize = TextUtils.TruncateAt.END }
+        private val b1 = button("", Kind.ACCENT).apply { compact() }
+        private val b2 = button("", Kind.GHOST).apply { compact() }
+        private val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(b1, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(8f) })
+            addView(b2, LinearLayout.LayoutParams(-2, -2))
+        }
+        val view = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = glass(18f)
+            setPadding(px(16f), px(12f), px(16f), px(14f))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(dot, LinearLayout.LayoutParams(px(8f), px(8f)).apply { marginEnd = px(8f) })
+                addView(l, LinearLayout.LayoutParams(0, -2, 1f))
+            })
+            addView(title, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f) })
+            addView(detail, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(3f) })
+            addView(actions, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(10f) })
+        }
+
+        private fun TextView.compact() {
+            textSize = 15f
+            setPadding(px(18f), px(9f), px(18f), px(9f))
+        }
+
+        fun bind(line: WifiStep.ImprovLine, onAction: (WifiStep.Action) -> Unit) {
+            val color = when (line.tone) {
+                WifiStep.Tone.MUTED -> FA; WifiStep.Tone.AMBER -> AMBER; WifiStep.Tone.GREEN -> GREEN; WifiStep.Tone.ROSE -> ROSE
+            }
+            dot.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(color) }
+            l.text = line.label
+            title.text = line.title
+            detail.text = line.detail
+            val btns = listOf(b1, b2)
+            btns.forEachIndexed { i, b ->
+                val a = line.actions.getOrNull(i)
+                if (a == null) {
+                    b.visibility = View.GONE
+                    b.setOnClickListener(null)
+                } else {
+                    b.text = a.label
+                    b.visibility = View.VISIBLE
+                    b.setOnClickListener { onAction(a) }
+                }
+            }
+            // Allow is the one accent button; Use Bluetooth / Try again are accent when they're alone.
+            restyle(b1, accent = line.actions.firstOrNull() != WifiStep.Action.NOT_NOW && line.actions.firstOrNull() != WifiStep.Action.STOP)
+            actions.visibility = if (line.actions.isEmpty()) View.GONE else View.VISIBLE
+            view.visibility = View.VISIBLE
+        }
+    }
+
+    /** One radio option: title (+ "experimental"), one line, amber outline when selected. */
+    private inner class RadioTile(val option: RadioStep.Option) {
+        private val title = text(16f, TX, MEDIUM).apply { text = option.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
+        private val expTag = label("Experimental").apply { setTextColor(AMBER); visibility = if (option.experimental) View.VISIBLE else View.GONE }
+        private val line = text(13f, MU, REGULAR).apply { text = option.line; setLineSpacing(0f, 1.2f) }
+        val view = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(px(14f), px(12f), px(14f), px(12f))
+            addView(title)
+            addView(expTag, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(2f) })
+            addView(line, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f) })
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { selectRadio(option.mode) }
+        }
+
+        fun bind(selected: Boolean) {
+            view.background = GradientDrawable().apply {
+                cornerRadius = 18 * dp
+                setColor(if (selected) S2 else S1)
+                setStroke(px(if (selected) 2f else 1f).coerceAtLeast(1), if (selected) AMBER else BD)
+            }
+            title.setTextColor(if (selected) TX else MU)
+        }
+    }
+
+    private fun restyle(b: TextView, accent: Boolean) {
+        b.setTextColor(if (accent) BG else TX)
+        b.background = GradientDrawable().apply {
+            cornerRadius = 16 * dp
+            if (accent) setColor(AMBER) else { setColor(S2); setStroke(px(1f).coerceAtLeast(1), BD) }
+        }
+    }
 
     private inner class StepRow(name: String) {
         private val dot = CheckDot(filled = false)

@@ -14,14 +14,25 @@ package sh.edm.s1kiosk.setup
  *      [SetupRules.haGraceMs] of startup *and* nothing was ever recorded (no `ha_seen`, no API key,
  *      not skipped by the user);
  *   4. no HA session: no refresh token *and* the page actually landed on HA's login page (or the
- *      user signed out on this panel), unless "Sign in on this panel instead" was chosen.
+ *      user signed out on this panel), unless "Sign in on this panel instead" was chosen;
+ *   5. the radio mode was never chosen on this panel (online, HA step done). A panel that was set up
+ *      before the radio step existed has it marked done once ([radioStepDoneOnUpgrade]), so it
+ *      never sees it;
+ *   and, without the grace period, (1) while Improv (Wi-Fi over Bluetooth) is running or Wi-Fi
+ *   details came from the computer: Improv's Allow prompt and the join's progress live in the
+ *   Wi-Fi step.
  *   Once shown, it stays until every step is done (no flicker between steps).
  * - **Which step is current while it's shown?** The first one that isn't done, in order Wi-Fi →
- *   Add to HA → Sign in. Done means: online; HA has subscribed to the panel's states (it added the
- *   panel) or the user skipped it; signed in or not needed.
+ *   Add to HA → Radio → Sign in. Done means: online; HA has subscribed to the panel's states (it
+ *   added the panel) or the user skipped it; a radio mode was applied or the step skipped; signed in
+ *   or not needed.
+ *
+ * Radio comes before Sign in: it belongs with adding the panel (Zigbee coordinator means adding ZHA
+ * in the same Devices & services page), and signing in is what loads the dashboard, so it stays the
+ * hand-off at the end instead of being interrupted by one more question.
  */
 enum class SetupStep(val id: String) {
-    WIFI("wifi"), HA("ha"), SIGNIN("signin"), DONE("done");
+    WIFI("wifi"), HA("ha"), RADIO("radio"), SIGNIN("signin"), DONE("done");
 
     companion object {
         fun parse(s: String?): SetupStep? = entries.firstOrNull { it.id.equals(s?.trim(), ignoreCase = true) }
@@ -55,6 +66,14 @@ data class SetupInputs(
     val usePanelLogin: Boolean,
     /** The setup screen is already up (not a preview): it stays until every step is done. */
     val showing: Boolean = false,
+    /** Persisted: the radio step was answered (or the panel was set up before the step existed). */
+    val radioStepDone: Boolean = false,
+    /** A radio mode is stored (chosen with HA's `Radio mode` select): the question is answered. */
+    val radioModeStored: Boolean = false,
+    /** Improv (Wi-Fi over Bluetooth), for the Wi-Fi step. */
+    val improv: ImprovFacts = ImprovFacts(),
+    /** A Wi-Fi join sent from the computer (web installer) in this process, if any. */
+    val installer: InstallerWifi? = null,
 )
 
 data class SetupRules(
@@ -71,6 +90,9 @@ data class SetupDecision(
     val signinDone: Boolean,
     /** Why it is shown (for the log), empty when hidden. */
     val reasons: List<String>,
+    val radioDone: Boolean = true,
+    /** Improv's status block for the Wi-Fi step. */
+    val improv: WifiStep.ImprovLine = WifiStep.improv(ImprovFacts()),
 )
 
 object SetupState {
@@ -79,16 +101,21 @@ object SetupState {
         val wantsSignin = !i.signedIn && !i.usePanelLogin && (i.onAuthPage || i.signedOut)
         val haEverRecorded = i.haSeen || i.apiKeySet || i.haSkipped
 
+        val wifiDone = i.online
+        val haDone = i.haKnown && haEverRecorded
+        val radioDone = i.radioStepDone || i.radioModeStored
+
         val reasons = ArrayList<String>(4)
-        if (!i.online && i.offlineForMs >= rules.offlineGraceMs) reasons += "offline"
+        // Improv's Allow prompt and the installer's join progress live in the Wi-Fi step: no grace then.
+        val wifiSetupActive = i.improv.running || (i.installer != null && i.installer.phase != InstallerWifi.Phase.CONNECTED)
+        if (!i.online && (i.offlineForMs >= rules.offlineGraceMs || wifiSetupActive)) reasons += "offline"
         if (i.online && !i.haKnown) reasons += "home assistant not found"
         if (i.online && i.haKnown && !haEverRecorded && !i.haHelloThisProcess && i.uptimeMs >= rules.haGraceMs) {
             reasons += "not added to home assistant"
         }
         if (i.online && i.haKnown && wantsSignin) reasons += "sign-in needed"
+        if (wifiDone && haDone && !radioDone) reasons += "radio mode not chosen"
 
-        val wifiDone = i.online
-        val haDone = i.haKnown && haEverRecorded
         // Only "done" once it's actually known: a stored sign-in, or Wi-Fi + HA are done and nothing
         // asks for one. (Before, a fresh offline panel showed sign-in as complete.)
         val signinDone = i.signedIn || (wifiDone && haDone && !wantsSignin)
@@ -96,12 +123,24 @@ object SetupState {
             !wifiDone -> SetupStep.WIFI
             !i.haKnown -> SetupStep.HA
             !haDone -> SetupStep.HA
+            !radioDone -> SetupStep.RADIO
             !signinDone -> SetupStep.SIGNIN
             else -> SetupStep.DONE
         }
         // Once up, the screen stays until everything is done, so it doesn't flicker away between
         // steps (e.g. Wi-Fi joined, HA not discovered yet). It can't start on its own though.
         val show = reasons.isNotEmpty() || (i.showing && step != SetupStep.DONE)
-        return SetupDecision(show, step, wifiDone, haDone, signinDone, reasons)
+        return SetupDecision(show, step, wifiDone, haDone, signinDone, reasons, radioDone, WifiStep.improv(i.improv))
     }
+
+    /**
+     * Run once when a build with the radio step first starts (KioskPrefs.migrateRadioStep): true =
+     * the panel was already set up, so mark the step done and never show it. Any trace of an earlier
+     * setup counts: a known Home Assistant (saved dashboard URL or discovered), HA added the panel or
+     * provisioned an API key, the HA step was skipped, or a radio mode was chosen in HA. A fresh
+     * install has none of these at its first start.
+     */
+    fun radioStepDoneOnUpgrade(
+        haKnown: Boolean, haSeen: Boolean, apiKeySet: Boolean, haSkipped: Boolean, radioModeStored: Boolean,
+    ): Boolean = haKnown || haSeen || apiKeySet || haSkipped || radioModeStored
 }

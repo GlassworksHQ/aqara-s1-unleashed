@@ -91,10 +91,16 @@ class RadioController(
 
     fun stop() { exec?.shutdownNow() }
 
-    /** From the `Radio mode` select. Unknown labels are ignored; unavailable modes are refused. */
-    fun request(label: String) = post {
+    /**
+     * From the `Radio mode` select (and the setup screen's radio step). Unknown labels are ignored;
+     * unavailable modes are refused. [done] runs on the radio thread once the request was handled:
+     * true = accepted and applied (see [statusText] for how it went), false = refused/unknown, with
+     * the reason in [statusText].
+     */
+    fun request(label: String, why: String = "select", done: ((Boolean) -> Unit)? = null) = post {
         val m = RadioMode.fromLabel(label) ?: run {
             log("unknown radio mode '$label'")
+            done?.invoke(false)
             return@post
         }
         if (!available(m)) {
@@ -103,12 +109,17 @@ class RadioController(
             log("refused '${m.label}': no root helper")
             refresh()
             onChange() // the select snaps back to the current mode
+            done?.invoke(false)
             return@post
         }
         mode = m
         if (load() != m.id) store(m.id) // also normalizes labels/retired values stored by older builds
-        applyMode(m, "select", forceHelperRestart = true)
+        applyMode(m, why, forceHelperRestart = true)
+        done?.invoke(true)
     }
+
+    /** Recompute [statusText] soon (radio thread), e.g. while the setup screen waits for the helper. */
+    fun refreshSoon() = post { refresh() }
 
     // ------------------------------------------------------------------ internals
 

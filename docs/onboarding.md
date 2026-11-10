@@ -367,16 +367,31 @@ on the way:
 `MainActivity`. A native full-screen overlay over the GeckoView in the dashboard's design tokens
 (`#0a0b0f` with sky/violet radial glows, glass cards `rgba(255,255,255,.045)` / border `.07`,
 22–26 px radii, uppercase letter-spaced `#63636b` labels, light headings, amber `#fbbf24` current
-step, green `#34d399` checks). Left: the four steps with checks. Right: a card for the current step.
+step, green `#34d399` checks). Left: the five steps with checks. Right: a card for the current step.
 Laid out for 960×480 dp.
 
 1. **Wi-Fi**: "Connected to <SSID>" (Ethernet too), or "Not connected: set up Wi-Fi over Bluetooth
    from Home Assistant, or [Choose network]". The button opens `Settings.Panel.ACTION_WIFI` (falls
    back to `Settings.ACTION_WIFI_SETTINGS`). The status comes from the `WifiSetupStatus` interface
    (`setup/WifiSetupStatus.kt`: state `CONNECTED | NOT_CONNECTED | CONNECTING`, SSID, optional
-   message). The default is plain Android connectivity. Improv can set `WifiSetupStatus.provider` to
-   feed its own progress (not wired yet). The SSID needs location permission on Android 10; without
-   it the step shows "Connected".
+   message), here `improv/ImprovWifiStatus.kt` (connectivity + "connecting to <SSID>" while Improv
+   or an installer join runs). The SSID needs location permission on Android 10; without it the
+   step shows "Connected".
+   **Improv inline.** While the setup screen is up, Improv is a block in this step and the separate
+   `ImprovOverlay` window is never shown (`ImprovController.InlineHost`); it is still used when
+   Improv is started later with the setup screen gone (intent, HA button). The block follows
+   `ImprovController.setupFacts` through `setup/WifiStep.kt` (pure, `WifiStepTest`): off [Use
+   Bluetooth] · couldn't start (reason) [Try again] · starting Bluetooth · on, with where HA lists it
+   (Settings → Devices & services → Discovered → "Improv via BLE") [Allow] [Not now] · a device
+   connected and asking [Allow] [Not now] · allowed m:ss, waiting for Wi-Fi details [Stop] ·
+   connecting to <SSID> · connected · failed (reason, still allowed). Allow / Not now mean the same
+   as the overlay's. Improv running (or an installer join) shows the screen without the 30 s grace.
+   **Wi-Fi from the computer.** `--es wifi_ssid <ssid> --es wifi_psk <psk> [--ez wifi_hidden true]`
+   on MainActivity joins with the same `WifiProvisioner.connect` as Improv (it turns Wi-Fi on
+   first), shows progress here, and logs the outcome on tag `S1Kiosk.WifiSetup` for `adb logcat -d
+   -s S1Kiosk.WifiSetup`: `result=connecting|connected|failed ssid=<percent-encoded> [ip=…]
+   [reason=…]` (exact format: `setup/WifiSetupLog.kt`). The extras are removed once read; the
+   password is never logged.
 2. **Add to Home Assistant**: done once an ESPHome client whose Hello says "Home Assistant"
    **subscribes to states**. HA's config flow only probes DeviceInfo during discovery, so a plain
    Hello doesn't count. `ApiServer.onStatesSubscribed` → `PanelDevice` persists `ha_seen` and
@@ -384,9 +399,18 @@ Laid out for 960×480 dp.
    services → S1 Panel discovered → Add", the panel's IP + port 6053 for a manual ESPHome add, and
    the HA URL (or the manual URL field from step 3 when HA wasn't found). **Skip for now** persists
    `setup_ha_skipped` (for kiosk-only use without the ESPHome device).
-3. **Sign in**: the QR code and texts of the former sign-in screen, plus "Sign in on this panel
+3. **Radio** (`setup/RadioStep.kt`, `RadioStepTest`): Off (default), Zigbee coordinator (ZHA,
+   network radio over TCP, `socket://<panel-ip>:6638`), Thread border router (experimental). Zigbee
+   router and Thread router aren't offered until they work. Apply goes through `RadioController`
+   (the same path as HA's `Radio mode` select) and shows what it reports, e.g. the missing root
+   helper; Skip = Off. Answering persists `setup_radio_done`. A panel set up before this step
+   existed has it marked done once at the first start of the new build (`migrateRadioStep`: a known
+   HA, `ha_seen`, an API key, a skipped HA step or a stored radio mode), so it never sees it. It
+   comes before Sign in because it belongs with adding the panel (ZHA is added on the same Devices &
+   services page) and signing in is what loads the dashboard.
+4. **Sign in**: the QR code and texts of the former sign-in screen, plus "Sign in on this panel
    instead".
-4. **Done**: a check and "You're all set". The dashboard loads (unless it's already showing), then
+5. **Done**: a check and "You're all set". The dashboard loads (unless it's already showing), then
    the screen fades out.
 
 **When it shows** (`SetupState.decide`). Only strong evidence counts, so it never covers a panel
@@ -397,15 +421,16 @@ session without a refresh token):
 - HA never added the panel: no HA client connected within 2 min of startup *and* no `ha_seen`, no
   API key, not skipped;
 - no refresh token *and* the GeckoView actually reached HA's `/auth/authorize` (or the user signed
-  out on the panel), unless "Sign in on this panel instead" was chosen.
+  out on the panel), unless "Sign in on this panel instead" was chosen;
+- online, HA step done, radio step not answered (so it comes back after a reboot).
 
-The current step is the first one not done (Wi-Fi → HA → Sign in). Once shown, the screen stays
+The current step is the first one not done (Wi-Fi → HA → Radio → Sign in). Once shown, the screen stays
 until all steps are done, so it doesn't flicker between steps. It is re-evaluated on connectivity,
 sign-in, HA connection and page changes, and every 2 s. The trigger is logged (`S1Kiosk`:
 "Setup screen: <reasons> (step …)").
 
 Preview without changing state: `--ez show_setup true` (live step), `--es setup_step
-wifi|ha|signin|done` (a given step), `--ez show_setup false` to close. In preview, Skip / manual URL
+wifi|ha|radio|signin|done` (a given step), `--ez show_setup false` to close. In preview, Skip / manual URL
 save nothing, and a "Preview · Close" chip is shown. `--ez show_signin true` = the Sign-in step.
 
 ## Build order

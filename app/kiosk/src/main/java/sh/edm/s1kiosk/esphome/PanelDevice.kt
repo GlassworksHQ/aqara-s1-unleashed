@@ -98,7 +98,7 @@ class PanelDevice(
     /** Native Music Assistant player (Sendspin, docs/sendspin.md); created in startInternal. */
     @Volatile private var sendspin: SendspinPlayer? = null
     /** Zigbee/Thread radio modes (docs/radio.md); applies the stored mode after every start. */
-    private val radio = RadioController(
+    val radio = RadioController(
         load = { prefs.radioMode },
         store = { prefs.radioMode = it },
         onChange = { exec.execute { server?.publishStates() } },

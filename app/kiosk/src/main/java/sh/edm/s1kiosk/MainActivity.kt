@@ -40,6 +40,12 @@ import sh.edm.s1kiosk.setup.SetupSignals
 import sh.edm.s1kiosk.setup.SetupState
 import sh.edm.s1kiosk.setup.SetupStep
 import sh.edm.s1kiosk.setup.WifiSetupStatus
+import sh.edm.s1kiosk.setup.WifiSetupLog
+import sh.edm.s1kiosk.setup.WifiStep
+import sh.edm.s1kiosk.setup.RadioStep
+import sh.edm.s1kiosk.improv.ImprovController
+import sh.edm.s1kiosk.improv.ImprovWifiStatus
+import sh.edm.s1kiosk.radio.RadioMode
 import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
@@ -79,6 +85,19 @@ class MainActivity : Activity() {
     private var offlineSince = 0L
     private var lastSetupReasons: List<String> = emptyList()
 
+    /** The radio step's last "Apply" (this activity) and whether a request is running. */
+    private var radioApplied: RadioStep.Applied? = null
+    private var radioBusy = false
+
+    private var lastImprovInline = false
+
+    /** Improv shows its Allow prompt in the setup screen's Wi-Fi step while that is visible. */
+    private val improvHost = object : ImprovController.InlineHost {
+        override fun showsImprovInline() = improvInline()
+        override fun onImprovChanged() = refreshSetup()
+        override fun onImprovIdentify() = setupOverlay.flashImprov()
+    }
+
     private val authListener: (Boolean) -> Unit = { signedIn ->
         if (signedIn) {
             Log.i(TAG, "Signed in with the QR code; loading the dashboard with external auth")
@@ -100,6 +119,7 @@ class MainActivity : Activity() {
     private val setupTick = object : Runnable {
         override fun run() {
             refreshSetup()
+            pollRadioStatus()
             handler.postDelayed(this, SETUP_TICK_MS)
         }
     }
@@ -116,6 +136,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = KioskPrefs(this)
+        prefs.migrateRadioStep() // an already set-up panel never sees the radio step
         HaAuth.init(this)
         applyIntent(intent, fromNewIntent = false)
 
@@ -138,8 +159,13 @@ class MainActivity : Activity() {
             onChooseNetwork = ::openWifiSettings
             onSkipHa = ::onSkipHaSetup
             onClosePreview = ::closeSetupPreview
+            onImprovAction = ::onImprovAction
+            onRadioApply = { m -> applyRadio(m, skip = false) }
+            onRadioSkip = { applyRadio(RadioMode.OFF, skip = true) }
+            onRadioContinue = ::finishRadioStep
         }
-        wifiStatus = WifiSetupStatus.create(this)
+        // Improv-aware from the start: KioskService (which registers the provider) starts after this.
+        wifiStatus = ImprovWifiStatus(this)
         setContentView(android.widget.FrameLayout(this).apply {
             addView(geckoView, android.widget.FrameLayout.LayoutParams(-1, -1))
             addView(loadingOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // under the setup screen
@@ -153,6 +179,7 @@ class MainActivity : Activity() {
         HaAuth.addListener(authListener)
         SetupSignals.addListener(setupSignalListener)
         wifiStatus.observe { refreshSetup() }
+        ImprovController.inlineHost = improvHost
         KioskService.start(this)
         ScreenController.start(this)
         ScreenController.onKeepScreenOn = { on ->
@@ -244,6 +271,10 @@ class MainActivity : Activity() {
             signedOut = signedOutHere,
             usePanelLogin = usePanelLogin,
             showing = setupOverlay.isShowing && !setupPreview,
+            radioStepDone = prefs.radioStepDone,
+            radioModeStored = prefs.radioMode != null,
+            improv = ImprovController.setupFacts,
+            installer = ImprovController.installerWifi,
         )
     }
 
@@ -253,13 +284,14 @@ class MainActivity : Activity() {
         val d = SetupState.decide(setupInputs())
         if (setupPreview) {
             val forced = setupPreviewStep
-            val m = if (forced == null) setupModel(d.step, d.wifiDone, d.haDone, d.signinDone, preview = true)
-            else setupModel(forced, forced > SetupStep.WIFI, forced > SetupStep.HA, forced > SetupStep.SIGNIN, preview = true)
+            val m = if (forced == null) setupModel(d, d.step, d.wifiDone, d.haDone, d.radioDone, d.signinDone, preview = true)
+            else setupModel(d, forced, forced > SetupStep.WIFI, forced > SetupStep.HA, forced > SetupStep.RADIO, forced > SetupStep.SIGNIN, preview = true)
             if (m.step == SetupStep.DONE) {
                 if (setupOverlay.model?.step != SetupStep.DONE) setupOverlay.finish(m) { setupPreview = false; setupPreviewStep = null }
             } else {
                 setupOverlay.render(m)
             }
+            syncImprovInline()
             return
         }
         if (d.reasons != lastSetupReasons) {
@@ -267,18 +299,46 @@ class MainActivity : Activity() {
             lastSetupReasons = d.reasons
         }
         if (d.show) {
-            setupOverlay.render(setupModel(d.step, d.wifiDone, d.haDone, d.signinDone, preview = false))
+            setupOverlay.render(setupModel(d, d.step, d.wifiDone, d.haDone, d.radioDone, d.signinDone, preview = false))
         } else if (setupOverlay.isShowing && setupOverlay.model?.step != SetupStep.DONE) {
             Log.i(TAG, "Setup complete; loading the dashboard")
             setupOverlay.finish { loadDashboardIfNeeded() }
         }
+        syncImprovInline()
     }
 
-    private fun setupModel(step: SetupStep, wifiDone: Boolean, haDone: Boolean, signinDone: Boolean, preview: Boolean) =
+    /**
+     * While the setup screen is up, Improv lives in its Wi-Fi step and the overlay window stays
+     * hidden, also while "Choose network" has Wi-Fi settings on top (the full-screen overlay would
+     * cover the network list); the inline prompt is there again when the user comes back.
+     */
+    private fun improvInline(): Boolean =
+        ::setupOverlay.isInitialized && setupOverlay.isShowing && !isFinishing && !isDestroyed
+
+    /** The setup screen appeared or went away: Improv's overlay hides or comes back accordingly. */
+    private fun syncImprovInline() {
+        val now = improvInline()
+        if (now == lastImprovInline) return
+        lastImprovInline = now
+        ImprovController.refreshUi()
+    }
+
+    private fun setupModel(
+        d: sh.edm.s1kiosk.setup.SetupDecision,
+        step: SetupStep, wifiDone: Boolean, haDone: Boolean, radioDone: Boolean, signinDone: Boolean, preview: Boolean,
+    ) =
         SetupOverlay.Model(
             step = step,
             wifiDone = wifiDone,
             haDone = haDone,
+            radioDone = radioDone,
+            improv = d.improv,
+            installer = ImprovController.installerWifi,
+            radio = SetupOverlay.Radio(
+                current = KioskService.radioRef?.mode ?: RadioMode.parse(prefs.radioMode),
+                applied = radioApplied,
+                busy = radioBusy,
+            ),
             signinDone = signinDone,
             wifi = wifiStatus.snapshot(),
             haUrl = prefs.haBase,
@@ -298,7 +358,7 @@ class MainActivity : Activity() {
         if (!onDashboard && !justLoaded) loadDashboard()
     }
 
-    /** `--ez show_setup true [--es setup_step wifi|ha|signin|done]`, `--ez show_signin true` (= signin). */
+    /** `--ez show_setup true [--es setup_step wifi|ha|radio|signin|done]`, `--ez show_signin true` (= signin). */
     private fun applySetupPreview(intent: Intent) {
         val step = SetupStep.parse(intent.getStringExtra("setup_step"))
         when {
@@ -346,6 +406,120 @@ class MainActivity : Activity() {
             }
         }
         Toast.makeText(this, "No Wi-Fi settings on this device", Toast.LENGTH_LONG).show()
+    }
+
+    // ---- setup: Improv inline (Wi-Fi step) and the radio step
+
+    private fun onImprovAction(a: WifiStep.Action) {
+        if (setupPreview) return // the preview never changes state
+        when (a) {
+            WifiStep.Action.ALLOW -> ImprovController.authorize("button on the setup screen")
+            WifiStep.Action.NOT_NOW -> ImprovController.stop("dismissed on panel")
+            WifiStep.Action.STOP -> ImprovController.stop("stopped on panel")
+            WifiStep.Action.START, WifiStep.Action.RETRY -> ImprovController.startOnDemand("setup screen")
+        }
+        refreshSetup()
+    }
+
+    /**
+     * "Apply" (or "Skip", which means Off) on the radio step: the same RadioController path as HA's
+     * `Radio mode` select. The result is shown as RadioController reports it (a missing root helper
+     * included); only Skip and Continue mark the step done.
+     */
+    private fun applyRadio(mode: RadioMode, skip: Boolean) {
+        if (setupPreview && skip) { closeSetupPreview(); return }
+        if (setupPreview) {
+            radioApplied = RadioStep.Applied(mode, false, "Preview: nothing was applied.")
+            refreshSetup()
+            return
+        }
+        val r = KioskService.radioRef
+        if (skip) {
+            Log.i(TAG, "Setup: radio step skipped (Off)")
+            if (r != null && r.mode != RadioMode.OFF) r.request(RadioMode.OFF.label, "setup screen (skip)")
+            finishRadioStep()
+            return
+        }
+        if (r == null) {
+            radioApplied = RadioStep.Applied(mode, false, "The kiosk service isn't running yet; try again in a moment.")
+            refreshSetup()
+            return
+        }
+        Log.i(TAG, "Setup: radio mode ${mode.label}")
+        radioBusy = true
+        radioApplied = null
+        refreshSetup()
+        r.request(mode.label, "setup screen") { accepted ->
+            val status = r.statusText()
+            handler.post {
+                radioBusy = false
+                radioApplied = RadioStep.Applied(mode, accepted, status)
+                Log.i(TAG, "Setup: radio ${mode.label} -> ${radioApplied?.result}: $status")
+                refreshSetup()
+            }
+        }
+    }
+
+    private fun finishRadioStep() {
+        if (setupPreview) { closeSetupPreview(); return }
+        prefs.radioStepDone = true
+        radioApplied = null
+        refreshSetup()
+    }
+
+    /** While an applied mode is still "applying" (root helper), follow RadioController's status. */
+    private fun pollRadioStatus() {
+        val a = radioApplied ?: return
+        if (!a.accepted || a.result != RadioStep.Result.APPLYING || prefs.radioStepDone) return
+        val r = KioskService.radioRef ?: return
+        r.refreshSoon()
+        val now = r.statusText()
+        if (now != a.status) {
+            radioApplied = a.copy(status = now)
+            refreshSetup()
+        }
+    }
+
+    // ---- Wi-Fi from the computer (web installer)
+
+    /**
+     * `--es wifi_ssid <ssid> --es wifi_psk <password> [--ez wifi_hidden true]`: joins that network
+     * with ImprovController's WifiProvisioner (turning Wi-Fi on if needed), shows the progress in the
+     * setup screen's Wi-Fi step, and logs the outcome for the installer (format: [WifiSetupLog]).
+     * The extras are removed at once, so a recreated activity doesn't join again; the password is
+     * never logged.
+     */
+    private fun applyWifiExtras(intent: Intent) {
+        if (!intent.hasExtra("wifi_ssid")) return
+        val ssid = intent.getStringExtra("wifi_ssid").orEmpty()
+        val psk = intent.getStringExtra("wifi_psk").orEmpty()
+        val hidden = when (val h = intent.extras?.get("wifi_hidden")) {
+            is Boolean -> h
+            is String -> h.trim().equals("true", ignoreCase = true) || h.trim() == "1"
+            else -> null
+        }
+        intent.removeExtra("wifi_ssid")
+        intent.removeExtra("wifi_psk")
+        intent.removeExtra("wifi_hidden")
+        Log.i(WifiSetupLog.TAG, WifiSetupLog.connecting(ssid))
+        when {
+            ssid.isEmpty() -> Log.i(WifiSetupLog.TAG, WifiSetupLog.failed(ssid, "wifi_ssid is empty"))
+            ssid.toByteArray(Charsets.UTF_8).size > 32 -> Log.i(WifiSetupLog.TAG, WifiSetupLog.failed(ssid, "wifi_ssid is longer than 32 bytes"))
+            else -> joinFromInstaller(ssid, psk, hidden, tries = 0)
+        }
+    }
+
+    /** KioskService (and with it ImprovController) may not be up yet right after a launch: retry. */
+    private fun joinFromInstaller(ssid: String, psk: String, hidden: Boolean?, tries: Int) {
+        if (ImprovController.connectFromInstaller(ssid, psk, hidden)) {
+            refreshSetup()
+            return
+        }
+        if (tries >= INSTALLER_WIFI_TRIES) {
+            Log.i(WifiSetupLog.TAG, WifiSetupLog.failed(ssid, "the kiosk service did not start"))
+            return
+        }
+        handler.postDelayed({ joinFromInstaller(ssid, psk, hidden, tries + 1) }, 500)
     }
 
     private fun onSkipHaSetup() {
@@ -419,7 +593,9 @@ class MainActivity : Activity() {
     //   --ez reload true        reload the page
     //   --ez restart true       restart the app process
     //   --es api_key <base64>   ESPHome API encryption key (32 bytes); --ez api_encryption true|false
-    //   --ez show_setup true    preview the setup screen (--es setup_step wifi|ha|signin|done); false closes it
+    //   --ez show_setup true    preview the setup screen (--es setup_step wifi|ha|radio|signin|done); false closes it
+    //   --es wifi_ssid <ssid> --es wifi_psk <psk> [--ez wifi_hidden true]
+    //                           join Wi-Fi (web installer); result in `logcat -s S1Kiosk.WifiSetup`
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -442,6 +618,8 @@ class MainActivity : Activity() {
             intent.removeExtra("set_locale")
             SystemLocale.set(tag)
         }
+        // From the web installer: Wi-Fi details (see applyWifiExtras / setup/WifiSetupLog.kt).
+        applyWifiExtras(intent)
         if (fromNewIntent) applySetupPreview(intent)
         if (intent.hasExtra("zoom")) {
             prefs.zoom = intent.getFloatExtra("zoom", 0f)
@@ -935,6 +1113,10 @@ class MainActivity : Activity() {
         HaAuth.removeListener(authListener)
         SetupSignals.removeListener(setupSignalListener)
         wifiStatus.observe(null)
+        if (ImprovController.inlineHost === improvHost) {
+            lastImprovInline = false
+            ImprovController.inlineHost = null // the overlay takes over if Improv is still running
+        }
         ScreenController.onKeepScreenOn = null
         ScreenController.onBrightness = null
         ScreenController.onStateChanged = null
@@ -959,5 +1141,7 @@ class MainActivity : Activity() {
         private const val REQ_GECKO = 2
         private const val RETRY_MS = 10_000L
         private const val SETUP_TICK_MS = 2_000L
+        /** Wait up to 15 s (every 500 ms) for KioskService before giving up on installer Wi-Fi. */
+        private const val INSTALLER_WIFI_TRIES = 30
     }
 }

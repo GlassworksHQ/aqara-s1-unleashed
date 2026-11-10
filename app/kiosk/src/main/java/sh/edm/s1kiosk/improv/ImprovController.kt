@@ -19,6 +19,9 @@ import android.util.Log
 import sh.edm.s1kiosk.BuildConfig
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.ScreenController
+import sh.edm.s1kiosk.setup.ImprovFacts
+import sh.edm.s1kiosk.setup.InstallerWifi
+import sh.edm.s1kiosk.setup.WifiSetupLog
 import java.lang.ref.WeakReference
 
 /**
@@ -30,6 +33,13 @@ import java.lang.ref.WeakReference
  *  - on demand: `--ez improv true` (ImprovActivity / KioskService intent) or the ESPHome button.
  * Starts in AUTHORIZATION_REQUIRED; tapping "Allow" on the on-screen card (or, optionally, a
  * proximity approach) authorizes for [ImprovSession.DEFAULT_AUTH_TIMEOUT_MS].
+ *
+ * Where "Allow" is shown: while the setup screen is up ([inlineHost] says so), Improv is part of its
+ * Wi-Fi step ([setupFacts] → setup/WifiStep) and the [ImprovOverlay] window stays hidden. Otherwise
+ * (started later on demand, from the intent or HA's button) the overlay is shown as before.
+ *
+ * It also runs Wi-Fi joins sent from the computer ([connectFromInstaller]) on the same
+ * [WifiProvisioner], so the two never fight over the Wi-Fi configuration.
  *
  * Main thread only.
  */
@@ -57,6 +67,41 @@ object ImprovController {
     /** SSID being joined while provisioning ("" if none). */
     val joiningSsid: String get() = connectingSsid
 
+    /** The setup screen, while it can show Improv inline. Main thread. */
+    interface InlineHost {
+        /** True while Improv is shown inline (the setup screen is up and visible): no overlay then. */
+        fun showsImprovInline(): Boolean
+        /** Improv (or an installer Wi-Fi join) changed; re-read [setupFacts] / [installerWifi]. */
+        fun onImprovChanged()
+        /** Identify was requested over BLE while shown inline. */
+        fun onImprovIdentify() {}
+    }
+
+    var inlineHost: InlineHost? = null
+        set(v) { field = v; if (initialized) refreshOverlay() }
+
+    /** Improv as the setup screen's Wi-Fi step sees it (pure data, see setup/WifiStep). */
+    val setupFacts: ImprovFacts
+        get() {
+            val s = session
+            if (!initialized || s == null) return ImprovFacts(startError = startError)
+            return ImprovFacts(
+                running = true,
+                advertising = advertising,
+                clients = clients.size,
+                state = s.state,
+                authLeftMs = if (s.state == ImprovState.AUTHORIZED) s.authorizedUntil - SystemClock.elapsedRealtime() else 0L,
+                ssid = connectingSsid,
+                progress = progress,
+                failure = failure,
+                needsApproval = !wifi.legacyApiAllowed,
+            )
+        }
+
+    /** The last Wi-Fi join sent from the computer (web installer), null if none in this process. */
+    var installerWifi: InstallerWifi? = null
+        private set
+
     private var windowEndsAt = 0L
     private var auto = false
     private var reason = ""
@@ -67,6 +112,15 @@ object ImprovController {
     private var lastNear = false
     private var resumed: WeakReference<Activity>? = null
     private var netCallback: ConnectivityManager.NetworkCallback? = null
+    private var advertising = false
+    private val clients = HashSet<String>()
+    /** Why the last start failed / advertising stopped by itself; cleared by the next start. */
+    private var startError: String? = null
+    /** The Wi-Fi attempt in flight belongs to the installer (progress goes there), not to Improv. */
+    private var installerJoining = false
+    /** Installer requests in this process; an outcome only updates [installerWifi] if it's the latest. */
+    private var installerSeq = 0
+    private var notifying = false
 
     /** One-line status for logs / diagnostics. */
     @Volatile var status: String = "off"
@@ -80,7 +134,13 @@ object ImprovController {
         initialized = true
         app = ctx.applicationContext
         prefs = KioskPrefs(app)
-        wifi = WifiProvisioner(app, main).also { it.onProgress = { p -> progress = p; refreshOverlay() } }
+        wifi = WifiProvisioner(app, main).also {
+            it.onProgress = { p ->
+                val inst = installerWifi
+                if (installerJoining && inst != null) installerWifi = inst.copy(detail = p) else progress = p
+                refreshOverlay()
+            }
+        }
         overlay = ImprovOverlay(app).also { it.fallbackActivity = { resumed?.get() } }
         (app as? Application)?.registerActivityLifecycleCallbacks(activityTracker)
         ScreenController.addListener(proximityListener)
@@ -134,12 +194,15 @@ object ImprovController {
         val s = ImprovSession(effects)
         session = s
         reason = why; auto = isAuto; failure = null; progress = null; provisionedUrl = null; connectingSsid = ""
+        startError = null; advertising = false; clients.clear()
         windowEndsAt = now + WINDOW_MS
         s.start(requireAuthorization = true, now = now)
         if (!server.start(s.state, s.capabilities)) {
             session = null
             overlay.hide()
             status = "failed to start"
+            if (startError == null) startError = "Bluetooth didn't start"
+            notifyHost()
             return
         }
         wifi.requestScan()
@@ -155,7 +218,7 @@ object ImprovController {
     fun stop(why: String) {
         val s = session ?: return
         Log.i(TAG, "Improv stopped: $why (state=${s.state})")
-        if (s.state == ImprovState.PROVISIONING) wifi.cancel()
+        if (s.state == ImprovState.PROVISIONING && !installerJoining) wifi.cancel()
         s.stop()
         session = null
         ble?.stop()
@@ -163,7 +226,10 @@ object ImprovController {
         main.removeCallbacks(tick)
         main.removeCallbacks(delayedStop)
         overlay.hide()
+        advertising = false
+        clients.clear()
         status = "off ($why)"
+        notifyHost()
     }
 
     fun authorize(source: String) {
@@ -172,6 +238,60 @@ object ImprovController {
         failure = null
         s.authorize(SystemClock.elapsedRealtime())
     }
+
+    /**
+     * Joins [ssid] with the Wi-Fi details sent from the computer (MainActivity's `wifi_ssid` /
+     * `wifi_psk` / `wifi_hidden` extras), on the same [WifiProvisioner] as Improv (it turns Wi-Fi on
+     * first if it is off). Progress is in [installerWifi]; the outcome is logged for the installer in
+     * the [WifiSetupLog] format (the caller logs `result=connecting`). [psk] is never logged.
+     * Returns false if the controller isn't up yet (KioskService not created): call again shortly.
+     */
+    fun connectFromInstaller(ssid: String, psk: String, hidden: Boolean?): Boolean {
+        if (!initialized) return false
+        if (session?.state == ImprovState.PROVISIONING) {
+            // The installer wins; Improv's attempt reports "superseded" and asks for the details again.
+            Log.i(TAG, "installer Wi-Fi supersedes the Improv attempt")
+        }
+        val seq = ++installerSeq
+        installerWifi = InstallerWifi(ssid, InstallerWifi.Phase.CONNECTING)
+        installerJoining = true
+        ScreenController.wake("installer wifi")
+        refreshOverlay()
+        wifi.connect(ssid, psk, hidden) { outcome -> main.post { onInstallerOutcome(seq, ssid, outcome) } }
+        return true
+    }
+
+    private fun onInstallerOutcome(seq: Int, ssid: String, o: WifiProvisioner.Outcome) {
+        val result = when (o) {
+            is WifiProvisioner.Outcome.Connected -> {
+                Log.i(WifiSetupLog.TAG, WifiSetupLog.connected(ssid, o.ip))
+                InstallerWifi(ssid, InstallerWifi.Phase.CONNECTED, o.ip)
+            }
+            is WifiProvisioner.Outcome.Failed -> {
+                val why = o.reason + (o.restored?.let { ". Back on $it" } ?: "")
+                Log.i(WifiSetupLog.TAG, WifiSetupLog.failed(ssid, why))
+                InstallerWifi(ssid, InstallerWifi.Phase.FAILED, why)
+            }
+        }
+        if (seq != installerSeq) return // superseded by a newer request: that one is on screen
+        installerJoining = false
+        installerWifi = result
+        refreshOverlay()
+    }
+
+    /** The host's visibility changed: show or hide the overlay accordingly. */
+    fun refreshUi() {
+        if (initialized) refreshOverlay()
+    }
+
+    private fun notifyHost() {
+        if (notifying) return
+        notifying = true
+        try { inlineHost?.onImprovChanged() } catch (t: Throwable) { Log.w(TAG, "setup screen update failed", t) }
+        finally { notifying = false }
+    }
+
+    private fun inline(): Boolean = runCatching { inlineHost?.showsImprovInline() == true }.getOrDefault(false)
 
     private fun releaseDeviceOwner() {
         val dpm = app.getSystemService(DevicePolicyManager::class.java)
@@ -216,8 +336,12 @@ object ImprovController {
         override fun identify() {
             Log.i(TAG, "identify")
             ScreenController.wake("improv identify")
-            if (!overlay.isShown) refreshOverlay()
-            overlay.flash()
+            if (inline()) {
+                inlineHost?.onImprovIdentify()
+            } else {
+                if (!overlay.isShown) refreshOverlay()
+                overlay.flash()
+            }
             beep(3)
         }
 
@@ -225,6 +349,7 @@ object ImprovController {
             connectingSsid = ssid
             failure = null
             progress = null
+            installerJoining = false
             refreshOverlay()
             wifi.connect(ssid, password) { outcome -> main.post { onWifiOutcome(outcome) } }
         }
@@ -267,21 +392,28 @@ object ImprovController {
 
         override fun onClientConnected(address: String) {
             Log.i(TAG, "client connected: $address")
+            if (session != null) clients += address
+            refreshOverlay()
         }
 
         override fun onClientDisconnected(address: String) {
             Log.i(TAG, "client disconnected: $address")
+            clients -= address
             session?.onDisconnect()
+            refreshOverlay()
         }
 
         override fun onAdvertising(ok: Boolean, detail: String) {
             if (ok) {
                 Log.i(TAG, "advertising: $detail")
                 status = "${session?.state?.name?.lowercase()} ($reason), advertising"
+                if (session != null) advertising = true
+                refreshOverlay()
             } else {
                 Log.e(TAG, "advertising failed: $detail")
                 status = "advertising failed: $detail"
-                if (session != null) stop("advertising failed")
+                startError = detail
+                if (session != null) stop("advertising failed") else notifyHost()
             }
         }
     }
@@ -297,7 +429,7 @@ object ImprovController {
                 stop("window expired")
                 return
             }
-            if (overlay.isShown && s.state != ImprovState.PROVISIONED) ScreenController.userActivity()
+            if ((overlay.isShown || inline()) && s.state != ImprovState.PROVISIONED) ScreenController.userActivity()
             if (s.state == ImprovState.AUTHORIZED) refreshOverlay() // countdown
             main.postDelayed(this, 1000)
         }
@@ -371,7 +503,9 @@ object ImprovController {
     // ---- overlay
 
     private fun refreshOverlay() {
+        notifyHost() // first: it may bring up the setup screen (offline + Improv running)
         val s = session ?: return overlay.hide()
+        if (inline()) return overlay.hide()
         val m = when (s.state) {
             ImprovState.AUTHORIZATION_REQUIRED -> ImprovOverlay.Model(
                 label = "Wi-Fi setup · Bluetooth",

@@ -17,6 +17,7 @@ import sh.edm.s1kiosk.auth.UrlConnectionPoster
 import sh.edm.s1kiosk.discovery.HaDiscovery
 import sh.edm.s1kiosk.esphome.PanelDevice
 import sh.edm.s1kiosk.improv.ImprovController
+import sh.edm.s1kiosk.radio.RadioController
 import sh.edm.s1kiosk.voice.VoiceEvent
 import sh.edm.s1kiosk.voice.VoiceUi
 
@@ -33,6 +34,7 @@ class KioskService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        KioskPrefs(this).migrateRadioStep() // before discovery can save an HA URL in this process
         startForeground(NOTIFICATION_ID, buildNotification())
         ScreenController.start(this)
         voiceState = if (KioskPrefs(this).voiceEnabled) "idle" else "off"
@@ -46,7 +48,10 @@ class KioskService : Service() {
         discovery = d
         discoveryRef = d
         d.start()
-        device = PanelDevice(this, { e -> main.post { onVoiceEvent(e) } }, d::onApiHello).also { it.start() }
+        device = PanelDevice(this, { e -> main.post { onVoiceEvent(e) } }, d::onApiHello).also {
+            it.start()
+            radioRef = it.radio
+        }
         ImprovController.init(this) // Improv Wi-Fi via BLE (provisioning mode; see improv/)
         Log.i("S1Kiosk", "KioskService started")
     }
@@ -70,6 +75,7 @@ class KioskService : Service() {
         discovery?.stop()
         discovery = null
         discoveryRef = null
+        radioRef = null
         HaAuth.stopServer()
         super.onDestroy()
     }
@@ -129,6 +135,9 @@ class KioskService : Service() {
 
         /** Set while the service runs; the sign-in screen uses it for manual HA URL entry. */
         @Volatile var discoveryRef: HaDiscovery? = null
+
+        /** Set while the service runs; the setup screen's radio step applies the mode through it. */
+        @Volatile var radioRef: RadioController? = null
 
         fun start(context: Context) {
             val i = Intent(context, KioskService::class.java)
