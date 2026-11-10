@@ -184,8 +184,8 @@ an mDNS publisher and the border agent enabled, `OTBR_RUNTIME_DIR=/data/s1kiosk/
 
 ## Root helper contract (v1)
 
-Persistent root needs the boot-image patch (waiting on the FEL recovery test), so the root half of
-the modes lives in a helper that the patch will install. Files (not wired into any image yet):
+The root half of the modes lives in a helper. The Magisk boot patch installs it as an init service
+([root.md](root.md); working on the reference panel since 2026-11-09). Files:
 
 - `tools/radio/s1kiosk_radio.sh`: the helper (mksh).
 - `tools/radio/s1kiosk_radio.rc`: the init snippet.
@@ -381,8 +381,7 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
 
 ## Open risks
 
-- **Root helper depends on the boot-image patch** (FEL recovery test pending). Until then only `Off`
-  works. Persistent `Off` across a reboot without the helper relies on the app starting and
+- **Root helper needs the Magisk boot patch** ([root.md](root.md)). Panels without it only get `Off`. Persistent `Off` across a reboot without the helper relies on the app starting and
   re-applying it (a few seconds of Aqara's stack at boot).
 - **EZSP-over-TCP has no authentication.** Restrict with `ZIGBEE_RANGE` (the HA subnet) and the
   VLAN firewall.

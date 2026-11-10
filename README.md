@@ -52,6 +52,9 @@ The external case button and the Aqara app pairing button do **not** trigger FEL
 Mainline U-Boot now boots from FEL (USB, RAM only) to a prompt with full eMMC access, after
 fixing the mainline A133 DDR4 controller setup. See [docs/fel.md](docs/fel.md).
 
+Persistent root (Magisk + the radio root helper as an init service), flashed through that FEL
+fastboot path: [docs/root.md](docs/root.md).
+
 ## DRAM parameters (needed to build a working FEL U-Boot)
 
 The generic mainline A133 configs don't match this board; these are the real values read from BOOT0:
