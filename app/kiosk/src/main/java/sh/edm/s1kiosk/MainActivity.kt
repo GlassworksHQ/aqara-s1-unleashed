@@ -450,6 +450,7 @@ class MainActivity : Activity() {
         if (intent.hasExtra("sendspin_enabled")) prefs.sendspinEnabled = intent.getBooleanExtra("sendspin_enabled", true)
         intent.getStringExtra("sendspin_server")?.let { prefs.sendspinServer = it }
         if (intent.hasExtra("sendspin_unpaired_access")) prefs.sendspinUnpairedAccess = intent.getBooleanExtra("sendspin_unpaired_access", false)
+        if (intent.hasExtra("sendspin_flac")) prefs.sendspinFlac = intent.getBooleanExtra("sendspin_flac", true)
         // Wall base (docs/bases.md): auto|uart|localservice, and "" (/dev/ttyS3) or tcp:host:port (emulator).
         intent.getStringExtra("base_backend")?.let { prefs.baseBackend = it }
         intent.getStringExtra("base_transport")?.let { prefs.baseTransport = it }

@@ -3,6 +3,7 @@
     python3 -m venv /tmp/sendspin-venv && /tmp/sendspin-venv/bin/pip install 'aiosendspin[server]==10.2.1'
 
 Usage: sendspin_server.py pair <pairing token>   |   sendspin_server.py guest <client id>
+       sendspin_server.py decode <file.flac>   (decodes what the client received, with PyAV)
 
 Prints one JSON object per line on stdout (events the JVM test asserts on); aiosendspin's own log
 goes to stderr. The server runs with allow_noncompliant_clients=False, so any spec deviation the
@@ -83,7 +84,31 @@ def describe(role: PlayerV1Role, server: SendspinServer, client_id: str) -> dict
         "min_buffer_ms": role.min_buffer_ms,
         "commands": sorted(c.value for c in role.state_supported_commands),
         "psk": security.psk_category.value if security is not None else None,
+        "codec": role.preferred_codec.value if role.preferred_codec is not None else None,
     }
+
+
+def decode(path: str) -> None:
+    """Decode a FLAC file (codec_header + the chunks' frames) and describe the audio."""
+    import av
+
+    container = av.open(path)
+    stream = container.streams.audio[0]
+    frames = 0
+    peak = 0
+    crossings = 0
+    prev = 0
+    for packet in container.demux(stream):
+        for frame in packet.decode():
+            pcm = frame.to_ndarray()  # (channels, samples) for planar s16, (1, samples*channels) packed
+            left = pcm[0][:: 1 if frame.format.is_planar else len(frame.layout.channels)]
+            for v in left.tolist():
+                peak = max(peak, abs(v))
+                if prev < 0 <= v:
+                    crossings += 1
+                prev = v
+            frames += frame.samples
+    out(event="decoded", frames=frames, sample_rate=stream.rate, channels=stream.channels, peak=peak, crossings=crossings)
 
 
 async def main() -> None:
@@ -157,4 +182,7 @@ async def main() -> None:
     await runner.cleanup()
 
 
-asyncio.run(main())
+if sys.argv[1] == "decode":
+    decode(sys.argv[2])
+else:
+    asyncio.run(main())

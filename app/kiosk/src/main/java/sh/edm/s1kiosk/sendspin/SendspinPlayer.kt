@@ -125,7 +125,9 @@ class AudioTrackSink : AudioSink {
  *   or the `sendspin_server` setting. Reconnects with exponential backoff (1 s … 60 s).
  * - Pairing: Home Assistant reads the pairing token over the ESPHome API and Music Assistant
  *   pairs with it ([pairingToken]); or unpaired ("guest") access if enabled in the settings.
- * - Audio: [PlaybackScheduler] on an [AudioTrackSink], volume/mute separate from the voice volume.
+ * - Audio: FLAC (preferred, decoded by MediaCodec) or PCM, through [AudioPipeline] into
+ *   [PlaybackScheduler] on an [AudioTrackSink]; volume/mute separate from the voice volume. If
+ *   FLAC keeps failing, the player reconnects offering PCM only (see [statusText]).
  */
 class SendspinPlayer(
     context: Context,
@@ -149,14 +151,25 @@ class SendspinPlayer(
     @Volatile var started = false; private set
     @Volatile private var lastUrl: String? = null
     @Volatile private var nowPlaying: String? = null
+    @Volatile private var pipeline: AudioPipeline? = null
+    /** Why FLAC is no longer offered this run (decoder failures), or null. */
+    @Volatile private var flacFailure: String? = null
+    /** The platform's FLAC decoder, or null if there is none (then only PCM is offered). */
+    private val flacDecoder: String? by lazy { MediaCodecFlacDecoder.available() }
 
-    private val hello = SsHelloInfo(
+    /** FLAC first (spec: first is preferred), PCM as the fallback; PCM only when FLAC is off or failed. */
+    private fun offeredFormats(): List<SsFormat> =
+        if (prefs.sendspinFlac && flacFailure == null && flacDecoder != null) listOf(SsFormat.FLAC_48K_STEREO_16, SsFormat.PCM_48K_STEREO_16)
+        else listOf(SsFormat.PCM_48K_STEREO_16)
+
+    /** Built per connection: the formats can change between connections. */
+    private fun hello() = SsHelloInfo(
         name = "S1 Panel",
         productName = "Panel Hub S1 Plus (S1 Kiosk)",
         manufacturer = "Aqara",
         softwareVersion = "S1 Kiosk ${BuildConfig.VERSION_NAME}",
         macAddress = macAddress.lowercase().takeIf { MAC_RE.matches(it) },
-        formats = listOf(SsFormat.PCM_48K_STEREO_16),
+        formats = offeredFormats(),
         bufferCapacity = BUFFER_CAPACITY,
     )
 
@@ -170,14 +183,15 @@ class SendspinPlayer(
         if (!running) return "off"
         val s = status
         val server = s.serverName ?: "server"
-        return when (s.phase) {
+        val note = flacFailure?.let { "; FLAC off, using PCM: $it" } ?: ""
+        return (when (s.phase) {
             SendspinSession.Phase.CONNECTING, SendspinSession.Phase.HANDSHAKE -> "connecting"
             SendspinSession.Phase.CLOSED -> "disconnected" + (s.closeReason?.let { " ($it)" } ?: "")
             SendspinSession.Phase.HELD -> "waiting for pairing or approval by $server"
             SendspinSession.Phase.PAIRING -> "pairing with $server"
             SendspinSession.Phase.READY -> if (s.paired) "ready, paired with $server" else "ready, unpaired guest of $server"
-            SendspinSession.Phase.PLAYING -> "playing from $server" + (nowPlaying?.let { ": $it" } ?: "")
-        }.take(255)
+            SendspinSession.Phase.PLAYING -> "playing from $server" + (s.codec?.let { " (${it.uppercase()})" } ?: "") + (nowPlaying?.let { ": $it" } ?: "")
+        } + note).take(255)
     }
 
     @Synchronized fun start() {
@@ -188,6 +202,8 @@ class SendspinPlayer(
         SsLog.i("Sendspin player starting (client id $clientId)")
         applyGain()
         scheduler.outputDelayUs = store.outputDelayMs * 1000L
+        SsLog.i("FLAC decoder: ${flacDecoder ?: "none"}; offering ${offeredFormats().joinToString { it.codec }}")
+        pipeline = AudioPipeline(scheduler, { MediaCodecFlacDecoder() }, ::onFlacFailed)
         audioThread = Thread({ audioLoop() }, "ss-audio").apply { isDaemon = true; start() }
         connThread = Thread({ connectLoop() }, "ss-conn").apply { isDaemon = true; start() }
         statsThread = Thread({ statsLoop() }, "ss-stats").apply { isDaemon = true; start() }
@@ -200,6 +216,8 @@ class SendspinPlayer(
         session?.close(reason)
         synchronized(wake) { wake.notifyAll() }
         connThread?.interrupt(); audioThread?.interrupt(); statsThread?.interrupt()
+        pipeline?.close()
+        pipeline = null
         scheduler.end()
         // The audio thread owns the sink; let it close it before a restart could start another.
         try { audioThread?.join(1_000) } catch (_: InterruptedException) {}
@@ -210,6 +228,22 @@ class SendspinPlayer(
 
     /** Reconnects so a new `client/hello` carries a changed setting (unpaired access, server URL). */
     fun restartSession() { session?.close("restart") }
+
+    /** The `sendspin_flac` setting changed: switching it on also retries FLAC after a failure. */
+    fun onFlacSettingChanged() {
+        if (prefs.sendspinFlac) { flacFailure = null; pipeline?.resetFlacFailure() }
+        onStatusChanged()
+        restartSession()
+    }
+
+    /** FLAC kept failing: offer PCM only from the next client/hello, and reconnect now to get there. */
+    private fun onFlacFailed(reason: String) {
+        if (flacFailure != null) return
+        flacFailure = reason.take(120)
+        SsLog.w("FLAC failed ($reason): reconnecting with PCM only")
+        onStatusChanged()
+        Thread({ restartSession() }, "ss-restart").apply { isDaemon = true; start() }
+    }
 
     /** Voice assistant active: mute locally while staying in sync (spec allows suspending output locally). */
     fun setDucked(d: Boolean) {
@@ -234,7 +268,7 @@ class SendspinPlayer(
                 if (!sleep(10_000)) break
                 continue
             }
-            val s = SendspinSession(url, store, hello, { prefs.sendspinUnpairedAccess }, hooks)
+            val s = SendspinSession(url, store, hello(), { prefs.sendspinUnpairedAccess }, hooks)
             session = s
             SsLog.i("Connecting to $url")
             val r = s.run()
@@ -272,12 +306,22 @@ class SendspinPlayer(
     /** Every 10 s while streaming: the sync figures (docs/sendspin.md "Measuring"). */
     private fun statsLoop() {
         var prev = scheduler.stats()
+        var prevD = pipeline?.stats() ?: AudioPipeline.Stats()
         try {
             while (running) {
                 Thread.sleep(10_000)
                 val s = session ?: continue
                 val st = scheduler.stats()
+                val d = pipeline?.stats(resetMax = true) ?: AudioPipeline.Stats()
                 if (scheduler.isActive) {
+                    val frames = d.decodedFrames - prevD.decodedFrames
+                    SsLog.i(
+                        "decode: %s %.0f kbit/s on the wire | FLAC frames %d, decoder latency avg %.0f µs max %.1f ms, errors %d, dropped %d".format(
+                            s.status().codec ?: "-", (d.wireBytes - prevD.wireBytes) * 8 / 10_000.0,
+                            frames, if (frames > 0) (d.decodeNs - prevD.decodeNs) / 1000.0 / frames else 0.0,
+                            d.maxDecodeNs / 1e6, d.decodeErrors - prevD.decodeErrors, d.droppedFrames - prevD.droppedFrames,
+                        )
+                    )
                     val f = s.timeFilter.snapshot
                     SsLog.i(
                         "sync: offset %.3f ms ±%.0f µs drift %.2f ppm%s | err %.0f µs (smoothed %.0f) buffer %.0f ms | per 10 s: +%d/-%d frames, snaps %d/%d, underrun blocks %d, late chunks %d, chunks %d".format(
@@ -290,6 +334,7 @@ class SendspinPlayer(
                     )
                 }
                 prev = st
+                prevD = d
             }
         } catch (_: InterruptedException) {}
     }
@@ -359,16 +404,11 @@ class SendspinPlayer(
     // ------------------------------------------------------------------ session hooks
 
     private val hooks = object : SsPlayerHooks {
-        override fun onStreamStart(format: SsFormat) { scheduler.start(format) }
-        override fun onStreamClear(fromTimestampUs: Long?) { scheduler.clear(fromTimestampUs) }
-        override fun onStreamEnd() { scheduler.end(); nowPlaying = null }
-
-        override fun onAudio(chunk: SsAudioChunk, receivedNanos: Long) {
-            val f = SsFormat.PCM_48K_STEREO_16
-            val len = chunk.dataLength - chunk.dataLength % f.frameBytes
-            val pcm = PlaybackScheduler.decodePcm(chunk.data, chunk.dataOffset, len, f.bitDepth)
-            scheduler.push(PcmChunk(chunk.timestampUs, pcm, pcm.size / f.channels, f.sampleRate, f.channels, chunk.data.size))
-        }
+        // Everything goes through the pipeline, in order: it decodes off the network and audio threads.
+        override fun onStreamStart(format: SsFormat, codecHeader: ByteArray?) { pipeline?.start(format, codecHeader) }
+        override fun onStreamClear(fromTimestampUs: Long?) { pipeline?.clear(fromTimestampUs) }
+        override fun onStreamEnd() { pipeline?.end(); nowPlaying = null }
+        override fun onAudio(chunk: SsAudioChunk, receivedNanos: Long) { pipeline?.audio(chunk) }
 
         override fun onVolume(volume: Int) { store.volume = volume; applyGain(); onStatusChanged() }
         override fun onMute(muted: Boolean) { store.muted = muted; applyGain(); onStatusChanged() }
@@ -406,7 +446,10 @@ class SendspinPlayer(
     companion object {
         const val DEFAULT_SERVER_PORT = 8927
         const val DEFAULT_PATH = "/sendspin"
-        /** ~7.8 s of 48 kHz stereo 16-bit (+ headers): what the server may have outstanding. */
+        /**
+         * Bytes of encoded chunks (+ headers) the server may have outstanding: ~7.8 s of PCM, ~15 s
+         * of typical FLAC (decoded eagerly: ≤ ~3 MB of PCM in the jitter buffer).
+         */
         const val BUFFER_CAPACITY = 1_500_000
         /** AudioTrack creation (~50 ms) + its 100 ms buffer + network, with margin. */
         const val REQUIRED_LEAD_TIME_MS = 300

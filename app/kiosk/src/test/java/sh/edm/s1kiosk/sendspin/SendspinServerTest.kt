@@ -20,6 +20,9 @@ import java.util.concurrent.TimeUnit
  * - pair: unpaired client is held → Pairing PSK flow with the client's token on the open
  *   connection → re-handshakes → player role → clock sync + client/state → audio chunks →
  *   volume / mute commands → stream end → reconnect on the long-term PSK.
+ * - pair uses the PCM-only hello (what the panel falls back to when FLAC fails); guest offers FLAC
+ *   first, then PCM (the panel's default): the server must pick FLAC, send its codec_header, and
+ *   send whole FLAC frames on a contiguous timeline that decode (PyAV) back to the tone.
  * - guest: unpaired access enabled + operator approval → player role → audio.
  *
  *     python3 -m venv /tmp/sendspin-venv && /tmp/sendspin-venv/bin/pip install 'aiosendspin[server]==10.2.1'
@@ -35,7 +38,8 @@ class SendspinServerTest {
         @Volatile var ends = 0
         @Volatile var volume = 55
         @Volatile var muted = false
-        override fun onStreamStart(format: SsFormat) { starts += format }
+        val headers = Collections.synchronizedList(ArrayList<ByteArray?>())
+        override fun onStreamStart(format: SsFormat, codecHeader: ByteArray?) { starts += format; headers += codecHeader }
         override fun onStreamClear(fromTimestampUs: Long?) {}
         override fun onStreamEnd() { ends++ }
         override fun onAudio(chunk: SsAudioChunk, receivedNanos: Long) { chunks += chunk }
@@ -75,6 +79,8 @@ class SendspinServerTest {
         }
     }
 
+    private val helloFlac = hello.copy(formats = listOf(SsFormat.FLAC_48K_STEREO_16, SsFormat.PCM_48K_STEREO_16))
+
     private fun python(): String? = System.getenv("SENDSPIN_PYTHON")?.takeIf { File(it).canExecute() }
 
     private fun start(vararg args: String): Py {
@@ -82,8 +88,8 @@ class SendspinServerTest {
         return Py(ProcessBuilder(listOf(python()!!, "-I", script.path) + args).start())
     }
 
-    private fun runSession(url: String, store: SsStore, hooks: Hooks, unpaired: Boolean): Pair<SendspinSession, Thread> {
-        val s = SendspinSession(url, store, hello, { unpaired }, hooks)
+    private fun runSession(url: String, store: SsStore, hooks: Hooks, unpaired: Boolean, info: SsHelloInfo = hello): Pair<SendspinSession, Thread> {
+        val s = SendspinSession(url, store, info, { unpaired }, hooks)
         val t = Thread { s.run() }.apply { isDaemon = true; start() }
         return s to t
     }
@@ -91,6 +97,45 @@ class SendspinServerTest {
     private fun assertCompliant(py: Py) {
         val bad = py.stderr.filter { it.contains("non-compliant", ignoreCase = true) || it.contains("noncompliance", ignoreCase = true) }
         assertTrue("server flagged the client: $bad", bad.isEmpty())
+    }
+
+    /** stream/start FLAC + codec_header, whole frames per chunk, a contiguous timeline, decodable audio. */
+    private fun checkFlacStream(hooks: Hooks, py: Py) {
+        assertEquals(SsFormat.FLAC_48K_STEREO_16, hooks.starts.first())
+        val header = hooks.headers.first()!!
+        assertEquals(42, header.size) // fLaC + 0x80 + 24-bit length 34 + STREAMINFO
+        assertEquals("fLaC", String(header, 0, 4, Charsets.US_ASCII))
+        assertEquals(0x80, header[4].toInt() and 0xFF)
+        val si = FlacStreamInfo.parse(header)!!
+        assertEquals(48_000, si.sampleRate); assertEquals(2, si.channels); assertEquals(16, si.bitsPerSample)
+        assertTrue(header.contentEquals(si.csd0()))
+        val chunks = synchronized(hooks.chunks) { hooks.chunks.toList() }
+        var expectTs: Long? = null
+        var samples = 0L
+        val file = java.io.ByteArrayOutputStream().apply { write(header) }
+        for (c in chunks) {
+            val frames = FlacFrames.split(c.data, c.dataOffset, c.dataLength)
+            assertTrue("chunk at ${c.timestampUs} is whole FLAC frames", frames != null && frames.isNotEmpty())
+            assertTrue(frames!!.all { FlacFrames.consistent(it.header, si) })
+            val n = frames.sumOf { it.blockSize }
+            // The chunk's timestamp is its first sample; the next chunk starts where this one ends (±1 µs rounding).
+            expectTs?.let { assertEquals("contiguous timeline", it.toDouble(), c.timestampUs.toDouble(), 1.0) }
+            expectTs = c.timestampUs + n * 1_000_000L / 48_000
+            samples += n
+            file.write(c.data, c.dataOffset, c.dataLength)
+        }
+        assertTrue("got $samples samples", samples in 48_000L * 14 / 10..48_000L * 16 / 10)
+        val bytes = chunks.sumOf { it.dataLength.toLong() }
+        println("FLAC: ${chunks.size} chunks, ${chunks.first().let { FlacFrames.split(it.data, it.dataOffset, it.dataLength)!!.first().blockSize }} samples/frame, " +
+            "${bytes * 8 * 48_000 / samples / 1000} kbit/s vs PCM 1536 kbit/s (440 Hz test tone)")
+        val tmp = File.createTempFile("sendspin", ".flac").apply { deleteOnExit(); writeBytes(file.toByteArray()) }
+        val script = File(javaClass.classLoader!!.getResource("sendspin_server.py")!!.toURI())
+        val dec = Py(ProcessBuilder(python()!!, "-I", script.path, "decode", tmp.path).start()).expect("decoded")
+        assertEquals(samples, dec.getLong("frames"))
+        assertEquals(48_000, dec.getInt("sample_rate"))
+        assertEquals(2, dec.getInt("channels"))
+        assertEquals(8000.0, dec.getDouble("peak"), 30.0) // the server's 440 Hz tone at ±8000, lossless
+        assertEquals(440.0 * samples / 48_000, dec.getDouble("crossings"), 3.0)
     }
 
     @Test
@@ -116,6 +161,7 @@ class SendspinServerTest {
             assertEquals(200, ready.getInt("min_buffer_ms"))
             assertEquals(listOf("mute", "set_output_delay", "volume"), ready.getJSONArray("commands").let { a -> (0 until a.length()).map { a.getString(it) } })
             assertEquals("long_term", ready.getString("psk"))
+            assertEquals("pcm", ready.getString("codec"))
             assertEquals(listOf(serverId), store.records().map { it.serverId })
             assertEquals(PskCategory.LONG_TERM, s1.matched)
 
@@ -129,6 +175,7 @@ class SendspinServerTest {
 
             // Audio: PCM 48 kHz stereo 16-bit, ~1.5 s, increasing timestamps, real samples.
             assertEquals(SsFormat.PCM_48K_STEREO_16, hooks.starts.first())
+            assertEquals(null, hooks.headers.first())
             val chunks = synchronized(hooks.chunks) { hooks.chunks.toList() }
             val frames = chunks.sumOf { it.dataLength / 4 }
             assertTrue("got $frames frames in ${chunks.size} chunks", frames in 48_000 * 14 / 10..48_000 * 16 / 10)
@@ -161,21 +208,24 @@ class SendspinServerTest {
     }
 
     @Test
-    fun guestAccessWithApproval() {
+    fun guestAccessWithApprovalStreamsFlac() {
         assumeTrue("SENDSPIN_PYTHON not set", python() != null)
         val store = MemoryStore()
         val py = start("guest", store.identity().peerId)
         try {
             val port = py.expect("listening").getInt("port")
             val hooks = Hooks()
-            val (s, t) = runSession("ws://127.0.0.1:$port/sendspin", store, hooks, unpaired = true)
+            val (s, t) = runSession("ws://127.0.0.1:$port/sendspin", store, hooks, unpaired = true, info = helloFlac)
             assertFalse(py.expect("connected").getBoolean("has_player"))
             py.expect("approved")
-            assertEquals("sentinel", py.expect("player_ready").getString("psk"))
+            val ready = py.expect("player_ready")
+            assertEquals("sentinel", ready.getString("psk"))
+            assertEquals("flac", ready.getString("codec")) // the hello's first format
             py.expect("stream_pushed")
             py.expect("commands")
             py.expect("done")
             assertTrue(hooks.chunks.size > 10)
+            checkFlacStream(hooks, py)
             assertEquals(PskCategory.SENTINEL, s.matched)
             assertTrue(store.records().isEmpty())
             s.close("shutdown")

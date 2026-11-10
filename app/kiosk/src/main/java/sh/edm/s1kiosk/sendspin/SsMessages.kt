@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 
-/** A PCM format a player offers / a stream uses (`player@v1_support.supported_formats` entry). */
+/** A format a player offers / a stream uses (`player@v1_support.supported_formats` entry). */
 data class SsFormat(val codec: String, val channels: Int, val sampleRate: Int, val bitDepth: Int) {
     fun toJson(): JSONObject = JSONObject().put("codec", codec).put("channels", channels)
         .put("sample_rate", sampleRate).put("bit_depth", bitDepth)
@@ -13,6 +13,7 @@ data class SsFormat(val codec: String, val channels: Int, val sampleRate: Int, v
 
     companion object {
         val PCM_48K_STEREO_16 = SsFormat("pcm", 2, 48_000, 16)
+        val FLAC_48K_STEREO_16 = SsFormat("flac", 2, 48_000, 16)
 
         fun fromJson(o: JSONObject): SsFormat? = try {
             SsFormat(o.getString("codec"), o.getInt("channels"), o.getInt("sample_rate"), o.optInt("bit_depth", 0))
@@ -146,6 +147,16 @@ object SsMessages {
         for (i in 0 until 4) b[9 + i] = (sendAhead ushr (24 - 8 * i)).toByte()
         System.arraycopy(audio, 0, b, AUDIO_HEADER, audio.size)
         return b
+    }
+
+    /**
+     * The stream/start `codec_header` (standard Base64 with padding, spec "Codec framing"), or null
+     * when absent or not valid Base64.
+     */
+    fun codecHeader(player: JSONObject): ByteArray? {
+        if (!player.has("codec_header") || player.isNull("codec_header")) return null
+        val s = player.opt("codec_header") as? String ?: return null
+        return try { java.util.Base64.getDecoder().decode(s) } catch (_: IllegalArgumentException) { null }
     }
 
     private fun String.utf8Cap(max: Int): String {

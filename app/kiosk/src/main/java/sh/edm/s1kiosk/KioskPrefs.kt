@@ -291,6 +291,11 @@ class KioskPrefs(context: Context) {
         get() = sp.getBoolean(KEY_SENDSPIN_UNPAIRED, false)
         set(v) = sp.edit().putBoolean(KEY_SENDSPIN_UNPAIRED, v).apply()
 
+    /** Offer FLAC (decoded with MediaCodec) before PCM to the Sendspin server. PCM only when off. */
+    var sendspinFlac: Boolean
+        get() = sp.getBoolean(KEY_SENDSPIN_FLAC, true)
+        set(v) = sp.edit().putBoolean(KEY_SENDSPIN_FLAC, v).apply()
+
     // ---- Improv Wi-Fi via BLE (see improv/ImprovController)
 
     /** Start Improv provisioning automatically when there's no network 30 s after boot. */
@@ -329,6 +334,7 @@ class KioskPrefs(context: Context) {
         const val KEY_BASE_TRANSPORT = "base_transport"
         const val KEY_SENDSPIN_SERVER = "sendspin_server"
         const val KEY_SENDSPIN_UNPAIRED = "sendspin_unpaired_access"
+        const val KEY_SENDSPIN_FLAC = "sendspin_flac"
         private const val KEY_ZOOM = "zoom"
         private const val KEY_SECURE_HOSTS = "secure_hosts"
         private const val KEY_REMOTE_DEBUG = "remote_debug"
