@@ -10,7 +10,8 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "stage": "node scripts/stage-assets.mjs"
+    "stage": "node scripts/stage-assets.mjs",
+    "vercel-build": "node scripts/stage-assets.mjs --remote && npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

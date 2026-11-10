@@ -1,0 +1,11 @@
+{
+  "comment": "Blobs the installer downloads at build time (scripts/stage-assets.mjs --remote). Each is checked against its sha256; a mismatch fails the build. The kiosk APK is not here: it comes from the latest S1 Kiosk release (v*), with the .sha256 published next to it.",
+  "assets": [
+    { "name": "uboot-spl", "url": "https://github.com/aguilaair/aqara-s1-unleashed/releases/download/installer-files-1/u-boot-sunxi-with-spl.bin", "sha256": "b2e6820a4b5d1a074b97d0b9135da06b3f378f893418a6b33dc99d81f4621ffa", "license": "GPL-2.0-or-later", "source": "https://github.com/aguilaair/aqara-s1-unleashed/tree/main/tools/fel/uboot (U-Boot + our patches)" },
+    { "name": "uboot", "url": "https://github.com/aguilaair/aqara-s1-unleashed/releases/download/installer-files-1/u-boot.bin", "sha256": "ea0050fd92e46dffcd5a61e286b991bc19d62f383e8d9611c111585cd576b98e", "license": "GPL-2.0-or-later", "source": "https://github.com/aguilaair/aqara-s1-unleashed/tree/main/tools/fel/uboot (U-Boot + our patches)" },
+    { "name": "otbr-agent", "url": "https://github.com/aguilaair/aqara-s1-unleashed/releases/download/installer-files-1/otbr-agent", "sha256": "ca137419c822cc329f120eb2a8c3586b408690b75f609106f43dcba87a4af5af", "license": "BSD-3-Clause", "source": "https://github.com/aguilaair/aqara-s1-unleashed/blob/main/docs/radio.md (ot-br-posix, built by tools/radio)" },
+    { "name": "ot-ctl", "url": "https://github.com/aguilaair/aqara-s1-unleashed/releases/download/installer-files-1/ot-ctl", "sha256": "cbbfb98b332b0197ff0613e0c85e4f06b4719e0ad09e450c8301365928feab6a", "license": "BSD-3-Clause", "source": "https://github.com/aguilaair/aqara-s1-unleashed/blob/main/docs/radio.md (ot-br-posix, built by tools/radio)" },
+    { "name": "magisk", "url": "https://github.com/topjohnwu/Magisk/releases/download/v31.1/Magisk-v31.1.apk", "sha256": "89cefac0a318afa39fb3880c45c87b036c05bc1ebf02a7a715b7f8d7c26ac6e7", "license": "GPL-3.0-only", "source": "https://github.com/topjohnwu/Magisk/releases/tag/v31.1" },
+    { "name": "keyboard-apk", "url": "https://f-droid.org/repo/rkr.simplekeyboard.inputmethod_149.apk", "sha256": "a6224924010bd4f169d2317064ccd0c307b9560bc7d8f500551d179d4f94918a", "license": "Apache-2.0", "source": "https://github.com/rkkr/simple-keyboard" }
+  ]
+}

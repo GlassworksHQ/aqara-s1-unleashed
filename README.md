@@ -68,8 +68,7 @@ announcements, with a calm full-screen overlay while you talk.
 
 ### The web installer (recommended)
 
-<!-- TODO(launch): confirm the hosted installer URL before publishing. -->
-**[Open the installer →](https://aguilaair.github.io/aqara-s1-unleashed/)**
+**[Open the installer →](https://s1.edm.sh/)**
 
 The installer runs entirely in your browser and uploads nothing. It walks you through five steps:
 

@@ -38,8 +38,7 @@ To enter FEL: unplug the panel, **hold the button, plug in USB-C**, keep holding
 
 ## Web installer
 
-<!-- TODO(launch): confirm the hosted installer URL before publishing. -->
-Open **[the installer](https://aguilaair.github.io/aqara-s1-unleashed/)** in Chrome or Edge. Nothing
+Open **[the installer](https://s1.edm.sh/)** in Chrome or Edge. Nothing
 is uploaded anywhere: the page talks to the panel over USB and keeps its backup in the browser.
 
 ### 1 · Check this browser

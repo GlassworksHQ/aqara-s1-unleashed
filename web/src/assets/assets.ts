@@ -45,7 +45,8 @@ export class Assets {
   private async load(name: AssetName, onProgress?: (done: number, total: number) => void): Promise<Uint8Array> {
     const entry = (await this.getManifest()).assets.find((a) => a.name === name);
     if (!entry) throw new Error(`installer file ${name} is not in the manifest`);
-    const r = await this.f(`${this.base}${entry.path}`);
+    const url = /^(\/|https?:)/.test(entry.path) ? entry.path : `${this.base}${entry.path}`;
+    const r = await this.f(url);
     if (!r.ok || !r.body) throw new Error(`could not download ${name} (HTTP ${r.status})`);
     const out = new Uint8Array(entry.size);
     let got = 0;
