@@ -260,7 +260,9 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         cardNote.setTextColor(AMBER)
         tiles.visibility = View.GONE
         tileB.view.visibility = View.VISIBLE
-        urlField.visibility = View.GONE
+        // The URL field is never reset to GONE and back: a view that goes GONE (even for one frame)
+        // loses focus, and this runs on every discovery/Wi-Fi refresh, i.e. while the user types.
+        var showUrl = false
         buttons.visibility = View.VISIBLE
         primary.visibility = View.GONE
         secondary.visibility = View.GONE
@@ -292,7 +294,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
                     cardTitle.text = "Where is Home Assistant?"
                     cardBody.text = "The panel is looking for it on the network. If it doesn't show up, enter its address; " +
                         "the panel keeps looking in the background."
-                    urlField.visibility = View.VISIBLE
+                    showUrl = true
                     primary.text = "Connect"
                     primary.isEnabled = true
                     primary.visibility = View.VISIBLE
@@ -341,7 +343,9 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
                 buttons.visibility = View.GONE
             }
         }
-        if (urlField.visibility != View.VISIBLE) hideKeyboard()
+        val urlVis = if (showUrl) View.VISIBLE else View.GONE
+        if (urlField.visibility != urlVis) urlField.visibility = urlVis
+        if (!showUrl) hideKeyboard()
     }
 
     private fun reveal() {
