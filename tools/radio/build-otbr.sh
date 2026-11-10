@@ -7,6 +7,7 @@
 #
 # Output: tools/radio/out/{otbr-agent,ot-ctl}  -- fully static glibc ARM EABI5 (armhf) ELF,
 #         no bionic / libc++ dependencies. Plus BUILD-INFO.txt with pins, options and runtime paths.
+#         PROFILE=br writes the border-router build to tools/radio/out/br/ instead (see PROFILE below).
 # Cache : tools/radio/.build/  (sources, build trees). Both dirs are gitignored.
 # Needs : Docker on the host (tested: Docker 29, Apple Silicon). Builder image is derived from
 #         arm64v8/ubuntu:22.04 and uses Ubuntu's gcc-arm-linux-gnueabihf cross toolchain;
@@ -25,8 +26,12 @@
 #                        v3.6.5 = commit e185d7fd85499c8ce5ca2a54f5cf8fe7dbe3f8df
 #                        License: Apache-2.0 OR GPL-2.0-or-later (used under Apache-2.0); compiled in
 #                        for OpenThread's own crypto (unrelated to CPC encryption, which stays off).
-#                        The other ot-br-posix submodules (cJSON, cpp-httplib) are NOT fetched:
-#                        they are only used by REST/web, which are disabled.
+#                        The other ot-br-posix submodules (cJSON, cpp-httplib) are only fetched for
+#                        PROFILE=br (REST server), pinned by ot-br-posix's gitlinks:
+#  2c. cJSON             https://github.com/DaveGamble/cJSON  commit cf97c6f066d81fdbba4ef722cfd327bbbba2365c
+#                        License: MIT.
+#  2d. cpp-httplib       https://github.com/yhirose/cpp-httplib  commit 03cf43ebaa55f27a2778bed870ea3549f7e84e2c
+#                        License: MIT. (header-only, used by the REST server)
 #  3. cpc-daemon/libcpc  https://github.com/SiliconLabs/cpc-daemon
 #                        tag v4.3.3 = commit 684595db6be6534f856cfc7455551e71567298ee ("CPCd Release: 4.3.3")
 #                        License: Silicon Labs MSLA (Master Software License Agreement), source-code
@@ -67,6 +72,13 @@
 # Usage:  tools/radio/build-otbr.sh            # fetch (if needed), build, smoke-test
 #         CLEAN=1 tools/radio/build-otbr.sh    # wipe build trees first (keeps fetched sources)
 # Knobs (environment, all optional):
+#   PROFILE           agent = minimal Thread agent (no border routing/REST/mDNS), out/      [agent]
+#                     br    = border router for Home Assistant's OTBR integration, out/br/:
+#                             border routing (-B <infra if>), REST API (:8081), OpenThread's own
+#                             mDNS (meshcop/_srpl, SRP advertising proxy), SRP server auto-enable,
+#                             border agent; no NAT64/TREL/backbone router/DHCPv6-PD/DNS upstream/
+#                             firewall/web/D-Bus (none of them is needed by HA, several need
+#                             Linux userland Android doesn't have). Also runs without -B (Thread router).
 #   OTBR_RUNTIME_DIR  compile-time dir for the ot-ctl/agent unix socket   [/data/local/tmp/otbr]
 #   OTBR_SETTINGS_DIR compile-time default Thread settings dir             [$OTBR_RUNTIME_DIR/thread]
 #                     (overridable at runtime with otbr-agent --data-path)
@@ -91,6 +103,8 @@ OTBR_TAG=v2026.11.0
 OTBR_COMMIT=76fb21d666a41050b43f8eaabc30e71d9d75d9fd
 OT_COMMIT=ecd308b4a00f76d643b352f8f5c4ffc287bb33a2
 MBEDTLS_COMMIT=e185d7fd85499c8ce5ca2a54f5cf8fe7dbe3f8df   # mbedtls v3.6.5 (openthread submodule)
+CJSON_COMMIT=cf97c6f066d81fdbba4ef722cfd327bbbba2365c     # PROFILE=br only (ot-br-posix submodule)
+HTTPLIB_COMMIT=03cf43ebaa55f27a2778bed870ea3549f7e84e2c   # PROFILE=br only (ot-br-posix submodule)
 
 CPCD_REPO=https://github.com/SiliconLabs/cpc-daemon
 CPCD_TAG=v4.3.3
@@ -115,6 +129,12 @@ OTBR_SETTINGS_DIR="${OTBR_SETTINGS_DIR:-$OTBR_RUNTIME_DIR/thread}"
 OTBR_TUN_DEVICE="${OTBR_TUN_DEVICE:-/dev/tun}"
 CPC_SOCKET_DIR="${CPC_SOCKET_DIR:-/dev/shm}"
 CLEAN="${CLEAN:-0}"
+PROFILE="${PROFILE:-agent}"
+case "$PROFILE" in
+  agent) OUT_DIR="$SCRIPT_DIR/out" ;;
+  br)    OUT_DIR="$SCRIPT_DIR/out/br" ;;
+  *) echo "PROFILE must be agent or br" >&2; exit 1 ;;
+esac
 SIM_TEST="${SIM_TEST:-1}"
 JOBS="${JOBS:-}"
 
@@ -143,10 +163,10 @@ set -euo pipefail
 W=/work/.build
 SRC=$W/src
 PREFIX=$W/prefix
-OUT=/work/out
+case "$PROFILE" in agent) OUT=/work/out ;; br) OUT=/work/out/br ;; esac
 JOBS="${JOBS:-$(nproc)}"
 mkdir -p "$SRC" "$PREFIX/include" "$PREFIX/lib" "$OUT"
-[ "$CLEAN" = 1 ] && rm -rf "$W/build-otbr" "$W/build-libcpc" "$W/build-sim" "$W/sim"
+[ "$CLEAN" = 1 ] && rm -rf "$W/build-otbr" "$W/build-otbr-br" "$W/build-libcpc" "$W/build-sim" "$W/sim"
 
 log() { printf '\n=== %s\n' "$*"; }
 
@@ -187,6 +207,19 @@ if [ ! -f "$MBDIR/framework/CMakeLists.txt" ] && [ ! -d "$MBDIR/framework/script
 fi
 MBFW_COMMIT=$(git -C "$MBDIR/framework" rev-parse HEAD)
 [ "$(git -C "$MBDIR" rev-parse HEAD)" = "$MBEDTLS_COMMIT" ] || { echo "mbedtls checkout mismatch" >&2; exit 1; }
+
+if [ "$PROFILE" = br ]; then
+  # REST server deps, pinned by ot-br-posix's own gitlinks (checked against the expected commits)
+  for sm in "third_party/cJSON/repo:$CJSON_COMMIT" "third_party/cpp-httplib/repo:$HTTPLIB_COMMIT"; do
+    path=${sm%%:*}; want=${sm##*:}
+    got=$(git -C "$SRC/ot-br-posix" ls-tree HEAD "$path" | awk '{print $3}')
+    [ "$got" = "$want" ] || { echo "$path gitlink mismatch: $got want $want" >&2; exit 1; }
+    if [ "$(git -C "$SRC/ot-br-posix/$path" rev-parse HEAD 2>/dev/null || true)" != "$want" ]; then
+      git -C "$SRC/ot-br-posix" submodule update -q --init --depth 1 "$path"
+    fi
+    [ "$(git -C "$SRC/ot-br-posix/$path" rev-parse HEAD)" = "$want" ] || { echo "$path checkout mismatch" >&2; exit 1; }
+  done
+fi
 
 log "fetch cpc-daemon $CPCD_TAG"
 clone "$SRC/cpc-daemon" "$CPCD_REPO" "$CPCD_TAG" "$CPCD_COMMIT"
@@ -320,7 +353,7 @@ EOF
 
 ARCH_FLAGS="-march=armv7-a -mfpu=vfpv3-d16 -mfloat-abi=hard -mthumb"
 COMMON_FLAGS="$ARCH_FLAGS -include $W/otbr-android-paths.h -I$W -I$SIL -ffunction-sections -fdata-sections"
-BUILD=$W/build-otbr
+BUILD=$W/build-otbr; [ "$PROFILE" = br ] && BUILD=$W/build-otbr-br
 OTBR_CMAKE_ARGS=(
   -G Ninja
   -DCMAKE_TOOLCHAIN_FILE="$W/toolchain-armhf.cmake"
@@ -333,6 +366,18 @@ OTBR_CMAKE_ARGS=(
   # compile-time vendor/model, otherwise otbr-agent refuses to start without --vendor-name/--model-name
   -DOTBR_VENDOR_NAME=Aqara
   -DOTBR_PRODUCT_NAME=S1-CPC
+  # --- profile options: see OTBR_PROFILE_ARGS below
+  -DOT_POSIX_SETTINGS_PATH="\"$OTBR_SETTINGS_DIR\""
+  # --- SiLabs multi-PAN RCP over CPC (HA silabs-multiprotocol recipe, current OT option names)
+  -DOT_MULTIPAN_RCP=ON
+  -DOT_POSIX_RCP_HDLC_BUS=ON
+  -DOT_POSIX_RCP_VENDOR_BUS=ON
+  -DOT_POSIX_CONFIG_RCP_VENDOR_INTERFACE="$SIL/cpc_interface.cpp"
+  -DOT_POSIX_CONFIG_RCP_VENDOR_DEPS_PACKAGE="$W/cpc-vendor-deps.cmake"
+  -DOT_PLATFORM_CONFIG=openthread-core-aqara-cpc-posix-config.h
+)
+if [ "$PROFILE" = agent ]; then
+OTBR_PROFILE_ARGS=(
   # --- everything optional off
   -DOTBR_MDNS=OFF
   -DOTBR_BORDER_AGENT=OFF
@@ -364,20 +409,47 @@ OTBR_CMAKE_ARGS=(
   -DOTBR_NFTABLES=OFF
   -DOT_FIREWALL=OFF
   -DOT_READLINE=OFF
-  -DOT_POSIX_SETTINGS_PATH="\"$OTBR_SETTINGS_DIR\""
-  # --- SiLabs multi-PAN RCP over CPC (HA silabs-multiprotocol recipe, current OT option names)
-  -DOT_MULTIPAN_RCP=ON
-  -DOT_POSIX_RCP_HDLC_BUS=ON
-  -DOT_POSIX_RCP_VENDOR_BUS=ON
-  -DOT_POSIX_CONFIG_RCP_VENDOR_INTERFACE="$SIL/cpc_interface.cpp"
-  -DOT_POSIX_CONFIG_RCP_VENDOR_DEPS_PACKAGE="$W/cpc-vendor-deps.cmake"
-  -DOT_PLATFORM_CONFIG=openthread-core-aqara-cpc-posix-config.h
 )
+else
+# Border router for Home Assistant's OTBR integration (python-otbr-api: /node, /node/dataset/*,
+# /node/ba-id, /node/ext-address, /node/coprocessor/version, /node/state). mDNS is OpenThread's own
+# implementation (no avahi/mDNSResponder daemon on Android): it publishes _meshcop._udp (border
+# agent) and SRP-registered services (Matter) on the backbone interface.
+OTBR_PROFILE_ARGS=(
+  -DOTBR_MDNS=openthread
+  -DOTBR_BORDER_AGENT=ON
+  -DOTBR_BORDER_AGENT_MESHCOP_SERVICE=OFF   # with OT mDNS the OT core publishes meshcop itself
+  -DOTBR_PUBLISH_MESHCOP_BA_ID=ON
+  -DOTBR_EPSKC=OFF
+  -DOTBR_BORDER_ROUTING=ON
+  -DOTBR_BORDER_ROUTING_COUNTERS=ON
+  -DOTBR_SRP_SERVER_AUTO_ENABLE=ON
+  -DOTBR_REST=ON
+  -DOTBR_WEB=OFF
+  -DOTBR_DBUS=OFF
+  -DOTBR_BACKBONE_ROUTER=OFF               # Thread 1.2 multicast across the backbone: needs kernel MRT6
+  -DOTBR_NAT64=OFF                         # needs iptables/route plumbing; HA doesn't use it
+  -DOTBR_DNS_UPSTREAM_QUERY=OFF            # no /etc/resolv.conf on Android
+  -DOTBR_TREL=OFF
+  -DOTBR_TREL_DNSSD=OFF
+  -DOTBR_DHCP6_PD=OFF
+  -DOTBR_MULTI_AIL=OFF
+  -DOTBR_FEATURE_FLAGS=OFF
+  -DOTBR_TELEMETRY_DATA_API=OFF
+  -DOTBR_LINK_METRICS_TELEMETRY=OFF
+  -DOTBR_POWER_CALIBRATION=OFF
+  -DOTBR_NOTIFY_UPSTART=OFF
+  -DOTBR_NFTABLES=OFF
+  -DOT_FIREWALL=OFF
+  -DOT_READLINE=OFF
+)
+fi
+OTBR_CMAKE_ARGS+=("${OTBR_PROFILE_ARGS[@]}")
 # no target pkg-config dir exists, so host .pc files (e.g. libsystemd) can't leak in
 export PKG_CONFIG_LIBDIR=/nonexistent PKG_CONFIG_PATH=
-cmake -S "$SRC/ot-br-posix" -B "$BUILD" "${OTBR_CMAKE_ARGS[@]}" > "$W/cmake-configure.log" 2>&1 \
-  || { tail -60 "$W/cmake-configure.log"; exit 1; }
-grep -E "OT_PLATFORM_CONFIG|Readline|Version:|WARNING" "$W/cmake-configure.log" || true
+cmake -S "$SRC/ot-br-posix" -B "$BUILD" "${OTBR_CMAKE_ARGS[@]}" > "$W/cmake-configure-$PROFILE.log" 2>&1 \
+  || { tail -60 "$W/cmake-configure-$PROFILE.log"; exit 1; }
+grep -E "OT_PLATFORM_CONFIG|Readline|Version:|WARNING" "$W/cmake-configure-$PROFILE.log" || true
 
 log "build otbr-agent ot-ctl (-j$JOBS)"
 ninja -C "$BUILD" -j "$JOBS" otbr-agent ot-ctl
@@ -413,7 +485,9 @@ for b in otbr-agent ot-ctl; do
   fi
 done
 # prove the CPC vendor interface and libcpc are linked in
-for pat in "spinel+cpc" "ctrl.cpcd.sock" "$OTBR_TUN_DEVICE" "$OTBR_RUNTIME_DIR/openthread-%s"; do
+pats=("spinel+cpc" "ctrl.cpcd.sock" "$OTBR_TUN_DEVICE" "$OTBR_RUNTIME_DIR/openthread-%s")
+[ "$PROFILE" = br ] && pats+=("/node/dataset/active" "/node/ba-id" "_meshcop._udp")
+for pat in "${pats[@]}"; do
   grep -a -q -F "$pat" otbr-agent || { echo "ERROR: '$pat' not found in otbr-agent" >&2; exit 1; }
   echo "otbr-agent contains: $pat"
 done
@@ -421,12 +495,13 @@ grep -a -q -F "$OTBR_RUNTIME_DIR/openthread-%s" ot-ctl || { echo "ERROR: ot-ctl 
 echo "ot-ctl contains: $OTBR_RUNTIME_DIR/openthread-%s"
 
 {
-  echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)  profile: $PROFILE"
   echo "ot-br-posix $OTBR_TAG $OTBR_COMMIT (BSD-3-Clause)"
   echo "openthread  $OT_COMMIT (BSD-3-Clause)"
   echo "mbedtls     v3.6.5 $MBEDTLS_COMMIT, framework $MBFW_COMMIT (Apache-2.0)"
   echo "cpc-daemon  $CPCD_TAG $CPCD_COMMIT libcpc $ver api $api proto $proto (Silicon Labs MSLA)"
   echo "simplicity_sdk $SISDK_TAG $SISDK_COMMIT cpc_interface.cpp (Zlib)"
+  [ "$PROFILE" = br ] && echo "cJSON       $CJSON_COMMIT (MIT)" && echo "cpp-httplib $HTTPLIB_COMMIT (MIT)"
   echo "toolchain   $(arm-linux-gnueabihf-gcc --version | head -1)"
   echo "glibc       $(dpkg-query -W -f='${Version}' libc6-armhf-cross 2>/dev/null || echo '?') (static)"
   echo
@@ -447,7 +522,8 @@ INNER
 log "build in container"
 docker run --rm --platform linux/arm64 \
   -v "$SCRIPT_DIR:/work" -w /work \
-  -e CLEAN="$CLEAN" -e JOBS="$JOBS" -e SIM_TEST="$SIM_TEST" \
+  -e CLEAN="$CLEAN" -e JOBS="$JOBS" -e SIM_TEST="$SIM_TEST" -e PROFILE="$PROFILE" \
+  -e CJSON_COMMIT="$CJSON_COMMIT" -e HTTPLIB_COMMIT="$HTTPLIB_COMMIT" \
   -e OTBR_REPO="$OTBR_REPO" -e OTBR_TAG="$OTBR_TAG" -e OTBR_COMMIT="$OTBR_COMMIT" -e OT_COMMIT="$OT_COMMIT" -e MBEDTLS_COMMIT="$MBEDTLS_COMMIT" \
   -e CPCD_REPO="$CPCD_REPO" -e CPCD_TAG="$CPCD_TAG" -e CPCD_COMMIT="$CPCD_COMMIT" \
   -e CPCD_EXPECTED_VERSION="$CPCD_EXPECTED_VERSION" \
@@ -474,7 +550,7 @@ docker run --rm --platform linux/arm/v7 -v "$OUT_DIR:/o:ro" "$TEST_IMAGE" bash -
 if [ "$SIM_TEST" = 1 ]; then
   log "end-to-end test: otbr-agent (no backbone, --auto-attach=0) + ot-ctl against simulated RCP"
   docker run --rm --platform linux/arm/v7 --cap-add NET_ADMIN --device "/dev/net/tun:$OTBR_TUN_DEVICE" \
-    -e RUNDIR="$OTBR_RUNTIME_DIR" -v "$OUT_DIR:/o:ro" -v "$BUILD_DIR/sim:/sim:ro" "$TEST_IMAGE" bash -c '
+    -e RUNDIR="$OTBR_RUNTIME_DIR" -e PROFILE="$PROFILE" -v "$OUT_DIR:/o:ro" -v "$BUILD_DIR/sim:/sim:ro" "$TEST_IMAGE" bash -c '
     set -eu
     mkdir -p "$RUNDIR"
     URL="spinel+hdlc+forkpty:///sim/ot-rcp?forkpty-arg=1&iid=0"   # multi-PAN builds require iid=
@@ -487,6 +563,14 @@ if [ "$SIM_TEST" = 1 ]; then
     echo "--- runtime dir"; ls -l "$RUNDIR" "$RUNDIR/thread"
     echo "netifs: $(ls /sys/class/net | tr "\n" " ")"
     for c in version state channel "rcp version" ifconfig; do echo "> ot-ctl $c"; /o/ot-ctl $c; done
+    if [ "$PROFILE" = br ]; then
+      # REST API as the HA OTBR integration reads it (python-otbr-api), over bash /dev/tcp (no curl here)
+      for path in /node /node/ba-id /node/coprocessor/version /node/dataset/active; do
+        exec 3<>/dev/tcp/127.0.0.1/8081
+        printf "GET %s HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: application/json\r\nConnection: close\r\n\r\n" "$path" >&3
+        echo "> GET $path"; head -c 600 <&3 | sed -n "1p;/^\r$/,\$p" | tr -d "\r"; echo; exec 3<&-
+      done
+    fi
     kill $AP; wait $AP 2>/dev/null || true
     echo "--- agent log"; cat /tmp/agent.log | grep -v "Session socket is ready\|Daemon read"
   '

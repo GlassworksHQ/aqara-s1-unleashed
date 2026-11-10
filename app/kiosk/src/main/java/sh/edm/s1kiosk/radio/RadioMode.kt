@@ -14,14 +14,16 @@ package sh.edm.s1kiosk.radio
  * [needsHelper]: the mode runs processes as root (TCP bridge on the root-only EZSP pty, otbr-agent on
  * the root-only CPC socket) and so needs the root helper service [RadioHelper.SERVICE]. [OFF] only
  * stops Aqara's init services, which the app uid can do (SELinux permissive).
+ * [minHelperVersion]: the helper contract version the mode needs (v2: router modes, see RadioHelper).
  */
-enum class RadioMode(val id: String, val label: String, val needsHelper: Boolean) {
+enum class RadioMode(val id: String, val label: String, val needsHelper: Boolean, val minHelperVersion: Int = 1) {
     OFF("off", "Off", false),
     ZIGBEE_TCP("zigbee_tcp", "Zigbee coordinator (TCP)", true),
-    ZIGBEE_ROUTER("zigbee_router", "Zigbee router", true),
+    /** Repeater in an existing Zigbee mesh: the app's EZSP host (ZigbeeRouterHost) drives zigbeed. */
+    ZIGBEE_ROUTER("zigbee_router", "Zigbee router", true, minHelperVersion = 2),
     THREAD("thread", "Thread border router", true),
     /** Thread repeater (FTD) joining an existing network with a dataset from HA; no BR/REST/mDNS. */
-    THREAD_ROUTER("thread_router", "Thread router", true);
+    THREAD_ROUTER("thread_router", "Thread router", true, minHelperVersion = 2);
 
     // Concurrent Zigbee + Thread on the one multi-PAN radio (shared channel) is deliberately not a
     // mode here: Home Assistant deprecated multiprotocol for the same hardware design (docs/radio.md).
@@ -98,12 +100,29 @@ object RadioHelper {
     const val PROP_MODE = "persist.s1kiosk.radio_mode"
     /** Helper -> app: "<state> <mode-id>[: detail]", state = applying | ok | error. */
     const val PROP_STATUS = "sys.s1kiosk.radio.status"
-    /** Helper -> app: contract version the installed helper implements. */
+    /**
+     * Helper -> app: contract version the installed helper implements. v2 (tools/radio/s1kiosk_radio.sh
+     * 2026-11): zigbee_router = EZSP bridge on 127.0.0.1:[ZIGBEE_ROUTER_PORT] for the app's host,
+     * thread_router = dataset hand-off from the app ([DATASET_FILE]), "applying <mode>: waiting for …"
+     * until the stack answers, [PROP_OTBR].
+     */
     const val PROP_VERSION = "sys.s1kiosk.radio.version"
-    const val VERSION = 1
+    const val VERSION = 2
+    /** Helper -> app (v2): which otbr-agent is installed: `br` (border router, REST), `agent` (proof build), `none`. */
+    const val PROP_OTBR = "sys.s1kiosk.radio.otbr"
 
     /** EZSP-over-TCP port of the coordinator modes (bellows/ZHA: socket://<panel>:6638). */
     const val ZIGBEE_TCP_PORT = 6638
+    /** zigbee_router: the helper's localhost-only EZSP bridge for [ZigbeeRouterHost]. */
+    const val ZIGBEE_ROUTER_PORT = 6639
+    /** thread (border-router build): REST API for Home Assistant's OTBR integration. */
+    const val OTBR_REST_PORT = 8081
+
+    /**
+     * thread_router: the app writes the active dataset (hex TLVs) here, in its own files dir
+     * (`files/radio/thread-dataset`); the helper moves it to its root-only dir and deletes this copy.
+     */
+    const val DATASET_FILE = "radio/thread-dataset"
 
     data class Status(val state: String, val mode: RadioMode?, val detail: String)
 

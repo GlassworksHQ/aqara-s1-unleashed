@@ -436,7 +436,8 @@ class MainActivity : Activity() {
     private fun applyRadio(mode: RadioMode, skip: Boolean) {
         if (setupPreview && skip) { closeSetupPreview(); return }
         if (setupPreview) {
-            radioApplied = RadioStep.Applied(mode, false, "Preview: nothing was applied.")
+            // Shows what a successful apply looks like (e.g. the coordinator's pairing QR); nothing is applied.
+            radioApplied = RadioStep.Applied(mode, true, "ok ${mode.label}: preview, nothing was applied")
             refreshSetup()
             return
         }

@@ -13,29 +13,41 @@ import sh.edm.s1kiosk.setup.RadioStep.Result
 class RadioStepTest {
 
     @Test
-    fun offersOnlyWorkingModesOffFirst() {
-        assertEquals(listOf(RadioMode.OFF, RadioMode.ZIGBEE_TCP, RadioMode.THREAD), RadioStep.OPTIONS.map { it.mode })
-        assertEquals(listOf(RadioMode.THREAD), RadioStep.OPTIONS.filter { it.experimental }.map { it.mode })
+    fun offersEveryModeOffFirstWithHonestTags() {
+        assertEquals(
+            listOf(RadioMode.OFF, RadioMode.ZIGBEE_TCP, RadioMode.THREAD, RadioMode.ZIGBEE_ROUTER, RadioMode.THREAD_ROUTER),
+            RadioStep.OPTIONS.map { it.mode },
+        )
+        // Verified end to end: Off and the Zigbee coordinator. The rest is experimental (docs/radio.md).
+        assertEquals(
+            listOf(RadioMode.THREAD, RadioMode.ZIGBEE_ROUTER, RadioMode.THREAD_ROUTER),
+            RadioStep.OPTIONS.filter { it.experimental }.map { it.mode },
+        )
+        assertEquals(listOf(RadioMode.ZIGBEE_ROUTER, RadioMode.THREAD_ROUTER), RadioStep.OPTIONS.filter { it.repeater }.map { it.mode })
         assertEquals(RadioMode.DEFAULT, RadioStep.OPTIONS.first().mode)
         assertTrue(RadioStep.LATER.contains("Radio mode"))
-    }
-
-    @Test
-    fun comingSoonRolesMatchTheInstaller() {
-        assertEquals(listOf(RadioMode.ZIGBEE_ROUTER, RadioMode.THREAD_ROUTER), RadioStep.COMING_SOON.map { it.mode })
-        assertEquals(listOf("Zigbee router", "Thread router"), RadioStep.COMING_SOON.map { it.title })
-        assertEquals(
-            listOf("Extends an existing Zigbee network as a repeater.", "Extends an existing Thread network as a repeater."),
-            RadioStep.COMING_SOON.map { it.line },
-        )
-        // Never selectable: not among the options.
-        assertTrue(RadioStep.OPTIONS.none { o -> RadioStep.COMING_SOON.any { it.mode == o.mode } })
+        assertTrue(RadioStep.COMING_SOON.isEmpty())
     }
 
     @Test
     fun zhaPath() {
         assertEquals("socket://10.0.0.5:6638", RadioStep.zhaPath("10.0.0.5"))
         assertEquals("socket://<panel IP>:6638", RadioStep.zhaPath(null))
+    }
+
+    @Test
+    fun zhaAddUrlForThePairingQr() {
+        assertEquals("http://ha.local:8123/config/zha/add", RadioStep.zhaAddUrl("http://ha.local:8123/"))
+        assertEquals("https://ha.example/config/zha/add", RadioStep.zhaAddUrl(" https://ha.example "))
+        assertEquals(null, RadioStep.zhaAddUrl(null))
+        assertEquals(null, RadioStep.zhaAddUrl("ha.local:8123"))
+    }
+
+    @Test
+    fun nextStepTexts() {
+        assertTrue(RadioStep.nextStep(RadioMode.ZIGBEE_TCP, "10.0.0.5")!!.endsWith("socket://10.0.0.5:6638"))
+        assertTrue(RadioStep.nextStep(RadioMode.THREAD, "10.0.0.5")!!.contains("http://10.0.0.5:8081"))
+        assertEquals(null, RadioStep.nextStep(RadioMode.OFF, null))
     }
 
     @Test

@@ -7,9 +7,13 @@ import sh.edm.s1kiosk.radio.RadioMode
  * The setup screen's radio step (docs/radio.md, "App side"): which modes are offered, their one-line
  * explanations, and how RadioController's answer is read back. Pure Kotlin (RadioStepTest).
  *
- * Only modes that work are offered: Off (default), Zigbee coordinator (ZHA over TCP) and, marked
- * experimental, Thread border router. Zigbee router and Thread router are listed under them as
- * [COMING_SOON], not selectable, until they work (the web installer lists the same two).
+ * Offered, as verified on the reference panel (docs/radio.md):
+ *  - Off (default) and Zigbee coordinator (ZHA over TCP): verified end to end with bellows.
+ *  - Thread border router, experimental: Home Assistant's OTBR REST API verified, routing between
+ *    the LAN and Thread devices not yet tested with a real device.
+ *  - Zigbee router and Thread router ([Option.repeater]), experimental: the stacks start and are
+ *    ready to join, joining a real network not yet tested. Both need the v2 root helper.
+ * [COMING_SOON] is empty now; it stays for roles that are shown but not selectable.
  * Skipping the step means Off. Everything can be changed later with the panel's `Radio mode` select
  * in Home Assistant, which is the same RadioController path.
  */
@@ -20,34 +24,59 @@ object RadioStep {
         val title: String,
         val line: String,
         val experimental: Boolean = false,
+        /** A repeater role in someone else's network: shown in the second, compact row. */
+        val repeater: Boolean = false,
     )
 
     val OPTIONS: List<Option> = listOf(
-        Option(RadioMode.OFF, "Off", "Aqara's radio stack is stopped and the radio stays idle. Choose this if unsure."),
+        Option(RadioMode.OFF, "Off", "Aqara's radio stack stopped, radio idle. Choose this if unsure."),
         Option(
             RadioMode.ZIGBEE_TCP, "Zigbee coordinator",
-            "The panel becomes the Zigbee radio for ZHA, added in Home Assistant as a network radio over TCP.",
+            "The Zigbee radio for ZHA, as a network radio over TCP.",
         ),
         Option(
             RadioMode.THREAD, "Thread border router",
-            "The panel runs a Thread border router for Thread and Matter devices. Not finished yet.",
+            "For Home Assistant's OpenThread Border Router integration.",
             experimental = true,
+        ),
+        Option(
+            RadioMode.ZIGBEE_ROUTER, "Zigbee router",
+            "A repeater in your Zigbee network.",
+            experimental = true, repeater = true,
+        ),
+        Option(
+            RadioMode.THREAD_ROUTER, "Thread router",
+            "A repeater in your Thread network.",
+            experimental = true, repeater = true,
         ),
     )
 
     /** A role that isn't ready yet: shown, tagged "Coming soon", not selectable. */
     data class Soon(val mode: RadioMode, val title: String, val line: String)
 
-    /** Same titles and lines as the web installer's radio step (web/src/app/ui.ts COMING_SOON). */
-    val COMING_SOON: List<Soon> = listOf(
-        Soon(RadioMode.ZIGBEE_ROUTER, "Zigbee router", "Extends an existing Zigbee network as a repeater."),
-        Soon(RadioMode.THREAD_ROUTER, "Thread router", "Extends an existing Thread network as a repeater."),
-    )
+    /** None right now (the web installer's COMING_SOON should match: web/src/app/ui.ts). */
+    val COMING_SOON: List<Soon> = emptyList()
 
     const val LATER = "You can change this later in Home Assistant: the panel's “Radio mode” select."
 
     /** The serial path ZHA (bellows, radio type EZSP) uses for the coordinator mode. */
-    fun zhaPath(panelIp: String?): String = "socket://${panelIp ?: "<panel IP>"}:${RadioHelper.ZIGBEE_TCP_PORT}"
+    fun zhaPath(panelIp: String?): String = sh.edm.s1kiosk.radio.zhaPath(panelIp)
+
+    /**
+     * ZHA's "Add devices" page (permit-join on ZHA's network), for the coordinator step's QR code:
+     * once ZHA uses the panel as its radio, a phone scans this to pair devices. Null without HA's address.
+     */
+    fun zhaAddUrl(haBase: String?): String? =
+        haBase?.trim()?.trimEnd('/')?.takeIf { it.startsWith("http://") || it.startsWith("https://") }?.let { "$it/config/zha/add" }
+
+    /** What to do in Home Assistant after a mode was applied (shown under the options), or null. */
+    fun nextStep(mode: RadioMode, panelIp: String?): String? = when (mode) {
+        RadioMode.ZIGBEE_TCP -> "Then in ZHA: radio type EZSP, serial path ${zhaPath(panelIp)}"
+        RadioMode.THREAD -> "Then add “OpenThread Border Router” in Home Assistant: http://${panelIp ?: "<panel IP>"}:${RadioHelper.OTBR_REST_PORT}"
+        RadioMode.ZIGBEE_ROUTER -> "Then open permit-join in ZHA and press the panel's “Join Zigbee network”."
+        RadioMode.THREAD_ROUTER -> "Then paste the network's active dataset into the panel's “Thread dataset”."
+        RadioMode.OFF -> null
+    }
 
     enum class Result { APPLYING, OK, REFUSED, ERROR }
 

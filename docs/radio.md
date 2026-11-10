@@ -7,13 +7,13 @@ entities always reach HA as an ESPHome device over Wi-Fi, whatever the radio doe
 `Radio mode` select of the panel's ESPHome device (`select.s1_panel_radio_mode`), status in the
 `Radio status` text sensor.
 
-| Mode (select option) | Needs root helper | State |
+| Mode (select option) | Needs root helper | State (2026-11-10, reference panel) |
 |---|---|---|
-| `Off` (default) | no | **works today**: stops Aqara's radio services, radio idle |
-| `Zigbee coordinator (TCP)` | yes | proven on device with temporary root (bellows over TCP) |
-| `Zigbee router` | yes | plan + contract hook only (see [Zigbee router](#zigbee-router)) |
-| `Thread border router` | yes | otbr-agent built and proven on the radio (spinel IID 2); a full border-router build is still to do |
-| `Thread router` | yes | helper mode implemented (joins with a dataset from HA); runs on the proof otbr build; join not tested |
+| `Off` (default) | no | **works**: stops Aqara's radio services, radio idle |
+| `Zigbee coordinator (TCP)` | yes | **works with ZHA (bellows)**: form, read-back, restart verified from a computer. Forming/restoring from ZHA needs a bellows fix ([below](#bellows-reset-bug-zha-form-and-restore)); "keep the radio's network" works today |
+| `Zigbee router` | helper v2 | **experimental**: the app's EZSP host brings zigbeed up as a router, scans, is ready to join; joining a real network not tested |
+| `Thread border router` | yes | **experimental**: border-router build (`PROFILE=br`); Home Assistant's OTBR REST calls verified against a fresh test network; LAN <-> Thread routing not tested with a real device |
+| `Thread router` | helper v2 | **experimental**: dataset hand-off from the app verified (the stack starts Thread with it); joining a real network not tested |
 
 There is no "Aqara (stock)" mode: with Aqara's launcher/apps disabled and its cloud blocked
 ([research/debloat.md](research/debloat.md), AqaraCloud.kt), nothing can use the hub's own Zigbee network. **Stock comes back by
@@ -116,7 +116,7 @@ Gotchas:
 | `zigbee_host` (Z3Gateway) | stopped | stopped | stopped | stopped | stopped |
 | `zigbee_agent` | stopped | stopped | stopped | stopped | stopped |
 | `ha_matter` | stopped | stopped | stopped | stopped | stopped |
-| ours (helper children) | none | socat TCP:6638 bridge on `/dev/ttyZigbeeNCP` | router host (see below) | `otbr-agent` on IID 2, `-B $BACKBONE` (wlan0) with the border-routing build | `otbr-agent` (no backbone) on IID 2 + dataset join |
+| ours (helper children) | none | socat TCP:6638 bridge on `/dev/ttyZigbeeNCP` | socat bridge on 127.0.0.1:6639; the app's router host on it | `otbr-agent` on IID 2, `-B wlan0`, REST :8081 (border-router build) + forwarding/rules | `otbr-agent` (no backbone, REST on localhost) on IID 2 + dataset join |
 
 `ha_master` (Aqara cloud + the old wall-base link) is not a radio service. It stays stopped by the
 app's cloud block (AqaraCloud.kt), and the wall base uses the app's own UART driver, so `Off`
@@ -125,7 +125,7 @@ removes nothing the app uses.
 ## Proof: Zigbee coordinator over TCP (temporary root, nothing persistent)
 
 1. `setprop ctl.stop zigbee_host` (Z3Gateway; as shell).
-2. As root: `/vendor/bin/socat TCP-LISTEN:6638,reuseaddr,fork,max-children=1,range=192.168.1.0/24
+2. As root: `/vendor/bin/socat TCP-LISTEN:6638,reuseaddr,fork,max-children=1,range=<ha-subnet>
    FILE:/dev/ttyZigbeeNCP,raw,echo=0`.
 3. From the Mac, a read-only bellows probe (no `write_config`, no `networkInit`, no form/join/permit):
 
@@ -140,7 +140,7 @@ networkState: NO_NETWORK            # right after the ASH reset; zigbeed brings 
 CONFIG_MAX_END_DEVICE_CHILDREN: 64, CONFIG_SOURCE_ROUTE_TABLE_SIZE: 254, CONFIG_SUPPORTED_NETWORKS: 1
 ```
 
-Across the VLAN (Mac 192.168.1.x -> panel 192.168.3.39) and on reconnects. On a reconnect the first
+Across the VLAN (computer and panel on different subnets) and on reconnects. On a reconnect the first
 ASH reset times out once and bellows' retry succeeds; bellows knows zigbeed-over-TCP and waits for
 its startup RSTACK. Z3Gateway was restarted afterwards and re-attached normally.
 
@@ -154,6 +154,49 @@ its startup RSTACK. Z3Gateway was restarted afterwards and re-attached normally.
   `ezsp` adapter (pre-7.4 firmware, still shipped in herdsman 11.2.1) and both adapters' shared
   transport accept `tcp://host:port`, but that is untested and on its way out. A newer zigbeed (see
   [Firmware](#firmware-per-mode)) would fix this.
+
+## Zigbee coordinator, end to end (2026-11-10)
+
+Mode switched the app's way (setup channel `set_radio`, i.e. `RadioController.request`); from a
+computer, bellows 1.2.1 / zigpy 2.4.1 in a throwaway venv against `socket://<panel-ip>:6638`, doing
+what ZHA does (nothing touched any other network; no permit-join):
+
+| Step | Result |
+|---|---|
+| `ControllerApplication.probe` | ok |
+| connect, `version` | EZSP 12, stack type 2, EmberZNet 7.3.3.0 build 0 |
+| `load_network_info` on the factory NVM | Aqara's factory network (backed up first, outside the repo) |
+| `form_network()` (fresh random PAN/EPID/key, energy scan) | **hangs without the bellows fix below**; with it: formed, channel 25, update id 0 |
+| new connection, `load_network_info` | the formed network persists (same fingerprint), coordinator `0x0000` |
+| `ControllerApplication.new(start_radio=True)` (ZHA's normal start) | ok in ~8 s |
+
+The panel's NVM now holds that freshly formed test network (random keys that only ever existed in a
+deleted temp database). ZHA can use it with "keep the radio's network settings".
+
+### bellows reset bug (ZHA form and restore)
+
+zigbeed answers an ASH reset in **~4.2 s** (every time; it resets its stack and the RCP's IID 1),
+bellows waits 2.5 s (`RESET_TIMEOUT`). The second attempt then catches the late RSTACK through the
+"zigbeed resets on startup" path, but `EZSP.startup_reset()` has replaced the protocol object with a
+v4 one **without resetting `_ezsp_version`** (still 12). `version()` then sees 12 == 12, never switches
+back to the v12 frame format, and the next command's reply is misparsed (`getValue` answered as
+`getLibraryStatus`); the command times out. First connects are fine (`_ezsp_version` starts at 4);
+everything that resets mid-session breaks: `form_network`, `write_network_info` (backup restore,
+migration). One-line fix in bellows (verified here as a monkeypatch):
+`startup_reset()` must call `self._switch_protocol_version(v4.EZSPv4.VERSION)` instead of only
+creating `v4.EZSPv4(...)`. Not filed upstream yet (owner's call).
+
+### Who may connect: `range=`
+
+The bridge has no authentication. `ZIGBEE_RANGE` in `radio.conf`: empty (default) = anyone;
+`lan` = the panel's current wlan0 subnet, recomputed every 3 s so DHCP changes are followed
+(offline: `127.0.0.1/32`); or a fixed CIDR. The default stays open on purpose: Home Assistant often
+sits on another VLAN than an IoT panel (as on the reference network), and a subnet guess would lock it
+out. Verified: with `lan`, a client on the panel's subnet gets zigbeed's RSTACK, one from another
+VLAN is reset. The bridge also sets TCP keepalive (30 s idle, 3 x 10 s) so a vanished client doesn't
+hold the single slot (`max-children=1`) forever. Status: `applying zigbee_tcp: waiting for zigbeed`
+until zigbeed holds its pty, then `ok zigbee_tcp: EZSP on tcp:6638` (`(clients from <cidr>)` with a
+range); the app adds the ZHA serial path.
 
 ## Proof: Thread on the same radio (spinel IID 2)
 
@@ -175,12 +218,49 @@ $ ot-ctl ifconfig       -> down            dataset active -> Error 23: NotFound
 nothing was published. Coexistence with zigbeed (multi-PAN) was not tested: low priority since
 concurrent mode is not offered.
 
-The proof build is a **Thread agent, not yet a usable border router**: border routing, REST
-(needed by HA's OTBR integration), mDNS/DNS-SD and the border agent are compiled out. The
-`Thread border router` mode needs a second build profile with `OTBR_BORDER_ROUTING`, `OTBR_REST`,
-an mDNS publisher and the border agent enabled, `OTBR_RUNTIME_DIR=/data/s1kiosk/radio/run`, and
-`BACKBONE=wlan0` in the helper's `radio.conf`. Joining it to the user's existing Thread network
-(HA's OTBR app) means sharing the dataset from HA: a user decision, never automatic.
+The proof build is a **Thread agent, not a usable border router**: border routing, REST, mDNS and
+the border agent are compiled out. It is still what `tools/radio/out/` holds and the boot image
+bundles; the border router is a second profile:
+
+## Thread border router build (`PROFILE=br`, 2026-11-10)
+
+`PROFILE=br OTBR_RUNTIME_DIR=/data/s1kiosk/radio/run tools/radio/build-otbr.sh` writes
+`tools/radio/out/br/{otbr-agent,ot-ctl}` (2.3 MB static): same pins plus cJSON and cpp-httplib (MIT,
+ot-br-posix's own gitlinks), with border routing, the REST server (`:8081`), **OpenThread's own mDNS**
+(`OTBR_MDNS=openthread`: no avahi/mDNSResponder daemon needed on Android) publishing `_meshcop._udp`
+and SRP-registered services, SRP server auto-enable, and the border agent. Off: NAT64, TREL, backbone
+router (needs kernel MRT6), DHCPv6-PD, DNS upstream (no `/etc/resolv.conf`), firewall, web, D-Bus. The
+simulated-RCP test in the script now also queries the REST API. The same binary runs without `-B`
+(Thread router).
+
+The helper detects the build (`sys.s1kiosk.radio.otbr` = `br` | `agent` | `none`). With `br`,
+`thread` mode runs `otbr-agent -B wlan0 --rest-listen-address 0.0.0.0 --rest-listen-port 8081` and
+sets up what Android needs for routing: `net.ipv6.conf.all.forwarding=1` (old value restored in every
+other mode), `accept_ra=2` on wlan0, and two policy rules, because Android puts each interface's
+routes in its own table (ifindex + 1000, e.g. wpan0's OMR route) and netd's rules never consult them
+for forwarded packets: `14500: iif wlan0 lookup <wpan0's table>` (follows wpan0's ifindex, which
+changes on every agent restart) and `14501: iif wpan0 lookup wlan0`. The FORWARD chains are empty.
+
+Verified from a computer on another VLAN (`python-otbr-api`, replaying the calls of Home Assistant's
+`otbr` config flow and `async_setup_entry`; nothing added to HA):
+
+| Call | Result |
+|---|---|
+| `GET /node`, `/node/state`, `/node/ba-id`, `/node/coprocessor/version` | 200; RCP `0017/2.3.3.0_GitHub-e6df00dd6` |
+| `get_active_dataset_tlvs` before | None (204) |
+| `create_active_dataset(channel, network_name, random pan)`, `set_enabled(True)` | ok: fresh test network created **on the panel**, panel became leader |
+| `get_extended_address`, `get_active_dataset` (JSON + TLVs) | ok, 103-byte dataset with all 10 TLVs |
+| `set_channel(24, delay)` (PUT pending dataset) | ok; the network moved channel after the delay |
+| restart of the agent | auto-attached to the stored network, leader again, REST unchanged |
+
+On the panel: `br state` running, OMR + on-link ULA prefixes, RA/RS sent and received, SRP server
+running and in Network Data, `ba state` Active, `_meshcop._udp` registered by OpenThread's mDNS.
+**Not tested:** traffic between a LAN host and a real Thread device through the panel, Matter
+commissioning, coexistence with Android's own mDNS on the same port (both bind 5353 with
+SO_REUSEPORT; nothing broke during the test). REST has no authentication either (it exposes the
+dataset, i.e. the network key, to the LAN, like HA's own OTBR app): `REST_LISTEN=127.0.0.1` in
+`radio.conf` limits it to the panel. Joining the user's existing Thread network means sharing the
+dataset from HA: a user decision, never automatic.
 
 ## Root helper contract (v1)
 
@@ -191,15 +271,20 @@ The root half of the modes lives in a helper. The Magisk boot patch installs it 
 - `tools/radio/s1kiosk_radio.rc`: the init snippet.
 - `tools/radio/build-otbr.sh`: builds `otbr-agent`/`ot-ctl`.
 
+Contract **v2** (2026-11-10; v1 helpers lack the router modes, the app checks the version):
+
 | Item | Value |
 |---|---|
-| Init service | `s1kiosk_radio`: `/system/bin/sh /data/s1kiosk/radio/s1kiosk_radio.sh`, root, `u:r:su:s0`, not oneshot, **started on `sys.boot_completed=1`** |
-| Install dir | `/data/s1kiosk/radio/` (root 0700): script, `otbr-agent`, `ot-ctl`, optional `zigbee-router`, optional `radio.conf`, `thread-dataset` (Thread router only; root 0600, secret) |
+| Init service | `s1kiosk_radio`: `/system/bin/sh ${MAGISKTMP}/s1kiosk_radio.sh`, root, `u:r:su:s0`, not oneshot, **started on `sys.boot_completed=1`** |
+| State dir `$DIR` | `/data/s1kiosk/radio/` (root 0700): optional newer `s1kiosk_radio.sh` (override, see below), optional `otbr-agent`/`ot-ctl` (win over the bundled ones), `radio.conf`, `thread/` (border router settings), `thread-router/`, `thread-dataset` (root 0600, secret), `zigbee-nvm/` (NVM copies), `forwarding.orig` |
 | Detection | app: helper present iff `init.svc.s1kiosk_radio` is non-empty (it only exists once the service ran, hence the start at boot and the never-exiting loop) |
 | Wanted mode | `persist.s1kiosk.radio_mode` = `off` \| `zigbee_tcp` \| `zigbee_router` \| `thread` \| `thread_router` (default `off`) |
 | Apply | app: `setprop persist.s1kiosk.radio_mode <id>` then `setprop ctl.restart s1kiosk_radio` (init kills the old process group, children included) |
-| Status | helper: `sys.s1kiosk.radio.status` = `<applying\|ok\|error> <id>[: detail]`, `sys.s1kiosk.radio.version` = `1` |
-| Overrides | `$DIR/radio.conf` (sourced): `ZIGBEE_PORT` (6638), `ZIGBEE_RANGE` (socat `range=`, e.g. the HA subnet), `BACKBONE`, `OTBR_ARGS`, `RADIO_URL` |
+| Status | helper: `sys.s1kiosk.radio.status` = `<applying\|ok\|error> <id>[: detail]` (`applying <id>: waiting for zigbeed\|otbr-agent` until the stack answers), `sys.s1kiosk.radio.version` = `2`, `sys.s1kiosk.radio.otbr` = `br`\|`agent`\|`none` |
+| Overrides | `$DIR/radio.conf` (sourced): `ZIGBEE_PORT` (6638), `ZIGBEE_RANGE` (empty \| `lan` \| CIDR), `ROUTER_PORT` (6639), `BACKBONE` (wlan0 with a `br` build), `REST_LISTEN` (0.0.0.0), `REST_PORT` (8081), `OTBR_ARGS`, `RADIO_URL` |
+| Zigbee router | EZSP bridge on `127.0.0.1:$ROUTER_PORT` only; the app's host drives zigbeed. zigbeed's NVM is copied to `$DIR/zigbee-nvm/` (last 3, only when changed) whenever the mode starts |
+| Thread dataset hand-off | the app writes hex TLVs to its own `files/radio/thread-dataset` (0600); the helper moves it to `$DIR/thread-dataset` (refuses symlinks, > 1 KiB, non-hex), deletes the app's copy, restarts the agent, joins. Never logged |
+| Helper override | a root-owned `$DIR/s1kiosk_radio.sh` (in the root-owned dir) is exec'd instead of the bundled one (`S1R_NO_OVERRIDE` stops the hand-off); it still uses the boot image's bundled binaries unless `$DIR` has its own |
 
 Behaviour: the helper brings Aqara's services to the table above (consumers stopped first),
 starts its children and then **re-enforces every 3 s in every mode**, because Aqara's boot sequence
@@ -230,7 +315,18 @@ persist prop):
 - The select offers `Off`, `Zigbee coordinator (TCP)`, `Zigbee router`, `Thread border router`,
   `Thread router`. The
   stored value is the mode id. Labels and retired values from older builds (`Aqara (stock)`,
-  `Thread (future)`) parse to `Off`.
+  `Thread (future)`) parse to `Off`. `Zigbee router` and `Thread router` need helper v2
+  (`sys.s1kiosk.radio.version`); with an older helper they are refused with "needs the root helper v2".
+- More entities: `Join Zigbee network` / `Leave Zigbee network` buttons (router mode only), and a
+  write-only `Thread dataset` text (ESPHome password mode; state always empty) that hands the dataset
+  to the helper.
+- `Radio status`: in coordinator mode it adds `ZHA: radio type EZSP, serial path socket://<ip>:6638`;
+  in router mode it shows the router host's state instead of the helper's.
+- Setup screen radio step: Off, Zigbee coordinator, Thread border router (experimental) in the first
+  row, the two repeater roles (experimental) in a compact second row; a one-line "what next" note.
+  After the coordinator is applied, it shows the ZHA serial path and a QR code that opens
+  `<HA>/config/zha/add` (ZHA's "Add devices" page) on a phone. The setup channel (web installer)
+  offers the same five options; options carry optional `experimental` and `repeater` flags.
 - **No helper:** `Off` is applied directly with `ctl.stop` (the app uid may control init services
   because SELinux is permissive; same mechanism as AqaraCloud.kt). It is re-applied after every app
   start, since init restarts Aqara's stack on boot. Choosing a root mode is refused: the select snaps
@@ -262,21 +358,34 @@ it. A host only has to:
 5. Stay attached. zigbeed persists the joined network in its NVM, so later starts are just
    `networkInit`, and the host only has to keep the EZSP session (and its callbacks) alive.
 
-Where the host runs: preferably **in the app (Kotlin)** against an EZSP bridge the helper binds to
-127.0.0.1. That needs no extra native binary, and the ASH/EZSP code can be unit-tested on the JVM.
-A native `zigbee-router` binary is the alternative. The helper already has the hook: in
-`zigbee_router` mode it runs `$DIR/zigbee-router /dev/ttyZigbeeNCP` if present, otherwise it reports
-`error zigbee_router: zigbee router host not installed`. The localhost-bridge variant is a small
-helper change once the in-app host exists.
+**Implemented (2026-11-10) in the app:** `radio/ezsp/Ash.kt` (ASH codec, byte-identical to bellows),
+`radio/ezsp/Ezsp.kt` (link layer with window 1 + retransmit, EZSP v12 frames/structs, blocking client),
+`radio/ZigbeeRouterHost.kt` (the router). The helper runs a socat bridge on `127.0.0.1:6639` only;
+RadioController runs the host while the helper reports `ok zigbee_router`.
 
-Blockers / not done:
+- Each session: ASH reset (zigbeed takes ~4.2 s; the first data frame after it is only ACKed after
+  ~4.8 s, so `version` gets 8 x 1.6 s), `version` 12, config (stack profile 2, security level 5),
+  endpoint 1 (HA profile, range extender, Basic server), `networkInit`. The config phase is needed
+  after **every** reset: without it zigbeed's `networkInit` reports NOT_JOINED although its NVM holds
+  a network (seen on the panel).
+- NVM with a router network: up, status `in a network on channel N`. With a **coordinator** network
+  (ZHA's): it is not run (reset right after detecting it) and not erased; status `idle: the radio
+  holds a Zigbee coordinator network …`. Only an explicit Join (or Leave) replaces it, and the helper
+  has copied the NVM before.
+- Join (`Join Zigbee network` button): leave the current network (verified with `networkState`),
+  `setInitialSecurityState` (well-known TC link key, as EmberZNet's network-steering does), active
+  scan on 11-26, the strongest network with permit-join open and stack profile 2, `joinNetwork(ROUTER)`,
+  wait for NETWORK_UP (60 s), `updateTcLinkKey`. No joinable network: `ready to join: no Zigbee network
+  allows joining right now (N seen)`.
+- ZHA's interview: ZDO is answered by zigbeed; the host answers Basic-cluster reads (manufacturer
+  `S1 Unleashed`, model `S1 Panel Zigbee router`, mains powered).
 
-- No EZSP host exists yet: ASH framing plus about 10 EZSP v12 commands and their callbacks.
-- Nothing can be verified without joining a network, which was out of scope here.
-- Joining overwrites zigbeed's NVM (Aqara's coordinator state), so back it up first.
-- EmberZNet 7.3.3 is old but adequate for a router.
-- bellows/zigpy can't do this: zigpy only supports coordinators, and `bellows join` joins as an end
-  device.
+Verified on the panel (from a computer through `adb forward`, `ZigbeeRouterLiveTest`, dry run so
+`joinNetwork` is never called; and in the app through the setup channel): session bring-up,
+coordinator network detected and left alone, Leave erases it (`networkInit` NOT_JOINED afterwards),
+security state + active scan (networks seen, none open), NVM backup by the helper and restoring it
+(same network fingerprint afterwards). JVM tests with a fake NCP cover join, leave, scan selection and
+the Basic reply. **Not verified: joining a real network** (needs the owner to open permit-join).
 
 **Alternative: router firmware on the EFR32** (a standalone EmberZNet SoC router image). No host is
 needed, but it means flashing, losing CPC/Thread, and no stock image to go back to (see below).
@@ -321,9 +430,9 @@ so a custom image is now possible but still not needed.
 |---|---|---|
 | Off | stop the services, leave the firmware alone | none |
 | Zigbee coordinator (TCP) | current RCP + Aqara's zigbeed 7.3.3 on `iid=1` only, supervised by the helper | low; ZHA only (EZSP 12), no Z2M `ember` |
-| Zigbee router | current RCP + zigbeed + a custom EZSP host (see [Zigbee router](#zigbee-router)); defer | host app not written |
-| Thread border router | current RCP + otbr-agent on `iid=2`, zigbeed stopped | low; needs the full BR build |
-| Thread router | current RCP + the proof otbr build on `iid=2`, zigbeed stopped | low |
+| Zigbee router | current RCP + zigbeed + the app's EZSP host (see [Zigbee router](#zigbee-router)) | join untested |
+| Thread border router | current RCP + the `PROFILE=br` otbr-agent on `iid=2`, zigbeed stopped | low; routing to real devices untested |
+| Thread router | current RCP + otbr-agent (either build) on `iid=2`, zigbeed stopped | low |
 
 Why one protocol at a time on a multi-PAN RCP is fine, while concurrent use is not:
 
@@ -388,11 +497,16 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
   `-B`. Once its socket answers, the helper runs `dataset set active $(cat $DIR/thread-dataset)`,
   `ifconfig up`, `thread start`. Without the file it reports `error thread_router: no Thread
   dataset …` and joins nothing.
-- In the select. The dataset is not yet transferable from the app: for now it is placed in
-  `$DIR/thread-dataset` as root. A later step is an app-side path, e.g. a write-only ESPHome text
-  entity whose value the helper picks up once and never echoes back.
-- Never forms a network. Joining happens only with a dataset the user supplied. Not tested on the
-  device (that would mean joining the user's network).
+- In the select (helper v2). The dataset comes from the panel's write-only `Thread dataset` entity
+  in HA (password field): the app writes it to its private files, the helper takes it (see the
+  contract). Own settings dir `$DIR/thread-router`, so it never auto-attaches to the network the
+  border-router mode stored. Without a dataset: `ok thread_router: ready to join: waiting for a Thread
+  dataset from Home Assistant` (agent up, Thread disabled, no border routing, no mDNS, REST on
+  localhost only).
+- Never forms a network on its own initiative: it only starts Thread with a dataset the user
+  supplied. Verified with the panel's own throwaway test dataset (handed over as the app uid): taken,
+  app copy deleted, agent restarted, Thread started (alone on the channel it became leader of that
+  test network). Joining the user's real network not tested.
 
 ## OTA path (not run)
 
@@ -413,14 +527,16 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
 
 - **Root helper needs the Magisk boot patch** ([research/root.md](research/root.md)). Panels without it only get `Off`. Persistent `Off` across a reboot without the helper relies on the app starting and
   re-applying it (a few seconds of Aqara's stack at boot).
-- **EZSP-over-TCP has no authentication.** Restrict with `ZIGBEE_RANGE` (the HA subnet) and the
-  VLAN firewall.
+- **EZSP-over-TCP and the OTBR REST API have no authentication.** Restrict with `ZIGBEE_RANGE`
+  (`lan` or HA's subnet), `REST_LISTEN=127.0.0.1` and the VLAN firewall.
+- **bellows reset bug** (above): ZHA can't form or restore onto this radio until bellows is fixed.
 - **EZSP 12 only:** ZHA works; Z2M `ember` doesn't. A newer zigbeed is the non-flashing fix,
   if one can be obtained (licensing, ARM build).
 - **zigbeed NVM:** Aqara's network state is overwritten by any Zigbee mode use. Back it up.
-- **Thread:** the full border-router build (border routing, REST, mDNS) is untested, and so are
-  routes and RA on `wlan0` under Android's netd. Android's own routing rules may need ip-rule work.
-  The static glibc binary is fine when run by root from init.
+- **Thread:** the border-router build's REST/BR/SRP/mDNS side works; forwarding between the LAN and
+  real Thread devices (with the policy rules above) is untested, and netd could rewrite rules on a
+  Wi-Fi reconnect (the helper re-adds them every 3 s). The static glibc binary is fine when run by
+  root from init.
 - **Aqara's watchdog** keeps restarting things. The helper re-enforces every 3 s; a Z3Gateway start
   is caught by its wrapper's 6 s sleep, but this is a race, verified once.
 - **Multi-PAN (`zigbee_tcp_thread`)** is not offered and untested.

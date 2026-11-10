@@ -98,6 +98,8 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     private var finishing: Runnable? = null
     private var qrFor: String? = null
     private var radioSelected: RadioMode = RadioMode.DEFAULT
+    /** The coordinator's pairing view (QR) was left with "Back" for this apply. */
+    private var pairingDismissed: RadioStep.Applied? = null
 
     // ---- left: the steps
     private val brand = label("S1 Panel · Setup")
@@ -166,15 +168,17 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         orientation = LinearLayout.VERTICAL
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            radioTiles.forEachIndexed { i, t ->
+            radioTiles.filter { !it.option.repeater }.forEachIndexed { i, t ->
                 addView(t.view, LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = px(10f) })
             }
         }, LinearLayout.LayoutParams(-1, -2))
-        // Roles that aren't ready yet: a compact, dimmed row under the real options, not selectable.
+        // Repeater roles (someone else's network) in a compact row under the main options, then
+        // roles that aren't ready yet (dimmed, not selectable).
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            RadioStep.COMING_SOON.forEachIndexed { i, o ->
-                addView(soonTile(o), LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = px(10f) })
+            val compact = radioTiles.filter { it.option.repeater }.map { it.view } + RadioStep.COMING_SOON.map { soonTile(it) }
+            compact.forEachIndexed { i, v ->
+                addView(v, LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = px(10f) })
             }
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
     }
@@ -318,6 +322,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         bigCheck.visibility = View.GONE
         cardNote.visibility = View.GONE
         cardNote.setTextColor(AMBER)
+        cardBody.visibility = View.VISIBLE
         tiles.visibility = View.GONE
         tileB.view.visibility = View.VISIBLE
         improvTile.view.visibility = View.GONE
@@ -438,9 +443,16 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         if (stepChanged) {
             radioSelected = RadioStep.OPTIONS.firstOrNull { it.mode == r.current }?.mode ?: RadioMode.DEFAULT
         }
+        val ok = r.applied?.takeIf { it.mode == radioSelected && it.result == RadioStep.Result.OK && !r.busy }
+        if (ok != null && ok.mode == RadioMode.ZIGBEE_TCP && pairingDismissed != ok) {
+            bindZhaPairing(m, ok)
+            return
+        }
         cardLabel.text = "Step 3 · Radio"
         cardTitle.text = "What should the panel's radio do?"
-        cardBody.text = "The panel has a Zigbee and Thread radio. ${RadioStep.LATER}"
+        // No body line here: five options + the note + buttons fill the card (960x480 dp panel).
+        // "Change it later" is the note while Off is selected.
+        cardBody.visibility = View.GONE
         radioRow.visibility = View.VISIBLE
         status.visibility = View.GONE
         radioTiles.forEach { t -> t.bind(t.option.mode == radioSelected) }
@@ -453,10 +465,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
                 RadioStep.Result.APPLYING -> showRadioNote("Applying: ${applied.status}", AMBER)
                 RadioStep.Result.REFUSED, RadioStep.Result.ERROR -> showRadioNote(applied.status, ROSE)
             }
-            radioSelected == RadioMode.ZIGBEE_TCP -> showRadioNote(
-                "Then in Home Assistant: add ZHA, radio type EZSP, serial path ${RadioStep.zhaPath(m.panelIp)}", FA,
-            )
-            else -> {}
+            else -> showRadioNote(RadioStep.nextStep(radioSelected, m.panelIp) ?: RadioStep.LATER, FA)
         }
         if (RadioStep.canContinue(applied) && !r.busy) {
             primary.text = "Continue"
@@ -471,6 +480,38 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         secondary.text = "Skip (Off)"
         secondary.visibility = if (r.busy) View.GONE else View.VISIBLE
         secondary.setOnClickListener { onRadioSkip?.invoke() }
+    }
+
+    /**
+     * Zigbee coordinator applied: how to add it to ZHA (serial path), and a QR code a phone scans to
+     * open ZHA's "Add devices" page (`<HA>/config/zha/add`) once ZHA uses the panel as its radio.
+     */
+    private fun bindZhaPairing(m: Model, applied: RadioStep.Applied) {
+        cardLabel.text = "Step 3 · Radio · Zigbee coordinator"
+        cardTitle.text = "Add the radio to ZHA"
+        val addUrl = RadioStep.zhaAddUrl(m.haUrl)
+        cardBody.text = "In Home Assistant, add Zigbee Home Automation: radio type EZSP, and this serial path." +
+            if (addUrl != null) " Then scan the code with your phone to pair Zigbee devices." else ""
+        if (addUrl != null) {
+            if (qrFor != addUrl) {
+                qrImage.setImageBitmap(qrBitmap(addUrl, px(186f)))
+                qrFor = addUrl
+            }
+            qrTile.visibility = View.VISIBLE
+        }
+        tiles.visibility = View.VISIBLE
+        tileA.bind("Serial path", RadioStep.zhaPath(m.panelIp))
+        tileB.view.visibility = View.GONE // the serial path needs the whole width
+        status.visibility = View.GONE     // the selection view's note
+        primary.text = "Continue"
+        primary.visibility = View.VISIBLE
+        primary.setOnClickListener { onRadioContinue?.invoke() }
+        secondary.text = "Back"
+        secondary.visibility = View.VISIBLE
+        secondary.setOnClickListener {
+            pairingDismissed = applied
+            model?.let { bindCard(it, stepChanged = false) }
+        }
     }
 
     /** The line under the options (the `status` view, which only the HA step uses otherwise). */
@@ -578,19 +619,38 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         }
     }
 
-    /** One radio option: title (+ "experimental"), one line, amber outline when selected. */
+    /**
+     * One radio option: title (+ "experimental"), one line, amber outline when selected. Repeater
+     * roles are compact: title and tag on one line, a single-line description.
+     */
     private inner class RadioTile(val option: RadioStep.Option) {
-        private val title = text(16f, TX, MEDIUM).apply { text = option.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
+        private val compact = option.repeater
+        private val title = text(if (compact) 14f else 15f, TX, MEDIUM).apply { text = option.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
         private val expTag = label("Experimental").apply { setTextColor(AMBER); visibility = if (option.experimental) View.VISIBLE else View.GONE }
-        private val line = text(13f, MU, REGULAR).apply { text = option.line; setLineSpacing(0f, 1.2f) }
+        private val line = text(if (compact) 12f else 13f, MU, REGULAR).apply {
+            text = option.line
+            if (compact) { setSingleLine(); ellipsize = TextUtils.TruncateAt.END } else setLineSpacing(0f, 1.2f)
+        }
         val view = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(px(14f), px(12f), px(14f), px(12f))
-            addView(title)
-            addView(expTag, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(2f) })
-            addView(line, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f) })
+            if (compact) {
+                setPadding(px(14f), px(8f), px(14f), px(8f))
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(title, LinearLayout.LayoutParams(0, -2, 1f))
+                    addView(expTag, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(8f) })
+                })
+                addView(line, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(2f) })
+            } else {
+                setPadding(px(14f), px(12f), px(14f), px(12f))
+                addView(title)
+                addView(expTag, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(2f) })
+                addView(line, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f) })
+            }
             isClickable = true
             isFocusable = true
+            contentDescription = option.title + if (option.experimental) ", experimental" else ""
             setOnClickListener { selectRadio(option.mode) }
         }
 

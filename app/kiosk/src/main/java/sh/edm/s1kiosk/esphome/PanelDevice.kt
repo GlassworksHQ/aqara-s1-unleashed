@@ -9,6 +9,7 @@ import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.util.Log
 import sh.edm.s1kiosk.BuildConfig
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.base.BaseBackend
@@ -19,6 +20,7 @@ import sh.edm.s1kiosk.TimerBoard
 import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.radio.RadioController
 import sh.edm.s1kiosk.radio.RadioMode
+import sh.edm.s1kiosk.radio.ZigbeeRouterHost
 import sh.edm.s1kiosk.ScreenController
 import sh.edm.s1kiosk.base.BaseEntities
 import sh.edm.s1kiosk.base.BaseLayout
@@ -102,7 +104,12 @@ class PanelDevice(
     val radio = RadioController(
         load = { prefs.radioMode },
         store = { prefs.radioMode = it },
-        onChange = { exec.execute { server?.publishStates() } },
+        onChange = { runCatching { exec.execute { server?.publishStates() } } },
+        panelIp = { ipAddress() },
+        filesDir = ctx.filesDir,
+        routerHostFactory = { onStatus ->
+            ZigbeeRouterHost(log = { Log.i(RadioController.TAG, it) }, onStatus = { onStatus() })
+        },
     )
     /**
      * App updates from GitHub Releases (docs/releasing.md); the "App update" entity. runCatching:
@@ -642,6 +649,19 @@ class PanelDevice(
         TextSensorEntity(
             "radio_status", "Radio status", "mdi:radio-tower", EntityCategory.DIAGNOSTIC,
             get = { radio.statusText() },
+        ),
+        // Zigbee router: join/leave the network that has permit-join open (docs/radio.md "Zigbee router").
+        ButtonEntity("zigbee_router_join", "Join Zigbee network", "mdi:zigbee", EntityCategory.CONFIG, press = { radio.routerJoin() }),
+        ButtonEntity("zigbee_router_leave", "Leave Zigbee network", "mdi:link-variant-off", EntityCategory.CONFIG, press = { radio.routerLeave() }),
+        // Thread router: write-only. The dataset is a secret (it holds the network key): the state is
+        // always empty, it goes to the root helper and is never logged or echoed back.
+        TextEntity(
+            "thread_dataset", "Thread dataset", "mdi:key-chain", maxLength = 255, pattern = "^$|^[0-9a-fA-F]+$", mode = 1,
+            get = { "" },
+            set = { v ->
+                if (v.isNotEmpty()) radio.setThreadDataset(v)?.let { Log.w(RadioController.TAG, it) }
+                exec.execute { server?.publishStates() }
+            },
         ),
         // --- diagnostics
         TextSensorEntity("ip_address", "IP address", "mdi:ip-network", EntityCategory.DIAGNOSTIC, get = ::ipAddress),

@@ -56,13 +56,18 @@ class SetupChannelTest {
         assertTrue(radio.get("helper") is Boolean)
         assertTrue(radio.get("status") is String)
         val opts = radio.getJSONArray("options")
-        assertEquals(listOf("off", "zigbee_tcp", "thread"), (0 until opts.length()).map { opts.getJSONObject(it).getString("id") })
+        assertEquals(
+            listOf("off", "zigbee_tcp", "thread", "zigbee_router", "thread_router"),
+            (0 until opts.length()).map { opts.getJSONObject(it).getString("id") },
+        )
         for (i in 0 until opts.length()) {
             val opt = opts.getJSONObject(i)
+            val id = opt.getString("id")
             assertTrue(opt.getString("label").isNotEmpty() && opt.getString("detail").isNotEmpty())
-            // `experimental` only where true (optional in RadioOption).
-            if (opt.getString("id") == "thread") assertEquals(true, opt.get("experimental"))
+            // `experimental` and `repeater` only where true (optional in RadioOption).
+            if (id in setOf("thread", "zigbee_router", "thread_router")) assertEquals(true, opt.get("experimental"))
             else assertFalse(opt.has("experimental"))
+            if (id.endsWith("_router")) assertEquals(true, opt.get("repeater")) else assertFalse(opt.has("repeater"))
         }
     }
 
@@ -74,10 +79,10 @@ class SetupChannelTest {
     }
 
     @Test
-    fun comingSoonRolesAreNotOffered() {
-        val ids = ChannelState.OPTIONS.map { it.id }
-        assertFalse("zigbee_router" in ids || "thread_router" in ids)
+    fun channelOffersThePanelsOptions() {
+        assertEquals(RadioStep.OPTIONS.map { it.mode.id }, ChannelState.OPTIONS.map { it.id })
         assertEquals(RadioStep.OPTIONS.map { it.title }, ChannelState.OPTIONS.map { it.label })
+        assertTrue(RadioStep.COMING_SOON.none { s -> ChannelState.OPTIONS.any { it.id == s.mode.id } })
     }
 
     @Test
@@ -142,9 +147,9 @@ class SetupChannelTest {
         reply(c, """{"id":5,"op":"set_radio","mode":"zigbee_tcp"}""").let {
             assertEquals(5, it.getInt("id")); assertFalse(it.getBoolean("ok")); assertTrue(it.getString("error").contains("root helper"))
         }
-        assertFalse(reply(c, """{"id":6,"op":"set_radio","mode":"zigbee_router"}""").getBoolean("ok")) // coming soon
-        assertFalse(reply(c, """{"id":7,"op":"set_radio","mode":"nonsense"}""").getBoolean("ok"))
-        assertEquals(listOf("set_ha http://ha:8123", "set_radio zigbee_tcp"), fake.calls)
+        assertFalse(reply(c, """{"id":6,"op":"set_radio","mode":"zigbee_router"}""").getBoolean("ok")) // backend refuses
+        assertFalse(reply(c, """{"id":7,"op":"set_radio","mode":"nonsense"}""").getBoolean("ok"))      // never reaches it
+        assertEquals(listOf("set_ha http://ha:8123", "set_radio zigbee_tcp", "set_radio zigbee_router"), fake.calls)
         reply(c, """{"id":8,"op":"reboot"}""").let { assertEquals(8, it.getInt("id")); assertFalse(it.getBoolean("ok")) }
         reply(c, "not json").let { assertFalse(it.has("id")); assertFalse(it.getBoolean("ok")) }
     }

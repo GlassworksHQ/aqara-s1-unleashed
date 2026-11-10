@@ -1,9 +1,13 @@
 package sh.edm.s1kiosk.radio
 
 import android.util.Log
+import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+
+/** The serial path ZHA (bellows, radio type EZSP) uses for the coordinator mode. */
+fun zhaPath(panelIp: String?): String = "socket://${panelIp ?: "<panel IP>"}:${RadioHelper.ZIGBEE_TCP_PORT}"
 
 /** System properties as seen by the app (getprop/setprop; `ctl.*` controls init services). */
 interface SysProps {
@@ -38,6 +42,10 @@ object ShellProps : SysProps {
  * Nothing here is persistent at the OS level without the helper: init restarts Aqara's stack on
  * boot, so [start] re-applies the stored mode after each app start (like AqaraCloud).
  * All work runs on one "s1-radio" thread; [onChange] fires after every status change.
+ *
+ * Zigbee router: the helper only provides a localhost EZSP bridge; the router itself is
+ * [RouterHost] (ZigbeeRouterHost) in this process, run while the helper reports `ok zigbee_router`.
+ * Thread router: [setThreadDataset] hands the dataset to the helper through [filesDir].
  */
 class RadioController(
     private val props: SysProps = ShellProps,
@@ -46,6 +54,12 @@ class RadioController(
     private val onChange: () -> Unit = {},
     private val inline: Boolean = false, // tests: run synchronously
     private val log: (String) -> Unit = { Log.i(TAG, it) },
+    /** The panel's LAN address, for the ZHA serial path in the status text. */
+    private val panelIp: () -> String? = { null },
+    /** The app's files dir (thread_router dataset hand-off, [RadioHelper.DATASET_FILE]). */
+    private val filesDir: File? = null,
+    /** Creates the Zigbee router host; its argument is "my status changed". */
+    routerHostFactory: ((onStatus: () -> Unit) -> RouterHost)? = null,
 ) {
     companion object {
         const val TAG = "S1Kiosk.Radio"
@@ -59,6 +73,7 @@ class RadioController(
 
     @Volatile var mode: RadioMode = RadioMode.parse(load())
         private set
+    private val routerHost: RouterHost? by lazy { routerHostFactory?.invoke { refreshSoon() } }
     /** Local (no-helper) status. */
     @Volatile private var status = "starting"
     /** What the sensor shows; recomputed on the radio thread by [refresh] (spawns getprop). */
@@ -69,8 +84,11 @@ class RadioController(
 
     fun helperInstalled(): Boolean = props.get(RadioHelper.PROP_SVC_STATE).isNotEmpty()
 
+    /** Contract version of the installed helper (v1 helpers set "1"; unset = 1). */
+    fun helperVersion(): Int = props.get(RadioHelper.PROP_VERSION).trim().toIntOrNull() ?: 1
+
     /** Modes the select can take right now. */
-    fun available(m: RadioMode) = !m.needsHelper || helperInstalled()
+    fun available(m: RadioMode) = !m.needsHelper || (helperInstalled() && helperVersion() >= m.minHelperVersion)
 
     /** Re-apply the stored mode (after app start). Does not bounce a helper already in that mode. */
     fun start() {
@@ -81,7 +99,9 @@ class RadioController(
 
     /** Radio thread (or inline): recompute [shown]; notifies [onChange] when it changed. */
     fun refresh() {
-        var s = if (helperInstalled()) helperStatusText() else status
+        val helper = helperInstalled()
+        syncRouterHost(helper)
+        var s = if (helper) helperStatusText() else status
         if (s.length > 250) s = s.take(249) + "…" // ESPHome text sensors are capped at 255 bytes
         if (s != shown) {
             shown = s
@@ -89,7 +109,54 @@ class RadioController(
         }
     }
 
-    fun stop() { exec?.shutdownNow() }
+    fun stop() {
+        exec?.shutdownNow()
+        routerHost?.stop()
+    }
+
+    /** `Join Zigbee network` (HA button): the router host scans and joins a network open for joining. */
+    fun routerJoin() = post {
+        if (mode != RadioMode.ZIGBEE_ROUTER) { log("router join ignored: mode is ${mode.label}"); return@post }
+        routerHost?.requestJoin()
+    }
+
+    /** `Leave Zigbee network` (HA button). */
+    fun routerLeave() = post {
+        if (mode != RadioMode.ZIGBEE_ROUTER) { log("router leave ignored: mode is ${mode.label}"); return@post }
+        routerHost?.requestLeave()
+    }
+
+    /**
+     * Thread router: the active dataset to join with, hex TLVs as Home Assistant exports them. Written
+     * owner-only to the app's files dir, where the root helper picks it up within seconds (and deletes
+     * it). Never logged. Returns null when stored, else why not.
+     */
+    fun setThreadDataset(hex: String): String? {
+        val d = hex.filterNot { it.isWhitespace() }
+        if (d.isEmpty() || d.length % 2 != 0 || d.length > 2 * 254 || !d.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) {
+            return "Not a Thread dataset: expected the active dataset as hex TLVs (from Home Assistant's Thread settings)."
+        }
+        val dir = filesDir ?: return "No place to store the dataset."
+        val f = File(dir, RadioHelper.DATASET_FILE)
+        return try {
+            f.parentFile?.let { d ->
+                d.mkdirs()
+                d.setReadable(false, false); d.setReadable(true, true)
+                d.setWritable(false, false); d.setWritable(true, true)
+                d.setExecutable(false, false); d.setExecutable(true, true)
+            }
+            val tmp = File(f.parentFile, ".thread-dataset.tmp")
+            tmp.writeText(d.lowercase())
+            tmp.setReadable(false, false); tmp.setReadable(true, true)
+            tmp.setWritable(false, false); tmp.setWritable(true, true)
+            if (!tmp.renameTo(f)) throw java.io.IOException("rename failed")
+            log("Thread dataset handed to the helper (${d.length / 2} bytes)")
+            refreshSoon()
+            null
+        } catch (e: Exception) {
+            "Couldn't store the dataset: ${e.message}"
+        }
+    }
 
     /**
      * From the `Radio mode` select (and the setup screen's radio step). Unknown labels are ignored;
@@ -104,9 +171,14 @@ class RadioController(
             return@post
         }
         if (!available(m)) {
-            status = "${m.label} needs the root helper (init service ${RadioHelper.SERVICE} is not installed; " +
-                "see docs/radio.md). Still in ${mode.label}."
-            log("refused '${m.label}': no root helper")
+            status = if (!helperInstalled()) {
+                "${m.label} needs the root helper (init service ${RadioHelper.SERVICE} is not installed; " +
+                    "see docs/radio.md). Still in ${mode.label}."
+            } else {
+                "${m.label} needs the root helper v${m.minHelperVersion} or newer (installed: v${helperVersion()}; " +
+                    "update the panel's boot image). Still in ${mode.label}."
+            }
+            log("refused '${m.label}': helper missing or too old")
             refresh()
             onChange() // the select snaps back to the current mode
             done?.invoke(false)
@@ -175,9 +247,24 @@ class RadioController(
         val st = RadioHelper.parseStatus(raw)
             ?: return "Root helper ${state(RadioHelper.SERVICE)}, no status yet (wanted ${mode.label})"
         val label = st.mode?.label ?: "?"
-        val tail = if (st.detail.isNotEmpty()) ": ${st.detail}" else ""
+        val inMode = st.mode == mode && st.state == "ok"
+        val tail = when {
+            // The helper only runs the bridge; the router's state is the host's.
+            inMode && mode == RadioMode.ZIGBEE_ROUTER && routerHost != null -> ": ${routerHost!!.status}"
+            inMode && mode == RadioMode.ZIGBEE_TCP -> ": ${st.detail}. ZHA: radio type EZSP, serial path " +
+                zhaPath(panelIp())
+            st.detail.isNotEmpty() -> ": ${st.detail}"
+            else -> ""
+        }
         val mismatch = if (st.mode != mode && st.state != "applying") " (wanted ${mode.label})" else ""
         return "${st.state} $label$tail$mismatch"
+    }
+
+    /** Runs the router host exactly while the helper's router bridge is up. */
+    private fun syncRouterHost(helper: Boolean) {
+        val h = routerHost ?: return
+        val st = if (helper) RadioHelper.parseStatus(props.get(RadioHelper.PROP_STATUS)) else null
+        if (mode == RadioMode.ZIGBEE_ROUTER && st?.mode == RadioMode.ZIGBEE_ROUTER && st.state == "ok") h.start() else h.stop()
     }
 
     /** Brings Aqara's services to [wanted]; returns the ones that didn't get there. */

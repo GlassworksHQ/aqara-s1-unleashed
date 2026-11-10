@@ -29,7 +29,8 @@ import java.util.concurrent.TimeUnit
 data class ChannelState(val ip: String?, val ha: Ha, val radio: Radio) {
     data class Ha(val discovered: String?, val url: String, val signedIn: Boolean, val signinUrl: String?)
     data class Radio(val mode: String, val status: String, val options: List<Option>, val helper: Boolean)
-    data class Option(val id: String, val label: String, val detail: String, val experimental: Boolean = false)
+    /** [repeater]: a role inside someone else's network (Zigbee/Thread router); optional, only sent when true. */
+    data class Option(val id: String, val label: String, val detail: String, val experimental: Boolean = false, val repeater: Boolean = false)
 
     /** The `SetupState` shape of channel.ts; optional fields are left out when unknown. */
     fun toJson(): JSONObject {
@@ -51,6 +52,7 @@ data class ChannelState(val ip: String?, val ha: Ha, val radio: Radio) {
                         put("label", opt.label)
                         put("detail", opt.detail)
                         if (opt.experimental) put("experimental", true)
+                        if (opt.repeater) put("repeater", true)
                     })
                 }
             })
@@ -61,7 +63,7 @@ data class ChannelState(val ip: String?, val ha: Ha, val radio: Radio) {
 
     companion object {
         /** The modes onboarding offers: the panel's radio step ([RadioStep.OPTIONS]), same texts. */
-        val OPTIONS: List<Option> = RadioStep.OPTIONS.map { Option(it.mode.id, it.title, it.line, it.experimental) }
+        val OPTIONS: List<Option> = RadioStep.OPTIONS.map { Option(it.mode.id, it.title, it.line, it.experimental, it.repeater) }
 
         /** The panel's sign-in page (its QR code link), once it has an address and knows HA. */
         fun signinUrl(ip: String?, haUrl: String?): String? =

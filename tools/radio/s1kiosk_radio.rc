@@ -1,4 +1,4 @@
-# S1 Kiosk radio helper (docs/radio.md "Root helper contract", v1). Injected into init by Magisk as
+# S1 Kiosk radio helper (docs/radio.md "Root helper contract", v2). Injected into init by Magisk as
 # overlay.d/s1kiosk_radio.rc (tools/root/patch-boot-magisk.sh, docs/research/root.md). The script, otbr-agent and
 # ot-ctl ship in the boot image (overlay.d/sbin -> ${MAGISKTMP}). State, config and optional newer
 # binaries live in /data/s1kiosk/radio (root:root 0700), which the script creates on first run.
@@ -10,7 +10,8 @@
 #
 # App side: setprop persist.s1kiosk.radio_mode <off|zigbee_tcp|zigbee_router|thread|thread_router>
 #           setprop ctl.restart s1kiosk_radio
-# Helper side: sys.s1kiosk.radio.status = "<applying|ok|error> <mode>[: detail]", sys.s1kiosk.radio.version = 1
+# Helper side: sys.s1kiosk.radio.status = "<applying|ok|error> <mode>[: detail]", sys.s1kiosk.radio.version = 2,
+#              sys.s1kiosk.radio.otbr = br|agent|none (which otbr-agent is installed)
 
 service s1kiosk_radio /system/bin/sh ${MAGISKTMP}/s1kiosk_radio.sh
     user root

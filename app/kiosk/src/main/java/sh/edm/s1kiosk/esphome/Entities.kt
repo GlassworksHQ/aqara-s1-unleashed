@@ -151,9 +151,11 @@ class SelectEntity(
     }
 }
 
+/** [mode]: ESPHome TextMode, 0 = text, 1 = password (HA masks the field). */
 class TextEntity(
     objectId: String, name: String, icon: String = "", category: EntityCategory = EntityCategory.CONFIG,
     private val minLength: Int = 0, private val maxLength: Int = 255, private val pattern: String = "",
+    private val mode: Int = 0,
     private val get: () -> String?,
     private val set: (String) -> Unit,
 ) : ApiEntity(objectId, name, icon, category) {
@@ -161,7 +163,7 @@ class TextEntity(
     override val stateType = Msg.TEXT_STATE
     override val commandType = Msg.TEXT_COMMAND
     override fun info() = base().string(5, icon).bool(6, disabledByDefault).uint32(7, category.value)
-        .uint32(8, minLength).uint32(9, maxLength).string(10, pattern)
+        .uint32(8, minLength).uint32(9, maxLength).string(10, pattern).uint32(11, mode)
     override fun state(): ProtoWriter {
         val v = get()
         return ProtoWriter().fixed32(1, key, true).string(2, v).bool(3, v == null)
