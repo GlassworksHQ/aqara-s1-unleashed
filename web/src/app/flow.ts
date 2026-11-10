@@ -13,15 +13,27 @@ import {
 } from './backup';
 
 export type Phase = 'boot' | 'backup' | 'patch' | 'flash' | 'verify';
-export interface Progress { overall: number; phase: Phase; phasePct: number; title: string; sub: string }
+export type Bar = 'backup' | 'patch' | 'flash' | 'verify';
+/**
+ * `bars`: how full each of the four phase bars is (0..1), cumulative over the whole run, so a bar
+ * never empties again when writing and checking alternate between partitions.
+ */
+export interface Progress { overall: number; phase: Phase; phasePct: number; title: string; sub: string; bars?: Partial<Record<Bar, number>> }
 export type PartState = 'pend' | 'cur' | 'done';
+
+/** Where the flow needs a click: WebUSB only opens a newly seen device from one. */
+export type AskKind = 'fastboot' | 'adb';
 
 export interface FlowUi {
   log(line: string): void;
   progress(p: Progress): void;
   partition(part: string, state: PartState, info: { size?: number; sha256?: string; pct?: number }): void;
-  /** Shows a button; on click runs `action` (inside the click, so WebUSB may prompt) and resolves with it. */
-  ask<T>(kind: 'fastboot' | 'adb', text: string, action: () => Promise<T>): Promise<T>;
+  /**
+   * Hands over to the user: shows the action panel; its button runs `action` inside the click (so
+   * WebUSB may show its picker) and resolves with the result. `signal` aborts when the device turned
+   * up by itself after all: the UI then just removes the panel.
+   */
+  ask<T>(kind: AskKind, action: () => Promise<T>, signal: AbortSignal): Promise<T>;
 }
 
 /** Where USB devices come from: WebUSB in the browser, simulations in the tests. */
@@ -83,15 +95,34 @@ export class InstallFlow {
     this.log('U-Boot started from RAM; waiting for its fastboot');
   }
 
+  /**
+   * Polls for an already-permitted device while, after `askAfterMs`, also asking the user to pick it.
+   * Whichever comes first wins; the other is called off.
+   */
+  private async findOrAsk<T>(kind: AskKind, find: () => Promise<T | undefined>, request: () => Promise<T>, askAfterMs: number): Promise<T> {
+    const stop = new AbortController();
+    const poll = (async (): Promise<T> => {
+      while (!stop.signal.aborted) {
+        const x = await find().catch(() => undefined);
+        if (x) return x;
+        await this.sleep(1000);
+      }
+      return new Promise<T>(() => {}); // called off: never settles
+    })();
+    const early = await Promise.race([poll, this.sleep(askAfterMs).then(() => undefined)]);
+    if (early) { stop.abort(); return early; }
+    try {
+      return await Promise.race([poll, this.ui.ask(kind, request, stop.signal)]);
+    } finally {
+      stop.abort();
+    }
+  }
+
   /** Waits for our U-Boot's fastboot; asks for a click if this browser has not been allowed yet. */
   async connectFastboot(): Promise<Fastboot> {
-    for (let i = 0; i < 20; i++) {
-      const fb = await this.d.devices.knownFastboot();
-      if (fb) return fb;
-      await this.sleep(500);
-    }
-    return this.ui.ask('fastboot', 'Allow this page to talk to the panel\'s installer (pick "USB download gadget")',
-      () => this.d.devices.requestFastboot());
+    this.ui.progress({ overall: 0.05, phase: 'boot', phasePct: 1, title: 'Waiting for the panel to reconnect',
+      sub: 'It restarts in installer mode · about 10 seconds' });
+    return this.findOrAsk('fastboot', () => this.d.devices.knownFastboot(), () => this.d.devices.requestFastboot(), 4000);
   }
 
   /** Steps 3-8. Returns once the panel is rebooting into the patched Android. */
@@ -116,7 +147,7 @@ export class InstallFlow {
     let doneBytes = 0;
     const backupProgress = (sub: string, n: number) => {
       const x = (doneBytes + n) / total;
-      this.ui.progress({ overall: 0.05 + 0.5 * x, phase: 'backup', phasePct: x, title: `Backing up your panel`, sub });
+      this.ui.progress({ overall: 0.05 + 0.5 * x, phase: 'backup', phasePct: x, title: `Backing up your panel`, sub, bars: { backup: x } });
     };
     const files: BackupFile[] = [];
     for (const [i, part] of BACKUP_PARTS.entries()) {
@@ -151,7 +182,7 @@ export class InstallFlow {
 
     // 5: patch
     const ph = (phase: Phase, overall: number, phasePct: number, title: string, sub: string) =>
-      this.ui.progress({ overall, phase, phasePct, title, sub });
+      this.ui.progress({ overall, phase, phasePct, title, sub, bars: { backup: 1, patch: phase === 'patch' ? phasePct : 1 } });
     ph('patch', 0.56, 0, 'Preparing the new software', 'Adding root, the radio helper and this browser\'s key');
     const branding = this.d.branding ?? true;
     const a = (n: AssetName) => this.d.asset(n);
@@ -188,9 +219,16 @@ export class InstallFlow {
     let flashed = 0;
     for (const s of steps) {
       await fb.flashVerified(s.part, s.data, (phase, d, t) => {
-        const x = (flashed + d / 2 + (phase === 'verify' ? t / 2 : 0)) / flashTotal;
-        ph(phase === 'write' ? 'flash' : 'verify', 0.6 + 0.37 * x, phase === 'write' ? d / t : d / t,
-          s.what, phase === 'write' ? `Writing ${s.part}` : `Reading ${s.part} back to check it`);
+        const write = (flashed + (phase === 'write' ? d : t)) / flashTotal;
+        const verify = (flashed + (phase === 'verify' ? d : 0)) / flashTotal;
+        this.ui.progress({
+          overall: 0.6 + 0.37 * (write + verify) / 2,
+          phase: phase === 'write' ? 'flash' : 'verify',
+          phasePct: phase === 'write' ? write : verify,
+          title: s.what,
+          sub: phase === 'write' ? `Writing ${s.part}` : `Reading ${s.part} back to check it`,
+          bars: { backup: 1, patch: 1, flash: write, verify },
+        });
       });
       flashed += s.data.length;
       this.log(`${s.part} flashed and verified`);
@@ -205,14 +243,8 @@ export class InstallFlow {
   async connectAdb(timeoutMs = 6 * 60_000): Promise<PanelShell> {
     const until = Date.now() + timeoutMs;
     await this.sleep(15_000);
-    // Allowed before (a re-run, or the same browser): no click needed.
-    let p: PanelShell | undefined;
-    for (const askAt = Date.now() + 60_000; !p && Date.now() < askAt; ) {
-      p = await this.d.devices.knownAdb(this.d.key).catch(() => undefined);
-      if (!p) await this.sleep(2000);
-    }
-    p ??= await this.ui.ask('adb', 'Allow this page to set up the panel (pick the panel in the list)',
-      () => this.d.devices.requestAdb(this.d.key));
+    // Allowed before (a re-run, or the same browser): found without a click.
+    const p = await this.findOrAsk('adb', () => this.d.devices.knownAdb(this.d.key), () => this.d.devices.requestAdb(this.d.key), 10_000);
     this.log('adb connected; waiting for Android to finish starting');
     while (Date.now() < until) {
       if ((await p.run('getprop sys.boot_completed')).out.trim() === '1') return p;

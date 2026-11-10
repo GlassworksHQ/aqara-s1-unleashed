@@ -6,7 +6,7 @@ import { FelDevice } from '../fel';
 import { unprovision } from '../provision';
 import { BackupStore, backupZip, readBackupZip, type BackupFile, type BackupMeta } from './backup';
 import { webUsbDevices } from './devices';
-import { InstallFlow, fmtSize, restoreFromBackup, type FlowUi, type PartState, type Progress } from './flow';
+import { InstallFlow, fmtSize, restoreFromBackup, type AskKind, type Bar, type FlowUi, type PartState, type Progress } from './flow';
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector<T>(s)!;
 const $$ = (s: string) => [...document.querySelectorAll<HTMLElement>(s)];
@@ -35,7 +35,29 @@ const IDX: Record<Mode, Partial<Record<ScreenId, number>>> = {
   undo: { undo: 0, fel: 1, install: 2, done: 3 },
 };
 
+/** What the action panel says for each device the browser must be allowed to open. */
+const ASK: Record<AskKind, { lead: string; title: string; body: string; pick: string; note: string }> = {
+  fastboot: {
+    lead: 'The panel restarted in installer mode and is waiting for you. Nothing has been written yet.',
+    title: 'Allow this page to talk to the installer',
+    body: 'Your browser asks once for every new USB device. The installer continues by itself as soon as you allow it.',
+    pick: 'USB download gadget',
+    note: 'It\'s the only device in the list. If the list is empty, keep it open: the panel appears within a few seconds.',
+  },
+  adb: {
+    lead: 'The panel is starting with its new software and is waiting for you.',
+    title: 'Allow this page to set up the panel',
+    body: 'One last OK, so this page can install S1 Kiosk. Meanwhile, don\'t touch the panel\'s screen: leave Aqara\'s setup (language, Wi-Fi, terms) alone.',
+    pick: 'QUAD-CORE R818 EVB2',
+    note: 'That\'s the panel\'s name over USB. If it isn\'t in the list yet, keep the list open: it appears once the panel has started (up to a minute).',
+  },
+};
+const BARS: Bar[] = ['backup', 'patch', 'flash', 'verify'];
+const TITLE = 'S1 Unleashed Installer';
+
 class Installer {
+  private bars: Record<Bar, number> = { backup: 0, patch: 0, flash: 0, verify: 0 };
+  private overall = 0;
   private mode: Mode = 'install';
   private cur: ScreenId | null = null;
   private errAt = 1;
@@ -65,10 +87,9 @@ class Installer {
     $('#err-retry').onclick = () => this.show('fel');
     $('#undo-back').onclick = () => { this.mode = 'install'; this.show('welcome'); };
     $('#undo-go').onclick = () => this.undoContinue();
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    $('#tz-name').textContent = tz;
-    $('#tz-hint').textContent = `${tz} · ${navigator.language}`;
+    this.panelSettings();
     this.show('welcome');
+    if (import.meta.env.DEV) this.demo(new URLSearchParams(location.search).get('demo'));
   }
 
   // ---- screens --------------------------------------------------------------------------------
@@ -198,26 +219,61 @@ class Installer {
       log: (l) => this.log(l),
       progress: (p) => this.progress(p),
       partition: (part, st, info) => this.partition(part, st, info),
-      ask: (kind, text, action) => this.ask(kind, text, action),
+      ask: (kind, action, signal) => this.ask(kind, action, signal),
     };
   }
 
-  private ask<T>(kind: 'fastboot' | 'adb', text: string, action: () => Promise<T>): Promise<T> {
-    const card = kind === 'adb' ? $('#ask-adb') : $('#ask');
-    const btn = (kind === 'adb' ? $('#ask-adb-btn') : $('#ask-btn')) as HTMLButtonElement;
-    if (kind === 'fastboot') $('#ask-t').textContent = text;
-    card.hidden = false;
+  /**
+   * "Your turn": the screen's content makes way for one action panel (what happened, the exact name
+   * to pick in the browser's list, one button), the heading says so, and the rail and tab title
+   * show it too. Nothing else on screen pretends to be busy meanwhile.
+   */
+  private ask<T>(kind: AskKind, action: () => Promise<T>, signal: AbortSignal): Promise<T> {
+    const screen = document.querySelector<HTMLElement>(`[data-s="${this.cur}"]`)!;
+    const content = screen.querySelector<HTMLElement>('.content')!;
+    const h2 = screen.querySelector('h2')!;
+    const lead = screen.querySelector<HTMLElement>('.body');
+    const was = { h2: h2.textContent, lead: lead?.textContent ?? '', leadHidden: lead?.hidden ?? false };
+    const hidden = [...content.children].filter((el): el is HTMLElement => el instanceof HTMLElement && !el.hidden);
+    const copy = ASK[kind];
+    const node = $<HTMLTemplateElement>('#act-tpl').content.firstElementChild!.cloneNode(true) as HTMLElement;
+    node.querySelector('h3')!.textContent = copy.title;
+    node.querySelector('.act-body')!.textContent = copy.body;
+    node.querySelector('.act-pick')!.textContent = copy.pick;
+    node.querySelector('.act-note')!.textContent = copy.note;
+    const btn = node.querySelector<HTMLButtonElement>('.act-btn')!;
+    const msg = node.querySelector<HTMLElement>('.act-msg')!;
+
+    hidden.forEach((el) => { el.hidden = true; });
+    h2.textContent = 'Your turn.';
+    if (lead) { lead.textContent = copy.lead; lead.hidden = false; }
+    content.prepend(node);
+    this.yourTurn(true);
+    scrollTo({ top: 0, behavior: still ? 'auto' : 'smooth' });
+    btn.focus({ preventScroll: true });
+
+    const restore = () => {
+      node.remove();
+      hidden.forEach((el) => { el.hidden = false; });
+      h2.textContent = was.h2;
+      if (lead) { lead.textContent = was.lead; lead.hidden = was.leadHidden; }
+      this.yourTurn(false);
+    };
     return new Promise<T>((resolve) => {
+      signal.addEventListener('abort', restore, { once: true }); // found it by itself after all
       btn.onclick = async () => {
         btn.disabled = true;
+        msg.className = 'act-msg';
+        msg.textContent = 'Pick it in the browser\'s list…';
         try {
           const r = await action();
-          card.hidden = true;
+          if (!signal.aborted) restore();
           resolve(r);
         } catch (e) {
-          // picker closed, or the wrong device: let them try again
-          const s = kind === 'adb' ? card.querySelector('span')! : $('#ask-s');
-          s.textContent = e instanceof DOMException && e.name === 'NotFoundError' ? 'Nothing was picked. Try again.' : String((e as Error).message ?? e);
+          msg.className = 'act-msg err';
+          msg.textContent = e instanceof DOMException && e.name === 'NotFoundError'
+            ? 'Nothing was picked. Click the button again.'
+            : String((e as Error).message ?? e);
         } finally {
           btn.disabled = false;
         }
@@ -225,11 +281,24 @@ class Installer {
     });
   }
 
+  private yourTurn(on: boolean) {
+    const i = IDX[this.mode][this.cur!] ?? 0;
+    const li = $$('#steps li')[i];
+    if (li) {
+      li.classList.toggle('you', on);
+      li.querySelector('small')!.textContent = on ? 'Waiting for you' : this.stepDetail.get(i) ?? STEPS[this.mode][i]!.cur;
+    }
+    const n = STEPS[this.mode].length;
+    $('#mcount').textContent = on ? `Step ${i + 1} of ${n} · your turn` : `Step ${i + 1} of ${n}`;
+    document.title = on ? `Your turn · ${TITLE}` : TITLE;
+  }
+
   private resetProgress() {
     this.started = Date.now();
     $('#log').innerHTML = '';
     $('#plist').innerHTML = '';
-    $('#ask').hidden = true;
+    this.bars = { backup: 0, patch: 0, flash: 0, verify: 0 };
+    this.overall = 0;
     this.setDetails(false);
     const undo = this.mode === 'undo';
     $('#in-label').textContent = undo ? 'Step 3 · Restore' : 'Step 3 · Back up & install';
@@ -245,26 +314,30 @@ class Installer {
   }
 
   private progress(p: Progress) {
+    // Neither the ring nor a bar ever goes backwards.
+    this.overall = Math.max(this.overall, Math.min(1, p.overall));
+    for (const k of BARS) {
+      const v = p.bars?.[k];
+      if (v !== undefined) this.bars[k] = Math.max(this.bars[k], Math.min(1, v));
+    }
     const C = 540.35;
-    const ring = $('#ringp');
-    ring.style.strokeDashoffset = String(C * (1 - p.overall));
-    $('#pct').textContent = String(Math.floor(p.overall * 100));
+    $('#ringp').style.strokeDashoffset = String(C * (1 - this.overall));
+    $('#pct').textContent = String(Math.floor(this.overall * 100));
     $('#pl').textContent = p.title;
     let sub = p.sub;
     const elapsed = (Date.now() - this.started) / 1000;
-    if (p.overall > 0.08 && p.overall < 0.97 && elapsed > 20) {
-      const left = (elapsed / p.overall) * (1 - p.overall);
+    if (this.overall > 0.08 && this.overall < 0.97 && elapsed > 20) {
+      const left = (elapsed / this.overall) * (1 - this.overall);
       sub += left > 90 ? ` · about ${Math.round(left / 60)} minutes left` : left > 15 ? ' · less than a minute left' : '';
     }
     $('#ps').textContent = sub;
-    const order = ['backup', 'patch', 'flash', 'verify'] as const;
-    const at = p.phase === 'boot' ? -1 : order.indexOf(p.phase);
     $$('#phases > div').forEach((d, i) => {
-      d.classList.toggle('cur', i === at);
-      (d.querySelector('b') as HTMLElement).style.width = `${i < at ? 100 : i === at ? Math.round(p.phasePct * 100) : 0}%`;
+      const k = BARS[i]!;
+      d.classList.toggle('cur', p.phase === k);
+      (d.querySelector('b') as HTMLElement).style.width = `${Math.round(this.bars[k] * 100)}%`;
     });
     if (p.phase === 'backup') this.setStepDetail(2, p.sub.split(' · ')[1] ? `Backing up · ${p.sub.split(' · ')[1]}` : 'Backing up');
-    else if (p.phase !== 'boot') this.setStepDetail(2, p.title);
+    else this.setStepDetail(2, p.title);
   }
 
   private partition(part: string, st: PartState, info: { size?: number; sha256?: string; pct?: number }) {
@@ -317,6 +390,53 @@ class Installer {
     }
   }
 
+  /** Development only: shows a state without hardware, for checking the design. */
+  private demo(which: string | null) {
+    if (!which) return;
+    const never = new AbortController().signal;
+    if (which.startsWith('ask') || which === 'install') {
+      this.resetProgress();
+      this.show('install');
+      this.progress({ overall: 0.05, phase: 'boot', phasePct: 1, title: 'Waiting for the panel to reconnect', sub: 'It restarts in installer mode · about 10 seconds' });
+      if (which === 'install') this.progress({ overall: 0.8, phase: 'verify', phasePct: 0.5, title: 'Writing the new software', sub: 'Reading boot back to check it', bars: { backup: 1, patch: 1, flash: 0.8, verify: 0.6 } });
+      if (which === 'ask-fastboot') void this.ask('fastboot', () => new Promise(() => {}), never);
+    }
+    if (which === 'app' || which === 'ask-adb') {
+      this.show('app');
+      if (which === 'ask-adb') void this.ask('adb', () => new Promise(() => {}), never);
+    }
+  }
+
+  private clock24 = false;
+
+  /** Language, time zone and clock, defaulting to this computer's. */
+  private panelSettings() {
+    const here = navigator.language || 'en-US';
+    // Languages Android 10 ships translations for that are likely on this panel; plus this computer's.
+    const tags = ['en-US', 'en-GB', 'en-AU', 'en-CA', 'de-DE', 'fr-FR', 'fr-CA', 'es-ES', 'es-US', 'es-MX', 'it-IT', 'nl-NL', 'pt-PT', 'pt-BR',
+      'pl-PL', 'cs-CZ', 'sv-SE', 'da-DK', 'nb-NO', 'fi-FI', 'ru-RU', 'uk-UA', 'tr-TR', 'el-GR', 'hu-HU', 'ro-RO', 'ja-JP', 'ko-KR', 'zh-CN', 'zh-TW', 'zh-HK'];
+    if (/^[a-z]{2,3}-[A-Z]{2}$/.test(here) && !tags.includes(here)) tags.push(here);
+    const names = new Intl.DisplayNames([here], { type: 'language' });
+    const loc = $('#opt-locale') as HTMLSelectElement;
+    const opts = tags.map((t) => ({ t, n: names.of(t) ?? t })).sort((a, b) => a.n.localeCompare(b.n, here));
+    loc.append(new Option('Leave as it is', ''), ...opts.map(({ t, n }) => new Option(`${n} (${t})`, t)));
+    loc.value = tags.includes(here) ? here : (tags.find((t) => t.split('-')[0] === here.split('-')[0]) ?? '');
+
+    const tzHere = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const tz = $('#opt-tz') as HTMLSelectElement;
+    const zones = (Intl as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? [tzHere];
+    tz.append(new Option('Leave as it is', ''), ...zones.map((z) => new Option(z.replace(/_/g, ' '), z)));
+    tz.value = zones.includes(tzHere) ? tzHere : '';
+
+    const seg = $$('#opt-clock button');
+    const set = (h24: boolean) => {
+      this.clock24 = h24;
+      seg.forEach((b) => { const on = (b.dataset.h === '24') === h24; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+    };
+    seg.forEach((b) => { b.onclick = () => set(b.dataset.h === '24'); });
+    set(!new Intl.DateTimeFormat(here, { hour: 'numeric' }).resolvedOptions().hour12);
+  }
+
   private async finishApp() {
     const btn = $('#finish') as HTMLButtonElement;
     btn.disabled = true;
@@ -331,10 +451,13 @@ class Installer {
     try {
       const res = await this.flow!.setUpApp(this.panel!, {
         haUrl: url || undefined,
-        timezone: ($('#opt-tz') as HTMLInputElement).checked ? Intl.DateTimeFormat().resolvedOptions().timeZone : undefined,
+        timezone: ($('#opt-tz') as HTMLSelectElement).value || undefined,
+        locale: ($('#opt-locale') as HTMLSelectElement).value || undefined,
+        clock24: this.clock24,
         keyboard: ($('#opt-kb') as HTMLInputElement).checked,
       });
       this.adbRow('ok', 'S1 Kiosk installed', 'Set as the home screen', 'Done');
+      $('#hands').hidden = true;
       this.showDone(res.ip);
     } catch (e) {
       this.fail(3, e);
@@ -420,7 +543,7 @@ class Installer {
       const card = $('#ask-undo');
       card.hidden = false;
       $('#ask-undo-t').textContent = 'Giving the panel back to Aqara\'s apps';
-      $('#ask-undo-s').textContent = 'Pick the panel in the list';
+      $('#ask-undo-s').textContent = 'In the browser\'s list, pick QUAD-CORE R818 EVB2 (the panel)';
       try {
         this.key ??= await loadOrCreateAdbKey();
         const panel = (await webUsbDevices.knownAdb(this.key)) ?? (await webUsbDevices.requestAdb(this.key));
@@ -438,13 +561,18 @@ class Installer {
   }
 
   private async runRestore(fb: Awaited<ReturnType<InstallFlow['connectFastboot']>>) {
-    const total = ['boot', 'vbmeta', 'bootloader'].reduce((n, p) => n + (this.undoFiles!.get(p)?.length ?? 0), 0);
-    let done = 0;
-    let last = '';
+    const parts = ['boot', 'vbmeta', 'bootloader'].filter((p) => this.undoFiles!.has(p));
+    const total = parts.reduce((n, p) => n + this.undoFiles!.get(p)!.length, 0);
+    const before = (part: string) => parts.slice(0, parts.indexOf(part)).reduce((n, p) => n + this.undoFiles!.get(p)!.length, 0);
     await restoreFromBackup(fb, this.undoFiles!, (l) => this.log(`${new Date().toTimeString().slice(0, 8)} ${l}`), (part, phase, d, t) => {
-      if (part !== last) { if (last) done += this.undoFiles!.get(last)!.length; last = part; }
-      const x = (done + d / 2 + (phase === 'verify' ? t / 2 : 0)) / total;
-      this.progress({ overall: 0.05 + 0.93 * x, phase: phase === 'write' ? 'flash' : 'verify', phasePct: d / t, title: 'Restoring the original software', sub: phase === 'write' ? `Writing ${part}` : `Checking ${part}` });
+      const done = before(part);
+      const write = (done + (phase === 'write' ? d : t)) / total;
+      const verify = (done + (phase === 'verify' ? d : 0)) / total;
+      this.progress({
+        overall: 0.05 + 0.93 * (write + verify) / 2, phase: phase === 'write' ? 'flash' : 'verify',
+        phasePct: phase === 'write' ? write : verify, title: 'Restoring the original software',
+        sub: phase === 'write' ? `Writing ${part}` : `Reading ${part} back to check it`, bars: { flash: write, verify },
+      });
     });
     this.result = undefined;
     $('#done-title').textContent = 'The original software is back';

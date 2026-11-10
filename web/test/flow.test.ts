@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AdbKey, PanelShell } from '../src/adb';
 import { BACKUP_PARTS, backupZip, readBackupZip, sha256sums, type BackupFile, type BackupMeta } from '../src/app/backup';
-import { InstallFlow, restoreFromBackup, type FlowUi } from '../src/app/flow';
+import { InstallFlow, restoreFromBackup, type AskKind, type FlowUi, type Progress } from '../src/app/flow';
 import type { AssetName } from '../src/assets';
 import { Fastboot } from '../src/fastboot';
 import { FelDevice } from '../src/fel';
@@ -49,15 +49,25 @@ class Panel implements PanelShell {
   async push() {}
 }
 
-function ui(): FlowUi & { logs: string[]; asked: string[]; overall: number[] } {
+function ui(): FlowUi & { logs: string[]; asked: string[]; overall: number[]; bars: Progress['bars'][] } {
   const u = {
-    logs: [] as string[], asked: [] as string[], overall: [] as number[],
+    logs: [] as string[], asked: [] as string[], overall: [] as number[], bars: [] as Progress['bars'][],
     log: (l: string) => { u.logs.push(l); },
-    progress: (p: { overall: number }) => { u.overall.push(p.overall); },
+    progress: (p: Progress) => { u.overall.push(p.overall); u.bars.push(p.bars); },
     partition: () => {},
-    ask: async <T>(kind: string, _t: string, action: () => Promise<T>) => { u.asked.push(kind); return action(); },
+    ask: async <T>(kind: AskKind, action: () => Promise<T>) => { u.asked.push(kind); return action(); },
   };
   return u;
+}
+
+/** Every bar the flow reports only ever grows (the UI also keeps a high-water mark, but the flow must not rely on it). */
+function expectBarsMonotone(all: Progress['bars'][]) {
+  const hi: Record<string, number> = {};
+  for (const b of all) for (const [k, v] of Object.entries(b ?? {})) {
+    expect(v, `bar ${k}`).toBeGreaterThanOrEqual((hi[k] ?? 0) - 1e-9);
+    hi[k] = v!;
+  }
+  expect(hi).toMatchObject({ backup: 1, patch: 1, flash: 1, verify: 1 });
 }
 
 describe.skipIf(!HAVE)('install flow on simulated hardware with the real 4.5.80 partitions', () => {
@@ -110,8 +120,9 @@ describe.skipIf(!HAVE)('install flow on simulated hardware with the real 4.5.80 
     expect(eq(uboot.data('vbmeta'), rd(join(STOCK, 'vbmeta.flags3.img')))).toBe(true);
     expect(eq(uboot.data('bootloader'), rd(join(G, 'out/bootloader-glass-tile.img')))).toBe(true);
     expect(uboot.rebooted).toBe(true);
-    // progress only goes forward
+    // progress only goes forward: the ring, and each of the four bars across vbmeta/splash/boot
     expect(u.overall.every((x, i) => i === 0 || x >= u.overall[i - 1]! - 1e-9)).toBe(true);
+    expectBarsMonotone(u.bars);
 
     const p = await flow.connectAdb();
     await flow.setUpApp(p, { haUrl: 'http://ha.local:8123/x' });

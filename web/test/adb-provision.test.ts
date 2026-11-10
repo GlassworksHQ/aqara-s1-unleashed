@@ -86,13 +86,50 @@ describe('provision (install.sh port)', () => {
     expect(q(`a'b`)).toBe(`'a'\\''b'`);
   });
 
-  it('undo re-enables everything, then sets Aqara HOME, then disables the kiosk', async () => {
-    const p = new FakePanel();
-    await unprovision(p);
+  it('undo waits for the device admin to go, removes the kiosk, and checks HOME is Aqara again', async () => {
+    const p = new UndoPanel();
+    await unprovision(p, () => {}, async () => {});
     for (const pkg of DEBLOAT) expect(p.cmds).toContain(`pm enable ${pkg}`);
     const i = (c: string) => p.cmds.indexOf(c);
+    // admin removal requested, and polled until gone, before anything tries to remove the app
+    expect(p.cmds.filter((c) => c === 'dumpsys device_policy').length).toBe(3);
+    expect(i('pm uninstall sh.edm.s1kiosk')).toBeGreaterThan(p.cmds.lastIndexOf('dumpsys device_policy'));
     expect(i('cmd package set-home-activity com.aqara.inhome.launcher/.MainActivity')).toBeGreaterThan(i('pm enable com.aqara.inhome.launcher'));
-    expect(i('pm disable-user --user 0 sh.edm.s1kiosk')).toBeGreaterThan(i('am force-stop sh.edm.s1kiosk'));
-    expect(p.cmds.at(-1)).toBe('setprop ctl.start ha_master');
+    expect(p.cmds).toContain('pm uninstall rkr.simplekeyboard.inputmethod');
+    expect(p.cmds).toContain('setprop ctl.start ha_master');
+    expect(p.cmds.at(-1)).toBe('am start -a android.intent.action.MAIN -c android.intent.category.HOME');
   });
+
+  it('undo falls back to disabling the kiosk, and fails loudly if HOME is still the kiosk', async () => {
+    const p = new UndoPanel();
+    p.uninstallWorks = false;
+    p.homeFollows = false;
+    await expect(unprovision(p, () => {}, async () => {})).rejects.toThrow(/still sh\.edm\.s1kiosk/);
+    expect(p.cmds).toContain('pm disable-user --user 0 sh.edm.s1kiosk');
+  });
+
 });
+
+/** A panel with S1 Kiosk installed as HOME and device admin (the app drops admin a moment after asked). */
+class UndoPanel implements PanelShell {
+  cmds: string[] = [];
+  adminPolls = 0;
+  adminRemoveAsked = false;
+  home = 'sh.edm.s1kiosk/.MainActivity';
+  uninstallWorks = true;
+  homeFollows = true;
+  async run(cmd: string) {
+    this.cmds.push(cmd);
+    if (cmd.includes('--ez remove_admin true')) { this.adminRemoveAsked = true; return { out: '', code: 0 }; }
+    if (cmd === 'dumpsys device_policy') {
+      const active = !this.adminRemoveAsked || ++this.adminPolls < 3;
+      return { out: active ? 'Admin sh.edm.s1kiosk/.AdminReceiver\n' : 'no admins\n', code: 0 };
+    }
+    if (cmd.startsWith('cmd package set-home-activity com.aqara') && this.homeFollows) this.home = 'com.aqara.inhome.launcher/.MainActivity';
+    if (cmd === 'pm uninstall sh.edm.s1kiosk') return this.uninstallWorks && this.adminPolls >= 3 ? { out: 'Success\n', code: 0 } : { out: 'Failure [DELETE_FAILED_DEVICE_POLICY_MANAGER]\n', code: 1 };
+    if (cmd === 'pm list packages rkr.simplekeyboard.inputmethod') return { out: 'package:rkr.simplekeyboard.inputmethod\n', code: 0 };
+    if (cmd.startsWith('cmd package resolve-activity')) return { out: `priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true\n${this.home}\n`, code: 0 };
+    return { out: '', code: 0 };
+  }
+  async push() {}
+}

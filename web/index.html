@@ -79,7 +79,6 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
       <h2 class="xl">Keep it plugged in.</h2>
       <p class="body" id="in-body">Nothing is changed until your panel's own software is safely in this browser. Keep this page open, too.</p>
       <div class="content">
-        <div class="well ask" id="ask" hidden><span class="pulse" style="margin:0 5px"></span><div class="t"><b id="ask-t"></b><span id="ask-s">The browser asks once; it remembers after that.</span></div><button class="btn primary" id="ask-btn">Allow</button></div>
         <div class="well prog">
           <div class="ring">
             <svg viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="86" stroke="rgba(255,255,255,.07)"/><circle id="ringp" cx="100" cy="100" r="86"/></svg>
@@ -113,20 +112,28 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
     <section class="screen" data-s="app">
       <div class="label">Step 4 · App</div>
       <h2>Where is Home Assistant?</h2>
-      <p class="body">The panel is restarting with its new software. While it does, tell it which dashboard to show.</p>
+      <p class="body">The panel is restarting with its new software. While it does, choose what it should show and how it should be set up.</p>
       <div class="content">
-        <div class="well ask" id="ask-adb" hidden><span class="pulse" style="margin:0 5px"></span><div class="t"><b>Allow this page to set up the panel</b><span>Pick the panel in the list. The browser asks once.</span></div><button class="btn primary" id="ask-adb-btn">Allow</button></div>
         <div class="well rows">
           <div class="row" id="adb-row"><i class="dot sm spin"></i><div class="t"><b>Waiting for the panel</b><span>First start takes a minute or two</span></div><em class="a">Starting</em></div>
         </div>
-        <div>
-          <div class="sub"><div class="label">Home Assistant address</div><span id="tz-hint"></span></div>
-          <div class="field"><input id="ha" type="url" placeholder="http://homeassistant.local:8123/dashboard" aria-label="Home Assistant address" autocomplete="url"></div>
-          <div class="status" id="st">Optional. The panel opens this page full-screen; you can also type it on the panel.</div>
+        <div class="well hands" id="hands">
+          <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5m0 3.5h0M10.3 3.9 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+          <div class="t"><b>Don't touch the panel's screen</b><span>It may show Aqara's setup (language, Wi-Fi, terms). Leave it alone: don't pick anything or agree to anything. S1 Kiosk replaces it in a moment.</span></div>
         </div>
-        <div class="well opts">
-          <label><input type="checkbox" id="opt-tz" checked><span><b>Set the time zone</b> to <span id="tz-name"></span></span></label>
-          <label><input type="checkbox" id="opt-kb" checked><span><b>Install Simple Keyboard</b>, a clean on-screen keyboard (Apache-2.0)</span></label>
+        <div>
+          <div class="sub"><div class="label">Home Assistant address</div><span>Optional</span></div>
+          <div class="field"><input id="ha" type="url" placeholder="http://homeassistant.local:8123/dashboard" aria-label="Home Assistant address" autocomplete="url"></div>
+          <div class="status" id="st">The panel opens this page full-screen. You can also type it on the panel later.</div>
+        </div>
+        <div>
+          <div class="sub"><div class="label">Panel settings</div><span>From this computer; change any of them</span></div>
+          <div class="well settings">
+            <label class="set"><span class="t"><b>Language &amp; region</b><span>Menus, dates and numbers · applies after a restart</span></span><select id="opt-locale" aria-label="Language and region"></select></label>
+            <label class="set"><span class="t"><b>Time zone</b><span>Turns off automatic time zone</span></span><select id="opt-tz" aria-label="Time zone"></select></label>
+            <div class="set"><span class="t"><b>Clock</b><span>Lock screen and status bar</span></span><div class="seg" id="opt-clock" role="radiogroup" aria-label="Clock format"><button data-h="12" role="radio">12-hour</button><button data-h="24" role="radio">24-hour</button></div></div>
+            <label class="set"><span class="t"><b>On-screen keyboard</b><span>Simple Keyboard (Apache-2.0) instead of Aqara's</span></span><input type="checkbox" id="opt-kb" checked class="sw" aria-label="Install Simple Keyboard"></label>
+          </div>
         </div>
       </div>
       <div class="actions"><span class="sp"></span><span class="hint" id="finish-hint">Waiting for the panel…</span><button class="btn primary" id="finish" disabled>Set up the panel</button></div>
@@ -153,7 +160,7 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
     <section class="screen" data-s="undo">
       <div class="label">Undo · Backup</div>
       <h2>Put the original software back</h2>
-      <p class="body">This writes your panel's own boot, verified-boot and splash partitions back from a backup, each checked after writing. Settings and apps on the panel are left alone.</p>
+      <p class="body">This writes your panel's own boot, verified-boot and splash partitions back from a backup, each checked after writing.</p>
       <div class="content">
         <div class="well choice" id="undo-src">
           <label id="undo-browser-l"><input type="radio" name="src" value="browser"><span><b>The backup in this browser</b><span id="undo-browser-info"></span></span></label>
@@ -161,7 +168,7 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
           <input type="file" id="undo-file" accept=".zip,application/zip" hidden>
         </div>
         <div class="well opts">
-          <label><input type="checkbox" id="undo-apps" checked><span><b>First give the panel back to Aqara's apps</b> (launcher, voice, updates, Aqara's radio). The panel must be running and plugged in.</span></label>
+          <label><input type="checkbox" id="undo-apps" checked><span><b>First give the panel back to Aqara's apps and remove S1 Kiosk</b> (launcher, voice, updates, Aqara's radio). The panel must be running and plugged in.</span></label>
         </div>
         <div class="well ask" id="ask-undo" hidden><span class="pulse" style="margin:0 5px"></span><div class="t"><b id="ask-undo-t"></b><span id="ask-undo-s"></span></div></div>
       </div>
@@ -182,6 +189,20 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
     </section>
   </main>
 </div>
+<template id="act-tpl">
+  <div class="act" role="alertdialog" aria-labelledby="act-title" aria-describedby="act-body">
+    <div class="act-head"><span class="pulse"></span><span class="label am">Your turn</span></div>
+    <h3 id="act-title"></h3>
+    <p class="act-body" id="act-body"></p>
+    <ol class="act-steps">
+      <li><i>1</i><span>Click <b>Choose the panel</b> below.</span></li>
+      <li><i>2</i><span>In the browser's list, pick <span class="pick"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v13m0 0-3-3m3 3 3-3M8 8h0M16 6h0M7 21h10"/></svg><b class="act-pick"></b></span></span></li>
+      <li><i>3</i><span>Click <b>Connect</b> in that list.</span></li>
+    </ol>
+    <div class="act-row"><button class="btn primary act-btn">Choose the panel</button><span class="act-msg"></span></div>
+    <p class="hint act-note"></p>
+  </div>
+</template>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

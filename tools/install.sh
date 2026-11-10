@@ -16,8 +16,8 @@
 #   --no-models         don't download/push the openWakeWord models
 #   --no-debloat        keep the Aqara apps enabled (the kiosk still becomes HOME)
 #   --keep-dnd          keep Aqara's 22:00-07:00 Do-Not-Disturb screen-off
-#   --undo              revert: re-enable Aqara apps + launcher, restore DND, remove admin,
-#                       stop the kiosk and start Aqara's radio services again
+#   --undo              revert: re-enable Aqara apps + launcher, restore DND and the IME, remove
+#                       S1 Kiosk, start Aqara's radio services again, check HOME is Aqara's
 #   --dry-run           print the commands instead of running them
 set -euo pipefail
 
@@ -60,26 +60,39 @@ echo "  model=$MODEL sdk=$SDK"
 
 if [[ $UNDO -eq 1 ]]; then
   step "Undo"
+  # The kiosk is a device admin, and Android won't disable or uninstall an active admin: ask the app
+  # to drop it, and wait until it has.
   try adb shell am start -n "$ACT" --ez remove_admin true
+  if [[ $DRY -eq 0 ]]; then
+    for _ in $(seq 1 30); do adb shell dumpsys device_policy | grep -q "$PKG" || break; sleep 0.5; done
+  fi
   run env ADB_SERIAL="${ANDROID_SERIAL:-}" "$HERE/debloat/debloat.sh" enable
   # after debloat re-enabled the launcher: set-home-activity fails on a disabled package
   try adb shell cmd package set-home-activity com.aqara.inhome.launcher/.MainActivity
   try adb shell service call A_device_control 7 i32 1 i32 0
   try adb shell pm enable com.baidu.input_auto
   try adb shell ime set com.baidu.input_auto/.ImeService
-  # Radio (docs/radio.md): the app keeps Aqara's radio services stopped ("Off" mode). Stop the app so
-  # it doesn't stop them again (a force-stopped app also gets no BOOT_COMPLETED), then start them now
-  # in provider-first order; they are init services, so a reboot would bring them back as well.
-  # Disable, not just force-stop: the app restarts itself (foreground service) and would block the
-  # Aqara stack again. Reversible: a reinstall (or pm enable) brings it back.
+  # Remove the kiosk (it restarts itself as a foreground service, so stopping it is not enough);
+  # fall back to disabling it. Reinstall with this script.
   try adb shell am force-stop "$PKG"
-  try adb shell pm disable-user --user 0 "$PKG"
-  # ha_master is Aqara's cloud link, which the app blocks ("Block Aqara cloud"); the Aqara app and its
-  # firmware updates need it back.
+  if [[ $DRY -eq 1 ]] || ! adb shell pm uninstall "$PKG" | grep -q Success; then
+    try adb shell pm disable-user --user 0 "$PKG"
+  fi
+  # Radio (docs/radio.md): the app kept Aqara's radio services stopped ("Off" mode) and blocked
+  # ha_master, Aqara's cloud link. Start them in provider-first order; they are init services, so a
+  # reboot would bring them back as well.
   for svc in zigbee_cpcd zigbee_socat zigbee_zigbeed zigbee_host zigbee_agent ha_matter ha_master; do
     try adb shell setprop ctl.start "$svc"
   done
-  echo "Done. The kiosk app is still installed but disabled (pm enable $PKG, or adb uninstall $PKG)."
+  if [[ $DRY -eq 0 ]]; then
+    HOME_ACT=$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tr -d '\r' | tail -1)
+    case "$HOME_ACT" in
+      com.aqara.inhome.launcher/*) ;;
+      *) echo "ERROR: the home screen is still $HOME_ACT, not Aqara's launcher" >&2; exit 1 ;;
+    esac
+    adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null
+  fi
+  echo "Done. Aqara's apps are back and S1 Kiosk is removed (reinstall: $0 --url ...)."
   exit 0
 fi
 
