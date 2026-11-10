@@ -10,7 +10,7 @@ entities always reach HA as an ESPHome device over Wi-Fi, whatever the radio doe
 | Mode (select option) | Needs root helper | State (2026-11-10, reference panel) |
 |---|---|---|
 | `Off` (default) | no | **works**: stops Aqara's radio services, radio idle |
-| `Zigbee coordinator (TCP)` | yes | **works with ZHA (bellows)**: form, read-back, restart verified from a computer. Forming/restoring from ZHA needs a bellows fix ([below](#bellows-reset-bug-zha-form-and-restore)); "keep the radio's network" works today |
+| `Zigbee coordinator (TCP)` | yes | **works with ZHA (bellows)**: form, read-back, restart verified from a computer. Forming/restoring from ZHA needs a bellows fix ([below](#bellows-reset-bug-zha-form-and-restore)); "keep the radio's network" works today. **Zigbee2MQTT** (`ember`): with the `Zigbee stack` select on *Silicon Labs 8.2.2* (helper v4, experimental; [Zigbee stack](#zigbee-stack-aqara-or-silicon-labs-helper-v4)) |
 | `Zigbee router` | helper v2 | **experimental**: the app's EZSP host brings zigbeed up as a router, scans, is ready to join; joining a real network not tested |
 | `Thread border router` | yes | **experimental**: border-router build (`PROFILE=br`); Home Assistant's OTBR REST calls verified against a fresh test network; LAN <-> Thread routing not tested with a real device |
 | `Thread router` | helper v2 | **experimental**: dataset hand-off from the app verified (the stack starts Thread with it); joining a real network not tested |
@@ -52,9 +52,10 @@ All device-unique values (EUI64, PAN IDs, network keys) are redacted here; never
   `radio-url=spinel+cpc://cpcd_0?iid=1&iid-list=0`, `ezsp-interface=/tmp/ttyZigbeeNCP`. Its
   network/token storage is **hardcoded** to `/data/zigbee_host/zigbeed_host_token.nvm`. Mfg tokens
   (manufacturer/board name) are empty; no XNCP features.
-- **No stock radio firmware on the device:** `/data/ota-files`, `/data/dfu`,
-  `/data/lumi/ota_subdevice` are empty and no `*.gbl` exists anywhere readable. Aqara fetches RCP
-  updates from its cloud (now blocked). This matters for recovery, see [Firmware](#firmware-per-mode).
+- **Stock radio firmware on the device:** `/data/ota-files`, `/data/dfu` and `/data/lumi/ota_subdevice`
+  are empty, but the stock RCP image is on `/vendor` as `/vendor/firmware/lichun#30000000#17#20250821#8f636f.bin`
+  (an unsigned, uncompressed GBL, APP `0017`; found 2026-11-09). It is the rollback target of the radio
+  firmware path ([Radio firmware updates](#radio-firmware-updates-helper-v4)).
 
 ## Aqara's radio stack
 
@@ -116,7 +117,7 @@ Gotchas:
 | `zigbee_host` (Z3Gateway) | stopped | stopped | stopped | stopped | stopped |
 | `zigbee_agent` | stopped | stopped | stopped | stopped | stopped |
 | `ha_matter` | stopped | stopped | stopped | stopped | stopped |
-| ours (helper children) | none | socat TCP:6638 bridge on `/dev/ttyZigbeeNCP` | socat bridge on 127.0.0.1:6639; the app's router host on it | `otbr-agent` on IID 2, `-B wlan0`, REST :8081 (border-router build) + forwarding/rules | `otbr-agent` (no backbone, REST on localhost) on IID 2 + dataset join |
+| ours (helper children) | none | socat TCP:6638 bridge on `/dev/ttyZigbeeNCP` (Silicon Labs stack, v4: also our zigbeed 8.2.2, and `zigbee_zigbeed` stopped) | socat bridge on 127.0.0.1:6639; the app's router host on it | `otbr-agent` on IID 2, `-B wlan0`, REST :8081 (border-router build) + forwarding/rules | `otbr-agent` (no backbone, REST on localhost) on IID 2 + dataset join |
 
 `ha_master` (Aqara cloud + the old wall-base link) is not a radio service. It stays stopped by the
 app's cloud block (AqaraCloud.kt), and the wall base uses the app's own UART driver, so `Off`
@@ -149,11 +150,11 @@ its startup RSTACK. Z3Gateway was restarted afterwards and re-attached normally.
 - **ZHA (bellows): yes.** Radio type EZSP, path `socket://<panel-ip>:6638`. bellows supports EZSP
   v4-v19, and HA's old multiprotocol add-on shipped exactly this topology (zigbeed + socat TCP).
   On first use ZHA forms its own network (or restores a backup) into zigbeed's NVM.
-- **Zigbee2MQTT `ember`: no.** zigbee-herdsman 11.2.1 requires EZSP 13-19 (EmberZNet >= 7.4) and
-  throws "Adapter EZSP protocol version (12) is not supported by Host [13-19]". The deprecated
-  `ezsp` adapter (pre-7.4 firmware, still shipped in herdsman 11.2.1) and both adapters' shared
-  transport accept `tcp://host:port`, but that is untested and on its way out. A newer zigbeed (see
-  [Firmware](#firmware-per-mode)) would fix this.
+- **Zigbee2MQTT `ember`: not with Aqara's zigbeed.** zigbee-herdsman 11.2.1 requires EZSP 13-19
+  (EmberZNet >= 7.4) and throws "Adapter EZSP protocol version (12) is not supported by Host [13-19]".
+  The deprecated `ezsp` adapter works with it (tested, [research/zigbee2mqtt.md](research/zigbee2mqtt.md)),
+  but is on its way out. The fix is Silicon Labs' zigbeed 8.2.2 (EZSP 18) on the same stock radio
+  firmware: the `Zigbee stack` choice ([below](#zigbee-stack-aqara-or-silicon-labs-helper-v4)).
 
 ## Zigbee coordinator, end to end (2026-11-10)
 
@@ -288,8 +289,8 @@ nothing was published. Coexistence with zigbeed (multi-PAN) was not tested: low 
 concurrent mode is not offered.
 
 The proof build is a **Thread agent, not a usable border router**: border routing, REST, mDNS and
-the border agent are compiled out. It is still what `tools/radio/out/` holds and the boot image
-bundles; the border router is a second profile:
+the border agent are compiled out. The boot image and the radio bundle carry the border-router
+profile instead (`tools/radio/out/` = `PROFILE=br` since 0.3.0):
 
 ## Thread border router build (`PROFILE=br`, 2026-11-10)
 
@@ -332,7 +333,7 @@ dataset, i.e. the network key): since helper v3 the firewall lets only Home Assi
 to the panel. Joining the user's existing Thread network means sharing the
 dataset from HA: a user decision, never automatic.
 
-## Root helper contract (v1)
+## Root helper contract (v4)
 
 The root half of the modes lives in a helper. The Magisk boot patch installs it as an init service
 ([research/root.md](research/root.md); working on the reference panel since 2026-11-09). Files:
@@ -341,22 +342,33 @@ The root half of the modes lives in a helper. The Magisk boot patch installs it 
 - `tools/radio/s1kiosk_radio.rc`: the init snippet.
 - `tools/radio/build-otbr.sh`: builds `otbr-agent`/`ot-ctl`.
 
-Contract **v3** (2026-11-10): v2 plus the firewall ([Firewall](#firewall-only-home-assistant-by-default)).
-v1 helpers lack the router modes, v2 helpers the firewall; the app checks the version:
+Contract **v4** (2026-11-10): v3 plus the loader and signed radio bundles ([Radio bundles](#radio-bundles-helper-v4)),
+the Zigbee stack choice ([Zigbee stack](#zigbee-stack-aqara-or-silicon-labs-helper-v4)) and radio firmware
+updates ([Radio firmware updates](#radio-firmware-updates-helper-v4)). v3 added the firewall
+([Firewall](#firewall-only-home-assistant-by-default)); v1 helpers lack the router modes, v2 helpers the
+firewall, v3 helpers the v4 items. The app checks the version and works with v2, v3 and v4 helpers; what
+needs v4 says so ("needs the root helper v4 … update the panel's boot image once", in the `Radio helper`
+sensor and the refused select). v4 needs a **new boot image** (web installer or `fel-install.sh`); it is
+the last one the root side needs, since everything above the loader then updates with the app.
 
 | Item | Value |
 |---|---|
 | Init service | `s1kiosk_radio`: `/system/bin/sh ${MAGISKTMP}/s1kiosk_radio.sh`, root, `u:r:su:s0`, not oneshot, **started on `sys.boot_completed=1`** |
-| State dir `$DIR` | `/data/s1kiosk/radio/` (root 0700): optional newer `s1kiosk_radio.sh` (override, see below), optional `otbr-agent`/`ot-ctl` (win over the bundled ones), `radio.conf`, `thread/` (border router settings), `thread-router/`, `thread-dataset` (root 0600, secret), `zigbee-nvm/` (NVM copies), `forwarding.orig` |
+| State dir `$DIR` | `/data/s1kiosk/radio/` (root 0700): `bundle/` (v4: `current/` = the installed radio bundle, `version` = the highest version ever installed, `bad-<v>` markers), `sisdk/` (v4: Silicon Labs' zigbeed, pinned), `zigbeed-sisdk/` (its NVM), `fw/` (v4: firmware state and logs), `radio.conf`, `thread/` (border router settings), `thread-router/`, `thread-dataset` (root 0600, secret), `zigbee-nvm/` (NVM copies), `forwarding.orig`, `dev-override` (developers only, below) |
 | Detection | app: helper present iff `init.svc.s1kiosk_radio` is non-empty (it only exists once the service ran, hence the start at boot and the never-exiting loop) |
 | Wanted mode | `persist.s1kiosk.radio_mode` = `off` \| `zigbee_tcp` \| `zigbee_router` \| `thread` \| `thread_router` (default `off`) |
 | Apply | app: `setprop persist.s1kiosk.radio_mode <id>` then `setprop ctl.restart s1kiosk_radio` (init kills the old process group, children included) |
-| Status | helper: `sys.s1kiosk.radio.status` = `<applying\|ok\|error> <id>[: detail]` (`applying <id>: waiting for zigbeed\|otbr-agent` until the stack answers), `sys.s1kiosk.radio.version` = `3`, `sys.s1kiosk.radio.otbr` = `br`\|`agent`\|`none`, `sys.s1kiosk.radio.allowed` = `<app\|conf> <any\|none\|addresses…>` (v3; empty in Off). Every status is cut to 91 bytes (`setprop` refuses longer values) |
+| Status | helper: `sys.s1kiosk.radio.status` = `<applying\|ok\|error> <id>[: detail]` (`applying <id>: waiting for zigbeed\|otbr-agent` until the stack answers), `sys.s1kiosk.radio.version` = `4`, `sys.s1kiosk.radio.otbr` = `br`\|`agent`\|`none`, `sys.s1kiosk.radio.allowed` = `<app\|conf> <any\|none\|addresses…>` (v3; empty in Off). Every status is cut to 91 bytes (`setprop` refuses longer values) |
 | Allow-list (v3) | app: `persist.s1kiosk.radio_allow` = `""` (no HA address yet: loopback only) \| `any` \| space-separated IPv4/IPv6 addresses or CIDRs; re-read every 3 s, no restart. Enforced with the `S1RADIO` iptables/ip6tables chain on `ZIGBEE_PORT` and `REST_PORT` in every mode but Off |
-| Overrides | `$DIR/radio.conf` (sourced): `ZIGBEE_PORT` (6638), `ZIGBEE_RANGE` (empty \| `lan` \| CIDR), `ROUTER_PORT` (6639), `BACKBONE` (wlan0 with a `br` build), `REST_LISTEN` (0.0.0.0), `REST_PORT` (8081), `OTBR_ARGS`, `RADIO_URL`, `RADIO_ALLOW` (v3: empty = the app's list \| `any` \| `none` \| addresses/CIDRs) |
+| Overrides | `$DIR/radio.conf` (sourced): `ZIGBEE_PORT` (6638), `ZIGBEE_RANGE` (empty \| `lan` \| CIDR), `ROUTER_PORT` (6639), `BACKBONE` (wlan0 with a `br` build), `REST_LISTEN` (0.0.0.0), `REST_PORT` (8081), `OTBR_ARGS`, `RADIO_URL`, `RADIO_ALLOW` (v3: empty = the app's list \| `any` \| `none` \| addresses/CIDRs), `ZIGBEE_STACK` (v4: `aqara` \| `sisdk`, wins over the app), `ZIGBEED_ARGS` (v4: extra zigbeed 8.2.2 arguments, e.g. `-v 1 -d 3`) |
 | Zigbee router | EZSP bridge on `127.0.0.1:$ROUTER_PORT` only; the app's host drives zigbeed. zigbeed's NVM is copied to `$DIR/zigbee-nvm/` (last 3, only when changed) whenever the mode starts |
 | Thread dataset hand-off | the app writes hex TLVs to its own `files/radio/thread-dataset` (0600); the helper moves it to `$DIR/thread-dataset` (refuses symlinks, > 1 KiB, non-hex), deletes the app's copy, restarts the agent, joins. Never logged |
-| Helper override | a root-owned `$DIR/s1kiosk_radio.sh` (in the root-owned dir) is exec'd instead of the bundled one (`S1R_NO_OVERRIDE` stops the hand-off); it still uses the boot image's bundled binaries unless `$DIR` has its own |
+| Loader (v4) | the boot image's `s1kiosk_radio.sh` checks `$DIR/bundle/current` with `s1kiosk_bundle.sh --check` (signature, every file's SHA-256, version not below the floor) at every start and runs its `s1kiosk_radio.sh`; binaries: bundle first, then the boot image. A bundle helper that exits within a minute 3 times running is marked `bad-<v>` and the boot image's helper runs. Props: `sys.s1kiosk.radio.source` = `boot[ (why)]` \| `bundle <v>` \| `dev`, `sys.s1kiosk.radio.bundle` = `none` \| `ok <v>` \| `bad: <why>` |
+| Zigbee stack (v4) | app: `persist.s1kiosk.radio_zigbee` = `aqara` (default) \| `sisdk`; helper: `sys.s1kiosk.radio.zigbee` = `aqara` \| `sisdk ready <ver>` \| `sisdk missing <ver> <sha256>` (app: download it) \| `sisdk no-runtime` \| `sisdk bad <why>`; zigbeed hand-off in the app's `files/radio/zigbeed-8.2.2` |
+| Thread leave (v4) | app: `files/radio/thread-leave` (taken within 3 s in any mode, ignored after 2 min); helper: `sys.s1kiosk.radio.thread_leave` = `<ok\|error> <epoch>: <detail>` |
+| Bundle state (v4) | root: `/data/s1kiosk-pub/radio-bundle` (root 0644 in a root 0755 dir) = `<ok\|bad\|none> <version> <floor>`, what the app decides from |
+| Radio firmware (v4) | app: `files/radio/fw-request` = `<id> <sha256 prefix>` (taken within 3 s, ignored after 2 min); helper: `sys.s1kiosk.radio.fw` = `<idle\|flashing\|ok\|error> <id>[: detail]`, `sys.s1kiosk.radio.fw_targets` = `<id>:<sha12>:<APP> …` |
+| Developer override | only with a root-created `$DIR/dev-override`: a root-owned `$DIR/s1kiosk_radio.sh` runs instead of everything, and binaries in `$DIR` win. Before v4 these were honoured without the marker; now a leftover copy is ignored (and logged), so it can't shadow updates |
 
 Behaviour: the helper brings Aqara's services to the table above (consumers stopped first),
 starts its children and then **re-enforces every 3 s in every mode**, because Aqara's boot sequence
@@ -380,6 +392,160 @@ persist prop):
   itself, and `ctl.stop` kills the wrapper too. Only a reboot brings the stack back, and the app
   stops it again on start.
 
+## Radio bundles (helper v4)
+
+Until v3 the root side lived only in the boot image: every helper fix needed a new boot image, and
+flashing `boot` needs the FEL button. Since v4 the boot image holds a **small, stable loader** and the
+current helper as the fallback; everything else comes with app updates as a **signed radio bundle**.
+
+**What's in the boot image (once):** `s1kiosk_radio.sh` (loader + the v4 helper as fallback),
+`s1kiosk_bundle.sh` + `.rc` (the install service), `s1kiosk_verify` (a 70 KB static ARM Ed25519
+checker: [`tools/root/verify/`](../tools/root/verify/s1kiosk_verify.c), Monocypher 4.0.3, built
+reproducibly by `tools/root/build-verify.sh`), `s1kiosk_bundle.pub` (the project's public key), and
+otbr-agent/ot-ctl as before.
+
+**What's in a bundle:** a `manifest` (format in `tools/root/s1kiosk_bundle.sh`), its Ed25519
+signature, and the files it lists with their sizes and SHA-256: today the helper, otbr-agent, ot-ctl
+and the Silicon Labs runtime (`sisdk/`). It may list radio firmware images (`firmware` lines); the
+project ships none. The release workflow builds and signs it (`tools/radio/make-bundle.py`, key in the
+`S1_RADIO_BUNDLE_KEY` environment secret, read only by the workflow's signing job, which signs only
+commits on `main` and checks every input against committed hashes:
+[releasing.md](releasing.md#3b-the-radio-bundle-key-once)); its version is the APK's versionCode
+(`make-bundle.py` refuses a higher one, which would lock panels out of every later bundle). The APK carries it as assets; it is not published on its own.
+
+**Flow:** the app compares the bundle it carries with the root-written, world-readable
+`/data/s1kiosk-pub/radio-bundle` (`<ok|bad|none> <version> <floor>`, written by the service and by the
+loader at every helper start; never a `sys.*` property, which any app could fake to block updates). If the
+panel has none, an older one, or the same one marked bad, the app copies it into its private
+`files/radio/bundle-in/`, sets `sys.s1kiosk.bundle.status=requested` and starts `s1kiosk_bundle` (at start,
+then every 30 minutes; one try per version and hour). It deletes its staging copy only once the service has
+finished. The service copies manifest + signature into a fresh root-only dir, checks the signature,
+refuses a version below the floor (the highest version ever installed, and at least the installed one),
+copies only the listed files with `s1kiosk_verify --copy` (below), checks each copy's SHA-256, records the
+new floor, then swaps `bundle/current` with renames and restarts the helper. Reinstalling the version that
+is installed is a no-op, unless its helper was marked bad: then it is reinstalled and the mark cleared. The loader checks the installed bundle again at every helper start. Status:
+`sys.s1kiosk.bundle.status`, and the `Radio helper` diagnostic sensor in HA (which helper runs, which
+bundle is installed, which one the app carries, the last error).
+
+**Threat model.**
+
+- *Other apps on the panel* can start init services and set properties (SELinux is permissive). They
+  cannot write the kiosk's private files, `/data/s1kiosk` (root 0700), or the boot image. So the most
+  they can do is make the service (re)install a bundle the kiosk staged, which still has to carry our
+  signature and a version at least as high as the installed one, or spoof status properties.
+- *A compromised kiosk app* can stage anything, but without the private key it can only feed back
+  bundles we signed, never older than the newest installed (anti-rollback floor in root-only
+  `bundle/version`). It could hold back updates; it can't run its own root code this way.
+- *Network attackers* see nothing new: the bundle comes inside the signed APK, which the app update path
+  already checks (SHA-256 + signing certificate), and the root side checks the bundle's own signature.
+- *Key compromise* is the one that matters: the key lets someone produce root code the panels accept, if
+  they also get it into the kiosk's storage. It lives only in `~/secure` and the CI secret; rotating it
+  needs a new boot image on every panel (the public key is in the boot image on purpose: nothing on
+  `/data` can replace it).
+- *A broken bundle* can't brick the radio side: the loader falls back to the boot image's helper when the
+  bundle fails its check or its helper keeps exiting, and `Radio helper` says why.
+- *A compromised kiosk racing the root side* (swapping a checked path for a symlink, a FIFO or
+  `/dev/zero` between a shell check and the copy): every root read of a kiosk-owned path (bundle files,
+  the zigbeed download, firmware and Thread-leave requests, the Thread dataset, app updates in
+  `s1kiosk_update.sh`) goes through `s1kiosk_verify --copy|--move`, which walks the path with
+  `openat(O_NOFOLLOW)`, opens the file `O_NONBLOCK`, checks owner, type, link count and size on the open
+  file and copies exactly that many bytes. So root never follows a link, never blocks, never fills `/data`.
+- *Unauthenticated ESPHome clients* (a panel without a provisioned key accepts plaintext/zero-PSK
+  connections from the LAN) cannot use `Radio firmware image`, `Flash radio firmware`, `Zigbee stack` or
+  `Leave Thread network`: those commands are refused unless the connection is Noise with the
+  provisioned key.
+
+Shell tests for all of this (signature, tampering, symlinks, other owners, hard links, rollback, the
+loader's fallback): `tools/radio/test/run.sh` (32-bit ARM container, mksh as Android's shell, mocks).
+
+## Zigbee stack: Aqara or Silicon Labs (helper v4)
+
+The coordinator mode can run either Zigbee stack on the same stock radio firmware (spinel IID 1, the
+same pty pair, the same `:6638` bridge and firewall):
+
+| `Zigbee stack` option | Stack | EZSP | Works with |
+|---|---|---|---|
+| `Aqara 7.3.3 (EZSP 12, ZHA)` (default) | Aqara's `/vendor/bin/zigbeed`, its init service | 12 | ZHA (bellows); Zigbee2MQTT's deprecated `ezsp` adapter |
+| `Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)` | Silicon Labs' zigbeed 8.2.2 from Simplicity SDK 2025.6.3, through the bundle's glibc runtime | 18 | Zigbee2MQTT `ember` (`adapter: ember`, `port: tcp://<panel>:6638`), ZHA |
+
+How it works ([research/zigbee2mqtt.md](research/zigbee2mqtt.md) has the panel tests):
+
+- **zigbeed itself is never shipped by us.** It is Silicon Labs MSLA object code. When the stack is
+  chosen, the helper reports `sisdk missing 8.2.2 <sha256>`; the **app** fetches the 253 KB armhf .deb
+  straight from Silicon Labs' GitHub release (an HTTP range of `debian-bookworm.zip`, falling back to the
+  whole 22.9 MB zip), checks the zip/.deb hashes, extracts `usr/local/bin/zigbeed` and checks its SHA-256
+  (`a66d4584…e3bb`), then writes it to its private `files/radio/zigbeed-8.2.2`. The helper takes it only
+  with that exact SHA-256 and size into `$DIR/sisdk/` (root 0700). Download state shows in `Radio status`.
+- **What we do ship** (bundle `sisdk/`, built by `tools/radio/build-sisdk-runtime.sh`, with
+  `sisdk/NOTICE.txt` and `licenses/`): `zigbeed.sh` (our wrapper), `libcpc.so.3` built from cpc-daemon
+  4.3.3 (Silicon Labs MSLA source sections: distributable compiled, only inside the product for use with
+  the Silicon Labs radio, not standalone, hence no separate download; the same terms as the libcpc
+  already inside otbr-agent), and glibc 2.35 / libstdc++ / libgcc_s unmodified from Ubuntu 22.04's cross
+  packages (LGPL-2.1+, GPL-3.0+ with the GCC Runtime Library Exception; licence texts included and the
+  exact Ubuntu source packages named, which are kept permanently on Launchpad). Byte-identical to the
+  libraries tested on the panel. Not legal advice.
+- The helper stops `zigbee_zigbeed` and runs `zigbeed.sh -r 'spinel+cpc://cpcd_0?iid=1&iid-list=0' -p
+  /tmp/ttyZigbeeNCP` with its own NVM in `$DIR/zigbeed-sisdk/host_token.nvm` (backed up to
+  `zigbee-nvm/sisdk-*.nvm` at each start, last 3). Aqara's NVM is never touched; switching back to Aqara's
+  stack gives back Aqara's network.
+- **The pty is drained before the bridge serves anyone**, for both stacks: a fresh zigbeed writes an
+  RSTACK that nobody reads, and Zigbee2MQTT's `ember` adapter would take it for the answer to its own
+  reset and then see the real one as an NCP crash (found on the panel). The helper reads the pty until
+  it is quiet after each new zigbeed process; a connected client keeps its session.
+- **Reset timing risk:** zigbeed 8.2.2 answers an ASH reset in 4.1-4.4 s (measured), and herdsman's
+  `ember` adapter waits 5 s for it. The margin is thin: a slow moment on the panel could make Zigbee2MQTT
+  fail a start (it retries on its next start). Watch it in the soak test.
+- Thread modes are unaffected; the router mode always uses Aqara's stack (the app's router host speaks
+  EZSP 12). It is an unsupported pairing for Silicon Labs (an 8.2.2 host on a 4.3.3 RCP): experimental
+  until soak-tested with real devices.
+- Needs helper v4 and a bundle with `sisdk/`; otherwise the select snaps back and `Radio helper` says why.
+  `ZIGBEE_STACK=` in `radio.conf` overrides the app.
+
+## Radio firmware updates (helper v4)
+
+A root path for flashing the EFR32's RCP image, **never automatic**:
+
+1. In HA, `Radio firmware image` (config): `Aqara stock image` or `Image from the radio bundle`. The
+   choice is armed for 2 minutes (`Radio firmware` shows the countdown).
+2. Press `Flash radio firmware` within that time. The app writes `<id> <sha256 prefix>` to its
+   `files/radio/fw-request`; it does nothing else.
+3. The helper takes the request (only kiosk-owned, no symlinks, at most 2 minutes old, naming a hash
+   that matches the image) and:
+   - resolves the image: Aqara's GBL from `/vendor/firmware/lichun#30000000#*.bin` (pinned hash
+     `d7b79c6f…8fa9` = APP `0017`; another Aqara file is accepted with the version from its name), or a
+     `firmware` item of the **signed** bundle (its SHA-256 checked again right before use);
+   - checks it is an app-only GBL: known tags only, no bootloader or Secure Engine upgrade tag, no
+     encryption, ending with the end tag exactly at EOF;
+   - checks that the stock image (the rollback target) is there and valid, and records it in
+     `fw/stock.ref` (the pre-flash backup reference: the file on read-only `/vendor`);
+   - stops every radio process and Aqara service (and refuses if any cpcd still runs), reads the current
+     version (`/vendor/bin/cpcd -c /etc/cpcd.conf -p`, "Secondary APP");
+   - flashes with **Aqara's own** `/vendor/bin/cpcd -c /etc/cpcd_ota.conf -f <image>` (the only proven
+     path; upstream cpcd drives this board's reset pin the wrong way), progress from
+     `sys.zb_ota_progress`, 2 tries;
+   - verifies: the radio must report the image's declared APP version over CPC; then the spinel version
+     is read with `otbr-agent --radio-version` on IID 2 when available;
+   - on failure, **rolls back to the stock image** the same way and says so; then restarts itself, which
+     brings the selected mode back.
+4. Status in `Radio firmware` (`sys.s1kiosk.radio.fw`): `idle`, `flashing <id>: 40%`, `ok <id>: APP …`,
+   `error <id>: … rolled back to stock (APP 0017)`. Mode and stack changes wait while a flash runs; the
+   bundle service won't swap files under it. Before flashing, the helper stops every radio service and
+   refuses while any cpcd (or Aqara's OTA/boot services) is still running; during the flash it stops
+   anything of Aqara's that starts again (its boot sequence or watchdog can start `zigbee_cpcd` any time;
+   our cpcd holds the SPI lock, so that can't disturb the transfer).
+5. **An interrupted flash** (helper killed, power cut) may leave the radio without an application. At its
+   next start the helper does not start the mode's stack: it flashes Aqara's stock image back first (at
+   most twice across restarts). If that fails too, the radio stays off (`Radio status`: "radio firmware
+   missing after an interrupted flash") until the owner flashes Aqara stock from Home Assistant. The
+   bootloader is never touched, and the recovery pins reach it whatever the app area holds.
+6. The GBL check refuses tag lengths outside the file (the shell's 32-bit arithmetic would otherwise loop
+   on a length like `0xfffffff8`).
+
+Limits, on purpose: only images whose CPC protocol Aqara's cpcd 4.3.3 speaks (v4) can be verified, so
+an image built from a newer SDK (CPC v5/v6) would fail verification and be rolled back until a bundle
+also brings a matching host cpcd. No image is shipped; see
+[research/rcp-firmware.md](research/rcp-firmware.md) for what building one for this board takes.
+
 ## App side
 
 `app/kiosk/.../radio/RadioController.kt`, `RadioMode.kt`:
@@ -391,8 +557,11 @@ persist prop):
   (`sys.s1kiosk.radio.version`); with an older helper they are refused with "needs the root helper v2".
 - More entities: `Radio allowed clients` (text, config: empty = Home Assistant only, else addresses/CIDRs
   or `any`; see [Firewall](#firewall-only-home-assistant-by-default)), `Join Zigbee network` /
-  `Leave Zigbee network` buttons (router mode only), and a write-only `Thread dataset` text (ESPHome password mode; state always empty) that hands the dataset
-  to the helper.
+  `Leave Zigbee network` buttons (router mode only), a write-only `Thread dataset` text (ESPHome password mode; state always empty) that hands the dataset
+  to the helper, and (helper v4) `Leave Thread network`: in any mode, Off included, the helper detaches a
+  running Thread router and deletes the stored dataset (`$DIR/thread-dataset`, the network key) and the
+  router's OpenThread settings (`$DIR/thread-router`); `Radio status` then says "Thread network left". The
+  border-router mode's own network (`$DIR/thread`) is not touched.
 - `Radio status`: in coordinator mode `listening on :6638 for <who>` and `ZHA: radio type EZSP, serial
   path socket://<ip>:6638`; the border router adds `REST open to <who>`;
   in router mode it shows the router host's state instead of the helper's.
@@ -411,6 +580,10 @@ persist prop):
   only if its mode or status doesn't match. `Radio status` shows the helper's status.
 - `Radio status` is refreshed on the radio thread every 15 s and after every change, so no `getprop`
   runs on the ESPHome thread.
+- Helper v4 entities: `Zigbee stack` (select, config), `Radio helper` (diagnostic: which helper and
+  bundle run, or what to update), `Radio firmware` (diagnostic), `Radio firmware image` (select, config)
+  and `Flash radio firmware` (button, config). In coordinator mode with the Silicon Labs stack, `Radio
+  status` adds the Zigbee2MQTT settings (`adapter ember, port tcp://<ip>:6638`).
 
 ## Zigbee router
 
@@ -481,7 +654,9 @@ this repo, because they quote Aqara binaries).
 
 What this proves:
 - The PB7 (reset) / PB8 (wake) recovery path works, so a broken app can always be reflashed.
-- The bootloader accepts **unsigned, LZ4-compressed** GBLs.
+- The bootloader accepts **unsigned, uncompressed** GBLs. (The stock GBL's program tag is ERASEPROG
+  `0xFD0303FD`, not PROG_LZ4 `0xFD0505FD`, re-parsed 2026-11-10; whether this bootloader also takes LZ4
+  is unknown, so build custom images uncompressed.)
 - Bootloader secure boot is not enforced: the running app declares no signature.
 - An app-only GBL cannot touch the bootloader. The Gecko bootloader drops writes outside the app
   area, and this image has no bootloader or SE-upgrade tag.
@@ -527,13 +702,10 @@ Why one protocol at a time on a multi-PAN RCP is fine, while concurrent use is n
     bridge was found. Using either transport means writing that bridge **and** building a custom
     MG21 SPI image.
   - Not worth it for ZHA, which already works.
-- **Newer zigbeed** (EZSP >= 13 for Z2M `ember`):
-  - Binaries: SiLabs ships zigbeed as glibc armhf .debs, so Android would need a chroot or static
-    rebuild.
-  - Daemon: cpcd 4.9.x accepts secondaries speaking CPC protocol v4-v6.
-  - Blocker: zigbeed must match the RCP's spinel/SDK version. The Nerivec firmware builder notes
-    "requires RCP 2024.6.1". **A newer zigbeed therefore means reflashing**, which is the same blocker
-    as below.
+- **Newer zigbeed** (EZSP >= 13 for Z2M `ember`): **works on the stock RCP, no reflash** (panel test
+  2026-11-10): Silicon Labs' prebuilt armhf zigbeed 8.2.2 through a bundled glibc loader, with libcpc
+  4.3.3 against Aqara's cpcd. Now the `Zigbee stack` choice ([above](#zigbee-stack-aqara-or-silicon-labs-helper-v4)).
+  The "requires RCP 2024.6.1" note cited here earlier could not be found again.
 - **Dedicated OpenThread RCP over SPI:**
   - Possible in principle: NCP SPIDRV firmware, host `OT_POSIX_CONFIG_RCP_BUS=SPI` /
     `spinel+spi://` with the IRQ and reset GPIOs (AN1256).
@@ -607,8 +779,14 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
   `REST_LISTEN=127.0.0.1` and the VLAN firewall add to it. HA's last IPv4 and IPv6 are both kept; a stale
   one stays allowed until HA connects from a new address of that family.
 - **bellows reset bug** (above): ZHA can't form or restore onto this radio until bellows is fixed.
-- **EZSP 12 only:** ZHA works; Z2M `ember` doesn't. A newer zigbeed is the non-flashing fix,
-  if one can be obtained (licensing, ARM build).
+- **Zigbee2MQTT on Silicon Labs' zigbeed 8.2.2** (helper v4): an unsupported host/RCP pairing (8.2.2 on
+  a 4.3.3 RCP), not soak-tested with real devices yet; its 4.1-4.4 s reset answer vs herdsman's 5 s wait is
+  a thin margin. Experimental; Aqara's stack stays the default.
+- **Radio bundle key:** whoever holds it (and can put a file into the kiosk's storage) can run root code
+  on panels. Kept offline + one CI secret; rotation needs a new boot image per panel.
+- **Radio firmware flashing** (helper v4): only on an explicit, armed request, with rollback to the stock
+  image; a power cut mid-flash leaves the radio without an app until the stock image is flashed again
+  (the bootloader is not touched).
 - **zigbeed NVM:** Aqara's network state is overwritten by any Zigbee mode use. Back it up.
 - **Thread:** the border-router build's REST/BR/SRP/mDNS side works; forwarding between the LAN and
   real Thread devices (with the policy rules above) is untested, and netd could rewrite rules on a

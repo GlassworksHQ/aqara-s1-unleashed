@@ -249,6 +249,13 @@ class KioskPrefs(context: Context) {
      * per family, from its authenticated ESPHome connection, and the owner's explicit list
      * (`Radio allowed clients`, normalized; "" = automatic). Written only by RadioController.
      */
+    /** Zigbee stack for the coordinator mode, a [sh.edm.s1kiosk.radio.ZigbeeStack] id (helper v4). */
+    val radioStackStore: sh.edm.s1kiosk.radio.StackStore = object : sh.edm.s1kiosk.radio.StackStore {
+        override var stack: String?
+            get() = sp.getString("radio_zigbee_stack", null)
+            set(v) = sp.edit().putString("radio_zigbee_stack", v).apply()
+    }
+
     val radioAllowStore: sh.edm.s1kiosk.radio.AllowStore = object : sh.edm.s1kiosk.radio.AllowStore {
         override var haV4: String?
             get() = sp.getString("radio_ha_ipv4", null)

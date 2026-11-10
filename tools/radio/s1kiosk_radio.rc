@@ -1,7 +1,9 @@
-# S1 Kiosk radio helper (docs/radio.md "Root helper contract", v2). Injected into init by Magisk as
+# S1 Kiosk radio helper (docs/radio.md "Root helper contract", v4). Injected into init by Magisk as
 # overlay.d/s1kiosk_radio.rc (tools/root/patch-boot-magisk.sh, docs/research/root.md). The script, otbr-agent and
-# ot-ctl ship in the boot image (overlay.d/sbin -> ${MAGISKTMP}). State, config and optional newer
-# binaries live in /data/s1kiosk/radio (root:root 0700), which the script creates on first run.
+# ot-ctl ship in the boot image (overlay.d/sbin -> ${MAGISKTMP}). State and config live in
+# /data/s1kiosk/radio (root:root 0700), which the script creates on first run. The boot image's script
+# is also the loader: a signed radio bundle in /data/s1kiosk/radio/bundle/current (installed through
+# s1kiosk_bundle.rc) runs instead, and the boot image's copy is the fallback.
 #
 # Same shape as Aqara's own gateway.rc services: root, u:r:su:s0 (SELinux is permissive on this
 # firmware). Not oneshot: the script never exits, it supervises the mode. It must be started at boot,
@@ -10,8 +12,9 @@
 #
 # App side: setprop persist.s1kiosk.radio_mode <off|zigbee_tcp|zigbee_router|thread|thread_router>
 #           setprop ctl.restart s1kiosk_radio
-# Helper side: sys.s1kiosk.radio.status = "<applying|ok|error> <mode>[: detail]", sys.s1kiosk.radio.version = 2,
-#              sys.s1kiosk.radio.otbr = br|agent|none (which otbr-agent is installed)
+# Helper side: sys.s1kiosk.radio.status = "<applying|ok|error> <mode>[: detail]", sys.s1kiosk.radio.version = 4,
+#              sys.s1kiosk.radio.otbr = br|agent|none (which otbr-agent is installed), and the v4 props
+#              (source, bundle, zigbee, fw, fw_targets; see the script's header)
 
 service s1kiosk_radio /system/bin/sh ${MAGISKTMP}/s1kiosk_radio.sh
     user root

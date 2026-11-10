@@ -4,6 +4,7 @@
 export type AssetName =
   | 'uboot-spl' | 'uboot' | 'magisk' | 'otbr-agent' | 'ot-ctl'
   | 'radio-rc' | 'radio-sh' | 'firstboot-rc' | 'firstboot-sh' | 'netwatch-rc' | 'netwatch-sh' | 'update-rc' | 'update-sh'
+  | 'bundle-rc' | 'bundle-sh' | 'verify' | 'bundle-pub'
   | 'branding-rc' | 'bootanimation' | 'bootlogo' | 'kiosk-apk' | 'keyboard-apk';
 
 export interface AssetEntry { name: AssetName; path: string; sha256: string; size: number; license: string; source: string }

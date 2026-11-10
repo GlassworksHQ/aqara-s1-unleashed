@@ -152,10 +152,15 @@ describe('vbmeta (unit)', () => {
 describe('s1Overlay (unit)', () => {
   const base = { radioRc: enc.encode('a'), radioSh: enc.encode('b'), otbrAgent: enc.encode('c'), otCtl: enc.encode('d'),
     firstbootRc: enc.encode('e'), firstbootSh: enc.encode('f'), netwatchRc: enc.encode('g'), netwatchSh: enc.encode('h'),
-    updateRc: enc.encode('i'), updateSh: enc.encode('j') };
+    updateRc: enc.encode('i'), updateSh: enc.encode('j'), bundleRc: enc.encode('k'), bundleSh: enc.encode('l'),
+    verify: enc.encode('m'), bundlePub: enc.encode(`${'ab'.repeat(32)}\n`) };
   it('refuses a key that is not an adb public key, accepts none', () => {
     expect(() => s1Overlay({ ...base, adbKeys: enc.encode('ssh-rsa AAAA') })).toThrow(/QAAAA/);
-    expect(s1Overlay({ ...base, adbKeys: new Uint8Array(0) })).toHaveLength(11);
+    expect(s1Overlay({ ...base, adbKeys: new Uint8Array(0) })).toHaveLength(15);
+  });
+  it('refuses a radio bundle key that is not 32 hex bytes, and an empty verifier', () => {
+    expect(() => s1Overlay({ ...base, adbKeys: new Uint8Array(0), bundlePub: enc.encode('abc') })).toThrow(/public key/);
+    expect(() => s1Overlay({ ...base, adbKeys: new Uint8Array(0), verify: new Uint8Array(0) })).toThrow(/verify/);
   });
 });
 
@@ -181,6 +186,7 @@ describe.skipIf(!HAVE_GOLDEN)('golden: patchBoot == tools/root/patch-boot-magisk
     adbKeys: opts.key === false ? new Uint8Array(0) : g('fixtures/test_adbkey.pub'),
     netwatchRc: ov('s1kiosk_netwatch.rc'), netwatchSh: ov('s1kiosk_netwatch.sh'),
     updateRc: ov('s1kiosk_update.rc'), updateSh: ov('s1kiosk_update.sh'),
+    bundleRc: ov('s1kiosk_bundle.rc'), bundleSh: ov('s1kiosk_bundle.sh'), verify: ov('s1kiosk_verify'), bundlePub: ov('s1kiosk_bundle.pub'),
     branding: opts.anim === false ? undefined : { rc: ov('s1kiosk_branding.rc'), bootAnimation: ov('s1kiosk_bootanimation.zip') },
   });
   /** The config the CLI printed ("--- Magisk config:" in out/<case>.log). */

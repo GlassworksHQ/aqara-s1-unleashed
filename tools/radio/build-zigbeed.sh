@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# build-zigbeed.sh - PROTOTYPE: package Silicon Labs' prebuilt zigbeed (EmberZNet 8.2.2, EZSP v18,
+# build-zigbeed.sh - RESEARCH/TEST BUNDLE (the product path is the radio bundle's sisdk/ runtime from
+# tools/radio/build-sisdk-runtime.sh plus the panel's own download of zigbeed; docs/radio.md): package Silicon Labs' prebuilt zigbeed (EmberZNet 8.2.2, EZSP v18,
 # Simplicity SDK 2025.6.3) so it runs on the Aqara S1 panel (Android 10, 32-bit ARM userspace)
 # next to Aqara's own cpcd 4.3.3 and the stock multi-PAN RCP. Goal: Zigbee2MQTT's `ember` adapter
 # (needs EZSP 13-19) without reflashing the radio. See docs/research/zigbee2mqtt.md.
@@ -173,25 +174,7 @@ for l in ld-linux-armhf.so.3 libc.so.6 libm.so.6 libstdc++.so.6 libgcc_s.so.1; d
   cp -L "$S/$l" "$OUT/lib/$l"
 done
 cp x/usr/share/doc/zigbeed/copyright "$OUT/LICENSE.zigbeed-MSLA.txt"
-cat > "$OUT/zigbeed.sh" <<'SH'
-#!/system/bin/sh
-# Runs SiLabs zigbeed (glibc) on Android through the bundled loader. Args are zigbeed's own, e.g.
-#   zigbeed.sh -r 'spinel+cpc://cpcd_0?iid=1&iid-list=0' -p /tmp/ttyZigbeeNCP -v 1 -d 3
-# NVM: ./host_token.nvm in $ZIGBEED_STATE (never Aqara's /data/zigbee_host).
-D=$(cd "${0%/*}" && pwd) || exit 1
-ST=${ZIGBEED_STATE:-/data/s1kiosk/radio/zigbeed-sisdk}
-[ -d "$ST" ] || { mkdir -p "$ST" && chmod 700 "$ST"; }
-cd "$ST" || exit 1
-# -c /dev/null: no /usr/local/etc/zigbeed.conf on Android; everything comes from the command line.
-# Added once only: zigbeed re-execs itself through this script (below), with the args it already has.
-[ "$1" = -c ] || set -- -c /dev/null "$@"
-# --argv0: on every ASH reset (each EZSP host connect) zigbeed longjmps back into main(), prints
-# "Restarting" and calls execvp(argv[0], argv). argv[0] would be bin/zigbeed, whose ELF interpreter
-# /lib/ld-linux-armhf.so.3 doesn't exist on Android: execvp fails, zigbeed falls through and
-# segfaults. With argv[0] = this script, the re-exec comes back here and through the bundled loader.
-exec "$D/lib/ld-linux-armhf.so.3" --library-path "$D/lib" --argv0 "$D/zigbeed.sh" "$D/bin/zigbeed" "$@"
-SH
-chmod 0755 "$OUT/zigbeed.sh"
+install -m 0755 "$W/zigbeed.sh" "$OUT/zigbeed.sh"   # = tools/radio/sisdk/zigbeed.sh
 {
   echo "zigbeed-sisdk bundle (prototype), built $(date -u +%FT%TZ)"
   echo "zigbeed: EmberZNet 8.2.2 (EZSP 18), Simplicity SDK $SISDK_TAG debian-bookworm.zip sha256 $DEB_ZIP_SHA256"
@@ -205,6 +188,7 @@ chmod 0755 "$OUT/zigbeed.sh"
 cat "$OUT/BUILD-INFO.txt"
 INNER
 chmod +x "$BUILD_DIR/inner.sh"
+cp "$SCRIPT_DIR/sisdk/zigbeed.sh" "$BUILD_DIR/zigbeed.sh"
 
 log "assemble in $BUILDER_IMAGE"
 docker run --rm --platform linux/arm64 -v "$BUILD_DIR":/build -v "$OUT_DIR":/out \

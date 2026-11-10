@@ -7,10 +7,41 @@ below as the release notes.
 
 ## [Unreleased]
 
+**Zigbee2MQTT on the panel's radio, and the panel's root side now updates with the app.**
+
 ### Added
+- **Zigbee2MQTT support (experimental).** A new *Zigbee stack* select in Home Assistant switches the
+  Zigbee coordinator from Aqara's stack (ZHA only) to Silicon Labs' newer one, which Zigbee2MQTT's
+  `ember` adapter needs. The panel downloads it straight from Silicon Labs (it can't be bundled for
+  licence reasons) and checks it. Then use `adapter: ember`, `port: tcp://<panel IP>:6638`; *Radio
+  status* shows the values. No radio firmware change is needed. ZHA works with either stack.
+- **Updates for the root side through the app.** After one more update of the panel's boot software
+  with the web installer, fixes to the radio helper, new radio stacks and radio firmware arrive with
+  normal app updates, as a package signed by the project that the panel checks before installing. If
+  anything is wrong with it, the panel keeps using the version built into its boot software. The new
+  *Radio helper* sensor says which one runs and whether the boot software needs updating.
+- **Radio firmware updates**, never automatic: choose an image in *Radio firmware image*, then press
+  *Flash radio firmware* within two minutes. The panel stops the radio, flashes it with Aqara's own
+  tool, checks the version, and goes back to Aqara's original firmware if anything fails. *Radio
+  firmware* shows progress. No new firmware is offered yet; Aqara's original can always be put back.
+- **Leave Thread network** button: the panel forgets the Thread network it was given (the dataset with
+  the network key, and the router's settings), in any radio mode. Needs the new boot software.
 - *Radio allowed clients* can also be changed on the panel: in the hidden settings (tap the top-left
   corner five times), under *Radio: who may connect*. It's the same setting as in Home Assistant, and the
   dialog shows who is allowed right now.
+
+### Changed
+- The Zigbee coordinator now waits until the radio's start-up message is cleared before letting a
+  client in, which avoids a failed first start in Zigbee2MQTT (ZHA was not affected).
+- Old hand-made copies of the radio helper on the panel are no longer used automatically (they would
+  have hidden updates).
+- Radio firmware, Zigbee stack and Thread leave controls only work from Home Assistant's encrypted
+  connection, not from an unencrypted one on a panel that was never paired.
+- After *Leave Zigbee network*, the panel no longer briefly says the network is rejoining.
+
+### Note
+- The new features need the panel's boot software from the web installer once more (one press of the
+  button on the back). Panels that skip it keep working as before; Home Assistant says what needs it.
 
 ## [0.3.1] - 2026-11-10
 

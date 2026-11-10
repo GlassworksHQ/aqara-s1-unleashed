@@ -20,7 +20,13 @@ import sh.edm.s1kiosk.TimerBoard
 import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.radio.RadioAllow
 import sh.edm.s1kiosk.radio.RadioController
+import sh.edm.s1kiosk.radio.AssetBundleSource
+import sh.edm.s1kiosk.radio.RadioBundle
+import sh.edm.s1kiosk.radio.RadioFirmware
 import sh.edm.s1kiosk.radio.RadioMode
+import sh.edm.s1kiosk.radio.ShellProps
+import sh.edm.s1kiosk.radio.SisdkZigbeed
+import sh.edm.s1kiosk.radio.ZigbeeStack
 import sh.edm.s1kiosk.radio.ZigbeeRouterHost
 import sh.edm.s1kiosk.ScreenController
 import sh.edm.s1kiosk.base.BaseEntities
@@ -112,6 +118,11 @@ class PanelDevice(
             ZigbeeRouterHost(log = { Log.i(RadioController.TAG, it) }, onStatus = { onStatus() })
         },
         allow = prefs.radioAllowStore,
+        stackStore = prefs.radioStackStore,
+        bundle = RadioBundle(ShellProps, AssetBundleSource(ctx.assets), ctx.filesDir, log = { Log.i(RadioController.TAG, it) }),
+        zigbeedFetcher = { dest, progress ->
+            SisdkZigbeed.fetch(dest, ctx.cacheDir, "s1-kiosk/${BuildConfig.VERSION_NAME} (+https://github.com/aguilaair/aqara-s1-unleashed)", progress)
+        },
     )
     /**
      * App updates from GitHub Releases (docs/releasing.md); the "App update" entity. runCatching:
@@ -663,9 +674,27 @@ class PanelDevice(
                 exec.execute { server?.publishStates() }
             },
         ),
+        // Zigbee stack behind the coordinator mode (helper v4): Aqara's (EZSP 12) or Silicon Labs' (EZSP 18,
+        // for Zigbee2MQTT; the panel downloads it from Silicon Labs). docs/radio.md "Zigbee stack".
+        SelectEntity(
+            "zigbee_stack", "Zigbee stack", "mdi:layers-outline", options = ZigbeeStack.LABELS,
+            get = { radio.zigbeeStack.label }, set = { radio.setZigbeeStack(it) },
+        ).apply { authOnly = true },
+        TextSensorEntity("radio_helper", "Radio helper", "mdi:shield-check-outline", EntityCategory.DIAGNOSTIC, get = { radio.helperStatusText() }),
+        // Radio firmware (helper v4): never automatic. Pick an image (armed for 2 minutes), then press Flash.
+        TextSensorEntity("radio_firmware", "Radio firmware", "mdi:chip", EntityCategory.DIAGNOSTIC, get = { radio.firmwareText() }),
+        SelectEntity(
+            "radio_firmware_image", "Radio firmware image", "mdi:chip", options = RadioFirmware.OPTIONS,
+            get = { radio.firmwareSelected() }, set = { radio.firmwareSelect(it) },
+        ).apply { authOnly = true },
+        ButtonEntity("radio_firmware_flash", "Flash radio firmware", "mdi:flash-alert", EntityCategory.CONFIG, press = { radio.firmwareFlash() })
+            .apply { authOnly = true },
         // Zigbee router: join/leave the network that has permit-join open (docs/radio.md "Zigbee router").
         ButtonEntity("zigbee_router_join", "Join Zigbee network", "mdi:zigbee", EntityCategory.CONFIG, press = { radio.routerJoin() }),
         ButtonEntity("zigbee_router_leave", "Leave Zigbee network", "mdi:link-variant-off", EntityCategory.CONFIG, press = { radio.routerLeave() }),
+        // Forget the Thread network (helper v4, any mode): deletes the dataset (network key) and router settings.
+        ButtonEntity("thread_leave", "Leave Thread network", "mdi:link-variant-off", EntityCategory.CONFIG, press = { radio.threadLeave() })
+            .apply { authOnly = true },
         // Thread router: write-only. The dataset is a secret (it holds the network key): the state is
         // always empty, it goes to the root helper and is never logged or echoed back.
         TextEntity(

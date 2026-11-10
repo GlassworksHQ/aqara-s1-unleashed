@@ -85,6 +85,8 @@ class ZigbeeRouterHost(
     // session state (host thread only)
     private var stackUp = false
     private var stackStatus = -1
+    /** An explicit leave is under way: NETWORK_DOWN is expected then, not a reason to say "rejoining". */
+    @Volatile private var leaving = false
     private val found = ArrayList<Ezsp.FoundNetwork>()
     private var scanDone: Int? = null
     private var children = 0
@@ -248,11 +250,14 @@ class ZigbeeRouterHost(
 
     /** Leaves (erases) the network in zigbeed's NVM; verified with networkState. */
     private fun leaveCurrent(ezsp: EzspClient): Boolean {
-        if (bringUp(ezsp)) {
-            val st = ezsp.command(Ezsp.LEAVE_NETWORK)[0].toInt() and 0xFF
-            log("router: leaveNetwork -> ${Ezsp.statusName(st)}")
-            if (st == Ezsp.SUCCESS) waitFor(ezsp, 10_000) { !stackUp }
-        }
+        leaving = true
+        try {
+            if (bringUp(ezsp)) {
+                val st = ezsp.command(Ezsp.LEAVE_NETWORK)[0].toInt() and 0xFF
+                log("router: leaveNetwork -> ${Ezsp.statusName(st)}")
+                if (st == Ezsp.SUCCESS) waitFor(ezsp, 10_000) { !stackUp }
+            }
+        } finally { leaving = false }
         val ns = networkState(ezsp)
         if (ns != Ezsp.NO_NETWORK) log("router: network state after leave: $ns")
         stackUp = ns == Ezsp.JOINED_NETWORK
@@ -324,7 +329,7 @@ class ZigbeeRouterHost(
                     Ezsp.NETWORK_DOWN -> {
                         val was = stackUp
                         stackUp = false
-                        if (was && snapshot.state == State.JOINED) set(State.JOINED, "network down, the stack is rejoining")
+                        if (was && snapshot.state == State.JOINED && !leaving) set(State.JOINED, "network down, the stack is rejoining")
                     }
                 }
                 log("router: stack status ${Ezsp.statusName(s)}")

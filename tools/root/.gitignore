@@ -1,0 +1,3 @@
+# build outputs and fetched third-party sources (never commit)
+out/
+.build/

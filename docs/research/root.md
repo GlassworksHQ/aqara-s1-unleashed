@@ -59,8 +59,8 @@ simulate a fresh panel:
   `otbr-agent` on `wpan0`, and `ot-ctl` answers;
 - switching back to *Off* stopped it.
 
-Binaries in `/data/s1kiosk/radio` (e.g. a newer `otbr-agent`, or a `zigbee-router`) override the
-bundled ones.
+Since helper v4, binaries and a newer helper come from a **signed radio bundle** installed by the app
+(below); copies left in `/data/s1kiosk/radio` are only used with a root-made `dev-override` marker.
 
 **Undo:** `fastboot flash boot stock-boot.img` through the same FEL path.
 
@@ -91,8 +91,10 @@ bundled ones.
 - **Extra in the boot image: the app update service.** `tools/root/s1kiosk_update.{sh,rc}` is a
   disabled one-shot root service. At boot init sets `sys.s1kiosk.update.version=1`, so the app knows
   it exists. Details under [App update service](#app-update-service).
-- **Extra in the helper: updatable without a new boot image.** It hands over to a root-owned
-  `/data/s1kiosk/radio/s1kiosk_radio.sh` if one exists.
+- **Extra in the boot image: the radio bundle loader (helper v4).** `s1kiosk_bundle.{sh,rc}`,
+  `s1kiosk_verify` (static ARM Ed25519 checker) and `s1kiosk_bundle.pub` (the project's public key).
+  After this boot image, helper fixes, new radio stacks and radio firmware images come with app
+  updates; see [Radio bundle service](#radio-bundle-service).
 
 **Undo:** `tools/install/fel-install.sh --undo <backup-dir>`.
 - It verifies the backup against its `SHA256SUMS` and refuses a `boot.img` that is already
@@ -131,7 +133,9 @@ panel's adb serial. The scripts keep `ANDROID_SERIAL` for adb only.
   - the kiosk's uid from `pm list packages -U`, which must match the owner of `/data/data/sh.edm.s1kiosk`;
   - `files`, `files/update` and `pending.apk`: no symlinks, all owned by that uid (only the kiosk
     can write its private dir), and `pending.apk` is a single-link regular file of at most 256 MiB;
-  - it copies the file into root-only `/data/s1kiosk/update` and installs the copy over stdin with
+  - it copies the file into root-only `/data/s1kiosk/update` (with `s1kiosk_verify --copy` on boot
+    images that have it, so a path swapped for a symlink or FIFO after the checks can't redirect or
+    hang the copy) and installs the copy over stdin with
     `pm install -r -S <size>`, without `-d`. Android refuses another signing key for the same
     package, and refuses downgrades;
   - afterwards, the kiosk's versionCode must have gone up, and no other package may have changed.
@@ -142,6 +146,28 @@ panel's adb serial. The scripts keep `ANDROID_SERIAL` for adb only.
   the service also runs `am start` of MainActivity if it isn't running after 3 s.
 - **No service** (boot images from before it): the app falls back to a PackageInstaller session
   with an on-screen confirmation.
+
+## Radio bundle service
+
+`s1kiosk_bundle` installs the signed radio bundle the app ships ([radio.md](../radio.md#radio-bundles-helper-v4)).
+Same shape and threat model as `s1kiosk_update`:
+
+- **App side:** stage `/data/data/sh.edm.s1kiosk/files/radio/bundle-in/` (manifest, `manifest.sig`, the
+  files), `setprop sys.s1kiosk.bundle.status requested`, `setprop ctl.start s1kiosk_bundle`. At boot init
+  sets `sys.s1kiosk.bundle.loader=1`, so the app knows the boot image has it.
+- **Service side:** finds the kiosk's uid (pm and the data dir owner must agree); copies manifest and
+  signature into a fresh root-only `/data/s1kiosk/radio/bundle/stage`; checks the Ed25519 signature
+  with the key **in the boot image** before reading anything else; refuses a version below the floor
+  (`bundle/version`, the highest ever installed, and at least the installed one); copies only the
+  listed files with `s1kiosk_verify --copy` (an `openat(O_NOFOLLOW)` walk, kiosk-owned all the way, the
+  file opened `O_NONBLOCK` and checked on the fd: regular, one link, the listed size; exactly that many
+  bytes copied) and checks the copy's SHA-256; records the new floor; renames the result into
+  `bundle/current`; writes the app-readable `/data/s1kiosk-pub/radio-bundle`; restarts the radio helper. Status:
+  `sys.s1kiosk.bundle.status` = `running: …` / `ok: radio bundle <v> installed …` / `error: …`.
+- **At worst** another app makes it reinstall a bundle we signed (same or newer version) or spoofs the
+  status property. Running its own root code would need the private key, which is not on the panel.
+- The helper's loader re-checks `bundle/current` (`s1kiosk_bundle.sh --check`) at every start and falls
+  back to the boot image's helper if it fails or the bundle's helper keeps exiting.
 
 ## Next
 - Browser installer (WebUSB): built, in [`web/`](../../web/src/README.md); design in

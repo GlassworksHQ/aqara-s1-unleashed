@@ -3,6 +3,17 @@
 # Builds app/kiosk with the release key from the repository secrets, names the APK
 # s1-kiosk-<version>.apk, writes its .sha256 and publishes both on a GitHub Release with
 # notes from CHANGELOG.md. Panels find it through the app's update entity in Home Assistant.
+#
+# The APK carries the signed radio bundle (docs/radio.md "Radio bundles"): the radio helper,
+# otbr-agent/ot-ctl and the Silicon Labs Zigbee runtime (never Silicon Labs' zigbeed itself). Its key
+# lets code run as root on every panel, so it is kept away from everything else:
+#   inputs       builds the Silicon Labs runtime (no secrets); its output must match the committed
+#                tools/radio/sisdk-runtime.sha256
+#   sign-bundle  the only job that can read S1_RADIO_BUNDLE_KEY (an environment secret of the
+#                `radio-signing` environment). Signs only commits on main, takes nothing from the other
+#                job without checking it against committed hashes, runs no third-party action
+#   release      builds and publishes the APK with the signed bundle (APK key; no bundle key)
+# Every action is pinned by commit SHA (the tag in the comment is what it was at the time).
 name: Release
 
 on:
@@ -10,18 +21,22 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write # create the release and upload its assets (GITHUB_TOKEN only)
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release:
+  inputs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Version from the tag
         id: version
@@ -42,15 +57,125 @@ jobs:
           tools/release/changelog-section.sh "$VERSION" > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
 
+      - name: Silicon Labs runtime (no zigbeed), checked against tools/radio/sisdk-runtime.sha256
+        run: tools/radio/build-sisdk-runtime.sh
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sisdk-runtime
+          path: tools/radio/out/sisdk/
+          if-no-files-found: error
+          retention-days: 1
+
+  sign-bundle:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: radio-signing
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Only commits on main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor HEAD origin/main ||
+            { echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) is not on main: refusing to sign a radio bundle"; exit 1; }
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: sisdk-runtime
+          path: ${{ runner.temp }}/sisdk
+
+      - name: Check every input against what is committed
+        run: |
+          # The runtime: exactly the committed file list and hashes (artifacts don't keep file modes;
+          # they are set here, not taken from the other job).
+          cd "$RUNNER_TEMP/sisdk"
+          find . -type f | LC_ALL=C sort | xargs sha256sum > "$RUNNER_TEMP/sisdk.sha256"
+          diff "$RUNNER_TEMP/sisdk.sha256" "$GITHUB_WORKSPACE/tools/radio/sisdk-runtime.sha256" ||
+            { echo "::error::the Silicon Labs runtime does not match tools/radio/sisdk-runtime.sha256"; exit 1; }
+          find . -type f -exec chmod 0644 {} +
+          chmod 0755 zigbeed.sh lib/ld-linux-armhf.so.3
+          # otbr-agent/ot-ctl: the pinned border-router build the web installer ships (web/assets.lock.json).
+          cd "$GITHUB_WORKSPACE"; mkdir -p "$RUNNER_TEMP/radio-in"
+          python3 - "$RUNNER_TEMP/radio-in" <<'PY'
+          import hashlib, json, sys, urllib.request
+          out = sys.argv[1]
+          for a in json.load(open('web/assets.lock.json'))['assets']:
+              if a['name'] not in ('otbr-agent', 'ot-ctl'):
+                  continue
+              data = urllib.request.urlopen(a['url']).read()
+              h = hashlib.sha256(data).hexdigest()
+              if h != a['sha256']:
+                  sys.exit(f"{a['name']}: sha256 {h}, expected {a['sha256']}")
+              open(f"{out}/{a['name']}", 'wb').write(data)
+              print(a['name'], len(data), h)
+          PY
+
+      - name: Sign the radio bundle
+        env:
+          VERSION: ${{ needs.inputs.outputs.version }}
+          S1_RADIO_BUNDLE_KEY: ${{ secrets.S1_RADIO_BUNDLE_KEY }}
+        run: |
+          [ -n "$S1_RADIO_BUNDLE_KEY" ] || { echo "::error::secret S1_RADIO_BUNDLE_KEY is not set in the radio-signing environment (docs/releasing.md)"; exit 1; }
+          umask 077
+          printf '%s\n' "$S1_RADIO_BUNDLE_KEY" > "$RUNNER_TEMP/radio-bundle.pem"
+          IFS=. read -r major minor patch <<< "$VERSION"
+          code=$((major * 10000 + minor * 100 + patch))   # = the APK's versionCode: only ever goes up
+          python3 tools/radio/make-bundle.py --version "$code" --app-version "$VERSION" \
+            --key "$RUNNER_TEMP/radio-bundle.pem" \
+            --out "$RUNNER_TEMP/signed" --pubkey tools/root/s1kiosk_bundle.pub \
+            --file s1kiosk_radio.sh=tools/radio/s1kiosk_radio.sh:0700 \
+            --file "otbr-agent=$RUNNER_TEMP/radio-in/otbr-agent:0700" \
+            --file "ot-ctl=$RUNNER_TEMP/radio-in/ot-ctl:0700" \
+            --dir "sisdk=$RUNNER_TEMP/sisdk"
+
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/radio-bundle.pem"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: radio-bundle
+          path: ${{ runner.temp }}/signed/
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: [inputs, sign-bundle]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write # create the release and upload its assets (GITHUB_TOKEN only)
+    env:
+      VERSION: ${{ needs.inputs.outputs.version }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: radio-bundle
+          path: ${{ runner.temp }}/radio-bundle-assets
+
+      - name: Radio bundle for the APK
+        run: |
+          echo "S1_RADIO_BUNDLE_ASSETS=$RUNNER_TEMP/radio-bundle-assets" >> "$GITHUB_ENV"
+          tools/release/changelog-section.sh "$VERSION" > "$RUNNER_TEMP/notes.md"
+
       # AGP 9.3 / Gradle 9.8 / Kotlin 2.4 (app/build.gradle.kts, gradle-wrapper.properties) need JDK 17+;
       # the app is developed on Temurin 21.
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '21'
           cache: gradle
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         with:
           # The default ("tools platform-tools") fails: current sdkmanager has no "tools" package.
           packages: platform-tools
@@ -72,7 +197,7 @@ jobs:
       - name: Build the release APK
         working-directory: app
         env:
-          S1_VERSION: ${{ steps.version.outputs.version }}
+          S1_VERSION: ${{ env.VERSION }}
           S1_REQUIRE_RELEASE_SIGNING: 'true'
           S1_KEYSTORE_PASSWORD: ${{ secrets.S1_KEYSTORE_PASSWORD }}
           S1_KEY_ALIAS: ${{ secrets.S1_KEY_ALIAS }}
@@ -80,8 +205,6 @@ jobs:
         run: ./gradlew --no-daemon :kiosk:assembleRelease
 
       - name: Name, verify and checksum
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           mkdir dist
           apk="dist/s1-kiosk-$VERSION.apk"
@@ -95,12 +218,13 @@ jobs:
             *"name='sh.edm.s1kiosk'"*"versionName='$VERSION'"*) ;;
             *) echo "::error::APK package/version is not sh.edm.s1kiosk $VERSION"; exit 1 ;;
           esac
+          unzip -l "$apk" | grep -q 'assets/radio-bundle/manifest.sig$' || { echo "::error::APK has no signed radio bundle"; exit 1; }
+          if unzip -l "$apk" | grep -q 'assets/radio-bundle/.*zigbeed$'; then echo "::error::Silicon Labs' zigbeed must never be in the APK"; exit 1; fi
           (cd dist && sha256sum "s1-kiosk-$VERSION.apk" > "s1-kiosk-$VERSION.apk.sha256" && cat "s1-kiosk-$VERSION.apk.sha256")
 
       - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "dist/s1-kiosk-$VERSION.apk" "dist/s1-kiosk-$VERSION.apk.sha256" \

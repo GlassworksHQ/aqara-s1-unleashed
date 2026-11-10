@@ -72,6 +72,16 @@ android {
     packaging {
         jniLibs { useLegacyPackaging = true }
     }
+
+    // The signed radio bundle (docs/radio.md "Radio bundles"): S1_RADIO_BUNDLE_ASSETS is a directory
+    // holding radio-bundle/ (tools/radio/make-bundle.py --out). The release workflow sets it; other
+    // builds ship no bundle and the app leaves the panel's root side as it is.
+    System.getenv("S1_RADIO_BUNDLE_ASSETS")?.takeIf { it.isNotEmpty() }?.let { dir ->
+        if (!file("$dir/radio-bundle/manifest").isFile || !file("$dir/radio-bundle/manifest.sig").isFile) {
+            throw GradleException("S1_RADIO_BUNDLE_ASSETS=$dir has no radio-bundle/manifest(.sig)")
+        }
+        sourceSets.getByName("main").assets.srcDir(dir)
+    }
 }
 
 dependencies {
@@ -85,6 +95,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     // QR code on the sign-in screen (encoder only, pure Java, Apache-2.0).
     implementation("com.google.zxing:core:3.5.3")
+    // XZ decoder (pure Java, 0BSD) for Silicon Labs' zigbeed .deb (radio/SisdkZigbeed.kt).
+    implementation("org.tukaani:xz:1.10")
 
     // JVM unit tests for the ESPHome API (against aioesphomeapi) and openWakeWord buffering.
     testImplementation("junit:junit:4.13.2")

@@ -1,0 +1,15 @@
+7c4dc8f97d9700967d41a4690dc6b3dc38b5bf7af9d89c3b7b400b35d48c600d  ./BUILD-INFO.txt
+2f4ca4c27c1f0fd287cff18e8b7349be5b13f10671fb2d29cc617fd1e10dc7b8  ./NOTICE.txt
+364e9b58b39ad5839762d8cba86820421c53d007abb39ccbf228c914c3f59fc8  ./lib/ld-linux-armhf.so.3
+648451f0797a318779243e6f7ecd9664c860525a8491235fc6b221fd396a2f8d  ./lib/libc.so.6
+3f2838a54644b110984cab90527e9da9617db672de8b42f033245d47d93b2366  ./lib/libcpc.so.3
+6cb26c184cfc8390f5682c54e8bb57651ae367b02b0e93e5d786408ee92167ad  ./lib/libgcc_s.so.1
+884173cdbed2374e0644f4270e0b91734e93addc68711a8cdd135cd73ef30446  ./lib/libm.so.6
+548ff3813ac64587ca8e1e369e57fa903f07cde9f15da5cdcabcfc635384802e  ./lib/libstdc++.so.6
+8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903  ./licenses/GPL-3.0.txt
+dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551  ./licenses/LGPL-2.1.txt
+09e876c51563cc0a8c046ad468aeb7c2950a2e63c67466980c6fae3acbd131e8  ./licenses/cpc-daemon.LICENSE.txt
+d3c95b56fa33e28b57860580f0baf4e4f4de2a268a2b80f1d031a5191bade265  ./licenses/libc6-armhf-cross.copyright.txt
+da8191658b3452ce9caf31638ba61dab31a38c619fa39df119812e050f592fd3  ./licenses/libgcc-s1-armhf-cross.copyright.txt
+da8191658b3452ce9caf31638ba61dab31a38c619fa39df119812e050f592fd3  ./licenses/libstdc++6-armhf-cross.copyright.txt
+16da363f35d0cd105b889fc1bf2f56c8e3015ea1cda39ec3541fbf3d047b7b4c  ./zigbeed.sh

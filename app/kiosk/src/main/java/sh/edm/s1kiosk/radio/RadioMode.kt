@@ -64,6 +64,24 @@ enum class RadioMode(val id: String, val label: String, val needsHelper: Boolean
     }
 }
 
+/**
+ * The Zigbee stack behind the coordinator mode (helper v4, [RadioHelper.PROP_ZIGBEE_STACK]). Aqara's
+ * zigbeed 7.3.3 speaks EZSP 12 (ZHA only); Silicon Labs' zigbeed 8.2.2 speaks EZSP 18 (Zigbee2MQTT's
+ * `ember` adapter, and ZHA), runs on the same stock radio firmware, and is downloaded by the panel from
+ * Silicon Labs ([SisdkZigbeed]). The Zigbee router mode always uses Aqara's (its host speaks EZSP 12).
+ */
+enum class ZigbeeStack(val id: String, val label: String) {
+    AQARA("aqara", "Aqara 7.3.3 (EZSP 12, ZHA)"),
+    SISDK("sisdk", "Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)");
+
+    companion object {
+        val DEFAULT = AQARA
+        val LABELS: List<String> = entries.map { it.label }
+        fun fromLabel(label: String): ZigbeeStack? = entries.firstOrNull { it.label == label }
+        fun parse(stored: String?): ZigbeeStack = entries.firstOrNull { it.id == stored || it.label == stored } ?: DEFAULT
+    }
+}
+
 /** Aqara's radio init services (/vendor/etc/init/gateway.rc), root, u:r:su:s0. */
 object AqaraRadio {
     const val CPCD = "zigbee_cpcd"     // cpcd -c /etc/cpcd.conf (CPC daemon, owns /dev/spidev2.0)
@@ -107,9 +125,47 @@ object RadioHelper {
      * until the stack answers, [PROP_OTBR].
      */
     const val PROP_VERSION = "sys.s1kiosk.radio.version"
-    const val VERSION = 3
+    const val VERSION = 4
     /** v3: the firewall ([PROP_ALLOW], [PROP_ALLOWED]); otherwise the same as v2. */
     const val FIREWALL_VERSION = 3
+    /**
+     * v4 (boot image with the radio bundle loader): signed radio bundles ([RadioBundle]), the Zigbee
+     * stack choice ([PROP_ZIGBEE_STACK]), radio firmware updates ([RadioFirmware]). Otherwise as v3.
+     */
+    const val BUNDLE_VERSION = 4
+    /** Helper -> app (v4): which helper runs: "boot[ (why)]" | "bundle <version>" | "dev". */
+    const val PROP_SOURCE = "sys.s1kiosk.radio.source"
+    /** Helper -> app (v4): the installed radio bundle: "none" | "ok <version>" | "bad: <why>". */
+    const val PROP_BUNDLE = "sys.s1kiosk.radio.bundle"
+    /** App -> helper (v4): Zigbee stack for the coordinator mode, a [ZigbeeStack] id (persistent). */
+    const val PROP_ZIGBEE_STACK = "persist.s1kiosk.radio_zigbee"
+    /**
+     * Helper -> app (v4): "aqara" | "sisdk ready <ver>" | "sisdk missing <ver> <sha256>" (the app should
+     * download it) | "sisdk no-runtime" (the radio bundle lacks it) | "sisdk bad <why>".
+     */
+    const val PROP_ZIGBEE = "sys.s1kiosk.radio.zigbee"
+    /** Helper -> app (v4): "<idle|flashing|ok|error> <id>[: detail]" ([RadioFirmware]). */
+    const val PROP_FW = "sys.s1kiosk.radio.fw"
+    /** Helper -> app (v4): flashable images, "<id>:<sha256 prefix>:<APP version> ..." (stock first). */
+    const val PROP_FW_TARGETS = "sys.s1kiosk.radio.fw_targets"
+    /** App -> helper (v4): "<id> <sha256 prefix>\n" in the app's files dir; taken within 3 s, ignored after 2 min. */
+    const val FW_REQUEST_FILE = "radio/fw-request"
+    /** App -> helper (v4): Silicon Labs' zigbeed, downloaded by the app; taken only with the pinned SHA-256. */
+    const val ZIGBEED_FILE = "radio/zigbeed-${SisdkZigbeed.VERSION}"
+
+    /** Radio bundle install service (boot image with the loader): oneshot, started by the app. */
+    const val BUNDLE_SERVICE = "s1kiosk_bundle"
+    /** Set to 1 by init at boot when [BUNDLE_SERVICE] exists. Informational only: any app can set sys.*
+     *  props, so the app decides from [RadioBundle.PUB_FILE] instead. */
+    const val PROP_BUNDLE_LOADER = "sys.s1kiosk.bundle.loader"
+    /** Service -> app: "requested" (app) | "running: …" | "ok: …" | "error: …". */
+    const val PROP_BUNDLE_STATUS = "sys.s1kiosk.bundle.status"
+    /** App -> helper (v4): "Leave Thread network" request in the app's files dir (any mode). */
+    const val THREAD_LEAVE_FILE = "radio/thread-leave"
+    /** Helper -> app (v4): "<ok|error> <epoch seconds>: <detail>" for the last Thread leave. */
+    const val PROP_THREAD_LEAVE = "sys.s1kiosk.radio.thread_leave"
+    /** Where the app stages the bundle for [BUNDLE_SERVICE] (files/radio/bundle-in). */
+    const val BUNDLE_STAGE_DIR = "radio/bundle-in"
     /** Helper -> app (v2): which otbr-agent is installed: `br` (border router, REST), `agent` (proof build), `none`. */
     const val PROP_OTBR = "sys.s1kiosk.radio.otbr"
 

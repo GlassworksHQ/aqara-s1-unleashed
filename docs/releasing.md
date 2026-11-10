@@ -61,7 +61,57 @@ gh secret set S1_KEY_ALIAS --repo aguilaair/aqara-s1-unleashed --body s1kiosk
 gh secret list --repo aguilaair/aqara-s1-unleashed
 ```
 
-The workflow uses only these four secrets and the job's own `GITHUB_TOKEN`.
+The workflow uses only these four secrets, the radio bundle key below, and the job's own `GITHUB_TOKEN`.
+
+## 3b. The radio bundle key (once)
+
+The APK carries a **signed radio bundle**: the root radio helper, otbr-agent/ot-ctl and the Silicon Labs
+Zigbee runtime ([radio.md](radio.md#radio-bundles-helper-v4)). Panels whose boot image has the bundle
+loader install it only if it is signed with the Ed25519 key whose public half is baked into the boot
+image ([`tools/root/s1kiosk_bundle.pub`](../tools/root/s1kiosk_bundle.pub)). It is a separate key from
+the APK key on purpose: it lets root code run on the panel, so it lives only in `~/secure` and in one
+repository secret.
+
+```sh
+# Done once (2026-11-10): ~/secure/s1kiosk-radio-bundle-ed25519.pem, mode 600, never printed.
+openssl genpkey -algorithm ed25519 -out ~/secure/s1kiosk-radio-bundle-ed25519.pem   # OpenSSL 3
+openssl pkey -in ~/secure/s1kiosk-radio-bundle-ed25519.pem -pubout -outform DER | tail -c 32 | xxd -p -c 64 \
+  > tools/root/s1kiosk_bundle.pub
+# The secret: an environment secret of the `radio-signing` environment (Settings -> Environments;
+# create the environment first), so only the release workflow's signing job can read it:
+gh secret set S1_RADIO_BUNDLE_KEY --env radio-signing --repo aguilaair/aqara-s1-unleashed \
+  < ~/secure/s1kiosk-radio-bundle-ed25519.pem
+```
+
+- Only the workflow's `sign-bundle` job names that environment. It signs only tags whose commit is on
+  `main` (`git merge-base --is-ancestor`), runs no third-party action (GitHub's own checkout and
+  download-artifact, pinned by commit SHA), and takes nothing from the unprivileged `inputs` job
+  without checking it: the Silicon Labs runtime against the committed
+  [`tools/radio/sisdk-runtime.sha256`](../tools/radio/sisdk-runtime.sha256), otbr-agent/ot-ctl against
+  `web/assets.lock.json`, the helper from the checkout. No required reviewer is set on the environment
+  (one releaser); adding one later only needs the environment setting.
+- Keep no repository-level `S1_RADIO_BUNDLE_KEY`: other jobs would then see it.
+
+- Back it up like the APK key. **Losing it** means no more radio bundle updates until panels get a boot
+  image with a new public key (one FEL session each). **If it leaks**, someone who can also get a file
+  into the kiosk's private storage could run root code: rotate it (new key, new
+  `s1kiosk_bundle.pub`, new boot image on every panel).
+- The bundle version is the APK's versionCode, and panels refuse a lower one than they have, so a
+  bundle can't be rolled back to an older (perhaps buggy) helper by replaying it.
+
+## 3c. Web installer files
+
+The installer's Vercel build downloads its binaries from pinned URLs ([`web/assets.lock.json`](../web/assets.lock.json)).
+The boot image's signature checker is one of them since the radio bundle loader:
+
+```sh
+tools/root/build-verify.sh      # reproducible; must print sha256 6aa0dd83…9f80 (the lock's pin)
+gh release upload installer-files-3 tools/root/out/s1kiosk_verify --repo aguilaair/aqara-s1-unleashed
+```
+
+(Create the `installer-files-3` release first if it doesn't exist, e.g. as a copy of
+`installer-files-2` plus this file.) Until it is uploaded, the hosted installer's build fails at
+`stage-assets.mjs --remote` with a download error; local builds use `tools/root/out/` directly.
 
 ## 4. Release
 
@@ -84,12 +134,18 @@ gh run watch --repo aguilaair/aqara-s1-unleashed   # or the Actions tab
 The workflow then:
 
 1. checks the tag;
-2. builds `:kiosk:assembleRelease` with `S1_VERSION=1.0.0`. The build fails if the key is missing
-   (`S1_REQUIRE_RELEASE_SIGNING=true`);
-3. runs `apksigner verify --print-certs`, so the certificate fingerprint is in the log, and checks
-   the package name and version;
-4. writes the `.sha256`;
-5. creates the release, with that version's CHANGELOG.md section as the notes.
+2. builds the Silicon Labs runtime (`inputs` job: `tools/radio/build-sisdk-runtime.sh`, Docker, a pinned
+   image and Ubuntu snapshot; it must reproduce `tools/radio/sisdk-runtime.sha256`; never Silicon Labs'
+   zigbeed itself), then signs the radio bundle in the `sign-bundle` job (environment `radio-signing`,
+   main only, every input checked against committed hashes; `tools/radio/make-bundle.py --app-version`,
+   version = the versionCode, checked against `tools/root/s1kiosk_bundle.pub`);
+3. builds `:kiosk:assembleRelease` with `S1_VERSION=1.0.0` and the bundle as APK assets. The build
+   fails if a key is missing (`S1_REQUIRE_RELEASE_SIGNING=true`);
+4. runs `apksigner verify --print-certs`, so the certificate fingerprint is in the log, checks
+   the package name and version, that the signed bundle is in the APK and that no zigbeed is;
+5. writes the `.sha256`;
+6. creates the release, with that version's CHANGELOG.md section as the notes. The bundle is not
+   published on its own (its Silicon Labs libcpc may only be distributed inside the product).
 
 HA shows the first 255 characters of the notes, with a link to the full release.
 

@@ -7,13 +7,16 @@ zigbeed 7.3.3 (**EZSP 12**) on spinel IID 1, EZSP over TCP :6638 from the root h
 Status: research plus **panel tests of steps 1 and 2 (2026-11-10, results in [section 6](#6-panel-results-2026-11-10))**.
 Both work: Z2M's `ezsp` adapter on today's zigbeed, and Z2M's `ember` adapter on SiLabs' zigbeed 8.2.2
 running against the **stock RCP**. No radio firmware was flashed, and none is needed for path B.
+**Step 3 (product) is implemented (2026-11-10) but not yet run on the panel:** helper v4's `Zigbee stack`
+choice ([../radio.md](../radio.md#zigbee-stack-aqara-or-silicon-labs-helper-v4)), the app downloading
+zigbeed from Silicon Labs, and the runtime in the signed radio bundle. Off-device tests pass.
 
 ## Summary
 
 | Path | Z2M adapter | Flash? | Thread kept? | Verdict |
 |---|---|---|---|---|
 | A. Today's zigbeed 7.3.3 (EZSP 12) | `ezsp` (deprecated) | no | yes | **works on the panel** (start, form, resume, permit join). Stopgap only: the adapter is on its way out and has no backup restore |
-| **B. SiLabs zigbeed 8.2.2 (EZSP 18) on the stock RCP** | `ember` | **no** | yes | **recommended, works on the panel** (start, form, resume after a zigbeed restart, permit join; Thread on IID 2 unaffected). Prebuilt armhf binary from Silicon Labs + our libcpc 4.3.3 + bundled glibc. Two host-side fixes needed: the wrapper's `--argv0` (done) and a pty drain before the bridge (helper, step 3) |
+| **B. SiLabs zigbeed 8.2.2 (EZSP 18) on the stock RCP** | `ember` | **no** | yes | **recommended, works on the panel** (start, form, resume after a zigbeed restart, permit join; Thread on IID 2 unaffected). Prebuilt armhf binary from Silicon Labs + our libcpc 4.3.3 + bundled glibc. Both host-side fixes are in helper v4: the wrapper's `--argv0` and the pty drain before the bridge |
 | C. New multi-PAN RCP + matching host stack | `ember` | yes (custom GBL) | yes | only if B fails on the RCP; heavy: custom MG21 SPI image, new cpcd/libcpc/otbr |
 | D. Zigbee-only NCP on the EFR32 | `ember` | yes, per mode switch | **no** | not recommended: custom SPI image + our own SPI-or-CPC-to-ASH bridge |
 
@@ -88,7 +91,9 @@ zigbee_use_release_libraries, arm32v7`, then `make -f zigbeed.Makefile` with a c
 here:
 
 - The SLC CLI download (`silabs.com/documents/login/software/slc_cli_linux.zip`) now returns 403
-  without a login.
+  without a login. (Correction, 2026-11-10: Silicon Labs' Studio update site serves it without a login,
+  `updates.silabs.com/studio/v6/updates/update_site/archives/slc-cli/<ver>/…`, as NabuCasa's builder
+  uses; see [rcp-firmware.md](rcp-firmware.md).)
 - The Zigbee stack itself is closed: it comes as prebuilt `.a` files in Git LFS under
   `protocol/zigbee/build/gcc/arm32v7/`, present in GSDK 4.4.x and every Simplicity SDK.
 
@@ -139,7 +144,7 @@ hashes. Downloads and intermediates go to `/tmp/zigbeed-sisdk-build/` (`$ZIGBEED
 **outside the repo tree** on purpose, because the bundle holds the MSLA binary, and the script refuses
 paths inside the checkout. (An earlier version wrote to the gitignored `tools/radio/out/`.)
 
-### Licensing
+### Licensing (checked again 2026-11-10 for what the radio bundle ships)
 
 - zigbeed is Silicon Labs **MSLA** object code (`usr/share/doc/zigbeed/copyright` in the deb).
 - Object code may be distributed to end users "only for use with Authorized Applications and not on a
@@ -152,6 +157,23 @@ paths inside the checkout. (An earlier version wrote to the gitignored `tools/ra
   SiLabs-built zigbeed inside its add-on images, but that is not a licence opinion either.
 - The bundled glibc (LGPL-2.1+) and libstdc++ (GPL-3.0+ with the GCC Runtime Library Exception) are
   unproblematic if their sources are pointed to.
+- **What the product ships** (radio bundle `sisdk/`, `tools/radio/build-sisdk-runtime.sh`):
+  - `libcpc.so.3` from cpc-daemon v4.3.3: every file says "governed by the sections of the MSLA
+    applicable to Source Code". MSLA 4.2.2/4.2.5 allow compiling it and distributing the result
+    ("Licensed Programs") to end users "only for use with Authorized Applications and not on a standalone
+    basis"; 5.4 requires passing on the no-redistribution terms. So: only inside the signed bundle inside
+    the kiosk APK (used with the panel's EFR32, an Authorized Application), never as its own download or
+    release asset, with those terms in `NOTICE.txt`. This is the position the libcpc linked into
+    otbr-agent was already in.
+  - glibc 2.35 (`ld-linux-armhf.so.3`, `libc.so.6`, `libm.so.6`) and `libstdc++.so.6`/`libgcc_s.so.1`
+    (GCC 12): unmodified Ubuntu 22.04 cross-runtime packages (Architecture: all), byte-identical to the
+    ones tested on the panel. Licence texts and the Debian copyright files ship in `licenses/`;
+    `NOTICE.txt` names the exact Ubuntu source packages (`cross-toolchain-base 59ubuntu3`,
+    `gcc-12-cross 5ubuntu2.5`) as Corresponding Source, which Launchpad keeps permanently. If that is
+    ever not enough (GPLv3 6(d) makes us responsible for the source staying available), mirror those
+    two source packages next to the release.
+  - zigbeed: **not shipped**. `make-bundle.py` refuses it, the release workflow fails if an APK contains
+    one, and the panel downloads it from Silicon Labs' release with pinned hashes.
 - Not legal advice.
 
 ## 3. Compatibility with the RCP on the chip
@@ -223,13 +245,13 @@ prediction; the soak test (hours or days, real devices joining) is still open.
 - **Thread:** keeps working in principle. It is the same multi-PAN RCP family with spinel on IID 2,
   and otbr would need the new libcpc.
 
-**Correction to radio.md:** the stock GBL's program tag is `0xFD0303FD` = **ERASEPROG, uncompressed**
+**Correction to radio.md (applied there and in the backups' FLASH-PLAN.md):** the stock GBL's program tag is `0xFD0303FD` = **ERASEPROG, uncompressed**
 (`platform/bootloader/parser/gbl/btl_gbl_format.h:63`), not PROG_LZ4 (`0xFD0505FD`).
 
 - Re-parsed here: HEADER_V3, APPLICATION, ERASEPROG of 120308 B at `0x4000`, END.
 - So the dry run proved that **unsigned, uncompressed** GBLs are accepted; LZ4 support in this
   bootloader (v2.3) is unknown.
-- radio.md ("Flash path, verified") and the backups' FLASH-PLAN.md should be fixed. Any custom GBL
+- radio.md ("Flash path, verified") and the backups' FLASH-PLAN.md are fixed. Any custom GBL
   should be built uncompressed.
 
 ## 4. Zigbee-only NCP on the EFR32 (path D)
@@ -303,7 +325,15 @@ IID 2 never meets zigbeed, one protocol at a time). ZHA works too: bellows suppo
    - **Nothing persistent changes on the radio:** the RCP keeps no Zigbee state, and a cpcd restart
      resets it.
 
-### Step 3 (only after step 2 passes): productize
+### Step 3 (only after step 2 passes): productize — **implemented in helper v4 (2026-11-10), panel test pending**
+
+What was built (details in [../radio.md](../radio.md#zigbee-stack-aqara-or-silicon-labs-helper-v4)):
+a `Zigbee stack` select (`persist.s1kiosk.radio_zigbee`), the helper running our zigbeed instead of
+`zigbee_zigbeed` in coordinator mode, the pty drain before the bridge (for both stacks), NVM copies
+(`zigbee-nvm/sisdk-*.nvm`), the runtime in the signed radio bundle, and the app fetching zigbeed from
+Silicon Labs (an HTTP range of the zip for just the .deb, hash-checked at zip/.deb/ELF level) and handing
+it to the helper, which accepts only the pinned SHA-256. The mode label stays "Zigbee coordinator (TCP)";
+`Radio status` shows the Zigbee2MQTT settings instead. The original plan, for reference:
 
 - Helper: an opt-in `ZIGBEED=sisdk` in `radio.conf`, or a new mode id. In that mode it starts
   `zigbee_cpcd` and `zigbee_socat`, but runs our wrapper instead of `zigbee_zigbeed`. It is supervised
@@ -324,6 +354,9 @@ IID 2 never meets zigbeed, one protocol at a time). ZHA works too: bellows suppo
   bundled in our APK or boot image.
 
 ### If step 2 fails at the RCP level: path C, which needs a flash and the owner's approval
+
+(Updated findings, including that `slc-cli` is downloadable without a login after all and that every
+newer SDK's RCP speaks a CPC protocol Aqara's cpcd rejects: [rcp-firmware.md](rcp-firmware.md).)
 
 1. Reverse-engineer the CPC SPI pinout from the stock image.
 2. Build `rcp-spi-802154` (Simplicity SDK 2025.6.3, MG21, uncompressed GBL).
@@ -419,7 +452,11 @@ No spinel errors or asserts in the following 60 s.
 - A soak test (hours or days) of the mismatched 8.2.2 host / 2.3.3.0 RCP pair.
 - An energy scan, ZHA `form`/restore on 8.2.2, and Z2M's `ember` backup restore into a fresh
   `host_token.nvm`.
-- The helper integration (step 3).
+- The helper integration (step 3): implemented and covered by off-device tests
+  (`tools/radio/test/run.sh`, `RadioV4Test`), not run on the panel yet. Panel steps are in the v4 test
+  plan (the final report of 2026-11-10 / [../radio.md](../radio.md#zigbee-stack-aqara-or-silicon-labs-helper-v4)).
+- The RSTACK margin: zigbeed 8.2.2 answers in 4.1-4.4 s, herdsman's `ember` waits 5 s. Thin; watch
+  Zigbee2MQTT restarts in the soak test.
 
 ## Sources
 

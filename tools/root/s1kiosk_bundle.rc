@@ -1,0 +1,21 @@
+# S1 Kiosk radio bundle install service (tools/root/s1kiosk_bundle.sh), injected by Magisk as
+# overlay.d/s1kiosk_bundle.rc; the script, s1kiosk_verify and s1kiosk_bundle.pub ship in overlay.d/sbin
+# (${MAGISKTMP}). Disabled one-shot: the app starts it after staging the signed bundle it ships
+# (app/kiosk/.../radio/RadioBundle.kt).
+#
+# App side: stage /data/data/sh.edm.s1kiosk/files/radio/bundle-in/ (manifest, manifest.sig, files)
+#           setprop sys.s1kiosk.bundle.status requested
+#           setprop ctl.start s1kiosk_bundle
+# Service side: sys.s1kiosk.bundle.status = "<running|ok|error>: <detail>"
+# It installs only a bundle signed with the key in this boot image, never an older version than the
+# newest one installed, and nothing but the files that bundle lists (see the script's header).
+service s1kiosk_bundle /system/bin/sh ${MAGISKTMP}/s1kiosk_bundle.sh
+    user root
+    group root system
+    seclabel u:r:su:s0
+    oneshot
+    disabled
+
+# Detection: init announces the service (a disabled service has no init.svc.* until it first runs).
+on property:sys.boot_completed=1
+    setprop sys.s1kiosk.bundle.loader 1

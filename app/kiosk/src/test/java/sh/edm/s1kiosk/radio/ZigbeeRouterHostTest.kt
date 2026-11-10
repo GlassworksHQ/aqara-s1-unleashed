@@ -210,13 +210,16 @@ class ZigbeeRouterHostTest {
     @Test
     fun leaveErasesTheNetwork() {
         val ncp = FakeNcp(nvm = "router")
-        val h = start(ncp)
+        val seen = java.util.Collections.synchronizedList(ArrayList<String>())
+        val h = ZigbeeRouterHost(connect = { ncp.transport }, onStatus = { seen += it }).also { host = it; it.start() }
         h.waitFor(ZigbeeRouterHost.State.JOINED)
         h.requestLeave()
         h.waitFor(ZigbeeRouterHost.State.NOT_JOINED)
         val until = System.currentTimeMillis() + 2_000
         while (ncp.nvm != null && System.currentTimeMillis() < until) Thread.sleep(20)
         assertEquals(null, ncp.nvm)
+        // the NETWORK_DOWN that an explicit leave causes is not reported as "rejoining"
+        assertTrue(seen.toString(), seen.none { "rejoining" in it })
     }
 
     @Test

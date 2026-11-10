@@ -18,6 +18,10 @@ export interface S1OverlayInputs {
   netwatchSh: Uint8Array;     // tools/root/s1kiosk_netwatch.sh
   updateRc: Uint8Array;       // tools/root/s1kiosk_update.rc
   updateSh: Uint8Array;       // tools/root/s1kiosk_update.sh
+  bundleRc: Uint8Array;       // tools/root/s1kiosk_bundle.rc
+  bundleSh: Uint8Array;       // tools/root/s1kiosk_bundle.sh
+  verify: Uint8Array;         // tools/root/out/s1kiosk_verify (tools/root/build-verify.sh)
+  bundlePub: Uint8Array;      // tools/root/s1kiosk_bundle.pub (radio bundle signing key, public half)
   /** Boot animation (all entries STORED) + tools/root/s1kiosk_branding.rc; omit both for stock. */
   branding?: { rc: Uint8Array; bootAnimation: Uint8Array };
 }
@@ -27,6 +31,10 @@ export function s1Overlay(i: S1OverlayInputs): OverlayFile[] {
   // patch-boot-magisk.sh: grep -q '^QAAAA' (some line must start with it); empty = ADB_PUBKEY=none
   if (i.adbKeys.length && !/^QAAAA/m.test(new TextDecoder().decode(i.adbKeys)))
     throw new Error('adbKeys does not look like an adb public key (must start with QAAAA)');
+  // patch-boot-magisk.sh: grep -qE '^[0-9a-f]{64}$' tools/root/s1kiosk_bundle.pub
+  if (!/^[0-9a-f]{64}$/m.test(new TextDecoder().decode(i.bundlePub)))
+    throw new Error('bundlePub is not a 32-byte hex public key');
+  if (!i.verify.length) throw new Error('empty s1kiosk_verify');
   const files: OverlayFile[] = [
     { path: 'overlay.d/s1kiosk_radio.rc', mode: 0o644, data: i.radioRc },
     { path: 'overlay.d/sbin/s1kiosk_radio.sh', mode: 0o700, data: i.radioSh },
@@ -39,6 +47,10 @@ export function s1Overlay(i: S1OverlayInputs): OverlayFile[] {
     { path: 'overlay.d/sbin/s1kiosk_netwatch.sh', mode: 0o700, data: i.netwatchSh },
     { path: 'overlay.d/s1kiosk_update.rc', mode: 0o644, data: i.updateRc },
     { path: 'overlay.d/sbin/s1kiosk_update.sh', mode: 0o700, data: i.updateSh },
+    { path: 'overlay.d/s1kiosk_bundle.rc', mode: 0o644, data: i.bundleRc },
+    { path: 'overlay.d/sbin/s1kiosk_bundle.sh', mode: 0o700, data: i.bundleSh },
+    { path: 'overlay.d/sbin/s1kiosk_verify', mode: 0o700, data: i.verify },
+    { path: 'overlay.d/sbin/s1kiosk_bundle.pub', mode: 0o644, data: i.bundlePub },
   ];
   if (i.branding) {
     if (!i.branding.bootAnimation.length) throw new Error('empty boot animation');

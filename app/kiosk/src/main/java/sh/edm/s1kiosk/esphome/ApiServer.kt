@@ -445,6 +445,10 @@ class ApiServer(
                     val e = byKey[m.fixed32(1)]
                     if (e == null || e.commandType != f.type) {
                         ApiLog.w("[$id] command type ${f.type} for unknown key ${m.fixed32(1)}")
+                    } else if (e.authOnly && !authenticated) {
+                        ApiLog.w("[$id] command for ${e.objectId} refused: only from an authenticated (encrypted, provisioned) connection")
+                        // the client may already show the new value: send it the unchanged state back
+                        safeState(e)?.let { st -> if (subscribedStates) send(listOf(Frame(e.stateType, st))) }
                     } else {
                         ApiLog.i("[$id] command for ${e.objectId}")
                         try { e.command(m) } catch (t: Throwable) { ApiLog.w("command ${e.objectId} failed", t) }

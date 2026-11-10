@@ -47,6 +47,10 @@ interface AllowStore {
 
 class MemoryAllowStore(override var haV4: String? = null, override var haV6: String? = null, override var explicit: String = "") : AllowStore
 
+/** Where the app keeps the chosen [ZigbeeStack] id (KioskPrefs on the panel). */
+interface StackStore { var stack: String? }
+class MemoryStackStore(override var stack: String? = null) : StackStore
+
 /**
  * Radio mode manager (docs/radio.md). Two backends:
  *  - **Root helper installed** (`init.svc.s1kiosk_radio` set): every mode is delegated to it: the app
@@ -63,6 +67,10 @@ class MemoryAllowStore(override var haV4: String? = null, override var haV6: Str
  * Thread router: [setThreadDataset] hands the dataset to the helper through [filesDir].
  * Firewall (helper v3): [RadioHelper.PROP_ALLOW] is kept equal to [RadioAllow.decide] of [allow]:
  * Home Assistant's address ([homeAssistantConnected]) unless the owner set a list ([setAllowedClients]).
+ * Helper v4: the radio bundle this APK ships is installed through the root bundle service ([bundle], on
+ * its own thread), the Zigbee stack choice goes to [RadioHelper.PROP_ZIGBEE_STACK] ([setZigbeeStack];
+ * Silicon Labs' zigbeed is downloaded by [zigbeedFetcher] when the helper asks for it), and radio
+ * firmware requests go through [firmware]. Mode changes wait while a firmware flash runs.
  */
 class RadioController(
     private val props: SysProps = ShellProps,
@@ -79,9 +87,16 @@ class RadioController(
     routerHostFactory: ((onStatus: () -> Unit) -> RouterHost)? = null,
     /** Home Assistant's last address and the owner's allow-list. */
     private val allow: AllowStore = MemoryAllowStore(),
+    /** The chosen Zigbee stack (helper v4). */
+    private val stackStore: StackStore = MemoryStackStore(),
+    /** The signed radio bundle this APK ships (helper v4); null = none. */
+    private val bundle: RadioBundle? = null,
+    /** Downloads Silicon Labs' zigbeed into the given file (tests: a fake). */
+    private val zigbeedFetcher: ((dest: File, progress: (String) -> Unit) -> Unit)? = null,
 ) {
     companion object {
         const val TAG = "S1Kiosk.Radio"
+        private const val SISDK_V = SisdkZigbeed.VERSION
         private val RANGE = Regex("""\(clients from ([^)]+)\)""")
         private const val WAIT_STEPS = 20
         private const val WAIT_STEP_MS = 100L
@@ -90,6 +105,23 @@ class RadioController(
     private val exec: ScheduledExecutorService? = if (inline) null else Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "s1-radio").apply { isDaemon = true }
     }
+    /** Slow work (bundle install, zigbeed download) off the radio thread. */
+    private val slow = if (inline) null else Executors.newSingleThreadExecutor { r -> Thread(r, "s1-radio-slow").apply { isDaemon = true } }
+
+    /** Radio firmware updates (helper v4). */
+    val firmware = RadioFirmware(props, filesDir, log = log)
+    @Volatile var zigbeeStack: ZigbeeStack = ZigbeeStack.parse(stackStore.stack)
+        private set
+    /** Why the last stack change was refused, or the zigbeed download's state. */
+    @Volatile private var stackNote: String? = null
+    /** Thread leave: when it was requested (and in which mode), and what to say about it. */
+    @Volatile private var threadLeaveAt = 0L
+    @Volatile private var threadLeaveMode: RadioMode? = null
+    @Volatile private var threadLeaveNote: String? = null
+    /** The last refused `Zigbee stack` change or Thread leave (shown first in `Radio helper`). */
+    @Volatile private var refusedStack: String? = null
+    @Volatile private var fetching = false
+    @Volatile private var fetchFailedAt = 0L
 
     @Volatile var mode: RadioMode = RadioMode.parse(load())
         private set
@@ -103,6 +135,13 @@ class RadioController(
 
     /** Text for the "Radio status" sensor. Cheap: no process spawn on the caller's thread. */
     fun statusText(): String = shown
+    /** `Radio helper` and `Radio firmware` texts, the firmware select's state: cached like [statusText]. */
+    @Volatile private var helperShown = ""
+    @Volatile private var firmwareShown = ""
+    @Volatile private var fwSelectedShown = RadioFirmware.KEEP
+    fun helperStatusText(): String = helperShown
+    fun firmwareText(): String = firmwareShown
+    fun firmwareSelected(): String = fwSelectedShown
 
     fun helperInstalled(): Boolean = props.get(RadioHelper.PROP_SVC_STATE).isNotEmpty()
 
@@ -116,7 +155,13 @@ class RadioController(
     fun start() {
         post {
             syncAllow() // before the helper (re)starts, so it never opens the ports to the wrong list
+            syncStack()
             applyMode(mode, "startup", forceHelperRestart = false)
+        }
+        bundle?.let { b ->
+            slowly { b.installIfNewer(); refreshSoon() }
+            // retried (at most hourly per version) in case the helper hadn't written its state yet, or a try failed
+            exec?.scheduleWithFixedDelay({ slowly { b.installIfNewer(); refreshSoon() } }, 30, 30, TimeUnit.MINUTES)
         }
         // The helper updates its status asynchronously; poll it (and init's view of the stack).
         exec?.scheduleWithFixedDelay({ post { syncAllow(); refresh() } }, 15, 15, TimeUnit.SECONDS)
@@ -171,6 +216,8 @@ class RadioController(
     fun refresh() {
         val helper = helperInstalled()
         syncRouterHost(helper)
+        if (helper) zigbeedHandOff()
+        firmware.cleanup()
         // Status first, then the allow-list: the helper writes them in the opposite order, so the list
         // is never older than the status. Read once, so the status text and allowedNow() agree.
         val raw = if (helper) props.get(RadioHelper.PROP_STATUS) else ""
@@ -179,15 +226,110 @@ class RadioController(
             ?.let { if (it.any) RadioAllow.ANY else it.addresses.joinToString(" ") }
         var s = if (helper) helperStatusText(raw, allowed) else status
         if (s.length > 250) s = s.take(249) + "…" // ESPHome text sensors are capped at 255 bytes
-        if (s != shown) {
-            shown = s
+        val h = helperText().let { if (it.length > 250) it.take(249) + "…" else it }
+        val fw = firmware.statusText().let { if (it.length > 250) it.take(249) + "…" else it }
+        val sel = firmware.selected()
+        if (s != shown || h != helperShown || fw != firmwareShown || sel != fwSelectedShown) {
+            shown = s; helperShown = h; firmwareShown = fw; fwSelectedShown = sel
             onChange()
         }
     }
 
     fun stop() {
         exec?.shutdownNow()
+        slow?.shutdownNow()
         routerHost?.stop()
+    }
+
+    /** The helper implements contract v4 (bundles, Zigbee stack, radio firmware). */
+    fun helperV4(): Boolean = helperInstalled() && helperVersion() >= RadioHelper.BUNDLE_VERSION
+
+    /**
+     * `Zigbee stack` (HA select). Silicon Labs' stack needs helper v4; it is used by the coordinator
+     * mode only. [done] as for [request].
+     */
+    fun setZigbeeStack(label: String, done: ((Boolean) -> Unit)? = null) = post {
+        val z = ZigbeeStack.fromLabel(label) ?: ZigbeeStack.entries.firstOrNull { it.id == label }
+        if (z == null) { done?.invoke(false); return@post }
+        if (z == zigbeeStack) { done?.invoke(true); return@post }
+        val why = when {
+            firmware.flashing() -> "a radio firmware update is running; try again when it's done"
+            z != ZigbeeStack.AQARA && !helperV4() ->
+                "needs the root helper v${RadioHelper.BUNDLE_VERSION} (installed: ${if (helperInstalled()) "v${helperVersion()}" else "none"}): " +
+                    "update the panel's boot image once with the web installer"
+            else -> null
+        }
+        if (why != null) {
+            refusedStack = "Zigbee stack “${z.label.substringBefore(" (")}” refused: $why"; log(refusedStack!!)
+            refresh(); onChange() // the select snaps back
+            done?.invoke(false); return@post
+        }
+        zigbeeStack = z; stackStore.stack = z.id; stackNote = null; refusedStack = null
+        log("zigbee stack: ${z.label}")
+        syncStack()
+        if (mode == RadioMode.ZIGBEE_TCP && helperInstalled()) {
+            props.set("ctl.restart", RadioHelper.SERVICE)
+            log("helper restarted for the Zigbee stack change")
+        }
+        refresh()
+        done?.invoke(true)
+    }
+
+    /** `Radio firmware image` (HA select): arms an image for [RadioFirmware.ARM_MS]. */
+    fun firmwareSelect(option: String) = post { firmware.select(option); refresh() }
+
+    /** `Flash radio firmware` (HA button): only flashes an armed image. */
+    fun firmwareFlash() = post { firmware.flash(); refresh() }
+
+    /** Text for the `Radio helper` diagnostic sensor. */
+    fun helperText(): String = listOfNotNull(refusedStack, helperBase()).joinToString(". ")
+
+    private fun helperBase(): String {
+        if (!helperInstalled()) return "not installed: the panel's boot image has no root helper, so only Off works (see docs/radio.md)"
+        val v = helperVersion()
+        if (v < RadioHelper.BUNDLE_VERSION) {
+            return "v$v from the boot image. Update the boot image once with the web installer: after that, helper fixes, " +
+                "new radio stacks and radio firmware come with app updates"
+        }
+        val src = props.get(RadioHelper.PROP_SOURCE).ifEmpty { "?" }
+        val inst = bundle?.installed()?.let { "${it.state} ${it.version}" } ?: props.get(RadioHelper.PROP_BUNDLE).ifEmpty { "?" }
+        val shipped = bundle?.shippedVersion()
+        val last = bundle?.lastResult?.takeIf { it.startsWith("error") || it.startsWith("no answer") || it.startsWith("couldn't") }
+        return listOfNotNull(
+            "v$v, running the $src helper",
+            "radio bundle on the panel: $inst",
+            shipped?.let { "in this app: $it" },
+            last?.let { "last install: $it" },
+        ).joinToString("; ")
+    }
+
+    /**
+     * `Leave Thread network` (HA button, helper v4, any mode): the helper detaches a running Thread
+     * router and deletes the stored dataset (the network key) and the router's settings. A dataset the
+     * app hasn't handed over yet is deleted here first.
+     */
+    fun threadLeave() = post {
+        if (!helperV4()) {
+            refusedStack = "Leave Thread network refused: needs the root helper v${RadioHelper.BUNDLE_VERSION} " +
+                "(installed: ${if (helperInstalled()) "v${helperVersion()}" else "none"}): update the panel's boot image once"
+            log(refusedStack!!); refresh(); onChange(); return@post
+        }
+        val dir = filesDir ?: return@post
+        File(dir, RadioHelper.DATASET_FILE).delete()
+        val f = File(dir, RadioHelper.THREAD_LEAVE_FILE)
+        try {
+            f.parentFile?.mkdirs()
+            val tmp = File(f.parentFile, ".thread-leave.tmp")
+            tmp.writeText("leave\n")
+            tmp.setReadable(false, false); tmp.setReadable(true, true)
+            if (!tmp.renameTo(f)) throw java.io.IOException("rename failed")
+            threadLeaveAt = System.currentTimeMillis(); threadLeaveMode = mode
+            threadLeaveNote = "leaving the Thread network…"
+            log("Thread leave requested")
+        } catch (e: Exception) {
+            threadLeaveNote = "couldn't request the Thread leave: ${e.message}"
+        }
+        refresh()
     }
 
     /** `Join Zigbee network` (HA button): the router host scans and joins a network open for joining. */
@@ -246,6 +388,12 @@ class RadioController(
             done?.invoke(false)
             return@post
         }
+        if (firmware.flashing()) {
+            status = "a radio firmware update is running; ${m.label} can be chosen when it's done. Still in ${mode.label}."
+            log("refused '${m.label}': firmware flash in progress")
+            refresh(); onChange(); done?.invoke(false)
+            return@post
+        }
         if (!available(m)) {
             status = if (!helperInstalled()) {
                 "${m.label} needs the root helper (init service ${RadioHelper.SERVICE} is not installed; " +
@@ -274,6 +422,52 @@ class RadioController(
     fun afterPending(block: () -> Unit) = post(block)
 
     // ------------------------------------------------------------------ internals
+
+    private fun slowly(block: () -> Unit) {
+        val e = slow
+        if (e == null) block() else e.execute { try { block() } catch (t: Throwable) { log("radio background task failed: $t") } }
+    }
+
+    /** Hands the chosen stack to a v4 helper (persistent, so it applies at boot before the app runs). */
+    private fun syncStack() {
+        if (!helperV4()) return
+        if (props.get(RadioHelper.PROP_ZIGBEE_STACK) != zigbeeStack.id) props.set(RadioHelper.PROP_ZIGBEE_STACK, zigbeeStack.id)
+    }
+
+    /**
+     * Silicon Labs' zigbeed: download it when the helper asks ("sisdk missing"), at most every 30 min
+     * after a failure; delete the app's copy once the helper installed it ("sisdk ready").
+     */
+    private fun zigbeedHandOff() {
+        val z = props.get(RadioHelper.PROP_ZIGBEE)
+        val f = filesDir?.let { File(it, RadioHelper.ZIGBEED_FILE) } ?: return
+        if (z.startsWith("sisdk ready")) { if (f.exists()) f.delete(); if (!fetching) stackNote = null; return }
+        if (z.startsWith("sisdk bad") && f.exists() && !fetching) {
+            // the helper refused our download (it re-reads it every 3 s otherwise): drop it, retry later
+            f.delete(); fetchFailedAt = System.currentTimeMillis()
+            stackNote = "the root helper refused the zigbeed download (${z.removePrefix("sisdk bad").trim()}); retrying in 30 minutes"
+            log(stackNote!!); return
+        }
+        if (!z.startsWith("sisdk missing") || zigbeeStack != ZigbeeStack.SISDK) return
+        if (f.exists() || fetching) return // waiting for the helper to take it (every 3 s)
+        if (fetchFailedAt != 0L && System.currentTimeMillis() - fetchFailedAt < 30 * 60_000) return
+        val fetch = zigbeedFetcher ?: return
+        fetching = true
+        slowly {
+            try {
+                fetch(f) { stackNote = it; refreshSoon() }
+                fetchFailedAt = 0L
+            } catch (e: Exception) {
+                f.delete()
+                fetchFailedAt = System.currentTimeMillis()
+                stackNote = "zigbeed $SISDK_V download failed (${e.message}); retrying in 30 minutes"
+                log(stackNote!!)
+            } finally {
+                fetching = false
+                refreshSoon()
+            }
+        }
+    }
 
     private fun post(block: () -> Unit) {
         val e = exec
@@ -353,16 +547,44 @@ class RadioController(
             inMode && mode == RadioMode.ZIGBEE_ROUTER && routerHost != null -> ": ${routerHost!!.status}"
             inMode && mode == RadioMode.ZIGBEE_TCP -> {
                 val range = RANGE.find(st.detail)?.groupValues?.get(1)?.let { " (socat range $it)" } ?: ""
-                ": listening on :${RadioHelper.ZIGBEE_TCP_PORT} for ${whoText(allowed)}$range. ZHA: radio type EZSP, serial path " +
+                val z2m = if ("EZSP 18" in st.detail) {
+                    " Silicon Labs zigbeed $SISDK_V (EZSP 18). Zigbee2MQTT: adapter ember, port tcp://${panelIp() ?: "<panel IP>"}:${RadioHelper.ZIGBEE_TCP_PORT}."
+                } else ""
+                ": listening on :${RadioHelper.ZIGBEE_TCP_PORT} for ${whoText(allowed)}$range.$z2m ZHA: radio type EZSP, serial path " +
                     zhaPath(panelIp())
             }
+            // waiting for Silicon Labs' zigbeed: say how the download goes
+            st.state == "applying" && "waiting for zigbeed $SISDK_V" in st.detail -> ": ${st.detail}${stackNote?.let { "; $it" } ?: ""}"
+            st.state == "error" && stackNote != null && st.mode == RadioMode.ZIGBEE_TCP -> ": ${st.detail}; $stackNote"
             // Border router: its REST API (which exposes the network key) is behind the same firewall.
             inMode && mode == RadioMode.THREAD && "REST :" in st.detail -> ": ${st.detail}; REST open to ${whoText(allowed)}"
             st.detail.isNotEmpty() -> ": ${st.detail}"
             else -> ""
         }
         val mismatch = if (st.mode != mode && st.state != "applying") " (wanted ${mode.label})" else ""
-        return "${st.state} $label$tail$mismatch"
+        // A Silicon Labs choice the helper can't act on (helper downgraded to < v4), or a refused change
+        val stack = when {
+            zigbeeStack == ZigbeeStack.SISDK && !helperV4() && mode == RadioMode.ZIGBEE_TCP ->
+                " (Zigbee stack: Silicon Labs needs the root helper v${RadioHelper.BUNDLE_VERSION}; running Aqara's)"
+            else -> ""
+        }
+        return "${st.state} $label$tail$mismatch$stack${threadLeaveSuffix()}"
+    }
+
+    /** " (Thread network left: …)" after a Leave in this mode; the helper's answer once it is there. */
+    private fun threadLeaveSuffix(): String {
+        if (threadLeaveNote == null) return ""
+        if (threadLeaveMode != mode) { threadLeaveNote = null; return "" }   // a later mode change: old news
+        val raw = props.get(RadioHelper.PROP_THREAD_LEAVE).trim()
+        val ts = raw.substringAfter(' ').substringBefore(':').toLongOrNull()
+        if (ts != null && ts * 1000 >= threadLeaveAt - 5_000) {
+            val detail = raw.substringAfter(": ", "")
+            threadLeaveNote = if (raw.startsWith("ok ")) "Thread network left: $detail" else "Thread leave failed: $detail"
+        } else if (System.currentTimeMillis() - threadLeaveAt > 30_000) {
+            threadLeaveNote = "Thread leave: no answer from the root helper"
+            File(filesDir ?: return "", RadioHelper.THREAD_LEAVE_FILE).delete()
+        }
+        return " ($threadLeaveNote)"
     }
 
     /** Runs the router host exactly while the helper's router bridge is up. */

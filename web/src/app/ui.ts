@@ -972,6 +972,8 @@ class Installer {
             kv: [['Radio type', 'EZSP'], ['Serial path', `socket://${ip}:6638`, true], ['Port speed', 'Leave as is (115200)']],
             link: 'https://my.home-assistant.io/redirect/config_flow_start/?domain=zha' },
           { title: '2 · Pair your Zigbee devices', body: 'Opens Home Assistant\'s Zigbee “Add device”, which starts pairing for a few minutes. Put each device in pairing mode.', link: zhaAdd },
+          { title: 'Using Zigbee2MQTT instead? (experimental)', body: 'On the panel\'s device in Home Assistant (S1 Panel, under ESPHome), set Zigbee stack to Silicon Labs 8.2.2. The panel downloads it from Silicon Labs, which takes a minute. Then point Zigbee2MQTT at the panel. If the panel\'s Radio helper says v3, install the panel\'s software with this installer once more first.',
+            kv: [['adapter', 'ember'], ['port', `tcp://${ip}:6638`, true]] },
         ],
       },
       thread: {

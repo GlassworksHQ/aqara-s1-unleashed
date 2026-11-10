@@ -10,7 +10,10 @@
 #   2. $SRC and its directories are not symlinks, are owned by that uid (only the kiosk can write
 #      its private dir), and $SRC is a single-link regular file of sane size;
 #   3. it installs a root-only copy (the original can't change under pm) with `pm install -r` and no
-#      -d: Android refuses another signing key for the same package, and downgrades;
+#      -d: Android refuses another signing key for the same package, and downgrades. The copy is made
+#      by s1kiosk_verify --copy (boot images with it): an openat(O_NOFOLLOW) walk, the file opened
+#      O_NONBLOCK and checked on the fd, exactly its size copied, so a path swapped for a symlink, a
+#      FIFO or /dev/zero between the checks above and the copy can't redirect or hang it;
 #   4. afterwards the kiosk's versionCode must have gone up and no other package may have changed;
 #      a package that appeared is uninstalled again.
 # Status for the app: sys.s1kiosk.update.status = "<running|ok|error>: <detail>".
@@ -22,6 +25,7 @@ SRC=$SRC_DIR/pending.apk
 STAGE_DIR=/data/s1kiosk/update          # root 0700
 STAGE=$STAGE_DIR/pending.apk
 MAX_BYTES=268435456                      # 256 MiB, as the app's own limit
+VERIFY=${0%/*}/s1kiosk_verify
 
 say() { log -t s1kiosk_update "$*" 2>/dev/null; }
 status() { setprop sys.s1kiosk.update.status "$1"; say "$1"; }
@@ -67,7 +71,12 @@ num "$size" && [ "$size" -gt 0 ] && [ "$size" -le "$MAX_BYTES" ] || fail "pendin
 [ -d "$STAGE_DIR" ] || mkdir -p "$STAGE_DIR"
 chown root:root /data/s1kiosk "$STAGE_DIR" && chmod 700 /data/s1kiosk "$STAGE_DIR" || fail "cannot prepare $STAGE_DIR"
 rm -f "$STAGE"
-cp "$SRC" "$STAGE" && chmod 600 "$STAGE" || fail "cannot copy pending.apk"
+if [ -x "$VERIFY" ]; then
+  out=$("$VERIFY" --copy "$DATA" files/update/pending.apk "$uid" "$size" "$STAGE" 2>&1 >/dev/null) ||
+    fail "pending.apk: ${out#s1kiosk_verify: }"
+else # a boot image from before s1kiosk_verify
+  cp "$SRC" "$STAGE" && chmod 600 "$STAGE" || fail "cannot copy pending.apk"
+fi
 [ "$(stat -c %s "$STAGE")" = "$size" ] || fail "pending.apk changed while copying"
 snapshot "$STAGE_DIR/before.txt"
 

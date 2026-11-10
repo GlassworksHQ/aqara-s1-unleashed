@@ -18,6 +18,10 @@
 #   overlay.d/sbin/s1kiosk_netwatch.sh
 #   overlay.d/s1kiosk_update.rc          root install service for app updates (started by the app)
 #   overlay.d/sbin/s1kiosk_update.sh
+#   overlay.d/s1kiosk_bundle.rc          root install service for signed radio bundles (started by the app)
+#   overlay.d/sbin/s1kiosk_bundle.sh
+#   overlay.d/sbin/s1kiosk_verify        Ed25519 checker (tools/root/build-verify.sh)
+#   overlay.d/sbin/s1kiosk_bundle.pub    the project's radio bundle public key (tools/root/s1kiosk_bundle.pub)
 #   overlay.d/s1kiosk_branding.rc        boot animation, bind-mounted over /system/media/bootanimation.zip
 #   overlay.d/sbin/s1kiosk_bootanimation.zip   (BOOT_ANIMATION=<zip>, default branding/glass-tile; none = stock)
 # Nothing is flashed here; see docs/research/root.md.
@@ -40,6 +44,8 @@ for b in otbr-agent ot-ctl; do
 done
 grep -q '/data/s1kiosk/radio/run' "$RADIO/out/BUILD-INFO.txt" ||
   { echo "otbr was built with the wrong OTBR_RUNTIME_DIR (need /data/s1kiosk/radio/run)"; exit 1; }
+[ -x "$HERE/out/s1kiosk_verify" ] || { echo "missing $HERE/out/s1kiosk_verify: run tools/root/build-verify.sh"; exit 1; }
+grep -qE '^[0-9a-f]{64}$' "$HERE/s1kiosk_bundle.pub" || { echo "$HERE/s1kiosk_bundle.pub is not a 32-byte hex public key"; exit 1; }
 [ "$(head -c 8 "$IN")" = "ANDROID!" ] || { echo "$IN is not an Android boot image"; exit 1; }
 
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
@@ -54,6 +60,7 @@ for b in magiskinit magisk init-ld; do cp "$W/x/lib/$PAYLOAD_ABI/lib$b.so" "$W/p
 cp "$RADIO/s1kiosk_radio.rc" "$RADIO/s1kiosk_radio.sh" "$RADIO/out/otbr-agent" "$RADIO/out/ot-ctl" "$W/p/"
 cp "$HERE/s1kiosk_firstboot.rc" "$HERE/s1kiosk_firstboot.sh" "$HERE/s1kiosk_netwatch.rc" "$HERE/s1kiosk_netwatch.sh" "$W/p/"
 cp "$HERE/s1kiosk_update.rc" "$HERE/s1kiosk_update.sh" "$W/p/"
+cp "$HERE/s1kiosk_bundle.rc" "$HERE/s1kiosk_bundle.sh" "$HERE/s1kiosk_bundle.pub" "$HERE/out/s1kiosk_verify" "$W/p/"
 if [ "$ADB_PUBKEY" = none ]; then : > "$W/p/s1kiosk_adb_keys"
 elif [ -s "$ADB_PUBKEY" ]; then
   grep -q '^QAAAA' "$ADB_PUBKEY" || { echo "$ADB_PUBKEY does not look like an adb public key"; exit 1; }
@@ -106,7 +113,11 @@ docker run --rm --platform linux/arm64 -e PREINITDEVICE="$PREINITDEVICE" -e BRAN
     "add 0644 overlay.d/s1kiosk_netwatch.rc s1kiosk_netwatch.rc" \
     "add 0700 overlay.d/sbin/s1kiosk_netwatch.sh s1kiosk_netwatch.sh" \
     "add 0644 overlay.d/s1kiosk_update.rc s1kiosk_update.rc" \
-    "add 0700 overlay.d/sbin/s1kiosk_update.sh s1kiosk_update.sh"
+    "add 0700 overlay.d/sbin/s1kiosk_update.sh s1kiosk_update.sh" \
+    "add 0644 overlay.d/s1kiosk_bundle.rc s1kiosk_bundle.rc" \
+    "add 0700 overlay.d/sbin/s1kiosk_bundle.sh s1kiosk_bundle.sh" \
+    "add 0700 overlay.d/sbin/s1kiosk_verify s1kiosk_verify" \
+    "add 0644 overlay.d/sbin/s1kiosk_bundle.pub s1kiosk_bundle.pub"
   [ -z "$BRANDING_CPIO" ] || eval "./magiskboot cpio ramdisk.cpio $BRANDING_CPIO"
   [ -z "$DEV_CPIO" ] || eval "./magiskboot cpio ramdisk.cpio $DEV_CPIO"
   ./magiskboot cpio ramdisk.cpio "extract .backup/.magisk magisk.cfg"

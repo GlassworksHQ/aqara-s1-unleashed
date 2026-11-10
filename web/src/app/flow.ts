@@ -187,10 +187,13 @@ export class InstallFlow {
     ph('patch', 0.56, 0, 'Preparing the new software', 'Adding root, the radio helper and this browser\'s key');
     const branding = this.d.branding ?? true;
     const a = (n: AssetName) => this.d.asset(n);
-    const [magiskApk, radioRc, radioSh, otbrAgent, otCtl, firstbootRc, firstbootSh, netwatchRc, netwatchSh, updateRc, updateSh] =
-      await Promise.all([a('magisk'), a('radio-rc'), a('radio-sh'), a('otbr-agent'), a('ot-ctl'), a('firstboot-rc'), a('firstboot-sh'), a('netwatch-rc'), a('netwatch-sh'), a('update-rc'), a('update-sh')]);
+    const [magiskApk, radioRc, radioSh, otbrAgent, otCtl, firstbootRc, firstbootSh, netwatchRc, netwatchSh, updateRc, updateSh,
+      bundleRc, bundleSh, verify, bundlePub] =
+      await Promise.all([a('magisk'), a('radio-rc'), a('radio-sh'), a('otbr-agent'), a('ot-ctl'), a('firstboot-rc'), a('firstboot-sh'), a('netwatch-rc'), a('netwatch-sh'), a('update-rc'), a('update-sh'),
+        a('bundle-rc'), a('bundle-sh'), a('verify'), a('bundle-pub')]);
     const overlay = s1Overlay({
       radioRc, radioSh, otbrAgent, otCtl, firstbootRc, firstbootSh, netwatchRc, netwatchSh, updateRc, updateSh,
+      bundleRc, bundleSh, verify, bundlePub,
       adbKeys: new TextEncoder().encode(`${this.d.key.publicKey}\n`),
       branding: branding ? { rc: await a('branding-rc'), bootAnimation: await a('bootanimation') } : undefined,
     });

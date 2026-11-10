@@ -31,6 +31,7 @@ function assets(): Record<AssetName, () => Uint8Array> {
     'firstboot-rc': ov('s1kiosk_firstboot.rc'), 'firstboot-sh': ov('s1kiosk_firstboot.sh'),
     'netwatch-rc': ov('s1kiosk_netwatch.rc'), 'netwatch-sh': ov('s1kiosk_netwatch.sh'),
     'update-rc': ov('s1kiosk_update.rc'), 'update-sh': ov('s1kiosk_update.sh'),
+    'bundle-rc': ov('s1kiosk_bundle.rc'), 'bundle-sh': ov('s1kiosk_bundle.sh'), verify: ov('s1kiosk_verify'), 'bundle-pub': ov('s1kiosk_bundle.pub'),
     'branding-rc': ov('s1kiosk_branding.rc'), bootanimation: ov('s1kiosk_bootanimation.zip'),
     bootlogo: () => rd(join(G, 'fixtures/bootlogo.bmp')),
     'kiosk-apk': () => new Uint8Array([0x50, 0x4b, 3, 4]),

@@ -30,6 +30,13 @@
       "source": "https://github.com/aguilaair/aqara-s1-unleashed/blob/main/docs/radio.md (ot-br-posix border-router build, tools/radio/build-otbr.sh PROFILE=br)"
     },
     {
+      "name": "verify",
+      "url": "https://github.com/aguilaair/aqara-s1-unleashed/releases/download/installer-files-3/s1kiosk_verify",
+      "sha256": "6aa0dd83947540c2a4de8d3a86e65a8ce5b7b10520f13e16b20e591c5bcb9f80",
+      "license": "MIT AND BSD-2-Clause",
+      "source": "https://github.com/aguilaair/aqara-s1-unleashed/tree/main/tools/root (s1kiosk_verify.c + Monocypher 4.0.3 + musl; reproducible with tools/root/build-verify.sh)"
+    },
+    {
       "name": "magisk",
       "url": "https://github.com/topjohnwu/Magisk/releases/download/v31.1/Magisk-v31.1.apk",
       "sha256": "89cefac0a318afa39fb3880c45c87b036c05bc1ebf02a7a715b7f8d7c26ac6e7",

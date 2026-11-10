@@ -32,7 +32,7 @@ object RadioStep {
         Option(RadioMode.OFF, "Off", "Aqara's radio stack stopped, radio idle. Choose this if unsure."),
         Option(
             RadioMode.ZIGBEE_TCP, "Zigbee coordinator",
-            "The Zigbee radio for ZHA, as a network radio over TCP.",
+            "The Zigbee radio for ZHA (or Zigbee2MQTT), as a network radio over TCP.",
         ),
         Option(
             RadioMode.THREAD, "Thread border router",

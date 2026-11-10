@@ -23,6 +23,13 @@ abstract class ApiEntity(
 ) {
     val key: Int = fnv1a(objectId)
 
+    /**
+     * Commands only from an authenticated connection (Noise with the provisioned key): for actions that
+     * must not come from anyone on the LAN while the panel is unprovisioned (plaintext or zero-PSK API),
+     * e.g. flashing the radio.
+     */
+    var authOnly: Boolean = false
+
     abstract val listType: Int
     open val stateType: Int = 0
     open val commandType: Int = 0
