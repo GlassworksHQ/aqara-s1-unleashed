@@ -440,17 +440,10 @@ class Installer {
   private async finishApp() {
     const btn = $('#finish') as HTMLButtonElement;
     btn.disabled = true;
-    const url = ($('#ha') as HTMLInputElement).value.trim();
-    if (url && !/^https?:\/\/[^\s'"]+$/.test(url)) {
-      $('#st').textContent = 'That doesn\'t look like a web address (http://… or https://…).';
-      btn.disabled = false;
-      return;
-    }
     this.adbRow('busy', 'Installing S1 Kiosk', 'Copying the app to the panel', 'Working');
     $('#finish-hint').textContent = 'About a minute';
     try {
       const res = await this.flow!.setUpApp(this.panel!, {
-        haUrl: url || undefined,
         timezone: ($('#opt-tz') as HTMLSelectElement).value || undefined,
         locale: ($('#opt-locale') as HTMLSelectElement).value || undefined,
         clock24: this.clock24,
@@ -532,30 +525,75 @@ class Installer {
     browserRadio.checked = !!orig;
     fileRadio.checked = !orig;
     if (orig) void pick();
+    for (const r of document.querySelectorAll<HTMLInputElement>('input[name=how]')) r.onchange = () => this.renderUndoOrder();
+    $('#undo-note').hidden = true;
+    this.appsGivenBack = false;
+    this.renderUndoOrder();
     this.show('undo');
+  }
+
+  private appsGivenBack = false;
+  private undoPath(): 'factory' | 'keep' {
+    return document.querySelector<HTMLInputElement>('input[name=how]:checked')?.value === 'keep' ? 'keep' : 'factory';
+  }
+
+  /** The steps of the chosen undo, in order, with where the user is. */
+  private renderUndoOrder() {
+    const keep = this.undoPath() === 'keep';
+    const steps: [string, string][] = keep
+      ? [
+          ['Give the panel back to Aqara\'s apps', 'With the panel running normally and plugged in. This page removes S1 Kiosk and turns Aqara\'s launcher, voice, updates and radio back on.'],
+          ['Restore the original software', 'Then put the panel in FEL mode. This page writes its own boot, verified-boot and splash partitions back from the backup.'],
+        ]
+      : [
+          ['Restore the original software', 'Put the panel in FEL mode. This page writes its own boot, verified-boot and splash partitions back from the backup.'],
+          ['Factory reset the panel', 'Last, on the panel: swipe down from the top, tap Settings on the S1 Kiosk notification, then Advanced settings → Factory reset. That removes S1 Kiosk and everything set up on the panel. A factory reset alone does not restore the software, so restore first.'],
+        ];
+    const at = keep && this.appsGivenBack ? 1 : 0;
+    const ol = $('#undo-order');
+    ol.innerHTML = '';
+    steps.forEach(([b, sub], i) => {
+      const li = document.createElement('li');
+      li.className = i < at ? 'done' : i === at ? 'now' : '';
+      li.innerHTML = '<i class="n"></i><div class="t"><b></b><span></span></div><em></em>';
+      li.querySelector('.n')!.textContent = i < at ? '' : String(i + 1);
+      li.querySelector('b')!.textContent = b;
+      li.querySelector('span')!.textContent = sub;
+      li.querySelector('em')!.textContent = i < at ? 'Done' : i === at ? 'Now' : 'Then';
+      ol.append(li);
+    });
+    $('#undo-go').textContent = keep && !this.appsGivenBack ? 'Give back Aqara\'s apps' : 'Continue to FEL mode';
+  }
+
+  private undoNote(kind: 'busy' | 'ok' | 'err', title: string, sub: string) {
+    const n = $('#undo-note');
+    n.hidden = false;
+    n.className = `well note${kind === 'err' ? ' err' : ''}`;
+    n.querySelector('.dot')!.className = `dot sm${kind === 'ok' ? ' done' : kind === 'busy' ? ' spin' : ''}`;
+    $('#undo-note-t').textContent = title;
+    $('#undo-note-s').textContent = sub;
   }
 
   private async undoContinue() {
     if (!this.undoFiles) return;
     const go = $('#undo-go') as HTMLButtonElement;
-    go.disabled = true;
-    if (($('#undo-apps') as HTMLInputElement).checked) {
-      const card = $('#ask-undo');
-      card.hidden = false;
-      $('#ask-undo-t').textContent = 'Giving the panel back to Aqara\'s apps';
-      $('#ask-undo-s').textContent = 'In the browser\'s list, pick QUAD-CORE R818 EVB2 (the panel)';
+    if (this.undoPath() === 'keep' && !this.appsGivenBack) {
+      go.disabled = true;
+      this.undoNote('busy', 'Giving the panel back to Aqara\'s apps', 'In the browser\'s list, pick QUAD-CORE R818 EVB2 (the panel)');
       try {
         this.key ??= await loadOrCreateAdbKey();
         const panel = (await webUsbDevices.knownAdb(this.key)) ?? (await webUsbDevices.requestAdb(this.key));
-        await unprovision(panel, (s, d) => { $('#ask-undo-s').textContent = s || d || ''; });
-        $('#ask-undo-t').textContent = 'Aqara\'s apps are back';
-        $('#ask-undo-s').textContent = 'Now unplug the panel and put it in FEL mode';
+        await unprovision(panel, (s, d) => { this.undoNote('busy', 'Giving the panel back to Aqara\'s apps', s || d || ''); });
+        this.appsGivenBack = true;
+        this.renderUndoOrder();
+        this.undoNote('ok', 'Aqara\'s apps are back', 'Next: restore the original software. Click Continue, then put the panel in FEL mode.');
       } catch (e) {
-        $('#ask-undo-t').textContent = 'Could not reach the panel over adb';
-        $('#ask-undo-s').textContent = `${(e as Error).message}. Untick the box to restore the software only.`;
+        const msg = e instanceof DOMException && e.name === 'NotFoundError' ? 'Nothing was picked.' : (e as Error).message;
+        this.undoNote('err', 'Could not reach the panel over adb', `${msg} Is it running and plugged in? Then try again, or choose "Back to how it came from Aqara".`);
+      } finally {
         go.disabled = false;
-        return;
       }
+      return;
     }
     this.show('fel');
   }
@@ -576,7 +614,9 @@ class Installer {
     });
     this.result = undefined;
     $('#done-title').textContent = 'The original software is back';
-    $('#done-body').textContent = 'The panel is restarting with Aqara\'s software. Your settings and Wi-Fi are as they were.';
+    $('#done-body').textContent = this.undoPath() === 'keep'
+      ? 'The panel is restarting with Aqara\'s software and apps. Your settings and Wi-Fi are as they were.'
+      : 'One last step, on the panel: swipe down from the top, tap Settings on the S1 Kiosk notification, then Advanced settings → Factory reset. After that it is exactly as it came from Aqara.';
     $('#bk').hidden = true;
     $('#bk-hint').textContent = 'Keep your backup in case you want to install again later.';
     $('#done-undo').hidden = true;

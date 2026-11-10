@@ -111,8 +111,8 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
     <!-- 4 · App setup -->
     <section class="screen" data-s="app">
       <div class="label">Step 4 · App</div>
-      <h2>Where is Home Assistant?</h2>
-      <p class="body">The panel is restarting with its new software. While it does, choose what it should show and how it should be set up.</p>
+      <h2>Set up the panel</h2>
+      <p class="body">The panel is restarting with its new software. While it does, check these settings. Wi-Fi and Home Assistant come next, on the panel itself.</p>
       <div class="content">
         <div class="well rows">
           <div class="row" id="adb-row"><i class="dot sm spin"></i><div class="t"><b>Waiting for the panel</b><span>First start takes a minute or two</span></div><em class="a">Starting</em></div>
@@ -120,11 +120,6 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
         <div class="well hands" id="hands">
           <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5m0 3.5h0M10.3 3.9 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
           <div class="t"><b>Don't touch the panel's screen</b><span>It may show Aqara's setup (language, Wi-Fi, terms). Leave it alone: don't pick anything or agree to anything. S1 Kiosk replaces it in a moment.</span></div>
-        </div>
-        <div>
-          <div class="sub"><div class="label">Home Assistant address</div><span>Optional</span></div>
-          <div class="field"><input id="ha" type="url" placeholder="http://homeassistant.local:8123/dashboard" aria-label="Home Assistant address" autocomplete="url"></div>
-          <div class="status" id="st">The panel opens this page full-screen. You can also type it on the panel later.</div>
         </div>
         <div>
           <div class="sub"><div class="label">Panel settings</div><span>From this computer; change any of them</span></div>
@@ -158,19 +153,27 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", 
 
     <!-- Undo: choose the backup -->
     <section class="screen" data-s="undo">
-      <div class="label">Undo · Backup</div>
+      <div class="label">Undo</div>
       <h2>Put the original software back</h2>
-      <p class="body">This writes your panel's own boot, verified-boot and splash partitions back from a backup, each checked after writing.</p>
+      <p class="body">Choose how far back to go, then do the steps in the order shown.</p>
       <div class="content">
-        <div class="well choice" id="undo-src">
-          <label id="undo-browser-l"><input type="radio" name="src" value="browser"><span><b>The backup in this browser</b><span id="undo-browser-info"></span></span></label>
-          <label><input type="radio" name="src" value="file"><span><b>A backup file</b><span id="undo-file-info">The .zip you downloaded after installing</span></span></label>
-          <input type="file" id="undo-file" accept=".zip,application/zip" hidden>
+        <div class="well choice" id="undo-how">
+          <label><input type="radio" name="how" value="factory" checked><span><b>Back to how it came from Aqara</b><span>Recommended. Removes S1 Kiosk and everything set up on the panel.</span></span></label>
+          <label><input type="radio" name="how" value="keep"><span><b>Keep the panel's settings</b><span>Removes S1 Kiosk, keeps Wi-Fi and everything else set up on the panel.</span></span></label>
         </div>
-        <div class="well opts">
-          <label><input type="checkbox" id="undo-apps" checked><span><b>First give the panel back to Aqara's apps and remove S1 Kiosk</b> (launcher, voice, updates, Aqara's radio). The panel must be running and plugged in.</span></label>
+        <div>
+          <div class="sub"><div class="label">In this order</div><span>The order matters</span></div>
+          <ol class="well order" id="undo-order"></ol>
         </div>
-        <div class="well ask" id="ask-undo" hidden><span class="pulse" style="margin:0 5px"></span><div class="t"><b id="ask-undo-t"></b><span id="ask-undo-s"></span></div></div>
+        <div>
+          <div class="sub"><div class="label">Backup to restore</div></div>
+          <div class="well choice" id="undo-src">
+            <label id="undo-browser-l"><input type="radio" name="src" value="browser"><span><b>The backup in this browser</b><span id="undo-browser-info"></span></span></label>
+            <label><input type="radio" name="src" value="file"><span><b>A backup file</b><span id="undo-file-info">The .zip you downloaded after installing</span></span></label>
+            <input type="file" id="undo-file" accept=".zip,application/zip" hidden>
+          </div>
+        </div>
+        <div class="well note" id="undo-note" hidden><i class="dot sm"></i><div class="t"><b id="undo-note-t"></b><span id="undo-note-s"></span></div></div>
       </div>
       <div class="actions"><button class="btn quiet" id="undo-back">Back</button><span class="sp"></span><button class="btn primary" id="undo-go" disabled>Continue</button></div>
     </section>

@@ -275,3 +275,23 @@ code{font-family:var(--mono);font-size:12.5px}
 .sw:checked{background:var(--green)}
 .sw:checked::after{transform:translateX(18px)}
 @media (max-width:899px){.set{flex-wrap:wrap}.set select{max-width:none;width:100%}}
+
+/* undo: ordered steps + status note */
+.order{list-style:none;display:flex;flex-direction:column}
+.order li{display:flex;gap:14px;align-items:flex-start;padding:14px 18px}
+.order li+li{border-top:1px solid var(--bd)}
+.order .n{font-style:normal;flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12.5px;font-weight:600;border:2px solid rgba(255,255,255,.18);color:var(--fa)}
+.order li.now .n{border-color:var(--amber);color:var(--amber)}
+.order li.done .n{background:var(--green);border-color:var(--green);color:var(--bg)}
+.order .t{flex:1;min-width:0}
+.order b{display:block;font-weight:500}
+.order span{display:block;font-size:13.5px;color:var(--mu)}
+.order em{font-style:normal;font-size:12.5px;color:var(--fa);white-space:nowrap}
+.order li.now em{color:var(--amber)}
+.note{display:flex;gap:14px;align-items:flex-start;padding:14px 18px}
+.note .dot{margin-top:2px}
+.note .t{flex:1;min-width:0}
+.note b{display:block;font-weight:500}
+.note span{display:block;font-size:13.5px;color:var(--mu)}
+.note.err{border-color:rgba(251,113,133,.3);background:rgba(251,113,133,.05)}
+.note.err b{color:var(--rose)}
