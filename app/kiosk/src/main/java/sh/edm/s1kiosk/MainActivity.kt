@@ -736,6 +736,16 @@ class MainActivity : Activity() {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; setSingleLine()
         }
         val autoBright = CheckBox(this).apply { text = "Auto brightness (light sensor)"; isChecked = prefs.autoBrightness }
+        // Same setting as HA's "Radio allowed clients" (docs/radio.md "Firewall"): empty = Home Assistant only.
+        val radio = KioskService.radioRef
+        val allowNow = radio?.allowedNow()
+        val allowField = EditText(this).apply {
+            setText(radio?.allowedClients().orEmpty())
+            hint = "empty = Home Assistant only"
+            inputType = InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine()
+            isEnabled = radio != null
+        }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad, pad, 0)
@@ -759,6 +769,19 @@ class MainActivity : Activity() {
             addView(TextView(context).apply { text = "Presence range (m, 0.1 – 2.5)" })
             addView(rangeField)
             addView(autoBright)
+            addView(TextView(context).apply {
+                text = "Radio: who may connect (IP addresses or ranges, or any)"
+            })
+            addView(allowField)
+            addView(TextView(context).apply {
+                textSize = 12f
+                text = when {
+                    radio == null -> "Kiosk service not running"
+                    allowNow == null -> "Allowed now: no firewall active (radio off or old root helper)"
+                    allowNow.isEmpty() -> "Allowed now: only the panel itself (Home Assistant hasn't connected yet)"
+                    else -> "Allowed now: ${allowNow.replace(" ", ", ")}"
+                }
+            })
         }
         val scroll = ScrollView(this).apply { addView(layout) }
         AlertDialog.Builder(this)
@@ -776,7 +799,18 @@ class MainActivity : Activity() {
                 prefs.nightIdleOffSec = nightIdleField.text.toString().toIntOrNull() ?: 20
                 prefs.autoBrightness = autoBright.isChecked
                 prefs.presenceRangeM = rangeField.text.toString().toFloatOrNull() ?: 0f
-                restartProcess()
+                val allowText = allowField.text.toString().trim()
+                if (radio != null && allowText != radio.allowedClients()) {
+                    val err = radio.setAllowedClients(allowText)
+                    if (err != null) {
+                        // the old list stays; give the message time to be read before the restart
+                        Toast.makeText(this, "Radio allow-list not changed: $err", Toast.LENGTH_LONG).show()
+                        handler.postDelayed({ restartProcess() }, 3500)
+                    } else {
+                        // let the radio thread hand the new list to the helper before the process restarts
+                        radio.afterPending { handler.post { restartProcess() } }
+                    }
+                } else restartProcess()
             }
             .setNeutralButton("Android settings") { _, _ ->
                 try {

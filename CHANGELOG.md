@@ -7,6 +7,11 @@ below as the release notes.
 
 ## [Unreleased]
 
+### Added
+- *Radio allowed clients* can also be changed on the panel: in the hidden settings (tap the top-left
+  corner five times), under *Radio: who may connect*. It's the same setting as in Home Assistant, and the
+  dialog shows who is allowed right now.
+
 ## [0.3.1] - 2026-11-10
 
 **Only Home Assistant can reach the radio now, and update notes no longer get cut off.**

@@ -210,7 +210,9 @@ plaintext, not the zero-key provisioning handshake) subscribes to states, the ap
 address, one IPv4 and one IPv6 at most (`radio_ha_ipv4` / `radio_ha_ipv6` in the app's prefs, so they
 survive restarts). HA on another VLAN is fine: the address is the routed peer address. If HA's
 address changes, the next connection updates the list (HA reconnects at least every 90 s here).
-The owner can replace the automatic list with the `Radio allowed clients` text entity: addresses or
+The owner can replace the automatic list with the `Radio allowed clients` text entity (in HA: the
+panel's ESPHome device, Configuration; on the panel: the hidden settings dialog, *Radio: who may
+connect*, which also shows who is allowed now): addresses or
 CIDRs separated by spaces or commas, `any` (no firewall, the v2 behaviour), or empty = automatic.
 Loopback (the router host's bridge on 127.0.0.1, `adb forward`) is always allowed.
 
