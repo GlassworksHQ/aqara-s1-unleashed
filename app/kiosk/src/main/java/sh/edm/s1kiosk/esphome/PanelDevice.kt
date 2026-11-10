@@ -18,6 +18,7 @@ import sh.edm.s1kiosk.AqaraCloud
 import sh.edm.s1kiosk.MainActivity
 import sh.edm.s1kiosk.TimerBoard
 import sh.edm.s1kiosk.auth.HaAuth
+import sh.edm.s1kiosk.radio.RadioAllow
 import sh.edm.s1kiosk.radio.RadioController
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.ZigbeeRouterHost
@@ -110,6 +111,7 @@ class PanelDevice(
         routerHostFactory = { onStatus ->
             ZigbeeRouterHost(log = { Log.i(RadioController.TAG, it) }, onStatus = { onStatus() })
         },
+        allow = prefs.radioAllowStore,
     )
     /**
      * App updates from GitHub Releases (docs/releasing.md); the "App update" entity. runCatching:
@@ -411,10 +413,12 @@ class PanelDevice(
             onApiHello(info, addr)
         }
         // HA subscribes only after it has added the panel: remember that (setup screen, step 2).
-        s.onStatesSubscribed = { info ->
+        s.onStatesSubscribed = { info, addr, authenticated ->
             if (HaUrls.isHomeAssistantHello(info)) {
                 if (!prefs.haSeen) { prefs.haSeen = true; ApiLog.i("Home Assistant has added the panel") }
                 SetupSignals.onHaSubscribed()
+                // Only HA may reach the radio's TCP services; only an authenticated HA may say where it is.
+                if (authenticated) radio.homeAssistantConnected(addr)
             }
         }
         // A provisioned (or cleared) key changes the mDNS TXT records; re-register after the
@@ -649,6 +653,15 @@ class PanelDevice(
         TextSensorEntity(
             "radio_status", "Radio status", "mdi:radio-tower", EntityCategory.DIAGNOSTIC,
             get = { radio.statusText() },
+        ),
+        // Who may reach the radio's network services (EZSP :6638, OTBR REST :8081); empty = Home Assistant only.
+        TextEntity(
+            "radio_allowed_clients", "Radio allowed clients", "mdi:shield-lock-outline", maxLength = RadioAllow.MAX_LEN,
+            get = { radio.allowedClients() },
+            set = { v ->
+                radio.setAllowedClients(v)?.let { Log.w(RadioController.TAG, "Radio allowed clients: $it") }
+                exec.execute { server?.publishStates() }
+            },
         ),
         // Zigbee router: join/leave the network that has permit-join open (docs/radio.md "Zigbee router").
         ButtonEntity("zigbee_router_join", "Join Zigbee network", "mdi:zigbee", EntityCategory.CONFIG, press = { radio.routerJoin() }),

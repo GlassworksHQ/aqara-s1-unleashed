@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit
  * → {"id":1,"op":"state"}                      ← {"id":1,"ok":true,"state":{…}}
  * → {"id":2,"op":"set_ha","url":"http://…"}    ← {"id":2,"ok":true,"state":{…}} | {"id":2,"ok":false,"error":"…"}
  * → {"id":3,"op":"set_radio","mode":"off"}     ← {"id":3,"ok":true,"state":{…}} | {"id":3,"ok":false,"error":"…"}
+ * → {"id":4,"op":"set_radio_allow","allow":""} ← {"id":4,"ok":true,"state":{…}} | {"id":4,"ok":false,"error":"…"}
  * ```
  * While a client is connected, `{"event":"state","state":{…}}` is pushed whenever the serialized
  * state changes (checked every [SetupChannel.POLL_MS]). No secrets ever cross it: no tokens, no API
@@ -28,7 +29,12 @@ import java.util.concurrent.TimeUnit
  */
 data class ChannelState(val ip: String?, val ha: Ha, val radio: Radio) {
     data class Ha(val discovered: String?, val url: String, val signedIn: Boolean, val signinUrl: String?)
-    data class Radio(val mode: String, val status: String, val options: List<Option>, val helper: Boolean)
+    /**
+     * [allowed]: who the helper's firewall lets reach the radio's TCP services (EZSP :6638, OTBR REST
+     * :8081): "any", "" (nobody but the panel yet: Home Assistant hasn't connected), or space-separated
+     * addresses/CIDRs. Null (left out) when unknown: Off, no helper, or a helper without the firewall.
+     */
+    data class Radio(val mode: String, val status: String, val options: List<Option>, val helper: Boolean, val allowed: String? = null)
     /** [repeater]: a role inside someone else's network (Zigbee/Thread router); optional, only sent when true. */
     data class Option(val id: String, val label: String, val detail: String, val experimental: Boolean = false, val repeater: Boolean = false)
 
@@ -57,6 +63,7 @@ data class ChannelState(val ip: String?, val ha: Ha, val radio: Radio) {
                 }
             })
             put("helper", radio.helper)
+            radio.allowed?.let { put("allowed", it) }
         })
         return o
     }
@@ -96,6 +103,11 @@ class SetupChannel(private val backend: Backend, private val log: (String) -> Un
         fun setHa(url: String): HaChange
         /** Apply radio mode [id] (a RadioMode id); blocking until it succeeded or failed. Null = ok, else why not. */
         fun setRadio(id: String): String?
+        /**
+         * Who may reach the radio's TCP services, as the `Radio allowed clients` entity: addresses or
+         * CIDRs, `any`, or "" = Home Assistant only (automatic). Null = stored, else why not.
+         */
+        fun setRadioAllow(text: String): String? = "Not supported by this panel."
     }
 
     data class HaChange(val error: String? = null, val afterReply: (() -> Unit)? = null)
@@ -128,6 +140,10 @@ class SetupChannel(private val backend: Backend, private val log: (String) -> Un
                         else -> reply(id, error = err) to null
                     }
                 }
+            }
+            "set_radio_allow" -> when (val err = backend.setRadioAllow(req.optString("allow", ""))) {
+                null -> reply(id, state = backend.state()) to null
+                else -> reply(id, error = err) to null
             }
             else -> reply(id, error = "Unknown request '$op'.") to null
         }

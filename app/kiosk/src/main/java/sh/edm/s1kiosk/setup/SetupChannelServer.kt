@@ -10,7 +10,10 @@ import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.KioskService
 import sh.edm.s1kiosk.MainActivity
 import sh.edm.s1kiosk.auth.HaAuth
+import sh.edm.s1kiosk.radio.RadioAllow
+import sh.edm.s1kiosk.radio.RadioHelper
 import sh.edm.s1kiosk.radio.RadioMode
+import sh.edm.s1kiosk.radio.ShellProps
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -77,6 +80,7 @@ object SetupChannelServer {
                     status = r?.statusText() ?: "The radio controller isn't running yet",
                     options = ChannelState.OPTIONS,
                     helper = helperInstalled(),
+                    allowed = r?.allowedNow(),
                 ),
             )
         }
@@ -125,6 +129,26 @@ object SetupChannelServer {
                 Thread.sleep(500)
             }
             prefs.radioStepDone = true // the panel's own radio step doesn't ask again
+            return null
+        }
+
+        override fun setRadioAllow(text: String): String? {
+            val r = KioskService.radioRef ?: return "The radio controller isn't running yet; try again in a moment."
+            r.setAllowedClients(text)?.let { return it }
+            Log.i(TAG, "radio allowed clients from the installer")
+            // The helper re-reads the list within 3 s; give the reply the enforced state.
+            val until = SystemClock.elapsedRealtime() + 5_000
+            val want = r.wantedAllow()
+            // Poll the helper's one prop here (this isn't the radio thread), then refresh once.
+            while (SystemClock.elapsedRealtime() < until) {
+                Thread.sleep(500)
+                val a = RadioHelper.parseAllowed(ShellProps.get(RadioHelper.PROP_ALLOWED)) ?: break // Off / no firewall
+                if ((if (a.any) RadioAllow.ANY else a.addresses.joinToString(" ")) == want) break
+            }
+            val refreshed = CountDownLatch(1)
+            r.refreshSoon()
+            r.afterPending { refreshed.countDown() } // the status text in the reply names the new list
+            refreshed.await(3, TimeUnit.SECONDS)
             return null
         }
     }

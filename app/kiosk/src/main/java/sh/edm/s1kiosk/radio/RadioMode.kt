@@ -107,7 +107,9 @@ object RadioHelper {
      * until the stack answers, [PROP_OTBR].
      */
     const val PROP_VERSION = "sys.s1kiosk.radio.version"
-    const val VERSION = 2
+    const val VERSION = 3
+    /** v3: the firewall ([PROP_ALLOW], [PROP_ALLOWED]); otherwise the same as v2. */
+    const val FIREWALL_VERSION = 3
     /** Helper -> app (v2): which otbr-agent is installed: `br` (border router, REST), `agent` (proof build), `none`. */
     const val PROP_OTBR = "sys.s1kiosk.radio.otbr"
 
@@ -124,7 +126,33 @@ object RadioHelper {
      */
     const val DATASET_FILE = "radio/thread-dataset"
 
+    /**
+     * App -> helper (v3): who may reach tcp:[ZIGBEE_TCP_PORT] and tcp:[OTBR_REST_PORT] (iptables, every
+     * mode but off). "" = nobody but loopback (no Home Assistant address known yet), "any" = no firewall,
+     * else space-separated IPv4/IPv6 addresses or CIDRs ([RadioAllow.decide]). Persistent so the helper
+     * has it at boot before the app runs; re-read every 3 s (no helper restart). `RADIO_ALLOW` in the
+     * helper's radio.conf wins over it.
+     */
+    const val PROP_ALLOW = "persist.s1kiosk.radio_allow"
+    /** Helper -> app (v3): what the firewall enforces now: "<app|conf> <any|none|addr ...>"; "" in off. */
+    const val PROP_ALLOWED = "sys.s1kiosk.radio.allowed"
+
     data class Status(val state: String, val mode: RadioMode?, val detail: String)
+
+    /** [PROP_ALLOWED] parsed. [source]: "app" (from [PROP_ALLOW]) or "conf" (radio.conf RADIO_ALLOW). */
+    data class Allowed(val source: String, val any: Boolean, val addresses: List<String>)
+
+    /** Parses [PROP_ALLOWED]; null if unset (off, or a helper without the firewall) or malformed. */
+    fun parseAllowed(raw: String?): Allowed? {
+        val parts = raw?.trim().orEmpty().split(' ').filter { it.isNotEmpty() }
+        if (parts.size < 2 || parts[0] !in setOf("app", "conf")) return null
+        val rest = parts.drop(1)
+        return when {
+            rest == listOf(RadioAllow.ANY) -> Allowed(parts[0], true, emptyList())
+            rest == listOf("none") -> Allowed(parts[0], false, emptyList())
+            else -> Allowed(parts[0], false, rest)
+        }
+    }
 
     /** Parses [PROP_STATUS]; null if unset or malformed. */
     fun parseStatus(raw: String?): Status? {

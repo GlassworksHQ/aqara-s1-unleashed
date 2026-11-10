@@ -34,6 +34,12 @@ class SetupChannelTest {
             state = state.copy(ha = state.ha.copy(url = url))
             return SetupChannel.HaChange(afterReply = { after += "reload $url" })
         }
+        override fun setRadioAllow(text: String): String? {
+            calls += "set_radio_allow $text"
+            if (text == "bad") return "Not an IP address or CIDR: “bad”."
+            state = state.copy(radio = state.radio.copy(allowed = text.ifEmpty { "192.0.2.10" }))
+            return null
+        }
         override fun setRadio(id: String): String? {
             calls += "set_radio $id"
             radioError?.let { return it }
@@ -113,6 +119,22 @@ class SetupChannelTest {
     // ---- requests
 
     private fun reply(c: SetupChannel, line: String): JSONObject = JSONObject(c.handle(line).first)
+
+    @Test
+    fun setRadioAllowAndTheAllowedField() {
+        val fake = Fake(base)
+        val c = SetupChannel(fake)
+        assertFalse(reply(c, """{"id":1,"op":"state"}""").getJSONObject("state").getJSONObject("radio").has("allowed"))
+        val r = reply(c, """{"id":2,"op":"set_radio_allow","allow":"198.51.100.23"}""")
+        assertTrue(r.getBoolean("ok"))
+        assertEquals("198.51.100.23", r.getJSONObject("state").getJSONObject("radio").getString("allowed"))
+        val bad = reply(c, """{"id":3,"op":"set_radio_allow","allow":"bad"}""")
+        assertFalse(bad.getBoolean("ok"))
+        assertTrue(bad.getString("error").startsWith("Not an IP address"))
+        // missing "allow" = "" = back to automatic (Home Assistant only)
+        assertTrue(reply(c, """{"id":4,"op":"set_radio_allow"}""").getBoolean("ok"))
+        assertEquals(listOf("set_radio_allow 198.51.100.23", "set_radio_allow bad", "set_radio_allow "), fake.calls)
+    }
 
     @Test
     fun stateAndSetHaRoundTripIdsEchoed() {

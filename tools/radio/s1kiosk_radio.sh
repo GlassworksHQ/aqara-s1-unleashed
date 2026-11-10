@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# s1kiosk_radio: root helper for the S1 Kiosk radio modes (docs/radio.md), contract v2.
+# s1kiosk_radio: root helper for the S1 Kiosk radio modes (docs/radio.md), contract v3.
 #
 # Runs as an init service (s1kiosk_radio.rc: root, u:r:su:s0, started at boot, never exits).
 # Reads persist.s1kiosk.radio_mode, brings Aqara's radio services to the state that mode needs,
@@ -26,9 +26,17 @@
 #                  private files dir); the helper moves it into $DIR (root 0600) and deletes the
 #                  app's copy. Without a dataset the stack runs and waits ("ready to join").
 #
+#
+# Firewall (contract v3): in every mode but off, an iptables/ip6tables INPUT chain ($FW_CHAIN) lets
+# only loopback and the allowed addresses reach tcp:$ZIGBEE_PORT and tcp:$REST_PORT; everyone else
+# is dropped. The allowed addresses come from the app (persist.s1kiosk.radio_allow: Home Assistant's
+# address as seen on the ESPHome API, or the owner's explicit list), or RADIO_ALLOW in radio.conf.
+# Empty = nobody but loopback yet. "any" = no rules (the v2 behaviour). Removed in off.
+#
 # Optional root-owned overrides in $DIR/radio.conf (sourced):
 #   ZIGBEE_PORT=6638  ZIGBEE_RANGE=lan|<cidr>  ROUTER_PORT=6639  BACKBONE=wlan0
 #   REST_LISTEN=0.0.0.0  REST_PORT=8081  OTBR_ARGS="..."  RADIO_URL=...
+#   RADIO_ALLOW="<ip|cidr> ..."|any|none   (wins over the app's list; empty = the app's list)
 # otbr-agent/ot-ctl come from tools/radio/build-otbr.sh; build them with OTBR_RUNTIME_DIR=$DIR/run
 # (socket dir, compiled in).
 
@@ -44,6 +52,11 @@ REST_LISTEN=0.0.0.0                      # thread (BR build): REST API for HA; 1
 REST_PORT=8081
 RADIO_URL='spinel+cpc://cpcd_0?iid=2&iid-list=0'  # zigbeed holds iid=1
 OTBR_ARGS=""
+# Who may reach tcp:$ZIGBEE_PORT / tcp:$REST_PORT (firewall, see the header). Empty = the app's list.
+RADIO_ALLOW=""
+PROP_ALLOW=persist.s1kiosk.radio_allow   # app -> helper: allowed addresses ("" | any | "<ip|cidr> ...")
+PROP_ALLOWED=sys.s1kiosk.radio.allowed   # helper -> app: "<app|conf> <any|none|<ip|cidr> ...>", "" in off
+FW_CHAIN=S1RADIO
 APP_DATASET=/data/data/sh.edm.s1kiosk/files/radio/thread-dataset  # app -> helper hand-off (thread_router)
 EZSP_PTY=/dev/ttyZigbeeNCP               # host side of Aqara's socat pty pair (zigbeed is on /tmp/ttyZigbeeNCP)
 ZIGBEED_PTY=/tmp/ttyZigbeeNCP
@@ -72,12 +85,14 @@ say() { log -t s1kiosk_radio "$*" 2>/dev/null; }
 SHOWN=""
 status() { # state [detail]; only writes when it changed
   if [ -n "$2" ]; then st_="$1 $MODE: $2"; else st_="$1 $MODE"; fi
+  # setprop refuses values over 91 bytes (PROP_VALUE_MAX) and the old status would stay: cut it
+  [ ${#st_} -gt 91 ] && st_="$(printf '%.88s' "$st_")..."
   [ "$st_" = "$SHOWN" ] && return 0
   SHOWN=$st_
   setprop sys.s1kiosk.radio.status "$st_"
   say "$st_"
 }
-setprop sys.s1kiosk.radio.version 2
+setprop sys.s1kiosk.radio.version 3   # v3 = v2 + the firewall (persist.s1kiosk.radio_allow)
 
 # What the installed otbr-agent can do (app: which Thread modes are real): br | agent | none
 otbr_kind() {
@@ -191,6 +206,139 @@ br_net_off() {
   BR_TABLE=""
 }
 
+# --- firewall: who may reach the radio's network services --------------------------------------
+# Android 10 here: legacy iptables/ip6tables 1.6.1 in /system/bin (no multiport match, so one jump
+# per port; iptables-save needs no lock). netd owns INPUT's other jumps (bw_INPUT, fw_INPUT) and may
+# flush INPUT when it restarts, so the rules are checked every loop and put back. The chain's
+# contents are replaced atomically (iptables-restore --noflush with ":$FW_CHAIN -" flushes just that
+# chain in the same commit), so a change of address never opens the ports in between.
+FW_STATE=unknown   # what is in place: unknown | clear | any | "<list>|<ports>"
+FW_EFF=""          # addresses actually allowed (normalized list, "any", or "" = loopback only)
+FW_SRC=app         # where the list came from: app (persist prop) | conf (RADIO_ALLOW)
+FW_BAD=""          # tokens that were ignored (not an address) or rejected by iptables
+
+ipt() { f_=$1; shift; if [ "$f_" = 6 ]; then ip6tables -w 5 "$@"; else iptables -w 5 "$@"; fi; }
+ipt_save() { if [ "$1" = 6 ]; then ip6tables-save -t filter; else iptables-save -t filter; fi; }
+ipt_restore() { if [ "$1" = 6 ]; then ip6tables-restore -w 5 --noflush; else iptables-restore -w 5 --noflush; fi; }
+
+# Wanted list -> FW_SRC, FW_LIST ("any" | "" | "a b ..."), FW_BAD. Tokens may be separated by spaces
+# or commas; "none" adds nothing; anything that isn't made of address characters is ignored.
+fw_wanted() {
+  if [ -n "$RADIO_ALLOW" ]; then FW_SRC=conf; v_=$RADIO_ALLOW
+  else FW_SRC=app; v_=$(getprop $PROP_ALLOW); fi
+  FW_LIST=""; FW_BAD=""
+  set -f  # no globbing of tokens such as '*'
+  for t_ in $(echo "$v_" | tr ',' ' '); do
+    case "$t_" in
+      any|ANY) FW_LIST=any; break ;;
+      none|NONE) ;;
+      *:*) case "$t_" in *[!0-9a-fA-F:./]*) FW_BAD="$FW_BAD $t_" ;; *) FW_LIST="$FW_LIST $t_" ;; esac ;;
+      *.*) case "$t_" in *[!0-9./]*) FW_BAD="$FW_BAD $t_" ;; *) FW_LIST="$FW_LIST $t_" ;; esac ;;
+      *) FW_BAD="$FW_BAD $t_" ;;
+    esac
+  done
+  set +f
+  FW_LIST=${FW_LIST# }; FW_BAD=${FW_BAD# }
+}
+
+fw_family_count() { # 4|6 list -> number of addresses of that family
+  n_=0
+  for t_ in $2; do
+    case "$t_" in *:*) [ "$1" = 6 ] && n_=$((n_+1)) ;; *) [ "$1" = 4 ] && n_=$((n_+1)) ;; esac
+  done
+  echo $n_
+}
+
+fw_jumps() { for p_ in $ZIGBEE_PORT $REST_PORT; do echo "-A INPUT -p tcp -m tcp --dport $p_ -j $FW_CHAIN"; done; }
+
+# The rules for family $1 are in place for list $2: the chain has lo + one RETURN per address + DROP,
+# and INPUT has exactly our jumps (iptables-save prints them in rule order).
+fw_ok() {
+  s_=$(ipt_save $1) || return 1
+  n_=$(printf '%s\n' "$s_" | grep -c "^-A $FW_CHAIN ")
+  [ "$n_" = $(( $(fw_family_count $1 "$2") + 2 )) ] || return 1
+  printf '%s\n' "$s_" | grep -q "^-A $FW_CHAIN -j DROP\$" || return 1
+  [ "$(printf '%s\n' "$s_" | grep "^-A INPUT .*-j $FW_CHAIN\$")" = "$(fw_jumps)" ]
+}
+
+fw_del_jumps() { # family: removes every INPUT jump to the chain (also stale ports, duplicates)
+  ipt_save $1 | sed -n "s/^-A INPUT \(.*-j $FW_CHAIN\)\$/-D INPUT \1/p" | while read -r l_; do
+    # shellcheck disable=SC2086
+    ipt $1 $l_
+  done
+}
+
+fw_set() { # family list: chain contents (atomic), then the jumps at the top of INPUT
+  {
+    echo "*filter"
+    echo ":$FW_CHAIN - [0:0]"
+    echo "-A $FW_CHAIN -i lo -j RETURN"
+    for t_ in $2; do
+      case "$t_" in *:*) [ "$1" = 6 ] ;; *) [ "$1" = 4 ] ;; esac && echo "-A $FW_CHAIN -s $t_ -j RETURN"
+    done
+    echo "-A $FW_CHAIN -j DROP"
+    echo "COMMIT"
+  } | ipt_restore $1 || return 1
+  if [ "$(ipt_save $1 | grep "^-A INPUT .*-j $FW_CHAIN\$")" != "$(fw_jumps)" ]; then
+    fw_del_jumps $1
+    for p_ in $REST_PORT $ZIGBEE_PORT; do ipt $1 -I INPUT 1 -p tcp --dport $p_ -j $FW_CHAIN || return 1; done
+  fi
+}
+
+fw_clear() { # removes everything of ours (off, "any")
+  for f_ in 4 6; do
+    fw_del_jumps $f_
+    ipt $f_ -F $FW_CHAIN 2>/dev/null; ipt $f_ -X $FW_CHAIN 2>/dev/null
+  done
+  return 0
+}
+
+# Every loop in every mode but off. Returns 1 (status set) when the rules could not be put in place.
+fw_apply() {
+  fw_wanted
+  [ -n "$FW_BAD" ] && [ "$FW_BAD" != "$FW_BAD_SAID" ] && { say "firewall: ignoring '$FW_BAD' (not an address)"; FW_BAD_SAID=$FW_BAD; }
+  if [ "$FW_LIST" = any ]; then
+    [ "$FW_STATE" = any ] || { fw_clear; FW_STATE=any; FW_EFF=any; say "firewall: off (allow any), $FW_SRC"; }
+  else
+    sig_="$FW_LIST|$ZIGBEE_PORT $REST_PORT"
+    if [ "$FW_STATE" != "$sig_" ] || ! fw_ok 4 "$FW_EFF" || ! fw_ok 6 "$FW_EFF"; then
+      FW_EFF=$FW_LIST
+      if ! fw_set 4 "$FW_EFF" || ! fw_set 6 "$FW_EFF"; then
+        # iptables refused an entry (e.g. a bad prefix length): loopback only rather than open
+        say "firewall: iptables rejected '$FW_EFF', allowing loopback only"
+        FW_BAD="${FW_BAD:+$FW_BAD }$FW_EFF"; FW_EFF=""
+        fw_set 4 "" && fw_set 6 ""
+      fi
+      if ! fw_ok 4 "$FW_EFF" || ! fw_ok 6 "$FW_EFF"; then
+        FW_STATE=unknown; status error "firewall rules for tcp:$ZIGBEE_PORT/$REST_PORT could not be set"; return 1
+      fi
+      [ "$FW_STATE" = "$sig_" ] || say "firewall: tcp:$ZIGBEE_PORT/$REST_PORT from ${FW_EFF:-loopback only} ($FW_SRC)"
+      FW_STATE=$sig_
+    fi
+  fi
+  a_=$(allowed_value)
+  [ "$a_" = "$FW_ALLOWED_SHOWN" ] || { setprop $PROP_ALLOWED "$a_"; FW_ALLOWED_SHOWN=$a_; }
+  return 0
+}
+
+# For $PROP_ALLOWED: "<src> <any|none|list>", at most 91 bytes (PROP_VALUE_MAX); a list that doesn't
+# fit (long RADIO_ALLOW) ends with "+<n>" for the addresses left out.
+allowed_value() {
+  out_="$FW_SRC"; n_=0
+  [ -n "$FW_EFF" ] || { echo "$out_ none"; return; }
+  for t_ in $FW_EFF; do
+    if [ $n_ -gt 0 ] || [ $(( ${#out_} + ${#t_} + 1 + 4 )) -gt 91 ]; then n_=$((n_+1)); else out_="$out_ $t_"; fi
+  done
+  [ $n_ -gt 0 ] && out_="$out_ +$n_"
+  echo "$out_"
+}
+
+fw_off() {
+  [ "$FW_STATE" = clear ] && return 0
+  fw_clear; FW_STATE=clear; FW_EFF=""
+  setprop $PROP_ALLOWED ""; FW_ALLOWED_SHOWN=""
+}
+
 # --- our processes ---------------------------------------------------------------------------
 BRIDGE_PID=""; BRIDGE_RANGE=""; OTBR_PID=""; JOINED=""; FAILS=0
 
@@ -300,14 +448,15 @@ alive() { [ -n "$1" ] && kill -0 "$1" 2>/dev/null; }
 
 children_ok() {
   case "$MODE" in
-    off)               br_net_off ;;
-    zigbee_tcp)        br_net_off; coordinator_bridge || return 1 ;;
-    zigbee_router)     br_net_off; router_bridge || return 1 ;;
-    thread)            alive "$OTBR_PID"   || start_thread_br || return 1
+    off)               br_net_off; fw_off ;;
+    zigbee_tcp)        br_net_off; fw_apply || return 1; coordinator_bridge || return 1 ;;
+    zigbee_router)     br_net_off; fw_apply || return 1; router_bridge || return 1 ;;
+    thread)            fw_apply || return 1
+                       alive "$OTBR_PID"   || start_thread_br || return 1
                        [ "$OTBR_KIND" = br ] && br_net_on ;;
-    thread_router)     br_net_off; take_app_dataset
+    thread_router)     br_net_off; fw_apply || return 1; take_app_dataset
                        alive "$OTBR_PID"   || start_thread_router || return 1 ;;
-    zigbee_tcp_thread) coordinator_bridge || return 1
+    zigbee_tcp_thread) fw_apply || return 1; coordinator_bridge || return 1
                        alive "$OTBR_PID"   || start_otbr "$DIR/thread" || return 1 ;;
   esac
   return 0

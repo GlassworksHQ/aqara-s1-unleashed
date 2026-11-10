@@ -95,7 +95,7 @@ function demoSetup(): ByteStream {
       for (const line of new TextDecoder().decode(data).split('\n').filter(Boolean)) {
         const m = JSON.parse(line) as { id: number; op: string; url?: string; mode?: string };
         if (m.op === 'set_ha') { state.ha.url = m.url; setTimeout(() => { state.ha.signedIn = true; send({ event: 'state', state }); }, 6000); }
-        if (m.op === 'set_radio') { state.radio.mode = m.mode!; state.radio.status = m.mode === 'off' ? 'Off: radio idle' : 'Zigbee coordinator: listening on 192.168.1.50:6638'; }
+        if (m.op === 'set_radio') { state.radio.mode = m.mode!; state.radio.status = m.mode === 'off' ? 'Off: radio idle' : 'ok Zigbee coordinator (TCP): listening on :6638 for nobody yet (waiting for Home Assistant to connect over ESPHome)'; state.radio.allowed = m.mode === 'off' ? undefined : ''; }
         send({ id: m.id, ok: true, state }, m.op === 'set_radio' ? 1500 : 200);
       }
     },
@@ -998,6 +998,11 @@ class Installer {
     };
     const plan = plans[mode];
     if (!plan) return false;
+    // Helper v3 firewall: the radio's ports only open to Home Assistant, once it has added the panel.
+    if ((mode === 'zigbee_tcp' || mode === 'thread') && state?.radio.allowed === '') {
+      plan.steps.unshift({ title: 'First · Add the panel to Home Assistant', body: 'Only Home Assistant can reach the radio, and the panel learns its address when Home Assistant adds the panel. If you haven\'t yet: in Home Assistant open Settings → Devices & services, and add the S1 Panel shown under Discovered (ESPHome). Until then the radio refuses every connection.',
+        link: 'https://my.home-assistant.io/redirect/integrations/' });
+    }
     $('#radio-list').hidden = true;
     const box = $('#radio-next');
     box.innerHTML = '';

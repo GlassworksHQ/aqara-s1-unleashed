@@ -46,12 +46,112 @@ class RadioControllerTest {
     @get:org.junit.Rule val tmp = org.junit.rules.TemporaryFolder()
     private var stored: String? = null
     private val router = FakeRouter()
+    private val allow = MemoryAllowStore()
     private fun controller(init: FakeInit, initial: String? = null, ip: String? = null): RadioController {
         stored = initial
         return RadioController(
             init, load = { stored }, store = { stored = it }, inline = true, log = {},
-            panelIp = { ip }, filesDir = tmp.root, routerHostFactory = { router },
+            panelIp = { ip }, filesDir = tmp.root, routerHostFactory = { router }, allow = allow,
         )
+    }
+
+    // ------------------------------------------------------------------ firewall (helper v3)
+    // Documentation addresses only (RFC 5737 / 3849).
+
+    @Test
+    fun noHomeAssistantYetMeansNobodyAndTheStatusSaysWhy() {
+        val init = FakeInit(helper = true, helperVersion = 3)
+        val c = controller(init, initial = "zigbee_tcp", ip = "198.51.100.7")
+        init.props[RadioHelper.PROP_MODE] = "zigbee_tcp"
+        init.props[RadioHelper.PROP_STATUS] = "ok zigbee_tcp: EZSP on tcp:6638"
+        init.props[RadioHelper.PROP_ALLOWED] = "app none"
+        c.start()
+        assertEquals("", init.get(RadioHelper.PROP_ALLOW))
+        assertTrue(init.ops.none { it.startsWith("set ${RadioHelper.PROP_ALLOW}") }) // already "" = nothing to write
+        assertEquals(
+            "ok Zigbee coordinator (TCP): listening on :6638 for nobody yet (waiting for Home Assistant to connect " +
+                "over ESPHome). ZHA: radio type EZSP, serial path socket://198.51.100.7:6638",
+            c.statusText(),
+        )
+        assertEquals("", c.allowedNow())
+    }
+
+    @Test
+    fun homeAssistantsAddressIsRememberedAndFollowed() {
+        val init = FakeInit(helper = true, helperVersion = 3)
+        val c = controller(init, initial = "zigbee_tcp")
+        c.homeAssistantConnected(java.net.InetAddress.getByName("192.0.2.10"))
+        assertEquals("192.0.2.10", allow.haV4)
+        assertEquals("192.0.2.10", init.get(RadioHelper.PROP_ALLOW))
+        // a reconnect from the same address writes nothing
+        val n = init.ops.size
+        c.homeAssistantConnected(java.net.InetAddress.getByName("192.0.2.10"))
+        assertEquals(n, init.ops.size)
+        // IPv6 as well (one per family), loopback ignored
+        c.homeAssistantConnected(java.net.InetAddress.getByName("2001:db8::10"))
+        c.homeAssistantConnected(java.net.InetAddress.getByName("127.0.0.1"))
+        assertEquals("192.0.2.10 2001:db8::10", init.get(RadioHelper.PROP_ALLOW))
+        // HA moved: the allow-list follows
+        c.homeAssistantConnected(java.net.InetAddress.getByName("192.0.2.11"))
+        assertEquals("192.0.2.11 2001:db8::10", init.get(RadioHelper.PROP_ALLOW))
+        // the helper applied it
+        init.props[RadioHelper.PROP_STATUS] = "ok zigbee_tcp: EZSP on tcp:6638"
+        init.props[RadioHelper.PROP_ALLOWED] = "app 192.0.2.11 2001:db8::10"
+        c.refresh()
+        assertTrue(c.statusText(), c.statusText().startsWith(
+            "ok Zigbee coordinator (TCP): listening on :6638 for Home Assistant (192.0.2.11, 2001:db8::10). ZHA:"))
+        assertEquals("192.0.2.11 2001:db8::10", c.allowedNow())
+        // a new controller (app restart) starts from the stored address
+        val init2 = FakeInit(helper = true, helperVersion = 3)
+        controller(init2, initial = "zigbee_tcp").start()
+        assertEquals("192.0.2.11 2001:db8::10", init2.get(RadioHelper.PROP_ALLOW))
+        assertTrue(init2.ops.indexOf("set ${RadioHelper.PROP_ALLOW}=192.0.2.11 2001:db8::10") < init2.ops.indexOf("restart s1kiosk_radio"))
+    }
+
+    @Test
+    fun explicitListWinsAndEmptyGoesBackToHomeAssistant() {
+        val init = FakeInit(helper = true, helperVersion = 3)
+        val c = controller(init, initial = "thread")
+        c.homeAssistantConnected(java.net.InetAddress.getByName("192.0.2.10"))
+        assertTrue(c.setAllowedClients("garbage")!!.startsWith("Not an IP address"))
+        assertEquals("192.0.2.10", init.get(RadioHelper.PROP_ALLOW))
+        assertNull(c.setAllowedClients("198.51.100.23, 198.51.100.23/32"))
+        assertEquals("198.51.100.23", c.allowedClients())
+        assertEquals("198.51.100.23", init.get(RadioHelper.PROP_ALLOW))
+        init.props[RadioHelper.PROP_STATUS] = "ok thread: border router on wpan0, backbone wlan0, REST :8081 (leader)"
+        init.props[RadioHelper.PROP_ALLOWED] = "app 198.51.100.23"
+        init.props[RadioHelper.PROP_MODE] = "thread"
+        c.refresh()
+        assertEquals(
+            "ok Thread border router: border router on wpan0, backbone wlan0, REST :8081 (leader); " +
+                "REST open to 198.51.100.23 (Radio allowed clients)",
+            c.statusText(),
+        )
+        assertNull(c.setAllowedClients("any"))
+        assertEquals("any", init.get(RadioHelper.PROP_ALLOW))
+        assertNull(c.setAllowedClients(""))
+        assertEquals("192.0.2.10", init.get(RadioHelper.PROP_ALLOW))
+    }
+
+    @Test
+    fun offReportsNoAllowList() {
+        val init = FakeInit(helper = true, helperVersion = 3)
+        val c = controller(init, initial = "off")
+        init.props[RadioHelper.PROP_STATUS] = "ok off: Aqara radio services stopped, radio idle"
+        init.props[RadioHelper.PROP_ALLOWED] = "app 192.0.2.10" // a value left over from the previous mode
+        c.refresh()
+        assertNull(c.allowedNow())
+        assertEquals("ok Off: Aqara radio services stopped, radio idle", c.statusText())
+    }
+
+    @Test
+    fun allowListIsNotWrittenWithoutAHelper() {
+        val init = FakeInit(helper = false)
+        val c = controller(init, initial = "off")
+        c.homeAssistantConnected(java.net.InetAddress.getByName("192.0.2.10"))
+        assertEquals("192.0.2.10", allow.haV4) // remembered for when a helper shows up
+        assertTrue(init.ops.none { it.contains(RadioHelper.PROP_ALLOW) })
+        assertNull(c.allowedNow())
     }
 
     private val stopAll = listOf(
@@ -164,7 +264,8 @@ class RadioControllerTest {
         init.props[RadioHelper.PROP_STATUS] = "ok zigbee_tcp: EZSP on tcp:6638"
         c.refresh()
         assertEquals(
-            "ok Zigbee coordinator (TCP): EZSP on tcp:6638. ZHA: radio type EZSP, serial path socket://<panel IP>:6638",
+            "ok Zigbee coordinator (TCP): listening on :6638 for any client (root helper v2 has no firewall; update it). " +
+                "ZHA: radio type EZSP, serial path socket://<panel IP>:6638",
             c.statusText(),
         )
 

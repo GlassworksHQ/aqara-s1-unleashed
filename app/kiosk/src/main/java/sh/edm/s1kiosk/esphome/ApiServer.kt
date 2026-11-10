@@ -112,10 +112,12 @@ class ApiServer(
 
     /**
      * Called (on a connection thread) when a client subscribes to states, with its Hello
-     * client_info. Home Assistant only does this once it has added the device (its config flow's
-     * discovery probe just reads DeviceInfo), so it is the "HA has added the panel" signal.
+     * client_info and peer address. Home Assistant only does this once it has added the device (its
+     * config flow's discovery probe just reads DeviceInfo), so it is the "HA has added the panel"
+     * signal. [authenticated]: the connection is Noise with the provisioned key (not plaintext, not
+     * the zero-PSK provisioning handshake), so the client really holds the device's API key.
      */
-    @Volatile var onStatesSubscribed: ((clientInfo: String) -> Unit)? = null
+    @Volatile var onStatesSubscribed: ((clientInfo: String, remote: InetAddress?, authenticated: Boolean) -> Unit)? = null
 
     /** Called after a provisioned key became active (or was cleared), e.g. to update the mDNS TXT. */
     @Volatile var onKeyActivated: (() -> Unit)? = null
@@ -283,6 +285,8 @@ class ApiServer(
         @Volatile var isOpen = true
         /** HelloRequest.client_info ("" until the Hello). */
         @Volatile var clientInfo = ""
+        /** Noise with the provisioned key (set once the handshake succeeded). */
+        @Volatile var authenticated = false
         /** Set when the key changed: only the disconnect handshake is processed from now on. */
         @Volatile private var retired = false
         private val remote = socket.remoteSocketAddress?.toString() ?: "?"
@@ -317,6 +321,7 @@ class ApiServer(
                     ApiLog.w("[$id] handshake with $remote failed")
                     return
                 }
+                authenticated = k != null && active != null && transport is NoiseTransport
                 while (isOpen) {
                     val f = transport.read() ?: break
                     handle(f)
@@ -433,7 +438,7 @@ class ApiServer(
                 }
                 Msg.SUBSCRIBE_STATES_REQUEST -> {
                     subscribeStates()
-                    try { onStatesSubscribed?.invoke(clientInfo) } catch (t: Throwable) { ApiLog.w("onStatesSubscribed failed", t) }
+                    try { onStatesSubscribed?.invoke(clientInfo, socket.inetAddress, authenticated) } catch (t: Throwable) { ApiLog.w("onStatesSubscribed failed", t) }
                 }
                 Msg.LIGHT_COMMAND, Msg.SWITCH_COMMAND, Msg.NUMBER_COMMAND, Msg.SELECT_COMMAND,
                 Msg.BUTTON_COMMAND, Msg.TEXT_COMMAND, Msg.MEDIA_PLAYER_COMMAND, Msg.UPDATE_COMMAND -> {

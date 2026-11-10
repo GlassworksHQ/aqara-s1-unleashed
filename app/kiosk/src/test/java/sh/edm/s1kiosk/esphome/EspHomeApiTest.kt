@@ -132,8 +132,11 @@ class EspHomeApiTest {
         plain.sendspin = sendspin
         plain.onCommand = { plain.publishStates() }
         val subscribed = Collections.synchronizedList(ArrayList<String>())
-        plain.onStatesSubscribed = { subscribed += it }
+        plain.onStatesSubscribed = { info, _, authenticated -> subscribed += "$info|$authenticated" }
         val noise = ApiServer(0, { identity }, entities(), psk = key)
+        // Only a Noise connection with the provisioned key counts as authenticated (radio firewall).
+        val noiseSubscribed = Collections.synchronizedList(ArrayList<String>())
+        noise.onStatesSubscribed = { info, addr, authenticated -> noiseSubscribed += "$info|${addr?.hostAddress}|$authenticated" }
         noise.sendspin = sendspin
         noise.onCommand = { noise.publishStates() }
         // Unprovisioned (no key yet), with a persistent store, as on a fresh panel.
@@ -226,7 +229,9 @@ class EspHomeApiTest {
             assertTrue("same key after the rebuild", dash.getBoolean("same_key"))
             assertEquals("Default", dash.getString("state_after"))
             assertTrue("states subscription reported with client_info: $subscribed",
-                subscribed.isNotEmpty() && subscribed.all { it == "Home Assistant test" })
+                subscribed.isNotEmpty() && subscribed.all { it == "Home Assistant test|false" })
+            assertTrue("Noise subscription is authenticated: $noiseSubscribed",
+                noiseSubscribed.isNotEmpty() && noiseSubscribed.all { it == "Home Assistant test|127.0.0.1|true" })
 
             assertEquals("[\"hey_jarvis_v0.1\"]", r.getJSONArray("active_before").toString())
             assertEquals("[\"alexa_v0.1\"]", r.getJSONArray("active_after").toString())

@@ -11,6 +11,8 @@
 //     ← {"id":2,"ok":true,"state":SetupState}            or {"id":2,"ok":false,"error":"…"}
 //     → {"id":3,"op":"set_radio","mode":"zigbee_tcp"}
 //     ← {"id":3,"ok":true,"state":SetupState}            or {"id":3,"ok":false,"error":"…"}
+//     → {"id":4,"op":"set_radio_allow","allow":"192.0.2.10 198.51.100.0/24"}   ("" = Home Assistant only, "any")
+//     ← {"id":4,"ok":true,"state":SetupState}            or {"id":4,"ok":false,"error":"…"}
 //   The app may also push {"event":"state","state":SetupState} whenever something changes
 //   (signed in, radio status, Wi-Fi), so the installer doesn't have to poll.
 //   No secrets ever cross this channel (no tokens, no keys, no passwords).
@@ -39,6 +41,12 @@ export interface SetupState {
     options: RadioOption[];
     /** False when the root helper is missing: only Off works then. */
     helper: boolean;
+    /**
+     * Who the panel's firewall lets reach the radio's network ports (helper v3): "" = nobody yet
+     * (Home Assistant hasn't added the panel over ESPHome), "any", or addresses. Absent in Off or
+     * with an older helper.
+     */
+    allowed?: string;
   };
 }
 

@@ -186,9 +186,13 @@ migration). One-line fix in bellows (verified here as a monkeypatch):
 `startup_reset()` must call `self._switch_protocol_version(v4.EZSPv4.VERSION)` instead of only
 creating `v4.EZSPv4(...)`. Not filed upstream yet (owner's call).
 
-### Who may connect: `range=`
+### Who may connect
 
-The bridge has no authentication. `ZIGBEE_RANGE` in `radio.conf`: empty (default) = anyone;
+Neither the EZSP bridge (tcp:6638) nor the border router's REST API (tcp:8081, which hands out the
+Thread network key) has authentication. Since helper v3 (2026-11-10) **only Home Assistant may
+connect by default**, enforced by the panel's firewall; see [Firewall](#firewall-only-home-assistant-by-default).
+
+`ZIGBEE_RANGE` (socat `range=`) still works on top of the firewall. In `radio.conf`: empty (default) = no extra limit;
 `lan` = the panel's current wlan0 subnet, recomputed every 3 s so DHCP changes are followed
 (offline: `127.0.0.1/32`); or a fixed CIDR. The default stays open on purpose: Home Assistant often
 sits on another VLAN than an IoT panel (as on the reference network), and a subnet guess would lock it
@@ -196,7 +200,70 @@ out. Verified: with `lan`, a client on the panel's subnet gets zigbeed's RSTACK,
 VLAN is reset. The bridge also sets TCP keepalive (30 s idle, 3 x 10 s) so a vanished client doesn't
 hold the single slot (`max-children=1`) forever. Status: `applying zigbee_tcp: waiting for zigbeed`
 until zigbeed holds its pty, then `ok zigbee_tcp: EZSP on tcp:6638` (`(clients from <cidr>)` with a
-range); the app adds the ZHA serial path.
+range); the app adds who may connect and the ZHA serial path.
+
+### Firewall: only Home Assistant by default
+
+**Who is allowed.** Home Assistant talks to the panel's ESPHome API, so the app knows its address:
+whenever an **authenticated** Home Assistant connection (Noise with the provisioned API key; not
+plaintext, not the zero-key provisioning handshake) subscribes to states, the app records the peer
+address, one IPv4 and one IPv6 at most (`radio_ha_ipv4` / `radio_ha_ipv6` in the app's prefs, so they
+survive restarts). HA on another VLAN is fine: the address is the routed peer address. If HA's
+address changes, the next connection updates the list (HA reconnects at least every 90 s here).
+The owner can replace the automatic list with the `Radio allowed clients` text entity: addresses or
+CIDRs separated by spaces or commas, `any` (no firewall, the v2 behaviour), or empty = automatic.
+Loopback (the router host's bridge on 127.0.0.1, `adb forward`) is always allowed.
+
+**Hand-off (contract v3).** The app writes the list to `persist.s1kiosk.radio_allow` (`""` = no HA
+address yet, `any`, or normalized addresses/CIDRs, at most 91 bytes) before every mode change, when HA's
+address changes, and every 15 s if it drifted. The helper re-reads it every loop (3 s) without a
+restart, so a new address never bounces the radio. It is a persist prop so the helper has it at boot,
+before the app runs. A prop fits better than a file here: it is not secret, short, and one value.
+`RADIO_ALLOW` in `radio.conf` wins over it: `RADIO_ALLOW="192.0.2.10 198.51.100.0/24"`, `any`, or
+`none` (loopback only); empty = use the app's list. The helper publishes what it enforces in
+`sys.s1kiosk.radio.allowed` = `<app|conf> <any|none|addresses…>` (empty in Off; a `radio.conf` list
+too long for a prop ends with `+<n>`).
+
+**Rules.** In every mode except Off, for both ports whichever mode is active (Android 10 here ships
+legacy `iptables`/`ip6tables` 1.6.1 in `/system/bin`; no `multiport` match, so one jump per port):
+
+```
+-A INPUT -p tcp -m tcp --dport 6638 -j S1RADIO      # inserted at the top of INPUT, before netd's
+-A INPUT -p tcp -m tcp --dport 8081 -j S1RADIO      # bw_INPUT / fw_INPUT jumps
+-A S1RADIO -i lo -j RETURN
+-A S1RADIO -s 192.0.2.10/32 -j RETURN               # one per allowed address of this family
+-A S1RADIO -j DROP
+```
+
+The same chain exists for IPv6 (only `lo` and the IPv6 entries). The chain's contents are replaced
+atomically (`iptables-restore --noflush` with `:S1RADIO -`, which flushes just that chain in the same
+commit), so changing the list never opens the ports in between. Every loop the helper checks the jumps
+and the chain size (`iptables-save` needs no lock, ~40 ms each) and repairs them: netd may flush INPUT
+when it restarts, and duplicates or stale ports are removed (exactly one jump per port, verified). With
+no HA address known both ports are closed except to loopback. `any` removes the rules; **Off removes the
+chain and the jumps** in both families. netd's own INPUT jumps are never touched. If iptables rejects an
+entry the helper falls back to loopback only (fail closed) and logs it.
+
+**Status.** `Radio status` names who may connect, e.g. `ok Zigbee coordinator (TCP): listening on :6638
+for Home Assistant (<ha-ip>). ZHA: …`, `… for nobody yet (waiting for Home Assistant to connect over
+ESPHome)`, `… for 198.51.100.0/24 (Radio allowed clients)`, `… for any client (no firewall)`; the border
+router adds `; REST open to …`. With a v2 helper: `… for any client (root helper v2 has no firewall;
+update it)`. The setup channel's radio state has `allowed` (`""`, `any` or the addresses) and a
+`set_radio_allow` request (same as the entity).
+
+Verified on the reference panel (2026-11-10; the computer is on another VLAN than the panel, like HA):
+
+| Check | Result |
+|---|---|
+| Coordinator, HA's address unknown (HA kept off the ESPHome port by a temporary panel-side rule) | status `… for nobody yet (waiting …)`; `nc -z <panel> 6638` from the computer fails; through `adb forward` (loopback) bellows `probe` succeeds |
+| `set_radio_allow <computer-ip>` | `nc -z` and a bellows `probe` from the computer succeed; chain `lo`, `<computer-ip>/32`, DROP |
+| back to automatic, HA reconnects | list = HA's address within seconds, status `… for Home Assistant (<ha-ip>)`, the computer is refused |
+| `radio.conf` `RADIO_ALLOW=<computer-ip>` / `any` / `none` | connects / no rules, connects / refused; status says `(radio.conf)` |
+| `RADIO_ALLOW=<computer-ip>` + `ZIGBEE_RANGE=lan` | firewall passes, socat's range still resets the computer (other subnet) |
+| 3 mode applies, 2 helper restarts, 6 list changes | exactly 2 jumps and 1 chain per family |
+| a duplicate jump, a stray jump on 8081, a deleted IPv6 jump, a foreign chain rule | repaired within one loop |
+| Thread border router (19 s) | REST `:8081` refused from the computer, `GET /node/state` 200 over loopback |
+| Off | no `S1RADIO` chain or jumps in either family, `sys.s1kiosk.radio.allowed` empty |
 
 ## Proof: Thread on the same radio (spinel IID 2)
 
@@ -258,8 +325,9 @@ running and in Network Data, `ba state` Active, `_meshcop._udp` registered by Op
 **Not tested:** traffic between a LAN host and a real Thread device through the panel, Matter
 commissioning, coexistence with Android's own mDNS on the same port (both bind 5353 with
 SO_REUSEPORT; nothing broke during the test). REST has no authentication either (it exposes the
-dataset, i.e. the network key, to the LAN, like HA's own OTBR app): `REST_LISTEN=127.0.0.1` in
-`radio.conf` limits it to the panel. Joining the user's existing Thread network means sharing the
+dataset, i.e. the network key): since helper v3 the firewall lets only Home Assistant reach it (see
+[Firewall](#firewall-only-home-assistant-by-default)); `REST_LISTEN=127.0.0.1` in `radio.conf` limits it
+to the panel. Joining the user's existing Thread network means sharing the
 dataset from HA: a user decision, never automatic.
 
 ## Root helper contract (v1)
@@ -271,7 +339,8 @@ The root half of the modes lives in a helper. The Magisk boot patch installs it 
 - `tools/radio/s1kiosk_radio.rc`: the init snippet.
 - `tools/radio/build-otbr.sh`: builds `otbr-agent`/`ot-ctl`.
 
-Contract **v2** (2026-11-10; v1 helpers lack the router modes, the app checks the version):
+Contract **v3** (2026-11-10): v2 plus the firewall ([Firewall](#firewall-only-home-assistant-by-default)).
+v1 helpers lack the router modes, v2 helpers the firewall; the app checks the version:
 
 | Item | Value |
 |---|---|
@@ -280,8 +349,9 @@ Contract **v2** (2026-11-10; v1 helpers lack the router modes, the app checks th
 | Detection | app: helper present iff `init.svc.s1kiosk_radio` is non-empty (it only exists once the service ran, hence the start at boot and the never-exiting loop) |
 | Wanted mode | `persist.s1kiosk.radio_mode` = `off` \| `zigbee_tcp` \| `zigbee_router` \| `thread` \| `thread_router` (default `off`) |
 | Apply | app: `setprop persist.s1kiosk.radio_mode <id>` then `setprop ctl.restart s1kiosk_radio` (init kills the old process group, children included) |
-| Status | helper: `sys.s1kiosk.radio.status` = `<applying\|ok\|error> <id>[: detail]` (`applying <id>: waiting for zigbeed\|otbr-agent` until the stack answers), `sys.s1kiosk.radio.version` = `2`, `sys.s1kiosk.radio.otbr` = `br`\|`agent`\|`none` |
-| Overrides | `$DIR/radio.conf` (sourced): `ZIGBEE_PORT` (6638), `ZIGBEE_RANGE` (empty \| `lan` \| CIDR), `ROUTER_PORT` (6639), `BACKBONE` (wlan0 with a `br` build), `REST_LISTEN` (0.0.0.0), `REST_PORT` (8081), `OTBR_ARGS`, `RADIO_URL` |
+| Status | helper: `sys.s1kiosk.radio.status` = `<applying\|ok\|error> <id>[: detail]` (`applying <id>: waiting for zigbeed\|otbr-agent` until the stack answers), `sys.s1kiosk.radio.version` = `3`, `sys.s1kiosk.radio.otbr` = `br`\|`agent`\|`none`, `sys.s1kiosk.radio.allowed` = `<app\|conf> <any\|none\|addresses…>` (v3; empty in Off). Every status is cut to 91 bytes (`setprop` refuses longer values) |
+| Allow-list (v3) | app: `persist.s1kiosk.radio_allow` = `""` (no HA address yet: loopback only) \| `any` \| space-separated IPv4/IPv6 addresses or CIDRs; re-read every 3 s, no restart. Enforced with the `S1RADIO` iptables/ip6tables chain on `ZIGBEE_PORT` and `REST_PORT` in every mode but Off |
+| Overrides | `$DIR/radio.conf` (sourced): `ZIGBEE_PORT` (6638), `ZIGBEE_RANGE` (empty \| `lan` \| CIDR), `ROUTER_PORT` (6639), `BACKBONE` (wlan0 with a `br` build), `REST_LISTEN` (0.0.0.0), `REST_PORT` (8081), `OTBR_ARGS`, `RADIO_URL`, `RADIO_ALLOW` (v3: empty = the app's list \| `any` \| `none` \| addresses/CIDRs) |
 | Zigbee router | EZSP bridge on `127.0.0.1:$ROUTER_PORT` only; the app's host drives zigbeed. zigbeed's NVM is copied to `$DIR/zigbee-nvm/` (last 3, only when changed) whenever the mode starts |
 | Thread dataset hand-off | the app writes hex TLVs to its own `files/radio/thread-dataset` (0600); the helper moves it to `$DIR/thread-dataset` (refuses symlinks, > 1 KiB, non-hex), deletes the app's copy, restarts the agent, joins. Never logged |
 | Helper override | a root-owned `$DIR/s1kiosk_radio.sh` (in the root-owned dir) is exec'd instead of the bundled one (`S1R_NO_OVERRIDE` stops the hand-off); it still uses the boot image's bundled binaries unless `$DIR` has its own |
@@ -317,10 +387,12 @@ persist prop):
   stored value is the mode id. Labels and retired values from older builds (`Aqara (stock)`,
   `Thread (future)`) parse to `Off`. `Zigbee router` and `Thread router` need helper v2
   (`sys.s1kiosk.radio.version`); with an older helper they are refused with "needs the root helper v2".
-- More entities: `Join Zigbee network` / `Leave Zigbee network` buttons (router mode only), and a
-  write-only `Thread dataset` text (ESPHome password mode; state always empty) that hands the dataset
+- More entities: `Radio allowed clients` (text, config: empty = Home Assistant only, else addresses/CIDRs
+  or `any`; see [Firewall](#firewall-only-home-assistant-by-default)), `Join Zigbee network` /
+  `Leave Zigbee network` buttons (router mode only), and a write-only `Thread dataset` text (ESPHome password mode; state always empty) that hands the dataset
   to the helper.
-- `Radio status`: in coordinator mode it adds `ZHA: radio type EZSP, serial path socket://<ip>:6638`;
+- `Radio status`: in coordinator mode `listening on :6638 for <who>` and `ZHA: radio type EZSP, serial
+  path socket://<ip>:6638`; the border router adds `REST open to <who>`;
   in router mode it shows the router host's state instead of the helper's.
 - Setup screen radio step: Off, Zigbee coordinator, Thread border router (experimental) in the first
   row, the two repeater roles (experimental) in a compact second row; a one-line "what next" note.
@@ -527,8 +599,11 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
 
 - **Root helper needs the Magisk boot patch** ([research/root.md](research/root.md)). Panels without it only get `Off`. Persistent `Off` across a reboot without the helper relies on the app starting and
   re-applying it (a few seconds of Aqara's stack at boot).
-- **EZSP-over-TCP and the OTBR REST API have no authentication.** Restrict with `ZIGBEE_RANGE`
-  (`lan` or HA's subnet), `REST_LISTEN=127.0.0.1` and the VLAN firewall.
+- **EZSP-over-TCP and the OTBR REST API have no authentication.** The helper's firewall (v3) admits
+  only Home Assistant's address. That is an address check, not authentication: a host that can take
+  over or intercept HA's address (same segment, the router) still gets in. `ZIGBEE_RANGE`,
+  `REST_LISTEN=127.0.0.1` and the VLAN firewall add to it. HA's last IPv4 and IPv6 are both kept; a stale
+  one stays allowed until HA connects from a new address of that family.
 - **bellows reset bug** (above): ZHA can't form or restore onto this radio until bellows is fixed.
 - **EZSP 12 only:** ZHA works; Z2M `ember` doesn't. A newer zigbeed is the non-flashing fix,
   if one can be obtained (licensing, ARM build).
