@@ -213,9 +213,12 @@ class KioskPrefs(context: Context) {
         get() = sp.getBoolean("speaker_muted", false)
         set(v) = sp.edit().putBoolean("speaker_muted", v).apply()
 
-    /** Zigbee/Thread radio mode (see RadioController.MODES). */
-    var radioMode: String
-        get() = sp.getString("radio_mode", RadioController.MODES[0]) ?: RadioController.MODES[0]
+    /**
+     * Zigbee/Thread radio mode, a [sh.edm.s1kiosk.radio.RadioMode] id (older builds stored the label;
+     * RadioMode.parse accepts both). Written only by RadioController.
+     */
+    var radioMode: String?
+        get() = sp.getString("radio_mode", null)
         set(v) = sp.edit().putString("radio_mode", v).apply()
 
     // ---- voice assistant (ESPHome API + on-device openWakeWord)

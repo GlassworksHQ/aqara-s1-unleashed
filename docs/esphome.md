@@ -99,7 +99,8 @@ is FNV-1a of the `object_id` (stable).
 | switch `Voice overlay` | `voice_overlay` | "Listening… / Speaking" pill at the bottom of the screen during voice runs (default on) |
 | number `Mic gain` | `mic_gain` | 0.5–4× |
 | number `Wake word threshold` | `wake_word_threshold` | 0.1–0.95 (default 0.5) |
-| select `Radio mode` | `radio_mode` | `Aqara (stock)`, `Off`, `Zigbee router`, `Zigbee coordinator (TCP)`, `Thread (future)`; stored only (`RadioController` is a stub) |
+| select `Radio mode` | `radio_mode` | `Off` (default), `Zigbee coordinator (TCP)`, `Zigbee router`, `Thread border router` ([radio.md](radio.md)); without the root helper only `Off` applies, other choices are refused and snap back |
+| text_sensor `Radio status` | `radio_status` | diagnostic; e.g. `Off: Aqara's radio services stopped, radio idle. …`, or the root helper's `ok zigbee_tcp: EZSP on tcp:6638` |
 | text_sensor `IP address` | `ip_address` | diagnostic |
 | text_sensor `App version` | `app_version` | diagnostic |
 | text_sensor `Home Assistant URL` | `home_assistant_url` | diagnostic; the HA the panel uses: the origin of a configured dashboard URL, else the discovered one ([onboarding.md](onboarding.md)) |
@@ -317,7 +318,7 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   `media_player.s1_panel_speaker` stays for TTS, announcements and HA media; while it announces,
   the Sendspin output is muted locally.
 - Chromecast: not possible. A Cast receiver must be a Google-certified device.
-- `RadioController` only logs; the radio mode is stored but nothing is switched yet.
+- Radio modes other than `Off` need the root helper from the boot-image patch ([radio.md](radio.md)).
 
 ### Aqara cloud
 

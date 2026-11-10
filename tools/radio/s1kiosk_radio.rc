@@ -1,0 +1,23 @@
+# S1 Kiosk radio helper (docs/radio.md "Root helper contract", v1). NOT wired into any image yet:
+# the boot-image patch is expected to install this .rc (e.g. as an init overlay) together with
+# s1kiosk_radio.sh and the radio binaries in /data/s1kiosk/radio (root:root 0700).
+#
+# Same shape as Aqara's own gateway.rc services: root, u:r:su:s0 (SELinux is permissive on this
+# firmware). Not oneshot: the script never exits, it supervises the mode. It must be started at boot,
+# because init.svc.s1kiosk_radio only exists once the service has run, and the app uses that property
+# to detect the helper.
+#
+# App side: setprop persist.s1kiosk.radio_mode <off|zigbee_tcp|zigbee_router|thread>
+#           setprop ctl.restart s1kiosk_radio
+# Helper side: sys.s1kiosk.radio.status = "<applying|ok|error> <mode>[: detail]", sys.s1kiosk.radio.version = 1
+
+service s1kiosk_radio /system/bin/sh /data/s1kiosk/radio/s1kiosk_radio.sh
+    user root
+    group root system
+    seclabel u:r:su:s0
+    disabled
+
+# After Aqara's stack has been started by its own boot sequence (zigbee_cpcd_factory sets
+# sys.gateway.config=10), so the helper's first pass already sees and corrects it.
+on property:sys.boot_completed=1
+    start s1kiosk_radio

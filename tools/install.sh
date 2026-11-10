@@ -16,7 +16,8 @@
 #   --no-models         don't download/push the openWakeWord models
 #   --no-debloat        keep the Aqara apps enabled (the kiosk still becomes HOME)
 #   --keep-dnd          keep Aqara's 22:00-07:00 Do-Not-Disturb screen-off
-#   --undo              revert: re-enable Aqara apps + launcher, restore DND, remove admin
+#   --undo              revert: re-enable Aqara apps + launcher, restore DND, remove admin,
+#                       stop the kiosk and start Aqara's radio services again
 #   --dry-run           print the commands instead of running them
 set -euo pipefail
 
@@ -39,7 +40,7 @@ while [[ $# -gt 0 ]]; do
     --keep-dnd) DND_OFF=0; shift ;;
     --undo) UNDO=1; shift ;;
     --dry-run) DRY=1; shift ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -65,7 +66,14 @@ if [[ $UNDO -eq 1 ]]; then
   try adb shell service call A_device_control 7 i32 1 i32 0
   try adb shell pm enable com.baidu.input_auto
   try adb shell ime set com.baidu.input_auto/.ImeService
-  echo "Done. The kiosk app is still installed: adb uninstall $PKG"
+  # Radio (docs/radio.md): the app keeps Aqara's radio services stopped ("Off" mode). Stop the app so
+  # it doesn't stop them again (a force-stopped app also gets no BOOT_COMPLETED), then start them now
+  # in provider-first order; they are init services, so a reboot would bring them back as well.
+  try adb shell am force-stop "$PKG"
+  for svc in zigbee_cpcd zigbee_socat zigbee_zigbeed zigbee_host zigbee_agent ha_matter; do
+    try adb shell setprop ctl.start "$svc"
+  done
+  echo "Done. The kiosk app is still installed (stopped): adb uninstall $PKG"
   exit 0
 fi
 
