@@ -622,10 +622,29 @@ class Installer {
     $('#finish-hint').textContent = '';
   }
 
-  private async openSetup(): Promise<SetupChannel | undefined> {
+  /**
+   * Runs a setup-channel request; if it fails (saving a new Home Assistant host can restart the app,
+   * which closes the channel), reconnects once the app is back and retries once.
+   */
+  private haTimer?: ReturnType<typeof setInterval>;
+
+  private async withSetup<T>(f: (c: SetupChannel) => Promise<T>): Promise<T> {
+    try {
+      return await f(this.setup!);
+    } catch (first) {
+      const onState = this.setup?.onState;
+      const again = await this.openSetup(15);
+      if (!again) throw first;
+      if (onState) again.onState = onState;
+      this.setup = again;
+      return f(again);
+    }
+  }
+
+  private async openSetup(tries = 5): Promise<SetupChannel | undefined> {
     const open = this.panel?.openStream?.bind(this.panel);
     if (!open) return undefined;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < tries; i++) {
       try {
         const c = new SetupChannel(await open(SETUP_SOCKET));
         await c.getState();
@@ -656,6 +675,12 @@ class Installer {
     };
     c.onState = render;
     render(c.state!);
+    // keep the state fresh (and the channel alive across an app restart) while on this phase
+    clearInterval(this.haTimer);
+    this.haTimer = setInterval(() => {
+      if ($('#ha-block').hidden) { clearInterval(this.haTimer); return; }
+      void this.withSetup((x) => x.getState()).then(render).catch(() => {});
+    }, 3000);
     btn.textContent = 'Continue';
     btn.disabled = false;
     // Sign in: the popup must open inside the click, so open it first and point it after saving the address.
@@ -667,7 +692,7 @@ class Installer {
       st.textContent = 'Sign in on the tab that opened; this page notices when you are done.';
       void (async () => {
         try {
-          const s = url === c.state?.ha.url ? c.state! : await c.setHa(url);
+          const s = url === this.setup?.state?.ha.url ? this.setup.state : await this.withSetup((x) => x.setHa(url));
           if (!s.ha.signinUrl) throw new Error('the panel has no sign-in page yet (is it on Wi-Fi?)');
           if (tab) tab.location.href = s.ha.signinUrl; else window.open(s.ha.signinUrl, '_blank');
         } catch (e) {
@@ -680,10 +705,10 @@ class Installer {
     $('#ha-add').onclick = () => { $('#ha-add-dot').className = 'dot sm done'; };
     btn.onclick = async () => {
       const url = input.value.trim();
-      if (url && url !== c.state?.ha.url) {
+      if (url && url !== this.setup?.state?.ha.url) {
         if (!validHaUrl(url)) { st.className = 'status err'; st.textContent = 'That doesn\'t look like a web address (http://… or https://…).'; return; }
         btn.disabled = true;
-        try { await c.setHa(url); } catch (e) { st.className = 'status err'; st.textContent = (e as Error).message; btn.disabled = false; return; }
+        try { await this.withSetup((x) => x.setHa(url)); } catch (e) { st.className = 'status err'; st.textContent = (e as Error).message; btn.disabled = false; return; }
       }
       void this.radioStep();
     };
@@ -691,6 +716,8 @@ class Installer {
 
   /** The radio role, from the computer (also offered on the panel and in Home Assistant). */
   private async radioStep() {
+    // the channel may have closed if saving the address restarted the app: make sure it's live
+    await this.withSetup((x) => x.getState());
     const c = this.setup!;
     const btn = $('#finish') as HTMLButtonElement;
     this.phase('radio', 'Choose what the radio does', 'The panel has a Zigbee/Thread radio. Leave it off, or let Home Assistant use it.', 'Radio');
@@ -726,11 +753,11 @@ class Installer {
     btn.textContent = 'Finish';
     btn.disabled = false;
     btn.onclick = async () => {
-      if (chosen !== c.state!.radio.mode) {
+      if (chosen !== this.setup!.state!.radio.mode) {
         btn.disabled = true;
         st.textContent = 'Switching the radio…';
         try {
-          const r = await c.setRadio(chosen);
+          const r = await this.withSetup((x) => x.setRadio(chosen));
           st.className = 'status ok';
           st.textContent = r.radio.status;
         } catch (e) {
@@ -740,7 +767,7 @@ class Installer {
           return;
         }
       }
-      void c.close();
+      void this.setup?.close();
       this.showDone(this.ip, this.wifiSsid);
     };
   }
