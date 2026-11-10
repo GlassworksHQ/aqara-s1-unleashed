@@ -9,6 +9,7 @@
 set -euo pipefail
 PART=${1:?partition name, e.g. boot}; OUT=${2:?output file}
 FB=${FASTBOOT:-fastboot}
+unset ANDROID_SERIAL   # fastboot honours it, and our U-Boot's serial is not the adb one
 BUF=0x50000000                       # CONFIG_FASTBOOT_BUF_ADDR
 MMC=1                                # eMMC on the S1 Plus
 

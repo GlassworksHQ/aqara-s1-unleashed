@@ -20,6 +20,10 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FEL=${SUNXI_FEL:-sunxi-fel}; FB=${FASTBOOT:-fastboot}; ADB=${ADB:-adb}
+# fastboot also honours ANDROID_SERIAL, but our U-Boot's fastboot serial differs from the panel's adb
+# serial: keep it for adb only, or fastboot waits forever for a device that never appears.
+ADB_SERIAL=${ANDROID_SERIAL:-}; unset ANDROID_SERIAL
+adb_() { "$ADB" ${ADB_SERIAL:+-s "$ADB_SERIAL"} "$@"; }
 UBUILD=${UBOOT_BUILD:-$HOME/src/u-boot-s1/build-s1}
 OUT=${1:-$PWD/s1-backup-$(date +%Y%m%d-%H%M%S)}
 BACKUP_PARTS="boot vbmeta vbmeta_system vbmeta_vendor dtbo misc recovery env bootloader"
@@ -30,15 +34,19 @@ for t in "$FEL" "$FB" "$ADB" docker shasum python3; do command -v "$t" >/dev/nul
 [ -f "$UBUILD/u-boot-sunxi-with-spl.bin" ] || die "no U-Boot build in $UBUILD (tools/fel/build-uboot.sh)"
 mkdir -p "$OUT"; chmod 700 "$OUT"
 
-say "1/8 Waiting for FEL: hold the PCB button (docs/img/fel-button.jpg), plug in USB-C, keep holding ~10 s"
-for i in $(seq 1 120); do v=$("$FEL" ver 2>/dev/null) && break; sleep 1; done
-[ -n "${v:-}" ] || die "no FEL device found"
-echo "$v"
-case "$v" in *soc=00001855*) ;; *) die "not an A133 (expected soc=00001855)";; esac
+if "$FB" devices | grep -q fastboot && [ "$("$FB" getvar product 2>&1 | sed -n 's/^product: //p')" = sunxi ]; then
+  say "1-2/8 Our U-Boot is already in fastboot: skipping FEL"
+else
+  say "1/8 Waiting for FEL: hold the PCB button (docs/img/fel-button.jpg), plug in USB-C, keep holding ~10 s"
+  for i in $(seq 1 120); do v=$("$FEL" ver 2>/dev/null) && break; sleep 1; done
+  [ -n "${v:-}" ] || die "no FEL device found"
+  echo "$v"
+  case "$v" in *soc=00001855*) ;; *) die "not an A133 (expected soc=00001855)";; esac
 
-say "2/8 Booting our U-Boot from RAM (nothing is written)"
-NO_BL31=1 SUNXI_FEL="$FEL" "$HERE/../fel/fel-boot.sh" "$UBUILD"
-for i in $(seq 1 60); do "$FB" devices | grep -q fastboot && break; sleep 1; done
+  say "2/8 Booting our U-Boot from RAM (nothing is written)"
+  NO_BL31=1 SUNXI_FEL="$FEL" "$HERE/../fel/fel-boot.sh" "$UBUILD"
+  for i in $(seq 1 60); do "$FB" devices | grep -q fastboot && break; sleep 1; done
+fi
 "$FB" devices | grep -q fastboot || die "fastboot did not come up"
 
 say "3/8 Checking the partition layout"
@@ -86,11 +94,11 @@ echo "boot flashed and verified"
 
 say "8/8 Waiting for Android and adb (first boot can take a few minutes)"
 for i in $(seq 1 90); do
-  st=$("$ADB" get-state 2>/dev/null || true)
-  [ "$st" = device ] && "$ADB" shell true 2>/dev/null && break
+  st=$(adb_ get-state 2>/dev/null || true)
+  [ "$st" = device ] && adb_ shell true 2>/dev/null && break
   sleep 4
 done
-"$ADB" shell 'echo "android up: $(getprop ro.build.version.release), boot_completed=$(getprop sys.boot_completed)"' ||
+adb_ shell 'echo "android up: $(getprop ro.build.version.release), boot_completed=$(getprop sys.boot_completed)"' ||
   die "adb not authorized yet: check the panel screen for a USB debugging prompt"
 echo
 echo "Done. Next: tools/install.sh --url http://<home-assistant>:8123/<dashboard>"

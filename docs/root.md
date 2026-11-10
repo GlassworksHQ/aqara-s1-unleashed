@@ -71,10 +71,42 @@ bundled ones.
   `magisk --sqlite "REPLACE INTO policies (uid,policy,until,logging,notification) VALUES(2000,2,<epoch>,1,0)"`.
 - Revoke it with `DELETE FROM policies WHERE uid=2000`.
 
+## One command: `tools/install/fel-install.sh`
+
+`tools/install/fel-install.sh [backup-dir]` does everything above, plus two more things.
+- **Steps:**
+  1. Waits for FEL and checks the SoC id.
+  2. Boots our U-Boot. If our U-Boot is already in fastboot, it resumes from there instead.
+  3. Checks the partition layout.
+  4. Backs up `boot vbmeta vbmeta_system vbmeta_vendor dtbo misc recovery env bootloader`. `boot` is
+     read twice and compared, and a `SHA256SUMS` file is written.
+  5. Patches `boot`.
+  6. Sets `vbmeta` flags to 3 if they aren't already, verified by read-back.
+  7. Flashes `boot`, verifies it by read-back, then reboots.
+  8. Waits for adb.
+- **Extra in the boot image: first-boot provisioning.** `tools/root/s1kiosk_firstboot.{sh,rc}` is a
+  one-shot root service. It authorizes the installing computer's adb key, which is baked into the
+  image (`ADB_PUBKEY`, default `~/.android/adbkey.pub`), and turns USB adb on. It runs once and
+  leaves a marker in `/data/s1kiosk`.
+- **Extra in the helper: updatable without a new boot image.** It hands over to a root-owned
+  `/data/s1kiosk/radio/s1kiosk_radio.sh` if one exists.
+
+**Factory simulation on the reference panel (2026-11-09), passed:**
+- Starting state: adb turned off, the adb key list emptied, stock `boot` and factory `vbmeta`
+  (flags 0) flashed.
+- `fel-install.sh` then:
+  - backed up the stock partitions;
+  - changed `vbmeta` flags 0 → 3. The result is byte-identical to the flags-3 `vbmeta` the panel had
+    run on before;
+  - flashed and verified `boot`.
+- Without touching the screen, adb was back after the reboot: `s1kiosk_firstboot: authorized 1 new
+  adb key(s)` at 21 s. Magisk and the helper were live.
+- Re-running on an already-patched panel produces the same image as patching stock (deterministic
+  output). Magisk restores the stock ramdisk first.
+
+Gotcha: `fastboot` also honours `ANDROID_SERIAL`, and our U-Boot's fastboot serial is not the
+panel's adb serial. The scripts keep `ANDROID_SERIAL` for adb only.
+
 ## Next
-- **Enable adb on factory panels.** Ship the installing host's adb public key in the boot image,
-  and have the helper write `/data/misc/adb/adb_keys` and turn adb on at first boot. The kiosk app
-  and `tools/install.sh` can then follow over adb.
-- **Write one end-to-end `fel-install` script:** FEL → backup → patch → flash → verify → reboot.
-- **vbmeta:** the reference panel runs `vbmeta` with flags 3. A factory panel (flags 0) may need
-  `fastboot --disable-verity --disable-verification flash vbmeta <its own vbmeta>`. To be tested.
+- Browser installer (WebUSB): design in progress (`docs/web-installer.md`).
+- After `fel-install.sh`, `tools/install.sh` installs and configures the kiosk app over adb.
