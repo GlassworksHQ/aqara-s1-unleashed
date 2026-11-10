@@ -146,7 +146,10 @@ export class FelDevice {
   async reset64(entry: number): Promise<void> {
     this.log(`store entry point 0x${hex(entry)} to RVBAR 0x${hex(A133.rvbarReg)}, warm reset (RMR 3)`);
     await this.write(A133.scratchAddr, rmrCode(A133.rvbarReg, entry, true));
-    await this.exec(A133.scratchAddr);
+    // The chip warm-resets out of FEL right away; its status reply may never arrive (or USB drops
+    // first). Once EXEC is sent the reset is happening, so a missing reply is not an error.
+    await this.felRequest(AW_FEL_1_EXEC, A133.scratchAddr, 0);
+    try { await this.felStatus(); } catch (e) { this.log(`reset: no status reply (${(e as Error).message}); the panel is restarting`); }
   }
 
   async close(): Promise<void> {

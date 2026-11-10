@@ -131,8 +131,18 @@ export class Fastboot {
     }
   }
 
+  /**
+   * U-Boot resets the panel as soon as it gets `reboot`, and the USB link often drops before its OKAY
+   * can be read ("The device was disconnected"). Once the command is out, the reboot is happening:
+   * a missing or failed reply is not an error.
+   */
   async reboot(): Promise<void> {
-    try { await this.command('reboot', 10_000); } finally { await this.t.close(); }
+    try {
+      await this.t.out(new TextEncoder().encode('reboot'), 10_000);
+      try { await this.response('reboot', 5_000); } catch (e) { this.log(`reboot: no reply (${(e as Error).message}); the panel is restarting`); }
+    } finally {
+      await this.t.close();
+    }
   }
 
   async close(): Promise<void> {
