@@ -13,6 +13,8 @@ Both back up the panel first and both can undo.
 > [!NOTE]
 > The web installer is new. It has been tested end to end on a real S1 Plus (firmware 4.5.80), from
 > FEL mode through the backup, the install and the app setup, and so has the command-line path.
+> The boot patch has been tested on two firmware versions: 4.5.80 and the earlier release the panel
+> shipped with.
 
 ## Before you start
 
