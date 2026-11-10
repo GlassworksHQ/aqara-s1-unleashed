@@ -1,11 +1,15 @@
 # Browser installer (WebUSB) — design
 
+> **Historical note.** This is the spec written *before* the installer was built. The installer now
+> exists in [`web/`](../../web/src/README.md); the user guide is [docs/install.md](../install.md).
+> Where the shipped code and this spec differ, the code wins.
+
 **Status: design only. Nothing here is implemented yet, and nothing in it touches a panel.**
 This is the implementation spec for a browser-based installer that turns a factory **Aqara Panel
 Hub S1 Plus** (A133, `sun50iw10`) into a Home Assistant kiosk with no UART, no terminal and no
 local downloads. It mirrors, step for step, the CLI flow that already passed a factory simulation on
 a real panel: `tools/install/fel-install.sh` → `tools/install.sh` (see
-[docs/root.md](root.md#one-command-toolsinstallfel-installsh) and [docs/fel.md](fel.md)).
+[docs/research/root.md](root.md#one-command-toolsinstallfel-installsh) and [docs/research/fel.md](fel.md)).
 
 Every claim below is tagged **[verified]** (checked against source / a byte-exact reproduction run
 on this machine today) or **[assumed]** (needs a panel, or a browser-runtime test, to confirm). The
@@ -154,7 +158,7 @@ status) (`fel_lib.c:210-215`). **`aw_fel_write`** = WRITE(FEL WRITE req) → WRI
 WebUSB chunking: libusb used a 512 KiB max bulk and a 10 s timeout (`fel_lib.c:34,72`). The browser
 should mirror `fel-boot.sh`'s hard lesson and keep SPL/U-Boot payload writes to **64 KiB chunks**
 (`fel-boot.sh:18`), because at the SPL's 408 MHz clock the BROM's CPU-driven USB times out on large
-single transfers (`fel-boot.sh:4-7`, `docs/fel.md` §"USB uploads"). Each `transferOut` is one 64 KiB
+single transfers (`fel-boot.sh:4-7`, `docs/research/fel.md` §"USB uploads"). Each `transferOut` is one 64 KiB
 slice; the FEL WRITE request's `length` is the **whole** payload for that `aw_fel_write`, and the
 data is streamed across several bulk transfers (as `usb_bulk_send` loops, `fel_lib.c:87-98`).
 **[verified in source; browser timeout tuning is [assumed] until tested]**
@@ -247,7 +251,7 @@ But the **installer's** `fel-boot.sh` is simpler than parsing the FIT — it upl
 `$B/u-boot.bin` (nodtb+DTB) to `0x4a000000` and, in the default build, BL31 to `0x40000000`, then
 `reset64 <entry>` (`fel-boot.sh:14-44`). With `NO_BL31=1` (what `fel-install.sh:47` passes) it
 uploads **only** `u-boot.bin` to `0x4a000000` and warm-resets straight to it at EL3 — no TF-A
-(`fel-boot.sh:36-44`, `docs/fel.md` §"No TF-A for now"). **The browser should do exactly the
+(`fel-boot.sh:36-44`, `docs/research/fel.md` §"No TF-A for now"). **The browser should do exactly the
 `NO_BL31=1` path:**
 
 1. `aw_fel_write(u-boot.bin, 0x4a000000)` in 64 KiB chunks (host-side split, `fel-boot.sh:26-33`).
@@ -267,7 +271,7 @@ permission across VID/PID). **[verified config; re-enumeration timing [assumed]]
 > `load_fit_images`) so a single `u-boot-sunxi-with-spl.bin` asset suffices. Rejected for v1: the
 > `NO_BL31=1` + `u-boot.bin` path is exactly what passed the factory sim, needs no FIT parser, and
 > keeps TF-A out (which we don't need for fastboot/eMMC and which was itself only ever run with the
-> DRAM fix, untested — `docs/fel.md` §"No TF-A"). We still ship `u-boot-sunxi-with-spl.bin` as the
+> DRAM fix, untested — `docs/research/fel.md` §"No TF-A"). We still ship `u-boot-sunxi-with-spl.bin` as the
 > SPL source for step 2.4.
 
 ---
@@ -325,7 +329,7 @@ oemRun("setexpr fastboot_upload_size $n * 200")   // 0x200 = 512 bytes/block
 buf = getStaged($n * 0x200)
 ```
 `$n * 200` is hex 0x200 = 512 (U-Boot `setexpr` default radix). Reads up to the 512 MiB buffer at
-~20 MB/s (`docs/fel.md` step 5). `fel-install.sh` partitions: `boot vbmeta vbmeta_system
+~20 MB/s (`docs/research/fel.md` step 5). `fel-install.sh` partitions: `boot vbmeta vbmeta_system
 vbmeta_vendor dtbo misc recovery env bootloader` (`fel-install.sh:29`).
 
 ### 3.3 Flash + verify  **[verified: `fel-install.sh:88-90`, `fb_mmc.c:470-481`]**
@@ -347,7 +351,7 @@ This section was **validated end-to-end on this machine today** by re-implementi
 steps in Python and comparing against the real golden output
 (`~/src/aqara-panel-backups/fel-install-test-20261109-200402/{boot,s1-boot}.img`): the rebuilt image
 hashed **`d1a4925f9d2324d0e06d066862b29287c2c4aa224f4352caf1cf3d73deb4969a`**, byte-identical to the
-golden `s1-boot.img` **[verified]**. Stock `boot` sha256 is `29f329f0…`, matching `docs/root.md`.
+golden `s1-boot.img` **[verified]**. Stock `boot` sha256 is `29f329f0…`, matching `docs/research/root.md`.
 
 ### 4.1 Android boot image v2 layout (this panel)  **[verified by parsing the real image]**
 
@@ -575,7 +579,7 @@ const adb = new Adb(transport)                                 // adb.ts:64,99
 Because the first-boot service already authorized our key (§5, `s1kiosk_firstboot.sh`), the panel
 does **not** prompt on screen — `authenticate` succeeds with the stored key and we get a shell
 immediately. **[verified logic; on-device no-prompt behavior verified by the CLI factory sim per
-docs/root.md]**
+docs/research/root.md]**
 
 Commands the port needs (all via `adb.subprocess.noneProtocol.spawnWaitText(...)`,
 `adb/src/commands/subprocess/none/spawner.ts:57-66`, and `adb.subprocess` service
@@ -607,7 +611,7 @@ The HA dashboard URL the user types on the "configure" screen becomes the `--es 
 ### 8.1 Happy path (factory panel), mirroring `fel-install.sh` steps 1-8
 1. **Welcome / OS onboarding** (§11): per-OS driver/permission note + browser check.
 2. **Enter FEL** — show `docs/img/fel-button.jpg` (1400×695) and instructions: power off, hold PCB
-   button, plug USB-C, hold ~10 s (`README` §"Entering FEL mode"). "Connect" → `requestDevice`
+   button, plug USB-C, hold ~10 s ([docs/install.md](../install.md#finding-the-fel-button)). "Connect" → `requestDevice`
    `1f3a:efe8`; run `ver`; gate `0x1855` (§1).
 3. **Boot our U-Boot** — SPL + U-Boot upload + reset64 (§2); wait for the `1f3a:1010` re-enumeration;
    second `requestDevice` for fastboot; getvar gate (§1).
@@ -620,7 +624,7 @@ The HA dashboard URL the user types on the "configure" screen becomes the `--es 
 7. **Flash boot** — flash, read back, `cmp`; on mismatch show the recovery card (§8.3) and do **not**
    reboot.
 8. **Reboot + wait for adb** — `fastboot reboot`; prompt the user to accept the adb device picker
-   when the panel comes up (~21 s on the sim, `docs/root.md`); authenticate (§7).
+   when the panel comes up (~21 s on the sim, `docs/research/root.md`); authenticate (§7).
 9. **Configure** — HA URL entry, timezone/locale, optional keyboard; run the §7 provisioning;
    install APK; push models; `am start`. Done screen with the HA ESPHome add-integration hint
    (`install.sh:139-142`).
@@ -640,7 +644,7 @@ The HA dashboard URL the user types on the "configure" screen becomes the `--es 
 - SPL `eGON.FEL` check fails (§2.4 step 7) → power-cycle and retry (RAM-only, nothing written).
 - fastboot getvar mismatch → "unknown hardware", stop.
 - read-back `cmp` mismatch after a write → **Undo** card: "flash `boot.img`/`vbmeta.img` from your
-  backup" using the §3.3 flash path, exactly `fel-install.sh:90`'s advice and `docs/root.md`
+  backup" using the §3.3 flash path, exactly `fel-install.sh:90`'s advice and `docs/research/root.md`
   §"Undo". The backup is in IndexedDB and was offered as a download.
 - WebUSB transfer stall / device reset → fastboot.js opportunistically `reset()`s on connect
   (`fastboot.ts:154-158`); offer "reconnect".
@@ -708,7 +712,7 @@ CC-BY-NC-SA-4.0 (wake-word models).
 **On real hardware (requires a panel; out of scope for this session, mirrors the CLI factory sim):**
 8. FEL enumerate + `ver` gate; SPL `eGON.FEL`; U-Boot re-enumeration to `1f3a:1010`; getvar gate.
 9. Backup → patch → vbmeta → flash boot → read-back `cmp` → reboot → adb authorized with no screen
-   tap (the CLI hit 21 s, `docs/root.md`), Magisk + helper live.
+   tap (the CLI hit 21 s, `docs/research/root.md`), Magisk + helper live.
 10. Full provisioning (`tools/install.sh` parity): app installed, HOME set, debloat, models pushed,
     kiosk shows the HA URL; ESPHome device appears.
 11. Per-OS: Windows (Zadig for FEL; fastboot/adb driver — §11), Linux (udev), macOS (no setup);

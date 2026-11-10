@@ -16,7 +16,7 @@ entities always reach HA as an ESPHome device over Wi-Fi, whatever the radio doe
 | `Thread router` | yes | helper mode implemented (joins with a dataset from HA); runs on the proof otbr build; join not tested |
 
 There is no "Aqara (stock)" mode: with Aqara's launcher/apps disabled and its cloud blocked
-(debloat.md, AqaraCloud.kt), nothing can use the hub's own Zigbee network. **Stock comes back by
+([research/debloat.md](research/debloat.md), AqaraCloud.kt), nothing can use the hub's own Zigbee network. **Stock comes back by
 uninstalling the app (or `tools/install.sh --undo`) and rebooting**: all of Aqara's radio services
 are init services started on every boot. `--undo` also force-stops the kiosk and `ctl.start`s them
 right away.
@@ -185,7 +185,7 @@ an mDNS publisher and the border agent enabled, `OTBR_RUNTIME_DIR=/data/s1kiosk/
 ## Root helper contract (v1)
 
 The root half of the modes lives in a helper. The Magisk boot patch installs it as an init service
-([root.md](root.md); working on the reference panel since 2026-11-09). Files:
+([research/root.md](research/root.md); working on the reference panel since 2026-11-09). Files:
 
 - `tools/radio/s1kiosk_radio.sh`: the helper (mksh).
 - `tools/radio/s1kiosk_radio.rc`: the init snippet.
@@ -411,7 +411,7 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
 
 ## Open risks
 
-- **Root helper needs the Magisk boot patch** ([root.md](root.md)). Panels without it only get `Off`. Persistent `Off` across a reboot without the helper relies on the app starting and
+- **Root helper needs the Magisk boot patch** ([research/root.md](research/root.md)). Panels without it only get `Off`. Persistent `Off` across a reboot without the helper relies on the app starting and
   re-applying it (a few seconds of Aqara's stack at boot).
 - **EZSP-over-TCP has no authentication.** Restrict with `ZIGBEE_RANGE` (the HA subnet) and the
   VLAN firewall.

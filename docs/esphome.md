@@ -113,7 +113,7 @@ Plus the wall base entities below, and the entities HA adds itself for a voice d
 ### Wall base entities
 
 Built from the detected base, through the app's own UART driver (default) or the stock LocalService
-([bases.md](bases.md#implementation-s1-kiosk)); both backends produce the same entities.
+([research/bases.md](research/bases.md#implementation-s1-kiosk)); both backends produce the same entities.
 Only *Base* is always present; the rest exist only while a matching base is detected.
 
 | Entity | object_id | When | What it does |
@@ -324,7 +324,7 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 
 - switch `Block Aqara cloud` (`block_aqara_cloud`, default on): stops Aqara's cloud daemon `ha_master`.
   With the UART wall-base backend (default) it is always stopped; with the LocalService backend it is
-  kept while a base is attached. See docs/debloat.md.
+  kept while a base is attached. See [research/debloat.md](research/debloat.md).
 - text_sensor `Aqara cloud daemon` (`aqara_cloud`): `blocked`, `running`,
   `stopped (UART wall base backend owns /dev/ttyS3)`, `running (needed by the wall base, LocalService
   backend)`, or `error (…)`.

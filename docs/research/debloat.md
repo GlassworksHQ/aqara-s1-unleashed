@@ -46,13 +46,13 @@ All ship in read-only `/vendor/app` (one in `/system/app`), so all are restorabl
 
 ## Apply / undo
 
-A reversible script lives at [`tools/debloat/debloat.sh`](../tools/debloat/debloat.sh)
+A reversible script lives at [`tools/debloat/debloat.sh`](../../tools/debloat/debloat.sh)
 (`disable` / `enable` / `status`). It disables the safe set and leaves
 system-critical packages alone.
 
 ## Applied on the reference unit (2026-11-09)
 
-- S1 Kiosk ([app/](../app/README.md)) installed and set as HOME with
+- S1 Kiosk ([app/](../../app/README.md)) installed and set as HOME with
   `cmd package set-home-activity sh.edm.s1kiosk/.MainActivity`.
 - `debloat.sh disable` + `disable-launcher` applied: all 9 packages in the safe set and the Aqara launcher
   are disabled. `com.lumi.settings` and `com.lumi.systemmanager` are still enabled.

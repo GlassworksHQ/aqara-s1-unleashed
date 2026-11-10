@@ -3,7 +3,7 @@
 This is the protocol the Panel Hub S1 Plus speaks with its mains wall base (the "bracket"). It was
 reverse-engineered from Aqara's `/vendor/bin/bracket_cli` and `/vendor/lib/libha_bracket.so`, which
 `ha_master` loads with `-k`. Aqara's own `bracket_cli` was then run on the panel against
-[`tools/bracket/base_emulator.py`](../tools/bracket/base_emulator.py) to check it, and it accepted
+[`tools/bracket/base_emulator.py`](../../tools/bracket/base_emulator.py) to check it, and it accepted
 the emulator. The app's driver is `base/BracketProtocol.kt`, `base/BracketSession.kt` and
 `base/UartBaseLink.kt`. Background on the base itself is in [bases.md](bases.md).
 
@@ -167,7 +167,7 @@ bracket_cli does support), as shown below.
 The emulator runs on the Mac. `adb reverse tcp:9999 tcp:9999`, then on the panel as shell
 `/vendor/bin/socat pty,link=/data/local/tmp/s3a,raw,echo=0 tcp:127.0.0.1:9999`, then
 `bracket_cli /data/local/tmp/s3a 115200 …`. The script is
-[`tools/bracket/cli_proof.sh`](../tools/bracket/cli_proof.sh). `RX` = bytes written by
+[`tools/bracket/cli_proof.sh`](../../tools/bracket/cli_proof.sh). `RX` = bytes written by
 bracket_cli, `TX` = emulator replies. Run on 2026-11-09 with the emulator as a 2-channel base,
 model 0xF110, firmware 23:
 

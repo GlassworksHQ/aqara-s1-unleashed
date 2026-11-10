@@ -114,5 +114,6 @@ Gotcha: `fastboot` also honours `ANDROID_SERIAL`, and our U-Boot's fastboot seri
 panel's adb serial. The scripts keep `ANDROID_SERIAL` for adb only.
 
 ## Next
-- Browser installer (WebUSB): design in progress (`docs/web-installer.md`).
+- Browser installer (WebUSB): built, in [`web/`](../../web/src/README.md); design in
+  [web-installer.md](web-installer.md), user guide in [docs/install.md](../install.md).
 - After `fel-install.sh`, `tools/install.sh` installs and configures the kiosk app over adb.

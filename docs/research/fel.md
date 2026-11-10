@@ -19,7 +19,7 @@ MMC:   mmc@4022000: 1        (8-bit, 52 MHz, 7.3 GiB, GPT with the Android parti
 
 1. Build: `UBOOT_SRC=~/src/u-boot BL31=<bl31.bin> tools/fel/build-uboot.sh`.
    This applies `tools/fel/uboot/patches/*.patch` once.
-2. Enter FEL: hold the PCB button ([photo](img/fel-button.jpg)) while plugging in USB-C, keep holding for
+2. Enter FEL: hold the PCB button ([photo](../img/fel-button.jpg)) while plugging in USB-C, keep holding for
    about 10 s. The screen stays black.
 3. Boot: `NO_BL31=1 SUNXI_FEL=sunxi-fel tools/fel/fel-boot.sh ~/src/u-boot/build-s1`.
    Watch the console on the debug UART at 115200 8N1.

@@ -10,7 +10,7 @@
 
 There is **one unlabeled tactile button on the PCB** (you must open the back cover to reach it). Hold it while applying USB-C power to enter FEL. The **external** case button and the Aqara pairing button do not enter FEL.
 
-![FEL button on the S1 Plus PCB, back cover removed](img/fel-button.jpg)
+![FEL button on the S1 Plus PCB, back cover removed](../img/fel-button.jpg)
 
 *The FEL button (circled): a small tactile switch right of the shield can's notch, just below the round sensor window.*
 
@@ -32,7 +32,7 @@ The console gives a live **root-capable Android shell** (`console:/ $`), and cat
 
 ## Using an ESP32-S3 as the UART adapter (dev only)
 
-End users won't need UART, but for development any ESP32-S3 works as a 3.3 V USB↔UART bridge — see [`tools/esp32-uart-bridge`](../tools/esp32-uart-bridge). It bridges the S3's native USB-Serial/JTAG (or a CP2102) to a hardware UART on two free GPIOs (default **GPIO40 = TX → panel RX**, **GPIO41 = RX → panel TX**), locked at 115200.
+End users won't need UART, but for development any ESP32-S3 works as a 3.3 V USB↔UART bridge — see [`tools/esp32-uart-bridge`](../../tools/esp32-uart-bridge). It bridges the S3's native USB-Serial/JTAG (or a CP2102) to a hardware UART on two free GPIOs (default **GPIO40 = TX → panel RX**, **GPIO41 = RX → panel TX**), locked at 115200.
 
 Wiring:
 

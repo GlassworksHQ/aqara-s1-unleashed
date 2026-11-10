@@ -55,4 +55,4 @@ adb shell service call A_device_control 7 i32 1 i32 0   # restore
 ```
 
 Night behaviour now lives in the kiosk's `ScreenController`: a configurable night window, a shorter
-idle timeout and a lower brightness cap, with wake on approach. See [sensors.md](sensors.md).
+idle timeout and a lower brightness cap, with wake on approach. See [sensors.md](../sensors.md).

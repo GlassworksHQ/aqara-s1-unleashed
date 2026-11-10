@@ -115,7 +115,7 @@ There are two backends (`WallBase` + a `BaseLink`), chosen by the pref `base_bac
     the handshake, and a power report from a newly mounted base starts it too. A base that has
     been silent for 61 s is probed, and only an unanswered probe reports it as removed.
   - **Debug transport.** `--es base_transport tcp:127.0.0.1:9999` (or `""` for `/dev/ttyS3`)
-    points the link at [`tools/bracket/base_emulator.py`](../tools/bracket/base_emulator.py) via
+    points the link at [`tools/bracket/base_emulator.py`](../../tools/bracket/base_emulator.py) via
     `adb reverse tcp:9999 tcp:9999`. The emulator's energy goes to a separate counter.
 - **`localservice`: `LocalServiceLink`**, the original path. The kiosk binds to the stock
   **LocalService** in `com.lumi.systemmanager` (`systemmanager.intent.action.LOCAL_SERVER`,
@@ -146,7 +146,7 @@ The rest of this section describes the LocalService backend; the entity layer (`
   `0.13.85`, `8.0.2014` and `4.x.28` on attach, then relays/power/energy/protection every 10 s;
   events and reports update values immediately. Channels come from the relay mask bits, else the
   channel count, capped at 3.
-- The entity set (see [esphome.md](esphome.md#wall-base-entities)) changes only when the detected
+- The entity set (see [esphome.md](../esphome.md#wall-base-entities)) changes only when the detected
   layout has been stable for 5 s and its entity set differs from the applied one. The API server
   then sends `DisconnectRequest` to every client; Home Assistant reconnects and re-lists. The last
   applied layout is persisted (`base_layout` pref), so a restart with the same base doesn't change

@@ -15,7 +15,7 @@ JVM (`SendspinSession`, `SsCrypto`, `TimeFilter`, `PlaybackScheduler`, `WsClient
 Nothing to do. With the HA ESPHome integration already set up for the panel (with an encryption
 key, which HA provisions automatically):
 
-1. The panel finds MA's Sendspin server and connects to it (see [Discovery](#discovery)).
+1. The panel finds MA's Sendspin server and connects to it (see [Discovery](#discovery-and-connection)).
 2. Home Assistant reads the panel's Sendspin **pairing token** over the ESPHome API and gives it
    to MA. MA pairs with the panel on the open connection.
 3. MA creates the player **S1 Panel**. Its HA entity is `media_player.s1_panel` (from the
