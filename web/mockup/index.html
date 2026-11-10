@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>S1 Unleashed Installer Mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0b0f;--tx:#f4f4f5;--mu:#a1a1aa;--fa:#63636b;--amber:#fbbf24;--green:#34d399;--rose:#fb7185;--s1:rgba(255,255,255,.045);--s2:rgba(255,255,255,.08);--bd:rgba(255,255,255,.07)}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg)}
+body{min-height:100vh;background:var(--bg);color:var(--tx);font:400 15px/1.55 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle 85vw at -10% -20%,rgba(56,189,248,.13),transparent),radial-gradient(circle 65vw at 110% 120%,rgba(167,139,250,.14),transparent)}
+.label{font-size:11.5px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--fa)}
+.wrap{position:relative;max-width:1280px;margin:0 auto;padding:64px 40px 80px}
+h1{font-size:clamp(38px,4.6vw,60px);font-weight:300;letter-spacing:-.02em;line-height:1.04;margin:14px 0 16px}
+.lede{font-size:17px;color:var(--mu);max-width:62ch}
+.lede b{color:var(--tx);font-weight:500}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:48px}
+.card{display:flex;flex-direction:column;background:var(--s1);border:1px solid var(--bd);border-radius:26px;padding:14px;color:inherit;text-decoration:none;transition:border-color .3s,background .3s}
+.card:hover{border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.06)}
+.pv{position:relative;aspect-ratio:16/10;border-radius:16px;overflow:hidden;background:var(--bg);border:1px solid var(--bd)}
+.pv iframe{position:absolute;left:0;top:0;width:1440px;height:900px;border:0;transform-origin:0 0;pointer-events:none}
+.pv::after{content:"";position:absolute;inset:0}
+.txt{padding:22px 12px 10px;display:flex;flex-direction:column;flex:1}
+.txt .k{display:flex;align-items:baseline;gap:12px}
+.txt .letter{font-size:13px;font-weight:600;color:var(--amber);letter-spacing:.08em}
+.txt h2{font-size:26px;font-weight:300;letter-spacing:-.02em;line-height:1.15}
+.txt p{color:var(--mu);margin-top:10px}
+.txt ul{list-style:none;margin-top:14px;display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--mu)}
+.txt li{display:flex;gap:10px}
+.txt li::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--green);margin-top:8px}
+.txt li.con::before{background:var(--fa)}
+.open{margin-top:auto;padding-top:18px;display:flex;align-items:center;justify-content:space-between}
+.open span{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:14.5px;padding:10px 18px;border-radius:16px;background:#fff;color:var(--bg);transition:background .25s}
+.card:hover .open span{background:#e4e4e7}
+.open small{font-size:12.5px;color:var(--fa)}
+.card.rec{grid-column:1/-1;display:grid;grid-template-columns:1.25fr 1fr;gap:10px;border-color:rgba(52,211,153,.28)}
+.card.rec:hover{border-color:rgba(52,211,153,.5)}
+.card.rec .txt{padding:18px 18px 10px}
+.badge{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--green);padding:6px 11px;border-radius:999px;border:1px solid rgba(52,211,153,.3);background:rgba(52,211,153,.06);margin-bottom:14px}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green)}
+.foot{margin-top:40px;font-size:13.5px;color:var(--fa);max-width:80ch;line-height:1.7}
+.foot b{color:var(--mu);font-weight:500}
+@media (max-width:900px){
+ .wrap{padding:36px 16px 56px}
+ .grid,.card.rec{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="label">S1 Unleashed · Web installer · Mockups</div>
+  <h1>Pick a direction</h1>
+  <p class="lede">Five static mockups of the browser installer that puts S1 Kiosk on a wall panel. <b>Same palette, type and motion</b> as the panel's own setup screen; only the layout and feel change. Each one shows all five steps plus an error state. <b>E</b> merges the parts of A, B and D you liked.</p>
+
+  <div class="grid">
+    <a class="card rec" href="option-e.html">
+      <div class="pv"><iframe src="option-e.html#install" title="Option E preview" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="txt">
+        <span class="badge">Recommended: merged A + B + D</span>
+        <div class="k"><span class="letter">E</span><h2>Rail, ring, calm</h2></div>
+        <p>A's rail keeps where you are on screen, B's big ring makes progress obvious with the detail one tap away, and on a phone it becomes D's one-question flow.</p>
+        <ul>
+          <li>One clear progress element per step; the partitions, hashes and log stay under "Show details".</li>
+          <li>One white button per screen, with very large type on "Hold the button" and "Keep it plugged in".</li>
+          <li>Below 900 px the rail turns into D's thin line and "Step 3 of 5", with big buttons pinned at the bottom.</li>
+        </ul>
+        <div class="open"><small>A + B + D</small><span>Open E →</span></div>
+      </div>
+    </a>
+    <a class="card" href="option-a.html">
+      <div class="pv"><iframe src="option-a.html#welcome" title="Option A preview" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="txt">
+        <div class="k"><span class="letter">A</span><h2>Onboarding port</h2></div>
+        <p>The panel's first-boot screen, moved to the browser: a left rail with the big title and a vertical step list, plus a glass card for the current step.</p>
+        <ul>
+          <li>Feels like one product from the browser to the panel.</li>
+          <li>Where you are, and what's done, is always on screen.</li>
+          <li class="con">The rail uses width a small laptop screen might want for content.</li>
+        </ul>
+        <div class="open"><small>Rail + card</small><span>Open A →</span></div>
+      </div>
+    </a>
+
+    <a class="card" href="option-b.html">
+      <div class="pv"><iframe src="option-b.html#welcome" title="Option B preview" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="txt">
+        <div class="k"><span class="letter">B</span><h2>Centred wizard</h2></div>
+        <p>A single centred card under a horizontal step bar, with a large picture for each step: the cable, the board photo with a zoomed-in button, a progress ring.</p>
+        <ul>
+          <li>The most approachable option: pictures do the explaining.</li>
+          <li>The magnified FEL button makes the trickiest step obvious.</li>
+          <li class="con">Taller pages; the details sit below the picture.</li>
+        </ul>
+        <div class="open"><small>Card + hero visual</small><span>Open B →</span></div>
+      </div>
+    </a>
+
+    <a class="card" href="option-c.html">
+      <div class="pv"><iframe src="option-c.html#welcome" title="Option C preview" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="txt">
+        <div class="k"><span class="letter">C</span><h2>Device + console</h2></div>
+        <p>A drawn panel with live status (USB ID, mode, chip) on the left. Progress bars, a partition table with hashes and a collapsible log on the right.</p>
+        <ul>
+          <li>Shows everything it does: IDs, hashes, read-back checks.</li>
+          <li>The log makes bug reports easy, and tinkerers will like it.</li>
+          <li class="con">Dense; can feel technical to a first-timer.</li>
+        </ul>
+        <div class="open"><small>Power-user</small><span>Open C →</span></div>
+      </div>
+    </a>
+
+    <a class="card" href="option-d.html">
+      <div class="pv"><iframe src="option-d.html#welcome" title="Option D preview" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="txt">
+        <div class="k"><span class="letter">D</span><h2>Minimal full-bleed</h2></div>
+        <p>One question per screen, very large type, big buttons and almost no chrome. A thin line at the top shows progress. The arrow keys step through.</p>
+        <ul>
+          <li>The calmest and least intimidating; nothing competes with the task.</li>
+          <li>Scales from a phone-sized window to a large screen with no change.</li>
+          <li class="con">Less detail on screen while it works (no per-step log).</li>
+        </ul>
+        <div class="open"><small>One thing at a time</small><span>Open D →</span></div>
+      </div>
+    </a>
+  </div>
+
+  <p class="foot"><b>How to review.</b> These are static: there's no USB or device code, and the buttons only move between screens. Each mockup has a small bar at the bottom for jumping to any screen, including the <b>error state</b> ("Panel not found in FEL mode"). That bar isn't part of the design. The partition sizes, hashes and timings shown are placeholders.</p>
+</div>
+<script>
+// scale each 1440×900 preview to fit its card
+const fit = () => document.querySelectorAll('.pv').forEach(pv => { pv.firstElementChild.style.transform = `scale(${pv.clientWidth / 1440})`; });
+new ResizeObserver(fit).observe(document.body);
+fit();
+</script>
+</body>
+</html>

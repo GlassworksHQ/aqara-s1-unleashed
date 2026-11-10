@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>S1 Unleashed Installer · C</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0b0f;--tx:#f4f4f5;--mu:#a1a1aa;--fa:#63636b;--amber:#fbbf24;--green:#34d399;--rose:#fb7185;--s1:rgba(255,255,255,.045);--s2:rgba(255,255,255,.08);--bd:rgba(255,255,255,.07);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg)}
+body{min-height:100vh;background:var(--bg);color:var(--tx);font:400 14.5px/1.5 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle 85vw at -10% -20%,rgba(56,189,248,.13),transparent),radial-gradient(circle 65vw at 110% 120%,rgba(167,139,250,.14),transparent)}
+button,input{font:inherit;color:inherit}
+code,.mono{font-family:var(--mono);font-size:12.5px}
+.label{font-size:11.5px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--fa)}
+.glass{background:var(--s1);border:1px solid var(--bd);border-radius:24px}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:14.5px;border-radius:16px;padding:12px 20px;border:1px solid var(--bd);background:var(--s2);color:var(--tx);cursor:pointer;transition:background .25s}
+.btn:hover{background:rgba(255,255,255,.12)}
+.btn.primary{background:#fff;border-color:#fff;color:var(--bg)}
+.btn.primary:hover{background:#e4e4e7}
+.btn.quiet{background:none;border-color:transparent;color:var(--mu);padding-inline:8px}
+.btn.quiet:hover{color:var(--tx)}
+.link{color:var(--mu);background:none;border:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(255,255,255,.2)}
+.link:hover{color:var(--tx)}
+.ok{color:var(--green)}.am{color:var(--amber)}.er{color:var(--rose)}.fa{color:var(--fa)}.mu{color:var(--mu)}
+
+/* header */
+.head{position:relative;display:flex;align-items:center;gap:28px;padding:22px 36px;border-bottom:1px solid var(--bd)}
+.phases{display:flex;gap:4px;font-size:12.5px}
+.phases span{padding:5px 11px;border-radius:999px;color:var(--fa);border:1px solid transparent;transition:all .3s}
+.phases span.done{color:var(--mu)}
+.phases span.done::before{content:"✓ ";color:var(--green)}
+.phases span.cur{color:var(--amber);border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.06)}
+.phases span.err{color:var(--rose);border-color:rgba(251,113,133,.3);background:rgba(251,113,133,.06)}
+.head .env{margin-left:auto;font-size:12.5px;color:var(--mu);display:flex;gap:14px}
+
+.grid{position:relative;display:grid;grid-template-columns:minmax(380px,440px) 1fr;gap:24px;padding:24px 36px 96px;max-width:1440px;margin:0 auto}
+
+/* device */
+.dev{padding:28px 28px 22px;position:sticky;top:24px;align-self:start}
+.stagebox{position:relative;height:300px;display:flex;flex-direction:column;align-items:center}
+.panel{position:relative;width:320px;aspect-ratio:2/1;border-radius:22px;background:linear-gradient(160deg,#2a2c33,#17181d);border:1px solid rgba(255,255,255,.12);padding:12px;box-shadow:0 30px 60px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08);margin-top:24px}
+.scr{position:relative;width:100%;height:100%;border-radius:10px;background:#030305;overflow:hidden;border:1px solid rgba(0,0,0,.6)}
+.scr>div{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:6px;animation:fade .3s ease}
+.scr .msg{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--fa)}
+.scr .mono{font-size:10.5px;color:rgba(52,211,153,.75)}
+.scr>.tiles{align-items:stretch;justify-content:stretch;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:6px;padding:10px}
+.tiles i{border-radius:7px;background:rgba(255,255,255,.06)}
+.tiles i:nth-child(2){background:rgba(251,191,36,.2)}
+.tiles i:nth-child(4){grid-column:span 2;background:rgba(56,189,248,.12)}
+.scr>.qr{flex-direction:row;gap:16px}
+.qr .code{width:84px;height:84px;border-radius:10px;background:#fff;padding:7px}
+.qr .code svg{display:block;width:100%;height:100%}
+.qr p{font-size:11px;color:var(--mu);max-width:110px;line-height:1.35}
+body[data-cur=welcome] .v-welcome,body[data-cur=fel] .v-fel,body[data-cur=install] .v-install,body[data-cur=app] .v-app,body[data-cur=done] .v-done,body[data-cur=error] .v-error{display:flex}
+body[data-cur=app] .v-app{display:grid}
+.cable{width:3px;flex:1;margin-top:-2px;border-radius:3px;background:rgba(255,255,255,.12);position:relative;transition:background .3s}
+.plug{width:16px;height:24px;border-radius:5px;background:#2a2c33;border:1px solid rgba(255,255,255,.14);margin-top:-1px}
+.host{font-size:11.5px;color:var(--fa);letter-spacing:.14em;text-transform:uppercase;margin-top:10px}
+body[data-cur=fel] .cable{background:linear-gradient(var(--amber),rgba(251,191,36,.2));animation:breathe 2s ease-in-out infinite}
+body[data-cur=install] .cable,body[data-cur=app] .cable,body[data-cur=done] .cable{background:linear-gradient(var(--green),rgba(52,211,153,.25))}
+body[data-cur=error] .cable{background:repeating-linear-gradient(rgba(251,113,133,.6) 0 6px,transparent 6px 12px)}
+@keyframes breathe{50%{opacity:.45}}
+.led{position:absolute;top:50%;right:-5px;width:4px;height:14px;border-radius:2px;background:rgba(255,255,255,.1);transform:translateY(-50%)}
+body[data-cur=install] .led{background:var(--amber);box-shadow:0 0 10px var(--amber);animation:breathe 1s ease-in-out infinite}
+body[data-cur=app] .led,body[data-cur=done] .led{background:var(--green);box-shadow:0 0 8px var(--green)}
+body[data-cur=error] .led{background:var(--rose);box-shadow:0 0 8px var(--rose)}
+.kv{margin-top:18px;border-top:1px solid var(--bd)}
+.kv div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--bd);font-size:13.5px}
+.kv dt{color:var(--fa)}
+.kv dd{font-family:var(--mono);font-size:12.5px;text-align:right;transition:color .3s}
+
+/* right */
+.main{padding:28px 30px;min-width:0}
+.screen{display:none}
+.screen.on{display:block;animation:fade .28s ease}
+@keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.screen h2{font-size:32px;font-weight:300;letter-spacing:-.02em;line-height:1.1;margin:8px 0 8px}
+.screen .body{color:var(--mu);font-size:15px;max-width:640px}
+.sec{margin-top:24px}
+.sec>.label{margin-bottom:10px;display:flex;justify-content:space-between}
+.sec>.label span{letter-spacing:0;text-transform:none;font-size:12.5px;color:var(--mu);font-weight:400}
+.actions{display:flex;align-items:center;gap:12px;margin-top:26px}
+.actions .sp{flex:1}
+.hint{font-size:12.5px;color:var(--fa)}
+
+.bars{display:flex;flex-direction:column;gap:12px}
+.pb{display:grid;grid-template-columns:110px 1fr 86px;gap:14px;align-items:center;font-size:13.5px}
+.pb b{font-weight:500}
+.pb.pend b{color:var(--fa)}
+.pb em{font-style:normal;text-align:right;font-family:var(--mono);font-size:12px;color:var(--mu)}
+.track{height:6px;border-radius:6px;background:rgba(255,255,255,.07);overflow:hidden}
+.track i{display:block;height:100%;border-radius:6px;background:var(--green);transition:width .6s ease}
+.track i.a{background:var(--amber)}
+.on .track i{animation:grow 1s cubic-bezier(.2,.7,.3,1)}
+@keyframes grow{from{width:0}}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:500;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--fa);padding:0 10px 8px}
+td{padding:7px 10px;border-top:1px solid var(--bd);font-family:var(--mono);font-size:12.5px;color:var(--mu)}
+td:first-child{color:var(--tx)}
+tr.pend td{color:var(--fa)}
+tr.cur td{background:rgba(251,191,36,.04)}
+td.st{text-align:right;font-family:Inter,sans-serif;font-size:12.5px}
+.tbl{border-radius:18px;background:rgba(255,255,255,.03);border:1px solid var(--bd);padding:12px 6px 4px}
+
+.chk{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.chk div{padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid var(--bd)}
+.chk b{display:block;font-weight:500;font-size:13.5px}
+.chk span{font-family:var(--mono);font-size:12px;color:var(--mu)}
+.chk b::before{content:"● ";color:var(--green);font-size:10px;vertical-align:2px}
+
+.seg{display:inline-flex;padding:3px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--bd);gap:2px}
+.seg button{border:0;background:none;padding:6px 12px;border-radius:9px;font-size:13px;color:var(--mu);cursor:pointer;transition:all .25s}
+.seg button.on{background:var(--s2);color:var(--tx)}
+.tp{display:none;margin-top:10px;font-size:13.5px;color:var(--mu)}
+.tp.on{display:block}
+.tp pre{margin-top:8px}
+pre.code{background:rgba(0,0,0,.35);border:1px solid var(--bd);border-radius:12px;padding:10px 12px;overflow:auto;font-family:var(--mono);font-size:11.5px;line-height:1.6;color:#d4d4d8}
+
+.felrow{display:grid;grid-template-columns:1.25fr 1fr;gap:18px;align-items:start}
+.photo{border-radius:16px;overflow:hidden;border:1px solid var(--bd);aspect-ratio:1400/695}
+.photo img{display:block;width:100%;height:100%;object-fit:cover}
+.steps{list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:10px}
+.steps li{counter-increment:s;display:flex;gap:10px;font-size:13.5px;color:var(--mu)}
+.steps li::before{content:counter(s);flex:none;width:20px;height:20px;border-radius:50%;border:1.5px solid rgba(255,255,255,.18);display:grid;place-items:center;font-size:11px;color:var(--tx)}
+.steps b{color:var(--tx);font-weight:500}
+
+.field{display:flex;gap:10px}
+.field input{flex:1;min-width:0;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:12px 14px;font-size:15px;outline:none;font-family:var(--mono);font-size:13.5px}
+.field input:focus{border-color:rgba(255,255,255,.3)}
+.status{font-size:13px;color:var(--mu);margin-top:8px}
+.status.ok{color:var(--green)}
+.rowbox{display:flex;gap:14px;align-items:center;padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid var(--bd)}
+.rowbox .t{flex:1}
+.rowbox b{font-weight:500;display:block}
+.rowbox span{font-size:13px;color:var(--mu)}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--amber);animation:pulse 2s ease-out infinite;flex:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(251,191,36,.45)}100%{box-shadow:0 0 0 10px rgba(251,191,36,0)}}
+
+.banner{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border-radius:18px;border:1px solid rgba(251,113,133,.3);background:rgba(251,113,133,.06);margin-top:18px}
+.edot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--rose);margin-top:6px;box-shadow:0 0 12px rgba(251,113,133,.6)}
+.banner b{font-weight:500;color:var(--rose);display:block}
+.banner span{font-size:13px;color:var(--mu)}
+.tips{list-style:none;display:flex;flex-direction:column;gap:8px}
+.tips li{font-size:13.5px;color:var(--mu);padding-left:18px;position:relative}
+.tips li::before{content:"";position:absolute;left:2px;top:8px;width:6px;height:6px;border-radius:50%;background:var(--rose);opacity:.7}
+.tips b{color:var(--tx);font-weight:500}
+
+/* log */
+.log{margin-top:24px;border-radius:18px;background:rgba(0,0,0,.32);border:1px solid var(--bd);overflow:hidden}
+.log summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px;font-size:13px;color:var(--mu)}
+.log summary::-webkit-details-marker{display:none}
+.log summary::before{content:"›";display:inline-block;transition:transform .25s;color:var(--fa);font-size:16px;line-height:1}
+.log[open] summary::before{transform:rotate(90deg)}
+.log summary .n{margin-left:auto;font-size:12px;color:var(--fa)}
+.log pre{max-height:200px;overflow:auto;padding:4px 16px 14px;font-family:var(--mono);font-size:11.5px;line-height:1.7;color:#c4c4c8;white-space:pre-wrap}
+.log pre .ts{color:var(--fa)}
+
+.mock{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:5px;border-radius:14px;background:rgba(20,21,27,.85);backdrop-filter:blur(12px);border:1px solid var(--bd);font-size:12px;z-index:9}
+.mock span{padding:0 10px 0 8px;color:var(--fa);letter-spacing:.14em;font-size:10.5px;font-weight:500}
+.mock button{border:0;background:none;color:var(--mu);padding:6px 10px;border-radius:9px;cursor:pointer;transition:all .25s}
+.mock button:hover{color:var(--tx)}
+.mock button.on{background:var(--s2);color:var(--tx)}
+.mock button.e{color:var(--rose)}
+.embed .mock{display:none}
+
+@media (max-width:1040px){
+ .grid{grid-template-columns:1fr;padding:16px 16px 96px}
+ .dev{position:static}
+ .head{flex-wrap:wrap;gap:12px;padding:16px}
+ .head .env{margin-left:0}
+ .phases{flex-wrap:wrap}
+ .felrow,.chk{grid-template-columns:1fr}
+ .panel{width:min(320px,100%)}
+ .main{padding:22px 16px}
+ .mock{max-width:calc(100% - 32px);overflow-x:auto}
+}
+</style>
+</head>
+<body data-cur="welcome">
+<header class="head">
+  <div class="label">S1 Unleashed · Installer</div>
+  <nav class="phases" id="phases"><span>Preflight</span><span>FEL</span><span>Backup &amp; flash</span><span>App</span><span>Done</span></nav>
+  <div class="env"><span id="ua">Chrome · macOS</span><span class="ok">WebUSB ✓</span><span class="ok">HTTPS ✓</span></div>
+</header>
+
+<div class="grid">
+  <!-- left: the device -->
+  <aside class="dev glass">
+    <div class="label">Your panel</div>
+    <div class="stagebox">
+      <div class="panel"><span class="led"></span>
+        <div class="scr">
+          <div class="v-welcome"><span class="msg">Not connected</span></div>
+          <div class="v-fel"><span class="msg" style="color:#2a2b31">Screen stays black</span></div>
+          <div class="v-install"><span class="mono">U-Boot · fastboot</span><span class="mono" style="color:var(--fa)">reading recovery</span></div>
+          <div class="v-app tiles"><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="v-done qr"><div class="code" id="qr"></div><p>Scan with your phone to sign in to Home Assistant</p></div>
+          <div class="v-error"><span class="msg" style="color:rgba(251,113,133,.6)">No signal</span></div>
+        </div>
+      </div>
+      <div class="cable"></div><div class="plug"></div>
+      <div class="host">This computer</div>
+    </div>
+    <dl class="kv" id="kv"></dl>
+  </aside>
+
+  <!-- right: steps, progress, log -->
+  <main class="main glass">
+    <!-- welcome -->
+    <section class="screen" data-s="welcome">
+      <div class="label">Preflight</div>
+      <h2>Install S1 Kiosk on your panel</h2>
+      <p class="body">Everything runs in this tab: FEL boot, backup, boot-image patch, flash, verify, then app setup over adb. The panel's partitions are saved before any write.</p>
+      <div class="sec"><div class="label">Browser</div>
+        <div class="chk"><div><b>WebUSB</b><span>navigator.usb ✓</span></div><div><b>Secure context</b><span>https: ✓</span></div><div><b>Desktop</b><span id="ua2">Chrome · macOS</span></div></div>
+      </div>
+      <div class="sec"><div class="label">Host setup <span>one-time</span></div>
+        <div class="seg" data-tabs><button data-t="mac">macOS</button><button data-t="win">Windows</button><button data-t="linux">Linux</button></div>
+        <div class="tp" data-tp="mac">No driver or permissions needed.</div>
+        <div class="tp" data-tp="win">Run <b>Zadig</b> once while the panel is in FEL: <i>Options → List all devices</i> → <code>1f3a:efe8</code> → <b>WinUSB</b> → Replace driver.</div>
+        <div class="tp" data-tp="linux">Install a udev rule, then <code>sudo udevadm control --reload</code>:
+<pre class="code"># /etc/udev/rules.d/50-s1.rules
+SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="efe8", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", TAG+="uaccess"</pre></div>
+      </div>
+      <div class="sec"><div class="label">Pipeline</div>
+        <div class="bars">
+          <div class="pb pend"><b>Checks</b><div class="track"><i style="width:0"></i></div><em>—</em></div>
+          <div class="pb pend"><b>Backup</b><div class="track"><i style="width:0"></i></div><em>0 / 9</em></div>
+          <div class="pb pend"><b>Patch</b><div class="track"><i style="width:0"></i></div><em>—</em></div>
+          <div class="pb pend"><b>Flash</b><div class="track"><i style="width:0"></i></div><em>—</em></div>
+          <div class="pb pend"><b>Verify</b><div class="track"><i style="width:0"></i></div><em>—</em></div>
+        </div>
+      </div>
+      <details class="log"><summary>Log <span class="n">3 lines</span></summary><pre><span class="ts">00:00.012</span> navigator.usb present
+<span class="ts">00:00.013</span> isSecureContext = true
+<span class="ts">00:00.020</span> waiting for device…</pre></details>
+      <div class="actions"><span class="sp"></span><button class="btn primary" data-go="fel">Start</button></div>
+    </section>
+
+    <!-- FEL -->
+    <section class="screen" data-s="fel">
+      <div class="label">Stage 1 · FEL</div>
+      <h2>Enter FEL mode</h2>
+      <p class="body">Boot ROM USB recovery. RAM only: nothing is written in this stage.</p>
+      <div class="sec felrow">
+        <figure class="photo"><img src="../../docs/img/fel-button.jpg" alt="The panel's circuit board with the back cover removed; the FEL button is circled, right of the shield's notch, below the round sensor window."></figure>
+        <ol class="steps">
+          <li><span>Unplug the panel, remove the back cover.</span></li>
+          <li><span><b>Hold the PCB button</b> (circled; not the case reset).</span></li>
+          <li><span><b>Plug USB-C in</b> while holding; keep holding <b>~10 s</b>.</span></li>
+          <li><span>Screen stays black. Click Connect.</span></li>
+        </ol>
+      </div>
+      <details class="log" open><summary>Log <span class="n">listening</span></summary><pre><span class="ts">00:41.208</span> requestDevice filter {vendorId: 0x1f3a, productId: 0xefe8}
+<span class="ts">00:41.209</span> <span class="am">waiting for user to pick a device…</span></pre></details>
+      <div class="actions"><button class="btn quiet" data-go="welcome">Back</button><span class="sp"></span><span class="hint mono">USB Device (1f3a:efe8)</span><button class="btn primary" data-go="install">Connect</button></div>
+    </section>
+
+    <!-- install -->
+    <section class="screen" data-s="install">
+      <div class="label">Stage 2 · Backup &amp; flash</div>
+      <h2>Backing up · 38%</h2>
+      <p class="body">Fastboot gadget up. Reading partitions at ~20 MB/s. Writes begin only after all nine are saved.</p>
+      <div class="sec"><div class="label">Gates</div>
+        <div class="chk"><div><b>Chip A133</b><span>soc=0x1855</span></div><div><b>Secure boot off</b><span>eGON.FEL ok</span></div><div><b>Layout OK</b><span>boot 32M · super 1.5G</span></div></div>
+      </div>
+      <div class="sec"><div class="label">Progress <span>~3 min left</span></div>
+        <div class="bars">
+          <div class="pb"><b>Checks</b><div class="track"><i style="width:100%"></i></div><em class="ok">3/3</em></div>
+          <div class="pb"><b>Backup</b><div class="track"><i class="a" id="bk-bar" style="width:69%"></i></div><em class="am" id="bk-n">6.6 / 9</em></div>
+          <div class="pb pend"><b>Patch</b><div class="track"><i style="width:0"></i></div><em>queued</em></div>
+          <div class="pb pend"><b>Flash</b><div class="track"><i style="width:0"></i></div><em>queued</em></div>
+          <div class="pb pend"><b>Verify</b><div class="track"><i style="width:0"></i></div><em>queued</em></div>
+        </div>
+      </div>
+      <div class="sec"><div class="tbl"><table>
+        <thead><tr><th>Partition</th><th>Size</th><th>SHA-256</th><th style="text-align:right">State</th></tr></thead>
+        <tbody>
+          <tr><td>boot</td><td>32 MiB</td><td>29f329f0…e1e3</td><td class="st ok">saved · read ×2 ✓</td></tr>
+          <tr><td>vbmeta</td><td>1 MiB</td><td>a41c09d2…77b0</td><td class="st ok">saved</td></tr>
+          <tr><td>vbmeta_system</td><td>1 MiB</td><td>5e0b13aa…0c19</td><td class="st ok">saved</td></tr>
+          <tr><td>vbmeta_vendor</td><td>1 MiB</td><td>c2f8e641…91d4</td><td class="st ok">saved</td></tr>
+          <tr><td>dtbo</td><td>2 MiB</td><td>0d7731be…f2a8</td><td class="st ok">saved</td></tr>
+          <tr><td>misc</td><td>16 MiB</td><td>9b4e10c7…3e65</td><td class="st ok">saved</td></tr>
+          <tr class="cur"><td>recovery</td><td>32 MiB</td><td class="fa">…</td><td class="st am" id="rec">reading 62%</td></tr>
+          <tr class="pend"><td>env</td><td>16 MiB</td><td></td><td class="st fa">queued</td></tr>
+          <tr class="pend"><td>bootloader</td><td>32 MiB</td><td></td><td class="st fa">queued</td></tr>
+        </tbody></table></div>
+      </div>
+      <details class="log" open><summary>Log <span class="n" id="logn">live</span></summary><pre id="log"></pre></details>
+      <div class="actions"><button class="btn quiet" data-go="fel">Back</button><span class="sp"></span><span class="hint">Don't unplug the panel</span><button class="btn primary" data-go="app" title="Mockup: skip ahead">Next</button></div>
+    </section>
+
+    <!-- app -->
+    <section class="screen" data-s="app">
+      <div class="label">Stage 3 · App</div>
+      <h2>Configure S1 Kiosk</h2>
+      <p class="body">Rebooted into Android. adb authorised with this browser's key (baked into the patched boot image).</p>
+      <div class="sec"><div class="label">Progress</div>
+        <div class="bars">
+          <div class="pb"><b>adb auth</b><div class="track"><i style="width:100%"></i></div><em class="ok">ok</em></div>
+          <div class="pb"><b>Install APK</b><div class="track"><i style="width:100%"></i></div><em class="ok">103 MB</em></div>
+          <div class="pb"><b>Models</b><div class="track"><i style="width:100%"></i></div><em class="ok">pushed</em></div>
+          <div class="pb"><b>Configure</b><div class="track"><i class="a" style="width:40%"></i></div><em class="am">needs URL</em></div>
+        </div>
+      </div>
+      <div class="sec"><div class="label">Home Assistant URL <span>tz America/Los_Angeles · locale en-US</span></div>
+        <div class="field"><input id="ha" type="url" value="http://homeassistant.local:8123/dashboard" placeholder="http://homeassistant.local:8123/dashboard"><button class="btn" id="test">Test</button></div>
+        <div class="status" id="st">GET /manifest.json from this browser to check it's reachable.</div>
+      </div>
+      <div class="sec"><div class="label">Wi-Fi</div>
+        <div class="rowbox"><span class="pulse" style="margin:0 4px"></span><div class="t"><b>Improv over Bluetooth: advertising</b><span>Waiting for credentials from Home Assistant (Settings → Devices &amp; services → Improv).</span></div><span class="am mono">waiting</span></div>
+      </div>
+      <details class="log"><summary>Log <span class="n">6 lines</span></summary><pre><span class="ts">03:58.410</span> fastboot reboot
+<span class="ts">04:19.902</span> adb interface ff/42/1 connected
+<span class="ts">04:20.117</span> <span class="ok">AUTH ok · key s1-unleashed@browser</span>
+<span class="ts">04:58.733</span> pm install sh.edm.s1kiosk (103.2 MB) <span class="ok">Success</span>
+<span class="ts">05:02.004</span> push openWakeWord models (3 files)
+<span class="ts">05:02.311</span> <span class="am">waiting for HA URL</span></pre></details>
+      <div class="actions"><button class="btn quiet" data-go="install">Back</button><span class="sp"></span><button class="btn quiet" data-go="done">Skip Wi-Fi</button><button class="btn primary" data-go="done">Apply &amp; finish</button></div>
+    </section>
+
+    <!-- done -->
+    <section class="screen" data-s="done">
+      <div class="label ok">Complete</div>
+      <h2>Installed and verified</h2>
+      <p class="body">S1 Kiosk is the home screen. Scan the QR on the panel to sign in, then add the panel in Home Assistant as an ESPHome device (port 6053).</p>
+      <div class="sec"><div class="tbl"><table><tbody>
+        <tr><td>boot (stock)</td><td>29f329f0…e1e3</td><td class="st mu">in backup</td></tr>
+        <tr><td>boot (patched)</td><td>d1a4925f…40b2</td><td class="st ok">read-back match ✓</td></tr>
+        <tr><td>vbmeta flags</td><td>0 → 3</td><td class="st ok">read-back match ✓</td></tr>
+        <tr><td>backup</td><td>9 partitions · 133 MiB</td><td class="st ok">IndexedDB + zip</td></tr>
+      </tbody></table></div></div>
+      <div class="actions" style="margin-top:22px"><button class="btn primary">Download your backup (.zip)</button><button class="link" data-go="welcome">Undo: flash stock boot + vbmeta</button></div>
+      <details class="log"><summary>Log <span class="n">142 lines</span></summary><pre><span class="ts">05:14.880</span> am start sh.edm.s1kiosk/.MainActivity
+<span class="ts">05:15.002</span> <span class="ok">done</span></pre></details>
+      <div class="actions"><button class="btn quiet" data-go="app">Back</button></div>
+    </section>
+
+    <!-- error -->
+    <section class="screen" data-s="error">
+      <div class="label er">Stage 1 · FEL</div>
+      <h2>Panel not found in FEL mode</h2>
+      <div class="banner"><i class="edot"></i><div><b>No device matching 1f3a:efe8</b><span>The picker closed with nothing selected. Nothing was written; the panel is untouched.</span></div></div>
+      <div class="sec"><div class="label">Try this</div>
+        <ul class="tips">
+          <li><b>Screen lit up?</b> It booted Android. Unplug, hold the PCB button <i>before</i> plugging in, hold ~10 s.</li>
+          <li><b>Cable / port:</b> a data-capable USB-C cable, directly into the computer, no hub or dock.</li>
+          <li><b>Button:</b> the small tactile switch on the board, not the reset button on the case.</li>
+          <li><b>Windows:</b> was <code>1f3a:efe8</code> bound to WinUSB in Zadig? <b>Linux:</b> is the udev rule loaded?</li>
+        </ul>
+      </div>
+      <details class="log" open><summary>Log <span class="n">3 lines</span></summary><pre><span class="ts">00:41.208</span> requestDevice filter {vendorId: 0x1f3a, productId: 0xefe8}
+<span class="ts">01:11.540</span> <span class="er">NotFoundError: No device selected.</span>
+<span class="ts">01:11.541</span> getDevices() → []</pre></details>
+      <div class="actions"><button class="btn quiet" data-go="fel">Instructions</button><span class="sp"></span><button class="btn primary" data-go="install">Retry</button></div>
+    </section>
+  </main>
+</div>
+
+<nav class="mock" aria-label="Mockup screens"><span>MOCKUP</span>
+  <button data-go="welcome">Welcome</button><button data-go="fel">FEL</button><button data-go="install">Install</button><button data-go="app">App</button><button data-go="done">Done</button><button data-go="error" class="e">Error</button>
+</nav>
+
+<script>
+if (self !== top) document.documentElement.classList.add('embed');
+const IDX = {welcome:0, fel:1, install:2, app:3, done:4, error:1};
+const F = 'fa', A = 'am', G = 'ok', R = 'er';
+const KV = {
+  welcome: [['Link','none',F],['USB ID','—',F],['Mode','—',F],['SoC','—',F],['Secure boot','—',F],['Storage','—',F]],
+  fel:     [['Link','waiting',A],['USB ID','1f3a:efe8 ?',A],['Mode','expect FEL (BROM)',A],['SoC','—',F],['Secure boot','—',F],['Storage','—',F]],
+  install: [['Link','USB 2.0 HS',G],['USB ID','1f3a:1010',G],['Mode','U-Boot fastboot (RAM)',''],['SoC','A133 · 0x1855',G],['Secure boot','off',G],['Throughput','19.6 MB/s','']],
+  app:     [['Link','adb',G],['USB ID','adb ff/42/1',G],['Mode','Android 10 · S1 Kiosk',''],['SoC','A133 · 0x1855',G],['Root','Magisk · helper',G],['Wi-Fi','Improv · waiting',A]],
+  done:    [['Link','adb',G],['USB ID','adb ff/42/1',G],['Mode','S1 Kiosk (home)',G],['SoC','A133 · 0x1855',G],['Root','Magisk · helper',G],['Backup','9 parts · saved',G]],
+  error:   [['Link','no device',R],['USB ID','—',R],['Mode','not in FEL',R],['SoC','—',F],['Secure boot','—',F],['Waited','30 s','']]
+};
+const screens = [...document.querySelectorAll('[data-s]')];
+const phases = [...document.querySelectorAll('#phases span')];
+let timer;
+function show(id) {
+  if (!(id in IDX)) id = 'welcome';
+  document.body.dataset.cur = id;
+  screens.forEach(s => s.classList.toggle('on', s.dataset.s === id));
+  const i = IDX[id], err = id === 'error', all = id === 'done';
+  phases.forEach((p, n) => p.className = all || n < i ? 'done' : n === i ? (err ? 'err' : 'cur') : '');
+  document.getElementById('kv').innerHTML = KV[id].map(([k, v, c]) => `<div><dt>${k}</dt><dd class="${c}">${v}</dd></div>`).join('');
+  document.querySelectorAll('.mock button').forEach(b => b.classList.toggle('on', b.dataset.go === id));
+  if (location.hash.slice(1) !== id) history.replaceState(null, '', '#' + id);
+  clearInterval(timer);
+  if (id === 'install') stream();
+  scrollTo({top: 0});
+}
+document.addEventListener('click', e => { const t = e.target.closest('[data-go]'); if (t) show(t.dataset.go); });
+addEventListener('hashchange', () => show(location.hash.slice(1)));
+
+// live log on the install screen (mock data)
+const BASE = [
+  ['01:12.004','ver → soc=00001855 (A133)','ok'],['01:12.090','spl: eGON.FEL check ok',''],['01:13.712','upload u-boot+atf 64 KiB chunks · reset64',''],
+  ['01:16.450','re-enumerated as 1f3a:1010 (fastboot)','ok'],['01:16.602','getvar product=sunxi · partition-size:boot=0x2000000','ok'],
+  ['01:17.120','read boot ×2 · cmp equal','ok'],['01:18.940','read vbmeta, vbmeta_system, vbmeta_vendor, dtbo, misc','']
+];
+function line([t, m, c]) { return `<span class="ts">${t}</span> ${c ? `<span class="${c}">${m}</span>` : m}\n`; }
+function stream() {
+  const log = document.getElementById('log');
+  let p = 62, s = 19.4;
+  log.innerHTML = BASE.map(line).join('') + line(['01:21.300', 'read recovery 62% (19.8 MiB / 32 MiB)', 'am']);
+  const set = () => { document.getElementById('rec').textContent = `reading ${p}%`; document.getElementById('bk-n').textContent = (6 + p / 100).toFixed(1) + ' / 9'; document.getElementById('bk-bar').style.width = ((6 + p / 100) / 9 * 100).toFixed(0) + '%'; };
+  set();
+  timer = setInterval(() => {
+    if (p >= 92) return clearInterval(timer);
+    p += 3; s += 1.1;
+    log.insertAdjacentHTML('beforeend', line([`01:${s.toFixed(3).padStart(6, '0')}`, `read recovery ${p}% (${(32 * p / 100).toFixed(1)} MiB / 32 MiB)`, 'am']));
+    log.scrollTop = log.scrollHeight;
+    set();
+  }, 1100);
+}
+
+const ua = navigator.userAgent, os = /Windows/.test(ua) ? 'win' : /Linux/.test(ua) && !/Android/.test(ua) ? 'linux' : 'mac';
+const osName = {mac:'macOS', win:'Windows', linux:'Linux'};
+const uaText = (/Edg\//.test(ua) ? 'Edge' : 'Chrome') + ' · ' + osName[os];
+document.getElementById('ua').textContent = uaText; document.getElementById('ua2').textContent = uaText;
+function tab(t) {
+  document.querySelectorAll('[data-t]').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  document.querySelectorAll('[data-tp]').forEach(p => p.classList.toggle('on', p.dataset.tp === t));
+}
+document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => tab(b.dataset.t));
+tab(os);
+document.getElementById('test').onclick = () => {
+  const st = document.getElementById('st');
+  st.className = 'status'; st.textContent = 'Checking…';
+  setTimeout(() => { st.className = 'status ok'; st.textContent = '200 OK · Home Assistant reachable at homeassistant.local:8123'; }, 700);
+};
+// stylised (not scannable) QR for the panel's sign-in screen
+(() => {
+  let r = 7, d = '';
+  const rnd = () => (r = (r * 9301 + 49297) % 233280) / 233280;
+  const finder = (x, y) => x < 7 && y < 7 || x > 13 && y < 7 || x < 7 && y > 13;
+  for (let y = 0; y < 21; y++) for (let x = 0; x < 21; x++) if (!finder(x, y) && rnd() > .52) d += `M${x} ${y}h1v1h-1z`;
+  const f = (x, y) => `<rect x="${x + .5}" y="${y + .5}" width="6" height="6" fill="none" stroke="#0a0b0f"/><rect x="${x + 2}" y="${y + 2}" width="3" height="3" fill="#0a0b0f"/>`;
+  document.getElementById('qr').innerHTML = `<svg viewBox="0 0 21 21" shape-rendering="crispEdges"><path d="${d}" fill="#0a0b0f"/>${f(0, 0)}${f(14, 0)}${f(0, 14)}</svg>`;
+})();
+show(location.hash.slice(1) || 'welcome');
+</script>
+</body>
+</html>

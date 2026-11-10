@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>S1 Unleashed Installer · D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0b0f;--tx:#f4f4f5;--mu:#a1a1aa;--fa:#63636b;--amber:#fbbf24;--green:#34d399;--rose:#fb7185;--s1:rgba(255,255,255,.045);--s2:rgba(255,255,255,.08);--bd:rgba(255,255,255,.07);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--pad:clamp(24px,8vw,140px)}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg)}
+body{min-height:100vh;background:var(--bg);color:var(--tx);font:400 16px/1.5 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle 85vw at -10% -20%,rgba(56,189,248,.13),transparent),radial-gradient(circle 65vw at 110% 120%,rgba(167,139,250,.14),transparent)}
+button,input{font:inherit;color:inherit}
+code{font-family:var(--mono);font-size:.85em}
+.label{font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--fa)}
+
+.line{position:fixed;top:0;left:0;height:2px;background:var(--amber);transition:width .5s ease,background .3s;z-index:5}
+body[data-cur=done] .line{background:var(--green)}
+body[data-cur=error] .line{background:var(--rose)}
+.top{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;padding:30px var(--pad);z-index:4}
+.top .n{font-size:13px;color:var(--fa);font-variant-numeric:tabular-nums}
+
+.screen{position:relative;display:none;min-height:100vh;flex-direction:column;justify-content:center;padding:110px var(--pad) 120px}
+.screen.on{display:flex;animation:fade .3s ease}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.kick{margin-bottom:22px}
+.kick.am{color:var(--amber)}.kick.ok{color:var(--green)}.kick.er{color:var(--rose)}
+h1{font-size:clamp(42px,6.2vw,92px);font-weight:200;letter-spacing:-.02em;line-height:1.02;max-width:15ch}
+.sub{margin-top:24px;font-size:clamp(17px,1.5vw,21px);color:var(--mu);line-height:1.5;max-width:40ch;font-weight:300}
+.go{display:flex;align-items:center;gap:22px;margin-top:52px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:64px;padding:0 38px;border-radius:16px;font-size:18px;font-weight:500;border:1px solid var(--bd);background:var(--s2);color:var(--tx);cursor:pointer;transition:background .25s,transform .25s}
+.btn:hover{background:rgba(255,255,255,.12)}
+.btn.primary{background:#fff;border-color:#fff;color:var(--bg)}
+.btn.primary:hover{background:#e4e4e7}
+.btn .ar{transition:transform .25s}
+.btn:hover .ar{transform:translateX(3px)}
+.quiet{background:none;border:0;color:var(--fa);font-size:16px;cursor:pointer;padding:8px 2px;transition:color .25s}
+.quiet:hover{color:var(--tx)}
+.link{background:none;border:0;color:var(--mu);font-size:16px;cursor:pointer;text-decoration:underline;text-underline-offset:4px;text-decoration-color:rgba(255,255,255,.2)}
+.link:hover{color:var(--tx)}
+
+.facts{display:flex;flex-direction:column;gap:12px;margin-top:40px;font-size:17px;color:var(--mu)}
+.facts div{display:flex;align-items:center;gap:14px}
+.d{width:9px;height:9px;border-radius:50%;background:var(--fa);flex:none}
+.d.ok{background:var(--green)}
+.d.am{background:var(--amber);animation:pulse 2s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(251,191,36,.45)}100%{box-shadow:0 0 0 10px rgba(251,191,36,0)}}
+.facts b{color:var(--tx);font-weight:400}
+
+.more{margin-top:14px;font-size:15px;color:var(--mu);max-width:720px;display:none;padding:18px 20px;border-radius:22px;background:var(--s1);border:1px solid var(--bd);line-height:1.6}
+.more.open{display:block;animation:fade .25s ease}
+.more p+p{margin-top:10px}
+.more b{color:var(--tx);font-weight:500}
+.more pre{margin-top:8px;font-family:var(--mono);font-size:11.5px;color:#d4d4d8;white-space:pre-wrap;word-break:break-all;background:rgba(0,0,0,.35);border-radius:12px;padding:10px 12px}
+
+/* FEL */
+.split{max-width:52%}
+.bleed{position:absolute;right:0;top:50%;transform:translateY(-50%);width:44vw;aspect-ratio:1400/695;border-radius:26px 0 0 26px;overflow:hidden;border:1px solid var(--bd);border-right:0;box-shadow:0 40px 80px rgba(0,0,0,.4)}
+.bleed img{width:100%;height:100%;object-fit:cover;object-position:62% 60%;display:block}
+.bleed span{position:absolute;left:18px;bottom:16px;font-size:13px;color:#e4e4e7;background:rgba(10,11,15,.7);backdrop-filter:blur(8px);padding:6px 12px;border-radius:10px}
+
+/* install */
+.huge{font-size:clamp(120px,17vw,250px);font-weight:200;letter-spacing:-.04em;line-height:.9;font-variant-numeric:tabular-nums}
+.huge small{font-size:.32em;color:var(--fa);letter-spacing:0;margin-left:6px}
+.ticks{display:flex;gap:6px;margin-top:34px;max-width:1000px}
+.ticks i{flex:1;height:4px;border-radius:4px;background:rgba(255,255,255,.1)}
+.ticks i.ok{background:var(--green)}
+.ticks i.am{background:var(--amber);animation:breathe 1.6s ease-in-out infinite}
+@keyframes breathe{50%{opacity:.4}}
+.tl{display:flex;gap:6px;max-width:1000px;margin-top:10px}
+.tl span{flex:1;font-family:var(--mono);font-size:11px;color:var(--fa);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tl span.ok{color:var(--mu)}.tl span.am{color:var(--amber)}
+.row{display:flex;flex-wrap:wrap;gap:10px 28px;margin-top:30px;font-size:15px;color:var(--mu)}
+.row span{display:flex;align-items:center;gap:10px}
+
+/* app */
+.url{display:block;width:100%;max-width:980px;margin-top:44px;background:none;border:0;border-bottom:1px solid rgba(255,255,255,.18);padding:10px 0 16px;font-size:clamp(22px,2.6vw,36px);font-weight:300;letter-spacing:-.01em;outline:none;transition:border-color .3s}
+.url:focus{border-color:var(--amber)}
+.url::placeholder{color:var(--fa)}
+.hint{margin-top:12px;font-size:14px;color:var(--fa);transition:color .25s}
+.hint.ok{color:var(--green)}
+
+.tips{list-style:none;margin-top:40px;display:flex;flex-direction:column;gap:14px;max-width:780px;counter-reset:t}
+.tips li{counter-increment:t;display:flex;gap:18px;font-size:18px;color:var(--mu);font-weight:300;line-height:1.45}
+.tips li::before{content:counter(t);font-size:14px;font-weight:500;color:var(--rose);width:18px;flex:none;padding-top:3px}
+.tips b{color:var(--tx);font-weight:400}
+
+.mock{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:5px;border-radius:14px;background:rgba(20,21,27,.85);backdrop-filter:blur(12px);border:1px solid var(--bd);font-size:12px;z-index:9}
+.mock span{padding:0 10px 0 8px;color:var(--fa);letter-spacing:.14em;font-size:10.5px;font-weight:500}
+.mock button{border:0;background:none;color:var(--mu);padding:6px 10px;border-radius:9px;cursor:pointer;transition:all .25s}
+.mock button:hover{color:var(--tx)}
+.mock button.on{background:var(--s2);color:var(--tx)}
+.mock button.e{color:var(--rose)}
+.embed .mock{display:none}
+
+@media (max-width:900px){
+ .split{max-width:none}
+ .bleed{position:relative;transform:none;top:auto;width:calc(100% + var(--pad));margin-top:36px;margin-right:calc(-1 * var(--pad));align-self:flex-end}
+ .btn{height:56px;padding:0 28px;font-size:17px}
+ .mock{max-width:calc(100% - 32px);overflow-x:auto}
+}
+</style>
+</head>
+<body data-cur="welcome">
+<div class="line" id="line"></div>
+<div class="top"><span class="label">S1 Unleashed</span><span class="n" id="n">1 / 5</span></div>
+
+<!-- 1 · Welcome -->
+<section class="screen" data-s="welcome">
+  <div class="label kick">Welcome</div>
+  <h1>Let's turn your panel into a Home Assistant kiosk.</h1>
+  <p class="sub">One USB cable, about ten minutes. Your panel's original software is backed up first, so you can always undo.</p>
+  <div class="facts">
+    <div><i class="d ok"></i><span><b>This browser is ready.</b> WebUSB works here.</span></div>
+    <div><i class="d ok"></i><span id="osline"><b>macOS:</b> nothing to set up.</span> <button class="link" id="osmore" style="font-size:15px">Windows or Linux?</button></div>
+  </div>
+  <div class="more" id="more">
+    <p><b>Windows:</b> run Zadig once and give <code>USB Device (1f3a:efe8)</code> the WinUSB driver. We'll remind you on the next screen.</p>
+    <p><b>Linux:</b> add a udev rule so you can open the panel without root, then <code>sudo udevadm control --reload</code>.</p>
+    <pre>SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="efe8", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", ATTR{idProduct}=="1010", MODE="0660", TAG+="uaccess"</pre>
+  </div>
+  <div class="go"><button class="btn primary" data-go="fel">Start <span class="ar">→</span></button></div>
+</section>
+
+<!-- 2 · FEL -->
+<section class="screen" data-s="fel">
+  <div class="split">
+    <div class="label kick am">Recovery mode</div>
+    <h1>Hold the button, plug in, keep holding.</h1>
+    <p class="sub">Unplug the panel and open the back. Hold the small button on the board, plug USB-C into this computer, and keep holding for about 10 seconds. The screen stays black.</p>
+    <div class="go"><button class="quiet" data-go="welcome">← Back</button><button class="btn primary" data-go="install">Connect <span class="ar">→</span></button></div>
+    <p class="hint" style="margin-top:22px">Your browser will ask: pick <code>USB Device (1f3a:efe8)</code>.</p>
+  </div>
+  <figure class="bleed"><img src="../../docs/img/fel-button.jpg" alt="The panel's circuit board with the back cover removed; the FEL button is circled, right of the shield's notch, below the round sensor window."><span>The circled button, not the reset button on the case</span></figure>
+</section>
+
+<!-- 3 · Install -->
+<section class="screen" data-s="install">
+  <div class="label kick am">Backing up · keep it plugged in</div>
+  <div class="huge">38<small>%</small></div>
+  <p class="sub" style="max-width:none">Saving <b style="color:var(--tx);font-weight:400">recovery</b>, the 7th of 9 partitions. Then patch, flash and verify.</p>
+  <div class="ticks"><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="am"></i><i></i><i></i></div>
+  <div class="tl"><span class="ok">boot</span><span class="ok">vbmeta</span><span class="ok">vbmeta_system</span><span class="ok">vbmeta_vendor</span><span class="ok">dtbo</span><span class="ok">misc</span><span class="am">recovery</span><span>env</span><span>bootloader</span></div>
+  <div class="row"><span><i class="d ok"></i>Chip A133</span><span><i class="d ok"></i>Secure boot off</span><span><i class="d ok"></i>Layout OK</span><span><i class="d"></i>Patch</span><span><i class="d"></i>Flash</span><span><i class="d"></i>Verify</span></div>
+  <div class="go"><button class="quiet" data-go="fel">← Back</button><button class="btn" data-go="app" title="Mockup: skip ahead">Next <span class="ar">→</span></button></div>
+</section>
+
+<!-- 4 · App -->
+<section class="screen" data-s="app">
+  <div class="label kick am">Last question</div>
+  <h1>Where's your Home Assistant?</h1>
+  <input class="url" id="ha" type="url" placeholder="http://homeassistant.local:8123/dashboard" value="http://homeassistant.local:8123/dashboard" aria-label="Home Assistant address">
+  <p class="hint" id="hint">The dashboard the panel opens full-screen. Press Enter to check it.</p>
+  <div class="facts">
+    <div><i class="d ok"></i><span><b>Panel connected over adb.</b> S1 Kiosk is installed and is the home screen.</span></div>
+    <div><i class="d am"></i><span><b>Waiting for Wi-Fi over Bluetooth (Improv).</b> Send it from Home Assistant, where the panel shows up.</span></div>
+  </div>
+  <div class="go"><button class="quiet" data-go="install">← Back</button><button class="btn primary" data-go="done">Finish <span class="ar">→</span></button><button class="quiet" data-go="done">Skip Wi-Fi, I use Ethernet</button></div>
+</section>
+
+<!-- 5 · Done -->
+<section class="screen" data-s="done">
+  <div class="label kick ok">Done</div>
+  <h1>That's it. The panel is yours now.</h1>
+  <p class="sub">Scan the QR code on the panel to sign in. Home Assistant will find it as an ESPHome device.</p>
+  <div class="go"><button class="btn primary">Download your backup</button><button class="link" data-go="welcome">Undo</button></div>
+  <p class="hint" style="margin-top:22px">s1-backup-2026-11-09.zip · 9 partitions. Keep it: it's the only copy of the original software.</p>
+</section>
+
+<!-- Error -->
+<section class="screen" data-s="error">
+  <div class="label kick er">Panel not found in FEL mode</div>
+  <h1>We can't see your panel.</h1>
+  <p class="sub">Nothing was written to it. It's usually one of these:</p>
+  <ol class="tips">
+    <li><span><b>The screen lit up.</b> Hold the button <i>before</i> plugging in, and keep holding for 10 seconds.</span></li>
+    <li><span><b>The cable only charges.</b> Try another, straight into the computer.</span></li>
+    <li><span><b>Wrong button.</b> It's the small one on the board, not the reset button on the case.</span></li>
+    <li><span><b>Windows or Linux.</b> Check the Zadig driver or the udev rule.</span></li>
+  </ol>
+  <div class="go"><button class="quiet" data-go="fel">← Show me the button</button><button class="btn primary" data-go="install">Try again</button></div>
+</section>
+
+<nav class="mock" aria-label="Mockup screens"><span>MOCKUP</span>
+  <button data-go="welcome">Welcome</button><button data-go="fel">FEL</button><button data-go="install">Install</button><button data-go="app">App</button><button data-go="done">Done</button><button data-go="error" class="e">Error</button>
+</nav>
+
+<script>
+if (self !== top) document.documentElement.classList.add('embed');
+const ORDER = ['welcome', 'fel', 'install', 'app', 'done'];
+const IDX = {welcome:0, fel:1, install:2, app:3, done:4, error:1};
+const screens = [...document.querySelectorAll('[data-s]')];
+let cur = 'welcome';
+function show(id) {
+  if (!(id in IDX)) id = 'welcome';
+  cur = id;
+  document.body.dataset.cur = id;
+  screens.forEach(s => s.classList.toggle('on', s.dataset.s === id));
+  const i = IDX[id];
+  document.getElementById('line').style.width = (id === 'done' ? 100 : (i + .5) / 5 * 100) + '%';
+  document.getElementById('n').textContent = id === 'done' ? 'Done' : `${i + 1} / 5`;
+  document.querySelectorAll('.mock button').forEach(b => b.classList.toggle('on', b.dataset.go === id));
+  if (location.hash.slice(1) !== id) history.replaceState(null, '', '#' + id);
+  scrollTo({top: 0});
+}
+document.addEventListener('click', e => { const t = e.target.closest('[data-go]'); if (t) show(t.dataset.go); });
+addEventListener('hashchange', () => show(location.hash.slice(1)));
+// arrow keys step through the happy path
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const i = ORDER.indexOf(cur === 'error' ? 'fel' : cur);
+  if (e.key === 'ArrowRight' && i < ORDER.length - 1) show(ORDER[i + 1]);
+  if (e.key === 'ArrowLeft' && i > 0) show(ORDER[i - 1]);
+});
+
+const ua = navigator.userAgent, os = /Windows/.test(ua) ? 'win' : /Linux/.test(ua) && !/Android/.test(ua) ? 'linux' : 'mac';
+const OSL = {
+  mac: ['<b>macOS:</b> nothing to set up.', 'Windows or Linux?'],
+  win: ['<b>Windows:</b> one quick Zadig step, once.', 'Show me'],
+  linux: ['<b>Linux:</b> add one udev rule, once.', 'Show me']
+};
+document.getElementById('osline').innerHTML = OSL[os][0];
+const more = document.getElementById('osmore');
+more.textContent = OSL[os][1];
+more.onclick = () => document.getElementById('more').classList.toggle('open');
+
+document.getElementById('ha').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const h = document.getElementById('hint');
+  h.className = 'hint'; h.textContent = 'Checking…';
+  setTimeout(() => { h.className = 'hint ok'; h.textContent = 'Found Home Assistant at homeassistant.local'; }, 700);
+});
+show(location.hash.slice(1) || 'welcome');
+</script>
+</body>
+</html>
