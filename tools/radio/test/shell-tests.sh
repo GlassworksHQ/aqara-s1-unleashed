@@ -471,7 +471,9 @@ check "already right: no call" test ! -s "$T/tz-calls"
 LOOPS=4 S1R_SLEEP=3 env S1R_ONCE=4 S1R_SLEEP=3 S1R_LOADER_ONCE=1 /system/bin/sh "$TB/s1kiosk_radio.sh" >/dev/null 2>&1 &
 H=$!; sleep 2; printf 'Antarctica/Casey' > "$T/props/persist.sys.timezone"; wait $H
 check "a later reset is re-applied by the watch loop" test "$(prop persist.sys.timezone)" = Europe/Berlin
-sleep 1; check "...and the loop ends with the helper" test -z "$(pgrep -f 's1kiosk_radio.sh' | head -1)"
+# The loop notices a gone helper at its next check (<= 5 s); allow for a loaded/emulated host.
+i=0; while [ -n "$(pgrep -f 's1kiosk_radio.sh' | head -1)" ] && [ $i -lt 20 ]; do sleep 0.5; i=$((i + 1)); done
+check "...and the loop ends with the helper" test -z "$(pgrep -f 's1kiosk_radio.sh' | head -1)"
 printf 'Mars/Olympus_Mons' > "$T/props/persist.s1kiosk.timezone"; echo Mars/Olympus_Mons > "$T/tz-unknown"; : > "$T/tz-calls"
 LOOPS=1 helper
 check "a zone Android doesn't know is reported" has "$(prop sys.s1kiosk.timezone.status)" "error Mars/Olympus_Mons: Android did not accept it (now GMT)"
