@@ -52,5 +52,7 @@ See `ScreenController.kt`:
 - The live state is exposed to the dashboard page as `window.s1kiosk`
   (`{presence, proximityRaw, lux, screenOn, night}`) plus a `s1kiosk-state` DOM event.
 
-TODO: publish presence/lux/screen to Home Assistant (MQTT discovery; HAOS here already runs
-Mosquitto) and accept screen on/off/brightness commands from HA. Expose the SC7A20 (tap/knock to wake?).
+All of this is exposed to Home Assistant through the panel's ESPHome device (presence, illuminance,
+screen light, timeouts, night window, presence range); see [esphome.md](esphome.md).
+
+Not used yet: the SC7A20 accelerometer (a tap/knock-to-wake idea).

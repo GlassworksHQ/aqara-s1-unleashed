@@ -54,7 +54,7 @@ U-Boot 2018.05 (Dec 02 2025 ...) Allwinner Technology
 - `boot` partition: start `0x2a000`, size `0x10000` (512-byte sectors).
 - `pstore` → `/dev/mmcblk0p17`.
 - `dtbo` partition present (start `0x4c2000`). `userdata` is the usual large final partition.
-- Full `/dev/block/by-name/` map: **TODO** (dump via root).
+- `/dev/block/by-name/`: `bootloader` (p1), `env` (p2), `boot` (p3), `super` (p4, dynamic system/vendor/product), `misc` (p5), `recovery` (p6), `cache` (p7), `metadata` (p11), `private` (p12), `frp` (p13), `media_data` (p16), `pstore` (p17), `lumi` (p18), `UDISK` = `/data` (p19); plus `dtbo`, `vbmeta*`, `empty`.
 
 ## USB / ADB
 

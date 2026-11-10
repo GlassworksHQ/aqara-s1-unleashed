@@ -2,7 +2,10 @@
 
 Opening up the **Aqara Panel Hub S1 Plus** (model **MP-K03D**, internally **MagicPad S1 Plus**) so it can run your own Android apps — the end goal being a **Home Assistant voice-satellite kiosk** that replaces the stock Aqara launcher.
 
-> **Status: work in progress / research.** Root and full console access are achieved. The one-command, UART-free installer is under construction. See [Roadmap](#roadmap).
+> **Status: working on the reference panel; installer for fresh panels in progress.** The S1 Kiosk app
+> runs the panel as a Home Assistant kiosk + voice assistant + Music Assistant speaker, with Aqara's
+> launcher, apps and cloud disabled. Getting it onto a *sealed* panel without the debug UART (FEL
+> installer) is the remaining big step. See [Roadmap](#roadmap).
 
 > ⚠️ **Disclaimer.** This modifies hardware you own, at your own risk. It can brick the device if you deviate from tested steps. Not affiliated with or endorsed by Aqara/Lumi. No warranty. Don't publish device-unique secrets (MAC, serial, SID, keys).
 
@@ -71,9 +74,16 @@ docs/
   debloat.md     Reversible Aqara de-bloat, locale/time-zone fixes
   screen-policy.md  Why the panel turns its screen off (Lumi DND night mode)
   sensors.md     VI5300 ToF presence, MK6212 light, SC7A20 accel; how the kiosk uses them
-app/             S1 Kiosk: MIT GeckoView kiosk app (HA dashboard, mic over http, HOME launcher)
+  esphome.md     The panel as an ESPHome device in HA (all entities, voice assistant)
+  onboarding.md  Fresh-panel setup: Improv Wi-Fi, auto key, HA discovery, QR sign-in
+  sendspin.md    Native Music Assistant player (synced playback)
+  bases.md       Wall bases (relay modules); base-protocol.md = the UART protocol
+app/             S1 Kiosk: MIT GeckoView kiosk app (sh.edm.s1kiosk)
 tools/
   install.sh           One-shot panel setup over ADB (and --undo)
+  fel/                 U-Boot board config + RAM-only FEL test for the S1 Plus
+  bracket/             Wall-base emulator (proves the UART protocol against Aqara's bracket_cli)
+  voice/               Fetch + push the openWakeWord models
   debloat/             Reversible `pm disable-user` de-bloat script
   gecko-eval/          Evaluate JS in the kiosk page over Firefox remote debugging
   mictest/             getUserMedia / secure-context test page
@@ -104,22 +114,28 @@ Everything is reversible: `tools/install.sh --undo`.
 
 ## Roadmap
 
+**Reverse engineering / access**
 - [x] Identify SoC, confirm FEL entry (PCB button + power)
 - [x] Confirm secure boot off / FEL unauthenticated
-- [x] Get the debug UART console (115200 8N1) + root shell
-- [x] Extract real DRAM parameters
-- [ ] Build DRAM-correct U-Boot-with-SPL for A133 and boot it via FEL (RAM only)
-- [ ] Bring up `fastboot` from that U-Boot
-- [x] MIT GeckoView kiosk app ([app/](app/README.md)), renders the current HA frontend full-screen on the 32-bit panel
-- [x] Mic over plain http in the kiosk (`getUserMedia` via Gecko secure-context allowlist)
-- [x] Validate end-state manually: kiosk as HOME launcher, Aqara launcher + bloat disabled (reversible), survives reboot
-- [x] Screen policy from the panel's own sensors (wake on approach, idle off, night window, auto-brightness); Aqara DND disabled
-- [x] HA kiosk mode (header/sidebar hidden) via a built-in Gecko extension; open-source keyboard replaces the Baidu IME
-- [x] Wake-word voice satellite (Wyoming + on-device openWakeWord); added to HA, TTS verified. Wake-word accuracy with real speech still to test
-- [ ] Panel as one ESPHome device in HA (native API: voice assistant + screen/sensors + kiosk settings), replacing Wyoming ([docs/esphome.md](docs/esphome.md)); implemented, on-device test pending
-- [ ] Build `provisioning.img` (stock kernel + first-boot ramdisk that installs HA + sets kiosk) and run it via `fastboot boot` (nothing permanently flashed)
-- [ ] One-command `install.sh`: FEL → U-Boot → `fastboot boot provisioning.img` → done
-- [ ] Optional: full custom image variant
+- [x] Debug UART console (115200 8N1) + root shell; real DRAM parameters
+- [x] U-Boot board config for the S1 Plus built (`tools/fel/`)
+- [ ] Boot it via FEL (RAM only); bring up fastboot ⟵ *needs the PCB-button test*
+- [ ] `provisioning.img` + one-command `install.sh --fel` for sealed panels (no Aqara app/account)
+- [ ] Persistent root (boot-image patch), needed for the Zigbee/Thread radio modes
+- ~~Button-free USB entry~~: not feasible on this firmware (see docs/findings.md)
+
+**S1 Kiosk app (verified on the reference panel)**
+- [x] GeckoView kiosk rendering the current HA frontend full-screen; HA header/sidebar hidden
+- [x] HOME launcher; Aqara launcher, bloat, DND screen-off and **cloud daemon** disabled (reversible)
+- [x] Screen policy from the panel's own sensors (presence wake, idle off, night window, auto-brightness)
+- [x] One ESPHome device in HA: screen, sensors, settings, encryption with automatic key
+- [x] Voice assistant with on-device wake word, timers, announcements, on-screen feedback
+- [x] Native Music Assistant player (Sendspin, synced playback)
+- [x] Onboarding: setup screen, QR sign-in (no login page), dashboard picker, Improv Wi-Fi over BLE
+- [x] Wall-base driver straight over UART (no Aqara daemon); proven against Aqara's own tool
+- [ ] Real-world checks: real wall base, Improv Wi-Fi switch, wake word from across the room, multi-room sync by ear
+- [ ] Zigbee / Thread radio modes (EFR32 radio; user-selectable)
+- [ ] Release build (after the real-world checks)
 
 ## Design goal for end users
 
