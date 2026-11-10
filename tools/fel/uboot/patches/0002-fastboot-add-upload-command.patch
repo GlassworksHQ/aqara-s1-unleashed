@@ -1,0 +1,136 @@
+diff --git a/drivers/fastboot/fb_command.c b/drivers/fastboot/fb_command.c
+index 63b0f570..7434f9a0 100644
+--- a/drivers/fastboot/fb_command.c
++++ b/drivers/fastboot/fb_command.c
+@@ -46,6 +46,7 @@ static void okay(char *, char *);
+ static void boot_image(char *, char *);
+ static void getvar(char *, char *);
+ static void download(char *, char *);
++static void upload(char *, char *);
+ static void flash(char *, char *);
+ static void erase(char *, char *);
+ static void reboot_bootloader(char *, char *);
+@@ -210,6 +211,10 @@ static const struct fastboot_command commands[FASTBOOT_COMMAND_COUNT] = {
+ 					      (flashing_get_unlock_ability),
+ 					      (NULL))
+ 	},
++	[FASTBOOT_COMMAND_UPLOAD] = {
++		.command = "upload",
++		.dispatch = upload
++	},
+ };
+ #endif
+ 
+@@ -324,6 +329,30 @@ static void getvar(char *cmd_parameter, char *response)
+  * @cmd_parameter: Pointer to command parameter
+  * @response: Pointer to fastboot response buffer
+  */
++u32 fastboot_upload_size;
++
++/**
++ * upload() - Send the staging buffer to the host ("fastboot get_staged").
++ *
++ * @cmd_parameter: Unused
++ * @response: Pointer to fastboot response buffer
++ *
++ * Sends ${fastboot_upload_size} (hex) bytes from fastboot_buf_addr. Fill the buffer first, e.g.
++ * "oem run:mmc read <fastboot_buf_addr> <blk> <cnt>" then
++ * "oem run:setexpr fastboot_upload_size <cnt> * 200".
++ */
++static void upload(char *cmd_parameter, char *response)
++{
++	ulong size = env_get_hex("fastboot_upload_size", 0);
++
++	if (!size || size > fastboot_buf_size) {
++		fastboot_fail("set fastboot_upload_size (1..buffer size)", response);
++		return;
++	}
++	fastboot_upload_size = size;
++	fastboot_response("DATA", response, "%08lx", size);
++}
++
+ static void download(char *cmd_parameter, char *response)
+ {
+ 	char *tmp;
+diff --git a/drivers/usb/gadget/f_fastboot.c b/drivers/usb/gadget/f_fastboot.c
+index 9a2e9850..cd4e1def 100644
+--- a/drivers/usb/gadget/f_fastboot.c
++++ b/drivers/usb/gadget/f_fastboot.c
+@@ -21,6 +21,7 @@
+ #include <linux/usb/composite.h>
+ #include <linux/compiler.h>
+ #include <g_dnl.h>
++#include <fastboot-internal.h>
+ 
+ #define FASTBOOT_INTERFACE_CLASS	0xff
+ #define FASTBOOT_INTERFACE_SUB_CLASS	0x42
+@@ -497,6 +498,29 @@ static void do_bootm_on_complete(struct usb_ep *ep, struct usb_request *req)
+ }
+ #endif
+ 
++static u32 ul_sent;
++
++/* "upload": stream fastboot_upload_size bytes of the staging buffer, then OKAY. */
++static void tx_handler_ul_data(struct usb_ep *ep, struct usb_request *req)
++{
++	u32 left, n;
++
++	if (req->status) {
++		pr_err("upload: status %d\n", req->status);
++		fastboot_func->in_req->complete = fastboot_complete;
++		return;
++	}
++	left = fastboot_upload_size - ul_sent;
++	if (!left) {
++		fastboot_func->in_req->complete = fastboot_complete;
++		fastboot_tx_write_str("OKAY");
++		return;
++	}
++	n = left > EP_BUFFER_SIZE ? EP_BUFFER_SIZE : left;
++	fastboot_tx_write((const char *)fastboot_buf_addr + ul_sent, n);
++	ul_sent += n;
++}
++
+ static int multiresponse_cmd = -1;
+ static void multiresponse_on_complete(struct usb_ep *ep, struct usb_request *req)
+ {
+@@ -553,7 +577,10 @@ static void rx_handler_command(struct usb_ep *ep, struct usb_request *req)
+ 		}
+ 	}
+ 
+-	if (!strncmp("DATA", response, 4)) {
++	if (cmd == FASTBOOT_COMMAND_UPLOAD && !strncmp("DATA", response, 4)) {
++		ul_sent = 0;
++		fastboot_func->in_req->complete = tx_handler_ul_data;
++	} else if (!strncmp("DATA", response, 4)) {
+ 		req->complete = rx_handler_dl_image;
+ 		req->length = rx_bytes_expected(ep);
+ 	}
+diff --git a/include/fastboot-internal.h b/include/fastboot-internal.h
+index 610d4f91..5d17574b 100644
+--- a/include/fastboot-internal.h
++++ b/include/fastboot-internal.h
+@@ -13,6 +13,11 @@ extern void *fastboot_buf_addr;
+  */
+ extern u32 fastboot_buf_size;
+ 
++/**
++ * fastboot_upload_size - bytes the next "upload" sends from fastboot_buf_addr
++ */
++extern u32 fastboot_upload_size;
++
+ /**
+  * fastboot_progress_callback - callback executed during long operations
+  */
+diff --git a/include/fastboot.h b/include/fastboot.h
+index f3aa6fcc..20c64f23 100644
+--- a/include/fastboot.h
++++ b/include/fastboot.h
+@@ -56,6 +56,7 @@ enum {
+ 	FASTBOOT_COMMAND_FLASHING_LOCK,
+ 	FASTBOOT_COMMAND_FLASHING_UNLOCK,
+ 	FASTBOOT_COMMAND_FLASHING_GET_UNLOCK_ABILITY,
++	FASTBOOT_COMMAND_UPLOAD,
+ 	FASTBOOT_COMMAND_COUNT
+ };
+ 

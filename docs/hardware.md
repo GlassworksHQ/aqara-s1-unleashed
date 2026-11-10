@@ -10,6 +10,10 @@
 
 There is **one unlabeled tactile button on the PCB** (you must open the back cover to reach it). Hold it while applying USB-C power to enter FEL. The **external** case button and the Aqara pairing button do not enter FEL.
 
+![FEL button on the S1 Plus PCB, back cover removed](img/fel-button.jpg)
+
+*The FEL button (circled): a small tactile switch right of the shield can's notch, just below the round sensor window.*
+
 ## Debug UART console (3-pin header)
 
 A 3-pin header exposes the serial console. The pads are **flat (castellated/holes)**, so a firm or soldered connection is needed.

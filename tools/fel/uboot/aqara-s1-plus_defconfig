@@ -54,6 +54,8 @@ CONFIG_FASTBOOT_BUF_SIZE=0x20000000
 CONFIG_FASTBOOT_FLASH=y
 CONFIG_FASTBOOT_FLASH_MMC=y
 CONFIG_FASTBOOT_FLASH_MMC_DEV=1
+# 'oem run' + our 'upload' (patch 0002): read partitions to the host (fastboot get_staged)
+CONFIG_FASTBOOT_OEM_RUN=y
 # Never save U-Boot's environment: the panel's "env" partition belongs to stock Android.
 CONFIG_ENV_IS_NOWHERE=y
 # CONFIG_ENV_IS_IN_FAT is not set

@@ -45,6 +45,10 @@ FEL is the Allwinner mask-ROM USB recovery mode. It lives in silicon and **canno
 3. **Hold that button** and plug USB-C back in while holding, for ~10 s.
 4. The screen stays **black**. On a host, `sunxi-fel -l` now lists an Allwinner device (reports as `A133`, SoC id `0x1855`).
 
+![FEL button on the S1 Plus PCB, back cover removed](docs/img/fel-button.jpg)
+
+*The FEL button (circled): a small tactile switch right of the shield can's notch, just below the round sensor window.*
+
 The external case button and the Aqara app pairing button do **not** trigger FEL.
 
 ## FEL U-Boot

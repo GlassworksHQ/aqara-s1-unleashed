@@ -29,6 +29,11 @@ RADIO_URL='spinel+cpc://cpcd_0?iid=2&iid-list=0'  # zigbeed holds iid=1
 OTBR_ARGS=""
 EZSP_PTY=/dev/ttyZigbeeNCP               # host side of Aqara's socat pty pair (zigbeed is on /tmp/ttyZigbeeNCP)
 CPC_SOCK=/dev/shm/cpcd/cpcd_0/ctrl.cpcd.sock
+BUNDLE=${0%/*}                           # binaries shipped next to this script (boot image: ${MAGISKTMP})
+# Root-only state dir; created on first run so a freshly flashed boot image needs no other install step.
+[ -d "$DIR" ] || { mkdir -p "$DIR" && chown root:root "$DIR" && chmod 700 "$DIR"; }
+# A binary in $DIR (user-installed) wins over the bundled copy.
+bin() { if [ -x "$DIR/$1" ]; then echo "$DIR/$1"; else echo "$BUNDLE/$1"; fi; }
 [ -r "$DIR/radio.conf" ] && . "$DIR/radio.conf"
 
 MODE=${S1R_MODE:-$(getprop persist.s1kiosk.radio_mode)}  # S1R_MODE: manual test without touching the persist prop
@@ -106,7 +111,7 @@ start_bridge() {
 }
 
 start_otbr() {
-  [ -x "$DIR/otbr-agent" ] || { status error "$DIR/otbr-agent not installed"; return 1; }
+  [ -x "$(bin otbr-agent)" ] || { status error "otbr-agent not installed ($DIR or $BUNDLE)"; return 1; }
   wait_for $CPC_SOCK 30 || { status error "cpcd socket missing"; return 1; }
   # cpcd needs ~4 s to reach the secondary after a (re)start, and endpoint 12 closes asynchronously:
   # an early start fails ("CPC init failed -2" / "CPC endpoint open failed"); the loop retries.
@@ -114,7 +119,7 @@ start_otbr() {
   mkdir -p "$DIR/run" "$DIR/thread"  # TUN is /dev/tun (compiled in by build-otbr.sh)
   b=""; [ -n "$BACKBONE" ] && b="-B $BACKBONE"
   # shellcheck disable=SC2086
-  "$DIR/otbr-agent" -s -I wpan0 $b --data-path "$DIR/thread" $OTBR_ARGS "$RADIO_URL" &
+  "$(bin otbr-agent)" -s -I wpan0 $b --data-path "$DIR/thread" $OTBR_ARGS "$RADIO_URL" &
   OTBR_PID=$!
 }
 
@@ -124,18 +129,18 @@ start_thread_router() {
   [ -s "$DIR/thread-dataset" ] || { status error "no Thread dataset ($DIR/thread-dataset)"; return 1; }
   BACKBONE=""
   start_otbr || return 1
-  i=0; while ! "$DIR/ot-ctl" state >/dev/null 2>&1 && [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done
-  "$DIR/ot-ctl" dataset set active "$(cat "$DIR/thread-dataset")" >/dev/null 2>&1 &&
-    "$DIR/ot-ctl" ifconfig up >/dev/null 2>&1 &&
-    "$DIR/ot-ctl" thread start >/dev/null 2>&1 ||
+  i=0; while ! "$(bin ot-ctl)" state >/dev/null 2>&1 && [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done
+  "$(bin ot-ctl)" dataset set active "$(cat "$DIR/thread-dataset")" >/dev/null 2>&1 &&
+    "$(bin ot-ctl)" ifconfig up >/dev/null 2>&1 &&
+    "$(bin ot-ctl)" thread start >/dev/null 2>&1 ||
     { status error "ot-ctl join steps failed"; kill "$OTBR_PID" 2>/dev/null; return 1; }
 }
 
 start_router() {
   # Router mode needs an EZSP host that joins as EMBER_ROUTER (docs/radio.md "Zigbee router").
-  [ -x "$DIR/zigbee-router" ] || { status error "zigbee router host not installed ($DIR/zigbee-router)"; return 1; }
+  [ -x "$(bin zigbee-router)" ] || { status error "zigbee router host not installed ($DIR/zigbee-router)"; return 1; }
   wait_for $EZSP_PTY 30 || { status error "$EZSP_PTY missing"; return 1; }
-  "$DIR/zigbee-router" "$EZSP_PTY" &
+  "$(bin zigbee-router)" "$EZSP_PTY" &
   ROUTER_PID=$!
 }
 
@@ -159,7 +164,7 @@ detail() {
     zigbee_tcp) echo "EZSP on tcp:$ZIGBEE_PORT" ;;
     zigbee_router) echo "router host running" ;;
     thread) echo "otbr-agent on wpan0${BACKBONE:+ (backbone $BACKBONE)}" ;;
-    thread_router) echo "Thread router on wpan0 ($("$DIR/ot-ctl" state 2>/dev/null | head -1))" ;;
+    thread_router) echo "Thread router on wpan0 ($("$(bin ot-ctl)" state 2>/dev/null | head -1))" ;;
     zigbee_tcp_thread) echo "EZSP on tcp:$ZIGBEE_PORT; otbr-agent on wpan0" ;;
   esac
 }

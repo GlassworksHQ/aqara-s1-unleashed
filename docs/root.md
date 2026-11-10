@@ -31,31 +31,50 @@
   - it boots normally while reporting `vbmeta.device_state=locked`;
   - so stock U-Boot does not enforce AVB, and a modified `boot` boots.
 
-## Steps (reference panel)
+## Steps (no UART, no adb)
 
-1. **Back up, and verify against the panel:** `boot.img` must match
-   `sha256sum /dev/block/by-name/boot` byte for byte.
-2. **Patch:** `tools/root/patch-boot-magisk.sh stock-boot.img s1-boot.img`.
-   - Runs on the panel over adb as the shell user; no root needed.
-   - Uses `KEEPVERITY=true KEEPFORCEENCRYPT=true`, so Magisk changes nothing it doesn't need to.
-   - Adds `overlay.d/s1kiosk_radio.rc`.
-   - The output keeps the partition size (32 MiB).
-3. **Flash:**
-   1. Enter FEL (hold the PCB button while plugging in).
-   2. `NO_BL31=1 tools/fel/fel-boot.sh`.
-   3. `fastboot flash boot s1-boot.img`.
-   4. `fastboot reboot`.
-4. **Install the helper script once,** as root, to `/data/s1kiosk/radio/` (root 0700). On the
-   reference panel the UART console was used: `/system/xbin/su 0 …`. Plain `su` is now Magisk's,
-   and it denies the console because there is no policy.
+1. **Enter FEL and boot our U-Boot:** `NO_BL31=1 tools/fel/fel-boot.sh`. It starts fastboot on its own.
+2. **Back up over USB:** `tools/install/fb-read-partition.sh boot stock-boot.img`, and the same for
+   `vbmeta` and the other small partitions.
+   - This uses U-Boot `oem run` plus our fastboot `upload` (patch 0002).
+   - It reads 32 MiB in about 1.6 s.
+   - On the reference panel the read-back was byte-identical to a known image.
+3. **Patch on the host:** `tools/root/patch-boot-magisk.sh stock-boot.img s1-boot.img`.
+   - Runs in Docker (arm64 Linux): Magisk's own `boot_patch.sh` with the arm64 `magiskboot`, and the
+     panel's armeabi-v7a `magiskinit`/`magisk`/`init-ld` as payload.
+   - Flags: `KEEPVERITY=true KEEPFORCEENCRYPT=true PREINITDEVICE=cache`. That is exactly what
+     Magisk computes on the panel, and the config matches an on-device patch.
+   - **Bundles the helper:** `overlay.d/s1kiosk_radio.rc`, plus `s1kiosk_radio.sh`, `otbr-agent`
+     and `ot-ctl` in `overlay.d/sbin`. At runtime those are `${MAGISKTMP}` = `/sbin`.
+4. **Flash and verify:**
+   1. `fastboot flash boot s1-boot.img`.
+   2. Read `boot` back with step 2's tool and compare hashes.
+   3. `fastboot reboot`.
 
-**Undo:** `fastboot flash boot <stock boot.img>` through the same FEL path.
+On first boot the helper creates `/data/s1kiosk/radio` itself (root 0700), so nothing else needs
+installing. Verified on the reference panel on 2026-11-09, after deleting `/data/s1kiosk` to
+simulate a fresh panel:
+- the helper runs from `/sbin` and reports `ok off`;
+- switching `select.s1_panel_radio_mode` in HA to *Thread border router* started the bundled
+  `otbr-agent` on `wpan0`, and `ot-ctl` answers;
+- switching back to *Off* stopped it.
+
+Binaries in `/data/s1kiosk/radio` (e.g. a newer `otbr-agent`, or a `zigbee-router`) override the
+bundled ones.
+
+**Undo:** `fastboot flash boot stock-boot.img` through the same FEL path.
+
+**Root shell for maintenance:**
+- No `su` grants exist by default.
+- For a debugging session, a time-limited Magisk policy for the adb shell (uid 2000) can be added
+  with an `until` timestamp, so it expires by itself:
+  `magisk --sqlite "REPLACE INTO policies (uid,policy,until,logging,notification) VALUES(2000,2,<epoch>,1,0)"`.
+- Revoke it with `DELETE FROM policies WHERE uid=2000`.
 
 ## Next
-- **Make the boot image self-contained** for sealed panels, so step 4 needs no UART. Ship the helper
-  script in `overlay.d/sbin`, reachable at `${MAGISKTMP}` from the `.rc`, and let it create
-  `/data/s1kiosk/radio` itself.
-- **Fresh panels have no adb,** so patching has to move to the host (`magiskboot` for arm64 Linux in
-  Docker), and the stock `boot` has to be read over USB from the FEL U-Boot (`ums` or a fastboot
-  upload).
-- Build `otbr-agent`/`ot-ctl` (`tools/radio/build-otbr.sh`) and install them for the Thread modes.
+- **Enable adb on factory panels.** Ship the installing host's adb public key in the boot image,
+  and have the helper write `/data/misc/adb/adb_keys` and turn adb on at first boot. The kiosk app
+  and `tools/install.sh` can then follow over adb.
+- **Write one end-to-end `fel-install` script:** FEL → backup → patch → flash → verify → reboot.
+- **vbmeta:** the reference panel runs `vbmeta` with flags 3. A factory panel (flags 0) may need
+  `fastboot --disable-verity --disable-verification flash vbmeta <its own vbmeta>`. To be tested.

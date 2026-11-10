@@ -19,15 +19,19 @@ MMC:   mmc@4022000: 1        (8-bit, 52 MHz, 7.3 GiB, GPT with the Android parti
 
 1. Build: `UBOOT_SRC=~/src/u-boot BL31=<bl31.bin> tools/fel/build-uboot.sh`.
    This applies `tools/fel/uboot/patches/*.patch` once.
-2. Enter FEL: hold the PCB button while plugging in USB-C, keep holding for about 10 s. The screen
-   stays black.
+2. Enter FEL: hold the PCB button ([photo](img/fel-button.jpg)) while plugging in USB-C, keep holding for
+   about 10 s. The screen stays black.
 3. Boot: `NO_BL31=1 SUNXI_FEL=sunxi-fel tools/fel/fel-boot.sh ~/src/u-boot/build-s1`.
    Watch the console on the debug UART at 115200 8N1.
    After 2 s, U-Boot runs `fastboot usb 0`. Press a key on the UART during the countdown to get a
    prompt instead.
 4. On the host: `fastboot devices`, then `fastboot getvar partition-size:boot`. Partitions are
    addressed by their GPT names (`boot`, `vbmeta`, `super`, ...). The download buffer is 512 MiB.
-5. Unplug and replug *without* the button to get back to Android.
+5. **Reading partitions:** `tools/install/fb-read-partition.sh <partition> <file>` copies a
+   partition to the host, up to the 512 MiB buffer. It runs `oem run` (`part start/size`,
+   `mmc read` into the buffer, `setexpr fastboot_upload_size`) and then `fastboot get_staged`, using
+   the `upload` command from patch 0002. It reads about 20 MB/s.
+6. Unplug and replug *without* the button to get back to Android.
 
 ## What had to be fixed
 
