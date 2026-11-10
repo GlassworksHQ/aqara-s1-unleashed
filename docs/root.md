@@ -91,6 +91,12 @@ bundled ones.
 - **Extra in the helper: updatable without a new boot image.** It hands over to a root-owned
   `/data/s1kiosk/radio/s1kiosk_radio.sh` if one exists.
 
+**Undo:** `tools/install/fel-install.sh --undo <backup-dir>`.
+- It verifies the backup against its `SHA256SUMS` and refuses a `boot.img` that is already
+  Magisk-patched. That happens with a re-run's backup; use the first install's backup instead.
+- It flashes stock `boot` and `vbmeta` through FEL and verifies both by read-back.
+- `/data` is not touched, so the kiosk app keeps working without root.
+
 **Factory simulation on the reference panel (2026-11-09), passed:**
 - Starting state: adb turned off, the adb key list emptied, stock `boot` and factory `vbmeta`
   (flags 0) flashed.

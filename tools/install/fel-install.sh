@@ -3,6 +3,7 @@
 # FEL button and a USB-C cable: no UART, no adb needed beforehand.
 #
 #   tools/install/fel-install.sh [backup-dir]
+#   tools/install/fel-install.sh --undo <backup-dir>    restore that backup's stock boot + vbmeta
 #
 #   1. wait for FEL (you hold the PCB button while plugging in), check the SoC is an A133
 #   2. boot our U-Boot from RAM (tools/fel/fel-boot.sh); it starts USB fastboot by itself
@@ -16,7 +17,9 @@
 #   8. wait for adb (authorized by the first-boot service), then point you to tools/install.sh
 #
 # Needs: sunxi-fel, fastboot, adb, docker, and a U-Boot build (tools/fel/build-uboot.sh).
-# Undo: boot to FEL again and `fastboot flash boot <backup-dir>/boot.img` (and vbmeta.img).
+# Undo: --undo <backup-dir> (FEL again, then boot + vbmeta from the backup, verified by read-back).
+#       It refuses a backup whose boot is already Magisk-patched (a re-run's backup): use the one
+#       from the first install. /data is left alone (the kiosk app keeps working without root).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FEL=${SUNXI_FEL:-sunxi-fel}; FB=${FASTBOOT:-fastboot}; ADB=${ADB:-adb}
@@ -25,6 +28,8 @@ FEL=${SUNXI_FEL:-sunxi-fel}; FB=${FASTBOOT:-fastboot}; ADB=${ADB:-adb}
 ADB_SERIAL=${ANDROID_SERIAL:-}; unset ANDROID_SERIAL
 adb_() { "$ADB" ${ADB_SERIAL:+-s "$ADB_SERIAL"} "$@"; }
 UBUILD=${UBOOT_BUILD:-$HOME/src/u-boot-s1/build-s1}
+MODE=install
+if [ "${1:-}" = --undo ]; then MODE=undo; UNDO=${2:?usage: fel-install.sh --undo <backup-dir>}; fi
 OUT=${1:-$PWD/s1-backup-$(date +%Y%m%d-%H%M%S)}
 BACKUP_PARTS="boot vbmeta vbmeta_system vbmeta_vendor dtbo misc recovery env bootloader"
 
@@ -32,7 +37,27 @@ say() { printf '\n== %s\n' "$*"; }
 die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 for t in "$FEL" "$FB" "$ADB" docker shasum python3; do command -v "$t" >/dev/null || die "missing tool: $t"; done
 [ -f "$UBUILD/u-boot-sunxi-with-spl.bin" ] || die "no U-Boot build in $UBUILD (tools/fel/build-uboot.sh)"
-mkdir -p "$OUT"; chmod 700 "$OUT"
+
+# Is this boot image Magisk-patched? (looks for .backup/.magisk in the gzip'd ramdisk of a v0-v2 header)
+is_magisk() { python3 - "$1" <<'PY'
+import gzip, struct, sys
+d = open(sys.argv[1], 'rb').read()
+assert d[:8] == b'ANDROID!', 'not an Android boot image'
+ks, _, rs = struct.unpack_from('<III', d, 8); ps = struct.unpack_from('<I', d, 36)[0]
+off = ps + (ks + ps - 1) // ps * ps
+sys.exit(0 if b'.backup/.magisk' in gzip.decompress(d[off:off + rs]) else 1)
+PY
+}
+
+if [ "$MODE" = undo ]; then
+  [ -f "$UNDO/SHA256SUMS" ] && [ -f "$UNDO/boot.img" ] && [ -f "$UNDO/vbmeta.img" ] || die "$UNDO is not a fel-install backup"
+  for f in boot.img vbmeta.img; do
+    (cd "$UNDO" && grep " $f\$" SHA256SUMS | shasum -a 256 -c -) || die "$UNDO/$f does not match its SHA256SUMS"
+  done
+  ! is_magisk "$UNDO/boot.img" || die "$UNDO/boot.img is Magisk-patched (a re-run backup); use the first install's backup"
+else
+  mkdir -p "$OUT"; chmod 700 "$OUT"
+fi
 
 if "$FB" devices | grep -q fastboot && [ "$("$FB" getvar product 2>&1 | sed -n 's/^product: //p')" = sunxi ]; then
   say "1-2/8 Our U-Boot is already in fastboot: skipping FEL"
@@ -54,6 +79,19 @@ gv() { "$FB" getvar "$1" 2>&1 | sed -n "s/^$1: //p"; }
 [ "$(gv product)" = sunxi ] || die "unexpected bootloader product"
 [ "$(gv partition-size:boot)" = 0x0000000002000000 ] || die "boot is not 32 MiB: not an S1 Plus layout?"
 [ "$(gv partition-size:super)" = 0x0000000060000000 ] || die "super is not 1.5 GiB: not an S1 Plus layout?"
+
+if [ "$MODE" = undo ]; then
+  say "Undo: restoring stock boot and vbmeta from $UNDO"
+  for p in boot vbmeta; do
+    "$FB" flash "$p" "$UNDO/$p.img"
+    "$HERE/fb-read-partition.sh" "$p" "$UNDO/$p.readback.img" >/dev/null
+    cmp -s "$UNDO/$p.img" "$UNDO/$p.readback.img" || die "$p read-back mismatch after restore: do NOT reboot, re-run --undo"
+    rm -f "$UNDO/$p.readback.img"; echo "$p restored and verified"
+  done
+  "$FB" reboot
+  echo; echo "Undone: stock boot and vbmeta are back. /data is untouched (kiosk app, settings)."
+  exit 0
+fi
 
 say "4/8 Backing up partitions to $OUT"
 for p in $BACKUP_PARTS; do "$HERE/fb-read-partition.sh" "$p" "$OUT/$p.img"; done
