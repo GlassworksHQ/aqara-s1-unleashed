@@ -95,16 +95,40 @@ class UpdateManager(
 
     // ------------------------------------------------------------------ check
 
+    /**
+     * Wi-Fi coming (back): a check that failed for want of a network is retried right away instead of
+     * after its backoff (15 min and up). Android reports a network as available before it has been
+     * validated (DNS may not work yet), so validation counts too; bursts of callbacks are debounced into
+     * one retry [NETWORK_SETTLE_S] after the last one, and [CheckSchedule.onNetworkBack] allows one
+     * retry per 30 s.
+     */
     private fun registerNetwork() {
+        val validated = java.util.Collections.synchronizedSet(HashSet<Network>())
         val cb = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                // Give DNS/Wi-Fi a moment, then check if one is due (first check, or after failures).
-                if (!stopped) runCatching { exec.schedule({ tick() }, NETWORK_SETTLE_S, TimeUnit.SECONDS) }
+            override fun onAvailable(network: Network) = networkBack("available")
+            override fun onCapabilitiesChanged(network: Network, caps: android.net.NetworkCapabilities) {
+                if (caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) && validated.add(network)) {
+                    networkBack("validated")
+                }
             }
+            override fun onLost(network: Network) { validated.remove(network) }
         }
         if (runCatching { ctx.getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(cb) }.isSuccess) {
             netCallback = cb
         }
+    }
+
+    @Volatile private var netPending: java.util.concurrent.ScheduledFuture<*>? = null
+
+    private fun networkBack(why: String) {
+        if (stopped) return
+        netPending?.cancel(false)
+        netPending = runCatching {
+            exec.schedule({
+                if (schedule.onNetworkBack(SystemClock.elapsedRealtime())) Log.i(TAG, "network $why: retrying the failed update check now")
+                tick()
+            }, NETWORK_SETTLE_S, TimeUnit.SECONDS)
+        }.getOrNull()
     }
 
     private fun tick() {
@@ -125,7 +149,8 @@ class UpdateManager(
         val result = try {
             fetchLatest()
         } catch (e: IOException) {
-            CheckResult.Failed("network: ${e.javaClass.simpleName}${e.message?.let { ": ${it.take(80)}" } ?: ""}")
+            CheckResult.Failed("network: ${e.javaClass.simpleName}${e.message?.let { ": ${it.take(80)}" } ?: ""}",
+                network = GithubHttp.isNetworkError(e))
         } catch (e: Exception) {
             CheckResult.Failed("${e.javaClass.simpleName}: ${e.message?.take(80)}")
         }
@@ -140,7 +165,7 @@ class UpdateManager(
                     if (model.updateAvailable) " -> update available" else "")
             }
             is CheckResult.Failed -> {
-                schedule.onFailure(now, result.retryAfterMs)
+                schedule.onFailure(now, result.retryAfterMs, result.network)
                 model.onCheckFailed(result.reason)
                 problem("update check failed (${schedule.failures}x, next in " +
                     "${(schedule.nextAt - now) / 60_000} min): ${result.reason}")
@@ -152,7 +177,7 @@ class UpdateManager(
     private sealed class CheckResult {
         /** [offer] null: the repo has no usable release (none published, a draft/pre-release, odd assets). */
         class Found(val offer: UpdateOffer?) : CheckResult()
-        class Failed(val reason: String, val retryAfterMs: Long? = null) : CheckResult()
+        class Failed(val reason: String, val retryAfterMs: Long? = null, val network: Boolean = false) : CheckResult()
     }
 
     private fun fetchLatest(): CheckResult {

@@ -159,7 +159,10 @@ poll as a safety net.
 `update/UpdateManager.kt`; releases and signing in [releasing.md](releasing.md).
 
 - **State:** `current_version` is the app's versionName and `title` is `S1 Kiosk`. `missing_state`
-  stays set until the first successful check. Then `latest_version`, `release_url`, and
+  stays set until the first successful check, and until then `latest_version` = `current_version`:
+  Home Assistant 2026.11 ignores `missing_state` for update entities, and an empty `latest_version`
+  can't be compared, which its `UpdateEntity.has_update` counts as an update (the entity turned on with
+  a blank version after an offline start). After a check: `latest_version`, `release_url`, and
   `release_summary` (the release notes, cut to HA's 255 characters). A status line goes on top of
   the summary when there is one, e.g. a failed install.
 - **Check:** `GET https://api.github.com/repos/aguilaair/aqara-s1-unleashed/releases/latest`.
@@ -167,7 +170,10 @@ poll as a safety net.
     (`homeassistant.update_entity`, at most once a minute).
   - ETag'd, so an unchanged answer costs no rate limit.
   - Failures back off from 15 min to 6 h, or until GitHub's rate-limit reset. They are logged once
-    per new reason, not on every retry.
+    per new reason, not on every retry. A check that failed because the panel had no network
+    (`UnknownHostException`, no route, timeouts; not TLS or HTTP errors) is retried 10 s after Wi-Fi
+    is back (available or validated; callbacks debounced, at most one such retry per 30 s) instead of
+    after its backoff.
   - Ignored: drafts, pre-releases (GitHub's flag or a `-rc` tag), and releases without both
     `s1-kiosk-<version>.apk` and `.sha256`. Assets must download from github.com over HTTPS.
 - **Install:**
@@ -254,6 +260,15 @@ with the Python TFLite runtime that the patched model gives bit-identical output
 64000 samples.
 
 ## Wire protocol notes
+
+- **Keepalive** (as ESPHome's `api_connection.cpp`): when a client has sent nothing for 60 s, the
+  panel sends it a `PingRequest`; only when nothing at all arrives for 150 s after that is it dropped.
+  Any frame from the client counts as traffic. A plain read timeout doesn't work: aioesphomeapi
+  (46.25.0, `connection.py _async_send_keep_alive`) only pings when it has *received* nothing for 20 s,
+  so a device that keeps sending states hears nothing from Home Assistant. Until 2026-11-10 the server
+  closed after 90 s without input, so HA reconnected every 90 s (panel log: "idle for 90 s; closing",
+  then a new hello 70 ms later). `EspHomeKeepaliveTest` checks both the raw ping/close timing and a real
+  aioesphomeapi client staying connected while states stream (with `ESPHOME_PYTHON`).
 
 - **Unprovisioned**: the first byte picks the transport: `0x00` plaintext, `0x01` Noise with the
   all-zeros PSK (esphome `api_frame_helper_plaintext.cpp` hand-off). `NoiseEncryptionSetKeyRequest`

@@ -137,7 +137,10 @@ class UpdateModel(val currentVersion: String, val title: String = TITLE) {
             hasProgress = phase == Phase.DOWNLOADING,
             progress = if (phase == Phase.DOWNLOADING) percent.toFloat() else 0f,
             currentVersion = currentVersion,
-            latestVersion = if (!checked) "" else o?.version?.toString() ?: currentVersion,
+            // Until a check succeeded: latest = installed. Home Assistant (2026.11, esphome/update.py)
+            // ignores missing_state for update entities, and an empty latest_version can't be compared,
+            // which HA's UpdateEntity.has_update counts as "update available": ON with a blank version.
+            latestVersion = if (!checked) currentVersion else o?.version?.toString() ?: currentVersion,
             title = title,
             releaseSummary = Releases.summary(if (available) o!!.notes else "", top),
             releaseUrl = o?.releaseUrl.orEmpty(),

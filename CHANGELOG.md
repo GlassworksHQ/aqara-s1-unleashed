@@ -30,6 +30,18 @@ below as the release notes.
   corner five times), under *Radio: who may connect*. It's the same setting as in Home Assistant, and the
   dialog shows who is allowed right now.
 
+### Fixed
+- **The time zone no longer resets to Antarctica/Casey (UTC+8) at every boot.** Aqara's system software
+  set it back on each start. The panel now keeps the zone you chose in the installer, and a new *Time zone*
+  setting in Home Assistant changes it later (*Time zone status* shows whether it is kept). Needs the new
+  boot software; panels set up earlier keep the zone they have at their first boot with it, or set *Time
+  zone* once.
+- Home Assistant no longer loses the panel's connection every 90 seconds. The panel now checks on a
+  quiet Home Assistant the way ESPHome devices do, instead of hanging up on it.
+- The app update card no longer shows an update with a blank version when the panel started without
+  Wi-Fi. It shows "up to date" until the first real check, and checks again as soon as Wi-Fi is back
+  instead of 15 minutes later.
+
 ### Changed
 - The Zigbee coordinator now waits until the radio's start-up message is cleared before letting a
   client in, which avoids a failed first start in Zigbee2MQTT (ZHA was not affected).

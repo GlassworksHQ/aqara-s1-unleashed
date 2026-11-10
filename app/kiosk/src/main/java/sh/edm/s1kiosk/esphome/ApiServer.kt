@@ -91,7 +91,16 @@ class ApiServer(
         const val API_MAJOR = 1
         /** ESPHome 2026.10/11 reports 1.20 (api_connection.cpp); we implement DeviceCapabilities (1.15+). */
         const val API_MINOR = 20
-        private const val READ_TIMEOUT_MS = 90_000 // aioesphomeapi pings every 20 s
+        /**
+         * Keepalive, as ESPHome's api_connection.cpp does it: after [KEEPALIVE_MS] without anything from
+         * the client the *device* sends a PingRequest, and only if [UNRESPONSIVE_MS] pass with no traffic at
+         * all after that is the client dropped. A read timeout can't do this job: aioesphomeapi (46.x,
+         * connection.py `_async_send_keep_alive`) only pings when it has received nothing for 20 s, so a
+         * device that keeps sending state updates hears nothing back from Home Assistant at all. The old
+         * 90 s read timeout therefore dropped HA's connection every 90 s (seen on the panel 2026-11-10).
+         */
+        const val KEEPALIVE_MS = 60_000L
+        const val UNRESPONSIVE_MS = 150_000L // ESPHome: KEEPALIVE_TIMEOUT_MS * 5 / 2
         /** ESPHome activates a newly saved PSK 100 ms after answering (api_server.cpp update_noise_psk_). */
         const val KEY_ACTIVATION_DELAY_MS = 100L
     }
@@ -129,6 +138,10 @@ class ApiServer(
     private val ids = AtomicInteger()
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
+    /** [KEEPALIVE_MS] / [UNRESPONSIVE_MS]; shorter in tests. Set before [start]. */
+    @Volatile var keepaliveMs = KEEPALIVE_MS
+    @Volatile var unresponsiveMs = UNRESPONSIVE_MS
+    private var keepaliveTimer: java.util.concurrent.ScheduledExecutorService? = null
     @Volatile private var voiceConn: Connection? = null
 
     private val stateLock = Any()
@@ -183,6 +196,10 @@ class ApiServer(
         serverSocket = ss
         running = true
         Thread({ acceptLoop(ss) }, "esphome-accept").apply { isDaemon = true; start() }
+        val tick = (keepaliveMs / 6).coerceIn(20, 5_000)
+        keepaliveTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "esphome-keepalive").apply { isDaemon = true }
+        }.also { it.scheduleWithFixedDelay({ keepaliveTick() }, tick, tick, java.util.concurrent.TimeUnit.MILLISECONDS) }
         ApiLog.i("API server listening on ${ss.localPort} (${modeName()})")
     }
 
@@ -226,7 +243,28 @@ class ApiServer(
         for (c in connections) c.retire()
     }
 
+    /** Pings quiet clients and drops the ones that stay silent (see [KEEPALIVE_MS]). */
+    private fun keepaliveTick() {
+        val now = System.currentTimeMillis()
+        for (c in connections) {
+            try {
+                if (!c.ready || !c.isOpen) continue
+                val idle = now - c.lastRead
+                if (c.pingSent) {
+                    if (idle > unresponsiveMs) {
+                        ApiLog.w("[${c.id}] no answer to the keepalive ping, nothing received for ${idle / 1000} s; closing")
+                        c.close()
+                    }
+                } else if (idle > keepaliveMs) {
+                    c.pingSent = c.send(listOf(Frame(Msg.PING_REQUEST, ByteArray(0))))
+                }
+            } catch (t: Throwable) { ApiLog.w("keepalive failed", t) }
+        }
+    }
+
     fun stop() {
+        keepaliveTimer?.shutdownNow()
+        keepaliveTimer = null
         running = false
         try { serverSocket?.close() } catch (_: IOException) {}
         serverSocket = null
@@ -290,11 +328,17 @@ class ApiServer(
         /** Set when the key changed: only the disconnect handshake is processed from now on. */
         @Volatile private var retired = false
         private val remote = socket.remoteSocketAddress?.toString() ?: "?"
+        /** Handshake done: the keepalive applies from now on. */
+        @Volatile var ready = false
+        /** When the last frame arrived from the client; [pingSent]: we pinged since then. */
+        @Volatile var lastRead = 0L
+        @Volatile var pingSent = false
 
         fun run() {
             try {
                 socket.tcpNoDelay = true
-                socket.soTimeout = READ_TIMEOUT_MS
+                // Only a backstop: the keepalive (pings, [unresponsiveMs]) decides when a client is gone.
+                socket.soTimeout = (unresponsiveMs + 30_000).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
                 val input = BufferedInputStream(socket.getInputStream(), 8 * 1024)
                 val output = BufferedOutputStream(socket.getOutputStream(), 16 * 1024)
                 val ident = identity()
@@ -322,12 +366,15 @@ class ApiServer(
                     return
                 }
                 authenticated = k != null && active != null && transport is NoiseTransport
+                lastRead = System.currentTimeMillis(); ready = true
                 while (isOpen) {
                     val f = transport.read() ?: break
+                    // any traffic counts, as in ESPHome (last_traffic_); a pending ping is answered by it
+                    lastRead = System.currentTimeMillis(); pingSent = false
                     handle(f)
                 }
             } catch (e: SocketTimeoutException) {
-                ApiLog.w("[$id] $remote idle for ${READ_TIMEOUT_MS / 1000} s; closing")
+                ApiLog.w("[$id] $remote sent nothing for ${socket.soTimeout / 1000} s; closing")
             } catch (e: SocketException) {
                 if (isOpen) ApiLog.i("[$id] $remote: ${e.message}")
             } catch (e: IOException) {

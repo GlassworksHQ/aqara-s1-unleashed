@@ -23,11 +23,13 @@ class UpdateModelTest {
         assertTrue(v.missingState)
         assertEquals("1.2.0", v.currentVersion)
         assertEquals("S1 Kiosk", v.title)
-        assertEquals("", v.latestVersion)
+        // latest = installed until a check succeeded: HA must never show "available" (or a blank version)
+        assertEquals("1.2.0", v.latestVersion)
         assertEquals("not checked yet", m.statusText())
 
         m.onCheckFailed("network: UnknownHostException")
         assertTrue("a failed check is still no state", m.view().missingState)
+        assertEquals("1.2.0", m.view().latestVersion)
         assertTrue(m.statusText().contains("UnknownHostException"))
 
         m.onChecked(offer("1.3.0"))
