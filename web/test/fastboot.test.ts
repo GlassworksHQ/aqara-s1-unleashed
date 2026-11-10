@@ -53,3 +53,23 @@ describe('Fastboot against a simulated U-Boot', () => {
     await expect(fb.oemRun('x'.repeat(60))).rejects.toThrow(/too long/);
   });
 });
+
+describe('Fastboot reboot', () => {
+  it('a disconnect right after "reboot" is not an error (U-Boot resets at once)', async () => {
+    const u = new FakeUboot();
+    u.inPacket = async () => { throw new DOMException('The device was disconnected.', 'NetworkError'); };
+    const fb = new Fastboot(u);
+    const lines: string[] = [];
+    fb.log = (l) => lines.push(l);
+    await expect(fb.reboot()).resolves.toBeUndefined();
+    expect(u.commands.at(-1)).toBe('reboot');
+    expect(u.closed).toBe(true);
+    expect(lines[0]).toMatch(/restarting/);
+  });
+
+  it('but a failure to send it still is', async () => {
+    const u = new FakeUboot();
+    u.out = async () => { throw new Error('USB write failed'); };
+    await expect(new Fastboot(u).reboot()).rejects.toThrow(/write failed/);
+  });
+});
