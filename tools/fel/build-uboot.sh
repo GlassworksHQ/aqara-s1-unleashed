@@ -17,6 +17,17 @@ cp "$HERE/uboot/aqara-s1-plus_defconfig" "$UBOOT_SRC/configs/"
 cp "$HERE/uboot/sun50i-a133-aqara-s1-plus.dts" "$UBOOT_SRC/dts/upstream/src/arm64/allwinner/"
 cp "$BL31" "$UBOOT_SRC/bl31-s1.bin"
 
+# Board-specific fixes to mainline (see docs/fel.md). Applied once; skipped if already present.
+for p in "$HERE"/uboot/patches/*.patch; do
+  [ -e "$p" ] || continue
+  if git -C "$UBOOT_SRC" apply --reverse --check "$p" 2>/dev/null; then
+    echo "already applied: $(basename "$p")"
+  else
+    git -C "$UBOOT_SRC" apply "$p"
+    echo "applied: $(basename "$p")"
+  fi
+done
+
 docker run --rm --platform linux/arm64 -v "$UBOOT_SRC":/src -w /src arm64v8/ubuntu:22.04 bash -euc '
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq >/dev/null

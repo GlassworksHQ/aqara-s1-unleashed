@@ -1,0 +1,87 @@
+diff --git a/arch/arm/include/asm/arch-sunxi/dram_sun50i_a133.h b/arch/arm/include/asm/arch-sunxi/dram_sun50i_a133.h
+index 01f2214c..fd4f91eb 100644
+--- a/arch/arm/include/asm/arch-sunxi/dram_sun50i_a133.h
++++ b/arch/arm/include/asm/arch-sunxi/dram_sun50i_a133.h
+@@ -136,6 +136,7 @@ check_member(sunxi_mctl_ctl_reg, unk_0x4240, 0x4240);
+ /* ADDRMAP constants */
+ #define ADDRMAP_DISABLED_3F_B(b)	(0x3f + b)
+ #define ADDRMAP_DISABLED_1F_B(b)	(0x1f + b)
++#define ADDRMAP_DISABLED_3F_B(b)	(0x3f + b)
+ #define ADDRMAP_DISABLED_0F_B(b)	(0x0f + b)
+ 
+ #define _ADDRMAP_VALUE(a,x,b)		(((a) - b) << (x * 8))
+diff --git a/arch/arm/mach-sunxi/dram_sun50i_a133.c b/arch/arm/mach-sunxi/dram_sun50i_a133.c
+index ca3e2513..c5bfd108 100644
+--- a/arch/arm/mach-sunxi/dram_sun50i_a133.c
++++ b/arch/arm/mach-sunxi/dram_sun50i_a133.c
+@@ -224,7 +224,7 @@ static void mctl_set_addrmap(const struct dram_config *config)
+ 		break;
+ 	case 1:
+ 		writel_relaxed(ADDRMAP8_BG0_B2(hif_offset) |
+-			       ADDRMAP8_BG1_B3(ADDRMAP_DISABLED_1F_B(3)),
++			       ADDRMAP8_BG1_B3(ADDRMAP_DISABLED_3F_B(3)),
+ 			&mctl_ctl->addrmap[8]);
+ 		break;
+ 	case 2:
+@@ -274,7 +274,7 @@ static void mctl_set_addrmap(const struct dram_config *config)
+ 	else
+ 		writel_relaxed(ADDRMAP1_BANK0_B2(hif_offset) |
+ 			       ADDRMAP1_BANK1_B3(hif_offset + 1) |
+-			       ADDRMAP1_BANK2_B4(ADDRMAP_DISABLED_1F_B(4)),
++			       ADDRMAP1_BANK2_B4(ADDRMAP_DISABLED_3F_B(4)),
+ 			       &mctl_ctl->addrmap[1]);
+ 
+ 	hif_offset += bank_bits;
+@@ -354,7 +354,7 @@ static void mctl_com_init(const struct dram_para *para,
+ 
+ 	clrsetbits_le32(&mctl_ctl->sched[0], 0xff << 8, 0x30 << 8);
+ 	if (!(para->tpr13 & BIT(28)))
+-		clrsetbits_le32(&mctl_ctl->sched[0], 0xf, BIT(0));
++		clrsetbits_le32(&mctl_ctl->sched[0], 0xf, BIT(2) | BIT(0));	/* S1: stock */
+ 
+ 	writel_relaxed(0, &mctl_ctl->hwlpctl);
+ 
+@@ -378,7 +378,7 @@ static void mctl_com_init(const struct dram_para *para,
+ 		break;
+ 	case SUNXI_DRAM_TYPE_DDR4:
+ 		mstr_value |= MSTR_DEVICETYPE_DDR4 | MSTR_BURST_LENGTH(8) |
+-			      MSTR_GEARDOWNMODE | MSTR_2TMODE;
++			      MSTR_2TMODE;	/* S1: no geardown, as stock boot0 */
+ 		break;
+ 	case SUNXI_DRAM_TYPE_LPDDR3:
+ 		mstr_value |= MSTR_DEVICETYPE_LPDDR3 | MSTR_BURST_LENGTH(8);
+@@ -754,7 +754,7 @@ static void mctl_dfi_init(const struct dram_para *para)
+ 		mctl_mr_write(MRCTRL0_MR_ADDR(3), 0);		/* MR3 */
+ 		break;
+ 	case SUNXI_DRAM_TYPE_DDR4:
+-		mctl_mr_write(MRCTRL0_MR_ADDR(0), 0x840);
++		mctl_mr_write(MRCTRL0_MR_ADDR(0), 0x520);	/* S1: stock MR0 */
+ 		mctl_mr_write(MRCTRL0_MR_ADDR(1), 0x601);
+ 		mctl_mr_write(MRCTRL0_MR_ADDR(2), 0x8);
+ 		mctl_mr_write(MRCTRL0_MR_ADDR(3), 0);
+diff --git a/arch/arm/mach-sunxi/dram_timings/a133_ddr4.c b/arch/arm/mach-sunxi/dram_timings/a133_ddr4.c
+index dec208e2..2d78fec8 100644
+--- a/arch/arm/mach-sunxi/dram_timings/a133_ddr4.c
++++ b/arch/arm/mach-sunxi/dram_timings/a133_ddr4.c
+@@ -51,7 +51,7 @@ void mctl_set_timing_params(const struct dram_para *para)
+ 	       &mctl_ctl->dramtmg[4]);
+ 	writel(tcke | tckesr << 8 | tcksre << 16 | tcksrx << 24,
+ 	       &mctl_ctl->dramtmg[5]);
+-	writel((txp + 2) | 0x20 << 16 | 0x20 << 24,
++	writel((txp + 2) | 0x2 << 16 | 0x2 << 24,	/* S1: stock 0x02020005 */
+ 	       &mctl_ctl->dramtmg[6]);
+ 	writel(txs_x32 | 0x10 << 8 | txs_abort_x32 << 16 | txs_abort_x32 << 24,
+ 	       &mctl_ctl->dramtmg[8]);
+@@ -67,10 +67,10 @@ void mctl_set_timing_params(const struct dram_para *para)
+ 	clrsetbits_le32(&mctl_ctl->init[2], 0xff0f, 0xd05);
+ 	writel(0, &mctl_ctl->dfimisc);
+ 
+-	writel(0x840 << 16 | 0x601, &mctl_ctl->init[3]);	/* MR0 / MR1 */
++	writel(0x520 << 16 | 0x601, &mctl_ctl->init[3]);	/* S1: stock MR0 */	/* MR0 / MR1 */
+ 	writel(0x8 << 16 | 0x0, &mctl_ctl->init[4]);		/* MR2 / MR3 */
+ 	writel(0x0 << 16 | 0x400, &mctl_ctl->init[6]);		/* MR4 / MR5 */
+-	writel(0x826, &mctl_ctl->init[7]);			/* MR6 */
++	writel(0x862, &mctl_ctl->init[7]);			/* MR6, was 0x826 typo */			/* MR6 */
+ 
+ 	clrsetbits_le32(&mctl_ctl->rankctl, 0xff0, 0x660);
+ 	writel((dfi_tphy_wrlat - 1) | 0x2000000 | (dfi_trddata_en - 1) << 16 |

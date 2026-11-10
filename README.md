@@ -47,6 +47,11 @@ FEL is the Allwinner mask-ROM USB recovery mode. It lives in silicon and **canno
 
 The external case button and the Aqara app pairing button do **not** trigger FEL.
 
+## FEL U-Boot
+
+Mainline U-Boot now boots from FEL (USB, RAM only) to a prompt with full eMMC access, after
+fixing the mainline A133 DDR4 controller setup. See [docs/fel.md](docs/fel.md).
+
 ## DRAM parameters (needed to build a working FEL U-Boot)
 
 The generic mainline A133 configs don't match this board; these are the real values read from BOOT0:
@@ -82,7 +87,7 @@ docs/
 app/             S1 Kiosk: MIT GeckoView kiosk app (sh.edm.s1kiosk)
 tools/
   install.sh           One-shot panel setup over ADB (and --undo)
-  fel/                 U-Boot board config + RAM-only FEL test for the S1 Plus
+  fel/                 U-Boot board config, DRAM fix patch, FEL boot scripts (docs/fel.md)
   bracket/             Wall-base emulator (proves the UART protocol against Aqara's bracket_cli)
   radio/               Radio root helper (script + init .rc, not in any image yet), otbr-agent build
   voice/               Fetch + push the openWakeWord models

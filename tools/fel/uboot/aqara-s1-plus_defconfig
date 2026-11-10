@@ -40,3 +40,5 @@ CONFIG_SUPPORT_EMMC_BOOT=y
 # Never autoboot from this U-Boot: it exists for recovery/provisioning.
 CONFIG_BOOTDELAY=-1
 # CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
+CONFIG_SPL_SHOW_ERRORS=y
+CONFIG_SYS_CLK_FREQ=408000000
