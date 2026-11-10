@@ -98,9 +98,8 @@ The installer runs entirely in your browser and uploads nothing. It walks you th
 The full walkthrough, per-OS setup and troubleshooting are in **[docs/install.md](docs/install.md)**.
 
 > [!NOTE]
-> **The web installer is new.** It has been tested end to end on simulated hardware using the
-> panel's real partitions, and it is now being tested on real panels. The command-line installer
-> below has already run on a real panel. If anything looks wrong, stop and
+> **The web installer is new.** It has been tested end to end on a real S1 Plus (firmware 4.5.80),
+> from FEL mode through the backup, the install and the app setup. If anything looks wrong, stop and
 > [open an issue](https://github.com/aguilaair/aqara-s1-unleashed/issues). Your backup is safe.
 
 ### The command line
@@ -162,7 +161,7 @@ an EFR32 802.15.4 radio, a VI5300 time-of-flight sensor and an ambient light sen
 | Aqara cloud and bloat disabled (reversible) | ✅ Works |
 | Glass Tile boot splash and animation | ✅ Works |
 | Command-line installer and undo | ✅ Works · used on a factory-fresh panel (firmware 4.5.80) |
-| **Web installer** | 🆕 **New.** Tested on simulated hardware with the panel's real partitions; now being tested on real panels |
+| **Web installer** | ✅ Tested end to end on a real panel (firmware 4.5.80) |
 | Radio: Zigbee coordinator for ZHA (over the network) | ✅ Works on the reference panel · ZHA only |
 | Radio: **Thread border router** | 🧪 **Experimental** |
 | Radio: **Zigbee router, Thread router** | 🔜 **Coming soon** |
