@@ -228,7 +228,8 @@ The files the installer at https://s1.edm.sh serves and writes to the panel. Pin
 - Licence: BSD-3-Clause. Copyright (c) Arm Limited and Contributors. https://www.trustedfirmware.org/projects/tf-a/
 - Version: `v2.15.0` debug build for `sun50i_a133`, from upstream commit
   `a413e1d7d38ed42dcdffc690d52a0cceb142a0e7` (https://github.com/ARM-software/arm-trusted-firmware),
-  with local debugging changes that are not in this repository. The installer never runs it.
+  with local debugging changes, kept as a patch in [`tools/fel/tfa/`](tools/fel/tfa/). The installer never
+  runs it.
 
 ### `otbr-agent`, `ot-ctl`
 
