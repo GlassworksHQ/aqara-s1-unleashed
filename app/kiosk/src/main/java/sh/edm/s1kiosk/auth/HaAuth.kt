@@ -31,6 +31,21 @@ object HaAuth {
     private val listeners = CopyOnWriteArrayList<(Boolean) -> Unit>()
     private var server: SignInServer? = null
 
+    /**
+     * "Join Home Assistant's Thread network" (ThreadJoin): the panel's own token first, else a one-off
+     * administrator sign-in through the sign-in server's `/thread`. The service sets [ThreadJoin.deliver].
+     */
+    val threadJoin: ThreadJoin = ThreadJoin(
+        client = HaThreadClient { url -> WsHaSocket.connect(url) },
+        tokens = tokens,
+        haBase = { if (::prefs.isInitialized) prefs.haBase else null },
+        panelToken = { done ->
+            if (!signedIn) done(null)
+            else accessToken(force = false) { a -> done((a as? Access.Ok)?.accessToken) }
+        },
+        exec = exec,
+    )
+
     @Synchronized
     fun init(context: Context) {
         if (!::prefs.isInitialized) prefs = KioskPrefs(context.applicationContext)
@@ -55,7 +70,7 @@ object HaAuth {
     fun startServer(context: Context) {
         init(context)
         if (server != null) return
-        val s = SignInServer(OAuth.SIGNIN_PORT, { prefs.haBase }, tokens, ::onSignedIn)
+        val s = SignInServer(OAuth.SIGNIN_PORT, { prefs.haBase }, tokens, ::onSignedIn, thread = threadJoin)
         try {
             s.start()
             server = s

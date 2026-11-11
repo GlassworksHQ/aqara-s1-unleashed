@@ -35,6 +35,10 @@ internal object AuthLog {
  *    `<HA>/auth/token` with the same client_id, and [onSignedIn] gets the refresh token. The phone
  *    sees "Panel signed in ✓".
  *
+ * `/thread` and `/thread/callback` are the same flow for [ThreadJoin]: an administrator signs in once
+ * so the panel can read HA's Thread dataset; the tokens are revoked right after. `/thread` only works
+ * while the panel shows its QR code ([ThreadJoin.armed]).
+ *
  * Pure JVM (tested in SignInServerTest against a fake HA).
  */
 class SignInServer(
@@ -45,6 +49,8 @@ class SignInServer(
     /** Called with the new credentials (on the connection thread). */
     private val onSignedIn: (StoredAuth, TokenResult.Ok) -> Unit,
     private val states: StateStore = StateStore(),
+    /** "Join Home Assistant's Thread network" (`/thread`), or null to not serve it. */
+    private val thread: ThreadJoin? = null,
 ) {
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
@@ -102,6 +108,8 @@ class SignInServer(
             "/", "" -> index(req)
             "/signin" -> signin(req)
             "/callback" -> callback(req)
+            ThreadJoin.PATH -> threadStart(req)
+            ThreadJoin.CALLBACK -> threadCallback(req)
             "/favicon.ico" -> Response(404, "Not Found", mapOf("Content-Type" to "text/plain"), ByteArray(0))
             else -> page(404, "Not Found", "Not found", "This panel only serves the sign-in pages.")
         }
@@ -139,7 +147,7 @@ class SignInServer(
         q["error"]?.let { err ->
             return page(400, "Bad Request", "Sign-in cancelled", "Home Assistant answered: ${esc(err)}. Scan the code to try again.")
         }
-        val pending = states.consume(q["state"])
+        val pending = states.consume(q["state"], PendingSignIn.PURPOSE_SIGNIN)
             ?: return page(400, "Bad Request", "This sign-in link has expired",
                 "Scan the QR code on the panel again.")
         val code = q["code"]?.takeIf { it.isNotEmpty() }
@@ -167,6 +175,51 @@ class SignInServer(
                     else -> page(502, "Bad Gateway", "Can't sign in",
                         "Home Assistant refused the sign-in (${esc(r.code)}). Scan the code to try again.")
                 }
+            }
+        }
+    }
+
+    private fun threadStart(req: Request): Response {
+        val join = thread ?: return page(404, "Not Found", "Not found", "This panel only serves the sign-in pages.")
+        if (!join.armed()) return page(409, "Conflict", "Not waiting for a sign-in",
+            "Start “Join Home Assistant's Thread network” on the panel first, then scan the code it shows.")
+        val ha = haBase()?.let(OAuth::trimBase) ?: return notFoundHa()
+        val host = OAuth.sanitizeHost(req.headers["host"])
+            ?: return page(400, "Bad Request", "Can't sign in", "Open this page with the panel's address (scan the QR code).")
+        val clientId = OAuth.clientId(host)
+        val redirect = "http://$host${ThreadJoin.CALLBACK}"
+        val state = states.create(clientId, redirect, ha, PendingSignIn.PURPOSE_THREAD)
+        return Response(
+            302, "Found",
+            mapOf("Location" to OAuth.authorizeUrl(ha, clientId, redirect, state), "Cache-Control" to "no-store",
+                "Content-Type" to "text/plain; charset=utf-8"),
+            "Redirecting to Home Assistant".toByteArray(),
+        )
+    }
+
+    private fun threadCallback(req: Request): Response {
+        val join = thread ?: return page(404, "Not Found", "Not found", "This panel only serves the sign-in pages.")
+        val q = req.query
+        q["error"]?.let { err ->
+            return page(400, "Bad Request", "Sign-in cancelled", "Home Assistant answered: ${esc(err)}. Scan the code to try again.")
+        }
+        val pending = states.consume(q["state"], PendingSignIn.PURPOSE_THREAD)
+            ?: return page(400, "Bad Request", "This link has expired", "Scan the QR code on the panel again.")
+        val code = q["code"]?.takeIf { it.isNotEmpty() }
+            ?: return page(400, "Bad Request", "Can't sign in", "Home Assistant didn't send an authorization code. Scan the code to try again.")
+        return when (val r = tokens.exchangeCode(pending.haBase, pending.clientId, code)) {
+            is TokenResult.Ok -> {
+                val rt = r.refreshToken
+                    ?: return page(502, "Bad Gateway", "Can't sign in", "Home Assistant didn't return a refresh token.")
+                val o = join.onGrant(StoredAuth(pending.haBase, pending.clientId, rt), r)
+                page(if (o.ok) 200 else 502, if (o.ok) "OK" else "Bad Gateway", o.title, esc(o.text), ok = o.ok)
+            }
+            is TokenResult.Error -> {
+                AuthLog.w("thread: code exchange failed: ${r.code} (${r.httpStatus})")
+                if (r.isInvalidCode) page(400, "Bad Request", "This link has expired",
+                    "The code from Home Assistant was already used or is too old. Scan the QR code on the panel again.")
+                else page(502, "Bad Gateway", "Can't sign in",
+                    "Home Assistant refused the sign-in (${esc(r.code)}). Scan the code to try again.")
             }
         }
     }

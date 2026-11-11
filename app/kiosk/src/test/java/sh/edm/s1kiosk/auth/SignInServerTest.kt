@@ -27,6 +27,7 @@ class SignInServerTest {
     private lateinit var server: SignInServer
     private var signedIn: Pair<StoredAuth, TokenResult.Ok>? = null
     @Volatile private var haKnown = true
+    private val revoked = Collections.synchronizedList(ArrayList<String>())
 
     @Before
     fun setUp() {
@@ -52,6 +53,11 @@ class SignInServerTest {
             ex.responseHeaders.add("Content-Type", "application/json")
             ex.sendResponseHeaders(status, b.size.toLong())
             ex.responseBody.use { it.write(b) }
+        }
+        ha.createContext("/auth/revoke") { ex ->
+            revoked += OAuth.parseQuery(ex.requestBody.readBytes().toString(Charsets.UTF_8))["token"].orEmpty()
+            ex.sendResponseHeaders(200, -1)
+            ex.close()
         }
         ha.start()
         haBase = "http://127.0.0.1:${ha.address.port}"
@@ -174,5 +180,79 @@ class SignInServerTest {
         JSONObject() // org.json available in tests
         val r = HaTokenClient(UrlConnectionPoster()).exchangeCode(haBase, "http://x/", "nope")
         assertTrue((r as TokenResult.Error).isInvalidCode)
+    }
+
+    // ------------------------------------------------------------------ /thread (ThreadJoin)
+
+    private fun threadServer(delivered: MutableList<ThreadFetch.Ok>): Pair<SignInServer, ThreadJoin> {
+        val tokens = HaTokenClient(UrlConnectionPoster())
+        // The fake HA's websocket accepts the access token the code exchange returns ("AT").
+        val join = ThreadJoin(HaThreadClient { HaThreadClientTest.FakeHa(token = "AT") }, tokens,
+            { haBase }, { done -> done(null) }, { it.run() })
+        join.deliver = { r -> delivered += r; null }
+        val s = SignInServer(0, { "$haBase/" }, tokens, { _, _ -> error("not the panel sign-in") }, thread = join)
+        s.start()
+        return s to join
+    }
+
+    private fun get(s: SignInServer, path: String): Triple<Int, String?, String> {
+        val c = URL("http://127.0.0.1:${s.localPort}$path").openConnection() as HttpURLConnection
+        c.instanceFollowRedirects = false
+        val code = c.responseCode
+        val body = (if (code >= 400) c.errorStream else c.inputStream)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
+        return Triple(code, c.getHeaderField("Location"), body)
+    }
+
+    @Test
+    fun threadJoinFlow() {
+        val delivered = ArrayList<ThreadFetch.Ok>()
+        val (s, join) = threadServer(delivered)
+        try {
+            // Not armed: the panel isn't showing its QR code.
+            assertEquals(409, get(s, ThreadJoin.PATH).first)
+
+            join.arm()
+            val (code, location, _) = get(s, ThreadJoin.PATH)
+            assertEquals(302, code)
+            val q = OAuth.parseQuery(URI(location!!).rawQuery)
+            val panel = "127.0.0.1:${s.localPort}"
+            assertEquals("http://$panel/", q["client_id"])
+            assertEquals("http://$panel/thread/callback", q["redirect_uri"])
+            val state = q["state"]!!
+
+            // A /thread state is no good at the panel's own /callback (and stays usable).
+            assertEquals(400, get(s, "/callback?code=x&state=${OAuth.enc(state)}").first)
+
+            codes["adm1n"] = q["client_id"]!!
+            val (cb, _, body) = get(s, "${ThreadJoin.CALLBACK}?code=adm1n&state=${OAuth.enc(state)}")
+            assertEquals(200, cb)
+            assertTrue(body, body.contains("Joining ha-thread-1234"))
+            assertEquals("0e080000000000010000000300000f", delivered.single().tlv)
+            assertTrue("the page never shows the dataset or tokens", !body.contains(delivered.single().tlv) && !body.contains("RT"))
+            assertEquals("the one-off sign-in is revoked", listOf("RT"), revoked.toList())
+            assertTrue(join.state is ThreadJoin.State.Joined)
+
+            // Used once.
+            assertEquals(400, get(s, "${ThreadJoin.CALLBACK}?code=adm1n&state=${OAuth.enc(state)}").first)
+        } finally {
+            s.stop()
+        }
+    }
+
+    @Test
+    fun signinStateIsNoGoodForThread() {
+        val (s, join) = threadServer(ArrayList())
+        try {
+            val (_, location, _) = get(s, "/signin")
+            val state = OAuth.parseQuery(URI(location!!).rawQuery)["state"]!!
+            join.arm()
+            assertEquals(400, get(s, "${ThreadJoin.CALLBACK}?code=x&state=${OAuth.enc(state)}").first)
+            assertEquals(400, get(s, "${ThreadJoin.CALLBACK}?error=access_denied").first)
+            assertTrue(revoked.isEmpty())
+        } finally {
+            s.stop()
+        }
+        // The panel's server without ThreadJoin doesn't serve /thread at all.
+        assertEquals(404, get(ThreadJoin.PATH).first)
     }
 }

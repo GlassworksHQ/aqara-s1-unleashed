@@ -7,6 +7,16 @@ below as the release notes.
 
 ## [Unreleased]
 
+### Added
+- **The panel joins your Thread network without copying the dataset.** *Join Home Assistant's
+  Thread network* (a button on the panel's device page, an entry under *Radio* in the panel's
+  settings menu, and the setup screen's *Thread router* option) gets your preferred Thread network
+  from Home Assistant and makes the panel a Thread router. Home Assistant only gives a Thread
+  network's settings to administrators, so unless the panel is signed in as one, it shows a QR code:
+  scan it and sign in as an administrator on your phone. The panel uses that sign-in once and
+  deletes it straight away. The *Thread join* sensor says how it went. Pasting the dataset into
+  *Thread dataset* still works.
+
 ## [0.4.3] - 2026-11-11
 
 **Pick the radio's role on the panel with role tiles and QR codes, voice timers you can move or hide, and a new typeface.**
