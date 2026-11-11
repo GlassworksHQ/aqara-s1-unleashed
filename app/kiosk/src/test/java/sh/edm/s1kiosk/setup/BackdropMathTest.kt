@@ -121,4 +121,27 @@ class BackdropMathTest {
     }
 
     private fun ramp(x: Int, len: Int) = 10f + 6f * x / (len - 1)
+
+    @Test
+    fun bandsCoverEveryRowOnceInOrder() {
+        for (n in listOf(1, 2, 3, 4, 7)) {
+            val b = BackdropMath.bands(h, n)
+            assertEquals(n, b.size)
+            assertEquals((0 until h).toList(), b.flatten())
+            assertTrue("near-equal: $b", b.maxOf { it.count() } - b.minOf { it.count() } <= 1)
+        }
+        assertEquals(listOf(0 until 1, 1 until 2), BackdropMath.bands(2, 4)) // never more bands than rows
+        assertTrue(BackdropMath.bands(0, 4).isEmpty())
+    }
+
+    @Test
+    fun fallbackStopsFollowTheFalloff() {
+        val s = BackdropMath.FALLBACK_STOPS
+        assertEquals(0f, s.first(), 0f)
+        assertEquals(1f, s.last(), 0f)
+        assertTrue(s.toList().zipWithNext().all { (a, b) -> b > a })
+        // Ends flat: no ring where the glow stops.
+        assertEquals(0f, BackdropMath.falloff(s.last()), 0f)
+        assertTrue(BackdropMath.falloff(s[s.size - 2]) < 0.02f)
+    }
 }

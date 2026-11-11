@@ -34,6 +34,7 @@ import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.dashboard.DashboardOptions
 import sh.edm.s1kiosk.dashboard.Dashboards
 import sh.edm.s1kiosk.discovery.HaUrls
+import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.setup.LoadingOverlay
 import sh.edm.s1kiosk.setup.OfflineText
 import sh.edm.s1kiosk.setup.SetupInputs
@@ -151,6 +152,10 @@ class MainActivity : Activity() {
             }
         }
 
+        // Bake the dithered backdrop now, before the first frame (the overlays fill this landscape,
+        // full-screen window); until it is ready the loading screen draws 8-bit gradients.
+        val real = android.graphics.Point().also { @Suppress("DEPRECATION") windowManager.defaultDisplay.getRealSize(it) }
+        Backdrop.prewarm(maxOf(real.x, real.y), minOf(real.x, real.y))
         geckoView = GeckoView(this)
         loadingOverlay = LoadingOverlay(this)
         voiceOverlay = VoiceOverlay(this).apply { onCancel = { KioskService.voiceCancel?.invoke() } }

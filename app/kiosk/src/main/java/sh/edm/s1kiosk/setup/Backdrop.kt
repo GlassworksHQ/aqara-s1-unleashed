@@ -9,9 +9,13 @@ import android.graphics.PixelFormat
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
-import sh.edm.s1kiosk.ui.Bakery
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
 import sh.edm.s1kiosk.ui.Dither
 import sh.edm.s1kiosk.ui.Soft
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
@@ -52,6 +56,19 @@ object BackdropMath {
         out[0] = r; out[1] = g; out[2] = b
     }
 
+    /**
+     * [h] rows split into at most [n] contiguous bands of near-equal size (the bake's threads), in
+     * order, covering every row once.
+     */
+    fun bands(h: Int, n: Int): List<IntRange> {
+        if (h <= 0) return emptyList()
+        val k = n.coerceIn(1, h)
+        return (0 until k).map { i -> (h * i / k) until (h * (i + 1) / k) }
+    }
+
+    /** Stops for a RadialGradient that follows [falloff] (no ring where a linear ramp would end). */
+    val FALLBACK_STOPS = FloatArray(17) { it / 16f }
+
     /** Row [y] as opaque ARGB ints, dithered. */
     fun row(y: Int, w: Int, h: Int, d: Dither, out: IntArray) {
         val c = FloatArray(3)
@@ -63,10 +80,15 @@ object BackdropMath {
 }
 
 /**
- * The backdrop as a drawable for SetupOverlay, LoadingOverlay and the voice overlay's scrim. The
- * dithered bitmap is baked once per size on a background thread (~4 MB at 1440×720) and shared by
- * every instance; until it is ready (the first frames after start-up) the old gradients are drawn,
- * with dithering on.
+ * The backdrop as a drawable for SetupOverlay, LoadingOverlay, the boot splash and the voice overlay's
+ * scrim. The dithered bitmap is baked once per size (~4 MB at 1440×720) and shared by every instance;
+ * until it is ready the glows are drawn as gradients that follow the same falloff, with dithering on.
+ *
+ * Those gradients are 8-bit and still band a little on this dark base. Before 0.4.2 they were linear
+ * (a visible ring where they end) and the bake ran on the shared background-priority thread, starting
+ * at the first draw: at boot, with the CPU busy, it could take many seconds, which is exactly when the
+ * "No network yet" text is up, so that screen looked choppy and the later ones smooth. Now the bake
+ * starts in onCreate ([prewarm]), runs at normal priority on its own threads, split into bands.
  */
 class Backdrop : Drawable() {
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
@@ -87,11 +109,12 @@ class Backdrop : Drawable() {
         canvas.drawRect(b, fallback)
         fallback.color = Color.BLACK
         fallback.alpha = paint.alpha
+        val stops = BackdropMath.FALLBACK_STOPS
         for (g in BackdropMath.GLOWS) {
-            fallback.shader = RadialGradient(
-                b.left + g.cx * w, b.top + g.cy * h, g.radius * w,
-                Color.argb((g.alpha * 255).toInt(), g.r.toInt(), g.g.toInt(), g.b.toInt()), Color.TRANSPARENT, Shader.TileMode.CLAMP,
-            )
+            val colors = IntArray(stops.size) { i ->
+                Color.argb((g.alpha * BackdropMath.falloff(stops[i]) * 255f).roundToInt(), g.r.toInt(), g.g.toInt(), g.b.toInt())
+            }
+            fallback.shader = RadialGradient(b.left + g.cx * w, b.top + g.cy * h, g.radius * w, colors, stops, Shader.TileMode.CLAMP)
             canvas.drawRect(b, fallback)
         }
     }
@@ -106,36 +129,76 @@ class Backdrop : Drawable() {
     @Deprecated("Deprecated in Java")
     override fun getOpacity() = if (paint.alpha == 255) PixelFormat.OPAQUE else PixelFormat.TRANSLUCENT
 
+    companion object {
+        /**
+         * Starts baking for a [w]×[h] backdrop now (MainActivity / the boot splash, before the first
+         * frame: their overlays fill the full-screen window). Main thread.
+         */
+        fun prewarm(w: Int, h: Int) = Cache.prewarm(w, h)
+    }
+
     /** One shared bitmap for the current size (the panel only ever has one). Main thread. */
     private object Cache {
         private var bitmap: Bitmap? = null
         private var baking: Pair<Int, Int>? = null
         private val waiting = ArrayList<Drawable>()
 
+        private val main = Handler(Looper.getMainLooper())
+
         fun get(w: Int, h: Int, who: Drawable): Bitmap? {
             bitmap?.let { if (it.width == w && it.height == h) return it }
             if (who !in waiting) waiting += who
-            if (baking != w to h) {
-                baking = w to h
-                Bakery.bake("backdrop ${w}x$h", { bake(w, h) }) { bmp ->
-                    if (baking == bmp.width to bmp.height) {
-                        baking = null
-                        bitmap = bmp
-                        waiting.toList().also { waiting.clear() }.forEach { it.invalidateSelf() }
-                    }
-                }
-            }
+            start(w, h)
             return null
         }
 
+        fun prewarm(w: Int, h: Int) {
+            if (w <= 0 || h <= 0) return
+            bitmap?.let { if (it.width == w && it.height == h) return }
+            start(w, h)
+        }
+
+        private fun start(w: Int, h: Int) {
+            if (baking == w to h) return
+            baking = w to h
+            // Its own thread at normal priority (not Bakery's background one, which also bakes the
+            // voice orb): this is on screen at boot.
+            Thread({
+                val t0 = SystemClock.elapsedRealtime()
+                val bmp = try { bake(w, h) } catch (t: Throwable) { Log.w("S1Kiosk", "backdrop bake failed", t); null }
+                if (bmp != null) {
+                    Log.i("S1Kiosk", "baked backdrop ${w}x$h in ${SystemClock.elapsedRealtime() - t0} ms")
+                    main.post { done(bmp) }
+                } else {
+                    main.post { if (baking == w to h) baking = null }
+                }
+            }, "s1-backdrop").apply { isDaemon = true }.start()
+        }
+
+        private fun done(bmp: Bitmap) {
+            if (baking != bmp.width to bmp.height) return
+            baking = null
+            bitmap = bmp
+            waiting.toList().also { waiting.clear() }.forEach { it.invalidateSelf() }
+        }
+
+        /** Bands of rows on up to 4 threads, each with its own dither sequence. */
         private fun bake(w: Int, h: Int): Bitmap {
-            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            val row = IntArray(w)
-            val d = Dither()
-            for (y in 0 until h) {
-                BackdropMath.row(y, w, h, d, row)
-                bmp.setPixels(row, 0, w, 0, y, w, 1)
+            val px = IntArray(w * h)
+            val bands = BackdropMath.bands(h, Runtime.getRuntime().availableProcessors().coerceIn(1, 4))
+            val workers = bands.mapIndexed { i, rows ->
+                Thread({
+                    val row = IntArray(w)
+                    val d = Dither(0x2545F491 + i * 0x9E3779B9.toInt())
+                    for (y in rows) {
+                        BackdropMath.row(y, w, h, d, row)
+                        System.arraycopy(row, 0, px, y * w, w)
+                    }
+                }, "s1-backdrop-$i").apply { isDaemon = true; start() }
             }
+            workers.forEach { it.join() }
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            bmp.setPixels(px, 0, w, 0, 0, w, h)
             bmp.setHasAlpha(false) // opaque: the GPU can skip blending
             return bmp
         }
