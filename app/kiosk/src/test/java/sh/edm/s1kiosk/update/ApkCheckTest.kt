@@ -41,6 +41,18 @@ class ApkCheckTest {
 
     private fun ApkFacts.copyNoSigners() = ApkFacts(packageName, versionName, versionCode, emptyList())
 
+    @Test fun signersFallBackToLegacySignatures() {
+        // Android 9/10: a downloaded APK's signingInfo is null, only the legacy `signatures` are set.
+        // Before 0.4.1 this read as "the APK is not signed" and HA updates always failed.
+        val fromLegacy = ApkCheck.pickSigners(null, listOf(releaseKey))
+        assertEquals(1, fromLegacy.size)
+        assertNull(ApkCheck.refusal(archive(signers = fromLegacy), installed, v130))
+        assertEquals(1, ApkCheck.pickSigners(emptyList(), listOf(releaseKey)).size)
+        // signingInfo wins when it has certificates (it follows key rotation).
+        assertTrue(ApkCheck.pickSigners(listOf(debugKey), listOf(releaseKey)).single().contentEquals(debugKey))
+        assertTrue(ApkCheck.pickSigners(null, null).isEmpty())
+    }
+
     @Test fun rootServiceStatus() {
         assertNull(UpdateHelper.parseStatus(null))
         assertNull(UpdateHelper.parseStatus(""))

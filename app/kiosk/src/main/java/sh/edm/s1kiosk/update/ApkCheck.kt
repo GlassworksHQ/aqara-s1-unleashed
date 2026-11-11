@@ -43,6 +43,13 @@ object ApkCheck {
         return null
     }
 
+    /**
+     * The signer certificates PackageManager reported: `signingInfo` when it has any, else the legacy
+     * `signatures`. Android 9/10 leave `signingInfo` null for a downloaded (not installed) APK.
+     */
+    fun pickSigners(signingInfo: List<ByteArray>?, legacy: List<ByteArray>?): List<ByteArray> =
+        signingInfo?.takeIf { it.isNotEmpty() } ?: legacy.orEmpty()
+
     /** SHA-256 fingerprints of DER certificates, as a set (signer order doesn't matter). */
     fun fingerprints(certs: List<ByteArray>): Set<String> =
         certs.map { Releases.hex(MessageDigest.getInstance("SHA-256").digest(it)) }.toSet()

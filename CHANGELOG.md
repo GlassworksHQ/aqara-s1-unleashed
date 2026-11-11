@@ -7,6 +7,20 @@ below as the release notes.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-10
+
+**Updates from Home Assistant install again: earlier versions always said "the APK is not signed".**
+
+### Fixed
+- Installing an update from Home Assistant failed with *the APK is not signed*, although the release
+  is signed: on this Android version the app couldn't read a downloaded APK's certificate the way it
+  asked for it. It now reads it the way Android 10 supports.
+
+### Note
+- Panels on 0.4.0 or older can't install this update from Home Assistant (the bug is in the version
+  doing the installing). Update once with the web installer (*Already installed? Finish setting it
+  up*) or `adb install -r`; from 0.4.1 on, updates from Home Assistant work.
+
 ## [0.4.0] - 2026-11-10
 
 **Zigbee2MQTT on the panel's radio, and the panel's root side now updates with the app.**
@@ -141,7 +155,8 @@ below as the release notes.
 - Panels running a development build need a one-time reinstall to switch to release builds (Android
   won't update an app across signing keys). That resets the app's settings.
 
-[Unreleased]: https://github.com/aguilaair/aqara-s1-unleashed/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/aguilaair/aqara-s1-unleashed/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.1
 [0.4.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.0
 [0.3.1]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.1
 [0.3.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.0

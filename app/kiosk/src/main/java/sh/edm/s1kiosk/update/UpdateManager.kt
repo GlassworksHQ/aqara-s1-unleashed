@@ -323,7 +323,14 @@ class UpdateManager(
     @Suppress("DEPRECATION")
     private fun apkRefusal(apk: File, expected: AppVersion): String? {
         val pm = ctx.packageManager
-        val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+        // Both flags: on Android 9/10, getPackageArchiveInfo with only GET_SIGNING_CERTIFICATES leaves
+        // signingInfo null for a downloaded (not installed) APK, so a signed release looked unsigned
+        // (found on the panel with 0.4.0). GET_SIGNATURES still fills `signatures` there.
+        val flags = if (Build.VERSION.SDK_INT >= 28) {
+            PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
+        } else {
+            PackageManager.GET_SIGNATURES
+        }
         val archive = pm.getPackageArchiveInfo(apk.path, flags)?.let(::facts)
         val installed = facts(pm.getPackageInfo(ctx.packageName, flags))
         return ApkCheck.refusal(archive, installed, expected)
@@ -331,11 +338,11 @@ class UpdateManager(
 
     @Suppress("DEPRECATION")
     private fun facts(p: PackageInfo): ApkFacts {
-        val signers = if (Build.VERSION.SDK_INT >= 28) {
-            p.signingInfo?.apkContentsSigners?.map { it.toByteArray() }.orEmpty()
-        } else {
-            p.signatures?.map { it.toByteArray() }.orEmpty()
-        }
+        val modern = if (Build.VERSION.SDK_INT >= 28) p.signingInfo?.apkContentsSigners else null
+        val signers = ApkCheck.pickSigners(
+            modern?.map { it.toByteArray() },
+            p.signatures?.map { it.toByteArray() },
+        )
         val code = if (Build.VERSION.SDK_INT >= 28) p.longVersionCode else p.versionCode.toLong()
         return ApkFacts(p.packageName.orEmpty(), p.versionName, code, signers)
     }
