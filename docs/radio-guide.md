@@ -38,13 +38,17 @@ on this radio (Home Assistant dropped that kind of sharing too).
 
 The kiosk settings menu (tap the top-left corner five times) has a **Radio** section:
 
-- the same modes as **Radio mode**; switching asks first, because it restarts the radio;
-- what to do next for the mode that is on, with a QR code your phone can scan to open the right page
-  in Home Assistant (shown once the panel knows Home Assistant's address), and the mode's own buttons:
-  **Zigbee stack**, **Join / Leave Zigbee network**, **Leave Thread network**;
+- the same roles as **Radio mode**, as a row of tiles: Zigbee roles in blue, Thread roles in violet,
+  the one that is on with a green dot (amber while it starts, red if it failed), β for experimental.
+  Tap another tile to see what it does, then *Turn on*; switching asks first, because it restarts the
+  radio;
+- under the tiles, what to do next for the role that is on, with a QR code your phone can scan to open
+  the right page in Home Assistant (shown once the panel knows Home Assistant's address), and the role's
+  own buttons: **Zigbee stack**, **Join / Leave Zigbee network**, **Leave Thread network**. Leaving a
+  network asks first. *How does this work?* has the longer explanation;
 - who may connect ([below](#who-may-connect)).
 
-The setup screen's radio step shows the same instructions and QR codes after you apply a mode. The
+The setup screen's radio step shows a short version, with the same QR codes, after you apply a mode. The
 buttons do exactly what the Home Assistant controls of the same name do. In Home Assistant they only
 work over the panel's encrypted connection; on the panel, being there is what allows them, as for the
 "who may connect" field.

@@ -7,9 +7,9 @@ import sh.edm.s1kiosk.radio.ZigbeeStack
 
 /**
  * The follow-up card for the radio's active mode: what to do next in Home Assistant (or Zigbee2MQTT),
- * with a QR code where a phone helps, and the role's own buttons. One definition, shown in two places
- * ([Place]): the setup screen's radio step after Apply, and the kiosk settings menu's Radio section.
- * Pure (RadioFollowUpTest); RadioFollowUpView draws it.
+ * with a QR code where a phone helps, and the role's own buttons. One definition, two versions ([Place]):
+ * the setup screen's radio step after Apply (short, RadioFollowUpView) and the kiosk settings menu's
+ * Radio section (role tiles + panel, settings/RadioSectionView). Pure (RadioFollowUpTest).
  *
  * Every button runs the same RadioController call as the Home Assistant entity it mirrors (`Radio mode`,
  * `Zigbee stack`, `Join/Leave Zigbee network`, `Leave Thread network`, `Thread dataset`). On the panel,
@@ -47,8 +47,66 @@ object RadioFollowUp {
         data class Mode(val mode: RadioMode) : Request()
     }
 
-    /** A confirmation shown inline before [request] runs. */
-    data class Ask(val request: Request, val text: String, val button: String)
+    /**
+     * A confirmation shown before [request] runs (the settings menu's centred dialog): [title], the
+     * consequence in plain words ([body]), and the button: white "Switch", or red ([destructive]) "Leave".
+     * [from] -> [to]: the roles a mode switch goes between (the dialog's icons), else null.
+     */
+    data class Ask(
+        val request: Request,
+        val title: String,
+        val body: String,
+        val button: String,
+        val destructive: Boolean = false,
+        val from: RadioMode? = null,
+        val to: RadioMode? = null,
+    ) {
+        val text: String get() = "$title $body"
+    }
+
+    /** How the active role is doing, for the panel's status pill and the tile's dot. */
+    enum class Health(val label: String) {
+        OFF("Off"), RUNNING("Running"), JOINED("Joined"), WAITING("Waiting"), STARTING("Starting"), ERROR("Error")
+    }
+
+    /** [Health] from RadioController's status (and the Thread router's parsed state). */
+    fun health(f: Facts): Health {
+        val s = f.status.trim()
+        return when {
+            f.mode == RadioMode.OFF -> if (s.startsWith("error")) Health.ERROR else Health.OFF
+            s.startsWith("error") || s.contains("needs the root helper") -> Health.ERROR
+            !s.startsWith("ok ") -> Health.STARTING // "applying …", "helper: …", "… applying…", no status yet
+            f.mode == RadioMode.THREAD_ROUTER -> when {
+                f.thread?.joined == true -> Health.JOINED
+                else -> Health.WAITING
+            }
+            f.mode == RadioMode.ZIGBEE_ROUTER -> when {
+                statusDetail(f).startsWith("in a network") -> Health.JOINED
+                statusDetail(f).startsWith("router host error") -> Health.ERROR
+                else -> Health.WAITING
+            }
+            else -> Health.RUNNING
+        }
+    }
+
+    /** What a role does, for the tile preview (before it is turned on). */
+    fun pitch(m: RadioMode): String = when (m) {
+        RadioMode.OFF -> "Stops the radio. Nothing is sent or received."
+        RadioMode.ZIGBEE_TCP -> "Your Zigbee devices connect to the panel. For ZHA, or Zigbee2MQTT (experimental)."
+        RadioMode.ZIGBEE_ROUTER -> "Joins the Zigbee network you already have and extends its range. You'll open joining in ZHA and press Join."
+        RadioMode.THREAD -> "Starts a Thread network for Matter devices, through Home Assistant's OpenThread Border Router integration."
+        RadioMode.THREAD_ROUTER -> "Joins the Thread network you already have and extends its range. You'll copy the network's dataset from Home Assistant."
+    }
+
+    /** A refused mode switch (RadioController's status) in plain words. */
+    fun refusedText(status: String): String = when {
+        status.contains("needs the root helper v") ->
+            "The panel's boot software is too old for this role. Update it once with the web installer; your settings stay."
+        status.contains("needs the root helper") ->
+            "The panel has no root helper, so only Off works. Install the panel's software with the web installer first."
+        status.contains("firmware update is running") -> "A radio firmware update is running. Try again when it's done."
+        else -> status
+    }
 
     data class Kv(val label: String, val value: String, val big: Boolean = false)
     data class Qr(val url: String, val caption: String)
@@ -69,6 +127,13 @@ object RadioFollowUp {
         val actions: List<Action> = emptyList(),
         /** A faint extra line under the card. */
         val note: String? = null,
+        /** Settings: a large line instead of the title (the joined Thread network's name), and its second line. */
+        val headline: String? = null,
+        val subline: String? = null,
+        /** Settings: a small neutral pill (the dataset state). */
+        val badge: String? = null,
+        /** Settings: the longer explanation behind "How does this work?". */
+        val more: List<String> = emptyList(),
     )
 
     const val DATASET_DISCLOSURE = "Advanced: paste a dataset on the panel"
@@ -102,84 +167,103 @@ object RadioFollowUp {
     fun card(f: Facts, place: Place): Card {
         if (place == Place.SETUP) return setupCard(f)
         val leave = if (showThreadLeave(f)) listOf(Action.THREAD_LEAVE) else emptyList()
+        val allowHint = "Only Home Assistant may connect to the radio, unless you add other addresses under Who may connect."
         return when (f.mode) {
             RadioMode.OFF -> Card(
-                f.mode, "The radio is off",
-                listOf(
-                    "Zigbee coordinator: the Zigbee radio for ZHA or Zigbee2MQTT. Your Zigbee devices pair to the panel.",
-                    "Thread border router: runs a Thread network for Matter devices, through Home Assistant's OpenThread Border Router integration.",
-                    "Zigbee router (repeater), Thread router (repeater): the panel joins a Zigbee or Thread network you already have and extends it.",
-                ),
+                f.mode, "The radio is off", listOf("Want to turn it on? Tap a role above."),
                 actions = leave,
                 note = if (leave.isNotEmpty()) "A Thread network from the Thread router role is still stored on the panel." else null,
             )
             RadioMode.ZIGBEE_TCP -> {
                 val add = RadioStep.zhaAddUrl(f.haBase)
                 val sisdk = f.stack == ZigbeeStack.SISDK && f.helper.v4
-                val lines = mutableListOf(
-                    "In Home Assistant, add Zigbee Home Automation (ZHA): radio type EZSP, and this serial path." +
-                        if (add != null) " Then scan the code to pair Zigbee devices." else "",
-                )
-                val kv = mutableListOf(Kv("Serial path (ZHA)", RadioStep.zhaPath(f.panelIp)))
+                val kv = mutableListOf(Kv("Radio type", "EZSP"), Kv("Serial path", RadioStep.zhaPath(f.panelIp)))
                 var note: String? = null
                 if (sisdk) {
-                    lines += "Or Zigbee2MQTT (experimental): use these settings."
                     kv += Kv("Zigbee2MQTT adapter", "ember")
                     kv += Kv("Zigbee2MQTT port", RadioStep.z2mPort(f.panelIp))
-                    note = "Zigbee2MQTT on a computer other than Home Assistant: add its address to “Who may connect” below."
+                    note = "Zigbee2MQTT on another computer: add its address under Who may connect, below."
                 } else if (!f.helper.v4) {
-                    note = "Zigbee2MQTT needs Silicon Labs' stack, which needs the panel's boot image updated once with the web installer."
+                    note = "Zigbee2MQTT needs Silicon Labs' stack, which needs the panel's boot software updated once with the web installer."
                 }
                 Card(
-                    f.mode, "Add the radio to ZHA", lines, kv,
+                    f.mode, if (add != null) "Add it to ZHA · scan to pair" else "Add it to ZHA", emptyList(), kv,
                     qr = add?.let { Qr(it, "Scan to pair Zigbee devices in ZHA") },
                     stackChoice = f.helper.v4,
                     actions = leave, note = note,
+                    more = listOf(
+                        "In Home Assistant, add Zigbee Home Automation (ZHA): radio type EZSP and this serial path." +
+                            (if (add != null) " The code opens ZHA's Add device page on your phone, to pair devices." else ""),
+                        "Zigbee2MQTT (experimental): choose Silicon Labs as the Zigbee stack, then use adapter ember and the port shown.",
+                        allowHint,
+                    ),
                 )
             }
             RadioMode.ZIGBEE_ROUTER -> {
                 val add = RadioStep.zhaAddUrl(f.haBase)
                 Card(
-                    f.mode, "Join your Zigbee network",
-                    listOf(
-                        "First open joining in ZHA (“Add device”" + (if (add != null) "; the code opens it" else "") + "), then press Join. " +
-                            "The panel shows up in ZHA as a router.",
-                    ),
+                    f.mode, "Open joining in ZHA, then press Join", emptyList(),
                     qr = add?.let { Qr(it, "Scan to open joining in ZHA") },
                     state = statusDetail(f),
                     actions = listOf(Action.ROUTER_JOIN, Action.ROUTER_LEAVE) + leave,
+                    more = listOf(
+                        "The panel joins your Zigbee network as a router and extends its range. Open joining in ZHA " +
+                            "(Add device" + (if (add != null) "; the code opens it" else "") + "), then press Join within that window. " +
+                            "ZHA lists the panel as a router.",
+                        "Leave makes the panel forget the network; remove it from ZHA too.",
+                    ),
                 )
             }
             RadioMode.THREAD -> {
                 val add = RadioStep.otbrAddUrl(f.haBase)
                 Card(
-                    f.mode, "Add the border router to Home Assistant",
-                    listOf(
-                        (if (add != null) "Scan to add “OpenThread Border Router” in Home Assistant" else "In Home Assistant, add “OpenThread Border Router”") +
-                            ", using this URL:",
-                    ),
+                    f.mode, if (add != null) "Scan to add OpenThread Border Router" else "Add OpenThread Border Router in Home Assistant",
+                    listOf("Then enter this URL:"),
                     kv = listOf(Kv("URL", RadioStep.otbrUrl(f.panelIp), big = true)),
                     qr = add?.let { Qr(it, "Scan to add OpenThread Border Router") },
                     actions = leave,
-                    note = "The border router runs its own Thread network for Home Assistant. To join a Thread network " +
-                        "you already have as a repeater, choose Thread router (repeater) instead.",
+                    note = "This runs its own Thread network. To join yours as a repeater, choose Thread repeater.",
+                    more = listOf(
+                        "The panel becomes a Thread border router with a Thread network of its own, for Matter devices. " +
+                            "In Home Assistant, add the OpenThread Border Router integration with this URL.",
+                        "To extend a Thread network you already have instead, choose Thread repeater: it joins that network.",
+                        allowHint,
+                    ),
                 )
             }
             RadioMode.THREAD_ROUTER -> {
                 val page = RadioStep.threadPageUrl(f.haBase)
-                Card(
-                    f.mode, "Join your Thread network",
+                val t = f.thread
+                val more = listOf(
+                    "The panel joins your Thread network as a router and extends its range. It needs the network's active " +
+                        "dataset, which Home Assistant shows on its Thread page: Preferred network → ⓘ Network information → " +
+                        "Active dataset TLVs (for admin users, for a network from an OpenThread Border Router it manages).",
+                    "Paste it into the panel's Thread dataset in Home Assistant (the panel's device page → Configuration), " +
+                        "or under Advanced here. $DATASET_KEY",
+                    "It joins as a child first, and becomes a router when the network promotes it, which takes a few minutes.",
+                )
+                if (t?.joined == true) Card(
+                    f.mode, "", emptyList(),
+                    headline = t.network ?: "Thread network",
+                    subline = when (t.role) {
+                        "child" -> "Child · becomes a router when the network promotes it (a few minutes)"
+                        "leader" -> "Leader · relaying for your Thread devices"
+                        else -> "Router · relaying for your Thread devices"
+                    },
+                    badge = "Dataset set",
+                    datasetField = true, actions = leave, more = more,
+                ) else Card(
+                    f.mode, "Copy the dataset from Home Assistant",
                     listOf(
-                        "1. Open Home Assistant's Thread page" + (if (page != null) " (scan the code)" else "") +
-                            ". Under Preferred network, open ⓘ Network information and copy “Active dataset TLVs”.",
-                        "2. Paste it into this panel's Thread dataset in Home Assistant: the panel's device page → Configuration.",
-                        DATASET_KEY,
+                        "1  Open the Thread page" + (if (page != null) " (scan the code)" else " in Home Assistant"),
+                        "2  Preferred network → ⓘ Network information → copy “Active dataset TLVs”",
+                        "3  Paste it into the panel's Thread dataset in Home Assistant (device page → Configuration)",
                     ),
                     qr = page?.let { Qr(it, "Scan to open Home Assistant's Thread page") },
-                    state = f.thread?.describe() ?: statusDetail(f),
-                    datasetField = true,
-                    actions = leave,
-                    note = "Home Assistant shows the TLVs to admin users, for a network that comes from an OpenThread Border Router it manages.",
+                    state = t?.describe() ?: statusDetail(f),
+                    badge = if (t?.dataset == true) "Dataset set" else "No dataset",
+                    note = DATASET_KEY,
+                    datasetField = true, actions = leave, more = more,
                 )
             }
         }
@@ -243,22 +327,37 @@ object RadioFollowUp {
     fun ask(r: Request, f: Facts?): Ask? = when (r) {
         is Request.Act -> when (r.action) {
             Action.ROUTER_JOIN -> null
-            Action.ROUTER_LEAVE -> Ask(r, "Leave the Zigbee network? The panel forgets this Zigbee network; remove it from ZHA too.", "Leave")
-            Action.THREAD_LEAVE -> Ask(r, "Leave the Thread network? Deletes the stored Thread network and its key from the panel.", "Leave")
+            Action.ROUTER_LEAVE -> Ask(r, "Leave the Zigbee network?", "The panel forgets this Zigbee network; remove it from ZHA too.", "Leave", destructive = true)
+            Action.THREAD_LEAVE -> Ask(r, "Leave the Thread network?", "Deletes the stored Thread network and its key from the panel.", "Leave", destructive = true)
         }
         is Request.Stack -> if (f != null && f.stack == r.stack) null else Ask(
-            r,
-            "Switch the Zigbee stack to ${stackTitle(r.stack)}? " +
-                (if (f?.mode == RadioMode.ZIGBEE_TCP) "This restarts the radio; " else "") +
-                "ZHA or Zigbee2MQTT may need to be set up again for it.",
+            r, "Switch the Zigbee stack to ${stackTitle(r.stack)}?",
+            (if (f?.mode == RadioMode.ZIGBEE_TCP) "The radio restarts. " else "") + "ZHA or Zigbee2MQTT may need to be set up again for it.",
             "Switch",
         )
-        is Request.Mode -> if (f != null && f.mode == r.mode) null else Ask(
-            r,
-            "Switch the radio to ${RadioStep.OPTIONS.firstOrNull { it.mode == r.mode }?.title ?: r.mode.label}? " +
-                "This restarts the radio: whatever uses the current mode loses it.",
-            "Switch",
-        )
+        is Request.Mode -> if (f != null && f.mode == r.mode) null else {
+            val to = RadioStep.OPTIONS.firstOrNull { it.mode == r.mode }?.title ?: r.mode.label
+            Ask(
+                r,
+                if (r.mode == RadioMode.OFF) "Turn the radio off?" else "Switch to $to?",
+                switchConsequence(f?.mode, r.mode),
+                if (r.mode == RadioMode.OFF) "Turn off" else "Switch",
+                from = f?.mode, to = r.mode,
+            )
+        }
+    }
+
+    /** What a mode switch costs, in plain words. */
+    fun switchConsequence(from: RadioMode?, to: RadioMode): String {
+        val lose = when (from) {
+            RadioMode.ZIGBEE_TCP -> "ZHA loses its Zigbee radio and your Zigbee devices stop working until you switch back."
+            RadioMode.ZIGBEE_ROUTER -> "The panel stops repeating for your Zigbee network."
+            RadioMode.THREAD -> "Home Assistant loses this border router, and Thread devices that use it lose their connection."
+            RadioMode.THREAD_ROUTER -> "The panel stops repeating for your Thread network; it keeps the dataset."
+            RadioMode.OFF, null -> null
+        }
+        val start = if (to == RadioMode.OFF) "The radio stops." else if (from == RadioMode.OFF || from == null) "The radio starts." else "The radio restarts."
+        return listOfNotNull(start, lose).joinToString(" ")
     }
 
     /**

@@ -112,58 +112,64 @@ class RadioMockups {
         save(name, o)
     }
 
-    private fun followUpCard(o: KioskSettingsOverlay): View = o.previewFollowUp.parent as View
+    /** The Radio section's top (its label, the tiles). */
+    private fun section(o: KioskSettingsOverlay): View = o.previewRadio.tiles.parent as View
+    private fun panel(o: KioskSettingsOverlay): View = o.previewRadio.panel
+
+    private val waitingThread = facts(
+        RadioMode.THREAD_ROUTER, "ok Thread router (repeater): no dataset yet: waiting for the Thread network's active dataset",
+        stored = true, thread = ThreadRouterState(false, null, null),
+    )
 
     @Test
     fun mockups() {
         assumeTrue("set -Ps1MockupDir=<dir> to write the mock-ups", dir != null)
 
-        shot("01-mode-picker", coordinator, bottom = true) { o -> o.previewPicker.apply { select(RadioMode.THREAD_ROUTER) } }
-        shot("02-follow-up-off", off) { followUpCard(it) }
-        shot("03-follow-up-coordinator-aqara", coordinator) { followUpCard(it) }
-        shot("04-follow-up-coordinator-silicon-labs", coordinatorSilabs) { followUpCard(it) }
-        shot("05-follow-up-zigbee-router", router) { followUpCard(it) }
-        shot("06-follow-up-thread-border-router", border) { followUpCard(it) }
-        shot("07-follow-up-thread-router-advanced-collapsed", threadRouter) { followUpCard(it) }
-        shot("08-follow-up-thread-router-advanced-open", threadRouter, bottom = true) { o ->
-            o.previewFollowUp.previewDatasetOpen(true)
-            followUpCard(o)
+        // The settings menu's Radio section (design B: role tiles + panel)
+        shot("01-off", off) { section(it) }
+        shot("02-choose-role", coordinator) { o -> o.previewRadio.previewSelect(RadioMode.THREAD_ROUTER); section(o) }
+        shot("03-zigbee-coordinator-aqara", coordinator) { section(it) }
+        shot("04-zigbee-coordinator-silicon-labs", coordinatorSilabs, bottom = true) { panel(it) }
+        shot("05-zigbee-router-joined", router) { section(it) }
+        shot("06-thread-border-router", border) { section(it) }
+        shot("07-thread-router-waiting-for-dataset", waitingThread) { section(it) }
+        shot("08-thread-router-advanced-open", waitingThread, bottom = true) { o -> o.previewRadio.previewOpen(dataset = true); panel(o) }
+        shot("09-thread-router-joined", threadRouter) { section(it) }
+        shot("10-how-does-this-work-open", coordinator, bottom = true) { o -> o.previewRadio.previewOpen(more = true); panel(o) }
+        shot("11-confirm-switch", coordinator) { o ->
+            o.previewDialog.show(RadioFollowUp.ask(Request.Mode(RadioMode.THREAD_ROUTER), coordinator)!!) {}
+            section(o)
         }
+        shot("12-confirm-leave-thread", threadRouter) { o ->
+            o.previewDialog.show(RadioFollowUp.ask(Request.Act(Action.THREAD_LEAVE), threadRouter)!!) {}
+            section(o)
+        }
+        shot("13-confirm-zigbee-stack", coordinator) { o ->
+            o.previewDialog.show(RadioFollowUp.ask(Request.Stack(ZigbeeStack.SISDK), coordinator)!!) {}
+            section(o)
+        }
+        shot("14-applying", facts(RadioMode.THREAD_ROUTER, "applying Thread router (repeater): waiting for otbr-agent")) { section(it) }
+        shot("15-refused", coordinator) { o ->
+            o.previewRadio.previewRefused(
+                RadioMode.THREAD_ROUTER,
+                "Thread router (repeater) needs the root helper v2 or newer (installed: v1; update the panel's boot image). Still in Zigbee coordinator (TCP).",
+            )
+            section(o)
+        }
+        shot("16-error", facts(RadioMode.THREAD, "error Thread border router: otbr-agent not installed (/data/s1kiosk/radio or bundle)", stored = false)) { section(it) }
 
-        // Confirmations (inline, under the buttons they belong to)
-        shot("09-confirm-mode-switch", coordinator, bottom = true) { o ->
-            o.previewPicker.apply {
-                select(RadioMode.THREAD_ROUTER)
-                flow.press(Request.Mode(RadioMode.THREAD_ROUTER), coordinator)
-                select(RadioMode.THREAD_ROUTER) // rebinds with the question
-            }
-        }
-        shot("10-confirm-leave-zigbee", router, bottom = true) { o ->
-            o.previewFollowUp.apply { flow.press(Request.Act(Action.ROUTER_LEAVE), router); bind(router) }
-            followUpCard(o)
-        }
-        shot("11-confirm-leave-thread", threadRouter, bottom = true) { o ->
-            o.previewFollowUp.apply { flow.press(Request.Act(Action.THREAD_LEAVE), threadRouter); bind(threadRouter) }
-            followUpCard(o)
-        }
-        shot("12-confirm-zigbee-stack", coordinator, bottom = true) { o ->
-            o.previewFollowUp.apply { flow.press(Request.Stack(ZigbeeStack.SISDK), coordinator); bind(coordinator) }
-            followUpCard(o)
-        }
-
-        // The same card in the setup screen's radio step
-        // 13: what the step shows right after Apply (no dataset yet); 15-18: the other modes and the
+        // 17: what the step shows right after Apply (no dataset yet); 19-22: the other modes and the
         // longest Thread line, to check that nothing in the step card ever clips.
         val child = ThreadRouterState(true, "child", "Example-Net")
         for ((name, f) in listOf(
-            "13-setup-thread-router" to threadRouter.copy(
+            "17-setup-thread-router" to threadRouter.copy(
                 status = "ok Thread router (repeater): no dataset yet", thread = ThreadRouterState(false, null, null),
             ),
-            "14-setup-thread-border-router" to border,
-            "15-setup-coordinator" to coordinator,
-            "16-setup-coordinator-silicon-labs" to coordinatorSilabs,
-            "17-setup-zigbee-router" to router,
-            "18-setup-thread-router-child" to threadRouter.copy(thread = child),
+            "18-setup-thread-border-router" to border,
+            "19-setup-coordinator" to coordinator,
+            "20-setup-coordinator-silicon-labs" to coordinatorSilabs,
+            "21-setup-zigbee-router" to router,
+            "22-setup-thread-router-child" to threadRouter.copy(thread = child),
         )) {
             val a = Robolectric.buildActivity(Activity::class.java).setup().get()
             val s = SetupOverlay(a)
@@ -181,6 +187,20 @@ class RadioMockups {
             idle()
             save(name, s)
         }
+        // The setup step's choice itself: the role icons in their technology's colour
+        val a = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val s = SetupOverlay(a)
+        a.setContentView(s, ViewGroup.LayoutParams(-1, -1))
+        s.render(
+            SetupOverlay.Model(
+                step = SetupStep.RADIO, wifiDone = true, haDone = true, signinDone = false, radioDone = false,
+                wifi = WifiSetupStatus.Snapshot(WifiSetupStatus.State.CONNECTED, "Example-WiFi"),
+                haUrl = ha, haSource = "mdns", panelIp = ip, signedIn = false,
+                radio = SetupOverlay.Radio(current = RadioMode.OFF, facts = off),
+            ),
+        )
+        idle()
+        save("23-setup-choose-role", s)
     }
 
     private companion object {

@@ -607,11 +607,17 @@ also brings a matching host cpcd. No image is shipped; see
   the Thread role. No QR code without Home Assistant's address. The full card (stack choice, Leave
   buttons, notes, the dataset field) is in the settings menu. The setup channel (web installer) offers the same five options; options carry optional
   `experimental` and `repeater` flags.
-- Kiosk settings menu, Radio section (0.4.3): a mode picker (same options and `RadioController.request`
-  path as the select; switching asks first, since it restarts the radio), the same follow-up card for
-  the applied mode (with the Zigbee stack choice in coordinator mode and, in Thread router mode, a
-  write-only `Thread dataset` field behind "Advanced"), then "who may connect". Its buttons call the
-  same RadioController functions as the HA entities; at the panel, being there is the authorization
+- Kiosk settings menu, Radio section (0.4.3, `settings/RadioSectionView`): a row of role tiles (icon in
+  the technology's colour, Zigbee sky blue / Thread violet; the active one tinted with a status dot:
+  green running or joined, amber starting or waiting, rose error; β for experimental), then a panel with
+  a header strip in the role's colour and a status pill (`RadioFollowUp.health`): Off as an empty state
+  ("Tap a role above"); a tapped tile previews that role with *Turn on …*; the active role's follow-up
+  card (QR code, settings, Zigbee stack choice, Join/Leave, the Thread role and dataset state, a
+  write-only `Thread dataset` field behind "Advanced", the long text behind "How does this work?");
+  *Starting …* while a role starts; a refused switch in plain words with the role that is still
+  running. Switching roles, the stack change and Leave ask first in a centred dialog (`RadioDialog`:
+  neutral surface, white *Switch*, red *Leave*). Then "who may connect". Every request goes through the
+  same `RadioController` functions as the HA entities; at the panel, being there is the authorization
   (as for the allow-list). `Leave Thread network` shows whenever the helper reports a stored Thread
   router network (`sys.s1kiosk.radio.thread_stored` = `yes`, any mode), else in the Thread modes when
   the helper doesn't report it (bundles before 0.4.3).

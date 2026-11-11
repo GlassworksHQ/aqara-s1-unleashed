@@ -171,7 +171,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     }
     private val bigCheck = CheckDot(filled = true).apply { visibility = View.GONE }
     /** The radio step's follow-up card, scrolling when it is taller than the card has room for. */
-    private val followUp = RadioFollowUpView(context, RadioFollowUp.Place.SETUP, ownQr = false)
+    private val followUp = RadioFollowUpView(context)
     // 200 dp: label + title + this + the buttons fit the 480 dp screen's card (RadioMockups 13/14).
     private val followScroll = BoundedScroll(context, px(200f)).apply {
         isVerticalScrollBarEnabled = true
@@ -649,7 +649,12 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     private inner class RadioTile(val option: RadioStep.Option) {
         private val compact = option.repeater
         private val title = text(if (compact) 14f else 15f, TX, MEDIUM).apply { text = option.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
-        private val expTag = label("Experimental").apply { setTextColor(AMBER); visibility = if (option.experimental) View.VISIBLE else View.GONE }
+        // neutral: amber is for the one primary action (the settings menu marks these with a small β)
+        private val expTag = label("Experimental").apply { setTextColor(FA); visibility = if (option.experimental) View.VISIBLE else View.GONE }
+        // The role's icon in its technology's colour (Zigbee sky blue, Thread violet), as in the settings
+        // menu. Never on the title's line, which needs the whole width: on the tag's line in the large
+        // tiles, at the start of the description in the compact ones.
+        private val icon = RoleIcon(context, RoleStyle.glyph(option.mode), RoleStyle.hue(option.mode), if (compact) 14f else 18f)
         private val line = text(if (compact) 12f else 13f, MU, REGULAR).apply {
             text = option.line
             if (compact) { setSingleLine(); ellipsize = TextUtils.TruncateAt.END } else setLineSpacing(0f, 1.2f)
@@ -664,11 +669,21 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
                     addView(title, LinearLayout.LayoutParams(0, -2, 1f))
                     addView(expTag, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(8f) })
                 })
-                addView(line, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(2f) })
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(icon, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(6f) })
+                    addView(line, LinearLayout.LayoutParams(0, -2, 1f))
+                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(2f) })
             } else {
                 setPadding(px(14f), px(12f), px(14f), px(12f))
                 addView(title)
-                addView(expTag, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(2f) })
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(icon, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(8f) })
+                    addView(expTag)
+                }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(4f) })
                 addView(line, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f) })
             }
             isClickable = true

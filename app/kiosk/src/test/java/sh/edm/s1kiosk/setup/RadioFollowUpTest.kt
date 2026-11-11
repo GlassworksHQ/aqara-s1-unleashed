@@ -11,6 +11,7 @@ import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.ThreadRouterState
 import sh.edm.s1kiosk.radio.ZigbeeStack
 import sh.edm.s1kiosk.setup.RadioFollowUp.Action
+import sh.edm.s1kiosk.setup.RadioFollowUp.Health
 import sh.edm.s1kiosk.setup.RadioFollowUp.Place
 import sh.edm.s1kiosk.setup.RadioFollowUp.Request
 
@@ -49,7 +50,8 @@ class RadioFollowUpTest {
     @Test
     fun off() {
         val c = RadioFollowUp.card(facts(RadioMode.OFF), Place.SETTINGS)
-        assertEquals(3, c.lines.size)
+        assertEquals("The radio is off", c.title)
+        assertEquals(listOf("Want to turn it on? Tap a role above."), c.lines)
         assertNull(c.qr)
         assertTrue(c.actions.isEmpty()) // helper doesn't say: Leave Thread only in the Thread modes
         val stored = RadioFollowUp.card(facts(RadioMode.OFF, stored = true), Place.SETTINGS)
@@ -62,17 +64,19 @@ class RadioFollowUpTest {
     fun coordinatorAqara() {
         val c = RadioFollowUp.card(facts(RadioMode.ZIGBEE_TCP), Place.SETTINGS)
         assertEquals("http://homeassistant.local:8123/config/zha/add", c.qr!!.url)
-        assertEquals(listOf("socket://192.0.2.10:6638"), c.kv.map { it.value })
+        assertEquals(listOf("EZSP", "socket://192.0.2.10:6638"), c.kv.map { it.value })
+        assertEquals("Add it to ZHA · scan to pair", c.title)
         assertTrue(c.stackChoice)
         assertNull(c.note)
         assertTrue(c.actions.isEmpty())
+        assertTrue(c.more.any { it.contains("radio type EZSP") }) // the long text: behind "How does this work?"
     }
 
     @Test
     fun coordinatorSiliconLabs() {
         val c = RadioFollowUp.card(facts(RadioMode.ZIGBEE_TCP, stack = ZigbeeStack.SISDK), Place.SETTINGS)
-        assertEquals(listOf("socket://192.0.2.10:6638", "ember", "tcp://192.0.2.10:6638"), c.kv.map { it.value })
-        assertTrue(c.note!!.contains("“Who may connect” below"))
+        assertEquals(listOf("EZSP", "socket://192.0.2.10:6638", "ember", "tcp://192.0.2.10:6638"), c.kv.map { it.value })
+        assertTrue(c.note!!.contains("Who may connect, below"))
         // the setup card: one compact Zigbee2MQTT line, no stack choice, no note
         val setup = RadioFollowUp.card(facts(RadioMode.ZIGBEE_TCP, stack = ZigbeeStack.SISDK), Place.SETUP)
         assertEquals(listOf("socket://192.0.2.10:6638", "ember · tcp://192.0.2.10:6638"), setup.kv.map { it.value })
@@ -81,7 +85,7 @@ class RadioFollowUpTest {
         // helper < v4: no stack choice, no Zigbee2MQTT lines, a hint instead
         val old = RadioFollowUp.card(facts(RadioMode.ZIGBEE_TCP, stack = ZigbeeStack.SISDK, helper = v3), Place.SETTINGS)
         assertFalse(old.stackChoice)
-        assertEquals(1, old.kv.size)
+        assertEquals(2, old.kv.size)
         assertTrue(old.note!!.contains("web installer"))
     }
 
@@ -91,7 +95,8 @@ class RadioFollowUpTest {
         val c = RadioFollowUp.card(f, Place.SETTINGS)
         assertEquals(listOf(Action.ROUTER_JOIN, Action.ROUTER_LEAVE), c.actions)
         assertEquals("in a network on channel 15", c.state)
-        assertTrue(c.lines.single().startsWith("First open joining in ZHA"))
+        assertEquals("Open joining in ZHA, then press Join", c.title)
+        assertTrue(c.more.first().contains("press Join within that window"))
         assertEquals("http://homeassistant.local:8123/config/zha/add", c.qr!!.url)
         // the helper says a Thread network is still stored: Leave Thread too
         assertEquals(listOf(Action.ROUTER_JOIN, Action.ROUTER_LEAVE, Action.THREAD_LEAVE), RadioFollowUp.card(f.copy(threadStored = true), Place.SETTINGS).actions)
@@ -105,8 +110,8 @@ class RadioFollowUpTest {
         val c = RadioFollowUp.card(facts(RadioMode.THREAD), Place.SETTINGS)
         assertEquals("http://homeassistant.local:8123/config/integrations/dashboard/add?domain=otbr", c.qr!!.url)
         assertEquals(RadioFollowUp.Kv("URL", "http://192.0.2.10:8081", big = true), c.kv.single())
-        assertTrue(c.lines.single().startsWith("Scan to add “OpenThread Border Router”"))
-        assertTrue(c.note!!.contains("Thread router (repeater)"))
+        assertEquals("Scan to add OpenThread Border Router", c.title)
+        assertTrue(c.note!!.contains("choose Thread repeater"))
         assertEquals(listOf(Action.THREAD_LEAVE), c.actions) // helper doesn't say: both Thread modes
         assertTrue(RadioFollowUp.card(facts(RadioMode.THREAD, stored = false), Place.SETTINGS).actions.isEmpty())
         assertTrue(RadioFollowUp.card(facts(RadioMode.THREAD, helper = v3), Place.SETTINGS).actions.isEmpty())
@@ -114,15 +119,27 @@ class RadioFollowUpTest {
 
     @Test
     fun threadRouter() {
-        val st = ThreadRouterState(true, "router", "Example-Net")
-        val c = RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = st), Place.SETTINGS)
+        // not joined yet: the QR code to HA's Thread page and the copy steps
+        val waiting = ThreadRouterState(false, null, null)
+        val c = RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = waiting), Place.SETTINGS)
         assertEquals("http://homeassistant.local:8123/config/thread", c.qr!!.url)
-        assertEquals(st.describe(), c.state)
+        assertEquals(waiting.describe(), c.state)
+        assertEquals("No dataset", c.badge)
         assertTrue(c.datasetField)
         assertEquals(listOf(Action.THREAD_LEAVE), c.actions)
-        assertTrue(c.lines.any { it.contains("network key") })
-        assertTrue(c.lines[0].contains("Active dataset TLVs"))
-        assertTrue(c.lines[1].contains("device page → Configuration"))
+        assertTrue(c.note!!.contains("network key"))
+        assertTrue(c.lines[1].contains("Active dataset TLVs"))
+        assertTrue(c.lines[2].contains("device page → Configuration"))
+        assertTrue(c.more.any { it.contains("admin users") })
+        // joined: the network's name large, the role under it, no QR (nothing left to scan)
+        val joined = RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = ThreadRouterState(true, "router", "Example-Net")), Place.SETTINGS)
+        assertEquals("Example-Net", joined.headline)
+        assertTrue(joined.subline!!.startsWith("Router"))
+        assertEquals("Dataset set", joined.badge)
+        assertNull(joined.qr)
+        assertTrue(joined.datasetField)
+        assertTrue(RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = ThreadRouterState(true, "child", null)), Place.SETTINGS)
+            .subline!!.contains("becomes a router"))
         // the setup screen: no dataset field
         assertFalse(RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER), Place.SETUP).datasetField)
         // no Leave with a helper that says nothing is stored, or without v4
@@ -137,7 +154,7 @@ class RadioFollowUpTest {
             val full = RadioFollowUp.card(facts(m, stored = true), Place.SETTINGS)
             val c = RadioFollowUp.card(facts(m, stored = true), Place.SETUP)
             assertTrue(m.name, c.lines.size <= 2)
-            assertTrue(m.name, c.lines.sumOf { it.length } < full.lines.sumOf { it.length })
+            assertTrue(m.name, c.lines.sumOf { it.length } < (full.lines + full.more + listOfNotNull(full.note)).sumOf { it.length })
             assertFalse(m.name, c.stackChoice || c.datasetField)
             assertEquals(m.name, if (m == RadioMode.ZIGBEE_ROUTER) listOf(Action.ROUTER_JOIN) else emptyList<Action>(), c.actions)
             assertEquals(m.name, m == RadioMode.THREAD, c.note != null)
@@ -157,8 +174,8 @@ class RadioFollowUpTest {
         for (m in RadioMode.entries) for (place in Place.entries) {
             val c = RadioFollowUp.card(facts(m, ha = null), place)
             assertNull("$m $place", c.qr)
-            assertTrue("$m $place", c.lines.isNotEmpty())
-            assertFalse("$m $place", c.lines.any { it.contains("scan", ignoreCase = true) })
+            assertTrue("$m $place", c.title.isNotEmpty() || c.lines.isNotEmpty())
+            assertFalse("$m $place", (c.lines + c.title).any { it.contains("scan", ignoreCase = true) })
         }
         assertEquals("http://192.0.2.10:8081", RadioFollowUp.card(facts(RadioMode.THREAD, ha = null), Place.SETTINGS).kv.single().value)
     }
@@ -171,7 +188,18 @@ class RadioFollowUpTest {
         assertNull(RadioFollowUp.ask(Request.Act(Action.ROUTER_JOIN), f))
         assertTrue(RadioFollowUp.ask(Request.Act(Action.ROUTER_LEAVE), f)!!.text.contains("remove it from ZHA too"))
         assertTrue(RadioFollowUp.ask(Request.Act(Action.THREAD_LEAVE), f)!!.text.contains("Deletes the stored Thread network and its key"))
-        assertTrue(RadioFollowUp.ask(Request.Mode(RadioMode.OFF), f)!!.text.contains("restarts the radio"))
+        val off = RadioFollowUp.ask(Request.Mode(RadioMode.OFF), f)!!
+        assertEquals("Turn the radio off?", off.title)
+        assertEquals("The radio stops. The panel stops repeating for your Zigbee network.", off.body)
+        assertFalse(off.destructive)
+        assertTrue(RadioFollowUp.ask(Request.Act(Action.ROUTER_LEAVE), f)!!.destructive) // red Leave
+        assertTrue(RadioFollowUp.ask(Request.Act(Action.THREAD_LEAVE), f)!!.destructive)
+        val sw = RadioFollowUp.ask(Request.Mode(RadioMode.THREAD_ROUTER), facts(RadioMode.ZIGBEE_TCP))!!
+        assertEquals("Switch to Thread router (repeater)?", sw.title)
+        assertTrue(sw.body.startsWith("The radio restarts. ZHA loses its Zigbee radio"))
+        assertEquals("Switch", sw.button)
+        assertEquals(RadioMode.ZIGBEE_TCP, sw.from); assertEquals(RadioMode.THREAD_ROUTER, sw.to)
+        assertEquals("The radio starts.", RadioFollowUp.ask(Request.Mode(RadioMode.THREAD), facts(RadioMode.OFF))!!.body)
         assertNull(RadioFollowUp.ask(Request.Mode(RadioMode.ZIGBEE_ROUTER), f)) // already active
         assertNotNull(RadioFollowUp.ask(Request.Stack(ZigbeeStack.SISDK), facts(RadioMode.ZIGBEE_TCP)))
         assertNull(RadioFollowUp.ask(Request.Stack(ZigbeeStack.AQARA), facts(RadioMode.ZIGBEE_TCP)))
@@ -238,5 +266,34 @@ class RadioFollowUpTest {
         flow.finish("Thread border router needs the root helper")
         assertNull(flow.running)
         assertEquals("Thread border router needs the root helper", flow.result)
+    }
+
+    // ------------------------------------------------------------------ health, preview, refusals
+
+    @Test
+    fun healthFromTheStatus() {
+        assertEquals(Health.OFF, RadioFollowUp.health(facts(RadioMode.OFF, status = "ok Off: Aqara radio services stopped")))
+        assertEquals(Health.RUNNING, RadioFollowUp.health(facts(RadioMode.ZIGBEE_TCP)))
+        assertEquals(Health.STARTING, RadioFollowUp.health(facts(RadioMode.ZIGBEE_TCP, status = "applying Zigbee coordinator (TCP): waiting for zigbeed")))
+        assertEquals(Health.STARTING, RadioFollowUp.health(facts(RadioMode.THREAD, status = "Thread border router: applying…")))
+        assertEquals(Health.ERROR, RadioFollowUp.health(facts(RadioMode.THREAD, status = "error Thread border router: otbr-agent not installed")))
+        assertEquals(Health.ERROR, RadioFollowUp.health(facts(RadioMode.THREAD, status = "Thread border router needs the root helper (…). Still in Off.")))
+        assertEquals(Health.JOINED, RadioFollowUp.health(facts(RadioMode.ZIGBEE_ROUTER, status = "ok Zigbee router (repeater): in a network on channel 15")))
+        assertEquals(Health.WAITING, RadioFollowUp.health(facts(RadioMode.ZIGBEE_ROUTER, status = "ok Zigbee router (repeater): ready to join: open permit-join")))
+        assertEquals(Health.JOINED, RadioFollowUp.health(facts(RadioMode.THREAD_ROUTER, thread = ThreadRouterState(true, "child", "N"))))
+        assertEquals(Health.WAITING, RadioFollowUp.health(facts(RadioMode.THREAD_ROUTER, thread = ThreadRouterState(true, "detached", "N"))))
+        assertEquals(Health.WAITING, RadioFollowUp.health(facts(RadioMode.THREAD_ROUTER, thread = ThreadRouterState(false, null, null))))
+    }
+
+    @Test
+    fun previewAndRefusalTexts() {
+        for (m in RadioMode.entries) assertTrue(m.name, RadioFollowUp.pitch(m).isNotBlank())
+        assertTrue(RadioFollowUp.pitch(RadioMode.THREAD_ROUTER).contains("already have"))
+        assertEquals(
+            "The panel's boot software is too old for this role. Update it once with the web installer; your settings stay.",
+            RadioFollowUp.refusedText("Thread router (repeater) needs the root helper v2 or newer (installed: v1; update the panel's boot image). Still in Off."),
+        )
+        assertTrue(RadioFollowUp.refusedText("Thread border router needs the root helper (init service s1kiosk_radio is not installed; …)").contains("only Off works"))
+        assertEquals("something else", RadioFollowUp.refusedText("something else"))
     }
 }

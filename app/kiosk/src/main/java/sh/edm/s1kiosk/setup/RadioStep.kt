@@ -29,14 +29,14 @@ object RadioStep {
     )
 
     val OPTIONS: List<Option> = listOf(
-        Option(RadioMode.OFF, "Off", "Aqara's radio stack stopped, radio idle. Choose this if unsure."),
+        Option(RadioMode.OFF, "Off", "The radio stays idle. Choose this if unsure."),
         Option(
             RadioMode.ZIGBEE_TCP, "Zigbee coordinator",
-            "The Zigbee radio for ZHA (or Zigbee2MQTT), as a network radio over TCP.",
+            "For ZHA or Zigbee2MQTT, as a network radio.",
         ),
         Option(
             RadioMode.THREAD, "Thread border router",
-            "Runs a Thread network for Home Assistant's OpenThread Border Router integration.",
+            "Runs a Thread network for Home Assistant (OTBR).",
             experimental = true,
         ),
         Option(
