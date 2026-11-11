@@ -11,8 +11,8 @@ import sh.edm.s1kiosk.radio.RadioMode
  *  - Off (default) and Zigbee coordinator (ZHA over TCP): verified end to end with bellows.
  *  - Thread border router, experimental: Home Assistant's OTBR REST API verified, routing between
  *    the LAN and Thread devices not yet tested with a real device.
- *  - Zigbee router and Thread router ([Option.repeater]), experimental: the stacks start and are
- *    ready to join, joining a real network not yet tested. Both need the v2 root helper.
+ *  - Zigbee router (repeater) and Thread router (repeater) ([Option.repeater]), experimental: both
+ *    joined a real home network. Both need the v2 root helper.
  * [COMING_SOON] is empty now; it stays for roles that are shown but not selectable.
  * Skipping the step means Off. Everything can be changed later with the panel's `Radio mode` select
  * in Home Assistant, which is the same RadioController path.
@@ -36,17 +36,17 @@ object RadioStep {
         ),
         Option(
             RadioMode.THREAD, "Thread border router",
-            "For Home Assistant's OpenThread Border Router integration.",
+            "Runs a Thread network for Home Assistant's OpenThread Border Router integration.",
             experimental = true,
         ),
         Option(
-            RadioMode.ZIGBEE_ROUTER, "Zigbee router",
-            "A repeater in your Zigbee network.",
+            RadioMode.ZIGBEE_ROUTER, "Zigbee router (repeater)",
+            "Joins the Zigbee network you already have.",
             experimental = true, repeater = true,
         ),
         Option(
-            RadioMode.THREAD_ROUTER, "Thread router",
-            "A repeater in your Thread network.",
+            RadioMode.THREAD_ROUTER, "Thread router (repeater)",
+            "Joins the Thread network you already have.",
             experimental = true, repeater = true,
         ),
     )
@@ -62,19 +62,38 @@ object RadioStep {
     /** The serial path ZHA (bellows, radio type EZSP) uses for the coordinator mode. */
     fun zhaPath(panelIp: String?): String = sh.edm.s1kiosk.radio.zhaPath(panelIp)
 
+    /** Home Assistant's base URL without trailing slashes; null unless it is http(s). */
+    fun haRoot(haBase: String?): String? =
+        haBase?.trim()?.trimEnd('/')?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+
     /**
      * ZHA's "Add devices" page (permit-join on ZHA's network), for the coordinator step's QR code:
      * once ZHA uses the panel as its radio, a phone scans this to pair devices. Null without HA's address.
      */
-    fun zhaAddUrl(haBase: String?): String? =
-        haBase?.trim()?.trimEnd('/')?.takeIf { it.startsWith("http://") || it.startsWith("https://") }?.let { "$it/config/zha/add" }
+    fun zhaAddUrl(haBase: String?): String? = haRoot(haBase)?.let { "$it/config/zha/add" }
+
+    /**
+     * Home Assistant's "add integration" flow for OpenThread Border Router. Frontend 20261028.5 (HA
+     * 2026.11): ha-config-integrations-dashboard.ts `_handleRouteChanged` handles `/add?domain=…` under
+     * `/config/integrations/dashboard` and starts the integration's config flow. Null without HA's address.
+     */
+    fun otbrAddUrl(haBase: String?): String? = haRoot(haBase)?.let { "$it/config/integrations/dashboard/add?domain=otbr" }
+
+    /** Home Assistant's Thread page (ha-panel-config.ts route `thread`). Null without HA's address. */
+    fun threadPageUrl(haBase: String?): String? = haRoot(haBase)?.let { "$it/config/thread" }
+
+    /** The border router's REST URL, what OTBR's config flow asks for. */
+    fun otbrUrl(panelIp: String?): String = "http://${panelIp ?: "<panel IP>"}:${RadioHelper.OTBR_REST_PORT}"
+
+    /** Zigbee2MQTT's `port` for the coordinator with Silicon Labs' stack (adapter `ember`). */
+    fun z2mPort(panelIp: String?): String = "tcp://${panelIp ?: "<panel IP>"}:${RadioHelper.ZIGBEE_TCP_PORT}"
 
     /** What to do in Home Assistant after a mode was applied (shown under the options), or null. */
     fun nextStep(mode: RadioMode, panelIp: String?): String? = when (mode) {
         RadioMode.ZIGBEE_TCP -> "Then in ZHA: radio type EZSP, serial path ${zhaPath(panelIp)}"
-        RadioMode.THREAD -> "Then add “OpenThread Border Router” in Home Assistant: http://${panelIp ?: "<panel IP>"}:${RadioHelper.OTBR_REST_PORT}"
-        RadioMode.ZIGBEE_ROUTER -> "Then open permit-join in ZHA and press the panel's “Join Zigbee network”."
-        RadioMode.THREAD_ROUTER -> "Then paste the network's active dataset into the panel's “Thread dataset”."
+        RadioMode.THREAD -> "Runs its own Thread network. Then add “OpenThread Border Router” in Home Assistant: ${otbrUrl(panelIp)}"
+        RadioMode.ZIGBEE_ROUTER -> "Then open joining in ZHA and press “Join Zigbee network”."
+        RadioMode.THREAD_ROUTER -> "Joins your Thread network. Then give the panel the network's active dataset."
         RadioMode.OFF -> null
     }
 

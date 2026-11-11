@@ -25,7 +25,9 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import sh.edm.s1kiosk.auth.OAuth
+import sh.edm.s1kiosk.radio.HelperFacts
 import sh.edm.s1kiosk.radio.RadioMode
+import sh.edm.s1kiosk.radio.ZigbeeStack
 
 /**
  * The first-boot setup screen (docs/onboarding.md, step 4): a native, full-screen overlay over the
@@ -68,6 +70,8 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         val applied: RadioStep.Applied? = null,
         /** A request is running on the radio thread. */
         val busy: Boolean = false,
+        /** What the follow-up card is drawn from (RadioController's view); null when the service isn't running. */
+        val facts: RadioFollowUp.Facts? = null,
     )
 
     var onChooseNetwork: (() -> Unit)? = null
@@ -85,6 +89,10 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     var onRadioSkip: (() -> Unit)? = null
     /** Radio step: the applied mode is fine, go on. */
     var onRadioContinue: (() -> Unit)? = null
+    /** Radio step's follow-up card: a role button or the Zigbee stack (same RadioController calls as HA). */
+    var onRadioRun: ((RadioFollowUp.Request, (String?) -> Unit) -> Unit)?
+        get() = followUp.onRun
+        set(v) { followUp.onRun = v }
 
     /** True while visible (including the Done fade-out). */
     var isShowing = false
@@ -162,6 +170,15 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         addView(qrImage, LayoutParams(-1, -1))
     }
     private val bigCheck = CheckDot(filled = true).apply { visibility = View.GONE }
+    /** The radio step's follow-up card, scrolling when it is taller than the card has room for. */
+    private val followUp = RadioFollowUpView(context, RadioFollowUp.Place.SETUP, ownQr = false)
+    // 200 dp: label + title + this + the buttons fit the 480 dp screen's card (RadioMockups 13/14).
+    private val followScroll = BoundedScroll(context, px(200f)).apply {
+        isVerticalScrollBarEnabled = true
+        overScrollMode = View.OVER_SCROLL_NEVER
+        addView(followUp, LayoutParams(-1, -2))
+        visibility = View.GONE
+    }
     private val improvTile = ImprovTile()
     private val radioTiles = RadioStep.OPTIONS.map { RadioTile(it) }
     private val radioRow = LinearLayout(context).apply {
@@ -193,6 +210,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         addView(tiles, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(18f) })
         addView(improvTile.view, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(16f) })
         addView(radioRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(16f) })
+        addView(followScroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14f) })
         addView(urlField, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(18f) })
         addView(status, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
         addView(buttons, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(20f) })
@@ -327,6 +345,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         tileB.view.visibility = View.VISIBLE
         improvTile.view.visibility = View.GONE
         radioRow.visibility = View.GONE
+        followScroll.visibility = View.GONE
         primary.isEnabled = true
         primary.alpha = 1f
         // The URL field is never reset to GONE and back: a view that goes GONE (even for one frame)
@@ -444,8 +463,8 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
             radioSelected = RadioStep.OPTIONS.firstOrNull { it.mode == r.current }?.mode ?: RadioMode.DEFAULT
         }
         val ok = r.applied?.takeIf { it.mode == radioSelected && it.result == RadioStep.Result.OK && !r.busy }
-        if (ok != null && ok.mode == RadioMode.ZIGBEE_TCP && pairingDismissed != ok) {
-            bindZhaPairing(m, ok)
+        if (ok != null && ok.mode != RadioMode.OFF && pairingDismissed != ok) {
+            bindFollowUp(m, ok)
             return
         }
         cardLabel.text = "Step 3 · Radio"
@@ -483,26 +502,29 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     }
 
     /**
-     * Zigbee coordinator applied: how to add it to ZHA (serial path), and a QR code a phone scans to
-     * open ZHA's "Add devices" page (`<HA>/config/zha/add`) once ZHA uses the panel as its radio.
+     * A mode other than Off applied: its follow-up card (setup/RadioFollowUp, the same card as the
+     * settings menu's Radio section): what to do in Home Assistant, the QR code in this screen's tile,
+     * and the role's buttons. "Back" returns to the options for this apply.
      */
-    private fun bindZhaPairing(m: Model, applied: RadioStep.Applied) {
-        cardLabel.text = "Step 3 · Radio · Zigbee coordinator"
-        cardTitle.text = "Add the radio to ZHA"
-        val addUrl = RadioStep.zhaAddUrl(m.haUrl)
-        cardBody.text = "In Home Assistant, add Zigbee Home Automation: radio type EZSP, and this serial path." +
-            if (addUrl != null) " Then scan the code with your phone to pair Zigbee devices." else ""
-        if (addUrl != null) {
-            if (qrFor != addUrl) {
-                qrImage.setImageBitmap(qrBitmap(addUrl, px(186f)))
-                qrFor = addUrl
+    private fun bindFollowUp(m: Model, applied: RadioStep.Applied) {
+        val f = (m.radio.facts ?: RadioFollowUp.Facts(
+            mode = applied.mode, status = applied.status, helper = HelperFacts(false, 0), stack = ZigbeeStack.DEFAULT,
+            threadStored = null, thread = null, haBase = null, panelIp = null,
+        )).copy(mode = applied.mode, haBase = m.haUrl, panelIp = m.panelIp)
+        followUp.bind(f)
+        val card = RadioFollowUp.card(f, RadioFollowUp.Place.SETUP)
+        cardLabel.text = "Step 3 · Radio" // one line: the card needs the height (the title names the role)
+        cardTitle.text = card.title
+        cardBody.visibility = View.GONE
+        followScroll.visibility = View.VISIBLE
+        card.qr?.let { q ->
+            if (qrFor != q.url) {
+                qrImage.setImageBitmap(qrBitmap(q.url, px(186f)))
+                qrFor = q.url
             }
             qrTile.visibility = View.VISIBLE
         }
-        tiles.visibility = View.VISIBLE
-        tileA.bind("Serial path", RadioStep.zhaPath(m.panelIp))
-        tileB.view.visibility = View.GONE // the serial path needs the whole width
-        status.visibility = View.GONE     // the selection view's note
+        status.visibility = View.GONE // the selection view's note
         primary.text = "Continue"
         primary.visibility = View.VISIBLE
         primary.setOnClickListener { onRadioContinue?.invoke() }

@@ -39,6 +39,7 @@ import sh.edm.s1kiosk.setup.SetupStep
 import sh.edm.s1kiosk.setup.WifiSetupStatus
 import sh.edm.s1kiosk.setup.WifiStep
 import sh.edm.s1kiosk.setup.RadioStep
+import sh.edm.s1kiosk.setup.RadioFollowUp
 import sh.edm.s1kiosk.improv.ImprovController
 import sh.edm.s1kiosk.improv.ImprovWifiStatus
 import sh.edm.s1kiosk.radio.RadioMode
@@ -117,6 +118,8 @@ class MainActivity : Activity() {
         override fun run() {
             refreshSetup()
             pollRadioStatus()
+            // the radio step's follow-up card follows the router / Thread state
+            if (improvInline() && setupOverlay.model?.step == SetupStep.RADIO) KioskService.radioRef?.refreshSoon()
             refreshOffline()
             handler.postDelayed(this, SETUP_TICK_MS)
         }
@@ -165,12 +168,16 @@ class MainActivity : Activity() {
             onRadioApply = { m -> applyRadio(m, skip = false) }
             onRadioSkip = { applyRadio(RadioMode.OFF, skip = true) }
             onRadioContinue = ::finishRadioStep
+            onRadioRun = { r, done -> runRadio(r, "setup screen", done) }
         }
         settingsOverlay = KioskSettingsOverlay(this).apply {
             onSave = ::saveSettings
             onReload = { hide(); loadDashboard() }
             onAqaraSettings = { if (!DeviceSettings.open(this@MainActivity)) Toast.makeText(this@MainActivity, "No settings app on this panel", Toast.LENGTH_LONG).show() }
             onLicences = { Licences.show(this@MainActivity) }
+            onRadioRun = { r, done -> runRadio(r, "settings menu", done) }
+            // Same path as HA's `Thread dataset` text entity; never logged.
+            onThreadDataset = { v -> KioskService.radioRef?.setThreadDataset(v) ?: "The kiosk service isn't running yet; try again in a moment." }
         }
         // Improv-aware from the start: KioskService (which registers the provider) starts after this.
         wifiStatus = ImprovWifiStatus(this)
@@ -358,6 +365,7 @@ class MainActivity : Activity() {
                 current = KioskService.radioRef?.mode ?: RadioMode.parse(prefs.radioMode),
                 applied = radioApplied,
                 busy = radioBusy,
+                facts = radioFacts(),
             ),
             signinDone = signinDone,
             wifi = wifiStatus.snapshot(),
@@ -769,6 +777,58 @@ class MainActivity : Activity() {
         return super.dispatchTouchEvent(ev)
     }
 
+    /** The radio as the follow-up cards and the settings picker show it (cached values: no getprop here). */
+    private fun radioFacts(): RadioFollowUp.Facts? {
+        val r = KioskService.radioRef ?: return null
+        return RadioFollowUp.Facts(
+            mode = r.mode, status = r.statusText(), helper = r.helperShown(), stack = r.zigbeeStack,
+            threadStored = r.threadStored(), thread = r.threadRouterState(),
+            haBase = prefs.haBase, panelIp = HaUrls.localIpv4(),
+        )
+    }
+
+    /**
+     * A request from a follow-up card or the settings menu's picker, on the same RadioController calls as
+     * the HA entities (`Radio mode`, `Zigbee stack`, `Join/Leave Zigbee network`, `Leave Thread network`).
+     * [done] runs on the main thread: null = accepted (the status line tells the rest), else why not.
+     * Join/Leave have no answer of their own: their card follows the status.
+     */
+    private fun runRadio(req: RadioFollowUp.Request, source: String, done: (String?) -> Unit) {
+        if (setupPreview && source == "setup screen") { done("Preview: nothing was changed."); return }
+        val r = KioskService.radioRef ?: run { done("The kiosk service isn't running yet; try again in a moment."); return }
+        Log.i(TAG, "$source: radio request $req")
+        when (req) {
+            is RadioFollowUp.Request.Mode -> r.request(req.mode.label, source) { ok ->
+                val st = r.statusText(); handler.post { done(if (ok) null else st); refreshRadioViews() }
+            }
+            is RadioFollowUp.Request.Stack -> r.setZigbeeStack(req.stack.label) { ok ->
+                val why = r.helperStatusText().substringBefore(". v"); handler.post { done(if (ok) null else why); refreshRadioViews() }
+            }
+            is RadioFollowUp.Request.Act -> when (req.action) {
+                RadioFollowUp.Action.ROUTER_JOIN -> r.routerJoin()
+                RadioFollowUp.Action.ROUTER_LEAVE -> r.routerLeave()
+                RadioFollowUp.Action.THREAD_LEAVE -> r.threadLeave()
+            }
+        }
+        handler.postDelayed({ refreshRadioViews() }, 400)
+    }
+
+    /** Re-reads the radio for the open settings menu and the setup screen's follow-up card. */
+    private fun refreshRadioViews() {
+        if (::settingsOverlay.isInitialized && settingsOverlay.isShowing) settingsOverlay.updateRadio(radioFacts())
+        if (::setupOverlay.isInitialized && setupOverlay.isShowing) refreshSetup()
+    }
+
+    /** While the settings menu is open: follow the radio (status, router state, Thread role). */
+    private val settingsRadioTick = object : Runnable {
+        override fun run() {
+            if (!::settingsOverlay.isInitialized || !settingsOverlay.isShowing) return
+            KioskService.radioRef?.refreshSoon()
+            settingsOverlay.updateRadio(radioFacts())
+            handler.postDelayed(this, SETTINGS_RADIO_TICK_MS)
+        }
+    }
+
     /** The kiosk settings menu (settings/KioskSettingsOverlay): 5 taps top-left, or the notification. */
     private fun showSettings() {
         val radio = KioskService.radioRef
@@ -788,13 +848,17 @@ class MainActivity : Activity() {
                     presenceRange = if (prefs.presenceRangeM > 0f) prefs.presenceRangeM.toString() else "",
                     autoBrightness = prefs.autoBrightness,
                 ),
-                facts = SettingsMenu.Facts(deviceSettings = DeviceSettings.intent(this) != null),
+                facts = SettingsMenu.Facts(deviceSettings = DeviceSettings.intent(this) != null, radio = radio != null),
                 radioRunning = radio != null,
                 allowedNow = SettingsMenu.allowedNow(radio != null, radio?.allowedNow()),
                 version = BuildConfig.VERSION_NAME,
                 status = ScreenController.statusLine() + " · voice=" + KioskService.voiceState,
+                radio = radioFacts(),
             ),
         )
+        radio?.refreshSoon()
+        handler.removeCallbacks(settingsRadioTick)
+        handler.postDelayed(settingsRadioTick, 500)
     }
 
     /** "Save & restart": the same saves as the earlier dialog, then the process restart that applies them. */
@@ -1161,5 +1225,6 @@ class MainActivity : Activity() {
         private const val REQ_GECKO = 2
         private const val RETRY_MS = 10_000L
         private const val SETUP_TICK_MS = 2_000L
+        private const val SETTINGS_RADIO_TICK_MS = 2_000L
     }
 }

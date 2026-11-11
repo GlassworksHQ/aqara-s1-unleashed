@@ -161,7 +161,7 @@ class RadioControllerTest {
     @Test
     fun selectOptionsAndDefault() {
         assertEquals(
-            listOf("Off", "Zigbee coordinator (TCP)", "Zigbee router", "Thread border router", "Thread router"),
+            listOf("Off", "Zigbee coordinator (TCP)", "Zigbee router (repeater)", "Thread border router", "Thread router (repeater)"),
             RadioMode.LABELS,
         )
         assertEquals(listOf("off", "zigbee_tcp", "zigbee_router", "thread", "thread_router"), RadioMode.entries.map { it.id })
@@ -171,7 +171,9 @@ class RadioControllerTest {
     @Test
     fun parseAcceptsIdsLabelsAndFallsBackForRetiredValues() {
         assertEquals(RadioMode.THREAD, RadioMode.parse("thread"))
-        assertEquals(RadioMode.ZIGBEE_ROUTER, RadioMode.parse("Zigbee router")) // the stub stored labels
+        assertEquals(RadioMode.ZIGBEE_ROUTER, RadioMode.parse("Zigbee router")) // the stub stored labels (pre-0.4.3 label)
+        assertEquals(RadioMode.ZIGBEE_ROUTER, RadioMode.parse("Zigbee router (repeater)"))
+        assertEquals(RadioMode.THREAD_ROUTER, RadioMode.parse("Thread router"))
         assertEquals(RadioMode.OFF, RadioMode.parse("Aqara (stock)"))
         assertEquals(RadioMode.OFF, RadioMode.parse("aqara"))
         assertEquals(RadioMode.OFF, RadioMode.parse("Thread (future)"))
@@ -335,7 +337,7 @@ class RadioControllerTest {
         init.props[RadioHelper.PROP_STATUS] = "ok zigbee_router: EZSP on 127.0.0.1:6639 for the router host"
         c.refresh()
         assertTrue(router.running)
-        assertEquals("ok Zigbee router: ready to join: open permit-join in ZHA, then press Join", c.statusText())
+        assertEquals("ok Zigbee router (repeater): ready to join: open permit-join in ZHA, then press Join", c.statusText())
         c.routerJoin()
         assertEquals(listOf("start", "join"), router.calls)
 
@@ -367,5 +369,65 @@ class RadioControllerTest {
         assertNull(RadioHelper.parseStatus(""))
         assertNull(RadioHelper.parseStatus("weird"))
         assertNull(RadioHelper.parseStatus("done thread"))
+    }
+
+    @Test
+    fun oldLabelsStillSelectTheRepeaterModes() {
+        val c = controller(FakeInit(helper = true), initial = "off")
+        assertEquals(RadioMode.ZIGBEE_ROUTER, RadioMode.fromLabel("Zigbee router"))
+        assertEquals(RadioMode.THREAD_ROUTER, RadioMode.fromLabel("Thread router"))
+        assertFalse("old labels are never offered", "Zigbee router" in RadioMode.LABELS || "Thread router" in RadioMode.LABELS)
+        c.request("Thread router") // an automation written before 0.4.3
+        assertEquals(RadioMode.THREAD_ROUTER, c.mode)
+        assertEquals("thread_router", stored) // the stored id never changes
+        c.request("Zigbee router")
+        assertEquals(RadioMode.ZIGBEE_ROUTER, c.mode)
+        assertEquals("zigbee_router", stored)
+    }
+
+    @Test
+    fun threadRouterStatusSaysTheRoleAndNetwork() {
+        val init = FakeInit(helper = true)
+        val c = controller(init, initial = "thread_router")
+        init.props[RadioHelper.PROP_STATUS] = "ok thread_router: ready to join: waiting for a Thread dataset from Home Assistant"
+        c.refresh()
+        assertEquals("ok Thread router (repeater): no dataset yet: waiting for the Thread network's active dataset", c.statusText())
+        assertEquals(false, c.threadRouterState()!!.dataset)
+        init.props[RadioHelper.PROP_STATUS] = "ok thread_router: joined as child, network \"Example-Net\""
+        c.refresh()
+        assertTrue(c.statusText(), c.statusText().startsWith("ok Thread router (repeater): joined “Example-Net” as a child"))
+        init.props[RadioHelper.PROP_STATUS] = "ok thread_router: joined as router, network \"Example-Net\""
+        c.refresh()
+        assertEquals("ok Thread router (repeater): joined “Example-Net” as a router", c.statusText())
+        assertTrue(c.threadRouterState()!!.joined)
+        // a 0.4.2 helper
+        init.props[RadioHelper.PROP_STATUS] = "ok thread_router: Thread router on wpan0 (detached)"
+        c.refresh()
+        assertEquals("ok Thread router (repeater): dataset set, looking for the network (detached)", c.statusText())
+    }
+
+    @Test
+    fun threadStoredIsReadFromTheHelper() {
+        val init = FakeInit(helper = true)
+        val c = controller(init, initial = "off")
+        c.refresh()
+        assertNull(c.threadStored()) // older helpers don't say
+        init.props[RadioHelper.PROP_THREAD_STORED] = "yes"
+        c.refresh()
+        assertEquals(true, c.threadStored())
+        init.props[RadioHelper.PROP_THREAD_STORED] = "no"
+        c.refresh()
+        assertEquals(false, c.threadStored())
+    }
+
+    @Test
+    fun threadDatasetPasteWithInvisibleCharacters() {
+        val c = controller(FakeInit(helper = true), initial = "thread_router")
+        val fake = ThreadNetworkTest.fakeDataset(seed = 7)
+        // what a copy from a browser can carry: NBSP, zero-width space, BOM, line breaks, tabs
+        assertNull(c.setThreadDataset("\u00a0 " + fake.substring(0, 20) + "\u200b" + fake.substring(20) + "\ufeff\r\n\t"))
+        assertEquals(fake, java.io.File(tmp.root, RadioHelper.DATASET_FILE).readText())
+        assertTrue(c.setThreadDataset(fake + "g")!!.startsWith("Not a Thread dataset"))
+        assertFalse("never echoes the value", c.setThreadDataset(fake + "zz")!!.contains(fake))
     }
 }

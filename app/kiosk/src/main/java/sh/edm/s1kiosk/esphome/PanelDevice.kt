@@ -702,7 +702,10 @@ class PanelDevice(
         // Thread router: write-only. The dataset is a secret (it holds the network key): the state is
         // always empty, it goes to the root helper and is never logged or echoed back.
         TextEntity(
-            "thread_dataset", "Thread dataset", "mdi:key-chain", maxLength = 255, pattern = "^$|^[0-9a-fA-F]+$", mode = 1,
+            // Pattern: hex plus the invisible characters a copy carries (spaces, line breaks, no-break and
+            // zero-width spaces), which setThreadDataset drops. 255 is Home Assistant's cap for any text
+            // entity (MAX_LENGTH_STATE_STATE); longer datasets go in through the panel's settings menu.
+            "thread_dataset", "Thread dataset", "mdi:key-chain", maxLength = 255, pattern = sh.edm.s1kiosk.radio.ThreadDataset.PATTERN, mode = 1,
             get = { "" },
             set = { v ->
                 if (v.isNotEmpty()) radio.setThreadDataset(v)?.let { Log.w(RadioController.TAG, it) }

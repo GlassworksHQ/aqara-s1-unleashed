@@ -20,7 +20,7 @@ object SettingsMenu {
 
     enum class Section(val title: String) {
         DASHBOARD("Home Assistant & dashboard"),
-        RADIO("Radio: who may connect"),
+        RADIO("Radio"),
         PANEL("Panel"),
         ABOUT("About"),
     }
@@ -28,8 +28,8 @@ object SettingsMenu {
     enum class Entry {
         // Home Assistant & dashboard
         URL, ZOOM, SECURE_HOSTS, HIDE_HEADER,
-        // Radio
-        RADIO_ALLOW, RADIO_ALLOWED_NOW,
+        // Radio: the mode picker, the active mode's follow-up card (setup/RadioFollowUp), who may connect
+        RADIO_MODE, RADIO_FOLLOW_UP, RADIO_ALLOW, RADIO_ALLOWED_NOW,
         // Panel (the kiosk's screen behaviour, then Aqara's own settings app)
         PRESENCE, IDLE_OFF, NIGHT_IDLE_OFF, NIGHT_WINDOW, PRESENCE_RANGE, AUTO_BRIGHTNESS, AQARA_SETTINGS,
         // About
@@ -39,12 +39,16 @@ object SettingsMenu {
     data class Facts(
         /** Aqara's device settings app resolves (DeviceSettings.intent != null). */
         val deviceSettings: Boolean,
+        /** The kiosk service (and so RadioController) runs: the mode picker and follow-up card can work. */
+        val radio: Boolean = true,
     )
 
     /** The sections in order, each with its entries; empty sections are left out. */
     fun layout(f: Facts): List<Pair<Section, List<Entry>>> = listOf(
         Section.DASHBOARD to listOf(Entry.URL, Entry.ZOOM, Entry.SECURE_HOSTS, Entry.HIDE_HEADER),
-        Section.RADIO to listOf(Entry.RADIO_ALLOW, Entry.RADIO_ALLOWED_NOW),
+        Section.RADIO to listOfNotNull(
+            Entry.RADIO_MODE.takeIf { f.radio }, Entry.RADIO_FOLLOW_UP.takeIf { f.radio }, Entry.RADIO_ALLOW, Entry.RADIO_ALLOWED_NOW,
+        ),
         Section.PANEL to listOfNotNull(
             Entry.PRESENCE, Entry.IDLE_OFF, Entry.NIGHT_IDLE_OFF, Entry.NIGHT_WINDOW, Entry.PRESENCE_RANGE,
             Entry.AUTO_BRIGHTNESS, Entry.AQARA_SETTINGS.takeIf { f.deviceSettings },

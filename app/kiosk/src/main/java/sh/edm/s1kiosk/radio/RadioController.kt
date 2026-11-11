@@ -72,6 +72,11 @@ class MemoryStackStore(override var stack: String? = null) : StackStore
  * Silicon Labs' zigbeed is downloaded by [zigbeedFetcher] when the helper asks for it), and radio
  * firmware requests go through [firmware]. Mode changes wait while a firmware flash runs.
  */
+/** The root helper as the UI needs it: installed, and its contract version (0 = none). */
+data class HelperFacts(val installed: Boolean, val version: Int) {
+    val v4: Boolean get() = installed && version >= RadioHelper.BUNDLE_VERSION
+}
+
 class RadioController(
     private val props: SysProps = ShellProps,
     private val load: () -> String?,
@@ -224,6 +229,15 @@ class RadioController(
         val allowed = if (helper) RadioHelper.parseAllowed(props.get(RadioHelper.PROP_ALLOWED)) else null
         allowedShown = allowed?.takeIf { RadioHelper.parseStatus(raw)?.mode != RadioMode.OFF }
             ?.let { if (it.any) RadioAllow.ANY else it.addresses.joinToString(" ") }
+        helperFactsShown = HelperFacts(helper, if (helper) helperVersion() else 0)
+        threadStoredShown = if (!helper) null else when (props.get(RadioHelper.PROP_THREAD_STORED).trim()) {
+            "yes" -> true
+            "no" -> false
+            else -> null
+        }
+        threadShown = RadioHelper.parseStatus(raw)
+            ?.takeIf { mode == RadioMode.THREAD_ROUTER && it.mode == RadioMode.THREAD_ROUTER && it.state == "ok" }
+            ?.let { ThreadRouterState.parse(it.detail) }
         var s = if (helper) helperStatusText(raw, allowed) else status
         if (s.length > 250) s = s.take(249) + "…" // ESPHome text sensors are capped at 255 bytes
         val h = helperText().let { if (it.length > 250) it.take(249) + "…" else it }
@@ -240,6 +254,23 @@ class RadioController(
         slow?.shutdownNow()
         routerHost?.stop()
     }
+
+    /**
+     * Whether a Thread router network is stored (what `Leave Thread network` deletes): true/false as the
+     * helper reports it ([RadioHelper.PROP_THREAD_STORED]), null when it doesn't say (older bundles, no
+     * helper). Cached by [refresh], cheap.
+     */
+    fun threadStored(): Boolean? = threadStoredShown
+
+    /** The Thread router's state from the helper's status (cached by [refresh]); null outside that mode. */
+    fun threadRouterState(): ThreadRouterState? = threadShown
+
+    /** Helper installed and its contract version, as of the last [refresh] (for the UI thread: no getprop). */
+    fun helperShown(): HelperFacts = helperFactsShown
+
+    @Volatile private var helperFactsShown = HelperFacts(installed = false, version = 0)
+    @Volatile private var threadStoredShown: Boolean? = null
+    @Volatile private var threadShown: ThreadRouterState? = null
 
     /** The helper implements contract v4 (bundles, Zigbee stack, radio firmware). */
     fun helperV4(): Boolean = helperInstalled() && helperVersion() >= RadioHelper.BUNDLE_VERSION
@@ -350,10 +381,9 @@ class RadioController(
      * it). Never logged. Returns null when stored, else why not.
      */
     fun setThreadDataset(hex: String): String? {
-        val d = hex.filterNot { it.isWhitespace() }
-        if (d.isEmpty() || d.length % 2 != 0 || d.length > 2 * 254 || !d.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) {
-            return "Not a Thread dataset: expected the active dataset as hex TLVs (from Home Assistant's Thread settings)."
-        }
+        // Invisible characters a copy carries (spaces, line breaks, no-break and zero-width spaces) are dropped.
+        ThreadDataset.problem(hex)?.let { return it }
+        val d = ThreadDataset.clean(hex)
         val dir = filesDir ?: return "No place to store the dataset."
         val f = File(dir, RadioHelper.DATASET_FILE)
         return try {
@@ -364,7 +394,7 @@ class RadioController(
                 d.setExecutable(false, false); d.setExecutable(true, true)
             }
             val tmp = File(f.parentFile, ".thread-dataset.tmp")
-            tmp.writeText(d.lowercase())
+            tmp.writeText(d)
             tmp.setReadable(false, false); tmp.setReadable(true, true)
             tmp.setWritable(false, false); tmp.setWritable(true, true)
             if (!tmp.renameTo(f)) throw java.io.IOException("rename failed")
@@ -556,6 +586,9 @@ class RadioController(
             // waiting for Silicon Labs' zigbeed: say how the download goes
             st.state == "applying" && "waiting for zigbeed $SISDK_V" in st.detail -> ": ${st.detail}${stackNote?.let { "; $it" } ?: ""}"
             st.state == "error" && stackNote != null && st.mode == RadioMode.ZIGBEE_TCP -> ": ${st.detail}; $stackNote"
+            // Thread router: the role and the network's name, said plainly (never keys or ids).
+            inMode && mode == RadioMode.THREAD_ROUTER && ThreadRouterState.parse(st.detail) != null ->
+                ": ${ThreadRouterState.parse(st.detail)!!.describe()}"
             // Border router: its REST API (which exposes the network key) is behind the same firewall.
             inMode && mode == RadioMode.THREAD && "REST :" in st.detail -> ": ${st.detail}; REST open to ${whoText(allowed)}"
             st.detail.isNotEmpty() -> ": ${st.detail}"

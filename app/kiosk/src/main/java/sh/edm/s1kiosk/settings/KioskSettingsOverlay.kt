@@ -19,6 +19,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import sh.edm.s1kiosk.settings.SettingsMenu.Entry
 import sh.edm.s1kiosk.setup.Backdrop
+import sh.edm.s1kiosk.setup.RadioFollowUp
+import sh.edm.s1kiosk.setup.RadioFollowUpView
+import sh.edm.s1kiosk.setup.RadioModePicker
 
 /**
  * The kiosk settings menu, in the setup screen's look (setup/SetupOverlay): the dithered backdrop,
@@ -58,12 +61,18 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         val version: String,
         /** Screen/sensor status line. */
         val status: String,
+        /** The radio as the picker and follow-up card show it; null when the kiosk service isn't running. */
+        val radio: RadioFollowUp.Facts? = null,
     )
 
     var onSave: ((Values) -> Unit)? = null
     var onReload: (() -> Unit)? = null
     var onAqaraSettings: (() -> Unit)? = null
     var onLicences: (() -> Unit)? = null
+    /** Radio requests from the picker and the follow-up card (same RadioController calls as the HA entities). */
+    var onRadioRun: ((RadioFollowUp.Request, (String?) -> Unit) -> Unit)? = null
+    /** `Thread dataset` typed or pasted on the panel: null = handed over, else why not. */
+    var onThreadDataset: ((String) -> String?)? = null
 
     var isShowing = false
         private set
@@ -87,6 +96,14 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     private var keyboardInset = 0
 
     private val keyboardWatch = ViewTreeObserver.OnGlobalLayoutListener { followKeyboard() }
+
+    // The Radio section's live parts: made once, kept across show()s, updated by [updateRadio].
+    private val radioPicker = RadioModePicker(context).apply { onRun = { r, done -> onRadioRun?.invoke(r, done) } }
+    private val radioFollowUp = RadioFollowUpView(context, RadioFollowUp.Place.SETTINGS).apply {
+        onRun = { r, done -> onRadioRun?.invoke(r, done) }
+        onDataset = { v -> onThreadDataset?.invoke(v) ?: "The kiosk service isn't running." }
+        onFieldFocus = { v -> v.post { reveal(v) } }
+    }
 
     init {
         background = Backdrop()
@@ -130,6 +147,24 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         animate().alpha(0f).setDuration(200).withEndAction { if (!isShowing) visibility = View.GONE }.start()
     }
 
+    /** New radio facts while the menu is open (MainActivity, every couple of seconds and on changes). */
+    fun updateRadio(f: RadioFollowUp.Facts?) {
+        if (!isShowing || f == null) return
+        radioPicker.bind(f)
+        radioFollowUp.bind(f)
+    }
+
+    /** Previews (RadioMockups): the radio views, and scrolling one of them to the top of the column. */
+    internal val previewPicker: RadioModePicker get() = radioPicker
+    internal val previewFollowUp: RadioFollowUpView get() = radioFollowUp
+    internal fun previewScrollTo(v: View, alignBottom: Boolean = false) {
+        val r = Rect()
+        v.getDrawingRect(r)
+        scroll.offsetDescendantRectToMyCoords(v, r)
+        val y = if (alignBottom) r.bottom + px(16f) - scroll.height else r.top - px(16f)
+        scroll.scrollTo(0, y.coerceAtLeast(0))
+    }
+
     /** The values as currently typed. */
     fun current(): Values {
         fun f(e: Entry) = fields[e]?.text?.toString().orEmpty()
@@ -147,6 +182,9 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     private fun build(m: Model) {
         fields.clear(); toggles.clear(); cards.clear()
         column.removeAllViews()
+        (radioPicker.parent as? android.view.ViewGroup)?.removeView(radioPicker)
+        (radioFollowUp.parent as? android.view.ViewGroup)?.removeView(radioFollowUp)
+        m.radio?.let { radioPicker.bind(it); radioFollowUp.bind(it) }
         val layout = SettingsMenu.layout(m.facts)
         layout.forEachIndexed { i, (section, entries) ->
             val card = card(section, entries, m)
@@ -222,7 +260,15 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             Entry.ZOOM -> field(e, "Zoom (1.0 – 2.0)", v.zoom, "auto (device density)", decimal)
             Entry.SECURE_HOSTS -> field(e, "Extra secure-context hosts", v.secureHosts, "e.g. homeassistant.local,192.168.1.100", uri)
             Entry.HIDE_HEADER -> toggle(e, "Hide Home Assistant's header & sidebar", "The dashboard fills the screen", v.hideHeader)
-            Entry.RADIO_ALLOW -> field(e, "IP addresses or ranges, or any", v.radioAllow, "empty = Home Assistant only", uri).also {
+            Entry.RADIO_MODE -> radioPicker
+            Entry.RADIO_FOLLOW_UP -> LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                background = glass(18f)
+                setPadding(px(18f), px(16f), px(18f), px(18f))
+                addView(label("Next steps for the active mode"))
+                addView(radioFollowUp, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10f) })
+            }
+            Entry.RADIO_ALLOW -> field(e, "Who may connect: IP addresses or ranges, or any", v.radioAllow, "empty = Home Assistant only", uri).also {
                 fields[e]?.isEnabled = m.radioRunning
             }
             Entry.RADIO_ALLOWED_NOW -> text(13.5f, MU, REGULAR).apply { text = m.allowedNow; setLineSpacing(0f, 1.2f) }
@@ -319,7 +365,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     }
 
     /** Scrolls [v] (a field) fully into the visible part of the column. */
-    private fun reveal(v: View) {
+    internal fun reveal(v: View) {
         if (!isShowing) return
         val r = Rect()
         v.getDrawingRect(r)

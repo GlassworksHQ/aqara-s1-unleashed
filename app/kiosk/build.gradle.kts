@@ -106,6 +106,14 @@ dependencies {
     // JVM unit tests for the ESPHome API (against aioesphomeapi) and openWakeWord buffering.
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")
+    // Mock-up screenshots of the real settings/setup views (RadioMockups, only with -Ps1MockupDir=<dir>).
+    testImplementation("org.robolectric:robolectric:4.17")
+}
+
+// RadioMockups writes PNGs of the radio views when asked: ./gradlew :kiosk:testDebugUnitTest
+// --tests '*RadioMockups*' -Ps1MockupDir=<dir>. Without the property it is skipped.
+tasks.withType<Test>().configureEach {
+    (project.findProperty("s1MockupDir") as String?)?.let { systemProperty("s1.mockupDir", it) }
 }
 
 // Open source licences screen (hidden settings → "Open source licences"): the repo's

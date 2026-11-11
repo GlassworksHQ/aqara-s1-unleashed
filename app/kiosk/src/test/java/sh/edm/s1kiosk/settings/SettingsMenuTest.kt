@@ -31,7 +31,16 @@ class SettingsMenuTest {
     fun sectionsInOrder() {
         val l = SettingsMenu.layout(SettingsMenu.Facts(deviceSettings = true))
         assertEquals(listOf(Section.DASHBOARD, Section.RADIO, Section.PANEL, Section.ABOUT), l.map { it.first })
-        assertEquals("Radio: who may connect", Section.RADIO.title)
+        assertEquals("Radio", Section.RADIO.title)
+    }
+
+    @Test
+    fun radioSectionPickerThenFollowUpThenWhoMayConnect() {
+        val radio = SettingsMenu.layout(SettingsMenu.Facts(deviceSettings = false)).toMap().getValue(Section.RADIO)
+        assertEquals(listOf(Entry.RADIO_MODE, Entry.RADIO_FOLLOW_UP, Entry.RADIO_ALLOW, Entry.RADIO_ALLOWED_NOW), radio)
+        // kiosk service not running: no picker or card (nothing to drive), the allow-list stays
+        val off = SettingsMenu.layout(SettingsMenu.Facts(deviceSettings = false, radio = false)).toMap().getValue(Section.RADIO)
+        assertEquals(listOf(Entry.RADIO_ALLOW, Entry.RADIO_ALLOWED_NOW), off)
     }
 
     @Test

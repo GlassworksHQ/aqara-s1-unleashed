@@ -20,10 +20,10 @@ enum class RadioMode(val id: String, val label: String, val needsHelper: Boolean
     OFF("off", "Off", false),
     ZIGBEE_TCP("zigbee_tcp", "Zigbee coordinator (TCP)", true),
     /** Repeater in an existing Zigbee mesh: the app's EZSP host (ZigbeeRouterHost) drives zigbeed. */
-    ZIGBEE_ROUTER("zigbee_router", "Zigbee router", true, minHelperVersion = 2),
+    ZIGBEE_ROUTER("zigbee_router", "Zigbee router (repeater)", true, minHelperVersion = 2),
     THREAD("thread", "Thread border router", true),
     /** Thread repeater (FTD) joining an existing network with a dataset from HA; no BR/REST/mDNS. */
-    THREAD_ROUTER("thread_router", "Thread router", true, minHelperVersion = 2);
+    THREAD_ROUTER("thread_router", "Thread router (repeater)", true, minHelperVersion = 2);
 
     // Concurrent Zigbee + Thread on the one multi-PAN radio (shared channel) is deliberately not a
     // mode here: Home Assistant deprecated multiprotocol for the same hardware design (docs/radio.md).
@@ -52,7 +52,13 @@ enum class RadioMode(val id: String, val label: String, val needsHelper: Boolean
         val DEFAULT = OFF
         val LABELS: List<String> = entries.map { it.label }
 
-        fun fromLabel(label: String): RadioMode? = entries.firstOrNull { it.label == label }
+        /**
+         * Labels before 0.4.3 ("Zigbee router", "Thread router"): still accepted when they arrive (an
+         * automation written for the old select options, a stored label), never offered.
+         */
+        val LEGACY_LABELS: Map<String, RadioMode> = mapOf("Zigbee router" to ZIGBEE_ROUTER, "Thread router" to THREAD_ROUTER)
+
+        fun fromLabel(label: String): RadioMode? = entries.firstOrNull { it.label == label } ?: LEGACY_LABELS[label]
         fun fromId(id: String): RadioMode? = entries.firstOrNull { it.id == id }
 
         /**
@@ -166,6 +172,11 @@ object RadioHelper {
     const val PROP_THREAD_LEAVE = "sys.s1kiosk.radio.thread_leave"
     /** Where the app stages the bundle for [BUNDLE_SERVICE] (files/radio/bundle-in). */
     const val BUNDLE_STAGE_DIR = "radio/bundle-in"
+    /**
+     * Helper -> app (0.4.3 bundle): "yes" when a Thread router network is stored (a dataset or the
+     * router's settings, what `Leave Thread network` deletes), "no" when not; unset with older helpers.
+     */
+    const val PROP_THREAD_STORED = "sys.s1kiosk.radio.thread_stored"
     /** Helper -> app (v2): which otbr-agent is installed: `br` (border router, REST), `agent` (proof build), `none`. */
     const val PROP_OTBR = "sys.s1kiosk.radio.otbr"
 
