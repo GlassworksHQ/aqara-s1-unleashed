@@ -15,7 +15,7 @@ entities always reach HA as an ESPHome device over Wi-Fi, whatever the radio doe
 | `Off` (default) | no | **works**: stops Aqara's radio services, radio idle |
 | `Zigbee coordinator (TCP)` | yes | **works with ZHA (bellows)**: verified with Home Assistant's ZHA on the panel; form, read-back, restart verified from a computer. Forming/restoring from ZHA needs bellows#774 in a Home Assistant release ([below](#bellows-reset-bug-zha-form-and-restore)); "keep the radio's network" works today. **Zigbee2MQTT** (`ember`, experimental): with the `Zigbee stack` select on *Silicon Labs 8.2.2* (helper v4; [Zigbee stack](#zigbee-stack-aqara-or-silicon-labs-helper-v4)); form, resume and the joining window verified on the panel, not soak-tested with real devices |
 | `Zigbee router (repeater)` | helper v2 | **experimental**: joined a real ZHA network as a repeater (2026-11-10, strong link); not soak-tested |
-| `Thread border router` | yes | **experimental**: border-router build (`PROFILE=br`); Home Assistant's OTBR REST calls verified against a fresh test network; LAN <-> Thread routing not tested with a real device |
+| `Thread border router` | yes | **works**: border-router build (`PROFILE=br`); Home Assistant's OTBR REST calls verified against a fresh test network; as a second border router on a real network, LAN <-> Thread routing to real Matter devices verified both ways and left running; as the only border router, a Matter bulb commissioned with the HA app and controlled from HA; both across a Wi-Fi off/on and a reboot (2026-11-10). Must be on Home Assistant's network |
 | `Thread router (repeater)` | helper v2 | **experimental**: joined Home Assistant's real Thread network and was promoted to router (2026-11-10); not soak-tested |
 
 There is no "Aqara (stock)" mode: with Aqara's launcher/apps disabled and its cloud blocked
@@ -341,13 +341,82 @@ Verified from a computer on another VLAN (`python-otbr-api`, replaying the calls
 
 On the panel: `br state` running, OMR + on-link ULA prefixes, RA/RS sent and received, SRP server
 running and in Network Data, `ba state` Active, `_meshcop._udp` registered by OpenThread's mDNS.
-**Not tested:** traffic between a LAN host and a real Thread device through the panel, Matter
-commissioning, coexistence with Android's own mDNS on the same port (both bind 5353 with
-SO_REUSEPORT; nothing broke during the test). REST has no authentication either (it exposes the
+**Second border router on a real network (2026-11-10).** The panel joined the reference home's Thread
+network (Home Assistant's OTBR add-on plus Apple border routers, 11 Matter devices, most of them on
+Thread) as a second border router: *Thread border router* mode, then on the panel as root
+`dataset set active` from the dataset the router mode already held, `ifconfig up`, `thread start`
+(no change to Home Assistant, its preferred network or the dataset). The panel was on Home
+Assistant's network for this; see [the requirement below](#same-network-as-home-assistant).
+
+| Check | Result |
+|---|---|
+| Join | router within ~45 s; the existing leader stayed leader |
+| OMR prefix | the existing BR's prefix is favored; the panel's own stays unpublished (`br omrprefix`: Local vs Favored). Right after an agent restart the panel can publish its own for a moment, before it has the network data; devices then show a second, short-lived address in HA's Matter diagnostics |
+| LAN -> Thread through the panel | a LAN host with a host route via the panel's link-local address: pings to a Thread lamp all answered; an `ip6tables` counter on the panel's FORWARD chain counted exactly those packets |
+| Thread -> LAN through the panel | `ot-ctl ping` from the panel's Thread side to a LAN host: all answered, hop limit 63 (forwarded by the kernel, `wpan0` -> `wlan0`) |
+| SRP / mDNS | no device moved to the panel's SRP server; a LAN Mac still saw every `_matter._tcp` service, and `_meshcop._udp` for all border routers including the panel |
+| Matter in HA | every Matter device stayed available throughout |
+| Wi-Fi off/on | `wlan0` comes back with a **new ifindex**. Before the fix below, Thread -> LAN broke (rule 14501 kept the old table); after it, both directions 5/5 and border routing back to `running` by itself |
+| Panel reboot | auto-attached as a router from the stored settings ~26 s after adb was back; both directions 10/10 once the helper's loop had set its rules |
+
+**Fix: rule 14501 by number.** `ip -6 rule add … lookup wlan0` resolves the name to netd's table
+(ifindex + 1000) once, when the rule is added. Wi-Fi off/on recreates `wlan0` with a new ifindex, so
+the rule kept pointing at the old, empty table and replies from Thread devices were dropped. The
+helper now adds the rule with the backbone's current table number and re-adds it when the index
+changes, like the inbound rule follows `wpan0`'s.
+
+**The only border router, with Matter (2026-11-10).** The panel formed a throwaway network
+(`dataset init new` on another channel) and was added to Home Assistant's OTBR integration
+(`http://<panel>:8081`; HA stored the new network next to its own). For the commissioning only, the
+throwaway network was made HA's preferred one (`thread/set_preferred_dataset`, about 10 minutes, then
+set back), because the HA app always hands a new device HA's preferred network. A factory-reset IKEA
+KAJPLATS bulb was then added with the HA app as usual.
+
+| Check | Result |
+|---|---|
+| Commissioning | the HA app put the bulb on the panel's network; HA's Matter server reached it, interviewed it and created its entities |
+| Path | the panel was leader and the only border router: the bulb's only address was in the panel's OMR prefix, it registered with the panel's SRP server, and HA found it through the panel's mDNS |
+| Control from HA | off, on, 50 % brightness: each confirmed by the bulb's reported state |
+| Panel reboot | bulb back as the panel's child ~47 s after adb was up; HA controlled it with no help |
+| Wi-Fi off/on | `wlan0` came back with a new ifindex, rule 14501 followed it, HA controlled the bulb again |
+
+Commissioning a Matter device straight onto the panel's network isn't possible from a Mac with
+matter.js (or any non-Apple tool): macOS refuses third-party connections to the Matter Bluetooth
+service (`The specified UUID is not allowed for this operation`).
+
+**Not tested yet:** whether Home Assistant's own host sends through the panel when it is a second border
+router (HA picks one of the border routers' routes; the tests above forced the panel with a host
+route). REST has no authentication either (it exposes the
 dataset, i.e. the network key): since helper v3 the firewall lets only Home Assistant reach it (see
 [Firewall](#firewall-only-home-assistant-by-default)); `REST_LISTEN=127.0.0.1` in `radio.conf` limits it
 to the panel. Joining the user's existing Thread network means sharing the
 dataset from HA: a user decision, never automatic.
+
+**What the kernel allows for the compiled-out features** (stock A133 kernel 4.9.170, `/proc/config.gz`,
+read 2026-11-10):
+
+| Feature | Kernel needs | On the panel | Verdict |
+|---|---|---|---|
+| Backbone router (Thread 1.2 multicast across the LAN) | `CONFIG_IPV6_MROUTE` | not set (`IP_MROUTE` is IPv4 only) | **not possible** without a new kernel; Matter doesn't need it |
+| NAT64 (Thread devices reaching IPv4-only hosts) | OpenThread's own translator in `wpan0`, plus IPv4 `MASQUERADE` on the backbone | `NF_NAT_IPV4`, `IP_NF_TARGET_MASQUERADE`, `NF_CONNTRACK_IPV4` set; `TUN=y` (Android's node is `/dev/tun`) | **possible**; needs `OTBR_NAT64=ON` and a NAT rule in the helper. Only matters for devices that call IPv4 cloud services |
+| Policy routing (what helper v4 already uses) | `IPV6_MULTIPLE_TABLES` | set | in use |
+| Learning other border routers' routes from their RAs (panel as a second BR) | `IPV6_ROUTE_INFO`, `IPV6_ROUTER_PREF` | set | works: the other BR's OMR route lands in `wlan0`'s table and `br prefixtable` lists it. Sending RAs is OpenThread's job, not the kernel's; LAN hosts (HA) need `accept_ra_rt_info_max_plen` ≥ 64 to take the panel's OMR route |
+| IPv6 masquerading | `IP6_NF_TARGET_MASQUERADE` | not set | not needed (Thread uses routed IPv6) |
+
+### Same network as Home Assistant
+
+A border router tells the LAN how to reach Thread with IPv6 router advertisements, and Matter devices
+behind it are announced with mDNS. Both stay on the border router's own network segment (VLAN). So
+the panel can only be Home Assistant's border router when it is on **the same network as Home
+Assistant**, and that network needs IPv6 (at least link-local plus the ULA prefix the border routers
+announce; no internet IPv6 needed). On the reference home's IoT VLAN, which has no IPv6 router, the
+panel had only a link-local address, and Home Assistant on the main network would never have seen its
+routes or its devices. Routing across VLANs would need IPv6 on the IoT VLAN, a route to the Thread
+prefix via the panel on the router, and an mDNS reflector: possible, untested, and not something to
+ask of users. The REST API (Home Assistant's OTBR integration) is plain IPv4 and does work across
+VLANs, which makes this easy to miss: the integration looks healthy while routing can't work.
+
+As a **repeater** (*Thread router* mode) the panel has no such requirement: it only talks Thread.
 
 ## Root helper contract (v4)
 
@@ -596,7 +665,7 @@ also brings a matching host cpcd. No image is shipped; see
   mode the role and the network's name, from the helper (`joined “Name” as a child; it becomes a
   router when the network promotes it`, `… as a router`, `dataset set, looking for the network`,
   `no dataset yet`).
-- Setup screen radio step: Off, Zigbee coordinator, Thread border router (experimental) in the first
+- Setup screen radio step: Off, Zigbee coordinator, Thread border router in the first
   row, the two repeater roles (experimental) in a compact second row; a one-line "what next" note.
   After a mode other than Off is applied, it shows a short version of that mode's follow-up card
   (`setup/RadioFollowUp`, sized to fit the step card without scrolling): coordinator: the ZHA serial
@@ -851,10 +920,20 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
   image; a power cut mid-flash leaves the radio without an app until the stock image is flashed again
   (the bootloader is not touched).
 - **zigbeed NVM:** Aqara's network state is overwritten by any Zigbee mode use. Back it up.
-- **Thread:** the border-router build's REST/BR/SRP/mDNS side works; forwarding between the LAN and
-  real Thread devices (with the policy rules above) is untested, and netd could rewrite rules on a
-  Wi-Fi reconnect (the helper re-adds them every 3 s). The static glibc binary is fine when run by
-  root from init.
+- **Thread border router:** verified as a second border router on a real network, both directions,
+  across a Wi-Fi off/on and a reboot ([above](#thread-border-router-build-profilebr-2026-11-10)).
+  As the only border router, a Matter bulb was commissioned and controlled from HA, also across a
+  Wi-Fi off/on and a reboot, and left running. Once (2026-11-10), rejoining the real network
+  by hand (`dataset set active`, `thread start`) made the panel leader of a separate partition with
+  its own OMR prefix for about a minute, while the app installed a radio bundle and restarted the
+  helper; after the restart it joined the existing partition as a router. Cause not pinned down. It
+  must sit on Home Assistant's network ([why](#same-network-as-home-assistant)). The static glibc
+  binary is fine when run by root from init.
+- **Wi-Fi with the screen off:** if Wi-Fi drops while the screen is off, Android 10 here never
+  reconnects by itself: it relies on PNO (offloaded) scans, which this Wi-Fi chip doesn't support
+  (`PnoScanListener onFailure: -3(not supported)`), and does no periodic scans with the screen off.
+  Waking the screen reconnected within ~16 s. The network watchdog doesn't catch it (no gateway =
+  nothing to test). Affects every mode, not only Thread.
 - **Aqara's watchdog** keeps restarting things. The helper re-enforces every 3 s; a Z3Gateway start
   is caught by its wrapper's 6 s sleep, but this is a race, verified once.
 - **Multi-PAN (`zigbee_tcp_thread`)** is not offered and untested.

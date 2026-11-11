@@ -146,7 +146,7 @@ What works today, on v0.4.1. "Verified" means tested on a real panel in a real h
 | Time zone kept across reboots | ✅ Works (needs the boot software from v0.4.0) |
 | Radio: Zigbee coordinator for **ZHA** | ✅ Verified · keep the radio's network settings ([known issue](#known-issues)) |
 | Radio: Zigbee coordinator for **Zigbee2MQTT** | 🧪 Experimental · `ember` adapter: forming a network, resuming it and opening joining verified; not yet used for long with real devices |
-| Radio: **Thread border router** | 🧪 Experimental · HA's OpenThread Border Router integration verified; routing to real Thread devices not tested |
+| Radio: **Thread border router** | ✅ Works · as your only border router (a Matter bulb added with the HA app and controlled from HA) or next to an existing one, also after a Wi-Fi drop and a restart. Must be on HA's network |
 | Radio: **Zigbee router (repeater), Thread router (repeater)** | 🧪 Experimental · both joined a real home network as a repeater |
 | Radio: only Home Assistant can connect | ✅ Verified |
 | Radio firmware updates | 🧪 Experimental · re-flashing Aqara's original firmware verified; no other firmware offered yet |
@@ -164,7 +164,7 @@ with QR codes for your phone:
 - **Zigbee coordinator** for Zigbee2MQTT (experimental): set **Zigbee stack** to *Silicon Labs
   8.2.2* first, then use `adapter: ember` and `port: tcp://<panel IP>:6638`. The panel downloads that
   stack from Silicon Labs itself.
-- **Thread border router** (experimental): runs its own Thread network, for HA's OpenThread Border
+- **Thread border router**: runs its own Thread network, for HA's OpenThread Border
   Router integration.
 - **Zigbee router (repeater)** or **Thread router (repeater)** (experimental): joins the network you
   already have and extends it.
@@ -202,8 +202,8 @@ Each update is checked against its checksum and the project's signing key first.
 - **Zigbee2MQTT has little time to spare at start-up.** The radio answers its reset in about 4.3
   seconds and Zigbee2MQTT waits 5. A slow moment can make a start fail; it works on the next start.
 - **Zigbee2MQTT on the Silicon Labs stack** hasn't been used for long with real Zigbee devices yet.
-- **Thread border router:** traffic between your network and real Thread devices through the panel
-  hasn't been tested yet.
+- **Thread border router:** the panel must be on Home Assistant's network (not a separate IoT
+  network). Tested as the only border router and as a second one.
 - **Switching a development build to a release** without root resets the app's settings (see
   [Updates](#updates)).
 
