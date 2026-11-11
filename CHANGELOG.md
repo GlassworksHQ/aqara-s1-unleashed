@@ -56,6 +56,9 @@ below as the release notes.
   descriptions so *Apply* and *Skip* always fit.
 
 ### Fixed
+- A blank strip about 85 px tall could cover the bottom of the dashboard. The kiosk hides Home
+  Assistant's header, but cards that subtract the header's height from the screen height still
+  subtracted it; they now get the full screen.
 - Pasting the Thread dataset works even when the copy includes spaces or line breaks.
 - Small capital labels, such as the voice assistant's *LISTENING*, showed in lower case.
 

@@ -19,7 +19,11 @@
 
   let cfg = { hideHeader: true, hideSidebar: true };
 
+  // With the header hidden, its height is 0 for everything under hui-root too: cards that size
+  // themselves as `calc(100vh - var(--header-height))` otherwise end 56 CSS px short and leave a
+  // blank strip at the bottom of the screen (issue #7).
   const HUI_CSS = `
+    :host { --header-height: 0px !important; }
     .header { display: none !important; }
     #view { padding-top: 0 !important; min-height: 100vh !important; }
   `;
