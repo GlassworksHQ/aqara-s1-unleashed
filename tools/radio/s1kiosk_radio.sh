@@ -734,6 +734,7 @@ take_app_dataset() {
   [ $(( ${#d} % 2 )) -eq 0 ] || { say "ignoring app dataset hand-off (odd length)"; return 0; }
   ( umask 077; echo "$d" > "$DIR/thread-dataset" ); JOINED=""
   say "new Thread dataset from the app"  # never log the dataset itself
+  thread_stored
   # a running agent may be attached elsewhere: restart it, the next pass joins with the new dataset
   alive "$OTBR_PID" && { kill "$OTBR_PID"; OTBR_PID=""; }
 }
@@ -1091,11 +1092,30 @@ detail() {
         echo "otbr-agent on wpan0, agent build without border routing ($(ot state | head -1))"
       fi ;;
     thread_router)
-      if [ -s "$DIR/thread-dataset" ]; then echo "Thread router on wpan0 ($(ot state | head -1))"
+      # The role and the network's name only (the app says them plainly): never the key, PSKc or ids.
+      if [ -s "$DIR/thread-dataset" ]; then
+        r_=$(ot state | head -1)
+        n_=$(ot networkname | head -1 | tr -cd 'A-Za-z0-9 ._+-' | cut -c1-16)
+        w_=""; [ -n "$n_" ] && w_=", network \"$n_\""
+        case "$r_" in
+          router|leader|child) echo "joined as $r_$w_" ;;
+          detached)            echo "detached: looking for network${n_:+ \"$n_\"}" ;;
+          disabled|"")         echo "starting Thread$w_" ;;
+          *)                   echo "Thread state $(printf '%s' "$r_" | tr -cd 'a-z')$w_" ;;
+        esac
       else echo "ready to join: waiting for a Thread dataset from Home Assistant"; fi ;;
     zigbee_tcp_thread) echo "EZSP on tcp:$ZIGBEE_PORT; otbr-agent on wpan0" ;;
   esac
 }
+
+# A Thread router network is stored (what "Leave Thread network" deletes), for the app's Leave
+# button in every mode: sys.s1kiosk.radio.thread_stored = yes|no. Only whether, never what.
+thread_stored() {
+  if [ -s "$DIR/thread-dataset" ] || [ -e "$DIR/thread-router" ]; then t_=yes; else t_=no; fi
+  [ "$t_" = "$TSTORED" ] && return 0
+  TSTORED=$t_; setprop sys.s1kiosk.radio.thread_stored "$t_"
+}
+TSTORED=""
 
 # --- main ------------------------------------------------------------------------------------
 status applying
@@ -1106,6 +1126,7 @@ fw_init
 while true; do
   fw_request   # an explicit firmware request runs first (and restarts the helper when done)
   thread_leave # "Leave Thread network", in every mode
+  thread_stored
   if [ -n "$FW_HOLD" ]; then
     # radio without a trusted application after an interrupted flash: everything stays off
     WANT=""; enforce; br_net_off; fw_off

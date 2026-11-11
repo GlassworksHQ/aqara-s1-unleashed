@@ -124,7 +124,15 @@ w "$TB/otbr-agent" <<'EOF'
 case "$*" in *--radio-version*) echo "VERSION:FAKE-RCP"; exit 0 ;; esac
 exec sleep 1000
 EOF
-printf '#!/bin/sh\necho disabled\n' | w "$TB/ot-ctl"
+w "$TB/ot-ctl" <<'EOF'
+#!/bin/sh
+# fake ot-ctl: the Thread role and network name come from /t/ot-state and /t/ot-name (CRLF, like ot-ctl)
+case "$1" in
+  state) [ -f /t/ot-state ] && printf '%s\r\nDone\r\n' "$(cat /t/ot-state)" && exit 0 ;;
+  networkname) [ -f /t/ot-name ] && printf '%s\r\nDone\r\n' "$(cat /t/ot-name)" && exit 0 ;;
+esac
+echo disabled
+EOF
 
 # The kiosk: uid 10050, its private files dir.
 APP=/data/data/sh.edm.s1kiosk
@@ -506,6 +514,18 @@ echo thread_router > "$T/props/persist.s1kiosk.radio_mode"; echo "RADIO_ALLOW=an
 echo 0e080000000000010000 > "$APP/files/radio/thread-dataset"; chown 10050 "$APP/files/radio/thread-dataset"
 LOOPS=1 helper
 check "dataset taken into the root dir and the app's copy removed" test "$(cat /data/s1kiosk/radio/thread-dataset 2>/dev/null)" = 0e080000000000010000 -a ! -e "$APP/files/radio/thread-dataset"
+check "...a stored Thread network is reported (yes/no only)" test "$(prop sys.s1kiosk.radio.thread_stored)" = yes
+echo child > "$T/ot-state"; printf 'Home "Net"\001\n' > "$T/ot-name"
+LOOPS=1 helper
+check "Thread router status: role and network name (sanitised)" test "$(prop sys.s1kiosk.radio.status)" = 'ok thread_router: joined as child, network "Home Net"'
+echo router > "$T/ot-state"; echo ABCDEFGHIJKLMNOPQRSTUVWXYZ > "$T/ot-name"
+LOOPS=1 helper
+check "...promoted to router; the name is cut at 16" test "$(prop sys.s1kiosk.radio.status)" = 'ok thread_router: joined as router, network "ABCDEFGHIJKLMNOP"'
+echo detached > "$T/ot-state"; rm -f "$T/ot-name"
+LOOPS=1 helper
+check "...detached, no name" has "$(prop sys.s1kiosk.radio.status)" "ok thread_router: detached: looking for network"
+check "...and never more than the role and the name" test -z "$(grep '^sys.s1kiosk.radio' /t/setprop.log | grep -i -E 'key|pskc|extpanid|0e08')"
+rm -f "$T/ot-state" "$T/ot-name"; pkill -f "sleep 1000"
 mkfifo "$APP/files/radio/thread-dataset"; chown 10050 "$APP/files/radio/thread-dataset"
 timeout 60 env S1R_ONCE=1 S1R_SLEEP=0 S1R_LOADER_ONCE=1 /system/bin/sh "$TB/s1kiosk_radio.sh" >/dev/null 2>&1
 check "a FIFO dataset never blocks the helper" test $? != 124
@@ -526,6 +546,8 @@ echo 0e08 > /data/s1kiosk/radio/thread-dataset; mkdir -p /data/s1kiosk/radio/thr
 echo leave > "$APP/files/radio/thread-leave"; chown 10050 "$APP/files/radio/thread-leave"
 LOOPS=1 helper
 check "Leave Thread network works in Off too" test ! -e /data/s1kiosk/radio/thread-dataset -a ! -e /data/s1kiosk/radio/thread-router
+LOOPS=1 helper
+check "...and nothing is stored afterwards" test "$(prop sys.s1kiosk.radio.thread_stored)" = no
 echo leave > "$APP/files/radio/thread-leave"; chown 10050 "$APP/files/radio/thread-leave"; LOOPS=1 helper
 check "...and says so when nothing was stored" has "$(prop sys.s1kiosk.radio.thread_leave)" "no Thread network was stored"
 ln -s /data/s1kiosk/radio/thread "$APP/files/radio/thread-leave"; LOOPS=1 helper
