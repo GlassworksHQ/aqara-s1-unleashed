@@ -185,7 +185,7 @@ firmware over CPC. Aqara's stack is
 - **Thread.** OpenThread's `otbr-agent`, cross-built for the panel, talks to the same RCP on the
   free spinel IID 2. A full border-router build is still in progress, so this mode is
   **experimental**.
-- **Routers.** Zigbee router and Thread router modes are **coming soon**.
+- **Routers.** Zigbee router and Thread router modes shipped in 0.3.0 and joined a real home network on 2026-11-10 (experimental).
 - **Deliberately not offered:** Zigbee and Thread at the same time on one radio. They would share
   a channel, and Home Assistant deprecated the same multiprotocol design on its own hardware.
 

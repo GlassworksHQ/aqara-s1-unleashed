@@ -508,7 +508,11 @@ How it works ([research/zigbee2mqtt.md](research/zigbee2mqtt.md) has the panel t
 - **The pty is drained before the bridge serves anyone**, for both stacks: a fresh zigbeed writes an
   RSTACK that nobody reads, and Zigbee2MQTT's `ember` adapter would take it for the answer to its own
   reset and then see the real one as an NCP crash (found on the panel). The helper reads the pty until
-  it is quiet after each new zigbeed process; a connected client keeps its session.
+  it is quiet after each new zigbeed process; a connected client keeps its session. Since 0.4.2 every
+  new client is also drained on connect (`$DIR/ezsp-relay.sh` behind socat `EXEC:`: discard until 0.2 s
+  quiet, at most 2 s, then relay), so the ERROR frame zigbeed writes after a client vanished never reaches
+  the next one. Verified on the panel: three Zigbee2MQTT `ember` connects in a row, 0 CRC errors, ASH
+  reset answered at 4.4 s as before.
 - **Reset timing risk:** zigbeed 8.2.2 answers an ASH reset in 4.1-4.4 s (measured), and herdsman's
   `ember` adapter waits 5 s for it. The margin is thin: a slow moment on the panel could make Zigbee2MQTT
   fail a start (it retries on its next start). Watch it in the soak test.
@@ -538,8 +542,8 @@ A root path for flashing the EFR32's RCP image, **never automatic**:
    - stops every radio process and Aqara service (and refuses if any cpcd still runs), reads the current
      version (`/vendor/bin/cpcd -c /etc/cpcd.conf -p`, "Secondary APP");
    - flashes with **Aqara's own** `/vendor/bin/cpcd -c /etc/cpcd_ota.conf -f <image>` (the only proven
-     path; upstream cpcd drives this board's reset pin the wrong way), progress from
-     `sys.zb_ota_progress`, 2 tries;
+     path; upstream cpcd drives this board's reset pin the wrong way), progress from cpcd's own
+     `progress:N` lines (elapsed seconds until the first one; 0.4.2), 2 tries;
    - verifies: the radio must report the image's declared APP version over CPC; then the spinel version
      is read with `otbr-agent --radio-version` on IID 2 when available;
    - on failure, **rolls back to the stock image** the same way and says so; then restarts itself, which

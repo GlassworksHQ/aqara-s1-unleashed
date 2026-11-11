@@ -114,7 +114,7 @@ S1 Kiosk is installed and made the home screen. Then, from the same page:
   (Apache-2.0) instead of Aqara's keyboard. The time zone is also kept from then on: see
   [Time zone](#time-zone).
 
-<img src="img/installer/radio.webp" alt="The radio choice: Off (selected), Zigbee coordinator, Thread border router (experimental), Zigbee router (coming soon)." width="100%">
+<img src="img/installer/radio.webp" alt="The radio choice: Off (selected), Zigbee coordinator, Thread border router (experimental), Zigbee router and Thread router (experimental)." width="100%">
 
 *An older screenshot: the Zigbee router and Thread router are now offered too, as experimental.*
 

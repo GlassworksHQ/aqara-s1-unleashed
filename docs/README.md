@@ -28,5 +28,4 @@ fix, Magisk root, the installer design, screen policy, de-bloat, and the wall ba
 
 `img/` holds the pictures these pages use: `fel-button.jpg` (also used by the installer, so keep
 its path), `installer/` (web installer screens, captured from its development demo states) and
-`panel/` (panel screens). `installer/radio.webp` predates the router roles and still shows them as
-"coming soon".
+`panel/` (panel screens).
