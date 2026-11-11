@@ -11,9 +11,9 @@ entities always reach HA as an ESPHome device over Wi-Fi, whatever the radio doe
 |---|---|---|
 | `Off` (default) | no | **works**: stops Aqara's radio services, radio idle |
 | `Zigbee coordinator (TCP)` | yes | **works with ZHA (bellows)**: form, read-back, restart verified from a computer. Forming/restoring from ZHA needs a bellows fix ([below](#bellows-reset-bug-zha-form-and-restore)); "keep the radio's network" works today. **Zigbee2MQTT** (`ember`): with the `Zigbee stack` select on *Silicon Labs 8.2.2* (helper v4, experimental; [Zigbee stack](#zigbee-stack-aqara-or-silicon-labs-helper-v4)) |
-| `Zigbee router` | helper v2 | **experimental**: the app's EZSP host brings zigbeed up as a router, scans, is ready to join; joining a real network not tested |
+| `Zigbee router` | helper v2 | **experimental**: joined a real ZHA network as a repeater (2026-11-10, strong link); not soak-tested |
 | `Thread border router` | yes | **experimental**: border-router build (`PROFILE=br`); Home Assistant's OTBR REST calls verified against a fresh test network; LAN <-> Thread routing not tested with a real device |
-| `Thread router` | helper v2 | **experimental**: dataset hand-off from the app verified (the stack starts Thread with it); joining a real network not tested |
+| `Thread router` | helper v2 | **experimental**: joined Home Assistant's real Thread network and was promoted to router (2026-11-10); not soak-tested |
 
 There is no "Aqara (stock)" mode: with Aqara's launcher/apps disabled and its cloud blocked
 ([research/debloat.md](research/debloat.md), AqaraCloud.kt), nothing can use the hub's own Zigbee network. **Stock comes back by
@@ -210,7 +210,18 @@ whenever an **authenticated** Home Assistant connection (Noise with the provisio
 plaintext, not the zero-key provisioning handshake) subscribes to states, the app records the peer
 address, one IPv4 and one IPv6 at most (`radio_ha_ipv4` / `radio_ha_ipv6` in the app's prefs, so they
 survive restarts). HA on another VLAN is fine: the address is the routed peer address. If HA's
-address changes, the next connection updates the list (HA reconnects at least every 90 s here).
+address changes, its connection drops and the next one, from the new address, updates the list.
+
+**Home Assistant without an encryption key.** If the panel never got an API key from Home Assistant
+(with Home Assistant older than 2026.11, which doesn't hand out keys by itself), Home Assistant
+connects unencrypted. That connection is never counted as Home Assistant's, because anything on the
+network could make the same one. The radio ports then stay
+closed to everyone: ZHA and the OTBR integration can't connect, and *Radio status* says `nobody yet
+(waiting for Home Assistant to connect over ESPHome)`. To fix it, either give the panel a key
+(Home Assistant 2026.11 or later sets one up by itself the next time it connects; see
+[esphome.md](esphome.md#encryption-automatic)) or put Home Assistant's address in *Radio
+allowed clients*.
+
 The owner can replace the automatic list with the `Radio allowed clients` text entity (in HA: the
 panel's ESPHome device, Configuration; on the panel: the hidden settings dialog, *Radio: who may
 connect*, which also shows who is allowed now): addresses or
@@ -633,7 +644,12 @@ Verified on the panel (from a computer through `adb forward`, `ZigbeeRouterLiveT
 coordinator network detected and left alone, Leave erases it (`networkInit` NOT_JOINED afterwards),
 security state + active scan (networks seen, none open), NVM backup by the helper and restoring it
 (same network fingerprint afterwards). JVM tests with a fake NCP cover join, leave, scan selection and
-the Basic reply. **Not verified: joining a real network** (needs the owner to open permit-join).
+the Basic reply.
+
+**Joined a real network (2026-11-10):** with permit-join open in the reference home's ZHA, *Join*
+found the network (channel 25) and joined; ZHA listed it as "S1 Unleashed S1 Panel Zigbee router"
+with a strong link (LQI 216, RSSI −46 dBm). Leave and removing that one device from ZHA put the mesh
+back as it was. Not yet run for days with traffic through it.
 
 **Alternative: router firmware on the EFR32** (a standalone EmberZNet SoC router image). No host is
 needed, but it means flashing, losing CPC/Thread, and no stock image to go back to (see below).
@@ -753,7 +769,9 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
 - Never forms a network on its own initiative: it only starts Thread with a dataset the user
   supplied. Verified with the panel's own throwaway test dataset (handed over as the app uid): taken,
   app copy deleted, agent restarted, Thread started (alone on the channel it became leader of that
-  test network). Joining the user's real network not tested.
+  test network). **Joined a real network (2026-11-10):** with the reference home's preferred Thread
+  dataset from Home Assistant, the panel joined and was promoted to router within about two minutes.
+  Afterwards *Off*; helper v4's *Leave Thread network* button also deletes the stored dataset.
 
 ## OTA path (not run)
 
