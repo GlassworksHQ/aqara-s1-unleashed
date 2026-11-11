@@ -93,8 +93,10 @@ dependencies {
     }
     // Voice assistant: openWakeWord inference (ships armeabi-v7a, minSdk 19).
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
-    // ESPHome API Noise encryption: X25519 + ChaCha20-Poly1305 (lightweight API, no JCA provider).
-    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
+    // Libraries extracted from this app (app/libs/). esphome-api brings BouncyCastle (Noise), which
+    // Sendspin's encryption also uses.
+    implementation(project(":esphome-api-android")) // brings :esphome-api
+    implementation(project(":improv"))
     // Audio playback (TTS, announcements, media player): streams over HTTP in-process, avoiding the
     // vendor CedarX HTTP stack. Same version GeckoView already ships.
     implementation("androidx.media3:media3-exoplayer:1.11.1")

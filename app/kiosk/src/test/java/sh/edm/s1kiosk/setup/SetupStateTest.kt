@@ -281,7 +281,7 @@ class SetupStateTest {
     fun improvRunningShowsTheWifiStepWithoutTheGrace() {
         val boot = fresh.copy(online = false, offlineForMs = 5_000)
         assertFalse(SetupState.decide(boot).show)
-        val improv = ImprovFacts(running = true, state = sh.edm.s1kiosk.improv.ImprovState.AUTHORIZATION_REQUIRED)
+        val improv = ImprovFacts(running = true, state = sh.edm.improv.ImprovState.AUTHORIZATION_REQUIRED)
         val d = SetupState.decide(boot.copy(improv = improv))
         assertTrue(d.show)
         assertEquals(SetupStep.WIFI, d.step)

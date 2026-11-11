@@ -219,6 +219,21 @@ is `media_player.s1_panel` (from the Music Assistant integration). The ESPHome s
 Sendspin output is muted locally and stays in sync. Verified on the panel against MA 2.10.9 (clock
 ±0.43 ms, ~0.9 corrected frames/s). Details, sources and tests: [docs/sendspin.md](../docs/sendspin.md).
 
+## Libraries
+
+Parts of the app are standalone modules other projects can use:
+
+- [`libs/esphome-api`](libs/esphome-api/README.md): the ESPHome native API, device side, in plain
+  Kotlin/JVM (Noise encryption with HA key provisioning, entities, voice assistant messages).
+- [`libs/esphome-api-android`](libs/esphome-api-android/README.md): mDNS discovery for it on Android.
+- [`libs/improv`](libs/improv/README.md): Improv Wi-Fi for Android: a BLE GATT server, Improv Serial
+  (including over adb, from a web page over USB), Wi-Fi joining that works on Android 10+, and the
+  pure-Kotlin protocol and state machines. Its browser client is
+  [`web/packages/improv-serial`](../web/packages/improv-serial/README.md).
+
+They build with the app (`./gradlew :esphome-api:test :esphome-api-android:assembleDebug
+:improv:testDebugUnitTest`) and aren't published to a Maven repository or npm yet.
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Clean-room implementation. It contains no code from

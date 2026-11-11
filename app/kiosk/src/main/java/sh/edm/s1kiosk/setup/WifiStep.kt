@@ -1,6 +1,6 @@
 package sh.edm.s1kiosk.setup
 
-import sh.edm.s1kiosk.improv.ImprovState
+import sh.edm.improv.ImprovState
 
 /**
  * Improv (Wi-Fi over Bluetooth) as the setup screen sees it: a plain snapshot that

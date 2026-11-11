@@ -1,5 +1,8 @@
 package sh.edm.s1kiosk.improv
 
+import sh.edm.s1kiosk.AdminReceiver
+import android.content.ComponentName
+import sh.edm.improv.*
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
@@ -45,6 +48,9 @@ import java.lang.ref.WeakReference
  */
 @SuppressLint("StaticFieldLeak")
 object ImprovController {
+    // Keep the library's BLE logs under the tag the docs use (`adb logcat -s S1Kiosk.Improv`).
+    init { ImprovBleServer.logTag = "S1Kiosk.Improv"; WifiProvisioner.logTag = "S1Kiosk.Improv" }
+
     private const val TAG = "S1Kiosk.Improv"
     /** How long after a join's result a process restart still waits (the result must get out first). */
     private const val SETTLE_MS = 8_000L
@@ -148,7 +154,7 @@ object ImprovController {
         initialized = true
         app = ctx.applicationContext
         prefs = KioskPrefs(app)
-        wifi = WifiProvisioner(app, main).also {
+        wifi = WifiProvisioner(app, main, ComponentName(app, AdminReceiver::class.java)).also {
             it.onProgress = { p ->
                 val inst = installerWifi
                 if (installerJoining && inst != null) installerWifi = inst.copy(detail = p) else progress = p

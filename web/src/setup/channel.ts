@@ -1,4 +1,4 @@
-// The kiosk app's setup channel, reached through adb like Improv Serial (src/improv/serial.ts).
+// The kiosk app's setup channel, reached through adb like Improv Serial (packages/improv-serial).
 // Everything the panel's own onboarding asks for besides Wi-Fi, so the installer can do it from the
 // computer: Home Assistant address, sign-in status, radio mode.
 //
@@ -16,7 +16,7 @@
 //   The app may also push {"event":"state","state":SetupState} whenever something changes
 //   (signed in, radio status, Wi-Fi), so the installer doesn't have to poll.
 //   No secrets ever cross this channel (no tokens, no keys, no passwords).
-import type { ByteStream } from '../improv/serial';
+import type { ByteStream } from '../improv';
 
 export const SETUP_SOCKET = 'localabstract:s1kiosk_setup';
 

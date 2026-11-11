@@ -1,7 +1,7 @@
 package sh.edm.s1kiosk.improv
 
+import sh.edm.improv.*
 import android.util.Log
-import sh.edm.s1kiosk.AdbSocketServer
 import sh.edm.s1kiosk.BuildConfig
 import sh.edm.s1kiosk.InstallerGlue
 import sh.edm.s1kiosk.auth.OAuth
@@ -17,6 +17,8 @@ import java.util.concurrent.atomic.AtomicReference
  * exactly like any installer join; scans come from WifiManager ([ImprovController.scanFromInstaller]).
  */
 object ImprovSerialServer {
+    /** Abstract socket name (adb: `localabstract:s1kiosk_improv`). */
+    const val SOCKET = "s1kiosk_improv"
     private const val TAG = "S1Kiosk.ImprovSerial"
     private const val FIRMWARE = "S1 Kiosk"
     private const val CHIP = "Allwinner A133"
@@ -24,26 +26,16 @@ object ImprovSerialServer {
     /** The client waits 20 s for a scan; Wi-Fi may have to be turned on first. */
     private const val SCAN_WAIT_MS = 15_000L
 
-    private var server: AdbSocketServer? = null
+    private var server: ImprovAdbServer? = null
 
     fun start() {
         if (server != null) return
-        server = AdbSocketServer(ImprovSerial.SOCKET, TAG, ::serve).also { it.start() }
+        server = ImprovAdbServer(SOCKET, TAG) { output -> Effects(output) }.also { it.start() }
     }
 
     fun stop() {
         server?.stop()
         server = null
-    }
-
-    private fun serve(input: java.io.InputStream, output: OutputStream) {
-        val session = ImprovSerialSession(Effects(output)) { Log.i(TAG, it) }
-        val buf = ByteArray(512)
-        while (true) {
-            val n = input.read(buf)
-            if (n < 0) break
-            if (n > 0) session.onBytes(buf, n)
-        }
     }
 
     private class Effects(private val out: OutputStream) : ImprovSerialSession.Effects {

@@ -2,7 +2,8 @@
 import { Adb, AdbDaemonTransport } from '@yume-chan/adb';
 import { AdbDaemonWebUsbDevice, AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb';
 import { ReadableStream } from '@yume-chan/stream-extra';
-import type { ByteStream } from '../improv/serial';
+import { openAdbStream } from '../../packages/improv-serial/src/adb';
+import type { ByteStream } from '../improv';
 import type { AdbKey } from './key';
 
 /** What provisioning needs from a panel. Panel implements it over adb; the tests use a fake. */
@@ -77,29 +78,9 @@ export class Panel implements PanelShell {
     }
   }
 
-  async openStream(service: string): Promise<ByteStream> {
-    // Android 10's adbd reads the OPEN payload as a C string. Tango omits the NUL terminator for
-    // protocol >= 0x01000001, so adbd can read past the name into garbage and refuse the service
-    // (seen on the panel: localabstract:s1kiosk_improv refused, with the NUL it opens). Real adb
-    // always sends it.
-    const socket = await this.adb.createSocket(service.endsWith('\0') ? service : `${service}\0`);
-    const writer = socket.writable.getWriter();
-    return {
-      write: (data) => writer.write(data),
-      onData: (cb) => {
-        void (async () => {
-          const reader = socket.readable.getReader();
-          try {
-            for (;;) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              cb(value);
-            }
-          } catch { /* closed */ }
-        })();
-      },
-      close: async () => { try { await socket.close(); } catch { /* already closed */ } },
-    };
+  openStream(service: string): Promise<ByteStream> {
+    // Adds the NUL terminator Android 10's adbd needs (see openAdbStream).
+    return openAdbStream(this.adb, service);
   }
 
   async close(): Promise<void> {
