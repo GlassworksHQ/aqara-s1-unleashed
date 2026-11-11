@@ -1,4 +1,4 @@
-# Matter on the panel: a feasibility spike (2026-11-10)
+# Matter on the panel (2026-11-10)
 
 GitHub issue #1 asks for the panel to join a Thread network the way Matter devices do: scan a code in
 the Home Assistant app, and the panel receives the Thread dataset during commissioning. This note is
@@ -51,3 +51,24 @@ This is about the Matter route.
 
 Not tried: BLE commissioning, the Android HA app (Google Play services' commissioning may treat test
 devices differently), and a build inside the app as a native library.
+
+## Update, later the same night: over Bluetooth, end to end
+
+The BLE piece was built as `rs-matter-android` (fork branch `android`, [matter.md](../matter.md)) and
+tested with a sample app on the panel and an iPhone:
+
+- **Commissioning over BLE works** through Android's `BluetoothGattServer`: PASE, attestation, NOC.
+- **It must be BLE-only.** In rs-matter's concurrent mode the node is also commissionable on the LAN,
+  and the iPhone used the LAN (sending no network credentials). Non-concurrent mode advertises over BLE
+  only while the window is open.
+- **Apple scans first.** After `AddNOC` the iPhone sent `ScanNetworks` (`0/0x31/0x0`). rs-matter answered
+  it with `InvalidAction` during BLE commissioning (no operational controller yet), which aborted the
+  pairing; an empty, successful scan made the iPhone wait until the fail-safe expired. With the panel's
+  Thread network in the results, it went on: `AddOrUpdateThreadNetwork`, `ConnectNetwork`, the dataset
+  (110 bytes) reached the app, `CommissioningComplete`, then the handover to Home Assistant.
+- **The scan results can come from the LAN:** border routers advertise `_meshcop._udp` with the network
+  name and extended PAN ID. Reporting channel and PAN ID 0 (they aren't in the TXT records) was accepted.
+- **rs-matter's connection manager** needs `connected()` to become true after `connect`, or it reconnects
+  in a tight loop.
+- The SDK's development DAC still needs Home Assistant's test-net DCL option.
+

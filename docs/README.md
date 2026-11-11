@@ -11,6 +11,7 @@
 | [sensors.md](sensors.md) | Presence (VI5300 time-of-flight), ambient light, and how the screen uses them |
 | [radio-guide.md](radio-guide.md) | Using the Zigbee/Thread radio: ZHA, Zigbee2MQTT, Thread, repeaters, who may connect |
 | [radio.md](radio.md) | The radio's technical reference: how each mode works, tests, firmware, the root helper |
+| [matter.md](matter.md) | Pairing the panel with a phone's home app (Matter, experimental): it then gets your Thread network over Bluetooth |
 | [releasing.md](releasing.md) | For maintainers: the signing keys, GitHub secrets, tagging a release, the radio bundle |
 | [legal.md](legal.md) | Legal notes: your own device, no copy protection bypassed, what is and isn't shipped, trademarks, licences ([third-party notices](../THIRD-PARTY-NOTICES.md)) |
 

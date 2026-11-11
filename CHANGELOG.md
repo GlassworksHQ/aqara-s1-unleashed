@@ -8,14 +8,23 @@ below as the release notes.
 ## [Unreleased]
 
 ### Added
-- **The panel joins your Thread network without copying the dataset.** *Join Home Assistant's
-  Thread network* (a button on the panel's device page, an entry under *Radio* in the panel's
-  settings menu, and the setup screen's *Thread router* option) gets your preferred Thread network
-  from Home Assistant and makes the panel a Thread router. Home Assistant only gives a Thread
+- **The panel gets your Thread network from Home Assistant**, instead of you copying the dataset.
+  *Get it from Home Assistant* on the panel's Thread router card (setup screen and settings menu), or
+  the *Join Home Assistant's Thread network* button on its device page, reads your preferred Thread
+  network from Home Assistant and makes the panel a Thread router. Home Assistant only gives a Thread
   network's settings to administrators, so unless the panel is signed in as one, it shows a QR code:
-  scan it and sign in as an administrator on your phone. The panel uses that sign-in once and
-  deletes it straight away. The *Thread join* sensor says how it went. Pasting the dataset into
-  *Thread dataset* still works.
+  scan it and sign in as an administrator on your phone. The panel uses that sign-in once and deletes
+  it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
+- **Pair the panel with a phone (Matter, experimental).** On the panel's Thread router card (setup
+  screen or settings menu), *Pair with a phone*: scan the panel's QR code in your phone's home app,
+  and the phone sends the panel your Thread network over Bluetooth; the panel joins it as a Thread
+  router and stays a Matter device (its screen is an On/Off switch). Uses the Matter SDK's test
+  certificate, so Home Assistant's Matter Server needs *Enable test-net DCL usage* on. See
+  [docs/matter.md](docs/matter.md). Not yet tested on the panel itself: the library it uses was, with
+  an iPhone and Home Assistant.
+
+### Changed
+- Building the app now needs Rust and the Android NDK (the Matter library, `app/README.md`).
 
 ## [0.4.3] - 2026-11-11
 

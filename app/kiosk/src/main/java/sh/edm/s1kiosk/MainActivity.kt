@@ -136,6 +136,35 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Matter pairing (matter/PanelMatter): shown while pairing, then how it ended. */
+    private val matterListener: (sh.edm.s1kiosk.matter.PanelMatter.State) -> Unit = { s ->
+        if (!isDestroyed) showMatter(s)
+    }
+
+    private fun showMatter(s: sh.edm.s1kiosk.matter.PanelMatter.State) {
+        val showingMatter = threadJoinOverlay.isShowing &&
+            threadJoinOverlay.mode == sh.edm.s1kiosk.setup.ThreadJoinOverlay.Mode.MATTER
+        when (s) {
+            is sh.edm.s1kiosk.matter.PanelMatter.State.Pairing -> {
+                if (settingsOverlay.isShowing) settingsOverlay.hide()
+                threadJoinOverlay.renderMatter(s)
+            }
+            sh.edm.s1kiosk.matter.PanelMatter.State.Off -> if (showingMatter) threadJoinOverlay.hide()
+            else -> if (showingMatter || matterRequested) threadJoinOverlay.renderMatter(s)
+        }
+        if (s !is sh.edm.s1kiosk.matter.PanelMatter.State.Starting) matterRequested = false
+    }
+
+    /** The user asked to pair just now (so "Starting…" and a paired panel's state are shown). */
+    private var matterRequested = false
+
+    private fun startMatterPairing(from: String) {
+        Log.i(TAG, "Pair with a phone over Matter ($from)")
+        matterRequested = true
+        sh.edm.s1kiosk.matter.PanelMatter.startPairing()
+        showMatter(sh.edm.s1kiosk.matter.PanelMatter.state)
+    }
+
     private fun startThreadJoin(from: String) {
         Log.i(TAG, "Join Home Assistant's Thread network ($from)")
         HaAuth.threadJoin.start()
@@ -201,7 +230,11 @@ class MainActivity : Activity() {
             onRadioRun = { r, done -> runRadio(r, "setup screen", done) }
         }
         threadJoinOverlay = sh.edm.s1kiosk.setup.ThreadJoinOverlay(this).apply {
-            onClose = { HaAuth.threadJoin.disarm(); hide() }
+            onClose = {
+                if (mode == sh.edm.s1kiosk.setup.ThreadJoinOverlay.Mode.MATTER) sh.edm.s1kiosk.matter.PanelMatter.cancelPairing()
+                else HaAuth.threadJoin.disarm()
+                hide()
+            }
         }
         settingsOverlay = KioskSettingsOverlay(this).apply {
             onSave = ::saveSettings
@@ -231,6 +264,7 @@ class MainActivity : Activity() {
         loadingOverlay.show("Starting up", if (hasNetwork()) "Connecting to Home Assistant…" else "Reconnecting to Wi-Fi…")
         HaAuth.addListener(authListener)
         HaAuth.threadJoin.addListener(threadJoinListener)
+        sh.edm.s1kiosk.matter.PanelMatter.addListener(matterListener)
         SetupSignals.addListener(setupSignalListener)
         wifiStatus.observe { refreshSetup() }
         ImprovController.inlineHost = improvHost
@@ -844,6 +878,7 @@ class MainActivity : Activity() {
                 RadioFollowUp.Action.ROUTER_LEAVE -> r.routerLeave()
                 RadioFollowUp.Action.THREAD_LEAVE -> r.threadLeave()
                 RadioFollowUp.Action.THREAD_JOIN_HA -> startThreadJoin(source)
+                RadioFollowUp.Action.MATTER_PAIR -> startMatterPairing(source)
             }
         }
         handler.postDelayed({ refreshRadioViews() }, 400)
@@ -1232,6 +1267,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         HaAuth.removeListener(authListener)
         HaAuth.threadJoin.removeListener(threadJoinListener)
+        sh.edm.s1kiosk.matter.PanelMatter.removeListener(matterListener)
         SetupSignals.removeListener(setupSignalListener)
         wifiStatus.observe(null)
         if (ImprovController.inlineHost === improvHost) {

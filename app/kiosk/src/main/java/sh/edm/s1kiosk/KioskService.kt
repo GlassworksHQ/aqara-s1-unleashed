@@ -56,7 +56,9 @@ class KioskService : Service() {
             radioRef = it.radio
             val radio = it.radio
             HaAuth.threadJoin.deliver = { r -> radio.joinThreadNetwork(r.tlv) }
+            sh.edm.s1kiosk.matter.PanelMatter.deliver = { hex -> radio.joinThreadNetwork(hex) }
         }
+        sh.edm.s1kiosk.matter.PanelMatter.init(this) // runs the Matter node again if the panel was paired
         ImprovController.init(this) // Improv Wi-Fi via BLE (provisioning mode; see improv/)
         // The web installer, over adb (docs/onboarding.md): Wi-Fi via Improv Serial, then HA + radio.
         ImprovSerialServer.start()
@@ -87,6 +89,8 @@ class KioskService : Service() {
         discoveryRef = null
         radioRef = null
         HaAuth.threadJoin.deliver = null
+        sh.edm.s1kiosk.matter.PanelMatter.deliver = null
+        sh.edm.s1kiosk.matter.PanelMatter.stop()
         HaAuth.stopServer()
         super.onDestroy()
     }

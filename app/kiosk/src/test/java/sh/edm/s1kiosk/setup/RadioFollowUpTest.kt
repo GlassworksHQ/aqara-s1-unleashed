@@ -126,11 +126,12 @@ class RadioFollowUpTest {
         assertEquals(waiting.describe(), c.state)
         assertEquals("No dataset", c.badge)
         assertTrue(c.datasetField)
-        assertEquals(listOf(Action.THREAD_JOIN_HA, Action.THREAD_LEAVE), c.actions)
+        assertEquals(listOf(Action.THREAD_JOIN_HA, Action.MATTER_PAIR, Action.THREAD_LEAVE), c.actions)
         assertTrue(c.note!!.contains("network key"))
         assertTrue(c.lines[0].startsWith("Get it from Home Assistant"))
-        assertTrue(c.lines[1].contains("Active dataset TLVs"))
-        assertTrue(c.lines[1].contains("device page → Configuration"))
+        assertTrue(c.lines[1].startsWith("Or pair with a phone"))
+        assertTrue(c.lines[2].contains("Active dataset TLVs"))
+        assertTrue(c.lines[2].contains("device page → Configuration"))
         assertTrue(c.more.any { it.contains("admin users") })
         // joined: the network's name large, the role under it, no QR (nothing left to scan)
         val joined = RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = ThreadRouterState(true, "router", "Example-Net")), Place.SETTINGS)
@@ -144,8 +145,8 @@ class RadioFollowUpTest {
         // the setup screen: no dataset field
         assertFalse(RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER), Place.SETUP).datasetField)
         // no Leave with a helper that says nothing is stored, or without v4
-        assertEquals(listOf(Action.THREAD_JOIN_HA), RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, stored = false), Place.SETTINGS).actions)
-        assertEquals(listOf(Action.THREAD_JOIN_HA), RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, helper = none), Place.SETTINGS).actions)
+        assertEquals(listOf(Action.THREAD_JOIN_HA, Action.MATTER_PAIR), RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, stored = false), Place.SETTINGS).actions)
+        assertEquals(listOf(Action.THREAD_JOIN_HA, Action.MATTER_PAIR), RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, helper = none), Place.SETTINGS).actions)
         // joined: nothing to get
         assertFalse(Action.THREAD_JOIN_HA in joined.actions)
     }
@@ -161,7 +162,7 @@ class RadioFollowUpTest {
             assertFalse(m.name, c.stackChoice || c.datasetField)
             assertEquals(m.name, when (m) {
                 RadioMode.ZIGBEE_ROUTER -> listOf(Action.ROUTER_JOIN)
-                RadioMode.THREAD_ROUTER -> listOf(Action.THREAD_JOIN_HA)
+                RadioMode.THREAD_ROUTER -> listOf(Action.THREAD_JOIN_HA, Action.MATTER_PAIR)
                 else -> emptyList()
             }, c.actions)
             assertEquals(m.name, m == RadioMode.THREAD, c.note != null)

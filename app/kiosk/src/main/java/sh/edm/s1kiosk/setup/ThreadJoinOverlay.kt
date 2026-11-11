@@ -20,8 +20,14 @@ import sh.edm.s1kiosk.auth.ThreadJoin
  */
 class ThreadJoinOverlay(context: Context) : FrameLayout(context) {
 
-    /** "Close": stop offering the QR code. */
+    /** "Close": stop offering the QR code. [mode] says which flow is showing. */
     var onClose: (() -> Unit)? = null
+
+    /** What the overlay shows: the Home Assistant sign-in (ThreadJoin) or Matter pairing. */
+    enum class Mode { HA_SIGN_IN, MATTER }
+
+    var mode = Mode.HA_SIGN_IN
+        private set
 
     var isShowing = false
         private set
@@ -80,6 +86,8 @@ class ThreadJoinOverlay(context: Context) : FrameLayout(context) {
     /** Shows (or updates) the overlay for [s]; [url] is what the QR code opens. */
     fun render(s: ThreadJoin.State, url: String, now: Long = System.currentTimeMillis()) {
         removeCallbacks(autoHide)
+        mode = Mode.HA_SIGN_IN
+        label.text = "Radio · Thread router"
         val armed = s is ThreadJoin.State.NeedsAdmin && now < s.until
         if (armed || s is ThreadJoin.State.Working) {
             if (qrFor != url) {
@@ -103,7 +111,7 @@ class ThreadJoinOverlay(context: Context) : FrameLayout(context) {
                 title.text = "Couldn't join the Thread network"
                 body.text = s.reason.replaceFirstChar { it.uppercase() } + "."
                 status.setTextColor(ROSE)
-                status.text = "Try again from the settings menu or Home Assistant (“Join Home Assistant's Thread network”)."
+                status.text = "Try again from the panel's Thread router card, or Home Assistant (“Join Home Assistant's Thread network”)."
             }
             else -> {
                 title.text = "Scan to join Home Assistant's Thread network"
@@ -115,6 +123,62 @@ class ThreadJoinOverlay(context: Context) : FrameLayout(context) {
                 if (s is ThreadJoin.State.NeedsAdmin) postDelayed(autoHide, (s.until - now).coerceAtLeast(0))
             }
         }
+        reveal()
+    }
+
+    /**
+     * Matter pairing (matter/PanelMatter): the QR code a phone's home app scans (the Matter
+     * onboarding payload, `MT:…`), the manual code, then how it went.
+     */
+    fun renderMatter(s: sh.edm.s1kiosk.matter.PanelMatter.State) {
+        removeCallbacks(autoHide)
+        mode = Mode.MATTER
+        label.text = "Radio · Matter"
+        val pairing = s as? sh.edm.s1kiosk.matter.PanelMatter.State.Pairing
+        if (pairing != null && pairing.qr.isNotEmpty()) {
+            if (qrFor != pairing.qr) {
+                qrImage.setImageBitmap(SetupOverlay.qrBitmap(pairing.qr, px(186f)))
+                qrFor = pairing.qr
+            }
+            qrTile.visibility = View.VISIBLE
+        } else {
+            qrTile.visibility = View.GONE
+        }
+        when (s) {
+            is sh.edm.s1kiosk.matter.PanelMatter.State.Pairing -> {
+                title.text = "Scan with your phone's home app"
+                body.text = "Add a Matter device and scan this code, close to the panel (it pairs over Bluetooth). " +
+                    "Your phone sends the panel your Thread network, and the panel joins it as a Thread router." +
+                    (if (s.code.isNotEmpty()) " Or type ${s.code}." else "")
+                status.setTextColor(FA)
+                status.text = "Works with Home Assistant (with test-net DCL on in its Matter Server) and Apple Home."
+                postDelayed(autoHide, PAIRING_WINDOW_MS)
+            }
+            is sh.edm.s1kiosk.matter.PanelMatter.State.Paired -> {
+                title.text = "Paired" + (s.network?.let { " · joining $it" } ?: "")
+                body.text = "The panel is a Matter device in your home now (its screen is an On/Off switch), and joins " +
+                    "your Thread network as a Thread router. Radio status on the panel's device page says when it's in."
+                status.setTextColor(GREEN)
+                status.text = "Done."
+                postDelayed(autoHide, 8_000)
+            }
+            is sh.edm.s1kiosk.matter.PanelMatter.State.Failed -> {
+                title.text = "Matter pairing stopped"
+                body.text = s.reason.replaceFirstChar { it.uppercase() } + "."
+                status.setTextColor(ROSE)
+                status.text = "Try again from the panel's Thread router card."
+            }
+            else -> {
+                title.text = "Starting Matter…"
+                body.text = "The panel is getting ready to pair over Bluetooth."
+                status.setTextColor(AMBER)
+                status.text = ""
+            }
+        }
+        reveal()
+    }
+
+    private fun reveal() {
         if (!isShowing) {
             isShowing = true
             animate().cancel()
@@ -138,6 +202,8 @@ class ThreadJoinOverlay(context: Context) : FrameLayout(context) {
     }
 
     private companion object {
+        /** rs-matter's basic commissioning window (15 minutes). */
+        const val PAIRING_WINDOW_MS = 15 * 60_000L
         val S2 = Color.argb((0.08f * 255).toInt(), 255, 255, 255)
         val BD = Color.argb((0.07f * 255).toInt(), 255, 255, 255)
         val TX = Color.parseColor("#f4f4f5")

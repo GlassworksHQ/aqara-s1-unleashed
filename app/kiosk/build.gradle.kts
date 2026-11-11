@@ -106,6 +106,8 @@ dependencies {
     implementation("org.tukaani:xz:1.10")
 
     // JVM unit tests for the ESPHome API (against aioesphomeapi) and openWakeWord buffering.
+    // Matter commissioning over BLE (rs-matter-android, app/third_party/rs-matter).
+    implementation(project(":matter"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")
     // Mock-up screenshots of the real settings/setup views (RadioMockups, only with -Ps1MockupDir=<dir>).

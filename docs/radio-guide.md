@@ -121,6 +121,8 @@ window, on the panel's device page or in the panel's settings menu. ZHA lists th
    deletes it again (it no longer appears under your profile's *Refresh tokens*). The QR code works
    for 10 minutes. If Home Assistant has several Thread networks, make the one you want *preferred*
    first. **Thread join** on the device page says how it went.
+   Or pair the panel with your phone's home app over Matter, with no Home Assistant sign-in: *Pair
+   with a phone* on the same card ([matter.md](matter.md), experimental).
 3. Or copy the dataset by hand: open Home Assistant's **Thread** page (the panel's card has a QR code
    for it). Under *Preferred network*, open ⓘ *Network information* and copy **Active dataset TLVs**
    (Home Assistant shows it to admin users, for a network that comes from an OpenThread Border Router

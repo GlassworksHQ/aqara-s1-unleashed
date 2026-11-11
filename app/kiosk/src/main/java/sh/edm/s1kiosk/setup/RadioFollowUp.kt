@@ -40,6 +40,8 @@ object RadioFollowUp {
         THREAD_LEAVE("Leave Thread network", "Leaving…"),     // thread_leave
         /** auth/ThreadJoin: the preferred network's dataset from Home Assistant (QR code for an admin sign-in if needed). */
         THREAD_JOIN_HA("Get it from Home Assistant", "Getting…"), // thread_join_ha
+        /** matter/PanelMatter: a phone's home app commissions the panel over BLE and sends the network (experimental). */
+        MATTER_PAIR("Pair with a phone", "Starting…"),
     }
 
     /** Something the user asked for: a role button, a Zigbee stack, or (settings menu picker) a mode. */
@@ -242,6 +244,10 @@ object RadioFollowUp {
                         "Active dataset TLVs (for admin users, for a network from an OpenThread Border Router it manages).",
                     "Paste it into the panel's Thread dataset in Home Assistant (the panel's device page → Configuration), " +
                         "or under Advanced here. $DATASET_KEY",
+                    "Pair with a phone (experimental): the panel is a Matter device for a moment, commissioned over " +
+                        "Bluetooth, and the phone sends it the network. It stays a Matter device afterwards (its screen is an " +
+                        "On/Off switch). It uses the Matter SDK's test certificate, so Home Assistant's Matter Server needs " +
+                        "Enable test-net DCL usage on.",
                     "Get it from Home Assistant does that for you: Home Assistant only gives the dataset to administrators, " +
                         "so the panel uses its own sign-in if it is one, or asks for a one-time administrator sign-in on a " +
                         "phone (a QR code). That sign-in is deleted right after.",
@@ -262,6 +268,8 @@ object RadioFollowUp {
                     listOf(
                         "Get it from Home Assistant: the panel reads your preferred Thread network itself. If it isn't " +
                             "signed in as an administrator, it shows a QR code for a one-time administrator sign-in.",
+                        "Or pair with a phone: your phone's home app adds the panel as a Matter device and sends it the " +
+                            "network over Bluetooth (experimental; Home Assistant needs test-net DCL, see docs/matter.md).",
                         "Or copy it by hand: open the Thread page" + (if (page != null) " (scan the code)" else " in Home Assistant") +
                             ", Preferred network → ⓘ Network information → “Active dataset TLVs”, and paste it into the " +
                             "panel's Thread dataset (device page → Configuration, or Advanced here).",
@@ -270,7 +278,7 @@ object RadioFollowUp {
                     state = t?.describe() ?: statusDetail(f),
                     badge = if (t?.dataset == true) "Dataset set" else "No dataset",
                     note = DATASET_KEY,
-                    datasetField = true, actions = listOf(Action.THREAD_JOIN_HA) + leave, more = more,
+                    datasetField = true, actions = listOf(Action.THREAD_JOIN_HA, Action.MATTER_PAIR) + leave, more = more,
                 )
             }
         }
@@ -321,13 +329,13 @@ object RadioFollowUp {
             Card(
                 f.mode, "Join your Thread network",
                 listOf(
-                    "Get it from Home Assistant: the panel reads your Thread network itself (an administrator signs in once on a phone).",
+                    "Get it from Home Assistant (an administrator signs in once on a phone), or pair with a phone's home app over Matter.",
                     "Or copy “Active dataset TLVs” from Home Assistant's Thread page" + (if (page != null) " (scan the code)" else "") +
                         " into the panel's Thread dataset in Home Assistant, and nowhere else: it holds the network key.",
                 ),
                 qr = page?.let { Qr(it, "Scan to open Home Assistant's Thread page") },
                 state = f.thread?.short() ?: statusDetail(f),
-                actions = if (f.thread?.joined == true) emptyList() else listOf(Action.THREAD_JOIN_HA),
+                actions = if (f.thread?.joined == true) emptyList() else listOf(Action.THREAD_JOIN_HA, Action.MATTER_PAIR),
             )
         }
     }
@@ -338,7 +346,7 @@ object RadioFollowUp {
             Action.ROUTER_JOIN -> null
             Action.ROUTER_LEAVE -> Ask(r, "Leave the Zigbee network?", "The panel forgets this Zigbee network; remove it from ZHA too.", "Leave", destructive = true)
             Action.THREAD_LEAVE -> Ask(r, "Leave the Thread network?", "Deletes the stored Thread network and its key from the panel.", "Leave", destructive = true)
-            Action.THREAD_JOIN_HA -> null
+            Action.THREAD_JOIN_HA, Action.MATTER_PAIR -> null
         }
         is Request.Stack -> if (f != null && f.stack == r.stack) null else Ask(
             r, "Switch the Zigbee stack to ${stackTitle(r.stack)}?",
@@ -423,13 +431,13 @@ object RadioFollowUp {
                 Action.ROUTER_LEAVE -> status != before || waited > 30_000
                 Action.THREAD_LEAVE -> status.contains("Thread network left") || status.contains("Thread leave") || waited > 40_000
                 // Runs on its own screen (setup/ThreadJoinOverlay): the button is free again at once.
-                Action.THREAD_JOIN_HA -> true
+                Action.THREAD_JOIN_HA, Action.MATTER_PAIR -> true
             }
             if (!done) return false
             running = null
             result = when {
                 r.action == Action.THREAD_LEAVE && status.contains("Thread network left") -> "Thread network left."
-                r.action == Action.THREAD_JOIN_HA -> null
+                r.action == Action.THREAD_JOIN_HA || r.action == Action.MATTER_PAIR -> null
                 status == before -> "No change yet: see the status line."
                 else -> null
             }
