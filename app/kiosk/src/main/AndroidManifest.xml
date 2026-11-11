@@ -78,6 +78,31 @@
             </intent-filter>
         </activity>
 
+        <!-- Our HOME while the user is still locked after a boot (direct boot), instead of Aqara's
+             FallbackHome (priority -1000): the loading screen until unlock, then MainActivity. Priority
+             -100: above FallbackHome, below MainActivity (0), so they never tie (BootSplash.kt has the
+             AOSP 10 details). Ships disabled: MainActivity enables it only while no other app's HOME
+             could tie with ours (BootSplashActivity.sync). Own process: nothing of the app's
+             credential-encrypted state is touched before unlock. -->
+        <activity
+            android:name=".BootSplashActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:directBootAware="true"
+            android:process=":boot"
+            android:taskAffinity="sh.edm.s1kiosk.boot"
+            android:excludeFromRecents="true"
+            android:stateNotNeeded="true"
+            android:resizeableActivity="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density|navigation">
+            <intent-filter android:priority="-100">
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!-- Owns the sensor/screen policy (and the voice satellite) while the screen is off. -->
         <service
             android:name=".KioskService"

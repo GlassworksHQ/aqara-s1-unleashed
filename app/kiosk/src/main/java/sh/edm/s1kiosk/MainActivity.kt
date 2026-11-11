@@ -210,6 +210,8 @@ class MainActivity : Activity() {
         startSession()
         intent?.let { i -> handler.post { applySetupPreview(i) } }
         handler.post(setupTick)
+        // The direct-boot splash (our look before unlock at the next boot): on only while it's safe.
+        Thread({ BootSplashActivity.sync(applicationContext) }, "s1-boot-splash").start()
         requestRuntimePermissions()
         hideSystemUi()
     }
