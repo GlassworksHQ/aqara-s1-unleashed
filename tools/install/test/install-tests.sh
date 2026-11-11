@@ -90,7 +90,9 @@ case "$cmd" in
   "getprop ro.product.model") echo "Aqara S1 Plus" ;;
   "getprop ro.build.version.sdk") echo 29 ;;
   "pm list packages sh.edm.s1kiosk") [ "$(st installed)" != none ] && echo "package:sh.edm.s1kiosk" ;;
-  "dumpsys package sh.edm.s1kiosk") printf '    versionName=0.1.0\n    pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]\n' ;;
+  "dumpsys package sh.edm.s1kiosk")
+    if [ "$(st installed)" = release ]; then printf '    versionName=0.4.1\n    pkgFlags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ]\n'
+    else printf '    versionName=0.1.0\n    pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]\n'; fi ;;
   "timeout 15 su -c 'id -u' 2>/dev/null") [ "$(st root)" = 1 ] && echo 0 || exit 1 ;;
   "dumpsys wifi") cat "$(st wifi-dump)" ;;
   "ip -4 -o addr show wlan0") echo "3: wlan0    inet 192.0.2.50/24 brd 192.0.2.255 scope global wlan0" ;;
@@ -286,6 +288,14 @@ check "changes nothing" test "$(cat "$T/installed") $(cat "$T/disabled") $(cat "
 for c in "install " "push " "pm uninstall" "pm disable-user" "s1kiosk-switch.sh" "forward "; do
   check "dry run: no '$c'" hasnt "$log" "$c"
 done
+
+echo "== install.sh --dry-run on a release build (the keys may well match)"
+panel; printf release > "$T/installed"
+out=$(inst --dry-run); rc=$?
+check "exit 0" test $rc -eq 0
+check "the switch is only a possibility" has "$out" "If the keys differ (S1 Kiosk on the panel signed with another key than"
+check "...never stated as a fact" hasnt "$out" "is signed with a different key"
+check "...nor a development build" hasnt "$out" "development build"
 
 echo "== install.sh --dry-run: de-bloat disables the launcher in the same run"
 panel; printf release > "$T/installed"

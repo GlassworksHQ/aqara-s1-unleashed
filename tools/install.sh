@@ -120,8 +120,9 @@ probe_switch() {
   if has_root; then HAS_ROOT=1; else HAS_ROOT=0; fi
   panel_wifi
 }
-explain_switch() {
+explain_switch() { # [if]: --dry-run, before Android said anything (the keys may well match)
   if [[ $DEBUG_BUILD -eq 1 ]]; then echo "  S1 Kiosk on the panel is a development build${INSTALLED_VER:+ ($INSTALLED_VER)}."
+  elif [[ ${1:-} == if ]]; then echo "  If the keys differ (S1 Kiosk on the panel signed with another key than $(basename "$APK")),"
   else echo "  S1 Kiosk on the panel is signed with a different key than $(basename "$APK")."; fi
   echo "  Android can't update it in place: it has to be removed and installed again."
   if [[ $HAS_ROOT -eq 1 ]]; then
@@ -338,7 +339,7 @@ if [[ $DRY -eq 1 ]]; then
     probe_switch
     echo "  If Android refuses it because the installed S1 Kiosk has another signing key, the switch"
     echo "  would (after you confirm, or with --switch):"
-    explain_switch
+    explain_switch if
     echo "  + adb shell cp <installed APK> $OLD_APK      # to fall back on"
     if [[ $HAS_ROOT -eq 1 ]]; then
       if wifi_at_risk; then echo "  + (as root) $SW_SH wifi-list / wifi-psk: Wi-Fi details of $(net_name), into memory only"; fi
