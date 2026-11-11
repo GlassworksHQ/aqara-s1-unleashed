@@ -1,5 +1,8 @@
 # Onboarding plan: from "fresh panel" to "showing my dashboard" with minimal config
 
+> **Setting up a panel?** Follow [install.md](install.md) (steps 4 and 5). This page is the design and
+> research behind those steps: how each piece works and what was verified.
+
 Goal: a user who has just installed S1 Kiosk never types a URL, token, IP or key on the panel.
 Everything rides on standard Home Assistant mechanisms (ESPHome discovery, HA OAuth, Improv),
 not on a custom integration.

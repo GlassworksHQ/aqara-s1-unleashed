@@ -1,5 +1,8 @@
 # Zigbee / Thread radio modes
 
+> **Setting a mode up?** [radio-guide.md](radio-guide.md) is the short how-to. This page is the
+> technical reference: how each mode works, what was tested, the root helper and its contract.
+
 The panel's 802.15.4 radio can be offered to Home Assistant in one single-protocol role at a time:
 Zigbee coordinator (EZSP over TCP, for ZHA), Zigbee router (repeater in an existing mesh), Thread
 border router, or Thread router (repeater joining an existing Thread network). The panel's own

@@ -47,7 +47,7 @@ announcements, with a calm full-screen overlay while you talk.
 | 🏠 **One ESPHome device** | HA discovers the panel and sets up encryption automatically. You get the screen as a light, presence, light level, a speaker, voice settings and the wall base, plus the dashboard and radio selects. [More](docs/esphome.md) |
 | 🎵 **Music Assistant player** | A native Sendspin player that plays in sync with your other speakers. [More](docs/sendspin.md) |
 | 👋 **Wakes when you walk up** | The screen wakes as you approach, turns off when the room is empty, and dims at night. It is driven by the panel's own sensors. [More](docs/sensors.md) |
-| 📡 **Radio for Home Assistant** | The panel's EFR32 radio can serve HA as a Zigbee coordinator (ZHA) or, experimentally, as a Thread border router. You switch modes from HA. [More](docs/radio.md) |
+| 📡 **Radio for Home Assistant** | The panel's EFR32 radio can serve HA as a Zigbee coordinator (ZHA) or, experimentally, as a Thread border router. You switch modes from HA. [How to](docs/radio-guide.md) |
 | 🔌 **Wall base relays** | A driver for the mains relay base that speaks its UART protocol directly, with no Aqara daemon. Not yet tried on a real base. [More](docs/research/bases.md) |
 | 🔒 **No Aqara cloud** | Aqara's launcher, apps, updater and cloud daemon are switched off (reversibly), so the panel stops talking to Aqara. |
 | ✨ **Its own boot screen** | The Glass Tile splash and boot animation. [More](branding/glass-tile/README.md) |

@@ -5,11 +5,12 @@
 | Guide | What it covers |
 |---|---|
 | [install.md](install.md) | Installing with the web installer or the command line, undo, troubleshooting |
-| [onboarding.md](onboarding.md) | First boot on the panel: Wi-Fi (Improv), adding it to Home Assistant, QR sign-in, dashboard picker |
+| [onboarding.md](onboarding.md) | Design notes for the first boot: Wi-Fi (Improv), adding it to Home Assistant, QR sign-in, dashboard picker (the steps themselves are in install.md) |
 | [esphome.md](esphome.md) | The panel as an ESPHome device: every entity, the voice assistant, encryption |
 | [sendspin.md](sendspin.md) | The native Music Assistant player (Sendspin): setup, pairing, synced playback |
 | [sensors.md](sensors.md) | Presence (VI5300 time-of-flight), ambient light, and how the screen uses them |
-| [radio.md](radio.md) | The Zigbee/Thread radio: modes, status, firmware, the root helper |
+| [radio-guide.md](radio-guide.md) | Using the Zigbee/Thread radio: ZHA, Zigbee2MQTT, Thread, repeaters, who may connect |
+| [radio.md](radio.md) | The radio's technical reference: how each mode works, tests, firmware, the root helper |
 | [releasing.md](releasing.md) | App releases: the signing key, GitHub secrets, tagging; how panels update from Home Assistant |
 | [legal.md](legal.md) | Legal notes: your own device, no copy protection bypassed, what is and isn't shipped, trademarks, licences ([third-party notices](../THIRD-PARTY-NOTICES.md)) |
 
