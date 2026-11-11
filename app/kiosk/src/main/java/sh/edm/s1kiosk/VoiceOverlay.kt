@@ -8,7 +8,6 @@ import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PathMeasure
-import android.graphics.Typeface
 import android.os.SystemClock
 import android.text.Layout
 import android.text.StaticLayout
@@ -27,6 +26,7 @@ import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.ui.Bakery
 import sh.edm.s1kiosk.ui.Dither
 import sh.edm.s1kiosk.ui.FloatImage
+import sh.edm.s1kiosk.ui.Inter
 import sh.edm.s1kiosk.voice.AudioLevel
 import sh.edm.s1kiosk.voice.Fader
 import sh.edm.s1kiosk.voice.LevelSmoother
@@ -55,6 +55,9 @@ class VoiceOverlay(context: Context) : FrameLayout(context) {
     /** Stops the current run (streaming and playback); also enables "Tap anywhere to cancel". */
     var onCancel: (() -> Unit)? = null
         set(v) { field = v; hint.visibility = if (v != null) View.VISIBLE else View.GONE }
+
+    /** The overlay started appearing (true) or going (false); TimerOverlay times its hand-off by it. */
+    var onShowingChanged: ((Boolean) -> Unit)? = null
 
     private enum class Phase { WAKE, LISTENING, THINKING, SPEAKING, DONE, ERROR }
 
@@ -218,6 +221,7 @@ class VoiceOverlay(context: Context) : FrameLayout(context) {
     private fun show(now: Long) {
         if (active) return
         active = true
+        onShowingChanged?.invoke(true)
         isClickable = true
         if (visibility != View.VISIBLE) {
             resetMotion()
@@ -236,6 +240,7 @@ class VoiceOverlay(context: Context) : FrameLayout(context) {
         if (!active) return
         active = false
         isClickable = false // touches go to the dashboard while it fades
+        onShowingChanged?.invoke(false)
         val now = SystemClock.uptimeMillis()
         vis.set(0f, now)
         for (f in faders) f.set(0f, now)
@@ -513,7 +518,7 @@ class VoiceOverlay(context: Context) : FrameLayout(context) {
                 Style.LABEL_ROSE -> styleLabel(tv, ROSE)
                 Style.QUOTE -> {
                     tv.isAllCaps = false
-                    tv.typeface = REGULAR
+                    tv.typeface = Inter.typeface(context, Inter.REGULAR, 17f)
                     tv.letterSpacing = 0f
                     tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
                     tv.setTextColor(MU)
@@ -528,19 +533,19 @@ class VoiceOverlay(context: Context) : FrameLayout(context) {
     }
 
     private fun styleLabel(tv: TextView, color: Int) {
-        tv.isAllCaps = true
-        tv.typeface = MEDIUM
+        tv.typeface = Inter.typeface(context, Inter.MEDIUM, 11.5f)
         tv.letterSpacing = 0.14f
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
         tv.setTextColor(color)
         tv.setSingleLine(true)
         tv.ellipsize = TextUtils.TruncateAt.END
+        // Last: setSingleLine() replaces the transformation method, which is what all-caps is.
+        tv.isAllCaps = true
     }
 
     /** 36 sp light, −0.02 em, line height 1.2; steps down to 30 / 26 sp to fit (SPEC §2). */
     private fun styleMain(tv: TextView, text: String, color: Int) {
         tv.isAllCaps = false
-        tv.typeface = LIGHT
         tv.letterSpacing = -0.02f
         tv.setSingleLine(false)
         tv.setTextColor(color)
@@ -550,6 +555,7 @@ class VoiceOverlay(context: Context) : FrameLayout(context) {
         fun extra(p: TextPaint) = p.fontMetricsInt.let { 1.2f * p.textSize - (it.descent - it.ascent) }
         val fit = MainTextFit.choose { sp ->
             paint.textSize = sizePx(sp)
+            paint.typeface = Inter.typeface(context, Inter.LIGHT, sp)
             StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
                 .setAlignment(Layout.Alignment.ALIGN_CENTER)
                 .setIncludePad(false)
@@ -558,6 +564,7 @@ class VoiceOverlay(context: Context) : FrameLayout(context) {
                 .setHyphenationFrequency(tv.hyphenationFrequency)
                 .build().lineCount
         }
+        tv.typeface = Inter.typeface(context, Inter.LIGHT, fit.sizeSp)
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fit.sizeSp)
         tv.setLineSpacing(extra(tv.paint), 1f)
         tv.maxLines = fit.maxLines
@@ -576,8 +583,5 @@ class VoiceOverlay(context: Context) : FrameLayout(context) {
         val GREEN = Color.parseColor("#34d399")
         val ROSE = Color.parseColor("#fb7185")
         val SKY = Color.parseColor("#38bdf8")
-        val LIGHT: Typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-        val REGULAR: Typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-        val MEDIUM: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
 }

@@ -30,6 +30,7 @@ class LicencesTest {
             "GPL-2.0-or-later" to "GPL-2.0", "GPL-3.0-only" to "GPL-3.0", "GPL-3.0-or-later" to "GPL-3.0",
             "LGPL-2.1-or-later" to "LGPL-2.1", "GCC-exception-3.1" to "GCC-exception-3.1",
             "LicenseRef-Silabs-MSLA" to "LicenseRef-Silabs-MSLA",
+            "OFL-1.1" to "OFL-1.1",
         )
         for ((id, file) in needed) {
             assertTrue("notices should name $id", id in notices)
