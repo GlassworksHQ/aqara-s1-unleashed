@@ -303,7 +303,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         if (!isShowing) return
         val visible = Rect().also { getWindowVisibleDisplayFrame(it) }
         val loc = IntArray(2).also { getLocationOnScreen(it) }
-        val covered = (loc[1] + height - visible.bottom).coerceIn(0, height / 2 + px(40f))
+        val covered = (loc[1] + height - visible.bottom).coerceIn(0, (height - px(120f)).coerceAtLeast(0))
         if (covered != keyboardInset) {
             setKeyboardInset(covered)
             findFocus()?.let { f -> post { reveal(f) } }
