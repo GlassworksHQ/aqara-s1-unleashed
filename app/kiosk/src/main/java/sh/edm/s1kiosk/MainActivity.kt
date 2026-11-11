@@ -21,6 +21,7 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ScrollView
@@ -781,6 +782,12 @@ class MainActivity : Activity() {
                     allowNow.isEmpty() -> "Allowed now: only the panel itself (Home Assistant hasn't connected yet)"
                     else -> "Allowed now: ${allowNow.replace(" ", ", ")}"
                 }
+            })
+            // The dialog's three buttons are taken; a borderless one at the end, over the settings dialog.
+            addView(Button(context, null, android.R.attr.borderlessButtonStyle).apply {
+                text = "Open source licences"
+                isAllCaps = false
+                setOnClickListener { Licences.show(this@MainActivity) }
             })
         }
         val scroll = ScrollView(this).apply { addView(layout) }

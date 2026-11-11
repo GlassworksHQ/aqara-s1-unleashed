@@ -139,6 +139,9 @@ See [docs/install.md](docs/install.md#command-line) for the details.
 > This modifies a device you own, at your own risk, and probably voids its warranty. It has
 > been tested on a small number of panels. Follow the steps as written.
 
+Legal notes (scope, no copy protection bypassed, no Aqara or Silicon Labs firmware shipped, trademarks,
+licences): [docs/legal.md](docs/legal.md).
+
 ## Supported hardware
 
 | Device | Status |
@@ -256,7 +259,9 @@ Built by [@aguilaair](https://github.com/aguilaair). It stands on the work of
 [openWakeWord](https://github.com/dscripka/openWakeWord) and
 [Tango / ya-webadb](https://github.com/yume-chan/ya-webadb).
 
-S1 Unleashed's own code is **MIT** ([LICENSE](LICENSE)). Third-party parts keep their licenses:
+S1 Unleashed's own code is **MIT** ([LICENSE](LICENSE)). Third-party parts keep their licenses. The main
+ones are below. [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists everything that ships, with versions
+and sources:
 
 | Component | License | How it's used |
 |---|---|---|

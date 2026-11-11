@@ -29,6 +29,8 @@ below as the release notes.
 - *Radio allowed clients* can also be changed on the panel: in the hidden settings (tap the top-left
   corner five times), under *Radio: who may connect*. It's the same setting as in Home Assistant, and the
   dialog shows who is allowed right now.
+- **Open source licences** in the hidden settings list the open-source software the app and the
+  panel's radio package include, with each licence's full text.
 
 ### Fixed
 - **The time zone no longer resets to Antarctica/Casey (UTC+8) at every boot.** Aqara's system software

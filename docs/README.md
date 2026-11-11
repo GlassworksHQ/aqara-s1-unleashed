@@ -11,6 +11,7 @@
 | [sensors.md](sensors.md) | Presence (VI5300 time-of-flight), ambient light, and how the screen uses them |
 | [radio.md](radio.md) | The Zigbee/Thread radio: modes, status, firmware, the root helper |
 | [releasing.md](releasing.md) | App releases: the signing key, GitHub secrets, tagging; how panels update from Home Assistant |
+| [legal.md](legal.md) | Legal notes: your own device, no copy protection bypassed, what is and isn't shipped, trademarks, licences ([third-party notices](../THIRD-PARTY-NOTICES.md)) |
 
 The app itself is documented in [app/README.md](../app/README.md) and the boot branding in
 [branding/glass-tile](../branding/glass-tile/README.md).

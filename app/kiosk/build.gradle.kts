@@ -103,6 +103,70 @@ dependencies {
     testImplementation("org.json:json:20250517")
 }
 
+// Open source licences screen (hidden settings → "Open source licences"): the repo's
+// THIRD-PARTY-NOTICES.md, LICENSE and LICENSES/*.txt are copied into the APK as assets/licenses/ at
+// build time, so the app always shows the committed texts. Local files only: no network, no plugin.
+abstract class LicenceAssets : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val notices: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val projectLicence: RegularFileProperty
+    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE) abstract val texts: DirectoryProperty
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+    @get:javax.inject.Inject abstract val fs: FileSystemOperations
+
+    @TaskAction fun copy() {
+        fs.sync {
+            into(outputDir.dir("licenses"))
+            from(notices)
+            from(projectLicence)
+            from(texts) { include("*.txt"); into("texts") }
+        }
+    }
+}
+val repoRoot = layout.projectDirectory.dir("../..")
+val thirdPartyNotices = repoRoot.file("THIRD-PARTY-NOTICES.md")
+val licenceAssets = tasks.register<LicenceAssets>("licenceAssets") {
+    notices.set(thirdPartyNotices)
+    projectLicence.set(repoRoot.file("LICENSE"))
+    texts.set(repoRoot.dir("LICENSES"))
+    outputDir.set(layout.buildDirectory.dir("generated/licence-assets"))
+}
+androidComponents {
+    onVariants { v -> v.sources.assets?.addGeneratedSourceDirectory(licenceAssets, LicenceAssets::outputDir) }
+}
+
+// Every library in the release APK must be listed, with its version, in THIRD-PARTY-NOTICES.md
+// (`group:name:version`). Runs before release builds, so a dependency bump can't ship without its notice.
+// Reads only the resolved dependency graph Gradle already has for the build.
+val checkThirdPartyNotices = tasks.register("checkThirdPartyNotices") {
+    val modules = configurations.named("releaseRuntimeClasspath").flatMap { c ->
+        c.incoming.resolutionResult.rootComponent.map { root ->
+            val seen = sortedSetOf<String>()
+            val todo = ArrayDeque(listOf(root))
+            val visited = mutableSetOf<org.gradle.api.artifacts.result.ResolvedComponentResult>()
+            while (todo.isNotEmpty()) {
+                val comp = todo.removeFirst()
+                if (!visited.add(comp)) continue
+                (comp.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)
+                    ?.let { seen += "${it.group}:${it.module}:${it.version}" }
+                comp.dependencies.filterIsInstance<org.gradle.api.artifacts.result.ResolvedDependencyResult>()
+                    .forEach { todo += it.selected }
+            }
+            seen.toList()
+        }
+    }
+    val noticesFile = thirdPartyNotices
+    inputs.file(noticesFile)
+    inputs.property("modules", modules)
+    doLast {
+        val text = noticesFile.asFile.readText()
+        val missing = modules.get().filter { "`$it`" !in text }
+        if (missing.isNotEmpty()) throw GradleException(
+            "THIRD-PARTY-NOTICES.md does not list these APK libraries (add them, with licence and source):\n  " +
+                missing.joinToString("\n  "))
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(checkThirdPartyNotices) }
+
 // Fails a release build early and clearly instead of producing an APK nobody can install as an update.
 val checkReleaseSigning by tasks.registering {
     val partial = signingEnv.filterValues { it == null }.keys.takeIf { it.size in 1..3 }
