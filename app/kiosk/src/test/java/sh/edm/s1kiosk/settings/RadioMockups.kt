@@ -152,7 +152,19 @@ class RadioMockups {
         }
 
         // The same card in the setup screen's radio step
-        for ((name, f) in listOf("13-setup-thread-router" to threadRouter, "14-setup-thread-border-router" to border)) {
+        // 13: what the step shows right after Apply (no dataset yet); 15-18: the other modes and the
+        // longest Thread line, to check that nothing in the step card ever clips.
+        val child = ThreadRouterState(true, "child", "Example-Net")
+        for ((name, f) in listOf(
+            "13-setup-thread-router" to threadRouter.copy(
+                status = "ok Thread router (repeater): no dataset yet", thread = ThreadRouterState(false, null, null),
+            ),
+            "14-setup-thread-border-router" to border,
+            "15-setup-coordinator" to coordinator,
+            "16-setup-coordinator-silicon-labs" to coordinatorSilabs,
+            "17-setup-zigbee-router" to router,
+            "18-setup-thread-router-child" to threadRouter.copy(thread = child),
+        )) {
             val a = Robolectric.buildActivity(Activity::class.java).setup().get()
             val s = SetupOverlay(a)
             a.setContentView(s, ViewGroup.LayoutParams(-1, -1))

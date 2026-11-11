@@ -175,6 +175,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     // 200 dp: label + title + this + the buttons fit the 480 dp screen's card (RadioMockups 13/14).
     private val followScroll = BoundedScroll(context, px(200f)).apply {
         isVerticalScrollBarEnabled = true
+        setPadding(0, 0, px(10f), 0) // a scrollbar (if it ever needs one) never sits on the text
         overScrollMode = View.OVER_SCROLL_NEVER
         addView(followUp, LayoutParams(-1, -2))
         visibility = View.GONE

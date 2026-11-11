@@ -100,8 +100,8 @@ object RadioFollowUp {
     }
 
     fun card(f: Facts, place: Place): Card {
+        if (place == Place.SETUP) return setupCard(f)
         val leave = if (showThreadLeave(f)) listOf(Action.THREAD_LEAVE) else emptyList()
-        val settings = place == Place.SETTINGS
         return when (f.mode) {
             RadioMode.OFF -> Card(
                 f.mode, "The radio is off",
@@ -126,8 +126,7 @@ object RadioFollowUp {
                     lines += "Or Zigbee2MQTT (experimental): use these settings."
                     kv += Kv("Zigbee2MQTT adapter", "ember")
                     kv += Kv("Zigbee2MQTT port", RadioStep.z2mPort(f.panelIp))
-                    note = "Zigbee2MQTT on a computer other than Home Assistant: add its address to " +
-                        (if (settings) "“Who may connect” below." else "the panel's “Radio allowed clients” in Home Assistant.")
+                    note = "Zigbee2MQTT on a computer other than Home Assistant: add its address to “Who may connect” below."
                 } else if (!f.helper.v4) {
                     note = "Zigbee2MQTT needs Silicon Labs' stack, which needs the panel's boot image updated once with the web installer."
                 }
@@ -178,11 +177,65 @@ object RadioFollowUp {
                     ),
                     qr = page?.let { Qr(it, "Scan to open Home Assistant's Thread page") },
                     state = f.thread?.describe() ?: statusDetail(f),
-                    datasetField = settings,
+                    datasetField = true,
                     actions = leave,
                     note = "Home Assistant shows the TLVs to admin users, for a network that comes from an OpenThread Border Router it manages.",
                 )
             }
+        }
+    }
+
+    /**
+     * The setup screen's version: calm and short, so it fits the step card (480 dp screen) without
+     * scrolling. What to do and the QR code, the URL or serial path, the live state and the one button
+     * the step needs (Join). The full explanation, the Zigbee stack choice, Leave buttons and notes are
+     * in the settings menu's card and docs/radio-guide.md.
+     */
+    private fun setupCard(f: Facts): Card = when (f.mode) {
+        RadioMode.OFF -> Card(f.mode, "The radio is off", listOf("You can choose a role later in the panel's settings menu or in Home Assistant."))
+        RadioMode.ZIGBEE_TCP -> {
+            val add = RadioStep.zhaAddUrl(f.haBase)
+            val kv = mutableListOf(Kv("Serial path (ZHA)", RadioStep.zhaPath(f.panelIp)))
+            if (f.stack == ZigbeeStack.SISDK && f.helper.v4) kv += Kv("Zigbee2MQTT", "ember · ${RadioStep.z2mPort(f.panelIp)}")
+            Card(
+                f.mode, "Add the radio to ZHA",
+                listOf("In Home Assistant, add ZHA: radio type EZSP, this serial path." + if (add != null) " Then scan to pair devices." else ""),
+                kv, qr = add?.let { Qr(it, "Scan to pair Zigbee devices in ZHA") },
+            )
+        }
+        RadioMode.ZIGBEE_ROUTER -> {
+            val add = RadioStep.zhaAddUrl(f.haBase)
+            Card(
+                f.mode, "Join your Zigbee network",
+                listOf("Open joining in ZHA" + (if (add != null) " (scan the code)" else "") + ", then press Join."),
+                qr = add?.let { Qr(it, "Scan to open joining in ZHA") },
+                state = statusDetail(f),
+                actions = listOf(Action.ROUTER_JOIN),
+            )
+        }
+        RadioMode.THREAD -> {
+            val add = RadioStep.otbrAddUrl(f.haBase)
+            Card(
+                f.mode, "Add the border router to Home Assistant",
+                listOf(
+                    (if (add != null) "Scan to add" else "In Home Assistant, add") + " “OpenThread Border Router” with this URL.",
+                ),
+                kv = listOf(Kv("URL", RadioStep.otbrUrl(f.panelIp), big = true)),
+                qr = add?.let { Qr(it, "Scan to add OpenThread Border Router") },
+                note = "It runs its own Thread network. To join yours, choose Thread router (repeater).",
+            )
+        }
+        RadioMode.THREAD_ROUTER -> {
+            val page = RadioStep.threadPageUrl(f.haBase)
+            Card(
+                f.mode, "Join your Thread network",
+                listOf(
+                    "Copy “Active dataset TLVs” from Home Assistant's Thread page" + (if (page != null) " (scan the code)" else "") + ".",
+                    "Paste it into the panel's Thread dataset in Home Assistant, and nowhere else: it holds the network key.",
+                ),
+                qr = page?.let { Qr(it, "Scan to open Home Assistant's Thread page") },
+                state = f.thread?.short() ?: statusDetail(f),
+            )
         }
     }
 

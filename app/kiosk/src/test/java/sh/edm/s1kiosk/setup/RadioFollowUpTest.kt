@@ -73,8 +73,11 @@ class RadioFollowUpTest {
         val c = RadioFollowUp.card(facts(RadioMode.ZIGBEE_TCP, stack = ZigbeeStack.SISDK), Place.SETTINGS)
         assertEquals(listOf("socket://192.0.2.10:6638", "ember", "tcp://192.0.2.10:6638"), c.kv.map { it.value })
         assertTrue(c.note!!.contains("“Who may connect” below"))
+        // the setup card: one compact Zigbee2MQTT line, no stack choice, no note
         val setup = RadioFollowUp.card(facts(RadioMode.ZIGBEE_TCP, stack = ZigbeeStack.SISDK), Place.SETUP)
-        assertTrue(setup.note!!.contains("Radio allowed clients"))
+        assertEquals(listOf("socket://192.0.2.10:6638", "ember · tcp://192.0.2.10:6638"), setup.kv.map { it.value })
+        assertFalse(setup.stackChoice)
+        assertNull(setup.note)
         // helper < v4: no stack choice, no Zigbee2MQTT lines, a hint instead
         val old = RadioFollowUp.card(facts(RadioMode.ZIGBEE_TCP, stack = ZigbeeStack.SISDK, helper = v3), Place.SETTINGS)
         assertFalse(old.stackChoice)
@@ -128,12 +131,34 @@ class RadioFollowUpTest {
     }
 
     @Test
-    fun noQrWithoutHomeAssistantButTheTextStays() {
+    fun theSetupScreenGetsTheCalmVersion() {
+        // short: at most two lines, only the Join button, no dataset field, no Leave, a note only on the border router
         for (m in RadioMode.entries) {
-            val c = RadioFollowUp.card(facts(m, ha = null), Place.SETTINGS)
-            assertNull(m.name, c.qr)
-            assertTrue(m.name, c.lines.isNotEmpty())
-            assertFalse(m.name, c.lines.any { it.contains("scan", ignoreCase = true) })
+            val full = RadioFollowUp.card(facts(m, stored = true), Place.SETTINGS)
+            val c = RadioFollowUp.card(facts(m, stored = true), Place.SETUP)
+            assertTrue(m.name, c.lines.size <= 2)
+            assertTrue(m.name, c.lines.sumOf { it.length } < full.lines.sumOf { it.length })
+            assertFalse(m.name, c.stackChoice || c.datasetField)
+            assertEquals(m.name, if (m == RadioMode.ZIGBEE_ROUTER) listOf(Action.ROUTER_JOIN) else emptyList<Action>(), c.actions)
+            assertEquals(m.name, m == RadioMode.THREAD, c.note != null)
+            assertEquals(m.name, full.qr, c.qr) // the same QR codes
+        }
+        assertTrue(RadioFollowUp.card(facts(RadioMode.THREAD), Place.SETUP).note!!.contains("Thread router (repeater)"))
+        assertTrue(RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER), Place.SETUP).lines.any { it.contains("network key") })
+        val child = ThreadRouterState(true, "child", "Example-Net")
+        assertEquals("joined “Example-Net”, a router in a few minutes",
+            RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = child), Place.SETUP).state)
+        assertEquals("no dataset yet",
+            RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = ThreadRouterState(false, null, null)), Place.SETUP).state)
+    }
+
+    @Test
+    fun noQrWithoutHomeAssistantButTheTextStays() {
+        for (m in RadioMode.entries) for (place in Place.entries) {
+            val c = RadioFollowUp.card(facts(m, ha = null), place)
+            assertNull("$m $place", c.qr)
+            assertTrue("$m $place", c.lines.isNotEmpty())
+            assertFalse("$m $place", c.lines.any { it.contains("scan", ignoreCase = true) })
         }
         assertEquals("http://192.0.2.10:8081", RadioFollowUp.card(facts(RadioMode.THREAD, ha = null), Place.SETTINGS).kv.single().value)
     }

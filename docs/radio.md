@@ -598,12 +598,14 @@ also brings a matching host cpcd. No image is shipped; see
   `no dataset yet`).
 - Setup screen radio step: Off, Zigbee coordinator, Thread border router (experimental) in the first
   row, the two repeater roles (experimental) in a compact second row; a one-line "what next" note.
-  After a mode other than Off is applied, it shows that mode's follow-up card (`setup/RadioFollowUp`):
-  coordinator: the ZHA serial path and a QR code to `<HA>/config/zha/add`; Zigbee router: the same QR
-  code (open joining), Join/Leave; Thread border router: the OTBR URL and a QR code to
-  `<HA>/config/integrations/dashboard/add?domain=otbr`; Thread router: a QR code to `<HA>/config/thread`
-  with the copy steps, the Thread role, Leave Thread network. No QR code without Home Assistant's
-  address. The setup channel (web installer) offers the same five options; options carry optional
+  After a mode other than Off is applied, it shows a short version of that mode's follow-up card
+  (`setup/RadioFollowUp`, sized to fit the step card without scrolling): coordinator: the ZHA serial
+  path (and the Zigbee2MQTT line with Silicon Labs' stack) and a QR code to `<HA>/config/zha/add`;
+  Zigbee router: the same QR code (open joining), the router status and Join; Thread border router:
+  the OTBR URL, a QR code to `<HA>/config/integrations/dashboard/add?domain=otbr` and one line on
+  border router vs router; Thread router: a QR code to `<HA>/config/thread`, two short copy steps and
+  the Thread role. No QR code without Home Assistant's address. The full card (stack choice, Leave
+  buttons, notes, the dataset field) is in the settings menu. The setup channel (web installer) offers the same five options; options carry optional
   `experimental` and `repeater` flags.
 - Kiosk settings menu, Radio section (0.4.3): a mode picker (same options and `RadioController.request`
   path as the select; switching asks first, since it restarts the radio), the same follow-up card for

@@ -130,7 +130,8 @@ class RadioFollowUpView(
 
     private val actionRow = LinearLayout(context).apply { orientation = HORIZONTAL }
     private val actionButtons = Action.entries.associateWith { a ->
-        s.button(a.label, accent = a == Action.ROUTER_JOIN).apply { setOnClickListener { handle(Request.Act(a)) } }
+        // Join is the card's main action, except in the setup screen, where Continue is the one accent button
+        s.button(a.label, accent = a == Action.ROUTER_JOIN && place == RadioFollowUp.Place.SETTINGS).apply { setOnClickListener { handle(Request.Act(a)) } }
     }
     private val confirm = ConfirmBox(s) { ok -> if (ok) flow.confirm()?.let(::run) else flow.cancel(); rebind() }
     private val result = s.text(14f, SetupStyle.MU, SetupStyle.REGULAR).apply { setLineSpacing(0f, 1.2f) }
@@ -145,6 +146,15 @@ class RadioFollowUpView(
 
     init {
         orientation = VERTICAL
+        if (place == RadioFollowUp.Place.SETUP) {
+            stateBox.background = null
+            stateBox.setPadding(0, 0, 0, 0)
+            stateLabel.visibility = View.GONE
+            stateText.textSize = 14.5f
+            stateText.setTextColor(SetupStyle.AMBER)
+            stateText.maxLines = 2
+            stateText.ellipsize = TextUtils.TruncateAt.END
+        }
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
             addView(qrBox, LayoutParams(-2, -2).apply { marginEnd = s.px(22f) })
@@ -191,10 +201,14 @@ class RadioFollowUpView(
             }
             kv.removeAllViews()
             c.kv.forEachIndexed { i, (k, v, big) ->
+                // the setup card: plain label + value, no box (calm, and it fits without scrolling); the URL keeps its box
+                val plain = place == RadioFollowUp.Place.SETUP && !big
                 kv.addView(LinearLayout(context).apply {
                     orientation = VERTICAL
-                    background = s.glass(14f)
-                    setPadding(s.px(14f), s.px(9f), s.px(14f), s.px(10f))
+                    if (!plain) {
+                        background = s.glass(14f)
+                        setPadding(s.px(14f), s.px(9f), s.px(14f), s.px(10f))
+                    }
                     addView(s.label(k))
                     // big (the OTBR URL, to read and type): smaller in the setup screen's narrower column
                     val size = if (!big) 16.5f else if (place == RadioFollowUp.Place.SETTINGS) 26f else 20f
@@ -216,9 +230,15 @@ class RadioFollowUpView(
             note.visibility = if (c.note == null) View.GONE else View.VISIBLE
         }
 
-        stateText.text = c.state.orEmpty()
+        val stateName = if (c.mode == RadioMode.THREAD_ROUTER) "Thread network" else "Status"
+        if (place == RadioFollowUp.Place.SETUP) {
+            // the setup card: one plain line, no box (it has to fit the step card without scrolling)
+            stateText.text = "$stateName: ${c.state.orEmpty()}"
+        } else {
+            stateText.text = c.state.orEmpty()
+            stateLabel.text = stateName
+        }
         stateBox.visibility = if (c.state == null) View.GONE else View.VISIBLE
-        stateLabel.text = if (c.mode == RadioMode.THREAD_ROUTER) "Thread network" else "Status"
 
         val running = flow.running
         stackRow.visibility = if (c.stackChoice) View.VISIBLE else View.GONE

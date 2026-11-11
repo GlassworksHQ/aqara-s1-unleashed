@@ -72,6 +72,18 @@ data class ThreadRouterState(val dataset: Boolean, val role: String?, val networ
         }
     }
 
+    /** A few words for the setup screen's card. */
+    fun short(): String {
+        val net = network?.let { " “$it”" } ?: ""
+        return when {
+            !dataset -> "no dataset yet"
+            role == "router" || role == "leader" -> "joined$net as a $role"
+            role == "child" -> "joined$net, a router in a few minutes"
+            role == "detached" -> "looking for the network$net"
+            else -> "starting$net"
+        }
+    }
+
     companion object {
         private val NAME = Regex(""""([^"]*)"""")
         private val OLD = Regex("""^Thread router on wpan0 \(([a-z]+)\)""")
