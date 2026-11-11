@@ -223,6 +223,7 @@ test, but it has **not yet met a real base**.
 | [base-protocol.md](base-protocol.md) | The wall base UART protocol, with the emulator proof against Aqara's own tool |
 | [zigbee2mqtt.md](zigbee2mqtt.md) | Zigbee2MQTT on the stock radio: Silicon Labs' zigbeed 8.2.2 on Aqara's RCP, panel tests, licences |
 | [rcp-firmware.md](rcp-firmware.md) | Could a newer multiprotocol RCP be built for this MG21? CPC protocol, tooling, board config |
+| [matter.md](matter.md) | Matter on the panel (issue #1): rs-matter cross-compiled and commissioned into HA over IP; BLE still to do |
 
 User-facing guides stay one level up, in [docs/](../README.md).
 
