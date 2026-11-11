@@ -3,6 +3,9 @@
 // their license (CC BY-NC-SA) keeps them out of our hosting and GitHub sends no CORS headers, so the
 // kiosk app downloads them on the panel itself.
 import type { PanelShell } from '../adb/panel';
+import {
+  type SwitchOutcome, type SwitchPlan, dropAdmin, isKeyMismatch, panelWifi, planSwitch, resendWifi, switchSigningKey, wifiAtRisk,
+} from './switch';
 
 export const PKG = 'sh.edm.s1kiosk';
 const ACT = `${PKG}/.MainActivity`;
@@ -39,6 +42,29 @@ export interface ProvisionOptions {
   keyboardApk?: Uint8Array;
   debloat?: boolean;   // default true
   dndOff?: boolean;    // default true
+
+  /**
+   * Called when Android refuses the APK because the installed S1 Kiosk has another signing key (a
+   * debug build): resolve true to switch (switch.ts: uninstall + install, data kept with root, Wi-Fi
+   * re-sent), false to stop with nothing changed. Without it, provision stops.
+   */
+  confirmSwitch?: (plan: SwitchPlan) => Promise<boolean>;
+}
+
+/** What a signing-key switch did (provision's result, when there was one). */
+export interface SwitchResult {
+  dataKept: boolean;
+  /** kept: never at risk; resent: sent to the new app; lost: the Wi-Fi step has to ask for it. */
+  wifi: 'kept' | 'resent' | 'lost';
+  ssid?: string;
+  notes: string[];
+}
+
+/** Android won't update the installed S1 Kiosk with this APK (other signing key), and no switch was made. */
+export class KeyMismatchError extends Error {
+  constructor(readonly plan: SwitchPlan) {
+    super(`S1 Kiosk on the panel is ${plan.debugBuild ? 'a development build, ' : ''}signed with a different key, so Android won't update it in place. Nothing was changed.`);
+  }
 }
 
 export interface WifiNetwork { ssid: string; rssi: number; secure: boolean }
@@ -100,11 +126,15 @@ class Runner {
     return r.out;
   }
   async install(name: string, apk: Uint8Array, grant: boolean) {
+    const out = await this.tryInstall(name, apk, grant);
+    if (!/Success/.test(out)) throw new Error(`installing ${name} failed: ${out.trim()}`);
+  }
+  /** pm install -r; returns pm's output either way (the caller decides what a failure means). */
+  async tryInstall(name: string, apk: Uint8Array, grant: boolean): Promise<string> {
     const tmp = `/data/local/tmp/${name}.apk`;
     await this.p.push(tmp, apk, 0o644);
     try {
-      const out = await this.run(`pm install -r ${grant ? '-g ' : ''}${tmp}`);
-      if (!/Success/.test(out)) throw new Error(`installing ${name} failed: ${out.trim()}`);
+      return (await this.p.run(`pm install -r ${grant ? '-g ' : ''}${tmp}`)).out;
     } finally {
       await this.try(`rm -f ${tmp}`);
     }
@@ -128,7 +158,8 @@ export async function deviceInfo(p: PanelShell): Promise<{ model: string; sdk: s
   return { model, sdk };
 }
 
-export async function provision(p: PanelShell, opts: ProvisionOptions, onStep: StepFn = () => {}): Promise<{ ip?: string }> {
+export async function provision(p: PanelShell, opts: ProvisionOptions, onStep: StepFn = () => {},
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<{ ip?: string; switched?: SwitchResult }> {
   const r = new Runner(p, onStep);
   r.step('Device');
   const { model, sdk } = await deviceInfo(p);
@@ -136,7 +167,17 @@ export async function provision(p: PanelShell, opts: ProvisionOptions, onStep: S
   if (sdk !== '29') r.detail('WARNING: expected Android 10 (sdk 29); continuing');
 
   r.step('Install kiosk app');
-  await r.install('s1kiosk', opts.kioskApk, true);
+  let sw: SwitchOutcome | undefined;
+  const pmOut = await r.tryInstall('s1kiosk', opts.kioskApk, true);
+  if (!/Success/.test(pmOut)) {
+    if (!isKeyMismatch(pmOut)) throw new Error(`installing s1kiosk failed: ${pmOut.trim()}`);
+    const plan = await planSwitch(p);
+    r.detail(`installed S1 Kiosk has another signing key${plan.debugBuild ? ' (development build)' : ''}; root: ${plan.root ? 'yes' : 'no'}; Wi-Fi saved by S1 Kiosk: ${plan.wifi.owner === 'kiosk' ? 'yes' : plan.wifi.owner === 'unknown' ? 'maybe' : 'no'}`);
+    if (!opts.confirmSwitch || !(await opts.confirmSwitch(plan))) throw new KeyMismatchError(plan);
+    r.step('Switch to this build (remove the old one, install this one)');
+    sw = await switchSigningKey(p, opts.kioskApk, plan, (d) => r.detail(d), sleep);
+    sw.notes.forEach((n) => r.detail(n));
+  }
 
   r.step('Permissions');
   await r.try(`pm grant ${PKG} android.permission.RECORD_AUDIO`);
@@ -193,9 +234,19 @@ export async function provision(p: PanelShell, opts: ProvisionOptions, onStep: S
   const extras = [opts.haUrl ? `--es url ${q(opts.haUrl)}` : '', opts.locale ? `--es set_locale ${q(opts.locale)}` : ''].filter(Boolean);
   await r.run(`am start -n ${ACT}${extras.length ? ` ${extras.join(' ')}` : ''}`);
 
+  let switched: SwitchResult | undefined;
+  if (sw) {
+    let wifi: SwitchResult['wifi'] = sw.wifi === 'resend' ? 'lost' : sw.wifi;
+    if (sw.secret) {
+      r.step(`Wi-Fi ${sw.secret.ssid} to the new app`);
+      if (await resendWifi(p, sw.secret, (d) => r.detail(d), sleep)) wifi = 'resent';
+    }
+    switched = { dataKept: sw.dataKept, wifi, ssid: sw.ssid, notes: sw.notes };
+  }
+
   // A factory-fresh panel has no Wi-Fi yet (no wlan0): not an error.
   const m = /inet (\d+\.\d+\.\d+\.\d+)/.exec(await r.try('ip -4 -o addr show wlan0 2>/dev/null'));
-  return m?.[1] ? { ip: m[1] } : {};
+  return { ...(m?.[1] ? { ip: m[1] } : {}), ...(switched ? { switched } : {}) };
 }
 
 const KEYBOARD_PKG = 'rkr.simplekeyboard.inputmethod';
@@ -211,12 +262,7 @@ export async function unprovision(p: PanelShell, onStep: StepFn = () => {},
   sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<void> {
   const r = new Runner(p, onStep);
   r.step('Removing S1 Kiosk\'s device admin');
-  await r.try(`am start -n ${ACT} --ez remove_admin true`);
-  let adminGone = false;
-  for (let i = 0; i < 30 && !adminGone; i++) {
-    adminGone = !(await r.try('dumpsys device_policy')).includes(PKG);
-    if (!adminGone) await sleep(500);
-  }
+  const adminGone = await dropAdmin(p, sleep);
   r.detail(adminGone ? 'device admin removed' : 'device admin still active: removing the app may fail');
 
   r.step('Bringing back Aqara\'s apps');
@@ -230,8 +276,14 @@ export async function unprovision(p: PanelShell, onStep: StepFn = () => {},
 
   r.step('Removing S1 Kiosk');
   await r.try(`am force-stop ${PKG}`);
-  // the app restarts itself (foreground service): uninstall, or at least disable it
-  if (!/Success/.test(await r.try(`pm uninstall ${PKG}`))) {
+  // Android 10 forgets every Wi-Fi network an app saved when the app is uninstalled, and S1 Kiosk
+  // saves the panel's Wi-Fi itself. Then it is disabled instead, which keeps the network.
+  const wifi = await panelWifi(p);
+  if (wifiAtRisk(wifi)) {
+    await r.try(`pm disable-user --user 0 ${PKG}`);
+    r.detail(`kept S1 Kiosk installed but disabled: it saved the panel's Wi-Fi${wifi.ssid ? ` (${wifi.ssid})` : ''}, and Android forgets that network when S1 Kiosk is uninstalled`);
+  } else if (!/Success/.test(await r.try(`pm uninstall ${PKG}`))) {
+    // the app restarts itself (foreground service): uninstall, or at least disable it
     await r.try(`pm disable-user --user 0 ${PKG}`);
     r.detail('could not uninstall S1 Kiosk; disabled it instead');
   }

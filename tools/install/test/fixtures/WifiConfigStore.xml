@@ -1,0 +1,51 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<WifiConfigStoreData>
+<int name="Version" value="1" />
+<NetworkList>
+<Network>
+<WifiConfiguration>
+<string name="ConfigKey">&quot;Neighbours&quot;WPA_PSK</string>
+<string name="SSID">&quot;Neighbours&quot;</string>
+<null name="BSSID" />
+<string name="PreSharedKey">&quot;fixture-not-a-real-password-1&quot;</string>
+<null name="WEPKeys" />
+<int name="WEPTxKeyIndex" value="0" />
+<boolean name="HiddenSSID" value="false" />
+<byte-array name="AllowedKeyMgmt" num="1">02</byte-array>
+<int name="CreatorUid" value="1000" />
+<string name="CreatorName">android.uid.system:1000</string>
+</WifiConfiguration>
+<NetworkStatus>
+<string name="SelectionStatus">NETWORK_SELECTION_ENABLED</string>
+</NetworkStatus>
+</Network>
+<Network>
+<WifiConfiguration>
+<string name="ConfigKey">&quot;Home &amp; Garden&quot;WPA_PSK</string>
+<string name="SSID">&quot;Home &amp; Garden&quot;</string>
+<null name="BSSID" />
+<string name="PreSharedKey">&quot;fixture &lt;not&gt; &quot;real&quot; &amp; fake&quot;</string>
+<null name="WEPKeys" />
+<byte-array name="AllowedKeyMgmt" num="1">02</byte-array>
+<int name="CreatorUid" value="10071" />
+<string name="CreatorName">sh.edm.s1kiosk</string>
+</WifiConfiguration>
+</Network>
+<Network>
+<WifiConfiguration>
+<string name="ConfigKey">&quot;Cafe&quot;NONE</string>
+<string name="SSID">&quot;Cafe&quot;</string>
+<null name="PreSharedKey" />
+<string-array name="WEPKeys" num="4">
+<item value="" />
+<item value="" />
+<item value="" />
+<item value="" />
+</string-array>
+<byte-array name="AllowedKeyMgmt" num="1">01</byte-array>
+<int name="CreatorUid" value="10071" />
+<string name="CreatorName">sh.edm.s1kiosk</string>
+</WifiConfiguration>
+</Network>
+</NetworkList>
+</WifiConfigStoreData>

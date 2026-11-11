@@ -33,6 +33,13 @@ below as the release notes.
   panel's radio package include, with each licence's full text.
 
 ### Fixed
+- **Moving a panel from a development build to a release no longer leaves it off Wi-Fi.** The
+  installers explain the switch and ask first. Where adb has root they carry the Wi-Fi and the app's
+  settings over by themselves; otherwise the settings are reset and the installer asks for the Wi-Fi
+  password again.
+- Undoing an install over adb (`install.sh --undo`, or *Keep the panel's settings* in the web
+  installer) no longer makes the panel forget its Wi-Fi: S1 Kiosk is turned off instead of removed
+  when it saved the network.
 - **The time zone no longer resets to Antarctica/Casey (UTC+8) at every boot.** Aqara's system software
   set it back on each start. The panel now keeps the zone you chose in the installer, and a new *Time zone*
   setting in Home Assistant changes it later (*Time zone status* shows whether it is kept). Needs the new

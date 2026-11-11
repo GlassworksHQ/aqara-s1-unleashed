@@ -172,5 +172,5 @@ If only some of the four variables are set, the build stops and names the missin
 A panel running a debug build **cannot** update to a release through HA, because the keys differ.
 The update entity then says so ("signed with a different key than this app"). Moving such a panel
 to releases takes a one-time reinstall: uninstall the debug app, then install the release APK.
-That clears the app's data. If the app is device owner, release that first
-(`--ez release_device_owner true`, see ImprovActivity).
+Both installers do that for you, after asking, and keep the panel on its Wi-Fi; the app's data is
+kept only where adb has root. See [install.md](install.md#switching-a-development-build-to-a-release).

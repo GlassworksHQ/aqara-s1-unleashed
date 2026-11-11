@@ -7,6 +7,7 @@ Both back up the panel first and both can undo.
 - [Before you start](#before-you-start)
 - [Web installer](#web-installer)
 - [Command line](#command-line)
+- [Switching a development build to a release](#switching-a-development-build-to-a-release)
 - [Undo](#undo)
 - [Troubleshooting](#troubleshooting)
 
@@ -184,6 +185,41 @@ tools/install.sh --url http://homeassistant.local:8123 \
 
 How each step works, and why: [research/root.md](research/root.md) and [research/fel.md](research/fel.md).
 
+## Switching a development build to a release
+
+A panel set up with the command line usually runs a **development build** of S1 Kiosk
+(`assembleDebug`, signed with your computer's debug key). Releases are signed with the project's
+key, and Android won't update an app to one signed with a different key. So the switch removes
+the app and installs the release. On its own, that has two side effects:
+
+- the app's data goes: its settings, the Home Assistant sign-in and the pairing key;
+- Android 10 also forgets every Wi-Fi network the app saved. S1 Kiosk saves the panel's Wi-Fi itself
+  (Improv), so the panel would drop off the network.
+
+Both installers handle this. Install as usual (the web installer's `#/resume`, or `tools/install.sh
+--apk <release APK>`). When Android refuses the new version, nothing has been changed yet. The
+installer then says what will happen on this panel and asks you to confirm: a dialog in the browser,
+or typing `yes` in the terminal (`--switch` confirms in advance, for scripts). `--dry-run` shows the
+plan without changing anything.
+
+| | adb has root | adb has no root (a normal install) |
+|---|---|---|
+| App settings, sign-in, pairing key | Kept: copied out before the removal, then copied back to the new install | Reset: sign in again; Home Assistant may ask to set the panel up again |
+| Wi-Fi | Read from Android's Wi-Fi store into the installer's memory, then sent to the new app over USB | Web: the Wi-Fi step asks for the password. CLI: asks in the terminal (Enter skips) |
+
+- **Root** here means that adb's shell can run `su`. That is only the case with a development boot
+  image (`DEV_SU_HOURS`) or a Magisk policy for the adb shell, see
+  [research/root.md](research/root.md#persistent-root-magisk--the-s1-kiosk-root-helper). A normal
+  install doesn't give adb root. The installer checks with `su -c id`.
+- The Wi-Fi password is never written to a file, a log or the screen. A network that S1 Kiosk didn't
+  save, for example one set up in Aqara's settings, is not affected.
+- While the app is copied it is disabled, so it can't start as the home screen meanwhile. Disabling
+  doesn't touch its Wi-Fi.
+- If the new version won't install, the previous one is put back (with its data, given root).
+- The panel stays reachable over the USB cable throughout. If it ends up without Wi-Fi anyway, send
+  it again: the web installer's `#/wifi` page, or Improv over Bluetooth from the panel's setup screen
+  or Home Assistant.
+
 ## Time zone
 
 Aqara's system software sets the time zone again at every boot. Its own (cloud-side) setting is empty
@@ -215,8 +251,15 @@ The order matters:
    A factory reset alone doesn't restore the software, so restore first.
 
 To keep your Wi-Fi and settings but drop the kiosk, skip the factory reset and run
-`tools/install.sh --undo` over adb instead. It re-enables Aqara's apps and launcher, restores
-Do Not Disturb and the keyboard, removes S1 Kiosk, and starts Aqara's radio services again.
+`tools/install.sh --undo` over adb instead (in the web installer: *Keep the panel's settings*). It
+re-enables Aqara's apps and launcher, restores Do Not Disturb and the keyboard, removes S1 Kiosk,
+and starts Aqara's radio services again.
+
+If S1 Kiosk saved the panel's Wi-Fi (it does when you set Wi-Fi up through it), it is **disabled
+rather than removed**. Android 10 forgets the networks an app saved when that app is uninstalled,
+which would take the panel off its network. A disabled S1 Kiosk doesn't run and isn't the home
+screen; `adb shell pm enable sh.edm.s1kiosk` brings it back. To remove it completely anyway, run
+`adb uninstall sh.edm.s1kiosk`, then join the Wi-Fi again in Aqara's own settings.
 
 Use the backup from your **first** install. A backup taken on an already-installed panel holds the
 patched `boot`, and the CLI refuses to restore it.

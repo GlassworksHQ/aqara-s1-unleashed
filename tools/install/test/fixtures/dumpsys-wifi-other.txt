@@ -1,0 +1,25 @@
+Wi-Fi is enabled
+Verbose logging is off
+...
+mWifiInfo SSID: Neighbours, BSSID: aa:bb:cc:dd:ee:01, MAC: 02:00:00:00:00:00, Supplicant state: COMPLETED, RSSI: -52, Link speed: 72Mbps, Tx Link speed: 72Mbps, Rx Link speed: -1Mbps, Frequency: 2437MHz, Net ID: 0, Metered hint: false, score: 60
+mDhcpResults DHCP server /192.0.2.1 ...
+...
+Dump of WifiConfigManager
+WifiConfigManager - Log Begin ----
+WifiConfigManager - Log End ----
+WifiConfigManager - Configured networks Begin ----
+  ID: 0 SSID: "Neighbours" PROVIDER-NAME: null BSSID: null FQDN: null PRIO: 0 HIDDEN: false PMF: false CarrierId: -1
+ NetworkSelectionStatus NETWORK_SELECTION_ENABLED
+ hasEverConnected: true
+ KeyMgmt: WPA_PSK Protocols: WPA RSN
+ PSK/SAE: *
+ IP config:
+IP assignment: DHCP
+ cuid=1000 cname=android.uid.system:1000 luid=1000 lname=android.uid.system:1000 lcuid=0 userApproved=USER_UNSPECIFIED noInternetAccessExpected=false
+* ID: 1 SSID: "Home & Garden" PROVIDER-NAME: null BSSID: null FQDN: null PRIO: 0 HIDDEN: false PMF: false CarrierId: -1
+ NetworkSelectionStatus NETWORK_SELECTION_ENABLED
+ hasEverConnected: true
+ KeyMgmt: WPA_PSK Protocols: WPA RSN
+ PSK/SAE: *
+ cuid=10071 cname=sh.edm.s1kiosk luid=10071 lname=sh.edm.s1kiosk lcuid=10071 userApproved=USER_UNSPECIFIED noInternetAccessExpected=false
+WifiConfigManager - Configured networks End ----

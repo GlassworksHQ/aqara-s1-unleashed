@@ -3,7 +3,7 @@ import felImg from '../../../docs/img/fel-button.jpg?url';
 import { loadOrCreateAdbKey, type AdbKey, type PanelShell } from '../adb';
 import { Assets } from '../assets';
 import { FelDevice } from '../fel';
-import { unprovision } from '../provision';
+import { describeSwitch, unprovision } from '../provision';
 import { SETUP_SOCKET, SetupChannel, validHaUrl, type SetupState } from '../setup/channel';
 import { IMPROV_SOCKET, ImprovSerialClient, PacketReader, PacketType, Rpc, State as ImprovState, frame, parseResult, strings, type ByteStream } from '../improv';
 import { BackupStore, backupZip, readBackupZip, type BackupFile, type BackupMeta } from './backup';
@@ -681,6 +681,7 @@ class Installer {
     }
     $('#wifi-scan-st').textContent = 'Looking for networks the panel can see…';
     if (this.improv.state === ImprovState.Provisioned) $('#wifi-st').textContent = 'The panel is already on Wi-Fi; pick another network to change it, or skip.';
+    else if (this.wifiHint) $('#wifi-st').textContent = this.wifiHint;
     let networks: { ssid: string; rssi: number; secure: boolean }[] = [];
     try { networks = await this.improv.scan(); } catch { /* typed by hand then */ }
     $('#wifi-scan-st').textContent = networks.length ? `${networks.length} in range of the panel` : 'None found: type the name';
@@ -719,6 +720,8 @@ class Installer {
 
   private wifiChoice: { ssid?: string; secure: boolean; other?: boolean } = { secure: true };
   private wifiSsid?: string;
+  /** Set when a signing-key switch made the panel forget its network (shown on the Wi-Fi step). */
+  private wifiHint?: string;
   private setup?: SetupChannel;
 
   /** Shows one phase of the app step (settings → Wi-Fi → Home Assistant → radio). */
@@ -1061,10 +1064,23 @@ class Installer {
         locale: ($('#opt-locale') as HTMLSelectElement).value || undefined,
         clock24: this.clock24,
         keyboard: ($('#opt-kb') as HTMLInputElement).checked,
+        // A development build on the panel: Android needs it removed first (switch.ts). Ask, with
+        // what will and won't be kept on this panel.
+        confirmSwitch: async (plan) => {
+          this.adbRow('busy', 'Switching S1 Kiosk to this version', 'Waiting for you to confirm', 'Confirm');
+          const ok = window.confirm(`${describeSwitch(plan)}\n\nSwitch now?`);
+          if (ok) this.adbRow('busy', 'Switching S1 Kiosk to this version', plan.root ? 'Keeping its data · about a minute' : 'About a minute', 'Working');
+          return ok;
+        },
       });
-      this.adbRow('ok', 'S1 Kiosk installed', 'Set as the home screen', 'Done');
+      const sw = res.switched;
+      this.adbRow('ok', sw ? 'S1 Kiosk switched to this version' : 'S1 Kiosk installed',
+        sw ? `${sw.dataKept ? 'Settings kept' : 'Settings reset'} · ${sw.wifi === 'lost' ? 'Wi-Fi needs its password again' : 'Wi-Fi kept'}` : 'Set as the home screen', 'Done');
       $('#hands').hidden = true;
       this.ip = res.ip;
+      this.wifiHint = sw?.wifi === 'lost'
+        ? `Switching versions made the panel forget ${sw.ssid ? `"${sw.ssid}"` : 'its Wi-Fi'}. Pick it again and type its password.`
+        : undefined;
       await this.wifiStep();
     } catch (e) {
       this.fail(3, e);

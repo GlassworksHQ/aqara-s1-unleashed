@@ -62,6 +62,10 @@ export class Panel implements PanelShell { static connect(key, device?): Promise
 export function provision(panel: PanelShell, opts: ProvisionOptions, onStep?): Promise<{ ip?: string }>; // tools/install.sh
 export function unprovision(panel: PanelShell, onStep?): Promise<void>;                                     // install.sh --undo
 ```
+`provision/switch.ts`: when Android refuses the APK over another signing key (a debug build), `provision`
+asks `opts.confirmSwitch(plan)` and then uninstalls + installs, carrying the app's data and Wi-Fi over
+with adb root (panel side: `tools/install/s1kiosk-switch.sh`, same as install.sh). `unprovision` disables
+instead of uninstalling when S1 Kiosk saved the panel's Wi-Fi (Android forgets it with the app).
 Wake-word models are not pushed from the browser (CC BY-NC-SA, and GitHub sends no CORS headers);
 the kiosk app fetches them on the panel.
 
