@@ -156,7 +156,10 @@ class MainActivity : Activity() {
         Backdrop.prewarm(maxOf(real.x, real.y), minOf(real.x, real.y))
         geckoView = GeckoView(this)
         loadingOverlay = LoadingOverlay(this)
-        voiceOverlay = VoiceOverlay(this).apply { onCancel = { KioskService.voiceCancel?.invoke() } }
+        voiceOverlay = VoiceOverlay(this).apply {
+            onCancel = { KioskService.voiceCancel?.invoke() }
+            onShowingChanged = { timerOverlay.voiceShowing(it) } // a timer set by voice flies out of the orb
+        }
         timerOverlay = TimerOverlay(this)
         setupOverlay = SetupOverlay(this).apply {
             onUsePanel = ::onUsePanelLogin

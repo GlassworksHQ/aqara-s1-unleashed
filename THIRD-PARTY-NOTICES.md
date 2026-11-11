@@ -134,10 +134,17 @@ so they could never run. Passkey sign-in is therefore not available in the kiosk
 
 - `assets/extension/` (the built-in kiosk web extension): this project, MIT.
 - `assets/licenses/`: this file and `LICENSES/`, copied at build time.
-- No fonts and no machine-learning models are bundled by the app. The app draws its own screens with
-  the system font. The openWakeWord models are downloaded by the panel at runtime (section 5).
-  GeckoView's `omni.ja` has its own assets, such as the Liberation fonts used by its PDF viewer (SIL
-  OFL 1.1). Those are listed in `about:license`.
+- `res/font/inter.ttf`: **Inter** 4.001, the variable font (weight and optical-size axes), unmodified.
+  - Licence: OFL-1.1 (SIL Open Font License 1.1)
+  - Copyright: 2020 The Inter Project Authors
+  - Upstream: https://github.com/rsms/inter
+  - Source: google/fonts, `ofl/inter/Inter[opsz,wght].ttf` at commit
+    `e1d6480102fed30739fead0faee463101f892c8f` (SHA-256
+    `29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031`)
+  - Used by the voice overlay and the voice timers. Other screens use the system font.
+- No machine-learning models are bundled by the app. The openWakeWord models are downloaded by the
+  panel at runtime (section 5). GeckoView's `omni.ja` has its own assets, such as the Liberation fonts
+  used by its PDF viewer (SIL OFL 1.1). Those are listed in `about:license`.
 - Release APKs also carry the radio bundle in `assets/radio-bundle/` (section 2).
 
 ### Not in the APK
@@ -269,8 +276,8 @@ All MIT, from this repository:
   `tools/radio/s1kiosk_radio.{sh,rc}`.
 - `tools/root/s1kiosk_bundle.pub`.
 - The boot branding in `branding/glass-tile/` (`bootanimation.zip`, `bootlogo.bmp`). It shows text set
-  in Inter (SIL OFL 1.1, fetched at build time). The font itself is not distributed, only images made
-  with it.
+  in Inter (SIL OFL 1.1, fetched at build time). These downloads carry only images made with the font;
+  the font itself ships in the S1 Kiosk APK (section 1, "Assets in the APK").
 - The S1 Kiosk APK (sections 1 and 2).
 
 ---

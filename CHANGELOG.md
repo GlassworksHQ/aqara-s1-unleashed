@@ -31,6 +31,19 @@ below as the release notes.
   including datasets longer than Home Assistant's 255-character limit for text fields.
 - The web installer's next steps for the Thread roles link straight to the right pages in Home
   Assistant.
+- **New look for voice timers**, to match the voice assistant: each timer is a small glass orb whose
+  amber ring runs down, with its name underneath, at the bottom right. Its last 10 seconds glow and
+  count down in large digits; a paused timer shows a pause sign and a grey ring. A timer you set by
+  voice comes out of the assistant's orb as it closes.
+- **Move or hide the timers** if they cover something: drag them to any corner or edge (they snap
+  into place and stay there for later timers), or tap one and choose *Hide timers*. Hidden timers
+  become a small half-orb at the screen edge that still shows the time left; tap it to bring them
+  back. They come back by themselves for their last 10 seconds, and when you set a new one.
+- **Timer done** is now a full-screen moment like the voice assistant: the orb glows amber with each
+  chime, and it shows the timer's name and length (or "2 timers done" when several finish together)
+  and which timers are still running. Tap anywhere to dismiss it.
+- The voice assistant and the timers now use the Inter typeface, which the app bundles (SIL Open
+  Font License).
 
 ### Changed
 - The repeater roles are now called *Zigbee router (repeater)* and *Thread router (repeater)*
