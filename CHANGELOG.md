@@ -7,6 +7,8 @@ below as the release notes.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-10
+
 **Zigbee2MQTT on the panel's radio, and the panel's root side now updates with the app.**
 
 ### Added
@@ -139,7 +141,8 @@ below as the release notes.
 - Panels running a development build need a one-time reinstall to switch to release builds (Android
   won't update an app across signing keys). That resets the app's settings.
 
-[Unreleased]: https://github.com/aguilaair/aqara-s1-unleashed/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/aguilaair/aqara-s1-unleashed/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.0
 [0.3.1]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.1
 [0.3.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.0
 [0.2.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.2.0
