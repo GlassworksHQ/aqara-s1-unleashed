@@ -7,6 +7,8 @@ below as the release notes.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-10
+
 **A new settings menu, and the panel looks like S1 Kiosk from the boot animation on, with no Aqara screen in between.**
 
 ### Added
@@ -192,7 +194,8 @@ below as the release notes.
 - Panels running a development build need a one-time reinstall to switch to release builds (Android
   won't update an app across signing keys). That resets the app's settings.
 
-[Unreleased]: https://github.com/aguilaair/aqara-s1-unleashed/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/aguilaair/aqara-s1-unleashed/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.2
 [0.4.1]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.1
 [0.4.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.0
 [0.3.1]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.1
