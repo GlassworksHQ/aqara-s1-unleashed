@@ -179,6 +179,27 @@ read -rs S1_KEYSTORE_PASSWORD && export S1_KEYSTORE_PASSWORD S1_KEY_PASSWORD="$S
 
 If only some of the four variables are set, the build stops and names the missing ones.
 
+## Signed test builds of a branch
+
+To try a branch on a panel that runs a release, without losing the app's data, let CI sign it:
+
+```sh
+git push origin HEAD:test-build/<name>          # builds as the latest release's version
+git push origin HEAD:test-build/v1.2.3/<name>   # builds as 1.2.3 (panel on an unreleased version)
+gh run download <run-id> -n s1-kiosk-test-<sha>
+adb install -r s1-kiosk-test-*.apk
+```
+
+[`test-build.yml`](../.github/workflows/test-build.yml) runs the unit tests and builds the release
+variant with the release key. It takes the latest release's version, or the one in the branch name
+(Android refuses to install a lower versionCode, so a panel on an unreleased version needs that). The
+APK then installs over the panel's app, HA's update entity offers nothing, and the next real release
+replaces it. It carries **no
+radio bundle**, so the panel's root side stays as it is. The artifact is kept for 3 days, and since
+the repo is public, any signed-in GitHub user can download it. To go back to the release, install
+its APK from the release page with `adb install -r`. Delete the `test-build/` branch when you're
+done.
+
 ## Debug builds and the release key
 
 `assembleDebug` is unchanged: version `0.1.0` (versionCode 1), signed with the local debug key.
