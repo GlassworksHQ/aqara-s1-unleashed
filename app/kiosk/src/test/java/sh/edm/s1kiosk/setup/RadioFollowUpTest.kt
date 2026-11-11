@@ -119,16 +119,18 @@ class RadioFollowUpTest {
 
     @Test
     fun threadRouter() {
-        // not joined yet: the QR code to HA's Thread page and the copy steps
+        // not joined yet: Get it from Home Assistant, the QR code to HA's Thread page and the copy steps
         val waiting = ThreadRouterState(false, null, null)
         val c = RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = waiting), Place.SETTINGS)
         assertEquals("http://homeassistant.local:8123/config/thread", c.qr!!.url)
         assertEquals(waiting.describe(), c.state)
         assertEquals("No dataset", c.badge)
         assertTrue(c.datasetField)
-        assertEquals(listOf(Action.THREAD_LEAVE), c.actions)
+        assertEquals(listOf(Action.THREAD_JOIN_HA, Action.MATTER_PAIR, Action.THREAD_LEAVE), c.actions)
         assertTrue(c.note!!.contains("network key"))
-        assertTrue(c.lines[1].contains("Active dataset TLVs"))
+        assertTrue(c.lines[0].startsWith("Get it from Home Assistant"))
+        assertTrue(c.lines[1].startsWith("Or pair with a phone"))
+        assertTrue(c.lines[2].contains("Active dataset TLVs"))
         assertTrue(c.lines[2].contains("device page → Configuration"))
         assertTrue(c.more.any { it.contains("admin users") })
         // joined: the network's name large, the role under it, no QR (nothing left to scan)
@@ -143,20 +145,26 @@ class RadioFollowUpTest {
         // the setup screen: no dataset field
         assertFalse(RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER), Place.SETUP).datasetField)
         // no Leave with a helper that says nothing is stored, or without v4
-        assertTrue(RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, stored = false), Place.SETTINGS).actions.isEmpty())
-        assertTrue(RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, helper = none), Place.SETTINGS).actions.isEmpty())
+        assertEquals(listOf(Action.THREAD_JOIN_HA, Action.MATTER_PAIR), RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, stored = false), Place.SETTINGS).actions)
+        assertEquals(listOf(Action.THREAD_JOIN_HA, Action.MATTER_PAIR), RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, helper = none), Place.SETTINGS).actions)
+        // joined: nothing to get
+        assertFalse(Action.THREAD_JOIN_HA in joined.actions)
     }
 
     @Test
     fun theSetupScreenGetsTheCalmVersion() {
-        // short: at most two lines, only the Join button, no dataset field, no Leave, a note only on the border router
+        // short: at most two lines, only the Join buttons, no dataset field, no Leave, a note only on the border router
         for (m in RadioMode.entries) {
             val full = RadioFollowUp.card(facts(m, stored = true), Place.SETTINGS)
             val c = RadioFollowUp.card(facts(m, stored = true), Place.SETUP)
             assertTrue(m.name, c.lines.size <= 2)
             assertTrue(m.name, c.lines.sumOf { it.length } < (full.lines + full.more + listOfNotNull(full.note)).sumOf { it.length })
             assertFalse(m.name, c.stackChoice || c.datasetField)
-            assertEquals(m.name, if (m == RadioMode.ZIGBEE_ROUTER) listOf(Action.ROUTER_JOIN) else emptyList<Action>(), c.actions)
+            assertEquals(m.name, when (m) {
+                RadioMode.ZIGBEE_ROUTER -> listOf(Action.ROUTER_JOIN)
+                RadioMode.THREAD_ROUTER -> listOf(Action.THREAD_JOIN_HA, Action.MATTER_PAIR)
+                else -> emptyList()
+            }, c.actions)
             assertEquals(m.name, m == RadioMode.THREAD, c.note != null)
             assertEquals(m.name, full.qr, c.qr) // the same QR codes
         }

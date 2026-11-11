@@ -467,7 +467,10 @@ Laid out for 960×480 dp.
    now. The web installer's `COMING_SOON` (`web/src/app/ui.ts`) still names both routers, but it only
    shows the tag for roles the panel's app doesn't offer (an older app). Apply goes through `RadioController`
    (the same path as HA's `Radio mode` select) and shows what it reports, e.g. the missing root
-   helper; Skip = Off. Answering persists `setup_radio_done` (so does a mode set from the web
+   helper; Skip = Off. Applying *Thread router* also starts "Join Home Assistant's Thread network"
+   (`auth/ThreadJoin`, [radio-guide.md](radio-guide.md#repeater-modes-experimental)): at this point
+   the panel isn't signed in yet, so it shows the administrator QR code over the setup screen
+   (`setup/ThreadJoinOverlay`). Answering persists `setup_radio_done` (so does a mode set from the web
    installer over the setup channel). A panel set up before this step
    existed has it marked done once at the first start of the new build (`migrateRadioStep`: a known
    HA, `ha_seen`, an API key, a skipped HA step or a stored radio mode), so it never sees it. It

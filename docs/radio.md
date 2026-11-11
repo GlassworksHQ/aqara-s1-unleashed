@@ -809,6 +809,17 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
   from `ot-ctl state` and `ot-ctl networkname` (the name cut to 16 characters of `A-Za-z0-9 ._+-`).
   Never the network key, PSKc or extended PAN ID. `sys.s1kiosk.radio.thread_stored` says `yes`/`no`
   (dataset or router settings stored), in every mode.
+- **Getting the dataset from Home Assistant** (app, `auth/ThreadJoin`, GitHub issue #1): HA's
+  `thread/list_datasets` and `thread/get_dataset_tlv` websocket commands are `@require_admin`. The app
+  tries its own sign-in first; if that user isn't an administrator (`unauthorized`) or the panel isn't
+  signed in, it shows a QR code for `http://<panel>:8099/thread` for 10 minutes. That route is the
+  panel sign-in's OAuth flow (`/signin` → `/callback`) with its own `state` purpose and
+  `redirect_uri=http://<panel>:8099/thread/callback`; it answers 409 unless the panel is showing the
+  code. The callback exchanges the code, fetches the preferred dataset with the access token, and
+  revokes the refresh token at once (`/auth/revoke`), whether the fetch worked or not. The dataset
+  then takes the same hand-off as the `Thread dataset` entity, and the app requests `thread_router`.
+  Real Matter commissioning (a QR code in the HA app's *Add Matter device*) would need a Matter stack
+  on the panel; see issue #1.
 - Never forms a network on its own initiative: it only starts Thread with a dataset the user
   supplied. Verified with the panel's own throwaway test dataset (handed over as the app uid): taken,
   app copy deleted, agent restarted, Thread started (alone on the channel it became leader of that

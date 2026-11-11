@@ -64,9 +64,14 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
 
 ## Build
 
-Requirements: JDK 21, Android SDK with **platform `android-37.2`** (`sdkmanager "platforms;android-37.2"`).
+Requirements: JDK 21, Android SDK with **platform `android-37.2`** (`sdkmanager "platforms;android-37.2"`),
+and for the Matter library ([docs/matter.md](../docs/matter.md)): the git submodule, Rust 1.92 with the
+32-bit ARM Android target, and the Android NDK (`sdkmanager "ndk;29.0.14206865"`, or set `ANDROID_NDK_HOME`).
 
 ```sh
+git submodule update --init                                   # app/third_party/rs-matter
+rustup toolchain install 1.92 --target armv7-linux-androideabi
+export RUSTUP_TOOLCHAIN=1.92
 cd app
 echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties   # or set ANDROID_HOME
 ./gradlew :kiosk:assembleDebug

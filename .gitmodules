@@ -1,0 +1,4 @@
+[submodule "app/third_party/rs-matter"]
+	path = app/third_party/rs-matter
+	url = https://github.com/aguilaair/rs-matter.git
+	branch = android

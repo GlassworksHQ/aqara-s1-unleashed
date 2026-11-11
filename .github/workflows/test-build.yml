@@ -48,6 +48,8 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
+          # app/third_party/rs-matter: the Matter device library (rs-matter fork, `android` branch).
+          submodules: true
 
       - name: Version (input, then branch name, then latest release)
         id: version
@@ -78,6 +80,15 @@ jobs:
 
       - name: Android SDK platform
         run: sdkmanager --install "platforms;android-37.2"
+
+      # Same as release.yml: rs-matter-android's native library (Rust 1.92, 32-bit ARM, the NDK's clang).
+      # Before the unit tests, which build every module (the Matter library's native code included).
+      - name: Rust and the NDK for the Matter library
+        run: |
+          rustup toolchain install 1.92 --profile minimal --target armv7-linux-androideabi
+          echo "RUSTUP_TOOLCHAIN=1.92" >> "$GITHUB_ENV"
+          sdkmanager --install "ndk;29.0.14206865"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
 
       - name: Unit tests
         working-directory: app

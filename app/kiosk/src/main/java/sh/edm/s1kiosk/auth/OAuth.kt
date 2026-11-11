@@ -93,8 +93,19 @@ object OAuth {
     }
 }
 
-/** One pending sign-in: what /signin promised HA, needed again at /callback. */
-data class PendingSignIn(val clientId: String, val redirectUri: String, val haBase: String, val createdAt: Long)
+/**
+ * One pending sign-in: what /signin (or /thread) promised HA, needed again at its callback.
+ * [purpose] keeps the two flows apart: a /signin state is refused at /thread/callback and back.
+ */
+data class PendingSignIn(
+    val clientId: String, val redirectUri: String, val haBase: String, val createdAt: Long,
+    val purpose: String = PURPOSE_SIGNIN,
+) {
+    companion object {
+        const val PURPOSE_SIGNIN = "signin"
+        const val PURPOSE_THREAD = "thread"
+    }
+}
 
 /**
  * OAuth `state` values handed out by /signin. Single use, expire after [ttlMs] (HA's own codes live
@@ -108,19 +119,24 @@ class StateStore(
     private val pending = LinkedHashMap<String, PendingSignIn>()
 
     @Synchronized
-    fun create(clientId: String, redirectUri: String, haBase: String): String {
+    fun create(clientId: String, redirectUri: String, haBase: String, purpose: String = PendingSignIn.PURPOSE_SIGNIN): String {
         prune()
         while (pending.size >= max) pending.remove(pending.keys.first())
         val s = OAuth.randomState()
-        pending[s] = PendingSignIn(clientId, redirectUri, haBase, clock())
+        pending[s] = PendingSignIn(clientId, redirectUri, haBase, clock(), purpose)
         return s
     }
 
-    /** Returns and removes the pending sign-in for [state], or null if unknown/expired/used. */
+    /**
+     * Returns and removes the pending sign-in for [state], or null if unknown/expired/used, or made
+     * for another [purpose] (then it is left alone).
+     */
     @Synchronized
-    fun consume(state: String?): PendingSignIn? {
+    fun consume(state: String?, purpose: String = PendingSignIn.PURPOSE_SIGNIN): PendingSignIn? {
         if (state.isNullOrEmpty()) return null
         prune()
+        val p = pending[state] ?: return null
+        if (p.purpose != purpose) return null
         return pending.remove(state)
     }
 

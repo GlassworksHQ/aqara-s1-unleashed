@@ -21,6 +21,7 @@ import sh.edm.s1kiosk.MainActivity
 import sh.edm.s1kiosk.TimerBoard
 import sh.edm.s1kiosk.timers.TimerChimes
 import sh.edm.s1kiosk.auth.HaAuth
+import sh.edm.s1kiosk.auth.ThreadJoin
 import sh.edm.s1kiosk.radio.RadioAllow
 import sh.edm.s1kiosk.radio.RadioController
 import sh.edm.s1kiosk.radio.AssetBundleSource
@@ -153,6 +154,7 @@ class PanelDevice(
     }
     private val screenListener: () -> Unit = { exec.execute { server?.publishStates() } }
     private val authListener: (Boolean) -> Unit = { exec.execute { server?.publishStates() } }
+    private val threadJoinListener: (ThreadJoin.State) -> Unit = { runCatching { exec.execute { server?.publishStates() } } }
     private val dashboardsListener: (List<Dashboard>) -> Unit = { exec.execute { checkDashboards() } }
 
     // "Dashboard" select (docs/onboarding.md step 5): built from [appliedDashboards]; a changed
@@ -168,6 +170,7 @@ class PanelDevice(
         prefs.unregisterListener(prefListener)
         ScreenController.removeListener(screenListener)
         HaAuth.removeListener(authListener)
+        HaAuth.threadJoin.removeListener(threadJoinListener)
         Dashboards.removeListener(dashboardsListener)
         wallBase?.stop()
         wallBase = null
@@ -234,6 +237,7 @@ class PanelDevice(
         prefs.registerListener(prefListener)
         ScreenController.addListener(screenListener)
         HaAuth.addListener(authListener)
+        HaAuth.threadJoin.addListener(threadJoinListener)
         Dashboards.addListener(dashboardsListener)
         exec.scheduleWithFixedDelay({ controller?.tick() }, 1, 1, TimeUnit.SECONDS)
         exec.scheduleWithFixedDelay({ checkDashboards() }, 2, 2, TimeUnit.SECONDS)
@@ -714,6 +718,15 @@ class PanelDevice(
         // Forget the Thread network (helper v4, any mode): deletes the dataset (network key) and router settings.
         ButtonEntity("thread_leave", "Leave Thread network", "mdi:link-variant-off", EntityCategory.CONFIG, press = { radio.threadLeave() })
             .apply { authOnly = true },
+        // Join HA's preferred Thread network without copying the dataset (auth/ThreadJoin): the panel's
+        // own sign-in if it's an administrator, else the panel shows a QR code for a one-off admin sign-in.
+        ButtonEntity("thread_join_ha", "Join Home Assistant's Thread network", "mdi:qrcode-scan", EntityCategory.CONFIG,
+            press = { HaAuth.threadJoin.start() })
+            .apply { authOnly = true },
+        TextSensorEntity(
+            "thread_join", "Thread join", "mdi:transit-connection-variant", EntityCategory.DIAGNOSTIC,
+            get = { ThreadJoin.describe(HaAuth.threadJoin.state) },
+        ),
         // Thread router: write-only. The dataset is a secret (it holds the network key): the state is
         // always empty, it goes to the root helper and is never logged or echoed back.
         TextEntity(

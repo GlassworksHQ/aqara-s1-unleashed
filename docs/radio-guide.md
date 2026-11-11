@@ -112,13 +112,25 @@ window, on the panel's device page or in the panel's settings menu. ZHA lists th
 **Thread router (repeater).**
 
 1. Set **Radio mode** to *Thread router (repeater)*.
-2. Open Home Assistant's **Thread** page (the QR code on the panel opens it). Under *Preferred
-   network*, open ⓘ *Network information* and copy **Active dataset TLVs**. Home Assistant shows it to
-   admin users, for a network that comes from an OpenThread Border Router it manages.
-3. Paste it into the panel's **Thread dataset** field (the panel's device page in Home Assistant →
-   *Configuration*). Spaces or line breaks in the copy are fine. The field is write-only and the panel
-   keeps the dataset where only root can read it. (The settings menu on the panel has the same field
-   under *Advanced*, also for datasets longer than the 255 characters Home Assistant allows.)
+2. Give the panel your Thread network. The easiest is **Get it from Home Assistant** on the panel's
+   Thread router card (or **Join Home Assistant's Thread network** on its device page): the panel gets
+   your *preferred* Thread network from Home Assistant by itself. If the panel is signed in to Home
+   Assistant as an administrator, that's all. Otherwise it shows a QR code: scan it with your phone
+   and sign in as a Home Assistant administrator (Home Assistant only gives a Thread network's
+   settings to administrators). The panel uses that sign-in once, to read the settings, and then
+   deletes it again (it no longer appears under your profile's *Refresh tokens*). The QR code works
+   for 10 minutes. If Home Assistant has several Thread networks, make the one you want *preferred*
+   first. **Thread join** on the device page says how it went.
+   Or pair the panel with your phone's home app over Matter, with no Home Assistant sign-in: *Pair
+   with a phone* on the same card ([matter.md](matter.md), experimental).
+3. Or copy the dataset by hand: open Home Assistant's **Thread** page (the panel's card has a QR code
+   for it). Under *Preferred network*, open ⓘ *Network information* and copy **Active dataset TLVs**
+   (Home Assistant shows it to admin users, for a network that comes from an OpenThread Border Router
+   it manages). Paste it into the panel's **Thread dataset** field (the panel's device page in Home
+   Assistant → *Configuration*). Spaces or line breaks in the copy are fine. The field is write-only
+   and the panel keeps the dataset where only root can read it. (The settings menu on the panel has
+   the same field under *Advanced*, also for datasets longer than the 255 characters Home Assistant
+   allows.)
 4. **Radio status** shows the Thread role and the network's name: first *joined as a child*, then
    *as a router* once the network promotes the panel, which takes a few minutes.
 
