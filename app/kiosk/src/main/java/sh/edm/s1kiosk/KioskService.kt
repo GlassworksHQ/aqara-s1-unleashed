@@ -53,6 +53,8 @@ class KioskService : Service() {
         device = PanelDevice(this, glassworks, { e -> main.post { onVoiceEvent(e) } }, d::onApiHello).also {
             it.start()
             glassworks.radio = it.radio
+            val radio = it.radio
+            HaAuth.threadJoin.deliver = { r -> radio.joinThreadNetwork(r.tlv) }
         }
         ImprovController.init(this) // Improv Wi-Fi via BLE (provisioning mode; see improv/)
         // The web installer, over adb (docs/onboarding.md): Wi-Fi via Improv Serial, then HA + radio.
@@ -83,6 +85,7 @@ class KioskService : Service() {
         discovery = null
         glassworks.discovery = null
         glassworks.radio = null
+        HaAuth.threadJoin.deliver = null
         HaAuth.stopServer()
         super.onDestroy()
     }

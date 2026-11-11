@@ -108,6 +108,8 @@ is FNV-1a of the `object_id` (stable).
 | button `Flash radio firmware` | `radio_firmware_flash` | flashes the armed image; encrypted connection only |
 | button `Join Zigbee network` / `Leave Zigbee network` | `zigbee_router_join` / `zigbee_router_leave` | Zigbee router mode ([radio.md](radio.md#zigbee-router)) |
 | button `Leave Thread network` | `thread_leave` | forgets the Thread dataset and router settings, in any mode; encrypted connection only, needs helper v4 |
+| button `Join Home Assistant's Thread network` | `thread_join_ha` | gets the preferred Thread network's dataset from Home Assistant and switches to Thread router; if the panel's HA user isn't an administrator, the panel shows a QR code for a one-off administrator sign-in ([radio-guide.md](radio-guide.md#repeater-modes-experimental)); encrypted connection only |
+| text_sensor `Thread join` | `thread_join` | diagnostic; how the last join went (waiting for the QR code, joining `<network>`, or why not) |
 | text `Thread dataset` | `thread_dataset` | write-only (always reads empty): the active dataset hex for the Thread router mode; whitespace in a paste (spaces, line breaks, no-break or zero-width spaces) is accepted and dropped; never logged |
 | text_sensor `IP address` | `ip_address` | diagnostic |
 | text `Time zone` | `time_zone` | an Olson id such as `Europe/Berlin`, kept by the root helper across reboots ([install.md](install.md#time-zone)); encrypted connection only |

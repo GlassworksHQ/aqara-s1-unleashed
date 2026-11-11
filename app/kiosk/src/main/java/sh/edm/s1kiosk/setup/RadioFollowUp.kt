@@ -38,6 +38,8 @@ object RadioFollowUp {
         ROUTER_JOIN("Join Zigbee network", "Joining…"),       // zigbee_router_join
         ROUTER_LEAVE("Leave Zigbee network", "Leaving…"),     // zigbee_router_leave
         THREAD_LEAVE("Leave Thread network", "Leaving…"),     // thread_leave
+        /** auth/ThreadJoin: the preferred network's dataset from Home Assistant (QR code for an admin sign-in if needed). */
+        THREAD_JOIN_HA("Get it from Home Assistant", "Getting…"), // thread_join_ha
     }
 
     /** Something the user asked for: a role button, a Zigbee stack, or (settings menu picker) a mode. */
@@ -95,7 +97,7 @@ object RadioFollowUp {
         RadioMode.ZIGBEE_TCP -> "Your Zigbee devices connect to the panel. For ZHA, or Zigbee2MQTT (experimental)."
         RadioMode.ZIGBEE_ROUTER -> "Joins the Zigbee network you already have and extends its range. You'll open joining in ZHA and press Join."
         RadioMode.THREAD -> "Starts a Thread network for Matter devices, through Home Assistant's OpenThread Border Router integration."
-        RadioMode.THREAD_ROUTER -> "Joins the Thread network you already have and extends its range. You'll copy the network's dataset from Home Assistant."
+        RadioMode.THREAD_ROUTER -> "Joins the Thread network you already have and extends its range. The panel gets the network from Home Assistant."
     }
 
     /** A refused mode switch (RadioController's status) in plain words. */
@@ -240,6 +242,9 @@ object RadioFollowUp {
                         "Active dataset TLVs (for admin users, for a network from an OpenThread Border Router it manages).",
                     "Paste it into the panel's Thread dataset in Home Assistant (the panel's device page → Configuration), " +
                         "or under Advanced here. $DATASET_KEY",
+                    "Get it from Home Assistant does that for you: Home Assistant only gives the dataset to administrators, " +
+                        "so the panel uses its own sign-in if it is one, or asks for a one-time administrator sign-in on a " +
+                        "phone (a QR code). That sign-in is deleted right after.",
                     "It joins as a child first, and becomes a router when the network promotes it, which takes a few minutes.",
                 )
                 if (t?.joined == true) Card(
@@ -253,17 +258,19 @@ object RadioFollowUp {
                     badge = "Dataset set",
                     datasetField = true, actions = leave, more = more,
                 ) else Card(
-                    f.mode, "Copy the dataset from Home Assistant",
+                    f.mode, "Give the panel your Thread network",
                     listOf(
-                        "1  Open the Thread page" + (if (page != null) " (scan the code)" else " in Home Assistant"),
-                        "2  Preferred network → ⓘ Network information → copy “Active dataset TLVs”",
-                        "3  Paste it into the panel's Thread dataset in Home Assistant (device page → Configuration)",
+                        "Get it from Home Assistant: the panel reads your preferred Thread network itself. If it isn't " +
+                            "signed in as an administrator, it shows a QR code for a one-time administrator sign-in.",
+                        "Or copy it by hand: open the Thread page" + (if (page != null) " (scan the code)" else " in Home Assistant") +
+                            ", Preferred network → ⓘ Network information → “Active dataset TLVs”, and paste it into the " +
+                            "panel's Thread dataset (device page → Configuration, or Advanced here).",
                     ),
                     qr = page?.let { Qr(it, "Scan to open Home Assistant's Thread page") },
                     state = t?.describe() ?: statusDetail(f),
                     badge = if (t?.dataset == true) "Dataset set" else "No dataset",
                     note = DATASET_KEY,
-                    datasetField = true, actions = leave, more = more,
+                    datasetField = true, actions = listOf(Action.THREAD_JOIN_HA) + leave, more = more,
                 )
             }
         }
@@ -314,11 +321,13 @@ object RadioFollowUp {
             Card(
                 f.mode, "Join your Thread network",
                 listOf(
-                    "Copy “Active dataset TLVs” from Home Assistant's Thread page" + (if (page != null) " (scan the code)" else "") + ".",
-                    "Paste it into the panel's Thread dataset in Home Assistant, and nowhere else: it holds the network key.",
+                    "Get it from Home Assistant: the panel reads your Thread network itself (an administrator signs in once on a phone).",
+                    "Or copy “Active dataset TLVs” from Home Assistant's Thread page" + (if (page != null) " (scan the code)" else "") +
+                        " into the panel's Thread dataset in Home Assistant, and nowhere else: it holds the network key.",
                 ),
                 qr = page?.let { Qr(it, "Scan to open Home Assistant's Thread page") },
                 state = f.thread?.short() ?: statusDetail(f),
+                actions = if (f.thread?.joined == true) emptyList() else listOf(Action.THREAD_JOIN_HA),
             )
         }
     }
@@ -329,6 +338,7 @@ object RadioFollowUp {
             Action.ROUTER_JOIN -> null
             Action.ROUTER_LEAVE -> Ask(r, "Leave the Zigbee network?", "The panel forgets this Zigbee network; remove it from ZHA too.", "Leave", destructive = true)
             Action.THREAD_LEAVE -> Ask(r, "Leave the Thread network?", "Deletes the stored Thread network and its key from the panel.", "Leave", destructive = true)
+            Action.THREAD_JOIN_HA -> null
         }
         is Request.Stack -> if (f != null && f.stack == r.stack) null else Ask(
             r, "Switch the Zigbee stack to ${stackTitle(r.stack)}?",
@@ -412,11 +422,14 @@ object RadioFollowUp {
                 Action.ROUTER_JOIN -> (status != before && !status.contains(": joining")) || waited > 120_000
                 Action.ROUTER_LEAVE -> status != before || waited > 30_000
                 Action.THREAD_LEAVE -> status.contains("Thread network left") || status.contains("Thread leave") || waited > 40_000
+                // Runs on its own screen (setup/ThreadJoinOverlay): the button is free again at once.
+                Action.THREAD_JOIN_HA -> true
             }
             if (!done) return false
             running = null
             result = when {
                 r.action == Action.THREAD_LEAVE && status.contains("Thread network left") -> "Thread network left."
+                r.action == Action.THREAD_JOIN_HA -> null
                 status == before -> "No change yet: see the status line."
                 else -> null
             }

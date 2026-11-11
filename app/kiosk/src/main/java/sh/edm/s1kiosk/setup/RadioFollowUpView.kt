@@ -122,7 +122,7 @@ class RadioFollowUpView(context: Context) : LinearLayout(context) {
     }
 
     private fun handle(r: Request) {
-        // The setup card's only button (Join) needs no confirmation.
+        // The setup card's buttons (Join, Get it from Home Assistant) need no confirmation.
         val now = flow.press(r, facts) ?: run { flow.cancel(); return }
         val f = facts ?: return
         flow.started(now, f.status)

@@ -12,10 +12,12 @@ import java.net.URI
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.SSLSocketFactory
 
 /**
  * Minimal RFC 6455 WebSocket client for `ws://` (Sendspin uses plain ws; Noise protects the
- * payloads). Handles fragmented messages, ping/pong and close; masks every client frame. No
+ * payloads) and `wss://` (Home Assistant's websocket API, ThreadJoin). Handles fragmented messages, ping/pong and close; masks every client frame. No
  * `Origin` header is sent. [receive] returns whole messages with the [System.nanoTime] at which the
  * last byte was read (spec "Receive timestamps").
  */
@@ -121,18 +123,34 @@ class WsClient private constructor(private val socket: Socket, private val input
         /** Sendspin messages are ≤ 64 KiB per Noise frame; generous cap for one WebSocket message. */
         const val MAX_MESSAGE = 4L * 1024 * 1024
 
-        /** Opens `ws://host:port/path` and completes the upgrade. */
+        /**
+         * Opens `ws://host:port/path` (or `wss://`, TLS with the system's trusted CAs and hostname
+         * check) and completes the upgrade.
+         */
         @Throws(IOException::class)
         fun connect(url: String, connectTimeoutMs: Int = 5_000, readTimeoutMs: Int = 30_000): WsClient {
             val uri = URI(url)
-            if (uri.scheme != "ws") throw IOException("only ws:// is supported: $url")
+            val tls = when (uri.scheme) {
+                "ws" -> false
+                "wss" -> true
+                else -> throw IOException("only ws:// and wss:// are supported: $url")
+            }
             val host = uri.host ?: throw IOException("no host in $url")
-            val port = if (uri.port > 0) uri.port else 80
+            val port = if (uri.port > 0) uri.port else if (tls) 443 else 80
             val path = (uri.rawPath?.ifEmpty { "/" } ?: "/") + (uri.rawQuery?.let { "?$it" } ?: "")
-            val s = Socket()
+            val plain = Socket()
+            var s: Socket = plain
             try {
-                s.tcpNoDelay = true
-                s.connect(InetSocketAddress(host, port), connectTimeoutMs)
+                plain.tcpNoDelay = true
+                plain.connect(InetSocketAddress(host, port), connectTimeoutMs)
+                if (tls) {
+                    val ssl = (SSLSocketFactory.getDefault() as SSLSocketFactory)
+                        .createSocket(plain, host, port, true) as SSLSocket
+                    s = ssl
+                    ssl.sslParameters = ssl.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
+                    ssl.soTimeout = connectTimeoutMs
+                    ssl.startHandshake()
+                }
                 s.soTimeout = readTimeoutMs
                 val input = BufferedInputStream(s.getInputStream(), 64 * 1024)
                 val key = Base64.getEncoder().encodeToString(ByteArray(16).also { SecureRandom().nextBytes(it) })
@@ -160,6 +178,7 @@ class WsClient private constructor(private val socket: Socket, private val input
                 return WsClient(s, input)
             } catch (e: Exception) {
                 try { s.close() } catch (_: IOException) {}
+                try { plain.close() } catch (_: IOException) {}
                 throw if (e is IOException) e else IOException(e.message, e)
             }
         }
