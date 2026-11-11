@@ -384,7 +384,6 @@ code{font-family:var(--mono);font-size:12.5px}
 .opt[aria-disabled=true]{opacity:.45;cursor:default}
 
 #ha-block,#radio-block{margin-top:22px}
-.opt .tag.soon{color:var(--mu);background:rgba(255,255,255,.07)}
 .applog{margin-top:20px;display:flex;flex-direction:column;gap:20px}
 
 /* radio next steps */

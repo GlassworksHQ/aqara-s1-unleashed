@@ -84,6 +84,9 @@ function demoSetup(): ByteStream {
         { id: 'off', label: 'Off', detail: 'The radio stays idle. Choose this if you don\'t use Zigbee or Thread here.' },
         { id: 'zigbee_tcp', label: 'Zigbee coordinator', detail: 'Home Assistant runs a Zigbee network (ZHA) on this panel\'s radio, over the network.' },
         { id: 'thread', label: 'Thread border router', detail: 'Home Assistant uses the panel as a Thread border router for Matter devices.', experimental: true },
+        // the app's repeater roles (RadioStep.OPTIONS), experimental like there
+        { id: 'zigbee_router', label: 'Zigbee router', detail: 'A repeater in your Zigbee network.', experimental: true, repeater: true },
+        { id: 'thread_router', label: 'Thread router', detail: 'A repeater in your Thread network.', experimental: true, repeater: true },
       ],
     },
   };
@@ -133,12 +136,6 @@ function demoImprov(fail: boolean): ByteStream {
     },
   };
 }
-
-/** Radio roles that aren't ready yet: listed, not selectable (docs/radio.md). */
-const COMING_SOON = [
-  { id: 'zigbee_router', label: 'Zigbee router', detail: 'Extends an existing Zigbee network as a repeater.' },
-  { id: 'thread_router', label: 'Thread router', detail: 'Extends an existing Thread network as a repeater.' },
-];
 
 const BARS: Bar[] = ['backup', 'patch', 'flash', 'verify'];
 const TITLE = 'S1 Unleashed Installer';
@@ -846,9 +843,8 @@ class Installer {
     const s = c.state!;
     let chosen = s.radio.mode;
     list.innerHTML = '';
-    const offered = new Set(s.radio.options.map((o) => o.id));
-    const soon = COMING_SOON.filter((o) => !offered.has(o.id)).map((o) => ({ ...o, experimental: false, soon: true }));
-    for (const o of [...s.radio.options.map((x) => ({ ...x, experimental: !!x.experimental, soon: false })), ...soon]) {
+    // Every role the app offers (RadioStep.OPTIONS on the panel), routers included: none is "coming soon".
+    for (const o of s.radio.options) {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'opt';
@@ -856,9 +852,8 @@ class Installer {
       row.innerHTML = '<i class="rad"></i><span class="t"><b></b><span></span></span>';
       row.querySelector('b')!.textContent = o.label;
       if (o.experimental) row.querySelector('b')!.insertAdjacentHTML('beforeend', '<em class="tag">Experimental</em>');
-      if (o.soon) row.querySelector('b')!.insertAdjacentHTML('beforeend', '<em class="tag soon">Coming soon</em>');
       row.querySelector('.t > span')!.textContent = o.detail;
-      const usable = !o.soon && (s.radio.helper || o.id === 'off');
+      const usable = s.radio.helper || o.id === 'off';
       row.setAttribute('aria-disabled', String(!usable));
       row.setAttribute('aria-checked', String(o.id === chosen));
       row.onclick = () => {
