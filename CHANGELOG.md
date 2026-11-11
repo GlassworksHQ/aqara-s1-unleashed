@@ -52,6 +52,8 @@ below as the release notes.
   instead of 15 minutes later.
 
 ### Changed
+- The app no longer includes Google's Play services libraries, which came with the built-in browser
+  but could never run on the panel.
 - The Zigbee coordinator now waits until the radio's start-up message is cleared before letting a
   client in, which avoids a failed first start in Zigbee2MQTT (ZHA was not affected).
 - Old hand-made copies of the radio helper on the panel are no longer used automatically (they would

@@ -85,7 +85,12 @@ android {
 }
 
 dependencies {
-    implementation("org.mozilla.geckoview:geckoview-armeabi-v7a:159.0.20261102144711")
+    implementation("org.mozilla.geckoview:geckoview-armeabi-v7a:159.0.20261102144711") {
+        // Proprietary Google Play services (play-services-fido/-base/-basement/-tasks), used only for
+        // WebAuthn/passkeys. The panel has no Play services, so they could never run; excluding them
+        // keeps the APK free software (as Firefox's F-Droid builds do). HA's login doesn't use WebAuthn.
+        exclude(group = "com.google.android.gms")
+    }
     // Voice assistant: openWakeWord inference (ships armeabi-v7a, minSdk 19).
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     // ESPHome API Noise encryption: X25519 + ChaCha20-Poly1305 (lightweight API, no JCA provider).

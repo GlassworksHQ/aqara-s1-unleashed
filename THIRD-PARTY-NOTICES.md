@@ -123,16 +123,12 @@ All Apache-2.0.
 - **JSpecify** 1.0.0: `org.jspecify:jspecify:1.0.0`. Copyright The JSpecify Authors.
   https://github.com/jspecify/jspecify
 
-### Google Play services client libraries (not open source)
+### Not included: Google Play services client libraries
 
-GeckoView depends on these for WebAuthn/FIDO. They are Google's proprietary client libraries, under
-the *Android Software Development Kit License* (https://developer.android.com/studio/terms). Google
-publishes no source for them. The panel has no Google Play services, so they don't run.
-
-- `com.google.android.gms:play-services-fido:21.3.1`
-- `com.google.android.gms:play-services-base:18.7.2`
-- `com.google.android.gms:play-services-basement:18.9.0`
-- `com.google.android.gms:play-services-tasks:18.3.2`
+GeckoView depends on Google's proprietary Play services client libraries (`play-services-fido`,
+`-base`, `-basement`, `-tasks`) for WebAuthn/passkeys. The app's build excludes them
+(`app/kiosk/build.gradle.kts`), as Firefox's F-Droid builds do: the panel has no Google Play services,
+so they could never run. Passkey sign-in is therefore not available in the kiosk's browser.
 
 ### Assets in the APK
 
