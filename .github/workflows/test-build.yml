@@ -2,14 +2,18 @@
 # (Android only updates an app with an APK signed by the same key; a debug-key build would mean
 # uninstalling, which wipes Home Assistant's API key, the sign-in and the Sendspin pairing).
 #
-#   git push origin HEAD:test-build/<name>      (or: Actions → Test build → Run workflow)
+#   git push origin HEAD:test-build/<name>          builds as the latest release's version
+#   git push origin HEAD:test-build/v1.2.3/<name>   builds as 1.2.3 (e.g. a panel on an unreleased
+#                                                   version: Android refuses a lower versionCode)
+#   or: Actions → Test build → Run workflow (version input)
 #   gh run download <run-id> -n s1-kiosk-test-<sha>
 #   adb install -r s1-kiosk-test-*.apk
 #
 # What it is:
 #   - The release variant (not debuggable), signed with the release key from the repository secrets.
-#   - versionName/versionCode of the latest release, so it installs over that release with `adb install
-#     -r`, the panel's update entity offers nothing, and the next real release replaces it as usual.
+#   - versionName/versionCode of the latest release (or the version in the branch name / the input), so
+#     it installs over the panel's app with `adb install -r` (same or higher versionCode), the panel's
+#     update entity offers nothing, and the next real release replaces it as usual.
 #     The commit is in the artifact name and in the build's summary, not in the app.
 #   - No radio bundle: its key is only for releases from main (release.yml, `radio-signing`). Without
 #     a bundle the app leaves the panel's root side (radio helper, otbr-agent…) exactly as it is.
@@ -45,13 +49,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Version (latest release unless given)
+      - name: Version (input, then branch name, then latest release)
         id: version
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          v="${INPUT_VERSION:-$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)}"
+          from_branch=""
+          if [[ "$GITHUB_REF_NAME" =~ ^test-build/v([0-9]+\.[0-9]+\.[0-9]+)/ ]]; then from_branch="${BASH_REMATCH[1]}"; fi
+          v="${INPUT_VERSION:-${from_branch:-$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)}}"
           v="${v#v}"
           if ! [[ "$v" =~ ^(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)$ ]]; then
             echo "::error::version '$v' is not MAJOR.MINOR.PATCH (minor/patch < 100)"; exit 1
