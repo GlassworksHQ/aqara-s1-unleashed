@@ -3,7 +3,6 @@ package sh.edm.s1kiosk
 import android.Manifest
 import android.app.Activity
 import android.app.AlarmManager
-import android.app.AlertDialog
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -14,26 +13,21 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
-import android.text.InputType
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.EditText
-import android.widget.ScrollView
 import android.net.Uri
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
 import sh.edm.s1kiosk.auth.FrontendUrls
 import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.dashboard.DashboardOptions
 import sh.edm.s1kiosk.dashboard.Dashboards
 import sh.edm.s1kiosk.discovery.HaUrls
+import sh.edm.s1kiosk.settings.KioskSettingsOverlay
+import sh.edm.s1kiosk.settings.SettingsMenu
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.setup.LoadingOverlay
 import sh.edm.s1kiosk.setup.OfflineText
@@ -65,6 +59,7 @@ class MainActivity : Activity() {
     private lateinit var prefs: KioskPrefs
     private lateinit var geckoView: GeckoView
     private lateinit var loadingOverlay: LoadingOverlay
+    private lateinit var settingsOverlay: KioskSettingsOverlay
     private lateinit var voiceOverlay: VoiceOverlay
     private lateinit var timerOverlay: TimerOverlay
     private lateinit var setupOverlay: SetupOverlay
@@ -171,6 +166,12 @@ class MainActivity : Activity() {
             onRadioSkip = { applyRadio(RadioMode.OFF, skip = true) }
             onRadioContinue = ::finishRadioStep
         }
+        settingsOverlay = KioskSettingsOverlay(this).apply {
+            onSave = ::saveSettings
+            onReload = { hide(); loadDashboard() }
+            onAqaraSettings = { if (!DeviceSettings.open(this@MainActivity)) Toast.makeText(this@MainActivity, "No settings app on this panel", Toast.LENGTH_LONG).show() }
+            onLicences = { Licences.show(this@MainActivity) }
+        }
         // Improv-aware from the start: KioskService (which registers the provider) starts after this.
         wifiStatus = ImprovWifiStatus(this)
         setContentView(android.widget.FrameLayout(this).apply {
@@ -180,6 +181,7 @@ class MainActivity : Activity() {
             // Z order (elevation): setup 20 dp > voice 16 dp > timers 12 dp > page.
             addView(timerOverlay, timerOverlay.layoutParams())
             addView(voiceOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
+            addView(settingsOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // 24 dp: above everything
         })
         // The launch backdrop (res/drawable/launch_backdrop.xml) covers the cold start; once our own
         // views have drawn, a plain colour behind them costs the GPU nothing on every later frame.
@@ -699,7 +701,12 @@ class MainActivity : Activity() {
             "on" -> ScreenController.wake("intent")
         }
         if (intent.getBooleanExtra("remove_admin", false)) ScreenController.removeAdmin()
-        if (fromNewIntent && intent.getBooleanExtra("settings", false)) showSettings()
+        // The kiosk settings menu: the notification, or `--ez kiosk_settings true` (also from a cold start).
+        if (SettingsMenu.requested { k -> if (intent.hasExtra(k)) intent.getBooleanExtra(k, false) else null }) {
+            intent.removeExtra(SettingsMenu.EXTRA)
+            intent.removeExtra(SettingsMenu.LEGACY_EXTRA) // not again when the activity is recreated
+            handler.post { if (::settingsOverlay.isInitialized) showSettings() }
+        }
         if (fromNewIntent && (needsRestart || intent.getBooleanExtra("restart", false))) {
             restartProcess()
             return
@@ -762,133 +769,60 @@ class MainActivity : Activity() {
         return super.dispatchTouchEvent(ev)
     }
 
+    /** The kiosk settings menu (settings/KioskSettingsOverlay): 5 taps top-left, or the notification. */
     private fun showSettings() {
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val urlField = EditText(this).apply {
-            setText(prefs.urlSetting)
-            hint = "auto (find Home Assistant)"
-            inputType = InputType.TYPE_TEXT_VARIATION_URI
-            setSingleLine()
-        }
-        val zoomField = EditText(this).apply {
-            setText(if (prefs.zoom > 0f) prefs.zoom.toString() else "")
-            hint = "auto (device density)"
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-            setSingleLine()
-        }
-        val hostsField = EditText(this).apply {
-            setText(prefs.extraSecureHosts)
-            hint = "e.g. homeassistant.local,192.168.1.100"
-            setSingleLine()
-        }
-        val hideHeader = CheckBox(this).apply { text = "Hide HA header & sidebar"; isChecked = prefs.hideHeader }
-        val presence = CheckBox(this).apply {
-            text = "Screen follows presence (off when idle)"; isChecked = prefs.screenMode == "presence"
-        }
-        val idleField = EditText(this).apply {
-            setText(prefs.idleOffSec.toString()); inputType = InputType.TYPE_CLASS_NUMBER; setSingleLine()
-        }
-        val nightField = EditText(this).apply { setText(prefs.nightWindow); hint = "22:00-07:00 (empty = off)"; setSingleLine() }
-        val nightIdleField = EditText(this).apply {
-            setText(prefs.nightIdleOffSec.toString()); inputType = InputType.TYPE_CLASS_NUMBER; setSingleLine()
-        }
-        val rangeField = EditText(this).apply {
-            setText(if (prefs.presenceRangeM > 0f) prefs.presenceRangeM.toString() else "")
-            hint = "firmware default (1.5 m)"
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; setSingleLine()
-        }
-        val autoBright = CheckBox(this).apply { text = "Auto brightness (light sensor)"; isChecked = prefs.autoBrightness }
-        // Same setting as HA's "Radio allowed clients" (docs/radio.md "Firewall"): empty = Home Assistant only.
         val radio = KioskService.radioRef
-        val allowNow = radio?.allowedNow()
-        val allowField = EditText(this).apply {
-            setText(radio?.allowedClients().orEmpty())
-            hint = "empty = Home Assistant only"
-            inputType = InputType.TYPE_TEXT_VARIATION_URI
-            setSingleLine()
-            isEnabled = radio != null
-        }
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad, pad, 0)
-            addView(TextView(context).apply {
-                text = ScreenController.statusLine() + " · voice=" + KioskService.voiceState; textSize = 12f
-            })
-            addView(TextView(context).apply { text = "Dashboard URL" })
-            addView(urlField)
-            addView(TextView(context).apply { text = "Zoom (CSS px ratio, e.g. 1.0 – 2.0)" })
-            addView(zoomField)
-            addView(TextView(context).apply { text = "Extra secure-context hosts" })
-            addView(hostsField)
-            addView(hideHeader)
-            addView(presence)
-            addView(TextView(context).apply { text = "Screen off after idle (s, 0 = never)" })
-            addView(idleField)
-            addView(TextView(context).apply { text = "Night window" })
-            addView(nightField)
-            addView(TextView(context).apply { text = "Night: screen off after idle (s)" })
-            addView(nightIdleField)
-            addView(TextView(context).apply { text = "Presence range (m, 0.1 – 2.5)" })
-            addView(rangeField)
-            addView(autoBright)
-            addView(TextView(context).apply {
-                text = "Radio: who may connect (IP addresses or ranges, or any)"
-            })
-            addView(allowField)
-            addView(TextView(context).apply {
-                textSize = 12f
-                text = when {
-                    radio == null -> "Kiosk service not running"
-                    allowNow == null -> "Allowed now: no firewall active (radio off or old root helper)"
-                    allowNow.isEmpty() -> "Allowed now: only the panel itself (Home Assistant hasn't connected yet)"
-                    else -> "Allowed now: ${allowNow.replace(" ", ", ")}"
-                }
-            })
-            // The dialog's three buttons are taken; a borderless one at the end, over the settings dialog.
-            addView(Button(context, null, android.R.attr.borderlessButtonStyle).apply {
-                text = "Open source licences"
-                isAllCaps = false
-                setOnClickListener { Licences.show(this@MainActivity) }
-            })
-        }
-        val scroll = ScrollView(this).apply { addView(layout) }
-        AlertDialog.Builder(this)
-            .setTitle("S1 Kiosk ${BuildConfig.VERSION_NAME}")
-            .setView(scroll)
-            .setPositiveButton("Save & restart") { _, _ ->
-                prefs.urlSetting = urlField.text.toString().ifBlank { KioskPrefs.AUTO }
-                prefs.zoom = zoomField.text.toString().toFloatOrNull() ?: 0f
-                prefs.extraSecureHosts = hostsField.text.toString()
-                prefs.hideHeader = hideHeader.isChecked
-                prefs.hideSidebar = hideHeader.isChecked
-                prefs.screenMode = if (presence.isChecked) "presence" else "always"
-                prefs.idleOffSec = idleField.text.toString().toIntOrNull() ?: 120
-                prefs.nightWindow = nightField.text.toString()
-                prefs.nightIdleOffSec = nightIdleField.text.toString().toIntOrNull() ?: 20
-                prefs.autoBrightness = autoBright.isChecked
-                prefs.presenceRangeM = rangeField.text.toString().toFloatOrNull() ?: 0f
-                val allowText = allowField.text.toString().trim()
-                if (radio != null && allowText != radio.allowedClients()) {
-                    val err = radio.setAllowedClients(allowText)
-                    if (err != null) {
-                        // the old list stays; give the message time to be read before the restart
-                        Toast.makeText(this, "Radio allow-list not changed: $err", Toast.LENGTH_LONG).show()
-                        handler.postDelayed({ restartProcess() }, 3500)
-                    } else {
-                        // let the radio thread hand the new list to the helper before the process restarts
-                        radio.afterPending { handler.post { restartProcess() } }
-                    }
-                } else restartProcess()
+        settingsOverlay.show(
+            KioskSettingsOverlay.Model(
+                values = KioskSettingsOverlay.Values(
+                    url = prefs.urlSetting,
+                    zoom = if (prefs.zoom > 0f) prefs.zoom.toString() else "",
+                    secureHosts = prefs.extraSecureHosts,
+                    hideHeader = prefs.hideHeader,
+                    // Same setting as HA's "Radio allowed clients" (docs/radio.md "Firewall"): empty = Home Assistant only.
+                    radioAllow = radio?.allowedClients().orEmpty(),
+                    presence = prefs.screenMode == "presence",
+                    idleOff = prefs.idleOffSec.toString(),
+                    nightIdleOff = prefs.nightIdleOffSec.toString(),
+                    nightWindow = prefs.nightWindow,
+                    presenceRange = if (prefs.presenceRangeM > 0f) prefs.presenceRangeM.toString() else "",
+                    autoBrightness = prefs.autoBrightness,
+                ),
+                facts = SettingsMenu.Facts(deviceSettings = DeviceSettings.intent(this) != null),
+                radioRunning = radio != null,
+                allowedNow = SettingsMenu.allowedNow(radio != null, radio?.allowedNow()),
+                version = BuildConfig.VERSION_NAME,
+                status = ScreenController.statusLine() + " · voice=" + KioskService.voiceState,
+            ),
+        )
+    }
+
+    /** "Save & restart": the same saves as the earlier dialog, then the process restart that applies them. */
+    private fun saveSettings(v: KioskSettingsOverlay.Values) {
+        prefs.urlSetting = v.url.ifBlank { KioskPrefs.AUTO }
+        prefs.zoom = v.zoom.toFloatOrNull() ?: 0f
+        prefs.extraSecureHosts = v.secureHosts
+        prefs.hideHeader = v.hideHeader
+        prefs.hideSidebar = v.hideHeader
+        prefs.screenMode = if (v.presence) "presence" else "always"
+        prefs.idleOffSec = v.idleOff.toIntOrNull() ?: 120
+        prefs.nightWindow = v.nightWindow
+        prefs.nightIdleOffSec = v.nightIdleOff.toIntOrNull() ?: 20
+        prefs.autoBrightness = v.autoBrightness
+        prefs.presenceRangeM = v.presenceRange.toFloatOrNull() ?: 0f
+        val radio = KioskService.radioRef
+        val allowText = v.radioAllow.trim()
+        if (radio != null && allowText != radio.allowedClients()) {
+            val err = radio.setAllowedClients(allowText)
+            if (err != null) {
+                // the old list stays; give the message time to be read before the restart
+                Toast.makeText(this, "Radio allow-list not changed: $err", Toast.LENGTH_LONG).show()
+                handler.postDelayed({ restartProcess() }, 3500)
+            } else {
+                // let the radio thread hand the new list to the helper before the process restarts
+                radio.afterPending { handler.post { restartProcess() } }
             }
-            .setNeutralButton("Android settings") { _, _ ->
-                try {
-                    startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                } catch (e: Exception) {
-                    Toast.makeText(this, "No settings app: $e", Toast.LENGTH_LONG).show()
-                }
-            }
-            .setNegativeButton("Reload") { _, _ -> loadDashboard() }
-            .show()
+        } else restartProcess()
     }
 
     private var restartWaitingSince = 0L
@@ -924,6 +858,7 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (::settingsOverlay.isInitialized && settingsOverlay.isShowing) { settingsOverlay.hide(); return }
         if (canGoBack) session?.goBack()
     }
 

@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import sh.edm.s1kiosk.settings.SettingsMenu
 import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
@@ -102,22 +103,28 @@ class KioskService : Service() {
                     .apply { setShowBadge(false) }
             )
         }
-        val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
+        // Tapping it opens the kiosk settings menu (a second way in besides the 5 taps; anyone at the panel
+        // can pull the shade down). MainActivity is singleTask: the running one gets it in onNewIntent.
+        val menu = PendingIntent.getActivity(
+            this, REQ_KIOSK_SETTINGS,
+            Intent(this, MainActivity::class.java)
+                .putExtra(SettingsMenu.EXTRA, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         @Suppress("DEPRECATION")
         val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, CHANNEL)
         else Notification.Builder(this)
         b.setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle("S1 Kiosk")
-            .setContentText("Screen, sensors & ESPHome API running")
-            .setContentIntent(open)
+            .setContentText("Tap for kiosk settings · screen, sensors & ESPHome API running")
+            .setContentIntent(menu)
             .setOngoing(true)
-        // The shade has no settings gear until Aqara's own onboarding ran: offer the way in here.
+        // The shade has no settings gear until Aqara's own onboarding ran: Aqara's settings app from here too.
         DeviceSettings.intent(this)?.let { settings ->
-            val pi = PendingIntent.getActivity(this, 1, settings, PendingIntent.FLAG_IMMUTABLE)
+            val pi = PendingIntent.getActivity(this, REQ_PANEL_SETTINGS, settings, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             @Suppress("DEPRECATION")
-            b.addAction(Notification.Action.Builder(android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_launcher), "Settings", pi).build())
+            b.addAction(Notification.Action.Builder(android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_launcher), "Panel settings", pi).build())
         }
         return b.build()
     }
@@ -125,6 +132,8 @@ class KioskService : Service() {
     companion object {
         private const val CHANNEL = "kiosk"
         private const val NOTIFICATION_ID = 1
+        private const val REQ_KIOSK_SETTINGS = 10  // distinct PendingIntent request codes
+        private const val REQ_PANEL_SETTINGS = 11
 
         /** Last voice assistant state, exposed to the page via MainActivity.stateJson(). */
         @Volatile var voiceState: String = "off"
