@@ -32,3 +32,19 @@ class SetupCodeTest {
         assertNull(SetupCode.networkName(byteArrayOf()))
     }
 }
+
+class LuxReportTest {
+    @Test
+    fun throttlesNoisyReadings() {
+        val r = LuxReport()
+        assertEquals(100.0, r.next(100.0, 0)!!, 0.0)          // first reading goes out
+        assertNull(r.next(110.0, 1_000))                      // +10 %: too small
+        assertNull(r.next(Double.NaN, 2_000))                 // no reading
+        assertEquals(130.0, r.next(130.0, 3_000)!!, 0.0)       // +30 %: goes out
+        assertNull(r.next(135.0, 10_000))
+        assertEquals(135.0, r.next(135.0, 64_000)!!, 0.0)      // a minute later, any change goes out
+        assertNull(r.next(135.0, 200_000))                    // no change: nothing
+        r.reset()
+        assertEquals(135.0, r.next(135.0, 200_001)!!, 0.0)
+    }
+}

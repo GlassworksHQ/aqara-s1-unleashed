@@ -156,7 +156,7 @@ class ThreadJoinOverlay(context: Context) : FrameLayout(context) {
             }
             is sh.edm.s1kiosk.matter.PanelMatter.State.Paired -> {
                 title.text = "Paired" + (s.network?.let { " · joining $it" } ?: "")
-                body.text = "The panel is a Matter device in your home now (its screen is an On/Off switch), and joins " +
+                body.text = "The panel is a Matter device in your home now (its screen as a switch, plus its presence and light sensors), and joins " +
                     "your Thread network as a Thread router. Radio status on the panel's device page says when it's in."
                 status.setTextColor(GREEN)
                 status.text = "Done."

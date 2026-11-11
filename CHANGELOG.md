@@ -18,7 +18,7 @@ below as the release notes.
 - **Pair the panel with a phone (Matter, experimental).** On the panel's Thread router card (setup
   screen or settings menu), *Pair with a phone*: scan the panel's QR code in your phone's home app,
   and the phone sends the panel your Thread network over Bluetooth; the panel joins it as a Thread
-  router and stays a Matter device (its screen is an On/Off switch). Uses the Matter SDK's test
+  router and stays a Matter device: its screen as a switch, plus its presence and light sensors. Uses the Matter SDK's test
   certificate, so Home Assistant's Matter Server needs *Enable test-net DCL usage* on. See
   [docs/matter.md](docs/matter.md). Not yet tested on the panel itself: the library it uses was, with
   an iPhone and Home Assistant.

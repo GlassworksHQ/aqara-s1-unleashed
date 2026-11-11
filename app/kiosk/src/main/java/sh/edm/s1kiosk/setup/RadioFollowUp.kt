@@ -245,8 +245,8 @@ object RadioFollowUp {
                     "Paste it into the panel's Thread dataset in Home Assistant (the panel's device page → Configuration), " +
                         "or under Advanced here. $DATASET_KEY",
                     "Pair with a phone (experimental): the panel is a Matter device for a moment, commissioned over " +
-                        "Bluetooth, and the phone sends it the network. It stays a Matter device afterwards (its screen is an " +
-                        "On/Off switch). It uses the Matter SDK's test certificate, so Home Assistant's Matter Server needs " +
+                        "Bluetooth, and the phone sends it the network. It stays a Matter device afterwards (its screen as a " +
+                        "switch, plus its presence and light sensors). It uses the Matter SDK's test certificate, so Home Assistant's Matter Server needs " +
                         "Enable test-net DCL usage on.",
                     "Get it from Home Assistant does that for you: Home Assistant only gives the dataset to administrators, " +
                         "so the panel uses its own sign-in if it is one, or asks for a one-time administrator sign-in on a " +

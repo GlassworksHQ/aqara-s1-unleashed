@@ -3,7 +3,8 @@
 **Experimental.** The panel can be paired the way Thread devices are: scan its QR code in your phone's
 home app, and the phone sends it your Thread network over Bluetooth. The panel then joins that network
 as a *Thread router* ([radio-guide.md](radio-guide.md#repeater-modes-experimental)), and stays a
-Matter device in your home, with its screen as an On/Off switch.
+Matter device in your home: its screen as an On/Off switch, its presence sensor as an occupancy
+sensor, and its ambient light sensor as a light sensor.
 
 This is the third way to give the panel your Thread network, next to *Join Home Assistant's Thread
 network* (an administrator signs in once, [radio-guide.md](radio-guide.md#repeater-modes-experimental))
@@ -35,8 +36,11 @@ and pasting the dataset by hand. It is the only one that doesn't need Home Assis
 The code stays valid for 15 minutes; **Close** stops it earlier. The panel keeps its own pairing code:
 it is random, made once per panel.
 
-After pairing, the panel is a Matter device ("S1 Panel") wherever it was added. Turning it off and on
-switches the screen. To undo the pairing, remove the device in your home app; **Leave Thread network**
+After pairing, the panel is a Matter device ("S1 Panel") wherever it was added, with three endpoints:
+the screen (an On/Off light: turning it off and on switches the screen), presence (an occupancy
+sensor, from the panel's time-of-flight sensor) and ambient light (a light sensor, in lux; reported
+when it changes by about a quarter, or after a minute). **Pair with a phone** on a paired panel opens
+pairing again, to add it to another home app or hub. To undo the pairing, remove the device in your home app; **Leave Thread network**
 on the panel's device page makes the radio forget the network.
 
 ## How it works

@@ -16,8 +16,8 @@ import java.util.concurrent.CopyOnWriteArrayList
  * The panel as a Matter device (GitHub issue #1, docs/matter.md): a phone commissions it over BLE
  * by scanning the QR code the panel shows, and sends it the home's Thread dataset, which goes to
  * the radio exactly like the other ways in ([deliver]: RadioController.joinThreadNetwork). After
- * that the panel stays a Matter device in the phone's home (and Home Assistant): one On/Off
- * endpoint, the screen.
+ * that the panel stays a Matter device in the phone's home (and Home Assistant): the screen (On/Off,
+ * endpoint 1), presence (occupancy sensor, 2) and ambient light (light sensor, 3).
  *
  * Built on rs-matter-android (app/third_party/rs-matter). It uses the Matter SDK's *test* device
  * certificate, so Home Assistant only accepts it with the Matter Server's "test-net DCL" option on.
@@ -52,7 +52,21 @@ object PanelMatter {
     private var multicast: WifiManager.MulticastLock? = null
     private var qr: String? = null
     private var code: String? = null
-    private val screenListener: () -> Unit = { node?.setOnOff(ScreenController.screenOn) }
+    private val lux = LuxReport()
+    private val screenListener: () -> Unit = { report() }
+
+    /** The panel's endpoints: screen, presence, ambient light. */
+    private const val EP_SCREEN = 1
+    private const val EP_PRESENCE = 2
+    private const val EP_LIGHT = 3
+
+    /** Pushes the screen, presence and (throttled) light to the node. */
+    private fun report() {
+        val n = node ?: return
+        n.setOnOff(EP_SCREEN, ScreenController.screenOn)
+        n.setOccupied(EP_PRESENCE, ScreenController.near)
+        lux.next(ScreenController.lux.toDouble(), System.currentTimeMillis())?.let { n.setIlluminance(EP_LIGHT, it) }
+    }
 
     fun addListener(l: (State) -> Unit) { listeners += l }
     fun removeListener(l: (State) -> Unit) { listeners -= l }
@@ -72,11 +86,15 @@ object PanelMatter {
         if (paired()) start()
     }
 
-    /** "Pair with a phone": starts the node; it opens a commissioning window if it isn't paired. */
+    /**
+     * "Pair with a phone": starts the node, which opens a commissioning window if it isn't paired. A
+     * paired panel opens one again: to pair after it was removed, or with another phone or hub.
+     */
     @Synchronized
     fun startPairing() {
         if (node != null && state is State.Pairing) return
-        start()
+        val running = node
+        if (running != null && paired()) running.openCommissioningWindow() else start()
         main.removeCallbacks(windowOver)
         main.postDelayed(windowOver, PAIRING_WINDOW_MS)
     }
@@ -130,6 +148,11 @@ object PanelMatter {
                 discriminator = discriminator,
                 passcode = passcode,
                 deviceName = "S1 Panel",
+                endpoints = listOf(
+                    MatterNode.Endpoint.OnOff(EP_SCREEN),
+                    MatterNode.Endpoint.OccupancySensor(EP_PRESENCE),
+                    MatterNode.Endpoint.LightSensor(EP_LIGHT),
+                ),
             ),
             object : MatterNode.Listener {
                 override fun onThreadScan(): List<MatterNode.ThreadNetwork> = routers.networks()
@@ -149,7 +172,8 @@ object PanelMatter {
                     return true
                 }
 
-                override fun onOnOff(on: Boolean) {
+                override fun onOnOff(endpoint: Int, on: Boolean) {
+                    if (endpoint != EP_SCREEN) return
                     main.post { if (on) ScreenController.wake("matter") else ScreenController.sleep("matter") }
                 }
 
@@ -158,9 +182,12 @@ object PanelMatter {
         )
         node = n
         ScreenController.addListener(screenListener)
+        lux.reset()
         if (!n.start()) {
             node = null
             set(State.Failed("the Matter node didn't start"))
+        } else {
+            report()
         }
     }
 
@@ -222,5 +249,29 @@ object SetupCode {
             val p = 1 + r.nextInt(99_999_998).toLong()
             if (valid(p)) return p
         }
+    }
+}
+
+/**
+ * Which ambient-light readings go to Matter: the sensor reports often and noisily, and each change is
+ * a report to every subscriber. A new value goes out when it moves by 1000 or more in Matter's log
+ * scale (about 26 % in lux), or after a minute with any change. Pure, for tests.
+ */
+class LuxReport(private val step: Int = 1000, private val everyMs: Long = 60_000) {
+    private var last: Int? = null
+    private var lastAt = 0L
+
+    fun reset() { last = null; lastAt = 0 }
+
+    /** The lux value to report now, or null to skip this reading. */
+    fun next(lux: Double, now: Long): Double? {
+        if (lux.isNaN()) return null
+        val v = org.rsmatter.android.Units.illuminance(lux)
+        val prev = last
+        val send = prev == null || kotlin.math.abs(v - prev) >= step || (v != prev && now - lastAt >= everyMs)
+        if (!send) return null
+        last = v
+        lastAt = now
+        return lux
     }
 }
