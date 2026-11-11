@@ -8,7 +8,7 @@ import sh.edm.s1kiosk.auth.OAuth
 import sh.edm.s1kiosk.auth.StoredAuth
 import sh.edm.s1kiosk.base.BaseBackend
 import sh.edm.s1kiosk.base.UartBaseLink
-import sh.edm.s1kiosk.esphome.NoiseKeyStore
+import sh.edm.esphome.NoiseKeyStore
 
 /**
  * Persisted kiosk settings (SharedPreferences, private to the app). Secrets: the ESPHome API

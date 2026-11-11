@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.esphome
 
+import sh.edm.esphome.*
 import sh.edm.s1kiosk.esphome.VoiceAssistantController.State
 import sh.edm.s1kiosk.voice.VoiceEvent
 import org.junit.Assert.assertEquals

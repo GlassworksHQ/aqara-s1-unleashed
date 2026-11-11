@@ -13,9 +13,11 @@ The kiosk app makes the panel look like **one ESPHome device** to Home Assistant
 One integration, discovered automatically, no Wyoming or MQTT. It replaces the earlier Wyoming
 satellite (remove that Wyoming entry from HA when you switch).
 
-Code: `app/kiosk/src/main/java/sh/edm/s1kiosk/esphome/` (protocol core, pure JVM) and
-`PanelDevice` (Android glue), owned by the foreground `KioskService`, so it keeps working while the
-screen is off. Logs: `adb logcat -s S1ESPHome S1Voice`.
+Code: the protocol core is the reusable pure-JVM library [`app/libs/esphome-api`](../app/libs/esphome-api/README.md)
+(package `sh.edm.esphome`), with mDNS from [`app/libs/esphome-api-android`](../app/libs/esphome-api-android/README.md);
+the panel's entities and glue are `PanelDevice` and `VoiceAssistantController` in
+`app/kiosk/src/main/java/sh/edm/s1kiosk/esphome/`, owned by the foreground `KioskService`, so it
+keeps working while the screen is off. Logs: `adb logcat -s S1ESPHome S1Voice`.
 
 ## Add it to Home Assistant
 

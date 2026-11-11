@@ -1,6 +1,6 @@
 package sh.edm.s1kiosk.sendspin
 
-import sh.edm.s1kiosk.esphome.NoiseMacException
+import sh.edm.esphome.NoiseMacException
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

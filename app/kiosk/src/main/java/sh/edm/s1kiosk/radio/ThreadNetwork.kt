@@ -16,7 +16,7 @@ object ThreadDataset {
      * The `Thread dataset` entity's pattern: hex plus whitespace, the no-break and other Unicode
      * spaces, and the zero-width characters. Written out with `\u` escapes, not `\s` alone: Python's `re`
      * (Home Assistant checks the value with it) treats `\s` as Unicode whitespace, but Java's regex (this
-     * app, [sh.edm.s1kiosk.esphome.TextEntity]) doesn't, and neither covers the zero-width characters.
+     * app, [sh.edm.esphome.TextEntity]) doesn't, and neither covers the zero-width characters.
      * Python, Java and the browser's `pattern` attribute (the `v` flag) read this the same way.
      */
     const val PATTERN = "^[0-9a-fA-F\\s\\u00a0\\u1680\\u2000-\\u200d\\u2028\\u2029\\u202f\\u205f\\u2060\\u3000\\ufeff]*$"

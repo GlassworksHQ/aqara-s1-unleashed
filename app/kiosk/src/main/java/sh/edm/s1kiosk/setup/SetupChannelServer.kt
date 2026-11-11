@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
 import android.util.Log
-import sh.edm.s1kiosk.AdbSocketServer
+import sh.edm.improv.AdbSocketServer
 import sh.edm.s1kiosk.InstallerGlue
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.KioskService

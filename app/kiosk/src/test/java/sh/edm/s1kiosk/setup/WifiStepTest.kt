@@ -3,7 +3,7 @@ package sh.edm.s1kiosk.setup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import sh.edm.s1kiosk.improv.ImprovState
+import sh.edm.improv.ImprovState
 import sh.edm.s1kiosk.setup.WifiStep.Action
 import sh.edm.s1kiosk.setup.WifiStep.Phase
 

@@ -38,14 +38,14 @@ by itself as each step completes ✅ (see [Setup screen](#setup-screen-)).
   Phones can use improv-wifi.com (Web Bluetooth) too.
 - Fallback: the setup screen offers Android's Wi-Fi panel (`Settings.Panel.ACTION_WIFI`).
 
-#### What's implemented (`app/kiosk/.../improv/`)
+#### What's implemented (`app/kiosk/.../improv/`; the protocol, session, BLE server, `WifiProvisioner` and `WifiSecurity` are the reusable [Improv library](../app/libs/improv/README.md))
 
 | File | Role |
 |---|---|
 | `ImprovProtocol.kt` | UUIDs, enums, RPC encode/parse + checksum, fragment reassembly, scan packing, service data (pure, unit-tested) |
 | `ImprovSession.kt` | State machine: authorization + timeout, RPC dispatch, Wi-Fi result handling (pure, unit-tested) |
 | `ImprovBleServer.kt` | `BluetoothGattServer` + `AdvertisingSet` (legacy PDU), notification queue, long writes, MTU |
-| `WifiProvisioner.kt` / `WifiSecurity.kt` | Join the network (legacy API or suggestion), verify, restore the previous network on failure |
+| `WifiProvisioner.kt` / `WifiSecurity.kt` (library) | Join the network (legacy API or suggestion), verify, restore the previous network on failure |
 | `ImprovOverlay.kt` | "Allow Wi-Fi setup over Bluetooth?" card (dashboard style), status/countdown/result |
 | `ImprovController.kt` | Lifecycle: auto/on-demand start, 10 min window, identify (wake + flash + 3 beeps), device-owner escape hatch |
 | `ImprovActivity.kt` | Invisible trampoline for the adb intent extras |
@@ -189,15 +189,17 @@ organization". `adb install -r` updates keep working.
 
 After installing the app, the web installer (web/, Tango over WebUSB) does the rest of onboarding
 from the computer through two byte streams it opens with adb's `localabstract:<name>` service. Both
-are abstract Unix sockets in the app, started by `KioskService` (`AdbSocketServer`), and only accept
+are abstract Unix sockets in the app, started by `KioskService` (`AdbSocketServer`, in the
+[Improv library](../app/libs/improv/README.md)), and only accept
 adb: the peer uid (`LocalSocket.peerCredentials`) must be 2000 (adbd as shell) or 0 (`adb root`)
 (`AdbPeer`, `AdbPeerTest`); anything else is closed and logged. The USB connection, authorized with
 the installer's adb key, is the physical authorization, so there is no Allow tap. Connections can
 come one after another (or side by side, up to 4). The client side is the protocol source of truth:
-`web/src/improv/serial.ts` and `web/src/setup/channel.ts`.
+the [`improv-serial`](../web/packages/improv-serial/README.md) package (`web/packages/improv-serial/`)
+and `web/src/setup/channel.ts`.
 
-**Wi-Fi: Improv Serial on `@s1kiosk_improv`** (`improv/ImprovSerial.kt`, pure, `ImprovSerialTest`;
-glue `improv/ImprovSerialServer.kt`). [Improv Serial](https://www.improv-wifi.com/serial/) framing
+**Wi-Fi: Improv Serial on `@s1kiosk_improv`** (`ImprovSerial.kt` in the [Improv library](../app/libs/improv/README.md), pure, `ImprovSerialTest`;
+glue `app/kiosk/…/improv/ImprovSerialServer.kt`). [Improv Serial](https://www.improv-wifi.com/serial/) framing
 (`IMPROV`, version 1, type, length, data, checksum) over the stream instead of a UART.
 - State: Ready (authorized) from the start, or Provisioned when the panel is already on Wi-Fi (the
   installer then says so; new Wi-Fi settings are still accepted).
@@ -242,7 +244,7 @@ The intent hand-off this replaces (`--es wifi_ssid/wifi_psk`, results on logcat)
 ### 2. Adoption + encryption: ESPHome dynamic keys ✅
 
 - ✅ The panel advertises `_esphomelib._tcp` and implements the ESPHome native API with Noise.
-- ✅ **Dynamic key** (`esphome/NoiseKeys.kt`, `ApiServer`). A panel without a key behaves like an
+- ✅ **Dynamic key** (`NoiseKeys.kt`, `ApiServer` in [`app/libs/esphome-api`](../app/libs/esphome-api/README.md)). A panel without a key behaves like an
   ESPHome build with `api: encryption:` and no YAML key; a panel with a key works as before.
 
   Verified against the sources:

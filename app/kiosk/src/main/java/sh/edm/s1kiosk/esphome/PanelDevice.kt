@@ -1,5 +1,7 @@
 package sh.edm.s1kiosk.esphome
 
+import sh.edm.esphome.*
+import sh.edm.esphome.android.EspHomeMdns
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -77,6 +79,9 @@ class PanelDevice(
 ) {
 
     companion object {
+        // Keep the library's logs under the tag the docs use (`adb logcat -s S1ESPHome`).
+        init { EspHomeLog.tag = "S1ESPHome" }
+
         const val NAME = "s1-panel"
         const val FRIENDLY_NAME = "S1 Panel"
         /** Reported ESPHome version (recent, so HA doesn't treat the device as outdated). */
@@ -92,7 +97,7 @@ class PanelDevice(
     private val main = Handler(Looper.getMainLooper())
     private val exec: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "esphome-main").apply { isDaemon = true } }
-    private val mdns = EspHomeMdns(ctx)
+    private val mdns = EspHomeMdns(ctx, board = "aqara-s1-plus")
     private val voiceEnabled = prefs.voiceEnabled
 
     private var server: ApiServer? = null
@@ -198,7 +203,7 @@ class PanelDevice(
             model = "Panel Hub S1 Plus (S1 Kiosk)",
             voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
         )
-        ApiLog.i("ESPHome device '${identity.name}' mac ${identity.macAddress}, voice=${voiceEnabled}")
+        EspHomeLog.i("ESPHome device '${identity.name}' mac ${identity.macAddress}, voice=${voiceEnabled}")
         sendspin = SendspinPlayer(ctx, prefs, identity.macAddress) { exec.execute { server?.publishStates() } }
         coreEntities = buildEntities()
         appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
@@ -299,7 +304,7 @@ class PanelDevice(
         override fun onButton(channel: Int, type: String) {
             exec.execute {
                 val e = entities.firstOrNull { it.objectId == BaseEntities.buttonId(channel) } as? EventEntity
-                if (e == null) ApiLog.w("base button $channel ($type): no event entity in the current set")
+                if (e == null) EspHomeLog.w("base button $channel ($type): no event entity in the current set")
                 else server?.sendEvent(e, type)
             }
         }
@@ -322,7 +327,7 @@ class PanelDevice(
         set = { option ->
             val url = DashboardOptions.urlFor(option, prefs.urlSetting, prefs.haBase, prefs.haUrl, appliedDashboards)
             if (url != null) {
-                ApiLog.i("Dashboard select: '$option'")
+                EspHomeLog.i("Dashboard select: '$option'")
                 toActivity { putExtra("url", url) } // saves the setting and reloads
             }
         },
@@ -358,7 +363,7 @@ class PanelDevice(
             prefs.blockAqaraCloud -> "running (needed by the wall base, LocalService backend)"
             else -> "running"
         }
-        ApiLog.i("Aqara cloud ($why): $aqaraCloudStatus")
+        EspHomeLog.i("Aqara cloud ($why): $aqaraCloudStatus")
         server?.publishStates()
     }
 
@@ -375,7 +380,7 @@ class PanelDevice(
         val due = dashboardRebuild.offer(wanted, now) ?: return
         adoptDashboards(list)
         dashboardRebuild.markApplied(due, now)
-        ApiLog.i("Dashboard options changed (${due.size}); rebuilding the entity list")
+        EspHomeLog.i("Dashboard options changed (${due.size}); rebuilding the entity list")
         entities = assemble(base, base.tracker.applied())
         server?.setEntities(entities)
     }
@@ -396,7 +401,7 @@ class PanelDevice(
             emit = ::dispatchVoice,
             resolveUrl = ::resolveUrl,
             onTimerFinished = { name ->
-                ApiLog.i("Timer '$name' finished")
+                EspHomeLog.i("Timer '$name' finished")
                 TimerBoard.finished(name)
                 ui { ScreenController.wake("timer"); ScreenController.onStateChanged?.invoke() }
                 // Three chimes ~3 s apart so it's noticeable across the room; a tap on the done screen stops them.
@@ -437,7 +442,7 @@ class PanelDevice(
         // HA subscribes only after it has added the panel: remember that (setup screen, step 2).
         s.onStatesSubscribed = { info, addr, authenticated ->
             if (HaUrls.isHomeAssistantHello(info)) {
-                if (!prefs.haSeen) { prefs.haSeen = true; ApiLog.i("Home Assistant has added the panel") }
+                if (!prefs.haSeen) { prefs.haSeen = true; EspHomeLog.i("Home Assistant has added the panel") }
                 SetupSignals.onHaSubscribed()
                 // Only HA may reach the radio's TCP services; only an authenticated HA may say where it is.
                 if (authenticated) radio.homeAssistantConnected(addr)
@@ -449,7 +454,7 @@ class PanelDevice(
         try {
             s.start()
         } catch (e: IOException) {
-            ApiLog.w("Cannot listen on ${ApiServer.DEFAULT_PORT}: ${e.message}; retrying in 10 s")
+            EspHomeLog.w("Cannot listen on ${ApiServer.DEFAULT_PORT}: ${e.message}; retrying in 10 s")
             exec.schedule({ if (server == null) startServer() }, 10, TimeUnit.SECONDS)
             return
         }
@@ -471,7 +476,7 @@ class PanelDevice(
         val latest = noiseKeys.latest
         val same = if (k == null || latest == null) k == null && latest == null else k.contentEquals(latest)
         if (same) return
-        ApiLog.i(if (k == null) "API key removed in the panel settings" else "API key set in the panel settings (fingerprint ${NoiseKeys.fingerprint(k)})")
+        EspHomeLog.i(if (k == null) "API key removed in the panel settings" else "API key set in the panel settings (fingerprint ${NoiseKeys.fingerprint(k)})")
         server?.replaceKey(k)
     }
 
@@ -520,7 +525,7 @@ class PanelDevice(
             }
             else -> Unit
         }
-        try { onVoiceEvent(e) } catch (t: Throwable) { ApiLog.w("voice listener failed", t) }
+        try { onVoiceEvent(e) } catch (t: Throwable) { EspHomeLog.w("voice listener failed", t) }
     }
 
     // ------------------------------------------------------------------ entities
@@ -533,7 +538,7 @@ class PanelDevice(
         ui {
             val sink = MainActivity.commandSink
             if (sink != null) sink(i) else try { ctx.startActivity(i) } catch (e: Exception) {
-                ApiLog.w("Cannot start MainActivity", e)
+                EspHomeLog.w("Cannot start MainActivity", e)
             }
         }
     }
@@ -855,7 +860,7 @@ class PanelDevice(
         }
         val mac = bytes.joinToString(":") { "%02X".format(it.toInt() and 0xFF) }
         prefs.deviceMac = mac
-        ApiLog.i("Device MAC $mac ($source)")
+        EspHomeLog.i("Device MAC $mac ($source)")
         return mac
     }
 
@@ -888,7 +893,7 @@ class PanelDevice(
                 acquire()
             }
         } catch (e: Exception) {
-            ApiLog.w("Could not acquire wake/wifi lock", e)
+            EspHomeLog.w("Could not acquire wake/wifi lock", e)
         }
     }
 

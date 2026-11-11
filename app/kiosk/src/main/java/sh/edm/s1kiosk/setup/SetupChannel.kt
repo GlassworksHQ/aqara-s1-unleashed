@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.setup
 
+import sh.edm.improv.AdbPeer
 import org.json.JSONArray
 import org.json.JSONObject
 import sh.edm.s1kiosk.auth.OAuth

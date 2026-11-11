@@ -3,7 +3,7 @@ package sh.edm.s1kiosk.voice
 import android.content.Context
 import sh.edm.s1kiosk.esphome.VoiceAssistantController
 import sh.edm.s1kiosk.esphome.WakeWordCatalog
-import sh.edm.s1kiosk.esphome.WakeWordInfo
+import sh.edm.esphome.WakeWordInfo
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService

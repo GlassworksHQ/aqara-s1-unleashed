@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.improv
 
+import sh.edm.improv.*
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint

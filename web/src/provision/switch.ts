@@ -15,7 +15,7 @@
 //
 // The Wi-Fi password never goes into a command line, a log line or an error message.
 import type { PanelShell } from '../adb/panel';
-import { IMPROV_SOCKET, ImprovSerialClient } from '../improv/serial';
+import { IMPROV_SOCKET, ImprovSerialClient } from '../improv';
 import switchScript from '../../../tools/install/s1kiosk-switch.sh?raw';
 
 const PKG = 'sh.edm.s1kiosk';
