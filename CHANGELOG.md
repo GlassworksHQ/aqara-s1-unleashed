@@ -7,6 +7,43 @@ below as the release notes.
 
 ## [Unreleased]
 
+**A new settings menu, and the panel looks like S1 Kiosk from the boot animation on, with no Aqara screen in between.**
+
+### Added
+- **Kiosk settings menu.** The hidden settings (tap the top-left corner five times) are now a full-screen
+  menu in the setup screen's look, in sections: Home Assistant & dashboard, Radio: who may connect,
+  Panel, About (version and open source licences). Every setting from the old dialog is still there,
+  and *Save & restart* works as before. Under Panel, *Panel settings (Aqara)* opens Aqara's own settings
+  app (Wi-Fi, sound, display, updates, factory reset).
+- **Tapping S1 Kiosk's notification opens the menu**, as a second way in besides the five taps. Its
+  *Panel settings* button opens Aqara's settings app. Anyone at the panel can pull the notification
+  shade down, so the menu is exactly as hidden as the corner gesture.
+
+### Fixed
+- **No Aqara screen at boot any more.** For about 4 seconds after the boot animation, Android showed
+  Aqara's fallback home screen while it finished starting up. S1 Kiosk's loading screen now shows
+  instead, straight through to the dashboard. It is turned on the first time the new version starts,
+  so you see it from the reboot after that. On panels where Aqara's launcher or factory app is still
+  enabled (no de-bloat), it stays off so the choice of home app isn't disturbed.
+- After a reboot the screen said *No network yet* and how to set up Wi-Fi, while the panel was just
+  rejoining its saved network. It now says *Connecting to Wi-Fi…* and *Home Assistant loads as soon
+  as it's connected*, and loads the dashboard as soon as Wi-Fi is up. The Wi-Fi setup hint appears
+  only when Wi-Fi is off, no network is saved, or the panel hasn't connected within 30 seconds.
+- The loading screen's background no longer looks banded right after a reboot. It was drawn as
+  plain gradients until the smooth version was ready, which took seconds while the panel was still
+  starting up. The smooth version is now prepared straight away and much faster.
+- **Every new Zigbee2MQTT or ZHA connection to the panel's radio starts clean.** Messages left over
+  from the previous client no longer greet the next one with a *CRC error* and an ack-timeout error
+  (Zigbee2MQTT recovered, but it was untidy). This fix comes with the app's radio package: no new
+  boot software is needed.
+- Flashing the radio firmware shows real progress (or the seconds so far) instead of
+  *flashing stock: %*. Also part of the app's radio package.
+- The web installer offers *Zigbee router* and *Thread router* as experimental choices, as the panel
+  does, instead of listing them as *coming soon*.
+- `tools/install.sh --dry-run` no longer states that the panel's app is signed with a different key
+  when it may not be; it says what happens *if* the keys differ.
+- `tools/debloat/debloat.sh` no longer says the launcher was not disabled and then disables it.
+
 ## [0.4.1] - 2026-11-10
 
 **Updates from Home Assistant install again: earlier versions always said "the APK is not signed".**
