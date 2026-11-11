@@ -141,7 +141,7 @@ so they could never run. Passkey sign-in is therefore not available in the kiosk
   - Source: google/fonts, `ofl/inter/Inter[opsz,wght].ttf` at commit
     `e1d6480102fed30739fead0faee463101f892c8f` (SHA-256
     `29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031`)
-  - Used by the voice overlay and the voice timers. Other screens use the system font.
+  - Used by the app's own screens: voice overlay, timers, settings menu, setup and loading screens.
 - No machine-learning models are bundled by the app. The openWakeWord models are downloaded by the
   panel at runtime (section 5). GeckoView's `omni.ja` has its own assets, such as the Liberation fonts
   used by its PDF viewer (SIL OFL 1.1). Those are listed in `about:license`.

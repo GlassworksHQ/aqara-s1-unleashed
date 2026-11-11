@@ -229,7 +229,7 @@ connection, TTS is played from a URL. Checked against esphome `voice_assistant.c
 | HA → panel | `ERROR{code,message}` | Stop (`VoiceAssistantRequest{start=false}`) and go idle; wake-word codes are ignored like ESPHome. |
 | panel → HA | `VoiceAssistantAnnounceFinished{success}` | After the TTS / announcement finished playing; HA marks the response finished. If `continue_conversation` was set, a new run starts without a wake word. |
 | HA → panel | `VoiceAssistantAnnounceRequest{media_id, text, preannounce_media_id, start_conversation}` | Play the pre-announce chime then the media, reply `AnnounceFinished`, optionally start a conversation. |
-| HA → panel | `VoiceAssistantTimerEventResponse` | Shown as a live countdown pill (top right). When a timer finishes the screen wakes, a chime plays 3× and a "Timer done" banner shows until tapped (max 60 s). |
+| HA → panel | `VoiceAssistantTimerEventResponse` | Started / updated / paused / cancelled / finished: shown on screen (see [Timers on screen](#timers-on-screen)). On *finished* the screen wakes and a chime plays 3×, 3 s apart. |
 
 Playback uses **Media3 ExoPlayer** (`ExoAudioPlayer`), which streams mp3/flac/aac/ogg/wav over HTTP
 in-process, including endless streams. Android's `MediaPlayer` is deliberately avoided: on this
@@ -245,6 +245,30 @@ The microphone has one consumer, `VoiceEngine`: every 80 ms frame goes through t
 (always, so its buffers stay fresh), and during a run the same frame is handed to the API stream.
 Detections only count while idle and 3 s after the previous one. Safety caps: 15 s maximum stream,
 10 s for HA to answer a start request, 60 s waiting for a response.
+
+### Timers on screen
+
+Timers live in Home Assistant; the panel only shows what HA's timer events say, so pausing,
+cancelling or adding time is done by voice ("pause the pasta timer"). Code: `TimerOverlay`,
+`TimerBoard`, `timers/`.
+
+- **Running timers** are small glass orbs at the bottom right, one per timer, soonest nearest the
+  corner: the time left inside, an amber ring that runs down, the name underneath ("TIMER" if it has
+  none). In the last 10 seconds the orb glows and counts down in large digits, with a ripple each
+  second. A paused timer shows a pause sign and a grey ring.
+- **Move:** drag the timers anywhere; they snap to the nearest of eight spots (corners, the middle of
+  each edge), 16 dp from the edges, and later timers appear there too (stored in the app's `timers`
+  preferences).
+- **Hide:** tap a timer, then *Hide timers*. They tuck into the nearest side (or the top/bottom edge
+  for the middle spots) as half an orb whose amber arc still shows the time left; tap it to bring
+  them back. Hidden timers come back by themselves for their last 10 seconds, and when a new timer is
+  set; when the last one ends, hiding is forgotten. Touches anywhere else go to the dashboard.
+- **Set by voice:** a timer set while the voice overlay is up comes out of the assistant's orb as the
+  overlay closes.
+- **Timer done** is full screen, like the voice overlay: the amber orb with a ripple per chime, the
+  timer's name and length ("2 timers done" when several finish together) and the timers still
+  running. A tap anywhere dismisses it and stops the remaining chimes; otherwise it closes 60 s after
+  the last timer finished. It shows even when the timers were hidden.
 
 ### openWakeWord parameters
 

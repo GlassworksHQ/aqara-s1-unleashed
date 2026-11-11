@@ -1,9 +1,9 @@
 package sh.edm.s1kiosk.settings
 
+import sh.edm.s1kiosk.ui.Inter
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Rect
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.text.TextUtils
@@ -309,6 +309,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     private fun field(e: Entry, title: String, value: String, hintText: String, type: Int): View {
         val edit = EditText(context).apply {
             textSize = 16f
+            typeface = Inter.typeface(context, REGULAR, 16f)
             setTextColor(TX)
             setHintTextColor(FA)
             hint = hintText
@@ -428,8 +429,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
 
     private fun label(s: String) = text(11.5f, FA, MEDIUM).apply { letterSpacing = 0.14f; isAllCaps = true; text = s }
 
-    private fun text(sp: Float, color: Int, tf: Typeface) = TextView(context).apply {
-        textSize = sp; setTextColor(color); typeface = tf
+    private fun text(sp: Float, color: Int, weight: Int) = TextView(context).apply {
+        textSize = sp; setTextColor(color); typeface = Inter.typeface(context, weight, sp)
     }
 
     private fun glass(radiusDp: Float) = GradientDrawable().apply {
@@ -443,7 +444,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         textSize = 16f
         gravity = Gravity.CENTER
         setTextColor(if (accent) BG else TX)
-        typeface = MEDIUM
+        typeface = Inter.typeface(context, MEDIUM, 16f)
         background = GradientDrawable().apply {
             cornerRadius = 16 * dp
             if (accent) setColor(AMBER) else { setColor(S2); setStroke(px(1f).coerceAtLeast(1), BD) }
@@ -463,8 +464,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         val MU = Color.parseColor("#a1a1aa")
         val FA = Color.parseColor("#63636b")
         val AMBER = Color.parseColor("#fbbf24")
-        val LIGHT: Typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-        val REGULAR: Typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-        val MEDIUM: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        val LIGHT = Inter.LIGHT
+        val REGULAR = Inter.REGULAR
+        val MEDIUM = Inter.MEDIUM
     }
 }

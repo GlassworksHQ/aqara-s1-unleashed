@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.settings
 
+import sh.edm.s1kiosk.ui.Inter
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -271,7 +272,7 @@ class RadioSectionView(private val context: Context) {
         setHintTextColor(SetupStyle.FA)
         hint = "Paste the active dataset (hex)"
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        typeface = SetupStyle.REGULAR // password fields default to monospace
+        typeface = Inter.typeface(context, SetupStyle.REGULAR, 15f) // password fields default to monospace
         imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_FLAG_NO_EXTRACT_UI
         importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
         setSingleLine()

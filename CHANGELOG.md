@@ -7,14 +7,16 @@ below as the release notes.
 
 ## [Unreleased]
 
-**Choose the radio's role on the panel itself, with QR codes that open the right page in Home Assistant, and see when the Thread router has joined.**
+**Pick the radio's role on the panel with role tiles and QR codes, voice timers you can move or hide, and a new typeface.**
 
 ### Added
-- **Radio in the panel's settings menu.** The Radio section now has the same choices as Home
-  Assistant's *Radio mode* (switching asks first, since it restarts the radio), then what to do next
-  for the mode that is on, then *who may connect*. Its buttons are the same as in Home Assistant:
-  *Zigbee stack*, *Join / Leave Zigbee network* (with the router's live status), *Leave Thread
-  network*. Leaving a network asks first. In Home Assistant these only work over the panel's encrypted
+- **Radio in the panel's settings menu.** A row of role tiles (*Off*, *Zigbee coordinator*, *Zigbee
+  router (repeater)*, *Thread border router*, *Thread router (repeater)*), each with its icon in the
+  technology's colour (Zigbee blue, Thread violet) and, on the active one, a status dot. Under them, a
+  panel for the active role: its status, what to do next, and the same buttons as in Home Assistant
+  (*Zigbee stack*, *Join / Leave Zigbee network* with the router's live status, *Leave Thread
+  network*). Tapping another tile previews that role with *Turn on*; switching, changing the Zigbee
+  stack and leaving a network ask first. In Home Assistant these only work over the panel's encrypted
   connection; on the panel, being there is what allows them, as for the *who may connect* field.
 - **QR codes for the Thread roles**, as the Zigbee coordinator already had. On the setup screen and in
   the settings menu: *Thread border router* shows the URL to enter and a code that opens Home
@@ -41,17 +43,21 @@ below as the release notes.
   back. They come back by themselves for their last 10 seconds, and when you set a new one.
 - **Timer done** is now a full-screen moment like the voice assistant: the orb glows amber with each
   chime, and it shows the timer's name and length (or "2 timers done" when several finish together)
-  and which timers are still running. Tap anywhere to dismiss it.
-- The voice assistant and the timers now use the Inter typeface, which the app bundles (SIL Open
-  Font License).
+  and which timers are still running. Tap anywhere to dismiss it, which also stops the remaining
+  chimes.
 
 ### Changed
+- **New typeface: Inter**, bundled with the app (SIL Open Font License), on the voice assistant, the
+  timers, the settings menu and the setup and loading screens, matching the boot animation.
 - The repeater roles are now called *Zigbee router (repeater)* and *Thread router (repeater)*
   everywhere, so they aren't mixed up with the Thread border router. The border router's card says
   it runs its own Thread network, and that joining yours is the *Thread router (repeater)* role.
+- The setup screen's radio step shows each role's icon in its technology's colour, with shorter
+  descriptions so *Apply* and *Skip* always fit.
 
 ### Fixed
 - Pasting the Thread dataset works even when the copy includes spaces or line breaks.
+- Small capital labels, such as the voice assistant's *LISTENING*, showed in lower case.
 
 ### Note
 - The repeater roles are now called *Zigbee router (repeater)* and *Thread router (repeater)* in the

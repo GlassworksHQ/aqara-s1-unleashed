@@ -1,8 +1,8 @@
 package sh.edm.s1kiosk.setup
 
+import sh.edm.s1kiosk.ui.Inter
 import android.content.Context
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.view.Gravity
@@ -162,7 +162,7 @@ class SetupStyle(val context: Context) {
     val dp = context.resources.displayMetrics.density
     fun px(v: Float) = (v * dp).toInt()
 
-    fun text(sp: Float, color: Int, tf: Typeface) = TextView(context).apply { textSize = sp; setTextColor(color); typeface = tf }
+    fun text(sp: Float, color: Int, weight: Int) = TextView(context).apply { textSize = sp; setTextColor(color); typeface = Inter.typeface(context, weight, sp) }
 
     fun label(str: String) = text(11.5f, FA, MEDIUM).apply { letterSpacing = 0.14f; isAllCaps = true; text = str }
 
@@ -176,7 +176,7 @@ class SetupStyle(val context: Context) {
         text = str
         textSize = 15.5f
         gravity = Gravity.CENTER
-        typeface = MEDIUM
+        typeface = Inter.typeface(context, MEDIUM, 15.5f)
         setPadding(px(18f), px(11f), px(18f), px(11f))
         isClickable = true
         isFocusable = true
@@ -214,8 +214,8 @@ class SetupStyle(val context: Context) {
         val ROSE = Color.parseColor("#fb7185")
         /** The dialog's surface (neutral, opaque). */
         val SHEET = Color.parseColor("#17181e")
-        val LIGHT: Typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-        val REGULAR: Typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-        val MEDIUM: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        val LIGHT = Inter.LIGHT
+        val REGULAR = Inter.REGULAR
+        val MEDIUM = Inter.MEDIUM
     }
 }

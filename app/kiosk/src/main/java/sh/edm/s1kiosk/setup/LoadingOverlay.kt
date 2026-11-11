@@ -1,10 +1,10 @@
 package sh.edm.s1kiosk.setup
 
+import sh.edm.s1kiosk.ui.Inter
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
@@ -104,8 +104,8 @@ class LoadingOverlay(context: Context) : FrameLayout(context) {
 
     private fun px(v: Float) = (v * dp).toInt()
 
-    private fun text(sp: Float, color: Int, tf: Typeface) = TextView(context).apply {
-        textSize = sp; setTextColor(color); typeface = tf
+    private fun text(sp: Float, color: Int, weight: Int) = TextView(context).apply {
+        textSize = sp; setTextColor(color); typeface = Inter.typeface(context, weight, sp)
     }
 
     private companion object {
@@ -114,8 +114,8 @@ class LoadingOverlay(context: Context) : FrameLayout(context) {
         val MU = Color.parseColor("#a1a1aa")
         val FA = Color.parseColor("#63636b")
         val AMBER = Color.parseColor("#fbbf24")
-        val LIGHT: Typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-        val REGULAR: Typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-        val MEDIUM: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        val LIGHT = Inter.LIGHT
+        val REGULAR = Inter.REGULAR
+        val MEDIUM = Inter.MEDIUM
     }
 }

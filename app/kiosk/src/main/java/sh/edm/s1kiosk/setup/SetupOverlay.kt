@@ -1,12 +1,12 @@
 package sh.edm.s1kiosk.setup
 
+import sh.edm.s1kiosk.ui.Inter
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.text.TextUtils
@@ -143,6 +143,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     }
     private val urlField = EditText(context).apply {
         textSize = 18f
+        typeface = Inter.typeface(context, REGULAR, 18f)
         setTextColor(TX)
         setHintTextColor(FA)
         hint = "http://homeassistant.local:8123"
@@ -163,6 +164,8 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         addView(primary, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(10f) })
         addView(secondary, LinearLayout.LayoutParams(-2, -2))
     }
+    /** 20 dp above the buttons; 12 on the radio choice, whose five tiles fill the card (Inter is taller than Roboto). */
+    private val buttonsLp = LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(20f) }
     private val qrImage = ImageView(context).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
     private val qrTile = FrameLayout(context).apply {
         background = GradientDrawable().apply { cornerRadius = 22 * dp; setColor(Color.WHITE) }
@@ -210,11 +213,11 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         addView(cardNote, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
         addView(tiles, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(18f) })
         addView(improvTile.view, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(16f) })
-        addView(radioRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(16f) })
+        addView(radioRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12f) })
         addView(followScroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14f) })
         addView(urlField, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(18f) })
         addView(status, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
-        addView(buttons, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(20f) })
+        addView(buttons, buttonsLp)
     }
     private val card = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -352,6 +355,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         // The URL field is never reset to GONE and back: a view that goes GONE (even for one frame)
         // loses focus, and this runs on every discovery/Wi-Fi refresh, i.e. while the user types.
         var showUrl = false
+        buttonsLp.topMargin = px(20f)
         buttons.visibility = View.VISIBLE
         primary.visibility = View.GONE
         secondary.visibility = View.GONE
@@ -474,6 +478,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         // "Change it later" is the note while Off is selected.
         cardBody.visibility = View.GONE
         radioRow.visibility = View.VISIBLE
+        buttonsLp.topMargin = px(12f)
         status.visibility = View.GONE
         radioTiles.forEach { t -> t.bind(t.option.mode == radioSelected) }
 
@@ -585,7 +590,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     /** Improv inline: a toned dot + label, a title, one detail line and up to two buttons. */
     private inner class ImprovTile {
         private val dot = View(context)
-        private val l = label("").apply { setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
+        private val l = label("").apply { setSingleLine(); ellipsize = TextUtils.TruncateAt.END; isAllCaps = true } // caps after setSingleLine, which replaces them
         private val title = text(17f, TX, MEDIUM).apply { setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
         private val detail = text(14f, MU, REGULAR).apply { setLineSpacing(0f, 1.2f); maxLines = 3; ellipsize = TextUtils.TruncateAt.END }
         private val b1 = button("", Kind.ACCENT).apply { compact() }
@@ -648,7 +653,8 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
      */
     private inner class RadioTile(val option: RadioStep.Option) {
         private val compact = option.repeater
-        private val title = text(if (compact) 14f else 15f, TX, MEDIUM).apply { text = option.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
+        // 14 sp: "Thread border router" in Inter needs 141 of the large tile's 143 dp.
+        private val title = text(14f, TX, MEDIUM).apply { text = option.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
         // neutral: amber is for the one primary action (the settings menu marks these with a small β)
         private val expTag = label("Experimental").apply { setTextColor(FA); visibility = if (option.experimental) View.VISIBLE else View.GONE }
         // The role's icon in its technology's colour (Zigbee sky blue, Thread violet), as in the settings
@@ -662,21 +668,18 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         val view = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             if (compact) {
-                setPadding(px(14f), px(8f), px(14f), px(8f))
-                addView(LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    addView(title, LinearLayout.LayoutParams(0, -2, 1f))
-                    addView(expTag, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(8f) })
-                })
+                // The role's name gets the whole width; the tag ends the (ellipsised) description line.
+                setPadding(px(14f), px(7f), px(14f), px(7f))
+                addView(title)
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     addView(icon, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(6f) })
                     addView(line, LinearLayout.LayoutParams(0, -2, 1f))
+                    addView(expTag, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(8f) })
                 }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(2f) })
             } else {
-                setPadding(px(14f), px(12f), px(14f), px(12f))
+                setPadding(px(12f), px(10f), px(12f), px(10f))
                 addView(title)
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -684,7 +687,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
                     addView(icon, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(8f) })
                     addView(expTag)
                 }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(4f) })
-                addView(line, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f) })
+                addView(line, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(4f) })
             }
             isClickable = true
             isFocusable = true
@@ -763,7 +766,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     }
 
     private inner class InfoTile {
-        private val l = label("").apply { setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
+        private val l = label("").apply { setSingleLine(); ellipsize = TextUtils.TruncateAt.END; isAllCaps = true } // caps after setSingleLine, which replaces them
         private val v = text(17f, TX, REGULAR).apply { setSingleLine(); ellipsize = TextUtils.TruncateAt.MIDDLE }
         val view = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -816,7 +819,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
                     paint.style = Paint.Style.FILL
                     paint.color = if (state == Dot.CURRENT) AMBER else FA
                     paint.textSize = r * 0.95f
-                    paint.typeface = MEDIUM
+                    paint.typeface = Inter.typeface(context, MEDIUM, 14f)
                     paint.textAlign = Paint.Align.CENTER
                     c.drawText(n.toString(), cx, cy - (paint.descent() + paint.ascent()) / 2f, paint)
                 }
@@ -826,8 +829,8 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
 
     private fun label(s: String) = text(11.5f, FA, MEDIUM).apply { letterSpacing = 0.14f; isAllCaps = true; text = s }
 
-    private fun text(sp: Float, color: Int, tf: Typeface) = TextView(context).apply {
-        textSize = sp; setTextColor(color); typeface = tf
+    private fun text(sp: Float, color: Int, weight: Int) = TextView(context).apply {
+        textSize = sp; setTextColor(color); typeface = Inter.typeface(context, weight, sp)
     }
 
     private fun glass(radiusDp: Float) = GradientDrawable().apply {
@@ -842,7 +845,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         text = label
         textSize = 16f
         setTextColor(if (kind == Kind.ACCENT) BG else TX)
-        typeface = MEDIUM
+        typeface = Inter.typeface(context, MEDIUM, 16f)
         background = GradientDrawable().apply {
             cornerRadius = 16 * dp
             if (kind == Kind.ACCENT) setColor(AMBER) else { setColor(S2); setStroke(px(1f).coerceAtLeast(1), BD) }
@@ -864,9 +867,9 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         private val AMBER = Color.parseColor("#fbbf24")
         private val GREEN = Color.parseColor("#34d399")
         private val ROSE = Color.parseColor("#fb7185")
-        private val LIGHT: Typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-        private val REGULAR: Typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-        private val MEDIUM: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        private val LIGHT = Inter.LIGHT
+        private val REGULAR = Inter.REGULAR
+        private val MEDIUM = Inter.MEDIUM
 
         fun qrBitmap(text: String, size: Int): Bitmap {
             val hints = mapOf(EncodeHintType.MARGIN to 0, EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M)

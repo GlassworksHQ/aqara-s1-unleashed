@@ -32,6 +32,7 @@ object Inter {
 
     /** Reads the font file; tests point it at the source tree (Robolectric runs without app resources). */
     internal var load: (Context) -> ByteArray = { c -> c.resources.openRawResource(R.font.inter).use { it.readBytes() } }
+        set(v) { field = v; cache.clear(); data = null; failed = false }
 
     private val cache = HashMap<String, Typeface>()
     private var data: ByteBuffer? = null

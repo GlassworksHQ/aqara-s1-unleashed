@@ -17,6 +17,7 @@ import sh.edm.s1kiosk.base.BaseKind
 import sh.edm.s1kiosk.AqaraCloud
 import sh.edm.s1kiosk.MainActivity
 import sh.edm.s1kiosk.TimerBoard
+import sh.edm.s1kiosk.timers.TimerChimes
 import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.radio.RadioAllow
 import sh.edm.s1kiosk.radio.RadioController
@@ -105,6 +106,12 @@ class PanelDevice(
     private val voicePlayer = ExoAudioPlayer(context, "voice", AudioAttributes.USAGE_ASSISTANT)
     private val mediaPlayer = ExoAudioPlayer(context, "media", AudioAttributes.USAGE_MEDIA)
     private var chimePlayer: TtsPlayer? = null
+    /** Finished-timer chimes: three, 3 s apart; tapping the done screen stops the rest (TimerBoard.onDismissed). */
+    private val timerChimes = TimerChimes(
+        schedule = { ms, action -> exec.schedule({ action() }, ms, TimeUnit.MILLISECONDS) },
+        play = { chimes().chime() },
+        silence = { synchronized(this) { chimePlayer }?.cancel() },
+    )
     /** Native Music Assistant player (Sendspin, docs/sendspin.md); created in startInternal. */
     @Volatile private var sendspin: SendspinPlayer? = null
     /** Zigbee/Thread radio modes (docs/radio.md); applies the stored mode after every start. */
@@ -172,6 +179,8 @@ class PanelDevice(
         updates.stop()
         voicePlayer.release()
         mediaPlayer.release()
+        TimerBoard.onDismissed = null
+        timerChimes.stop()
         chimePlayer?.release()
         releaseLocks()
     }
@@ -390,11 +399,8 @@ class PanelDevice(
                 ApiLog.i("Timer '$name' finished")
                 TimerBoard.finished(name)
                 ui { ScreenController.wake("timer"); ScreenController.onStateChanged?.invoke() }
-                val p = chimePlayer ?: TtsPlayer().also { chimePlayer = it }
-                // Three chimes ~3 s apart so it's noticeable across the room.
-                p.chime()
-                exec.schedule({ p.chime() }, 3, TimeUnit.SECONDS)
-                exec.schedule({ p.chime() }, 6, TimeUnit.SECONDS)
+                // Three chimes ~3 s apart so it's noticeable across the room; a tap on the done screen stops them.
+                timerChimes.ring()
             },
             onTimersChanged = { list ->
                 TimerBoard.update(list.map { TimerBoard.Entry(it.id, it.name, it.totalSeconds, it.secondsLeft, it.active) })
@@ -404,6 +410,7 @@ class PanelDevice(
         )
         engine.controller = c
         controller = c
+        TimerBoard.onDismissed = { timerChimes.stop() }
         voice = engine
         engine.start(muted = prefs.micMuted)
     }
@@ -488,6 +495,9 @@ class PanelDevice(
         server?.publishStates()
     }
 
+    /** The chime player, made on first use (from the ESPHome, voice or main thread). */
+    private fun chimes(): TtsPlayer = synchronized(this) { chimePlayer ?: TtsPlayer().also { chimePlayer = it } }
+
     /** The user cancelled the current voice run (tap on the overlay): stop streaming and playback. */
     fun cancelVoice() {
         exec.execute { controller?.cancel() }
@@ -496,7 +506,7 @@ class PanelDevice(
     private fun dispatchVoice(e: VoiceEvent) {
         // Pause music while the assistant listens/talks, resume afterwards.
         if (e is VoiceEvent.WakeDetected && prefs.wakeSound) {
-            (chimePlayer ?: TtsPlayer().also { chimePlayer = it }).wakeChime()
+            chimes().wakeChime()
         }
         when (e) {
             is VoiceEvent.WakeDetected, is VoiceEvent.Listening, is VoiceEvent.Speaking -> {
