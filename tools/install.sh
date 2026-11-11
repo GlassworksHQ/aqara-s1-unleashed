@@ -377,8 +377,8 @@ fi
 
 if [[ $DEBLOAT -eq 1 ]]; then
   step "De-bloat (reversible pm disable-user)"
-  run env ADB_SERIAL="${ANDROID_SERIAL:-}" "$HERE/debloat/debloat.sh" disable
-  run env ADB_SERIAL="${ANDROID_SERIAL:-}" "$HERE/debloat/debloat.sh" disable-launcher
+  # the launcher too (HOME is the kiosk now), in the same run: no "launcher NOT disabled" note
+  run env ADB_SERIAL="${ANDROID_SERIAL:-}" "$HERE/debloat/debloat.sh" disable --launcher
 fi
 
 if [[ -n "$KEYBOARD" ]]; then

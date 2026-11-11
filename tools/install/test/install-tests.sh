@@ -287,6 +287,12 @@ for c in "install " "push " "pm uninstall" "pm disable-user" "s1kiosk-switch.sh"
   check "dry run: no '$c'" hasnt "$log" "$c"
 done
 
+echo "== install.sh --dry-run: de-bloat disables the launcher in the same run"
+panel; printf release > "$T/installed"
+out=$("$REPO/tools/install.sh" --apk "$APK" --no-models --dry-run </dev/null 2>&1)
+check "one debloat call with --launcher" has "$out" "debloat.sh disable --launcher"
+check "...no separate disable-launcher" hasnt "$out" "disable-launcher"
+
 echo "== install.sh: a normal update is unchanged"
 panel; printf release > "$T/installed"
 out=$(inst); rc=$?

@@ -6,11 +6,12 @@
 # Usage:
 #   ADB_SERIAL=<serial> ./debloat.sh status      # show enabled/disabled state
 #   ADB_SERIAL=<serial> ./debloat.sh disable      # disable the safe set
+#   ADB_SERIAL=<serial> ./debloat.sh disable --launcher  # ...and the Aqara launcher (HOME set first)
 #   ADB_SERIAL=<serial> ./debloat.sh enable       # re-enable everything (undo)
 #
 # IMPORTANT: set a replacement HOME launcher BEFORE disabling the Aqara launcher,
 # or the device will have no launcher. The launcher is listed separately and only
-# disabled when you pass `disable-launcher` explicitly.
+# disabled when you pass `disable --launcher` or `disable-launcher` explicitly.
 set -euo pipefail
 
 ADB="adb"
@@ -34,11 +35,13 @@ SAFE=(
 # com.lumi.systemmanager. The launcher is handled separately:
 LAUNCHER=com.aqara.inhome.launcher
 
+is_disabled() { $ADB shell pm list packages -d "$1" 2>/dev/null | tr -d '\r' | grep -qx "package:$1"; }
+
 op() { # op <disable|enable> <pkg>
   if [ "$1" = "disable" ]; then
     # Already disabled by the firmware itself (state 2, e.g. vassistant on 4.5.80): the shell may not
     # turn that into disabled-user, and doesn't need to.
-    if $ADB shell pm list packages -d "$2" 2>/dev/null | grep -qx "package:$2"; then echo "already   $2 (disabled)"; return; fi
+    if is_disabled "$2"; then echo "already   $2 (disabled)"; return; fi
     $ADB shell pm disable-user --user 0 "$2" >/dev/null 2>&1 && echo "disabled  $2" || echo "skip/err  $2"
   else
     $ADB shell pm enable "$2" >/dev/null 2>&1 && echo "enabled   $2" || echo "skip/err  $2"
@@ -48,7 +51,10 @@ op() { # op <disable|enable> <pkg>
 case "${1:-status}" in
   disable)
     for p in "${SAFE[@]}"; do op disable "$p"; done
-    echo "NOTE: launcher ($LAUNCHER) NOT disabled. Set a replacement HOME first, then run: $0 disable-launcher"
+    [ "${2:-}" = --launcher ] && op disable "$LAUNCHER"
+    # Only when it really is still enabled (not after --launcher, or when it was disabled before).
+    is_disabled "$LAUNCHER" ||
+      echo "NOTE: launcher ($LAUNCHER) NOT disabled. Set a replacement HOME first, then run: $0 disable-launcher"
     ;;
   disable-launcher) op disable "$LAUNCHER" ;;
   enable)
@@ -61,5 +67,5 @@ case "${1:-status}" in
       [ "$st" -gt 0 ] && echo "DISABLED  $p" || echo "enabled   $p"
     done
     ;;
-  *) echo "usage: $0 {status|disable|disable-launcher|enable}"; exit 1 ;;
+  *) echo "usage: $0 {status|disable [--launcher]|disable-launcher|enable}"; exit 1 ;;
 esac
