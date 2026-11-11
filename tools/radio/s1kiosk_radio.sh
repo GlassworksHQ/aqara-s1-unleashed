@@ -408,7 +408,7 @@ bridge_range() {
 # (and on wpan0 for the LAN) would hit "unreachable". wpan0 is recreated with a new ifindex whenever
 # the agent restarts, so the inbound rule follows its current table. Removed in every other mode.
 FWD_SAVE=$DIR/forwarding.orig        # forwarding before thread mode turned it on
-BR_TABLE=""
+BR_TABLE=""; BR_OUT_TABLE=""
 br_net_on() {
   [ -f "$FWD_SAVE" ] || cat /proc/sys/net/ipv6/conf/all/forwarding > "$FWD_SAVE" 2>/dev/null
   echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
@@ -419,13 +419,24 @@ br_net_on() {
     while ip -6 rule del pref $RULE_PREF_IN 2>/dev/null; do :; done
     ip -6 rule add pref $RULE_PREF_IN iif "$BACKBONE" lookup "$t" && BR_TABLE=$t
   fi
-  ip -6 rule show | grep -q "^$RULE_PREF_OUT:" || ip -6 rule add pref $RULE_PREF_OUT iif wpan0 lookup "$BACKBONE"
+  # Thread -> LAN: the backbone's table by number (netd: ifindex + 1000). "lookup wlan0" would be
+  # resolved once, when the rule is added, and Wi-Fi off/on recreates wlan0 with a new ifindex, so
+  # the rule would keep pointing at the old, empty table (verified 2026-11-10: replies from Thread
+  # dropped after a reconnect). Follow the current index like the inbound rule follows wpan0's.
+  i_=$(cat /sys/class/net/"$BACKBONE"/ifindex 2>/dev/null)
+  if [ -n "$i_" ]; then
+    o_=$((i_ + 1000))
+    if [ "$o_" != "$BR_OUT_TABLE" ] || ! ip -6 rule show | grep -q "^$RULE_PREF_OUT:"; then
+      while ip -6 rule del pref $RULE_PREF_OUT 2>/dev/null; do :; done
+      ip -6 rule add pref $RULE_PREF_OUT iif wpan0 lookup "$o_" && BR_OUT_TABLE=$o_
+    fi
+  fi
 }
 br_net_off() {
   while ip -6 rule del pref $RULE_PREF_IN 2>/dev/null; do :; done
   while ip -6 rule del pref $RULE_PREF_OUT 2>/dev/null; do :; done
   if [ -f "$FWD_SAVE" ]; then cat "$FWD_SAVE" > /proc/sys/net/ipv6/conf/all/forwarding; rm -f "$FWD_SAVE"; fi
-  BR_TABLE=""
+  BR_TABLE=""; BR_OUT_TABLE=""
 }
 
 # --- firewall: who may reach the radio's network services --------------------------------------
