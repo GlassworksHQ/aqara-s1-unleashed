@@ -73,15 +73,18 @@ w "$T/bin/ip" <<'EOF'
 #!/bin/sh
 case "$*" in *"rule del"*) exit 1 ;; esac; exit 0
 EOF
-# Aqara's socat: the pty drain reads /t/stale once; bridges just sit there.
+# Aqara's socat: the pty drain reads /t/stale once; bridges just sit there. (The "EZSP bridge" section
+# swaps in the real socat.)
 w /vendor/bin/socat <<'EOF'
 #!/bin/sh
 case "$*" in
+  -h) printf '      exec:<command-line>\tgroups=FD,FIFO,SOCKET,EXEC,FORK,TERMIOS,PTY,PARENT,UNIX\n'; exit 0 ;;
   *"-u -T 1 FILE:"*) if [ -s /t/stale ]; then cat /t/stale; : > /t/stale; echo drained >> /t/drains; fi; exit 0 ;;
   *TCP-LISTEN*) echo "$*" >> /t/bridge.log; exec sleep 1000 ;;
 esac
 exit 1
 EOF
+cp /vendor/bin/socat "$T/socat-mock"
 # Aqara's cpcd: -p reports /t/radio-app, -f "flashes": the radio then reports the APP that /t/fw-apps
 # maps the image's sha256 to (garbage if unknown). /t/cpcd-fail-once makes one flash fail. It prints
 # "Info : progress:<n>" lines like the real one (CRLF, blank lines between); /t/cpcd-slow makes the
@@ -416,6 +419,9 @@ check "zigbeed runs on IID 1 and the pty, in its own state dir" test "$(cat "$T/
 check "...args" has "$(cat "$T/zigbeed.args")" "-c /dev/null -r spinel+cpc://cpcd_0?iid=1&iid-list=0 -p /tmp/ttyZigbeeNCP"
 check "boot RSTACK drained before the bridge" test -s "$T/drains" -a ! -s "$T/stale"
 check "bridge on :6638" has "$(cat "$T/bridge.log")" "TCP-LISTEN:6638"
+check "...each client through the drain-on-connect relay" has "$(cat "$T/bridge.log")" "EXEC:/system/bin/sh /data/s1kiosk/radio/ezsp-relay.sh"
+check "...root-only, draining the pty before it relays" test "$(stat -c %a:%u /data/s1kiosk/radio/ezsp-relay.sh)" = 600:0 -a \
+  "$(grep -c -e '-u -T 0.2 FILE:/dev/ttyZigbeeNCP,raw,echo=0 - </dev/null' -e '^exec /vendor/bin/socat - FILE:/dev/ttyZigbeeNCP,raw,echo=0$' /data/s1kiosk/radio/ezsp-relay.sh)" = 2
 check "status ok with EZSP 18" has "$(prop sys.s1kiosk.radio.status)" "ok zigbee_tcp: EZSP 18 on tcp:6638, Silicon Labs zigbeed 8.2.2"
 check "zigbee state ready" test "$(prop sys.s1kiosk.radio.zigbee)" = "sisdk ready 8.2.2"
 pkill -f fakezb; pkill -f "sleep 1000"
@@ -424,6 +430,75 @@ LOOPS=1 helper
 check "aqara stack: Aqara's zigbeed wanted again" test "$(prop init.svc.zigbee_zigbeed)" = running
 check "...zigbee state aqara" test "$(prop sys.s1kiosk.radio.zigbee)" = aqara
 pkill -f "sleep 1000"
+
+# ---------------------------------------------------------------------------------- EZSP bridge
+# The real thing: real socat as Aqara's, a pty pair like zigbee_socat's, and a fake zigbeed (python
+# named zigbeed, so pidof finds it) that echoes what it gets and writes "stale" bytes on request, the
+# way zigbeed's ASH layer leaves an ERROR frame in the pty after a client went away.
+echo "--- EZSP bridge: drain on connect (real socat)"
+reset_radio; pkill -f "sleep 1000"
+printf '#!/bin/sh\nexec /usr/bin/socat "$@"\n' | w /vendor/bin/socat
+echo zigbee_tcp > "$T/props/persist.s1kiosk.radio_mode"; echo aqara > "$T/props/persist.s1kiosk.radio_zigbee"
+mkdir -p /data/s1kiosk/radio; echo "RADIO_ALLOW=any" > /data/s1kiosk/radio/radio.conf
+rm -f /dev/ttyZigbeeNCP /tmp/ttyZigbeeNCP
+/usr/bin/socat PTY,link=/dev/ttyZigbeeNCP,raw,echo=0 PTY,link=/tmp/ttyZigbeeNCP,raw,echo=0 >/dev/null 2>&1 &
+i=0; while [ ! -e /tmp/ttyZigbeeNCP ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+cat > "$T/fakezb.py" <<'PY'
+import os, time, tty
+fd = os.open('/tmp/ttyZigbeeNCP', os.O_RDWR | os.O_NOCTTY); tty.setraw(fd); os.set_blocking(fd, False)
+def put(b):
+    while b:
+        try: b = b[os.write(fd, b):]
+        except BlockingIOError: time.sleep(0.01)
+got = open('/t/zb-got', 'ab', buffering=0)
+while True:
+    if os.path.exists('/t/zb-emit'):
+        d = open('/t/zb-emit', 'rb').read(); os.unlink('/t/zb-emit'); put(d)
+    try: b = os.read(fd, 4096)
+    except (BlockingIOError, OSError): b = b''
+    if b: got.write(b); put(b)
+    else: time.sleep(0.02)
+PY
+cat > "$T/client.py" <<'PY'
+import os, socket, sys, time
+payload = bytes([0x1a, 0xc0, 0x38, 0xbc, 0x7e, 0x11, 0x13, 0x7d, 0x00, 0xff, 0x0d, 0x0a]) * 50 + os.urandom(3000)
+open(sys.argv[1], 'wb').write(payload)
+s = socket.create_connection(('127.0.0.1', int(sys.argv[2]) if len(sys.argv) > 2 else 6638), timeout=20)
+s.sendall(payload)   # at once, before the relay runs: these must wait for it, not be drained
+buf, end = b'', time.time() + 40
+s.settimeout(1)
+while time.time() < end and len(buf) < len(payload) + 64:
+    try: d = s.recv(65536)
+    except socket.timeout:
+        if len(buf) >= len(payload): break
+        continue
+    if not d: break
+    buf += d
+s.close()
+print('ok' if buf == payload else 'got %d bytes, want %d; starts %s' % (len(buf), len(payload), buf[:12].hex()))
+PY
+cp -L /usr/bin/python3 "$T/bin/zigbeed"; : > "$T/zb-got"
+"$T/bin/zigbeed" "$T/fakezb.py" & ZBP=$!
+sleep 2
+LOOPS=3 helper
+check "real bridge up through the relay" has "$(prop sys.s1kiosk.radio.status)" "ok zigbee_tcp: EZSP on tcp:6638"
+session() { # stale bytes into the pty, then a client that sends at once
+  : > "$T/zb-got"; printf '\x1a\xc0\x51\x02\x9c\x7e' > "$T/zb-emit"
+  i=0; while [ -e "$T/zb-emit" ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done; sleep 0.5
+  python3 "$T/client.py" "$T/sent" "${1:-6638}"
+}
+r=$(session); check "stale bytes in the pty never reach the next client; its own bytes come back intact" test "$r" = ok; [ "$r" = ok ] || echo "    $r"
+check "...and zigbeed got exactly the client's bytes" cmp -s "$T/sent" "$T/zb-got"
+sleep 3   # the single slot (max-children=1) frees once the session's processes are gone
+r=$(session); check "the next client: the same" test "$r" = ok; [ "$r" = ok ] || echo "    $r"
+check "...and zigbeed got exactly its bytes" cmp -s "$T/sent" "$T/zb-got"
+# control: the same through a bridge without the relay (as before) does hand the stale bytes over
+/usr/bin/socat TCP-LISTEN:6640,reuseaddr FILE:/dev/ttyZigbeeNCP,raw,echo=0 >/dev/null 2>&1 &
+sleep 2; r=$(session 6640)
+check "(control: without the relay the client gets the stale bytes first)" has "$r" "starts 1ac051029c7e"
+kill $ZBP 2>/dev/null; pkill -f /usr/bin/socat; pkill -f "sleep 1000"
+cp "$T/socat-mock" /vendor/bin/socat; rm -f /dev/ttyZigbeeNCP /tmp/ttyZigbeeNCP "$T/bin/zigbeed"
+echo off > "$T/props/persist.s1kiosk.radio_mode"; rm -f /data/s1kiosk/radio/radio.conf
 
 # ------------------------------------------------------------------------------- Thread dataset
 echo "--- Thread dataset hand-off"

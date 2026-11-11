@@ -594,6 +594,34 @@ drain_pty() {
   done
   say "drained $got_ stale byte(s) from $EZSP_PTY before serving clients"
 }
+# Drain on connect: every client session runs $RELAY (socat EXEC; a root-only copy rewritten at each
+# start), which first reads and drops what is already waiting in the pty, then relays. A client that
+# goes away leaves zigbeed's ASH layer to time out and write an ERROR frame to the pty, which would
+# otherwise greet the next client (Zigbee2MQTT: "CRC error", then ERROR_EXCEEDED_MAXIMUM_ACK_TIMEOUT_COUNT;
+# ZHA after a Home Assistant restart alike). The client's own first bytes wait in the socket meanwhile:
+# the relay only reads them once the drain is done. The drain ends after $RELAY_QUIET s without a byte,
+# at most 2 s (timeout) if zigbeed kept talking. /system/bin/sh runs it (0600, no exec bit needed):
+# Android has no /bin/sh, so socat's SYSTEM: address would not work.
+RELAY=$DIR/ezsp-relay.sh
+RELAY_QUIET=0.2
+write_relay() { # (stdin from /dev/null for the drain: the client's bytes must stay in the socket)
+  rm -f "$RELAY.tmp"
+  ( umask 077
+    { echo '#!/system/bin/sh'
+      echo "# Written by s1kiosk_radio.sh at every start; one EZSP client session of the bridge (drain, relay)."
+      echo "timeout 2 /vendor/bin/socat -u -T $RELAY_QUIET FILE:$EZSP_PTY,raw,echo=0 - </dev/null >/dev/null 2>&1"
+      echo "exec /vendor/bin/socat - FILE:$EZSP_PTY,raw,echo=0"
+    } > "$RELAY.tmp" ) && mv -f "$RELAY.tmp" "$RELAY"
+}
+# Aqara's socat is its own build: the relay needs its EXEC address. Without it (never seen, but a
+# Zigbee bridge that can't start would be worse) the bridge relays straight to the pty as before v4.
+RELAY_ADDR="FILE:$EZSP_PTY,raw,echo=0"
+if /vendor/bin/socat -h 2>/dev/null | grep -q '^ *exec:'; then
+  write_relay && RELAY_ADDR="EXEC:/system/bin/sh $RELAY"
+else
+  say "this socat has no EXEC address: no drain on connect"
+fi
+
 # The bridge has a connected client (socat forks one child per connection).
 bridge_busy() { alive "$BRIDGE_PID" && pgrep -P "$BRIDGE_PID" >/dev/null 2>&1; }
 # Called once zigbeed is ready: a new zigbeed process gets its boot bytes drained first. A connected
@@ -606,14 +634,14 @@ zb_fresh() {
   ZB_SERVED=$p_
 }
 
-# One EZSP host at a time (max-children=1); each connection reopens the pty, so a new client works
-# even after Aqara's watchdog recreated the pty pair. TCP keepalive frees the slot within ~1 min when
-# a client vanished without closing (HA host crash, Wi-Fi drop).
+# One EZSP host at a time (max-children=1); each connection reopens the pty (in $RELAY, after the
+# drain), so a new client works even after Aqara's watchdog recreated the pty pair. TCP keepalive frees
+# the slot within ~1 min when a client vanished without closing (HA host crash, Wi-Fi drop).
 start_bridge() { # listen-address-option port range
   wait_for $EZSP_PTY 30 || { status error "$EZSP_PTY missing (zigbee_socat not up)"; return 1; }
   r=""; [ -n "$3" ] && r=",range=$3"
   /vendor/bin/socat TCP-LISTEN:$2,reuseaddr,fork,max-children=1,keepalive,keepidle=30,keepintvl=10,keepcnt=3$1$r \
-    FILE:$EZSP_PTY,raw,echo=0 &
+    "$RELAY_ADDR" &
   BRIDGE_PID=$!; BRIDGE_RANGE=$3
 }
 coordinator_bridge() {
