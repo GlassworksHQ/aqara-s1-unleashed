@@ -35,6 +35,7 @@ import sh.edm.s1kiosk.dashboard.DashboardOptions
 import sh.edm.s1kiosk.dashboard.Dashboards
 import sh.edm.s1kiosk.discovery.HaUrls
 import sh.edm.s1kiosk.setup.LoadingOverlay
+import sh.edm.s1kiosk.setup.OfflineText
 import sh.edm.s1kiosk.setup.SetupInputs
 import sh.edm.s1kiosk.setup.SetupOverlay
 import sh.edm.s1kiosk.setup.SetupSignals
@@ -120,6 +121,7 @@ class MainActivity : Activity() {
         override fun run() {
             refreshSetup()
             pollRadioStatus()
+            refreshOffline()
             handler.postDelayed(this, SETUP_TICK_MS)
         }
     }
@@ -260,6 +262,7 @@ class MainActivity : Activity() {
         val w = wifiStatus.snapshot()
         val now = SystemClock.elapsedRealtime()
         if (w.online) offlineSince = 0L else if (offlineSince == 0L) offlineSince = now
+        if (w.online && !w.ethernet && !prefs.wifiSeen) prefs.wifiSeen = true
         return SetupInputs(
             online = w.online,
             offlineForMs = if (w.online) 0L else now - offlineSince,
@@ -397,6 +400,57 @@ class MainActivity : Activity() {
         val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return true
         return cm.activeNetwork != null
     }
+
+    /** The loading screen shows the no-network text (OfflineText) for a failed load. */
+    private var offlineShown = false
+
+    /** A failed load without a network: "Connecting to Wi-Fi…" while a join is underway or expected. */
+    private fun showOffline() {
+        val t = OfflineText.decide(offlineFacts(), ImprovController.BOOT_GRACE_MS)
+        offlineShown = true
+        loadingOverlay.show(t.title, t.detail)
+    }
+
+    /** Every setup tick while the no-network text is up: network back -> load now; else keep the text current. */
+    private fun refreshOffline() {
+        if (!offlineShown || !loadingOverlay.isShowing) return
+        if (hasNetwork()) {
+            offlineShown = false
+            handler.removeCallbacks(retryLoad)
+            loadDashboard()
+        } else {
+            showOffline()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun offlineFacts(): OfflineText.Facts {
+        val wm = applicationContext.getSystemService(android.net.wifi.WifiManager::class.java)
+        val cm = getSystemService(android.net.ConnectivityManager::class.java)
+        val now = SystemClock.elapsedRealtime()
+        // Android 10 lists saved networks only to a device owner (and needs location): an empty list from
+        // anyone else means "can't tell", not "none".
+        val saved = runCatching { wm?.configuredNetworks }.getOrNull()?.let { list ->
+            when {
+                list.isNotEmpty() -> true
+                isDeviceOwner() -> false
+                else -> null
+            }
+        }
+        val supplicant = runCatching { wm?.connectionInfo?.supplicantState?.name }.getOrNull()
+        val detailed = runCatching { cm?.getNetworkInfo(android.net.ConnectivityManager.TYPE_WIFI)?.detailedState?.name }.getOrNull()
+        return OfflineText.Facts(
+            wifiEnabled = runCatching { wm?.isWifiEnabled == true }.getOrDefault(false),
+            savedNetwork = saved,
+            joining = OfflineText.joining(supplicant, detailed),
+            wasOnlineBefore = prefs.wifiSeen || prefs.haSeen,
+            offlineForMs = if (offlineSince == 0L) 0L else now - offlineSince,
+        )
+    }
+
+    private fun isDeviceOwner(): Boolean = runCatching {
+        getSystemService(android.app.admin.DevicePolicyManager::class.java).isDeviceOwnerApp(packageName)
+    }.getOrDefault(false)
 
     private fun openWifiSettings() {
         val intents = listOfNotNull(
@@ -983,6 +1037,7 @@ class MainActivity : Activity() {
         override fun onPageStart(session: GeckoSession, url: String) {
             handler.removeCallbacks(retryLoad)
             handler.removeCallbacks(hideLoading)
+            offlineShown = false
             if (url.startsWith("http")) loadingOverlay.show("Connecting to Home Assistant", Uri.parse(url).host ?: "")
         }
 
@@ -990,10 +1045,12 @@ class MainActivity : Activity() {
             if (success) {
                 handler.postDelayed(hideLoading, 1500) // in case first-contentful-paint was missed
             } else {
-                loadingOverlay.show(
-                    if (hasNetwork()) "Can't reach Home Assistant" else "No network yet",
-                    if (hasNetwork()) "Retrying every few seconds…" else "Connect Wi-Fi from the setup screen, or over Bluetooth (Improv)",
-                )
+                if (hasNetwork()) {
+                    offlineShown = false
+                    loadingOverlay.show("Can't reach Home Assistant", "Retrying every few seconds…")
+                } else {
+                    showOffline() // "Connecting to Wi-Fi…" after a reboot, the setup hint when there's nothing to wait for
+                }
                 // HA restarting / Wi-Fi not up yet after boot: keep retrying.
                 handler.removeCallbacks(retryLoad)
                 handler.postDelayed(retryLoad, RETRY_MS)

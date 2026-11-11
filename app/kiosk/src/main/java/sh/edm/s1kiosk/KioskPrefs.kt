@@ -65,6 +65,11 @@ class KioskPrefs(context: Context) {
         get() = sp.getBoolean(KEY_HA_SEEN, false)
         set(v) = sp.edit().putBoolean(KEY_HA_SEEN, v).apply()
 
+    /** The panel has been online over Wi-Fi at least once (the boot screen's "Connecting to Wi-Fi…" hint). */
+    var wifiSeen: Boolean
+        get() = sp.getBoolean(KEY_WIFI_SEEN, false)
+        set(v) = sp.edit().putBoolean(KEY_WIFI_SEEN, v).apply()
+
     /** "Skip" on the setup screen's Add-to-Home-Assistant step. */
     var haSetupSkipped: Boolean
         get() = sp.getBoolean("setup_ha_skipped", false)
@@ -378,6 +383,7 @@ class KioskPrefs(context: Context) {
 
         const val KEY_URL = "url"
         const val KEY_HA_SEEN = "ha_seen"
+        const val KEY_WIFI_SEEN = "wifi_seen"
         const val KEY_SENDSPIN_ENABLED = "sendspin_enabled"
         const val KEY_BLOCK_AQARA_CLOUD = "block_aqara_cloud"
         const val KEY_BASE_BACKEND = "base_backend"
