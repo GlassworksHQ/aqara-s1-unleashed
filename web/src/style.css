@@ -30,6 +30,8 @@ code{font-family:var(--mono);font-size:12.5px}
 .steps li.cur small{color:var(--amber)}
 .steps li.err small{color:var(--rose)}
 .rail .foot{margin-top:auto;font-size:13px;color:var(--fa);line-height:1.6}
+.rail .foot a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.rail .foot a:hover{color:var(--tx,inherit)}
 
 /* phone top: D's thin line + step count (hidden on wide) */
 .mline,.mtop{display:none}
