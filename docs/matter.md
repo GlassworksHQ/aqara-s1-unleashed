@@ -43,6 +43,26 @@ when it changes by about a quarter, or after a minute). **Pair with a phone** on
 pairing again, to add it to another home app or hub. To undo the pairing, remove the device in your home app; **Leave Thread network**
 on the panel's device page makes the radio forget the network.
 
+## About the test certificate
+
+Every Matter device proves what it is with a device attestation certificate (DAC), signed by its
+vendor's certificate authority (PAI), which chains to a root (PAA) listed in the CSA's Distributed
+Compliance Ledger (DCL). Controllers check that chain while commissioning. The options for the panel:
+
+- **The SDK's test certificate (what this does).** Vendor `0xFFF1`, roots from the *test* ledger. Apple
+  Home warns and accepts it. Home Assistant accepts it only with *Enable test-net DCL usage*, which makes
+  its Matter Server also trust the test ledger's roots and fetch device information and updates from
+  it. Fine for an experimental feature; not something to ask of every user.
+- **Our own certificates.** A real vendor ID and a PAA on the production ledger need membership of the
+  Connectivity Standards Alliance and, for the product to carry the Matter logo, certification. That is
+  the route for a product, not for a hobby project.
+- **Not checked yet:** whether Home Assistant's Matter Server can trust an extra root without test-net
+  DCL (it has an option for extra server arguments), and whether Google Play services on Android phones
+  commission test devices at all (Android phones commission Matter devices through it).
+
+Joining Thread *without* Matter has no certificate question: **Get it from Home Assistant** on the same
+card ([radio-guide.md](radio-guide.md#repeater-modes-experimental)).
+
 ## How it works
 
 The panel runs a Matter device built on [rs-matter](https://github.com/project-chip/rs-matter), with an
