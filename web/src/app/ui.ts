@@ -83,10 +83,10 @@ function demoSetup(): ByteStream {
       options: [
         { id: 'off', label: 'Off', detail: 'The radio stays idle. Choose this if you don\'t use Zigbee or Thread here.' },
         { id: 'zigbee_tcp', label: 'Zigbee coordinator', detail: 'Home Assistant runs a Zigbee network (ZHA) on this panel\'s radio, over the network.' },
-        { id: 'thread', label: 'Thread border router', detail: 'Home Assistant uses the panel as a Thread border router for Matter devices.', experimental: true },
+        { id: 'thread', label: 'Thread border router', detail: 'Runs a Thread network for Matter devices, through Home Assistant\'s OpenThread Border Router integration.', experimental: true },
         // the app's repeater roles (RadioStep.OPTIONS), experimental like there
-        { id: 'zigbee_router', label: 'Zigbee router', detail: 'A repeater in your Zigbee network.', experimental: true, repeater: true },
-        { id: 'thread_router', label: 'Thread router', detail: 'A repeater in your Thread network.', experimental: true, repeater: true },
+        { id: 'zigbee_router', label: 'Zigbee router (repeater)', detail: 'Joins the Zigbee network you already have.', experimental: true, repeater: true },
+        { id: 'thread_router', label: 'Thread router (repeater)', detail: 'Joins the Thread network you already have.', experimental: true, repeater: true },
       ],
     },
   };
@@ -962,6 +962,11 @@ class Installer {
     const ha = state?.ha.url ? new URL(state.ha.url).origin : '';
     type Step = { title: string; body: string; kv?: [string, string, boolean?][]; link?: string };
     const zhaAdd = ha ? `${ha}/config/zha/add` : 'https://my.home-assistant.io/redirect/integration/?domain=zha';
+    // Home Assistant's own pages when the panel knows its address (frontend 2026.11: /config/integrations/
+    // dashboard/add?domain=… starts a config flow; /config/thread is the Thread page), else My Home Assistant.
+    const otbrAdd = ha ? `${ha}/config/integrations/dashboard/add?domain=otbr` : 'https://my.home-assistant.io/redirect/config_flow_start/?domain=otbr';
+    const threadPage = ha ? `${ha}/config/thread` : 'https://my.home-assistant.io/redirect/integration/?domain=thread';
+    const esphome = ha ? `${ha}/config/integrations/integration/esphome` : 'https://my.home-assistant.io/redirect/integration/?domain=esphome';
     const plans: Record<string, { title: string; lead: string; steps: Step[] }> = {
       zigbee_tcp: {
         title: 'Use the radio in Home Assistant', lead: 'The panel is now a Zigbee coordinator. Add it to Home Assistant, then pair your devices.',
@@ -975,24 +980,25 @@ class Installer {
         ],
       },
       thread: {
-        title: 'Use the border router in Home Assistant', lead: 'The panel is now a Thread border router (experimental). Add it to Home Assistant.',
+        title: 'Use the border router in Home Assistant', lead: 'The panel is now a Thread border router (experimental): it runs its own Thread network for Home Assistant\'s OpenThread Border Router integration. To join a Thread network you already have as a repeater, choose Thread router (repeater) instead.',
         steps: [
-          { title: 'Add OpenThread Border Router', body: 'Opens the integration setup in Home Assistant. Enter this address. If you already have a border router, Home Assistant can use both.',
-            kv: [['URL', `http://${ip}:8081`, true]], link: 'https://my.home-assistant.io/redirect/config_flow_start/?domain=otbr' },
+          { title: 'Add OpenThread Border Router', body: 'Opens the integration setup in Home Assistant. Enter this URL. If you already have a border router, Home Assistant can use both.',
+            kv: [['URL', `http://${ip}:8081`, true]], link: otbrAdd },
         ],
       },
       zigbee_router: {
-        title: 'Join your Zigbee network', lead: 'The panel is now a Zigbee router (experimental). It joins your existing network as a repeater.',
+        title: 'Join your Zigbee network', lead: 'The panel is now a Zigbee router (repeater, experimental). It joins your existing network and extends it.',
         steps: [
           { title: '1 · Open pairing in Home Assistant', body: 'Opens your Zigbee “Add device”, which lets new devices join for a few minutes.', link: zhaAdd },
           { title: '2 · Tell the panel to join', body: 'In Home Assistant, open the panel\'s device (S1 Panel, under ESPHome) and press Join Zigbee network. It shows up in ZHA as a router.' },
         ],
       },
       thread_router: {
-        title: 'Join your Thread network', lead: 'The panel is now a Thread router (experimental). It joins your existing Thread network as a repeater.',
+        title: 'Join your Thread network', lead: 'The panel is now a Thread router (repeater, experimental). It joins your existing Thread network and extends it.',
         steps: [
-          { title: '1 · Copy your Thread network\'s dataset', body: 'Opens Thread in Home Assistant. Open your network\'s details and copy its active dataset (the long hex string of TLVs).', link: 'https://my.home-assistant.io/redirect/integration/?domain=thread' },
-          { title: '2 · Give it to the panel', body: 'On the panel\'s device (S1 Panel, under ESPHome), paste it into Thread dataset. The panel joins on its own; the dataset is never shown again.' },
+          { title: '1 · Copy your Thread network\'s dataset', body: 'Opens Home Assistant\'s Thread page. Under Preferred network, open ⓘ Network information and copy Active dataset TLVs. Home Assistant shows it to admin users, for a network from an OpenThread Border Router it manages.', link: threadPage },
+          { title: '2 · Give it to the panel', body: 'Opens ESPHome in Home Assistant. Open the panel\'s device (S1 Panel) → Configuration and paste it into Thread dataset; spaces or line breaks in the copy are fine. The dataset contains the network key: paste it only there. It is never shown again.', link: esphome },
+          { title: '3 · Watch it join', body: 'The panel\'s Radio status says “joined … as a child”, then “as a router” once the network promotes it, which takes a few minutes.' },
         ],
       },
     };
