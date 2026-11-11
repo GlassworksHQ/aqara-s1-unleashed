@@ -61,7 +61,8 @@ gh secret set S1_KEY_ALIAS --repo aguilaair/aqara-s1-unleashed --body s1kiosk
 gh secret list --repo aguilaair/aqara-s1-unleashed
 ```
 
-The workflow uses only these four secrets, the radio bundle key below, and the job's own `GITHUB_TOKEN`.
+The workflow uses only these four secrets, the radio bundle key below, the optional `VERCEL_DEPLOY_HOOK`
+(a Vercel deploy hook URL for the web installer), and the job's own `GITHUB_TOKEN`.
 
 ## 3b. The radio bundle key (once)
 
@@ -146,11 +147,23 @@ The workflow then:
 5. writes the `.sha256`;
 6. creates the release, with that version's CHANGELOG.md section as the notes. The bundle is not
    published on its own (its Silicon Labs libcpc may only be distributed inside the product).
+7. asks Vercel to rebuild the web installer, so it installs the new release (`VERCEL_DEPLOY_HOOK`).
 
 HA shows the first 255 characters of the notes, with a link to the full release.
 
 Panels see the release within 24 hours. To check right away, call `homeassistant.update_entity`
 on `update.s1_panel_app_update`: HA sends the entity's "check" command.
+
+**Panels on 0.4.0 or older can't install it from HA.** Their update path refused every release as
+"the APK is not signed": on Android 10, `getPackageArchiveInfo` with only `GET_SIGNING_CERTIFICATES`
+returns no signer for a downloaded APK. 0.4.1 also asks for `GET_SIGNATURES`
+([esphome.md](esphome.md#app-updates)). Because the bug is in the version doing the installing, those
+panels need one manual update to 0.4.1 or later (the web installer's *Already installed? Finish setting
+it up*, or `adb install -r`, see [install.md](install.md#updating)); from then on HA installs work.
+
+The hosted web installer installs the latest release it saw when it was last built
+(`web/scripts/stage-assets.mjs`). The workflow's last step asks Vercel to rebuild it through the
+`VERCEL_DEPLOY_HOOK` secret; without that secret it only warns, and you redeploy the installer by hand.
 
 ## Building a signed APK locally
 
@@ -172,5 +185,6 @@ If only some of the four variables are set, the build stops and names the missin
 A panel running a debug build **cannot** update to a release through HA, because the keys differ.
 The update entity then says so ("signed with a different key than this app"). Moving such a panel
 to releases takes a one-time reinstall: uninstall the debug app, then install the release APK.
-Both installers do that for you, after asking, and keep the panel on its Wi-Fi; the app's data is
-kept only where adb has root. See [install.md](install.md#switching-a-development-build-to-a-release).
+Both installers do that for you, after asking, and keep the panel on its Wi-Fi. The app's data is
+kept only where adb has root; on a normal panel the switch **resets the app's settings** (sign-in,
+pairing key, options). See [install.md](install.md#switching-a-development-build-to-a-release).

@@ -16,10 +16,10 @@ Set **Radio mode** on the panel's device page:
 | Mode | What the panel becomes | Status |
 |---|---|---|
 | **Off** (default) | Nothing; the radio is idle | Works |
-| **Zigbee coordinator (TCP)** | The coordinator of a Zigbee network, for ZHA (or Zigbee2MQTT, below) | Works with ZHA |
-| **Zigbee router** | A repeater in your existing Zigbee network | Experimental |
+| **Zigbee coordinator (TCP)** | The coordinator of a Zigbee network, for ZHA (or Zigbee2MQTT, below) | Works with ZHA; Zigbee2MQTT experimental |
+| **Zigbee router** | A repeater in your existing Zigbee network | Experimental; joined a real home network |
 | **Thread border router** | A Thread border router for Home Assistant's OpenThread Border Router integration | Experimental |
-| **Thread router** | A repeater in your existing Thread network | Experimental |
+| **Thread router** | A repeater in your existing Thread network | Experimental; joined a real home network |
 
 **Radio status** says what the radio is doing, and who may connect to it. If something doesn't work,
 look there first.
@@ -34,14 +34,17 @@ on this radio (Home Assistant dropped that kind of sharing too).
    enter the serial path `socket://<panel IP>:6638` (Radio status shows it).
 3. When ZHA asks about the network, choose **keep the radio's network settings**. Creating a new
    network or restoring a backup hangs until a fix in ZHA's radio library
-   ([bellows#774](https://github.com/zigpy/bellows/pull/774), merged) reaches a Home Assistant release.
+   ([bellows#774](https://github.com/zigpy/bellows/pull/774), merged on 2026-11-10) reaches a Home
+   Assistant release.
 
 ## Zigbee coordinator with Zigbee2MQTT (experimental)
 
-Zigbee2MQTT needs a newer Zigbee stack than the one Aqara ships. This needs the panel's boot software
-from November 2026 or later (Home Assistant's **Radio helper** sensor says whether you have it).
+Zigbee2MQTT needs a newer Zigbee stack than the one Aqara ships. This needs S1 Kiosk 0.4.0 or later
+and the boot software that came with it (Home Assistant's **Radio helper** sensor says whether you have
+it; [install.md](install.md#updating) says how to update it). Forming a network, resuming it and
+pairing have been tested on the panel, but not yet for long with real devices.
 
-1. Set **Zigbee stack** to *Silicon Labs 8.2.2*. The panel downloads Silicon Labs' stack from Silicon
+1. Set **Zigbee stack** to *Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)*. The panel downloads Silicon Labs' stack from Silicon
    Labs itself (we can't ship it, for licence reasons) and checks it. **Radio status** shows the
    progress, then `EZSP 18`.
 2. Set **Radio mode** to *Zigbee coordinator (TCP)*.
@@ -55,13 +58,19 @@ from November 2026 or later (Home Assistant's **Radio helper** sensor says wheth
    that machine's address in **Radio allowed clients** (see [Who may connect](#who-may-connect)).
 
 ZHA also works with this stack. Switching back to *Aqara 7.3.3* gives back Aqara's stack and its own
-network, untouched.
+network, untouched. The Zigbee router mode always uses Aqara's stack.
+
+Zigbee2MQTT gives the radio 5 seconds to answer its reset, and this stack takes about 4.3. If a start
+fails now and then with a reset timeout, restart Zigbee2MQTT; it usually works the next time.
 
 ## Thread border router (experimental)
 
 1. Set **Radio mode** to *Thread border router*.
 2. In Home Assistant, add the **OpenThread Border Router** integration with the URL
    `http://<panel IP>:8081`.
+
+Home Assistant's side of this has been tested. Traffic between your network and real Thread devices
+through the panel hasn't been tested yet.
 
 ## Repeater modes (experimental)
 
@@ -73,7 +82,7 @@ router. **Leave Zigbee network** takes it out again.
 services → Thread*, your preferred network's details; the dataset is a long hex string) into the
 panel's **Thread dataset** field, then set **Radio mode** to *Thread router*. The field is write-only
 and the panel keeps the dataset where only root can read it. **Leave Thread network** makes the panel
-forget it again (needs the November 2026 boot software).
+forget it again (needs the boot software from 0.4.0 or later).
 
 The dataset contains your Thread network key: paste it only into the panel's field, never into a chat
 or a bug report.
@@ -94,9 +103,10 @@ that way, Home Assistant is probably connecting without an encryption key (Home 
 ## Radio firmware
 
 The radio runs Aqara's firmware, and nothing here needs a different one. The panel can flash radio
-firmware (boot software from November 2026 or later), but never by itself: choose an image in **Radio
-firmware image**, then press **Flash radio firmware** within two minutes. If anything goes wrong it
-puts Aqara's original firmware back. No newer firmware is offered yet.
+firmware (boot software from 0.4.0 or later), but never by itself: choose an image in **Radio
+firmware image**, then press **Flash radio firmware** within two minutes. **Radio firmware** shows the
+progress. If anything goes wrong it puts Aqara's original firmware back. No newer firmware is offered
+yet; flashing Aqara's original image again has been tested on the panel.
 
 ## Going back to Aqara's radio
 

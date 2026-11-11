@@ -19,17 +19,12 @@ screen is off. Logs: `adb logcat -s S1ESPHome S1Voice`.
 
 ## Add it to Home Assistant
 
-1. Install the app (see [app/README.md](../app/README.md)) and push the wake word models:
-
-   ```sh
-   export ANDROID_SERIAL=<panel serial>
-   tools/voice/fetch-models.sh            # or --no-push to only download + verify
-   ```
-
-   The script downloads `melspectrogram.tflite`, `embedding_model.tflite`, `hey_jarvis_v0.1`,
-   `alexa_v0.1` and `hey_mycroft_v0.1` from the openWakeWord **v0.5.1** release, checks they are
-   TFLite files, and pushes them to `/sdcard/Android/data/sh.edm.s1kiosk/files/models/`
-   (no root). Without models the API still works; the engine retries loading every 30 s.
+1. Install the app ([install.md](install.md)). The panel downloads the wake word models itself
+   (`voice/ModelFetcher.kt`): `melspectrogram.tflite`, `embedding_model.tflite`, `hey_jarvis_v0.1`,
+   `alexa_v0.1` and `hey_mycroft_v0.1` from the openWakeWord **v0.5.1** GitHub release, each checked
+   against a pinned SHA-256, into `/sdcard/Android/data/sh.edm.s1kiosk/files/models/`. `tools/install.sh`
+   also pushes them over adb (`tools/voice/fetch-models.sh`, which downloads and checks the same files;
+   `--no-models` skips it). Without models the API still works; the engine retries loading every 30 s.
 2. **Discovery**: the panel advertises `s1-panel._esphomelib._tcp` over mDNS. If mDNS reaches HA,
    **Settings → Devices & services** shows a discovered **ESPHome** device "S1 Panel". Click
    **Add**.
@@ -61,7 +56,7 @@ Details and sources: [onboarding.md](onboarding.md#2-adoption--encryption-esphom
 | Field | Value |
 |---|---|
 | name / friendly name | `s1-panel` / `S1 Panel` |
-| MAC (unique id in HA) | the Wi-Fi MAC of `wlan0` if readable, else a random locally administered MAC; persisted in prefs (`device_mac`), so it never changes |
+| MAC (unique id in HA) | the Wi-Fi MAC of `wlan0` if readable, else a locally administered MAC derived from the chip serial (SHA-256 of `ro.serialno`), else a random one; persisted in prefs (`device_mac`). The first two come out the same after a reinstall, so HA keeps the same device |
 | manufacturer / model | `Aqara` / `Panel Hub S1 Plus (S1 Kiosk)` |
 | esphome_version / compilation_time | `2026.10.2` / `S1 Kiosk <app version>` (HA shows "2026.10.2 (S1 Kiosk 0.1.0)") |
 | API version | 1.20 (as ESPHome 2026.10/11); `DeviceCapabilitiesRequest` is answered |
@@ -89,7 +84,9 @@ is FNV-1a of the `object_id` (stable).
 | select `Dashboard` | `dashboard` | `Default` + every Lovelace dashboard (by title) + `Custom` only while the saved URL matches none; choosing one saves the URL and reloads ([onboarding.md](onboarding.md#5-which-dashboard-)). The list comes from the HA frontend on the panel; when the options change the entity list is rebuilt (debounced 10 s, at most once a minute) and HA reconnects |
 | number `Zoom` (0 = auto) | `zoom` | CSS px ratio; restarts the app |
 | button `Reload dashboard` | `reload_dashboard` | |
+| button `Open device settings` | `open_settings` | opens the panel's hidden settings dialog on its screen |
 | button `Restart app` | `restart_app` | restarts the kiosk process |
+| button `Start Wi-Fi setup (Bluetooth)` | `improv_ble` | starts Improv over Bluetooth on demand ([onboarding.md](onboarding.md)) |
 | switch `Hide HA header` | `hide_ha_header` | header + sidebar, applied live |
 | media_player `Speaker` | `speaker` | play/pause/stop, volume, mute, play media, announce; formats: mp3 (default + announcement) |
 | switch `Music Assistant player (Sendspin)` | `sendspin` | the native Sendspin player ([sendspin.md](sendspin.md)), default on; off sends `client/goodbye` `user_request` |
@@ -100,8 +97,19 @@ is FNV-1a of the `object_id` (stable).
 | number `Mic gain` | `mic_gain` | 0.5–4× |
 | number `Wake word threshold` | `wake_word_threshold` | 0.1–0.95 (default 0.5) |
 | select `Radio mode` | `radio_mode` | `Off` (default), `Zigbee coordinator (TCP)`, `Zigbee router`, `Thread border router`, `Thread router` ([radio.md](radio.md)); without the root helper only `Off` applies, other choices are refused and snap back |
-| text_sensor `Radio status` | `radio_status` | diagnostic; e.g. `Off: Aqara's radio services stopped, radio idle. …`, or the root helper's `ok zigbee_tcp: EZSP on tcp:6638` |
+| text_sensor `Radio status` | `radio_status` | diagnostic; e.g. `Off: Aqara's radio services stopped, radio idle. …`, or the root helper's `ok zigbee_tcp: EZSP on tcp:6638`, plus who may connect and the ZHA / Zigbee2MQTT settings |
+| text `Radio allowed clients` | `radio_allowed_clients` | who may reach the radio's ports besides Home Assistant: addresses or CIDRs, `any`, or empty = Home Assistant only ([radio-guide.md](radio-guide.md#who-may-connect)) |
+| select `Zigbee stack` | `zigbee_stack` | `Aqara 7.3.3 (EZSP 12, ZHA)` (default) or `Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)` ([radio.md](radio.md#zigbee-stack-aqara-or-silicon-labs-helper-v4)); encrypted connection only, needs helper v4 |
+| text_sensor `Radio helper` | `radio_helper` | diagnostic; which root helper runs (boot image or radio bundle, version) and whether the boot image needs updating |
+| text_sensor `Radio firmware` | `radio_firmware` | diagnostic; the radio's firmware version, flash progress or result |
+| select `Radio firmware image` | `radio_firmware_image` | `Keep current`, `Aqara stock image`, `Image from the radio bundle`; arms the choice for 2 minutes ([radio.md](radio.md#radio-firmware-updates-helper-v4)); encrypted connection only |
+| button `Flash radio firmware` | `radio_firmware_flash` | flashes the armed image; encrypted connection only |
+| button `Join Zigbee network` / `Leave Zigbee network` | `zigbee_router_join` / `zigbee_router_leave` | Zigbee router mode ([radio.md](radio.md#zigbee-router)) |
+| button `Leave Thread network` | `thread_leave` | forgets the Thread dataset and router settings, in any mode; encrypted connection only, needs helper v4 |
+| text `Thread dataset` | `thread_dataset` | write-only (always reads empty): the active dataset hex for the Thread router mode; never logged |
 | text_sensor `IP address` | `ip_address` | diagnostic |
+| text `Time zone` | `time_zone` | an Olson id such as `Europe/Berlin`, kept by the root helper across reboots ([install.md](install.md#time-zone)); encrypted connection only |
+| text_sensor `Time zone status` | `time_zone_status` | diagnostic; whether the zone is being kept |
 | text_sensor `App version` | `app_version` | diagnostic |
 | update `App update` (firmware) | `app_update` | the latest GitHub release vs this app; install from HA ([app updates](#app-updates)) |
 | text_sensor `Update status` | `update_status` | diagnostic; e.g. `up to date (1.2.0)`, `1.3.0 available`, `Downloading 1.3.0: 42%`, `Install of 1.3.0 failed: …` |
@@ -109,7 +117,7 @@ is FNV-1a of the `object_id` (stable).
 | text_sensor `Signed in` | `signed_in` | diagnostic; `yes` / `no`: whether a QR sign-in refresh token is stored (never the token) |
 | button `Sign out` | `sign_out` | revokes the refresh token at HA (`/auth/revoke`), deletes it, shows the sign-in screen |
 
-Plus the wall base entities below, and the entities HA adds itself for a voice device: `assist_satellite.s1_panel_assist_satellite`,
+Plus `Block Aqara cloud` and `Aqara cloud daemon` ([below](#aqara-cloud)), the wall base entities, and the entities HA adds itself for a voice device: `assist_satellite.s1_panel_assist_satellite`,
 *Assist pipeline* and *Wake word* selects (two of each), *Finished speaking detection*.
 
 ### Wall base entities
@@ -180,9 +188,13 @@ poll as a safety net.
   1. Download the `.sha256`, then the APK over HTTPS into `files/update/`. `in_progress` is set and
      `progress` goes 0-100 %.
   2. Check the SHA-256 against the `.sha256` file and against GitHub's own asset digest.
-  3. `PackageManager.getPackageArchiveInfo(GET_SIGNING_CERTIFICATES)` must give package
-     `sh.edm.s1kiosk`, the release's version and versionCode, and the installed app's signing
-     certificate. Otherwise the install is refused with the reason.
+  3. `PackageManager.getPackageArchiveInfo(GET_SIGNING_CERTIFICATES | GET_SIGNATURES)` must give
+     package `sh.edm.s1kiosk`, the release's version and versionCode, and the installed app's signing
+     certificate. Otherwise the install is refused with the reason. Both flags are needed: on Android
+     10, `GET_SIGNING_CERTIFICATES` alone leaves `signingInfo` empty for a downloaded APK, so up to
+     0.4.0 every update was refused as "the APK is not signed". **Fixed in 0.4.1**; because the bug is
+     in the installed version, panels on 0.4.0 or older update once by hand
+     ([install.md](install.md#updating)).
   4. The verified file becomes `files/update/pending.apk`, and the root update service installs it
      ([research/root.md](research/root.md)). On success the app is replaced and restarted, and the
      new version reports the result in *Update status*.
@@ -365,7 +377,8 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 - **Verified on the panel (2026-11-09):** HA adds it (by IP; the panel sits on a separate VLAN so
   mDNS didn't reach HA), all entities report live values, `announce` with pre-announce chime plays,
   `media_player.play_media` plays and reports playing → idle. **Not yet verified:** real-speech
-  wake word accuracy / mic gain, Music Assistant playback, mDNS discovery on a flat network.
+  wake word accuracy / mic gain, mDNS discovery on a flat network. Music Assistant playback has
+  since been measured on the panel ([sendspin.md](sendspin.md#measured-on-the-panel)).
 - The mDNS SRV target is the Android hostname, not `s1-panel.local`; HA uses the IP it discovered and
   replaces the name with `DeviceInfoResponse.name` once connected.
 - No `SPEAKER` flag: TTS is fetched by URL, not streamed as PCM over the API.
@@ -380,6 +393,8 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   the Sendspin output is muted locally.
 - Chromecast: not possible. A Cast receiver must be a Google-certified device.
 - Radio modes other than `Off` need the root helper from the boot-image patch ([radio.md](radio.md)).
+- Entities marked "encrypted connection only" refuse changes from a plaintext connection (a panel that
+  was never given a key).
 
 ### Aqara cloud
 

@@ -14,8 +14,16 @@
   <a href="#install">Install</a> ·
   <a href="#what-you-get">Features</a> ·
   <a href="#status">Status</a> ·
+  <a href="#the-radio">Radio</a> ·
+  <a href="#updates">Updates</a> ·
+  <a href="#known-issues">Known issues</a> ·
   <a href="#undo-and-safety">Undo &amp; safety</a> ·
-  <a href="#faq">FAQ</a> ·
+  <a href="#faq">FAQ</a>
+</p>
+
+<p align="center">
+  Current release: <a href="https://github.com/aguilaair/aqara-s1-unleashed/releases/latest"><b>v0.4.1</b></a> ·
+  <a href="CHANGELOG.md">What's new</a> ·
   <a href="docs/research/README.md">How we got here</a>
 </p>
 
@@ -44,10 +52,11 @@ announcements, with a calm full-screen overlay while you talk.
 
 | | |
 |---|---|
-| 🏠 **One ESPHome device** | HA discovers the panel and sets up encryption automatically. You get the screen as a light, presence, light level, a speaker, voice settings and the wall base, plus the dashboard and radio selects. [More](docs/esphome.md) |
+| 🏠 **One ESPHome device** | HA discovers the panel and sets up encryption automatically. You get the screen as a light, presence, light level, a speaker, voice settings and the wall base, plus the dashboard and radio controls. [More](docs/esphome.md) |
 | 🎵 **Music Assistant player** | A native Sendspin player that plays in sync with your other speakers. [More](docs/sendspin.md) |
 | 👋 **Wakes when you walk up** | The screen wakes as you approach, turns off when the room is empty, and dims at night. It is driven by the panel's own sensors. [More](docs/sensors.md) |
-| 📡 **Radio for Home Assistant** | The panel's EFR32 radio can serve HA as a Zigbee coordinator (ZHA) or, experimentally, as a Thread border router. You switch modes from HA. [How to](docs/radio-guide.md) |
+| 📡 **Radio for Home Assistant** | The panel's Zigbee/Thread radio can be a Zigbee coordinator for ZHA or (experimental) Zigbee2MQTT, a Thread border router, or a repeater in your existing network. You switch roles from HA. [How to](docs/radio-guide.md) |
+| 🔄 **Updates in Home Assistant** | New versions show up under *Settings → Updates*, and one click installs them. Fixes for the radio side come with them. [More](#updates) |
 | 🔌 **Wall base relays** | A driver for the mains relay base that speaks its UART protocol directly, with no Aqara daemon. Not yet tried on a real base. [More](docs/research/bases.md) |
 | 🔒 **No Aqara cloud** | Aqara's launcher, apps, updater and cloud daemon are switched off (reversibly), so the panel stops talking to Aqara. |
 | ✨ **Its own boot screen** | The Glass Tile splash and boot animation. [More](branding/glass-tile/README.md) |
@@ -64,23 +73,25 @@ announcements, with a calm full-screen overlay while you talk.
 - A **USB-C data cable** and a **small screwdriver** to open the back cover once.
 - **Chrome or Edge** on Windows, macOS or Linux. The installer uses WebUSB, which Firefox and
   Safari don't support.
+- **Home Assistant** on the same network (2026.11 or newer recommended).
 - About **10 minutes**.
 
 ### The web installer (recommended)
 
-**[Open the installer →](https://s1.edm.sh/)**
+**[Open the installer at s1.edm.sh →](https://s1.edm.sh/)**
 
 The installer runs entirely in your browser and uploads nothing. It walks you through five steps:
 
 1. **Check this browser.** One-time setup on Windows (a Zadig driver) or Linux (a udev rule). On
    macOS there is nothing to set up.
 2. **Enter FEL mode.** With the back cover off, hold the small button on the board while you plug
-   in USB-C. FEL is the chip's built-in recovery mode.
+   in USB-C. FEL is the chip's built-in recovery mode. The installer shows a photo of where the
+   button is.
 3. **Back up and install.** The installer starts its own bootloader in RAM, then backs up the
    panel's partitions to your computer. Only after that does it patch `boot` (Magisk plus the S1
    helper), flash it and read it back to verify.
 4. **Set up the app.** S1 Kiosk is installed as the home screen. From the same page you set the
-   panel's Wi-Fi (sent over USB), sign it in to Home Assistant, and choose the radio mode,
+   panel's Wi-Fi (sent over USB), sign it in to Home Assistant, and choose the radio role,
    language and time zone.
 5. **Done.** Home Assistant finds the panel as an ESPHome device. Click **Add**.
 
@@ -91,17 +102,17 @@ The installer runs entirely in your browser and uploads nothing. It walks you th
 </tr>
 <tr>
 <td width="50%"><img src="docs/img/installer/wifi.webp" alt="Installer step 4: a list of Wi-Fi networks in range of the panel and a password field."></td>
-<td width="50%"><img src="docs/img/installer/radio.webp" alt="Installer step 4: the radio choice, with Off selected, Zigbee coordinator, Thread border router marked experimental, and Zigbee router marked coming soon."></td>
+<td width="50%"><img src="docs/img/installer/ha.webp" alt="Installer step 4: the Home Assistant address found on the network, signed in, and a prompt to add the discovered panel."></td>
 </tr>
 </table>
 
 The full walkthrough, per-OS setup and troubleshooting are in **[docs/install.md](docs/install.md)**.
 
 > [!NOTE]
-> **The web installer is new.** It has been tested end to end on a real S1 Plus (firmware 4.5.80),
-> from FEL mode through the backup, the install and the app setup. The boot patch has been tested
-> on two firmware versions: 4.5.80 and the December 2025
-> firmware the panel shipped with. If anything looks wrong, stop and
+> The web installer has been tested end to end on a real S1 Plus (firmware 4.5.80), from FEL mode
+> through the backup, the install and the app setup. The boot patch has been tested on two firmware
+> versions: 4.5.80 and the December 2025 firmware the panel shipped with. So far that is a small
+> number of panels. If anything looks wrong, stop and
 > [open an issue](https://github.com/aguilaair/aqara-s1-unleashed/issues). Your backup is safe.
 
 ### The command line
@@ -117,6 +128,82 @@ tools/install.sh --url http://homeassistant.local:8123 \
 
 See [docs/install.md](docs/install.md#command-line) for the details.
 
+## Status
+
+What works today, on v0.4.1. "Verified" means tested on a real panel in a real home.
+
+| Feature | Status |
+|---|---|
+| Kiosk, HA dashboard, QR sign-in, dashboard picker | ✅ Works |
+| ESPHome device with automatic encryption | ✅ Works |
+| Voice assistant with on-device wake word, timers, announcements | ✅ Works · far-field tuning ongoing |
+| Music Assistant player (Sendspin, synced) | ✅ Works |
+| Presence wake, idle-off, night mode, auto-brightness | ✅ Works |
+| Aqara cloud and bloat disabled (reversible) | ✅ Works |
+| Glass Tile boot splash and animation | ✅ Works |
+| Web installer, command-line installer, undo | ✅ Verified end to end (firmware 4.5.80); boot patch tested on two firmware versions |
+| App updates from Home Assistant | ✅ Works from v0.4.1 on ([one manual update first](#updates) on older versions) |
+| Time zone kept across reboots | ✅ Works (needs the boot software from v0.4.0) |
+| Radio: Zigbee coordinator for **ZHA** | ✅ Verified · keep the radio's network settings ([known issue](#known-issues)) |
+| Radio: Zigbee coordinator for **Zigbee2MQTT** | 🧪 Experimental · `ember` adapter: forming a network, resuming it and opening joining verified; not yet used for long with real devices |
+| Radio: **Thread border router** | 🧪 Experimental · HA's OpenThread Border Router integration verified; routing to real Thread devices not tested |
+| Radio: **Zigbee router, Thread router** (repeaters) | 🧪 Experimental · both joined a real home network as a repeater |
+| Radio: only Home Assistant can connect | ✅ Verified |
+| Radio firmware updates | 🧪 Experimental · re-flashing Aqara's original firmware verified; no other firmware offered yet |
+| Wall base relays | 🧪 Driver done and checked against Aqara's own tool, but not yet tried on a real base |
+| Wi-Fi setup over Bluetooth (Improv) | 🧪 Implemented; lightly tested |
+
+## The radio
+
+The S1 Plus has a Silicon Labs Zigbee/Thread radio inside. S1 Unleashed can give it to Home
+Assistant in one role at a time. You pick the role with **Radio mode** on the panel's device page
+in Home Assistant:
+
+- **Zigbee coordinator** for ZHA: radio type EZSP, serial path `socket://<panel IP>:6638`.
+- **Zigbee coordinator** for Zigbee2MQTT (experimental): set **Zigbee stack** to *Silicon Labs
+  8.2.2* first, then use `adapter: ember` and `port: tcp://<panel IP>:6638`. The panel downloads that
+  stack from Silicon Labs itself.
+- **Thread border router** (experimental), for HA's OpenThread Border Router integration.
+- **Zigbee router** or **Thread router** (experimental): a repeater in the network you already have.
+
+Only Home Assistant can connect to the radio unless you allow other computers. The step-by-step
+guide is **[docs/radio-guide.md](docs/radio-guide.md)**; the technical reference is
+[docs/radio.md](docs/radio.md).
+
+## Updates
+
+New releases appear in Home Assistant under *Settings → Updates* (the panel's **App update**
+entity). Press **Install** and the panel installs it by itself; nothing to confirm on the panel.
+Each update is checked against its checksum and the project's signing key first.
+
+- **Panels on v0.4.0 or older need one manual update.** Their update installs from Home Assistant
+  always failed with "the APK is not signed". Open the installer, choose **Already installed? Finish
+  setting it up**, and follow it (or run `adb install -r` with the new APK). From v0.4.1 on, updates
+  from Home Assistant work.
+- **The radio side updates with the app** (from v0.4.0), once the panel has the matching boot
+  software. Home Assistant's **Radio helper** sensor says when it needs that. To get it, run the web
+  installer's full install once more (one press of the FEL button). Panels that skip it keep working
+  as before.
+- **Moving from a development build to a release** (panels set up with the command line) needs a
+  one-time reinstall, because the two are signed with different keys. The installers do it for you
+  and keep the panel on its Wi-Fi. Without root over adb, which is the normal case, **the app's
+  settings are reset**: you sign in again and may need to add the panel to Home Assistant again.
+  See [docs/install.md](docs/install.md#switching-a-development-build-to-a-release).
+
+## Known issues
+
+- **ZHA can't create a new network or restore a backup onto the panel yet.** It hangs, because of a
+  bug in ZHA's radio library. The fix ([zigpy/bellows#774](https://github.com/zigpy/bellows/pull/774))
+  was merged on 2026-11-10 and will work once it reaches a Home Assistant release. Until then, choose
+  **keep the radio's network settings** when ZHA asks.
+- **Zigbee2MQTT has little time to spare at start-up.** The radio answers its reset in about 4.3
+  seconds and Zigbee2MQTT waits 5. A slow moment can make a start fail; it works on the next start.
+- **Zigbee2MQTT on the Silicon Labs stack** hasn't been used for long with real Zigbee devices yet.
+- **Thread border router:** traffic between your network and real Thread devices through the panel
+  hasn't been tested yet.
+- **Switching a development build to a release** without root resets the app's settings (see
+  [Updates](#updates)).
+
 ## Undo and safety
 
 - **The backup comes first.** Nothing is written until the panel's own partitions are on your
@@ -129,9 +216,11 @@ See [docs/install.md](docs/install.md#command-line) for the details.
 - **Small footprint.** It changes three partitions: `boot`, the `vbmeta` flags and the boot
   splash. Android, `system` and `vendor` are never modified, and everything Aqara ships is
   disabled rather than deleted.
-- **Undo is built in.** In the installer, choose *Undo a previous install*. It writes your backed-up
-  partitions back over FEL. Then a factory reset on the panel removes S1 Kiosk and its settings.
-  From the CLI, run `tools/install/fel-install.sh --undo <backup-dir>`.
+- **Undo is built in.** In the installer, choose *Undo a previous install*. *Back to how it came
+  from Aqara* writes your backed-up partitions back over FEL; a factory reset on the panel then
+  removes S1 Kiosk and its settings. *Keep the panel's settings* removes S1 Kiosk over USB (or turns it off, if it
+  saved the panel's Wi-Fi) and brings Aqara's apps back; the panel keeps its Wi-Fi. From the CLI:
+  `tools/install/fel-install.sh --undo <backup-dir>` or `tools/install.sh --undo`.
 - **Hard to brick.** FEL lives in the chip's mask ROM, so it can't be erased. As long as you
   have your backup, you can always get back in.
 
@@ -152,26 +241,7 @@ licences): [docs/legal.md](docs/legal.md).
 | Other Aqara panels and hubs | ❌ Not supported |
 
 Inside: Allwinner A133 (quad Cortex-A53), 2 GiB DDR4, 8 GB eMMC, Android 10, a 1440×720 screen,
-an EFR32 802.15.4 radio, a VI5300 time-of-flight sensor and an ambient light sensor.
-
-## Status
-
-| Feature | Status |
-|---|---|
-| Kiosk, HA dashboard, QR sign-in, dashboard picker | ✅ Works |
-| ESPHome device with automatic encryption | ✅ Works |
-| Voice assistant with on-device wake word, timers, announcements | ✅ Works · far-field tuning ongoing |
-| Music Assistant player (Sendspin, synced) | ✅ Works |
-| Presence wake, idle-off, night mode, auto-brightness | ✅ Works |
-| Aqara cloud and bloat disabled (reversible) | ✅ Works |
-| Glass Tile boot splash and animation | ✅ Works |
-| Command-line installer and undo | ✅ Works · used on a factory-fresh panel (firmware 4.5.80) |
-| **Web installer** | ✅ Tested end to end on a real panel (firmware 4.5.80); boot patch tested on two firmware versions |
-| Radio: Zigbee coordinator for ZHA (over the network) | ✅ Works on the reference panel · ZHA only |
-| Radio: **Thread border router** | 🧪 **Experimental** |
-| Radio: **Zigbee router, Thread router** (repeaters) | 🧪 **Experimental**: both joined a real home network (ZHA, and Home Assistant's Thread network as a router) |
-| Wall base relays | 🧪 Driver done and checked against Aqara's own tool, but not yet tried on a real base |
-| Wi-Fi setup over Bluetooth (Improv) | 🧪 Implemented; lightly tested |
+a Silicon Labs EFR32 802.15.4 radio, a VI5300 time-of-flight sensor and an ambient light sensor.
 
 ## FAQ
 
@@ -199,16 +269,18 @@ No. A panel that was never set up with Aqara works fine. If it was, it keeps its
 <details>
 <summary><b>Will my Aqara Zigbee devices keep working?</b></summary>
 
-Not through Aqara: its hub software is switched off. The panel's radio can instead act as a
-Zigbee coordinator for Home Assistant (ZHA), and you re-pair your devices there.
+Not through Aqara: its hub software is switched off. The panel's radio can instead be the Zigbee
+coordinator for Home Assistant (ZHA, or Zigbee2MQTT experimentally), and you pair your devices
+there again.
 </details>
 
 <details>
 <summary><b>Does the panel still talk to Aqara's cloud?</b></summary>
 
 No. The kiosk stops Aqara's cloud daemon a few seconds after boot and disables Aqara's apps and
-updater. For zero internet access, also block the panel at your router; it only needs your LAN.
-The panel downloads the openWakeWord models from GitHub once.
+updater. It does reach out to GitHub: once to download the openWakeWord models, and about once a
+day to check for S1 Kiosk updates. If you choose the Silicon Labs Zigbee stack, it downloads that
+from Silicon Labs' GitHub once. Everything else stays on your LAN.
 </details>
 
 <details>
@@ -228,8 +300,9 @@ GeckoView ships its own up-to-date engine inside the app.
 <details>
 <summary><b>Which Home Assistant version do I need?</b></summary>
 
-A current one: development and testing use HA 2026.11 and Music Assistant 2.10. Voice needs an
-Assist pipeline; music needs Music Assistant with Sendspin.
+2026.11 or newer is recommended. Older versions don't set up the panel's encryption by themselves,
+and then the radio can't tell which address is Home Assistant's. Development and testing use HA 2026.11 and Music
+Assistant 2.10. Voice needs an Assist pipeline; music needs Music Assistant with Sendspin.
 </details>
 
 <details>
@@ -249,8 +322,9 @@ browser, the radio and the wall base protocol: it's all written up in
 | `tools/` | Command-line installer, U-Boot/FEL build, boot patch, radio helper, dev tools |
 | [`branding/`](branding/glass-tile/README.md) | Glass Tile boot splash and animation, social preview |
 | [`docs/`](docs/README.md) | User guides, plus [research](docs/research/README.md) |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed in each release |
 
-## Credits and licenses
+## Credits and licences
 
 Built by [@aguilaair](https://github.com/aguilaair). It stands on the work of
 [linux-sunxi](https://linux-sunxi.org/) (sunxi-tools, U-Boot), [Magisk](https://github.com/topjohnwu/Magisk),
@@ -259,16 +333,19 @@ Built by [@aguilaair](https://github.com/aguilaair). It stands on the work of
 [openWakeWord](https://github.com/dscripka/openWakeWord) and
 [Tango / ya-webadb](https://github.com/yume-chan/ya-webadb).
 
-S1 Unleashed's own code is **MIT** ([LICENSE](LICENSE)). Third-party parts keep their licenses. The main
+S1 Unleashed's own code is **MIT** ([LICENSE](LICENSE)). Third-party parts keep their licences. The main
 ones are below. [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists everything that ships, with versions
-and sources:
+and sources. On the panel, *Open source licences* in the hidden settings (tap the top-left corner five
+times) shows the same list with each licence's full text.
 
-| Component | License | How it's used |
+| Component | Licence | How it's used |
 |---|---|---|
 | U-Boot (with our A133 patches) | GPL-2.0-or-later | Built from source in [`tools/fel/`](tools/fel); runs from RAM only |
 | Magisk v31.1 | GPL-3.0 | The official release APK, pinned by SHA-256 (the CLI downloads it, the web installer serves the same file); [source](https://github.com/topjohnwu/Magisk/tree/v31.1) |
 | ot-br-posix (`otbr-agent`, `ot-ctl`) | BSD-3-Clause | Built by [`tools/radio/`](tools/radio) |
 | cJSON, cpp-httplib (in the border-router `otbr-agent`) | MIT | Bundled by ot-br-posix's REST server |
+| Silicon Labs `libcpc` and CPC interface | Silicon Labs MSLA, Zlib | Built from Silicon Labs' public source into `otbr-agent` and the radio package, to talk to the panel's own radio |
+| GNU C library, GCC runtime | LGPL-2.1-or-later, GPL-3.0 with the GCC exception | Runtime for the radio tools, unmodified from Ubuntu 22.04 |
 | Simple Keyboard | Apache-2.0 | Optional on-screen keyboard |
 | GeckoView | MPL-2.0 | Maven dependency of S1 Kiosk |
 | TensorFlow Lite, Media3 ExoPlayer, ZXing | Apache-2.0 | Wake word inference, audio, QR codes |

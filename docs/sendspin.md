@@ -454,9 +454,11 @@ SENDSPIN_PYTHON=/tmp/sendspin-venv/bin/python ./gradlew :kiosk:testDebugUnitTest
 ## After a factory reset or reinstall: a new Music Assistant player
 
 The Sendspin player's `client_id` is its X25519 public key. The key and its pairing secret are random
-and stored only in the app's data. A factory reset or reinstall therefore makes a new identity, and
+and stored only in the app's data. A factory reset or reinstall therefore makes a new identity (so does
+switching a development build to a release without root, which resets the app's data), and
 Music Assistant shows a new player, e.g. `media_player.s1_panel_2`, next to the old, unavailable one.
 This is deliberate: deriving the key from a hardware ID would let anyone who knows that ID
 impersonate the speaker. After a reset, remove the old player in Music Assistant (Settings → Players)
 and, if wanted, rename the new entity back. The ESPHome device is unaffected: its identity comes from
-the Wi-Fi MAC or the chip serial, so Home Assistant reconnects to the same device.
+the Wi-Fi MAC or the chip serial ([esphome.md](esphome.md#device-identity)), so Home Assistant
+reconnects to the same device.

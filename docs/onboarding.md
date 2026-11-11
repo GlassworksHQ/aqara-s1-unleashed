@@ -8,8 +8,8 @@ Everything rides on standard Home Assistant mechanisms (ESPHome discovery, HA OA
 not on a custom integration.
 
 Status: build-order steps 1–6 are ✅ implemented (dynamic key, HA discovery, QR sign-in + external
-auth, setup screen, dashboard select, Improv). The setup screen and the dashboard select are not yet
-verified on the panel. Nothing below is implemented unless marked ✅.
+auth, setup screen, dashboard select, Improv), and released since 0.2.0. Improv over Bluetooth is only
+lightly tested end to end. Nothing below is implemented unless marked ✅.
 
 ## The flow the user sees
 
@@ -30,7 +30,7 @@ by itself as each step completes ✅ (see [Setup screen](#setup-screen-)).
 
 ## Pieces and how they work
 
-### 1. Wi-Fi: Improv via BLE (+ fallback) ✅ (connect path not yet tested on a real network change)
+### 1. Wi-Fi: Improv via BLE (+ fallback) ✅ (lightly tested end to end over Bluetooth)
 
 - [Improv](https://www.improv-wifi.com/) is the open Wi-Fi provisioning standard ESPHome uses.
   HA's `improv_ble` integration discovers Improv devices over Bluetooth (or through an ESPHome
@@ -117,8 +117,9 @@ hostname.
   device info `S1 Kiosk, 0.1.0, Aqara Panel Hub S1 Plus/sun50iw10p1, S1 Panel`, hostname RPC →
   error 0x02. Scan returned 0 networks because the app doesn't hold the location permission yet
   (see below). After `--ez improv false` nothing advertises the Improv service.
-- **Not tested on the device**: sending Wi-Fi credentials / joining a network (by design; unit
-  tests + review only).
+- **At the time not tested on the device**: sending Wi-Fi credentials / joining a network (unit
+  tests + review only). The join itself (`WifiProvisioner.connect`) has since been used on panels
+  through the web installer's Wi-Fi step, which shares it.
 
 #### Joining the network on Android 10 (API 29) with targetSdk 34
 
@@ -175,7 +176,8 @@ organization". `adb install -r` updates keep working.
 
 #### Open risks
 
-- The connect path is untested on hardware (vendor builds can differ from AOSP).
+- The connect path is used on hardware through the web installer's Wi-Fi step; over Bluetooth it is
+  only lightly tested (vendor builds can differ from AOSP).
 - Android uses a resolvable private address for advertising; it rotates (~15 min), so HA may
   rediscover the panel under a new address during a long provisioning window.
 - If a saved (but not connected) network with the same SSID exists, `addNetwork` overwrites its
@@ -456,10 +458,12 @@ Laid out for 960×480 dp.
    services → S1 Panel discovered → Add", the panel's IP + port 6053 for a manual ESPHome add, and
    the HA URL (or the manual URL field from step 3 when HA wasn't found). **Skip for now** persists
    `setup_ha_skipped` (for kiosk-only use without the ESPHome device).
-3. **Radio** (`setup/RadioStep.kt`, `RadioStepTest`): Off (default), Zigbee coordinator (ZHA,
-   network radio over TCP, `socket://<panel-ip>:6638`), Thread border router (experimental). Zigbee
-   router and Thread router are listed under them, tagged "Coming soon" and not selectable, with the
-   web installer's one-liners (`RadioStep.COMING_SOON`). Apply goes through `RadioController`
+3. **Radio** (`setup/RadioStep.kt`, `RadioStepTest`): Off (default), Zigbee coordinator (ZHA or
+   Zigbee2MQTT, network radio over TCP, `socket://<panel-ip>:6638`), Thread border router
+   (experimental). Zigbee router and Thread router (both experimental) are listed under them in a
+   compact second row. `RadioStep.COMING_SOON` (shown, tagged "Coming soon", not selectable) is empty
+   now. The web installer's `COMING_SOON` (`web/src/app/ui.ts`) still names both routers, but it only
+   shows the tag for roles the panel's app doesn't offer (an older app). Apply goes through `RadioController`
    (the same path as HA's `Radio mode` select) and shows what it reports, e.g. the missing root
    helper; Skip = Off. Answering persists `setup_radio_done` (so does a mode set from the web
    installer over the setup channel). A panel set up before this step
@@ -500,9 +504,9 @@ save nothing, and a "Preview · Close" chip is shown. `--ez show_signin true` = 
 | 1 | ✅ Dynamic encryption key (`api_encryption_provisionable` + set-key over zero-PSK Noise) | S | aioesphomeapi test of HA's exact flow |
 | 2 | ✅ HA URL discovery (`_home-assistant._tcp` + ESPHome peer) | S | Found HA over mDNS on the panel |
 | 3 | ✅ QR sign-in (mini HTTP server + IndieAuth code exchange) + external-auth bridge | M | Verified end to end on the panel |
-| 4 | ✅ First-boot setup screen | M | Rules unit-tested (desk panel must not show it); not yet seen on the panel |
+| 4 | ✅ First-boot setup screen | M | Rules unit-tested (desk panel must not show it); in use on panels since 0.2.0 |
 | 5 | ✅ Dashboard select entity | S | List from the HA frontend (cookie session OK); aioesphomeapi test of the option rebuild; no app-side websocket fallback |
-| 6 | Improv via BLE ✅ | M | Advertising verified on the RTL8821CS; real connect test pending |
+| 6 | Improv via BLE ✅ | M | Advertising verified on the RTL8821CS; the join path is used through the installer; Bluetooth end to end lightly tested |
 
 ## Open questions
 

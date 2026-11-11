@@ -7,15 +7,17 @@ Both back up the panel first and both can undo.
 - [Before you start](#before-you-start)
 - [Web installer](#web-installer)
 - [Command line](#command-line)
+- [Updating](#updating)
 - [Switching a development build to a release](#switching-a-development-build-to-a-release)
+- [Time zone](#time-zone)
 - [Undo](#undo)
 - [Troubleshooting](#troubleshooting)
 
 > [!NOTE]
-> The web installer is new. It has been tested end to end on a real S1 Plus (firmware 4.5.80), from
-> FEL mode through the backup, the install and the app setup, and so has the command-line path.
-> The boot patch has been tested on two firmware versions: 4.5.80 and the December 2025 firmware
-> the panel shipped with.
+> The web installer has been tested end to end on a real S1 Plus (firmware 4.5.80), from FEL mode
+> through the backup, the install and the app setup, and so has the command-line path. The boot
+> patch has been tested on two firmware versions: 4.5.80 and the December 2025 firmware the panel
+> shipped with. So far that is a small number of panels.
 
 ## Before you start
 
@@ -25,6 +27,7 @@ Both back up the panel first and both can undo.
 - **Computer:** Chrome or Edge on Windows, macOS or Linux (WebUSB). Firefox and Safari don't
   support WebUSB.
 - **Home Assistant** on the same network, with the ESPHome integration available (it's built in).
+  2026.11 or newer is recommended: it sets up the panel's encryption by itself.
 
 ### Finding the FEL button
 
@@ -113,14 +116,16 @@ S1 Kiosk is installed and made the home screen. Then, from the same page:
 
 <img src="img/installer/radio.webp" alt="The radio choice: Off (selected), Zigbee coordinator, Thread border router (experimental), Zigbee router (coming soon)." width="100%">
 
+*An older screenshot: the Zigbee router and Thread router are now offered too, as experimental.*
+
 | Radio mode | Status |
 |---|---|
 | Off | Default. The radio stays idle. |
-| Zigbee coordinator | Home Assistant runs a Zigbee network (ZHA) on the panel's radio, over the network. |
+| Zigbee coordinator | Home Assistant runs a Zigbee network on the panel's radio, over the network: ZHA, or Zigbee2MQTT (**experimental**). |
 | Thread border router | **Experimental.** |
-| Zigbee router, Thread router | **Coming soon.** |
+| Zigbee router, Thread router | **Experimental.** A repeater in the network you already have. |
 
-Details: [radio.md](radio.md).
+What to do next in Home Assistant for each one: [radio-guide.md](radio-guide.md).
 
 Wi-Fi and Home Assistant can be skipped and done later on the panel itself. Its setup screen
 covers Wi-Fi (including Improv over Bluetooth), adding it to Home Assistant, and QR sign-in.
@@ -155,6 +160,27 @@ screen); each connects to the running panel over USB first:
 | `#/install` | Start a full install (FEL mode) |
 
 The address follows you through the installer, so reloading the page picks up where you were.
+
+## Updating
+
+**S1 Kiosk updates through Home Assistant.** A new release shows up under *Settings → Updates* as
+the panel's **App update**. Press **Install**; the panel downloads it, checks its checksum and
+signing key, installs it and restarts the app. There's nothing to confirm on the panel (on boot
+software from before the first releases, Android asks on the panel's screen). Details:
+[esphome.md](esphome.md#app-updates).
+
+- **On v0.4.0 or older, update by hand once.** Those versions can't install an update from Home
+  Assistant: it always fails with "the APK is not signed". Plug the panel in, open the installer,
+  choose **Already installed? Finish setting it up** (`#/resume`) and let it update S1 Kiosk. Or
+  download the APK from the [latest release](https://github.com/aguilaair/aqara-s1-unleashed/releases/latest)
+  and run `adb install -r s1-kiosk-<version>.apk`. From v0.4.1 on, updates from Home Assistant work.
+- **The boot software** (the patched `boot` with the root helper) is not updated by the app. Since
+  v0.4.0 the radio side updates with the app instead, but only on a panel with that version's boot
+  software. Home Assistant's **Radio helper** sensor says whether it needs updating. To update it,
+  run the full install again: *Get started* (`#/install`), with the FEL button. It backs up again
+  first, but keep the backup from your **first** install: it's the only one with Aqara's original
+  `boot`.
+- A panel running a **development build** can't take release updates. See the next section.
 
 ## Command line
 
@@ -204,7 +230,7 @@ plan without changing anything.
 
 | | adb has root | adb has no root (a normal install) |
 |---|---|---|
-| App settings, sign-in, pairing key | Kept: copied out before the removal, then copied back to the new install | Reset: sign in again; Home Assistant may ask to set the panel up again |
+| App settings, sign-in, pairing key | Kept: copied out before the removal, then copied back to the new install | **Reset**: sign in again, and and set the panel's options again (dashboard, screen and voice settings, for example). Home Assistant may ask to add the panel again, and Music Assistant shows it as a new player |
 | Wi-Fi | Read from Android's Wi-Fi store into the installer's memory, then sent to the new app over USB | Web: the Wi-Fi step asks for the password. CLI: asks in the terminal (Enter skips) |
 
 - **Root** here means that adb's shell can run `su`. That is only the case with a development boot

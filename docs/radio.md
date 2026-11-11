@@ -13,7 +13,7 @@ entities always reach HA as an ESPHome device over Wi-Fi, whatever the radio doe
 | Mode (select option) | Needs root helper | State (2026-11-10, reference panel) |
 |---|---|---|
 | `Off` (default) | no | **works**: stops Aqara's radio services, radio idle |
-| `Zigbee coordinator (TCP)` | yes | **works with ZHA (bellows)**: form, read-back, restart verified from a computer. Forming/restoring from ZHA needs a bellows fix ([below](#bellows-reset-bug-zha-form-and-restore)); "keep the radio's network" works today. **Zigbee2MQTT** (`ember`): with the `Zigbee stack` select on *Silicon Labs 8.2.2* (helper v4, experimental; [Zigbee stack](#zigbee-stack-aqara-or-silicon-labs-helper-v4)) |
+| `Zigbee coordinator (TCP)` | yes | **works with ZHA (bellows)**: verified with Home Assistant's ZHA on the panel; form, read-back, restart verified from a computer. Forming/restoring from ZHA needs bellows#774 in a Home Assistant release ([below](#bellows-reset-bug-zha-form-and-restore)); "keep the radio's network" works today. **Zigbee2MQTT** (`ember`, experimental): with the `Zigbee stack` select on *Silicon Labs 8.2.2* (helper v4; [Zigbee stack](#zigbee-stack-aqara-or-silicon-labs-helper-v4)); form, resume and the joining window verified on the panel, not soak-tested with real devices |
 | `Zigbee router` | helper v2 | **experimental**: joined a real ZHA network as a repeater (2026-11-10, strong link); not soak-tested |
 | `Thread border router` | yes | **experimental**: border-router build (`PROFILE=br`); Home Assistant's OTBR REST calls verified against a fresh test network; LAN <-> Thread routing not tested with a real device |
 | `Thread router` | helper v2 | **experimental**: joined Home Assistant's real Thread network and was promoted to router (2026-11-10); not soak-tested |
@@ -188,7 +188,9 @@ back to the v12 frame format, and the next command's reply is misparsed (`getVal
 everything that resets mid-session breaks: `form_network`, `write_network_info` (backup restore,
 migration). One-line fix in bellows (verified here as a monkeypatch):
 `startup_reset()` must call `self._switch_protocol_version(v4.EZSPv4.VERSION)` instead of only
-creating `v4.EZSPv4(...)`. Not filed upstream yet (owner's call).
+creating `v4.EZSPv4(...)`. Submitted as [zigpy/bellows#774](https://github.com/zigpy/bellows/pull/774)
+and merged on 2026-11-10. ZHA gets it with the first Home Assistant release that ships a bellows
+containing it; until then, use "keep the radio's network settings".
 
 ### Who may connect
 
@@ -556,6 +558,8 @@ A root path for flashing the EFR32's RCP image, **never automatic**:
 6. The GBL check refuses tag lengths outside the file (the shell's 32-bit arithmetic would otherwise loop
    on a length like `0xfffffff8`).
 
+Verified on the panel (2026-11-10): re-flashing Aqara's stock image through this path.
+
 Limits, on purpose: only images whose CPC protocol Aqara's cpcd 4.3.3 speaks (v4) can be verified, so
 an image built from a newer SDK (CPC v5/v6) would fail verification and be rolled back until a bundle
 also brings a matching host cpcd. No image is shipped; see
@@ -698,8 +702,8 @@ so a custom image is now possible but still not needed.
 | Mode | Recommendation | Risk |
 |---|---|---|
 | Off | stop the services, leave the firmware alone | none |
-| Zigbee coordinator (TCP) | current RCP + Aqara's zigbeed 7.3.3 on `iid=1` only, supervised by the helper | low; ZHA only (EZSP 12), no Z2M `ember` |
-| Zigbee router | current RCP + zigbeed + the app's EZSP host (see [Zigbee router](#zigbee-router)) | join untested |
+| Zigbee coordinator (TCP) | current RCP + Aqara's zigbeed 7.3.3 (or Silicon Labs' 8.2.2, the `Zigbee stack` choice) on `iid=1` only, supervised by the helper | low with Aqara's (ZHA only, EZSP 12); 8.2.2 for Z2M `ember` is experimental |
+| Zigbee router | current RCP + zigbeed + the app's EZSP host (see [Zigbee router](#zigbee-router)) | joined a real network; not soak-tested |
 | Thread border router | current RCP + the `PROFILE=br` otbr-agent on `iid=2`, zigbeed stopped | low; routing to real devices untested |
 | Thread router | current RCP + otbr-agent (either build) on `iid=2`, zigbeed stopped | low |
 
@@ -800,7 +804,8 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
   over or intercept HA's address (same segment, the router) still gets in. `ZIGBEE_RANGE`,
   `REST_LISTEN=127.0.0.1` and the VLAN firewall add to it. HA's last IPv4 and IPv6 are both kept; a stale
   one stays allowed until HA connects from a new address of that family.
-- **bellows reset bug** (above): ZHA can't form or restore onto this radio until bellows is fixed.
+- **bellows reset bug** (above): ZHA can't form or restore onto this radio until a Home Assistant
+  release ships bellows with #774 (merged 2026-11-10).
 - **Zigbee2MQTT on Silicon Labs' zigbeed 8.2.2** (helper v4): an unsupported host/RCP pairing (8.2.2 on
   a 4.3.3 RCP), not soak-tested with real devices yet; its 4.1-4.4 s reset answer vs herdsman's 5 s wait is
   a thin margin. Experimental; Aqara's stack stays the default.
