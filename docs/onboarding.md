@@ -460,7 +460,7 @@ Laid out for 960×480 dp.
    `setup_ha_skipped` (for kiosk-only use without the ESPHome device).
 3. **Radio** (`setup/RadioStep.kt`, `RadioStepTest`): Off (default), Zigbee coordinator (ZHA or
    Zigbee2MQTT, network radio over TCP, `socket://<panel-ip>:6638`), Thread border router
-   (experimental). Zigbee router and Thread router (both experimental) are listed under them in a
+   (experimental). Zigbee router (repeater) and Thread router (repeater) (both experimental) are listed under them in a
    compact second row. `RadioStep.COMING_SOON` (shown, tagged "Coming soon", not selectable) is empty
    now. The web installer's `COMING_SOON` (`web/src/app/ui.ts`) still names both routers, but it only
    shows the tag for roles the panel's app doesn't offer (an older app). Apply goes through `RadioController`

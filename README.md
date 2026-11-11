@@ -147,7 +147,7 @@ What works today, on v0.4.1. "Verified" means tested on a real panel in a real h
 | Radio: Zigbee coordinator for **ZHA** | ✅ Verified · keep the radio's network settings ([known issue](#known-issues)) |
 | Radio: Zigbee coordinator for **Zigbee2MQTT** | 🧪 Experimental · `ember` adapter: forming a network, resuming it and opening joining verified; not yet used for long with real devices |
 | Radio: **Thread border router** | 🧪 Experimental · HA's OpenThread Border Router integration verified; routing to real Thread devices not tested |
-| Radio: **Zigbee router, Thread router** (repeaters) | 🧪 Experimental · both joined a real home network as a repeater |
+| Radio: **Zigbee router (repeater), Thread router (repeater)** | 🧪 Experimental · both joined a real home network as a repeater |
 | Radio: only Home Assistant can connect | ✅ Verified |
 | Radio firmware updates | 🧪 Experimental · re-flashing Aqara's original firmware verified; no other firmware offered yet |
 | Wall base relays | 🧪 Driver done and checked against Aqara's own tool, but not yet tried on a real base |
@@ -157,14 +157,17 @@ What works today, on v0.4.1. "Verified" means tested on a real panel in a real h
 
 The S1 Plus has a Silicon Labs Zigbee/Thread radio inside. S1 Unleashed can give it to Home
 Assistant in one role at a time. You pick the role with **Radio mode** on the panel's device page
-in Home Assistant:
+in Home Assistant, or in the panel's own settings menu (*Radio*), which also shows what to do next,
+with QR codes for your phone:
 
 - **Zigbee coordinator** for ZHA: radio type EZSP, serial path `socket://<panel IP>:6638`.
 - **Zigbee coordinator** for Zigbee2MQTT (experimental): set **Zigbee stack** to *Silicon Labs
   8.2.2* first, then use `adapter: ember` and `port: tcp://<panel IP>:6638`. The panel downloads that
   stack from Silicon Labs itself.
-- **Thread border router** (experimental), for HA's OpenThread Border Router integration.
-- **Zigbee router** or **Thread router** (experimental): a repeater in the network you already have.
+- **Thread border router** (experimental): runs its own Thread network, for HA's OpenThread Border
+  Router integration.
+- **Zigbee router (repeater)** or **Thread router (repeater)** (experimental): joins the network you
+  already have and extends it.
 
 Only Home Assistant can connect to the radio unless you allow other computers. The step-by-step
 guide is **[docs/radio-guide.md](docs/radio-guide.md)**; the technical reference is

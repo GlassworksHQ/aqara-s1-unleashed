@@ -1,8 +1,8 @@
 # Using the panel's Zigbee/Thread radio
 
 The S1 Plus has a Silicon Labs EFR32 radio inside. S1 Unleashed can offer it to Home Assistant in one
-role at a time. You pick the role in Home Assistant; nothing on the panel needs touching. This page is
-the how-to. [radio.md](radio.md) is the technical reference: how each mode works, what was tested, and
+role at a time. You pick the role in Home Assistant, or on the panel itself ([below](#on-the-panel)).
+This page is the how-to. [radio.md](radio.md) is the technical reference: how each mode works, what was tested, and
 the root helper.
 
 You need the panel's root helper (installed by the [web installer](install.md)) for every mode except
@@ -17,15 +17,37 @@ Set **Radio mode** on the panel's device page:
 |---|---|---|
 | **Off** (default) | Nothing; the radio is idle | Works |
 | **Zigbee coordinator (TCP)** | The coordinator of a Zigbee network, for ZHA (or Zigbee2MQTT, below) | Works with ZHA; Zigbee2MQTT experimental |
-| **Zigbee router** | A repeater in your existing Zigbee network | Experimental; joined a real home network |
-| **Thread border router** | A Thread border router for Home Assistant's OpenThread Border Router integration | Experimental |
-| **Thread router** | A repeater in your existing Thread network | Experimental; joined a real home network |
+| **Zigbee router (repeater)** | A repeater in your existing Zigbee network | Experimental; joined a real home network |
+| **Thread border router** | Runs its own Thread network, for Home Assistant's OpenThread Border Router integration | Experimental |
+| **Thread router (repeater)** | A repeater in your existing Thread network | Experimental; joined a real home network |
+
+*Thread border router* and *Thread router (repeater)* are different roles: the border router starts a
+Thread network of its own; the router joins the one you already have (from Home Assistant's
+OpenThread Border Router app, or another border router) and extends it.
+
+Before 0.4.3 the repeaters were called *Zigbee router* and *Thread router*. Automations that set
+**Radio mode** to the old names need updating.
 
 **Radio status** says what the radio is doing, and who may connect to it. If something doesn't work,
 look there first.
 
 Only one Zigbee coordinator can run per ZHA install, and Zigbee and Thread can't run at the same time
 on this radio (Home Assistant dropped that kind of sharing too).
+
+## On the panel
+
+The kiosk settings menu (tap the top-left corner five times) has a **Radio** section:
+
+- the same modes as **Radio mode**; switching asks first, because it restarts the radio;
+- what to do next for the mode that is on, with a QR code your phone can scan to open the right page
+  in Home Assistant (shown once the panel knows Home Assistant's address), and the mode's own buttons:
+  **Zigbee stack**, **Join / Leave Zigbee network**, **Leave Thread network**;
+- who may connect ([below](#who-may-connect)).
+
+The setup screen's radio step shows the same instructions and QR codes after you apply a mode. The
+buttons do exactly what the Home Assistant controls of the same name do. In Home Assistant they only
+work over the panel's encrypted connection; on the panel, being there is what allows them, as for the
+"who may connect" field.
 
 ## Zigbee coordinator with ZHA
 
@@ -65,24 +87,40 @@ fails now and then with a reset timeout, restart Zigbee2MQTT; it usually works t
 
 ## Thread border router (experimental)
 
+This mode makes the panel a border router with its own Thread network. To extend a Thread network you
+already have, use *Thread router (repeater)* instead.
+
 1. Set **Radio mode** to *Thread border router*.
 2. In Home Assistant, add the **OpenThread Border Router** integration with the URL
-   `http://<panel IP>:8081`.
+   `http://<panel IP>:8081`. On the panel, the setup screen and the settings menu show this URL and a
+   QR code that opens the integration's setup in Home Assistant on your phone.
 
 Home Assistant's side of this has been tested. Traffic between your network and real Thread devices
 through the panel hasn't been tested yet.
 
 ## Repeater modes (experimental)
 
-**Zigbee router.** Set **Radio mode** to *Zigbee router*. In ZHA, open joining (*Add device*), then
-press **Join Zigbee network** on the panel's device page within that window. ZHA lists the panel as a
-router. **Leave Zigbee network** takes it out again.
+**Zigbee router (repeater).** Set **Radio mode** to *Zigbee router (repeater)*. In ZHA, open joining
+(*Add device*; the QR code on the panel opens it), then press **Join Zigbee network** within that
+window, on the panel's device page or in the panel's settings menu. ZHA lists the panel as a router.
+**Leave Zigbee network** takes it out again (remove it from ZHA too).
 
-**Thread router.** Copy your Thread network's active dataset from Home Assistant (*Settings → Devices &
-services → Thread*, your preferred network's details; the dataset is a long hex string) into the
-panel's **Thread dataset** field, then set **Radio mode** to *Thread router*. The field is write-only
-and the panel keeps the dataset where only root can read it. **Leave Thread network** makes the panel
-forget it again (needs the boot software from 0.4.0 or later).
+**Thread router (repeater).**
+
+1. Set **Radio mode** to *Thread router (repeater)*.
+2. Open Home Assistant's **Thread** page (the QR code on the panel opens it). Under *Preferred
+   network*, open ⓘ *Network information* and copy **Active dataset TLVs**. Home Assistant shows it to
+   admin users, for a network that comes from an OpenThread Border Router it manages.
+3. Paste it into the panel's **Thread dataset** field (the panel's device page in Home Assistant →
+   *Configuration*). Spaces or line breaks in the copy are fine. The field is write-only and the panel
+   keeps the dataset where only root can read it. (The settings menu on the panel has the same field
+   under *Advanced*, also for datasets longer than the 255 characters Home Assistant allows.)
+4. **Radio status** shows the Thread role and the network's name: first *joined as a child*, then
+   *as a router* once the network promotes the panel, which takes a few minutes.
+
+**Leave Thread network** makes the panel forget the network again (needs the boot software from 0.4.0
+or later). The panel's settings menu offers it whenever a Thread network is still stored, also after
+switching to another mode.
 
 The dataset contains your Thread network key: paste it only into the panel's field, never into a chat
 or a bug report.
@@ -94,7 +132,7 @@ learns Home Assistant's address from Home Assistant's encrypted connection to th
 computers in (Zigbee2MQTT on another machine, a laptop for testing), set **Radio allowed clients**:
 addresses or ranges separated by spaces or commas, e.g. `192.0.2.10 198.51.100.0/24`, or `any` to
 turn the check off. Leave it empty for "Home Assistant only". The same setting is on the panel itself:
-tap the top-left corner five times, *Radio: who may connect*.
+tap the top-left corner five times, *Radio*, *Who may connect*.
 
 If **Radio status** says `nobody yet (waiting for Home Assistant to connect over ESPHome)` and stays
 that way, Home Assistant is probably connecting without an encryption key (Home Assistant older than

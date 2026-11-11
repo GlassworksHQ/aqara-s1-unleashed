@@ -7,6 +7,43 @@ below as the release notes.
 
 ## [Unreleased]
 
+**Choose the radio's role on the panel itself, with QR codes that open the right page in Home Assistant, and see when the Thread router has joined.**
+
+### Added
+- **Radio in the panel's settings menu.** The Radio section now has the same choices as Home
+  Assistant's *Radio mode* (switching asks first, since it restarts the radio), then what to do next
+  for the mode that is on, then *who may connect*. Its buttons are the same as in Home Assistant:
+  *Zigbee stack*, *Join / Leave Zigbee network* (with the router's live status), *Leave Thread
+  network*. Leaving a network asks first. In Home Assistant these only work over the panel's encrypted
+  connection; on the panel, being there is what allows them, as for the *who may connect* field.
+- **QR codes for the Thread roles**, as the Zigbee coordinator already had. On the setup screen and in
+  the settings menu: *Thread border router* shows the URL to enter and a code that opens Home
+  Assistant's *Add OpenThread Border Router*; *Thread router (repeater)* shows a code that opens Home
+  Assistant's Thread page, with the steps to copy the dataset. No code while the panel doesn't know
+  Home Assistant's address; the text is there anyway.
+- **The Thread router says whether it has joined**, on the panel and in *Radio status*: the Thread
+  role (child, router, leader, or still looking) and the network's name, never its key. It keeps
+  updating, so *joined as a router* shows up when the network promotes the panel. This comes
+  with the app's radio package: no new boot software is needed.
+- *Leave Thread network* is offered on the panel whenever a Thread network is still stored, also after
+  switching to another mode, so it can be cleaned up.
+- The Thread dataset can also be pasted on the panel (settings menu, Thread router, *Advanced*),
+  including datasets longer than Home Assistant's 255-character limit for text fields.
+- The web installer's next steps for the Thread roles link straight to the right pages in Home
+  Assistant.
+
+### Changed
+- The repeater roles are now called *Zigbee router (repeater)* and *Thread router (repeater)*
+  everywhere, so they aren't mixed up with the Thread border router. The border router's card says
+  it runs its own Thread network, and that joining yours is the *Thread router (repeater)* role.
+
+### Fixed
+- Pasting the Thread dataset works even when the copy includes spaces or line breaks.
+
+### Note
+- The repeater roles are now called *Zigbee router (repeater)* and *Thread router (repeater)* in the
+  Radio mode select; automations that set the old names need updating.
+
 ## [0.4.2] - 2026-11-10
 
 **A new settings menu, and the panel looks like S1 Kiosk from the boot animation on, with no Aqara screen in between.**

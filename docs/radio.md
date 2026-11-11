@@ -14,9 +14,9 @@ entities always reach HA as an ESPHome device over Wi-Fi, whatever the radio doe
 |---|---|---|
 | `Off` (default) | no | **works**: stops Aqara's radio services, radio idle |
 | `Zigbee coordinator (TCP)` | yes | **works with ZHA (bellows)**: verified with Home Assistant's ZHA on the panel; form, read-back, restart verified from a computer. Forming/restoring from ZHA needs bellows#774 in a Home Assistant release ([below](#bellows-reset-bug-zha-form-and-restore)); "keep the radio's network" works today. **Zigbee2MQTT** (`ember`, experimental): with the `Zigbee stack` select on *Silicon Labs 8.2.2* (helper v4; [Zigbee stack](#zigbee-stack-aqara-or-silicon-labs-helper-v4)); form, resume and the joining window verified on the panel, not soak-tested with real devices |
-| `Zigbee router` | helper v2 | **experimental**: joined a real ZHA network as a repeater (2026-11-10, strong link); not soak-tested |
+| `Zigbee router (repeater)` | helper v2 | **experimental**: joined a real ZHA network as a repeater (2026-11-10, strong link); not soak-tested |
 | `Thread border router` | yes | **experimental**: border-router build (`PROFILE=br`); Home Assistant's OTBR REST calls verified against a fresh test network; LAN <-> Thread routing not tested with a real device |
-| `Thread router` | helper v2 | **experimental**: joined Home Assistant's real Thread network and was promoted to router (2026-11-10); not soak-tested |
+| `Thread router (repeater)` | helper v2 | **experimental**: joined Home Assistant's real Thread network and was promoted to router (2026-11-10); not soak-tested |
 
 There is no "Aqara (stock)" mode: with Aqara's launcher/apps disabled and its cloud blocked
 ([research/debloat.md](research/debloat.md), AqaraCloud.kt), nothing can use the hub's own Zigbee network. **Stock comes back by
@@ -112,7 +112,7 @@ Gotchas:
 
 ## Services per mode
 
-| Service | Off | Zigbee coordinator (TCP) | Zigbee router | Thread border router | Thread router |
+| Service | Off | Zigbee coordinator (TCP) | Zigbee router (repeater) | Thread border router | Thread router (repeater) |
 |---|---|---|---|---|---|
 | `zigbee_cpcd` | stopped | running | running | running | running |
 | `zigbee_socat` | stopped | running | running | stopped | stopped |
@@ -573,26 +573,46 @@ also brings a matching host cpcd. No image is shipped; see
 
 `app/kiosk/.../radio/RadioController.kt`, `RadioMode.kt`:
 
-- The select offers `Off`, `Zigbee coordinator (TCP)`, `Zigbee router`, `Thread border router`,
-  `Thread router`. The
-  stored value is the mode id. Labels and retired values from older builds (`Aqara (stock)`,
-  `Thread (future)`) parse to `Off`. `Zigbee router` and `Thread router` need helper v2
-  (`sys.s1kiosk.radio.version`); with an older helper they are refused with "needs the root helper v2".
+- The select offers `Off`, `Zigbee coordinator (TCP)`, `Zigbee router (repeater)`, `Thread border router`,
+  `Thread router (repeater)` (0.4.3; before, the repeaters were `Zigbee router` and `Thread router`).
+  The stored value is the mode id, which never changed (`zigbee_router`, `thread_router`). The old
+  labels are still accepted when they arrive (an automation calling `select.select_option` with them
+  fails in Home Assistant, which checks the current options, but a stored or hand-sent label works).
+  Retired values from older builds (`Aqara (stock)`, `Thread (future)`) parse to `Off`. The repeater
+  modes need helper v2 (`sys.s1kiosk.radio.version`); with an older helper they are refused with
+  "needs the root helper v2".
 - More entities: `Radio allowed clients` (text, config: empty = Home Assistant only, else addresses/CIDRs
   or `any`; see [Firewall](#firewall-only-home-assistant-by-default)), `Join Zigbee network` /
   `Leave Zigbee network` buttons (router mode only), a write-only `Thread dataset` text (ESPHome password mode; state always empty) that hands the dataset
-  to the helper, and (helper v4) `Leave Thread network`: in any mode, Off included, the helper detaches a
+  to the helper (pattern: hex plus whitespace, the no-break and zero-width spaces a copy can carry, which
+  the app drops; Home Assistant caps every text entity at 255 characters, so longer datasets go in through
+  the panel's settings menu), and (helper v4) `Leave Thread network`: in any mode, Off included, the helper detaches a
   running Thread router and deletes the stored dataset (`$DIR/thread-dataset`, the network key) and the
   router's OpenThread settings (`$DIR/thread-router`); `Radio status` then says "Thread network left". The
   border-router mode's own network (`$DIR/thread`) is not touched.
 - `Radio status`: in coordinator mode `listening on :6638 for <who>` and `ZHA: radio type EZSP, serial
   path socket://<ip>:6638`; the border router adds `REST open to <who>`;
-  in router mode it shows the router host's state instead of the helper's.
+  in Zigbee router mode it shows the router host's state instead of the helper's; in Thread router
+  mode the role and the network's name, from the helper (`joined “Name” as a child; it becomes a
+  router when the network promotes it`, `… as a router`, `dataset set, looking for the network`,
+  `no dataset yet`).
 - Setup screen radio step: Off, Zigbee coordinator, Thread border router (experimental) in the first
   row, the two repeater roles (experimental) in a compact second row; a one-line "what next" note.
-  After the coordinator is applied, it shows the ZHA serial path and a QR code that opens
-  `<HA>/config/zha/add` (ZHA's "Add devices" page) on a phone. The setup channel (web installer)
-  offers the same five options; options carry optional `experimental` and `repeater` flags.
+  After a mode other than Off is applied, it shows that mode's follow-up card (`setup/RadioFollowUp`):
+  coordinator: the ZHA serial path and a QR code to `<HA>/config/zha/add`; Zigbee router: the same QR
+  code (open joining), Join/Leave; Thread border router: the OTBR URL and a QR code to
+  `<HA>/config/integrations/dashboard/add?domain=otbr`; Thread router: a QR code to `<HA>/config/thread`
+  with the copy steps, the Thread role, Leave Thread network. No QR code without Home Assistant's
+  address. The setup channel (web installer) offers the same five options; options carry optional
+  `experimental` and `repeater` flags.
+- Kiosk settings menu, Radio section (0.4.3): a mode picker (same options and `RadioController.request`
+  path as the select; switching asks first, since it restarts the radio), the same follow-up card for
+  the applied mode (with the Zigbee stack choice in coordinator mode and, in Thread router mode, a
+  write-only `Thread dataset` field behind "Advanced"), then "who may connect". Its buttons call the
+  same RadioController functions as the HA entities; at the panel, being there is the authorization
+  (as for the allow-list). `Leave Thread network` shows whenever the helper reports a stored Thread
+  router network (`sys.s1kiosk.radio.thread_stored` = `yes`, any mode), else in the Thread modes when
+  the helper doesn't report it (bundles before 0.4.3).
 - **No helper:** `Off` is applied directly with `ctl.stop` (the app uid may control init services
   because SELinux is permissive; same mechanism as AqaraCloud.kt). It is re-applied after every app
   start, since init restarts Aqara's stack on boot. Choosing a root mode is refused: the select snaps
@@ -707,9 +727,9 @@ so a custom image is now possible but still not needed.
 |---|---|---|
 | Off | stop the services, leave the firmware alone | none |
 | Zigbee coordinator (TCP) | current RCP + Aqara's zigbeed 7.3.3 (or Silicon Labs' 8.2.2, the `Zigbee stack` choice) on `iid=1` only, supervised by the helper | low with Aqara's (ZHA only, EZSP 12); 8.2.2 for Z2M `ember` is experimental |
-| Zigbee router | current RCP + zigbeed + the app's EZSP host (see [Zigbee router](#zigbee-router)) | joined a real network; not soak-tested |
+| Zigbee router (repeater) | current RCP + zigbeed + the app's EZSP host (see [Zigbee router](#zigbee-router)) | joined a real network; not soak-tested |
 | Thread border router | current RCP + the `PROFILE=br` otbr-agent on `iid=2`, zigbeed stopped | low; routing to real devices untested |
-| Thread router | current RCP + otbr-agent (either build) on `iid=2`, zigbeed stopped | low |
+| Thread router (repeater) | current RCP + otbr-agent (either build) on `iid=2`, zigbeed stopped | low |
 
 Why one protocol at a time on a multi-PAN RCP is fine, while concurrent use is not:
 
@@ -776,7 +796,11 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
   contract). Own settings dir `$DIR/thread-router`, so it never auto-attaches to the network the
   border-router mode stored. Without a dataset: `ok thread_router: ready to join: waiting for a Thread
   dataset from Home Assistant` (agent up, Thread disabled, no border routing, no mDNS, REST on
-  localhost only).
+  localhost only). With one (0.4.3 bundle), every loop: `ok thread_router: joined as
+  child|router|leader, network "Name"`, `detached: looking for network "Name"`, `starting Thread, …`,
+  from `ot-ctl state` and `ot-ctl networkname` (the name cut to 16 characters of `A-Za-z0-9 ._+-`).
+  Never the network key, PSKc or extended PAN ID. `sys.s1kiosk.radio.thread_stored` says `yes`/`no`
+  (dataset or router settings stored), in every mode.
 - Never forms a network on its own initiative: it only starts Thread with a dataset the user
   supplied. Verified with the panel's own throwaway test dataset (handed over as the app uid): taken,
   app copy deleted, agent restarted, Thread started (alone on the channel it became leader of that

@@ -116,16 +116,17 @@ S1 Kiosk is installed and made the home screen. Then, from the same page:
 
 <img src="img/installer/radio.webp" alt="The radio choice: Off (selected), Zigbee coordinator, Thread border router (experimental), Zigbee router and Thread router (experimental)." width="100%">
 
-*An older screenshot: the Zigbee router and Thread router are now offered too, as experimental.*
+*An older screenshot: the repeater roles are now offered too, as experimental, and called Zigbee router (repeater) and Thread router (repeater).*
 
 | Radio mode | Status |
 |---|---|
 | Off | Default. The radio stays idle. |
 | Zigbee coordinator | Home Assistant runs a Zigbee network on the panel's radio, over the network: ZHA, or Zigbee2MQTT (**experimental**). |
-| Thread border router | **Experimental.** |
-| Zigbee router, Thread router | **Experimental.** A repeater in the network you already have. |
+| Thread border router | **Experimental.** Runs its own Thread network for Home Assistant's OpenThread Border Router integration. |
+| Zigbee router (repeater), Thread router (repeater) | **Experimental.** Joins the network you already have and extends it. |
 
-What to do next in Home Assistant for each one: [radio-guide.md](radio-guide.md).
+What to do next in Home Assistant for each one: [radio-guide.md](radio-guide.md). After you choose, the
+installer shows the steps with links that open the right pages in Home Assistant.
 
 Wi-Fi and Home Assistant can be skipped and done later on the panel itself. Its setup screen
 covers Wi-Fi (including Improv over Bluetooth), adding it to Home Assistant, and QR sign-in.
