@@ -835,14 +835,23 @@ fw_read_app() {
     sed -n 's/.*Secondary APP v\([0-9A-Za-z._-]*\).*/\1/p' | tail -1
 }
 
+# How far cpcd -f is: the last "Info : progress:<n>" line it printed (0-100), or nothing when it printed
+# none yet (or its output is still buffered). sys.zb_ota_progress is only set by Aqara's OTA wrapper.
+fw_progress() {
+  { tr -d '\r' < "$1"; } 2>/dev/null | sed -n 's/.*progress:[ ]*\([0-9][0-9]*\).*/\1/p' | tail -1 |
+    { read -r n_ && [ "$n_" -le 100 ] 2>/dev/null && echo "$n_"; }
+}
+
 fw_flash_one() { # file id -> 0 if cpcd reports success
   ( umask 077; : > "$FW_DIR/flash.log" )
   /vendor/bin/cpcd -c /etc/cpcd_ota.conf -f "$1" >> "$FW_DIR/flash.log" 2>&1 &
-  p_=$!; t_=0
+  p_=$!; t0_=$(date +%s); t_=0
   while alive $p_; do
-    sleep 2; t_=$((t_ + 2))
+    sleep 2; t_=$(( $(date +%s) - t0_ ))
     fw_guard
-    fwstat "flashing $2: $(getprop sys.zb_ota_progress | tr -cd 0-9)% (do not unplug the panel)"
+    # a percentage only when cpcd said one; otherwise the time it has been flashing
+    if pc_=$(fw_progress "$FW_DIR/flash.log"); then d_="$pc_%"; else d_="$t_ s"; fi
+    fwstat "flashing $2: $d_ (do not unplug the panel)"
     [ $t_ -ge 240 ] && { kill $p_; WHY="cpcd timed out"; return 1; }
   done
   wait $p_; r_=$?

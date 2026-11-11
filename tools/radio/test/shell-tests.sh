@@ -12,6 +12,7 @@ no() { FAILS=$((FAILS + 1)); echo "FAIL $*"; }
 check() { local d=$1; shift; if "$@"; then ok "$d"; else no "$d"; fi; }
 prop() { cat "$T/props/$1" 2>/dev/null; }
 has() { case "$1" in *"$2"*) return 0 ;; esac; echo "    got: '$1' (want '$2')"; return 1; }
+hasnt_pct() { case "$1" in *": %"*|*": % "*) echo "    got an empty percentage: '$1'"; return 1 ;; esac; return 0; }
 
 # ---------------------------------------------------------------------------------- layout + mocks
 mkdir -p "$T/props" "$T/bin" "$TB" /system/bin /vendor/bin /vendor/firmware /dev/shm/cpcd/cpcd_0 /data/data /data/s1kiosk /etc
@@ -82,7 +83,9 @@ esac
 exit 1
 EOF
 # Aqara's cpcd: -p reports /t/radio-app, -f "flashes": the radio then reports the APP that /t/fw-apps
-# maps the image's sha256 to (garbage if unknown). /t/cpcd-fail-once makes one flash fail.
+# maps the image's sha256 to (garbage if unknown). /t/cpcd-fail-once makes one flash fail. It prints
+# "Info : progress:<n>" lines like the real one (CRLF, blank lines between); /t/cpcd-slow makes the
+# transfer take ~5 s (so the helper reports mid-flash), /t/cpcd-quiet prints no progress at all.
 w /vendor/bin/cpcd <<'EOF'
 #!/bin/sh
 case "$*" in
@@ -91,7 +94,11 @@ case "$*" in
     img=$4; echo "$img" >> /t/flashed
     # /t/cpcd-start-aqara: Aqara's boot sequence starts zigbee_cpcd in the middle of the flash
     if [ -e /t/cpcd-start-aqara ]; then setprop ctl.start zigbee_cpcd; sleep 3; fi
-    setprop sys.zb_ota_progress 40; sleep 1; setprop sys.zb_ota_progress 100
+    prog() { [ -e /t/cpcd-quiet ] || printf '[19:40:49:485025] Info : progress:%s\r\n\r\n' "$1"; }
+    echo "[19:40:49:419443] Info : Transferring firmware..."
+    prog 0; prog 40
+    if [ -e /t/cpcd-slow ]; then sleep 5; else sleep 1; fi
+    prog 100
     if [ -e /t/cpcd-fail-always ]; then echo "[x] Info : Firmware upgrade failed"; exit 1; fi
     if [ -e /t/cpcd-fail-once ]; then rm -f /t/cpcd-fail-once; echo "[x] Info : Firmware upgrade failed"; exit 1; fi
     h=$(sha256sum "$img" | cut -d' ' -f1); a=$(grep "^$h " /t/fw-apps | cut -d' ' -f2)
@@ -330,6 +337,17 @@ cp /bin/sleep "$T/cpcd"; "$T/cpcd" 300 & CP=$!
 req "stock ${STOCK_SHA:0:12}"; : > "$T/flashed"; LOOPS=1 helper; kill $CP
 check "no flash while another cpcd runs" test ! -s "$T/flashed"
 check "...and said so" has "$(prop sys.s1kiosk.radio.fw)" "a cpcd process is still using the radio"
+
+# Progress while flashing: cpcd's own "progress:<n>", or the seconds so far when it printed none
+req "stock ${STOCK_SHA:0:12}"; : > "$T/setprop.log"; touch "$T/cpcd-slow"; LOOPS=1 helper
+fwlog=$(sed -n 's/^sys.s1kiosk.radio.fw=//p' "$T/setprop.log")
+check "flash progress: cpcd's percentage" has "$fwlog" "flashing stock: 40% (do not unplug the panel)"
+req "stock ${STOCK_SHA:0:12}"; : > "$T/setprop.log"; touch "$T/cpcd-quiet"; LOOPS=1 helper
+fwlog=$(sed -n 's/^sys.s1kiosk.radio.fw=//p' "$T/setprop.log")
+check "no progress from cpcd: elapsed seconds instead" grep -qE '^flashing stock: [0-9]+ s \(do not unplug the panel\)$' <<<"$fwlog"
+check "...never an empty percentage" hasnt_pct "$fwlog"
+check "...and the flash still completes" has "$(prop sys.s1kiosk.radio.fw)" "ok stock"
+rm -f "$T/cpcd-slow" "$T/cpcd-quiet"
 
 # an interrupted flash: stock is restored before any stack starts
 echo zigbee_tcp > "$T/props/persist.s1kiosk.radio_mode"; echo aqara > "$T/props/persist.s1kiosk.radio_zigbee"
