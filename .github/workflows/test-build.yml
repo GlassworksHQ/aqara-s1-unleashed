@@ -1,0 +1,128 @@
+# Signed test build of any branch, to install on a dev panel *over* a release without losing its data
+# (Android only updates an app with an APK signed by the same key; a debug-key build would mean
+# uninstalling, which wipes Home Assistant's API key, the sign-in and the Sendspin pairing).
+#
+#   git push origin HEAD:test-build/<name>      (or: Actions → Test build → Run workflow)
+#   gh run download <run-id> -n s1-kiosk-test-<sha>
+#   adb install -r s1-kiosk-test-*.apk
+#
+# What it is:
+#   - The release variant (not debuggable), signed with the release key from the repository secrets.
+#   - versionName/versionCode of the latest release, so it installs over that release with `adb install
+#     -r`, the panel's update entity offers nothing, and the next real release replaces it as usual.
+#     The commit is in the artifact name and in the build's summary, not in the app.
+#   - No radio bundle: its key is only for releases from main (release.yml, `radio-signing`). Without
+#     a bundle the app leaves the panel's root side (radio helper, otbr-agent…) exactly as it is.
+#   - The JVM unit tests run first.
+#   - Kept for 3 days. The repo is public, so any signed-in GitHub user can download the artifact:
+#     only push branches you would be happy to see installed on a panel.
+#
+# Only pushes (write access) and manual runs trigger it; pull requests from forks never get the secrets.
+name: Test build
+
+on:
+  push:
+    branches: ['test-build/**']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'MAJOR.MINOR.PATCH to build as (default: the latest release)'
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Version (latest release unless given)
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          v="${INPUT_VERSION:-$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)}"
+          v="${v#v}"
+          if ! [[ "$v" =~ ^(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)$ ]]; then
+            echo "::error::version '$v' is not MAJOR.MINOR.PATCH (minor/patch < 100)"; exit 1
+          fi
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      # Same toolchain as release.yml.
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
+
+      - name: Android SDK platform
+        run: sdkmanager --install "platforms;android-37.2"
+
+      - name: Unit tests
+        working-directory: app
+        # Every module's JVM unit tests, whatever modules the branch has (AGP 9: debug variant only).
+        run: ./gradlew --no-daemon test
+
+      - name: Release keystore
+        env:
+          S1_KEYSTORE_B64: ${{ secrets.S1_KEYSTORE_B64 }}
+        run: |
+          [ -n "$S1_KEYSTORE_B64" ] || { echo "::error::secret S1_KEYSTORE_B64 is not set (docs/releasing.md)"; exit 1; }
+          umask 077
+          printf '%s' "$S1_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/s1kiosk-release.jks"
+          echo "S1_KEYSTORE_FILE=$RUNNER_TEMP/s1kiosk-release.jks" >> "$GITHUB_ENV"
+
+      - name: Build the signed APK
+        working-directory: app
+        env:
+          S1_VERSION: ${{ env.VERSION }}
+          S1_REQUIRE_RELEASE_SIGNING: 'true'
+          S1_KEYSTORE_PASSWORD: ${{ secrets.S1_KEYSTORE_PASSWORD }}
+          S1_KEY_ALIAS: ${{ secrets.S1_KEY_ALIAS }}
+          S1_KEY_PASSWORD: ${{ secrets.S1_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon :kiosk:assembleRelease
+
+      - name: Remove the keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/s1kiosk-release.jks"
+
+      - name: Name, verify and checksum
+        run: |
+          mkdir dist
+          apk="dist/s1-kiosk-test-$VERSION-$SHORT_SHA.apk"
+          cp app/kiosk/build/outputs/apk/release/kiosk-release.apk "$apk"
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)/apksigner"
+          "$apksigner" verify --print-certs "$apk"
+          if unzip -l "$apk" | grep -q 'assets/radio-bundle/'; then echo "::error::a test build must not carry a radio bundle"; exit 1; fi
+          (cd dist && sha256sum "$(basename "$apk")" | tee "$(basename "$apk").sha256")
+          {
+            echo "### Signed test build"
+            echo "Commit \`$GITHUB_SHA\` on \`$GITHUB_REF_NAME\`, built as **$VERSION** (installs over that release; no radio bundle)."
+            echo
+            echo '```'
+            echo "gh run download $GITHUB_RUN_ID -R $GITHUB_REPOSITORY -n s1-kiosk-test-$SHORT_SHA"
+            echo "adb install -r $(basename "$apk")"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: s1-kiosk-test-${{ env.SHORT_SHA }}
+          path: dist/
+          retention-days: 3
+          if-no-files-found: error
