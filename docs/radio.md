@@ -945,10 +945,12 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
   reconnects by itself: it relies on PNO (offloaded) scans, which this Wi-Fi chip doesn't support
   (`PnoScanListener onFailure: -3(not supported)`), and does no periodic scans with the screen off.
   Waking the screen reconnected within ~16 s. The network watchdog doesn't catch it (no gateway =
-  nothing to test). Affects every mode, not only Thread. Since #3 the app starts the
-  scans itself while the screen is off and Wi-Fi is not connected: after 10 s, then 30 s, 60 s and
-  every 120 s (log tag `S1Kiosk.Wifi`, #3). It needs the location permission and location on, as
-  every app scan on Android 10 does. Not yet run on a panel at the time of writing (2026-11-12).
+  nothing to test). Affects every mode, not only Thread. The app now starts the scans itself
+  while the screen is off and Wi-Fi is not connected (#3): after 10 s, then 40 s, 60 s and every
+  120 s, never less than 40 s apart, so Android never throttles them. A Wi-Fi stuck connecting
+  for 60 s counts as not connected. Log tag `S1Kiosk.Wifi`. Android 10 refuses an app's scan
+  without the location permission (the installer grants it) and with location off. Not yet run
+  on a panel at the time of writing (2026-11-12).
 - **Aqara's watchdog** keeps restarting things. The helper re-enforces every 3 s; a Z3Gateway start
   is caught by its wrapper's 6 s sleep, but this is a race, verified once.
 - **Multi-PAN (`zigbee_tcp_thread`)** is not offered and untested.
