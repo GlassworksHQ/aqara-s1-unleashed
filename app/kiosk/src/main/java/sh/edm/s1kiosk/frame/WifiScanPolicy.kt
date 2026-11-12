@@ -11,15 +11,20 @@ package sh.edm.s1kiosk.frame
  *
  * Scans come [delaysMs] apart, backing off to the last value. A screen wake or a reconnect starts the
  * back-off over, but no scan ever comes less than [minGapMs] after the previous one. Android 10 lets
- * a foreground app (the kiosk's foreground service counts) start 4 scans in 120 s, counting a scan
- * exactly 120 s old. A 40 s gap allows at most 3 scans in any 120 s, so no scan is throttled.
+ * a foreground app (the kiosk's foreground service counts) start a scan when fewer than 4 of its
+ * scans are 120 s old or newer (`ScanRequestProxy` evicts only those older than 120 s). So the 5th
+ * scan must come more than 120 s after the 1st. With a 40 s gap it comes 160 s or more after, so no
+ * scan is throttled. This holds within one instance, so within one run of the service.
  *
- * A supplicant stuck in a connecting state for [connectTimeoutMs] counts as not connected.
+ * A supplicant in a connecting state for [connectTimeoutMs] counts as not connected. Drops back to
+ * not connected shorter than [blipMs] do not start the attempt over, so a connect that keeps
+ * failing and retrying still reaches the deadline.
  */
 class WifiScanPolicy(
     private val delaysMs: List<Long> = listOf(10_000, 40_000, 60_000, 120_000),
     private val minGapMs: Long = 40_000,
     private val connectTimeoutMs: Long = 60_000,
+    private val blipMs: Long = 15_000,
 ) {
     enum class Link { DOWN, CONNECTING, CONNECTED }
 
@@ -35,11 +40,11 @@ class WifiScanPolicy(
     private var nextAt = 0L
     private var lastScanAt: Long? = null
     private var connectingSince: Long? = null
+    private var connectingPausedAt: Long? = null
 
     /** After any change to [w], and when the last [Decision.wakeInMs] is up. [now] is a monotonic clock in ms. */
     fun decide(w: Wifi, now: Long): Decision {
-        val since = if (w.link == Link.CONNECTING) connectingSince ?: now else null
-        connectingSince = since
+        val since = connectAttempt(w.link, now)
         val stuck = since != null && now - since >= connectTimeoutMs
         val wanted = w.enabled && !w.screenOn && (w.link == Link.DOWN || stuck)
         if (!wanted) {
@@ -58,5 +63,34 @@ class WifiScanPolicy(
         return Decision(true, nextAt - now)
     }
 
+    /** When the current connect attempt began, while [link] is connecting; null otherwise. */
+    private fun connectAttempt(link: Link, now: Long): Long? {
+        when (link) {
+            Link.CONNECTED -> { connectingSince = null; connectingPausedAt = null }
+            Link.DOWN -> if (connectingSince != null && connectingPausedAt == null) connectingPausedAt = now
+            Link.CONNECTING -> {
+                val paused = connectingPausedAt
+                if (connectingSince == null || (paused != null && now - paused > blipMs)) connectingSince = now
+                connectingPausedAt = null
+            }
+        }
+        return if (link == Link.CONNECTING) connectingSince else null
+    }
+
     private fun notBeforeGap(t: Long) = lastScanAt?.let { maxOf(t, it + minGapMs) } ?: t
+
+    companion object {
+        /**
+         * Why Android refused a scan, from what the app can read. Android 10 checks the permission,
+         * then location on, then the location app-op, which with a granted permission is allowed
+         * in the foreground only. Throttling is what is left.
+         */
+        fun refusal(permission: Boolean, locationOn: Boolean, opAllowed: Boolean, deviceIdle: Boolean): String = when {
+            !permission -> "no location permission"
+            !locationOn -> "location off"
+            !opAllowed -> "location not allowed in the background (app-op foreground-only)"
+            deviceIdle -> "device idle (Doze)"
+            else -> "throttled"
+        }
+    }
 }

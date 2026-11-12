@@ -1,6 +1,7 @@
 package sh.edm.s1kiosk.frame
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import sh.edm.s1kiosk.frame.WifiScanPolicy.Decision
@@ -31,8 +32,9 @@ class WifiScanPolicyTest {
         return scans
     }
 
-    private fun assertAtMostThreeIn120s(times: List<Long>) {
-        for (t in times) assertTrue("$times", times.count { it in t until t + 120 } <= 3)
+    /** Android 10's `ScanRequestProxy`: a scan is refused when 4 earlier scans are at most 120 s old. */
+    private fun assertNoneThrottled(times: List<Long>) {
+        for ((i, t) in times.withIndex()) assertTrue("$times", times.take(i).count { t - it <= 120 } < 4)
     }
 
     @Test fun wifiDroppedWithTheScreenOffScansAfterTenSeconds() {
@@ -67,15 +69,15 @@ class WifiScanPolicyTest {
     }
 
     /** Someone walks past every 15 s: each wake resets the back-off, the 40 s gap still holds. */
-    @Test fun resetsOverAndOverNeverScanMoreThanThreeTimesIn120s() {
+    @Test fun resetsOverAndOverNeverGetThrottled() {
         val times = scanTimes(600) { down.copy(screenOn = it % 15 == 14L) }
         assertTrue(times.size >= 10)
         assertTrue("$times", times.zipWithNext().all { (a, b) -> b - a >= 40 })
-        assertAtMostThreeIn120s(times)
+        assertNoneThrottled(times)
     }
 
     @Test fun theNormalScheduleStaysUnderTheThrottle() {
-        assertAtMostThreeIn120s(scanTimes(1200) { down })
+        assertNoneThrottled(scanTimes(1200) { down })
     }
 
     @Test fun aSupplicantStuckConnectingFor60sGetsScans() {
@@ -87,8 +89,34 @@ class WifiScanPolicyTest {
         assertEquals(emptyList<Long>(), scanTimes(300) { if (it < 50) connecting else down.copy(link = Link.CONNECTED) })
     }
 
+    @Test fun theThrottleCheckCountsAScanExactly120sOld() {
+        assertThrows(AssertionError::class.java) { assertNoneThrottled(listOf(0L, 30, 60, 90, 120)) }
+        assertNoneThrottled(listOf(0L, 30, 60, 90, 121))
+    }
+
+    /** Connecting 20 s, not connected 5 s, over and over: the 5 s drops do not restart the attempt. */
+    @Test fun aConnectThatKeepsFailingStillReachesTheDeadline() {
+        val times = scanTimes(600) { if (it % 25 < 20) connecting else down }
+        assertEquals(listOf(70L, 110, 170, 290, 410, 530), times)
+    }
+
+    @Test fun aDropLongerThanABlipStartsTheAttemptOver() {
+        val times = scanTimes(200) { if (it in 40..59) down else connecting }
+        assertEquals(listOf(50L, 130, 170), times)
+    }
+
     @Test fun theConnectingDeadlineStartsOverAfterAConnect() {
         val times = scanTimes(200) { if (it in 40..44) down.copy(link = Link.CONNECTED) else connecting }
         assertEquals(listOf(115L, 155), times)
+    }
+
+    /** The panel run of b47ce54: permission granted, location on, app-op foreground-only, screen off. */
+    @Test fun aRefusedScanNamesTheFirstCauseAndroidChecks() {
+        val r = WifiScanPolicy::refusal
+        assertEquals("no location permission", r(false, false, false, true))
+        assertEquals("location off", r(true, false, false, true))
+        assertEquals("location not allowed in the background (app-op foreground-only)", r(true, true, false, false))
+        assertEquals("device idle (Doze)", r(true, true, true, true))
+        assertEquals("throttled", r(true, true, true, false))
     }
 }

@@ -66,6 +66,14 @@ class ScreenOffWifiScannerTest {
         scanner.stop()
     }
 
+    @Test fun aConnectedPanelNeverScans() {
+        shadowOf(wifi).setConnectionInfo(ShadowWifiInfo.newInstance().also { shadowOf(it).setSupplicantState(SupplicantState.COMPLETED) })
+        scanner.start()
+        idle(120)
+        assertEquals(0, scans)
+        scanner.stop()
+    }
+
     @Test fun stopCancelsThePendingScanAndStartAgainWorks() {
         scanner.start()
         idle(5)

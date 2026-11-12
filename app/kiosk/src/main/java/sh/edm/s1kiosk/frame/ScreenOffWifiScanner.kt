@@ -1,6 +1,7 @@
 package sh.edm.s1kiosk.frame
 
 import android.Manifest
+import android.app.AppOpsManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -12,6 +13,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.PowerManager
+import android.os.Process
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -21,8 +23,9 @@ import sh.edm.s1kiosk.frame.WifiScanPolicy.Link
  * Starts Wi-Fi scans while the screen is off and Wi-Fi is enabled but not connected, as
  * [WifiScanPolicy] says. Without them the S1 does not reconnect until the screen wakes (#3).
  *
- * `startScan` needs the location permission and location on (Android 10 refuses the scan
- * otherwise). It returns false then, and the scanner logs why.
+ * `startScan` needs the location permission, location on, and the location app-op allowed. With
+ * the screen off, Android 10 allows that op only because KioskService runs with the location type
+ * ([sh.edm.s1kiosk.KioskForeground]). A refused scan returns false, and the scanner logs why.
  *
  * Runs on its own thread, or on [looper] when given. [start] after [stop] starts again.
  */
@@ -47,7 +50,7 @@ class ScreenOffWifiScanner(
     private val policy = WifiScanPolicy()
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
-    private var loggedFailure = false
+    @Volatile private var loggedFailure = false
 
     private val due = Runnable { step() }
 
@@ -77,23 +80,30 @@ class ScreenOffWifiScanner(
         thread = null
     }
 
-    @Synchronized private fun step() {
-        val h = handler ?: return
-        val wasScanning = policy.scans != null
+    /** On the handler's thread. The lock covers the policy only, so [stop] never waits on a binder call. */
+    private fun step() {
+        val h = synchronized(this) { handler } ?: return
         val w = guard("reading the Wi-Fi state") { read() } ?: run {
             h.removeCallbacks(due)
             h.postDelayed(due, RETRY_MS)
             return
         }
-        val d = policy.decide(w, clock())
-        val scans = policy.scans
-        if (scans == null && wasScanning) Log.i(TAG, "screen-off scans stop: ${why(w)}")
+        val wasScanning: Boolean
+        val d: WifiScanPolicy.Decision
+        val scans: Int?
+        synchronized(this) {
+            if (handler !== h) return
+            wasScanning = policy.scans != null
+            d = policy.decide(w, clock())
+            scans = policy.scans
+        }
+        if (scans == null && wasScanning) Log.i(TAG, "screen-off scans stop: ${why(w, scans)}")
         if (d.scanNow) {
             @Suppress("DEPRECATION") val ok = guard("startScan") { wifi.startScan() } ?: false
-            Log.i(TAG, "screen off, ${why(w)}: scan $scans " +
+            Log.i(TAG, "screen off, ${why(w, scans)}: scan $scans " +
                 (if (ok) "started" else "refused (${refusal()})") + ", next in ${d.wakeInMs!! / 1000} s")
         } else if (scans != null && !wasScanning) {
-            Log.i(TAG, "screen off, ${why(w)}: first scan in ${d.wakeInMs!! / 1000} s")
+            Log.i(TAG, "screen off, ${why(w, scans)}: first scan in ${d.wakeInMs!! / 1000} s")
         }
         h.removeCallbacks(due)
         d.wakeInMs?.let { h.postDelayed(due, it) }
@@ -112,24 +122,25 @@ class ScreenOffWifiScanner(
         )
     }
 
-    private fun why(w: WifiScanPolicy.Wifi) = when {
+    private fun why(w: WifiScanPolicy.Wifi, scans: Int?) = when {
         w.screenOn -> "screen on"
         !w.enabled -> "Wi-Fi off"
         w.link == Link.CONNECTED -> "Wi-Fi connected"
-        w.link == Link.CONNECTING && policy.scans == null -> "Wi-Fi connecting"
+        w.link == Link.CONNECTING && scans == null -> "Wi-Fi connecting"
         w.link == Link.CONNECTING -> "Wi-Fi stuck connecting"
         else -> "Wi-Fi not connected"
     }
 
-    private fun refusal(): String = when {
-        ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED ->
-            "no location permission"
-        @Suppress("DEPRECATION")
-        runCatching { Settings.Secure.getInt(ctx.contentResolver, Settings.Secure.LOCATION_MODE) }.getOrDefault(1) == 0 ->
-            "location off"
-        power.isDeviceIdleMode -> "device idle (Doze)"
-        else -> "throttled"
-    }
+    @Suppress("DEPRECATION")
+    private fun refusal(): String = WifiScanPolicy.refusal(
+        permission = ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED,
+        locationOn = runCatching { Settings.Secure.getInt(ctx.contentResolver, Settings.Secure.LOCATION_MODE) }.getOrDefault(1) != 0,
+        opAllowed = runCatching {
+            ctx.getSystemService(AppOpsManager::class.java)
+                .checkOpNoThrow(AppOpsManager.OPSTR_FINE_LOCATION, Process.myUid(), ctx.packageName) == AppOpsManager.MODE_ALLOWED
+        }.getOrDefault(true),
+        deviceIdle = power.isDeviceIdleMode,
+    )
 
     private fun <T> guard(what: String, block: () -> T): T? = try {
         block()
