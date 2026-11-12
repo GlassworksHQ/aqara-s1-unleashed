@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.update
 
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.net.URI
@@ -10,7 +11,7 @@ import java.net.URI
  */
 class ReleaseAsset(val name: String, val url: String, val size: Long, val digest: ByteArray? = null)
 
-/** The fields of a GitHub release we use (`GET /repos/{owner}/{repo}/releases/latest`). */
+/** The fields of a GitHub release we use (one entry of `GET /repos/{owner}/{repo}/releases`). */
 data class GithubRelease(
     val tag: String,
     val name: String,
@@ -33,15 +34,29 @@ data class UpdateOffer(
 
 class ReleaseFormatException(message: String) : Exception(message)
 
+/** The newest installable release of this app ([offer], or null), and why a newer one was refused. */
+class ReleasePick(val offer: UpdateOffer?, val problem: String?)
+
 /**
  * GitHub Releases as the app's update source (docs/releasing.md). The release workflow
  * (.github/workflows/release.yml) publishes `s1-kiosk-<version>.apk` and `s1-kiosk-<version>.apk.sha256`
- * on tag `v<version>`; everything else about a release is ignored.
+ * on tag `v<version>` or `aqara-s1-plus-v<version>`; everything else about a release is ignored.
+ *
+ * The repo will also hold other frames and libraries (Glassworks), each releasing under its own tag
+ * prefix, so "the latest release" may not be this app's. The app lists recent releases and picks
+ * the newest of its own ([newest]) instead of reading `releases/latest`.
  */
 object Releases {
     /** owner/repo of the official releases. */
     const val REPO = "GlassworksHQ/aqara-s1-unleashed"
-    const val LATEST_URL = "https://api.github.com/repos/$REPO/releases/latest"
+    /** Recent releases, newest first. 30 leaves room for other frames' and libraries' releases. */
+    const val LIST_URL = "https://api.github.com/repos/$REPO/releases?per_page=30"
+
+    /** This app's tag prefix in the shared repo. Plain `v1.2.3` tags (all releases so far) stay valid. */
+    const val TAG_PREFIX = "aqara-s1-plus-"
+
+    /** The version in one of this app's release tags (`v1.2.3`, `aqara-s1-plus-v1.2.3`); null for any other tag. */
+    fun tagVersion(tag: String): AppVersion? = AppVersion.parse(tag.removePrefix(TAG_PREFIX))
 
     /** HA caps `release_summary` at 255 characters; the full notes are behind `release_url`. */
     const val MAX_SUMMARY = 255
@@ -53,9 +68,22 @@ object Releases {
 
     /** Parses a release object; throws [ReleaseFormatException] on anything malformed. */
     fun parse(json: String): GithubRelease = try {
-        val o = JSONObject(json)
+        parse(JSONObject(json))
+    } catch (e: JSONException) {
+        throw ReleaseFormatException("not a release object: ${e.message?.take(80)}")
+    }
+
+    /** Parses the Releases API's list; throws [ReleaseFormatException] if it isn't a list of releases. */
+    fun parseList(json: String): List<GithubRelease> = try {
+        val a = JSONArray(json)
+        (0 until a.length()).map { parse(a.getJSONObject(it)) }
+    } catch (e: JSONException) {
+        throw ReleaseFormatException("not a list of releases: ${e.message?.take(80)}")
+    }
+
+    private fun parse(o: JSONObject): GithubRelease {
         val assets = o.optJSONArray("assets")
-        GithubRelease(
+        return GithubRelease(
             tag = o.getString("tag_name"),
             name = o.optString("name").takeUnless { o.isNull("name") }.orEmpty(),
             body = o.optString("body").takeUnless { o.isNull("body") }.orEmpty(),
@@ -70,19 +98,41 @@ object Releases {
                 else ReleaseAsset(name, url, a.optLong("size", -1), parseDigest(a.optString("digest")))
             },
         )
-    } catch (e: JSONException) {
-        throw ReleaseFormatException("not a release object: ${e.message?.take(80)}")
+    }
+
+    /**
+     * The newest installable release of this app in [releases]. Other frames' and libraries' releases
+     * (another tag prefix) are skipped silently. If a newer release of this app was refused (draft,
+     * pre-release, odd assets), the newest acceptable one is still offered, and [ReleasePick.problem]
+     * says what was wrong with the newer one. No release of this app at all: no offer, no problem.
+     */
+    fun newest(releases: List<GithubRelease>): ReleasePick {
+        var best: UpdateOffer? = null
+        var refused: Pair<AppVersion, String>? = null
+        for (r in releases) {
+            val v = tagVersion(r.tag) ?: continue
+            try {
+                val o = offer(r)
+                if (best == null || o.version > best.version) best = o
+            } catch (e: ReleaseFormatException) {
+                if (refused == null || v > refused.first) refused = v to e.message.orEmpty()
+            }
+        }
+        val offer = best
+        val problem = refused?.takeIf { (v, _) -> offer == null || v > offer.version }?.second
+        return ReleasePick(offer, problem)
     }
 
     /**
      * The installable offer in [r], or a [ReleaseFormatException] saying why there is none: drafts,
-     * pre-releases (GitHub flag or a SemVer pre-release tag), a tag that isn't `v<semver>`, or
+     * pre-releases (GitHub flag or a SemVer pre-release tag), a tag that isn't one of this app's
+     * ([tagVersion]), or
      * missing/odd assets. Download URLs must be HTTPS release downloads on github.com for this tag.
      */
     fun offer(r: GithubRelease): UpdateOffer {
         if (r.draft) throw ReleaseFormatException("release ${r.tag} is a draft")
         if (r.prerelease) throw ReleaseFormatException("release ${r.tag} is a pre-release")
-        val v = AppVersion.parse(r.tag) ?: throw ReleaseFormatException("tag '${r.tag.take(40)}' is not a version")
+        val v = tagVersion(r.tag) ?: throw ReleaseFormatException("tag '${r.tag.take(40)}' is not a version of this app")
         if (v.isPreRelease) throw ReleaseFormatException("release ${r.tag} is a pre-release")
         if (v.versionCode == null) throw ReleaseFormatException("version $v is out of range")
         fun asset(name: String): ReleaseAsset {

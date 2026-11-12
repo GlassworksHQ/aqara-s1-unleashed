@@ -17,6 +17,9 @@ below as the release notes.
 - **The project moved to [GlassworksHQ/aqara-s1-unleashed](https://github.com/GlassworksHQ/aqara-s1-unleashed).**
   Panels now check for updates there directly. Older versions keep updating through GitHub's
   redirect, so nothing needs doing on your panel.
+- **Updates are found among the repo's other releases.** The panel now picks its own newest release
+  (tag `v1.2.3` or `aqara-s1-plus-v1.2.3`) instead of whatever release is newest, so releases of
+  other devices and libraries in the same repo can't hide an update.
 - **Thread border router docs:** the panel has to be on Home Assistant's network to be its border
   router, and has now been tested as a second border router next to an existing one.
 

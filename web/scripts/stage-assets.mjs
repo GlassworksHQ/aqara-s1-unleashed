@@ -71,9 +71,9 @@ async function latestKiosk() {
     ...(process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}) };
   const r = await fetch('https://api.github.com/repos/GlassworksHQ/aqara-s1-unleashed/releases?per_page=30', { headers: gh });
   if (!r.ok) throw new Error(`GitHub releases: HTTP ${r.status}`);
-  const rel = (await r.json()).find((x) => !x.draft && !x.prerelease && /^v\d+\.\d+\.\d+$/.test(x.tag_name));
+  const rel = (await r.json()).find((x) => !x.draft && !x.prerelease && /^(aqara-s1-plus-)?v\d+\.\d+\.\d+$/.test(x.tag_name));
   if (!rel) throw new Error('no S1 Kiosk release yet');
-  const v = rel.tag_name.slice(1);
+  const v = rel.tag_name.replace(/^aqara-s1-plus-/, '').slice(1);
   const apk = rel.assets.find((x) => x.name === `s1-kiosk-${v}.apk`);
   const sum = rel.assets.find((x) => x.name === `s1-kiosk-${v}.apk.sha256`);
   if (!apk || !sum) throw new Error(`${rel.tag_name} lacks its APK or .sha256`);

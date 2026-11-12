@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit
  * App updates from GitHub Releases, shown and installed through Home Assistant's update entity
  * (docs/esphome.md, docs/releasing.md).
  *
- * - **Check:** [Releases.LATEST_URL] shortly after start once there is a network, then every 24 h,
+ * - **Check:** [Releases.LIST_URL] (this app's newest release, [Releases.newest]) shortly after start once there is a network, then every 24 h,
  *   and on HA's "check" command (at most once a minute). ETag'd, so unchanged answers are cheap;
  *   failures and rate limits back off ([CheckSchedule]) and are logged once, not on every retry.
  * - **Install:** download the `.sha256` and the APK over HTTPS into `files/update/`, verify the
@@ -181,7 +181,7 @@ class UpdateManager(
     }
 
     private fun fetchLatest(): CheckResult {
-        val c = open(Releases.LATEST_URL)
+        val c = open(Releases.LIST_URL)
         try {
             c.setRequestProperty("Accept", "application/vnd.github+json")
             c.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
@@ -196,9 +196,11 @@ class UpdateManager(
                 HttpURLConnection.HTTP_OK -> {
                     val body = readCapped(c.inputStream, MAX_JSON_BYTES).toString(Charsets.UTF_8)
                     val offer = try {
-                        Releases.offer(Releases.parse(body))
+                        val pick = Releases.newest(Releases.parseList(body))
+                        pick.problem?.let { problem("newest release not usable: $it") }
+                        pick.offer
                     } catch (e: ReleaseFormatException) {
-                        problem("latest release not usable: ${e.message}")
+                        problem("release list not usable: ${e.message}")
                         null
                     }
                     etag = c.getHeaderField("ETag")

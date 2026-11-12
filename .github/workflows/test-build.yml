@@ -57,7 +57,11 @@ jobs:
         run: |
           from_branch=""
           if [[ "$GITHUB_REF_NAME" =~ ^test-build/v([0-9]+\.[0-9]+\.[0-9]+)/ ]]; then from_branch="${BASH_REMATCH[1]}"; fi
-          v="${INPUT_VERSION:-${from_branch:-$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)}}"
+          # The newest S1 release (tag v1.2.3 or aqara-s1-plus-v1.2.3), not whatever release is newest in the repo.
+          latest=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 30 --exclude-drafts --exclude-pre-releases \
+            --json tagName -q '[.[].tagName | select(test("^(aqara-s1-plus-)?v[0-9]+[.][0-9]+[.][0-9]+$"))][0] // ""')
+          v="${INPUT_VERSION:-${from_branch:-$latest}}"
+          v="${v#aqara-s1-plus-}"
           v="${v#v}"
           if ! [[ "$v" =~ ^(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)$ ]]; then
             echo "::error::version '$v' is not MAJOR.MINOR.PATCH (minor/patch < 100)"; exit 1

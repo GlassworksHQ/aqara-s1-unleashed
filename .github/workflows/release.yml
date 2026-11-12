@@ -18,7 +18,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v*', 'aqara-s1-plus-v*']   # aqara-s1-plus-v*: the app's own prefix once the repo holds other frames
 
 permissions:
   contents: read
@@ -41,11 +41,12 @@ jobs:
       - name: Version from the tag
         id: version
         run: |
-          v="${GITHUB_REF_NAME#v}"
+          v="${GITHUB_REF_NAME#aqara-s1-plus-}"
+          v="${v#v}"
           # Same rule as app/kiosk/build.gradle.kts: MAJOR.MINOR.PATCH, minor and patch below 100.
           # No pre-release tags: the app ignores them, so they would only confuse.
           if ! [[ "$v" =~ ^(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)$ ]]; then
-            echo "::error::tag $GITHUB_REF_NAME is not vMAJOR.MINOR.PATCH (minor/patch < 100)"; exit 1
+            echo "::error::tag $GITHUB_REF_NAME is not [aqara-s1-plus-]vMAJOR.MINOR.PATCH (minor/patch < 100)"; exit 1
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
@@ -229,7 +230,9 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "dist/s1-kiosk-$VERSION.apk" "dist/s1-kiosk-$VERSION.apk.sha256" \
-            --verify-tag --title "S1 Kiosk $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+            --verify-tag --latest --title "S1 Kiosk $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+          # --latest: apps up to 0.4.3 only read releases/latest, so an S1 release must always be the
+          # one marked latest. Releases of other frames and libraries in this repo use --latest=false.
 
       - name: Rebuild the web installer
         # The installer (https://s1.edm.sh, Vercel) picks the latest release at build time.

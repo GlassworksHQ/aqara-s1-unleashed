@@ -175,7 +175,10 @@ poll as a safety net.
   a blank version after an offline start). After a check: `latest_version`, `release_url`, and
   `release_summary` (the release notes, cut to HA's 255 characters). A status line goes on top of
   the summary when there is one, e.g. a failed install.
-- **Check:** `GET https://api.github.com/repos/GlassworksHQ/aqara-s1-unleashed/releases/latest`.
+- **Check:** `GET https://api.github.com/repos/GlassworksHQ/aqara-s1-unleashed/releases?per_page=30`, then
+  the newest release whose tag is `v<version>` or `aqara-s1-plus-v<version>`. Other frames' and
+  libraries' releases in the same repo are skipped; a refused newer release is reported, and the
+  newest acceptable one is still offered.
   - When: 30 s after start, when a network comes up, every 24 h, and on HA's check command
     (`homeassistant.update_entity`, at most once a minute).
   - ETag'd, so an unchanged answer costs no rate limit.

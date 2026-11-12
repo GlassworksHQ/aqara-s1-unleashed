@@ -1,10 +1,11 @@
 # Releasing the kiosk app
 
-Panels update themselves from GitHub Releases: the app checks
-`https://api.github.com/repos/GlassworksHQ/aqara-s1-unleashed/releases/latest` and shows the result in Home
-Assistant as **update.s1_panel_app_update** ([esphome.md](esphome.md#app-updates)). A release is
-built and published by [`.github/workflows/release.yml`](../.github/workflows/release.yml) when you
-push a `v*` tag. It holds two assets:
+Panels update themselves from GitHub Releases: the app lists
+`https://api.github.com/repos/GlassworksHQ/aqara-s1-unleashed/releases`, picks its own newest release
+and shows the result in Home Assistant as **update.s1_panel_app_update**
+([esphome.md](esphome.md#app-updates)). A release is built and published by
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) when you push a `v*` or
+`aqara-s1-plus-v*` tag. It holds two assets:
 
 - `s1-kiosk-<version>.apk`, signed with the release key;
 - `s1-kiosk-<version>.apk.sha256`, its `sha256sum` line.
@@ -129,6 +130,16 @@ Versions are `MAJOR.MINOR.PATCH`, with minor and patch below 100. The versionCod
 `major*10000 + minor*100 + patch`, so `1.2.3` is 10203. Every release must have a higher version
 than the last one. Pre-release tags (`v1.2.3-rc.1`) are refused by the workflow, and the app would
 ignore them anyway.
+
+**Tags, now that the repo will hold other frames and libraries (Glassworks).** Each of them releases
+under its own tag prefix, and this app's is `aqara-s1-plus-` (the board id it reports, since other S1
+models may get their own frame). From 0.4.4 the app accepts both `v1.2.3` and
+`aqara-s1-plus-v1.2.3` and picks its own newest release from the list, whatever else was released
+after it. Apps up to **0.4.3** only read `releases/latest` and only understand `v1.2.3`, so:
+
+- keep tagging S1 releases `v1.2.3` until the repo is renamed and other frames start releasing;
+- an S1 release is always published with `--latest` (the workflow does this), and every other frame's
+  or library's release with `--latest=false`, so `releases/latest` stays an S1 release for old panels.
 
 First add a `## [1.0.0] - <date>` section to [CHANGELOG.md](../CHANGELOG.md) (move the
 *Unreleased* entries into it). Its first line is what Home Assistant shows on the update card, so make
