@@ -19,6 +19,11 @@ What changed in each release: [CHANGELOG.md](../CHANGELOG.md). The app itself is
 [app/README.md](../app/README.md) and the boot branding in
 [branding/glass-tile](../branding/glass-tile/README.md).
 
+## Design
+
+[design/kiln](design/kiln/README.md) holds the Kiln prototypes: the installer's screens, and the
+data-driven animation that shows each frame's way into recovery mode.
+
 ## Research
 
 **[How we got here](research/README.md)** tells the story behind the project, from the first UART

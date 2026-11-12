@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiln Sketch</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0b0f;--bg2:#111319;--glass:rgba(255,255,255,.045);--edge:rgba(255,255,255,.08);--fg:#f4f4f5;--mu:#a1a1aa;--fa:#6b6b74;--sky:#38bdf8;--violet:#a78bfa;--glow:#fdba74;--ember:#f43f5e;--green:#34d399;--amber:#fbbf24}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;color:var(--fg)}
+.label{font:500 10.5px/1 "JetBrains Mono",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--fa)}
+.sheet{display:grid;gap:18px;padding:6px 0 24px}
+.cap{display:flex;gap:10px;align-items:baseline;margin:0 0 8px}
+.cap b{font-weight:500}.cap span{color:#9ca3af;font-size:13px}
+/* the app frame */
+.app{background:var(--bg);border-radius:14px;border:1px solid rgba(255,255,255,.1);overflow:hidden;position:relative;max-width:100%}
+.app::before{content:"";position:absolute;inset:0;background:radial-gradient(50% 60% at 0% 0%,rgba(56,189,248,.12),transparent 70%),radial-gradient(45% 55% at 100% 100%,rgba(244,63,94,.10),transparent 70%);pointer-events:none}
+.top{position:relative;display:flex;align-items:center;justify-content:space-between;padding:16px 22px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:300;font-size:17px;letter-spacing:-.01em}
+.brand b{font-weight:500}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--mu);border:1px solid var(--edge);border-radius:999px;padding:5px 11px;background:var(--glass)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.body{position:relative;display:grid;grid-template-columns:240px minmax(0,1fr);gap:22px;padding:4px 22px 22px;align-items:start}
+.rail{display:grid;align-content:start;gap:14px}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.steps li{display:flex;gap:10px;align-items:center;padding:7px 10px;border-radius:10px;font-size:13px;color:var(--fa)}
+.steps li.done{color:var(--mu)}.steps li.now{color:var(--fg);background:var(--glass);border:1px solid var(--edge)}
+.mk{width:14px;height:14px;border-radius:50%;flex:none;display:grid;place-items:center}
+.done .mk{background:rgba(52,211,153,.18)}.done .mk::after{content:"";width:5px;height:5px;border-radius:50%;background:var(--green)}
+.now .mk{border:1.5px solid var(--ember);box-shadow:0 0 10px rgba(244,63,94,.5)}
+.todo .mk{border:1.5px dashed var(--fa)}
+.card{background:var(--glass);border:1px solid var(--edge);border-radius:18px;padding:24px 26px;display:grid;align-content:start;gap:14px;min-width:0;position:relative;overflow:hidden}
+h2{font-weight:300;font-size:30px;letter-spacing:-.03em;line-height:1.05;margin:0}
+.lede{color:var(--mu);margin:0;max-width:52ch}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:11px 18px;font-weight:500;font-size:14px}
+.ember{background:linear-gradient(110deg,var(--glow),var(--ember));color:#1a0a0a;box-shadow:0 8px 30px -10px rgba(244,63,94,.7)}
+.ghost{border:1px solid var(--edge);color:var(--mu)}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding-top:6px}
+.link{color:#7dd3fc;font-size:13px}
+.small{font-size:12.5px;color:var(--fa)}
+.grid2{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.dev{border:1px solid var(--edge);border-radius:14px;padding:12px;background:rgba(255,255,255,.02);display:grid;gap:8px}
+.dev.on{border-color:rgba(244,63,94,.5);box-shadow:0 0 0 1px rgba(244,63,94,.35),0 14px 40px -24px rgba(244,63,94,.8)}
+.dev .ph{aspect-ratio:2/1;border-radius:10px;background:linear-gradient(160deg,#1c1f27,#0d0f14);border:1px solid var(--edge);display:grid;place-items:center;font:300 22px Inter;color:#d4d4d8}
+.dev .ph.tall{aspect-ratio:2/1}
+.dev .n{font-weight:500;font-size:13.5px}
+.pill{font:500 10px/1 Inter;letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:999px;display:inline-flex;gap:5px;align-items:center}
+.beta{color:#fbbf24;background:rgba(251,191,36,.14)}.plan{color:var(--mu);background:rgba(161,161,170,.12)}
+.check{display:grid;gap:8px}
+.check div{display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--edge);border-radius:12px;font-size:13px}
+.check i{font-style:normal;margin-left:auto;font-size:12px;color:var(--green)}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tag{font-size:11.5px;padding:4px 9px;border-radius:999px;border:1px solid var(--edge);color:var(--mu)}
+.tag.w{color:#fbbf24;border-color:rgba(251,191,36,.35)}
+.bar{height:6px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
+.bar>i{display:block;height:100%;width:62%;background:linear-gradient(90deg,var(--glow),var(--ember));box-shadow:0 0 14px rgba(244,63,94,.6)}
+.log{font:500 11.5px/1.7 "JetBrains Mono",monospace;color:var(--fa);border:1px solid var(--edge);border-radius:12px;padding:10px 12px;background:rgba(0,0,0,.25)}
+.log b{color:var(--green);font-weight:500}.log em{color:#fdba74;font-style:normal}
+.photo{border-radius:12px;border:1px solid var(--edge);height:150px;background:repeating-linear-gradient(135deg,rgba(255,255,255,.03) 0 10px,transparent 10px 20px),#0e1016;display:grid;place-items:center;color:var(--fa);font-size:12px}
+.panes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.pn{display:flex;gap:10px;align-items:center;border:1px solid var(--edge);border-radius:12px;padding:10px 12px}
+.pn .ic{width:30px;height:20px;border-radius:5px;background:linear-gradient(135deg,var(--sky),var(--violet));flex:none}
+.pn.off{opacity:.45}.pn.off .ic{background:rgba(255,255,255,.12)}
+.pn small{display:block;color:var(--fa);font-size:11.5px}
+.sw{margin-left:auto;width:30px;height:18px;border-radius:999px;background:rgba(255,255,255,.12);position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#d4d4d8}
+.sw.on{background:linear-gradient(90deg,var(--sky),var(--violet))}.sw.on::after{left:14px;background:#fff}
+.err{border-color:rgba(251,113,133,.4)}
+.err h2{color:#fecdd3}
+.ok{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:rgba(52,211,153,.14);color:var(--green);font-size:22px}
+.phone{width:300px;aspect-ratio:9/19;border-radius:30px;border:1px solid rgba(255,255,255,.14);background:var(--bg);overflow:hidden;position:relative;padding:14px}
+.phone .card{padding:16px;border-radius:16px}
+.phone h2{font-size:23px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+@media (max-width:900px){.two{grid-template-columns:1fr}}
+
+.steps li small{display:block;font-size:11.5px;color:#fdba74;margin-top:1px}
+.steps li.turn{color:var(--fg);background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.35)}
+.turn .mk{background:#fbbf24;box-shadow:0 0 0 4px rgba(251,191,36,.2)}
+.steps li.bad{color:#fecdd3;background:rgba(251,113,133,.07);border:1px solid rgba(251,113,133,.35)}.bad .mk{background:#fb7185}.bad small{color:#fb7185!important}
+.foot-note{font-size:11.5px;color:var(--fa);margin:6px 2px 0;line-height:1.4}
+h2.huge{font-size:40px;font-weight:200}
+code{font:500 11.5px "JetBrains Mono",monospace;background:rgba(255,255,255,.07);padding:2px 6px;border-radius:5px;color:#e4e4e7}
+.sub{display:grid;gap:8px;border:1px solid var(--edge);border-radius:12px;padding:12px}
+.tabs{display:flex;gap:4px}.tabs>*{font-size:12px;padding:5px 10px;border-radius:8px;color:var(--mu);font-weight:400;display:inline-flex;gap:6px;align-items:center}.tabs b{background:rgba(255,255,255,.08);color:var(--fg)}
+.anim{position:relative;height:190px;border-radius:14px;border:1px solid var(--edge);background:radial-gradient(60% 70% at 40% 50%,rgba(244,63,94,.1),transparent 70%),#0d0f14;overflow:hidden}
+.dev3d{position:absolute;left:12%;top:28%;width:46%;height:56%;border-radius:12px;background:linear-gradient(160deg,#2a2d36,#16181e);border:1px solid rgba(255,255,255,.14);transform:perspective(600px) rotateY(-18deg) rotateX(8deg)}
+.screw{position:absolute;width:9px;height:9px;border-radius:50%;background:#4b4f5a;box-shadow:inset 0 0 0 2px #2a2d36;animation:spin 2.4s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn-ring{position:absolute;left:58%;top:40%;width:14px;height:14px;border-radius:50%;background:#fdba74;box-shadow:0 0 0 0 rgba(244,63,94,.6);animation:press 1.6s ease-out infinite}
+@keyframes press{0%{box-shadow:0 0 0 0 rgba(244,63,94,.7)}100%{box-shadow:0 0 0 16px rgba(244,63,94,0)}}
+.cable{position:absolute;bottom:-28px;left:42%;width:10px;height:40px;border-radius:4px;background:#9ca3af;animation:plug 2.4s ease-in-out infinite}
+@keyframes plug{0%,20%{transform:translateY(20px)}60%,100%{transform:translateY(0)}}
+.mag{position:absolute;right:6%;top:24%;width:120px;height:120px;border-radius:50%;border:2px solid #fdba74;background:radial-gradient(circle at 50% 50%,#fdba74 0 8px,#3a2a24 9px 16px,#1d1f26 17px);display:grid;place-items:end center;padding-bottom:10px;box-shadow:0 0 30px -6px rgba(244,63,94,.6)}
+.mag span{font-size:10.5px;color:#fdba74;background:rgba(0,0,0,.5);padding:2px 6px;border-radius:6px}
+.anim-note{position:absolute;left:12px;bottom:10px;font-size:11px;color:var(--fa)}.anim-note u{color:#7dd3fc;text-decoration:none}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.tiles div{border:1px solid var(--edge);border-radius:12px;padding:10px 12px;font-size:13px;display:grid;gap:2px}.tiles b{font:300 20px Inter;color:#fdba74}.tiles small{color:var(--fa);font-size:11.5px}
+.turn{border-color:rgba(251,191,36,.4);box-shadow:0 0 0 1px rgba(251,191,36,.15)}
+.pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:#fbbf24;margin-right:8px;animation:press 1.6s infinite}
+.num{margin:0;padding-left:20px;display:grid;gap:8px;font-size:13.5px;color:var(--mu)}.num b{color:var(--fg);font-weight:500}.num small{display:block;color:var(--fa);font-size:12px}
+.pulsing{animation:glowp 1.8s ease-in-out infinite}@keyframes glowp{50%{box-shadow:0 8px 40px -6px rgba(244,63,94,.95)}}
+.prog{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center}
+.phases{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px}.phases span{font-size:11px;color:var(--fa);border-top:3px solid rgba(255,255,255,.08);padding-top:5px}.phases .d{color:var(--mu);border-color:var(--green)}.phases .n{color:#fdba74;border-color:#fb923c}
+details{border:1px solid var(--edge);border-radius:12px;padding:8px 12px}summary{font-size:12.5px;color:var(--mu);cursor:pointer}
+.parts{display:grid;grid-template-columns:1fr auto auto;gap:4px 16px;font-size:12.5px;margin-top:8px}.parts i{font-style:normal;color:var(--fa)}.parts code{background:none;padding:0;color:var(--green)}.parts code.w{color:#fdba74}
+.wifi,.opts{display:grid;border:1px solid var(--edge);border-radius:12px;overflow:hidden}.wifi>div,.opts>div{display:flex;align-items:center;gap:10px;padding:9px 12px;font-size:13.5px;border-top:1px solid var(--edge)}.wifi>div:first-child,.opts>div:first-child{border-top:0}.wifi .sel,.opts .sel{background:rgba(244,63,94,.06)}
+.opts small{display:block;color:var(--fa);font-size:12px}
+.rd{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--fa);flex:none}.rd.on{border:4px solid #fb7185}
+.lock{margin-left:auto;font-size:11px;opacity:.6}.sig{display:inline-flex;gap:2px;align-items:end;height:14px}.sig i{width:3px;background:var(--fg);border-radius:1px}
+.field{display:grid;gap:4px}.field span{font-size:12.5px;color:var(--mu)}.field em{font-style:normal;color:var(--green);margin-left:6px}.field i{font-style:normal;border:1px solid var(--edge);border-radius:10px;padding:9px 12px;background:rgba(0,0,0,.2);font-size:13.5px}
+.backup{display:flex;gap:14px;align-items:center;border:1px solid var(--edge);border-radius:12px;padding:12px 14px}.backup .btn{margin-left:auto;flex:none}
+.order em{font-style:normal;font:500 10px/1 "JetBrains Mono";letter-spacing:.08em;text-transform:uppercase;color:var(--fa);margin-right:8px}.order em.now{color:#fdba74}
+.raw{font:500 11.5px "JetBrains Mono",monospace;color:#fda4af;border:1px solid rgba(251,113,133,.3);border-radius:10px;padding:8px 10px;background:rgba(251,113,133,.06)}
+.pline{height:2px;background:rgba(255,255,255,.06);margin:-14px -14px 10px}.pline i{display:block;height:100%;width:62%;background:#fb923c}
+.pbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.phone{display:flex;flex-direction:column}.sticky{margin-top:auto;padding-top:12px}
+
+.beats{position:absolute;left:12px;right:12px;top:10px;display:flex;gap:6px;flex-wrap:wrap}.beats span{font-size:12px;padding:5px 10px;border-radius:999px;border:1px solid var(--edge);color:var(--fa);background:rgba(0,0,0,.35)}.beats .d{color:var(--mu)}.beats .n{color:#1a0a0a;background:linear-gradient(110deg,var(--glow),var(--ember));border-color:transparent}
+.sheet-ov{position:absolute;inset:0;display:grid;place-items:center;background:rgba(10,11,15,.55);backdrop-filter:blur(3px)}
+.sheetc{display:grid;gap:10px;padding:20px 22px;border-radius:16px;border:1px solid rgba(251,191,36,.4);background:#14151b;box-shadow:0 20px 60px -20px rgba(0,0,0,.8);min-width:320px}
+.card{gap:16px}
+.recview{border-radius:12px;overflow:hidden;border:1px solid var(--edge)}.recview svg{display:block;width:100%;height:auto}
+.beats2{display:flex;gap:6px;flex-wrap:wrap}.beats2 span{font-size:12px;padding:5px 10px;border-radius:999px;border:1px solid var(--edge);color:var(--fa)}.beats2 span.on{background:linear-gradient(110deg,var(--glow),var(--ember));color:#1a0a0a;border-color:transparent}.beats2 span.past{color:var(--mu)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="lit" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#a78bfa"/></linearGradient>
+  <linearGradient id="ember" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fdba74"/><stop offset="1" stop-color="#f43f5e"/></linearGradient>
+  <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="10"/></filter>
+</defs></svg>
+<div class="sheet" id="root"></div>
+<script>
+const C=.8660254,S=.5;
+/* the Kiln mark: three square plates, the bottom one fired */
+function plateP(cx,top,side,r){const p=(x,y)=>[cx+C*(x-y),top+S*(x+y)],pts=[];
+  const corner=(ox,oy,a0)=>{for(let i=0;i<=6;i++){const a=a0+i*Math.PI/12;pts.push(p(ox+r*Math.cos(a),oy+r*Math.sin(a)))}};
+  corner(side-r,r,-Math.PI/2);corner(side-r,side-r,0);corner(r,side-r,Math.PI/2);corner(r,r,Math.PI);
+  return 'M'+pts.map(q=>q.map(v=>v.toFixed(1)).join(' ')).join('L')+'Z'}
+const kilnMark=(w=26)=>`<svg viewBox="0 0 120 120" width="${w}"><path d="${plateP(60,49,60,9)}" fill="url(#ember)"/><path d="${plateP(60,30,60,9)}" fill="none" stroke="#f4f4f5" stroke-opacity=".45" stroke-width="5"/><path d="${plateP(60,11,60,9)}" fill="none" stroke="#f4f4f5" stroke-opacity=".7" stroke-width="5"/></svg>`;
+/* the stack Kiln is firing. level: how many layers have set (0 = only Kiln's floor) */
+function stack(level,{panes=[0,2,3,5],w=220,error=false}={}){
+  const s=.62,ox=20+C*120*s,gap=30,top0=8,at=i=>top0+gap*i;
+  const M=(oy)=>`matrix(${C*s} ${S*s} ${-C*s} ${S*s} ${ox} ${oy})`;
+  const cells=[10,73,136].flatMap(x=>[10,56].map(y=>[x,y])).sort((a,b)=>a[1]-b[1]||a[0]-b[0]);
+  const layers=[ // top (panes) to bottom (kiln)
+    {kind:'panes',set:level>=4},{kind:'core',set:level>=3},{kind:'frame',set:level>=2},{kind:'hw',set:level>=1}];
+  let o=`<ellipse cx="${ox+C*40*s}" cy="${at(4)+S*160*s}" rx="110" ry="36" fill="${error?'#fb7185':'#f43f5e'}" opacity="${error?.25:.4}" filter="url(#soft)"/>`;
+  // kiln floor
+  o+=`<g transform="${M(at(4)+5)}"><rect width="200" height="120" rx="9" fill="#2a1416"/></g><g transform="${M(at(4))}"><rect width="200" height="120" rx="9" fill="#14100f" stroke="#f43f5e" stroke-opacity=".8"/>${[0,1,2,3].map(i=>`<rect x="${10+i*46.6}" y="10" width="42.5" height="100" rx="5" fill="url(#ember)" opacity="${(i<level||level>=4)?.35+i*.16:.12}"/>`).join('')}</g>`;
+  // heat columns
+  if(level>0&&level<4&&!error)o+=[37,163].map(x=>{const X=ox+C*(x-30)*s;return `<path d="M${X} ${at(4)+S*(x+30)*s}V${at(4-level)+S*(x+30)*s+6}" stroke="#f43f5e" stroke-width="1.6" stroke-dasharray="5 9" opacity=".8"/>`}).join('');
+  layers.reverse().forEach((L,j)=>{const i=3-j,y=at(i);
+    if(!L.set){o+=`<g transform="${M(y)}"><rect width="200" height="120" rx="9" fill="none" stroke="#f4f4f5" stroke-opacity=".22" stroke-dasharray="6 5"/></g>`;return}
+    o+=`<g transform="${M(y+5)}"><rect width="200" height="120" rx="9" fill="#1c1e25"/></g><g transform="${M(y)}"><rect width="200" height="120" rx="9" fill="#12141a" stroke="#f4f4f5" stroke-opacity=".3"/>`+
+      cells.map(([x,yy],k)=>{const lit=L.kind==='panes'&&panes.includes(k);return `<rect x="${x}" y="${yy}" width="54" height="40" rx="5" fill="${lit?'url(#lit)':'#f4f4f5'}" fill-opacity="${lit?1:L.kind==='hw'?.16:.09}" stroke="#f4f4f5" stroke-opacity="${lit?0:.2}"/>`}).join('')+`</g>`});
+  if(error)o+=`<g transform="${M(at(2))}"><rect width="200" height="120" rx="9" fill="none" stroke="#fb7185" stroke-opacity=".9" stroke-dasharray="6 5"/></g>`;
+  const H=at(4)+S*320*s+14;
+  return `<svg viewBox="0 0 ${C*320*s+40} ${H}" width="${w}" style="display:block;overflow:visible">${o}</svg>`;
+}
+const STEPS=['Panel','Connect','Install','Set up','Done'];
+const UNDO=['Backup','Connect','Restore','Done'];
+const rail=(now,level,opts={})=>`<div class="rail"><ol class="steps">${(opts.steps||STEPS).map((s,i)=>`<li class="${opts.err&&i===now?'bad':i<now?'done':i===now?(opts.turn?'turn':'now'):'todo'}"><span class="mk"></span><span>${s}</span></li>`).join('')}</ol><div style="margin-top:14px">${stack(level,opts)}</div></div>`;
+const topBar=(chip='<span class="chip"><span class="dot"></span>Ready</span>')=>`<div class="top"><div class="brand">${kilnMark()}<span>Glassworks <b>Kiln</b></span></div>${chip}</div>`;
+const app=(now,level,card,opts={})=>`<div class="app">${topBar(opts.chip)}<div class="body">${rail(now,level,opts)}${card}</div></div>`;
+const sig=(n)=>`<span class="sig">${[1,2,3,4].map(i=>`<i style="height:${i*3+2}px;opacity:${i<=n?1:.25}"></i>`).join('')}</span>`;
+
+const FRAMES=[
+ ['1 · Panel','Pick the panel. That\'s the whole screen. Undo and "finish setting up" stay one quiet link away.',
+  app(0,0,`<div class="card"><h2>Pick your panel.</h2>
+   <div class="grid2"><div class="dev on"><div class="ph">21:42</div><div class="row" style="justify-content:space-between"><span class="n">Aqara S1 Plus</span><span class="pill beta">β Beta</span></div></div>
+   <div class="dev"><div class="ph" style="font-size:16px">21:42</div><div class="row" style="justify-content:space-between"><span class="n">lululemon Mirror</span><span class="pill plan">Soon</span></div></div>
+   <div class="dev" style="border-style:dashed;place-content:center;text-align:center;color:var(--mu)">＋<span class="n" style="color:var(--fg)">Yours?</span></div></div>
+   <div class="foot"><span class="small"><span class="link">Undo an install</span> · <span class="link">Finish setting up</span></span><span class="btn ember">Continue</span></div></div>`)],
+ ['2 · Connect','The animation is the instruction, drawn by the recovery player from this frame\'s data (recovery/aqara-s1-plus.json). The browser check is the "Ready" chip; it only becomes a screen if it fails. On Windows or Linux, one line offers the one-time driver step.',
+  app(1,0,`<div class="card"><h2 class="huge">Hold the button. Plug it in.</h2>
+   <div class="recview"><svg id="rec"></svg></div><div class="beats2" id="recbeats"></div>
+   <div class="foot"><span class="link">Show me a photo</span><span class="btn ember">Connect</span></div></div>`)],
+ ['3 · Your turn','When the browser needs a click, a small sheet over the step: what to pick, one button. Nothing else.',
+  app(2,1,`<div class="card" style="position:relative;min-height:330px"><h2 class="huge" style="opacity:.25">Keep it plugged in.</h2>
+   <div class="sheet-ov"><div class="sheetc"><span class="label" style="color:#fdba74"><span class="pulse"></span>Your turn</span><b style="font-weight:500;font-size:18px">One click to continue.</b><span class="small" style="color:var(--mu)">Pick <code>USB download gadget</code> in the list.</span><span class="btn ember pulsing" style="justify-self:start">Choose the panel</span></div></div></div>`,{turn:true})],
+ ['4 · Install','The firing. The stack sets on the left; here, one line, the bar, and a short plain log of what\'s done. The technical log (partitions, hashes) is one click away.',
+  app(2,2,`<div class="card"><h2 class="huge">Keep it plugged in.</h2>
+   <div style="display:grid;gap:8px"><div class="row" style="justify-content:space-between"><span>Writing the new software</span><span class="small">68% · ~3 min</span></div><div class="bar"><i style="width:68%"></i></div></div>
+   <div class="log"><b>✓</b> Found your S1 Plus<br><b>✓</b> Backed up and checked<br><em>→</em> Writing the new software</div>
+   <div class="foot"><span class="small">Your backup is safe in this browser.</span><span class="link">Technical log</span></div></div>`)],
+ ['5 · Set up: Wi-Fi','Which network, the password, connect. The list shows what the panel can see.',
+  app(3,3,`<div class="card"><h2>Which Wi-Fi?</h2>
+   <div class="wifi"><div class="sel"><span class="rd on"></span>Home Net<span class="lock">🔒</span>${sig(4)}</div><div><span class="rd"></span>Home Net 5G<span class="lock">🔒</span>${sig(3)}</div><div><span class="rd"></span>Other…</div></div>
+   <div class="field"><i>Password</i></div>
+   <div class="foot"><span class="link">Skip</span><span class="btn ember">Connect</span></div></div>`)],
+ ['6 · Set up: Home Assistant and panes','Home Assistant is already found; signing in is one button (it opens the panel\'s own sign-in, so no token touches the browser). Panes are switches; each one\'s follow-up appears only when it\'s on.',
+  app(3,3,`<div class="card"><h2>Sign in to Home Assistant.</h2><p class="lede small">Found at homeassistant.local</p>
+   <span class="btn ghost" style="justify-self:start">Sign in</span>
+   <div class="panes" style="margin-top:6px"><div class="pn"><span class="ic"></span><div>Assist</div><span class="sw on"></span></div><div class="pn"><span class="ic"></span><div>Music</div><span class="sw on"></span></div><div class="pn"><span class="ic"></span><div>Zigbee radio</div><span class="sw"></span></div><div class="pn"><span class="ic"></span><div>Wall base</div><span class="sw on"></span></div></div>
+   <div class="foot"><span class="link">Skip</span><span class="btn ember">Finish</span></div></div>`,{panes:[0,2,3]})],
+ ['7 · Done','Finished, in one line. The backup is one row with a download; undo is a link.',
+  app(4,4,`<div class="card"><span class="ok">✓</span><h2>Done.</h2><p class="lede">Your panel is in Home Assistant.</p>
+   <div class="backup"><span class="small" style="color:var(--mu)">Original software, backed up</span><span class="btn ghost">Download</span></div>
+   <div class="foot"><span class="link">Undo</span><span class="btn ghost">Open Home Assistant</span></div></div>`)],
+ ['8 · Undo','How far back, as two choices. The order and the backup are handled for you; it only asks for a file if this browser has none.',
+  app(0,0,`<div class="card"><h2>Put it back.</h2>
+   <div class="opts"><div class="sel"><span class="rd on"></span><span><b style="font-weight:500">As it came from Aqara</b><small>Everything removed</small></span></div><div><span class="rd"></span><span><b style="font-weight:500">Keep its settings</b><small>Wi-Fi and the rest stay</small></span></div></div>
+   <div class="foot"><span class="small">Using the backup in this browser</span><span class="btn ember">Continue</span></div></div>`,{steps:UNDO})],
+ ['9 · When something fails','What happened, that nothing was written, and the one most likely fix. More help and the raw error are one click away.',
+  app(2,1,`<div class="card err"><h2>It disconnected.</h2><p class="lede">Nothing was written. Try a cable straight into this computer.</p>
+   <div class="foot"><span class="link">More help</span><span class="btn ember">Try again</span></div></div>`,{error:true,err:true})],
+];
+const phone=`<div class="phone"><div class="pline"><i></i></div><div class="pbar"><div class="brand" style="font-size:14px">${kilnMark(20)}<span>Kiln</span></div><span class="small">3 of 5</span></div>
+ <div style="display:flex;justify-content:center;margin:10px 0 14px">${stack(2,{w:150})}</div>
+ <div class="card"><h2>Keep it plugged in.</h2><div class="bar"><i style="width:68%"></i></div><div class="log"><b>✓</b> Found your S1 Plus<br><b>✓</b> Backed up and checked<br><em>→</em> Writing</div></div></div>`;
+document.getElementById('root').innerHTML=FRAMES.map(([t,n,html],i)=>i===3?`<div><p class="cap"><b>${t}</b><span>${n}</span></p><div class="two">${html}<div><p class="cap"><b>Phone</b><span>The same step: the stack, one card.</span></p>${phone}</div></div></div>`:`<div><p class="cap"><b>${t}</b><span>${n}</span></p>${html}</div>`).join('');
+
+</script>
+<script src="recovery/player.js"></script>
+<script>
+fetch('recovery/aqara-s1-plus.json').then((r) => r.json()).then((f) => {
+  const p = KilnRecovery.mount(document.getElementById('rec'), document.getElementById('recbeats'), f);
+  window.KILN_DRAW = p.draw; p.play();
+});
+</script>
+</body>
+</html>

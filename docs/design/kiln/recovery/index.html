@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiln Recovery Preview</title>
+<style>
+:root{--fg:#f4f4f5;--mu:#a1a1aa;--fa:#6b6b74;--edge:rgba(255,255,255,.1);--glow:#fdba74;--ember:#f43f5e}
+body{margin:0;background:#06070a;font:14px/1.5 Inter,system-ui,sans-serif;color:var(--fg);-webkit-font-smoothing:antialiased;padding:24px max(16px,env(safe-area-inset-left))}
+.stage{max-width:760px;margin:0 auto;background:#0a0b0f;border-radius:16px;border:1px solid var(--edge);padding:22px 24px 18px;display:grid;gap:12px}
+h1{margin:0;font-weight:200;font-size:38px;letter-spacing:-.03em}
+.view{border-radius:12px;overflow:hidden}
+svg{width:100%;height:auto;display:block}
+.beats{display:flex;gap:6px;flex-wrap:wrap}
+.beats span{font-size:12.5px;padding:6px 11px;border-radius:999px;border:1px solid var(--edge);color:var(--fa);background:rgba(255,255,255,.03);transition:background .3s,color .3s}
+.beats span.on{background:linear-gradient(110deg,var(--glow),var(--ember));color:#1a0a0a;border-color:transparent}
+.beats span.past{color:var(--mu)}
+.meta{max-width:760px;margin:12px auto 0;color:var(--fa);font-size:12.5px}
+.meta code{color:var(--mu)}
+</style>
+</head>
+<body>
+<div class="stage">
+  <h1>Hold the button. Plug it in.</h1>
+  <div class="view"><svg id="scene" role="img" aria-label="How to put the panel in recovery mode"></svg></div>
+  <div class="beats" id="beats"></div>
+</div>
+<p class="meta" id="meta"></p>
+<script src="player.js"></script>
+<script>
+// ?frame=aqara-s1-plus plays aqara-s1-plus.json from this folder. Serve the folder over http (see README.md).
+const id = new URLSearchParams(location.search).get('frame') || 'aqara-s1-plus';
+fetch(id + '.json').then((r) => r.json()).then((f) => {
+  document.getElementById('scene').setAttribute('aria-label', 'How to put the ' + f.name + ' in recovery mode: ' + f.steps.join(', '));
+  const p = KilnRecovery.mount(document.getElementById('scene'), document.getElementById('beats'), f);
+  window.KILN_DRAW = p.draw;
+  p.play();
+  document.getElementById('meta').innerHTML = `<code>${id}.json</code> · ${f.steps.length} steps · ${p.duration.toFixed(1)} s loop`;
+}).catch((e) => { document.getElementById('meta').textContent = 'Could not load ' + id + '.json: ' + e.message; });
+</script>
+</body>
+</html>
