@@ -25,7 +25,7 @@ image follows GitHub's theme.
 |---|---|---|
 | S1 Unleashed as a whole (a frame) | **Built on Glassworks** (`badge-on-*.svg`) | Top of [README.md](../README.md), already there. The badge rules also ask for it on the app's About screen |
 | A library in `app/libs/` | **Library banner** (`banner-library-<name>-on-*.svg`) | Top of that library's README |
-| Code that moves into the Glassworks core (`dev.glassworks.*`) | **Core badge** (`badge-core-on-*.svg`) | README of the core module, once it has one |
+| The Glassworks core (`dev.glassworks.*`), including the pane API | **Core banner** (`banner-core-on-*.svg`) as the header, and the **core badge** (`badge-core-on-*.svg`) | `app/kiosk/src/main/java/dev/glassworks/README.md` |
 | A pane | **Pane badge** (`badge-pane-on-*.svg`) | The pane's README |
 | The installer (`web/`, `tools/install.sh`) | **Kiln badge** (`badge-kiln-on-*.svg`) | Kiln's README. The S1 installer is still S1-branded until it moves into Kiln |
 
