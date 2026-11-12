@@ -11,7 +11,8 @@ const notPicked = (e: unknown) => e instanceof DOMException && e.name === 'NotFo
  * counts the call as part of the click (test/in-click.test.tsx guards this).
  */
 export class AskBridge {
-  private picking = false;
+  /** The ask whose picker is open. Tied to that ask, so aborting it never blocks the next one. */
+  private picking?: object;
   private pending?: { action: () => Promise<unknown>; resolve: (v: unknown) => void; signal: AbortSignal };
 
   constructor(private readonly dispatch: (a: Action) => void) {}
@@ -33,17 +34,18 @@ export class AskBridge {
   /** Call straight from the button's onClick. */
   click(): Promise<void> {
     const p = this.pending;
-    if (!p || this.picking) return Promise.resolve(); // a second click while the picker is open
-    this.picking = true;
+    if (!p || this.picking === p) return Promise.resolve(); // a second click while its picker is open
+    this.picking = p;
     let run: Promise<unknown>;
     try { run = p.action(); } catch (e) { run = Promise.reject(e); } // a synchronous throw takes the same path
     this.dispatch({ type: 'ask-busy' });
-    return run.finally(() => { this.picking = false; }).then(
+    return run.finally(() => { if (this.picking === p) this.picking = undefined; }).then(
       (v) => {
         if (this.pending === p) { this.pending = undefined; this.dispatch({ type: 'ask-end' }); }
         p.resolve(v);
       },
       (e: unknown) => {
+        if (this.pending !== p) return; // a stale picker, from an ask that was called off
         this.dispatch({ type: 'ask-error', error: notPicked(e) ? 'Nothing was picked. Click the button again.' : String((e as Error)?.message ?? e) });
       },
     );

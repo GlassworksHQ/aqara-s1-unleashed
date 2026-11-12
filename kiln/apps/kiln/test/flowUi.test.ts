@@ -77,6 +77,24 @@ describe('AskBridge', () => {
     await expect(asked).resolves.toBe('panel');
   });
 
+  it('after an ask is called off with its picker still open, the next ask\'s click starts its own picker', async () => {
+    const st = store();
+    const bridge = new AskBridge(st.dispatch);
+    let refuseFirst: (e: unknown) => void = () => {};
+    const first = vi.fn(() => new Promise<string>((_, reject) => { refuseFirst = reject; }));
+    const stop = new AbortController();
+    void bridge.open('fastboot', first, stop.signal);
+    void bridge.click(); // its picker stays open
+    stop.abort(); // the device turned up by itself
+    const second = vi.fn(() => new Promise<string>(() => {}));
+    void bridge.open('adb', second, new AbortController().signal);
+    void bridge.click();
+    expect(second).toHaveBeenCalledTimes(1);
+    refuseFirst(new Error('the first picker closes late'));
+    await Promise.resolve(); await Promise.resolve();
+    expect(st.get().ask).toEqual({ kind: 'adb', busy: true });
+  });
+
   it('closes the sheet when the device turns up by itself', () => {
     const st = store();
     const bridge = new AskBridge(st.dispatch);
