@@ -234,7 +234,6 @@ object RadioFollowUp {
                 )
             }
             RadioMode.THREAD_ROUTER -> {
-                val page = RadioStep.threadPageUrl(f.haBase)
                 val t = f.thread
                 val more = listOf(
                     "The panel joins your Thread network as a router and extends its range. It needs the network's active " +
@@ -262,11 +261,9 @@ object RadioFollowUp {
                     listOf(
                         "Get it from Home Assistant: the panel reads your preferred Thread network itself. If it isn't " +
                             "signed in as an administrator, it shows a QR code for a one-time administrator sign-in.",
-                        "Or copy it by hand: open the Thread page" + (if (page != null) " (scan the code)" else " in Home Assistant") +
-                            ", Preferred network → ⓘ Network information → “Active dataset TLVs”, and paste it into the " +
-                            "panel's Thread dataset (device page → Configuration, or Advanced here).",
+                        "Or copy it by hand: Home Assistant's Thread page, Preferred network → ⓘ Network information → " +
+                            "“Active dataset TLVs”, into the panel's Thread dataset (device page → Configuration, or Advanced here).",
                     ),
-                    qr = page?.let { Qr(it, "Scan to open Home Assistant's Thread page") },
                     state = t?.describe() ?: statusDetail(f),
                     badge = if (t?.dataset == true) "Dataset set" else "No dataset",
                     note = DATASET_KEY,
@@ -317,15 +314,13 @@ object RadioFollowUp {
             )
         }
         RadioMode.THREAD_ROUTER -> {
-            val page = RadioStep.threadPageUrl(f.haBase)
             Card(
                 f.mode, "Join your Thread network",
                 listOf(
                     "Get it from Home Assistant: the panel reads your Thread network itself (an administrator signs in once on a phone).",
-                    "Or copy “Active dataset TLVs” from Home Assistant's Thread page" + (if (page != null) " (scan the code)" else "") +
-                        " into the panel's Thread dataset in Home Assistant, and nowhere else: it holds the network key.",
+                    "Or copy “Active dataset TLVs” from Home Assistant's Thread page into the panel's Thread dataset in " +
+                        "Home Assistant, and nowhere else: it holds the network key.",
                 ),
-                qr = page?.let { Qr(it, "Scan to open Home Assistant's Thread page") },
                 state = f.thread?.short() ?: statusDetail(f),
                 actions = if (f.thread?.joined == true) emptyList() else listOf(Action.THREAD_JOIN_HA),
             )

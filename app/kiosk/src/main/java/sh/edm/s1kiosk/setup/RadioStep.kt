@@ -78,9 +78,6 @@ object RadioStep {
      */
     fun otbrAddUrl(haBase: String?): String? = haRoot(haBase)?.let { "$it/config/integrations/dashboard/add?domain=otbr" }
 
-    /** Home Assistant's Thread page (ha-panel-config.ts route `thread`). Null without HA's address. */
-    fun threadPageUrl(haBase: String?): String? = haRoot(haBase)?.let { "$it/config/thread" }
-
     /** The border router's REST URL, what OTBR's config flow asks for. */
     fun otbrUrl(panelIp: String?): String = "http://${panelIp ?: "<panel IP>"}:${RadioHelper.OTBR_REST_PORT}"
 

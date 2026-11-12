@@ -32,13 +32,11 @@ class RadioFollowUpTest {
     fun urlBuilders() {
         for (base in listOf("http://homeassistant.local:8123", "http://homeassistant.local:8123/", " http://homeassistant.local:8123// ")) {
             assertEquals("http://homeassistant.local:8123/config/integrations/dashboard/add?domain=otbr", RadioStep.otbrAddUrl(base))
-            assertEquals("http://homeassistant.local:8123/config/thread", RadioStep.threadPageUrl(base))
             assertEquals("http://homeassistant.local:8123/config/zha/add", RadioStep.zhaAddUrl(base))
         }
-        assertEquals("https://ha.example/config/thread", RadioStep.threadPageUrl("https://ha.example/"))
         assertEquals("https://ha.example/config/integrations/dashboard/add?domain=otbr", RadioStep.otbrAddUrl("https://ha.example"))
         for (bad in listOf(null, "", "homeassistant.local:8123", "ftp://ha.example")) {
-            assertNull(RadioStep.otbrAddUrl(bad)); assertNull(RadioStep.threadPageUrl(bad)); assertNull(RadioStep.zhaAddUrl(bad))
+            assertNull(RadioStep.otbrAddUrl(bad)); assertNull(RadioStep.zhaAddUrl(bad))
         }
         assertEquals("http://192.0.2.10:8081", RadioStep.otbrUrl("192.0.2.10"))
         assertEquals("http://<panel IP>:8081", RadioStep.otbrUrl(null))
@@ -119,10 +117,12 @@ class RadioFollowUpTest {
 
     @Test
     fun threadRouter() {
-        // not joined yet: Get it from Home Assistant, the QR code to HA's Thread page and the copy steps
+        // not joined yet: Get it from Home Assistant first, the copy steps as text. No QR code on the card:
+        // the only one is the admin sign-in's, which Get it from Home Assistant shows when it needs it.
         val waiting = ThreadRouterState(false, null, null)
         val c = RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = waiting), Place.SETTINGS)
-        assertEquals("http://homeassistant.local:8123/config/thread", c.qr!!.url)
+        assertNull(c.qr)
+        assertNull(RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = waiting), Place.SETUP).qr)
         assertEquals(waiting.describe(), c.state)
         assertEquals("No dataset", c.badge)
         assertTrue(c.datasetField)
