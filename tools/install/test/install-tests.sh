@@ -326,9 +326,11 @@ out=$("$REPO/tools/install.sh" --undo --dry-run </dev/null 2>&1)
 check "dry run: shows the disable" has "$out" "+ adb shell pm disable-user --user 0 sh.edm.s1kiosk"
 check "dry run: changes nothing" test "$(cat "$T/installed") $(cat "$T/disabled")" = "debug 0"
 
-echo "== fel-install.sh --undo refuses an incomplete backup before touching the panel"
-# Stub tools: nothing reaches FEL or a real fastboot. The fake fastboot is our U-Boot, already up.
-mkdir -p "$T/fbin" "$T/ub" "$T/undo"
+echo "== fel-install.sh --undo: refuses an incomplete backup, restores a complete one"
+# Stub tools: nothing reaches FEL or a real fastboot. The fake fastboot is our U-Boot, already up,
+# with partitions in $T/emmc: flash writes one, and fb-read-partition.sh's oem run + get_staged read
+# it back.
+mkdir -p "$T/fbin" "$T/ub" "$T/undo" "$T/emmc"
 for t in sunxi-fel adb docker; do w "$T/fbin/$t" <<STUB
 #!/bin/sh
 echo "$t \$*" >> "$T/tools.log"; exit 1
@@ -342,6 +344,11 @@ case "\$1 \${2:-}" in
   "getvar product") echo "product: sunxi" >&2 ;;
   "getvar partition-size:boot") echo "partition-size:boot: 0x0000000002000000" >&2 ;;
   "getvar partition-size:super") echo "partition-size:super: 0x0000000060000000" >&2 ;;
+  "flash "*) cp "\$3" "$T/emmc/\$2" ;;
+  "oem run:part start mmc "*) set -- \$2; echo "\$5" > "$T/emmc/.cur" ;;
+  "oem run:"*) ;;
+  "get_staged "*) cp "$T/emmc/\$(cat "$T/emmc/.cur")" "\$2" ;;
+  "reboot "*) ;;
   *) exit 1 ;;
 esac
 STUB
@@ -352,11 +359,17 @@ fel_undo() { : > "$T/tools.log"; PATH="$T/fbin:$PATH" UBOOT_BUILD="$T/ub" "$REPO
 out=$(fel_undo); rc=$?
 check "no bootloader.img: refused" test "$rc" -ne 0
 check "and says why" has "$out" "has no bootloader.img: the backup is incomplete. Nothing was changed."
+check "and the way forward" has "$out" "flash them by hand from our U-Boot"
 check "before any tool runs" test ! -s "$T/tools.log"
 printf 'splash' > "$T/undo/bootloader.img"
 (cd "$T/undo" && shasum -a 256 boot.img vbmeta.img bootloader.img > SHA256SUMS)
-fel_undo >/dev/null
-check "with bootloader.img: goes on to flash boot" has "$(cat "$T/tools.log")" "fastboot flash boot $T/undo/boot.img"
+out=$(fel_undo); rc=$?
+check "complete backup: exit 0" test "$rc" -eq 0
+check "flashes boot, vbmeta, splash, in that order" test "$(grep '^fastboot flash ' "$T/tools.log")" = "fastboot flash boot $T/undo/boot.img
+fastboot flash vbmeta $T/undo/vbmeta.img
+fastboot flash bootloader $T/undo/bootloader.img"
+check "each one read back the same" bash -c 'for p in boot vbmeta bootloader; do cmp -s "$1/undo/$p.img" "$1/emmc/$p" || exit 1; done' _ "$T"
+check "says all three are back" has "$out" "stock boot, vbmeta and splash are back"
 
 echo
 echo "$PASS passed, $FAILS failed"

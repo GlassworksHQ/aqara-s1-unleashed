@@ -289,7 +289,21 @@ screen; `adb shell pm enable sh.edm.s1kiosk` brings it back. To remove it comple
 `adb uninstall sh.edm.s1kiosk`, then join the Wi-Fi again in Aqara's own settings.
 
 Use the backup from your **first** install. A backup taken on an already-installed panel holds the
-patched `boot`, and the CLI refuses to restore it.
+patched `boot`, and both installers refuse to restore it.
+
+Keep the whole backup: the `.zip` the web installer offers, or the CLI's folder. Undo needs `boot.img`,
+`vbmeta.img`, `bootloader.img` (the splash) and `SHA256SUMS`, and refuses a backup that lacks one of
+them, before it writes anything. If you only have `boot.img` and `vbmeta.img`, you can still put those
+two back by hand. The splash then stays ours. Check them first with `shasum -a 256 -c SHA256SUMS`, put
+the panel in FEL mode, then:
+
+```sh
+NO_BL31=1 tools/fel/fel-boot.sh            # our U-Boot in RAM; it starts fastboot
+unset ANDROID_SERIAL                       # our U-Boot's fastboot serial isn't the panel's adb one
+fastboot flash boot boot.img
+fastboot flash vbmeta vbmeta.img
+fastboot reboot
+```
 
 ## Troubleshooting
 

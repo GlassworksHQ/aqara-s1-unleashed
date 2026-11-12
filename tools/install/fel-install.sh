@@ -57,7 +57,9 @@ if [ "$MODE" = undo ]; then
   [ -f "$UNDO/SHA256SUMS" ] && [ -f "$UNDO/boot.img" ] && [ -f "$UNDO/vbmeta.img" ] || die "$UNDO is not a fel-install backup"
   # Every fel-install backup has the splash (bootloader.img): one without it is incomplete, and
   # restoring only the rest would report an undo that left our splash on the panel.
-  [ -f "$UNDO/bootloader.img" ] || die "$UNDO has no bootloader.img: the backup is incomplete. Nothing was changed."
+  [ -f "$UNDO/bootloader.img" ] || die "$UNDO has no bootloader.img: the backup is incomplete. Nothing was changed.
+       To put back only boot and vbmeta (the splash stays ours), flash them by hand from our U-Boot:
+       docs/install.md#undo."
   for f in boot.img vbmeta.img bootloader.img; do
     (cd "$UNDO" && grep " $f\$" SHA256SUMS | shasum -a 256 -c -) || die "$UNDO/$f does not match its SHA256SUMS"
   done
@@ -93,7 +95,7 @@ gv() { "$FB" getvar "$1" 2>&1 | sed -n "s/^$1: //p"; }
 [ "$(gv partition-size:super)" = 0x0000000060000000 ] || die "super is not 1.5 GiB: not an S1 Plus layout?"
 
 if [ "$MODE" = undo ]; then
-  say "Undo: restoring stock boot and vbmeta from $UNDO"
+  say "Undo: restoring stock boot, vbmeta and splash from $UNDO"
   for p in boot vbmeta bootloader; do
     "$FB" flash "$p" "$UNDO/$p.img"
     "$HERE/fb-read-partition.sh" "$p" "$UNDO/$p.readback.img" >/dev/null
