@@ -54,8 +54,20 @@ describe('InstallFlow keeps its rules whatever the recipe does', () => {
   });
 
   it.each([
+    ['not backed up', { ...plan, parts: ['boot'], restore: ['boot'] }],
+    ['backed up but not restored on undo', { ...plan, restore: ['boot'] }],
+  ])('refuses a write of a part that is %s, and writes nothing', async (_, backup) => {
+    const vbmeta = new Uint8Array(0x10000).fill(3);
+    const t = run(recipe({ backup, writesBeforeBoot: async () => [{ part: 'vbmeta', data: vbmeta, what: 'vbmeta' }] }));
+    await expect(t.install()).rejects.toThrow('this recipe writes vbmeta without backing it up and restoring it on undo. Nothing was written.');
+    expect(t.uboot.flashed).toEqual([]);
+  });
+
+  it.each([
     ['no boot', { ...plan, parts: ['vbmeta'], restore: ['vbmeta'] }, 'it doesn\'t read boot'],
     ['a restore part it never reads', { ...plan, restore: ['boot', 'spare'] }, 'it doesn\'t read spare'],
+    // undo would flash nothing and report success
+    ['boot left out of restore', { ...plan, restore: [] }, 'it doesn\'t restore boot'],
     // a recipe written in plain JS can leave it out
     ['no isPatched', { ...plan, isPatched: undefined } as unknown as BackupPlan, 'it has no isPatched'],
   ])('refuses a backup plan with %s before reading anything', async (_, backup, why) => {

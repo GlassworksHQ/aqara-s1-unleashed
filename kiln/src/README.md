@@ -106,11 +106,14 @@ export interface Recipe<A, O, R> {
 InstallFlow owns the order, the progress, the backup before any write (boot read twice), the read-back
 of every write, and boot last. Whatever the recipe says, it refuses:
 
-- before touching the device, a backup plan that doesn't read `boot` and every `restore` part, or has
-  no `isPatched`;
-- before writing, a recipe step that writes boot, and a patch that gives a stock boot back unchanged
-  (the same boot back is fine on a re-run, when `backup.isPatched` says it was patched already);
-- on undo, a backup that lacks boot or any `restore` part, or whose boot `isPatched`.
+- before touching the device, a backup plan that doesn't read and restore `boot`, doesn't read every
+  `restore` part, or has no `isPatched`;
+- before writing, a recipe step that writes boot or a part the plan doesn't both back up and restore,
+  and a patch that gives a stock boot back unchanged (the same boot back is fine on a re-run, when
+  `backup.isPatched` says it was patched already);
+- on undo, a backup that lacks any `restore` part, or whose boot `isPatched` (`checkRestorable`, which
+  throws `BackupRefused`). The page's "keep the panel's settings" undo calls it before it gives the
+  apps back (`src/app/undo.ts`), since that removes S1 Kiosk.
 
 kiln-core doesn't depend on bootpatch: what "patched" means is the recipe's. USB comes in through
 `Devices`. The S1's end-to-end test is `kiln/test/flow.test.ts`: the S1 recipe on simulated hardware

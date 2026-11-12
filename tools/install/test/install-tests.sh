@@ -371,6 +371,19 @@ fastboot flash bootloader $T/undo/bootloader.img"
 check "each one read back the same" bash -c 'for p in boot vbmeta bootloader; do cmp -s "$1/undo/$p.img" "$1/emmc/$p" || exit 1; done' _ "$T"
 check "says all three are back" has "$out" "stock boot, vbmeta and splash are back"
 
+echo "== docs/install.md#undo: the by-hand check passes boot and vbmeta, and stops on either"
+CHK=$(awk '/install-tests.sh runs this block/ {f = 1; next} f && /^```sh$/ {g = 1; next} g && /^```$/ {exit} g' "$REPO/docs/install.md")
+check "the doc has the check" test -n "$CHK"
+bh() { (cd "$1" && sh -c "$CHK" 2>&1); }
+mkdir -p "$T/bh"
+printf 'boot' > "$T/bh/boot.img"; printf 'vbmeta' > "$T/bh/vbmeta.img"; printf 'splash' > "$T/bh/bootloader.img"
+(cd "$T/bh" && shasum -a 256 boot.img vbmeta.img bootloader.img > SHA256SUMS) && rm "$T/bh/bootloader.img"
+check "bootloader.img missing: goes on" has "$(bh "$T/bh")" "boot and vbmeta OK: go on"
+printf 'damaged' > "$T/bh/vbmeta.img"
+check "vbmeta damaged: stops" hasnt "$(bh "$T/bh")" "go on"
+printf 'vbmeta' > "$T/bh/vbmeta.img"; grep -v ' vbmeta\.img$' "$T/bh/SHA256SUMS" > "$T/bh/s" && mv "$T/bh/s" "$T/bh/SHA256SUMS"
+check "vbmeta entry missing: stops" hasnt "$(bh "$T/bh")" "go on"
+
 echo
 echo "$PASS passed, $FAILS failed"
 [ "$FAILS" -eq 0 ]

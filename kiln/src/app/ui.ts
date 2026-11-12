@@ -10,10 +10,11 @@ import {
   type AssetName, type ByteStream, type Provisioned, type SetUpOptions,
 } from '@glassworks/aqara-s1-plus-installer';
 import {
-  BackupStore, InstallFlow, backupZip, fmtSize, readBackupZip, restoreFromBackup,
+  BackupRefused, BackupStore, InstallFlow, backupZip, fmtSize, readBackupZip, restoreFromBackup,
   type AskKind, type Bar, type BackupFile, type BackupMeta, type FlowUi, type PartState, type Progress,
 } from '@glassworks/kiln-core';
 import { webUsbDevices } from './devices';
+import { giveBackApps } from './undo';
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector<T>(s)!;
 const $$ = (s: string) => [...document.querySelectorAll<HTMLElement>(s)];
@@ -1221,13 +1222,18 @@ class Installer {
       try {
         this.key ??= await loadOrCreateAdbKey();
         const panel = (await webUsbDevices.knownAdb(this.key)) ?? (await webUsbDevices.requestAdb(this.key));
-        await unprovision(panel, (s, d) => { this.undoNote('busy', 'Giving the panel back to Aqara\'s apps', s || d || ''); });
+        await giveBackApps(s1Plus.backup, this.undoFiles, () =>
+          unprovision(panel, (s, d) => { this.undoNote('busy', 'Giving the panel back to Aqara\'s apps', s || d || ''); }));
         this.appsGivenBack = true;
         this.renderUndoOrder();
         this.undoNote('ok', 'Aqara\'s apps are back', 'Next: restore the original software. Click Continue, then put the panel in FEL mode.');
       } catch (e) {
-        const msg = e instanceof DOMException && e.name === 'NotFoundError' ? 'Nothing was picked.' : (e as Error).message;
-        this.undoNote('err', 'Could not reach the panel over adb', `${msg} Is it running and plugged in? Then try again, or choose "Back to how it came from Aqara".`);
+        if (e instanceof BackupRefused) {
+          this.undoNote('err', 'This backup can\'t undo the install', `${e.message}. Nothing on the panel was changed.`);
+        } else {
+          const msg = e instanceof DOMException && e.name === 'NotFoundError' ? 'Nothing was picked.' : (e as Error).message;
+          this.undoNote('err', 'Could not reach the panel over adb', `${msg} Is it running and plugged in? Then try again, or choose "Back to how it came from Aqara".`);
+        }
       } finally {
         go.disabled = false;
       }

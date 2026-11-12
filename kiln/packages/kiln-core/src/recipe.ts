@@ -22,7 +22,7 @@ export interface Recipe<A extends string, O, R> {
   patching: string;
   /** The new boot image, made from the backed-up one. Unchanged is refused unless `backup.isPatched` said it was patched already. */
   patchBoot(ctx: PatchContext<A>): Promise<Uint8Array>;
-  /** Other partitions to write, in order. Never boot: InstallFlow writes it after them, once. */
+  /** Other partitions to write, in order. Never boot: InstallFlow writes it after them, once. Each must be in `backup.parts` and `backup.restore`. */
   writesBeforeBoot(ctx: PatchContext<A>): Promise<FlashStep[]>;
   /** Installs and sets up the app over adb once the patched Android is up. */
   setUp(panel: PanelShell, opts: O, ctx: SetUpContext<A>): Promise<R>;
@@ -31,7 +31,7 @@ export interface Recipe<A extends string, O, R> {
 export interface BackupPlan {
   /** Read in this order and kept. Must include `boot` (read twice and patched) and every `restore` part. */
   parts: readonly string[];
-  /** What undo writes back, in this order. Undo refuses a backup that lacks boot or any of these. */
+  /** What undo writes back, in this order: boot and everything `writesBeforeBoot` writes. Undo refuses a backup that lacks any of these. */
   restore: readonly string[];
   /** Backup ids, and the zip's name, are `<idPrefix>-YYYYMMDD-HHMMSS`. */
   idPrefix: string;

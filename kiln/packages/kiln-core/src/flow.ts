@@ -186,6 +186,8 @@ export class InstallFlow<A extends string, O, R> {
     // 6-7: the frame's other writes; 8: boot last, so a failure before it leaves the panel booting
     const before = await this.recipe.writesBeforeBoot(ctx);
     if (before.some((s) => s.part === 'boot')) throw new Error('this recipe writes boot before the last step; boot is written once, last. Nothing was written.');
+    const unbacked = before.find((s) => !this.recipe.backup.parts.includes(s.part) || !this.recipe.backup.restore.includes(s.part));
+    if (unbacked) throw new Error(`this recipe writes ${unbacked.part} without backing it up and restoring it on undo. Nothing was written.`);
     const steps = [...before, { part: 'boot', data: image, what: 'Writing the new software' }];
 
     const flashTotal = steps.reduce((n, s) => n + s.data.length, 0);
@@ -235,14 +237,24 @@ export class InstallFlow<A extends string, O, R> {
   }
 }
 
+/** A backup undo won't put back. Thrown before anything is written. */
+export class BackupRefused extends Error {}
+
+/**
+ * Throws BackupRefused unless undo can put this backup back: it has every restore part (boot among
+ * them) and its boot isn't already patched. Call it before anything on the panel changes.
+ */
+export async function checkRestorable(plan: BackupPlan, files: ReadonlyMap<string, Uint8Array>): Promise<void> {
+  checkBackupPlan(plan);
+  const missing = plan.restore.filter((p) => !files.get(p));
+  if (missing.length) throw new BackupRefused(`this backup has no ${missing.join(' or ')}`);
+  if (await plan.isPatched(files.get('boot')!)) throw new BackupRefused('this backup\'s boot is already patched (a re-run backup): use the one from your first install');
+}
+
 /** fel-install.sh --undo: the plan's restore partitions back from a backup, each verified. */
 export async function restoreFromBackup(plan: BackupPlan, fb: Fastboot, files: Map<string, Uint8Array>, log: (s: string) => void,
   onProgress?: (part: string, phase: 'write' | 'verify', done: number, total: number) => void): Promise<void> {
-  checkBackupPlan(plan);
-  const missing = [...new Set(['boot', ...plan.restore])].filter((p) => !files.get(p));
-  if (missing.length) throw new Error(`this backup has no ${missing.join(' or ')}`);
-  const boot = files.get('boot')!;
-  if (await plan.isPatched(boot)) throw new Error('this backup\'s boot is already patched (a re-run backup): use the one from your first install');
+  await checkRestorable(plan, files);
   for (const part of plan.restore) {
     await fb.flashVerified(part, files.get(part)!, (phase, d, t) => onProgress?.(part, phase, d, t));
     log(`${part} restored and verified`);
@@ -250,10 +262,11 @@ export async function restoreFromBackup(plan: BackupPlan, fb: Fastboot, files: M
   await fb.reboot();
 }
 
-/** Throws unless the plan reads boot and every part undo writes, and can tell a patched boot. */
+/** Throws unless the plan reads and restores boot, reads every part undo writes, and can tell a patched boot. */
 function checkBackupPlan(plan: BackupPlan): void {
   const broken = (why: string) => new Error(`this recipe's backup plan is broken: ${why}. Nothing was read.`);
   const missing = ['boot', ...plan.restore].find((p) => !plan.parts.includes(p));
   if (missing) throw broken(`it doesn't read ${missing}`);
+  if (!plan.restore.includes('boot')) throw broken('it doesn\'t restore boot');
   if (typeof plan.isPatched !== 'function') throw broken('it has no isPatched');
 }
