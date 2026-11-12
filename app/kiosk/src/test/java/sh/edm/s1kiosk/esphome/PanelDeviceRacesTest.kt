@@ -217,8 +217,8 @@ class PanelDeviceRacesTest {
     }
 
     /**
-     * Guard: `if (!unlessStopped { timeZone.start(); updates.start() }) return`. stop() lands after the
-     * entities are built and the locks taken, and before the panes start: the hook is the first read of
+     * Guard: each pane's `unlessStopped { pane.start() }` and `if (!unlessStopped { updates.start() }) return`.
+     * stop() lands after the entities are built and the locks taken, and before the panes start: the hook is the first read of
      * the speaker setting after that step, in applyVolume(), outside the lock.
      */
     @Test fun aStopAfterTheEntitiesAreBuiltTakesTheLocksBackAndStartsNothingMore() {
@@ -251,7 +251,8 @@ class PanelDeviceRacesTest {
     /**
      * Guard: `unlessStopped { pane.start() }` for each pane. stop() lands right after the wall base
      * pane started (its start schedules the Aqara cloud check on esphome-main: the hook is the end
-     * of that call, inside the step); the radio pane comes after it and must not start.
+     * of that call, inside the step). The wall base is the S1 frame's last pane, so the radio pane
+     * is the next one, and it must not start.
      */
     @Test fun aStopAfterAPaneStartedStartsNoMorePanes() {
         exec.afterSchedule = { exec.afterSchedule = null; device.stop() }

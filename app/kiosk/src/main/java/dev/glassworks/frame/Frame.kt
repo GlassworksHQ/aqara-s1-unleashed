@@ -6,13 +6,16 @@ package dev.glassworks.frame
 
 import android.content.Context
 import android.content.Intent
+import dev.glassworks.pane.Pane
+import dev.glassworks.pane.PaneContext
 import dev.glassworks.screen.LightSource
 import dev.glassworks.screen.PresenceSource
+import java.util.concurrent.ScheduledExecutorService
 
 /**
  * One device the core runs on. The app makes one frame at start and hands it to what needs it.
  * It holds only what the core asks a device today. The rest of the planned shape (screen off,
- * installer, panes) comes in later migration steps.
+ * installer, panes the user can turn off) comes in later migration steps.
  */
 interface Frame {
     /** The `board` TXT record in the device's mDNS advert. Home Assistant shows it. Never change it for a frame. */
@@ -26,6 +29,12 @@ interface Frame {
 
     /** The device's own settings screens, best first. [systemSettings] picks the first that opens. */
     fun systemSettingsIntents(): List<Intent>
+
+    /**
+     * The panes only this device has (its wall base, its own entities). The shell builds them once per
+     * device run, next to its own, and runs them like any other. [device] is the shell's device thread.
+     */
+    fun panes(ctx: PaneContext, device: ScheduledExecutorService): List<Pane>
 }
 
 /** The first of [Frame.systemSettingsIntents] that resolves on this device, ready to start from any context. Null when none does. */

@@ -2,6 +2,7 @@ package sh.edm.s1kiosk.esphome
 
 import sh.edm.esphome.*
 import sh.edm.esphome.android.EspHomeMdns
+import dev.glassworks.frame.Frame
 import dev.glassworks.pane.EntityRegistry
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
@@ -17,22 +18,18 @@ import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
-import android.util.Log
 import sh.edm.s1kiosk.BuildConfig
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.MainActivity
 import sh.edm.s1kiosk.timers.TimersPane
 import sh.edm.s1kiosk.auth.HaAuth
-import sh.edm.s1kiosk.base.WallBase
-import sh.edm.s1kiosk.base.WallBasePane
 import sh.edm.s1kiosk.radio.RadioPane
 import sh.edm.s1kiosk.dashboard.Dashboard
 import sh.edm.s1kiosk.dashboard.DashboardOptions
 import sh.edm.s1kiosk.dashboard.Dashboards
 import sh.edm.s1kiosk.dashboard.StableChange
 import sh.edm.s1kiosk.discovery.HaUrls
-import sh.edm.s1kiosk.frame.TimeZoneKeeper
 import sh.edm.s1kiosk.sendspin.SendspinPane
 import sh.edm.s1kiosk.setup.SetupSignals
 import sh.edm.s1kiosk.update.UpdateManager
@@ -57,7 +54,7 @@ import java.util.concurrent.TimeUnit
 /**
  * The panel as one ESPHome device for Home Assistant: native API server (port 6053), mDNS,
  * entities bound to the kiosk settings / the screen policy, a media player, and the panes
- * (Sendspin, the voice assistant, timers, the wall base, the radio). Owned by KioskService.
+ * (Sendspin, the voice assistant, timers, the radio, and the frame's own). Owned by KioskService.
  *
  * Entity values are read from [KioskPrefs] / [screen] (thread-safe); anything touching
  * the screen or the activity is posted to the main thread. Kiosk actions (URL, reload, zoom,
@@ -105,6 +102,8 @@ class PanelDevice internal constructor(
     private val ctx = context.applicationContext
     private val prefs = KioskPrefs(ctx)
     private val main = Handler(Looper.getMainLooper())
+    /** Typed as the interface. The device-only parts come in through [Frame.panes]. */
+    private val frame: Frame = runtime.frame
     private val screen = runtime.screen
     private val voiceEnabled = prefs.voice.enabled
 
@@ -122,7 +121,6 @@ class PanelDevice internal constructor(
     /** The features that add entities and react to the panel (Sendspin, voice, timers, ...); built in [initEntities]. */
     @Volatile private var panes: List<Pane> = emptyList()
     private var assist: AssistPane? = null
-    private val timeZone = runtime.frame.timeZoneKeeper(onChange = { runCatching { exec.execute { server?.publishStates() } } })
     /**
      * App updates from GitHub Releases (docs/releasing.md); the "App update" entity. runCatching:
      * the update thread may still report while [stop] has already shut [exec] down.
@@ -161,7 +159,6 @@ class PanelDevice internal constructor(
         exec.shutdownNow()
         mdns.stop()
         synchronized(lifecycle) { server.also { server = null } }?.stop()
-        timeZone.stop()
         updates.stop()
         voicePlayer.release()
         mediaPlayer.release()
@@ -195,7 +192,7 @@ class PanelDevice internal constructor(
             voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
         )
         EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${voiceEnabled}")
-        if (!unlessStopped { initEntities(id, WallBasePane.wantedConfig(prefs.wallBase, runtime.frame.aqaraCloud)); acquireLocks() }) return
+        if (!unlessStopped { initEntities(id); acquireLocks() }) return
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
         voicePlayer.onStateChanged = {
@@ -204,7 +201,7 @@ class PanelDevice internal constructor(
         }
 
         panes.forEachPane("start") { pane -> unlessStopped { pane.start() } }
-        if (!unlessStopped { timeZone.start(); updates.start() }) return
+        if (!unlessStopped { updates.start() }) return
         startServer()
         unlessStopped {
             prefs.registerListener(prefListener)
@@ -220,7 +217,7 @@ class PanelDevice internal constructor(
      * The entity list Home Assistant gets at start, built without starting anything (the entity pin
      * test calls it too). esphome-main.
      */
-    internal fun initEntities(identity: DeviceIdentity, baseConfig: WallBase.Config) {
+    internal fun initEntities(identity: DeviceIdentity) {
         this.identity = identity
         val paneContext = PaneContext(
             ctx, prefs::paneFile, identity,
@@ -253,9 +250,7 @@ class PanelDevice internal constructor(
                     silence = { synchronized(this) { chimePlayer }?.cancel() },
                 )
             } else null,
-            WallBasePane(paneContext, baseConfig, exec, runtime.frame.aqaraCloud),
-            RadioPane(paneContext, runtime, panelIp = ::ipAddress),
-        )
+        ) + frame.panes(paneContext, exec) + RadioPane(paneContext, runtime, panelIp = ::ipAddress)
         coreEntities = buildEntities()
         appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
         dashboardRebuild = StableChange(dashboardOptions(appliedDashboards))
@@ -522,16 +517,6 @@ class PanelDevice internal constructor(
         ),
         // --- diagnostics
         TextSensorEntity("ip_address", "IP address", "mdi:ip-network", EntityCategory.DIAGNOSTIC, get = ::ipAddress),
-        // Time zone (docs/install.md "Time zone"): the zone the root helper keeps. Authenticated only.
-        TextEntity(
-            "time_zone", "Time zone", "mdi:map-clock", maxLength = 64, pattern = "^[A-Za-z0-9_+/-]*$",
-            get = { timeZone.text() },
-            set = { v ->
-                timeZone.set(v)?.let { Log.w(TimeZoneKeeper.TAG, "Time zone: $it") }
-                exec.execute { server?.publishStates() }
-            },
-        ).apply { authOnly = true },
-        TextSensorEntity("time_zone_status", "Time zone status", "mdi:clock-check-outline", EntityCategory.DIAGNOSTIC, get = { timeZone.statusText() }),
         TextSensorEntity(
             "app_version", "App version", "mdi:new-box", EntityCategory.DIAGNOSTIC,
             get = { BuildConfig.VERSION_NAME },

@@ -13,8 +13,6 @@ import sh.edm.esphome.ApiEntity
 import sh.edm.esphome.DeviceIdentity
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.KioskPrefs
-import sh.edm.s1kiosk.base.BaseBackend
-import sh.edm.s1kiosk.base.WallBase
 import java.io.File
 
 /**
@@ -59,7 +57,7 @@ class PanelEntitiesPinTest {
                 esphomeVersion = PanelDevice.ESPHOME_VERSION, compilationTime = "test", manufacturer = "Aqara",
                 model = "Panel Hub S1 Plus (S1 Kiosk)", voiceFeatures = PanelDevice.VOICE_FEATURES,
             )
-            device.initEntities(identity, WallBase.Config(BaseBackend.LOCALSERVICE))
+            device.initEntities(identity)
             return device.entityList()
         } finally {
             device.stop()
