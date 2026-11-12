@@ -6,7 +6,6 @@ import dev.glassworks.pane.EntityRegistry
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PanelEvent
-import dev.glassworks.pane.PanelTimer
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -50,10 +49,10 @@ import sh.edm.s1kiosk.discovery.HaUrls
 import sh.edm.s1kiosk.sendspin.SendspinPane
 import sh.edm.s1kiosk.setup.SetupSignals
 import sh.edm.s1kiosk.update.UpdateManager
-import sh.edm.s1kiosk.voice.TfliteWakeWord
+import sh.edm.s1kiosk.voice.AssistPane
 import sh.edm.s1kiosk.voice.TtsPlayer
 import sh.edm.s1kiosk.voice.ExoAudioPlayer
-import sh.edm.s1kiosk.voice.VoiceConfig
+import sh.edm.s1kiosk.voice.SpeakerMedia
 import sh.edm.s1kiosk.voice.VoiceEngine
 import sh.edm.s1kiosk.voice.VoiceEvent
 import sh.edm.s1kiosk.voice.VoiceLevels
@@ -70,8 +69,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * The panel as one ESPHome device for Home Assistant: native API server (port 6053), mDNS,
- * entities bound to the kiosk settings / [ScreenController], a media player, and the voice
- * assistant (on-device wake word + [VoiceAssistantController]). Owned by KioskService.
+ * entities bound to the kiosk settings / [ScreenController], a media player, and the panes
+ * (Sendspin, the voice assistant, timers). Owned by KioskService.
  *
  * Entity values are read from [KioskPrefs] / [ScreenController] (thread-safe); anything touching
  * the screen or the activity is posted to the main thread. Kiosk actions (URL, reload, zoom,
@@ -109,8 +108,6 @@ class PanelDevice(
 
     private var server: ApiServer? = null
     private val noiseKeys = NoiseKeys(prefs.noiseKeyStore)
-    private var voice: VoiceEngine? = null
-    private var controller: VoiceAssistantController? = null
     private lateinit var identity: DeviceIdentity
     private lateinit var entities: List<ApiEntity>
     private lateinit var coreEntities: List<ApiEntity>
@@ -118,8 +115,9 @@ class PanelDevice(
     private val voicePlayer = ExoAudioPlayer(context, "voice", AudioAttributes.USAGE_ASSISTANT)
     private val mediaPlayer = ExoAudioPlayer(context, "media", AudioAttributes.USAGE_MEDIA)
     private var chimePlayer: TtsPlayer? = null
-    /** The features that add entities and react to the panel (Sendspin, timers, ...); built in [initEntities]. */
+    /** The features that add entities and react to the panel (Sendspin, voice, timers, ...); built in [initEntities]. */
     @Volatile private var panes: List<Pane> = emptyList()
+    private var assist: AssistPane? = null
     /** Zigbee/Thread radio modes (docs/radio.md); applies the stored mode after every start. */
     val radio = RadioController(
         load = { prefs.radioMode },
@@ -145,7 +143,6 @@ class PanelDevice(
      */
     private val updates = UpdateManager(ctx, runtime, onChange = { runCatching { exec.execute { server?.publishStates() } } })
     @Volatile private var announcing = false
-    @Volatile private var mediaPausedForVoice = false
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
 
@@ -178,10 +175,9 @@ class PanelDevice(
         mdns.stop()
         server?.stop()
         server = null
-        voice?.stop()
-        voice = null
         panes.forEach { it.stop() }
         panes = emptyList()
+        assist = null
         radio.stop()
         timeZone.stop()
         updates.stop()
@@ -220,7 +216,6 @@ class PanelDevice(
             exec.execute { server?.publishStates() }
         }
 
-        if (voiceEnabled) startVoice()
         panes.forEach { it.start() }
         radio.start()
         timeZone.start()
@@ -231,7 +226,6 @@ class PanelDevice(
         HaAuth.addListener(authListener)
         HaAuth.threadJoin.addListener(threadJoinListener)
         Dashboards.addListener(dashboardsListener)
-        exec.scheduleWithFixedDelay({ controller?.tick() }, 1, 1, TimeUnit.SECONDS)
         exec.scheduleWithFixedDelay({ checkDashboards() }, 2, 2, TimeUnit.SECONDS)
         exec.scheduleWithFixedDelay({ server?.publishStates() }, 5, 5, TimeUnit.SECONDS)
         base.start()
@@ -248,8 +242,20 @@ class PanelDevice(
     internal fun initEntities(identity: DeviceIdentity, baseConfig: WallBase.Config): WallBase {
         this.identity = identity
         val paneContext = PaneContext(ctx, prefs, identity, publishStates = { runCatching { exec.execute { server?.publishStates() } } }, emit = ::emit)
+        val assistPane = AssistPane(
+            paneContext,
+            voiceEnabled,
+            player = voicePlayer,
+            speaker = speakerMedia,
+            resolveUrl = ::resolveUrl,
+            wakeChime = { chimes().wakeChime() },
+            onVoiceEvent = onVoiceEvent,
+            createInput = { cfg, model, onModelChanged -> VoiceEngine(ctx, cfg, model, onModelChanged) },
+        )
+        assist = assistPane
         panes = listOfNotNull(
             SendspinPane(paneContext),
+            assistPane,
             // Timers only come from the voice assistant.
             if (voiceEnabled) {
                 TimersPane(
@@ -416,31 +422,8 @@ class PanelDevice(
         prefs.dashboardsJson = DashboardOptions.toJson(list)
     }
 
-    private fun startVoice() {
-        val cfg = VoiceConfig(threshold = prefs.wakeThreshold, micGain = prefs.micGain)
-        val engine = VoiceEngine(ctx, cfg, prefs.wakeModel) { model -> prefs.wakeModel = model }
-        engine.onError = { msg -> dispatchVoice(VoiceEvent.Error(msg, local = true)) }
-        val c = VoiceAssistantController(
-            send = { type, payload -> server?.sendVoice(type, payload) ?: false },
-            player = voicePlayer,
-            wakeWords = engine,
-            emit = ::dispatchVoice,
-            resolveUrl = ::resolveUrl,
-            onTimerFinished = { name -> emit(PanelEvent.TimerFinished(name)) },
-            onTimersChanged = { list ->
-                emit(PanelEvent.TimersChanged(list.map { PanelTimer(it.id, it.name, it.totalSeconds, it.secondsLeft, it.active) }))
-            },
-            maxStreamMs = cfg.maxStreamMs,
-        )
-        engine.controller = c
-        controller = c
-        voice = engine
-        engine.start(muted = prefs.micMuted)
-    }
-
     private fun startServer() {
         val s = ApiServer(ApiServer.DEFAULT_PORT, { identity }, entities, noiseKeys)
-        s.voice = controller
         panes.forEach { it.bind(s) }
         s.onCommand = { exec.execute { s.publishStates() } }
         s.onClientHello = { info, addr ->
@@ -492,13 +475,8 @@ class PanelDevice(
 
     /** esphome-main thread. */
     private fun onPrefChanged(key: String?) {
-        val v = voice
         when (key) {
             "api_encryption", "api_key" -> onApiKeyPrefChanged()
-            "mic_muted" -> v?.setMuted(prefs.micMuted)
-            "mic_gain" -> v?.setGain(prefs.micGain)
-            "wake_threshold" -> v?.threshold = prefs.wakeThreshold
-            "wake_model" -> v?.setActive(listOfNotNull(prefs.wakeModel.takeIf { it.isNotEmpty() }?.let(TfliteWakeWord::modelName)))
             "speaker_volume", "speaker_muted" -> applyVolume()
             KioskPrefs.KEY_BLOCK_AQARA_CLOUD, KioskPrefs.KEY_BASE_BACKEND, KioskPrefs.KEY_BASE_TRANSPORT ->
                 reconfigureBase("setting $key changed")
@@ -510,28 +488,17 @@ class PanelDevice(
     /** The chime player, made on first use (from the ESPHome, voice or main thread). */
     private fun chimes(): TtsPlayer = synchronized(this) { chimePlayer ?: TtsPlayer().also { chimePlayer = it } }
 
-    /** The user cancelled the current voice run (tap on the overlay): stop streaming and playback. */
+    /** The user cancelled the current voice run (tap on the overlay). */
     fun cancelVoice() {
-        exec.execute { controller?.cancel() }
+        exec.execute { assist?.cancel() }
     }
 
-    private fun dispatchVoice(e: VoiceEvent) {
-        // Pause music while the assistant listens/talks, resume afterwards.
-        if (e is VoiceEvent.WakeDetected && prefs.wakeSound) {
-            chimes().wakeChime()
-        }
-        when (e) {
-            is VoiceEvent.WakeDetected, is VoiceEvent.Listening, is VoiceEvent.Speaking -> {
-                if (mediaPlayer.isPlaying && !announcing) { mediaPausedForVoice = true; mediaPlayer.pause() }
-                emit(PanelEvent.SpeakerClaimed(true))
-            }
-            is VoiceEvent.Idle, is VoiceEvent.Error -> {
-                if (mediaPausedForVoice) { mediaPausedForVoice = false; mediaPlayer.resume() }
-                if (!announcing) emit(PanelEvent.SpeakerClaimed(false))
-            }
-            else -> Unit
-        }
-        try { onVoiceEvent(e) } catch (t: Throwable) { EspHomeLog.w("voice listener failed", t) }
+    /** The speaker's music, which the assistant pauses while it listens and talks. */
+    private val speakerMedia = object : SpeakerMedia {
+        override val playing get() = mediaPlayer.isPlaying
+        override val announcing get() = this@PanelDevice.announcing
+        override fun pause() = mediaPlayer.pause()
+        override fun resume() = mediaPlayer.resume()
     }
 
     // ------------------------------------------------------------------ entities
@@ -628,7 +595,7 @@ class PanelDevice(
             get = { prefs.hideHeader },
             set = { v -> toActivity { putExtra("hide_header", v); putExtra("hide_sidebar", v) } },
         ),
-        // --- audio / voice
+        // --- audio
         MediaPlayerEntity(
             "speaker", "Speaker", "mdi:speaker",
             // mp3 for everything: HA's ffmpeg proxy converts media/announcements, and the assist
@@ -651,26 +618,6 @@ class PanelDevice(
                 )
             },
             handle = ::onMediaCommand,
-        ),
-        SwitchEntity(
-            "mute_microphone", "Mute microphone", "mdi:microphone-off", EntityCategory.CONFIG,
-            get = { prefs.micMuted }, set = { prefs.micMuted = it },
-        ),
-        SwitchEntity(
-            "wake_sound", "Wake sound", "mdi:bell-ring-outline", EntityCategory.CONFIG,
-            get = { prefs.wakeSound }, set = { prefs.wakeSound = it },
-        ),
-        SwitchEntity(
-            "voice_overlay", "Voice overlay", "mdi:message-badge-outline", EntityCategory.CONFIG,
-            get = { prefs.voiceOverlay }, set = { prefs.voiceOverlay = it },
-        ),
-        NumberEntity(
-            "mic_gain", "Mic gain", "mdi:microphone-plus", min = 0.5f, max = 4f, step = 0.1f, unit = "x",
-            get = { prefs.micGain }, set = { prefs.micGain = it },
-        ),
-        NumberEntity(
-            "wake_word_threshold", "Wake word threshold", "mdi:account-voice", min = 0.1f, max = 0.95f, step = 0.05f,
-            get = { prefs.wakeThreshold }, set = { prefs.wakeThreshold = it },
         ),
         // --- radio
         SelectEntity(
