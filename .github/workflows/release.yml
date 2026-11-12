@@ -211,6 +211,7 @@ jobs:
           cp app/kiosk/build/outputs/apk/release/kiosk-release.apk "$apk"
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)/apksigner"
           "$apksigner" verify --verbose --print-certs "$apk"
+          tools/release/check-update-compat.sh --signed "$apk"   # the release key, stable identifiers
           aapt2="$(dirname "$apksigner")/aapt2"
           badging="$("$aapt2" dump badging "$apk" | head -n 1)"
           echo "$badging"

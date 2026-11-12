@@ -36,6 +36,13 @@ Write down the certificate fingerprint; it is public, and lets anyone check a re
 keytool -list -v -keystore ~/secure/s1kiosk-release.jks -alias s1kiosk | grep SHA256
 ```
 
+The fingerprint is also committed in
+[`tools/release/release-cert.sha256`](../tools/release/release-cert.sha256) (lowercase hex, no
+colons). The release and test-build workflows refuse an APK signed with any other key
+([`tools/release/check-update-compat.sh`](../tools/release/check-update-compat.sh)), so a wrong or
+swapped secret fails the build instead of shipping an update no panel can install. Rotating the key
+means changing that file in the same PR as the secrets.
+
 ## 2. Keep it safe
 
 - Store `s1kiosk-release.jks` and its password in your password manager, and keep a second copy
@@ -43,6 +50,8 @@ keytool -list -v -keystore ~/secure/s1kiosk-release.jks -alias s1kiosk | grep SH
 - Never commit it. `.gitignore` ignores `*.jks` and `*.keystore`, but keep it outside the repo anyway.
 - If it leaks, someone can sign updates your panels would accept, if they can also get them onto a
   panel. Rotate: make a new key, reinstall the panels by hand, and replace the secrets.
+- A copy is in Bitwarden as the secure note "S1 Unleashed signing keys" (keystore, its password,
+  and the radio bundle key), saved and checked byte for byte on 2026-11-11.
 
 ## 3. Add the four secrets to GitHub (once)
 

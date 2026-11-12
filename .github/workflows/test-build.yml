@@ -114,6 +114,7 @@ jobs:
           cp app/kiosk/build/outputs/apk/release/kiosk-release.apk "$apk"
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)/apksigner"
           "$apksigner" verify --print-certs "$apk"
+          tools/release/check-update-compat.sh --signed "$apk"   # installs over the panel's app
           if unzip -l "$apk" | grep -q 'assets/radio-bundle/'; then echo "::error::a test build must not carry a radio bundle"; exit 1; fi
           (cd dist && sha256sum "$(basename "$apk")" | tee "$(basename "$apk").sha256")
           {
