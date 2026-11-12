@@ -29,6 +29,10 @@ below as the release notes.
   service now also runs as a location service, because Android 10 only lets an app use location
   with the screen off that way. The app reads no location. On the reference panel, Wi-Fi was back
   about 20 s after it was turned off and on, with the screen still asleep.
+- **Android 14 and newer: the app no longer crashes on a fresh install.** Before the microphone
+  permission was granted, the app's always-on service stopped at once and Android showed "S1 Kiosk
+  keeps stopping". The service now starts without the microphone, and takes it as soon as you allow
+  it, so voice starts without a restart. S1 panels run Android 10 and are not affected.
 - **Sendspin: switching the Music Assistant player off and on quickly leaves one connection.** After a
   quick off and on, or a setting change that restarts the player, the old connection could end the new
   stream, make the status say "disconnected" while the panel was connected, or connect a second time

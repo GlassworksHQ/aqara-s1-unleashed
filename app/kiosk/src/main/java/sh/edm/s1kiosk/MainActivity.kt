@@ -948,6 +948,8 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // A new grant can add a foreground type (microphone on Android 14+): KioskService takes it on start.
+        if (grantResults.any { it == PackageManager.PERMISSION_GRANTED }) KioskService.start(this)
         if (requestCode == REQ_GECKO) {
             val cb = pendingAndroidPermission
             pendingAndroidPermission = null

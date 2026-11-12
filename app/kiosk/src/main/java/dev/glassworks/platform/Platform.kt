@@ -49,6 +49,13 @@ open class PlatformApi internal constructor(
      */
     val hasForegroundServiceTypes: Boolean get() = apiLevel >= 29
 
+    /**
+     * `startForeground` throws a `SecurityException` for a type whose runtime permission is not
+     * granted, such as microphone without `RECORD_AUDIO` (Android 14, for apps targeting it). Below
+     * it the type is accepted, and only the access itself is refused.
+     */
+    val foregroundServiceTypesNeedTheirPermission: Boolean get() = apiLevel >= 34
+
     /** `Settings.Panel` (the Wi-Fi sheet over the app) exists (Android 10). */
     val hasSettingsPanel: Boolean get() = apiLevel >= 29
 

@@ -30,6 +30,7 @@ class PlatformTest {
         Triple("hasSettingsPanel", 29) { it.hasSettingsPanel },
         Triple("hasFontBuilder", 29) { it.hasFontBuilder },
         Triple("hasWindowInsetsController", 30) { it.hasWindowInsetsController },
+        Triple("foregroundServiceTypesNeedTheirPermission", 34) { it.foregroundServiceTypesNeedTheirPermission },
     )
 
     @Test
