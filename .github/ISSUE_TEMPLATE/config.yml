@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Install guide and troubleshooting
+    url: https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/docs/install.md#troubleshooting
+    about: Most installer problems are covered here.
+  - name: Radio guide
+    url: https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/docs/radio-guide.md
+    about: Setting up ZHA, Zigbee2MQTT, Thread and repeaters.
+  - name: Report a security problem
+    url: https://github.com/GlassworksHQ/aqara-s1-unleashed/security/advisories/new
+    about: Report it privately, not as an issue.

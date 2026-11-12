@@ -1,0 +1,108 @@
+name: Bug
+description: Something on the panel, the installer or in Home Assistant doesn't work.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If the installer stopped partway, your backup is safe and FEL mode is always there. Don't
+        retry a flash until you've read [Troubleshooting](https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/docs/install.md#troubleshooting).
+        Security problems go through [SECURITY.md](https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/SECURITY.md), not here.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Web installer
+        - Command-line installer
+        - Undo / restore
+        - Dashboard and sign-in
+        - ESPHome device in Home Assistant
+        - Voice assistant
+        - Music Assistant player
+        - Screen, presence, brightness
+        - Radio: Zigbee (ZHA)
+        - Radio: Zigbee (Zigbee2MQTT)
+        - Radio: Thread
+        - Updates
+        - Wall base
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+
+  - type: dropdown
+    id: model
+    attributes:
+      label: Panel model
+      description: Printed on the back of the panel.
+      options:
+        - MP-K03D (S1 Plus, wall-mounted)
+        - JYMKP01LM (S1 Plus for China)
+        - MP-K05D (S1 Plus Desktop)
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: app_version
+    attributes:
+      label: S1 Kiosk version
+      description: The panel's **App version** sensor in Home Assistant. Write "not installed" if the problem is in the installer.
+      placeholder: 0.4.3
+    validations:
+      required: true
+
+  - type: input
+    id: firmware
+    attributes:
+      label: Aqara firmware version
+      description: Shown by the installer, or in Aqara's settings before you installed.
+      placeholder: 4.5.80
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: 2026.11.1
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS (installer problems only)
+      placeholder: Chrome 142 on macOS 26
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        Whatever applies: the installer's log, the **Radio status**, **Radio helper** or **Update status**
+        sensors, or `adb logcat -s S1Kiosk S1ESPHome S1Voice S1Sendspin`. Remove tokens, Wi-Fi
+        passwords and Thread datasets first.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I checked [Known issues](https://github.com/GlassworksHQ/aqara-s1-unleashed#known-issues) and existing issues.
+          required: true
