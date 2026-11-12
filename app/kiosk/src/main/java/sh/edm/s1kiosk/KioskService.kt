@@ -19,7 +19,6 @@ import sh.edm.s1kiosk.discovery.HaDiscovery
 import sh.edm.s1kiosk.esphome.PanelDevice
 import sh.edm.s1kiosk.improv.ImprovController
 import sh.edm.s1kiosk.improv.ImprovSerialServer
-import sh.edm.s1kiosk.radio.RadioController
 import sh.edm.s1kiosk.setup.SetupChannelServer
 import sh.edm.s1kiosk.voice.VoiceEvent
 import sh.edm.s1kiosk.voice.VoiceUi
@@ -40,41 +39,41 @@ class KioskService : Service() {
         KioskPrefs(this).migrateRadioStep() // before discovery can save an HA URL in this process
         startForeground(NOTIFICATION_ID, buildNotification())
         ScreenController.start(this)
-        voiceState = if (KioskPrefs(this).voiceEnabled) "idle" else "off"
-        voiceUi = VoiceUi(voiceState)
-        voiceCancel = { device?.cancelVoice() }
+        glassworks.voiceState = if (KioskPrefs(this).voiceEnabled) "idle" else "off"
+        glassworks.voiceUi = VoiceUi(glassworks.voiceState)
+        glassworks.voiceCancel = { device?.cancelVoice() }
         HaAuth.startServer(this)
         val d = HaDiscovery(this, UrlConnectionPoster(timeoutMs = 5_000)) { url, source ->
             // Applied by the activity (dashboard URL "auto": load it, or restart for secure-context hosts).
-            main.post { MainActivity.commandSink?.invoke(Intent().putExtra("ha_discovered", url).putExtra("ha_source", source)) }
+            main.post { glassworks.commandSink?.invoke(Intent().putExtra("ha_discovered", url).putExtra("ha_source", source)) }
         }
         discovery = d
-        discoveryRef = d
+        glassworks.discovery = d
         d.start()
-        device = PanelDevice(this, { e -> main.post { onVoiceEvent(e) } }, d::onApiHello).also {
+        device = PanelDevice(this, glassworks, { e -> main.post { onVoiceEvent(e) } }, d::onApiHello).also {
             it.start()
-            radioRef = it.radio
+            glassworks.radio = it.radio
         }
         ImprovController.init(this) // Improv Wi-Fi via BLE (provisioning mode; see improv/)
         // The web installer, over adb (docs/onboarding.md): Wi-Fi via Improv Serial, then HA + radio.
         ImprovSerialServer.start()
-        SetupChannelServer.start(this)
+        SetupChannelServer.start(this, glassworks)
         Log.i("S1Kiosk", "KioskService started")
     }
 
     private fun onVoiceEvent(e: VoiceEvent) {
-        voiceUi = voiceUi.on(e)
-        try { onVoiceUi?.invoke() } catch (t: Throwable) { Log.w("S1Kiosk.Voice", "voice overlay failed", t) }
+        glassworks.voiceUi = glassworks.voiceUi.on(e)
+        try { glassworks.onVoiceUi?.invoke() } catch (t: Throwable) { Log.w("S1Kiosk.Voice", "voice overlay failed", t) }
         if (e is VoiceEvent.Heard || e is VoiceEvent.Reply) return // texts only, no state change
-        voiceState = voiceUi.state
-        Log.i("S1Kiosk.Voice", "voice: $voiceState")
+        glassworks.voiceState = glassworks.voiceUi.state
+        Log.i("S1Kiosk.Voice", "voice: ${glassworks.voiceState}")
         // Talking to the panel counts as activity: wake the screen and keep it on.
         if (e !is VoiceEvent.Idle && e !is VoiceEvent.Error) ScreenController.wake("voice")
         ScreenController.onStateChanged?.invoke()
     }
 
     override fun onDestroy() {
-        voiceCancel = null
+        glassworks.voiceCancel = null
         SetupChannelServer.stop()
         ImprovSerialServer.stop()
         ImprovController.shutdown()
@@ -82,8 +81,8 @@ class KioskService : Service() {
         device = null
         discovery?.stop()
         discovery = null
-        discoveryRef = null
-        radioRef = null
+        glassworks.discovery = null
+        glassworks.radio = null
         HaAuth.stopServer()
         super.onDestroy()
     }
@@ -134,26 +133,6 @@ class KioskService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val REQ_KIOSK_SETTINGS = 10  // distinct PendingIntent request codes
         private const val REQ_PANEL_SETTINGS = 11
-
-        /** Last voice assistant state, exposed to the page via MainActivity.stateJson(). */
-        @Volatile var voiceState: String = "off"
-
-        /** What the voice overlay shows (state, heard text, reply). Main thread. */
-        var voiceUi = VoiceUi()
-            private set
-
-        /** Called on the main thread after every voice event (the activity's voice overlay). */
-        var onVoiceUi: (() -> Unit)? = null
-
-        /** Cancels the current voice run (stops streaming and playback); null while the service isn't running. */
-        @Volatile var voiceCancel: (() -> Unit)? = null
-            private set
-
-        /** Set while the service runs; the sign-in screen uses it for manual HA URL entry. */
-        @Volatile var discoveryRef: HaDiscovery? = null
-
-        /** Set while the service runs; the setup screen's radio step applies the mode through it. */
-        @Volatile var radioRef: RadioController? = null
 
         fun start(context: Context) {
             val i = Intent(context, KioskService::class.java)

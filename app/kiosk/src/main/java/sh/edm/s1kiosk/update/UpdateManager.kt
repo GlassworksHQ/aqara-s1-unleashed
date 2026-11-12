@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import sh.edm.s1kiosk.BuildConfig
+import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.radio.ShellProps
 import sh.edm.s1kiosk.radio.SysProps
 import java.io.File
@@ -41,6 +42,7 @@ import java.util.concurrent.TimeUnit
  */
 class UpdateManager(
     context: Context,
+    private val runtime: GlassworksRuntime,
     private val onChange: () -> Unit,
     private val props: SysProps = ShellProps,
 ) {
@@ -58,7 +60,7 @@ class UpdateManager(
     private val updateDir: File get() = File(ctx.filesDir, UpdateHelper.PENDING_DIR)
 
     fun start() {
-        instance = this
+        runtime.updates = this
         exec.execute {
             cleanup()
             reportPreviousRootInstall()
@@ -71,7 +73,7 @@ class UpdateManager(
 
     fun stop() {
         stopped = true
-        if (instance === this) instance = null
+        if (runtime.updates === this) runtime.updates = null
         netCallback?.let { cb ->
             runCatching { ctx.getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(cb) }
         }
@@ -502,9 +504,6 @@ class UpdateManager(
         private const val FREE_SPACE_MARGIN = 32L * 1024 * 1024
         private const val PROGRESS_PUBLISH_MS = 1_000L
         private const val HELPER_START_TIMEOUT_MS = 30_000L
-
-        /** The running manager, for [UpdateInstallReceiver]. */
-        @Volatile internal var instance: UpdateManager? = null
 
         private fun readCapped(input: InputStream, max: Int): ByteArray = input.use {
             val out = java.io.ByteArrayOutputStream()

@@ -119,7 +119,7 @@ class MainActivity : Activity() {
             refreshSetup()
             pollRadioStatus()
             // the radio step's follow-up card follows the router / Thread state
-            if (improvInline() && setupOverlay.model?.step == SetupStep.RADIO) KioskService.radioRef?.refreshSoon()
+            if (improvInline() && setupOverlay.model?.step == SetupStep.RADIO) glassworks.radio?.refreshSoon()
             refreshOffline()
             handler.postDelayed(this, SETUP_TICK_MS)
         }
@@ -157,7 +157,7 @@ class MainActivity : Activity() {
         geckoView = GeckoView(this)
         loadingOverlay = LoadingOverlay(this)
         voiceOverlay = VoiceOverlay(this).apply {
-            onCancel = { KioskService.voiceCancel?.invoke() }
+            onCancel = { glassworks.voiceCancel?.invoke() }
             onShowingChanged = { timerOverlay.voiceShowing(it) } // a timer set by voice flies out of the orb
         }
         timerOverlay = TimerOverlay(this)
@@ -180,7 +180,7 @@ class MainActivity : Activity() {
             onLicences = { Licences.show(this@MainActivity) }
             onRadioRun = { r, done -> runRadio(r, "settings menu", done) }
             // Same path as HA's `Thread dataset` text entity; never logged.
-            onThreadDataset = { v -> KioskService.radioRef?.setThreadDataset(v) ?: "The kiosk service isn't running yet; try again in a moment." }
+            onThreadDataset = { v -> glassworks.radio?.setThreadDataset(v) ?: "The kiosk service isn't running yet; try again in a moment." }
         }
         // Improv-aware from the start: KioskService (which registers the provider) starts after this.
         wifiStatus = ImprovWifiStatus(this)
@@ -217,8 +217,8 @@ class MainActivity : Activity() {
             pushState()
             timerOverlay.refresh()
         }
-        KioskService.onVoiceUi = { voiceOverlay.update(KioskService.voiceUi, prefs.voiceOverlay) }
-        commandSink = { applyIntent(it, fromNewIntent = true) }
+        glassworks.onVoiceUi = { voiceOverlay.update(glassworks.voiceUi, prefs.voiceOverlay) }
+        glassworks.commandSink = { applyIntent(it, fromNewIntent = true) }
         startSession()
         intent?.let { i -> handler.post { applySetupPreview(i) } }
         handler.post(setupTick)
@@ -365,7 +365,7 @@ class MainActivity : Activity() {
             improv = d.improv,
             installer = ImprovController.installerWifi,
             radio = SetupOverlay.Radio(
-                current = KioskService.radioRef?.mode ?: RadioMode.parse(prefs.radioMode),
+                current = glassworks.radio?.mode ?: RadioMode.parse(prefs.radioMode),
                 applied = radioApplied,
                 busy = radioBusy,
                 facts = radioFacts(),
@@ -516,7 +516,7 @@ class MainActivity : Activity() {
             refreshSetup()
             return
         }
-        val r = KioskService.radioRef
+        val r = glassworks.radio
         if (skip) {
             Log.i(TAG, "Setup: radio step skipped (Off)")
             if (r != null && r.mode != RadioMode.OFF) r.request(RadioMode.OFF.label, "setup screen (skip)")
@@ -554,7 +554,7 @@ class MainActivity : Activity() {
     private fun pollRadioStatus() {
         val a = radioApplied ?: return
         if (!a.accepted || a.result != RadioStep.Result.APPLYING || prefs.radioStepDone) return
-        val r = KioskService.radioRef ?: return
+        val r = glassworks.radio ?: return
         r.refreshSoon()
         val now = r.statusText()
         if (now != a.status) {
@@ -586,7 +586,7 @@ class MainActivity : Activity() {
             setupOverlay.manualResult(false, "Preview: nothing was saved.")
             return
         }
-        val d = KioskService.discoveryRef
+        val d = glassworks.discovery
         if (d == null) {
             setupOverlay.manualResult(false, "The kiosk service isn't running yet; try again in a moment.")
             return
@@ -782,7 +782,7 @@ class MainActivity : Activity() {
 
     /** The radio as the follow-up cards and the settings picker show it (cached values: no getprop here). */
     private fun radioFacts(): RadioFollowUp.Facts? {
-        val r = KioskService.radioRef ?: return null
+        val r = glassworks.radio ?: return null
         return RadioFollowUp.Facts(
             mode = r.mode, status = r.statusText(), helper = r.helperShown(), stack = r.zigbeeStack,
             threadStored = r.threadStored(), thread = r.threadRouterState(),
@@ -798,7 +798,7 @@ class MainActivity : Activity() {
      */
     private fun runRadio(req: RadioFollowUp.Request, source: String, done: (String?) -> Unit) {
         if (setupPreview && source == "setup screen") { done("Preview: nothing was changed."); return }
-        val r = KioskService.radioRef ?: run { done("The kiosk service isn't running yet; try again in a moment."); return }
+        val r = glassworks.radio ?: run { done("The kiosk service isn't running yet; try again in a moment."); return }
         Log.i(TAG, "$source: radio request $req")
         when (req) {
             is RadioFollowUp.Request.Mode -> r.request(req.mode.label, source) { ok ->
@@ -826,7 +826,7 @@ class MainActivity : Activity() {
     private val settingsRadioTick = object : Runnable {
         override fun run() {
             if (!::settingsOverlay.isInitialized || !settingsOverlay.isShowing) return
-            KioskService.radioRef?.refreshSoon()
+            glassworks.radio?.refreshSoon()
             settingsOverlay.updateRadio(radioFacts())
             handler.postDelayed(this, SETTINGS_RADIO_TICK_MS)
         }
@@ -834,7 +834,7 @@ class MainActivity : Activity() {
 
     /** The kiosk settings menu (settings/KioskSettingsOverlay): 5 taps top-left, or the notification. */
     private fun showSettings() {
-        val radio = KioskService.radioRef
+        val radio = glassworks.radio
         settingsOverlay.show(
             KioskSettingsOverlay.Model(
                 values = KioskSettingsOverlay.Values(
@@ -855,7 +855,7 @@ class MainActivity : Activity() {
                 radioRunning = radio != null,
                 allowedNow = SettingsMenu.allowedNow(radio != null, radio?.allowedNow()),
                 version = BuildConfig.VERSION_NAME,
-                status = ScreenController.statusLine() + " · voice=" + KioskService.voiceState,
+                status = ScreenController.statusLine() + " · voice=" + glassworks.voiceState,
                 radio = radioFacts(),
             ),
         )
@@ -877,7 +877,7 @@ class MainActivity : Activity() {
         prefs.nightIdleOffSec = v.nightIdleOff.toIntOrNull() ?: 20
         prefs.autoBrightness = v.autoBrightness
         prefs.presenceRangeM = v.presenceRange.toFloatOrNull() ?: 0f
-        val radio = KioskService.radioRef
+        val radio = glassworks.radio
         val allowText = v.radioAllow.trim()
         if (radio != null && allowText != radio.allowedClients()) {
             val err = radio.setAllowedClients(allowText)
@@ -1081,7 +1081,7 @@ class MainActivity : Activity() {
         .put("lux", ScreenController.lux.let { if (it.isNaN()) JSONObject.NULL else it.toDouble() })
         .put("screenOn", ScreenController.screenOn)
         .put("night", ScreenController.isNight())
-        .put("voice", KioskService.voiceState)
+        .put("voice", glassworks.voiceState)
 
     private fun pushConfig() {
         val msg = JSONObject().put("type", "config").put("config", configJson())
@@ -1207,8 +1207,8 @@ class MainActivity : Activity() {
         ScreenController.onKeepScreenOn = null
         ScreenController.onBrightness = null
         ScreenController.onStateChanged = null
-        KioskService.onVoiceUi = null
-        commandSink = null
+        glassworks.onVoiceUi = null
+        glassworks.commandSink = null
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
@@ -1217,13 +1217,6 @@ class MainActivity : Activity() {
         /** Onboarding/dashboard background (#0a0b0f), also used to cover the page until first paint. */
         private const val BACKGROUND = 0xFF0A0B0F.toInt()
         private const val TAG = "S1Kiosk"
-
-        /**
-         * Applies an intent's extras in the running activity (main thread), like onNewIntent.
-         * Used by the ESPHome device so Home Assistant can drive the kiosk without starting
-         * activities from the background.
-         */
-        @Volatile var commandSink: ((Intent) -> Unit)? = null
         private const val REQ_STARTUP = 1
         private const val REQ_GECKO = 2
         private const val RETRY_MS = 10_000L

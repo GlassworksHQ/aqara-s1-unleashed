@@ -11,6 +11,8 @@ import java.io.File
 
 class KioskApp : Application() {
 
+    val glassworks = GlassworksRuntime()
+
     companion object {
         private const val TAG = "S1Kiosk"
         private var runtime: GeckoRuntime? = null

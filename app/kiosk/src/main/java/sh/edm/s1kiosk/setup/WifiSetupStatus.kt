@@ -10,8 +10,8 @@ import android.os.Looper
 
 /**
  * What the setup screen's Wi-Fi step shows. The default ([ConnectivityWifiStatus]) only looks at
- * Android connectivity. Improv (Wi-Fi over Bluetooth) can feed its own state instead by setting
- * [WifiSetupStatus.provider], e.g. "Waiting for Home Assistant over Bluetooth…" while advertising,
+ * Android connectivity. Improv (Wi-Fi over Bluetooth) feeds its own state instead
+ * ([sh.edm.s1kiosk.improv.ImprovWifiStatus]), e.g. "Waiting for Home Assistant over Bluetooth…" while advertising,
  * or "Joining <ssid>…" while connecting.
  */
 interface WifiSetupStatus {
@@ -34,14 +34,6 @@ interface WifiSetupStatus {
 
     /** [onChange] runs on the main thread whenever the snapshot may have changed; null stops. */
     fun observe(onChange: (() -> Unit)?)
-
-    companion object {
-        /** Set by other code (Improv) to replace the default; read when the setup screen starts. */
-        @Volatile var provider: ((Context) -> WifiSetupStatus)? = null
-
-        fun create(context: Context): WifiSetupStatus =
-            provider?.invoke(context) ?: ConnectivityWifiStatus(context.applicationContext)
-    }
 }
 
 /** Plain Android connectivity: online = an active network with INTERNET capability. */
