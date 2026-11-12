@@ -168,7 +168,10 @@ class SendspinSession(
 
     /** Ends the connection, sending `client/goodbye` with [reason] when the session is up. */
     /** Drops the connection without a goodbye, for when [close] takes too long. */
-    fun abort() { ws?.abort() }
+    fun abort() {
+        closing = true
+        ws?.abort()
+    }
 
     fun close(reason: String?) {
         if (closing) return

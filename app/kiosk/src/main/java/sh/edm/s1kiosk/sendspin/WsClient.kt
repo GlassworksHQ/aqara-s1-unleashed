@@ -21,7 +21,12 @@ import javax.net.ssl.SSLSocketFactory
  * `Origin` header is sent. [receive] returns whole messages with the [System.nanoTime] at which the
  * last byte was read (spec "Receive timestamps").
  */
-class WsClient private constructor(private val socket: Socket, private val input: InputStream) {
+class WsClient private constructor(
+    private val socket: Socket,
+    private val input: InputStream,
+    /** The TCP socket under [socket] (the same one for `ws://`); [abort] closes this one. */
+    private val tcp: Socket,
+) {
 
     class Message(val text: Boolean, val data: ByteArray, val receivedNanos: Long)
 
@@ -94,12 +99,13 @@ class WsClient private constructor(private val socket: Socket, private val input
     }
 
     /**
-     * Closes the socket at once, without a close frame and without the write lock: this unblocks a
-     * write that is stuck (the socket has no write timeout).
+     * Drops the connection at once, without a close frame and without the write lock: this unblocks
+     * a write that is stuck (the socket has no write timeout). It closes the TCP socket, not the TLS
+     * wrapper, so no TLS close runs on the caller's thread (which may be the main thread).
      */
     fun abort() {
         closed = true
-        try { socket.close() } catch (_: IOException) {}
+        try { tcp.close() } catch (_: Exception) {}
     }
 
     /** Sends a close frame (best effort) and closes the socket. */
@@ -184,7 +190,7 @@ class WsClient private constructor(private val socket: Socket, private val input
                     MessageDigest.getInstance("SHA-1").digest((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").toByteArray())
                 )
                 if (accept != expected) throw IOException("bad Sec-WebSocket-Accept")
-                return WsClient(s, input)
+                return WsClient(s, input, plain)
             } catch (e: Exception) {
                 try { s.close() } catch (_: IOException) {}
                 try { plain.close() } catch (_: IOException) {}
