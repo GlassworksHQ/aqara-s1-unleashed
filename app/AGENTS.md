@@ -43,7 +43,8 @@ logcat tags are in [`README.md`](README.md); read it before you add a new one.
   `Platform` instead (libraries keep theirs in their own `Compat.kt`). `PlatformConfinementTest`
   fails the build otherwise.
 - Device-specific code (sensors, `/dev/ttyS3`, the radio, Aqara binder calls) belongs behind a seam
-  that another frame could replace. Don't spread S1 paths through generic code.
+  that another frame could replace. Don't spread S1 paths through generic code. The S1's own parts
+  live in `sh.edm.s1kiosk.frame`, reached through `glassworks.frame` (`AqaraS1Plus`).
 - Logs use the `S1…` tags listed in the README. **Never log** tokens, API keys, the Noise key, Wi-Fi
   passwords or Thread datasets, not even at debug level.
 - New user-visible strings follow the existing tone: short, plain, no exclamation marks.
