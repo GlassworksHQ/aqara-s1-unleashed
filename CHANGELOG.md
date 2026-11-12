@@ -12,6 +12,8 @@ below as the release notes.
   Wi-Fi off and on gives Android's Wi-Fi interface a new number, and the radio helper's routing rule
   for traffic from Thread to your network kept pointing at the old one. It now follows the
   interface. Comes with the radio bundle.
+- **Settings menu: cards were cut off 30 dp from the top and bottom of the screen.** They now scroll
+  all the way to the screen edges.
 
 ### Changed
 - **The project moved to [GlassworksHQ/aqara-s1-unleashed](https://github.com/GlassworksHQ/aqara-s1-unleashed).**
