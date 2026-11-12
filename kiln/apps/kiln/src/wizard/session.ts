@@ -497,20 +497,22 @@ export class Session {
   // ---- undo -----------------------------------------------------------------------------------
 
   async openUndo(): Promise<void> {
-    this.choice++;
+    const mine = ++this.choice;
     this.undoFiles = undefined;
     this.undoBackup = undefined;
     this.dispatch({ type: 'go', screen: 'undo', flow: 'undo' });
     this.dispatch({ type: 'undo', patch: { source: undefined, inBrowser: undefined, file: undefined, ready: false, appsBack: false, note: undefined } });
     let orig: BackupMeta | undefined;
     try { orig = await this.d.backups.original(); } catch { /* no IndexedDB */ }
-    if (!orig) return;
+    if (!orig || mine !== this.choice) return;
     this.dispatch({ type: 'undo', patch: { inBrowser: `${orig.id} · ${orig.files.length} partitions` } });
-    await this.useBrowserBackup(orig);
+    await this.useBrowserBackup(orig, mine);
   }
 
-  private async useBrowserBackup(meta: BackupMeta) {
+  /** `mine`: the choice this load is for. A file picked while it reads is newer, so this load then lands nowhere. */
+  private async useBrowserBackup(meta: BackupMeta, mine: number) {
     const files = await this.d.backups.files(meta);
+    if (mine !== this.choice) return;
     this.undoBackup = { meta, files };
     this.undoFiles = new Map(files.map((f) => [f.part, f.data]));
     this.dispatch({ type: 'undo', patch: { source: 'browser', ready: true } });
@@ -545,7 +547,7 @@ export class Session {
   async undoFromBrowser(): Promise<void> {
     const mine = ++this.choice;
     const orig = await this.d.backups.original().catch(() => undefined);
-    if (orig && mine === this.choice) await this.useBrowserBackup(orig);
+    if (orig && mine === this.choice) await this.useBrowserBackup(orig, mine);
   }
 
   /**
