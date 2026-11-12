@@ -25,12 +25,14 @@ image follows GitHub's theme.
 | Part | Badge or banner | Where it goes |
 |---|---|---|
 | S1 Unleashed as a whole (a frame) | **Built on Glassworks** (`badge-on-*.svg`) | Top of [README.md](../README.md), already there. The badge rules also ask for it on the app's About screen |
-| A library in `app/libs/` | **Library banner** (`banner-library-<name>-on-*.svg`), then the MIT licence, status and roadmap badges | Top of that library's README. Copy the header of [improv's README](../app/libs/improv/README.md) |
+| S1 Kiosk, the frame's app (`app/`) | **Built on Glassworks** badge, then the MIT licence, status and roadmap badges. No banner: it's a product, not a Glassworks part | Top of [app/README.md](../app/README.md) |
+| A library in `app/libs/` or `kiln/packages/` | **Library banner** (`banner-library-<name>-on-*.svg`), then the MIT licence, status and roadmap badges | Top of that library's README. Copy the header of [improv's README](../app/libs/improv/README.md). `improv-serial` is the one in `kiln/packages/` |
 | Libraries in a list or table, where a banner doesn't fit | **Library badge** (`badge-library-on-*.svg`) | E.g. the Libraries section of [principles.md](principles.md) |
 | [Glassworks Principles](principles.md) | **Principles banner** (`banner-principles-on-*.svg`), then a part badge under each part's heading | `docs/principles.md` |
 | The Glassworks core (`dev.glassworks.*`), including the pane API | **Core banner** (`banner-core-on-*.svg`) as the header, and the **core badge** (`badge-core-on-*.svg`) | `app/kiosk/src/main/java/dev/glassworks/README.md` |
 | A pane | **Pane badge** (`badge-pane-on-*.svg`) | The pane's README |
-| The installer (`kiln/`, `tools/install.sh`) | **Kiln badge** (`badge-kiln-on-*.svg`) | Kiln's README. The S1 installer is still S1-branded until it moves into Kiln |
+| The installer (`kiln/`, `tools/install.sh`) | **Kiln banner** (`banner-kiln-on-*.svg`) as the header, then the **Kiln badge** (`badge-kiln-on-*.svg`) and the MIT licence, status and roadmap badges | [Kiln's README](../kiln/apps/kiln/README.md). The old S1 installer in `kiln/src` is still S1-branded until Kiln takes over |
+| Kiln's design work and internal packages (`docs/design/kiln`, `@glassworks/*` in `kiln/packages/`) | **Kiln badge** alone | Top of their README, if they have one |
 
 Device-specific code lives in the frame, so it doesn't get a badge of its own.
 
