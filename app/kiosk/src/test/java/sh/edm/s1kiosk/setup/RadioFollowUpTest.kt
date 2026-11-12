@@ -128,9 +128,9 @@ class RadioFollowUpTest {
         assertTrue(c.datasetField)
         assertEquals(listOf(Action.THREAD_JOIN_HA, Action.THREAD_LEAVE), c.actions)
         assertTrue(c.note!!.contains("network key"))
+        assertEquals(1, c.lines.size)
         assertTrue(c.lines[0].startsWith("Get it from Home Assistant"))
-        assertTrue(c.lines[1].contains("Active dataset TLVs"))
-        assertTrue(c.lines[1].contains("device page → Configuration"))
+        assertTrue(c.more.any { it.contains("Active dataset TLVs") }) // copying by hand: behind "How does this work?"
         assertTrue(c.more.any { it.contains("admin users") })
         // joined: the network's name large, the role under it, no QR (nothing left to scan)
         val joined = RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = ThreadRouterState(true, "router", "Example-Net")), Place.SETTINGS)

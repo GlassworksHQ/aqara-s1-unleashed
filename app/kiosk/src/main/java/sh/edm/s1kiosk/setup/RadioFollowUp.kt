@@ -258,12 +258,7 @@ object RadioFollowUp {
                     datasetField = true, actions = leave, more = more,
                 ) else Card(
                     f.mode, "Give the panel your Thread network",
-                    listOf(
-                        "Get it from Home Assistant: the panel reads your preferred Thread network itself. If it isn't " +
-                            "signed in as an administrator, it shows a QR code for a one-time administrator sign-in.",
-                        "Or copy it by hand: Home Assistant's Thread page, Preferred network → ⓘ Network information → " +
-                            "“Active dataset TLVs”, into the panel's Thread dataset (device page → Configuration, or Advanced here).",
-                    ),
+                    listOf("Get it from Home Assistant. Not an admin? Scan the code it shows and sign in once."),
                     state = t?.describe() ?: statusDetail(f),
                     badge = if (t?.dataset == true) "Dataset set" else "No dataset",
                     note = DATASET_KEY,
@@ -316,11 +311,7 @@ object RadioFollowUp {
         RadioMode.THREAD_ROUTER -> {
             Card(
                 f.mode, "Join your Thread network",
-                listOf(
-                    "Get it from Home Assistant: the panel reads your Thread network itself (an administrator signs in once on a phone).",
-                    "Or copy “Active dataset TLVs” from Home Assistant's Thread page into the panel's Thread dataset in " +
-                        "Home Assistant, and nowhere else: it holds the network key.",
-                ),
+                listOf("Get it from Home Assistant. Not an admin? Scan the code it shows and sign in once."),
                 state = f.thread?.short() ?: statusDetail(f),
                 actions = if (f.thread?.joined == true) emptyList() else listOf(Action.THREAD_JOIN_HA),
             )
