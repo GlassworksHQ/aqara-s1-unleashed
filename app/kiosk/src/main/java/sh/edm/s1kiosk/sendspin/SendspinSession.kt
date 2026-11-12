@@ -82,7 +82,7 @@ class SendspinSession(
     private val identity = store.identity()
     private val sendLock = Any()
     private val burstLock = Any()
-    private var ws: WsClient? = null
+    @Volatile private var ws: WsClient? = null
     private var tx: NoiseCipher? = null
     private var rx: NoiseCipher? = null
     private val reasm = SsReassembler()
@@ -167,6 +167,9 @@ class SendspinSession(
     }
 
     /** Ends the connection, sending `client/goodbye` with [reason] when the session is up. */
+    /** Drops the connection without a goodbye, for when [close] takes too long. */
+    fun abort() { ws?.abort() }
+
     fun close(reason: String?) {
         if (closing) return
         closing = true

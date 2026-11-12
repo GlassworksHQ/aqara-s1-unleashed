@@ -230,31 +230,38 @@ class SendspinPlayer(
         running = false
         netCallback?.let { cb -> runCatching { ctx.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) } }
         netCallback = null
-        session?.let { closeOffThisThread(it, reason) }
+        var interrupted = session?.let { closeOffThisThread(it, reason) } ?: false
         synchronized(wake) { wake.notifyAll() }
         connThread?.interrupt(); audioThread?.interrupt(); statsThread?.interrupt()
         pipeline?.close()
         pipeline = null
         scheduler.end()
         // The audio thread owns the sink; let it close it before a restart could start another.
-        try { audioThread?.join(1_000) } catch (_: InterruptedException) {}
+        try { audioThread?.join(1_000) } catch (_: InterruptedException) { interrupted = true }
         connThread = null; audioThread = null; statsThread = null
         status = SendspinSession.Status(SendspinSession.Phase.CLOSED)
         onStatusChanged()
+        // Passed on only now, so neither wait above cuts the cleanup short.
+        if (interrupted) Thread.currentThread().interrupt()
     }
 
     /**
      * Sends the goodbye and closes the socket on a thread of its own, and waits for it (at most
      * [CLOSE_WAIT_MS]). [stop] runs on the main thread when the app's service stops, and Android
-     * refuses network I/O there.
+     * refuses network I/O there. If the close is still running after the wait (a write that is
+     * stuck), the connection is dropped so the socket doesn't outlive [stop]. Returns whether the
+     * caller was interrupted while it waited.
      */
-    private fun closeOffThisThread(s: SendspinSession, reason: String) {
+    private fun closeOffThisThread(s: SendspinSession, reason: String): Boolean {
         val closer = Thread({ s.close(reason) }, "ss-close").apply { isDaemon = true; start() }
+        var interrupted = false
         try {
             closer.join(CLOSE_WAIT_MS)
         } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
+            interrupted = true
         }
+        if (closer.isAlive) s.abort()
+        return interrupted
     }
 
     /** Reconnects so a new `client/hello` carries a changed setting (unpaired access, server URL). */

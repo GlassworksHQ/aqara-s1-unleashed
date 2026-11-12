@@ -93,6 +93,15 @@ class WsClient private constructor(private val socket: Socket, private val input
         }
     }
 
+    /**
+     * Closes the socket at once, without a close frame and without the write lock: this unblocks a
+     * write that is stuck (the socket has no write timeout).
+     */
+    fun abort() {
+        closed = true
+        try { socket.close() } catch (_: IOException) {}
+    }
+
     /** Sends a close frame (best effort) and closes the socket. */
     fun close(code: Int = 1000) {
         if (!closed) {
