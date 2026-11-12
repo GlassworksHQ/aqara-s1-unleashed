@@ -56,23 +56,45 @@ means changing that file in the same PR as the secrets.
 
 ## 3. Add the four secrets to GitHub (once)
 
-Repository secrets, with the [GitHub CLI](https://cli.github.com/). These commands read the values
+Secrets of the **`release-signing` environment**, not repository secrets. A repository secret can be
+read by any workflow that anyone with write access pushes, on any branch; an environment secret only
+by jobs that run on what the environment allows. Here that's `main`, `test-build/**` branches and the
+`v*` and `aqara-s1-plus-v*` tags, and a ruleset lets only admins create those branches and tags
+(see *Who can sign*, below).
+
+Create the environment once (Settings → Environments → New environment → `release-signing`;
+Deployment branches and tags → Selected: `main`, `test-build/**`, tags `v*`, `aqara-s1-plus-v*`),
+then set the secrets with the [GitHub CLI](https://cli.github.com/). These commands read the values
 from the file or from a prompt, so nothing ends up in your shell history:
 
 ```sh
 cd ~/secure
 # The keystore, base64-encoded, from the file:
-base64 < s1kiosk-release.jks | gh secret set S1_KEYSTORE_B64 --repo GlassworksHQ/aqara-s1-unleashed
+base64 < s1kiosk-release.jks | gh secret set S1_KEYSTORE_B64 --env release-signing --repo GlassworksHQ/aqara-s1-unleashed
 # Passwords: gh prompts for them ("Paste your secret"); the same password twice for PKCS12.
-gh secret set S1_KEYSTORE_PASSWORD --repo GlassworksHQ/aqara-s1-unleashed
-gh secret set S1_KEY_PASSWORD --repo GlassworksHQ/aqara-s1-unleashed
+gh secret set S1_KEYSTORE_PASSWORD --env release-signing --repo GlassworksHQ/aqara-s1-unleashed
+gh secret set S1_KEY_PASSWORD --env release-signing --repo GlassworksHQ/aqara-s1-unleashed
 # The alias is not secret:
-gh secret set S1_KEY_ALIAS --repo GlassworksHQ/aqara-s1-unleashed --body s1kiosk
-gh secret list --repo GlassworksHQ/aqara-s1-unleashed
+gh secret set S1_KEY_ALIAS --env release-signing --repo GlassworksHQ/aqara-s1-unleashed --body s1kiosk
+gh secret list --env release-signing --repo GlassworksHQ/aqara-s1-unleashed
 ```
 
 The workflow uses only these four secrets, the radio bundle key below, the optional `VERCEL_DEPLOY_HOOK`
 (a Vercel deploy hook URL for the web installer), and the job's own `GITHUB_TOKEN`.
+
+### Who can sign
+
+Anyone who can run a job in `release-signing` or `radio-signing` can sign code every panel accepts.
+Rulesets (Settings → Rules) keep that to admins:
+
+- **Release tags** (`v*`, `aqara-s1-plus-v*`): only admins can create, move or delete them.
+- **Test builds** (`test-build/**`): only admins can create, push to or delete these branches.
+- **main**: changes go through a pull request with the `app`, `web`, `scripts` and `root` checks
+  green; no force pushes or deletion. Admins can bypass, for emergencies.
+
+Pull requests from forks never get any secret, and no workflow uses `pull_request_target` or
+`workflow_run`. Before anyone else gets admin, add yourself as a required reviewer on both
+environments, so every signed build waits for an approval.
 
 ## 3b. The radio bundle key (once)
 

@@ -50,7 +50,9 @@ done
 
 if $signed; then
   want="$(tr -d ' \n' < "$HERE/release-cert.sha256")"
-  got="$("$bt/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+  # Every signer's certificate, whatever apksigner calls them ("Signer #1 certificate …" in older
+  # build-tools, "V2 Signer: certificate …" in newer ones). Exactly one certificate is allowed.
+  got="$("$bt/apksigner" verify --print-certs "$apk" | sed -n -E 's/^.*[Ss]igner.*certificate SHA-256 digest: ([0-9a-f]{64})$/\1/p' | sort -u | tr '\n' ' ' | sed 's/ $//')"
   [ "$got" = "$want" ] || fail "signed with certificate ${got:-<none>}, not the release key $want: panels would refuse the update"
 fi
 

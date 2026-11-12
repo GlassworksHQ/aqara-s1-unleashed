@@ -10,7 +10,7 @@
 #   adb install -r s1-kiosk-test-*.apk
 #
 # What it is:
-#   - The release variant (not debuggable), signed with the release key from the repository secrets.
+#   - The release variant (not debuggable), signed with the release key (`release-signing` environment).
 #   - versionName/versionCode of the latest release (or the version in the branch name / the input), so
 #     it installs over the panel's app with `adb install -r` (same or higher versionCode), the panel's
 #     update entity offers nothing, and the next real release replaces it as usual.
@@ -43,6 +43,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    environment: release-signing   # the APK key; this environment allows only main and test-build/**
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
