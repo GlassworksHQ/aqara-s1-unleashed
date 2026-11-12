@@ -84,8 +84,9 @@ class MusicPane(ctx: PaneContext) : Pane {
 }
 ```
 
-`PanelEvent` is an open interface. A pane handles the events it cares about and ignores the rest
-(`else -> Unit`), so a new event does not touch the panes that do not use it. A pane does not have
+`PanelEvent` is an open interface. A pane handles the events it cares about and ignores the rest:
+a `when` statement (not an expression) may simply leave out the events it does not use, as
+`SendspinPane` does. A new event does not touch the panes that do not use it. A pane does not have
 to add entities: [`TimersPane.kt`](../../sh/edm/s1kiosk/timers/TimersPane.kt) has none and only
 reacts to `TimersChanged` and `TimerFinished`. The voice assistant
 ([`AssistPane.kt`](../../sh/edm/s1kiosk/voice/AssistPane.kt)) is the pane that raises those: it calls
