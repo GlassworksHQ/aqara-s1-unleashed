@@ -35,9 +35,9 @@ Was this our app, the panel, or adb?
 
 2. **Read the dropbox entries** (2026-11-12, verified; root needed to read the files)
    ```
-   $ adb shell su -c 'ls -l /data/system/dropbox'
-   $ adb shell su -c 'cat /data/system/dropbox/system_server_wtf@<timestamp>.txt'
-   $ adb shell su -c 'cat /data/system/dropbox/system_server_crash@<timestamp>.txt'
+   $ adb shell "su -c 'ls -l /data/system/dropbox'\"
+   $ adb shell "su -c 'cat /data/system/dropbox/system_server_wtf@<timestamp>.txt'\"
+   $ adb shell "su -c 'cat /data/system/dropbox/system_server_crash@<timestamp>.txt'\"
    … system_server_wtf@…   (ActivityManager)
    … system_server_crash@… (the kiosk's MainActivity)
    … SYSTEM_RESTART@…      (15:23)
@@ -65,7 +65,7 @@ Was this our app, the panel, or adb?
 
    Counted per minute from the file dates:
    ```
-   $ adb shell su -c 'ls -l /data/system/dropbox' | grep -E 'system_server_(crash|wtf)|SYSTEM_RESTART' \
+   $ adb shell "su -c 'ls -l /data/system/dropbox'\" | grep -E 'system_server_(crash|wtf)|SYSTEM_RESTART' \
        | awk '{print $6, substr($7,1,5), $8}' | sed 's/@.*//' | sort | uniq -c
    ```
 
@@ -91,7 +91,7 @@ Not reproduced on purpose; it costs the shared panel a framework restart. The pa
 
 1. Install a test build with `adb install -r <test-build.apk>`, wait for dex2oat (~25 s).
 2. Install the release over it with `adb install -r -d <release.apk>` while the app is running.
-3. Watch `adb shell su -c 'ls -lt /data/system/dropbox | head'` for `system_server_wtf` entries.
+3. Watch `adb shell "su -c 'ls -lt /data/system/dropbox | head'\"` for `system_server_wtf` entries.
 
 This installs the app, and the failure adds dropbox entries and restarts the framework. We only
 checked that the APK and `kiosk.xml` came through unchanged; other storage wasn't checked. Undo: wait for the restart, then check the app version
