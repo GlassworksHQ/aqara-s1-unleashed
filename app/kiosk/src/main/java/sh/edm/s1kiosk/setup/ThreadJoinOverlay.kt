@@ -93,25 +93,22 @@ class ThreadJoinOverlay(context: Context) : FrameLayout(context) {
         when (s) {
             is ThreadJoin.State.Joined -> {
                 title.text = "Joining ${s.networkName.ifEmpty { "your Thread network" }}"
-                body.text = "The panel got the network's settings from Home Assistant and is joining it as a Thread router. " +
-                    "Radio status on the panel's device page says when it's in."
+                body.text = "It becomes a router in a few minutes."
                 status.setTextColor(GREEN)
-                status.text = "Done. The administrator sign-in was used once and revoked."
+                status.text = "The admin sign-in was used once and deleted."
                 postDelayed(autoHide, 8_000)
             }
             is ThreadJoin.State.Failed -> {
                 title.text = "Couldn't join the Thread network"
                 body.text = s.reason.replaceFirstChar { it.uppercase() } + "."
                 status.setTextColor(ROSE)
-                status.text = "Try again from the settings menu or Home Assistant (“Join Home Assistant's Thread network”)."
+                status.text = "Try again from Settings → Radio."
             }
             else -> {
-                title.text = "Scan to join Home Assistant's Thread network"
-                body.text = "Sign in on your phone as a Home Assistant administrator. The panel then reads your preferred " +
-                    "Thread network's settings from Home Assistant, signs out again and joins as a Thread router. " +
-                    "Or open $url."
+                title.text = "Scan to join your Thread network"
+                body.text = "Sign in as a Home Assistant admin on your phone. The panel uses it once. Or open $url."
                 status.setTextColor(if (s is ThreadJoin.State.Working) AMBER else FA)
-                status.text = ThreadJoin.describe(s, now)
+                status.text = if (s is ThreadJoin.State.Working) ThreadJoin.describe(s, now) else ""
                 if (s is ThreadJoin.State.NeedsAdmin) postDelayed(autoHide, (s.until - now).coerceAtLeast(0))
             }
         }
