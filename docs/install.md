@@ -38,8 +38,8 @@ reset button on the case.
 
 ![The S1 Plus board with the back cover removed; the FEL button is circled](img/fel-button.jpg)
 
-To enter FEL: unplug the panel, **hold the button, plug in USB-C**, keep holding for about
-10 seconds, then let go. The screen stays black. That's expected.
+To enter FEL: unplug the panel, **hold the button, plug in USB-C**, then let go. It enters FEL as
+soon as it has power, within about two seconds. The screen stays black. That's expected.
 
 ## Web installer
 
