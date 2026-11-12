@@ -252,9 +252,11 @@ class RadioSectionView(private val context: Context) {
         })
     }
     private val actionRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+    /** Joining is the way forward (accent); the Leave actions are red. */
+    private val primaryActions = setOf(Action.ROUTER_JOIN, Action.THREAD_JOIN_HA)
     private val actionButtons = Action.entries.associateWith { a ->
-        s.button(a.label, accent = a == Action.ROUTER_JOIN).apply {
-            if (a != Action.ROUTER_JOIN) danger(this)
+        s.button(a.label, accent = a in primaryActions).apply {
+            if (a !in primaryActions) danger(this)
             setOnClickListener { handle(Request.Act(a)) }
         }
     }
