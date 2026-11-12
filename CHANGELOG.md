@@ -23,7 +23,8 @@ below as the release notes.
   40 s, 60 s and every 120 s, while Wi-Fi is not connected and the screen is off. It needs the app's
   location permission, which the installer grants, and location turned on. The app's always-on
   service now also runs as a location service, because Android 10 only lets an app use location
-  with the screen off that way. The app reads no location.
+  with the screen off that way. The app reads no location. On the reference panel, Wi-Fi was back
+  about 20 s after it was turned off and on, with the screen still asleep.
 - **Sendspin: switching the Music Assistant player off and on quickly leaves one connection.** After a
   quick off and on, or a setting change that restarts the player, the old connection could end the new
   stream, make the status say "disconnected" while the panel was connected, or connect a second time

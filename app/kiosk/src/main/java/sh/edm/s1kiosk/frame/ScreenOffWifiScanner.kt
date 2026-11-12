@@ -49,7 +49,7 @@ class ScreenOffWifiScanner(
     private val power = ctx.getSystemService(PowerManager::class.java)
     private val policy = WifiScanPolicy()
     private var thread: HandlerThread? = null
-    private var handler: Handler? = null
+    @Volatile private var handler: Handler? = null
     @Volatile private var loggedFailure = false
 
     private val due = Runnable { step() }

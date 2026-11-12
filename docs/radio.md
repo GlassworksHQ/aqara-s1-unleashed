@@ -955,8 +955,9 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
   foreground-only and the app is not in the foreground. The first panel run (2026-11-12, b47ce54)
   failed on the last one: every scan was refused (`UID … has no location permission`), with the
   permission granted, because a foreground service counts as foreground for location only with
-  the `location` type. The kiosk's service now runs with `microphone|location`. Not yet run on a
-  panel at the time of writing.
+  the `location` type. The kiosk's service now runs with `microphone|location`. Verified
+  2026-11-12 (dd6401a): with the screen asleep, `svc wifi disable`/`enable` reconnected 21 s after
+  the enable (one scan, at 10 s), and Home Assistant was back 5 s later.
 - **Aqara's watchdog** keeps restarting things. The helper re-enforces every 3 s; a Z3Gateway start
   is caught by its wrapper's 6 s sleep, but this is a race, verified once.
 - **Multi-PAN (`zigbee_tcp_thread`)** is not offered and untested.
