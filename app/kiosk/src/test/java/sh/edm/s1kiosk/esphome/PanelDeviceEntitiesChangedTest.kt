@@ -14,7 +14,6 @@ import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.base.BaseBackend
 import sh.edm.s1kiosk.base.BaseKind
 import sh.edm.s1kiosk.base.BaseLayout
-import sh.edm.s1kiosk.base.WallBase
 import sh.edm.s1kiosk.base.WallBasePane
 
 /** A pane's entitiesChanged makes the shell rebuild the whole list: its own entities and every pane's. */
@@ -25,6 +24,7 @@ class PanelDeviceEntitiesChangedTest {
     @Test fun aNewBaseLayoutAddsItsEntitiesAndKeepsTheRest() {
         val app = RuntimeEnvironment.getApplication()
         KioskPrefs(app).wallBase.layout = ""
+        KioskPrefs(app).wallBase.backend = BaseBackend.LOCALSERVICE.pref
         val device = PanelDevice(app, GlassworksRuntime(AqaraS1Plus()), onVoiceEvent = {})
         try {
             device.initEntities(
@@ -33,7 +33,6 @@ class PanelDeviceEntitiesChangedTest {
                     esphomeVersion = PanelDevice.ESPHOME_VERSION, compilationTime = "test", manufacturer = "Aqara",
                     model = "test", voiceFeatures = PanelDevice.VOICE_FEATURES,
                 ),
-                WallBase.Config(BaseBackend.LOCALSERVICE),
             )
             val before = device.entityList().map { it.objectId }
             val pane = device.paneList().filterIsInstance<WallBasePane>().single()

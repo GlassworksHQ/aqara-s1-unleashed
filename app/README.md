@@ -40,7 +40,7 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
 - **Kiosk mode for HA**: a built-in Gecko web extension (`assets/extension/`) hides the HA dashboard
   header and the sidebar. Add `?kiosk=0` to the URL to show them for one page; while you're editing a
   dashboard they're left visible.
-- **Screen policy from the panel's own sensors** (`ScreenController`, see
+- **Screen policy from the panel's own sensors** (`dev.glassworks.screen.ScreenPolicy` with the S1 frame's sensors, see
   [docs/sensors.md](../docs/sensors.md)): wake on approach (VI5300 ToF), off after idle, a night window
   with a shorter timeout and lower brightness cap, auto-brightness from the MK6212 light sensor. Runs in
   a foreground `KioskService`, so it works while the screen is off. It replaces Aqara's DND

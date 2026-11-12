@@ -2,6 +2,7 @@ package sh.edm.s1kiosk
 
 import android.content.Context
 import android.content.Intent
+import dev.glassworks.screen.ScreenPolicy
 import sh.edm.s1kiosk.discovery.HaDiscovery
 import sh.edm.s1kiosk.frame.AqaraS1Plus
 import sh.edm.s1kiosk.radio.RadioController
@@ -16,6 +17,11 @@ class GlassworksRuntime(
     /** The device this app runs on, made once with the runtime. */
     val frame: AqaraS1Plus,
 ) {
+    /** The screen's on/off and brightness, from the frame's sensors. MainActivity and KioskService start it. */
+    val screen = ScreenPolicy(
+        frame.presence, frame.light, AdminReceiver::class.java, settings = ::KioskPrefs,
+        logTag = "S1Kiosk.Screen", wakeLockTag = "s1kiosk:wake",
+    )
 
     /** Set while KioskService runs; the setup screen and the setup channel apply radio changes through it. */
     @Volatile var radio: RadioController? = null

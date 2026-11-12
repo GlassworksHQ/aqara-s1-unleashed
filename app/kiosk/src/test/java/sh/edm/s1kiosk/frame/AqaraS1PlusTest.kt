@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.ComponentName
 import android.content.Intent
 import android.content.IntentFilter
+import android.hardware.Sensor
+import android.hardware.SensorManager
 import dev.glassworks.frame.systemSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -14,6 +16,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowSensor
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
@@ -55,5 +58,18 @@ class AqaraS1PlusTest {
 
     @Test fun noSettingsScreenMeansNull() {
         assertNull(frame.systemSettings(app))
+    }
+
+    @Test fun theSensorSourcesListenUntilStopped() {
+        val sm = shadowOf(app.getSystemService(SensorManager::class.java))
+        sm.addSensor(ShadowSensor.newInstance(Sensor.TYPE_PROXIMITY))
+        sm.addSensor(ShadowSensor.newInstance(Sensor.TYPE_LIGHT))
+        frame.presence.start(app) { _, _ -> }
+        frame.light.start(app) {}
+        assertEquals(2, sm.listeners.size)
+        frame.presence.stop(app)
+        assertEquals(1, sm.listeners.size)
+        frame.light.stop(app)
+        assertEquals(0, sm.listeners.size)
     }
 }

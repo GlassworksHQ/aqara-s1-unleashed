@@ -47,7 +47,7 @@ class KioskService : Service() {
             .any { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
         val types = KioskForeground.start(location) { Platform.startForeground(this, NOTIFICATION_ID, notification, it) }
         Log.i("S1Kiosk", "foreground service types $types (location ${if (types and KioskForeground.LOCATION != 0) "on" else "off"})")
-        ScreenController.start(this)
+        glassworks.screen.start(this)
         wifiScanner = glassworks.frame.screenOffWifiScanner(this).also { it.start() }
         glassworks.voiceState = if (KioskPrefs(this).voice.enabled) "idle" else "off"
         glassworks.voiceUi = VoiceUi(glassworks.voiceState)
@@ -77,8 +77,8 @@ class KioskService : Service() {
         glassworks.voiceState = glassworks.voiceUi.state
         Log.i("S1Kiosk.Voice", "voice: ${glassworks.voiceState}")
         // Talking to the panel counts as activity: wake the screen and keep it on.
-        if (e !is VoiceEvent.Idle && e !is VoiceEvent.Error) ScreenController.wake("voice")
-        ScreenController.onStateChanged?.invoke()
+        if (e !is VoiceEvent.Idle && e !is VoiceEvent.Error) glassworks.screen.wake("voice")
+        glassworks.screen.onStateChanged?.invoke()
     }
 
     override fun onDestroy() {
