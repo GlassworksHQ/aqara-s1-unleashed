@@ -268,6 +268,20 @@ class ReleasesTest {
         assertTrue(pick.problem!!.contains("arm64-v8a"))
     }
 
+    @Test fun anAbiWithHalfItsPairIsSkippedForTheNextOne() {
+        // arm64 APK uploaded, its .sha256 not (yet): a device that also runs 32-bit takes the complete S1 pair.
+        val halfArm64 = JSONObject(withArm64()).apply {
+            val assets = getJSONArray("assets")
+            (0 until assets.length()).first { assets.getJSONObject(it).getString("name") == "s1-kiosk-arm64-v8a-1.3.0.apk.sha256" }
+                .let { assets.remove(it) }
+        }.toString()
+        val o = Releases.offer(Releases.parse(halfArm64), listOf("arm64-v8a", "armeabi-v7a", "armeabi"))
+        assertEquals("s1-kiosk-1.3.0.apk", o.apk.name)
+        assertEquals("s1-kiosk-1.3.0.apk.sha256", o.sha256.name)
+        val e = try { Releases.offer(Releases.parse(halfArm64), listOf("arm64-v8a")); null } catch (e: ReleaseFormatException) { e }
+        assertTrue(e!!.message!!.contains("has no s1-kiosk-arm64-v8a-1.3.0.apk with s1-kiosk-arm64-v8a-1.3.0.apk.sha256"))
+    }
+
     @Test fun aDeviceWithNoBuiltAbiGetsNoOffer() {
         val e = try { Releases.offer(Releases.parse(withArm64()), listOf("x86_64")); null } catch (e: ReleaseFormatException) { e }
         assertTrue(e!!.message!!.contains("no APK is built for this device's ABIs (x86_64)"))

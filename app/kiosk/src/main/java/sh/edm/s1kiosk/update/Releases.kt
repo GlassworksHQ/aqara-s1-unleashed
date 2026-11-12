@@ -143,7 +143,8 @@ object Releases {
     /**
      * The installable offer in [r], or a [ReleaseFormatException] saying why there is none: drafts,
      * pre-releases (GitHub flag or a SemVer pre-release tag), a tag that isn't one of this app's
-     * ([tagVersion]), no APK for any of [deviceAbis] (`Build.SUPPORTED_ABIS`, preferred first), or
+     * ([tagVersion]), no APK and `.sha256` pair for any of [deviceAbis] (`Build.SUPPORTED_ABIS`,
+     * preferred first; an ABI with half its pair is skipped for the next one), or
      * missing/odd assets. Download URLs must be HTTPS release downloads on github.com for this tag.
      */
     fun offer(r: GithubRelease, deviceAbis: List<String>): UpdateOffer {
@@ -159,8 +160,9 @@ object Releases {
         }
         val abis = ApkAbi.among(deviceAbis)
         if (abis.isEmpty()) throw ReleaseFormatException("no APK is built for this device's ABIs (${deviceAbis.joinToString()})")
-        val abi = abis.firstOrNull { a -> r.assets.count { it.name == a.apkName(v) } == 1 }
-            ?: throw ReleaseFormatException("release ${r.tag} has no ${abis.joinToString(" or ") { it.apkName(v) }}")
+        fun one(name: String) = r.assets.count { it.name == name } == 1
+        val abi = abis.firstOrNull { one(it.apkName(v)) && one(it.shaName(v)) }
+            ?: throw ReleaseFormatException("release ${r.tag} has no ${abis.joinToString(" or ") { "${it.apkName(v)} with ${it.shaName(v)}" }}")
         val apk = asset(abi.apkName(v))
         val sha = asset(abi.shaName(v))
         if (apk.size > MAX_APK_BYTES) throw ReleaseFormatException("${apk.name} is too large (${apk.size} bytes)")
