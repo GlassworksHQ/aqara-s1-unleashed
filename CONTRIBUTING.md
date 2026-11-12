@@ -29,7 +29,8 @@ A signed test build is made for any branch named `test-build/vX.Y.Z/<name>`
 
 | Label | Use |
 |---|---|
-| `device: …` | Which panel model or base it affects |
+| `frame: …` | Only one device (frame), e.g. `frame: aqara-s1-plus`. The exact model goes in the issue form, not a label |
+| `pane: …` | Which pane, named after its folder: `pane: zigbee-thread`, `pane: matter`; a frame's own panes as `pane: <frame>/<pane>`, e.g. `pane: aqara-s1-plus/wall-base` |
 | `area: …` | Which part of the project |
 | `needs info`, `needs hardware` | Waiting on the reporter, or on someone with that hardware |
 | `upstream` | Caused by or waiting on HA, zigpy, Zigbee2MQTT or another project |
