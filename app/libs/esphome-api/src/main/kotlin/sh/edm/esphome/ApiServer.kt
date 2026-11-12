@@ -105,12 +105,17 @@ interface VoiceAssistantHandler {
  * provision a key (`NoiseEncryptionSetKeyRequest`); with a key, only Noise with that key.
  *
  * @param keys Noise key state, or null for a plaintext-only server (no encryption support at all).
+ * @param bindAddress The address to listen on, or null for every address (a device: Home Assistant
+ *   reaches it on the LAN). Tests pass the loopback address they connect to. On macOS a wildcard
+ *   listener can get a port another process holds on 127.0.0.1, and that process then answers
+ *   127.0.0.1 (#113).
  */
 class ApiServer(
     private val port: Int,
     private val identity: () -> DeviceIdentity,
     entities: List<ApiEntity>,
     private val keys: NoiseKeys?,
+    private val bindAddress: InetAddress? = null,
 ) {
     /** A server with a fixed key (or plaintext-only for null), as before dynamic keys. */
     constructor(port: Int, identity: () -> DeviceIdentity, entities: List<ApiEntity>, psk: ByteArray?) :
@@ -222,7 +227,7 @@ class ApiServer(
     fun start() {
         val ss = ServerSocket()
         ss.reuseAddress = true
-        ss.bind(InetSocketAddress(port))
+        ss.bind(InetSocketAddress(bindAddress, port))
         serverSocket = ss
         running = true
         Thread({ acceptLoop(ss) }, "esphome-accept").apply { isDaemon = true; start() }

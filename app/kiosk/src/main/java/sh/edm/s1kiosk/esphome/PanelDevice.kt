@@ -71,6 +71,8 @@ class PanelDevice internal constructor(
     private val mdns: MdnsAdvertiser,
     /** The API server's port. A test passes 0 for any free one. */
     private val apiPort: Int,
+    /** Where the API server listens: null for every address. A test passes the loopback address it connects to (#113). */
+    private val apiBindAddress: java.net.InetAddress?,
 ) {
 
     constructor(
@@ -83,6 +85,7 @@ class PanelDevice internal constructor(
         exec = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "esphome-main").apply { isDaemon = true } },
         mdns = EspHomeMdnsAdvertiser(EspHomeMdns(context.applicationContext, board = runtime.frame.board)),
         apiPort = ApiServer.DEFAULT_PORT,
+        apiBindAddress = null,
     )
 
     companion object {
@@ -317,7 +320,7 @@ class PanelDevice internal constructor(
     }
 
     private fun startServer() {
-        val s = ApiServer(apiPort, { identity }, entities, noiseKeys)
+        val s = ApiServer(apiPort, { identity }, entities, noiseKeys, apiBindAddress)
         panes.forEachPane("bind") { it.bind(s) }
         s.onCommand = { exec.execute { s.publishStates() } }
         s.onClientHello = { info, addr ->
