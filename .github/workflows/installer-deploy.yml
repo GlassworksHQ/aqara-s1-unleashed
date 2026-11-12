@@ -48,5 +48,6 @@ jobs:
         env:
           VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
         run: |
-          if [ -z "$VERCEL_DEPLOY_HOOK" ]; then echo "::warning::VERCEL_DEPLOY_HOOK not set: redeploy the installer by hand"; exit 0; fi
+          # This hook is the only way the installer deploys, so a missing secret fails the run.
+          if [ -z "$VERCEL_DEPLOY_HOOK" ]; then echo "::error::VERCEL_DEPLOY_HOOK not set: the installer was not redeployed"; exit 1; fi
           curl -fsS -X POST "$VERCEL_DEPLOY_HOOK" > /dev/null && echo "installer rebuild requested"
