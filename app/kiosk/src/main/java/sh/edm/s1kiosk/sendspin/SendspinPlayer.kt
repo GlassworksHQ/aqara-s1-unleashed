@@ -148,6 +148,11 @@ class SendspinPlayer(
     private val scheduler = PlaybackScheduler(sink, { session?.timeFilter?.snapshot ?: EMPTY })
     /** The run since the last [start], or null when stopped. Written only under this player's lock. */
     @Volatile private var current: Run? = null
+    /**
+     * Also held while [stop] clears [current]. A run's decode thread takes it, not the player's
+     * lock, because [stop] joins that thread while it holds the player's lock.
+     */
+    private val outputLock = Any()
     @Volatile private var ducked = false
     private val wake = Object()
     @Volatile var status: SendspinSession.Status = SendspinSession.Status(SendspinSession.Phase.CLOSED); private set
@@ -184,10 +189,11 @@ class SendspinPlayer(
     /**
      * One [start] to its [stop], with what its threads own. Once it is no longer [current], its
      * threads exit and its sessions can reach only its own (closed) pipeline, even if a reader is
-     * still busy: a quick stop and start can't let the old run act on the new one.
+     * still busy: a quick stop and start can't let the old run act on the new one. The pipeline
+     * reaches the shared scheduler only while its run is current.
      */
     private inner class Run {
-        val pipeline = newPipeline(scheduler, ::onFlacFailed)
+        val pipeline = newPipeline(outputFor(this)) { reason -> onFlacFailed(this, reason) }
         val hooks = hooksFor(this)
         @Volatile var backoffMs = 1_000L
         val connThread = Thread({ connectLoop(this) }, "ss-conn").apply { isDaemon = true }
@@ -199,6 +205,18 @@ class SendspinPlayer(
     /** Runs [block] under the lock [start] and [stop] take, and only while [r] is the current run. */
     private inline fun ifCurrent(r: Run, block: () -> Unit): Boolean =
         synchronized(this) { (current === r).also { if (it) block() } }
+
+    /** [ifCurrent] for [r]'s decode thread, under [outputLock]. */
+    private inline fun ifOutputCurrent(r: Run, block: () -> Unit): Boolean =
+        synchronized(outputLock) { (current === r).also { if (it) block() } }
+
+    /** The scheduler as [r]'s pipeline sees it: a decode thread still busy after [stop] can't end or feed the next run's stream. */
+    private fun outputFor(r: Run) = object : PcmOutput {
+        override fun start(f: SsFormat) { ifOutputCurrent(r) { scheduler.start(f) } }
+        override fun push(c: PcmChunk) { ifOutputCurrent(r) { scheduler.push(c) } }
+        override fun clear(fromUs: Long?) { ifOutputCurrent(r) { scheduler.clear(fromUs) } }
+        override fun end() { ifOutputCurrent(r) { scheduler.end() } }
+    }
 
     /** One-line state for the ESPHome diagnostic sensor. */
     fun statusText(): String {
@@ -243,7 +261,7 @@ class SendspinPlayer(
     /** Stops, telling the server why (`user_request` when switched off, `shutdown` when the app stops). */
     @Synchronized fun stop(reason: String = "user_request") {
         val r = current ?: return
-        current = null
+        synchronized(outputLock) { current = null }
         r.netCallback?.let { cb -> runCatching { ctx.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) } }
         var interrupted = session?.let { closeOffThisThread(it, reason) } ?: false
         session = null
@@ -290,13 +308,17 @@ class SendspinPlayer(
         restartSession()
     }
 
-    /** FLAC kept failing: offer PCM only from the next client/hello, and reconnect now to get there. */
-    private fun onFlacFailed(reason: String) {
-        if (flacFailure != null) return
-        flacFailure = reason.take(120)
+    /** FLAC kept failing in [r]: offer PCM only from the next client/hello, and reconnect [r]'s session now to get there. */
+    private fun onFlacFailed(r: Run, reason: String) {
+        var first = false
+        ifOutputCurrent(r) { if (flacFailure == null) { flacFailure = reason.take(120); first = true } }
+        if (!first) return
         SsLog.w("FLAC failed ($reason): reconnecting with PCM only")
         onStatusChanged()
-        Thread({ restartSession() }, "ss-restart").apply { isDaemon = true; start() }
+        Thread({
+            val s = synchronized(this@SendspinPlayer) { session.takeIf { current === r } }
+            s?.close("restart")
+        }, "ss-restart").apply { isDaemon = true; start() }
     }
 
     /** Voice assistant active: mute locally while staying in sync (spec allows suspending output locally). */
@@ -462,7 +484,8 @@ class SendspinPlayer(
 
     /**
      * The hooks of [r]'s sessions. Streams go to [r]'s own pipeline, so a stopped run's late call
-     * lands in its closed pipeline. Status and metadata from a stopped run are dropped.
+     * lands in its closed pipeline. Status, metadata, volume, mute and output delay from a stopped
+     * run are dropped.
      */
     private fun hooksFor(r: Run) = object : SsPlayerHooks {
         // Everything goes through the pipeline, in order: it decodes off the network and audio threads.
@@ -471,12 +494,10 @@ class SendspinPlayer(
         override fun onStreamEnd() { r.pipeline.end(); ifCurrent(r) { nowPlaying = null } }
         override fun onAudio(chunk: SsAudioChunk, receivedNanos: Long) { r.pipeline.audio(chunk) }
 
-        override fun onVolume(volume: Int) { store.volume = volume; applyGain(); onStatusChanged() }
-        override fun onMute(muted: Boolean) { store.muted = muted; applyGain(); onStatusChanged() }
+        override fun onVolume(volume: Int) { if (ifCurrent(r) { store.volume = volume; applyGain() }) onStatusChanged() }
+        override fun onMute(muted: Boolean) { if (ifCurrent(r) { store.muted = muted; applyGain() }) onStatusChanged() }
         override fun onOutputDelay(ms: Int) {
-            store.outputDelayMs = ms
-            scheduler.outputDelayUs = ms * 1000L
-            SsLog.i("Output delay set to $ms ms")
+            if (ifCurrent(r) { store.outputDelayMs = ms; scheduler.outputDelayUs = ms * 1000L }) SsLog.i("Output delay set to $ms ms")
         }
 
         override fun playerState() = SsPlayerState(
