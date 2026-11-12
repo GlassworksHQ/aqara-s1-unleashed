@@ -11,6 +11,7 @@ import sh.edm.esphome.DeviceIdentity
 import sh.edm.esphome.EspHomeLog
 import sh.edm.esphome.EventEntity
 import sh.edm.s1kiosk.KioskPrefs
+import java.net.InetAddress
 
 /**
  * Something on the panel that panes may react to. Delivered on any thread. Not sealed: a pane ignores
@@ -28,6 +29,13 @@ interface PanelEvent {
 
     /** The timers that are running or paused now, as the voice assistant reports them. Replaces the previous list. */
     data class TimersChanged(val timers: List<PanelTimer>) : PanelEvent
+
+    /**
+     * Home Assistant subscribed to the entity states from [address]. [authenticated]: the connection uses
+     * the API key Home Assistant provisioned (Noise). Only an authenticated one proves it is that Home
+     * Assistant, so a pane that trusts the address checks it.
+     */
+    data class HomeAssistantSubscribed(val address: InetAddress?, val authenticated: Boolean) : PanelEvent
 }
 
 /** One voice timer as Home Assistant reports it. */
