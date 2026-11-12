@@ -664,7 +664,7 @@ also brings a matching host cpcd. No image is shipped; see
   in Zigbee router mode it shows the router host's state instead of the helper's; in Thread router
   mode the role and the network's name, from the helper (`joined “Name” as a child; it becomes a
   router when the network promotes it`, `… as a router`, `dataset set, looking for the network`,
-  `no dataset yet`).
+  `not on a Thread network yet`).
 - Setup screen radio step: Off, Zigbee coordinator, Thread border router in the first
   row, the two repeater roles (experimental) in a compact second row; a one-line "what next" note.
   After a mode other than Off is applied, it shows a short version of that mode's follow-up card
