@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boot Finish</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0b0f;--fg:#f4f4f5;--fa:#63636b}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;color:var(--foreground,#f4f4f5)}
+.sheet{display:grid;gap:26px;padding:6px 0 24px}
+.cap{margin:0 0 10px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.cap b{font-weight:500}.cap span{color:var(--muted-foreground,#9ca3af);font-size:13px;max-width:92ch}
+.ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ctl button{font:inherit;font-size:13px;color:var(--foreground,#f4f4f5);background:rgba(127,127,127,.12);border:1px solid rgba(127,127,127,.25);border-radius:999px;padding:6px 14px;cursor:pointer}
+.ctl button[aria-pressed=true]{background:var(--foreground,#f4f4f5);color:var(--background,#0a0b0f)}
+.ctl span{font-size:12.5px;color:var(--muted-foreground,#9ca3af);margin-left:6px}
+.wrap{width:100%;aspect-ratio:2/1;position:relative;border-radius:14px;overflow:hidden;border:5px solid #1b1d23;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+.wrap.sq{aspect-ratio:auto;height:340px}
+.screen{position:absolute;left:0;top:0;width:960px;height:480px;transform-origin:0 0;background:var(--bg);overflow:hidden;color:var(--fg)}
+.screen::before{content:"";position:absolute;inset:0;background:radial-gradient(45% 60% at 12% 8%,rgba(56,189,248,.13),transparent 70%),radial-gradient(45% 60% at 92% 95%,rgba(167,139,250,.12),transparent 70%)}
+.lock{position:absolute;inset:0;display:grid;place-items:center}
+.lock>div{display:flex;flex-direction:column;align-items:center;gap:22px}
+.word{font-weight:200;font-size:46px;letter-spacing:-.03em}
+.frame{position:absolute;bottom:30px;left:0;right:0;text-align:center;font:500 11px/1 Inter;letter-spacing:.14em;text-transform:uppercase;color:var(--fa)}
+.close{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:70px;background:var(--bg)}
+.close::before{content:"";position:absolute;inset:0;background:radial-gradient(45% 60% at 12% 8%,rgba(56,189,248,.13),transparent 70%),radial-gradient(45% 60% at 92% 95%,rgba(167,139,250,.12),transparent 70%)}
+.close figure{margin:0;position:relative;display:grid;justify-items:center;gap:10px}
+.close figcaption{font-size:12px;color:#8b8b93}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="lit" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#a78bfa"/></linearGradient>
+  <!-- frost: light comes from the back-left edge; the face is tinted glass, brighter at the far corner -->
+  <linearGradient id="frostFace" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8" stop-opacity=".8"/><stop offset=".55" stop-color="#818cf8" stop-opacity=".62"/><stop offset="1" stop-color="#a78bfa" stop-opacity=".78"/></linearGradient>
+  <linearGradient id="frostRim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".95"/><stop offset=".5" stop-color="#e0f2fe" stop-opacity=".35"/><stop offset="1" stop-color="#c4b5fd" stop-opacity=".55"/></linearGradient>
+  <radialGradient id="frostSheen" cx=".3" cy=".15" r=".7"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  <filter id="frostBlur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5.5"/></filter>
+  <linearGradient id="satin" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5cc8f7"/><stop offset=".55" stop-color="#8ea2f8"/><stop offset="1" stop-color="#a78bfa"/></linearGradient>
+  <linearGradient id="trans" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8" stop-opacity=".78"/><stop offset=".55" stop-color="#818cf8" stop-opacity=".66"/><stop offset="1" stop-color="#a78bfa" stop-opacity=".76"/></linearGradient>
+  <filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="2" seed="4"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .09 0"/></filter>
+</defs></svg>
+<div class="sheet" id="root"></div>
+<script>
+const C=Math.cos(Math.PI/6),S=.5;
+function plate(cx,top,side,r){const p=(x,y)=>[cx+C*(x-y),top+S*(x+y)],pts=[];
+  const corner=(ox,oy,a0)=>{for(let i=0;i<=8;i++){const a=a0+i*Math.PI/16;pts.push(p(ox+r*Math.cos(a),oy+r*Math.sin(a)))}};
+  corner(side-r,r,-Math.PI/2);corner(side-r,side-r,0);corner(r,side-r,Math.PI/2);corner(r,r,Math.PI);
+  return 'M'+pts.map(q=>q.map(v=>v.toFixed(2)).join(' ')).join('L')+'Z'}
+const W=[.7,.45,.2];let uid=0,FIN='satin';
+/* P[i] = {lift, op, ghost}; i 0 = top. The top plate is frosted glass once lit:
+   the plates under it show through blurred, the face is tinted, the back rim catches the light. */
+function stack(P,lit,size=150,fin=FIN,glow=1){const id='f'+(uid++);let under='',o='';
+  const d=P.map((q,i)=>plate(60,11+i*19-q.lift,60,9));
+  for(let i=2;i>=1;i--){const q=P[i];
+    if(q.ghost>0) o+=`<path d="${plate(60,11+i*19,60,9)}" fill="none" stroke="#f4f4f5" stroke-opacity="${(.22*q.ghost).toFixed(3)}" stroke-width="4" stroke-dasharray="7 6" stroke-linejoin="round"/>`;
+    if(q.op<=0) continue;
+    const s=`<path d="${d[i]}" fill="none" stroke="#f4f4f5" stroke-opacity="${(W[i]*q.op).toFixed(3)}" stroke-width="5" stroke-linejoin="round"/>`;
+    o+=s;under+=s;}
+  const q=P[0];
+  if(q.ghost>0) o+=`<path d="${plate(60,11,60,9)}" fill="none" stroke="#f4f4f5" stroke-opacity="${(.22*q.ghost).toFixed(3)}" stroke-width="4" stroke-dasharray="7 6" stroke-linejoin="round"/>`;
+  if(q.op>0){
+    // the glass body: always solid, so nothing behind it ever shows sharp
+    const blur=fin==='trans'?`<g clip-path="url(#${id})" opacity="${q.op.toFixed(3)}"><g filter="url(#frostBlur)" transform="translate(0 2.5)">${under.replace(/stroke-width="5"/g,'stroke-width="9"').replace(/stroke-opacity="([0-9.]+)"/g,(m,v)=>`stroke-opacity="${Math.min(1,v*2.6).toFixed(3)}"`)}</g></g>`:'';
+    o+=`<clipPath id="${id}"><path d="${d[0]}"/></clipPath><path d="${d[0]}" fill="#0b0c11"/>${blur}`;
+    if(lit>0){const a=(lit*q.op).toFixed(3);
+      o+=`<g opacity="${a}">
+          <path d="${d[0]}" fill="url(#${fin==='trans'?'trans':'satin'})"/>
+          <rect x="-20" y="-20" width="160" height="160" filter="url(#grain)" clip-path="url(#${id})" opacity="${fin==='trans'?1:1.4}"/>
+          <path d="${d[0]}" fill="url(#frostSheen)"/>
+          <path d="${d[0]}" fill="#0a0b0f" opacity="${((1-glow)*1.0).toFixed(3)}"/>
+          <path d="${d[0]}" fill="none" stroke="url(#frostRim)" stroke-width="2.2" stroke-linejoin="round"/>
+        </g>`;}
+    if(lit<1) o+=`<path d="${d[0]}" fill="none" stroke="#f4f4f5" stroke-opacity="${(W[0]*q.op*(1-lit)).toFixed(3)}" stroke-width="5" stroke-linejoin="round"/>`;}
+  return `<svg viewBox="0 0 120 120" width="${size}" height="${size}" style="overflow:visible">${o}</svg>`}
+
+const clamp=v=>Math.max(0,Math.min(1,v)),seg=(t,a,b)=>clamp((t-a)/(b-a)),ease=x=>x*x*(3-2*x);
+const PLAY=4,H=120,START=i=>0.2+(2-i)*0.55;
+const breathe=t=>t>PLAY?0.88+0.12*Math.cos((t-PLAY)*2*Math.PI/3.6):1;
+/* the loop: the stack rises and falls; the upper plates open a little and close */
+const FLOAT=t=>{const u=Math.max(0,t-PLAY),w=2*Math.PI/3.6,r=ease(clamp(u/0.8));
+  return [0,1,2].map(i=>r*((2-i)*4*(0.5-0.5*Math.cos(w*u-i*0.6))+6*Math.sin(w*u*0.5)))};
+
+/* motion models: each gives the fall (0 → 1 = landed, may overshoot) and when it first touches */
+function spring(z,period){const w=2*Math.PI/period,wd=w*Math.sqrt(1-z*z);
+  const x=u=>u<=0?0:1-Math.exp(-z*w*u)*(Math.cos(wd*u)+(z*w/wd)*Math.sin(wd*u));
+  let c=0;for(let u=0;u<3;u+=.002){if(x(u)>=1){c=u;break}}return{x,contact:c}}
+function drop(fall,bounces){ // gravity, then shrinking rebounds [height in units, duration s]
+  const x=u=>{if(u<=0)return 0;if(u<fall)return (u/fall)**2;let v=u-fall;
+    for(const [h,d] of bounces){if(v<d)return 1-(h/H)*4*(v/d)*(1-v/d);v-=d}return 1};
+  return{x,contact:fall}}
+/* when a plate lands, the plates under it give a little and spring back */
+const give=(u,amp)=>u<=0?0:-amp*Math.exp(-7*u)*Math.sin(Math.PI*u/0.16)*(u<0.9?1:0);
+
+function model(m,giveAmp){
+  return t=>{const fl=FLOAT(t),off=[0,0,0];
+    for(let i=0;i<3;i++){const land=START(i)+m.contact;for(let j=i;j<3;j++) off[j]+=give(t-land,giveAmp*(j===i?1:.6))}
+    const P=[0,1,2].map(i=>{const a=START(i),u=t-a;return{lift:H*(1-m.x(u))+off[i]+fl[i],op:seg(t,a,a+.2),ghost:1-seg(t,a+m.contact-.05,a+m.contact+.25)}});
+    return{P,lit:ease(seg(t,2.35,3.1)),glow:breathe(t),word:ease(seg(t,3.0,3.8))}}}
+
+const M3=model(spring(.74,.7),2.4);
+const OPTS=[
+ {k:'1',fin:'satin',t:'Frosted, opaque',n:'A solid satin plate: the lit gradient with a fine grain, a soft sheen from the back-left and a bright rim on the far edge. Nothing shows through.',f:M3},
+ {k:'2',fin:'trans',t:'Translucent',n:'The same plate, mostly solid: the plates below show only as a soft blur of light through it, as through frosted glass.',f:M3},
+];
+
+const root=document.getElementById('root');
+root.innerHTML=`<div><p class="cap"><b>The two finishes</b><span>Both with motion 3, the spring where the stack gives.</span></p>
+ <div class="wrap sq"><div class="close" id="close"></div></div></div>
+ <div class="ctl"><button id="slow" aria-pressed="false">Half speed</button><button id="again">Play again</button><span id="tag"></span></div>
+ ${OPTS.map(o=>`<div><p class="cap"><b>${o.t}</b><span>${o.n}</span></p><div class="wrap"><div class="screen" id="s${o.k}"></div></div></div>`).join('')}`;
+uid=1000;
+const assembled=[{lift:0,op:1,ghost:0},{lift:0,op:1,ghost:0},{lift:0,op:1,ghost:0}];
+document.getElementById('close').innerHTML=`<figure>${stack(assembled,1,230,'satin')}<figcaption>Frosted, opaque</figcaption></figure><figure>${stack(assembled,1,230,'trans')}<figcaption>Translucent</figcaption></figure>`;
+const html=(o,t)=>{const r=o.f(t);return `<div class="lock"><div>${stack(r.P,r.lit,150,o.fin,r.glow)}<div class="word" style="opacity:${r.word.toFixed(3)};transform:translateY(${(8*(1-r.word)).toFixed(1)}px)">Glassworks</div></div></div><div class="frame" style="opacity:${(seg(t,3.5,4.2)*.8).toFixed(3)}">On Aqara S1 Plus</div>`};
+const fit=()=>document.querySelectorAll('.wrap:not(.sq)').forEach(w=>{w.firstElementChild.style.transform=`scale(${w.clientWidth/960})`});
+fit();addEventListener('resize',fit);
+
+const HOLD=1.2,T=HOLD+PLAY+7.2;let speed=1,clock=0,last=null;
+function draw(time){const tt=time%T,t=Math.max(0,tt-HOLD);uid=0;
+  document.getElementById('tag').textContent=tt<HOLD?'Frame 0, held':t<PLAY?'Plays once':'Loops until the panel is ready';
+  OPTS.forEach(o=>{document.getElementById('s'+o.k).innerHTML=html(o,t)})}
+window.KILN_DRAW=draw;
+document.getElementById('slow').onclick=e=>{speed=speed===1?.5:1;e.target.setAttribute('aria-pressed',speed!==1)};
+document.getElementById('again').onclick=()=>{clock=0};
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const loop=now=>{if(last!==null)clock+=(now-last)/1000*speed;last=now;if(!window.KILN_PAUSED)draw(reduce?HOLD+PLAY+1:clock);if(!reduce)requestAnimationFrame(loop)};
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
