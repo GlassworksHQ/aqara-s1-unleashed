@@ -146,20 +146,15 @@ class SendspinPlayer(
     private val sink = AudioTrackSink()
     @Volatile private var session: SsConnection? = null
     private val scheduler = PlaybackScheduler(sink, { session?.timeFilter?.snapshot ?: EMPTY })
-    @Volatile private var running = false
+    /** The run since the last [start], or null when stopped. Written only under this player's lock. */
+    @Volatile private var current: Run? = null
     @Volatile private var ducked = false
-    @Volatile private var connThread: Thread? = null
-    @Volatile private var audioThread: Thread? = null
-    @Volatile private var statsThread: Thread? = null
     private val wake = Object()
-    @Volatile private var backoffMs = 1_000L
-    private var netCallback: ConnectivityManager.NetworkCallback? = null
     @Volatile var status: SendspinSession.Status = SendspinSession.Status(SendspinSession.Phase.CLOSED); private set
     /** True once the client has started since boot (ESPHome reports the client id only then). */
     @Volatile var started = false; private set
     @Volatile private var lastUrl: String? = null
     @Volatile private var nowPlaying: String? = null
-    @Volatile private var pipeline: AudioPipeline? = null
     /** Why FLAC is no longer offered this run (decoder failures), or null. */
     @Volatile private var flacFailure: String? = null
     /** The platform's FLAC decoder, or null if there is none (then only PCM is offered). */
@@ -186,9 +181,28 @@ class SendspinPlayer(
     /** The version-0 pairing token (a credential: never log it). */
     fun pairingToken(): String = SsCrypto.pairingToken(store.identity().publicKey, store.pairingPsk())
 
+    /**
+     * One [start] to its [stop], with what its threads own. Once it is no longer [current], its
+     * threads exit and its sessions can reach only its own (closed) pipeline, even if a reader is
+     * still busy: a quick stop and start can't let the old run act on the new one.
+     */
+    private inner class Run {
+        val pipeline = newPipeline(scheduler, ::onFlacFailed)
+        val hooks = hooksFor(this)
+        @Volatile var backoffMs = 1_000L
+        val connThread = Thread({ connectLoop(this) }, "ss-conn").apply { isDaemon = true }
+        val audioThread = Thread({ audioLoop(this) }, "ss-audio").apply { isDaemon = true }
+        val statsThread = Thread({ statsLoop(this) }, "ss-stats").apply { isDaemon = true }
+        var netCallback: ConnectivityManager.NetworkCallback? = null
+    }
+
+    /** Runs [block] under the lock [start] and [stop] take, and only while [r] is the current run. */
+    private inline fun ifCurrent(r: Run, block: () -> Unit): Boolean =
+        synchronized(this) { (current === r).also { if (it) block() } }
+
     /** One-line state for the ESPHome diagnostic sensor. */
     fun statusText(): String {
-        if (!running) return "off"
+        if (current == null) return "off"
         val s = status
         val server = s.serverName ?: "server"
         val note = flacFailure?.let { "; FLAC off, using PCM: $it" } ?: ""
@@ -203,26 +217,24 @@ class SendspinPlayer(
     }
 
     @Synchronized fun start() {
-        if (running) return
-        running = true
+        if (current != null) return
         started = true
         store.identity(); store.pairingPsk() // create both before HA asks for the token
         SsLog.i("Sendspin player starting (client id $clientId)")
         applyGain()
         scheduler.outputDelayUs = store.outputDelayMs * 1000L
         SsLog.i("FLAC decoder: ${flacDecoder ?: "none"}; offering ${offeredFormats().joinToString { it.codec }}")
-        pipeline = newPipeline(scheduler, ::onFlacFailed)
-        audioThread = Thread({ audioLoop() }, "ss-audio").apply { isDaemon = true; start() }
-        connThread = Thread({ connectLoop() }, "ss-conn").apply { isDaemon = true; start() }
-        statsThread = Thread({ statsLoop() }, "ss-stats").apply { isDaemon = true; start() }
+        val r = Run()
+        current = r
+        r.audioThread.start(); r.connThread.start(); r.statsThread.start()
         // After a Wi-Fi drop, reconnect as soon as the network is back instead of waiting out the
         // back-off (which grows to 60 s): a wedged link left the player silent for a minute or more.
         val cm = ctx.getSystemService(ConnectivityManager::class.java)
-        netCallback = object : ConnectivityManager.NetworkCallback() {
+        r.netCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 if (session != null) return
                 SsLog.i("Network is back: reconnecting now")
-                backoffMs = 1_000L
+                r.backoffMs = 1_000L
                 synchronized(wake) { wake.notifyAll() }
             }
         }.also { cb -> runCatching { cm?.registerDefaultNetworkCallback(cb) } }
@@ -230,19 +242,19 @@ class SendspinPlayer(
 
     /** Stops, telling the server why (`user_request` when switched off, `shutdown` when the app stops). */
     @Synchronized fun stop(reason: String = "user_request") {
-        if (!running) return
-        running = false
-        netCallback?.let { cb -> runCatching { ctx.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) } }
-        netCallback = null
+        val r = current ?: return
+        current = null
+        r.netCallback?.let { cb -> runCatching { ctx.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) } }
         var interrupted = session?.let { closeOffThisThread(it, reason) } ?: false
+        session = null
         synchronized(wake) { wake.notifyAll() }
-        connThread?.interrupt(); audioThread?.interrupt(); statsThread?.interrupt()
-        pipeline?.close()
-        pipeline = null
+        // The connection thread is not joined: it may sit in mDNS discovery or a socket read, and
+        // once the run is no longer current it can't reach the next one.
+        r.connThread.interrupt(); r.audioThread.interrupt(); r.statsThread.interrupt()
+        r.pipeline.close()
         scheduler.end()
         // The audio thread owns the sink; let it close it before a restart could start another.
-        try { audioThread?.join(1_000) } catch (_: InterruptedException) { interrupted = true }
-        connThread = null; audioThread = null; statsThread = null
+        try { r.audioThread.join(1_000) } catch (_: InterruptedException) { interrupted = true }
         status = SendspinSession.Status(SendspinSession.Phase.CLOSED)
         onStatusChanged()
         // Passed on only now, so neither wait above cuts the cleanup short.
@@ -273,7 +285,7 @@ class SendspinPlayer(
 
     /** The `sendspin_flac` setting changed: switching it on also retries FLAC after a failure. */
     fun onFlacSettingChanged() {
-        if (prefs.flac) { flacFailure = null; pipeline?.resetFlacFailure() }
+        if (prefs.flac) { flacFailure = null; current?.pipeline?.resetFlacFailure() }
         onStatusChanged()
         restartSession()
     }
@@ -301,39 +313,42 @@ class SendspinPlayer(
 
     // ------------------------------------------------------------------ threads
 
-    private fun connectLoop() {
-        backoffMs = 1_000L
-        while (running) {
+    /** Exits once [r] is stopped: the stop may land anywhere, and the interrupt may not reach it. */
+    private fun connectLoop(r: Run) {
+        while (current === r) {
             val url = resolveUrl()
             if (url == null) {
                 SsLog.w("No Sendspin server known yet (no mDNS answer, Home Assistant not found); retrying")
-                if (!sleep(10_000)) break
+                if (!sleep(r, 10_000)) break
                 continue
             }
-            val s = connect(url, hello(), hooks)
-            session = s
+            val s = connect(url, hello(), r.hooks)
+            // stop() closes the session it finds; a session published after that must not run.
+            if (!ifCurrent(r) { session = s }) return
             SsLog.i("Connecting to $url")
-            val r = s.run()
-            session = null
-            status = s.status()
+            val res = s.run()
+            val stillCurrent = ifCurrent(r) {
+                session = null
+                status = s.status()
+                if (res.established) lastUrl = url else if (url == lastUrl) lastUrl = null
+            }
+            if (!stillCurrent) return
             onStatusChanged()
-            if (!running) break
-            if (r.established) lastUrl = url else if (url == lastUrl) lastUrl = null
-            backoffMs = if (r.activated) 1_000L else minOf(backoffMs * 2, 60_000L)
-            SsLog.i("Disconnected (${r.reason}); reconnecting in ${backoffMs / 1000} s")
-            if (!sleep(backoffMs)) break
+            r.backoffMs = if (res.activated) 1_000L else minOf(r.backoffMs * 2, 60_000L)
+            SsLog.i("Disconnected (${res.reason}); reconnecting in ${r.backoffMs / 1000} s")
+            if (!sleep(r, r.backoffMs)) break
         }
     }
 
-    private fun sleep(ms: Long): Boolean {
-        synchronized(wake) { if (running) try { wake.wait(ms) } catch (_: InterruptedException) { return false } }
-        return running
+    private fun sleep(r: Run, ms: Long): Boolean {
+        synchronized(wake) { if (current === r) try { wake.wait(ms) } catch (_: InterruptedException) { return false } }
+        return current === r
     }
 
-    private fun audioLoop() {
+    private fun audioLoop(r: Run) {
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         try {
-            while (running) {
+            while (current === r) {
                 if (!scheduler.step()) scheduler.awaitWork(200)
             }
         } catch (_: InterruptedException) {
@@ -346,15 +361,15 @@ class SendspinPlayer(
     }
 
     /** Every 10 s while streaming: the sync figures (docs/sendspin.md "Measuring"). */
-    private fun statsLoop() {
+    private fun statsLoop(r: Run) {
         var prev = scheduler.stats()
-        var prevD = pipeline?.stats() ?: AudioPipeline.Stats()
+        var prevD = r.pipeline.stats()
         try {
-            while (running) {
+            while (current === r) {
                 Thread.sleep(10_000)
                 val s = session ?: continue
                 val st = scheduler.stats()
-                val d = pipeline?.stats(resetMax = true) ?: AudioPipeline.Stats()
+                val d = r.pipeline.stats(resetMax = true)
                 if (scheduler.isActive) {
                     val frames = d.decodedFrames - prevD.decodedFrames
                     SsLog.i(
@@ -445,12 +460,16 @@ class SendspinPlayer(
 
     // ------------------------------------------------------------------ session hooks
 
-    private val hooks = object : SsPlayerHooks {
+    /**
+     * The hooks of [r]'s sessions. Streams go to [r]'s own pipeline, so a stopped run's late call
+     * lands in its closed pipeline. Status and metadata from a stopped run are dropped.
+     */
+    private fun hooksFor(r: Run) = object : SsPlayerHooks {
         // Everything goes through the pipeline, in order: it decodes off the network and audio threads.
-        override fun onStreamStart(format: SsFormat, codecHeader: ByteArray?) { pipeline?.start(format, codecHeader) }
-        override fun onStreamClear(fromTimestampUs: Long?) { pipeline?.clear(fromTimestampUs) }
-        override fun onStreamEnd() { pipeline?.end(); nowPlaying = null }
-        override fun onAudio(chunk: SsAudioChunk, receivedNanos: Long) { pipeline?.audio(chunk) }
+        override fun onStreamStart(format: SsFormat, codecHeader: ByteArray?) { r.pipeline.start(format, codecHeader) }
+        override fun onStreamClear(fromTimestampUs: Long?) { r.pipeline.clear(fromTimestampUs) }
+        override fun onStreamEnd() { r.pipeline.end(); ifCurrent(r) { nowPlaying = null } }
+        override fun onAudio(chunk: SsAudioChunk, receivedNanos: Long) { r.pipeline.audio(chunk) }
 
         override fun onVolume(volume: Int) { store.volume = volume; applyGain(); onStatusChanged() }
         override fun onMute(muted: Boolean) { store.muted = muted; applyGain(); onStatusChanged() }
@@ -470,12 +489,13 @@ class SendspinPlayer(
 
         override fun onMetadata(title: String?, artist: String?) {
             val np = listOfNotNull(artist, title).joinToString(" – ").takeIf { it.isNotEmpty() }
-            if (np != nowPlaying) { nowPlaying = np; SsLog.i("Now playing: ${np ?: "-"}"); onStatusChanged() }
+            var changed = false
+            ifCurrent(r) { if (np != nowPlaying) { nowPlaying = np; changed = true } }
+            if (changed) { SsLog.i("Now playing: ${np ?: "-"}"); onStatusChanged() }
         }
 
         override fun onStatus(status: SendspinSession.Status) {
-            this@SendspinPlayer.status = status
-            onStatusChanged()
+            if (ifCurrent(r) { this@SendspinPlayer.status = status }) onStatusChanged()
         }
     }
 

@@ -17,6 +17,10 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Sendspin: switching the Music Assistant player off and on quickly leaves one connection.** After a
+  quick off and on, or a setting change that restarts the player, the old connection could end the new
+  stream, make the status say "disconnected" while the panel was connected, or connect a second time
+  next to the new one. Now the old connection can't touch the new one.
 - **Sign-in: someone on your network who reads the sign-in code can no longer use it.** Both sign-ins (the
   dashboard QR code and the administrator sign-in for the Thread join) now use PKCE, so Home Assistant
   only hands out the panel's token to the panel itself. Needs Home Assistant 2026.10 or later to take
