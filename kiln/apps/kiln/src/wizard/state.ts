@@ -49,7 +49,8 @@ export interface UndoState {
   ready: boolean;
   depth: 'factory' | 'keep';
   appsBack: boolean;
-  note?: { kind: 'busy' | 'ok' | 'err'; title: string; sub: string };
+  /** `link`: a way forward when undo here can't go on, e.g. undoing by hand */
+  note?: { kind: 'busy' | 'ok' | 'err'; title: string; sub: string; link?: { href: string; text: string } };
 }
 
 export interface DoneState {

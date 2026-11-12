@@ -405,7 +405,7 @@ export function Undo({ s, session, frame }: P) {
           <RadioGroup.Item key={d} value={d} className="opt"><span className="rd" /><span className="t"><span>{frame.undo[d].title}</span><small>{frame.undo[d].detail}</small></span></RadioGroup.Item>
         ))}
       </RadioGroup.Root>
-      {u.note && <p className={`status ${u.note.kind === 'err' ? 'err' : u.note.kind === 'ok' ? 'ok' : 'work'}`} role="status"><b style={{ fontWeight: 500 }}>{u.note.title}</b> {u.note.sub}</p>}
+      {u.note && <p className={`status ${u.note.kind === 'err' ? 'err' : u.note.kind === 'ok' ? 'ok' : 'work'}`} role="status"><b style={{ fontWeight: 500 }}>{u.note.title}</b> {u.note.sub}{u.note.link && <> <a className="link" href={u.note.link.href} target="_blank" rel="noopener">{u.note.link.text}</a></>}</p>}
       {u.source === 'browser' && u.inBrowser && (
         <div className="well">
           <span className="grow"><span>The backup in this browser</span><span className="small">{u.inBrowser}</span></span>

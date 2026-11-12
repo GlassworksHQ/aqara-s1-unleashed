@@ -26,7 +26,7 @@ app has done a full install on a real panel from a Vercel preview (#27).
 | `/aqara-s1-plus/set-up` | The app's settings on a freshly installed panel | connects to an installed panel over adb, then settings (was `#/resume`) |
 | `/aqara-s1-plus/set-up/wifi`, `/home-assistant`, `/radio` | One set-up step each | connects to an installed panel, then that step (was `#/wifi`, …) |
 | `/aqara-s1-plus/done` | Done, with the backup to download | goes to `/aqara-s1-plus` |
-| `/aqara-s1-plus/undo` | Undo: how far back, which backup | shows Undo |
+| `/aqara-s1-plus/undo` | Undo: how far back, which backup. "Keep its settings" checks the backup (kiln-core's `checkRestorable`) before Aqara's apps go back; a refused backup, or a broken plan in the recipe, changes nothing on the panel and links to undoing by hand | shows Undo |
 | `/aqara-s1-plus/undo/connect`, `/undo/restore`, `/undo/done` | Undo's recovery mode, writing, and done | go to `/aqara-s1-plus/undo` |
 | `/aqara-s1-plus/resume` | An alias of `/set-up` (s1.edm.sh's `#/resume`) | as `/set-up`: connects to an installed panel; the address then becomes `/aqara-s1-plus/set-up` |
 | `/api/release-asset` | Streams an S1 Kiosk release APK from GitHub Releases (no CORS there) | — |

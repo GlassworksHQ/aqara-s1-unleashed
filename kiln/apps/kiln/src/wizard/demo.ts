@@ -266,7 +266,7 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
       return;
     case 'undo-refused': // what "Give back Aqara's apps" shows for a backup undo can't restore
       await session.openUndo();
-      dispatch({ type: 'undo', patch: { depth: 'keep', note: { kind: 'err', title: 'This backup can\'t undo the install.', sub: 'This backup has no vbmeta or bootloader. Nothing on the panel was changed.' } } });
+      dispatch({ type: 'undo', patch: { depth: 'keep', note: { kind: 'err', title: 'This backup can\'t undo the install.', sub: 'This backup has no vbmeta or bootloader. Nothing on the panel was changed.', link: { href: s1PlusUi.help.undo, text: 'Undo by hand' } } } });
       return;
     case 'undo-connect':
       await session.openUndo();

@@ -557,8 +557,15 @@ export class Session {
       try {
         await checkRestorable(this.d.recipe.backup, files);
       } catch (e) {
-        if (!(e instanceof BackupRefused)) throw e;
-        this.dispatch({ type: 'undo', patch: { note: { kind: 'err', title: 'This backup can\'t undo the install.', sub: `${e.message.charAt(0).toUpperCase()}${e.message.slice(1)}. Nothing on the panel was changed.` } } });
+        // Refused backup, or a broken plan in the frame's recipe: either way a backup or recipe
+        // problem, not USB, and nothing on the panel has changed. Undoing by hand is the way on.
+        const msg = String((e as Error)?.message ?? e);
+        this.dispatch({ type: 'undo', patch: { note: {
+          kind: 'err',
+          title: e instanceof BackupRefused ? 'This backup can\'t undo the install.' : 'Kiln can\'t check this backup.',
+          sub: `${msg.charAt(0).toUpperCase()}${msg.slice(1)}. Nothing on the panel was changed.`,
+          link: { href: this.d.frame.help.undo, text: 'Undo by hand' },
+        } } });
         return;
       }
       await unprovision(panel, (s, d) => busy(s || d || ''));
