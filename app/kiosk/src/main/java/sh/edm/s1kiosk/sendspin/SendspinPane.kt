@@ -18,8 +18,7 @@ class SendspinPane(ctx: PaneContext) : Pane {
 
     private val prefs: KioskPrefs = ctx.prefs
 
-    // runCatching: the player reports its stop to the device's executor, which is already shut down by then.
-    private val player = SendspinPlayer(ctx.context, prefs, ctx.device.macAddress) { runCatching { ctx.publishStates() } }
+    private val player = SendspinPlayer(ctx.context, prefs, ctx.device.macAddress, ctx.publishStates)
 
     override fun entities(): List<ApiEntity> = listOf(
         SwitchEntity(
