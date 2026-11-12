@@ -1,23 +1,13 @@
 'use client';
 // The wizard for one frame: the shell, the screen for the current state, the "your turn" sheet, and
-// what Kiln adds around a long write (leave-page warning, screen wake lock, live announcements).
+// what Kiln adds around a long write (leave-page warning, screen wake lock, live announcements). The
+// routes are useRouteSync's.
 import { useEffect, useSyncExternalStore } from 'react';
 import { Shell, useBrowserChip } from '../components/Shell';
 import type { FrameUi } from '../frames/aqara-s1-plus';
 import { Browser, Connect, Done, Failure, Firing, SetUp, Undo, YourTurn } from './screens';
 import type { Session } from './session';
 import { busyWriting, milestones, rail, stackLevel, type WizardState } from './state';
-
-/** Where the address bar points for each state, so a reload picks up there (docs/install.md). */
-function hashFor(s: WizardState): string | undefined {
-  if (s.screen === 'connect') return s.flow === 'undo' ? 'undo' : 'install';
-  if (s.screen === 'undo') return 'undo';
-  if (s.screen === 'setup') {
-    const p = s.setup.phase;
-    return p === 'settings' || p === 'waiting' ? 'resume' : p === 'wifi' ? 'wifi' : p === 'ha' ? 'home-assistant' : 'radio';
-  }
-  return undefined;
-}
 
 function announce(s: WizardState, frame: FrameUi): string {
   if (s.ask) return `Your turn. ${frame.asks[s.ask.kind].title} Pick ${frame.asks[s.ask.kind].pick} in the list.`;
@@ -27,28 +17,9 @@ function announce(s: WizardState, frame: FrameUi): string {
   return '';
 }
 
-export function Wizard({ session, frame, routes = true }: { session: Session; frame: FrameUi; routes?: boolean }) {
+export function Wizard({ session, frame }: { session: Session; frame: FrameUi }) {
   const s = useSyncExternalStore(session.store.subscribe, session.store.get, session.store.get);
   const chip = useBrowserChip();
-
-  useEffect(() => {
-    if (!routes) return;
-    const go = () => {
-      if (session.store.state.screen === 'firing') return; // never leave a running install
-      const r = location.hash.replace(/^#\/?/, '');
-      if (r) void session.click('route', () => session.route(r)); // once, even when StrictMode mounts twice
-    };
-    go();
-    addEventListener('hashchange', go);
-    return () => removeEventListener('hashchange', go);
-  }, [session, routes]);
-
-  useEffect(() => {
-    if (!routes) return;
-    const h = hashFor(s);
-    const want = h ? `#/${h}` : '';
-    if (location.hash !== want) history.replaceState(null, '', want || location.pathname + location.search);
-  }, [s, routes]);
 
   const writing = busyWriting(s);
   useEffect(() => {

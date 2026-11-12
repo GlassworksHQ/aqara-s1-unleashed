@@ -1,5 +1,7 @@
-// The paint of the drawn device: its case, board, screws and the USB-C plug. These depict hardware,
-// not the brand, so they are the one place in Kiln with literal colours (test/no-hex.test.ts).
+// The paint of drawn devices: the recovery view's case, board, screws and USB-C plug, and the frame
+// cards' front glass and mirror silvering. These depict hardware, not the brand, so they are the one
+// place in Kiln with literal colours (test/no-hex.test.ts). A frame's own side colours come from its
+// frame.json.
 export const MATERIAL = {
   caseA: '#2a2d36',
   caseB: '#1a1c23',
@@ -23,4 +25,9 @@ export const MATERIAL = {
   plugB: '#3d414b',
   plugC: '#2a2d35',
   sweep: '#e4e4e7',
+  /* the frame cards' 3D mockup (glassworks.dev DeviceModel.module.css) */
+  glass: '#07080b',
+  mirrorA: '#3d4048',
+  mirrorB: '#1a1c21',
+  mirrorC: '#31343b',
 } as const;

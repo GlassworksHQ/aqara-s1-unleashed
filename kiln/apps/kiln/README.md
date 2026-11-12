@@ -18,11 +18,24 @@ app has done a full install on a real panel from a Vercel preview (#27).
 
 ## Routes
 
-| Route | What |
-|---|---|
-| `/` | Pick your panel. Undo and "finish setting up" are links to the frame's routes |
-| `/aqara-s1-plus` | The S1 wizard: connect (recovery mode), install, set up, done. `#/undo`, `#/resume`, `#/wifi`, `#/home-assistant`, `#/radio` and `#/install` work as on s1.edm.sh |
-| `/api/release-asset` | Streams an S1 Kiosk release APK from GitHub Releases (no CORS there) |
+| Route | What | Reached with nothing running |
+|---|---|---|
+| `/` | Pick your panel: the frames as on glassworks.dev/frames, from each frame's `design/frame.json`. Forwards s1.edm.sh's old `/#/…` links | — |
+| `/aqara-s1-plus` | Connect: put the panel in recovery mode, click Connect | shows Connect |
+| `/aqara-s1-plus/install` | Backing up and writing, and the "your turn" sheets | goes to `/aqara-s1-plus` |
+| `/aqara-s1-plus/set-up` | The app's settings on a freshly installed panel | connects to an installed panel over adb, then settings (was `#/resume`) |
+| `/aqara-s1-plus/set-up/wifi`, `/home-assistant`, `/radio` | One set-up step each | connects to an installed panel, then that step (was `#/wifi`, …) |
+| `/aqara-s1-plus/done` | Done, with the backup to download | goes to `/aqara-s1-plus` |
+| `/aqara-s1-plus/undo` | Undo: how far back, which backup | shows Undo |
+| `/aqara-s1-plus/undo/connect`, `/undo/restore`, `/undo/done` | Undo's recovery mode, writing, and done | go to `/aqara-s1-plus/undo` |
+| `/aqara-s1-plus/resume` | An alias of `/set-up` | — |
+| `/api/release-asset` | Streams an S1 Kiosk release APK from GitHub Releases (no CORS there) | — |
+
+The session is the truth and the address bar follows it (`src/wizard/routes.ts`, `useRouteSync.ts`).
+A route never starts or repeats a flow: while something runs (USB work, a picker, the app going in),
+any other route of the frame shows the running step, and leaving for the picker keeps it running
+(the picker shows "Back to it"). A route that starts something new once the last flow finished gets
+a new session. Kiln's own links are client-side (`next/link`), so they never cut an install short.
 
 ## How it fits together
 
@@ -31,9 +44,11 @@ app has done a full install on a real panel from a Vercel preview (#27).
 | `src/wizard/state.ts` | The wizard's state and its one reducer. The rail, the stack, the plain log and the time left are derived |
 | `src/wizard/flowUi.ts` | kiln-core's `FlowUi` as wizard actions. `AskBridge` is the "your turn" sheet |
 | `src/wizard/session.ts` | The hardware steps: InstallFlow with the recipe, then the app's setup over adb. Screens only call it |
+| `src/wizard/routes.ts`, `useRouteSync.ts`, `registry.ts` | The routes, and the frame's session that outlives them |
+| `src/frames/catalog.ts`, `src/components/frame-card/`, `src/components/device/` | The picker's frames, from `frames/<id>/design/frame.json` ([frames/README.md](../../../frames/README.md)), drawn as glassworks.dev draws them |
 | `src/wizard/screens.tsx` | One component per screen of the design, on Radix primitives |
 | `src/frames/aqara-s1-plus.ts` | What the screens say for the S1: the USB names to pick, help links, the radio's next steps |
-| `src/recovery/player.ts` | The recovery-mode player, drawing a frame's data. The S1's is `frames/aqara-s1-plus/installer/recovery.json` (canonical); `docs/design/kiln/recovery/` keeps the prototype's copy, and a test keeps them equal |
+| `src/recovery/player.ts` | The recovery-mode player, drawing a frame's data. The S1's is `frames/aqara-s1-plus/design/recovery.json` (canonical); `docs/design/kiln/recovery/` keeps the prototype's copy, and a test keeps them equal |
 
 Rules that tests guard:
 

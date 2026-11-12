@@ -16,7 +16,7 @@ import { explain } from './explain';
 import { Session, type SessionDeps } from './session';
 
 export const DEMOS = ['run', 'selftest', 'connect', 'ask-fastboot', 'install', 'ask-adb', 'app', 'wifi', 'wifi-fail', 'home-assistant', 'radio', 'radio-next',
-  'done', 'undo', 'error', 'error-written'] as const;
+  'done', 'undo', 'undo-connect', 'restore', 'undo-done', 'error', 'error-written'] as const;
 export type Demo = (typeof DEMOS)[number];
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -263,6 +263,18 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
       return;
     case 'undo':
       await session.openUndo();
+      return;
+    case 'undo-connect':
+      await session.openUndo();
+      dispatch({ type: 'go', screen: 'connect', flow: 'undo' });
+      return;
+    case 'restore':
+      dispatch({ type: 'start', flow: 'undo', now: Date.now() - 40_000 });
+      progress(0.45, 'flash', 'Putting the original software back', 'Writing boot');
+      return;
+    case 'undo-done':
+      dispatch({ type: 'start', flow: 'undo', now: Date.now() });
+      dispatch({ type: 'done', done: { title: 'The original software is back.', body: 'One last step, on the panel: swipe down, tap Settings on the S1 Kiosk notification, then Advanced settings → Factory reset.' } });
       return;
     case 'error':
       install();

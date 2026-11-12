@@ -1,56 +1,71 @@
 'use client';
-// Screen 1: pick the panel. That's the whole screen; undo and "finish setting up" stay one quiet
-// link away. Each frame that ships has its own wizard at /<frame id>.
+// Screen 1: pick your panel, with the frames drawn as on glassworks.dev/frames. Each card's data is
+// the frame's own (frames/<id>/design/frame.json). Undo and "finish setting up" stay one quiet link
+// away. A running install shows here too, with the way back to it.
 import * as RadioGroup from '@radix-ui/react-radio-group';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { FRAMES, ships } from '../frames/catalog';
+import { registry } from '../wizard/registry';
+import { ROUTES, canonical, fromHash, status } from '../wizard/routes';
 import { STEPS } from '../wizard/state';
+import { FrameCard } from './frame-card/FrameCard';
 import { Shell, useBrowserChip } from './Shell';
 
-interface Frame { id: string; name: string; stage: 'beta' | 'soon' }
+const INSTALLABLE = FRAMES.filter((f) => ships(f.status) && f.kiln);
+/** s1.edm.sh's old links (/#/wifi, …) belong to the S1, the only frame that had them. */
+const OLD_LINKS_FRAME = '/aqara-s1-plus';
 
-/** Matches the frames on glassworks.dev/frames. A frame gets a card here once it has a wizard. */
-const FRAMES: Frame[] = [
-  { id: 'aqara-s1-plus', name: 'Aqara S1 Plus', stage: 'beta' },
-  { id: 'lululemon-mirror', name: 'lululemon Studio Mirror', stage: 'soon' },
-];
+function useRunning(): { href: string; name: string } | undefined {
+  const entry = useSyncExternalStore(registry.subscribe, registry.get, () => undefined);
+  const [, tick] = useState(0);
+  useEffect(() => entry?.session.store.subscribe(() => tick((n) => n + 1)), [entry]);
+  if (!entry) return undefined;
+  const s = entry.session.store.state;
+  if (status(s) !== 'running' && s.screen !== 'setup') return undefined;
+  return { href: entry.base + ROUTES[canonical(s)], name: entry.name };
+}
 
 export function Picker() {
   const chip = useBrowserChip();
   const router = useRouter();
-  const [frame, setFrame] = useState('aqara-s1-plus');
-  // s1.edm.sh's links (docs/install.md: #/resume, #/wifi, …) keep working once it serves Kiln.
+  const running = useRunning();
+  const [picked, setPicked] = useState(INSTALLABLE[0]?.id ?? '');
+  const frame = FRAMES.find((f) => f.id === picked)?.kiln ?? '';
   useEffect(() => {
-    if (/^#\/(install|undo|resume|wifi|home-assistant|radio)$/.test(location.hash)) location.replace(`/aqara-s1-plus${location.hash}`);
-  }, []);
+    const old = fromHash(location.hash);
+    if (old) router.replace(OLD_LINKS_FRAME + ROUTES[old]);
+  }, [router]);
   const steps = STEPS.install.map((name, i) => ({ name, mark: i === 0 ? 'now' as const : 'todo' as const }));
   return (
     <Shell steps={steps} level={0} chip={chip}>
-      <section className="card" aria-labelledby="pick">
-        <h2 id="pick">Pick your panel.</h2>
-        <RadioGroup.Root className="grid3" value={frame} onValueChange={setFrame} aria-labelledby="pick">
-          {FRAMES.map((f) => (
-            <RadioGroup.Item key={f.id} value={f.id} className="dev" disabled={f.stage === 'soon'} aria-disabled={f.stage === 'soon'}>
-              <span className="ph" aria-hidden="true">21:42</span>
-              <span className="spread">
-                <span className="n">{f.name}</span>
-                <span className={`pill ${f.stage}`}>{f.stage === 'beta' ? 'Beta' : 'Soon'}</span>
-              </span>
-            </RadioGroup.Item>
-          ))}
-          <a className="dev yours" href="https://www.glassworks.dev/frames">
-            <span aria-hidden="true">＋</span>
-            <span className="n">Yours?</span>
-            <span className="small">How a panel gets a frame</span>
+      <section className="picker" aria-labelledby="pick">
+        <div className="picker-head">
+          <h2 id="pick">Pick your panel.</h2>
+          <p className="lede">Panels Glassworks runs on, or will. Each one is a frame.</p>
+        </div>
+        {running && (
+          <div className="running" role="status">
+            <span>Kiln is still working on your {running.name}.</span>
+            <Link className="link" href={running.href}>Back to it</Link>
+          </div>
+        )}
+        <RadioGroup.Root className="frames" value={picked} onValueChange={setPicked} aria-labelledby="pick">
+          {FRAMES.map((f) => <FrameCard key={f.id} f={f} />)}
+          <a className="yours" href="https://github.com/GlassworksHQ">
+            <span className="plus" aria-hidden="true">+</span>
+            <b>Your panel</b>
+            <p>Any Android panel can be a frame. A guide to writing one comes with the first release; until then, follow along on GitHub.</p>
           </a>
         </RadioGroup.Root>
         <div className="foot">
           <span className="links">
-            <a className="link" href={`/${frame}#/undo`}>Undo an install</a>
+            <Link className="link" href={`${frame}${ROUTES.undo}`}>Undo an install</Link>
             <span aria-hidden="true">·</span>
-            <a className="link" href={`/${frame}#/resume`}>Finish setting up</a>
+            <Link className="link" href={`${frame}${ROUTES['set-up']}`}>Finish setting up</Link>
           </span>
-          <button type="button" className="btn ember" onClick={() => router.push(`/${frame}`)}>Continue</button>
+          <button type="button" className="btn ember" disabled={!frame} onClick={() => router.push(frame)}>Continue</button>
         </div>
       </section>
     </Shell>

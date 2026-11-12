@@ -1,0 +1,40 @@
+// Each frame's design data (frames/<id>/design/frame.json, format in frames/README.md): Kiln lists
+// every frame folder, the data is complete, and the 3D mockup draws from it.
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { geometry } from '../src/components/device/geometry';
+import { FRAMES, PANE_IDS, RATING_KEYS, type FrameDesign } from '../src/frames/catalog';
+
+const frames = fileURLToPath(new URL('../../../../frames', import.meta.url));
+const folders = readdirSync(frames).filter((d) => existsSync(join(frames, d, 'design', 'frame.json')));
+const read = (id: string) => JSON.parse(readFileSync(join(frames, id, 'design', 'frame.json'), 'utf8')) as FrameDesign;
+
+describe('frame designs', () => {
+  it('lists every frame that has design data, in Kiln\'s catalog', () => {
+    expect(folders.length).toBeGreaterThanOrEqual(2);
+    expect(FRAMES.map((f) => f.id).sort()).toEqual([...folders].sort());
+  });
+
+  it.each(folders)('%s: complete, named after its folder, and drawable', (id) => {
+    const f = read(id);
+    expect(f.id).toBe(id);
+    for (const k of ['name', 'summary'] as const) expect(f[k], k).toMatch(/\S/);
+    expect(['planned', 'development', 'alpha', 'beta', 'stable']).toContain(f.status);
+    expect(Object.keys(f.ratings).sort()).toEqual([...RATING_KEYS].sort());
+    expect(Object.keys(f.panes).sort()).toEqual([...PANE_IDS].sort());
+    if (f.recovery) expect(existsSync(join(frames, id, 'design', f.recovery)), f.recovery).toBe(true);
+    if (f.kiln) expect(f.kiln).toBe(`/${id}`);
+    for (const aspect of [2, 0.8]) {
+      const g = geometry(f.model, aspect);
+      expect(g.faces.length).toBeGreaterThan(0);
+      expect(JSON.stringify(g)).not.toMatch(/NaN|Infinity/);
+    }
+  });
+
+  it('the S1 is installable from Kiln; the Mirror is planned and isn\'t', () => {
+    expect(read('aqara-s1-plus')).toMatchObject({ status: 'beta', kiln: '/aqara-s1-plus', recovery: 'recovery.json' });
+    expect(read('lululemon-mirror').kiln).toBeUndefined();
+  });
+});

@@ -5,6 +5,7 @@ import * as Collapsible from '@radix-ui/react-collapsible';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as RadioGroup from '@radix-ui/react-radio-group';
 import { fmtSize } from '@glassworks/kiln-core';
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FrameUi } from '../frames/aqara-s1-plus';
 import { LABELS, mount } from '../recovery/player';
@@ -383,7 +384,7 @@ export function Done({ s, session }: P) {
       )}
       <div className="foot">
         {s.flow === 'install' ? <button type="button" className="link" onClick={() => void session.click('undo', () => session.openUndo())}>Undo</button> : <span />}
-        <a className="btn ghost" href="/">Back to Kiln</a>
+        <Link className="btn ghost" href="/">Back to Kiln</Link>
       </div>
     </section>
   );

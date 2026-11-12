@@ -1,6 +1,7 @@
 'use client';
 // The frame around every screen (docs/design/kiln): the header with Kiln's mark and the browser
 // chip, the rail with the steps and the stack, and on a phone a slim progress line and "3 of 5".
+import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Mark } from './Mark';
 import { Stack } from './Stack';
@@ -32,11 +33,12 @@ export function Shell({ steps, level, error, chip, children }: {
     <div className="app">
       <div className="pline" aria-hidden="true"><i style={{ width: `${allDone ? 100 : ((now + 0.5) / steps.length) * 100}%` }} /></div>
       <header className="top">
-        <a className="brand" href="/" aria-label="Glassworks Kiln, pick another panel">
+        {/* client-side, so a running install keeps going while the picker shows (wizard/registry.ts) */}
+        <Link className="brand" href="/" aria-label="Glassworks Kiln, pick another panel">
           <Mark />
           <span className="wide">Glassworks <b>Kiln</b></span>
           <span className="narrow">Kiln</span>
-        </a>
+        </Link>
         <span className="narrow small">{allDone ? 'Done' : `${at} of ${steps.length}`}</span>
         {chip && <span className={`chip ${chip.kind}`}><span className="dot" />{chip.text}</span>}
       </header>

@@ -1,14 +1,19 @@
 'use client';
-// /aqara-s1-plus: the S1 recipe on real WebUSB, or with ?demo=… a simulated panel.
+// /aqara-s1-plus and its step routes: the S1 recipe on real WebUSB, or with ?demo=… a simulated panel.
 import { loadOrCreateAdbKey } from '@glassworks/adb';
 import { s1Plus, type AssetName } from '@glassworks/aqara-s1-plus-installer';
 import { FelDevice } from '@glassworks/fel';
 import { Assets, BackupStore, webUsbDevices } from '@glassworks/kiln-core';
-import { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { s1PlusUi } from '../frames/aqara-s1-plus';
 import { DEMOS, demoSession, enterDemo, type Demo } from './demo';
+import { registry, type Entry } from './registry';
 import { Session } from './session';
+import { useRouteSync } from './useRouteSync';
 import { Wizard } from './Wizard';
+
+export const BASE = '/aqara-s1-plus';
 
 /**
  * Demos run in `next dev`, and in a build made with NEXT_PUBLIC_KILN_DEMO=1 set at build time (Next
@@ -30,29 +35,32 @@ function realSession(): Session {
   });
 }
 
-/**
- * One session per page load. React's StrictMode runs component setup twice in development, and a
- * second Session would load (or create) a second adb key in IndexedDB at the same time. So it is not
- * reset on unmount (StrictMode unmounts and mounts again). Kiln's own links back to `/` are plain
- * links (full page loads, no next/link). The browser's Back button returns client-side: the session
- * then lives on, and the picker's Continue shows it again, which keeps a running write in view.
- */
-let page: { session: Session; demo?: Demo; entered: boolean } | undefined;
+function create(withDemo: boolean): Entry {
+  const d = withDemo ? new URLSearchParams(location.search).get('demo') : null;
+  const demo = DEMO_ON && DEMOS.includes(d as Demo) ? (d as Demo) : undefined;
+  return { base: BASE, name: s1PlusUi.name, session: demo ? demoSession(demo) : realSession(), demo };
+}
 
-function pageSession(): NonNullable<typeof page> {
-  if (!page) {
-    const d = new URLSearchParams(location.search).get('demo');
-    const demo = DEMO_ON && DEMOS.includes(d as Demo) ? (d as Demo) : undefined;
-    page = { session: demo ? demoSession(demo) : realSession(), demo, entered: false };
-  }
-  return page;
+/**
+ * The S1's session lives in the registry, not in this component: the routes below /aqara-s1-plus
+ * share it, and it outlives a visit to the picker, so a running install keeps running and the picker
+ * can lead back to it. It is created once (StrictMode's double setup reuses it) and replaced only
+ * when someone enters a route after the old session began a flow (routes.ts, `fresh`).
+ */
+function current(): Entry {
+  const e = registry.get();
+  return e?.base === BASE ? e : registry.set(create(true));
 }
 
 export function S1() {
-  const [{ session, demo }] = useState(pageSession);
+  const entry = useSyncExternalStore(registry.subscribe, current, current);
+  const router = useRouter();
+  const path = usePathname();
+  const replace = useCallback((url: string) => router.replace(url, { scroll: false }), [router]);
+  const renew = useCallback(() => registry.set(create(false)), []);
+  useRouteSync(entry, path, replace, renew);
   useEffect(() => {
-    const p = pageSession();
-    if (p.demo && !p.entered) { p.entered = true; void enterDemo(p.session, p.demo); }
-  }, []);
-  return <Wizard session={session} frame={s1PlusUi} routes={!demo} />;
+    if (entry.demo && !entry.demoEntered) { entry.demoEntered = true; void enterDemo(entry.session, entry.demo as Demo); }
+  }, [entry]);
+  return <Wizard session={entry.session} frame={s1PlusUi} />;
 }

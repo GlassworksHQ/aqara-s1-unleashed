@@ -28,7 +28,7 @@ export class Store {
   };
   subscribe = (l: () => void) => {
     this.listeners.add(l);
-    return () => this.listeners.delete(l);
+    return () => { this.listeners.delete(l); };
   };
   get = () => this.state;
 }
@@ -76,6 +76,10 @@ export class Session {
   private haTimer?: ReturnType<typeof setInterval>;
   private readonly sleep: (ms: number) => Promise<void>;
   private running?: string;
+  private began = false;
+
+  /** A flow has begun on this session (FEL picked, or a panel connected): a new one gets a new session. */
+  get started(): boolean { return this.began; }
 
   constructor(private readonly d: SessionDeps, state: WizardState = initial()) {
     this.store = new Store(state);
@@ -142,6 +146,7 @@ export class Session {
       return;
     }
     const flowKind: Flow = this.s.flow;
+    this.began = true;
     this.dispatch({ type: 'start', flow: flowKind, now: Date.now() });
     try {
       const flow = this.getFlow(await this.keyReady);
@@ -197,6 +202,7 @@ export class Session {
   /** Connects to an installed, running panel over adb; asks for a click if this browser hasn't been allowed. */
   async connectPanel(): Promise<boolean> {
     if (this.panel) return true;
+    this.began = true;
     this.dispatch({ type: 'go', screen: 'setup', flow: 'install' });
     this.setupPhase({ phase: 'waiting', note: 'Connecting to the panel. It should be running and plugged in.' });
     try {
