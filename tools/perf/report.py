@@ -248,6 +248,8 @@ def reference_summary(all_runs):
             "frames_bands": [G.frame_band(f) for f in fr],
             "frames_band": median_band(G.frame_band(f) for f in fr),
             "frames_errors": [x["frames_error"] for x in rs if x.get("frames_error")],
+            # Per graded run: was SurfaceFlinger's history complete for the window? (None: no frames.)
+            "sf_valid": [x.get("sf_valid") if x["frames"] else None for x in rs],
             "sources": sorted({x["source"] for x in rs if x["frames"]}),
             "limited_by": sorted({x["limited_by"] for x in rs if x["limited_by"]}),
             "inp_ms": P.spread([x["inp_ms"] for x in rs]),
@@ -262,6 +264,7 @@ def reference_summary(all_runs):
         "graded_runs": len(runs),
         "start_ms": P.spread(starts),
         "start_errors": [r["start_error"] for r in runs if r.get("start_error")],
+        "engine_uris": sorted({r["engine_uri"] for r in runs if r.get("engine_uri")}),
         # Android's TTID: the first frame of the launched activity, which on a kiosk is its own
         # loading screen. Reported, not graded.
         "android_ttid_ms": P.spread([r["ttid_ms"] for r in runs]),

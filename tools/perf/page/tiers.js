@@ -9,7 +9,9 @@
     // Cards, icons and text. A few states change every 2 s. Nothing animates.
     light: { updateEveryMs: 2000, updatesPerTick: 5, spinners: 0, pulses: 0, ring: false, clock: false,
              sparkline: false, frameTiles: 0, motion: false },
-    // Light, plus a handful of animated elements like Home Assistant's defaults.
+    // Light, plus a handful of animated elements, animated as Home Assistant's frontend does:
+    // spinners and the ring are ha-spinner (tiny and small), the pulses are its state-icon pulse,
+    // the clock is the digital clock card ticking every second (docs/perf.md, "How the pages animate").
     typical: { updateEveryMs: 2000, updatesPerTick: 5, spinners: 4, pulses: 2, ring: true, clock: true,
                sparkline: false, frameTiles: 0, motion: true },
     // Typical, plus the test page's old reference load: 24 chips of which 3 update every frame (so

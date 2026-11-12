@@ -95,7 +95,7 @@ three tiers fill the strip (`tools/perf/page/tiers.js`):
 | Tier | What it adds | Stands for |
 |---|---|---|
 | **Light** | 5 sensor chips whose states change every 2 s. Nothing animates | Most dashboards: cards, icons and text. A real one on the S1 presented about 0.1 frames/s at idle |
-| **Typical** | Light, plus 4 spinning fan icons, 2 pulsing icons, a progress ring and a clock that ticks every second | A dashboard with HA's default animated bits |
+| **Typical** | Light, plus 4 tiny spinners and a small loading ring (both `ha-spinner`), 2 pulsing state icons (a triggered alarm, a jammed lock) and a clock that ticks every second | A dashboard with HA's own animated bits |
 | **Busy** | Typical, plus 6 more spinners, a line chart redrawn every frame, and 24 chips of which 3 update their numbers every frame, so each one every 8 frames | Many animations and frequent updates (the test page's old reference load) |
 
 **Why the strip.** Gecko doesn't run CSS animations that are off screen. In the first version the
@@ -106,7 +106,8 @@ below the fold, so Typical showed a still page apart from its clock. SurfaceFlin
 
 **The live check.** When the measured window starts, the page logs how many of its moving elements
 and its toggle are off screen, and how many of its CSS animations are running. A tier's frames are
-graded only when nothing is off screen and every expected animation runs (Typical 7, Busy 13).
+graded only when nothing is off screen and every expected animation runs (Typical 12, Busy 24; each
+spinner runs two).
 Otherwise its frames are "not measured", and the grade is provisional. If the toggle is off screen,
 its taps aren't graded either. So a frame with a small or narrow screen can't get a still page read
 as a frozen one.
@@ -127,6 +128,44 @@ The tiers, the card mix and the DOM size are **project choices**. They were fixe
 was graded, and a test pins them (`test/page.test.mjs`). A real dashboard with cameras, maps or many
 custom cards is heavier than Busy. The tiers make frames comparable with each other, not with your
 dashboard.
+
+### How the pages animate
+
+Each moving element uses the technique Home Assistant's frontend uses, read from its source at
+commit [`77170b4`](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67) (2026-11-12). The technique matters on a frame like the S1, where the
+compositor kept 64 CSS-transform elements at 30 fps but main-thread animation (SVG attributes) only
+2 to 4. The pages copy HA. They were not chosen by the letter they give.
+
+| Page element (tiers) | How HA does it | Source | What the page does |
+|---|---|---|---|
+| Changing states (all) | A `state_changed` event re-renders the card's text (Lit). No animation | [`hui-tile-card.ts`](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/hui-tile-card.ts) | 5 sensor chips get new text every 2 s |
+| Pulsing state icons (typical, busy: 2) | `@keyframes pulse` on the state icon: opacity 1 → 0 → 1, `animation: pulse 1s infinite` (default easing). Used for a triggered or arming alarm panel and a jammed lock | [`icon_color_css.ts` L8–L21](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/common/style/icon_color_css.ts#L8-L21), tiles: [`hui-tile-card.ts` L411–L414](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/hui-tile-card.ts#L411-L414) | The same keyframes and timing on the icon of an "Alarm triggered" and a "Front door jammed" chip |
+| Spinners (typical: 4, busy: 10) and the loading ring (typical, busy: 1) | `ha-spinner`, which extends Web Awesome's spinner (HA's fork `@home-assistant/webawesome` 3.14.0-ha.2). The SVG rotates with `transform` (`--speed: 3.5s` in HA), and its arc animates `stroke-dasharray` and `stroke-dashoffset` (1.5 s, ease-in-out). The arc has to be repainted every frame; the rotation alone could run on the compositor | [`ha-spinner.ts` L7, L45](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/components/ha-spinner.ts#L45), [spinner styles](https://cdn.jsdelivr.net/npm/@home-assistant/webawesome@3.14.0-ha.2/dist/components/spinner/spinner.styles.js), [`package.json` L66](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/package.json#L66) | The same two animations, sizes "tiny" (16 px) for the spinners and "small" (28 px) for the ring, 4 px track |
+| Clock (typical, busy: 1) | The digital clock card re-renders its text from `setInterval(…, 1000)` (seconds shown with `show_seconds`) | [`hui-clock-card-digital.ts` L25, L117](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/clock/hui-clock-card-digital.ts#L117) | Text updated by `setInterval` every 1 s, with seconds |
+| Line chart redrawn every frame (busy) | Charts are ECharts on a canvas (`echarts.init`), with a 500 ms animation on each update, redrawn every frame while it runs | [`ha-chart-base.ts` L892, L1224](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/components/chart/ha-chart-base.ts#L892) | A 2D canvas line redrawn every frame (a chart whose data changes faster than its animation) |
+| Numbers changing every frame (busy: 3 of 24 chips) | No HA default does this; it stands for very busy custom cards | none | Text updated every frame |
+
+What the pages leave out, and why:
+- **Spinning fan icons.** HA's own cards don't spin state icons. Its only spinning element on a
+  dashboard is `ha-spinner`, shown while something loads. (Popular custom cards, such as Mushroom,
+  spin fan icons with a CSS `transform`. They are not HA's frontend, so the pages don't copy them.)
+  The first version of Typical had 4 fan icons spinning with a CSS `transform`; they are now
+  `ha-spinner`s.
+- **The alert badge's pulse** ([`hui-alert-badge.ts` L179–L223](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/badges/hui-alert-badge.ts#L179-L223)):
+  opacity 0 → 0.3 on a `::before`, 1 s, alternating. The same technique as the state icon pulse.
+- **`ha-progress-ring`** ([`ha-progress-ring.ts`](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/components/progress/ha-progress-ring.ts)):
+  a progress value, used on configuration pages, not dashboards.
+- **The vacuum and lawn mower animations** ([`ha-state-control-vacuum-status.ts` L340–L348](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/state-control/vacuum/ha-state-control-vacuum-status.ts#L340-L348)):
+  in the more-info dialog, not on a dashboard.
+
+**This changed Typical and Busy on 2026-11-12.** The spinners became `ha-spinner`s, whose arc is
+repainted every frame, where the old fan icons only rotated. The ring went from a 2 s
+`stroke-dashoffset` loop to a small `ha-spinner`, and the pulse from 0.9 s (1 to 0.2, alternating)
+to HA's 1 s (1 to 0 to 1). The S1 graded D on the earlier pages (the smoke run of 8594720). Whether
+the change moves its letter is unknown until it runs on the panel. A guess: the new spinners add
+paint work every frame, and the S1's ladder shows it handles few main-thread animations (2 to 4 SVG
+elements at 30 fps), so Typical is more likely to hold or drop than to rise. The letter stands
+whatever it turns out to be.
 
 ## What it measures
 

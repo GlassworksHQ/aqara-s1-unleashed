@@ -36,6 +36,21 @@ class Pages(unittest.TestCase):
                 self.assertNotIn("Math.random", self.read(f))
                 self.assertNotIn("crypto.getRandomValues", self.read(f))
 
+    def test_the_reference_dashboards_animate_as_home_assistant_does(self):
+        """docs/perf.md, "How the pages animate": each technique is copied from HA's frontend. A change
+        here needs a matching change in HA's source and in that table, not a better score."""
+        text = self.read("refdash.js")
+        for needle in (
+            ":host([live]) svg.spinner { animation: spin 3.5s linear infinite; }",            # ha-spinner --speed
+            "animation: dash-tiny 1.5s ease-in-out infinite;",                                 # Web Awesome spinner arc
+            "animation: dash-small 1.5s ease-in-out infinite;",
+            ":host([live]) .pulse { animation: pulse 1s infinite; }",                          # icon_color_css.ts
+            "@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }",
+            "@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }",
+        ):
+            self.assertIn(needle, text)
+        self.assertIn("}, 1000);", text)   # the clock ticks every second, like hui-clock-card-digital
+
     def test_the_reference_dashboards_use_the_fixed_seed(self):
         text = self.read("refdash.js")
         self.assertIn("const SEED = 89;", text)

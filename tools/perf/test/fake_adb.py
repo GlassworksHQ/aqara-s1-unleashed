@@ -168,7 +168,7 @@ def refdash(nonce, url):
         paint(live, live + 0.85)  # warm-up and window; the page is replaced before the next one loads
     gw({"t": "warmup", "stage": tier, "n": 1})
     time.sleep(0.3)
-    expected = {"light": 0, "typical": 7, "busy": 13}[tier]
+    expected = {"light": 0, "typical": 12, "busy": 24}[tier]
     gw({"t": "measure", "stage": tier, "n": 1, "moving": 6 + expected, "offscreen": 0,
         "animations": expected, "animations_expected": expected})
     time.sleep(0.5)

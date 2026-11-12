@@ -54,6 +54,11 @@ class Runner(unittest.TestCase):
         self.assertEqual(ref["tiers"]["light"]["sources"], ["raf"])
         self.assertEqual(ref["tiers"]["typical"]["sources"], ["surfaceflinger"])
         self.assertEqual(ref["tiers"]["light"]["load_errors"], [])
+        self.assertEqual(ref["engine_uris"], ["about:blank"])
+        self.assertEqual(ref["tiers"]["typical"]["sf_valid"], [True])
+        for t in ("light", "typical", "busy"):
+            self.assertIsNotNone(ref["tiers"][t]["load_ms"])
+            self.assertIsNotNone(ref["tiers"][t]["inp_ms"])
         self.assertEqual(g["start"]["value"], ref["start_ms"]["median"])
         self.assertEqual(r["real_use"]["android_ttid_ms"]["median"], 1714)
         self.assertEqual(r["real_use"]["settle_how"], ["quiet-gap"])

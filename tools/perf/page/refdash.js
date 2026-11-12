@@ -60,12 +60,23 @@
     .chip .v { color: var(--muted); font-variant-numeric: tabular-nums; }
     .chip svg { flex: none; }
     canvas.spark { display: block; width: 100%; height: 38px; }
-    :host([live]) .spin svg { animation: spin 1.2s linear infinite; }
-    :host([live]) .pulse svg { animation: pulse 0.9s ease-in-out infinite alternate; }
-    :host([live]) .ring circle.arc { animation: ring 2s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes pulse { to { opacity: 0.2; } }
-    @keyframes ring { from { stroke-dashoffset: 251; } to { stroke-dashoffset: 0; } }
+    /* As Home Assistant's frontend animates them (docs/perf.md, "How the pages animate"):
+       ha-spinner (Web Awesome's spinner, --speed 3.5s in HA): the svg rotates and its arc's dash
+       animates; the state icon pulse: opacity 1 -> 0 -> 1, 1s, default easing. */
+    svg.spinner { flex: none; }
+    svg.spinner circle { fill: none; stroke-width: 4px; }
+    svg.spinner .track { stroke: rgba(255,255,255,.12); }
+    svg.spinner .indicator { stroke: var(--accent); stroke-linecap: round; }
+    :host([live]) svg.spinner { animation: spin 3.5s linear infinite; }
+    svg.spinner.tiny .indicator { stroke-dasharray: 22.51 30.01; stroke-dashoffset: -1.51; }
+    :host([live]) svg.spinner.tiny .indicator { animation: dash-tiny 1.5s ease-in-out infinite; }
+    @keyframes dash-tiny { 0% { stroke-dasharray: 0.30 45.01; stroke-dashoffset: 0; } 50% { stroke-dasharray: 26.99 45.01; stroke-dashoffset: -10.48; } 100% { stroke-dasharray: 26.99 45.01; stroke-dashoffset: -37.21; } }
+    svg.spinner.small .indicator { stroke-dasharray: 45.01 60.02; stroke-dashoffset: -3.02; }
+    :host([live]) svg.spinner.small .indicator { animation: dash-small 1.5s ease-in-out infinite; }
+    @keyframes dash-small { 0% { stroke-dasharray: 0.60 90.03; stroke-dashoffset: 0; } 50% { stroke-dasharray: 53.99 90.03; stroke-dashoffset: -20.96; } 100% { stroke-dasharray: 53.99 90.03; stroke-dashoffset: -74.42; } }
+    :host([live]) .pulse { animation: pulse 1s infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
   `;
 
   class GwCard extends HTMLElement {
@@ -129,10 +140,21 @@
 
   const live = { rows: [], chips: [], frameChips: [], clock: null, canvas: null, toggle: null };
 
-  // A small card in the live strip: icon, name, value. `motion` is "spin" or "pulse".
+  // A small card in the live strip: icon, name, value. `motion` "pulse" pulses the icon.
   function chip(iconName, name, value, motion) {
     return card(`<div class="chip"><span class="${motion || ""}">${icon(iconName, true)}</span><span>${name}</span>
       <span class="v">${value}</span></div>`);
+  }
+
+  // ha-spinner's markup at one of its sizes: a track circle and an indicator circle.
+  function spinner(size) {
+    const px = { tiny: 16, small: 28 }[size], r = (px - 4) / 2;
+    return `<svg class="spinner ${size}" viewBox="0 0 ${px} ${px}" width="${px}" height="${px}">
+      <circle class="track" cx="${px / 2}" cy="${px / 2}" r="${r}"/><circle class="indicator" cx="${px / 2}" cy="${px / 2}" r="${r}"/></svg>`;
+  }
+
+  function spinnerChip(size, name) {
+    return card(`<div class="chip">${spinner(size)}<span>${name}</span></div>`);
   }
 
   // Everything that moves or changes once the page is live sits in a strip at the top, so it is on
@@ -145,14 +167,9 @@
     const strip = document.getElementById("strip");
     const add = (el, wide) => { if (wide) el.classList.add("wide"); strip.appendChild(el); live.chips.push(el); return el; };
     for (let i = 0; i < SPEC.updatesPerTick; i++) add(chip("therm", `Sensor ${i + 1}`, stateText(states[i * 6])));
-    for (let i = 0; i < SPEC.spinners; i++) add(chip("fan", `Fan ${i + 1}`, "on", "spin"));
-    for (let i = 0; i < SPEC.pulses; i++) add(chip("bolt", `Alert ${i + 1}`, "on", "pulse"));
-    if (SPEC.ring) {
-      add(card(`<div class="chip ring"><svg viewBox="0 0 100 100" width="24" height="24">
-        <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="14"/>
-        <circle class="arc" cx="50" cy="50" r="40" fill="none" stroke="var(--accent)" stroke-width="14" stroke-dasharray="251" stroke-dashoffset="125"/></svg>
-        <span>Washer</span></div>`));
-    }
+    for (let i = 0; i < SPEC.spinners; i++) add(spinnerChip("tiny", `Updating ${i + 1}`));
+    for (let i = 0; i < SPEC.pulses; i++) add(chip(i % 2 ? "lock" : "bolt", i % 2 ? "Front door" : "Alarm", i % 2 ? "jammed" : "triggered", "pulse"));
+    if (SPEC.ring) add(spinnerChip("small", "Loading"));
     if (SPEC.clock) live.clock = add(chip("sun", "Time", "12:00:00"));
     for (let i = 0; i < SPEC.frameTiles; i++) live.frameChips.push(add(chip("plug", `Plug ${i + 1}`, "0.0 W")));
     if (SPEC.sparkline) live.canvas = add(card(`<canvas class="spark" width="576" height="76"></canvas>`), true).shadowRoot.querySelector("canvas");
@@ -178,14 +195,15 @@
       return r.width > 0 && r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth;
     };
     const moving = live.chips.concat([live.toggle]);
+    // Each spinner runs two animations (the rotation and the arc), as ha-spinner does.
     let running = 0;
     for (const c of live.chips) {
-      for (const el of c.shadowRoot.querySelectorAll(".spin svg, .pulse svg, .ring circle.arc")) {
+      for (const el of c.shadowRoot.querySelectorAll("svg.spinner, svg.spinner .indicator, .pulse")) {
         if (el.getAnimations().some((a) => a.playState === "running")) running++;
       }
     }
     return { moving: moving.length, offscreen: moving.filter((el) => !inView(el)).length,
-             animations: running, animations_expected: SPEC.spinners + SPEC.pulses + (SPEC.ring ? 1 : 0) };
+             animations: running, animations_expected: 2 * SPEC.spinners + SPEC.pulses + (SPEC.ring ? 2 : 0) };
   }
 
   function nodeCount() {

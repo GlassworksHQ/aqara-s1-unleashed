@@ -293,7 +293,7 @@ def synthetic_lines(run, js_ms):
 
 
 NAV = {"light": 30.0, "typical": 40.0, "busy": 50.0}   # when each reference dashboard starts, s
-ANIMATIONS = {"light": 0, "typical": 7, "busy": 13}
+ANIMATIONS = {"light": 0, "typical": 12, "busy": 24}   # each ha-spinner counts its 2 animations
 
 
 def tier_entry(tier, missed, inp, load_ms=200, fcp_ms=150):
@@ -321,6 +321,7 @@ def refstart(k, inp, busy_missed=20):
     """A graded run: process at 20.0 s, engine ready 0.6 + 0.1k s later. Light and typical are
     smooth; busy misses `busy_missed` of 120 frames (20: about 51 fps, fluid but not smooth)."""
     return {"run": k, "ttid_ms": 111, "launch": "relaunched-by-system", "proc_mono": 20.0, "engine_mono": 20.6 + 0.1 * k,
+            "engine_uri": "about:blank",
             "own_page_start_mono": 23.0, "own_page_stop_mono": 26.0, "own_page_quiet": True,
             "tiers": {"light": tier_entry("light", 0, inp), "typical": tier_entry("typical", 0, inp),
                       "busy": tier_entry("busy", busy_missed, inp)},
@@ -382,6 +383,12 @@ class Build(unittest.TestCase):
         self.assertEqual(svg["held_60fps"]["median"], 2)
         self.assertTrue(svg["held_60fps_at_top"])   # never missed: a lower bound
         self.assertNotIn("canvas2d", self.rep["detail"]["synthetic"]["ladder"])
+
+    def test_summary_carries_the_engine_uri_and_sf_valid(self):
+        ref = self.rep["graded"]["reference"]
+        self.assertEqual(ref["engine_uris"], ["about:blank"])
+        self.assertEqual(ref["tiers"]["busy"]["sf_valid"], [True, True, True])
+        self.assertEqual(ref["tiers"]["light"]["sf_valid"], [False, False, False])   # light: rAF only by design
 
     def test_frames_per_reference_dashboard(self):
         t = self.rep["graded"]["reference"]["tiers"]
