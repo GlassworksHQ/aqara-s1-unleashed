@@ -16,7 +16,8 @@ satellite (remove that Wyoming entry from HA when you switch).
 Code: the protocol core is the reusable pure-JVM library [`app/libs/esphome-api`](../app/libs/esphome-api/README.md)
 (package `sh.edm.esphome`), with mDNS from [`app/libs/esphome-api-android`](../app/libs/esphome-api-android/README.md);
 the panel's entities and glue are `PanelDevice` and `VoiceAssistantController` in
-`app/kiosk/src/main/java/sh/edm/s1kiosk/esphome/`, owned by the foreground `KioskService`, so it
+`app/kiosk/src/main/java/sh/edm/s1kiosk/esphome/`, with the wall base and the Aqara cloud switch in
+`base/WallBasePane.kt`, owned by the foreground `KioskService`, so it
 keeps working while the screen is off. Logs: `adb logcat -s S1ESPHome S1Voice`.
 
 ## Add it to Home Assistant
@@ -373,6 +374,9 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 - `BaseProtocolTest` / `BaseTrackerTest`: wall base dock class decoding, mask/count to channels,
   LocalService reply/event parsing (all known shapes, foreign DIDs, garbage), DID redaction,
   debounce (no rebuild loop on flapping), click de-duplication, entity ids per layout.
+- `WallBasePaneTest`: a new layout asks for an entity rebuild and saves the layout; a button press
+  fires the event entity Home Assistant has. `BaseLayoutEntitiesPinTest`: the full entity list
+  for each kind of base, against `panel-entities-base.golden.txt`.
 - `BracketProtocolTest` / `BracketSessionTest`: the wall base UART protocol. CRC-16/MODBUS, frames
   byte-identical to Aqara's `bracket_cli` output, resource ids/types, a resyncing framer (noise,
   bad/swapped CRC), identity → dock class, protection mapping, termios verification; the handshake

@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit
  * Pure JVM on purpose (Android bits are injected), so the JVM tests run it against the emulator.
  *
  * Port ownership: `ha_master` holds `/dev/ttyS3` while it runs. Before opening the serial port and
- * every 10 s while it is open, [portGuard] is asked whether the port may be used (PanelDevice
+ * every 10 s while it is open, [portGuard] is asked whether the port may be used (WallBasePane
  * answers "no" while init reports ha_master running). A "no" closes the port, reports the link as
  * unavailable and calls [BaseLink.Listener.onBlocked]; the link retries every 5 s.
  *
