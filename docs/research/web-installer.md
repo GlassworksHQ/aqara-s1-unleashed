@@ -1,7 +1,7 @@
 # Browser installer (WebUSB) — design
 
 > **Historical note.** This is the spec written *before* the installer was built. The installer now
-> exists in [`web/`](../../web/src/README.md); the user guide is [docs/install.md](../install.md).
+> exists in [`kiln/`](../../kiln/src/README.md); the user guide is [docs/install.md](../install.md).
 > Where the shipped code and this spec differ, the code wins.
 
 **Status: design only. Nothing here is implemented yet, and nothing in it touches a panel.**
@@ -46,6 +46,9 @@ secure context (HTTPS or `http://localhost`) **[verified: MDN]**, so the site mu
 HTTPS.
 
 ### Module layout
+
+The layout planned before the build, kept as it was. The installer now lives in `kiln/`, and the
+protocol modules in `kiln/packages/` (listed in `kiln/package.json`, `workspaces`).
 
 ```
 web/

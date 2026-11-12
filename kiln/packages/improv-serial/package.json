@@ -1,0 +1,22 @@
+{
+  "name": "improv-serial",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Improv Wi-Fi Serial client for the browser, over any byte stream or over WebUSB adb to an Android app.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./adb": "./src/adb.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@yume-chan/adb": ">=2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@yume-chan/adb": { "optional": true }
+  }
+}

@@ -52,7 +52,7 @@ Package `sh.edm.improv`, MIT licensed.
 | `ImprovSession` | The Improv BLE state machine (authorization, provisioning, errors, auth timeout). Pure Kotlin: Bluetooth and Wi-Fi sit behind `ImprovSession.Effects`, and time is passed in, so it is unit-testable. Behaviour follows the spec and ESPHome's `improv_ble`. |
 | `ImprovBleServer` | The Android GATT server and advertiser: service, characteristics, 0x4677 service data, queued notifications, MTU tracking, legacy or extended advertising. Turns Bluetooth on if needed. |
 | `ImprovSerial`, `SerialPacketReader`, `ImprovSerialSession` | [Improv Serial](https://www.improv-wifi.com/serial/): framing and its session. Transport-agnostic: feed it bytes from a UART, a socket or an adb stream. Pure Kotlin. |
-| `ImprovAdbServer`, `AdbSocketServer`, `AdbPeer` | Improv Serial over adb: an abstract Unix socket that only adb may open, with one serial session per connection. The browser client is the [`improv-serial`](../../../web/packages/improv-serial/README.md) TypeScript package. `AdbSocketServer` is also usable on its own, for any browser-to-app channel over USB. |
+| `ImprovAdbServer`, `AdbSocketServer`, `AdbPeer` | Improv Serial over adb: an abstract Unix socket that only adb may open, with one serial session per connection. The browser client is the [`improv-serial`](../../../kiln/packages/improv-serial/README.md) TypeScript package. `AdbSocketServer` is also usable on its own, for any browser-to-app channel over USB. |
 | `WifiProvisioner` | Joins the network and verifies the connection, putting the previous network back on failure. Also scans. See [Joining Wi-Fi](#joining-wi-fi). |
 | `WifiSecurity`, `WifiSecurityRules` | Maps Android scan capabilities to Improv's auth labels, and picks the security type to configure (open, OWE, WEP, PSK, SAE, EAP), including for hidden networks. Pure Kotlin. |
 
@@ -153,7 +153,7 @@ server.start()
 ```
 
 A web page then opens `localabstract:myapp_improv` over WebUSB adb with the
-[`improv-serial`](../../../web/packages/improv-serial/README.md) package. From a computer you can
+[`improv-serial`](../../../kiln/packages/improv-serial/README.md) package. From a computer you can
 also run `adb forward tcp:7000 localabstract:myapp_improv` and use any Improv Serial client on
 `localhost:7000`. Only adb (uid 2000, or 0 after `adb root`) may connect, so USB access with an
 authorized adb key is the physical authorization. That means it needs adb turned on, which suits

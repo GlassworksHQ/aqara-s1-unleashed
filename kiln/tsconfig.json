@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["w3c-web-usb", "web-bluetooth", "vite/client", "node"]
+  },
+  "include": ["src", "test"]
+}

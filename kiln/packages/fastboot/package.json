@@ -1,0 +1,16 @@
+{
+  "name": "@glassworks/fastboot",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fastboot over WebUSB, with our U-Boot's oem run and partition read-back.",
+  "license": "MIT",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@glassworks/fel": "0.0.0"
+  }
+}

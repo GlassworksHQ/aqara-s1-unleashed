@@ -1,0 +1,13 @@
+{
+  "name": "@glassworks/bootpatch",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Byte-exact boot image and partition edits: the Magisk patch of tools/root/patch-boot-magisk.sh, with the compressors in wasm.",
+  "license": "MIT",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

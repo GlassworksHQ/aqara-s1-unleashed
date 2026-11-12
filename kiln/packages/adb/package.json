@@ -1,0 +1,19 @@
+{
+  "name": "@glassworks/adb",
+  "version": "0.0.0",
+  "private": true,
+  "description": "adb over WebUSB (Tango): the browser's adb key and a shell on the panel.",
+  "license": "MIT",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@yume-chan/adb": "2.6.4",
+    "@yume-chan/adb-daemon-webusb": "2.3.2",
+    "@yume-chan/stream-extra": "2.6.1",
+    "improv-serial": "0.1.0"
+  }
+}

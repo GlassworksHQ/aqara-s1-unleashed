@@ -13,7 +13,7 @@ import sh.edm.improv.ImprovSerial.TYPE_RPC_RESULT
 import sh.edm.improv.ImprovSerial.TYPE_STATE
 import sh.edm.improv.SerialPacketReader.Item
 
-/** Byte examples and the simulated panel's behaviour from web/packages/improv-serial/test/serial.test.ts. */
+/** Byte examples and the simulated panel's behaviour from kiln/packages/improv-serial/test/serial.test.ts. */
 class ImprovSerialTest {
 
     private fun bytes(vararg v: Int) = ByteArray(v.size) { v[it].toByte() }

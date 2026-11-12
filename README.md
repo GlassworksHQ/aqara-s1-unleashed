@@ -329,7 +329,7 @@ browser, the radio and the wall base protocol: it's all written up in
 
 | Path | What |
 |---|---|
-| [`web/`](web/src/README.md) | The browser (WebUSB) installer |
+| [`kiln/`](kiln/src/README.md) | The browser (WebUSB) installer |
 | [`app/`](app/README.md) | S1 Kiosk, the Android app (GeckoView, ESPHome API, voice, Sendspin) |
 | `tools/` | Command-line installer, U-Boot/FEL build, boot patch, radio helper, dev tools |
 | [`branding/`](branding/glass-tile/README.md) | Glass Tile boot splash and animation, social preview |
