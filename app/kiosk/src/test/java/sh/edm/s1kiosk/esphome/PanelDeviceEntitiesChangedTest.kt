@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.esphome
 
+import sh.edm.s1kiosk.frame.AqaraS1Plus
 import android.app.Application
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -24,7 +25,7 @@ class PanelDeviceEntitiesChangedTest {
     @Test fun aNewBaseLayoutAddsItsEntitiesAndKeepsTheRest() {
         val app = RuntimeEnvironment.getApplication()
         KioskPrefs(app).wallBase.layout = ""
-        val device = PanelDevice(app, GlassworksRuntime(), onVoiceEvent = {})
+        val device = PanelDevice(app, GlassworksRuntime(AqaraS1Plus()), onVoiceEvent = {})
         try {
             device.initEntities(
                 DeviceIdentity(

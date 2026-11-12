@@ -23,6 +23,8 @@ import android.widget.Toast
 import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.auth.FrontendUrls
 import sh.edm.s1kiosk.auth.HaAuth
+import dev.glassworks.frame.openSystemSettings
+import dev.glassworks.frame.systemSettings
 import sh.edm.s1kiosk.dashboard.DashboardOptions
 import sh.edm.s1kiosk.dashboard.Dashboards
 import sh.edm.s1kiosk.discovery.HaUrls
@@ -211,7 +213,7 @@ class MainActivity : Activity() {
         settingsOverlay = KioskSettingsOverlay(this).apply {
             onSave = ::saveSettings
             onReload = { hide(); loadDashboard() }
-            onAqaraSettings = { if (!DeviceSettings.open(this@MainActivity)) Toast.makeText(this@MainActivity, "No settings app on this panel", Toast.LENGTH_LONG).show() }
+            onAqaraSettings = { if (!glassworks.frame.openSystemSettings(this@MainActivity)) Toast.makeText(this@MainActivity, "No settings app on this panel", Toast.LENGTH_LONG).show() }
             onLicences = { Licences.show(this@MainActivity) }
             onRadioRun = { r, done -> runRadio(r, "settings menu", done) }
             // Same path as HA's `Thread dataset` text entity; never logged.
@@ -692,7 +694,7 @@ class MainActivity : Activity() {
             if (fromNewIntent) loadDashboard()
         }
         intent.getStringExtra("ha_discovered")?.let { if (fromNewIntent) onHaFound(it) }
-        if (intent.getBooleanExtra("open_settings", false)) DeviceSettings.open(this)
+        if (intent.getBooleanExtra("open_settings", false)) glassworks.frame.openSystemSettings(this)
         // From the web installer: the panel's language (it recreates this activity if it changes).
         intent.getStringExtra("set_locale")?.let { tag ->
             intent.removeExtra("set_locale")
@@ -891,7 +893,7 @@ class MainActivity : Activity() {
                     presenceRange = if (prefs.presenceRangeM > 0f) prefs.presenceRangeM.toString() else "",
                     autoBrightness = prefs.autoBrightness,
                 ),
-                facts = SettingsMenu.Facts(deviceSettings = DeviceSettings.intent(this) != null, radio = radio != null),
+                facts = SettingsMenu.Facts(deviceSettings = glassworks.frame.systemSettings(this) != null, radio = radio != null),
                 radioRunning = radio != null,
                 allowedNow = SettingsMenu.allowedNow(radio != null, radio?.allowedNow()),
                 version = BuildConfig.VERSION_NAME,

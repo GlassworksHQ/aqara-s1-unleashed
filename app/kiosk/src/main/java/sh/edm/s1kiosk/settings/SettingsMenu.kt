@@ -37,7 +37,7 @@ object SettingsMenu {
     }
 
     data class Facts(
-        /** Aqara's device settings app resolves (DeviceSettings.intent != null). */
+        /** Aqara's device settings app resolves (the frame's systemSettings != null). */
         val deviceSettings: Boolean,
         /** The kiosk service (and so RadioController) runs: the mode picker and follow-up card can work. */
         val radio: Boolean = true,

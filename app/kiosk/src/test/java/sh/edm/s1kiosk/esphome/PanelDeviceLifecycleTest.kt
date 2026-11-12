@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.esphome
 
+import sh.edm.s1kiosk.frame.AqaraS1Plus
 import android.app.Application
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -15,7 +16,7 @@ import sh.edm.s1kiosk.GlassworksRuntime
 class PanelDeviceLifecycleTest {
 
     @Test fun aStartupThatRunsAfterStopStartsNothing() {
-        val runtime = GlassworksRuntime()
+        val runtime = GlassworksRuntime(AqaraS1Plus())
         val device = PanelDevice(RuntimeEnvironment.getApplication(), runtime, onVoiceEvent = {})
         device.stop()
 

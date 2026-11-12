@@ -15,6 +15,7 @@ import android.os.Looper
 import android.util.Log
 import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.auth.UrlConnectionPoster
+import dev.glassworks.frame.systemSettings
 import sh.edm.s1kiosk.discovery.HaDiscovery
 import sh.edm.s1kiosk.esphome.PanelDevice
 import sh.edm.s1kiosk.improv.ImprovController
@@ -118,7 +119,7 @@ class KioskService : Service() {
             .setContentIntent(menu)
             .setOngoing(true)
         // The shade has no settings gear until Aqara's own onboarding ran: Aqara's settings app from here too.
-        DeviceSettings.intent(this)?.let { settings ->
+        glassworks.frame.systemSettings(this)?.let { settings ->
             val pi = PendingIntent.getActivity(this, REQ_PANEL_SETTINGS, settings, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             @Suppress("DEPRECATION")
             b.addAction(Notification.Action.Builder(android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_launcher), "Panel settings", pi).build())

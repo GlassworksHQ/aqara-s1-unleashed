@@ -90,7 +90,7 @@ class PanelDevice(
     private val main = Handler(Looper.getMainLooper())
     private val exec: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "esphome-main").apply { isDaemon = true } }
-    private val mdns = EspHomeMdns(ctx, board = "aqara-s1-plus")
+    private val mdns = EspHomeMdns(ctx, board = runtime.frame.board)
     private val voiceEnabled = prefs.voice.enabled
 
     private var server: ApiServer? = null
