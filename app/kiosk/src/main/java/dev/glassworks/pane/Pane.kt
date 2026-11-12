@@ -40,6 +40,8 @@ class PaneContext(
     val device: DeviceIdentity,
     /** Pushes every entity state to Home Assistant. Safe from any thread, also while the device stops. */
     val publishStates: () -> Unit,
+    /** Raises [event] to every pane, this one included. Safe from any thread. */
+    val emit: (PanelEvent) -> Unit,
 )
 
 /**

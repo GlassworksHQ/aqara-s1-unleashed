@@ -247,7 +247,7 @@ class PanelDevice(
      */
     internal fun initEntities(identity: DeviceIdentity, baseConfig: WallBase.Config): WallBase {
         this.identity = identity
-        val paneContext = PaneContext(ctx, prefs, identity, publishStates = { runCatching { exec.execute { server?.publishStates() } } })
+        val paneContext = PaneContext(ctx, prefs, identity, publishStates = { runCatching { exec.execute { server?.publishStates() } } }, emit = ::emit)
         panes = listOfNotNull(
             SendspinPane(paneContext),
             // Timers only come from the voice assistant.
