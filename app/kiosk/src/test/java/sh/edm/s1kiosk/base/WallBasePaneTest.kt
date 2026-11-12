@@ -22,14 +22,14 @@ import java.util.concurrent.Executors
 @Config(sdk = [34], application = Application::class)
 class WallBasePaneTest {
     private val app = RuntimeEnvironment.getApplication()
-    private val prefs = KioskPrefs(app).apply { baseLayout = "" }
+    private val prefs = KioskPrefs(app).wallBase.apply { layout = "" }
     private val device = Executors.newSingleThreadScheduledExecutor()
     private var changes = 0
     private val sent = ArrayList<Pair<EventEntity, String>>()
 
     private fun newPane() = WallBasePane(
         PaneContext(
-            app, prefs,
+            app, KioskPrefs(app)::paneFile,
             DeviceIdentity(
                 name = "test", friendlyName = "Test", macAddress = "02:00:00:00:00:01", esphomeVersion = "x",
                 compilationTime = "x", manufacturer = "x", model = "x", voiceFeatures = 0,
@@ -67,7 +67,7 @@ class WallBasePaneTest {
             ),
             shellList().map { it.objectId },
         )
-        assertEquals(twoChannels, BaseLayout.decode(prefs.baseLayout))
+        assertEquals(twoChannels, BaseLayout.decode(prefs.layout))
     }
 
     @Test fun aButtonPressFiresTheEventEntityHomeAssistantHas() {
@@ -89,7 +89,7 @@ class WallBasePaneTest {
     }
 
     @Test fun theSavedLayoutIsWhatAFreshPaneStartsWith() {
-        prefs.baseLayout = twoChannels.encode()
+        prefs.layout = twoChannels.encode()
         val restarted = newPane()
         try {
             assertTrue(restarted.entities().any { it.objectId == "base_relay_2" })

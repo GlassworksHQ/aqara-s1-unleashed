@@ -39,7 +39,7 @@ class KioskService : Service() {
         KioskPrefs(this).migrateRadioStep() // before discovery can save an HA URL in this process
         startForeground(NOTIFICATION_ID, buildNotification())
         ScreenController.start(this)
-        glassworks.voiceState = if (KioskPrefs(this).voiceEnabled) "idle" else "off"
+        glassworks.voiceState = if (KioskPrefs(this).voice.enabled) "idle" else "off"
         glassworks.voiceUi = VoiceUi(glassworks.voiceState)
         glassworks.voiceCancel = { device?.cancelVoice() }
         HaAuth.startServer(this)

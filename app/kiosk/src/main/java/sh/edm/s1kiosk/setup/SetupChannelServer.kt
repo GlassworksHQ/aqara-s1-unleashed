@@ -75,7 +75,7 @@ object SetupChannelServer {
                     signinUrl = ChannelState.signinUrl(ip, haUrl),
                 ),
                 radio = ChannelState.Radio(
-                    mode = (r?.mode ?: RadioMode.parse(prefs.radioMode)).id,
+                    mode = (r?.mode ?: RadioMode.parse(prefs.radio.mode)).id,
                     status = r?.statusText() ?: "The radio controller isn't running yet",
                     options = ChannelState.OPTIONS,
                     helper = helperInstalled(),

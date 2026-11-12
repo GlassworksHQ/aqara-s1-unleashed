@@ -31,7 +31,7 @@ import sh.edm.s1kiosk.esphome.VoiceAssistantController
 @Config(sdk = [34], application = Application::class)
 class AssistPaneTest {
     private val app = RuntimeEnvironment.getApplication()
-    private val prefs = KioskPrefs(app)
+    private val prefs = KioskPrefs(app).voice
     private val events = ArrayList<PanelEvent>()
     private val heard = ArrayList<VoiceEvent>()
     private var chimes = 0
@@ -41,7 +41,7 @@ class AssistPaneTest {
 
     private fun pane(voiceEnabled: Boolean = true, onVoiceEvent: (VoiceEvent) -> Unit = { heard += it }) = AssistPane(
         ctx = PaneContext(
-            app, prefs,
+            app, KioskPrefs(app)::paneFile,
             DeviceIdentity(
                 name = "test", friendlyName = "Test", macAddress = "02:00:00:00:00:01", esphomeVersion = "x",
                 compilationTime = "x", manufacturer = "x", model = "x", voiceFeatures = 0,

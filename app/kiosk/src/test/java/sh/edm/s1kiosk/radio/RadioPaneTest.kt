@@ -50,7 +50,7 @@ class RadioPaneTest {
 
     private val pane by lazy {
         val ctx = PaneContext(
-            app, KioskPrefs(app),
+            app, KioskPrefs(app)::paneFile,
             DeviceIdentity(
                 name = "test", friendlyName = "Test", macAddress = "02:00:00:00:00:01", esphomeVersion = "x",
                 compilationTime = "x", manufacturer = "x", model = "x", voiceFeatures = 0,

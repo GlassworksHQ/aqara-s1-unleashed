@@ -6,18 +6,32 @@ import android.net.Uri
 import android.util.Base64
 import sh.edm.s1kiosk.auth.OAuth
 import sh.edm.s1kiosk.auth.StoredAuth
-import sh.edm.s1kiosk.base.BaseBackend
-import sh.edm.s1kiosk.base.UartBaseLink
 import sh.edm.esphome.NoiseKeyStore
+import sh.edm.s1kiosk.base.WallBasePrefs
+import sh.edm.s1kiosk.radio.RadioPrefs
+import sh.edm.s1kiosk.sendspin.SendspinPrefs
+import sh.edm.s1kiosk.voice.VoicePrefs
 
 /**
- * Persisted kiosk settings (SharedPreferences, private to the app). Secrets: the ESPHome API
- * encryption key (`kiosk.xml`, which Home Assistant provisions) and the HA refresh token
- * (`auth.xml`, see [auth]). Neither is ever logged.
+ * The panel's core settings (SharedPreferences, private to the app), and each pane's settings for
+ * the code outside the panes (settings menu, intent extras, setup) until those move into the panes
+ * (#20). Secrets: the ESPHome API encryption key (`kiosk.xml`, which Home Assistant provisions) and
+ * the HA refresh token (`auth.xml`, see [auth]). Neither is ever logged.
  */
-class KioskPrefs(context: Context) {
+class KioskPrefs(private val context: Context) {
     private val sp = context.getSharedPreferences("kiosk", Context.MODE_PRIVATE)
     private val authSp = context.getSharedPreferences("auth", Context.MODE_PRIVATE)
+
+    /** The file that holds the settings of the pane with id [namespace] ([dev.glassworks.pane.PaneContext.prefs]). */
+    fun paneFile(namespace: String): SharedPreferences = context.getSharedPreferences(
+        PANE_FILES[namespace] ?: throw IllegalArgumentException("No settings file for pane '$namespace'"),
+        Context.MODE_PRIVATE,
+    )
+
+    val sendspin = SendspinPrefs(paneFile("sendspin"))
+    val voice = VoicePrefs(paneFile("assist"))
+    val wallBase = WallBasePrefs(paneFile("wall-base"))
+    val radio = RadioPrefs(paneFile("radio"))
 
     fun registerListener(l: SharedPreferences.OnSharedPreferenceChangeListener) =
         sp.registerOnSharedPreferenceChangeListener(l)
@@ -89,7 +103,7 @@ class KioskPrefs(context: Context) {
         if (sp.getBoolean("setup_radio_migrated", false)) return
         val done = sh.edm.s1kiosk.setup.SetupState.radioStepDoneOnUpgrade(
             haKnown = haBase != null, haSeen = haSeen, apiKeySet = apiEncryption,
-            haSkipped = haSetupSkipped, radioModeStored = radioMode != null,
+            haSkipped = haSetupSkipped, radioModeStored = radio.mode != null,
         )
         val e = sp.edit().putBoolean("setup_radio_migrated", true)
         if (done) e.putBoolean("setup_radio_done", true)
@@ -228,11 +242,6 @@ class KioskPrefs(context: Context) {
         get() = sp.getString("device_mac", "") ?: ""
         set(v) = sp.edit().putString("device_mac", v).apply()
 
-    /** Last applied wall base layout (BaseLayout.encode), so HA sees the same entities after a restart. */
-    var baseLayout: String
-        get() = sp.getString("base_layout", "") ?: ""
-        set(v) = sp.edit().putString("base_layout", v).apply()
-
     var speakerVolume: Float
         get() = sp.getFloat("speaker_volume", 1.0f)
         set(v) = sp.edit().putFloat("speaker_volume", v).apply()
@@ -240,116 +249,6 @@ class KioskPrefs(context: Context) {
     var speakerMuted: Boolean
         get() = sp.getBoolean("speaker_muted", false)
         set(v) = sp.edit().putBoolean("speaker_muted", v).apply()
-
-    /**
-     * Zigbee/Thread radio mode, a [sh.edm.s1kiosk.radio.RadioMode] id (older builds stored the label;
-     * RadioMode.parse accepts both). Written only by RadioController.
-     */
-    var radioMode: String?
-        get() = sp.getString("radio_mode", null)
-        set(v) = sp.edit().putString("radio_mode", v).apply()
-
-    /**
-     * Who may reach the radio's network services (radio/RadioAllow.kt): Home Assistant's last address
-     * per family, from its authenticated ESPHome connection, and the owner's explicit list
-     * (`Radio allowed clients`, normalized; "" = automatic). Written only by RadioController.
-     */
-    /** Zigbee stack for the coordinator mode, a [sh.edm.s1kiosk.radio.ZigbeeStack] id (helper v4). */
-    val radioStackStore: sh.edm.s1kiosk.radio.StackStore = object : sh.edm.s1kiosk.radio.StackStore {
-        override var stack: String?
-            get() = sp.getString("radio_zigbee_stack", null)
-            set(v) = sp.edit().putString("radio_zigbee_stack", v).apply()
-    }
-
-    val radioAllowStore: sh.edm.s1kiosk.radio.AllowStore = object : sh.edm.s1kiosk.radio.AllowStore {
-        override var haV4: String?
-            get() = sp.getString("radio_ha_ipv4", null)
-            set(v) = sp.edit().putString("radio_ha_ipv4", v).apply()
-        override var haV6: String?
-            get() = sp.getString("radio_ha_ipv6", null)
-            set(v) = sp.edit().putString("radio_ha_ipv6", v).apply()
-        override var explicit: String
-            get() = sp.getString("radio_allow", "").orEmpty()
-            set(v) = sp.edit().putString("radio_allow", v).apply()
-    }
-
-    // ---- voice assistant (ESPHome API + on-device openWakeWord)
-
-    var voiceEnabled: Boolean
-        get() = sp.getBoolean("voice_enabled", true)
-        set(v) = sp.edit().putBoolean("voice_enabled", v).apply()
-
-    /** Wake model file in the models dir; "" = no wake word (set from HA's wake word select). */
-    var wakeModel: String
-        get() = sp.getString("wake_model", "hey_jarvis_v0.1.tflite") ?: ""
-        set(v) = sp.edit().putString("wake_model", v.trim()).apply()
-
-    var wakeThreshold: Float
-        get() = sp.getFloat("wake_threshold", 0.5f)
-        set(v) = sp.edit().putFloat("wake_threshold", v).apply()
-
-    /** Play a short chime when the wake word is detected. */
-    var wakeSound: Boolean
-        get() = sp.getBoolean("wake_sound", true)
-        set(v) = sp.edit().putBoolean("wake_sound", v).apply()
-
-    /** Show the "Listening… / Thinking…" overlay on screen during voice runs. */
-    var voiceOverlay: Boolean
-        get() = sp.getBoolean("voice_overlay", true)
-        set(v) = sp.edit().putBoolean("voice_overlay", v).apply()
-
-    var micGain: Float
-        get() = sp.getFloat("mic_gain", 1.0f)
-        set(v) = sp.edit().putFloat("mic_gain", v).apply()
-
-    /** Mute: the microphone is released entirely (no wake word, no streaming). */
-    var micMuted: Boolean
-        get() = sp.getBoolean("mic_muted", false)
-        set(v) = sp.edit().putBoolean("mic_muted", v).apply()
-
-    // ---- Music Assistant player (Sendspin, see sendspin/ and docs/sendspin.md). Its secrets
-    // (identity, pairing PSK, pairing records) live in `sendspin.xml` (PrefsSsStore).
-
-    /** Run the native Sendspin player (ESPHome switch "Music Assistant player (Sendspin)"). */
-    /**
-     * Stop Aqara's cloud daemon (ha_master). With the UART wall-base backend it is never needed;
-     * with the LocalService backend it is kept while a base is attached. See AqaraCloud.
-     */
-    var blockAqaraCloud: Boolean
-        get() = sp.getBoolean(KEY_BLOCK_AQARA_CLOUD, true)
-        set(v) = sp.edit().putBoolean(KEY_BLOCK_AQARA_CLOUD, v).apply()
-
-    /** Wall-base backend: `auto` (UART unless cloud blocking is off), `uart`, `localservice`. See BaseBackend. */
-    var baseBackend: String
-        get() = sp.getString(KEY_BASE_BACKEND, BaseBackend.AUTO) ?: BaseBackend.AUTO
-        set(v) = sp.edit().putString(KEY_BASE_BACKEND, v.trim().lowercase().takeIf { it in BaseBackend.PREF_VALUES } ?: BaseBackend.AUTO).apply()
-
-    /** UART backend port: `/dev/ttyS3` (default, "") or `tcp:host:port` for tools/bracket/base_emulator.py. */
-    var baseTransport: String
-        get() = sp.getString(KEY_BASE_TRANSPORT, "")?.trim()?.takeIf { it.isNotEmpty() } ?: UartBaseLink.SERIAL_PATH
-        set(v) = sp.edit().putString(KEY_BASE_TRANSPORT, v.trim()).apply()
-
-    var sendspinEnabled: Boolean
-        get() = sp.getBoolean(KEY_SENDSPIN_ENABLED, true)
-        set(v) = sp.edit().putBoolean(KEY_SENDSPIN_ENABLED, v).apply()
-
-    /** `auto` (mDNS `_sendspin-server._tcp`, else `ws://<HA host>:8927/sendspin`) or a host[:port][/path] / ws:// URL. */
-    var sendspinServer: String
-        get() = sp.getString(KEY_SENDSPIN_SERVER, AUTO)?.takeIf { it.isNotBlank() } ?: AUTO
-        set(v) = sp.edit().putString(KEY_SENDSPIN_SERVER, v.trim().ifEmpty { AUTO }).apply()
-
-    /**
-     * Sendspin "unpaired access" (guest mode): a server may play without pairing. Off by default:
-     * Home Assistant hands Music Assistant the pairing token over the ESPHome API instead.
-     */
-    var sendspinUnpairedAccess: Boolean
-        get() = sp.getBoolean(KEY_SENDSPIN_UNPAIRED, false)
-        set(v) = sp.edit().putBoolean(KEY_SENDSPIN_UNPAIRED, v).apply()
-
-    /** Offer FLAC (decoded with MediaCodec) before PCM to the Sendspin server. PCM only when off. */
-    var sendspinFlac: Boolean
-        get() = sp.getBoolean(KEY_SENDSPIN_FLAC, true)
-        set(v) = sp.edit().putBoolean(KEY_SENDSPIN_FLAC, v).apply()
 
     // ---- Improv Wi-Fi via BLE (see improv/ImprovController)
 
@@ -374,6 +273,12 @@ class KioskPrefs(context: Context) {
     companion object {
         const val AUTO = "auto"
 
+        /**
+         * The settings file of each pane, by pane id. Every pane's settings stay in `kiosk.xml`, where
+         * they were before panes: panels update in place, so no stored value may move.
+         */
+        val PANE_FILES = mapOf("sendspin" to "kiosk", "assist" to "kiosk", "wall-base" to "kiosk", "radio" to "kiosk")
+
         /** Decodes a base64 API key; null unless it is exactly 32 bytes. */
         fun decodeApiKey(b64: String): ByteArray? = try {
             Base64.decode(b64.trim(), Base64.DEFAULT).takeIf { it.size == 32 }
@@ -384,13 +289,6 @@ class KioskPrefs(context: Context) {
         const val KEY_URL = "url"
         const val KEY_HA_SEEN = "ha_seen"
         const val KEY_WIFI_SEEN = "wifi_seen"
-        const val KEY_SENDSPIN_ENABLED = "sendspin_enabled"
-        const val KEY_BLOCK_AQARA_CLOUD = "block_aqara_cloud"
-        const val KEY_BASE_BACKEND = "base_backend"
-        const val KEY_BASE_TRANSPORT = "base_transport"
-        const val KEY_SENDSPIN_SERVER = "sendspin_server"
-        const val KEY_SENDSPIN_UNPAIRED = "sendspin_unpaired_access"
-        const val KEY_SENDSPIN_FLAC = "sendspin_flac"
         private const val KEY_ZOOM = "zoom"
         private const val KEY_SECURE_HOSTS = "secure_hosts"
         private const val KEY_REMOTE_DEBUG = "remote_debug"

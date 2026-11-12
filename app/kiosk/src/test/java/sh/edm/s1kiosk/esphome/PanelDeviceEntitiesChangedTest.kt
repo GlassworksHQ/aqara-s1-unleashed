@@ -23,7 +23,7 @@ class PanelDeviceEntitiesChangedTest {
 
     @Test fun aNewBaseLayoutAddsItsEntitiesAndKeepsTheRest() {
         val app = RuntimeEnvironment.getApplication()
-        KioskPrefs(app).baseLayout = ""
+        KioskPrefs(app).wallBase.layout = ""
         val device = PanelDevice(app, GlassworksRuntime(), onVoiceEvent = {})
         try {
             device.initEntities(

@@ -34,7 +34,7 @@ object ShellProps : SysProps {
 }
 
 /**
- * Where the app keeps what decides who may reach the radio's network services (KioskPrefs on the
+ * Where the app keeps what decides who may reach the radio's network services (RadioPrefs on the
  * panel): Home Assistant's last address per family, and the owner's explicit list.
  */
 interface AllowStore {
@@ -47,7 +47,7 @@ interface AllowStore {
 
 class MemoryAllowStore(override var haV4: String? = null, override var haV6: String? = null, override var explicit: String = "") : AllowStore
 
-/** Where the app keeps the chosen [ZigbeeStack] id (KioskPrefs on the panel). */
+/** Where the app keeps the chosen [ZigbeeStack] id (RadioPrefs on the panel). */
 interface StackStore { var stack: String? }
 class MemoryStackStore(override var stack: String? = null) : StackStore
 

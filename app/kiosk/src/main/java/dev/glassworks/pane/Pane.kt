@@ -5,12 +5,12 @@
 package dev.glassworks.pane
 
 import android.content.Context
+import android.content.SharedPreferences
 import sh.edm.esphome.ApiEntity
 import sh.edm.esphome.ApiServer
 import sh.edm.esphome.DeviceIdentity
 import sh.edm.esphome.EspHomeLog
 import sh.edm.esphome.EventEntity
-import sh.edm.s1kiosk.KioskPrefs
 import java.net.InetAddress
 
 /**
@@ -45,8 +45,14 @@ data class PanelTimer(val id: String, val name: String, val totalSeconds: Int, v
 class PaneContext(
     /** The application context. */
     val context: Context,
-    /** Until #18 splits the settings per pane. */
-    val prefs: KioskPrefs,
+    /**
+     * The settings of [namespace], which is the pane's [Pane.id]. A pane wraps the file in its own
+     * typed class and reads and writes only its own keys there. The frame decides which file holds a
+     * namespace, so a frame can keep the files and keys its panels already have. The frame raises
+     * [PanelEvent.SettingChanged] when a key in the file changes. Throws [IllegalArgumentException]
+     * for a namespace the frame does not know.
+     */
+    val prefs: (namespace: String) -> SharedPreferences,
     val device: DeviceIdentity,
     /** Pushes every entity state to Home Assistant. Safe from any thread, also while the device stops. */
     val publishStates: () -> Unit,

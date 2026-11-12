@@ -10,20 +10,22 @@ import sh.edm.esphome.SendspinApi
 import sh.edm.esphome.SendspinTokenSource
 import sh.edm.esphome.SwitchEntity
 import sh.edm.esphome.TextSensorEntity
-import sh.edm.s1kiosk.KioskPrefs
 
-/** The Music Assistant player (Sendspin, docs/sendspin.md) as a pane: its two entities, its lifecycle and its settings. */
-class SendspinPane(ctx: PaneContext) : Pane {
+/**
+ * The Music Assistant player (Sendspin, docs/sendspin.md) as a pane: its two entities, its lifecycle and its settings.
+ * [haBase] is the Home Assistant the panel talks to, for the `auto` server address.
+ */
+class SendspinPane(ctx: PaneContext, haBase: () -> String?) : Pane {
     override val id = "sendspin"
 
-    private val prefs: KioskPrefs = ctx.prefs
+    private val prefs = SendspinPrefs(ctx.prefs(id))
 
-    private val player = SendspinPlayer(ctx.context, prefs, ctx.device.macAddress, ctx.publishStates)
+    private val player = SendspinPlayer(ctx.context, prefs, haBase, ctx.device.macAddress, ctx.publishStates)
 
     override fun entities(): List<ApiEntity> = listOf(
         SwitchEntity(
             "sendspin", "Music Assistant player (Sendspin)", "mdi:speaker-wireless", EntityCategory.CONFIG,
-            get = { prefs.sendspinEnabled }, set = { prefs.sendspinEnabled = it },
+            get = { prefs.enabled }, set = { prefs.enabled = it },
         ),
         TextSensorEntity(
             "sendspin_status", "Music Assistant player status", "mdi:speaker-wireless", EntityCategory.DIAGNOSTIC,
@@ -35,14 +37,14 @@ class SendspinPane(ctx: PaneContext) : Pane {
         server.sendspin = object : SendspinTokenSource {
             override fun clientIdIfStarted() = player.takeIf { it.started }?.clientId ?: ""
             override fun pairingToken(): Pair<Int, String?> {
-                val status = pairingStatus(prefs.sendspinEnabled, player.started)
+                val status = pairingStatus(prefs.enabled, player.started)
                 return status to if (status == SendspinApi.STATUS_OK) player.pairingToken() else null
             }
         }
     }
 
     override fun start() {
-        if (prefs.sendspinEnabled) player.start()
+        if (prefs.enabled) player.start()
     }
 
     override fun stop() = player.stop("shutdown")
@@ -50,10 +52,10 @@ class SendspinPane(ctx: PaneContext) : Pane {
     override fun onEvent(event: PanelEvent) {
         when (event) {
             is PanelEvent.SettingChanged -> when (event.key) {
-                KioskPrefs.KEY_SENDSPIN_ENABLED -> if (prefs.sendspinEnabled) player.start() else player.stop("user_request")
+                SendspinPrefs.KEY_ENABLED -> if (prefs.enabled) player.start() else player.stop("user_request")
                 // A new client/hello must carry the changed setting: reconnect.
-                KioskPrefs.KEY_SENDSPIN_UNPAIRED, KioskPrefs.KEY_SENDSPIN_SERVER -> player.restartSession()
-                KioskPrefs.KEY_SENDSPIN_FLAC -> player.onFlacSettingChanged()
+                SendspinPrefs.KEY_UNPAIRED, SendspinPrefs.KEY_SERVER -> player.restartSession()
+                SendspinPrefs.KEY_FLAC -> player.onFlacSettingChanged()
             }
             // Sendspin keeps its timeline (the group plays on); the panel just goes quiet locally.
             is PanelEvent.SpeakerClaimed -> player.setDucked(event.claimed)

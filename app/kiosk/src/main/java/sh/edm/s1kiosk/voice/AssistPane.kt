@@ -74,7 +74,7 @@ class AssistPane(
 ) : Pane {
     override val id = "assist"
 
-    private val prefs get() = ctx.prefs
+    private val prefs = VoicePrefs(ctx.prefs(id))
 
     @Volatile private var input: VoiceInput? = null
     @Volatile private var controller: VoiceAssistantController? = null
@@ -93,7 +93,7 @@ class AssistPane(
         ),
         SwitchEntity(
             "voice_overlay", "Voice overlay", "mdi:message-badge-outline", EntityCategory.CONFIG,
-            get = { prefs.voiceOverlay }, set = { prefs.voiceOverlay = it },
+            get = { prefs.overlay }, set = { prefs.overlay = it },
         ),
         NumberEntity(
             "mic_gain", "Mic gain", "mdi:microphone-plus", min = 0.5f, max = 4f, step = 0.1f, unit = "x",
@@ -151,10 +151,10 @@ class AssistPane(
         if (event !is PanelEvent.SettingChanged) return
         val engine = input ?: return
         when (event.key) {
-            "mic_muted" -> engine.setMuted(prefs.micMuted)
-            "mic_gain" -> engine.setGain(prefs.micGain)
-            "wake_threshold" -> engine.threshold = prefs.wakeThreshold
-            "wake_model" -> engine.setActive(listOfNotNull(prefs.wakeModel.takeIf { it.isNotEmpty() }?.let(TfliteWakeWord::modelName)))
+            VoicePrefs.KEY_MIC_MUTED -> engine.setMuted(prefs.micMuted)
+            VoicePrefs.KEY_MIC_GAIN -> engine.setGain(prefs.micGain)
+            VoicePrefs.KEY_WAKE_THRESHOLD -> engine.threshold = prefs.wakeThreshold
+            VoicePrefs.KEY_WAKE_MODEL -> engine.setActive(listOfNotNull(prefs.wakeModel.takeIf { it.isNotEmpty() }?.let(TfliteWakeWord::modelName)))
         }
     }
 

@@ -53,7 +53,7 @@ class BaseLayoutEntitiesPinTest {
 
     private fun entitiesWith(layout: BaseLayout): List<ApiEntity> {
         val app = RuntimeEnvironment.getApplication()
-        KioskPrefs(app).baseLayout = layout.encode()
+        KioskPrefs(app).wallBase.layout = layout.encode()
         val device = PanelDevice(app, GlassworksRuntime(), onVoiceEvent = {})
         try {
             val identity = DeviceIdentity(
