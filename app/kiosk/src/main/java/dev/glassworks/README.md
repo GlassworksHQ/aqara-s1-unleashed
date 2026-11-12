@@ -37,7 +37,7 @@ change until Glassworks v1.
 |---|---|
 | `Pane` | A feature: its Home Assistant entities, `start`/`stop`, and what it does when the panel changes. |
 | `PaneContext` | What the core gives a pane: the app context, settings, the device identity and `publishStates()`. |
-| `PanelEvent` | Things that happen on the panel: a setting changed, or voice took the speaker. |
+| `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished. |
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
 
 ## Writing a pane
@@ -64,6 +64,11 @@ class MusicPane(ctx: PaneContext) : Pane {
     }
 }
 ```
+
+`PanelEvent` is an open interface. A pane handles the events it cares about and ignores the rest
+(`else -> Unit`), so a new event does not touch the panes that do not use it. A pane does not have
+to add entities: [`TimersPane.kt`](../../sh/edm/s1kiosk/timers/TimersPane.kt) has none and only
+reacts to `TimersChanged` and `TimerFinished`.
 
 Entities come from [esphome-api](../../../../../../libs/esphome-api/README.md). Home Assistant
 keys them by object id, so an object id is permanent: renaming one makes a new entity in every
