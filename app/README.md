@@ -162,7 +162,9 @@ above). Otherwise it falls back to a network suggestion the user must approve. S
 the current SSID also need the location permission:
 `adb shell pm grant sh.edm.s1kiosk android.permission.ACCESS_FINE_LOCATION` (already
 granted by `adb install -g`, or self-granted when device owner). Details, sources and limits:
-[docs/onboarding.md](../docs/onboarding.md).
+[docs/onboarding.md](../docs/onboarding.md). With the permission granted, the kiosk's service runs
+with the `location` foreground type as well as `microphone`, so the Wi-Fi scans it starts with the
+screen off are allowed (#3, see [docs/radio.md](../docs/radio.md)).
 
 ## Debugging
 

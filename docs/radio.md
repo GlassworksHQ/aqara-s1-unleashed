@@ -946,11 +946,17 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
   (`PnoScanListener onFailure: -3(not supported)`), and does no periodic scans with the screen off.
   Waking the screen reconnected within ~16 s. The network watchdog doesn't catch it (no gateway =
   nothing to test). Affects every mode, not only Thread. The app now starts the scans itself
-  while the screen is off and Wi-Fi is not connected (#3): after 10 s, then 40 s, 60 s and every
-  120 s, never less than 40 s apart, so Android never throttles them. A Wi-Fi stuck connecting
-  for 60 s counts as not connected. Log tag `S1Kiosk.Wifi`. Android 10 refuses an app's scan
-  without the location permission (the installer grants it) and with location off. Not yet run
-  on a panel at the time of writing (2026-11-12).
+  while the screen is off and Wi-Fi is not connected (#3): 10 s after Wi-Fi drops, then after
+  40 s, 60 s and every 120 s. Scans are never less than 40 s apart, so Android does not throttle
+  them within one run of the app's service (a restart of the service forgets the last scan). A
+  connect that keeps trying for 60 s counts as not connected; drops under 15 s don't restart that
+  count. Log tag `S1Kiosk.Wifi`. Android 10 refuses an app's scan without the location
+  permission (the installer grants it), with location off, or when the location app-op is
+  foreground-only and the app is not in the foreground. The first panel run (2026-11-12, b47ce54)
+  failed on the last one: every scan was refused (`UID … has no location permission`), with the
+  permission granted, because a foreground service counts as foreground for location only with
+  the `location` type. The kiosk's service now runs with `microphone|location`. Not yet run on a
+  panel at the time of writing.
 - **Aqara's watchdog** keeps restarting things. The helper re-enforces every 3 s; a Z3Gateway start
   is caught by its wrapper's 6 s sleep, but this is a race, verified once.
 - **Multi-PAN (`zigbee_tcp_thread`)** is not offered and untested.
