@@ -6,6 +6,7 @@ import dev.glassworks.pane.EntityRegistry
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PanelEvent
+import dev.glassworks.pane.PanelTimer
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -23,8 +24,7 @@ import sh.edm.s1kiosk.base.BaseBackend
 import sh.edm.s1kiosk.base.BaseKind
 import sh.edm.s1kiosk.AqaraCloud
 import sh.edm.s1kiosk.MainActivity
-import sh.edm.s1kiosk.TimerBoard
-import sh.edm.s1kiosk.timers.TimerChimes
+import sh.edm.s1kiosk.timers.TimersPane
 import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.auth.ThreadJoin
 import sh.edm.s1kiosk.radio.RadioAllow
@@ -118,13 +118,7 @@ class PanelDevice(
     private val voicePlayer = ExoAudioPlayer(context, "voice", AudioAttributes.USAGE_ASSISTANT)
     private val mediaPlayer = ExoAudioPlayer(context, "media", AudioAttributes.USAGE_MEDIA)
     private var chimePlayer: TtsPlayer? = null
-    /** Finished-timer chimes: three, 3 s apart; tapping the done screen stops the rest (TimerBoard.onDismissed). */
-    private val timerChimes = TimerChimes(
-        schedule = { ms, action -> exec.schedule({ action() }, ms, TimeUnit.MILLISECONDS) },
-        play = { chimes().chime() },
-        silence = { synchronized(this) { chimePlayer }?.cancel() },
-    )
-    /** The features that add entities and react to the panel (Sendspin, ...); built in [initEntities]. */
+    /** The features that add entities and react to the panel (Sendspin, timers, ...); built in [initEntities]. */
     @Volatile private var panes: List<Pane> = emptyList()
     /** Zigbee/Thread radio modes (docs/radio.md); applies the stored mode after every start. */
     val radio = RadioController(
@@ -193,8 +187,6 @@ class PanelDevice(
         updates.stop()
         voicePlayer.release()
         mediaPlayer.release()
-        TimerBoard.onDismissed = null
-        timerChimes.stop()
         chimePlayer?.release()
         releaseLocks()
     }
@@ -255,8 +247,18 @@ class PanelDevice(
      */
     internal fun initEntities(identity: DeviceIdentity, baseConfig: WallBase.Config): WallBase {
         this.identity = identity
-        panes = listOf(
-            SendspinPane(PaneContext(ctx, prefs, identity, publishStates = { runCatching { exec.execute { server?.publishStates() } } })),
+        val paneContext = PaneContext(ctx, prefs, identity, publishStates = { runCatching { exec.execute { server?.publishStates() } } })
+        panes = listOfNotNull(
+            SendspinPane(paneContext),
+            // Timers only come from the voice assistant.
+            if (voiceEnabled) {
+                TimersPane(
+                    paneContext,
+                    schedule = { ms, action -> exec.schedule({ action() }, ms, TimeUnit.MILLISECONDS) },
+                    play = { chimes().chime() },
+                    silence = { synchronized(this) { chimePlayer }?.cancel() },
+                )
+            } else null,
         )
         coreEntities = buildEntities()
         appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
@@ -424,22 +426,14 @@ class PanelDevice(
             wakeWords = engine,
             emit = ::dispatchVoice,
             resolveUrl = ::resolveUrl,
-            onTimerFinished = { name ->
-                EspHomeLog.i("Timer '$name' finished")
-                TimerBoard.finished(name)
-                ui { ScreenController.wake("timer"); ScreenController.onStateChanged?.invoke() }
-                // Three chimes ~3 s apart so it's noticeable across the room; a tap on the done screen stops them.
-                timerChimes.ring()
-            },
+            onTimerFinished = { name -> emit(PanelEvent.TimerFinished(name)) },
             onTimersChanged = { list ->
-                TimerBoard.update(list.map { TimerBoard.Entry(it.id, it.name, it.totalSeconds, it.secondsLeft, it.active) })
-                ui { ScreenController.onStateChanged?.invoke() }
+                emit(PanelEvent.TimersChanged(list.map { PanelTimer(it.id, it.name, it.totalSeconds, it.secondsLeft, it.active) }))
             },
             maxStreamMs = cfg.maxStreamMs,
         )
         engine.controller = c
         controller = c
-        TimerBoard.onDismissed = { timerChimes.stop() }
         voice = engine
         engine.start(muted = prefs.micMuted)
     }
