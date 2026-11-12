@@ -157,10 +157,58 @@ def settle_before(frames_ms, loaded_ms, live_ms, gap_ms=SETTLE_GAP_MS):
     return None, "it never went still before going live"
 
 
+def live_check_failed(check):
+    """(why, voids_taps): why this page's live-update frames can't be trusted, or (None, False).
+    The check says whether the changing elements and the toggle were on screen; off screen, the
+    updates paint nothing and the taps would land elsewhere."""
+    if "offscreen" not in check:
+        return "no live check (a page from before it was added)", False
+    if check["offscreen"]:
+        return f"the toggle or an updating element is off screen ({check['offscreen']} of {check['moving']})", True
+    return None, False
+
+
+def scroll_frames(swipes):
+    """One run's scrolling: every swipe's frames pooled, the worse of SurfaceFlinger and rAF.
+    SurfaceFlinger counts only when every swipe's history was complete."""
+    moved = [sw for sw in swipes if sw.get("scrolled_px")]
+    if not moved:
+        return {"error": "the page didn't scroll" if swipes else "no swipes"}
+    raf, sf, sf_ok, period = [], [], True, None
+    for sw in moved:
+        f = step_frames(sw, True)
+        raf += sw.get("raf_intervals") or []
+        sfd = sw.get("sf") or {}
+        period = sfd.get("period_ms") or period
+        if f["sf_valid"]:
+            sf += sf_intervals(sfd.get("presents_ms") or [], sfd["window_ms"], sfd["period_ms"])
+        else:
+            sf_ok = False
+    raf_st = P.frame_stats(raf, period)
+    sf_st = P.frame_stats(sf, period) if sf_ok else {"n": 0}
+
+    def key(st):
+        return (G.ORDER.get(G.frame_band(st), -1), st.get("p95_ms") or 0, st.get("jank_pct") or 0)
+
+    if not sf_ok:
+        chosen, source, limited = raf_st, "raf", None
+    elif key(sf_st) > key(raf_st):
+        chosen, source, limited = sf_st, "surfaceflinger", "compositor"
+    elif key(raf_st) > key(sf_st):
+        chosen, source, limited = raf_st, "raf", "main-thread"
+    else:
+        chosen, source, limited = sf_st, "surfaceflinger", "equal"
+    firsts = [sw["first_scroll_ms"] for sw in moved if sw.get("first_scroll_ms") is not None]
+    return {"frames": chosen, "source": source, "limited_by": limited, "sf_valid": sf_ok,
+            "swipes": len(swipes), "swipes_moved": len(moved), "scrolled_px": sum(sw["scrolled_px"] for sw in moved),
+            "first_scroll_ms": statistics.median(firsts) if firsts else None}
+
+
 def tier_run(tier, entry, presents_ms):
-    """One reference dashboard in one run: load (page clock + SurfaceFlinger), frames, INP."""
+    """One reference dashboard in one run: open the view (load), live updates (frames), tap (INP),
+    scroll (frames while swiping)."""
     page, step = entry.get("page"), entry.get("step")
-    out = {"tier": tier}
+    out = {"tier": tier, "css": page and page.get("css"), "dpr": page and page.get("dpr")}
     if entry.get("error") or not page or not step:
         return dict(out, error=entry.get("error") or "incomplete")
     if not page.get("load_ms") or not page.get("fcp_ms"):
@@ -177,46 +225,35 @@ def tier_run(tier, entry, presents_ms):
             out["load_error"] = "settled before its first paint"
         else:
             out["load_ms"] = round(settle - nav)
-    check = entry.get("measure") or {}
-    # Whether something is meant to move comes from the page itself (tiers.js, via its live check):
-    # Light has no animations, so a still screen there isn't a stall and only rAF counts.
-    f = step_frames(step, (check.get("animations_expected") or 0) > 0)
-    inp = entry.get("input") or {}
-    out.update(frames=f["stats"], source=f["source"], limited_by=f["limited_by"], sf_valid=f["sf_valid"],
-               inp_ms=inp.get("inp_ms") if inp.get("taps") else None, input_method=inp.get("method"),
-               fcp_ms=page.get("fcp_ms"), nodes=page.get("nodes"))
-    why = live_check_failed(check)
+    # Live updates: the screen is still between changes, so only rAF (the main thread) is graded.
+    upd = step_frames(step, False)
+    out["updates"] = upd["stats"]
+    why, voids_taps = live_check_failed(entry.get("measure") or {})
     if why:
-        # The frames (and with the toggle off screen, the taps) aren't of the page as defined.
-        out.update(frames=None, frames_error=why)
-        if "toggle or a live element is off screen" in why:
-            out["inp_ms"] = None
+        out.update(updates=None, updates_error=why)
+    inp = entry.get("input") or {}
+    out.update(inp_ms=None if voids_taps or not inp.get("taps") else inp.get("inp_ms"), input_method=inp.get("method"),
+               fcp_ms=page.get("fcp_ms"), nodes=page.get("nodes"), cards=page.get("cards"))
+    sc = scroll_frames(entry.get("swipes") or [])
+    if "error" in sc:
+        out.update(scroll=None, scroll_error=sc["error"])
+    else:
+        out.update(scroll=sc["frames"], scroll_source=sc["source"], scroll_limited_by=sc["limited_by"],
+                   sf_valid=sc["sf_valid"], scrolled_px=sc["scrolled_px"], swipes=sc["swipes"],
+                   swipes_moved=sc["swipes_moved"], first_scroll_ms=sc["first_scroll_ms"])
     return out
 
 
-def live_check_failed(check):
-    """Why this tier's frames can't be trusted, or None. Gecko doesn't run CSS animations that are
-    off screen, so a page whose animated elements were off screen, or whose animations weren't
-    running, shows a still screen that would read as frozen frames."""
-    if "offscreen" not in check:
-        return "no live check (a page from before it was added)"
-    if check["offscreen"]:
-        return f"the toggle or a live element is off screen ({check['offscreen']} of {check['moving']})"
-    if check.get("animations") != check.get("animations_expected"):
-        return f"{check.get('animations')} of {check.get('animations_expected')} animations running"
-    return None
-
-
 def reference_run(c):
-    """One graded run: the cold start (start = process start to engine ready, both stamped on the
-    device, so the harness's adb round trips aren't in it), then each reference dashboard."""
-    base = {"ttid_ms": c.get("ttid_ms"), "launch": c.get("launch"), "own_page_quiet": c.get("own_page_quiet"),
-            "engine_uri": c.get("engine_uri")}
+    """One graded run: restart (process start to engine ready, both stamped on the device, so the
+    harness's adb round trips aren't in it), then each reference dashboard."""
+    base = {"ttid_ms": c.get("ttid_ms"), "launch": c.get("launch"), "own_page_state": c.get("own_page_state"),
+            "own_page_loads": c.get("own_page_loads"), "engine_uri": c.get("engine_uri")}
     proc, engine = c.get("proc_mono"), c.get("engine_mono")
     start, start_error = None, None
     if proc is None or engine is None:
         start_error = "no process start or engine ready in logcat"
-    elif "engine_uri" in c and c["engine_uri"] != "about:blank":
+    elif c.get("engine_uri") not in (None, "about:blank"):
         # Engine ready is GeckoView's own first page; any other first page may already wait on the network.
         start_error = f"the engine's first page was {c['engine_uri']}, not about:blank"
     else:
@@ -234,44 +271,49 @@ def median_band(bands):
 def reference_summary(all_runs):
     # A run that ended in an error (another page loaded, a page didn't finish) isn't graded at all.
     runs = [r for r in all_runs if not r.get("error")]
-    starts = [r["start_ms"] for r in runs]
     tiers = {}
     for t in G.TIERS:
         rs = [r["tiers"][t] for r in runs if t in r["tiers"] and not r["tiers"][t].get("error")]
         if not rs:
             continue
-        fr = [x["frames"] for x in rs if x["frames"]]
+        sc = [x["scroll"] for x in rs if x.get("scroll")]
+        up = [x["updates"] for x in rs if x.get("updates")]
         tiers[t] = {
-            "frames": {k: P.spread([f.get(k) for f in fr]) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")},
-            # Each run's frames band, and their median: three runs each poor for a different reason
-            # are poor, not the band of per-measure medians.
-            "frames_bands": [G.frame_band(f) for f in fr],
-            "frames_band": median_band(G.frame_band(f) for f in fr),
-            "frames_errors": [x["frames_error"] for x in rs if x.get("frames_error")],
-            # Per graded run: was SurfaceFlinger's history complete for the window? (None: no frames.)
-            "sf_valid": [x.get("sf_valid") if x["frames"] else None for x in rs],
-            "sources": sorted({x["source"] for x in rs if x["frames"]}),
-            "limited_by": sorted({x["limited_by"] for x in rs if x["limited_by"]}),
             "inp_ms": P.spread([x["inp_ms"] for x in rs]),
             "input_method": sorted({x["input_method"] for x in rs if x["input_method"]}),
             "load_ms": P.spread([x.get("load_ms") for x in rs]),
             "load_errors": [x["load_error"] for x in rs if x.get("load_error")],
+            # Frames: each run's band, then the median band. Three runs each poor for a different
+            # reason are poor, not the band of per-measure medians.
+            "scroll": {k: P.spread([f.get(k) for f in sc]) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")},
+            "scroll_bands": [G.frame_band(f) for f in sc],
+            "scroll_band": median_band(G.frame_band(f) for f in sc),
+            "scroll_sources": sorted({x["scroll_source"] for x in rs if x.get("scroll")}),
+            "scroll_limited_by": sorted({x["scroll_limited_by"] for x in rs if x.get("scroll_limited_by")}),
+            "scroll_errors": [x["scroll_error"] for x in rs if x.get("scroll_error")],
+            "scrolled_px": P.spread([x.get("scrolled_px") for x in rs]),
+            "first_scroll_ms": P.spread([x.get("first_scroll_ms") for x in rs]),
+            "sf_valid": [x.get("sf_valid") if x.get("scroll") else None for x in rs],
+            "updates": {k: P.spread([f.get(k) for f in up]) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")},
+            "updates_bands": [G.frame_band(f) for f in up],
+            "updates_band": median_band(G.frame_band(f) for f in up),
+            "updates_errors": [x["updates_error"] for x in rs if x.get("updates_error")],
             "fcp_ms": P.spread([x["fcp_ms"] for x in rs]),
             "nodes": sorted({x["nodes"] for x in rs if x.get("nodes")}),
+            "cards": sorted({x["cards"] for x in rs if x.get("cards")}),
+            "viewport": sorted({(tuple(x["css"]) if x.get("css") else None, x.get("dpr")) for x in rs}, key=str),
         }
     return {
         "runs": len(all_runs),
         "graded_runs": len(runs),
-        "start_ms": P.spread(starts),
+        "start_ms": P.spread([r["start_ms"] for r in runs]),
         "start_errors": [r["start_error"] for r in runs if r.get("start_error")],
         "engine_uris": sorted({r["engine_uri"] for r in runs if r.get("engine_uri")}),
         # Android's TTID: the first frame of the launched activity, which on a kiosk is its own
         # loading screen. Reported, not graded.
         "android_ttid_ms": P.spread([r["ttid_ms"] for r in runs]),
         "launch": sorted({r["launch"] for r in runs if r.get("launch")}),
-        # False: the kiosk's own page never finished (Home Assistant down?), so the reference pages
-        # were opened after a fixed wait instead. Still graded; the flag explains a slow run.
-        "own_page_quiet": sorted({r["own_page_quiet"] for r in runs}, key=str),
+        "own_page_states": sorted({r["own_page_state"] for r in runs if r.get("own_page_state")}),
         "tiers": tiers,
         "errors": [r["error"] for r in all_runs if r.get("error")],
         "per_run": all_runs,
@@ -279,35 +321,52 @@ def reference_summary(all_runs):
 
 
 def grade_inputs(graded):
-    """The grade's inputs: medians from the reference dashboards only, so the grade can't depend on
-    anyone's own Home Assistant."""
+    """The grade's inputs: from the reference dashboards only, so the grade can't depend on anyone's
+    own Home Assistant."""
     ref = graded.get("reference") or {}
     med = lambda x: x and x["median"]  # noqa: E731
-    tiers = {}
-    for t, s in (ref.get("tiers") or {}).items():
-        fr = {k: med(s["frames"][k]) for k in ("p95_ms", "jank_pct", "frozen_pct", "n")}
-        tiers[t] = {"frames": fr if fr["n"] else None, "frames_band": s["frames_band"],
-                    "inp_ms": med(s["inp_ms"]), "load_ms": med(s["load_ms"])}
+    tiers = {t: {"inp_ms": med(s["inp_ms"]), "load_ms": med(s["load_ms"]),
+                 "scroll_band": s["scroll_band"], "updates_band": s["updates_band"]}
+             for t, s in (ref.get("tiers") or {}).items()}
     return tiers, med(ref.get("start_ms"))
 
 
+def viewport_check(ref, device):
+    """The grade compares frames only at their default zoom. The kiosk's zoom (an HA entity, 0 to 3)
+    sets Gecko's device pixel ratio, which changes how much of a dashboard fits on a screen. The
+    default ("auto") is the display's density / 160. Returns (state, reason): ok, refused, unknown."""
+    seen = {vp for s in ((ref or {}).get("tiers") or {}).values() for vp in s["viewport"]}
+    try:
+        expected = int(str(device.get("display", {}).get("density"))) / 160
+    except ValueError:
+        return "unknown", "the display's density wasn't recorded, so the default zoom can't be checked"
+    dprs = {d for _, d in seen if d is not None}
+    if not dprs:
+        return "unknown", "the pages didn't report their pixel ratio"
+    if any(abs(d - expected) > 0.01 for d in dprs):
+        return "refused", (f"the kiosk's zoom isn't the frame's default: device pixel ratio {sorted(dprs)}, "
+                           f"expected {expected:g} (density {device['display']['density']} / 160)")
+    return "ok", None
+
+
+LABEL = {"light": "Light", "typical": "Typical", "heavy": "Large"}
+
+
 def headline(name, g, ref):
-    """'Aqara S1 Plus: C, good for typical dashboards. Busy animated dashboards drop to about 13 fps.'"""
+    """'Aqara S1 Plus: C, a good wall panel for typical dashboards. Large dashboards scroll at about 13 fps.'"""
+    if g["grade"] is None:
+        return f"{name}: not graded. {g['refused']}."
     out = f"{name}: {g['grade']}, {g['meaning']}."
     tiers = (ref or {}).get("tiers") or {}
-    # The first tier (busiest first) that isn't smooth: its average rate and how many frames were late,
-    # so "55 fps" next to a band that isn't good doesn't read as smooth.
-    for t, label in (("busy", "Busy animated"), ("typical", "Typical"), ("light", "Light")):
-        if g["bands"][t]["frames"] not in (G.GOOD, None) and tiers.get(t):
-            fps, jank = tiers[t]["frames"]["fps"], tiers[t]["frames"]["jank_pct"]
-            if fps and jank:
-                out += f" {label} dashboards average about {fps['median']:.0f} fps, with {jank['median']:.0f}% of frames late."
+    for t in ("heavy", "typical", "light"):          # the largest page that doesn't scroll smoothly
+        if g["bands"][t]["scroll"] not in (G.GOOD, None) and tiers.get(t) and tiers[t]["scroll"]["fps"]:
+            out += f" {LABEL[t]} dashboards scroll at about {tiers[t]['scroll']['fps']['median']:.0f} fps."
             break
-    slow = [f"{t} {m}" for t in G.TIERS for m in ("inp", "load") if g["bands"][t][m] == G.POOR]
+    slow = [f"{t} {task}" for t in G.TIERS for task in ("tap", "updates", "load") if g["bands"][t][task] == G.POOR]
     if slow:
         out += " Poor: " + ", ".join(slow) + "."
     if g["capped_by_start"]:
-        out += f" A poor start ({g['start']['value'] / 1000:.1f} s) caps it at {G.START_CAP}."
+        out += f" A poor restart ({g['start']['value'] / 1000:.1f} s) caps it at {G.START_CAP}."
     if g["provisional"]:
         why = list(g.get("provisional_reasons") or []) + (["not everything was measured"] if g["missing"] else [])
         out += " Provisional: " + "; ".join(why) + "."
@@ -491,12 +550,24 @@ def build(run_dir, apks=(), budgets=None):
     tiers, start = grade_inputs(graded)
     grade = G.grade(tiers, start)
     ref = graded["reference"]
-    if ref and False in ref["own_page_quiet"]:
-        # The 30 s fallback: Home Assistant was down or hung during at least one run, so the kiosk may
-        # still have been retrying its page while the reference dashboards ran. The letter is kept
-        # (dropping a measurement would let Home Assistant move it) and flagged.
+    reasons = []
+    if ref and "never-finished" in ref["own_page_states"]:
+        # The 30 s fallback: Home Assistant was down or hung in at least one run, so the kiosk may still
+        # have been retrying its page while the reference dashboards ran. The letter is kept (dropping a
+        # measurement would let Home Assistant move it) and flagged. A page that finished but kept
+        # painting (a clock card) is normal and changes nothing.
+        reasons.append("the kiosk's own page never finished loading in a graded run (Home Assistant down?)")
+    vp_state, vp_reason = viewport_check(ref, device) if ref else ("unknown", None)
+    grade["viewport"] = {"state": vp_state, "reason": vp_reason}
+    if vp_state == "refused":
+        # Refused, not provisional: at another zoom each screen holds a different amount of the same
+        # dashboard, so a letter would look comparable when it isn't.
+        grade.update(grade=None, meaning=None, refused=vp_reason)
+    elif vp_state == "unknown" and ref:
+        reasons.append(vp_reason)
+    if reasons:
         grade["provisional"] = True
-        grade["provisional_reasons"] = ["the kiosk's own page never went quiet in a graded run (Home Assistant down?)"]
+        grade["provisional_reasons"] = reasons
     name = device.get("frame_name") or device["frame"]
     grade["headline"] = headline(name, grade, graded["reference"])
 
@@ -562,32 +633,46 @@ def markdown(rep):
     app = rep["frame"]["app"]
     out = [f"# Perf report: {rep['frame']['name']}", "", device_line(dev, app), "",
            f"**{g['headline']}**", "",
-           "The grade comes only from the three reference dashboards this test ships (light, typical, busy), "
+           "The grade comes only from the three reference dashboards this test ships (light, typical, heavy), "
            "so it doesn't depend on your Home Assistant. Background load (panes, the radio, heat) still reaches it.", ""]
     ref = rep["graded"]["reference"]
     if ref:
-        out += ["| Dashboard | Frames (p95, fps) | Frames | INP | INP | Load | Load |", "|---|---|---|---|---|---|---|"]
+        out += ["Each page's tasks (median of runs; frames bands are the median of each run's band). A page is "
+                "smooth when every task passes at 60 fps, fluid at 30 fps.", "",
+                "| Page | Level | Tap (INP) | Scroll | Live updates | Open the view | Holds it back |",
+                "|---|---|---|---|---|---|---|"]
         for t in G.TIERS:
-            s, b = ref["tiers"].get(t), g["bands"][t]
-            if not s:
+            s_, b = ref["tiers"].get(t), g["bands"][t]
+            if not s_:
                 out.append(f"| {t} | not measured | | | | | |")
                 continue
-            fr = s["frames"]
-            frames = f"{fmt(fr['p95_ms'], ' ms')}, {fmt(fr['fps'], ' fps')}"
-            out.append(f"| {t} | {frames} | {band_cell(b['frames'])} | {fmt(s['inp_ms'], ' ms')} | {band_cell(b['inp'])} "
-                       f"| {fmt(s['load_ms'], ' ms')} | {band_cell(b['load'])} |")
-        out += ["", f"Start, app process to engine ready: {fmt(ref['start_ms'], ' ms')} ({band_cell(g['start']['band'])}; "
-                    f"{', '.join(ref['launch']) or 'n/a'}). Android's TTID {fmt(ref['android_ttid_ms'], ' ms')}: the first "
-                    "frame of the kiosk's loading screen; not graded."]
-        for t, s in ref["tiers"].items():
-            if s["frames_errors"]:
-                out.append(f"{t}: frames not measured in {len(s['frames_errors'])} run(s) ({'; '.join(sorted(set(s['frames_errors'])))}).")
-            if s["load_errors"]:
-                out.append(f"{t}: load not measured in {len(s['load_errors'])} run(s) ({'; '.join(sorted(set(s['load_errors'])))}).")
+            lvl = g["levels"][t]
+            target = "smooth" if lvl == "fluid" else ("fluid" if lvl is None else None)
+            held = ", ".join(G.limits(b, target)) if target else ""
+            out.append(
+                f"| {t} ({', '.join(map(str, s_['cards']))} cards) | {lvl or 'neither'} "
+                f"| {fmt(s_['inp_ms'], ' ms')}, {band_cell(b['tap'])} "
+                f"| {fmt(s_['scroll']['fps'], ' fps')}, p95 {fmt(s_['scroll']['p95_ms'], ' ms')}, {band_cell(b['scroll'])} "
+                f"| p95 {fmt(s_['updates']['p95_ms'], ' ms')}, {band_cell(b['updates'])} "
+                f"| {fmt(s_['load_ms'], ' ms')}, {band_cell(b['load'])} | {held} |")
+        vp = g.get("viewport") or {}
+        seen = sorted({str(v) for s_ in ref["tiers"].values() for v in s_["viewport"]})
+        out += ["", f"Restart, app process to engine ready: {fmt(ref['start_ms'], ' ms')} ({band_cell(g['start']['band'])}; "
+                    f"{', '.join(ref['launch']) or 'n/a'}; first page {', '.join(ref['engine_uris']) or 'n/a'}). "
+                    f"Android's TTID {fmt(ref['android_ttid_ms'], ' ms')}: the first frame of the kiosk's loading screen; not graded.",
+                f"Viewport (CSS px, device pixel ratio): {', '.join(seen) or 'n/a'}; zoom check: {vp.get('state', 'n/a')}"
+                + (f" ({vp['reason']})" if vp.get("reason") else "") + "."]
+        if ref["start_errors"]:
+            out.append(f"Restart not measured in {len(ref['start_errors'])} run(s) ({'; '.join(sorted(set(ref['start_errors'])))}).")
+        for t, s_ in ref["tiers"].items():
+            for what in ("scroll", "updates", "load"):
+                errs = s_[f"{what}_errors"]
+                if errs:
+                    out.append(f"{t}: {what} not measured in {len(errs)} run(s) ({'; '.join(sorted(set(errs)))}).")
         if ref["errors"]:
-            out.append(f"Failed runs: {len(ref['errors'])} ({'; '.join(sorted(set(ref['errors'])))}).")
-        if not all(ref["own_page_quiet"]):
-            out.append("Some runs opened the reference dashboards before the kiosk's own page finished.")
+            out.append(f"Failed runs, not graded: {len(ref['errors'])} ({'; '.join(sorted(set(ref['errors'])))}).")
+        if "never-finished" in ref["own_page_states"]:
+            out.append("Some runs opened the reference dashboards before the kiosk's own page finished loading.")
     s = rep["detail"]["synthetic"]
     if s:
         out += ["", "## Detail: animations it can handle (test page, not graded)", "",

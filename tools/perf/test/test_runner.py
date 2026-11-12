@@ -46,35 +46,34 @@ class Runner(unittest.TestCase):
         g = r["grade"]
         self.assertEqual(g["grade"], "A")
         self.assertFalse(g["provisional"], g["missing"])
-        self.assertTrue(g["headline"].startswith("test-frame: A, handles busy, animated dashboards smoothly."))
+        self.assertTrue(g["headline"].startswith("test-frame: A, a good wall panel even for large dashboards."))
+        self.assertEqual(g["viewport"]["state"], "ok")
         ref = r["graded"]["reference"]
         self.assertEqual(ref["errors"], [])
-        self.assertEqual(set(ref["tiers"]), {"light", "typical", "busy"})
-        self.assertEqual(ref["tiers"]["light"]["inp_ms"]["median"], 48)
-        self.assertEqual(ref["tiers"]["light"]["sources"], ["raf"])
-        self.assertEqual(ref["tiers"]["typical"]["sources"], ["surfaceflinger"])
-        self.assertEqual(ref["tiers"]["light"]["load_errors"], [])
+        self.assertEqual(set(ref["tiers"]), {"light", "typical", "heavy"})
         self.assertEqual(ref["engine_uris"], ["about:blank"])
-        self.assertEqual(ref["tiers"]["typical"]["sf_valid"], [True])
-        for t in ("light", "typical", "busy"):
-            self.assertIsNotNone(ref["tiers"][t]["load_ms"])
-            self.assertIsNotNone(ref["tiers"][t]["inp_ms"])
+        self.assertEqual(ref["own_page_states"], ["finished-still"])
+        for t in ("light", "typical", "heavy"):
+            s = ref["tiers"][t]
+            self.assertIsNotNone(s["load_ms"], t)
+            self.assertIsNotNone(s["inp_ms"], t)
+            self.assertEqual(s["scroll_sources"], ["surfaceflinger"], t)
+            self.assertEqual(s["sf_valid"], [True], t)
+            self.assertEqual(s["scrolled_px"]["median"], 1400, t)   # two swipes of 700 px
+            self.assertEqual(s["updates_band"], "good", t)
         self.assertEqual(g["start"]["value"], ref["start_ms"]["median"])
         self.assertEqual(r["real_use"]["android_ttid_ms"]["median"], 1714)
         self.assertEqual(r["real_use"]["settle_how"], ["quiet-gap"])
         self.assertEqual(r["real_use"]["memory"]["idle"]["app_pss_kb"]["median"], 570000)
         self.assertEqual({p["id"] for p in r["real_use"]["panes"]}, {"radio"})
 
-    def test_frame_counts_come_from_the_fake_screen(self):
-        busy = self.rep["graded"]["reference"]["per_run"][0]["tiers"]["busy"]
-        self.assertTrue(busy["sf_valid"])
-        self.assertGreater(busy["frames"]["n"], 20)
-
     def test_it_never_changes_a_setting(self):
         shell = [c[len("shell "):] for c in self.commands if c.startswith("shell ")]
         inputs = sorted({c for c in shell if c.startswith("input ")})
-        self.assertEqual(inputs, ["input keyevent KEYCODE_WAKEUP", "input tap 720 360"])
-        self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 6)   # 2 taps on each reference dashboard
+        # Taps on the toggle and swipes where the page asked, with its coordinates: nothing else.
+        self.assertEqual(inputs, ["input keyevent KEYCODE_WAKEUP", "input swipe 720 612 720 108 300", "input tap 720 360"])
+        self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 6)                 # 2 on each page
+        self.assertEqual(sum(1 for c in shell if c.startswith("input swipe ")), 6)            # 2 on each page
         forbidden = re.compile(r"(^|[;&|]\s*)(settings|svc|cmd|setprop|am broadcast|pm (?!path\b))|--es url|--ez ")
         self.assertEqual([c for c in shell if forbidden.search(c)], [])
         extras = {m for c in shell for m in re.findall(r"--e\w \w+", c)}
@@ -82,8 +81,15 @@ class Runner(unittest.TestCase):
         opens = [re.search(r"--es open '([^']+)'", c).group(1) for c in shell if "--es open" in c]
         self.assertEqual(len(opens), 4)
         self.assertTrue(opens[0].startswith("http://127.0.0.1:18089/index.html?"), opens[0])
-        for url, tier in zip(opens[1:], ("light", "typical", "busy")):
+        for url, tier in zip(opens[1:], ("light", "typical", "heavy")):
             self.assertTrue(url.startswith(f"http://127.0.0.1:18089/dashboard.html?tier={tier}&nonce=") and "&taps=2" in url, url)
+
+    def test_swipes_come_only_after_the_pages_own_request(self):
+        """Each swipe follows a swipe-ready from the page being measured: the commands log has no swipe
+        before the first reference page opened."""
+        first_open = next(i for i, c in enumerate(self.commands) if "dashboard.html" in c)
+        first_swipe = next(i for i, c in enumerate(self.commands) if c.startswith("shell input swipe"))
+        self.assertGreater(first_swipe, first_open)
 
     def test_the_reference_dashboards_open_only_once_the_session_is_up(self):
         """On the S1, `open` before GeckoView's first page is dropped (#103's pins); the fake does the same."""
@@ -138,10 +144,42 @@ class HomeRelaunch(unittest.TestCase):
         with open(os.path.join(tmp, "refstart-1.json")) as f:
             c = json.load(f)
         self.assertEqual(c["launch"], "relaunched-by-system")
-        self.assertTrue(c["own_page_quiet"])
-        self.assertEqual(sorted(c["tiers"]), ["busy", "light", "typical"])
+        self.assertEqual(c["own_page_state"], "finished-still")
+        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
         self.assertTrue(all("step" in e and "page" in e for e in c["tiers"].values()))
         self.assertGreater(c["engine_mono"], c["proc_mono"])
+
+
+def refstart(tmp, **env_extra):
+    env, state = fake_env(tmp, GW_PERF_COLD_SETTLE="0", **env_extra)
+    p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
+                        "--out", tmp, "--run", "1", "--settle", "0", "--url", "http://127.0.0.1:1/dashboard.html",
+                        "--taps", "0", "--timeout", "90"], env=env, capture_output=True, text=True, timeout=150)
+    with open(os.path.join(tmp, "refstart-1.json")) as f:
+        return p, json.load(f)
+
+
+class NoisyLogcat(unittest.TestCase):
+    """logcat follows the whole device, so its queue is almost never empty. No wait may depend on it."""
+
+    def test_unrelated_lines_twice_a_second(self):
+        p, c = refstart(tempfile.mkdtemp(), FAKE_LOGCAT_NOISE="0.5")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
+
+    def test_unrelated_lines_twenty_a_second(self):
+        p, c = refstart(tempfile.mkdtemp(), FAKE_LOGCAT_NOISE="0.05")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["own_page_state"], "finished-still")
+
+    def test_a_reload_more_than_2_s_later_restarts_the_wait_even_with_noise(self):
+        p, c = refstart(tempfile.mkdtemp(), FAKE_OWN_RELOAD="1", FAKE_OWN_RELOAD_DELAY="2.6", FAKE_LOGCAT_NOISE="0.05")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["own_page_loads"], 2)
+        self.assertIsNone(c["error"])
+        # The recorded stop is the second load's, and the first reference page opened 2 s after it.
+        self.assertGreater(c["own_page_stop_mono"], c["own_page_start_mono"])
+        self.assertGreaterEqual(c["tiers"]["light"]["page_start_mono"] - c["own_page_stop_mono"], 2.0)
 
 
 class ForeignPage(unittest.TestCase):

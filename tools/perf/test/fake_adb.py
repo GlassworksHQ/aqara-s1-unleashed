@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 
 STATE = os.environ["FAKE_ADB_STATE"]
@@ -55,6 +56,9 @@ def shell(cmd):
                 save("cold.json", True)
             return "Starting: Intent\nStatus: ok\nActivity: sh.edm.s1kiosk/.MainActivity\nTotalTime: 1700\nWaitTime: 1710\nComplete\n"
         return "Starting: Intent\n"
+    if cmd.startswith("input swipe"):
+        save("swipes.json", state("swipes.json", 0) + 1)
+        return ""
     if cmd.startswith("input tap"):
         save("taps.json", state("taps.json", 0) + 1)
         return ""
@@ -117,8 +121,19 @@ def shell(cmd):
     return ""
 
 
+LOCK = threading.Lock()
+
+
 def line(tag, msg, pid=4242):
-    print(f"{now():10.3f}  {pid}  {pid + 1} I {tag}: {msg}", flush=True)
+    with LOCK:
+        print(f"{now():10.3f}  {pid}  {pid + 1} I {tag}: {msg}", flush=True)
+
+
+def noise(every):
+    """Unrelated device logging, as on a real panel: logcat follows the whole device."""
+    while True:
+        line("ha_driven", "enterConnectingState: connect fail, errno:111", pid=2527)
+        time.sleep(every)
 
 
 def page(nonce):
@@ -142,11 +157,12 @@ def page(nonce):
 
 def refdash(nonce, url):
     """A reference dashboard: it loads (first paint 150 ms, load event 120 ms), stays still, goes live
-    (typical and busy keep painting), one measured window, the taps, done."""
+    (state updates), one window of frames, the taps, then swipes where it asks, done."""
     tier = re.search(r"tier=(\w+)", url).group(1)
     taps = int(re.search(r"taps=(\d+)", url).group(1))
     foreign = os.environ.get("FAKE_FOREIGN_PAGE")
-    foreign = foreign if (foreign == "end") == (tier == "busy") else None
+    foreign = foreign if (foreign == "end") == (tier == "heavy") else None
+    dpr = float(os.environ.get("FAKE_DPR", "1.5"))
 
     def gw(obj):
         line("GeckoConsole", "GWPERF " + json.dumps(dict(obj, nonce=nonce, run=1)))
@@ -160,19 +176,15 @@ def refdash(nonce, url):
     if foreign == "after":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     time.sleep(0.7)
-    gw({"t": "refdash", "tier": tier, "nodes": 1144, "cards": 44, "fcp_ms": 150, "lcp_ms": 150, "load_ms": 120,
-        "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000})
+    gw({"t": "refdash", "tier": tier, "nodes": 1458, "cards": 50, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
+        "fcp_ms": 150, "lcp_ms": 150, "load_ms": 120, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000})
     time.sleep(1.0)
-    live = now()
-    if tier != "light":
-        paint(live, live + 0.85)  # warm-up and window; the page is replaced before the next one loads
-    gw({"t": "warmup", "stage": tier, "n": 1})
+    gw({"t": "warmup", "stage": "updates", "n": 1})
     time.sleep(0.3)
-    expected = {"light": 0, "typical": 12, "busy": 24}[tier]
-    gw({"t": "measure", "stage": tier, "n": 1, "moving": 6 + expected, "offscreen": 0,
-        "animations": expected, "animations_expected": expected})
+    gw({"t": "measure", "stage": "updates", "n": 1, "moving": 12, "offscreen": 0, "targets": 10,
+        "animations": 0, "animations_expected": 0})
     time.sleep(0.5)
-    gw({"t": "step", "stage": tier, "n": 1, "window_ms": 500,
+    gw({"t": "step", "stage": "updates", "n": 1, "window_ms": 500,
         "raf": {"n": 30, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0, "fps": 60}})
     if taps:
         before = state("taps.json", 0)
@@ -182,6 +194,24 @@ def refdash(nonce, url):
             time.sleep(0.1)
         gw({"t": "input", "stage": tier, "method": "event-timing", "taps": state("taps.json", 0) - before,
             "values": [16, 48], "inp_ms": 48})
+    for i in range(int(os.environ.get("FAKE_SWIPES", "2"))):
+        before = state("swipes.json", 0)
+        gw({"t": "swipe-ready", "n": i, "x": 720, "y1": 612, "y2": 108, "ms": 300})
+        end = now() + 10
+        while state("swipes.json", 0) == before and now() < end:
+            time.sleep(0.05)
+        moved = state("swipes.json", 0) > before
+        if not moved:
+            gw({"t": "step", "stage": "scroll", "n": i, "window_ms": 0, "scrolled_px": 0, "raf": {"n": 0}})
+            continue
+        s0 = now()
+        paint(s0, s0 + 0.5)   # the swipe and its fling
+        gw({"t": "measure", "stage": "scroll", "n": i})
+        time.sleep(0.5)
+        gw({"t": "step", "stage": "scroll", "n": i, "window_ms": 500, "scrolled_px": 700, "first_scroll_ms": 40,
+            "raf": {"n": 30, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0, "fps": 60},
+            "raf_intervals": [16.7] * 30})
+        time.sleep(0.2)
     gw({"t": "done", "stage": tier})
     if foreign == "end":
         time.sleep(0.3)
@@ -203,7 +233,8 @@ def dashboard():
     time.sleep(0.8)
     line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
     if os.environ.get("FAKE_OWN_RELOAD"):
-        time.sleep(0.5)   # a sign-in redirect: the kiosk loads its page a second time
+        # A sign-in redirect: the kiosk loads its page a second time, this long after the first stopped.
+        time.sleep(float(os.environ.get("FAKE_OWN_RELOAD_DELAY", "0.5")))
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace/0?external_auth=1")
         time.sleep(0.8)
         line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
@@ -211,6 +242,8 @@ def dashboard():
 
 def logcat():
     print("    1.000  1  1 I old: line from before", flush=True)
+    if os.environ.get("FAKE_LOGCAT_NOISE"):
+        threading.Thread(target=noise, args=(float(os.environ["FAKE_LOGCAT_NOISE"]),), daemon=True).start()
     end = now() + 60
     while now() < end:
         if state("nonce.json"):

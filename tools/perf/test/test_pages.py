@@ -28,7 +28,10 @@ class Pages(unittest.TestCase):
             with self.subTest(f):
                 text = self.read(f)
                 for ref in re.findall(r'(?:src|href)="([^"]+)"', text) + re.findall(r'fetch\("([^"]+)"', text):
+                    if ref == "${picture(rnd)}":
+                        continue   # the picture cards' images, generated on the page (checked below)
                     self.assertRegex(ref, r"^[\w.-]+$")
+        self.assertIn('return c.toDataURL("image/jpeg", 0.85);', self.read("refdash.js"))
 
     def test_no_randomness(self):
         for f in FILES:
@@ -36,26 +39,26 @@ class Pages(unittest.TestCase):
                 self.assertNotIn("Math.random", self.read(f))
                 self.assertNotIn("crypto.getRandomValues", self.read(f))
 
-    def test_the_reference_dashboards_animate_as_home_assistant_does(self):
-        """docs/perf.md, "How the pages animate": each technique is copied from HA's frontend. A change
-        here needs a matching change in HA's source and in that table, not a better score."""
+    def test_the_reference_dashboards_follow_home_assistants_source(self):
+        """docs/perf.md, "The reference dashboards": HA's 180 ms tile transitions and its masonry rule.
+        A change here needs a matching change in HA's source and in that section."""
         text = self.read("refdash.js")
         for needle in (
-            ":host([live]) svg.spinner { animation: spin 3.5s linear infinite; }",            # ha-spinner --speed
-            "animation: dash-tiny 1.5s ease-in-out infinite;",                                 # Web Awesome spinner arc
-            "animation: dash-small 1.5s ease-in-out infinite;",
-            ":host([live]) .pulse { animation: pulse 1s infinite; }",                          # icon_color_css.ts
-            "@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }",
-            "@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }",
+            "transition: background-color 180ms ease-in-out;",                                # hui-tile-card
+            "transition: background-color 180ms ease-in-out, opacity 180ms ease-in-out;",      # ha-tile-icon shape
+            "transition: color 180ms ease-in-out;",                                            # ha-tile-icon icon
+            "[300, 600, 900, 1200].filter((w) => innerWidth >= w).length",                     # hui-masonry-view
+            "let i = sizes.findIndex((s) => s < 5);",
         ):
             self.assertIn(needle, text)
-        self.assertIn("}, 1000);", text)   # the clock ticks every second, like hui-clock-card-digital
+        self.assertNotIn("animation:", text)   # the graded pages don't animate; animation is detail
 
     def test_the_reference_dashboards_use_the_fixed_seed(self):
         text = self.read("refdash.js")
         self.assertIn("const SEED = 89;", text)
         self.assertIn("W.mulberry32(SEED)", text)
         self.assertIn("W.makeStates(SEED, 400, 0)", text)
+        self.assertIn("W.makeStates(SEED, 400, tick)", text)   # the live updates are seeded too
         self.assertIn('<script src="tiers.js"></script>', self.read("dashboard.html"))
 
 

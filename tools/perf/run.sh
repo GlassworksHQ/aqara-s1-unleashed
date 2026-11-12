@@ -7,7 +7,8 @@
 #     `adb reverse`, with caching off.
 #   - Sends `--es screen on` (the kiosk's own wake intent) during warm-ups, so the screen stays on
 #     without changing the idle timeout. It changes no setting.
-#   - Taps each reference dashboard's "Living room" toggle (`input tap`) to measure input latency.
+#   - Taps each reference dashboard's "Living room" toggle (`input tap`) and swipes it (`input swipe`),
+#     only where and when the page asks, to measure taps and scrolling.
 #   - Force-stops the app for each cold start (KEYCODE_WAKEUP first, so the screen is on); the app
 #     comes back on the saved dashboard. If the run stops early or the last cold start fails, the
 #     exit trap restarts the app.
@@ -146,7 +147,7 @@ if [ "$REF" = 1 ]; then
   # The graded part. Each run: a cold start (start = process start to engine ready), then the three
   # reference dashboards in turn, once the kiosk's own first page has gone quiet.
   for k in $(seq 1 "$RUNS"); do
-    log "graded run $k/$RUNS: cold start, then the light, typical and busy reference dashboards"
+    log "graded run $k/$RUNS: cold start, then the light, typical and heavy reference dashboards"
     thermal "refstart-$k"
     DASHBOARD_OK=0
     run refstart --run "$k" --settle "$COLD_SETTLE" --url "http://127.0.0.1:$PORT/dashboard.html" \

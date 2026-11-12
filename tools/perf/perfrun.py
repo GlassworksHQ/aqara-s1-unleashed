@@ -9,9 +9,10 @@ What it touches on the device:
   coldstart  `input keyevent KEYCODE_WAKEUP` (the app's own wake intent would start it), then
              `am force-stop` the app. A home-app kiosk is relaunched by the system; otherwise
              `am start -W` starts it. Either way it comes back on the saved dashboard.
-  refstart   As coldstart; once the kiosk's own page has gone quiet, `am start --es open` each
+  refstart   As coldstart; once the kiosk's own page has finished, `am start --es open` each
              reference dashboard in turn (one-off; the saved URL is not changed), `--es screen on`
-             at each warm-up, and `input tap` on its toggle when --taps > 0.
+             at each warm-up, `input tap` on its toggle when --taps > 0, and `input swipe` where the
+             page asks (only on our page, only for the run's nonce).
   idle       `--es screen on` before each window; otherwise read-only.
 Everything it writes goes to --out on this machine. It records no URLs, hosts or tokens.
 """
@@ -193,10 +194,13 @@ def cmd_coldstart(dev, a):
     Both record when the engine is ready: GeckoView's first PageStart (its own about:blank), which
     comes before the kiosk does anything for Home Assistant.
     coldstart (real use, not graded) then follows the kiosk's own dashboard to its PageStop.
-    refstart (graded) waits until the kiosk's own first page has gone quiet (or --own-page-wait
-    seconds if it never loads), then opens each reference dashboard (--url, --tiers) in turn and
-    follows its lines. `open` can't be sent sooner: until the session is up the kiosk drops it
-    (#103's pins). After the first open, any other page's PageStart is an error."""
+    refstart (graded) waits until the kiosk's own page has finished (or --own-page-wait seconds if
+    it never does), then opens each reference dashboard (--url, --tiers) in turn and follows its
+    lines: taps and swipes where the page asks. `open` can't be sent sooner: until the session is up
+    the kiosk drops it (#103's pins). After the first open, any other page is an error.
+
+    logcat follows the whole device, so its queue is rarely empty: no decision here waits for an
+    empty queue. Before deciding, the loop reads everything queued so far (drain)."""
     ref = a.cmd == "refstart"
     tiers = [t for t in a.tiers.split(",") if t] if ref else []
     lc = dev.logcat()
@@ -226,58 +230,36 @@ def cmd_coldstart(dev, a):
     poller = threading.Thread(target=poll, daemon=True)
     poller.start()
     res = {"run": a.run, "launch": None, "am_total_ms": None, "ttid_ms": None, "stop_mono": None, "proc_mono": None,
-           "displayed_mono": None, "engine_mono": None, "own_page_start_mono": None, "own_page_stop_mono": None,
+           "displayed_mono": None, "engine_mono": None, "engine_uri": None, "own_page_start_mono": None,
+           "own_page_stop_mono": None, "own_page_loads": 0, "own_page_state": None,
            "page_start_mono": None, "page_stop_mono": None, "tiers": {}, "error": None}
-    dev.sh("input keyevent KEYCODE_WAKEUP")
-    dev.sh(f"am force-stop {dev.package}")
-    t0 = time.time()
-    engine_at = None
-    own_stop_at = 0.0
-    current = None  # (tier, nonce) of the reference page being measured
-    measure_mono = None
+    st = {"engine_at": None, "own_stop_at": 0.0, "current": None, "measure_mono": None, "break_after": None}
     proc_re = re.compile(rf"Start proc \d+:{re.escape(dev.package)}/")
 
     def open_next():
-        nonlocal current, measure_mono
-        measure_mono = None
         tier = tiers[len(res["tiers"])]
         nonce = secrets.token_hex(4)
-        current = (tier, nonce)
-        res["tiers"][tier] = {"nonce": nonce}
+        st["current"], st["measure_mono"] = (tier, nonce), None
+        res["tiers"][tier] = {"nonce": nonce, "swipes": []}
         paused.clear()
         url = f"{a.url}?tier={tier}&nonce={nonce}&run={a.run}&vsync={a.vsync}&taps={a.taps}"
         dev.sh(f"am start -n {dev.component} --es open '{url}'")
 
-    break_after = None
-    while time.time() - t0 < a.timeout:
-        if break_after and time.time() > break_after and lines.empty():
-            break
-        # Read every queued line first, so a relaunch logged just before --settle isn't missed.
-        if res["launch"] is None and time.time() - t0 > a.settle and lines.empty():
-            res["launch"] = "am-start"
-            am = dev.sh(f"am start -W -n {dev.component}", timeout=120)
-            res["am_total_ms"] = int((re.findall(r"TotalTime: (\d+)", am) or [0])[0]) or None
-        if ref and current is None and engine_at and lines.empty():
-            # Open once the kiosk's own page has stopped for 2 s with no new load, and the screen is
-            # still; or after --own-page-wait if it never finishes (Home Assistant down).
-            own_done = res["own_page_stop_mono"] is not None and time.time() - own_stop_at >= 2.0
-            if own_done or time.time() - engine_at > a.own_page_wait:
-                quiet = quiet_for(2.0, 10.0) if own_done else False
-                if own_done and not lines.empty():
-                    continue  # something was logged meanwhile; read it first (a new load restarts the wait)
-                res["own_page_quiet"] = quiet
-                open_next()
-        try:
-            rec = P.parse_logcat_line(lines.get(timeout=0.2))
-        except queue.Empty:
-            continue
-        if not rec:
-            continue
+    def read_sf(pl, rec):
+        """SurfaceFlinger's history just after a window, cut to the window the page logged."""
+        p, ts = dev.sf()
+        m0 = st["measure_mono"]
+        end_mono = m0 + pl["window_ms"] / 1000 if pl.get("window_ms") else rec["mono"]
+        pl["sf"] = {"period_ms": p, "window_ms": [m0 * 1000, end_mono * 1000],
+                    "oldest_ms": min(ts) / 1e6 if ts else None, "presents_ms": P.presents_in(ts, m0, end_mono)}
+
+    def handle(rec):
+        """One logcat line. Returns True when the run is over (done or failed)."""
         msg = rec["msg"]
         if res["stop_mono"] is None:
             if f"Force stopping {dev.package} " in msg:
                 res["stop_mono"] = rec["mono"]
-            continue
+            return False
         if res["proc_mono"] is None and proc_re.search(msg):
             res["proc_mono"] = rec["mono"]
             res["launch"] = res["launch"] or "relaunched-by-system"
@@ -285,75 +267,126 @@ def cmd_coldstart(dev, a):
             res["ttid_ms"] = P.parse_displayed(msg, dev.component)
             if res["ttid_ms"] is not None:
                 res["displayed_mono"] = rec["mono"]
+        cur = st["current"]
         pl = P.gwperf_payload(msg)
-        if current and pl and pl.get("nonce") == current[1]:
-            tier, t = current[0], pl.get("t")
-            entry = res["tiers"][tier]
-            pl["mono"] = rec["mono"]
-            if t == "refdash":
-                entry["page"] = pl
-            elif t == "warmup":
-                entry["live_mono"] = rec["mono"]
-                paused.set()  # no dumpsys while frames are measured and taps are timed
-                dev.wake()
-            elif t == "measure":
-                measure_mono = rec["mono"]
-                entry["measure"] = pl
-            elif t == "step" and measure_mono is not None:
-                p, ts = dev.sf()
-                # The page's own window length: the step line itself lands a little later.
-                end_mono = measure_mono + (pl.get("window_ms") or 0) / 1000 if pl.get("window_ms") else rec["mono"]
-                pl["sf"] = {"period_ms": p, "window_ms": [measure_mono * 1000, end_mono * 1000],
-                            "oldest_ms": min(ts) / 1e6 if ts else None,
-                            "presents_ms": P.presents_in(ts, measure_mono, end_mono)}
-                entry["step"] = pl
-            elif t == "input-ready" and a.taps:
-                threading.Thread(target=tap, args=(dev, pl["x"], pl["y"], pl.get("taps", a.taps)), daemon=True).start()
-            elif t == "input":
-                entry["input"] = pl
-            elif t in ("done", "error"):
-                if t == "error":
-                    entry["error"] = pl.get("message")
-                print(f"  {tier} {t}", file=sys.stderr)
-                if len(res["tiers"]) == len(tiers):
-                    # Keep watching briefly: another page now means one was on its way during the last tier.
-                    break_after = time.time() + 1.5
-                    continue
-                open_next()
-            continue
+        if cur and pl and pl.get("nonce") == cur[1]:
+            return handle_page(cur[0], pl, rec)
         m = PAGE_RE.search(msg)
         if not m or res["proc_mono"] is None:
-            continue
+            return False
         kind, uri = m.group(1), m.group(2)
         if kind == "PageStart" and res["engine_mono"] is None:
-            res["engine_mono"] = rec["mono"]
-            res["engine_uri"] = uri
-            engine_at = time.time()
+            res["engine_mono"], res["engine_uri"] = rec["mono"], uri
+            st["engine_at"] = time.time()
         if kind == "PageStart" and not uri.startswith("http"):
-            continue
-        if current is None:
-            # Before the first open: the kiosk's own first page (its dashboard). A second one (a
-            # reload, a sign-in redirect) restarts the wait: the reference pages must not meet it.
+            return False
+        if cur is None:
+            # Before the first open: the kiosk's own page (its dashboard). A second load (a reload, a
+            # sign-in redirect) restarts the wait: the reference pages must not meet it.
             if kind == "PageStart":
-                res["own_page_loads"] = res.get("own_page_loads", 0) + 1
+                res["own_page_loads"] += 1
                 res["own_page_start_mono"], res["own_page_stop_mono"] = rec["mono"], None
             elif kind == "PageStop" and res["own_page_start_mono"] is not None and res["own_page_stop_mono"] is None:
                 res["own_page_stop_mono"] = rec["mono"]
-                own_stop_at = time.time()
-                if not ref:
-                    break
+                st["own_stop_at"] = time.time()
+                return not ref
         elif kind == "PageStart":
-            if current[1] in uri:
-                res["tiers"][current[0]].setdefault("page_start_mono", rec["mono"])
+            if cur[1] in uri:
+                res["tiers"][cur[0]].setdefault("page_start_mono", rec["mono"])
             else:
                 res["error"] = "the kiosk loaded another page while a reference dashboard was measured"
+                return True
+        return False
+
+    def handle_page(tier, pl, rec):
+        entry, t = res["tiers"][tier], pl.get("t")
+        pl["mono"] = rec["mono"]
+        if t == "refdash":
+            entry["page"] = pl
+        elif t == "warmup":
+            entry["live_mono"] = rec["mono"]
+            paused.set()  # no dumpsys while frames are measured, taps are timed or the page scrolls
+            dev.wake()
+        elif t == "measure":
+            st["measure_mono"] = rec["mono"]
+            if pl.get("stage") == "updates":
+                entry["measure"] = pl
+        elif t == "step" and st["measure_mono"] is not None:
+            read_sf(pl, rec)
+            if pl.get("stage") == "scroll":
+                entry["swipes"].append(pl)
+            else:
+                entry["step"] = pl
+            st["measure_mono"] = None
+        elif t == "step":
+            if pl.get("stage") == "scroll":
+                entry["swipes"].append(pl)   # it never scrolled, so no window to read
+        elif t == "input-ready" and a.taps:
+            threading.Thread(target=tap, args=(dev, pl["x"], pl["y"], pl.get("taps", a.taps)), daemon=True).start()
+        elif t == "swipe-ready":
+            threading.Thread(target=dev.sh, args=(f"input swipe {pl['x']} {pl['y1']} {pl['x']} {pl['y2']} {pl['ms']}",),
+                             daemon=True).start()
+        elif t == "input":
+            entry["input"] = pl
+        elif t in ("done", "error"):
+            if t == "error":
+                entry["error"] = pl.get("message")
+            print(f"  {tier} {t}", file=sys.stderr)
+            if len(res["tiers"]) == len(tiers):
+                # Watch a little longer: another page now means one was on its way during the last tier.
+                st["break_after"] = time.time() + 1.5
+            else:
+                open_next()
+        return False
+
+    def drain():
+        while True:
+            try:
+                line = lines.get_nowait()
+            except queue.Empty:
+                return False
+            rec = P.parse_logcat_line(line)
+            if rec and handle(rec):
+                return True
+
+    dev.sh("input keyevent KEYCODE_WAKEUP")
+    dev.sh(f"am force-stop {dev.package}")
+    t0 = time.time()
+    while time.time() - t0 < a.timeout:
+        if st["break_after"] and time.time() > st["break_after"]:
+            break
+        if res["launch"] is None and time.time() - t0 > a.settle:
+            if drain():
                 break
+            if res["launch"] is None:   # still nothing relaunched it
+                res["launch"] = "am-start"
+                am = dev.sh(f"am start -W -n {dev.component}", timeout=120)
+                res["am_total_ms"] = int((re.findall(r"TotalTime: (\d+)", am) or [0])[0]) or None
+        if ref and st["current"] is None and st["engine_at"]:
+            finished = res["own_page_stop_mono"] is not None and time.time() - st["own_stop_at"] >= 2.0
+            if finished or time.time() - st["engine_at"] > a.own_page_wait:
+                before = (res["own_page_stop_mono"], res["own_page_loads"])
+                still = quiet_for(2.0, 10.0) if finished else False
+                if drain():
+                    break
+                if (res["own_page_stop_mono"], res["own_page_loads"]) != before:
+                    continue  # the kiosk loaded its page again meanwhile: wait for that one
+                # finished-moving: a clock card keeps painting; normal, and not a reason to doubt the run.
+                res["own_page_state"] = "never-finished" if not finished else ("finished-still" if still else "finished-moving")
+                open_next()
+                continue
+        try:
+            rec = P.parse_logcat_line(lines.get(timeout=0.2))
+        except queue.Empty:
+            continue
+        if rec and handle(rec):
+            break
     lc.terminate()
     if res["error"]:
         pass
     elif res["engine_mono"] is None:
         res["error"] = f"GeckoView never started a page within {a.timeout:.0f} s"
-    elif ref and len(res["tiers"]) < len(tiers) or ref and not all("step" in e for e in res["tiers"].values()):
+    elif ref and (len(res["tiers"]) < len(tiers) or not all("step" in e for e in res["tiers"].values())):
         res["error"] = f"the reference dashboards did not finish within {a.timeout:.0f} s"
     elif not ref and res["own_page_stop_mono"] is None:
         res["error"] = f"the dashboard did not finish loading within {a.timeout:.0f} s"
@@ -445,7 +478,7 @@ def main():
     ap.add_argument("--timeout", type=float, default=None, help="seconds; default 1200 (synthetic), 120 (coldstart)")
     ap.add_argument("--radio-procs", default="otbr-agent,cpcd,zigbeed")
     ap.add_argument("--own-page-wait", type=float, default=30, help="refstart: seconds to wait for the kiosk's own page")
-    ap.add_argument("--tiers", default="light,typical,busy", help="refstart: reference dashboards, in order")
+    ap.add_argument("--tiers", default="light,typical,heavy", help="refstart: reference dashboards, in order")
     ap.add_argument("--vsync", default="16.667", help="refstart: the display's refresh period in ms")
     a = ap.parse_args()
     if a.timeout is None:

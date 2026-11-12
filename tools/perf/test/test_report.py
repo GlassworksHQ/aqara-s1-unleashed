@@ -148,53 +148,33 @@ class StartOnTheS1(unittest.TestCase):
         self.assertEqual(r["app_start_to_dashboard_ms"] + r["dashboard_load_ms"], round((stop * 1000 + 11518) - 12741.99 * 1000))
 
 
-class TypicalOnTheS1(unittest.TestCase):
-    """The S1 smoke run of 6f32a54 (2026-11-12): Typical read p95 1017 ms, 2.4 fps, because its
-    spinners, pulses, ring and clock were below the fold of the 960x480 CSS viewport. Gecko doesn't
-    run CSS animations off screen, so SurfaceFlinger saw only the clock's tick. These are that run's
-    numbers: window 1668 ms, 3 frames presented (gaps of 1015.5 and 16.6 ms), rAF 100 frames at 60 fps."""
+class LiveCheck(unittest.TestCase):
+    """The updates window counts only when what changes, and the toggle, are on screen."""
 
-    def entry(self, check):
-        w0 = 23445480.0
-        e = tier_entry("typical", 0, 40)
-        e["step"]["raf"] = {"n": 100, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0, "fps": 60.07}
-        e["step"]["sf"] = {"period_ms": 16.666666, "window_ms": [w0, w0 + 1668], "oldest_ms": 23410021.0,
-                           "presents_ms": [23445529.0, 23446544.5, 23446561.1]}
-        if check is None:
-            del e["measure"]
+    def run_with(self, measure):
+        run = refstart(1, 100)
+        if measure is None:
+            del run["tiers"]["typical"]["measure"]
         else:
-            e["measure"] = dict({"t": "measure"}, **check)
-        return e
+            run["tiers"]["typical"]["measure"].update(measure)
+        return R.reference_run(run)["tiers"]["typical"]
 
-    def test_the_old_page_without_a_live_check_is_not_graded(self):
-        r = R.tier_run("typical", self.entry(None), load_frames())
-        self.assertIsNone(r["frames"])
-        self.assertEqual(r["frames_error"], "no live check (a page from before it was added)")
+    def test_without_a_live_check_updates_are_not_measured(self):
+        r = self.run_with(None)
+        self.assertIsNone(r["updates"])
+        self.assertEqual(r["updates_error"], "no live check (a page from before it was added)")
+        self.assertEqual(r["inp_ms"], 100)   # the taps still count: nothing says the toggle was off screen
 
-    def test_animations_off_screen_are_not_graded(self):
-        r = R.tier_run("typical", self.entry({"moving": 14, "offscreen": 8, "animations": 0, "animations_expected": 7}), load_frames())
-        self.assertIsNone(r["frames"])
+    def test_off_screen_voids_updates_and_taps(self):
+        r = self.run_with({"offscreen": 3, "moving": 12})
+        self.assertIsNone(r["updates"])
         self.assertIsNone(r["inp_ms"])
-        self.assertIn("off screen (8 of 14)", r["frames_error"])
+        self.assertIn("off screen (3 of 12)", r["updates_error"])
 
-    def test_animations_not_running_are_not_graded(self):
-        r = R.tier_run("typical", self.entry({"moving": 14, "offscreen": 0, "animations": 0, "animations_expected": 7}), load_frames())
-        self.assertEqual(r["frames_error"], "0 of 7 animations running")
-
-    def test_with_everything_on_screen_and_running_a_gap_is_a_real_stall(self):
-        r = R.tier_run("typical", self.entry({"moving": 14, "offscreen": 0, "animations": 7, "animations_expected": 7}), load_frames())
-        self.assertEqual(r["frames"]["p95_ms"], 1016.67)
-        self.assertEqual(G.frame_band(r["frames"]), G.POOR)
-
-    def test_the_grade_marks_typical_frames_missing_instead_of_poor(self):
-        run = refstart(1, 40)
-        run["tiers"]["typical"] = self.entry(None)
-        refs = R.reference_summary([R.reference_run(run)])
-        tiers, start = R.grade_inputs({"reference": refs})
-        g = G.grade(tiers, start)
-        self.assertIsNone(g["bands"]["typical"]["frames"])
-        self.assertIn("typical.frames", g["missing"])
-        self.assertTrue(g["provisional"])
+    def test_the_flag_not_the_sentence_voids_the_taps(self):
+        self.assertEqual(R.live_check_failed({"offscreen": 1, "moving": 5})[1], True)
+        self.assertEqual(R.live_check_failed({})[1], False)
+        self.assertEqual(R.live_check_failed({"offscreen": 0, "moving": 5}), (None, False))
 
 
 class ReferenceLoad(unittest.TestCase):
@@ -292,24 +272,41 @@ def synthetic_lines(run, js_ms):
     return lines
 
 
-NAV = {"light": 30.0, "typical": 40.0, "busy": 50.0}   # when each reference dashboard starts, s
-ANIMATIONS = {"light": 0, "typical": 12, "busy": 24}   # each ha-spinner counts its 2 animations
+NAV = {"light": 30.0, "typical": 40.0, "heavy": 50.0}   # when each reference dashboard starts, s
+CARDS = {"light": 20, "typical": 50, "heavy": 120}
 
 
-def tier_entry(tier, missed, inp, load_ms=200, fcp_ms=150):
-    """One reference dashboard in a graded run. Its page logs 1 s after navigation; it goes live 3 s
-    after navigation; its window starts 1 s after that."""
+def swipe(nav, i, intervals, moved=True, sf=True):
+    """One swipe's step line: its window starts 5 + i s after navigation."""
+    w0 = (nav + 5.0 + i) * 1000
+    ts = [0.0]
+    for x in intervals:
+        ts.append(ts[-1] + x)
+    pl = {"t": "step", "stage": "scroll", "n": i, "window_ms": round(ts[-1]), "scrolled_px": 700 if moved else 0,
+          "first_scroll_ms": 40, "raf": P.frame_stats(intervals, 16.667), "raf_intervals": [round(x, 1) for x in intervals]}
+    pl["sf"] = {"period_ms": 16.667, "window_ms": [w0, w0 + ts[-1]], "oldest_ms": (w0 - 500) if sf else (w0 + 1),
+                "presents_ms": [w0 + t for t in ts]}
+    return pl
+
+
+def late(n, missed, slow=33.333):
+    """n frame intervals, the first `missed` of them slow."""
+    return [slow if k < missed else 16.667 for k in range(n)]
+
+
+def tier_entry(tier, inp, scroll_missed=0, updates_missed=0, load_ms=200, fcp_ms=150, dpr=1.5):
+    """One reference dashboard in a graded run. Its page logs 1 s after navigation and goes live 3 s
+    after it; three swipes of 60 frames follow."""
     nav = NAV[tier]
-    st = step(tier, 1, missed)
-    w0 = (nav + 4.0) * 1000
-    st["sf"] = dict(st["sf"], window_ms=[w0, w0 + st["sf"]["window_ms"][1] - 5000], oldest_ms=w0 - 500,
-                    presents_ms=[w0 + t - 5000 for t in st["sf"]["presents_ms"]])
     return {"nonce": tier,
-            "page": {"t": "refdash", "tier": tier, "nodes": 1144, "fcp_ms": fcp_ms, "load_ms": load_ms,
+            "page": {"t": "refdash", "tier": tier, "nodes": 1458, "cards": CARDS[tier], "css": [960, 480], "dpr": dpr,
+                     "fcp_ms": fcp_ms, "load_ms": load_ms,
                      "origin_epoch_ms": 1e12 + nav * 1000, "epoch_ms": 1e12 + nav * 1000 + 1000, "mono": nav + 1.0},
-            "live_mono": nav + 3.0, "step": st,
-            "measure": {"t": "measure", "moving": 14, "offscreen": 0, "animations": ANIMATIONS[tier], "animations_expected": ANIMATIONS[tier]},
-            "input": {"t": "input", "method": "event-timing", "taps": 10, "inp_ms": inp}}
+            "live_mono": nav + 3.0,
+            "measure": {"t": "measure", "stage": "updates", "moving": 12, "offscreen": 0, "targets": 10},
+            "step": step("updates", 1, updates_missed),
+            "input": {"t": "input", "method": "event-timing", "taps": 10, "inp_ms": inp},
+            "swipes": [swipe(nav, i, late(60, scroll_missed)) for i in range(3)]}
 
 
 def load_frames():
@@ -317,14 +314,14 @@ def load_frames():
     return [NAV[t] * 1000 + d for t in NAV for d in (200, 300, 400)]
 
 
-def refstart(k, inp, busy_missed=20):
-    """A graded run: process at 20.0 s, engine ready 0.6 + 0.1k s later. Light and typical are
-    smooth; busy misses `busy_missed` of 120 frames (20: about 51 fps, fluid but not smooth)."""
+def refstart(k, inp, heavy_missed=20):
+    """A graded run: process at 20.0 s, engine ready 0.6 + 0.1k s later. Light and typical scroll
+    smoothly; heavy misses `heavy_missed` of every 60 frames (20: about 45 fps, fluid, not smooth)."""
     return {"run": k, "ttid_ms": 111, "launch": "relaunched-by-system", "proc_mono": 20.0, "engine_mono": 20.6 + 0.1 * k,
-            "engine_uri": "about:blank",
-            "own_page_start_mono": 23.0, "own_page_stop_mono": 26.0, "own_page_quiet": True,
-            "tiers": {"light": tier_entry("light", 0, inp), "typical": tier_entry("typical", 0, inp),
-                      "busy": tier_entry("busy", busy_missed, inp)},
+            "engine_uri": "about:blank", "own_page_start_mono": 23.0, "own_page_stop_mono": 26.0, "own_page_loads": 1,
+            "own_page_state": "finished-still",
+            "tiers": {"light": tier_entry("light", inp), "typical": tier_entry("typical", inp),
+                      "heavy": tier_entry("heavy", inp, scroll_missed=heavy_missed)},
             "presents_mono_ms": load_frames()}
 
 
@@ -344,7 +341,7 @@ class Build(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
         dev = {"frame": "test-frame", "model": "Panel", "android": "10", "api": 29, "abi": "armeabi-v7a",
-               "cpu": {"cores": 4}, "mem_total_kb": 2_000_000, "display": {"vsync_ms": 16.667},
+               "cpu": {"cores": 4}, "mem_total_kb": 2_000_000, "display": {"vsync_ms": 16.667, "density": "240"},
                "app": {"package": PKG, "version_name": "0.4.3"}}
         self.write("device.json", dev)
         for k, (inp, js) in enumerate([(120, 9.0), (180, 10.0), (150, 12.0)], 1):
@@ -387,30 +384,32 @@ class Build(unittest.TestCase):
     def test_summary_carries_the_engine_uri_and_sf_valid(self):
         ref = self.rep["graded"]["reference"]
         self.assertEqual(ref["engine_uris"], ["about:blank"])
-        self.assertEqual(ref["tiers"]["busy"]["sf_valid"], [True, True, True])
-        self.assertEqual(ref["tiers"]["light"]["sf_valid"], [False, False, False])   # light: rAF only by design
+        self.assertEqual(ref["tiers"]["heavy"]["sf_valid"], [True, True, True])
 
-    def test_frames_per_reference_dashboard(self):
+    def test_tasks_per_page(self):
         t = self.rep["graded"]["reference"]["tiers"]
-        self.assertEqual((t["light"]["sources"], t["light"]["limited_by"]), (["raf"], []))   # still page: rAF only
-        self.assertEqual((t["busy"]["sources"], t["busy"]["limited_by"]), (["surfaceflinger"], ["equal"]))
-        self.assertEqual(t["busy"]["frames"]["p95_ms"]["median"], 33.33)
-        self.assertEqual(self.rep["detail"]["synthetic"]["steps_without_sf"], 0)
+        self.assertEqual(t["heavy"]["scroll_sources"], ["surfaceflinger"])
+        self.assertEqual(t["heavy"]["scroll"]["p95_ms"]["median"], 33.33)
+        self.assertEqual(t["heavy"]["scroll"]["fps"]["median"], 45.0)
+        self.assertEqual(t["heavy"]["scroll_bands"], ["needs-improvement"] * 3)
+        self.assertEqual(t["light"]["scroll_band"], "good")
+        self.assertEqual(t["light"]["updates_band"], "good")
+        self.assertEqual(t["light"]["scrolled_px"]["median"], 2100)   # three swipes of 700 px
+        self.assertEqual(t["light"]["cards"], [20])
+        self.assertEqual(t["light"]["load_ms"]["median"], 400)        # navigation -> last paint at 0.4 s
 
     def test_headline_grade(self):
         g = self.rep["grade"]
         self.assertEqual(g["grade"], "B")
-        self.assertEqual(g["bands"]["busy"], {"frames": "needs-improvement", "inp": "good", "load": "good"})
-        self.assertEqual(g["bands"]["typical"], {"frames": "good", "inp": "good", "load": "good"})
+        self.assertEqual(g["levels"], {"light": "smooth", "typical": "smooth", "heavy": "fluid"})
+        self.assertEqual(g["bands"]["heavy"], {"tap": "good", "scroll": "needs-improvement", "updates": "good", "load": "good"})
         self.assertEqual(g["start"], {"value": 800, "band": "good"})   # process 20.0 s -> engine 20.7 to 20.9 s
+        self.assertEqual(g["viewport"], {"state": "ok", "reason": None})
         self.assertFalse(g["provisional"])
-        self.assertEqual(g["headline"], "test-frame: B, good for typical dashboards; busy ones stay fluid. "
-                                        "Busy animated dashboards average about 51 fps, with 17% of frames late.")
-        ref = self.rep["graded"]["reference"]
-        self.assertEqual(ref["tiers"]["light"]["load_ms"]["median"], 400)   # navigation -> last paint at 0.4 s
-        self.assertEqual(ref["tiers"]["light"]["inp_ms"]["median"], 150)
-        self.assertEqual(ref["android_ttid_ms"]["median"], 111)   # reported, not graded
-        self.assertEqual(self.rep["real_use"]["dashboard_load_ms"]["median"], 3400)   # not graded either
+        self.assertEqual(g["headline"], "test-frame: B, a good wall panel for typical dashboards; large ones stay fluid. "
+                                        "Large dashboards scroll at about 45 fps.")
+        self.assertEqual(self.rep["graded"]["reference"]["android_ttid_ms"]["median"], 111)   # reported, not graded
+        self.assertEqual(self.rep["real_use"]["dashboard_load_ms"]["median"], 3400)            # not graded either
 
     def test_the_grade_does_not_move_with_your_home_assistant(self):
         """Every grade input comes from the reference dashboards; nothing from your own dashboard,
@@ -421,25 +420,67 @@ class Build(unittest.TestCase):
                                                 "page_start_mono": 2.0, "page_stop_mono": 30.0, "ended_quiet": False,
                                                 "presents_mono_ms": [30000 + 16.7 * i for i in range(600)]})
             self.write(f"idle-all-on-{k}.json", idle("all-on", k, 1_900_000, 95.0))
-            # Inside the graded run: your dashboard loaded slowly first, never went quiet, painted a lot.
+            # Inside the graded run: your dashboard loaded slowly first, reloaded, kept painting (a clock card).
             run = refstart(k, [120, 180, 150][k - 1])
-            run.update(own_page_start_mono=21.0, own_page_stop_mono=29.9, own_page_quiet=False, ttid_ms=4000)
+            run.update(own_page_start_mono=21.0, own_page_stop_mono=29.9, own_page_loads=2,
+                       own_page_state="finished-moving", ttid_ms=4000)
             run["presents_mono_ms"] = run["presents_mono_ms"] + [21000 + 16.7 * i for i in range(500)]
             self.write(f"refstart-{k}.json", run)
         rep = R.build(self.dir)
         self.assertEqual(rep["real_use"]["dashboard_load_ms"]["median"], 28000)
         self.assertFalse(rep["real_use"]["memory"]["budget"]["ok"])   # the 1.9 GB samples did arrive
-        self.assertEqual(rep["graded"]["reference"]["own_page_quiet"], [False])
-        g = rep["grade"]
-        for k in ("grade", "meaning", "bands", "start", "capped_by_start", "missing"):
-            self.assertEqual(g[k], before[k], k)
-        # A hung Home Assistant can't move the letter; it only flags the grade.
+        self.assertEqual(rep["grade"], before)                        # a clock card isn't a reason to doubt it
+
+    def test_a_kiosk_page_that_never_finished_keeps_the_letter_and_flags_it(self):
+        before = self.rep["grade"]
+        for k in (1, 2, 3):
+            run = refstart(k, [120, 180, 150][k - 1])
+            run.update(own_page_stop_mono=None, own_page_state="never-finished")
+            self.write(f"refstart-{k}.json", run)
+        g = R.build(self.dir)["grade"]
+        for key in ("grade", "meaning", "bands", "levels", "start", "capped_by_start", "missing"):
+            self.assertEqual(g[key], before[key], key)
         self.assertTrue(g["provisional"])
-        self.assertEqual(g["provisional_reasons"], ["the kiosk's own page never went quiet in a graded run (Home Assistant down?)"])
+        self.assertEqual(g["provisional_reasons"], ["the kiosk's own page never finished loading in a graded run (Home Assistant down?)"])
+
+    def test_a_non_default_zoom_is_not_graded(self):
+        """At another zoom each screen holds a different amount of the same dashboard."""
+        for k in (1, 2, 3):
+            run = refstart(k, 100)
+            for t in run["tiers"].values():
+                t["page"]["dpr"] = 2.25
+            self.write(f"refstart-{k}.json", run)
+        rep = R.build(self.dir)
+        g = rep["grade"]
+        self.assertIsNone(g["grade"])
+        self.assertEqual(g["viewport"]["state"], "refused")
+        self.assertIn("expected 1.5 (density 240 / 160)", g["refused"])
+        self.assertTrue(g["headline"].startswith("test-frame: not graded."))
+
+    def test_an_unknown_density_makes_it_provisional(self):
+        dev = json.load(open(os.path.join(self.dir, "device.json")))
+        dev["display"].pop("density")
+        self.write("device.json", dev)
+        g = R.build(self.dir)["grade"]
+        self.assertEqual(g["viewport"]["state"], "unknown")
+        self.assertTrue(g["provisional"])
+
+    def test_a_page_that_did_not_scroll_is_not_measured(self):
+        run = refstart(1, 100)
+        run["tiers"]["typical"]["swipes"] = [swipe(40.0, i, late(60, 0), moved=False) for i in range(3)]
+        r = R.reference_run(run)["tiers"]["typical"]
+        self.assertIsNone(r["scroll"])
+        self.assertEqual(r["scroll_error"], "the page didn't scroll")
+
+    def test_swipes_with_evicted_history_use_raf(self):
+        run = refstart(1, 100)
+        run["tiers"]["heavy"]["swipes"][1] = swipe(50.0, 1, late(60, 20), sf=False)
+        r = R.reference_run(run)["tiers"]["heavy"]
+        self.assertEqual((r["scroll_source"], r["sf_valid"]), ("raf", False))
 
     def test_a_run_that_ended_in_an_error_is_not_graded(self):
         before = self.rep["grade"]
-        bad = refstart(4, 900, busy_missed=100)
+        bad = refstart(4, 900, heavy_missed=50)
         bad.update(error="the kiosk loaded another page while a reference dashboard was measured", engine_mono=29.0)
         self.write("refstart-4.json", bad)
         rep = R.build(self.dir)
@@ -448,24 +489,18 @@ class Build(unittest.TestCase):
         self.assertEqual(rep["grade"]["bands"], before["bands"])
         self.assertEqual(rep["grade"]["start"], before["start"])
 
-    def test_frames_are_banded_per_run_then_the_median_band(self):
-        """Three runs, each poor for a different reason. Per-measure medians would read good."""
-        stats = [{"n": 100, "p95_ms": 50.0, "jank_pct": 4, "frozen_pct": 0, "fps": 40},
-                 {"n": 100, "p95_ms": 16.67, "jank_pct": 60, "frozen_pct": 0, "fps": 30},
-                 {"n": 100, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 1, "fps": 58}]
+    def test_scroll_is_banded_per_run_then_the_median_band(self):
+        """Three runs, each poor for a different reason. Per-measure medians would read needs-improvement."""
         runs = []
-        for k, st in enumerate(stats, 1):
+        for k, intervals in enumerate([late(60, 6, 50.0), late(60, 36), late(60, 1, 800.0)], 1):
             run = refstart(k, 100)
-            step = run["tiers"]["typical"]["step"]
-            step["raf"] = st
-            step["sf"]["oldest_ms"] = step["sf"]["window_ms"][0] + 1   # history evicted: rAF only
+            run["tiers"]["heavy"]["swipes"] = [swipe(50.0, 0, intervals, sf=False)]
             runs.append(R.reference_run(run))
         ref = R.reference_summary(runs)
-        self.assertEqual(ref["tiers"]["typical"]["frames_bands"], ["poor", "poor", "poor"])
-        tiers, start = R.grade_inputs({"reference": ref})
-        self.assertEqual(G.grade(tiers, start)["bands"]["typical"]["frames"], "poor")
-        medians = {k: ref["tiers"]["typical"]["frames"][k]["median"] for k in ("p95_ms", "jank_pct", "frozen_pct")}
-        self.assertEqual(G.frame_band(dict(medians, n=100)), "good")   # what per-measure medians would say
+        self.assertEqual(ref["tiers"]["heavy"]["scroll_bands"], ["poor", "poor", "poor"])
+        self.assertEqual(ref["tiers"]["heavy"]["scroll_band"], "poor")
+        medians = {k: ref["tiers"]["heavy"]["scroll"][k]["median"] for k in ("p95_ms", "jank_pct", "frozen_pct")}
+        self.assertEqual(G.frame_band(dict(medians, n=60)), "needs-improvement")   # what per-measure medians would say
 
     def test_median_band_of_an_even_count_is_the_worse_middle(self):
         self.assertEqual(R.median_band(["good", "poor"]), "poor")
@@ -492,7 +527,7 @@ class Build(unittest.TestCase):
         g = R.build(self.dir)["grade"]
         self.assertEqual(g["grade"], "E")
         self.assertTrue(g["provisional"])
-        self.assertIn("busy.frames", g["missing"])
+        self.assertIn("heavy.scroll", g["missing"])
         self.assertIn("start", g["missing"])
 
     def test_js_band_is_reported_but_not_graded(self):
@@ -541,12 +576,6 @@ class Build(unittest.TestCase):
         lines = synthetic_lines(1, 9.0)
         lines[2]["sf"]["oldest_ms"] = 99_999
         self.assertEqual(R.synthetic_summary([R.synthetic_run(lines)])["steps_without_sf"], 1)
-
-    def test_a_reference_dashboard_without_surfaceflinger_history_uses_raf(self):
-        run = refstart(1, 100)
-        run["tiers"]["busy"]["step"]["sf"]["oldest_ms"] = 99_999_999
-        r = R.reference_run(run)["tiers"]["busy"]
-        self.assertEqual((r["source"], r["sf_valid"]), ("raf", False))
 
     def test_no_scroll_step_is_not_a_moved_scroll(self):
         lines = [l for l in synthetic_lines(1, 9.0) if l.get("stage") != "scroll"]
@@ -604,13 +633,15 @@ class Build(unittest.TestCase):
 
     def test_markdown_renders(self):
         md = R.markdown(self.rep)
-        self.assertIn("**test-frame: B, good for typical dashboards; busy ones stay fluid.", md)
-        self.assertIn("| busy | 33.3 ms (33.3 to 33.3, n=3), 51.4 fps (51.4 to 51.4, n=3) | needs-improvement |", md)
+        self.assertIn("**test-frame: B, a good wall panel for typical dashboards; large ones stay fluid.", md)
+        self.assertIn("| heavy (120 cards) | fluid |", md)
+        self.assertIn("| scroll |", md)                                 # what holds heavy back from smooth
+        self.assertIn("Restart, app process to engine ready: 800 ms (700 to 900, n=3)", md)
+        self.assertIn("zoom check: ok", md)
         self.assertIn("## Real use on this dashboard (not graded)", md)
-        self.assertLess(md.index("| light |"), md.index("## Detail: animations"))
+        self.assertLess(md.index("| light ("), md.index("## Detail: animations"))
         self.assertLess(md.index("## Detail: animations"), md.index("## Real use on this dashboard"))
         self.assertIn("| css-transform | 4 (4 to 4, n=3) |", md)
-        self.assertIn("| svg | 2+ (2 to 2, n=3) |", md)
 
     def test_apk_sizes_per_abi(self):
         apk = os.path.join(self.dir, "app.apk")

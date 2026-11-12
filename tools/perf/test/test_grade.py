@@ -42,44 +42,66 @@ class Thresholds(unittest.TestCase):
         self.assertIsNone(G.band(None, G.METRICS["inp_ms"]))
 
 
-SMOOTH = {"n": 100, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0}      # 60 fps: frames band good
-FLUID = {"n": 100, "p95_ms": 33.33, "jank_pct": 20, "frozen_pct": 0}      # 30 fps: needs improvement
-CHOPPY = {"n": 100, "p95_ms": 50.0, "jank_pct": 80, "frozen_pct": 0}      # under 30 fps: poor
 INP = {"good": 100, "ni": 300, "poor": 600}
 LOAD = {"good": 1000, "ni": 3000, "poor": 5000}
 
 
-def tiers(light=SMOOTH, typical=SMOOTH, busy=SMOOTH, inp=None, load=None, drop=()):
-    """All good unless told otherwise; inp/load: {tier: "ni"|"poor"}."""
-    inp, load = inp or {}, load or {}
-    out = {}
-    for t, fr in (("light", light), ("typical", typical), ("busy", busy)):
-        if t not in drop:
-            out[t] = {"frames": fr, "inp_ms": INP[inp.get(t, "good")], "load_ms": LOAD[load.get(t, "good")]}
-    return out
+def page(tap="good", scroll="good", updates="good", load="good"):
+    """One page's grade inputs: tap and load as values, frames as the median run band."""
+    band = {"good": GOOD, "ni": NI, "poor": POOR, None: None}
+    return {"inp_ms": INP[tap] if tap else None, "load_ms": LOAD[load] if load else None,
+            "scroll_band": band[scroll], "updates_band": band[updates]}
+
+
+def pages(light=None, typical=None, heavy=None):
+    return {t: p for t, p in (("light", light or page()), ("typical", typical or page()), ("heavy", heavy or page())) if p != "drop"}
+
+
+SMOOTH, FLUID, NEITHER = page(), page(scroll="ni", updates="ni"), page(scroll="poor")
+
+
+class PageLevel(unittest.TestCase):
+    """Each task's pass rule: the page is smooth only if every task passes at 60 fps, fluid at 30."""
+
+    CASES = [
+        ("everything good", page(), "smooth"),
+        ("view loads in up to 4 s: still smooth", page(load="ni"), "smooth"),
+        ("view load over 4 s", page(load="poor"), None),
+        ("scroll at 30 fps", page(scroll="ni"), "fluid"),
+        ("scroll at 30 fps, view loads in up to 4 s", page(scroll="ni", load="ni"), "fluid"),
+        ("live updates at 30 fps", page(updates="ni"), "fluid"),
+        ("scroll under 30 fps", page(scroll="poor"), None),
+        ("live updates under 30 fps", page(updates="poor"), None),
+        ("a tap over 200 ms", page(tap="ni"), None),
+        ("a tap over 500 ms", page(tap="poor"), None),
+        ("scroll not measured", page(scroll=None), None),
+    ]
+
+    def test_each_task_pass_rule(self):
+        for name, p, want in self.CASES:
+            with self.subTest(name):
+                self.assertEqual(G.page_level(G.tier_bands(p)), want)
+
+    def test_limits_names_the_task(self):
+        self.assertEqual(G.limits(G.tier_bands(page(scroll="ni", load="poor")), "smooth"), ["scroll", "load"])
 
 
 class Letter(unittest.TestCase):
-    """Each letter's boundary: the frame that just meets a letter gets it, and moving one requirement
-    past its edge drops it. docs/perf.md, "The grade", has the same table."""
+    """Each letter's boundary: the frame that just meets a letter gets it, and moving one page one
+    level down drops it. docs/perf.md, "The grade", has the same table."""
 
     CASES = [
-        ("all good", tiers(), "A"),
-        ("busy only fluid", tiers(busy=FLUID), "B"),
-        ("busy INP needs improvement", tiers(inp={"busy": "ni"}), "C"),
-        ("busy load needs improvement", tiers(load={"busy": "ni"}), "C"),
-        ("busy choppy, typical smooth", tiers(busy=CHOPPY), "C"),
-        ("typical only fluid", tiers(typical=FLUID, busy=FLUID), "C"),
-        ("typical fluid, typical load needs improvement", tiers(typical=FLUID, busy=CHOPPY, load={"typical": "ni"}), "C"),
-        ("typical fluid, light load needs improvement", tiers(typical=FLUID, busy=CHOPPY, load={"light": "ni"}), "C"),
-        ("typical INP needs improvement", tiers(typical=FLUID, busy=CHOPPY, inp={"typical": "ni"}), "D"),
-        ("light INP needs improvement", tiers(busy=CHOPPY, inp={"light": "ni"}), "D"),
-        ("typical load poor", tiers(busy=CHOPPY, load={"typical": "poor"}), "D"),
-        ("typical choppy", tiers(typical=CHOPPY, busy=CHOPPY), "D"),
-        ("light only fluid", tiers(light=FLUID, typical=CHOPPY, busy=CHOPPY), "D"),
-        ("light choppy", tiers(light=CHOPPY, typical=CHOPPY, busy=CHOPPY), "E"),
-        ("light INP poor", tiers(typical=CHOPPY, busy=CHOPPY, inp={"light": "poor"}), "E"),
-        ("light load poor", tiers(typical=CHOPPY, busy=CHOPPY, load={"light": "poor"}), "E"),
+        ("heavy smooth", pages(), "A"),
+        ("heavy fluid, typical smooth", pages(heavy=FLUID), "B"),
+        ("heavy below fluid, typical smooth", pages(heavy=NEITHER), "C"),
+        ("typical fluid, heavy fluid", pages(typical=FLUID, heavy=FLUID), "C"),
+        ("typical fluid", pages(typical=FLUID, heavy=NEITHER), "C"),
+        ("typical below fluid, light fluid", pages(light=FLUID, typical=NEITHER, heavy=NEITHER), "D"),
+        ("typical below fluid, light smooth", pages(typical=NEITHER, heavy=NEITHER), "D"),
+        ("light below fluid", pages(light=NEITHER, typical=NEITHER, heavy=NEITHER), "E"),
+        ("only heavy smooth: it is the letter's one condition", pages(light=NEITHER, typical=NEITHER), "A"),
+        ("a slow tap on typical", pages(typical=page(tap="ni"), heavy=NEITHER), "D"),
+        ("a slow view on light", pages(light=page(load="poor"), typical=NEITHER, heavy=NEITHER), "E"),
     ]
 
     def test_each_letter_boundary(self):
@@ -88,21 +110,19 @@ class Letter(unittest.TestCase):
                 g = G.grade(ts, 1000)
                 self.assertEqual(g["grade"], want)
                 self.assertEqual(g["meaning"], G.MEANINGS[want])
-                self.assertFalse(g["provisional"])
 
-    def test_a_poor_start_caps_the_letter_at_c(self):
-        self.assertEqual(G.grade(tiers(), 4999)["grade"], "A")
-        g = G.grade(tiers(), 5000)
+    def test_a_poor_restart_caps_the_letter_at_c(self):
+        self.assertEqual(G.grade(pages(), 4999)["grade"], "A")
+        g = G.grade(pages(), 5000)
         self.assertEqual((g["grade"], g["capped_by_start"]), ("C", True))
-        self.assertEqual(G.grade(tiers(busy=FLUID), 6000)["grade"], "C")
-        g = G.grade(tiers(typical=CHOPPY, busy=CHOPPY), 6000)
+        g = G.grade(pages(typical=NEITHER, heavy=NEITHER), 6000)
         self.assertEqual((g["grade"], g["capped_by_start"]), ("D", False))   # a cap never raises a letter
 
-    def test_a_missing_dashboard_fails_what_needs_it_and_is_provisional(self):
-        g = G.grade(tiers(drop=("busy",)), 1000)
+    def test_a_missing_page_fails_what_needs_it_and_is_provisional(self):
+        g = G.grade(pages(heavy="drop"), 1000)
         self.assertEqual(g["grade"], "C")
         self.assertTrue(g["provisional"])
-        self.assertEqual(g["missing"], ["busy.frames", "busy.inp", "busy.load"])
+        self.assertEqual(g["missing"], ["heavy.tap", "heavy.scroll", "heavy.updates", "heavy.load"])
 
     def test_nothing_measured_is_e_and_provisional(self):
         g = G.grade({}, None)

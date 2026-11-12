@@ -63,21 +63,20 @@ test("the measured window leaves SurfaceFlinger's history room for the read afte
 
 const T = require("../page/tiers.js");
 
-test("the three reference dashboards are fixed: light, typical, busy", () => {
-  assert.deepEqual(T.ORDER, ["light", "typical", "busy"]);
-  assert.deepEqual(T.TIERS.light, { updateEveryMs: 2000, updatesPerTick: 5, spinners: 0, pulses: 0, ring: false, clock: false,
-                                    sparkline: false, frameTiles: 0, motion: false });
-  assert.deepEqual(T.TIERS.typical, { updateEveryMs: 2000, updatesPerTick: 5, spinners: 4, pulses: 2, ring: true, clock: true,
-                                      sparkline: false, frameTiles: 0, motion: true });
-  assert.deepEqual(T.TIERS.busy, { updateEveryMs: 2000, updatesPerTick: 5, spinners: 10, pulses: 2, ring: true, clock: true,
-                                   sparkline: true, frameTiles: 24, motion: true });
+test("the three reference dashboards are fixed: light, typical, heavy", () => {
+  assert.deepEqual(T.ORDER, ["light", "typical", "heavy"]);
+  assert.deepEqual(T.TIERS.light, { tiles: 12, entities: 5, rows: 5, longLists: 0, longRows: 0, sensors: 2, histories: 0, pictures: 0 });
+  assert.deepEqual(T.TIERS.typical, { tiles: 26, entities: 13, rows: 6, longLists: 0, longRows: 0, sensors: 6, histories: 2, pictures: 2 });
+  assert.deepEqual(T.TIERS.heavy, { tiles: 50, entities: 26, rows: 8, longLists: 4, longRows: 20, sensors: 16, histories: 8, pictures: 15 });
+  assert.deepEqual(T.LIVE, { updatesPerS: 5, clockEveryMs: 1000 });
+});
+
+test("about 20, 50 and 120 cards", () => {
+  assert.deepEqual(T.ORDER.map(T.cardCount), [20, 50, 120]);
 });
 
 test("each reference dashboard has at least everything the one below it has", () => {
-  for (const [lo, hi] of [["light", "typical"], ["typical", "busy"]]) {
-    for (const [k, v] of Object.entries(T.TIERS[lo])) {
-      const w = T.TIERS[hi][k];
-      assert.ok(typeof v === "number" ? w >= v : (!v || w), `${hi}.${k} >= ${lo}.${k}`);
-    }
+  for (const [lo, hi] of [["light", "typical"], ["typical", "heavy"]]) {
+    for (const [k, v] of Object.entries(T.TIERS[lo])) assert.ok(T.TIERS[hi][k] >= v, `${hi}.${k} >= ${lo}.${k}`);
   }
 });
