@@ -2,24 +2,25 @@
 # Glassworks perf test: grade a frame (MIT). Docs: docs/perf.md.
 #
 # What it touches on the device:
-#   - Opens the test page once per run with the kiosk's one-off `--es open` extra. The saved
-#     dashboard URL is never changed. The page is served from this machine over `adb reverse`.
+#   - Opens the test page and the three reference dashboards with the kiosk's one-off `--es open`
+#     extra. The saved dashboard URL is never changed. The pages are served from this machine over
+#     `adb reverse`, with caching off.
 #   - Sends `--es screen on` (the kiosk's own wake intent) during warm-ups, so the screen stays on
 #     without changing the idle timeout. It changes no setting.
-#   - Taps the test page's tap target (`input tap`, centre of the screen) to measure input latency.
+#   - Taps each reference dashboard's "Living room" toggle (`input tap`) to measure input latency.
 #   - Force-stops the app for each cold start (KEYCODE_WAKEUP first, so the screen is on); the app
 #     comes back on the saved dashboard. If the run stops early or the last cold start fails, the
 #     exit trap restarts the app.
 #   Read-only otherwise: getprop, /proc, dumpsys meminfo and SurfaceFlinger, logcat.
 #
-# Usage: tools/perf/run.sh --frame aqara-s1-plus [--serial S] [--runs 3] [--out DIR]
+# Usage: tools/perf/run.sh --frame aqara-s1-plus [--name "Aqara S1 Plus"] [--serial S] [--runs 3] [--out DIR]
 #          [--skip-synthetic] [--skip-reference] [--skip-real-use] [--taps 10] [--quick] [--apk FILE]...
 #        tools/perf/run.sh --frame ID --out DIR --idle-only LABEL   # one idle sample (pane diffs)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ADB="${ADB:-adb}"
-FRAME="" RUNS=3 OUT="" PORT=8089 PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
+FRAME="" NAME="" RUNS=3 OUT="" PORT=8089 PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
 SYNTH=1 REF=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=()
 # Waits, in seconds. Only the off-device test (test/test_runner.py) shortens them.
 IDLE_SETTLE="${GW_PERF_IDLE_SETTLE:-30}" IDLE_WINDOW="${GW_PERF_IDLE_WINDOW:-15}"
@@ -28,6 +29,7 @@ COLD_SETTLE="${GW_PERF_COLD_SETTLE:-3}" COLD_TIMEOUT="${GW_PERF_COLD_TIMEOUT:-12
 while [ $# -gt 0 ]; do
   case "$1" in
     --frame) FRAME="$2"; shift 2 ;;
+    --name) NAME="$2"; shift 2 ;;
     --serial) export ANDROID_SERIAL="$2"; shift 2 ;;
     --runs) RUNS="$2"; shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
@@ -41,7 +43,7 @@ while [ $# -gt 0 ]; do
     --idle-only) IDLE_ONLY="$2"; shift 2 ;;
     --max-start-temp) MAX_TEMP_C="$2"; shift 2 ;;
     --apk) APKS+=(--apk "$2"); shift 2 ;;
-    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -84,7 +86,7 @@ sh_dev pm path "$PACKAGE" | grep -q package: || { echo "$PACKAGE is not installe
 if [ -n "$IDLE_ONLY" ]; then
   n=0
   for f in "$OUT"/idle-"$IDLE_ONLY"-*.json; do [ -e "$f" ] && n=$((n + 1)); done
-  [ -f "$OUT/device.json" ] || run device
+  [ -f "$OUT/device.json" ] || run device ${NAME:+--name "$NAME"}
   thermal "idle-$IDLE_ONLY-$n"
   log "idle sample '$IDLE_ONLY' #$n"
   run idle --label "$IDLE_ONLY" --run "$n" --settle "$IDLE_SETTLE" --window "$IDLE_WINDOW"
@@ -114,14 +116,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-run device
+run device ${NAME:+--name "$NAME"}
 thermal start
 VSYNC=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["display"]["vsync_ms"] or 16.667)' "$OUT/device.json")
 log "device recorded; vsync ${VSYNC} ms"
 wait_cool
 
 if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ]; then
-  python3 -m http.server --bind 127.0.0.1 "$PORT" --directory "$HERE/page" >"$OUT/server.log" 2>&1 &
+  python3 "$HERE/serve.py" "$PORT" "$HERE/page" >"$OUT/server.log" 2>&1 &
   SERVER_PID=$!
   "$ADB" reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
 fi
@@ -129,11 +131,11 @@ fi
 if [ "$SYNTH" = 1 ]; then
   for k in $(seq 1 "$RUNS"); do
     nonce=$(python3 -c 'import secrets; print(secrets.token_hex(4))')
-    url="http://127.0.0.1:$PORT/index.html?run=$k&seed=1&vsync=$VSYNC&nonce=$nonce&taps=$TAPS&quick=$QUICK"
+    url="http://127.0.0.1:$PORT/index.html?run=$k&seed=1&vsync=$VSYNC&nonce=$nonce&quick=$QUICK"
     log "synthetic run $k/$RUNS"
     DASHBOARD_OK=0
     thermal "synthetic-$k"
-    run synthetic --run "$k" --url "$url" --nonce "$nonce" --taps "$TAPS"
+    run synthetic --run "$k" --url "$url" --nonce "$nonce"
     sleep "$RUN_GAP"
   done
   log "memory on the test page after the ladder"
@@ -141,14 +143,14 @@ if [ "$SYNTH" = 1 ]; then
 fi
 
 if [ "$REF" = 1 ]; then
-  # Graded start and load: a cold start straight into the fixed reference dashboard.
+  # The graded part. Each run: a cold start (start = process start to engine ready), then the three
+  # reference dashboards in turn, once the kiosk's own first page has gone quiet.
   for k in $(seq 1 "$RUNS"); do
-    log "reference dashboard cold start $k/$RUNS"
+    log "graded run $k/$RUNS: cold start, then the light, typical and busy reference dashboards"
     thermal "refstart-$k"
     DASHBOARD_OK=0
-    nonce=$(python3 -c 'import secrets; print(secrets.token_hex(4))')
-    run refstart --run "$k" --settle "$COLD_SETTLE" --timeout "$COLD_TIMEOUT" --nonce "$nonce" \
-      --url "http://127.0.0.1:$PORT/dashboard.html?nonce=$nonce" || log "reference run $k failed; see refstart-$k.json"
+    run refstart --run "$k" --settle "$COLD_SETTLE" --url "http://127.0.0.1:$PORT/dashboard.html" \
+      --vsync "$VSYNC" --taps "$TAPS" || log "graded run $k failed; see refstart-$k.json"
     sleep "$RUN_GAP"
   done
 fi

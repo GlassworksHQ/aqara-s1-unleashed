@@ -46,7 +46,8 @@ def shell(cmd):
         return props.get(cmd.split()[1], "")
     if cmd.startswith("am start"):
         m = re.search(r"--es open '([^']+)'", cmd)
-        if m:
+        # Like the S1 kiosk (#103's pins): `open` is dropped until GeckoView's session is up.
+        if m and state("session_up.json", True):
             nonce = re.search(r"nonce=(\w+)", m.group(1)).group(1)
             save("refnonce.json" if "/dashboard.html" in m.group(1) else "nonce.json", [nonce, m.group(1)])
         if " -W " in cmd:
@@ -109,6 +110,7 @@ def shell(cmd):
         return "Physical density: 240\n"
     if cmd.startswith("am force-stop"):
         save("stopped.json", True)
+        save("session_up.json", False)
         if os.environ.get("FAKE_HOME_RELAUNCH"):
             save("cold.json", True)
         return ""
@@ -125,38 +127,70 @@ def page(nonce):
 
     gw({"t": "hello", "ua": "Mozilla/5.0 (Android 10; Mobile; rv:159.0) Gecko/159.0 Firefox/159.0", "load": {"lcp_ms": 420}})
     gw({"t": "js", "runs": 30, "median_ms": 9.5, "p95_ms": 12.0, "checksum": 7, "expected": 7})
-    for stage, n in (("css-transform", 1), ("css-transform", 16), ("reference", 1), ("scroll", 240)):
+    for stage, n in (("css-transform", 1), ("css-transform", 16), ("scroll", 240)):
         gw({"t": "warmup", "stage": stage, "n": n})
         time.sleep(0.05)
         a = now()
         gw({"t": "measure", "stage": stage, "n": n})
         time.sleep(0.6)
         paint(a, now())
-        gw({"t": "step", "stage": stage, "n": n, "raf": {"n": 36, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0}})
+        gw({"t": "step", "stage": stage, "n": n, "window_ms": 600, "scrolled_px": 600 if stage == "scroll" else None,
+            "raf": {"n": 36, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0}})
         time.sleep(0.3)
-    gw({"t": "input-ready", "x": 720, "y": 360, "taps": 2})
-    end = now() + 10
-    while state("taps.json", 0) < 2 and now() < end:
-        time.sleep(0.1)
-    gw({"t": "input", "method": "event-timing", "taps": state("taps.json", 0), "values": [16, 48], "inp_ms": 48})
     gw({"t": "done"})
 
 
 def refdash(nonce, url):
-    """The reference dashboard: navigation, first paint at 150 ms, load event at 120 ms, then still."""
+    """A reference dashboard: it loads (first paint 150 ms, load event 120 ms), stays still, goes live
+    (typical and busy keep painting), one measured window, the taps, done."""
+    tier = re.search(r"tier=(\w+)", url).group(1)
+    taps = int(re.search(r"taps=(\d+)", url).group(1))
+    foreign = os.environ.get("FAKE_FOREIGN_PAGE") if tier == "light" else None
+
+    def gw(obj):
+        line("GeckoConsole", "GWPERF " + json.dumps(dict(obj, nonce=nonce, run=1)))
+
+    if foreign == "before":
+        line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     origin = time.time() * 1000
     a = now()
     paint(a + 0.15, a + 0.5)
     line("GeckoSession", f"handleMessage GeckoView:PageStart uri={url}")
+    if foreign == "after":
+        line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     time.sleep(0.7)
-    line("GeckoConsole", "GWPERF " + json.dumps({"nonce": nonce, "t": "refdash", "nodes": 1134, "cards": 43, "fcp_ms": 150,
-                                                 "lcp_ms": 150, "load_ms": 120, "origin_epoch_ms": origin,
-                                                 "epoch_ms": time.time() * 1000}))
+    gw({"t": "refdash", "tier": tier, "nodes": 1144, "cards": 44, "fcp_ms": 150, "lcp_ms": 150, "load_ms": 120,
+        "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000})
+    time.sleep(1.0)
+    live = now()
+    if tier != "light":
+        paint(live, live + 0.85)  # warm-up and window; the page is replaced before the next one loads
+    gw({"t": "warmup", "stage": tier, "n": 1})
+    time.sleep(0.3)
+    gw({"t": "measure", "stage": tier, "n": 1})
+    time.sleep(0.5)
+    gw({"t": "step", "stage": tier, "n": 1, "window_ms": 500,
+        "raf": {"n": 30, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0, "fps": 60}})
+    if taps:
+        before = state("taps.json", 0)
+        gw({"t": "input-ready", "x": 720, "y": 360, "taps": taps})
+        end = now() + 10
+        while state("taps.json", 0) - before < taps and now() < end:
+            time.sleep(0.1)
+        gw({"t": "input", "stage": tier, "method": "event-timing", "taps": state("taps.json", 0) - before,
+            "values": [16, 48], "inp_ms": 48})
+    gw({"t": "done", "stage": tier})
 
 
 def dashboard():
+    """A cold start as on the S1: Displayed, then 0.6 s later GeckoView's own about:blank (the session
+    is up from here), then the kiosk's own dashboard."""
     line("ActivityManager", f"Start proc 5555:{PKG}/u0a83 for activity {{{PKG}/{PKG}.MainActivity}}", pid=1918)
     line("ActivityTaskManager", f"Displayed {PKG}/.MainActivity: +1s714ms", pid=1918)
+    time.sleep(0.6)
+    line("GeckoSession", "handleMessage GeckoView:PageStart uri=about:blank")
+    line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
+    save("session_up.json", True)
     a = now()
     paint(a + 0.2, a + 1.2)  # the screen paints whether or not anyone reads logcat
     line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
