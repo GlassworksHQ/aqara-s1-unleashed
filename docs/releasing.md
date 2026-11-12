@@ -99,8 +99,9 @@ environments, so every signed build waits for an approval.
 
 ## 3b. The radio bundle key (once)
 
-The APK carries a **signed radio bundle**: the root radio helper, otbr-agent/ot-ctl and the Silicon Labs
-Zigbee runtime ([radio.md](radio.md#radio-bundles-helper-v4)). Panels whose boot image has the bundle
+Only the armeabi-v7a (S1) APK carries a **signed radio bundle**: the root radio helper, otbr-agent/ot-ctl
+and the Silicon Labs Zigbee runtime ([radio.md](radio.md#radio-bundles-helper-v4)). The other ABIs'
+APKs carry none, because no S1 runs them. Panels whose boot image has the bundle
 loader install it only if it is signed with the Ed25519 key whose public half is baked into the boot
 image ([`tools/root/s1kiosk_bundle.pub`](../tools/root/s1kiosk_bundle.pub)). It is a separate key from
 the APK key on purpose: it lets root code run on the panel, so it lives only in `~/secure` and in one
@@ -179,6 +180,13 @@ the build is `armeabi-v7a`, the S1's:
   `s1-kiosk-<version>.apk`. An S1 lists `armeabi-v7a, armeabi`, so it keeps taking that file.
 - An arm64 device that also runs 32-bit code falls back to `s1-kiosk-<version>.apk` for releases
   that have no arm64 APK (all releases up to 0.4.3). An arm64-only device skips them.
+- An ABI counts only when the release has both its APK and its `.sha256`. Half a pair is skipped
+  for the device's next ABI.
+- **Known gap, not reachable today.** If a release ever had only `s1-kiosk-<version>.apk`, an arm64
+  device that runs 32-bit code and has the arm64 APK installed would update to the 32-bit APK. That
+  moves the app to slower 32-bit code until a release has an arm64 APK again. `release.yml` publishes
+  every ABI's APK in one `gh release create`, after all of them are built and checked, so a release
+  has all of them or none. Keep it that way, or make the app prefer the ABI it is running.
 - A device whose ABIs the app is not built for (x86_64) gets no offer, and the update entity says why.
 - Adding an ABI means adding it to `s1Abis` in `app/kiosk/build.gradle.kts`, to `ApkAbi`, and to
   `ABIS` in both workflows. `ApkAbiListsTest` fails if they disagree.

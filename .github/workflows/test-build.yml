@@ -129,11 +129,12 @@ jobs:
             echo "### Signed test build"
             echo "Commit \`$GITHUB_SHA\` on \`$GITHUB_REF_NAME\`, built as **$VERSION** (installs over that release; no radio bundle)."
           } >> "$GITHUB_STEP_SUMMARY"
+          # The release's names (Releases.kt ApkAbi.apkName) with "test" and the commit (ApkAbiListsTest runs this line).
+          apk_name() { if [ "$1" = armeabi-v7a ]; then echo "s1-kiosk-test-$VERSION-$SHORT_SHA.apk"; else echo "s1-kiosk-test-$1-$VERSION-$SHORT_SHA.apk"; fi; }
           for abi in $ABIS; do
-            # The S1's names have no ABI in them, as in the release (s1-kiosk-<version>.apk).
-            if [ "$abi" = armeabi-v7a ]; then tag=""; else tag="$abi-"; fi
+            if [ "$abi" = armeabi-v7a ]; then tag=""; else tag="$abi-"; fi   # artifact name, as the upload steps below
             mkdir -p "dist/$abi"
-            apk="dist/$abi/s1-kiosk-test-$tag$VERSION-$SHORT_SHA.apk"
+            apk="dist/$abi/$(apk_name "$abi")"
             cp "$RUNNER_TEMP/apk/$abi.apk" "$apk"
             "$apksigner" verify --print-certs "$apk"
             tools/release/check-update-compat.sh --signed "$apk"   # installs over the panel's app
