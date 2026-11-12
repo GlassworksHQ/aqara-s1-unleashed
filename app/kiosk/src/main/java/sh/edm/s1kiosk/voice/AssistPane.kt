@@ -141,6 +141,8 @@ class AssistPane(
         watchdog = null
         input?.stop()
         input = null
+        // The server outlives the panes by a moment while the panel stops: take the stopped controller back.
+        server?.let { if (it.voice === controller) it.voice = null }
         controller = null
         server = null
     }

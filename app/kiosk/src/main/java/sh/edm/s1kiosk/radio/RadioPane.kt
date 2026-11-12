@@ -13,6 +13,7 @@ import sh.edm.esphome.TextSensorEntity
 import sh.edm.s1kiosk.BuildConfig
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.auth.HaAuth
+import sh.edm.s1kiosk.auth.ThreadFetch
 import sh.edm.s1kiosk.auth.ThreadJoin
 
 /**
@@ -96,16 +97,19 @@ class RadioPane(
 
     override fun entities(): List<ApiEntity> = entities
 
+    private val deliverToRadio: (ThreadFetch.Ok) -> String? = { r -> radio.joinThreadNetwork(r.tlv) }
+
     override fun start() {
         runtime.radio = radio
-        HaAuth.threadJoin.deliver = { r -> radio.joinThreadNetwork(r.tlv) }
+        HaAuth.threadJoin.deliver = deliverToRadio
         HaAuth.threadJoin.addListener(threadJoinListener)
         radio.start()
     }
 
     override fun stop() {
         HaAuth.threadJoin.removeListener(threadJoinListener)
-        HaAuth.threadJoin.deliver = null
+        // Both are process-wide: clear them only while they are still this pane's.
+        if (HaAuth.threadJoin.deliver === deliverToRadio) HaAuth.threadJoin.deliver = null
         if (runtime.radio === radio) runtime.radio = null
         radio.stop()
     }

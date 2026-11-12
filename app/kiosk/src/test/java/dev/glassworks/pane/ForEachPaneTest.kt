@@ -65,6 +65,48 @@ class ForEachPaneTest {
         assertTrue(logs.isEmpty())
     }
 
+    private class Stopper(override val id: String, private val throwOnStop: Throwable? = null) : Pane {
+        var stopped = false
+        var interruptedWhenStopped = false
+        override fun stop() {
+            interruptedWhenStopped = Thread.currentThread().isInterrupted
+            stopped = true
+            if (throwOnStop is InterruptedException) Thread.currentThread().interrupt()
+            throwOnStop?.let { throw it }
+        }
+    }
+
+    @Test fun stopAllStopsEveryPaneWhenOneIsInterrupted() {
+        val first = Stopper("first")
+        val interrupted = Stopper("interrupted", InterruptedException())
+        val broken = Stopper("broken", IllegalStateException("boom"))
+        val last = Stopper("last")
+
+        val wasInterrupted = listOf(first, interrupted, broken, last).stopAll()
+
+        assertTrue(listOf(first, interrupted, broken, last).all { it.stopped })
+        assertTrue("the panes after the interrupted one stop without the flag set", !broken.interruptedWhenStopped && !last.interruptedWhenStopped)
+        assertTrue("the caller learns about the interruption", wasInterrupted)
+        assertTrue("the flag is left for the caller to set when its shutdown is done", !Thread.interrupted())
+        assertEquals(listOf("pane broken failed in stop"), logs.map { it.first })
+    }
+
+    @Test fun anInterruptAlreadyPendingDoesNotCutTheFirstStopShort() {
+        val first = Stopper("first")
+        Thread.currentThread().interrupt()
+
+        val wasInterrupted = listOf(first).stopAll()
+
+        assertTrue(!first.interruptedWhenStopped)
+        assertTrue(wasInterrupted)
+        assertTrue(!Thread.interrupted())
+    }
+
+    @Test fun stopAllReportsNoInterruptionWhenThereWasNone() {
+        assertTrue(!listOf(Stopper("a"), Stopper("b")).stopAll())
+        assertTrue(!Thread.interrupted())
+    }
+
     @Test fun nothingIsLoggedWhenEveryPaneSucceeds() {
         val panes = listOf(Recorder("a"), Recorder("b"))
         panes.forEachPane("onEvent") { it.onEvent(PanelEvent.SpeakerClaimed(true)) }

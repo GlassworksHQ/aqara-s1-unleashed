@@ -277,6 +277,26 @@ class AssistPaneTest {
         assertSame(input.controller, server.voice)
     }
 
+    @Test
+    fun stopTakesTheControllerBackFromTheServer() {
+        val p = started()
+        val server = ApiServer(0, { error("unused") }, emptyList(), null as ByteArray?)
+        p.bind(server)
+        p.stop()
+        assertNull(server.voice)
+    }
+
+    @Test
+    fun stopLeavesAVoiceHandlerItDidNotSet() {
+        val p = started()
+        val server = ApiServer(0, { error("unused") }, emptyList(), null as ByteArray?)
+        p.bind(server)
+        val other = started()
+        other.bind(server)
+        p.stop()
+        assertSame("the handler bound later stays", input.controller, server.voice)
+    }
+
     // ---- timers
 
     @Test

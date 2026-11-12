@@ -7,6 +7,7 @@ import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PanelEvent
 import dev.glassworks.pane.forEachPane
+import dev.glassworks.pane.stopAll
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -140,7 +141,7 @@ class PanelDevice(
         HaAuth.removeListener(authListener)
         Dashboards.removeListener(dashboardsListener)
         // Panes first, while esphome-main still runs: the wall base's thread can still post to it.
-        panes.forEachPane("stop") { it.stop() }
+        val interrupted = panes.stopAll()
         panes = emptyList()
         assist = null
         exec.shutdownNow()
@@ -152,11 +153,23 @@ class PanelDevice(
         mediaPlayer.release()
         chimePlayer?.release()
         releaseLocks()
+        // Passed on only now, so no step of the shutdown above is cut short by it.
+        if (interrupted) Thread.currentThread().interrupt()
     }
 
     // ------------------------------------------------------------------ setup
 
-    private fun startInternal() {
+    /**
+     * Runs [block] unless [stop] has begun, and returns whether it ran. [stop] takes the same lock to
+     * set [stopped], so it waits for a step that is running and then stops what that step started.
+     */
+    private fun unlessStopped(block: () -> Unit): Boolean = synchronized(lifecycle) {
+        if (stopped) false else { block(); true }
+    }
+
+    /** esphome-main. Each step checks [stopped], so a [stop] during startup leaves nothing running. */
+    internal fun startInternal() {
+        if (synchronized(lifecycle) { stopped }) return
         val id = DeviceIdentity(
             name = NAME,
             friendlyName = FRIENDLY_NAME,
@@ -168,8 +181,7 @@ class PanelDevice(
             voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
         )
         EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${voiceEnabled}")
-        initEntities(id, WallBasePane.wantedConfig(prefs))
-        acquireLocks()
+        if (!unlessStopped { initEntities(id, WallBasePane.wantedConfig(prefs)); acquireLocks() }) return
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
         voicePlayer.onStateChanged = {
@@ -177,16 +189,17 @@ class PanelDevice(
             exec.execute { server?.publishStates() }
         }
 
-        panes.forEachPane("start") { it.start() }
-        timeZone.start()
-        updates.start()
+        panes.forEachPane("start") { pane -> unlessStopped { pane.start() } }
+        if (!unlessStopped { timeZone.start(); updates.start() }) return
         startServer()
-        prefs.registerListener(prefListener)
-        ScreenController.addListener(screenListener)
-        HaAuth.addListener(authListener)
-        Dashboards.addListener(dashboardsListener)
-        exec.scheduleWithFixedDelay({ checkDashboards() }, 2, 2, TimeUnit.SECONDS)
-        exec.scheduleWithFixedDelay({ server?.publishStates() }, 5, 5, TimeUnit.SECONDS)
+        unlessStopped {
+            prefs.registerListener(prefListener)
+            ScreenController.addListener(screenListener)
+            HaAuth.addListener(authListener)
+            Dashboards.addListener(dashboardsListener)
+            exec.scheduleWithFixedDelay({ checkDashboards() }, 2, 2, TimeUnit.SECONDS)
+            exec.scheduleWithFixedDelay({ server?.publishStates() }, 5, 5, TimeUnit.SECONDS)
+        }
     }
 
     /**
@@ -320,9 +333,11 @@ class PanelDevice(
             return
         }
         // stop() may have run while this start was in flight: then the server must not outlive it.
-        val kept = synchronized(lifecycle) { if (stopped) false else { server = s; true } }
-        if (!kept) { s.stop(); return }
-        mdns.start(identity, s.localPort, encrypted = s.encrypted, provisionable = s.provisionable)
+        val kept = unlessStopped {
+            server = s
+            mdns.start(identity, s.localPort, encrypted = s.encrypted, provisionable = s.provisionable)
+        }
+        if (!kept) s.stop()
     }
 
     private fun readvertise() {
