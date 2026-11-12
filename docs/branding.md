@@ -34,9 +34,9 @@ Device-specific code lives in the frame, so it doesn't get a badge of its own.
 
 ## Licence, status and roadmap
 
-Use the Glassworks info badges, not shields.io: `badge-license`, `badge-status-works-today`,
-`badge-status-in-progress`, `badge-status-planned` and `badge-roadmap`, each as `-on-dark.svg` and
-`-on-light.svg`. They're on [/brand#info](https://www.glassworks.dev/brand#info), with a README snippet.
+Use the Glassworks info badges, not shields.io: `badge-license`, `badge-roadmap`, and one status
+badge for the stage the project is at: `badge-status-under-development`, `badge-status-alpha`,
+`badge-status-beta` or `badge-status-stable`. Each comes as `-on-dark.svg` and `-on-light.svg`. They're on [/brand#info](https://www.glassworks.dev/brand#info), with a README snippet.
 They sit on the same field as the part badges, so a header reads as one set. If you need one that
 isn't there, add it to the generator. Only a live value, such as the latest release version, still
 needs shields.io or a release link.
