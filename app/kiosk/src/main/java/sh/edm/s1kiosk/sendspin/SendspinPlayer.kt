@@ -370,9 +370,10 @@ class SendspinPlayer(
 
     private fun audioLoop(r: Run) {
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+        val owns = { current === r }
         try {
-            while (current === r) {
-                if (!scheduler.step()) scheduler.awaitWork(200)
+            while (owns()) {
+                if (!scheduler.step(owns)) scheduler.awaitWork(200)
             }
         } catch (_: InterruptedException) {
         } catch (t: Throwable) {

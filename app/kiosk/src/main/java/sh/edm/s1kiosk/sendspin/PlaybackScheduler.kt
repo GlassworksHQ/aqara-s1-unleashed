@@ -237,8 +237,10 @@ class PlaybackScheduler(
 
     /**
      * Writes one block to the sink (audio thread). Returns false when idle (nothing written).
+     *
+     * [owns]: whether the calling audio thread still owns the output.
      */
-    fun step(): Boolean {
+    fun step(owns: () -> Boolean = { true }): Boolean {
         val f: SsFormat?
         var close = false
         synchronized(lock) {
