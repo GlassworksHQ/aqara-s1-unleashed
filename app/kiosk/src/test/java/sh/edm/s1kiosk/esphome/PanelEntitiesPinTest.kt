@@ -45,8 +45,9 @@ class PanelEntitiesPinTest {
 
     /** Voice off keeps the same entities: Home Assistant would drop the voice ones otherwise. */
     @Test fun voiceOffKeepsTheSameEntities() {
+        if (System.getProperty("s1.regenGolden") == "true") return
         KioskPrefs(RuntimeEnvironment.getApplication()).voiceEnabled = false
-        assertEquals(describe(realEntityList()), javaClass.getResourceAsStream("/$GOLDEN")?.bufferedReader()?.readText())
+        assertEquals(javaClass.getResourceAsStream("/$GOLDEN")?.bufferedReader()?.readText(), describe(realEntityList()))
     }
 
     private fun realEntityList(): List<ApiEntity> {
