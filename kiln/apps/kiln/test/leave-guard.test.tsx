@@ -37,6 +37,27 @@ describe('LeaveGuard', () => {
     expect(release).toHaveBeenCalled();
   });
 
+  it('takes the wake lock again when the page comes back during a write', async () => {
+    const locks: { released: boolean; release: () => Promise<void> }[] = [];
+    const request = vi.fn(async () => { const l = { released: false, release: async () => { l.released = true; } }; locks.push(l); return l; });
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } });
+    const store = new Store(initial());
+    registry.set({ base: '/aqara-s1-plus', name: 'Aqara S1 Plus', session: { store, close: () => {} } as never });
+    render(<LeaveGuard />);
+    act(() => {
+      store.dispatch({ type: 'start', flow: 'install', now: 0 });
+      store.dispatch({ type: 'progress', p: { overall: 0.7, phase: 'flash', phasePct: 0.3, title: 'Writing the new software', sub: '' } });
+    });
+    await act(() => Promise.resolve());
+    expect(request).toHaveBeenCalledTimes(1);
+    const visibility = (v: string) => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: v }); document.dispatchEvent(new Event('visibilitychange')); };
+    locks[0]!.released = true; // the browser drops it when the tab is hidden
+    visibility('hidden');
+    visibility('visible');
+    await act(() => Promise.resolve());
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
   it('follows a new session', () => {
     render(<LeaveGuard />);
     const store = new Store(initial());

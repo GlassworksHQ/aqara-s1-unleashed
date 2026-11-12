@@ -26,8 +26,19 @@ export function LeaveGuard() {
     addEventListener('beforeunload', warn);
     let lock: WakeLockSentinel | undefined;
     let gone = false;
-    navigator.wakeLock?.request('screen').then((l) => { if (gone) void l.release(); else lock = l; }, () => {});
-    return () => { gone = true; removeEventListener('beforeunload', warn); void lock?.release(); };
+    const acquire = () => {
+      navigator.wakeLock?.request('screen').then((l) => { if (gone) void l.release(); else lock = l; }, () => {});
+    };
+    // The browser lets go of the lock when the tab is hidden; take it again on the way back.
+    const back = () => { if (document.visibilityState === 'visible' && (!lock || lock.released)) acquire(); };
+    acquire();
+    document.addEventListener('visibilitychange', back);
+    return () => {
+      gone = true;
+      removeEventListener('beforeunload', warn);
+      document.removeEventListener('visibilitychange', back);
+      void lock?.release();
+    };
   }, [writing]);
   return null;
 }
