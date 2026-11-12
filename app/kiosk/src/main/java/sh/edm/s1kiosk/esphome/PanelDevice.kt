@@ -242,7 +242,13 @@ class PanelDevice(
      */
     internal fun initEntities(identity: DeviceIdentity, baseConfig: WallBase.Config): WallBase {
         this.identity = identity
-        val paneContext = PaneContext(ctx, prefs, identity, publishStates = { runCatching { exec.execute { server?.publishStates() } } }, emit = ::emit)
+        val paneContext = PaneContext(
+            ctx, prefs, identity,
+            publishStates = { runCatching { exec.execute { server?.publishStates() } } },
+            emit = ::emit,
+            entitiesChanged = { runCatching { exec.execute { rebuildEntities() } } },
+            sendEvent = { entity, type -> runCatching { exec.execute { server?.sendEvent(entity, type) } } },
+        )
         val assistPane = AssistPane(
             paneContext,
             voiceEnabled,
@@ -401,7 +407,7 @@ class PanelDevice(
     }
 
     private fun checkDashboards() {
-        val base = wallBase ?: return
+        if (wallBase == null) return
         val list = Dashboards.latest ?: appliedDashboards
         val wanted = dashboardOptions(list)
         val now = android.os.SystemClock.elapsedRealtime()
@@ -414,6 +420,12 @@ class PanelDevice(
         adoptDashboards(list)
         dashboardRebuild.markApplied(due, now)
         EspHomeLog.i("Dashboard options changed (${due.size}); rebuilding the entity list")
+        rebuildEntities()
+    }
+
+    /** esphome-main: the entity list from the core and every pane again, given to Home Assistant. */
+    private fun rebuildEntities() {
+        val base = wallBase ?: return
         entities = assemble(base, base.tracker.applied())
         server?.setEntities(entities)
     }
