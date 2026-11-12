@@ -116,6 +116,8 @@ dependencies {
 // --tests '*RadioMockups*' -Ps1MockupDir=<dir>. Without the property it is skipped.
 tasks.withType<Test>().configureEach {
     (project.findProperty("s1MockupDir") as String?)?.let { systemProperty("s1.mockupDir", it) }
+    // PanelEntitiesPinTest rewrites its golden file with -Ps1RegenGolden=true.
+    (project.findProperty("s1RegenGolden") as String?)?.let { systemProperty("s1.regenGolden", it) }
 }
 
 // Open source licences screen (hidden settings → "Open source licences"): the repo's

@@ -198,7 +198,7 @@ class PanelDevice(
     // ------------------------------------------------------------------ setup
 
     private fun startInternal() {
-        identity = DeviceIdentity(
+        val id = DeviceIdentity(
             name = NAME,
             friendlyName = FRIENDLY_NAME,
             macAddress = stableMac(),
@@ -208,20 +208,14 @@ class PanelDevice(
             model = "Panel Hub S1 Plus (S1 Kiosk)",
             voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
         )
-        EspHomeLog.i("ESPHome device '${identity.name}' mac ${identity.macAddress}, voice=${voiceEnabled}")
-        sendspin = SendspinPlayer(ctx, prefs, identity.macAddress) { exec.execute { server?.publishStates() } }
-        coreEntities = buildEntities()
-        appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
-        dashboardRebuild = StableChange(dashboardOptions(appliedDashboards))
+        EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${voiceEnabled}")
         val baseConfig = wantedBaseConfig()
         if (baseConfig.backend == BaseBackend.UART) {
             // ha_master grabbed /dev/ttyS3 at boot: stop it *before* the UART link opens the port
             // (the link's port guard also refuses to open it while init reports it running).
             applyAqaraCloud("startup, before opening the wall base port", baseConfig.backend)
         }
-        val base = WallBase(ctx, BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE, baseListener, baseConfig)
-        wallBase = base
-        entities = assemble(base, base.tracker.applied())
+        val base = initEntities(id, baseConfig)
         acquireLocks()
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
@@ -250,6 +244,24 @@ class PanelDevice(
             exec.schedule({ applyAqaraCloud("startup") }, 20, TimeUnit.SECONDS)
         }
     }
+
+    /**
+     * The entity list Home Assistant gets at start, built without starting anything (the entity pin
+     * test calls it too). esphome-main; returns the wall base, which [startInternal] then starts.
+     */
+    internal fun initEntities(identity: DeviceIdentity, baseConfig: WallBase.Config): WallBase {
+        this.identity = identity
+        sendspin = SendspinPlayer(ctx, prefs, identity.macAddress) { exec.execute { server?.publishStates() } }
+        coreEntities = buildEntities()
+        appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
+        dashboardRebuild = StableChange(dashboardOptions(appliedDashboards))
+        val base = WallBase(ctx, BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE, baseListener, baseConfig)
+        wallBase = base
+        entities = assemble(base, base.tracker.applied())
+        return base
+    }
+
+    internal fun entityList(): List<ApiEntity> = entities
 
     // ------------------------------------------------------------------ wall base backend
 
