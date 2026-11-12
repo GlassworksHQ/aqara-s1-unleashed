@@ -111,6 +111,7 @@ class PrefsPinTest {
         kiosk.auth = null
         kiosk.noiseKeyStore.save(ByteArray(32))
         kiosk.noiseKeyStore.save(null)
+        KioskPrefs.PANE_FILES.keys.forEach(kiosk::paneFile)
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> }
         kiosk.registerListener(listener)
         kiosk.unregisterListener(listener)
@@ -233,7 +234,7 @@ class PrefsPinTest {
 
         /** Methods with arguments that [exerciseComposite] calls by hand, by class suffix and name. */
         val COMPOSITE = setOf(
-            "KioskPrefs.setHaUrl", "KioskPrefs.setAuth", "KioskPrefs.registerListener", "KioskPrefs.unregisterListener",
+            "KioskPrefs.setHaUrl", "KioskPrefs.setAuth", "KioskPrefs.paneFile", "KioskPrefs.registerListener", "KioskPrefs.unregisterListener",
             ".save", "PrefsSsStore.putRecord", "PrefsSsStore.touchRecord", "PrefsSsStore.removeRecord",
         )
     }

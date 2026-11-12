@@ -10,7 +10,6 @@ import sh.edm.esphome.EventEntity
 import sh.edm.esphome.SwitchEntity
 import sh.edm.esphome.TextSensorEntity
 import sh.edm.s1kiosk.AqaraCloud
-import sh.edm.s1kiosk.KioskPrefs
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
@@ -29,10 +28,10 @@ class WallBasePane(
 ) : Pane {
     override val id = "wall-base"
 
-    private val prefs = ctx.prefs
+    private val prefs = WallBasePrefs(ctx.prefs(id))
     /** What [WallBase] reports to; internal so a test can play the base. */
     internal val baseListener: WallBase.Listener = Listener()
-    private val base = WallBase(ctx.context, BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE, baseListener, config)
+    private val base = WallBase(ctx.context, BaseLayout.decode(prefs.layout) ?: BaseLayout.NONE, baseListener, config)
 
     /** The layout whose entities Home Assistant has (set before [PaneContext.entitiesChanged]). */
     @Volatile private var layout: BaseLayout = base.tracker.applied()
@@ -75,7 +74,7 @@ class WallBasePane(
     override fun onEvent(event: PanelEvent) {
         if (event !is PanelEvent.SettingChanged) return
         when (event.key) {
-            KioskPrefs.KEY_BLOCK_AQARA_CLOUD, KioskPrefs.KEY_BASE_BACKEND, KioskPrefs.KEY_BASE_TRANSPORT ->
+            WallBasePrefs.KEY_BLOCK_AQARA_CLOUD, WallBasePrefs.KEY_BACKEND, WallBasePrefs.KEY_TRANSPORT ->
                 device.execute { reconfigure("setting ${event.key} changed") }
         }
     }
@@ -107,7 +106,7 @@ class WallBasePane(
             !prefs.blockAqaraCloud -> true
             else -> {
                 // LocalService backend: the base link goes through ha_master.
-                val current = base.tracker.current() ?: BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE
+                val current = base.tracker.current() ?: BaseLayout.decode(prefs.layout) ?: BaseLayout.NONE
                 current.kind == BaseKind.SWITCH || current.kind == BaseKind.UNKNOWN
             }
         }
@@ -129,7 +128,7 @@ class WallBasePane(
 
         override fun onLayout(layout: BaseLayout) {
             this@WallBasePane.layout = layout
-            prefs.baseLayout = layout.encode()
+            prefs.layout = layout.encode()
             ctx.entitiesChanged()
             // Queued after the rebuild, as before: Home Assistant gets the new entities first.
             device.execute { applyAqaraCloud("wall base ${layout.kind}") }
@@ -157,7 +156,7 @@ class WallBasePane(
         }
 
         /** The backend and transport the settings ask for. */
-        fun wantedConfig(prefs: KioskPrefs): WallBase.Config =
-            WallBase.Config(BaseBackend.resolve(prefs.baseBackend, prefs.blockAqaraCloud), prefs.baseTransport, ttyGuard)
+        fun wantedConfig(prefs: WallBasePrefs): WallBase.Config =
+            WallBase.Config(BaseBackend.resolve(prefs.backend, prefs.blockAqaraCloud), prefs.transport, ttyGuard)
     }
 }

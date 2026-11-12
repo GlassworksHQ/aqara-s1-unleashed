@@ -256,7 +256,7 @@ class MainActivity : Activity() {
             pushState()
             timerOverlay.refresh()
         }
-        glassworks.onVoiceUi = { voiceOverlay.update(glassworks.voiceUi, prefs.voiceOverlay) }
+        glassworks.onVoiceUi = { voiceOverlay.update(glassworks.voiceUi, prefs.voice.overlay) }
         glassworks.commandSink = { applyIntent(it, fromNewIntent = true) }
         startSession()
         intent?.let { i -> handler.post { applySetupPreview(i) } }
@@ -336,13 +336,13 @@ class MainActivity : Activity() {
             usePanelLogin = usePanelLogin,
             showing = setupOverlay.isShowing && !setupPreview,
             radioStepDone = prefs.radioStepDone,
-            radioModeStored = prefs.radioMode != null,
+            radioModeStored = prefs.radio.mode != null,
             improv = ImprovController.setupFacts,
             installer = ImprovController.installerWifi,
             neverSetUp = SetupState.neverSetUp(
                 haKnown = prefs.haBase != null, haSeen = prefs.haSeen || SetupSignals.haSubscribed,
                 apiKeySet = prefs.apiEncryption, haSkipped = prefs.haSetupSkipped, radioStepDone = prefs.radioStepDone,
-                radioModeStored = prefs.radioMode != null, signedIn = HaAuth.signedIn,
+                radioModeStored = prefs.radio.mode != null, signedIn = HaAuth.signedIn,
             ),
         )
     }
@@ -404,7 +404,7 @@ class MainActivity : Activity() {
             improv = d.improv,
             installer = ImprovController.installerWifi,
             radio = SetupOverlay.Radio(
-                current = glassworks.radio?.mode ?: RadioMode.parse(prefs.radioMode),
+                current = glassworks.radio?.mode ?: RadioMode.parse(prefs.radio.mode),
                 applied = radioApplied,
                 busy = radioBusy,
                 facts = radioFacts(),
@@ -724,19 +724,19 @@ class MainActivity : Activity() {
             prefs.presenceRangeM = intent.getFloatExtra("presence_range_m", 0f)
             ScreenController.applyPresenceRange()
         }
-        if (intent.hasExtra("voice_enabled")) { prefs.voiceEnabled = intent.getBooleanExtra("voice_enabled", true); needsRestart = true }
+        if (intent.hasExtra("voice_enabled")) { prefs.voice.enabled = intent.getBooleanExtra("voice_enabled", true); needsRestart = true }
         // Applied live by PanelDevice (it listens to the prefs).
-        intent.getStringExtra("wake_model")?.let { prefs.wakeModel = it }
-        if (intent.hasExtra("wake_threshold")) prefs.wakeThreshold = intent.getFloatExtra("wake_threshold", 0.5f)
-        if (intent.hasExtra("mic_gain")) prefs.micGain = intent.getFloatExtra("mic_gain", 1f)
-        if (intent.hasExtra("mic_muted")) prefs.micMuted = intent.getBooleanExtra("mic_muted", false)
-        if (intent.hasExtra("sendspin_enabled")) prefs.sendspinEnabled = intent.getBooleanExtra("sendspin_enabled", true)
-        intent.getStringExtra("sendspin_server")?.let { prefs.sendspinServer = it }
-        if (intent.hasExtra("sendspin_unpaired_access")) prefs.sendspinUnpairedAccess = intent.getBooleanExtra("sendspin_unpaired_access", false)
-        if (intent.hasExtra("sendspin_flac")) prefs.sendspinFlac = intent.getBooleanExtra("sendspin_flac", true)
+        intent.getStringExtra("wake_model")?.let { prefs.voice.wakeModel = it }
+        if (intent.hasExtra("wake_threshold")) prefs.voice.wakeThreshold = intent.getFloatExtra("wake_threshold", 0.5f)
+        if (intent.hasExtra("mic_gain")) prefs.voice.micGain = intent.getFloatExtra("mic_gain", 1f)
+        if (intent.hasExtra("mic_muted")) prefs.voice.micMuted = intent.getBooleanExtra("mic_muted", false)
+        if (intent.hasExtra("sendspin_enabled")) prefs.sendspin.enabled = intent.getBooleanExtra("sendspin_enabled", true)
+        intent.getStringExtra("sendspin_server")?.let { prefs.sendspin.server = it }
+        if (intent.hasExtra("sendspin_unpaired_access")) prefs.sendspin.unpairedAccess = intent.getBooleanExtra("sendspin_unpaired_access", false)
+        if (intent.hasExtra("sendspin_flac")) prefs.sendspin.flac = intent.getBooleanExtra("sendspin_flac", true)
         // Wall base (docs/research/bases.md): auto|uart|localservice, and "" (/dev/ttyS3) or tcp:host:port (emulator).
-        intent.getStringExtra("base_backend")?.let { prefs.baseBackend = it }
-        intent.getStringExtra("base_transport")?.let { prefs.baseTransport = it }
+        intent.getStringExtra("base_backend")?.let { prefs.wallBase.backend = it }
+        intent.getStringExtra("base_transport")?.let { prefs.wallBase.transport = it }
         intent.getStringExtra("api_key")?.let { key ->
             if (KioskPrefs.decodeApiKey(key) != null) prefs.apiKey = key
             else Log.w(TAG, "api_key must be base64 of exactly 32 bytes; ignored")

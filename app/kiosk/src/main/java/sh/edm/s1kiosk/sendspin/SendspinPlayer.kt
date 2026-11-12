@@ -11,7 +11,6 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Process
 import sh.edm.s1kiosk.BuildConfig
-import sh.edm.s1kiosk.KioskPrefs
 import java.net.URI
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -133,7 +132,8 @@ class AudioTrackSink : AudioSink {
  */
 class SendspinPlayer(
     context: Context,
-    private val prefs: KioskPrefs,
+    private val prefs: SendspinPrefs,
+    private val haBase: () -> String?,
     private val macAddress: String,
     private val onStatusChanged: () -> Unit = {},
 ) {
@@ -163,7 +163,7 @@ class SendspinPlayer(
 
     /** FLAC first (spec: first is preferred), PCM as the fallback; PCM only when FLAC is off or failed. */
     private fun offeredFormats(): List<SsFormat> =
-        if (prefs.sendspinFlac && flacFailure == null && flacDecoder != null) listOf(SsFormat.FLAC_48K_STEREO_16, SsFormat.PCM_48K_STEREO_16)
+        if (prefs.flac && flacFailure == null && flacDecoder != null) listOf(SsFormat.FLAC_48K_STEREO_16, SsFormat.PCM_48K_STEREO_16)
         else listOf(SsFormat.PCM_48K_STEREO_16)
 
     /** Built per connection: the formats can change between connections. */
@@ -248,7 +248,7 @@ class SendspinPlayer(
 
     /** The `sendspin_flac` setting changed: switching it on also retries FLAC after a failure. */
     fun onFlacSettingChanged() {
-        if (prefs.sendspinFlac) { flacFailure = null; pipeline?.resetFlacFailure() }
+        if (prefs.flac) { flacFailure = null; pipeline?.resetFlacFailure() }
         onStatusChanged()
         restartSession()
     }
@@ -285,7 +285,7 @@ class SendspinPlayer(
                 if (!sleep(10_000)) break
                 continue
             }
-            val s = SendspinSession(url, store, hello(), { prefs.sendspinUnpairedAccess }, hooks)
+            val s = SendspinSession(url, store, hello(), { prefs.unpairedAccess }, hooks)
             session = s
             SsLog.i("Connecting to $url")
             val r = s.run()
@@ -359,11 +359,11 @@ class SendspinPlayer(
     // ------------------------------------------------------------------ server address
 
     private fun resolveUrl(): String? {
-        val setting = prefs.sendspinServer.trim()
-        if (!setting.equals(KioskPrefs.AUTO, ignoreCase = true) && setting.isNotEmpty()) return normalize(setting)
+        val setting = prefs.server.trim()
+        if (!setting.equals(SendspinPrefs.AUTO, ignoreCase = true) && setting.isNotEmpty()) return normalize(setting)
         lastUrl?.let { return it }
         discover()?.let { return it }
-        val host = prefs.haBase?.let { runCatching { URI(it).host }.getOrNull() } ?: return null
+        val host = haBase()?.let { runCatching { URI(it).host }.getOrNull() } ?: return null
         return "ws://${if (host.contains(':')) "[$host]" else host}:$DEFAULT_SERVER_PORT$DEFAULT_PATH"
     }
 

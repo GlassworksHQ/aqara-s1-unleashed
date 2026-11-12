@@ -122,18 +122,18 @@ class RadioPane(
     private companion object {
         fun newController(ctx: PaneContext, panelIp: () -> String?): RadioController {
             val app = ctx.context
-            val prefs = ctx.prefs
+            val prefs = RadioPrefs(ctx.prefs("radio"))
             return RadioController(
-                load = { prefs.radioMode },
-                store = { prefs.radioMode = it },
+                load = { prefs.mode },
+                store = { prefs.mode = it },
                 onChange = ctx.publishStates,
                 panelIp = panelIp,
                 filesDir = app.filesDir,
                 routerHostFactory = { onStatus ->
                     ZigbeeRouterHost(log = { Log.i(RadioController.TAG, it) }, onStatus = { onStatus() })
                 },
-                allow = prefs.radioAllowStore,
-                stackStore = prefs.radioStackStore,
+                allow = prefs,
+                stackStore = prefs,
                 bundle = RadioBundle(ShellProps, AssetBundleSource(app.assets), app.filesDir, log = { Log.i(RadioController.TAG, it) }),
                 zigbeedFetcher = { dest, progress ->
                     SisdkZigbeed.fetch(dest, app.cacheDir, "s1-kiosk/${BuildConfig.VERSION_NAME} (+https://github.com/GlassworksHQ/aqara-s1-unleashed)", progress)

@@ -91,7 +91,7 @@ class PanelDevice(
     private val exec: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "esphome-main").apply { isDaemon = true } }
     private val mdns = EspHomeMdns(ctx, board = "aqara-s1-plus")
-    private val voiceEnabled = prefs.voiceEnabled
+    private val voiceEnabled = prefs.voice.enabled
 
     private var server: ApiServer? = null
     /** Guards [stopped] and the hand-over of [server] between [startServer] and [stop]. */
@@ -181,7 +181,7 @@ class PanelDevice(
             voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
         )
         EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${voiceEnabled}")
-        if (!unlessStopped { initEntities(id, WallBasePane.wantedConfig(prefs)); acquireLocks() }) return
+        if (!unlessStopped { initEntities(id, WallBasePane.wantedConfig(prefs.wallBase)); acquireLocks() }) return
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
         voicePlayer.onStateChanged = {
@@ -209,7 +209,7 @@ class PanelDevice(
     internal fun initEntities(identity: DeviceIdentity, baseConfig: WallBase.Config) {
         this.identity = identity
         val paneContext = PaneContext(
-            ctx, prefs, identity,
+            ctx, prefs::paneFile, identity,
             publishStates = { runCatching { exec.execute { server?.publishStates() } } },
             emit = ::emit,
             entitiesChanged = { runCatching { exec.execute { rebuildEntities() } } },
@@ -227,7 +227,7 @@ class PanelDevice(
         )
         assist = assistPane
         panes = listOfNotNull(
-            SendspinPane(paneContext),
+            SendspinPane(paneContext, haBase = { prefs.haBase }),
             assistPane,
             // Timers only come from the voice assistant.
             if (voiceEnabled) {
