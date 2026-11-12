@@ -26,10 +26,10 @@ class VoiceEngine(
     private val config: VoiceConfig,
     initialModel: String,
     private val onActiveModelChanged: (String) -> Unit,
-) : WakeWordCatalog {
+) : VoiceInput {
 
-    @Volatile var controller: VoiceAssistantController? = null
-    @Volatile var threshold: Float = config.threshold
+    @Volatile override var controller: VoiceAssistantController? = null
+    @Volatile override var threshold: Float = config.threshold
 
     private val modelsDir: File = config.resolveModelsDir(context.applicationContext)
     private val exec: ScheduledExecutorService =
@@ -52,9 +52,9 @@ class VoiceEngine(
     private var slowFrames = 0
 
     /** Errors for the UI (models missing, mic failure). Background thread. */
-    @Volatile var onError: ((String) -> Unit)? = null
+    @Volatile override var onError: ((String) -> Unit)? = null
 
-    fun start(muted: Boolean) {
+    override fun start(muted: Boolean) {
         running = true
         this.muted = muted
         exec.execute { loadModel() }
@@ -62,7 +62,7 @@ class VoiceEngine(
         if (!muted) exec.execute { startMic() }
     }
 
-    fun stop() {
+    override fun stop() {
         running = false
         exec.shutdownNow()
         mic?.stop()
@@ -70,14 +70,14 @@ class VoiceEngine(
         synchronized(wwLock) { wakeWord?.close(); wakeWord = null }
     }
 
-    fun setMuted(m: Boolean) {
+    override fun setMuted(m: Boolean) {
         if (m == muted || !running) return
         muted = m
         VoiceLog.i("Microphone ${if (m) "muted (released)" else "unmuted"}")
         exec.execute { if (m) stopMic() else startMic() }
     }
 
-    fun setGain(g: Float) {
+    override fun setGain(g: Float) {
         gain = g
         mic?.gain = g
     }

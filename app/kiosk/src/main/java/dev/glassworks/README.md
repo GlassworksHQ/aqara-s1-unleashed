@@ -36,8 +36,8 @@ change until Glassworks v1.
 | Type | What it is |
 |---|---|
 | `Pane` | A feature: its Home Assistant entities, `start`/`stop`, and what it does when the panel changes. |
-| `PaneContext` | What the core gives a pane: the app context, settings, the device identity and `publishStates()`. |
-| `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished. |
+| `PaneContext` | What the core gives a pane: the app context, settings, the device identity, `publishStates()` and `emit()`. |
+| `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished. A pane raises one with `PaneContext.emit`. |
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
 
 ## Writing a pane
@@ -68,7 +68,9 @@ class MusicPane(ctx: PaneContext) : Pane {
 `PanelEvent` is an open interface. A pane handles the events it cares about and ignores the rest
 (`else -> Unit`), so a new event does not touch the panes that do not use it. A pane does not have
 to add entities: [`TimersPane.kt`](../../sh/edm/s1kiosk/timers/TimersPane.kt) has none and only
-reacts to `TimersChanged` and `TimerFinished`.
+reacts to `TimersChanged` and `TimerFinished`. The voice assistant
+([`AssistPane.kt`](../../sh/edm/s1kiosk/voice/AssistPane.kt)) is the pane that raises those: it calls
+`ctx.emit(PanelEvent.TimerFinished(name))`, and `SpeakerClaimed` while it listens and talks.
 
 Entities come from [esphome-api](../../../../../../libs/esphome-api/README.md). Home Assistant
 keys them by object id, so an object id is permanent: renaming one makes a new entity in every
