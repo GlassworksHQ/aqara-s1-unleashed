@@ -82,16 +82,28 @@ class ForEachPaneTest {
         val broken = Stopper("broken", IllegalStateException("boom"))
         val last = Stopper("last")
 
-        listOf(first, interrupted, broken, last).stopAll()
+        val wasInterrupted = listOf(first, interrupted, broken, last).stopAll()
 
         assertTrue(listOf(first, interrupted, broken, last).all { it.stopped })
         assertTrue("the panes after the interrupted one stop without the flag set", !broken.interruptedWhenStopped && !last.interruptedWhenStopped)
-        assertTrue("the caller still sees the interruption", Thread.interrupted())
+        assertTrue("the caller learns about the interruption", wasInterrupted)
+        assertTrue("the flag is left for the caller to set when its shutdown is done", !Thread.interrupted())
         assertEquals(listOf("pane broken failed in stop"), logs.map { it.first })
     }
 
-    @Test fun stopAllLeavesTheFlagAloneWhenNothingIsInterrupted() {
-        listOf(Stopper("a"), Stopper("b")).stopAll()
+    @Test fun anInterruptAlreadyPendingDoesNotCutTheFirstStopShort() {
+        val first = Stopper("first")
+        Thread.currentThread().interrupt()
+
+        val wasInterrupted = listOf(first).stopAll()
+
+        assertTrue(!first.interruptedWhenStopped)
+        assertTrue(wasInterrupted)
+        assertTrue(!Thread.interrupted())
+    }
+
+    @Test fun stopAllReportsNoInterruptionWhenThereWasNone() {
+        assertTrue(!listOf(Stopper("a"), Stopper("b")).stopAll())
         assertTrue(!Thread.interrupted())
     }
 

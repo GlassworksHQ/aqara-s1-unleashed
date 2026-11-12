@@ -141,7 +141,7 @@ class PanelDevice(
         HaAuth.removeListener(authListener)
         Dashboards.removeListener(dashboardsListener)
         // Panes first, while esphome-main still runs: the wall base's thread can still post to it.
-        panes.stopAll()
+        val interrupted = panes.stopAll()
         panes = emptyList()
         assist = null
         exec.shutdownNow()
@@ -153,6 +153,8 @@ class PanelDevice(
         mediaPlayer.release()
         chimePlayer?.release()
         releaseLocks()
+        // Passed on only now, so no step of the shutdown above is cut short by it.
+        if (interrupted) Thread.currentThread().interrupt()
     }
 
     // ------------------------------------------------------------------ setup
@@ -179,8 +181,7 @@ class PanelDevice(
             voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
         )
         EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${voiceEnabled}")
-        initEntities(id, WallBasePane.wantedConfig(prefs))
-        acquireLocks()
+        if (!unlessStopped { initEntities(id, WallBasePane.wantedConfig(prefs)); acquireLocks() }) return
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
         voicePlayer.onStateChanged = {
@@ -332,9 +333,11 @@ class PanelDevice(
             return
         }
         // stop() may have run while this start was in flight: then the server must not outlive it.
-        val kept = synchronized(lifecycle) { if (stopped) false else { server = s; true } }
-        if (!kept) { s.stop(); return }
-        mdns.start(identity, s.localPort, encrypted = s.encrypted, provisionable = s.provisionable)
+        val kept = unlessStopped {
+            server = s
+            mdns.start(identity, s.localPort, encrypted = s.encrypted, provisionable = s.provisionable)
+        }
+        if (!kept) s.stop()
     }
 
     private fun readvertise() {
