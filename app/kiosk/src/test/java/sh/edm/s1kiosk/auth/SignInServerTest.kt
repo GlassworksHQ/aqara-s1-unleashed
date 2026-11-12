@@ -157,7 +157,7 @@ class SignInServerTest {
     @Test
     fun aLoopbackListenerOnTheNextPortsDoesNotAnswerForTheServer() {
         val next = ServerSocket(0).use { it.localPort }
-        val squatters = (next + 1..next + 20).mapNotNull { p ->
+        val squatters = (next + 1..minOf(next + 20, 65535)).mapNotNull { p ->
             try {
                 HttpServer.create(InetSocketAddress(loopback, p), 0).apply {
                     createContext("/") { ex -> ex.sendResponseHeaders(200, -1); ex.close() }
