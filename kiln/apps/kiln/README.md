@@ -28,14 +28,23 @@ app has done a full install on a real panel from a Vercel preview (#27).
 | `/aqara-s1-plus/done` | Done, with the backup to download | goes to `/aqara-s1-plus` |
 | `/aqara-s1-plus/undo` | Undo: how far back, which backup | shows Undo |
 | `/aqara-s1-plus/undo/connect`, `/undo/restore`, `/undo/done` | Undo's recovery mode, writing, and done | go to `/aqara-s1-plus/undo` |
-| `/aqara-s1-plus/resume` | An alias of `/set-up` | — |
+| `/aqara-s1-plus/resume` | An alias of `/set-up` (s1.edm.sh's `#/resume`) | as `/set-up`: connects to an installed panel; the address then becomes `/aqara-s1-plus/set-up` |
 | `/api/release-asset` | Streams an S1 Kiosk release APK from GitHub Releases (no CORS there) | — |
 
 The session is the truth and the address bar follows it (`src/wizard/routes.ts`, `useRouteSync.ts`).
 A route never starts or repeats a flow: while something runs (USB work, a picker, the app going in),
 any other route of the frame shows the running step, and leaving for the picker keeps it running
 (the picker shows "Back to it"). A route that starts something new once the last flow finished gets
-a new session. Kiln's own links are client-side (`next/link`), so they never cut an install short.
+a new session, and the old one lets go of the panel (`Session.close`: the Home Assistant poll, the
+app's channels, adb). A Home Assistant sign-in waiting on its tab counts as running. Kiln's own links
+are client-side (`next/link`), so they never cut an install short; the leave-page warning and the
+screen wake lock (`components/LeaveGuard.tsx`, in the root layout) follow a write onto every route,
+the picker included.
+
+When a run stops with an error and the person moves on (Try again, another route, a new install),
+Kiln keeps that failure until the next run starts: the picker and Connect say "The last run stopped:
+…" with **Download its log**, a text file with what happened, the error and the technical log
+(`wizard/registry.ts`). Nothing else keeps it, and a reload drops it.
 
 ## How it fits together
 

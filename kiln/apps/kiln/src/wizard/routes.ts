@@ -83,11 +83,13 @@ export function fits(s: WizardState, step: Step | undefined): boolean {
 export type Status = 'idle' | 'running' | 'finished';
 
 /**
- * running: something is happening that leaving would cut short (USB work, a picker, the app going in).
+ * running: something is happening that leaving would cut short (USB work, a picker, the app going in,
+ * a Home Assistant sign-in waiting on its tab).
  * finished: done or failed. idle: a screen waiting for the person (including the setup forms).
  */
 export function status(s: WizardState): Status {
-  if (s.busy || s.ask || s.screen === 'firing' || (s.screen === 'setup' && s.setup.phase === 'waiting')) return 'running';
+  if (s.busy || s.ask || s.screen === 'firing') return 'running';
+  if (s.screen === 'setup' && (s.setup.phase === 'waiting' || (s.setup.phase === 'ha' && s.setup.signingIn))) return 'running';
   if (s.screen === 'done' || s.screen === 'error') return 'finished';
   return 'idle';
 }

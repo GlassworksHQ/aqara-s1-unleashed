@@ -22,7 +22,8 @@ export type Setup =
       unreachable?: boolean;
       joining?: { ssid: string; step: 'sent' | 'join' | 'ok' | 'err'; error?: string };
     }
-  | { phase: 'ha'; ha: SetupState['ha']; note?: string; error?: string; busy?: boolean }
+  /** signingIn: a sign-in tab is open, and the panel isn't signed in yet */
+  | { phase: 'ha'; ha: SetupState['ha']; note?: string; error?: string; busy?: boolean; signingIn?: boolean }
   | { phase: 'radio'; radio: SetupState['radio']; note: string; error?: string; busy?: boolean }
   | { phase: 'radio-next'; plan: RadioPlan };
 

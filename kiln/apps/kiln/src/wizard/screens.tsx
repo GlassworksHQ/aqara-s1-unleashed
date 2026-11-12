@@ -6,6 +6,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import * as RadioGroup from '@radix-ui/react-radio-group';
 import { fmtSize } from '@glassworks/kiln-core';
 import Link from 'next/link';
+import { LastRun } from '../components/LastRun';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FrameUi } from '../frames/aqara-s1-plus';
 import { LABELS, mount } from '../recovery/player';
@@ -49,6 +50,7 @@ export function Connect({ s, session, frame }: P) {
       <Recovery frame={frame} />
       <p className="small">Then click Connect and pick <code>{frame.felPick}</code>.{s.flow === 'undo' ? ' Nothing is written until your backup checks out.' : ' Nothing is written yet.'}</p>
       {driver && <p className="small">{driver} <a className="link" href={frame.help.drivers} target="_blank" rel="noopener">How</a></p>}
+      <LastRun />
       <div className="foot">
         <span className="links">
           <Dialog.Root>

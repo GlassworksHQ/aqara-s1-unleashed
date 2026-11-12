@@ -11,6 +11,7 @@ import { registry } from '../wizard/registry';
 import { ROUTES, canonical, fromHash, status } from '../wizard/routes';
 import { STEPS } from '../wizard/state';
 import { FrameCard } from './frame-card/FrameCard';
+import { LastRun } from './LastRun';
 import { Shell, useBrowserChip } from './Shell';
 
 const INSTALLABLE = FRAMES.filter((f) => ships(f.status) && f.kiln);
@@ -51,6 +52,7 @@ export function Picker() {
             <Link className="link" href={running.href}>Back to it</Link>
           </div>
         )}
+        <LastRun />
         <RadioGroup.Root className="frames" value={picked} onValueChange={setPicked} aria-labelledby="pick">
           {FRAMES.map((f) => <FrameCard key={f.id} f={f} />)}
           <a className="yours" href="https://github.com/GlassworksHQ">
@@ -65,7 +67,7 @@ export function Picker() {
             <span aria-hidden="true">·</span>
             <Link className="link" href={`${frame}${ROUTES['set-up']}`}>Finish setting up</Link>
           </span>
-          <button type="button" className="btn ember" disabled={!frame} onClick={() => router.push(frame)}>Continue</button>
+          <button type="button" className="btn ember" disabled={!frame} onClick={() => router.push(running?.href.startsWith(`${frame}/`) || running?.href === frame ? running.href : frame)}>Continue</button>
         </div>
       </section>
     </Shell>

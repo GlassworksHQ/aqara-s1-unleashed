@@ -1,13 +1,13 @@
 'use client';
 // The wizard for one frame: the shell, the screen for the current state, the "your turn" sheet, and
-// what Kiln adds around a long write (leave-page warning, screen wake lock, live announcements). The
-// routes are useRouteSync's.
+// live announcements. The routes are useRouteSync's; the leave-page warning and the wake lock are
+// LeaveGuard's (root layout), so they hold on every route.
 import { useEffect, useSyncExternalStore } from 'react';
 import { Shell, useBrowserChip } from '../components/Shell';
 import type { FrameUi } from '../frames/aqara-s1-plus';
 import { Browser, Connect, Done, Failure, Firing, SetUp, Undo, YourTurn } from './screens';
 import type { Session } from './session';
-import { busyWriting, milestones, rail, stackLevel, type WizardState } from './state';
+import { milestones, rail, stackLevel, type WizardState } from './state';
 
 function announce(s: WizardState, frame: FrameUi): string {
   if (s.ask) return `Your turn. ${frame.asks[s.ask.kind].title} Pick ${frame.asks[s.ask.kind].pick} in the list.`;
@@ -20,16 +20,6 @@ function announce(s: WizardState, frame: FrameUi): string {
 export function Wizard({ session, frame }: { session: Session; frame: FrameUi }) {
   const s = useSyncExternalStore(session.store.subscribe, session.store.get, session.store.get);
   const chip = useBrowserChip();
-
-  const writing = busyWriting(s);
-  useEffect(() => {
-    if (!writing) return;
-    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
-    addEventListener('beforeunload', warn);
-    let lock: WakeLockSentinel | undefined;
-    navigator.wakeLock?.request('screen').then((l) => { lock = l; }, () => {});
-    return () => { removeEventListener('beforeunload', warn); void lock?.release(); };
-  }, [writing]);
 
   useEffect(() => {
     document.title = s.ask ? `Your turn · ${frame.name} · Kiln` : `${frame.name} · Kiln`;

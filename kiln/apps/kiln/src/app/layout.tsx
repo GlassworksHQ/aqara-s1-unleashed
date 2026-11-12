@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import icon from '@glassworks/brand/icon-kiln.svg';
+import { LeaveGuard } from '../components/LeaveGuard';
 import { MarkDefs } from '../components/Mark';
 import './globals.css';
 
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${inter.variable} ${mono.variable}`}>
       <body>
         <MarkDefs />
+        <LeaveGuard />
         {children}
       </body>
     </html>

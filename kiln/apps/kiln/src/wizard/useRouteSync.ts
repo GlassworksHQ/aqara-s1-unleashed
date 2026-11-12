@@ -17,11 +17,13 @@ export function useRouteSync(entry: Entry, path: string, replace: (url: string) 
     const to = (step: Step) => replace(entry.base + ROUTES[step] + search);
     const step = path.startsWith(entry.base) ? stepOf(path.slice(entry.base.length)) : undefined;
     const moved = last.current !== path;
-    last.current = path;
     if (moved && !entry.demo && step === 'start') {
-      const old = fromHash(location.hash); // this frame's own older #/ links
+      // this frame's own older #/ links. The path isn't recorded yet, so StrictMode's second run
+      // repeats this same redirect instead of putting the start back in between.
+      const old = fromHash(location.hash);
       if (old) { to(old); return; }
     }
+    last.current = path;
     const d = entry.demo || !moved ? onState(s, step) : onNavigate(s, session.started, step);
     if (d.kind === 'replace') to(d.step);
     if (d.kind === 'enter') {

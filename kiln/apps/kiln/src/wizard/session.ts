@@ -77,6 +77,25 @@ export class Session {
   private readonly sleep: (ms: number) => Promise<void>;
   private running?: string;
   private began = false;
+  private closed = false;
+
+  /**
+   * Lets go of everything this session holds: the Home Assistant poll, the app's setup channel and
+   * Improv client, and the panel's adb connection. The registry calls it when a new session replaces
+   * this one; nothing here may keep polling a panel nobody looks at.
+   */
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    clearInterval(this.haTimer);
+    const quiet = (p?: Promise<unknown>) => { void p?.catch(() => {}); };
+    quiet(this.setup?.close());
+    quiet(this.improv?.close());
+    quiet((this.panel as { close?: () => Promise<void> } | undefined)?.close?.());
+    this.setup = this.improv = this.panel = undefined;
+  }
+
+  get isClosed(): boolean { return this.closed; }
 
   /** A flow has begun on this session (FEL picked, or a panel connected): a new one gets a new session. */
   get started(): boolean { return this.began; }
@@ -350,7 +369,7 @@ export class Session {
     }
   }
 
-  private haState(s: SetupState, extra: { note?: string; error?: string; busy?: boolean } = {}) {
+  private haState(s: SetupState, extra: { note?: string; error?: string; busy?: boolean; signingIn?: boolean } = {}) {
     this.ip = s.ip ?? this.ip;
     this.setupPhase({ phase: 'ha', ha: s.ha, ...extra });
   }
@@ -359,11 +378,14 @@ export class Session {
   async homeAssistant(): Promise<void> {
     this.setup ??= await this.openSetup();
     if (!this.setup) return this.finish(); // older app: the panel's own setup does the rest
-    this.setup.onState = (s) => { if (this.s.setup.phase === 'ha') this.haState(s, { note: this.s.setup.note }); };
+    this.setup.onState = (s) => {
+      const cur = this.s.setup;
+      if (cur.phase === 'ha') this.haState(s, { note: cur.note, signingIn: cur.signingIn && !s.ha.signedIn });
+    };
     this.haState(this.setup.state!);
     clearInterval(this.haTimer);
     this.haTimer = setInterval(() => {
-      if (this.s.setup.phase !== 'ha') { clearInterval(this.haTimer); return; }
+      if (this.closed || this.s.setup.phase !== 'ha') { clearInterval(this.haTimer); return; }
       void this.withSetup((x) => x.getState()).catch(() => {});
     }, 3000);
   }
@@ -374,7 +396,7 @@ export class Session {
     if (s.phase !== 'ha') return;
     if (!validHaUrl(url)) { this.haState({ ...this.setup!.state!, ha: s.ha }, { error: 'That doesn\'t look like a web address (http://… or https://…).' }); return; }
     const tab = (this.d.openTab ?? ((u) => window.open(u, '_blank')))('about:blank');
-    this.setupPhase({ ...s, error: undefined, note: 'Sign in on the tab that opened. This page notices when you are done.' });
+    this.setupPhase({ ...s, error: undefined, signingIn: true, note: 'Sign in on the tab that opened. This page notices when you are done.' });
     void (async () => {
       try {
         const st = url === this.setup?.state?.ha.url ? this.setup.state : await this.withSetup((x) => x.setHa(url));
@@ -383,7 +405,7 @@ export class Session {
       } catch (e) {
         tab?.close();
         const cur = this.s.setup;
-        if (cur.phase === 'ha') this.setupPhase({ ...cur, note: undefined, error: (e as Error).message });
+        if (cur.phase === 'ha') this.setupPhase({ ...cur, note: undefined, signingIn: false, error: (e as Error).message });
       }
     })();
   }
