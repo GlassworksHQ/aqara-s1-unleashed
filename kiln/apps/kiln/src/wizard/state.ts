@@ -47,6 +47,8 @@ export interface UndoState {
   inBrowser?: string;
   file?: string;
   ready: boolean;
+  /** a backup file is being checked */
+  checking?: boolean;
   depth: 'factory' | 'keep';
   appsBack: boolean;
   /** `link`: a way forward when undo here can't go on, e.g. undoing by hand */

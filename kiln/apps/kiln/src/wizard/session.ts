@@ -496,6 +496,7 @@ export class Session {
   // ---- undo -----------------------------------------------------------------------------------
 
   async openUndo(): Promise<void> {
+    this.choice++;
     this.undoFiles = undefined;
     this.undoBackup = undefined;
     this.dispatch({ type: 'go', screen: 'undo', flow: 'undo' });
@@ -521,21 +522,29 @@ export class Session {
     (this.d.download ?? saveBlob)(`${b.meta.id}.zip`, backupZip(b.meta, b.files));
   }
 
+  /** Only the latest backup choice may land: an earlier file's check that ends later is dropped. */
+  private choice = 0;
+
   async undoFromFile(f: File): Promise<void> {
-    this.dispatch({ type: 'undo', patch: { source: 'file', ready: false, file: `Checking ${f.name}…` } });
+    const mine = ++this.choice;
+    this.undoFiles = undefined;
+    this.dispatch({ type: 'undo', patch: { source: 'file', ready: false, checking: true, file: `Checking ${f.name}…` } });
     try {
       const b = await readBackupZip(f);
+      if (mine !== this.choice) return;
       this.undoBackup = undefined;
       this.undoFiles = b.files;
-      this.dispatch({ type: 'undo', patch: { ready: true, file: `${b.id} · ${b.files.size} partitions · checked` } });
+      this.dispatch({ type: 'undo', patch: { ready: true, checking: false, file: `${b.id} · ${b.files.size} partitions · checked` } });
     } catch (e) {
-      this.dispatch({ type: 'undo', patch: { ready: false, file: (e as Error).message } });
+      if (mine !== this.choice) return;
+      this.dispatch({ type: 'undo', patch: { ready: false, checking: false, file: (e as Error).message } });
     }
   }
 
   async undoFromBrowser(): Promise<void> {
+    const mine = ++this.choice;
     const orig = await this.d.backups.original().catch(() => undefined);
-    if (orig) await this.useBrowserBackup(orig);
+    if (orig && mine === this.choice) await this.useBrowserBackup(orig);
   }
 
   /**
