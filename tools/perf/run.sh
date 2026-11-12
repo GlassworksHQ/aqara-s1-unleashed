@@ -80,7 +80,8 @@ wait_cool() {
 sh_dev pm path "$PACKAGE" | grep -q package: || { echo "$PACKAGE is not installed" >&2; exit 1; }
 
 if [ -n "$IDLE_ONLY" ]; then
-  n=$(ls "$OUT"/idle-"$IDLE_ONLY"-*.json 2>/dev/null | wc -l | tr -d ' ')
+  n=0
+  for f in "$OUT"/idle-"$IDLE_ONLY"-*.json; do [ -e "$f" ] && n=$((n + 1)); done
   [ -f "$OUT/device.json" ] || run device
   thermal "idle-$IDLE_ONLY-$n"
   log "idle sample '$IDLE_ONLY' #$n"

@@ -292,7 +292,7 @@
     for (let t = 0; t < payloads.length; t++) {
       const t0 = performance.now();
       const r = W.burst(payloads[t], prev);
-      for (const c of r.changed.slice(0, 60)) {
+      for (const c of r.changed) {
         let el = nodes.get(c.id);
         if (!el) { el = document.createElement("div"); el.className = "card"; grid.appendChild(el); nodes.set(c.id, el); }
         el.textContent = c.text;

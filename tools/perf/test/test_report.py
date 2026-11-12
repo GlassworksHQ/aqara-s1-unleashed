@@ -218,6 +218,26 @@ class Build(unittest.TestCase):
         self.assertEqual(panes["radio"]["method"], "process")
         self.assertEqual(panes["radio"]["pss_kb"], 2500)
 
+    def test_a_sample_without_app_processes_is_not_zero_memory(self):
+        empty = idle("all-on", 9, 600_000, 10.0)
+        empty["processes"] = {}
+        empty["device_mem"] = {"mem_total_kb": 2_000_000, "mem_available_kb": None}
+        self.write("idle-all-on-9.json", empty)
+        self.write("idle-sendspin-off-9.json", dict(empty, label="sendspin-off"))
+        rep = R.build(self.dir)
+        self.assertEqual(rep["memory"]["idle"]["app_pss_kb"]["n"], 3)
+        self.assertEqual(rep["memory"]["idle"]["device_used_pct"]["n"], 3)
+        self.assertEqual(rep["memory"]["peak"]["app_pss_kb"], 602_000)
+        self.assertEqual({p["id"]: p for p in rep["panes"]}["sendspin"]["samples_off"], 3)
+
+    def test_a_measured_zero_is_the_lowest_available_memory(self):
+        zero = idle("all-on", 9, 600_000, 10.0)
+        zero["device_mem"] = {"mem_total_kb": 2_000_000, "mem_available_kb": 0}
+        self.write("idle-all-on-9.json", zero)
+        rep = R.build(self.dir)
+        self.assertEqual(rep["memory"]["peak"]["mem_available_min_kb"], 0)
+        self.assertFalse(rep["memory"]["budget"]["checks"]["device_available_min"]["ok"])
+
     def test_markdown_renders(self):
         md = R.markdown(self.rep)
         self.assertIn("**Grade: B**", md)

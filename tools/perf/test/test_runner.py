@@ -69,5 +69,30 @@ class Runner(unittest.TestCase):
         self.assertTrue(starts[-1].startswith("shell am start -W"), starts[-3:])
 
 
+class IdleOnly(unittest.TestCase):
+    """The pane-diff steps in docs/perf.md, starting from an empty directory."""
+
+    def test_samples_count_up_and_the_pane_diff_appears(self):
+        tmp = tempfile.mkdtemp()
+        state = os.path.join(tmp, "state")
+        os.makedirs(state)
+        adb = os.path.join(tmp, "adb")
+        with open(adb, "w") as f:
+            f.write(f'#!/bin/sh\nexec "{sys.executable}" "{os.path.join(HERE, "fake_adb.py")}" "$@"\n')
+        os.chmod(adb, 0o755)
+        env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="1")
+        env.pop("ANDROID_SERIAL", None)
+        out = os.path.join(tmp, "panes")
+        for label in ("all-on", "all-on", "sendspin-off"):
+            p = subprocess.run([RUN, "--frame", "test-frame", "--out", out, "--idle-only", label],
+                               env=env, capture_output=True, text=True, timeout=120)
+            self.assertEqual(p.returncode, 0, p.stderr[-2000:])
+        self.assertTrue(os.path.exists(os.path.join(out, "idle-all-on-0.json")))
+        self.assertTrue(os.path.exists(os.path.join(out, "idle-all-on-1.json")))
+        with open(os.path.join(out, "report.json")) as f:
+            panes = {p["id"]: p for p in json.load(f)["panes"]}
+        self.assertEqual(panes["sendspin"]["samples_on"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()

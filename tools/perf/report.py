@@ -147,7 +147,8 @@ def app_memory(idle, package_roles=None):
     main = next((p.get("summary") for p in app.values() if p["role"] == "main"), {}) or {}
     dm = idle.get("device_mem") or {}
     return {
-        "app_pss_kb": sum(p["pss_kb"] for p in app.values()),
+        # No app process in the sample means nothing was measured, not zero memory.
+        "app_pss_kb": sum(p["pss_kb"] for p in app.values()) if app else None,
         "by_role": roles,
         "main": main,
         "radio_pss_kb": sum(p["pss_kb"] for p in procs.values() if p["role"] == "radio"),
@@ -190,30 +191,32 @@ def real_use_summary(cold, idles, package):
             "by_role_pss_kb": {r: P.spread([m["by_role"].get(r, {}).get("pss_kb") for m in mems]) for r in roles},
             "main_kb": {k: P.spread([m["main"].get(k) for m in mems]) for k in sorted({k for m in mems for k in m["main"]})},
             "radio_pss_kb": P.spread([m["radio_pss_kb"] for m in mems]),
-            "device_used_pct": P.spread([100 - 100 * m["mem_available_kb"] / m["mem_total_kb"] for m in mems if m["mem_total_kb"]]),
+            "device_used_pct": P.spread([100 - 100 * m["mem_available_kb"] / m["mem_total_kb"] for m in mems
+                                         if m["mem_total_kb"] and m["mem_available_kb"] is not None]),
             "cpu_app_pct_of_core": P.spread([c["app_pct_of_core"] for c in cpus]),
             "cpu_radio_pct_of_core": P.spread([c["radio_pct_of_core"] for c in cpus]),
             "cpu_device_busy_pct": P.spread([c["device_busy_pct"] for c in cpus]),
             "frames": {k: P.spread([idle_frames(i)[k] for i in on]) for k in ("presented_fps", "p95_ms", "max_ms")},
         },
         "peak": {
-            "app_pss_kb": max((m["app_pss_kb"] for m in allmem), default=None),
+            "app_pss_kb": max((m["app_pss_kb"] for m in allmem if m["app_pss_kb"] is not None), default=None),
             "app_rss_hwm_kb": max((sum(r["rss_peak_kb"] for r in m["by_role"].values()) for m in allmem), default=None),
-            "mem_available_min_kb": min((m["mem_available_kb"] for m in allmem if m["mem_available_kb"]), default=None),
+            "mem_available_min_kb": min((m["mem_available_kb"] for m in allmem if m["mem_available_kb"] is not None), default=None),
         },
     }
 
 
 def pane_diffs(idles, package):
     """Each `<pane>-off` label against the all-on samples. A delta inside the all-on range is noise."""
-    on = idles.get("all-on", [])
+    on = [i for i in idles.get("all-on", []) if app_memory(i)["app_pss_kb"] is not None]
     if not on:
         return []
     on_pss = [app_memory(i)["app_pss_kb"] for i in on]
     on_cpu = [app_cpu(i, package)["app_pct_of_core"] for i in on]
     out = []
     for label, runs in sorted(idles.items()):
-        if not label.endswith("-off"):
+        runs = [i for i in runs if app_memory(i)["app_pss_kb"] is not None]
+        if not label.endswith("-off") or not runs:
             continue
         off_pss = [app_memory(i)["app_pss_kb"] for i in runs]
         off_cpu = [app_cpu(i, package)["app_pct_of_core"] for i in runs]
