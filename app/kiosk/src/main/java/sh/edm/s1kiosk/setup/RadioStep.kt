@@ -53,7 +53,7 @@ object RadioStep {
     /** A role that isn't ready yet: shown, tagged "Coming soon", not selectable. */
     data class Soon(val mode: RadioMode, val title: String, val line: String)
 
-    /** None right now (the web installer's COMING_SOON should match: web/src/app/ui.ts). */
+    /** None right now (the web installer's COMING_SOON should match: kiln/src/app/ui.ts). */
     val COMING_SOON: List<Soon> = emptyList()
 
     const val LATER = "You can change this later in Home Assistant: the panel's “Radio mode” select."

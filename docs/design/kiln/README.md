@@ -1,7 +1,7 @@
 # Kiln: design prototypes
 
 Design work for Kiln, the Glassworks installer (#32). Nothing here is part of the shipped installer
-in `web/`. It's the reference for building Kiln's UI, and for the per-frame recovery animation.
+in `kiln/`. It's the reference for building Kiln's UI, and for the per-frame recovery animation.
 
 | File | What |
 |---|---|

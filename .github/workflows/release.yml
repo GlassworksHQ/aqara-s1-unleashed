@@ -101,12 +101,12 @@ jobs:
             { echo "::error::the Silicon Labs runtime does not match tools/radio/sisdk-runtime.sha256"; exit 1; }
           find . -type f -exec chmod 0644 {} +
           chmod 0755 zigbeed.sh lib/ld-linux-armhf.so.3
-          # otbr-agent/ot-ctl: the pinned border-router build the web installer ships (web/assets.lock.json).
+          # otbr-agent/ot-ctl: the pinned border-router build the web installer ships (kiln/assets.lock.json).
           cd "$GITHUB_WORKSPACE"; mkdir -p "$RUNNER_TEMP/radio-in"
           python3 - "$RUNNER_TEMP/radio-in" <<'PY'
           import hashlib, json, sys, urllib.request
           out = sys.argv[1]
-          for a in json.load(open('web/assets.lock.json'))['assets']:
+          for a in json.load(open('kiln/assets.lock.json'))['assets']:
               if a['name'] not in ('otbr-agent', 'ot-ctl'):
                   continue
               data = urllib.request.urlopen(a['url']).read()

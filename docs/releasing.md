@@ -121,7 +121,7 @@ gh secret set S1_RADIO_BUNDLE_KEY --env radio-signing --repo GlassworksHQ/aqara-
   download-artifact, pinned by commit SHA), and takes nothing from the unprivileged `inputs` job
   without checking it: the Silicon Labs runtime against the committed
   [`tools/radio/sisdk-runtime.sha256`](../tools/radio/sisdk-runtime.sha256), otbr-agent/ot-ctl against
-  `web/assets.lock.json`, the helper from the checkout. No required reviewer is set on the environment
+  `kiln/assets.lock.json`, the helper from the checkout. No required reviewer is set on the environment
   (one releaser); adding one later only needs the environment setting.
 - Keep no repository-level `S1_RADIO_BUNDLE_KEY`: other jobs would then see it.
 
@@ -134,7 +134,7 @@ gh secret set S1_RADIO_BUNDLE_KEY --env radio-signing --repo GlassworksHQ/aqara-
 
 ## 3c. Web installer files
 
-The installer's Vercel build downloads its binaries from pinned URLs ([`web/assets.lock.json`](../web/assets.lock.json)).
+The installer's Vercel build downloads its binaries from pinned URLs ([`kiln/assets.lock.json`](../kiln/assets.lock.json)).
 The boot image's signature checker is one of them since the radio bundle loader:
 
 ```sh
@@ -204,13 +204,13 @@ panels need one manual update to 0.4.1 or later (the web installer's *Already in
 it up*, or `adb install -r`, see [install.md](install.md#updating)); from then on HA installs work.
 
 The hosted web installer installs the latest release it saw when it was last built
-(`web/scripts/stage-assets.mjs`). The workflow's last step asks Vercel to rebuild it through the
+(`kiln/scripts/stage-assets.mjs`). The workflow's last step asks Vercel to rebuild it through the
 `VERCEL_DEPLOY_HOOK` secret; without that secret it only warns, and you redeploy the installer by hand.
 
-Vercel does not build on pushes (`git.deploymentEnabled: false` in `web/vercel.json`), so PRs get no
+Vercel does not build on pushes (`git.deploymentEnabled: false` in `kiln/vercel.json`), so PRs get no
 Vercel preview. Production builds come only from that deploy hook, called by `release.yml` and by
 [`installer-deploy.yml`](../.github/workflows/installer-deploy.yml). The second runs on a push to
-`main` that changes an installer input (`web/`, `branding/`, or a repo file the installer stages), or
+`main` that changes an installer input (`kiln/`, `branding/`, or a repo file the installer stages), or
 by hand from the Actions tab.
 
 ## Building a signed APK locally

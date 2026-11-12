@@ -54,5 +54,5 @@ esbuild…). `@yume-chan/adb` is an optional peer dependency, needed only for `i
 ## Tests
 
 `packages/improv-serial/test/serial.test.ts` tests the client against a simulated device, and
-`readme.test.ts` type-checks the example above. Both run with the web installer's tests: `cd web &&
+`readme.test.ts` type-checks the example above. Both run with the web installer's tests: `cd kiln &&
 npm test`.

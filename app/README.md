@@ -229,7 +229,7 @@ Parts of the app are standalone modules other projects can use:
 - [`libs/improv`](libs/improv/README.md): Improv Wi-Fi for Android: a BLE GATT server, Improv Serial
   (including over adb, from a web page over USB), Wi-Fi joining that works on Android 10+, and the
   pure-Kotlin protocol and state machines. Its browser client is
-  [`web/packages/improv-serial`](../web/packages/improv-serial/README.md).
+  [`kiln/packages/improv-serial`](../kiln/packages/improv-serial/README.md).
 
 They build with the app (`./gradlew :esphome-api:test :esphome-api-android:assembleDebug
 :improv:testDebugUnitTest`) and aren't published to a Maven repository or npm yet.

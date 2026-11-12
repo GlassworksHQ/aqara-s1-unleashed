@@ -12,7 +12,7 @@ import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.util.concurrent.TimeUnit
 
-/** The app side of web/src/setup/channel.ts, against web/test/setup-channel.test.ts's simulated app. */
+/** The app side of kiln/src/setup/channel.ts, against kiln/test/setup-channel.test.ts's simulated app. */
 class SetupChannelTest {
 
     private val base = ChannelState(

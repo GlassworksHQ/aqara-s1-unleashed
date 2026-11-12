@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Copies the installer's pinned blobs into web/public/assets/blobs/ and writes
-// web/public/assets/manifest.json ({ name, path, sha256, size, license, source }). The browser
+// Copies the installer's pinned blobs into kiln/public/assets/blobs/ and writes
+// kiln/public/assets/manifest.json ({ name, path, sha256, size, license, source }). The browser
 // checks every blob against that SHA-256 before using it (src/assets/assets.ts).
 //
-//   node scripts/stage-assets.mjs            (from web/; npm run stage)
+//   node scripts/stage-assets.mjs            (from kiln/; npm run stage)
 //
 // Env overrides: UBOOT_BUILD (default ~/src/u-boot-s1/build-s1), MAGISK_APK
 // (default ~/src/magisk/Magisk-v31.1.apk), KIOSK_APK (default the app's debug build),

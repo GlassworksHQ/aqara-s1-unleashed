@@ -5,7 +5,7 @@ open Home Assistant wall panel. It is also the reference device ("frame") for **
 device-neutral open panel core that is being pulled out of this repo step by step.
 
 This file applies to the whole repo. Each area has its own file with the details:
-[`app/AGENTS.md`](app/AGENTS.md) (the kiosk app), [`web/AGENTS.md`](web/AGENTS.md) (the browser
+[`app/AGENTS.md`](app/AGENTS.md) (the kiosk app), [`kiln/AGENTS.md`](kiln/AGENTS.md) (the browser
 installer), [`tools/AGENTS.md`](tools/AGENTS.md) (FEL, U-Boot, root side, radio, install scripts).
 Breaking into hardware has its own playbook: [`docs/research/bringup.md`](docs/research/bringup.md).
 
@@ -15,7 +15,7 @@ Breaking into hardware has its own playbook: [`docs/research/bringup.md`](docs/r
 |---|---|---|
 | `app/kiosk` | S1 Kiosk, the GeckoView kiosk app (`sh.edm.s1kiosk`, never rename it) | Kotlin, Android |
 | `app/libs/*` | Libraries split out of the app: `esphome-api` (JVM), `esphome-api-android`, `improv` | Kotlin |
-| `web/` | The WebUSB installer (FEL → fastboot → boot patch → adb), served at s1.edm.sh | TypeScript, Vite, Rust→WASM |
+| `kiln/` | The WebUSB installer (FEL → fastboot → boot patch → adb), served at s1.edm.sh | TypeScript, Vite, Rust→WASM |
 | `tools/fel`, `tools/install` | FEL boot, U-Boot board files and patches, the CLI installer | bash |
 | `tools/root`, `tools/radio` | Init services in the patched boot image: root helper, update and bundle services | `/system/bin/sh` (mksh), C |
 | `docs/` | User guides; `docs/research/` holds the engineering notes and evidence | Markdown |
@@ -25,7 +25,7 @@ Breaking into hardware has its own playbook: [`docs/research/bringup.md`](docs/r
 
 ```sh
 cd app && ./gradlew test :kiosk:assembleDebug        # app + libs: unit tests and a debug APK
-cd web && npm install && npm run stage && npm test   # installer (also: npm run typecheck, npm run build)
+cd kiln && npm install && npm run stage && npm test   # installer (also: npm run typecheck, npm run build)
 tools/install/test/install-tests.sh                  # install scripts, off-device
 python3 tools/check-doc-links.py                     # relative links and #anchors in docs
 tools/root/build-verify.sh && tools/radio/test/run.sh  # root side, in an armhf container (Docker)
@@ -126,6 +126,6 @@ Kiln's colour only, and status colours mean status only.
 ## Naming (Glassworks)
 
 **Frame** = a device definition (the S1 is `aqara-s1-plus`). **Pane** = a plugin (radio, wall base,
-voice, Sendspin), which declares the hardware it `requires`. **Kiln** = the installer (`web/` plus
+voice, Sendspin), which declares the hardware it `requires`. **Kiln** = the installer (`kiln/` plus
 `tools/install.sh`). New Kotlin packages for the core go under `dev.glassworks.*`. The S1 app keeps
 `sh.edm.s1kiosk`, because the boot helpers hardcode it.

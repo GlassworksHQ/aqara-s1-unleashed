@@ -4,7 +4,7 @@ package sh.edm.improv
  * Improv Serial (https://www.improv-wifi.com/serial/): wire format and session, pure Kotlin
  * (ImprovSerialTest). Transport-agnostic: feed bytes to [SerialPacketReader] and write what
  * [ImprovSerialSession] sends to any byte stream (a UART, a socket, an adb stream). S1 Kiosk carries
- * it over adb ([ImprovAdbServer]); the browser client is web/packages/improv-serial (keep in sync).
+ * it over adb ([ImprovAdbServer]); the browser client is kiln/packages/improv-serial (keep in sync).
  *
  * Packet: `"IMPROV" | version 1 | type | length | data[length] | checksum`, the checksum being the
  * low byte of the sum of all previous bytes. RPC data is `[command, length, payload...]`, the

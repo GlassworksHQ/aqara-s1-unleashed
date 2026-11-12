@@ -1,4 +1,4 @@
-# Agent guide: the web installer (`web/`)
+# Agent guide: the web installer (`kiln/`)
 
 The repo-wide rules are in [`../AGENTS.md`](../AGENTS.md). The module contracts are in
 [`src/README.md`](src/README.md), and the design with its verified sources is in

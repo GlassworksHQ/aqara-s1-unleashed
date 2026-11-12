@@ -155,7 +155,7 @@ The UI went through five mockups before *option E*, the one that shipped.
   <img src="../img/installer/welcome.webp" alt="The web installer's first screen: the step rail on the left and the browser checks on the right." width="80%">
 </p>
 
-→ [web-installer.md](web-installer.md) (the design spec, written before the build) · [`web/`](../../web/src/README.md)
+→ [web-installer.md](web-installer.md) (the design spec, written before the build) · [`kiln/`](../../kiln/src/README.md)
 
 ## 6. Making it a good wall panel
 
