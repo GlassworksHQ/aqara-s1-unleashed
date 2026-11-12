@@ -182,7 +182,7 @@ the build is `armeabi-v7a`, the S1's:
   that have no arm64 APK (all releases up to 0.4.3). An arm64-only device skips them.
 - An ABI counts only when the release has both its APK and its `.sha256`. Half a pair is skipped
   for the device's next ABI.
-- **Known gap, not reachable today.** If a release ever had only `s1-kiosk-<version>.apk`, an arm64
+- **Known gap, rare.** If a release ever had only `s1-kiosk-<version>.apk`, an arm64
   device that runs 32-bit code and has the arm64 APK installed would update to the 32-bit APK. That
   moves the app to slower 32-bit code until a release has an arm64 APK again. `release.yml` creates
   the release only after every ABI's APK is built and checked, and uploads them all in one
