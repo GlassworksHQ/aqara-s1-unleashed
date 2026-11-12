@@ -1,0 +1,180 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+package sh.edm.s1kiosk.voice
+
+import dev.glassworks.pane.Pane
+import dev.glassworks.pane.PaneContext
+import dev.glassworks.pane.PanelEvent
+import dev.glassworks.pane.PanelTimer
+import sh.edm.esphome.ApiEntity
+import sh.edm.esphome.ApiServer
+import sh.edm.esphome.EntityCategory
+import sh.edm.esphome.EspHomeLog
+import sh.edm.esphome.NumberEntity
+import sh.edm.esphome.SwitchEntity
+import sh.edm.s1kiosk.esphome.UrlPlayer
+import sh.edm.s1kiosk.esphome.VoiceAssistantController
+import sh.edm.s1kiosk.esphome.WakeWordCatalog
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
+
+/** The microphone and wake word side of the assistant. [VoiceEngine] is the real one. */
+interface VoiceInput : WakeWordCatalog {
+    var controller: VoiceAssistantController?
+    var threshold: Float
+
+    /** Local failures (models missing, microphone). Background thread. */
+    var onError: ((String) -> Unit)?
+
+    fun start(muted: Boolean)
+    fun stop()
+    fun setMuted(m: Boolean)
+    fun setGain(g: Float)
+}
+
+/** The panel's speaker as the assistant sees it: music it pauses while it listens and talks. */
+interface SpeakerMedia {
+    /** Music is playing now. */
+    val playing: Boolean
+
+    /** An announcement holds the speaker. The assistant leaves the music alone then. */
+    val announcing: Boolean
+
+    fun pause()
+    fun resume()
+}
+
+/**
+ * The voice assistant as a pane: wake word, the Assist run over the ESPHome API, the voice
+ * entities and the wake word, microphone and gain settings. It claims the speaker while it listens
+ * and talks ([PanelEvent.SpeakerClaimed]) and reports voice timers as [PanelEvent.TimersChanged] and
+ * [PanelEvent.TimerFinished].
+ *
+ * The pane always has its entities, also when [voiceEnabled] is false, because the panel has always
+ * shown them. Without voice it starts no microphone and no controller.
+ *
+ * The core keeps the speaker. It hands over [player] (the voice channel, shared with announcements),
+ * [speaker] (the music to pause), [resolveUrl] and [wakeChime] (the chime player is shared with timers).
+ * [createInput] makes the microphone and wake word engine from the config, the stored model and a
+ * callback that stores the model the user picks. [onVoiceEvent] is how the voice overlay hears about
+ * every event.
+ */
+class AssistPane(
+    private val ctx: PaneContext,
+    private val voiceEnabled: Boolean,
+    private val player: UrlPlayer,
+    private val speaker: SpeakerMedia,
+    private val resolveUrl: (String) -> String,
+    private val wakeChime: () -> Unit,
+    private val onVoiceEvent: (VoiceEvent) -> Unit,
+    private val createInput: (VoiceConfig, String, (String) -> Unit) -> VoiceInput,
+) : Pane {
+    override val id = "assist"
+
+    private val prefs get() = ctx.prefs
+
+    @Volatile private var input: VoiceInput? = null
+    @Volatile private var controller: VoiceAssistantController? = null
+    @Volatile private var server: ApiServer? = null
+    @Volatile private var mediaPausedForVoice = false
+    private var watchdog: ScheduledExecutorService? = null
+
+    override fun entities(): List<ApiEntity> = listOf(
+        SwitchEntity(
+            "mute_microphone", "Mute microphone", "mdi:microphone-off", EntityCategory.CONFIG,
+            get = { prefs.micMuted }, set = { prefs.micMuted = it },
+        ),
+        SwitchEntity(
+            "wake_sound", "Wake sound", "mdi:bell-ring-outline", EntityCategory.CONFIG,
+            get = { prefs.wakeSound }, set = { prefs.wakeSound = it },
+        ),
+        SwitchEntity(
+            "voice_overlay", "Voice overlay", "mdi:message-badge-outline", EntityCategory.CONFIG,
+            get = { prefs.voiceOverlay }, set = { prefs.voiceOverlay = it },
+        ),
+        NumberEntity(
+            "mic_gain", "Mic gain", "mdi:microphone-plus", min = 0.5f, max = 4f, step = 0.1f, unit = "x",
+            get = { prefs.micGain }, set = { prefs.micGain = it },
+        ),
+        NumberEntity(
+            "wake_word_threshold", "Wake word threshold", "mdi:account-voice", min = 0.1f, max = 0.95f, step = 0.05f,
+            get = { prefs.wakeThreshold }, set = { prefs.wakeThreshold = it },
+        ),
+    )
+
+    /** Hands Home Assistant's voice requests to the controller. Called again if the server restarts. */
+    override fun bind(server: ApiServer) {
+        this.server = server
+        server.voice = controller
+    }
+
+    override fun start() {
+        if (!voiceEnabled) return
+        val cfg = VoiceConfig(threshold = prefs.wakeThreshold, micGain = prefs.micGain)
+        val engine = createInput(cfg, prefs.wakeModel) { model -> prefs.wakeModel = model }
+        engine.onError = { msg -> dispatch(VoiceEvent.Error(msg, local = true)) }
+        val c = VoiceAssistantController(
+            send = { type, payload -> server?.sendVoice(type, payload) ?: false },
+            player = player,
+            wakeWords = engine,
+            emit = ::dispatch,
+            resolveUrl = resolveUrl,
+            onTimerFinished = { name -> ctx.emit(PanelEvent.TimerFinished(name)) },
+            onTimersChanged = { list ->
+                ctx.emit(PanelEvent.TimersChanged(list.map { PanelTimer(it.id, it.name, it.totalSeconds, it.secondsLeft, it.active) }))
+            },
+            maxStreamMs = cfg.maxStreamMs,
+        )
+        engine.controller = c
+        controller = c
+        input = engine
+        engine.start(muted = prefs.micMuted)
+        watchdog = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "assist-watchdog").apply { isDaemon = true } }
+            .also { it.scheduleWithFixedDelay({ c.tick() }, 1, 1, TimeUnit.SECONDS) }
+    }
+
+    override fun stop() {
+        watchdog?.shutdownNow()
+        watchdog = null
+        input?.stop()
+        input = null
+        controller = null
+        server = null
+    }
+
+    override fun onEvent(event: PanelEvent) {
+        if (event !is PanelEvent.SettingChanged) return
+        val engine = input ?: return
+        when (event.key) {
+            "mic_muted" -> engine.setMuted(prefs.micMuted)
+            "mic_gain" -> engine.setGain(prefs.micGain)
+            "wake_threshold" -> engine.threshold = prefs.wakeThreshold
+            "wake_model" -> engine.setActive(listOfNotNull(prefs.wakeModel.takeIf { it.isNotEmpty() }?.let(TfliteWakeWord::modelName)))
+        }
+    }
+
+    /** The user tapped the voice overlay: stop streaming and playback. */
+    fun cancel() {
+        controller?.cancel()
+    }
+
+    internal fun dispatch(e: VoiceEvent) {
+        if (e is VoiceEvent.WakeDetected && prefs.wakeSound) wakeChime()
+        // Pause music while the assistant listens and talks, resume afterwards.
+        when (e) {
+            is VoiceEvent.WakeDetected, is VoiceEvent.Listening, is VoiceEvent.Speaking -> {
+                if (speaker.playing && !speaker.announcing) { mediaPausedForVoice = true; speaker.pause() }
+                ctx.emit(PanelEvent.SpeakerClaimed(true))
+            }
+            is VoiceEvent.Idle, is VoiceEvent.Error -> {
+                if (mediaPausedForVoice) { mediaPausedForVoice = false; speaker.resume() }
+                if (!speaker.announcing) ctx.emit(PanelEvent.SpeakerClaimed(false))
+            }
+            else -> Unit
+        }
+        try { onVoiceEvent(e) } catch (t: Throwable) { EspHomeLog.w("voice listener failed", t) }
+    }
+}
