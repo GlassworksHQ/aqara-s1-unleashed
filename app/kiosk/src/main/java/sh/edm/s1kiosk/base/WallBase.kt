@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Wall base support: detects the mounted base through a [BaseLink], polls its values and reports
- * to [Listener] (owned by PanelDevice, which turns it into ESPHome entities). All state changes run
+ * to [Listener] (owned by [WallBasePane], which turns it into ESPHome entities). All state changes run
  * on one thread ("s1-base").
  *
  * Links ([config] / [reconfigure]):
