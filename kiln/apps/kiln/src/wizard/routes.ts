@@ -84,12 +84,14 @@ export type Status = 'idle' | 'running' | 'finished';
 
 /**
  * running: something is happening that leaving would cut short (USB work, a picker, the app going in,
- * a Home Assistant sign-in waiting on its tab).
+ * a Wi-Fi join in flight, a Home Assistant sign-in waiting on its tab).
  * finished: done or failed. idle: a screen waiting for the person (including the setup forms).
  */
 export function status(s: WizardState): Status {
   if (s.busy || s.ask || s.screen === 'firing') return 'running';
   if (s.screen === 'setup' && (s.setup.phase === 'waiting' || (s.setup.phase === 'ha' && s.setup.signingIn))) return 'running';
+  const join = s.screen === 'setup' && s.setup.phase === 'wifi' ? s.setup.joining?.step : undefined;
+  if (join === 'sent' || join === 'join') return 'running';
   if (s.screen === 'done' || s.screen === 'error') return 'finished';
   return 'idle';
 }

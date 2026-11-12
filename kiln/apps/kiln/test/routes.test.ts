@@ -12,6 +12,9 @@ const S = {
   waiting: run(initial(), { type: 'setup', setup: { phase: 'waiting', note: '' } }),
   settings: run(initial(), { type: 'setup', setup: { phase: 'settings', update: false } }),
   wifi: run(initial(), { type: 'setup', setup: { phase: 'wifi', status: '' } }),
+  joining: run(initial(), { type: 'setup', setup: { phase: 'wifi', status: '', joining: { ssid: 'Home', step: 'join' } } }),
+  joinSent: run(initial(), { type: 'setup', setup: { phase: 'wifi', status: '', joining: { ssid: 'Home', step: 'sent' } } }),
+  joined: run(initial(), { type: 'setup', setup: { phase: 'wifi', status: '', joining: { ssid: 'Home', step: 'ok' } } }),
   installingApp: run(initial(), { type: 'setup', setup: { phase: 'settings', update: false } }, { type: 'busy', busy: 'install-app' }),
   done: run(initial(), { type: 'done', done: { title: '', body: '' } }),
   failedWriting: run(initial(), { type: 'start', flow: 'install', now: 0 }, fail(2)),
@@ -39,6 +42,12 @@ describe('routes', () => {
     expect([S.firing, S.asking, S.waiting, S.installingApp].map(status)).toEqual(['running', 'running', 'running', 'running']);
     expect([S.connect, S.settings, S.wifi, S.undo, S.undoConnect].map(status)).toEqual(['idle', 'idle', 'idle', 'idle', 'idle']);
     expect([S.done, S.failedWriting, S.undoDone].map(status)).toEqual(['finished', 'finished', 'finished']);
+  });
+
+  it('counts a Wi-Fi join in flight as running, so leaving the screen cannot renew the session mid-join', () => {
+    expect([S.joinSent, S.joining].map(status)).toEqual(['running', 'running']);
+    expect(status(S.joined)).toBe('idle');
+    expect(onNavigate(S.joining, true, 'set-up')).toEqual({ kind: 'replace', step: 'wifi' });
   });
 
   it('keeps a running flow on screen, whatever the address', () => {
