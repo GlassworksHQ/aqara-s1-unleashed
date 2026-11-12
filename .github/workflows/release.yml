@@ -1,6 +1,6 @@
 # Signed kiosk release on a version tag (docs/releasing.md):
 #   git tag v1.2.3 && git push origin v1.2.3
-# Builds app/kiosk with the release key from the repository secrets, names the APK
+# Builds app/kiosk with the release key (secrets of the `release-signing` environment), names the APK
 # s1-kiosk-<version>.apk, writes its .sha256 and publishes both on a GitHub Release with
 # notes from CHANGELOG.md. Panels find it through the app's update entity in Home Assistant.
 #
@@ -12,7 +12,8 @@
 #   sign-bundle  the only job that can read S1_RADIO_BUNDLE_KEY (an environment secret of the
 #                `radio-signing` environment). Signs only commits on main, takes nothing from the other
 #                job without checking it against committed hashes, runs no third-party action
-#   release      builds and publishes the APK with the signed bundle (APK key; no bundle key)
+#   release      builds and publishes the APK with the signed bundle (APK key from the
+#                `release-signing` environment; no bundle key)
 # Every action is pinned by commit SHA (the tag in the comment is what it was at the time).
 name: Release
 
@@ -148,6 +149,9 @@ jobs:
   release:
     needs: [inputs, sign-bundle]
     runs-on: ubuntu-24.04
+    # The APK key lives in this environment, not in repository secrets, so only main, test-build/**
+    # and release tags can reach it, never a workflow on some other branch (docs/releasing.md).
+    environment: release-signing
     timeout-minutes: 45
     permissions:
       contents: write # create the release and upload its assets (GITHUB_TOKEN only)
