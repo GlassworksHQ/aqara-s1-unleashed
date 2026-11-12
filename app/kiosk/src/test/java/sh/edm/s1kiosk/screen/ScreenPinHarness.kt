@@ -7,13 +7,15 @@ import android.hardware.SensorManager
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import dev.glassworks.screen.ScreenPolicy
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadows.SensorEventBuilder
 import org.robolectric.shadows.ShadowPowerManager
 import org.robolectric.shadows.ShadowSensor
+import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.KioskPrefs
-import sh.edm.s1kiosk.ScreenController
+import sh.edm.s1kiosk.frame.AqaraS1Plus
 import java.time.Duration
 import java.util.SimpleTimeZone
 import java.util.TimeZone
@@ -26,6 +28,8 @@ import java.util.TimeZone
 class ScreenPinHarness {
     val context: Context = RuntimeEnvironment.getApplication()
     val prefs = KioskPrefs(context)
+    /** The policy as the app wires it, with the S1 frame's sensors. A fresh process's one on every [start]. */
+    private lateinit var screen: ScreenPolicy
 
     private val sensors = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val proximity = ShadowSensor.newInstance(Sensor.TYPE_PROXIMITY)
@@ -46,12 +50,14 @@ class ScreenPinHarness {
 
     /** Starts the policy with the screen on, as the activity does at launch. */
     fun start(screenOn: Boolean = true) {
-        resetController()
+        if (::screen.isInitialized) detach()
+        ShadowPowerManager.reset()
         shadowOf(context.getSystemService(PowerManager::class.java)).setIsInteractive(screenOn)
-        ScreenController.start(context)
-        ScreenController.onKeepScreenOn = { keepOnCalls += it }
-        ScreenController.onBrightness = { brightnessCalls += it }
-        ScreenController.onStateChanged = { changes++ }
+        screen = GlassworksRuntime(AqaraS1Plus()).screen
+        screen.start(context)
+        screen.onKeepScreenOn = { keepOnCalls += it }
+        screen.onBrightness = { brightnessCalls += it }
+        screen.onStateChanged = { changes++ }
         keepOnCalls.clear()
         brightnessCalls.clear()
         changes = 0
@@ -59,10 +65,15 @@ class ScreenPinHarness {
     }
 
     fun close() {
-        ScreenController.onKeepScreenOn = null
-        ScreenController.onBrightness = null
-        ScreenController.onStateChanged = null
+        if (::screen.isInitialized) detach()
         TimeZone.setDefault(savedZone)
+    }
+
+    /** An earlier policy keeps its sensor listeners; it must not report into this one's records. */
+    private fun detach() {
+        screen.onKeepScreenOn = null
+        screen.onBrightness = null
+        screen.onStateChanged = null
     }
 
     fun proximity(raw: Float) = send(proximity, raw)
@@ -103,19 +114,19 @@ class ScreenPinHarness {
         TimeZone.setDefault(SimpleTimeZone(offset.toInt(), "pin"))
     }
 
-    fun userActivity() { ScreenController.userActivity(); idle() }
-    fun wake(reason: String) { ScreenController.wake(reason); idle() }
-    fun sleep(reason: String) { ScreenController.sleep(reason); idle() }
-    fun applyPresenceRange() = ScreenController.applyPresenceRange()
-    fun refreshBrightness() { ScreenController.refreshBrightness(); idle() }
-    fun setManualBrightness(b: Float) { ScreenController.setManualBrightness(b); idle() }
+    fun userActivity() { screen.userActivity(); idle() }
+    fun wake(reason: String) { screen.wake(reason); idle() }
+    fun sleep(reason: String) { screen.sleep(reason); idle() }
+    fun applyPresenceRange() = screen.applyPresenceRange()
+    fun refreshBrightness() { screen.refreshBrightness(); idle() }
+    fun setManualBrightness(b: Float) { screen.setManualBrightness(b); idle() }
 
-    val near get() = ScreenController.near
-    val proximityRaw get() = ScreenController.proximityRaw
-    val lux get() = ScreenController.lux
-    val brightness get() = ScreenController.brightness
-    val screenIsOn get() = ScreenController.screenOn
-    val night get() = ScreenController.isNight()
+    val near get() = screen.near
+    val proximityRaw get() = screen.proximityRaw
+    val lux get() = screen.lux
+    val brightness get() = screen.brightness
+    val screenIsOn get() = screen.screenOn
+    val night get() = screen.isNight()
 
     /** `settings secure proximity_threshold`, or null while nothing wrote it. */
     val proximityThreshold: Int?
@@ -123,21 +134,4 @@ class ScreenPinHarness {
 
     /** True when the policy took a wake lock that turns the screen on. */
     val wokeScreen: Boolean get() = ShadowPowerManager.getLatestWakeLock() != null
-
-    /** The process-wide object keeps state between tests; put it back to how a fresh process has it. */
-    private fun resetController() {
-        val c = ScreenController::class.java
-        fun set(name: String, value: Any?) = c.getDeclaredField(name).apply { isAccessible = true }.set(null, value)
-        val handler = c.getDeclaredField("handler").apply { isAccessible = true }.get(null) as android.os.Handler
-        handler.removeCallbacksAndMessages(null)
-        set("started", false)
-        set("near", false)
-        set("proximityRaw", Float.NaN)
-        set("lux", Float.NaN)
-        set("brightness", -1f)
-        set("screenOn", true)
-        set("keepOn", true)
-        set("lastActivity", android.os.SystemClock.elapsedRealtime())
-        ShadowPowerManager.reset()
-    }
 }

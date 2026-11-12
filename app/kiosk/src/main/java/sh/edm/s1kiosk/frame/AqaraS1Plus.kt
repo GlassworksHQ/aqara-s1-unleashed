@@ -8,6 +8,10 @@ import dev.glassworks.frame.Frame
 class AqaraS1Plus : Frame {
     override val board = "aqara-s1-plus"
 
+    override val presence = Vi5300Presence()
+
+    override val light = Mk6212Light()
+
     val aqaraCloud = AqaraCloud()
 
     /** The time zone to keep (Aqara resets it at every boot; the root helper puts it back). One per device run. */

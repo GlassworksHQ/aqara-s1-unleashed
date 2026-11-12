@@ -24,7 +24,6 @@ import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.MainActivity
 import sh.edm.s1kiosk.timers.TimersPane
 import sh.edm.s1kiosk.auth.HaAuth
-import sh.edm.s1kiosk.ScreenController
 import sh.edm.s1kiosk.base.WallBase
 import sh.edm.s1kiosk.base.WallBasePane
 import sh.edm.s1kiosk.radio.RadioPane
@@ -57,10 +56,10 @@ import java.util.concurrent.TimeUnit
 
 /**
  * The panel as one ESPHome device for Home Assistant: native API server (port 6053), mDNS,
- * entities bound to the kiosk settings / [ScreenController], a media player, and the panes
+ * entities bound to the kiosk settings / the screen policy, a media player, and the panes
  * (Sendspin, the voice assistant, timers, the wall base, the radio). Owned by KioskService.
  *
- * Entity values are read from [KioskPrefs] / [ScreenController] (thread-safe); anything touching
+ * Entity values are read from [KioskPrefs] / [screen] (thread-safe); anything touching
  * the screen or the activity is posted to the main thread. Kiosk actions (URL, reload, zoom,
  * header, restart) go to [MainActivity] as intents, exactly like the `adb am start` extras.
  */
@@ -106,6 +105,7 @@ class PanelDevice internal constructor(
     private val ctx = context.applicationContext
     private val prefs = KioskPrefs(ctx)
     private val main = Handler(Looper.getMainLooper())
+    private val screen = runtime.screen
     private val voiceEnabled = prefs.voice.enabled
 
     private var server: ApiServer? = null
@@ -151,7 +151,7 @@ class PanelDevice internal constructor(
     fun stop() {
         synchronized(lifecycle) { stopped = true }
         prefs.unregisterListener(prefListener)
-        ScreenController.removeListener(screenListener)
+        screen.removeListener(screenListener)
         HaAuth.removeListener(authListener)
         Dashboards.removeListener(dashboardsListener)
         // Panes first, while esphome-main still runs: the wall base's thread can still post to it.
@@ -208,7 +208,7 @@ class PanelDevice internal constructor(
         startServer()
         unlessStopped {
             prefs.registerListener(prefListener)
-            ScreenController.addListener(screenListener)
+            screen.addListener(screenListener)
             HaAuth.addListener(authListener)
             Dashboards.addListener(dashboardsListener)
             exec.scheduleWithFixedDelay({ checkDashboards() }, 2, 2, TimeUnit.SECONDS)
@@ -247,6 +247,7 @@ class PanelDevice internal constructor(
             if (voiceEnabled) {
                 TimersPane(
                     paneContext,
+                    screen,
                     schedule = { ms, action -> exec.schedule({ action() }, ms, TimeUnit.MILLISECONDS) },
                     play = { chimes().chime() },
                     silence = { synchronized(this) { chimePlayer }?.cancel() },
@@ -417,19 +418,19 @@ class PanelDevice internal constructor(
     }
 
     private fun currentBrightness(): Float =
-        ScreenController.brightness.takeIf { it >= 0f } ?: prefs.manualBrightness.takeIf { it > 0f } ?: 1f
+        screen.brightness.takeIf { it >= 0f } ?: prefs.manualBrightness.takeIf { it > 0f } ?: 1f
 
     private fun buildEntities(): List<ApiEntity> = listOf(
         // --- screen & sensors
         BrightnessLightEntity(
             "screen", "Screen", "mdi:tablet-dashboard",
-            get = { ScreenController.screenOn to currentBrightness() },
+            get = { screen.screenOn to currentBrightness() },
             set = { on, b ->
                 ui {
-                    if (b != null) ScreenController.setManualBrightness(b)
+                    if (b != null) screen.setManualBrightness(b)
                     when (on) {
-                        true -> ScreenController.wake("home assistant")
-                        false -> ScreenController.sleep("home assistant")
+                        true -> screen.wake("home assistant")
+                        false -> screen.sleep("home assistant")
                         null -> Unit
                     }
                 }
@@ -438,12 +439,12 @@ class PanelDevice internal constructor(
         SwitchEntity(
             "auto_brightness", "Auto brightness", "mdi:brightness-auto", EntityCategory.CONFIG,
             get = { prefs.autoBrightness },
-            set = { prefs.autoBrightness = it; ui { ScreenController.refreshBrightness() } },
+            set = { prefs.autoBrightness = it; ui { screen.refreshBrightness() } },
         ),
-        BinarySensorEntity("presence", "Presence", deviceClass = "occupancy", get = { ScreenController.near }),
+        BinarySensorEntity("presence", "Presence", deviceClass = "occupancy", get = { screen.near }),
         SensorEntity(
             "illuminance", "Illuminance", unit = "lx", accuracy = 0, deviceClass = "illuminance",
-            get = { ScreenController.lux },
+            get = { screen.lux },
         ),
         SelectEntity(
             "screen_mode", "Screen mode", "mdi:monitor-eye", options = listOf("presence", "always"),
@@ -467,7 +468,7 @@ class PanelDevice internal constructor(
         NumberEntity(
             "presence_range", "Presence range", "mdi:signal-distance-variant", min = 0f, max = 2.5f, step = 0.1f,
             unit = "m", mode = 2, deviceClass = "distance",
-            get = { prefs.presenceRangeM }, set = { prefs.presenceRangeM = it; ui { ScreenController.applyPresenceRange() } },
+            get = { prefs.presenceRangeM }, set = { prefs.presenceRangeM = it; ui { screen.applyPresenceRange() } },
         ),
         // --- kiosk
         TextEntity(

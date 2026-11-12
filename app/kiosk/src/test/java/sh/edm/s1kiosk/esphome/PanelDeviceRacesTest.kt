@@ -23,7 +23,6 @@ import org.robolectric.shadows.ShadowPowerManager
 import sh.edm.esphome.EspHomeLog
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.KioskPrefs
-import sh.edm.s1kiosk.ScreenController
 import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.base.BaseBackend
 import sh.edm.s1kiosk.dashboard.Dashboards
@@ -79,7 +78,7 @@ class PanelDeviceRacesTest {
         prefs.sendspin.enabled = false
         prefs.wallBase.backend = BaseBackend.LOCALSERVICE.pref
         ShadowPowerManager.clearWakeLocks()
-        screenListeners = listenerCount(ScreenController)
+        screenListeners = listenerCount(runtime.screen)
         authListeners = listenerCount(HaAuth)
         dashboardListeners = listenerCount(Dashboards)
         originalSink = EspHomeLog.sink
@@ -116,7 +115,7 @@ class PanelDeviceRacesTest {
         assertNotNull("the update manager started", runtime.updates)
         assertTrue("the wake lock is held", ShadowPowerManager.getLatestWakeLock()?.isHeld == true)
         assertEquals("the Wi-Fi lock is held", 1, wifiLocks())
-        assertEquals(screenListeners + 1, listenerCount(ScreenController))
+        assertEquals(screenListeners + 1, listenerCount(runtime.screen))
         assertEquals(authListeners + 1, listenerCount(HaAuth))
         assertEquals(dashboardListeners + 1, listenerCount(Dashboards))
         assertEquals("the dashboard check and the state refresh are scheduled", 2, exec.periodic)
@@ -310,7 +309,7 @@ class PanelDeviceRacesTest {
         assertNull("the update manager is stopped", runtime.updates)
         assertFalse("the wake lock is not held", ShadowPowerManager.getLatestWakeLock()?.isHeld == true)
         assertEquals("the Wi-Fi lock is not held", 0, wifiLocks())
-        assertEquals("the screen listener is gone", screenListeners, listenerCount(ScreenController))
+        assertEquals("the screen listener is gone", screenListeners, listenerCount(runtime.screen))
         assertEquals("the sign-in listener is gone", authListeners, listenerCount(HaAuth))
         assertEquals("the dashboards listener is gone", dashboardListeners, listenerCount(Dashboards))
         assertEquals("no periodic task runs", 0, exec.periodic)

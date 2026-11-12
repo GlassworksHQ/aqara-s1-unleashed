@@ -39,7 +39,7 @@ class KioskService : Service() {
         super.onCreate()
         KioskPrefs(this).migrateRadioStep() // before discovery can save an HA URL in this process
         startForeground(NOTIFICATION_ID, buildNotification())
-        ScreenController.start(this)
+        glassworks.screen.start(this)
         glassworks.voiceState = if (KioskPrefs(this).voice.enabled) "idle" else "off"
         glassworks.voiceUi = VoiceUi(glassworks.voiceState)
         glassworks.voiceCancel = { device?.cancelVoice() }
@@ -68,8 +68,8 @@ class KioskService : Service() {
         glassworks.voiceState = glassworks.voiceUi.state
         Log.i("S1Kiosk.Voice", "voice: ${glassworks.voiceState}")
         // Talking to the panel counts as activity: wake the screen and keep it on.
-        if (e !is VoiceEvent.Idle && e !is VoiceEvent.Error) ScreenController.wake("voice")
-        ScreenController.onStateChanged?.invoke()
+        if (e !is VoiceEvent.Idle && e !is VoiceEvent.Error) glassworks.screen.wake("voice")
+        glassworks.screen.onStateChanged?.invoke()
     }
 
     override fun onDestroy() {

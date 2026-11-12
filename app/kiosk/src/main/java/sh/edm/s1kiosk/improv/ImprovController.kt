@@ -22,7 +22,7 @@ import android.os.SystemClock
 import android.util.Log
 import sh.edm.s1kiosk.BuildConfig
 import sh.edm.s1kiosk.KioskPrefs
-import sh.edm.s1kiosk.ScreenController
+import sh.edm.s1kiosk.glassworks
 import sh.edm.s1kiosk.setup.ImprovFacts
 import sh.edm.s1kiosk.setup.InstallerWifi
 import java.lang.ref.WeakReference
@@ -163,7 +163,7 @@ object ImprovController {
         }
         overlay = ImprovOverlay(app).also { it.fallbackActivity = { resumed?.get() } }
         (app as? Application)?.registerActivityLifecycleCallbacks(activityTracker)
-        ScreenController.addListener(proximityListener)
+        app.glassworks.screen.addListener(proximityListener)
 
         val probe = ImprovBleServer(app, main, bleListener)
         ble = probe
@@ -176,7 +176,7 @@ object ImprovController {
         if (!initialized) return
         stop("service destroyed")
         main.removeCallbacks(bootCheck)
-        ScreenController.removeListener(proximityListener)
+        app.glassworks.screen.removeListener(proximityListener)
         (app as? Application)?.unregisterActivityLifecycleCallbacks(activityTracker)
         initialized = false
     }
@@ -229,7 +229,7 @@ object ImprovController {
         if (isAuto) watchNetwork()
         status = "starting ($why)"
         Log.i(TAG, "Improv started: $why; window ${WINDOW_MS / 60000} min; ${wifi.status()}")
-        ScreenController.wake("improv")
+        app.glassworks.screen.wake("improv")
         refreshOverlay()
         main.removeCallbacks(tick)
         main.post(tick)
@@ -282,7 +282,7 @@ object ImprovController {
         Log.i(TAG, "installer Wi-Fi: joining '$ssid'")
         installerWifi = InstallerWifi(ssid, InstallerWifi.Phase.CONNECTING)
         installerJoining = true
-        ScreenController.wake("installer wifi")
+        app.glassworks.screen.wake("installer wifi")
         refreshOverlay()
         wifi.connect(ssid, psk, hidden) { outcome -> main.post { onInstallerOutcome(seq, ssid, outcome); done?.invoke(outcome) } }
         return true
@@ -374,7 +374,7 @@ object ImprovController {
 
         override fun identify() {
             Log.i(TAG, "identify")
-            ScreenController.wake("improv identify")
+            app.glassworks.screen.wake("improv identify")
             if (inline()) {
                 inlineHost?.onImprovIdentify()
             } else {
@@ -468,7 +468,7 @@ object ImprovController {
                 stop("window expired")
                 return
             }
-            if ((overlay.isShown || inline()) && s.state != ImprovState.PROVISIONED) ScreenController.userActivity()
+            if ((overlay.isShown || inline()) && s.state != ImprovState.PROVISIONED) app.glassworks.screen.userActivity()
             if (s.state == ImprovState.AUTHORIZED) refreshOverlay() // countdown
             main.postDelayed(this, 1000)
         }
@@ -516,7 +516,7 @@ object ImprovController {
     // ---- physical authorization alternatives
 
     private val proximityListener: () -> Unit = {
-        val n = ScreenController.near
+        val n = app.glassworks.screen.near
         if (n && !lastNear && prefs.improvProximityAuth && session?.state == ImprovState.AUTHORIZATION_REQUIRED) {
             authorize("proximity")
         }

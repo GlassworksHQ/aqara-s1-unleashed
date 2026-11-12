@@ -1,0 +1,65 @@
+package sh.edm.s1kiosk.frame
+
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.provider.Settings
+import android.util.Log
+import dev.glassworks.screen.LightSource
+import dev.glassworks.screen.PresenceSource
+import kotlin.math.abs
+
+private const val TAG = "S1Kiosk.Screen"
+
+/**
+ * The S1's "vi5300 Proximity Sensor" (ST VL53L-class time-of-flight, wake-up sensor). The Lumi HAL
+ * reports `1.0` when something is closer than the threshold in `settings secure proximity_threshold`,
+ * otherwise a larger value. com.lumi.systemmanager observes that setting and programs the driver.
+ */
+class Vi5300Presence : PresenceSource {
+    private companion object {
+        /** Lumi's threshold table (index -> decimetres), from com.lumi.systemmanager Monitor.java. */
+        val RANGE_DM = intArrayOf(0, 1, 2, 4, 6, 8, 10, 12, 15, 20, 25)
+    }
+
+    override fun start(context: Context, onReading: (near: Boolean, raw: Float) -> Unit) {
+        val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        sm.getDefaultSensor(Sensor.TYPE_PROXIMITY)?.let {
+            Log.i(TAG, "proximity: ${it.name} vendor=${it.vendor} max=${it.maximumRange} wakeUp=${it.isWakeUpSensor}")
+            sm.registerListener(listener(Sensor.TYPE_PROXIMITY) { v -> onReading(v == 1f, v) }, it, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+    }
+
+    /** Writes the nearest index of [RANGE_DM]. Needs WRITE_SECURE_SETTINGS (granted over adb); skipped otherwise. */
+    override fun setRange(context: Context, metres: Float) {
+        if (metres <= 0f) return
+        val dm = (metres * 10).toInt()
+        val idx = RANGE_DM.indices.minByOrNull { abs(RANGE_DM[it] - dm) } ?: return
+        try {
+            Settings.Secure.putInt(context.contentResolver, "proximity_threshold", idx)
+            Log.i(TAG, "presence range ${metres}m -> proximity_threshold=$idx (${RANGE_DM[idx] / 10.0} m)")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "No WRITE_SECURE_SETTINGS; can't set presence range")
+        }
+    }
+}
+
+/** The S1's "mk6212 Ambient Light Sensor", in lux. */
+class Mk6212Light : LightSource {
+    override fun start(context: Context, onLux: (Float) -> Unit) {
+        val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        sm.getDefaultSensor(Sensor.TYPE_LIGHT)?.let {
+            Log.i(TAG, "light: ${it.name} vendor=${it.vendor} max=${it.maximumRange}")
+            sm.registerListener(listener(Sensor.TYPE_LIGHT, onLux), it, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+    }
+}
+
+private fun listener(type: Int, onValue: (Float) -> Unit) = object : SensorEventListener {
+    override fun onSensorChanged(e: SensorEvent) {
+        if (e.sensor.type == type) onValue(e.values[0])
+    }
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+}
