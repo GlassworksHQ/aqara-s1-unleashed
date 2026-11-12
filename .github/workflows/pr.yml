@@ -76,6 +76,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Kiln (Next.js) builds
+        run: npm run build -w @glassworks/kiln-app
 
   scripts:
     runs-on: ubuntu-24.04
