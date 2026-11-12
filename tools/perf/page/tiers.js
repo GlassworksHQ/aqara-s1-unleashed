@@ -18,9 +18,21 @@
 
   const ORDER = ["light", "typical", "heavy"];
 
-  // While live, the page changes `updatesPerS` entity states per second (round robin over what is on
-  // screen, with HA's 180 ms tile transitions) and its clock ticks every second.
-  const LIVE = { updatesPerS: 5, clockEveryMs: 1000 };
+  // The measurement protocol: bump it whenever how something is measured changes (the pages, the
+  // head, the swipes, the update rate, the windows, or how the runner reads them). rubric.json's
+  // protocol_version says which protocol its rules apply to; a summary from another one is
+  // re-measured, not graded. test/page.test.mjs pins the two equal.
+  const PROTOCOL = 1;
+
+  // The first screen is the same on every page: the clock, the toggle, `tiles` more tiles and one
+  // entities card of `rows` rows, taken from the page's own counts. Only these change while the page
+  // is live, so every page gets the same update stream; the pages differ in what is around and below.
+  const HEAD = { tiles: 7, rows: 5 };
+
+  // While live, the page changes `updatesPerS` entity states per second over the head's tiles and
+  // rows (a seeded order; a tile flips on or off with HA's 180 ms transitions, a row changes its
+  // text), and its clock ticks every second.
+  const LIVE = { updatesPerS: 5, clockEveryMs: 1000, tileTransitionMs: 180 };
 
   // Phases, in ms. The page stays still after its load event so its load can settle and the
   // kiosk's loading overlay is gone (hidden at first paint, or 1.5 s after the load, 300 ms fade).
@@ -33,7 +45,7 @@
     return s.tiles + s.entities + s.longLists + s.sensors + s.histories + s.pictures + 1;   // + the clock
   }
 
-  const api = { TIERS, ORDER, LIVE, PHASES, cardCount };
+  const api = { TIERS, ORDER, HEAD, LIVE, PHASES, PROTOCOL, cardCount };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWTiers = api;
 })(this);

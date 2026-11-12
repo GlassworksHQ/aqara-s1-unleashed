@@ -26,6 +26,7 @@ SYNTH=1 REF=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=()
 # Waits, in seconds. Only the off-device test (test/test_runner.py) shortens them.
 IDLE_SETTLE="${GW_PERF_IDLE_SETTLE:-30}" IDLE_WINDOW="${GW_PERF_IDLE_WINDOW:-15}"
 COLD_SETTLE="${GW_PERF_COLD_SETTLE:-3}" COLD_TIMEOUT="${GW_PERF_COLD_TIMEOUT:-120}" RUN_GAP="${GW_PERF_RUN_GAP:-10}"
+BETWEEN_QUIET="${GW_PERF_BETWEEN_QUIET:-2}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -144,14 +145,16 @@ if [ "$SYNTH" = 1 ]; then
 fi
 
 if [ "$REF" = 1 ]; then
+  # How many graded runs were attempted, so a run that left no file still counts against the grade.
+  printf '{"runs": %d}\n' "$RUNS" > "$OUT/plan.json"
   # The graded part. Each run: a cold start (start = process start to engine ready), then the three
   # reference dashboards in turn, once the kiosk's own first page has gone quiet.
   for k in $(seq 1 "$RUNS"); do
-    log "graded run $k/$RUNS: cold start, then the light, typical and heavy reference dashboards"
+    log "graded run $k/$RUNS: cold start, a warm-up page, then the three reference dashboards (the order turns each run)"
     thermal "refstart-$k"
     DASHBOARD_OK=0
     run refstart --run "$k" --settle "$COLD_SETTLE" --url "http://127.0.0.1:$PORT/dashboard.html" \
-      --vsync "$VSYNC" --taps "$TAPS" || log "graded run $k failed; see refstart-$k.json"
+      --vsync "$VSYNC" --taps "$TAPS" --between-quiet "$BETWEEN_QUIET" || log "graded run $k failed; see refstart-$k.json"
     sleep "$RUN_GAP"
   done
 fi

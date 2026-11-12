@@ -56,11 +56,17 @@ def shell(cmd):
                 save("cold.json", True)
             return "Starting: Intent\nStatus: ok\nActivity: sh.edm.s1kiosk/.MainActivity\nTotalTime: 1700\nWaitTime: 1710\nComplete\n"
         return "Starting: Intent\n"
-    if cmd.startswith("input swipe"):
-        save("swipes.json", state("swipes.json", 0) + 1)
-        return ""
-    if cmd.startswith("input tap"):
-        save("taps.json", state("taps.json", 0) + 1)
+    if cmd.startswith(("input swipe", "input tap")):
+        # Like a page: a gesture nobody asked for (no current *-ready left to answer) lands on whatever
+        # is on screen. Record it, and don't count it as the page's.
+        kind = "swipe" if cmd.startswith("input swipe") else "tap"
+        asked = state("asked.json", {})
+        if asked.get(kind, 0) < 1:
+            save("unasked.json", state("unasked.json", []) + [cmd])
+            return ""
+        asked[kind] -= 1
+        save("asked.json", asked)
+        save(f"{kind}s.json", state(f"{kind}s.json", 0) + 1)
         return ""
     if cmd.startswith("dumpsys SurfaceFlinger --list"):
         return f"Display Root#0\nSurfaceView - {PKG}/{PKG}.MainActivity#0\nBackground for -SurfaceView - {PKG}/{PKG}.MainActivity#0\n"
@@ -160,6 +166,9 @@ def refdash(nonce, url):
     (state updates), one window of frames, the taps, then swipes where it asks, done."""
     tier = re.search(r"tier=(\w+)", url).group(1)
     taps = int(re.search(r"taps=(\d+)", url).group(1))
+    m = re.search(r"swipes=(\d+)", url)
+    swipes = int(m.group(1)) if m else int(os.environ.get("FAKE_SWIPES", "2"))
+    save("opened.json", state("opened.json", []) + [tier + ("-warmup" if "warmup=1" in url else "")])
     foreign = os.environ.get("FAKE_FOREIGN_PAGE")
     foreign = foreign if (foreign == "end") == (tier == "heavy") else None
     dpr = float(os.environ.get("FAKE_DPR", "1.5"))
@@ -173,31 +182,47 @@ def refdash(nonce, url):
     a = now()
     paint(a + 0.15, a + 0.5)
     line("GeckoSession", f"handleMessage GeckoView:PageStart uri={url}")
+    save("asked.json", {})
+    stale = state("last_nonce.json")
+    if os.environ.get("FAKE_STALE_READY") and stale:
+        # The last page's requests, replayed late into this one (its console lines can arrive after
+        # the next page opened). The runner must answer only the current page's nonce.
+        for t in ("swipe-ready", "input-ready"):
+            line("GeckoConsole", "GWPERF " + json.dumps({"t": t, "nonce": stale, "run": 1, "n": 0, "x": 720, "y": 360,
+                                                          "y1": 612, "y2": 108, "ms": 300, "taps": 2}))
+    save("last_nonce.json", nonce)
     if foreign == "after":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     time.sleep(0.7)
-    gw({"t": "refdash", "tier": tier, "nodes": 1458, "cards": 50, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
+    gw({"t": "refdash", "tier": tier, "protocol": 1, "nodes": 1458, "cards": 50, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
         "fcp_ms": 150, "lcp_ms": 150, "load_ms": 120, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000})
     time.sleep(1.0)
     gw({"t": "warmup", "stage": "updates", "n": 1})
     time.sleep(0.3)
-    gw({"t": "measure", "stage": "updates", "n": 1, "moving": 12, "offscreen": 0, "targets": 10,
+    gw({"t": "measure", "stage": "updates", "n": 1, "moving": 12, "offscreen": 0, "targets": 10, "update_every_ms": 200,
         "animations": 0, "animations_expected": 0})
     time.sleep(0.5)
-    gw({"t": "step", "stage": "updates", "n": 1, "window_ms": 500,
-        "raf": {"n": 30, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0, "fps": 60}})
+    gw({"t": "step", "stage": "updates", "n": 1, "window_ms": 500, "t0": 3000.0,
+        "raf": {"n": 30, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0, "fps": 60},
+        "raf_times": [round(i * 16.7, 1) for i in range(31)],
+        "changes": [[100.0, 100.5, 180, 0], [300.0, 300.4, 0, 0], [400.0, 400.2, 0, 1]]})
     if taps:
         before = state("taps.json", 0)
+        save("asked.json", {"tap": taps})
         gw({"t": "input-ready", "x": 720, "y": 360, "taps": taps})
         end = now() + 10
         while state("taps.json", 0) - before < taps and now() < end:
             time.sleep(0.1)
         gw({"t": "input", "stage": tier, "method": "event-timing", "taps": state("taps.json", 0) - before,
             "values": [16, 48], "inp_ms": 48})
-    for i in range(int(os.environ.get("FAKE_SWIPES", "2"))):
+    for i in range(swipes):
         before = state("swipes.json", 0)
-        gw({"t": "swipe-ready", "n": i, "x": 720, "y1": 612, "y2": 108, "ms": 300})
-        end = now() + 10
+        save("asked.json", {"swipe": 1})
+        ready = {"t": "swipe-ready", "n": i, "x": 720, "y1": 612, "y2": 108, "ms": 300}
+        if os.environ.get("FAKE_BAD_SWIPE"):
+            ready = json.loads(os.environ["FAKE_BAD_SWIPE"])
+        gw(ready)
+        end = now() + float(os.environ.get("FAKE_SWIPE_WAIT", "10"))
         while state("swipes.json", 0) == before and now() < end:
             time.sleep(0.05)
         moved = state("swipes.json", 0) > before
@@ -212,6 +237,7 @@ def refdash(nonce, url):
             "raf": {"n": 30, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0, "fps": 60},
             "raf_intervals": [16.7] * 30})
         time.sleep(0.2)
+    save("asked.json", {})
     gw({"t": "done", "stage": tier})
     if foreign == "end":
         time.sleep(0.3)

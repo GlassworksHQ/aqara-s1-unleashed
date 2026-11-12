@@ -179,7 +179,7 @@
     return card(`<img class="picture" alt="" src="${picture(rnd)}">`, 3);
   }
 
-  const live = { targets: [], clock: null, toggle: null };
+  const live = { targets: [], clock: null, toggle: null, head: [], timers: [] };
 
   // HA's masonry view: one column per matched breakpoint (300, 600, 900, 1200 px); each card goes to
   // the first column whose size is under 5, else to the smallest (hui-masonry-view.ts).
@@ -198,12 +198,13 @@
       return el;
     };
 
-    // The cards in a fixed, seeded order: clock and toggle first, then the rest shuffled.
+    // The cards in a fixed, seeded order: the head first (clock, toggle, tiles and one entities card;
+    // the same on every page, and the only cards that change while live), then the rest shuffled.
     const deck = [];
     let e = 0;
     const next = (k) => { const out = states.slice(e, e + k); e += k; return out; };
-    for (let i = 1; i < SPEC.tiles; i++) deck.push(() => tileCard(next(1)[0]));
-    for (let i = 0; i < SPEC.entities; i++) deck.push(() => entitiesCard(`Room ${i + 1}`, next(SPEC.rows)));
+    for (let i = 1 + T.HEAD.tiles; i < SPEC.tiles; i++) deck.push(() => tileCard(next(1)[0]));
+    for (let i = 1; i < SPEC.entities; i++) deck.push(() => entitiesCard(`Room ${i + 1}`, next(SPEC.rows)));
     for (let i = 0; i < SPEC.longLists; i++) deck.push(() => entitiesCard(`All lights ${i + 1}`, next(SPEC.longRows)));
     for (let i = 0; i < SPEC.sensors; i++) deck.push(() => sensorCard(next(1)[0], rnd));
     for (let i = 0; i < SPEC.histories; i++) deck.push(() => historyCard(`History ${i + 1}`, rnd));
@@ -212,6 +213,8 @@
 
     live.clock = put(card(`<div class="clock">12:00:00</div>`, 2));
     live.toggle = put(tileCard({ entity_id: "light.living_room", state: "off", attributes: { friendly_name: "Living room" } }));
+    for (let i = 0; i < T.HEAD.tiles; i++) live.head.push(put(tileCard(next(1)[0])));
+    live.head.push(put(entitiesCard("Room 1", next(T.HEAD.rows))));
     for (const make of deck) put(make());
   }
 
@@ -249,7 +252,7 @@
     const nav = performance.getEntriesByType("navigation")[0] || {};
     const fcp = paint();
     log({
-      t: "refdash", tier: TIER, nodes: nodeCount(), cards: document.querySelectorAll("gw-card").length,
+      t: "refdash", tier: TIER, protocol: T.PROTOCOL, nodes: nodeCount(), cards: document.querySelectorAll("gw-card").length,
       css: [innerWidth, innerHeight], dpr: devicePixelRatio, scroll_height: document.documentElement.scrollHeight,
       fcp_ms: fcp ? Math.round(fcp.startTime) : null, lcp_ms: lcp === null ? null : Math.round(lcp),
       load_ms: nav.loadEventEnd ? Math.round(nav.loadEventEnd) : null,
@@ -258,47 +261,83 @@
     });
   }
 
-  // The live updates: `updatesPerS` state changes a second over the tiles and rows on screen (seeded
-  // order), and the clock. Every run shows the same sequence.
+  // The live updates: `updatesPerS` state changes a second over the head's tiles and rows (seeded
+  // order), and the clock. Every page and every run shows the same sequence. Each change is noted
+  // with the time it was due and the time it ran (a busy main thread runs it late), and how long its
+  // transition lasts, so the frames that had a change to draw can be told from idle ones.
+  const changes = { on: false, list: [] };
+  // kind: 0 a state update, 1 the clock.
+  function note(due, d, kind) {
+    if (changes.on) changes.list.push([due, performance.now(), d, kind]);
+  }
+
+  // Timers aimed at fixed times, so a late change doesn't push the next ones back (no drift).
+  function every(period, fn) {
+    const start = performance.now();
+    let k = 0;
+    const step = () => {
+      k++;
+      fn(k, start + k * period);
+      live.timers.push(setTimeout(step, Math.max(0, start + (k + 1) * period - performance.now())));
+    };
+    live.timers.push(setTimeout(step, period));
+  }
+
   function goLive() {
-    for (const c of document.querySelectorAll("gw-card")) {
-      if (c === live.toggle || c === live.clock || !inView(c)) continue;
-      for (const v of c.shadowRoot.querySelectorAll(".value")) live.targets.push({ card: c, v });
+    for (const c of live.head) {
+      const tile = c.shadowRoot.querySelector(".tile");
+      for (const v of c.shadowRoot.querySelectorAll(".value")) live.targets.push({ card: c, v, tile });
     }
-    let tick = 0;
-    setInterval(() => {
-      tick++;
-      if (!live.targets.length) return;
+    every(Math.round(1000 / T.LIVE.updatesPerS), (tick, due) => {
       const t = live.targets[(tick * 7) % live.targets.length];
       const states = JSON.parse(W.makeStates(SEED, 400, tick));
       t.v.textContent = stateText(states[(tick * 13) % states.length]);
-      const tile = t.card.shadowRoot.querySelector(".tile");
-      if (tile) tile.classList.toggle("on", tick % 2 === 0);
-    }, Math.round(1000 / T.LIVE.updatesPerS));
-    let sec = 0;
+      if (t.tile) t.tile.classList.toggle("on");
+      note(due, t.tile ? T.LIVE.tileTransitionMs : 0, 0);
+    });
     const clock = live.clock.shadowRoot.querySelector(".clock");
-    setInterval(() => { sec++; clock.textContent = `12:${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`; },
-      T.LIVE.clockEveryMs);
+    every(T.LIVE.clockEveryMs, (sec, due) => {
+      clock.textContent = `12:${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+      note(due, 0, 1);
+    });
+  }
+
+  // Before the next page opens, this one goes still: no timers left running into its teardown.
+  function stopLive() {
+    for (const t of live.timers) clearTimeout(t);
+    live.timers.length = 0;
   }
 
   const frameStamps = { on: false, list: [] };
   requestAnimationFrame(function loop(ts) { if (frameStamps.on) frameStamps.list.push(ts); requestAnimationFrame(loop); });
+  const r1 = (x) => Math.round(x * 10) / 10;
 
-  // Frames while the updates run. The screen is still between changes, so only rAF (the main thread
-  // keeping time) is graded here; the live check says whether the changes were on screen.
+  // Frames while the updates run. The screen is still between changes, so SurfaceFlinger has nothing
+  // steady to count; the runner grades the rAF frames that had a change to draw (report.py,
+  // change_frames). The live check says whether the changes were on screen.
   async function updatesWindow() {
     log({ t: "warmup", stage: "updates", n: 1 });
+    changes.list = [];
+    changes.on = true;
     await sleep(T.PHASES.warmupMs);
-    const watched = [live.toggle, live.clock].concat(live.targets.map((t) => t.card));
+    const watched = [live.toggle, live.clock].concat(live.head);
     log({ t: "measure", stage: "updates", n: 1, moving: watched.length, offscreen: watched.filter((el) => !inView(el)).length,
-          targets: live.targets.length, animations: 0, animations_expected: 0 });
+          targets: live.targets.length, update_every_ms: Math.round(1000 / T.LIVE.updatesPerS),
+          animations: 0, animations_expected: 0 });
     const t0 = performance.now();
     frameStamps.list = [];
     frameStamps.on = true;
     await sleep(S.measureMs(VSYNC));
     frameStamps.on = false;
-    log({ t: "step", stage: "updates", n: 1, window_ms: Math.round(performance.now() - t0),
-          raf: S.frameStats(S.intervals(frameStamps.list), VSYNC) });
+    changes.on = false;
+    const t1 = performance.now();
+    // Times are ms after t0 (itself ms after performance.timeOrigin). A change from before t0 whose
+    // transition runs into the window is kept.
+    const seen = changes.list.filter((c) => c[0] <= t1 && c[1] + c[2] >= t0);
+    log({ t: "step", stage: "updates", n: 1, window_ms: Math.round(t1 - t0), t0: r1(t0),
+          raf: S.frameStats(S.intervals(frameStamps.list), VSYNC),
+          raf_times: frameStamps.list.map((x) => r1(x - t0)),
+          changes: seen.map((c) => [r1(c[0] - t0), r1(c[1] - t0), c[2], c[3]]) });
   }
 
   // Tap-to-paint on the toggle while the updates run. Event Timing gives input delay + processing +
@@ -395,6 +434,7 @@
     await updatesWindow();
     if (TAPS) await input();
     for (let i = 0; i < SWIPES; i++) await swipe(i);
+    stopLive();
     log({ t: "done", stage: TIER });
   }
 

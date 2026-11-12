@@ -194,3 +194,36 @@ class FrameStats(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SharedCases(unittest.TestCase):
+    """test/grade-cases.json: the same boundaries grade.ts must meet (grade.test.mjs)."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(HERE, "grade-cases.json")) as f:
+            cls.data = json.load(f)
+
+    def test_bands(self):
+        for c in self.data["bands"]:
+            with self.subTest(**c):
+                self.assertEqual(G.band(c["value"], G.METRICS[c["metric"]]), c["band"])
+
+    def test_letters_and_levels(self):
+        for c in self.data["cases"]:
+            with self.subTest(c["name"]):
+                g = G.grade(c["tiers"], c["start_ms"])
+                got = {k: g[k] for k in c["expect"] if k != "limits"}
+                got["limits"] = G.next_limits(g)
+                self.assertEqual(got, c["expect"])
+
+    def test_the_rules_come_from_rubric_json(self):
+        self.assertEqual(self.data["rubric_version"], G.RUBRIC_VERSION)
+        self.assertEqual([l for l, _, _ in G.LETTERS], [l["letter"] for l in G.RUBRIC["grade"]["letters"]])
+        self.assertEqual(G.START_CAP, G.RUBRIC["grade"]["start_cap"]["letter"])
+
+    def test_frames_and_median_bands(self):
+        for c in self.data["frames"]:
+            self.assertEqual(G.frame_band(c["stats"]), c["band"], c)
+        for c in self.data["median_bands"]:
+            self.assertEqual(G.median_band(c["bands"]), c["band"], c)

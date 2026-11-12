@@ -1,0 +1,2188 @@
+{
+ "_comment": "Shared grade cases (MIT): every letter and level boundary from test_grade.py, with the answer. grade.py (test_grade.py) and grade.ts (grade.test.mjs) must both give it. Regenerate only on purpose, with the rubric and the docs.",
+ "rubric_version": 4,
+ "bands": [
+  {
+   "metric": "frame_p95_ms",
+   "value": 16.67,
+   "band": "good"
+  },
+  {
+   "metric": "frame_p95_ms",
+   "value": 17.1,
+   "band": "good"
+  },
+  {
+   "metric": "frame_p95_ms",
+   "value": 17.3,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "frame_p95_ms",
+   "value": 33.33,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "frame_p95_ms",
+   "value": 33.8,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "frame_p95_ms",
+   "value": 34.0,
+   "band": "poor"
+  },
+  {
+   "metric": "frame_jank_pct",
+   "value": 0,
+   "band": "good"
+  },
+  {
+   "metric": "frame_jank_pct",
+   "value": 5,
+   "band": "good"
+  },
+  {
+   "metric": "frame_jank_pct",
+   "value": 5.01,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "frame_jank_pct",
+   "value": 50,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "frame_jank_pct",
+   "value": 50.01,
+   "band": "poor"
+  },
+  {
+   "metric": "frame_frozen_pct",
+   "value": 0,
+   "band": "good"
+  },
+  {
+   "metric": "frame_frozen_pct",
+   "value": 0.05,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "frame_frozen_pct",
+   "value": 0.1,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "frame_frozen_pct",
+   "value": 0.11,
+   "band": "poor"
+  },
+  {
+   "metric": "load_ms",
+   "value": 2500,
+   "band": "good"
+  },
+  {
+   "metric": "load_ms",
+   "value": 2501,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "load_ms",
+   "value": 4000,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "load_ms",
+   "value": 4001,
+   "band": "poor"
+  },
+  {
+   "metric": "inp_ms",
+   "value": 200,
+   "band": "good"
+  },
+  {
+   "metric": "inp_ms",
+   "value": 201,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "inp_ms",
+   "value": 500,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "inp_ms",
+   "value": 501,
+   "band": "poor"
+  },
+  {
+   "metric": "start_ms",
+   "value": 2500,
+   "band": "good"
+  },
+  {
+   "metric": "start_ms",
+   "value": 2501,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "start_ms",
+   "value": 4999,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "start_ms",
+   "value": 5000,
+   "band": "poor"
+  }
+ ],
+ "cases": [
+  {
+   "name": "page level: everything good",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "A",
+    "meaning": "a good wall panel even for large dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": "smooth"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": []
+   }
+  },
+  {
+   "name": "page level: view loads in up to 4 s: still smooth",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 3000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "A",
+    "meaning": "a good wall panel even for large dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": "smooth"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "needs-improvement"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": []
+   }
+  },
+  {
+   "name": "page level: view load over 4 s",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 5000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "poor"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "fluid",
+      "tasks": [
+       "load"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "page level: scroll at 30 fps",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "needs-improvement",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards; large ones stay fluid",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": "fluid"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "needs-improvement",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "smooth",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "page level: scroll at 30 fps, view loads in up to 4 s",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 3000,
+     "scroll_band": "needs-improvement",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards; large ones stay fluid",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": "fluid"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "needs-improvement",
+      "updates": "good",
+      "load": "needs-improvement"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "smooth",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "page level: live updates at 30 fps",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "needs-improvement"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards; large ones stay fluid",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": "fluid"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "needs-improvement",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "smooth",
+      "tasks": [
+       "updates"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "page level: scroll under 30 fps",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "fluid",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "page level: live updates under 30 fps",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "poor"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "poor",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "fluid",
+      "tasks": [
+       "updates"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "page level: a tap over 200 ms",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 300,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "needs-improvement",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "fluid",
+      "tasks": [
+       "tap"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "page level: a tap over 500 ms",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 600,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "poor",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "fluid",
+      "tasks": [
+       "tap"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "page level: scroll not measured",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": null,
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": null,
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [
+     "heavy.scroll"
+    ],
+    "provisional": true,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "fluid",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "letter: heavy smooth",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "A",
+    "meaning": "a good wall panel even for large dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": "smooth"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": []
+   }
+  },
+  {
+   "name": "letter: heavy fluid, typical smooth",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "needs-improvement",
+     "updates_band": "needs-improvement"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards; large ones stay fluid",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": "fluid"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "needs-improvement",
+      "updates": "needs-improvement",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "smooth",
+      "tasks": [
+       "scroll",
+       "updates"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "letter: heavy below fluid, typical smooth",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "fluid",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "letter: typical fluid, heavy fluid",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "needs-improvement",
+     "updates_band": "needs-improvement"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "needs-improvement",
+     "updates_band": "needs-improvement"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "fluid",
+     "heavy": "fluid"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "needs-improvement",
+      "updates": "needs-improvement",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "needs-improvement",
+      "updates": "needs-improvement",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "typical",
+      "needs": "smooth",
+      "tasks": [
+       "scroll",
+       "updates"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "letter: typical fluid",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "needs-improvement",
+     "updates_band": "needs-improvement"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "fluid",
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "needs-improvement",
+      "updates": "needs-improvement",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "typical",
+      "needs": "smooth",
+      "tasks": [
+       "scroll",
+       "updates"
+      ]
+     },
+     {
+      "page": "heavy",
+      "needs": "fluid",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "letter: typical below fluid, light fluid",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "needs-improvement",
+     "updates_band": "needs-improvement"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "D",
+    "meaning": "a good wall panel for light dashboards",
+    "levels": {
+     "light": "fluid",
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "needs-improvement",
+      "updates": "needs-improvement",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "typical",
+      "needs": "fluid",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "letter: typical below fluid, light smooth",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "D",
+    "meaning": "a good wall panel for light dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "typical",
+      "needs": "fluid",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "letter: light below fluid",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "E",
+    "meaning": "not a good wall panel, even for light dashboards",
+    "levels": {
+     "light": null,
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "light",
+      "needs": "fluid",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "letter: only heavy smooth: it is the letter's one condition",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "A",
+    "meaning": "a good wall panel even for large dashboards",
+    "levels": {
+     "light": null,
+     "typical": null,
+     "heavy": "smooth"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": []
+   }
+  },
+  {
+   "name": "letter: a slow tap on typical",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 300,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "D",
+    "meaning": "a good wall panel for light dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "needs-improvement",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "typical",
+      "needs": "fluid",
+      "tasks": [
+       "tap"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "letter: a slow view on light",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 5000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "E",
+    "meaning": "not a good wall panel, even for light dashboards",
+    "levels": {
+     "light": null,
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "poor"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "light",
+      "needs": "fluid",
+      "tasks": [
+       "load"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "restart just under the cap",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 4999,
+   "expect": {
+    "grade": "A",
+    "meaning": "a good wall panel even for large dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": "smooth"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 4999,
+     "band": "needs-improvement"
+    },
+    "limits": []
+   }
+  },
+  {
+   "name": "a poor restart caps an A at C",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 5000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": "smooth"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": true,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 5000,
+     "band": "poor"
+    },
+    "limits": []
+   }
+  },
+  {
+   "name": "a cap never raises a letter",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 6000,
+   "expect": {
+    "grade": "D",
+    "meaning": "a good wall panel for light dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 6000,
+     "band": "poor"
+    },
+    "limits": [
+     {
+      "page": "typical",
+      "needs": "fluid",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a missing page",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": null,
+      "scroll": null,
+      "updates": null,
+      "load": null
+     }
+    },
+    "capped_by_start": false,
+    "missing": [
+     "heavy.tap",
+     "heavy.scroll",
+     "heavy.updates",
+     "heavy.load"
+    ],
+    "provisional": true,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "fluid",
+      "tasks": [
+       "tap",
+       "scroll",
+       "updates",
+       "load"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "nothing measured",
+   "tiers": {},
+   "start_ms": null,
+   "expect": {
+    "grade": "E",
+    "meaning": "not a good wall panel, even for light dashboards",
+    "levels": {
+     "light": null,
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": null,
+      "scroll": null,
+      "updates": null,
+      "load": null
+     },
+     "typical": {
+      "tap": null,
+      "scroll": null,
+      "updates": null,
+      "load": null
+     },
+     "heavy": {
+      "tap": null,
+      "scroll": null,
+      "updates": null,
+      "load": null
+     }
+    },
+    "capped_by_start": false,
+    "missing": [
+     "light.tap",
+     "light.scroll",
+     "light.updates",
+     "light.load",
+     "typical.tap",
+     "typical.scroll",
+     "typical.updates",
+     "typical.load",
+     "heavy.tap",
+     "heavy.scroll",
+     "heavy.updates",
+     "heavy.load",
+     "start"
+    ],
+    "provisional": true,
+    "start": {
+     "value": null,
+     "band": null
+    },
+    "limits": [
+     {
+      "page": "light",
+      "needs": "fluid",
+      "tasks": [
+       "tap",
+       "scroll",
+       "updates",
+       "load"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a C with a poor restart is not marked capped (the cap changes nothing)",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "needs-improvement",
+     "updates_band": "needs-improvement"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "poor",
+     "updates_band": "good"
+    }
+   },
+   "start_ms": 5000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "fluid",
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "needs-improvement",
+      "updates": "needs-improvement",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "poor",
+      "updates": "good",
+      "load": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 5000,
+     "band": "poor"
+    },
+    "limits": [
+     {
+      "page": "typical",
+      "needs": "smooth",
+      "tasks": [
+       "scroll",
+       "updates"
+      ]
+     },
+     {
+      "page": "heavy",
+      "needs": "fluid",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a B with a poor restart drops to C",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "good",
+     "updates_band": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_band": "needs-improvement",
+     "updates_band": "needs-improvement"
+    }
+   },
+   "start_ms": 5000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "levels": {
+     "light": "smooth",
+     "typical": "smooth",
+     "heavy": "fluid"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "needs-improvement",
+      "updates": "needs-improvement",
+      "load": "good"
+     }
+    },
+    "capped_by_start": true,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 5000,
+     "band": "poor"
+    },
+    "limits": []
+   }
+  }
+ ],
+ "frames": [
+  {
+   "stats": {
+    "n": 100,
+    "p95_ms": 16.67,
+    "jank_pct": 0,
+    "frozen_pct": 0
+   },
+   "band": "good"
+  },
+  {
+   "stats": {
+    "n": 100,
+    "p95_ms": 33.33,
+    "jank_pct": 20,
+    "frozen_pct": 0
+   },
+   "band": "needs-improvement"
+  },
+  {
+   "stats": {
+    "n": 100,
+    "p95_ms": 16.67,
+    "jank_pct": 0,
+    "frozen_pct": 1
+   },
+   "band": "poor"
+  },
+  {
+   "stats": {
+    "n": 0,
+    "p95_ms": 50,
+    "jank_pct": 60,
+    "frozen_pct": 0
+   },
+   "band": null
+  },
+  {
+   "stats": {
+    "n": 0
+   },
+   "band": null
+  }
+ ],
+ "median_bands": [
+  {
+   "bands": [
+    "good"
+   ],
+   "band": "good"
+  },
+  {
+   "bands": [
+    "good",
+    "poor"
+   ],
+   "band": "poor"
+  },
+  {
+   "bands": [
+    "good",
+    "needs-improvement",
+    "poor"
+   ],
+   "band": "needs-improvement"
+  },
+  {
+   "bands": [
+    "poor",
+    "good",
+    "good",
+    "good"
+   ],
+   "band": "good"
+  },
+  {
+   "bands": [],
+   "band": null
+  }
+ ]
+}

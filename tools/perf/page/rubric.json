@@ -1,6 +1,8 @@
 {
-  "_comment": "The perf rubric, read by tools/perf/grade.py and by the test page (perf.js, to stop the ladder). docs/perf.md cites each source. Change on purpose, with the docs and the tests.",
-  "version": 3,
+  "_comment": "The perf rubric: the bands' thresholds and the letter rules. The single source for tools/perf/grade.py, tools/perf/grade.ts (the site computes the letter from a summary with it) and the test page (perf.js, to stop the ladder). docs/perf.md cites each source. Change on purpose, with the docs and the tests (test/grade-cases.json).",
+  "version": 4,
+  "protocol_version": 1,
+  "_protocol": "The measurement protocol these rules apply to (tools/perf/page/tiers.js PROTOCOL): the pages, the swipes, the update rate, the windows and how the runner reads them. A summary from another protocol can't be graded with this file: re-measure.",
   "one_frame_ms": 16.667,
   "vsync_slack_ms": 0.5,
   "metrics": {
@@ -39,5 +41,98 @@
     "good_max": 16.667,
     "poor_above": 50,
     "source": "project choice: one state burst fits in a frame; poor past RAIL's 50 ms input budget"
+  },
+  "grade": {
+    "_comment": "The letter. A page is at a level when each task's band is one the level accepts. The first letter whose every page need holds is the grade, else the fallback. A restart in start_cap.band caps the letter at start_cap.letter (never raises it). Frames bands (scroll, updates) are each run's band (the worst of frame_p95_ms, frame_jank_pct, frame_frozen_pct), then the median band of the runs, the worse middle for an even count. Tap, load and start band the median of the runs.",
+    "pages": [
+      "light",
+      "typical",
+      "heavy"
+    ],
+    "tasks": {
+      "tap": "inp_ms",
+      "scroll": "frames",
+      "updates": "frames",
+      "load": "load_ms"
+    },
+    "levels": [
+      {
+        "level": "smooth",
+        "accepts": {
+          "tap": [
+            "good"
+          ],
+          "scroll": [
+            "good"
+          ],
+          "updates": [
+            "good"
+          ],
+          "load": [
+            "good",
+            "needs-improvement"
+          ]
+        }
+      },
+      {
+        "level": "fluid",
+        "accepts": {
+          "tap": [
+            "good"
+          ],
+          "scroll": [
+            "good",
+            "needs-improvement"
+          ],
+          "updates": [
+            "good",
+            "needs-improvement"
+          ],
+          "load": [
+            "good",
+            "needs-improvement"
+          ]
+        }
+      }
+    ],
+    "letters": [
+      {
+        "letter": "A",
+        "meaning": "a good wall panel even for large dashboards",
+        "needs": {
+          "heavy": "smooth"
+        }
+      },
+      {
+        "letter": "B",
+        "meaning": "a good wall panel for typical dashboards; large ones stay fluid",
+        "needs": {
+          "typical": "smooth",
+          "heavy": "fluid"
+        }
+      },
+      {
+        "letter": "C",
+        "meaning": "a good wall panel for typical dashboards",
+        "needs": {
+          "typical": "fluid"
+        }
+      },
+      {
+        "letter": "D",
+        "meaning": "a good wall panel for light dashboards",
+        "needs": {
+          "light": "fluid"
+        }
+      }
+    ],
+    "fallback": {
+      "letter": "E",
+      "meaning": "not a good wall panel, even for light dashboards"
+    },
+    "start_cap": {
+      "band": "poor",
+      "letter": "C"
+    }
   }
 }

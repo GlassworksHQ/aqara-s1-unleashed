@@ -17,32 +17,25 @@ ORDER = {GOOD: 0, NI: 1, POOR: 2}
 # metric id -> (good if value <= good_max, poor if value > poor_above or >= poor_at)
 METRICS = RUBRIC["metrics"]
 
-TIERS = ["light", "typical", "heavy"]
-TASKS = ["tap", "scroll", "updates", "load"]
+# The letter rules live in rubric.json ("grade"), so grade.ts (the site) reads the same ones.
+RULES = RUBRIC["grade"]
+PROTOCOL_VERSION = RUBRIC["protocol_version"]
+TIERS = RULES["pages"]
+TASKS = list(RULES["tasks"])
 
-# What a page needs to pass at each level: {task: accepted bands}. Frames (scroll, updates) are
-# smooth at 60 fps (band good: p95 within one frame plus slack, jank <= 5%, no freeze) and fluid at
-# 30 fps (not poor). A tap is good at INP <= 200 ms; a view may load in up to 4 s (needs improvement).
-LEVELS = {
-    "smooth": {"tap": {GOOD}, "scroll": {GOOD}, "updates": {GOOD}, "load": {GOOD, NI}},
-    "fluid": {"tap": {GOOD}, "scroll": {GOOD, NI}, "updates": {GOOD, NI}, "load": {GOOD, NI}},
-}
-LEVEL_RANK = {"smooth": 2, "fluid": 1, None: 0}
+# What a page needs to pass at each level: {task: accepted bands}, best level first. Frames (scroll,
+# updates) are smooth at 60 fps (band good) and fluid at 30 fps (not poor). A tap is good at INP <=
+# 200 ms; a view may load in up to 4 s (needs improvement).
+LEVELS = {lv["level"]: {task: set(ok) for task, ok in lv["accepts"].items()} for lv in RULES["levels"]}
+LEVEL_ORDER = [lv["level"] for lv in RULES["levels"]]
+LEVEL_RANK = dict([(lv, len(LEVEL_ORDER) - i) for i, lv in enumerate(LEVEL_ORDER)] + [(None, 0)])
 
-# The letters, best first: (letter, plain meaning, {page: level it needs}). The first letter whose
-# every requirement holds is the grade; none holds -> E. The bands underneath are the cited ones
-# (rubric.json); the pages, the levels and this table are project choices, set before any frame was
-# graded under them (docs/perf.md, "The grade").
-LETTERS = [
-    ("A", "a good wall panel even for large dashboards", {"heavy": "smooth"}),
-    ("B", "a good wall panel for typical dashboards; large ones stay fluid", {"typical": "smooth", "heavy": "fluid"}),
-    ("C", "a good wall panel for typical dashboards", {"typical": "fluid"}),
-    ("D", "a good wall panel for light dashboards", {"light": "fluid"}),
-]
-E_MEANING = "not a good wall panel, even for light dashboards"
-MEANINGS = dict([(l, m) for l, m, _ in LETTERS] + [("E", E_MEANING)])
-# A poor start (process start to engine ready >= 5 s, Android vitals' bound) caps the letter here.
-START_CAP = "C"
+# The letters, best first: (letter, plain meaning, {page: level it needs}). The bands underneath are
+# the cited ones; the pages, the levels and this table are project choices (docs/perf.md, "The grade").
+LETTERS = [(l["letter"], l["meaning"], l["needs"]) for l in RULES["letters"]]
+E_MEANING = RULES["fallback"]["meaning"]
+MEANINGS = dict([(l, m) for l, m, _ in LETTERS] + [(RULES["fallback"]["letter"], E_MEANING)])
+START_CAP = RULES["start_cap"]["letter"]
 
 # Not in the grade: no published standard, so the band is a project choice.
 JS_BURST = RUBRIC["js_burst_ms"]
@@ -94,7 +87,7 @@ def tier_bands(tier):
 
 def page_level(bands):
     """"smooth", "fluid" or None: the best level whose every task passes."""
-    for level in ("smooth", "fluid"):
+    for level in LEVEL_ORDER:
         if all(bands[task] in ok for task, ok in LEVELS[level].items()):
             return level
     return None
@@ -115,8 +108,9 @@ def grade(tiers, start_ms):
     start = band(start_ms, METRICS["start_ms"])
     missing = [f"{t}.{m}" for t in TIERS for m, b in bands[t].items() if b is None] + ([] if start else ["start"])
     letter = next((l for l, _, needs in LETTERS
-                   if all(LEVEL_RANK[levels[t]] >= LEVEL_RANK[need] for t, need in needs.items())), "E")
-    capped = start == POOR and letter < START_CAP
+                   if all(LEVEL_RANK[levels[t]] >= LEVEL_RANK[need] for t, need in needs.items())),
+                  RULES["fallback"]["letter"])
+    capped = start == RULES["start_cap"]["band"] and letter < START_CAP
     if capped:
         letter = START_CAP
     return {
@@ -130,6 +124,55 @@ def grade(tiers, start_ms):
         "levels": levels,
         "start": {"value": start_ms, "band": start},
     }
+
+
+def median_band(bands):
+    """The middle band of several runs (the worse of the two middles for an even count)."""
+    bs = sorted((b for b in bands if b), key=ORDER.get)
+    if not bs:
+        return None
+    return bs[len(bs) // 2]
+
+
+def next_limits(g):
+    """What keeps a grade from the next letter up: [{"page", "needs", "tasks"}] for each page below
+    the level that letter needs. Empty for the best letter."""
+    letters = [l for l, _, _ in LETTERS]
+    if g.get("grade") is None or g["grade"] == letters[0]:
+        return []
+    up = letters[-1] if g["grade"] not in letters else letters[letters.index(g["grade"]) - 1]
+    needs = next(n for l, _, n in LETTERS if l == up)
+    return [{"page": t, "needs": needs[t], "tasks": limits(g["bands"][t], needs[t])}
+            for t in TIERS if t in needs and LEVEL_RANK[g["levels"][t]] < LEVEL_RANK[needs[t]]]
+
+
+def summary_inputs(summary):
+    """A summary's measurements -> grade()'s inputs. Frames bands: each run's band, then the median."""
+    tiers = {}
+    for t in TIERS:
+        p = (summary.get("pages") or {}).get(t)
+        if not p:
+            continue
+        tiers[t] = {"inp_ms": p.get("inp_ms"), "load_ms": p.get("open_ms"),
+                    "scroll_band": median_band(frame_band(r) for r in (p.get("scroll") or {}).get("runs") or []),
+                    "updates_band": median_band(frame_band(r) for r in (p.get("updates") or {}).get("runs") or [])}
+    return tiers, summary.get("restart_ms")
+
+
+def grade_summary(summary):
+    """The letter from a summary (glassworks.perf-summary/1), as the site computes it with grade.ts.
+    status: graded, re-measure (another protocol: these rules don't apply) or not-comparable (the
+    measurement says why, e.g. not at the default zoom)."""
+    if summary.get("protocol_version") != PROTOCOL_VERSION:
+        return {"status": "re-measure", "grade": None, "meaning": None,
+                "why": f"measured with protocol {summary.get('protocol_version')}, these rules are for protocol {PROTOCOL_VERSION}"}
+    if summary.get("not_comparable"):
+        return {"status": "not-comparable", "grade": None, "meaning": None, "why": summary["not_comparable"]}
+    g = grade(*summary_inputs(summary))
+    g["provisional"] = bool(g["missing"] or summary.get("gaps"))
+    g["status"] = "graded"
+    g["limits"] = next_limits(g)
+    return g
 
 
 def memory_budget(memory, budget):

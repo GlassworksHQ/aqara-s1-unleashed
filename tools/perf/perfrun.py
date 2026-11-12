@@ -97,6 +97,7 @@ def cmd_device(dev, a):
     zones = dev.sh("for z in /sys/class/thermal/thermal_zone*; do echo $(cat $z/type) $(cat $z/temp); done 2>/dev/null")
     write_json(os.path.join(a.out, "device.json"), {
         "frame": a.frame, "frame_name": a.name or a.frame,
+        "measured_on": time.strftime("%Y-%m-%d", time.gmtime()),   # UTC date of the run, from this computer
         "model": props["ro.product.model"], "manufacturer": props["ro.product.manufacturer"],
         "android": props["ro.build.version.release"], "api": int(props["ro.build.version.sdk"] or 0),
         "abi": props["ro.product.cpu.abi"], "abilist": props["ro.product.cpu.abilist"].split(","),
@@ -175,10 +176,46 @@ def cmd_synthetic(dev, a):
         sys.exit(f"synthetic run {a.run}: {status}")
 
 
-def tap(dev, x, y, n):
-    for _ in range(n):
-        dev.sh(f"input tap {x} {y}")
-        time.sleep(0.6)
+GESTURE_MS = (50, 2000)   # a swipe's duration the page may ask for
+MAX_TAPS = 50
+OWN_PAGE_QUIET_S = 2.0    # the kiosk's own page must have stopped this long, with no new load
+
+
+def screen_size(dev):
+    """(width, height) in pixels from `wm size`; an override size, listed last, wins."""
+    m = re.findall(r"(\d+)x(\d+)", dev.sh("wm size"))
+    return (int(m[-1][0]), int(m[-1][1])) if m else None
+
+
+def _whole(v, lo, hi):
+    return type(v) is int and lo <= v <= hi
+
+
+def gesture(pl, size, max_taps=MAX_TAPS):
+    """A page's tap or swipe request, checked before anything reaches `adb shell`: whole pixels on
+    the screen, a sane count and duration. Returns (command, count) or (None, why)."""
+    if not size:
+        return None, "the screen size is unknown"
+    w, h = size
+    if pl.get("t") == "input-ready":
+        x, y, n = pl.get("x"), pl.get("y"), pl.get("taps")
+        if not (_whole(x, 0, w - 1) and _whole(y, 0, h - 1)):
+            return None, f"a tap at {x!r}, {y!r} is not a whole pixel on the {w}x{h} screen"
+        if not _whole(n, 1, max_taps):
+            return None, f"a tap count of {n!r} is not 1 to {max_taps}"
+        return f"input tap {x} {y}", n
+    x, y1, y2, ms = pl.get("x"), pl.get("y1"), pl.get("y2"), pl.get("ms")
+    if not (_whole(x, 0, w - 1) and _whole(y1, 0, h - 1) and _whole(y2, 0, h - 1)):
+        return None, f"a swipe at {x!r}, {y1!r} to {y2!r} is not whole pixels on the {w}x{h} screen"
+    if not _whole(ms, *GESTURE_MS):
+        return None, f"a swipe of {ms!r} ms is not {GESTURE_MS[0]} to {GESTURE_MS[1]} ms"
+    return f"input swipe {x} {y1} {x} {y2} {ms}", 1
+
+
+def own_page_finished(stop_mono, stop_at, now):
+    """The kiosk's own page counts as finished once it has stopped and OWN_PAGE_QUIET_S have passed
+    (wall clock) with no new load. A new load resets stop_mono to None."""
+    return stop_mono is not None and now - stop_at >= OWN_PAGE_QUIET_S
 
 
 # ---- cold start to dashboard
@@ -195,14 +232,22 @@ def cmd_coldstart(dev, a):
     comes before the kiosk does anything for Home Assistant.
     coldstart (real use, not graded) then follows the kiosk's own dashboard to its PageStop.
     refstart (graded) waits until the kiosk's own page has finished (or --own-page-wait seconds if
-    it never does), then opens each reference dashboard (--url, --tiers) in turn and follows its
-    lines: taps and swipes where the page asks. `open` can't be sent sooner: until the session is up
-    the kiosk drops it (#103's pins). After the first open, any other page is an error.
+    it never does), then opens a warm-up page (--warmup-tier, not graded: it takes the kiosk's
+    teardown, the first JIT and the cold caches), then each reference dashboard (--url, --tiers) and
+    follows its lines: taps and swipes where the page asks. The order turns by one page each run
+    (run 1: light, typical, heavy; run 2: typical, heavy, light; run 3: heavy, light, typical), so no
+    page always comes first. Each page opens only once the screen has been still for --between-quiet
+    seconds (the page before it stops its updates when it is done). `open` can't be sent sooner: until
+    the session is up the kiosk drops it (#103's pins). After the first open, any other page is an
+    error.
 
     logcat follows the whole device, so its queue is rarely empty: no decision here waits for an
     empty queue. Before deciding, the loop reads everything queued so far (drain)."""
     ref = a.cmd == "refstart"
-    tiers = [t for t in a.tiers.split(",") if t] if ref else []
+    base = [t for t in a.tiers.split(",") if t] if ref else []
+    turn = (a.run - 1) % len(base) if base else 0
+    tiers = base[turn:] + base[:turn]
+    slots = (["warmup"] if ref and a.warmup_tier else []) + tiers
     lc = dev.logcat()
     lines = queue.Queue()
     threading.Thread(target=lambda: [lines.put(l) for l in lc.stdout], daemon=True).start()
@@ -232,17 +277,42 @@ def cmd_coldstart(dev, a):
     res = {"run": a.run, "launch": None, "am_total_ms": None, "ttid_ms": None, "stop_mono": None, "proc_mono": None,
            "displayed_mono": None, "engine_mono": None, "engine_uri": None, "own_page_start_mono": None,
            "own_page_stop_mono": None, "own_page_loads": 0, "own_page_state": None,
-           "page_start_mono": None, "page_stop_mono": None, "tiers": {}, "error": None}
-    st = {"engine_at": None, "own_stop_at": 0.0, "current": None, "measure_mono": None, "break_after": None}
+           "page_start_mono": None, "page_stop_mono": None, "tiers": {}, "order": tiers, "warmup": None,
+           "between": [], "error": None}
+    st = {"engine_at": None, "own_stop_at": 0.0, "current": None, "measure_mono": None, "break_after": None,
+          "opened": 0, "next_at": None, "gestures": []}
+    size = screen_size(dev) if ref else None
     proc_re = re.compile(rf"Start proc \d+:{re.escape(dev.package)}/")
 
+    def entry_of(slot):
+        return res["warmup"] if slot == "warmup" else res["tiers"][slot]
+
+    def send(nonce, cmd, n, gap):
+        """Taps or a swipe for the page that asked, and only while it is still the current page."""
+        for i in range(n):
+            if not st["current"] or st["current"][1] != nonce:
+                return
+            dev.sh(cmd)
+            if i + 1 < n:
+                time.sleep(gap)
+
     def open_next():
-        tier = tiers[len(res["tiers"])]
+        # No gesture for the last page may reach the next one: wait for them (the page has said done).
+        for th in st["gestures"]:
+            th.join(timeout=15)
+        st["gestures"] = []
+        slot = slots[st["opened"]]
+        st["opened"] += 1
         nonce = secrets.token_hex(4)
-        st["current"], st["measure_mono"] = (tier, nonce), None
-        res["tiers"][tier] = {"nonce": nonce, "swipes": []}
+        st["current"], st["measure_mono"], st["next_at"] = (slot, nonce), None, None
         paused.clear()
-        url = f"{a.url}?tier={tier}&nonce={nonce}&run={a.run}&vsync={a.vsync}&taps={a.taps}"
+        if slot == "warmup":
+            tier, extra = a.warmup_tier, "&taps=0&swipes=0&warmup=1"
+            res["warmup"] = {"tier": tier, "nonce": nonce, "swipes": []}
+        else:
+            tier, extra = slot, f"&taps={a.taps}"
+            res["tiers"][tier] = {"nonce": nonce, "swipes": []}
+        url = f"{a.url}?tier={tier}&nonce={nonce}&run={a.run}&vsync={a.vsync}{extra}"
         dev.sh(f"am start -n {dev.component} --es open '{url}'")
 
     def read_sf(pl, rec):
@@ -292,14 +362,14 @@ def cmd_coldstart(dev, a):
                 return not ref
         elif kind == "PageStart":
             if cur[1] in uri:
-                res["tiers"][cur[0]].setdefault("page_start_mono", rec["mono"])
+                entry_of(cur[0]).setdefault("page_start_mono", rec["mono"])
             else:
                 res["error"] = "the kiosk loaded another page while a reference dashboard was measured"
                 return True
         return False
 
     def handle_page(tier, pl, rec):
-        entry, t = res["tiers"][tier], pl.get("t")
+        entry, t = entry_of(tier), pl.get("t")
         pl["mono"] = rec["mono"]
         if t == "refdash":
             entry["page"] = pl
@@ -321,22 +391,29 @@ def cmd_coldstart(dev, a):
         elif t == "step":
             if pl.get("stage") == "scroll":
                 entry["swipes"].append(pl)   # it never scrolled, so no window to read
-        elif t == "input-ready" and a.taps:
-            threading.Thread(target=tap, args=(dev, pl["x"], pl["y"], pl.get("taps", a.taps)), daemon=True).start()
-        elif t == "swipe-ready":
-            threading.Thread(target=dev.sh, args=(f"input swipe {pl['x']} {pl['y1']} {pl['x']} {pl['y2']} {pl['ms']}",),
-                             daemon=True).start()
+        elif t in ("input-ready", "swipe-ready") and (t == "swipe-ready" or a.taps):
+            cmd, n = gesture(pl, size, max_taps=a.taps or MAX_TAPS)
+            if cmd is None:
+                # Not sent: the page asked for something off the screen or malformed. That page isn't graded.
+                entry["error"] = f"bad {t} line: {n}"
+                print(f"  {tier}: {entry['error']}", file=sys.stderr)
+            else:
+                th = threading.Thread(target=send, args=(st["current"][1], cmd, n, 0.6), daemon=True)
+                th.start()
+                st["gestures"].append(th)
         elif t == "input":
             entry["input"] = pl
         elif t in ("done", "error"):
             if t == "error":
                 entry["error"] = pl.get("message")
+            else:
+                entry["done"] = True
             print(f"  {tier} {t}", file=sys.stderr)
-            if len(res["tiers"]) == len(tiers):
+            if st["opened"] == len(slots):
                 # Watch a little longer: another page now means one was on its way during the last tier.
                 st["break_after"] = time.time() + 1.5
             else:
-                open_next()
+                st["next_at"] = time.time()   # the main loop opens it once the screen is still
         return False
 
     def drain():
@@ -363,7 +440,7 @@ def cmd_coldstart(dev, a):
                 am = dev.sh(f"am start -W -n {dev.component}", timeout=120)
                 res["am_total_ms"] = int((re.findall(r"TotalTime: (\d+)", am) or [0])[0]) or None
         if ref and st["current"] is None and st["engine_at"]:
-            finished = res["own_page_stop_mono"] is not None and time.time() - st["own_stop_at"] >= 2.0
+            finished = own_page_finished(res["own_page_stop_mono"], st["own_stop_at"], time.time())
             if finished or time.time() - st["engine_at"] > a.own_page_wait:
                 before = (res["own_page_stop_mono"], res["own_page_loads"])
                 still = quiet_for(2.0, 10.0) if finished else False
@@ -375,6 +452,17 @@ def cmd_coldstart(dev, a):
                 res["own_page_state"] = "never-finished" if not finished else ("finished-still" if still else "finished-moving")
                 open_next()
                 continue
+        if st["next_at"] is not None:
+            # The page before has stopped its updates; open the next one on a still screen, so no
+            # page is measured over the last one's work. (Its teardown on navigation is part of
+            # opening a view, as in HA, and the warm-up makes it the same for every page.)
+            paused.clear()
+            still = quiet_for(a.between_quiet, 10.0) if a.between_quiet > 0 else True
+            if drain():
+                break
+            res["between"].append("still" if still else "moving")
+            open_next()
+            continue
         try:
             rec = P.parse_logcat_line(lines.get(timeout=0.2))
         except queue.Empty:
@@ -386,7 +474,7 @@ def cmd_coldstart(dev, a):
         pass
     elif res["engine_mono"] is None:
         res["error"] = f"GeckoView never started a page within {a.timeout:.0f} s"
-    elif ref and (len(res["tiers"]) < len(tiers) or not all("step" in e for e in res["tiers"].values())):
+    elif ref and (st["opened"] < len(slots) or not all("step" in e for e in res["tiers"].values())):
         res["error"] = f"the reference dashboards did not finish within {a.timeout:.0f} s"
     elif not ref and res["own_page_stop_mono"] is None:
         res["error"] = f"the dashboard did not finish loading within {a.timeout:.0f} s"
@@ -478,7 +566,9 @@ def main():
     ap.add_argument("--timeout", type=float, default=None, help="seconds; default 1200 (synthetic), 120 (coldstart)")
     ap.add_argument("--radio-procs", default="otbr-agent,cpcd,zigbeed")
     ap.add_argument("--own-page-wait", type=float, default=30, help="refstart: seconds to wait for the kiosk's own page")
-    ap.add_argument("--tiers", default="light,typical,heavy", help="refstart: reference dashboards, in order")
+    ap.add_argument("--tiers", default="light,typical,heavy", help="refstart: reference dashboards; run k starts k-1 pages in")
+    ap.add_argument("--warmup-tier", default="light", help="refstart: the warm-up page, opened first and not graded ('' for none)")
+    ap.add_argument("--between-quiet", type=float, default=2.0, help="refstart: seconds of still screen before each page opens")
     ap.add_argument("--vsync", default="16.667", help="refstart: the display's refresh period in ms")
     a = ap.parse_args()
     if a.timeout is None:

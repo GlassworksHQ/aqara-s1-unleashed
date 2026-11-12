@@ -10,6 +10,8 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN = os.path.join(os.path.dirname(HERE), "run.sh")
+sys.path.insert(0, os.path.dirname(HERE))
+import perfrun  # noqa: E402
 
 
 class Runner(unittest.TestCase):
@@ -23,7 +25,7 @@ class Runner(unittest.TestCase):
             f.write(f'#!/bin/sh\nexec "{sys.executable}" "{os.path.join(HERE, "fake_adb.py")}" "$@"\n')
         os.chmod(adb, 0o755)
         env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="2",
-                   GW_PERF_COLD_SETTLE="0", GW_PERF_RUN_GAP="0")
+                   GW_PERF_COLD_SETTLE="0", GW_PERF_RUN_GAP="0", GW_PERF_BETWEEN_QUIET="0.5")
         env.pop("ANDROID_SERIAL", None)
         cls.out = os.path.join(cls.tmp, "out")
         cls.proc = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", cls.out, "--port", "18089", "--taps", "2"],
@@ -53,6 +55,9 @@ class Runner(unittest.TestCase):
         self.assertEqual(set(ref["tiers"]), {"light", "typical", "heavy"})
         self.assertEqual(ref["engine_uris"], ["about:blank"])
         self.assertEqual(ref["own_page_states"], ["finished-still"])
+        self.assertEqual(ref["orders"], [["light", "typical", "heavy"]])
+        self.assertEqual(ref["warmups"], [{"tier": "light", "finished": True}])
+        self.assertEqual(ref["per_run"][0]["between"], ["still", "still", "still"])   # after the warm-up and each page
         for t in ("light", "typical", "heavy"):
             s = ref["tiers"][t]
             self.assertIsNotNone(s["load_ms"], t)
@@ -79,10 +84,19 @@ class Runner(unittest.TestCase):
         extras = {m for c in shell for m in re.findall(r"--e\w \w+", c)}
         self.assertEqual(extras, {"--es open", "--es screen"})
         opens = [re.search(r"--es open '([^']+)'", c).group(1) for c in shell if "--es open" in c]
-        self.assertEqual(len(opens), 4)
+        self.assertEqual(len(opens), 5)
         self.assertTrue(opens[0].startswith("http://127.0.0.1:18089/index.html?"), opens[0])
-        for url, tier in zip(opens[1:], ("light", "typical", "heavy")):
+        # The warm-up page: no taps, no swipes, not graded.
+        self.assertTrue(opens[1].startswith("http://127.0.0.1:18089/dashboard.html?tier=light&nonce=") and
+                        opens[1].endswith("&taps=0&swipes=0&warmup=1"), opens[1])
+        for url, tier in zip(opens[2:], ("light", "typical", "heavy")):
             self.assertTrue(url.startswith(f"http://127.0.0.1:18089/dashboard.html?tier={tier}&nonce=") and "&taps=2" in url, url)
+
+    def test_no_gesture_without_the_current_pages_request(self):
+        """The fake rejects any tap or swipe that no current *-ready line asked for."""
+        with open(os.path.join(self.tmp, "state", "unasked.json")) if os.path.exists(
+                os.path.join(self.tmp, "state", "unasked.json")) else open(os.devnull) as f:
+            self.assertEqual(json.loads(f.read() or "[]"), [])
 
     def test_swipes_come_only_after_the_pages_own_request(self):
         """Each swipe follows a swipe-ready from the page being measured: the commands log has no swipe
@@ -150,13 +164,104 @@ class HomeRelaunch(unittest.TestCase):
         self.assertGreater(c["engine_mono"], c["proc_mono"])
 
 
-def refstart(tmp, **env_extra):
+def refstart(tmp, run=1, **env_extra):
     env, state = fake_env(tmp, GW_PERF_COLD_SETTLE="0", **env_extra)
     p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
-                        "--out", tmp, "--run", "1", "--settle", "0", "--url", "http://127.0.0.1:1/dashboard.html",
-                        "--taps", "0", "--timeout", "90"], env=env, capture_output=True, text=True, timeout=150)
-    with open(os.path.join(tmp, "refstart-1.json")) as f:
+                        "--out", tmp, "--run", str(run), "--settle", "0", "--url", "http://127.0.0.1:1/dashboard.html",
+                        "--taps", "0", "--timeout", "90", "--between-quiet", "0.3"], env=env, capture_output=True, text=True, timeout=150)
+    with open(os.path.join(tmp, f"refstart-{run}.json")) as f:
         return p, json.load(f)
+
+
+def unasked(tmp):
+    p = os.path.join(tmp, "state", "unasked.json")
+    return json.load(open(p)) if os.path.exists(p) else []
+
+
+class NonceGate(unittest.TestCase):
+    """Only the current page's nonce may make the runner tap or swipe."""
+
+    def test_a_stale_request_from_the_last_page_is_ignored(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, FAKE_STALE_READY="1")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(unasked(tmp), [])
+        with open(os.path.join(tmp, "state", "swipes.json")) as f:
+            self.assertEqual(json.load(f), 6)                 # 2 on each graded page, none on the warm-up
+        self.assertIsNone(c["error"])
+
+
+class Gestures(unittest.TestCase):
+    """Page-given coordinates are checked before anything reaches `adb shell`."""
+    SIZE = (1440, 720)
+
+    def test_good_requests(self):
+        self.assertEqual(perfrun.gesture({"t": "input-ready", "x": 720, "y": 360, "taps": 10}, self.SIZE), ("input tap 720 360", 10))
+        self.assertEqual(perfrun.gesture({"t": "swipe-ready", "x": 720, "y1": 612, "y2": 108, "ms": 300}, self.SIZE),
+                         ("input swipe 720 612 720 108 300", 1))
+
+    def test_bad_requests_are_refused_not_raised(self):
+        bad = [{"t": "swipe-ready", "x": 720, "y1": 612, "y2": 108},                     # no ms (a KeyError before)
+               {"t": "swipe-ready", "x": "720; reboot", "y1": 612, "y2": 108, "ms": 300},
+               {"t": "swipe-ready", "x": 720.5, "y1": 612, "y2": 108, "ms": 300},
+               {"t": "swipe-ready", "x": True, "y1": 612, "y2": 108, "ms": 300},
+               {"t": "swipe-ready", "x": 720, "y1": 612, "y2": 720, "ms": 300},           # one past the bottom
+               {"t": "swipe-ready", "x": 720, "y1": 612, "y2": 108, "ms": 10},
+               {"t": "swipe-ready", "x": 720, "y1": 612, "y2": 108, "ms": 60000},
+               {"t": "input-ready", "x": -1, "y": 360, "taps": 10},
+               {"t": "input-ready", "x": 720, "y": 360, "taps": 0},
+               {"t": "input-ready", "x": 720, "y": 360, "taps": 10_000}]
+        for pl in bad:
+            cmd, why = perfrun.gesture(pl, self.SIZE)
+            self.assertIsNone(cmd, pl)
+            self.assertIsInstance(why, str)
+        self.assertEqual(perfrun.gesture({"t": "input-ready", "x": 1, "y": 1, "taps": 1}, None), (None, "the screen size is unknown"))
+
+    def test_a_bad_swipe_line_is_an_error_on_that_page_and_nothing_is_sent(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, FAKE_SWIPES="1", FAKE_SWIPE_WAIT="1",
+                        FAKE_BAD_SWIPE=json.dumps({"t": "swipe-ready", "n": 0, "x": "720; reboot", "y1": 612, "y2": 108}))
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertTrue(c["tiers"]["light"]["error"].startswith("bad swipe-ready line: a swipe at '720; reboot'"))
+        with open(os.path.join(tmp, "state", "commands.log")) as f:
+            log = f.read()
+        self.assertNotIn("reboot", log)
+        self.assertNotIn("input swipe", log)
+
+
+class OwnPageWait(unittest.TestCase):
+    """The A fix's time rule, pinned directly: 2 s after the own page stopped, with no new load."""
+
+    def test_two_seconds_after_the_stop(self):
+        self.assertFalse(perfrun.own_page_finished(None, 0.0, 100.0))
+        self.assertFalse(perfrun.own_page_finished(26.0, 100.0, 101.99))
+        self.assertTrue(perfrun.own_page_finished(26.0, 100.0, 102.0))
+        self.assertEqual(perfrun.OWN_PAGE_QUIET_S, 2.0)
+
+
+class Order(unittest.TestCase):
+    """smoke5: light always came first, right after the kiosk's own dashboard was torn down, and read
+    worse than heavy. A warm-up page takes that, and the order turns each run."""
+
+    def opened(self, tmp):
+        with open(os.path.join(tmp, "state", "opened.json")) as f:
+            return json.load(f)
+
+    def test_run_2_starts_one_page_in_after_a_warm_up(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, run=2)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["order"], ["typical", "heavy", "light"])
+        self.assertEqual(self.opened(tmp), ["light-warmup", "typical", "heavy", "light"])
+        self.assertTrue(c["warmup"]["done"])
+        self.assertNotIn("warmup", c["tiers"])
+        self.assertEqual(len(c["between"]), 3)
+
+    def test_run_3(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, run=3)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(self.opened(tmp), ["light-warmup", "heavy", "light", "typical"])
 
 
 class NoisyLogcat(unittest.TestCase):
