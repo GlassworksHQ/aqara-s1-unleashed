@@ -110,6 +110,27 @@ fun List<Pane>.forEachPane(op: String, block: (Pane) -> Unit) {
     }
 }
 
+/**
+ * Stops every pane, even when one of them is interrupted, so shutdown always runs to the end. A pane
+ * that throws is logged and skipped, as in [forEachPane]. An interruption is kept and the thread's
+ * interrupt flag is set again once every pane has been stopped, so the caller still sees it.
+ */
+fun List<Pane>.stopAll() {
+    var interrupted = false
+    for (pane in this) {
+        try {
+            pane.stop()
+        } catch (e: InterruptedException) {
+            interrupted = true
+        } catch (t: Throwable) {
+            EspHomeLog.w("pane ${pane.id} failed in stop", t)
+        }
+        // Cleared between panes, so the next pane's own waits aren't cut short by it.
+        if (Thread.interrupted()) interrupted = true
+    }
+    if (interrupted) Thread.currentThread().interrupt()
+}
+
 /** The Home Assistant entity list: the device's own entities plus every pane's. */
 class EntityRegistry(private val panes: List<Pane>) {
 

@@ -7,6 +7,7 @@ import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PanelEvent
 import dev.glassworks.pane.forEachPane
+import dev.glassworks.pane.stopAll
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -140,7 +141,7 @@ class PanelDevice(
         HaAuth.removeListener(authListener)
         Dashboards.removeListener(dashboardsListener)
         // Panes first, while esphome-main still runs: the wall base's thread can still post to it.
-        panes.forEachPane("stop") { it.stop() }
+        panes.stopAll()
         panes = emptyList()
         assist = null
         exec.shutdownNow()
