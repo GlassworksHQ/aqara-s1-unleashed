@@ -58,6 +58,21 @@ MMC:   mmc@4022000: 1        (8-bit, 52 MHz, 7.3 GiB, GPT with the Android parti
 | `SCHED[3:0]` | `0x1` | `0x5` | |
 
   With all of these matched to stock, everything boots.
+- **Which one is the fix: MR0.** A bisect on the panel (2026-11-10) built each variant fresh from
+  FEL, then copied 16 MiB of random data with `cp.q` to four places three times and through a
+  three-hop chain, and checked each copy with `cmp.q`:
+
+| Build | Result |
+|---|---|
+| mainline, unpatched | hangs before reaching fastboot |
+| the other five changes, without MR0 | hangs the same way |
+| MR0 only | boots; 12/12 copies and the chain match |
+| all six | boots; 12/12 copies and the chain match |
+
+  So MR0 alone is necessary and sufficient. The other five only match what boot0 programs, and made
+  no difference to stability. Our patch 0001 still carries all six, because that is the build the
+  installer ships and has been tested with. The sunxi-fel-only SRAM burst test does not catch this
+  bug at all, not even on unpatched code: it needs U-Boot running from DRAM.
 
 **2. CPU clock.** The board's PMIC (AXP806 on R_I2C) has no SPL driver, so `SUNXI_NO_PMIC`
 applies. Mainline would then clock the CPU to 1008 MHz at the power-on core voltage. The defconfig
@@ -77,12 +92,13 @@ work again with patch 0001. That is untested.
   - Full 2 GiB, no aliasing; holds data for 60 s.
   - 32/64/128-bit accesses and 8-word bursts.
   - 860 M instructions executed from DRAM.
-  - The copy-pattern test fails without patch 0001.
+  - The copy-pattern test fails without patch 0001, and passes with only its MR0 change.
 - U-Boot reaches the prompt; `mmc info` and `mmc part` work (read-only).
 
 ## Next
-- Retest TF-A BL31 with the DRAM fix, then upstream the fix to the U-Boot list. It probably
-  affects every A133 DDR4 board.
+- Upstream: the MR0 fix goes to the U-Boot list as a single patch. It probably affects every A133
+  DDR4 board. Once it is in U-Boot `main`, rebase onto it and drop the MR0 change from patch 0001.
+- Retest TF-A BL31 with the DRAM fix.
 - `ENV_IS_NOWHERE` is set, so `saveenv` can never write to the panel's Android `env` partition.
 - Build the installer flow on top of fastboot (persistent root / boot image), behind explicit
   backups.
