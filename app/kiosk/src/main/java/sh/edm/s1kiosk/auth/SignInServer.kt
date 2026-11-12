@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -52,6 +53,12 @@ class SignInServer(
     private val states: StateStore = StateStore(),
     /** "Join Home Assistant's Thread network" (`/thread`), or null to not serve it. */
     private val thread: ThreadJoin? = null,
+    /**
+     * The address to listen on, or null for every address (the panel: phones reach it on the LAN).
+     * Tests pass the loopback address they connect to. On macOS a wildcard listener can get a port
+     * another process holds on 127.0.0.1, and that process then answers 127.0.0.1 (#99).
+     */
+    private val bindAddress: InetAddress? = null,
 ) {
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
@@ -64,7 +71,7 @@ class SignInServer(
     fun start() {
         val ss = ServerSocket()
         ss.reuseAddress = true
-        ss.bind(InetSocketAddress(port))
+        ss.bind(InetSocketAddress(bindAddress, port))
         serverSocket = ss
         running = true
         Thread({
