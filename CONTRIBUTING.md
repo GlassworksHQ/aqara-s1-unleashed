@@ -1,0 +1,38 @@
+# Contributing
+
+## Issues
+
+Pick a template: **Bug**, **Hardware report** (a model, firmware or base we haven't tested), or
+**Feature request**. Include the S1 Kiosk version and Aqara firmware, and strip tokens, Wi-Fi
+passwords and Thread datasets from logs.
+
+## Pull requests
+
+Small PRs against `main`. CI (`.github/workflows/pr.yml`) runs the app's unit tests and release
+build, the installer's typecheck, tests and build, the install scripts' tests and the docs' links.
+
+```sh
+cd app && ./gradlew test :kiosk:assembleDebug        # the app
+cd web && npm install && npm run stage && npm test   # the web installer
+tools/install/test/install-tests.sh                  # the install scripts
+python3 tools/check-doc-links.py                     # docs links
+```
+
+- Say in the PR what you tested on: a real panel (model, firmware, HA version) or tests only.
+- Add a line to `CHANGELOG.md` under **[Unreleased]** if people running a panel will notice it.
+- Changes to the boot patch, root helper or radio need testing on a real panel before merge.
+
+A signed test build is made for any branch named `test-build/vX.Y.Z/<name>`
+([releasing.md](docs/releasing.md)).
+
+## Labels
+
+| Label | Use |
+|---|---|
+| `device: …` | Which panel model or base it affects |
+| `area: …` | Which part of the project |
+| `needs info`, `needs hardware` | Waiting on the reporter, or on someone with that hardware |
+| `upstream` | Caused by or waiting on HA, zigpy, Zigbee2MQTT or another project |
+| `hardware report` | Results from untested hardware |
+
+Code is MIT ([LICENSE](LICENSE)).

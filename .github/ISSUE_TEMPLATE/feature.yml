@@ -1,0 +1,33 @@
+name: Feature request
+description: Something the panel should do that it doesn't.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you want to do
+      description: The thing you're trying to do on the panel or in Home Assistant, not just the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could work
+      description: Optional. Entities, settings, screens, or how another project does it.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Installer
+        - Dashboard and sign-in
+        - ESPHome device in Home Assistant
+        - Voice assistant
+        - Music Assistant player
+        - Screen, presence, brightness
+        - Radio (Zigbee or Thread)
+        - Updates
+        - Wall base
+        - Other
