@@ -3,9 +3,11 @@ import felImg from '../../../docs/img/fel-button.jpg?url';
 import { loadOrCreateAdbKey, type AdbKey, type PanelShell } from '@glassworks/adb';
 import { Assets } from '../assets';
 import { FelDevice } from '@glassworks/fel';
-import { describeSwitch, unprovision } from '../provision';
 import { SETUP_SOCKET, SetupChannel, validHaUrl, type SetupState } from '@glassworks/setup-channel';
-import { IMPROV_SOCKET, ImprovSerialClient, PacketReader, PacketType, Rpc, State as ImprovState, frame, parseResult, strings, type ByteStream } from '../improv';
+import {
+  IMPROV_SOCKET, ImprovSerialClient, PacketReader, PacketType, Rpc, State as ImprovState, describeSwitch, frame, parseResult, strings, unprovision,
+  type ByteStream,
+} from '@glassworks/aqara-s1-plus-installer';
 import { BackupStore, backupZip, readBackupZip, type BackupFile, type BackupMeta } from './backup';
 import { webUsbDevices } from './devices';
 import { InstallFlow, fmtSize, restoreFromBackup, type AskKind, type Bar, type FlowUi, type PartState, type Progress } from './flow';

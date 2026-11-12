@@ -6,7 +6,8 @@
   "license": "MIT",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "../frames/*/installer"
   ],
   "scripts": {
     "dev": "vite --host localhost --port 5173",
@@ -26,6 +27,7 @@
   },
   "dependencies": {
     "@glassworks/adb": "0.0.0",
+    "@glassworks/aqara-s1-plus-installer": "0.0.0",
     "@glassworks/bootpatch": "0.0.0",
     "@glassworks/fastboot": "0.0.0",
     "@glassworks/fel": "0.0.0",

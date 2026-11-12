@@ -6,7 +6,7 @@ import type { AssetName } from '../assets/assets';
 import { isMagiskPatched, patchBoot, replaceBootlogo, s1Overlay, vbmetaFlags, withVbmetaFlags } from '@glassworks/bootpatch';
 import type { Fastboot } from '@glassworks/fastboot';
 import { bootUboot, checkChip, type FelDevice } from '@glassworks/fel';
-import { provision, type ProvisionOptions } from '../provision/provision';
+import { provision, type ProvisionOptions } from '@glassworks/aqara-s1-plus-installer';
 import {
   BACKUP_PARTS, RESTORE_PARTS, backupFile, backupId, type BackupFile, type BackupMeta, type BackupStore,
 } from './backup';

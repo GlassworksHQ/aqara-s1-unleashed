@@ -15,8 +15,8 @@
 //
 // The Wi-Fi password never goes into a command line, a log line or an error message.
 import type { PanelShell } from '@glassworks/adb';
-import { IMPROV_SOCKET, ImprovSerialClient } from '../improv';
-import switchScript from '../../../tools/install/s1kiosk-switch.sh?raw';
+import { IMPROV_SOCKET, ImprovSerialClient } from './improv';
+import switchScript from '../../../../tools/install/s1kiosk-switch.sh?raw';
 
 const PKG = 'sh.edm.s1kiosk';
 const ACT = `${PKG}/.MainActivity`;

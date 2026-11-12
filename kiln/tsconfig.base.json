@@ -10,6 +10,11 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@glassworks/*": ["./packages/*/src/index.ts"],
+      "improv-serial": ["./packages/improv-serial/src/index.ts"],
+      "vitest": ["./node_modules/vitest"]
+    }
   }
 }
