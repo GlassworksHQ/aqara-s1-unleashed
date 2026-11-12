@@ -36,7 +36,7 @@ export function Wizard({ session, frame, routes = true }: { session: Session; fr
     const go = () => {
       if (session.store.state.screen === 'firing') return; // never leave a running install
       const r = location.hash.replace(/^#\/?/, '');
-      if (r) void session.route(r);
+      if (r) void session.click('route', () => session.route(r)); // once, even when StrictMode mounts twice
     };
     go();
     addEventListener('hashchange', go);
@@ -68,7 +68,7 @@ export function Wizard({ session, frame, routes = true }: { session: Session; fr
   const unsupported = chip?.kind === 'bad';
   return (
     <Shell steps={rail(s)} level={stackLevel(s)} error={s.screen === 'error'} chip={s.ask ? { kind: 'work', text: 'Your turn' } : chip}>
-      {unsupported || s.screen === 'browser' ? <Browser />
+      {unsupported ? <Browser />
         : s.screen === 'connect' ? <Connect {...p} />
         : s.screen === 'firing' ? <Firing {...p} />
         : s.screen === 'setup' ? <SetUp {...p} />

@@ -62,9 +62,9 @@ export function Connect({ s, session, frame }: P) {
               </Dialog.Content>
             </Dialog.Portal>
           </Dialog.Root>
-          {s.flow === 'undo' && <><span aria-hidden="true">·</span><button type="button" className="link" onClick={() => void session.openUndo()}>Back</button></>}
+          {s.flow === 'undo' && <><span aria-hidden="true">·</span><button type="button" className="link" disabled={!!s.busy} onClick={() => void session.click('undo', () => session.openUndo())}>Back</button></>}
         </span>
-        <button type="button" className="btn ember" onClick={() => void session.connectFel()}>Connect</button>
+        <button type="button" className="btn ember" disabled={!!s.busy} onClick={() => void session.click('connect', () => session.connectFel())}>Connect</button>
       </div>
     </section>
   );
@@ -191,8 +191,8 @@ function Settings({ s, session, frame, setup }: P & { setup: Extract<Setup, { ph
       {setup.error && <p className="status err" role="alert">{setup.error}</p>}
       <div className="foot">
         <span className="small">About a minute.</span>
-        <button type="button" className="btn ember" disabled={busy}
-          onClick={() => void session.installApp({ locale: locale || undefined, timezone: tz || undefined, clock24: clock === '24', keyboard })}>
+        <button type="button" className="btn ember" disabled={busy || !!s.busy}
+          onClick={() => void session.click('install-app', () => session.installApp({ locale: locale || undefined, timezone: tz || undefined, clock24: clock === '24', keyboard }))}>
           {setup.update ? 'Update and continue' : `Install ${frame.app}`}
         </button>
       </div>
@@ -207,7 +207,7 @@ function Signal({ rssi }: { rssi: number }) {
 const Lock = () => <svg className="lock" viewBox="0 0 24 24" aria-label="needs a password"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>;
 
 /** 5 · Wi-Fi: which network, the password, connect. The list is what the panel can see. */
-function Wifi({ session, setup }: P & { setup: Extract<Setup, { phase: 'wifi' }> }) {
+function Wifi({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'wifi' }> }) {
   const nets: Network[] = setup.networks ?? [];
   const [pick, setPick] = useState('');
   const [other, setOther] = useState('');
@@ -231,9 +231,9 @@ function Wifi({ session, setup }: P & { setup: Extract<Setup, { phase: 'wifi' }>
         </ol>
         {j.error && <p className="status err" role="alert">{j.error}</p>}
         <div className="foot">
-          {j.step === 'err' ? <button type="button" className="link" onClick={() => void session.homeAssistant()}>Skip, do it on the panel</button> : <span />}
-          {j.step === 'ok' && <button type="button" className="btn ember" onClick={() => void session.homeAssistant()}>Continue</button>}
-          {j.step === 'err' && <button type="button" className="btn ember" onClick={() => void session.wifi()}>Try again</button>}
+          {j.step === 'err' ? <button type="button" className="link" disabled={!!s.busy} onClick={() => void session.click('ha', () => session.homeAssistant())}>Skip, do it on the panel</button> : <span />}
+          {j.step === 'ok' && <button type="button" className="btn ember" disabled={!!s.busy} onClick={() => void session.click('ha', () => session.homeAssistant())}>Continue</button>}
+          {j.step === 'err' && <button type="button" className="btn ember" disabled={!!s.busy} onClick={() => void session.click('wifi', () => session.wifi())}>Try again</button>}
         </div>
       </section>
     );
@@ -262,37 +262,37 @@ function Wifi({ session, setup }: P & { setup: Extract<Setup, { phase: 'wifi' }>
         </>
       )}
       <div className="foot">
-        <button type="button" className="link" onClick={() => void session.homeAssistant()}>Skip, do it on the panel</button>
+        <button type="button" className="link" disabled={!!s.busy} onClick={() => void session.click('ha', () => session.homeAssistant())}>Skip, do it on the panel</button>
         {setup.unreachable
-          ? <button type="button" className="btn ember" onClick={() => void session.wifi()}>Try again</button>
-          : <button type="button" className="btn ember" disabled={!setup.networks} onClick={() => void session.joinWifi(isOther ? other : pick, secure ? psk : '')}>Connect</button>}
+          ? <button type="button" className="btn ember" disabled={!!s.busy} onClick={() => void session.click('wifi', () => session.wifi())}>Try again</button>
+          : <button type="button" className="btn ember" disabled={!setup.networks || !!s.busy} onClick={() => void session.click('join', () => session.joinWifi(isOther ? other : pick, secure ? psk : ''))}>Connect</button>}
       </div>
     </section>
   );
 }
 
 /** 6 · Home Assistant: the address it found, and sign-in on the panel's own page (no token in this browser). */
-function HomeAssistant({ session, setup }: P & { setup: Extract<Setup, { phase: 'ha' }> }) {
+function HomeAssistant({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'ha' }> }) {
   const [url, setUrl] = useState(setup.ha.url || setup.ha.discovered || 'http://homeassistant.local:8123');
   return (
     <section className="card" aria-labelledby="h">
       <h2 id="h">{setup.ha.signedIn ? 'Signed in to Home Assistant.' : 'Sign in to Home Assistant.'}</h2>
       <p className="lede">{setup.ha.discovered ? `Found at ${new URL(setup.ha.discovered).host}.` : 'Not found by itself. Type its address.'}</p>
       <label className="field"><span>Address</span><input className="input" value={url} onChange={(e) => setUrl(e.target.value)} inputMode="url" autoComplete="off" /></label>
-      {!setup.ha.signedIn && <button type="button" className="btn ghost" style={{ justifySelf: 'start' }} onClick={() => session.signIn(url.trim())}>Sign in</button>}
+      {!setup.ha.signedIn && <button type="button" className="btn ghost" style={{ justifySelf: 'start' }} disabled={!!s.busy} onClick={() => void session.click('sign-in', () => session.signIn(url.trim()))}>Sign in</button>}
       {setup.ha.signedIn && <p className="status ok">The panel is signed in.</p>}
       {setup.note && !setup.ha.signedIn && <p className="status" role="status">{setup.note}</p>}
       {setup.error && <p className="status err" role="alert">{setup.error}</p>}
       <div className="foot">
-        <button type="button" className="link" onClick={() => void session.radio()}>Skip, do it on the panel</button>
-        <button type="button" className="btn ember" disabled={setup.busy} onClick={() => void session.saveHa(url.trim())}>Continue</button>
+        <button type="button" className="link" disabled={!!s.busy} onClick={() => void session.click('radio', () => session.radio())}>Skip, do it on the panel</button>
+        <button type="button" className="btn ember" disabled={setup.busy || !!s.busy} onClick={() => void session.click('save-ha', () => session.saveHa(url.trim()))}>Continue</button>
       </div>
     </section>
   );
 }
 
 /** The radio pane's one choice: what the Zigbee/Thread radio does. */
-function Radio({ session, setup }: P & { setup: Extract<Setup, { phase: 'radio' }> }) {
+function Radio({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'radio' }> }) {
   const [mode, setMode] = useState(setup.radio.mode);
   return (
     <section className="card" aria-labelledby="h">
@@ -309,7 +309,7 @@ function Radio({ session, setup }: P & { setup: Extract<Setup, { phase: 'radio' 
       <p className={setup.error ? 'status err' : 'status'} role="status">{setup.error ?? setup.note}</p>
       <div className="foot">
         <button type="button" className="link" onClick={() => session.finish()}>Skip, leave it as it is</button>
-        <button type="button" className="btn ember" disabled={setup.busy} onClick={() => void session.applyRadio(mode)}>Finish</button>
+        <button type="button" className="btn ember" disabled={setup.busy || !!s.busy} onClick={() => void session.click('radio', () => session.applyRadio(mode))}>Finish</button>
       </div>
     </section>
   );
@@ -382,7 +382,7 @@ export function Done({ s, session }: P) {
         </div>
       )}
       <div className="foot">
-        {s.flow === 'install' ? <button type="button" className="link" onClick={() => void session.openUndo()}>Undo</button> : <span />}
+        {s.flow === 'install' ? <button type="button" className="link" onClick={() => void session.click('undo', () => session.openUndo())}>Undo</button> : <span />}
         <a className="btn ghost" href="/">Back to Kiln</a>
       </div>
     </section>
@@ -403,16 +403,21 @@ export function Undo({ s, session, frame }: P) {
         ))}
       </RadioGroup.Root>
       {u.note && <p className={`status ${u.note.kind === 'err' ? 'err' : u.note.kind === 'ok' ? 'ok' : 'work'}`} role="status"><b style={{ fontWeight: 500 }}>{u.note.title}</b> {u.note.sub}</p>}
+      {u.source === 'browser' && u.inBrowser && (
+        <div className="well">
+          <span className="grow"><span>The backup in this browser</span><span className="small">{u.inBrowser}</span></span>
+          <button type="button" className="btn ghost" onClick={() => session.downloadUndoBackup()}>Download this backup</button>
+        </div>
+      )}
       <input ref={file} type="file" accept=".zip" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void session.undoFromFile(f); }} />
       <div className="foot">
         <span className="links">
-          {u.source === 'browser' ? <span>Using the backup in this browser</span> : u.file ? <span>{u.file}</span> : <span>No backup in this browser.</span>}
-          <span aria-hidden="true">·</span>
+          {u.source !== 'browser' && <><span>{u.file ?? 'No backup in this browser.'}</span><span aria-hidden="true">·</span></>}
           {u.source === 'file' && u.inBrowser
             ? <button type="button" className="link" onClick={() => void session.undoFromBrowser()}>Use this browser&apos;s</button>
             : <button type="button" className="link" onClick={() => file.current?.click()}>{u.source === 'file' ? 'Another file' : 'Use a backup file'}</button>}
         </span>
-        <button type="button" className="btn ember" disabled={!u.ready || u.note?.kind === 'busy'} onClick={() => void session.undoContinue()}>
+        <button type="button" className="btn ember" disabled={!u.ready || !!s.busy} onClick={() => void session.click('undo-continue', () => session.undoContinue())}>
           {keep && !u.appsBack ? frame.undo.keep.button : 'Continue'}
         </button>
       </div>
@@ -426,7 +431,7 @@ export function Failure({ s, session, frame }: P) {
   const f = s.failure!;
   const [open, setOpen] = useState(false);
   const retry = () => {
-    if (f.at >= 3) void session.route('resume');
+    if (f.at >= 3) void session.click('resume', () => session.route('resume'));
     else session.store.dispatch({ type: 'go', screen: 'connect' });
   };
   return (
@@ -440,7 +445,7 @@ export function Failure({ s, session, frame }: P) {
             {f.wrote && <><span aria-hidden="true">·</span><button type="button" className="link" onClick={retry}>Try again</button></>}
           </span>
           {f.wrote
-            ? <button type="button" className="btn ember" onClick={() => void session.openUndo()}>Undo with your backup</button>
+            ? <button type="button" className="btn ember" onClick={() => void session.click('undo', () => session.openUndo())}>Undo with your backup</button>
             : <button type="button" className="btn ember" onClick={retry}>Try again</button>}
         </div>
         <Collapsible.Content className="more">
@@ -449,7 +454,7 @@ export function Failure({ s, session, frame }: P) {
           <p className="links">
             <a className="link" href={frame.help.recovery} target="_blank" rel="noopener">Recovery and troubleshooting</a>
             <span aria-hidden="true">·</span>
-            <button type="button" className="link" onClick={() => void session.openUndo()}>Undo with your backup</button>
+            <button type="button" className="link" onClick={() => void session.click('undo', () => session.openUndo())}>Undo with your backup</button>
           </p>
           <p className="small">Undo from a terminal: <code>{frame.help.undoCli}</code> (<a className="link" href={frame.help.undo} target="_blank" rel="noopener">how</a>)</p>
           <TechLog s={s} />

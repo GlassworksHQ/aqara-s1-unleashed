@@ -189,8 +189,8 @@ h2.huge { font-size: 44px; font-weight: 200; }
 .status.ok { color: var(--ok-ink); }
 .status.err { color: var(--problem-ink); }
 .status.work { color: var(--turn-ink); }
-.well { display: flex; gap: 14px; align-items: center; border: 1px solid var(--edge); border-radius: 14px; padding: 12px 14px; }
-.well .grow { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.well { display: flex; flex-wrap: wrap; gap: 12px 14px; align-items: center; border: 1px solid var(--edge); border-radius: 14px; padding: 12px 14px; }
+.well .grow { flex: 1 1 14rem; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; }
 .okmark { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--ok-ink); font-size: 22px; }
 .join { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; color: var(--faint); }
 .join li::before { content: "·"; display: inline-block; width: 18px; }

@@ -16,7 +16,7 @@ import { explain } from './explain';
 import { Session, type SessionDeps } from './session';
 
 export const DEMOS = ['run', 'selftest', 'connect', 'ask-fastboot', 'install', 'ask-adb', 'app', 'wifi', 'wifi-fail', 'home-assistant', 'radio', 'radio-next',
-  'done', 'undo', 'error', 'error-written', 'browser'] as const;
+  'done', 'undo', 'error', 'error-written'] as const;
 export type Demo = (typeof DEMOS)[number];
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -184,7 +184,9 @@ export function demoSession(which: Demo): Session {
     hasAsset: async () => false,
     backups: {
       save: async (meta, files) => { saved.push({ meta, files }); },
-      original: async () => saved[0]?.meta ?? (which.startsWith('undo') ? { id: 's1-backup-20261112-090000', created: '', bootWasPatched: false, files: [] } : undefined),
+      original: async () => saved[0]?.meta ?? (which.startsWith('undo')
+        ? { id: 's1-backup-20261112-090000', created: '', bootWasPatched: false, files: s1Plus.backup.parts.map((part) => ({ part, size: 4096, sha256: '' })) }
+        : undefined),
       files: async () => saved[0]?.files ?? s1Plus.backup.parts.map((part) => ({ part, data: new Uint8Array(4096), sha256: '', crc: 0 })),
     },
     loadKey: async () => ({ publicKey: 'QAAAAdemo kiln@demo' }) as never,
@@ -217,9 +219,6 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
       return;
     case 'selftest':
       return selfTest(session);
-    case 'browser':
-      dispatch({ type: 'go', screen: 'browser' });
-      return;
     case 'ask-fastboot':
       install();
       void session.asks.open('fastboot', () => new Promise(() => {}), never);

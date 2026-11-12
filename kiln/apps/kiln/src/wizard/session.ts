@@ -68,11 +68,14 @@ export class Session {
   private improv?: ImprovSerialClient;
   private setup?: SetupChannel;
   private undoFiles?: Map<string, Uint8Array>;
+  /** The backup in this browser, when Undo uses it: Undo offers it as a download. */
+  private undoBackup?: { meta: BackupMeta; files: BackupFile[] };
   private ip?: string;
   private wifiSsid?: string;
   private wifiHint?: string;
   private haTimer?: ReturnType<typeof setInterval>;
   private readonly sleep: (ms: number) => Promise<void>;
+  private running?: string;
 
   constructor(private readonly d: SessionDeps, state: WizardState = initial()) {
     this.store = new Store(state);
@@ -103,6 +106,23 @@ export class Session {
   private fail(at: number, e: unknown, installed = false) {
     console.error(e);
     this.dispatch({ type: 'fail', failure: explain(e, at, this.s.wrote, installed) });
+  }
+
+  /**
+   * Every button that starts work calls through here: a second click while one action runs does
+   * nothing (a double-clicked Connect used to start a second flow). `run` starts inside the click,
+   * so a requestDevice() at its start still counts as part of it.
+   */
+  click(name: string, run: () => Promise<void> | void): Promise<void> {
+    if (this.running) return Promise.resolve();
+    this.running = name;
+    this.dispatch({ type: 'busy', busy: name });
+    let p: Promise<void>;
+    try { p = Promise.resolve(run()); } catch (e) { p = Promise.reject(e); }
+    return p.finally(() => {
+      this.running = undefined;
+      this.dispatch({ type: 'busy', busy: undefined });
+    });
   }
 
   // ---- connect, install, restore --------------------------------------------------------------
@@ -438,21 +458,35 @@ export class Session {
 
   async openUndo(): Promise<void> {
     this.undoFiles = undefined;
+    this.undoBackup = undefined;
     this.dispatch({ type: 'go', screen: 'undo', flow: 'undo' });
     this.dispatch({ type: 'undo', patch: { source: undefined, inBrowser: undefined, file: undefined, ready: false, appsBack: false, note: undefined } });
     let orig: BackupMeta | undefined;
     try { orig = await this.d.backups.original(); } catch { /* no IndexedDB */ }
     if (!orig) return;
     this.dispatch({ type: 'undo', patch: { inBrowser: `${orig.id} · ${orig.files.length} partitions` } });
-    const files = await this.d.backups.files(orig);
+    await this.useBrowserBackup(orig);
+  }
+
+  private async useBrowserBackup(meta: BackupMeta) {
+    const files = await this.d.backups.files(meta);
+    this.undoBackup = { meta, files };
     this.undoFiles = new Map(files.map((f) => [f.part, f.data]));
     this.dispatch({ type: 'undo', patch: { source: 'browser', ready: true } });
+  }
+
+  /** "Download this backup" on Undo: the browser's backup as the same zip Done offers. */
+  downloadUndoBackup(): void {
+    const b = this.undoBackup;
+    if (!b) return;
+    (this.d.download ?? saveBlob)(`${b.meta.id}.zip`, backupZip(b.meta, b.files));
   }
 
   async undoFromFile(f: File): Promise<void> {
     this.dispatch({ type: 'undo', patch: { source: 'file', ready: false, file: `Checking ${f.name}…` } });
     try {
       const b = await readBackupZip(f);
+      this.undoBackup = undefined;
       this.undoFiles = b.files;
       this.dispatch({ type: 'undo', patch: { ready: true, file: `${b.id} · ${b.files.size} partitions · checked` } });
     } catch (e) {
@@ -462,10 +496,7 @@ export class Session {
 
   async undoFromBrowser(): Promise<void> {
     const orig = await this.d.backups.original().catch(() => undefined);
-    if (!orig) return;
-    const files = await this.d.backups.files(orig);
-    this.undoFiles = new Map(files.map((x) => [x.part, x.data]));
-    this.dispatch({ type: 'undo', patch: { source: 'browser', ready: true } });
+    if (orig) await this.useBrowserBackup(orig);
   }
 
   /**

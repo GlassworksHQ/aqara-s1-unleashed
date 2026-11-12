@@ -5,7 +5,7 @@ import type { AskKind, PartState, Phase, Progress } from '@glassworks/kiln-core'
 import type { SetupState } from '@glassworks/setup-channel';
 
 export type Flow = 'install' | 'undo';
-export type Screen = 'browser' | 'connect' | 'firing' | 'setup' | 'done' | 'undo' | 'error';
+export type Screen = 'connect' | 'firing' | 'setup' | 'done' | 'undo' | 'error';
 
 export interface Network { ssid: string; rssi: number; secure: boolean }
 
@@ -72,6 +72,8 @@ export interface WizardState {
   undo: UndoState;
   failure?: Failure;
   done?: DoneState;
+  /** A clicked action is running; its buttons are off until it ends (Session.click). */
+  busy?: string;
 }
 
 export type Action =
@@ -87,14 +89,15 @@ export type Action =
   | { type: 'setup'; setup: Setup }
   | { type: 'undo'; patch: Partial<UndoState> }
   | { type: 'fail'; failure: Failure }
-  | { type: 'done'; done: DoneState };
+  | { type: 'done'; done: DoneState }
+  | { type: 'busy'; busy?: string };
 
 export const LOG_LIMIT = 400;
 
-export function initial(flow: Flow = 'install', supported = true): WizardState {
+export function initial(flow: Flow = 'install'): WizardState {
   return {
     flow,
-    screen: supported ? (flow === 'undo' ? 'undo' : 'connect') : 'browser',
+    screen: flow === 'undo' ? 'undo' : 'connect',
     progress: { overall: 0, phase: 'boot', title: 'Starting', sub: '', started: 0 },
     wrote: false,
     log: [],
@@ -144,6 +147,8 @@ export function reduce(s: WizardState, a: Action): WizardState {
       return { ...s, screen: 'error', ask: undefined, failure: a.failure };
     case 'done':
       return { ...s, screen: 'done', ask: undefined, done: a.done };
+    case 'busy':
+      return { ...s, busy: a.busy };
   }
 }
 
@@ -160,8 +165,8 @@ export type RailMark = 'done' | 'now' | 'turn' | 'bad' | 'todo';
 export function railIndex(s: WizardState): number {
   if (s.screen === 'error') return s.failure?.at ?? 1;
   const at: Record<Flow, Partial<Record<Screen, number>>> = {
-    install: { browser: 1, connect: 1, firing: 2, setup: 3, done: 4 },
-    undo: { browser: 0, undo: 0, connect: 1, firing: 2, done: 3 },
+    install: { connect: 1, firing: 2, setup: 3, done: 4 },
+    undo: { undo: 0, connect: 1, firing: 2, done: 3 },
   };
   return at[s.flow][s.screen] ?? 0;
 }

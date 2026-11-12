@@ -10,7 +10,10 @@ import { DEMOS, demoSession, enterDemo, type Demo } from './demo';
 import { Session } from './session';
 import { Wizard } from './Wizard';
 
-/** Demos run in `next dev`, and in a build made with KILN_DEMO=1 (previews, screenshots). Never in production. */
+/**
+ * Demos run in `next dev`, and in a build made with NEXT_PUBLIC_KILN_DEMO=1 set at build time (Next
+ * inlines it into the bundle). A build without it has none, whatever is set later.
+ */
 const DEMO_ON = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_KILN_DEMO === '1';
 
 function realSession(): Session {
@@ -27,12 +30,26 @@ function realSession(): Session {
   });
 }
 
-export function S1() {
-  const [demo] = useState(() => {
+/**
+ * One session per page load. React's StrictMode runs component setup twice in development, and a
+ * second Session would load (or create) a second adb key in IndexedDB at the same time.
+ */
+let page: { session: Session; demo?: Demo; entered: boolean } | undefined;
+
+function pageSession(): NonNullable<typeof page> {
+  if (!page) {
     const d = new URLSearchParams(location.search).get('demo');
-    return DEMO_ON && DEMOS.includes(d as Demo) ? (d as Demo) : undefined;
-  });
-  const [session] = useState(() => (demo ? demoSession(demo) : realSession()));
-  useEffect(() => { if (demo) void enterDemo(session, demo); }, [demo, session]);
+    const demo = DEMO_ON && DEMOS.includes(d as Demo) ? (d as Demo) : undefined;
+    page = { session: demo ? demoSession(demo) : realSession(), demo, entered: false };
+  }
+  return page;
+}
+
+export function S1() {
+  const [{ session, demo }] = useState(pageSession);
+  useEffect(() => {
+    const p = pageSession();
+    if (p.demo && !p.entered) { p.entered = true; void enterDemo(p.session, p.demo); }
+  }, []);
   return <Wizard session={session} frame={s1PlusUi} routes={!demo} />;
 }

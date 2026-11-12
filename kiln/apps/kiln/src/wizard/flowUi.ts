@@ -11,6 +11,7 @@ const notPicked = (e: unknown) => e instanceof DOMException && e.name === 'NotFo
  * counts the call as part of the click (test/in-click.test.tsx guards this).
  */
 export class AskBridge {
+  private picking = false;
   private pending?: { action: () => Promise<unknown>; resolve: (v: unknown) => void; signal: AbortSignal };
 
   constructor(private readonly dispatch: (a: Action) => void) {}
@@ -32,10 +33,11 @@ export class AskBridge {
   /** Call straight from the button's onClick. */
   click(): Promise<void> {
     const p = this.pending;
-    if (!p) return Promise.resolve();
+    if (!p || this.picking) return Promise.resolve(); // a second click while the picker is open
+    this.picking = true;
     const run = p.action();
     this.dispatch({ type: 'ask-busy' });
-    return run.then(
+    return run.finally(() => { this.picking = false; }).then(
       (v) => {
         if (this.pending === p) { this.pending = undefined; this.dispatch({ type: 'ask-end' }); }
         p.resolve(v);
