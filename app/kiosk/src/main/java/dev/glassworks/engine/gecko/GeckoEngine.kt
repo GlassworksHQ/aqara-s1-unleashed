@@ -229,7 +229,8 @@ class GeckoEngine(
             override fun onLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny>? {
                 if (request.target != GeckoSession.NavigationDelegate.TARGET_WINDOW_CURRENT) return null
                 val target = host.redirect(request.uri) ?: return null
-                main.post { session.loadUri(target) }
+                // Like the activity's handler before: a redirect still queued when the activity is destroyed is dropped.
+                main.post { if (!activity.isDestroyed) session.loadUri(target) }
                 return GeckoResult.fromValue(AllowOrDeny.DENY)
             }
         }
