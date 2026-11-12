@@ -38,6 +38,16 @@ interface SsPlayerHooks {
     fun onStatus(status: SendspinSession.Status) {}
 }
 
+/** What [SendspinPlayer] needs of one connection: a [SendspinSession], or a fake in tests. */
+interface SsConnection {
+    val timeFilter: TimeFilter
+    fun run(): SendspinSession.Result
+    fun status(): SendspinSession.Status
+    fun close(reason: String?)
+    fun abort()
+    fun sendState()
+}
+
 /**
  * One client-initiated Sendspin connection (spec "Client Initiated Connections" → "Encryption" →
  * "Communication"), as implemented by aiosendspin 10.2.1 (the version Music Assistant 2.10.9 pins):
@@ -58,9 +68,9 @@ class SendspinSession(
     private val hello: SsHelloInfo,
     private val unpairedAccess: () -> Boolean,
     private val hooks: SsPlayerHooks,
-    val timeFilter: TimeFilter = TimeFilter(),
+    override val timeFilter: TimeFilter = TimeFilter(),
     private val nowUs: () -> Long = { System.nanoTime() / 1000 },
-) {
+) : SsConnection {
     enum class Phase { CONNECTING, HANDSHAKE, HELD, PAIRING, READY, PLAYING, CLOSED }
 
     data class Status(
@@ -116,7 +126,7 @@ class SendspinSession(
     val playerActive: Boolean get() = activeRoles.any { it.startsWith("player@") }
     private val playback: Boolean get() = "playback" in activities
 
-    fun status(): Status {
+    override fun status(): Status {
         val phase = when {
             closing || (ws?.closed == true) -> Phase.CLOSED
             !activated -> if (ws == null) Phase.CONNECTING else Phase.HANDSHAKE
@@ -133,7 +143,7 @@ class SendspinSession(
     // ------------------------------------------------------------------ public API
 
     /** Connects, handshakes and processes messages until the connection ends. */
-    fun run(): Result {
+    override fun run(): Result {
         var established = false
         readerThread = Thread.currentThread()
         val timer = Thread({ timerLoop() }, "ss-timer").apply { isDaemon = true }
@@ -167,13 +177,13 @@ class SendspinSession(
     }
 
     /** Drops the connection without a goodbye, for when [close] takes too long. */
-    fun abort() {
+    override fun abort() {
         closing = true
         ws?.abort()
     }
 
     /** Ends the connection, sending `client/goodbye` with [reason] when the session is up. */
-    fun close(reason: String?) {
+    override fun close(reason: String?) {
         if (closing) return
         closing = true
         if (reason != null) closeReason = "goodbye: $reason"
@@ -192,7 +202,7 @@ class SendspinSession(
     }
 
     /** Reports a local state change (volume/mute changed on the panel). */
-    fun sendState() {
+    override fun sendState() {
         if (activated && stateSent) sendPlayerState()
     }
 
