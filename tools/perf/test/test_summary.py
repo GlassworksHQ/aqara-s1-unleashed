@@ -30,20 +30,24 @@ def fixture(variant):
     """A finished report.json for one variant of test_report's fixture runs."""
     b = T.Build()
     b.setUp()
-    b.write("device.json", dict(json.load(open(os.path.join(b.dir, "device.json"))), measured_on="2026-11-12"))
+    with open(os.path.join(b.dir, "device.json")) as f:
+        b.write("device.json", dict(json.load(f), measured_on="2026-11-12"))
     for k in (1, 2, 3):
         run = T.refstart(k, [120, 180, 150][k - 1])
         if variant == "A":
             run = T.refstart(k, 100, heavy_missed=0)
         elif variant == "E":           # smoke5's shape
-            run["tiers"]["light"]["swipes"] = [T.swipe(30.0, i, T.late(60, 30, 50.0)) for i in range(3)]
-            run["tiers"]["typical"]["swipes"] = [T.swipe(40.0, i, T.late(60, 30, 50.0)) for i in range(3)]
+            run["tiers"]["light"]["swipes"] = [T.swipe(30.0, i, T.late(60, 45, 66.67)) for i in range(3)]
+            run["tiers"]["typical"]["swipes"] = [T.swipe(40.0, i, T.late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["light"]["page"]["fcp_ms"] = 900
         elif variant == "capped":
             run["proc_mono"], run["engine_mono"] = 20.0, 26.0
         elif variant == "zoom":
             for t in run["tiers"].values():
                 t["page"]["dpr"] = 2.25
+        elif variant == "premium":
+            run = T.refstart(k, 100, heavy_missed=0)
+            run["tiers"]["heavy"]["swipes"] = [T.swipe(50.0, i, T.late(60, 6)) for i in range(3)]   # good, not premium
         elif variant == "raf-only":
             run["tiers"]["heavy"]["swipes"] = [T.swipe(50.0, i, T.late(60, 20), sf=False) for i in range(3)]
         elif variant == "even":         # two runs: the worse middle band
@@ -61,7 +65,7 @@ def fixture(variant):
     return rep
 
 
-VARIANTS = ["B", "A", "E", "capped", "zoom", "raf-only", "even", "missing-run"]
+VARIANTS = ["B", "A", "premium", "E", "capped", "zoom", "raf-only", "even", "missing-run"]
 
 
 def ts_grades(summaries):
@@ -95,8 +99,8 @@ class Export(unittest.TestCase):
         self.assertEqual(s, S.summarise(self.reps["B"], "reports/aqara-s1-plus.json"))
         self.assertEqual(json.loads(json.dumps(s)), s)
         self.assertEqual(set(s), SUMMARY_KEYS)
-        self.assertEqual(s["schema"], "glassworks.perf-summary/1")
-        self.assertEqual((s["protocol_version"], s["report_schema"]), (G.PROTOCOL_VERSION, "glassworks.perf/3"))
+        self.assertEqual(s["schema"], "glassworks.perf-summary/2")
+        self.assertEqual((s["protocol_version"], s["report_schema"]), (G.PROTOCOL_VERSION, "glassworks.perf/4"))
         self.assertEqual(s["measured_on"], "2026-11-12")
         self.assertEqual(s["frame"], {"id": "test-frame", "name": "test-frame"})
         self.assertEqual(s["app_version"], "0.4.3")
@@ -158,7 +162,8 @@ class Parity(unittest.TestCase):
 
     def test_the_variants_cover_every_status(self):
         letters = {v: self.reps[v]["grade"]["grade"] for v in VARIANTS}
-        self.assertEqual(letters["A"], "A")
+        self.assertEqual(letters["A"], "A+")
+        self.assertEqual(letters["premium"], "A")        # heavy good, not premium
         self.assertEqual(letters["B"], "B")
         self.assertEqual(letters["E"], "E")
         self.assertEqual(letters["capped"], "C")
@@ -186,11 +191,14 @@ class Parity(unittest.TestCase):
                         self.assertEqual(ts[k], py[k], k)
 
     def test_another_protocol_is_re_measured_in_both(self):
-        s = dict(self.sums["B"], protocol_version=G.PROTOCOL_VERSION + 1)
-        ts = ts_grades([s])[0]
-        py = G.grade_summary(s)
-        self.assertEqual((py["status"], py["grade"]), ("re-measure", None))
-        self.assertEqual((ts["status"], ts["grade"], ts["why"]), ("re-measure", None, py["why"]))
+        for v in (G.PROTOCOL_VERSION + 1, None):
+            with self.subTest(protocol=v):
+                s = dict(self.sums["B"], protocol_version=v)
+                ts = ts_grades([s])[0]
+                py = G.grade_summary(s)
+                self.assertEqual((py["status"], py["grade"]), ("re-measure", None))
+                self.assertEqual((ts["status"], ts["grade"], ts["why"]), ("re-measure", None, py["why"]))
+        self.assertIn("measured with protocol unknown", G.grade_summary(dict(self.sums["B"], protocol_version=None))["why"])
 
 
 if __name__ == "__main__":

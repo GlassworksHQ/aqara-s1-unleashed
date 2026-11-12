@@ -3,7 +3,7 @@
 
     python3 tools/perf/report.py <run-dir> [--apk app.apk ...] [--budgets tools/perf/budgets.json]
 
-The report schema (glassworks.perf/3) is documented in docs/perf.md.
+The report schema (glassworks.perf/4) is documented in docs/perf.md.
 """
 import argparse
 import glob
@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import grade as G  # noqa: E402
 import perflib as P  # noqa: E402
 
-SCHEMA = "glassworks.perf/3"
+SCHEMA = "glassworks.perf/4"
 SETTLE_GAP_MS = 750
 # The page's times reach logcat's clock through its log line, which logcat stamps a few ms late
 # (nav start mapped 11 to 23 ms before PageStart on the S1, 2026-11-12). The frame that shows the
@@ -186,27 +186,55 @@ def change_frames(step, period=None):
     return P.frame_stats(xs, period), None
 
 
-def change_to_present(step, page):
-    """Reported, not graded: from each change's due time to the next frame SurfaceFlinger presented,
-    in ms. It includes the engine's pipeline (one to three refreshes on a healthy device) and the
-    few ms of the clock mapping."""
+# A change with no frame on screen this long after it is at least this late (and past the fluid bar).
+NO_FRAME_MS = 250
+# SurfaceFlinger's present times and the page's frame times are on clocks tied by the page's log
+# line; allow this much for that and for vsync jitter when finding the first frame that can show it.
+PRESENT_SLACK_MS = 3
+
+
+def change_to_screen(step, page, period=None):
+    """The graded live-updates measure (rubric v5): per change, from when the page applied it (ran)
+    to the first frame on screen that can show it. The change is drawn in the next animation frame
+    (tick), which reaches the screen one refresh later at the earliest; presents before that are
+    frames already on their way. A change with no frame within NO_FRAME_MS counts as that late.
+    A change SurfaceFlinger's history doesn't reach back to isn't counted.
+    Returns ({n, median_ms, p95_ms, max_ms, skipped}, None) or (None, why)."""
     sf = step.get("sf") or {}
     pres = sorted(sf.get("presents_ms") or [])
-    if not pres or not page or step.get("t0") is None or not step.get("changes"):
-        return None
-    out = []
+    period = period or sf.get("period_ms") or P.BUDGET_MS
+    if not page or step.get("t0") is None or step.get("changes") is None:
+        return None, "no change log (a page from before it was added)"
+    if not pres:
+        return None, "no frames from SurfaceFlinger in the window"
+    oldest = sf.get("oldest_ms")
+    end = (sf.get("window_ms") or [None, None])[1]
+    raf = sorted(step.get("raf_times") or [])
+    out, skipped = [], 0
     for c in step["changes"]:
-        due = c[0]
-        if due < 0:
+        ran = c[1]
+        if ran < 0:
+            continue                      # applied before the window; its transition ran into it
+        tick = c[4] if len(c) > 4 and c[4] is not None else next((r for r in raf if r > ran), None)
+        m_ran = P.page_to_mono_ms(page, step["t0"] + ran)
+        if tick is None or (oldest is not None and m_ran < oldest):
+            skipped += 1
             continue
-        m = P.page_to_mono_ms(page, step["t0"] + due)
-        nxt = next((t for t in pres if t >= m), None)
+        earliest = max(P.page_to_mono_ms(page, step["t0"] + tick) + period - PRESENT_SLACK_MS, m_ran)
+        nxt = next((t for t in pres if t >= earliest), None)
         if nxt is not None:
-            out.append(round(nxt - m, 1))
+            out.append(round(nxt - m_ran, 1))
+        elif end is not None and end - m_ran >= NO_FRAME_MS:
+            out.append(round(end - m_ran, 1))
+        else:
+            skipped += 1                  # too close to the window's end to tell
     if not out:
-        return None
+        return None, "SurfaceFlinger showed none of the changes"
+    if len(out) < skipped:
+        return None, f"SurfaceFlinger covered only {len(out)} of {len(out) + skipped} changes"
     xs = sorted(out)
-    return {"n": len(xs), "median_ms": P.nearest_rank(xs, 0.5), "p95_ms": P.nearest_rank(xs, 0.95)}
+    return {"n": len(xs), "median_ms": P.nearest_rank(xs, 0.5), "p95_ms": P.nearest_rank(xs, 0.95),
+            "max_ms": xs[-1], "skipped": skipped}, None
 
 
 def state_ticks(step):
@@ -241,9 +269,15 @@ def scroll_frames(swipes):
     (evicted) gives rAF only, the others still give both. If no swipe has SurfaceFlinger's data, the
     run rests on rAF only (`raf_only`), which misses frames the compositor drops; the grade is then
     provisional."""
-    moved = [sw for sw in swipes if sw.get("scrolled_px")]
-    if not moved:
+    moved_all = [sw for sw in swipes if sw.get("scrolled_px")]
+    if not moved_all:
         return {"error": "the page didn't scroll" if swipes else "no swipes"}
+    # A swipe that reached the end of the page stops early, so its window is mostly the gesture's
+    # slow start (smoke6 and s1v4, protocol 1: light's 380 px of scrolling ended every swipe at about
+    # 380 ms). It isn't the same flick as the others: left out, and counted.
+    moved = [sw for sw in moved_all if not sw.get("hit_edge")]
+    if not moved:
+        return {"error": "every swipe reached the end of the page"}
     raf, sf, sf_swipes, period = [], [], 0, None
     for sw in moved:
         f = step_frames(sw, True)
@@ -257,7 +291,10 @@ def scroll_frames(swipes):
     sf_st = P.frame_stats(sf, period) if sf_swipes else {"n": 0}
 
     def key(st):
-        return (G.ORDER.get(G.frame_band(st), -1), st.get("p95_ms") or 0, st.get("jank_pct") or 0)
+        # Worse is a lower scroll level (rubric v5), then a longer p95, then fewer whole frames a
+        # second (the page rounds its rAF intervals to 0.1 ms, which moves fps by a few hundredths).
+        lv = G.scroll_level(st)
+        return (G.SCROLL_ORDER.index(lv) if lv else -1, st.get("p95_ms") or 0, -round(st.get("fps") or 0))
 
     if not sf_swipes:
         chosen, source, limited = raf_st, "raf", None
@@ -269,7 +306,11 @@ def scroll_frames(swipes):
         chosen, source, limited = sf_st, "surfaceflinger", "equal"
     firsts = [sw["first_scroll_ms"] for sw in moved if sw.get("first_scroll_ms") is not None]
     return {"frames": chosen, "source": source, "limited_by": limited, "sf_valid": sf_swipes == len(moved),
-            "sf_swipes": sf_swipes, "raf_only": not sf_swipes,
+            "sf_swipes": sf_swipes, "raf_only": not sf_swipes, "swipes_at_edge": len(moved_all) - len(moved),
+            # The live updates run while it scrolls, so the scroll level is scroll during updates.
+            # None for pages from before the swipes counted them.
+            "swipes_during_updates": (sum(1 for sw in moved if sw["changes_during"] > 0)
+                                      if all("changes_during" in sw for sw in moved) else None),
             "swipes": len(swipes), "swipes_moved": len(moved), "scrolled_px": sum(sw["scrolled_px"] for sw in moved),
             "first_scroll_ms": statistics.median(firsts) if firsts else None}
 
@@ -303,19 +344,24 @@ def tier_run(tier, entry, presents_ms):
                 out["load_error"] = why
             else:
                 out["load_ms"] = round(max(settle, fcp) - nav)
-    # Live updates: the rAF frames that had a change to draw (change_frames). The page's frames over
-    # the whole window, idle ones included, are kept as detail.
+    # Live updates (rubric v5): graded on how fast each change reaches the screen (change_to_screen),
+    # with frame pacing over the frames that had a change to draw (change_frames) for the premium
+    # label and as detail. The page's frames over the whole pacing stretch are detail too.
     out["updates_all"] = (step.get("raf") or {"n": 0}) if step.get("raf", {}).get("n") else None
     period = (step.get("sf") or {}).get("period_ms")
-    upd, why = change_frames(step, period)
-    out["updates"] = upd
+    pacing, _ = change_frames(step, period)
+    out["updates"] = pacing
+    lat, why = change_to_screen(step, page, period)
+    out["latency"] = lat
+    out["updates_run"] = None if lat is None else {
+        "latency_n": lat["n"], "latency_median_ms": lat["median_ms"], "latency_p95_ms": lat["p95_ms"],
+        "frames": frame_facts(pacing) if pacing else None}
     if why:
         out["updates_error"] = why
-    out["change_to_present"] = change_to_present(step, page)
     why, voids_taps = live_check_failed(entry.get("measure") or {}, step)
     out["state_ticks"] = state_ticks(step)
     if why:
-        out.update(updates=None, updates_error=why)
+        out.update(updates=None, latency=None, updates_run=None, updates_error=why)
     inp = entry.get("input") or {}
     out.update(inp_ms=None if voids_taps or not inp.get("taps") else inp.get("inp_ms"), input_method=inp.get("method"),
                fcp_ms=page.get("fcp_ms"), nodes=page.get("nodes"), cards=page.get("cards"))
@@ -325,6 +371,7 @@ def tier_run(tier, entry, presents_ms):
     else:
         out.update(scroll=sc["frames"], scroll_source=sc["source"], scroll_limited_by=sc["limited_by"],
                    sf_valid=sc["sf_valid"], sf_swipes=sc["sf_swipes"], raf_only=sc["raf_only"],
+                   swipes_at_edge=sc["swipes_at_edge"], swipes_during_updates=sc["swipes_during_updates"],
                    scrolled_px=sc["scrolled_px"], swipes=sc["swipes"],
                    swipes_moved=sc["swipes_moved"], first_scroll_ms=sc["first_scroll_ms"])
     return out
@@ -370,8 +417,9 @@ def by_position(rs):
             continue
         sc, up = x.get("scroll") or {}, x.get("updates") or {}
         out.setdefault(str(x["position"]), []).append({
-            "scroll_fps": sc.get("fps"), "scroll_p95_ms": sc.get("p95_ms"), "scroll_band": G.frame_band(sc) if sc else None,
-            "updates_p95_ms": up.get("p95_ms"), "updates_band": G.frame_band(up) if up else None,
+            "scroll_fps": sc.get("fps"), "scroll_p95_ms": sc.get("p95_ms"), "scroll_level": G.scroll_level(sc) if sc else None,
+            "latency_p95_ms": (x.get("latency") or {}).get("p95_ms"),
+            "updates_level": G.update_level(x.get("updates_run")),
             "inp_ms": x.get("inp_ms"), "load_ms": x.get("load_ms")})
     return out
 
@@ -395,9 +443,12 @@ def reference_summary(all_runs):
             # reason are poor, not the band of per-measure medians.
             "scroll": {k: P.spread([f.get(k) for f in sc]) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")},
             "scroll_bands": [G.frame_band(f) for f in sc],
+            # The grade's scroll: each run's level (rubric.json scroll_levels), then the median level.
+            "scroll_levels": [G.scroll_level(f) for f in sc],
+            "scroll_level": G.median_level(G.scroll_level(f) for f in sc),
             # Each run's frame stats: what a summary carries, so the site can band them itself.
             "scroll_runs": [frame_facts(f) for f in sc],
-            "updates_runs": [frame_facts(f) for f in up],
+            "updates_runs": [x["updates_run"] for x in rs if x.get("updates_run")],
             "scroll_band": median_band(G.frame_band(f) for f in sc),
             "scroll_sources": sorted({x["scroll_source"] for x in rs if x.get("scroll")}),
             "scroll_limited_by": sorted({x["scroll_limited_by"] for x in rs if x.get("scroll_limited_by")}),
@@ -408,12 +459,18 @@ def reference_summary(all_runs):
             "scroll_raf_only": [bool(x.get("raf_only")) for x in rs if x.get("scroll")],
             "sf_swipes": sum(x.get("sf_swipes") or 0 for x in rs if x.get("scroll")),
             "swipes_moved": sum(x.get("swipes_moved") or 0 for x in rs if x.get("scroll")),
+            "swipes_at_edge": sum(x.get("swipes_at_edge") or 0 for x in rs if x.get("scroll")),
             "updates": {k: P.spread([f.get(k) for f in up]) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")},
             "updates_bands": [G.frame_band(f) for f in up],
             "updates_band": median_band(G.frame_band(f) for f in up),
             "updates_errors": [x["updates_error"] for x in rs if x.get("updates_error")],
             "updates_all_p95_ms": P.spread([(x.get("updates_all") or {}).get("p95_ms") for x in rs]),
-            "change_to_present_p95_ms": P.spread([(x.get("change_to_present") or {}).get("p95_ms") for x in rs]),
+            # The grade's updates: change to screen, each run's level, then the median level.
+            "latency_p95_ms": P.spread([(x.get("latency") or {}).get("p95_ms") for x in rs]),
+            "latency_median_ms": P.spread([(x.get("latency") or {}).get("median_ms") for x in rs]),
+            "updates_levels": [G.update_level(x["updates_run"]) for x in rs if x.get("updates_run")],
+            "updates_level": G.median_level(G.update_level(x["updates_run"]) for x in rs if x.get("updates_run")),
+            "swipes_during_updates": [x.get("swipes_during_updates") for x in rs if x.get("scroll")],
             "paint_to_screen_ms": P.spread([x.get("paint_to_screen_ms") for x in rs]),
             "positions": [x.get("position") for x in rs],
             # The same page at each place in the order (the runs rotate it), so an order effect shows.
@@ -449,7 +506,7 @@ def grade_inputs(graded):
     ref = graded.get("reference") or {}
     med = lambda x: x and x["median"]  # noqa: E731
     tiers = {t: {"inp_ms": med(s["inp_ms"]), "load_ms": med(s["load_ms"]),
-                 "scroll_band": s["scroll_band"], "updates_band": s["updates_band"]}
+                 "scroll_level": s["scroll_level"], "updates_level": s["updates_level"]}
              for t, s in (ref.get("tiers") or {}).items()}
     return tiers, med(ref.get("start_ms"))
 
@@ -477,17 +534,21 @@ LABEL = {"light": "light", "typical": "typical", "heavy": "large"}
 
 def task_phrase(task, s_):
     """What one task measured, in words, for the headline."""
+    med = lambda k: (s_ or {}).get(k) and s_[k]["median"]  # noqa: E731
     if task == "tap":
-        return f"taps take {s_['inp_ms']['median']:.0f} ms to show" if s_ and s_["inp_ms"] else "taps weren't measured"
-    if task in ("scroll", "updates"):
-        what = "scrolling" if task == "scroll" else "live updates"
-        st = s_ and s_[task]
-        if not st or not st["p95_ms"]:
-            return f"{what} weren't measured" if task == "updates" else "scrolling wasn't measured"
-        return (f"{what} miss{'es' if task == 'scroll' else ''} frames "
-                f"(p95 {st['p95_ms']['median']:.0f} ms, {st['jank_pct']['median']:.0f}% late)")
-    if s_ and s_["load_ms"]:
-        return f"the view takes {s_['load_ms']['median'] / 1000:.1f} s to open"
+        return f"taps take {med('inp_ms'):.0f} ms to show" if med("inp_ms") is not None else "taps weren't measured"
+    if task == "scroll":
+        sc = (s_ or {}).get("scroll") or {}
+        if not sc.get("fps") or sc["fps"]["median"] is None:
+            return "scrolling wasn't measured"
+        # One decimal: 49.9 fps is under the 50 fps bar and must not read as 50.
+        return f"scrolling averages {sc['fps']['median']:.1f} fps (p95 {sc['p95_ms']['median']:.0f} ms)"
+    if task == "updates":
+        if med("latency_p95_ms") is None:
+            return "live updates weren't measured"
+        return f"a change takes {med('latency_p95_ms'):.0f} ms to show (p95)"
+    if med("load_ms") is not None:
+        return f"the view takes {med('load_ms') / 1000:.1f} s to open"
     return "opening the view wasn't measured"
 
 
@@ -499,17 +560,18 @@ def held_back(g, ref):
 
 def headline(name, g, ref):
     """'Aqara S1 Plus: C, a good wall panel for typical dashboards. Held back by large dashboards:
-    scrolling misses frames (p95 50 ms, 30% late).' The second sentence names the tasks that keep it
+    scrolling averages 41.5 fps (p95 50 ms).' The second sentence names the tasks that keep it
     from the next letter up, so it never reads against the letter."""
     if g["grade"] is None:
         return f"{name}: not graded. {g['refused']}."
-    out = f"{name}: {g['grade']}, {g['meaning']}."
     hb = held_back(g, ref)
-    if g["grade"] == "A":
+    out = f"{name}: {g['grade']}, {g['meaning']}."
+    if g["grade"] == G.LETTER_ORDER[0]:
         out += " Every task holds 60 fps on large dashboards."
+    lead = "Short of A+ on" if g["grade"] == G.LETTER_ORDER[1] else "Held back by"
     for t, phrases in hb:
         if phrases:
-            out += f" Held back by {LABEL[t]} dashboards: " + "; ".join(phrases) + "."
+            out += f" {lead} {LABEL[t]} dashboards: " + "; ".join(phrases) + "."
     if g["capped_by_start"]:
         out += f" A slow restart ({g['start']['value'] / 1000:.1f} s) caps it at {G.START_CAP}."
     if g["provisional"]:
@@ -692,11 +754,14 @@ def coverage_reasons(ref, attempted):
         s_ = ref["tiers"].get(t)
         got = {"tap": s_ and (s_["inp_ms"] or {}).get("n", 0) or 0,
                "scroll": s_ and len(s_["scroll_bands"]) or 0,
-               "updates": s_ and len(s_["updates_bands"]) or 0,
+               "updates": s_ and len(s_["updates_runs"]) or 0,
                "load": s_ and (s_["load_ms"] or {}).get("n", 0) or 0}
         short = [f"{task} {n} of {attempted}" for task, n in got.items() if 0 < n < attempted]
         if short:
             out.append(f"{t}: measured in fewer runs than attempted ({', '.join(short)})")
+        during = [d for d in (s_ or {}).get("swipes_during_updates") or [] if d is not None]
+        if during and not any(during):
+            out.append(f"{t}: no swipe ran while the live updates did, so scroll wasn't measured during updates")
         k = sum((s_ or {}).get("scroll_raf_only") or [])
         if k:
             out.append(f"{t}: scrolling rests on rAF only in {k} run(s); SurfaceFlinger's history didn't cover its swipes")
@@ -783,6 +848,10 @@ def radio_pane(r):
              "note": "the radio's own processes (outside the app); measured in place, not switched off"}]
 
 
+def ordinal(k):
+    return f"{k}{'st' if k % 10 == 1 and k != 11 else 'nd' if k % 10 == 2 and k != 12 else 'rd' if k % 10 == 3 and k != 13 else 'th'}"
+
+
 def fmt_n(v, unit=""):
     """One number, or n/a."""
     return "n/a" if v is None else f"{v:.0f}{unit}"
@@ -819,8 +888,11 @@ def markdown(rep):
            "so it doesn't depend on your Home Assistant. Background load (panes, the radio, heat) still reaches it.", ""]
     ref = rep["graded"]["reference"]
     if ref:
-        out += ["Each page's tasks (median of runs; frames bands are the median of each run's band). A page is "
-                "smooth when every task passes at 60 fps, fluid at 30 fps.", "",
+        out += ["Each page's tasks (median of runs; scroll and live-update levels are the median of each run's level). "
+                "A page is good when scrolling averages at least 50 fps (p95 at most 50 ms), 95% of live changes "
+                "show within 100 ms, taps within 200 ms and the view opens within 4 s; fluid at 30 fps (scroll p95 at "
+                "most 67 ms) and changes within 200 ms; premium when scrolling and the live changes also hold 60 fps (A+ on heavy). "
+                "Live-update pacing is detail, not graded.", "",
                 "| Page | Level | Tap (INP) | Scroll | Live updates | Open the view | Holds it back |",
                 "|---|---|---|---|---|---|---|"]
         for t in G.TIERS:
@@ -829,13 +901,14 @@ def markdown(rep):
                 out.append(f"| {t} | not measured | | | | | |")
                 continue
             lvl = g["levels"][t]
-            target = "smooth" if lvl == "fluid" else ("fluid" if lvl is None else None)
+            up = {None: "fluid", "fluid": "good", "good": "premium"}
+            target = up.get(lvl)
             held = ", ".join(G.limits(b, target)) if target else ""
             out.append(
                 f"| {t} ({', '.join(map(str, s_['cards']))} cards) | {lvl or 'neither'} "
                 f"| {fmt(s_['inp_ms'], ' ms')}, {band_cell(b['tap'])} "
-                f"| {fmt(s_['scroll']['fps'], ' fps')}, p95 {fmt(s_['scroll']['p95_ms'], ' ms')}, {band_cell(b['scroll'])} "
-                f"| p95 {fmt(s_['updates']['p95_ms'], ' ms')}, {band_cell(b['updates'])} "
+                f"| {fmt(s_['scroll']['fps'], ' fps')}, p95 {fmt(s_['scroll']['p95_ms'], ' ms')}, {b['scroll'] or 'n/a'} "
+                f"| {fmt(s_['latency_p95_ms'], ' ms')} to show (p95), {b['updates'] or 'n/a'}; pacing p95 {fmt(s_['updates']['p95_ms'], ' ms')} "
                 f"| {fmt(s_['load_ms'], ' ms')}, {band_cell(b['load'])} | {held} |")
         vp = g.get("viewport") or {}
         seen = sorted({str(v) for s_ in ref["tiers"].values() for v in s_["viewport"]})
@@ -860,22 +933,26 @@ def markdown(rep):
             if k:
                 out.append(f"{t}: scrolling from rAF only in {k} run(s): SurfaceFlinger's history didn't cover any of "
                            "those swipes, so frames the compositor dropped can't be seen (provisional).")
-            elif s_["sf_swipes"] < s_["swipes_moved"]:
+            if s_["swipes_at_edge"]:
+                out.append(f"{t}: {s_['swipes_at_edge']} swipe(s) reached the end of the page and were left out.")
+            if not k and s_["sf_swipes"] < s_["swipes_moved"]:
                 out.append(f"{t}: SurfaceFlinger covered {s_['sf_swipes']} of {s_['swipes_moved']} swipes; "
                            "the others count with rAF only.")
         orders = [o for o in ref.get("orders") or [] if o]
         if orders:
             warm = {w["tier"] for w in ref.get("warmups") or [] if w}
             out += ["", f"Order of the pages ({'a warm-up ' + ', '.join(sorted(warm)) + ' page first, not graded; ' if warm else ''}"
-                        f"it turns each run): " + "; ".join(", ".join(o) for o in orders) + ".", "",
-                    "| Page | 1st | 2nd | 3rd |", "|---|---|---|---|"]
+                        f"it turns each run): " + "; ".join(", ".join(o) for o in orders) + ".", ""]
+            npos = max(len(o) for o in orders)   # one column per place in the order, however many runs
+            out += ["| Page | " + " | ".join(ordinal(k) for k in range(1, npos + 1)) + " |",
+                    "|---|" + "---|" * npos]
             for t in G.TIERS:
                 bp = (ref["tiers"].get(t) or {}).get("by_position") or {}
                 cells = []
-                for pos in ("1", "2", "3"):
+                for pos in map(str, range(1, npos + 1)):
                     cells.append("; ".join(
-                        f"scroll {fmt_n(x['scroll_fps'], ' fps')} ({x['scroll_band'] or 'n/a'}), updates p95 "
-                        f"{fmt_n(x['updates_p95_ms'], ' ms')} ({x['updates_band'] or 'n/a'}), opens in {fmt_n(x['load_ms'], ' ms')}"
+                        f"scroll {fmt_n(x['scroll_fps'], ' fps')} ({x['scroll_level'] or 'n/a'}), updates p95 "
+                        f"{fmt_n(x['latency_p95_ms'], ' ms')} ({x['updates_level'] or 'n/a'}), opens in {fmt_n(x['load_ms'], ' ms')}"
                         for x in bp.get(pos, [])) or "")
                 out.append(f"| {t} | " + " | ".join(cells) + " |")
     s = rep["detail"]["synthetic"]

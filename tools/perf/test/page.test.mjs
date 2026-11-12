@@ -68,11 +68,11 @@ test("the three reference dashboards are fixed: light, typical, heavy", () => {
   assert.deepEqual(T.TIERS.light, { tiles: 12, entities: 5, rows: 5, longLists: 0, longRows: 0, sensors: 2, histories: 0, pictures: 0 });
   assert.deepEqual(T.TIERS.typical, { tiles: 26, entities: 13, rows: 6, longLists: 0, longRows: 0, sensors: 6, histories: 2, pictures: 2 });
   assert.deepEqual(T.TIERS.heavy, { tiles: 50, entities: 26, rows: 8, longLists: 4, longRows: 20, sensors: 16, histories: 8, pictures: 15 });
-  assert.deepEqual(T.LIVE, { updatesPerS: 5, clockEveryMs: 1000, tileTransitionMs: 180 });
+  assert.deepEqual(T.LIVE, { updatesPerS: 5, flipEveryMs: 2000, clockEveryMs: 1000, tileTransitionMs: 180 });
 });
 
 test("every page has the same first screen, so every page gets the same update stream", () => {
-  assert.deepEqual(T.HEAD, { tiles: 7, rows: 5 });
+  assert.deepEqual(T.HEAD, { sensorTiles: 4, switchTiles: 3, rows: 5, tiles: 7 });
   for (const t of T.ORDER) {
     assert.ok(T.TIERS[t].tiles >= 1 + T.HEAD.tiles, `${t} has the toggle and the head's tiles`);
     assert.ok(T.TIERS[t].entities >= 1, `${t} has the head's entities card`);

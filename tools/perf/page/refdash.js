@@ -179,7 +179,7 @@
     return card(`<img class="picture" alt="" src="${picture(rnd)}">`, 3);
   }
 
-  const live = { targets: [], clock: null, toggle: null, head: [], timers: [] };
+  const live = { targets: [], clock: null, toggle: null, head: [], sensors: [], switches: [], timers: [] };
 
   // HA's masonry view: one column per matched breakpoint (300, 600, 900, 1200 px); each card goes to
   // the first column whose size is under 5, else to the smallest (hui-masonry-view.ts).
@@ -201,8 +201,19 @@
     // The cards in a fixed, seeded order: the head first (clock, toggle, tiles and one entities card;
     // the same on every page, and the only cards that change while live), then the rest shuffled.
     const deck = [];
+    const used = new Set();
+    // The head takes its entities by domain; the rest of the page takes the others in order.
+    const take = (domains) => {
+      const i = states.findIndex((s, j) => !used.has(j) && domains.includes(s.entity_id.split(".")[0]));
+      used.add(i);
+      return states[i];
+    };
     let e = 0;
-    const next = (k) => { const out = states.slice(e, e + k); e += k; return out; };
+    const next = (k) => {
+      const out = [];
+      while (out.length < k) { if (!used.has(e)) { used.add(e); out.push(states[e]); } e++; }
+      return out;
+    };
     for (let i = 1 + T.HEAD.tiles; i < SPEC.tiles; i++) deck.push(() => tileCard(next(1)[0]));
     for (let i = 1; i < SPEC.entities; i++) deck.push(() => entitiesCard(`Room ${i + 1}`, next(SPEC.rows)));
     for (let i = 0; i < SPEC.longLists; i++) deck.push(() => entitiesCard(`All lights ${i + 1}`, next(SPEC.longRows)));
@@ -213,9 +224,24 @@
 
     live.clock = put(card(`<div class="clock">12:00:00</div>`, 2));
     live.toggle = put(tileCard({ entity_id: "light.living_room", state: "off", attributes: { friendly_name: "Living room" } }));
-    for (let i = 0; i < T.HEAD.tiles; i++) live.head.push(put(tileCard(next(1)[0])));
-    live.head.push(put(entitiesCard("Room 1", next(T.HEAD.rows))));
+    // Sensor and on/off tiles in turn, then the sensor rows.
+    const kinds = [];
+    for (let i = 0; i < T.HEAD.tiles; i++) kinds.push(i % 2 === 1 && kinds.filter((k) => k).length < T.HEAD.switchTiles);
+    while (kinds.filter((k) => k).length < T.HEAD.switchTiles) kinds[kinds.lastIndexOf(false)] = true;
+    for (const onOff of kinds) {
+      const s = take(onOff ? ["light", "switch", "media_player"] : ["sensor"]);
+      const el = put(tileCard(s));
+      el.entity = s;
+      (onOff ? live.switches : live.sensors).push(el);
+      live.head.push(el);
+    }
+    const rows = Array.from({ length: T.HEAD.rows }, () => take(["sensor"]));
+    const energy = put(entitiesCard("Energy", rows));
+    energy.rows = rows;
+    live.head.push(energy);
     for (const make of deck) put(make());
+    // Room to flick: at least scrollRoomScreens screens of scrolling below the top on every page.
+    view.style.minHeight = `${Math.ceil(innerHeight * (1 + T.PHASES.scrollRoomScreens))}px`;
   }
 
   // Elements in the document and in every shadow root under it.
@@ -265,10 +291,16 @@
   // order), and the clock. Every page and every run shows the same sequence. Each change is noted
   // with the time it was due and the time it ran (a busy main thread runs it late), and how long its
   // transition lasts, so the frames that had a change to draw can be told from idle ones.
-  const changes = { on: false, list: [] };
-  // kind: 0 a state update, 1 the clock.
+  // Each change: [due, ran, transition ms, kind, tick]. kind: 0 a sensor value, 1 the clock, 2 an
+  // on/off change. tick is the next animation frame's time: the frame the change is drawn in. The
+  // runner times from ran to the first frame on screen that can show that frame (report.py).
+  const changes = { on: false, list: [], pending: [], applied: 0 };
   function note(due, d, kind) {
-    if (changes.on) changes.list.push([due, performance.now(), d, kind]);
+    changes.applied++;
+    if (!changes.on) return;
+    const c = [due, performance.now(), d, kind, null];
+    changes.list.push(c);
+    changes.pending.push(c);
   }
 
   // Timers aimed at fixed times, so a late change doesn't push the next ones back (no drift).
@@ -283,17 +315,27 @@
     live.timers.push(setTimeout(step, period));
   }
 
+  // Like Home Assistant (docs/perf.md, "Live updates"): a sensor's new value changes its text only
+  // (its tile colour doesn't depend on the value: state_active.ts); an on/off change flips the tile's
+  // colour with HA's 180 ms transitions (ha-tile-icon.ts). Only the changed entity's card re-renders
+  // (has-changed.ts).
   function goLive() {
-    for (const c of live.head) {
-      const tile = c.shadowRoot.querySelector(".tile");
-      for (const v of c.shadowRoot.querySelectorAll(".value")) live.targets.push({ card: c, v, tile });
-    }
+    for (const c of live.sensors) live.targets.push({ v: c.shadowRoot.querySelector(".value"), s: c.entity });
+    const rowValues = live.head[live.head.length - 1].shadowRoot.querySelectorAll(".value");
+    live.head[live.head.length - 1].rows.forEach((s, i) => live.targets.push({ v: rowValues[i], s }));
     every(Math.round(1000 / T.LIVE.updatesPerS), (tick, due) => {
       const t = live.targets[(tick * 7) % live.targets.length];
-      const states = JSON.parse(W.makeStates(SEED, 400, tick));
-      t.v.textContent = stateText(states[(tick * 13) % states.length]);
-      if (t.tile) t.tile.classList.toggle("on");
-      note(due, t.tile ? T.LIVE.tileTransitionMs : 0, 0);
+      const v = parseFloat(t.s.state) + (((tick * 13) % 7) - 3) / 10;
+      t.s = Object.assign({}, t.s, { state: v.toFixed(1) });
+      t.v.textContent = stateText(t.s);
+      note(due, 0, 0);
+    });
+    every(T.LIVE.flipEveryMs, (k, due) => {
+      const c = live.switches[k % live.switches.length];
+      const tile = c.shadowRoot.querySelector(".tile");
+      const on = tile.classList.toggle("on");
+      tile.querySelector(".value").textContent = on ? "on" : "off";
+      note(due, T.LIVE.tileTransitionMs, 2);
     });
     const clock = live.clock.shadowRoot.querySelector(".clock");
     every(T.LIVE.clockEveryMs, (sec, due) => {
@@ -309,7 +351,12 @@
   }
 
   const frameStamps = { on: false, list: [] };
-  requestAnimationFrame(function loop(ts) { if (frameStamps.on) frameStamps.list.push(ts); requestAnimationFrame(loop); });
+  requestAnimationFrame(function loop(ts) {
+    if (frameStamps.on) frameStamps.list.push(ts);
+    for (const c of changes.pending) c[4] = ts;
+    changes.pending.length = 0;
+    requestAnimationFrame(loop);
+  });
   const r1 = (x) => Math.round(x * 10) / 10;
 
   // Frames while the updates run. The screen is still between changes, so SurfaceFlinger has nothing
@@ -327,17 +374,21 @@
     const t0 = performance.now();
     frameStamps.list = [];
     frameStamps.on = true;
+    // Frame pacing (detail): the first SurfaceFlinger-sized stretch. Change-to-screen: the whole window.
     await sleep(S.measureMs(VSYNC));
     frameStamps.on = false;
+    await sleep(Math.max(0, t0 + T.PHASES.updatesWindowMs - performance.now()));
     changes.on = false;
-    const t1 = performance.now();
+    await new Promise((r) => requestAnimationFrame(() => r()));   // the last changes get their frame
+    const t1 = t0 + T.PHASES.updatesWindowMs;
     // Times are ms after t0 (itself ms after performance.timeOrigin). A change from before t0 whose
     // transition runs into the window is kept.
     const seen = changes.list.filter((c) => c[0] <= t1 && c[1] + c[2] >= t0);
     log({ t: "step", stage: "updates", n: 1, window_ms: Math.round(t1 - t0), t0: r1(t0),
+          pacing_ms: S.measureMs(VSYNC),
           raf: S.frameStats(S.intervals(frameStamps.list), VSYNC),
           raf_times: frameStamps.list.map((x) => r1(x - t0)),
-          changes: seen.map((c) => [r1(c[0] - t0), r1(c[1] - t0), c[2], c[3]]) });
+          changes: seen.map((c) => [r1(c[0] - t0), r1(c[1] - t0), c[2], c[3], c[4] === null ? null : r1(c[4] - t0)]) });
   }
 
   // Tap-to-paint on the toggle while the updates run. Event Timing gives input delay + processing +
@@ -381,19 +432,21 @@
   // Real touch scrolling: the runner swipes (`input swipe`) where the page asks. A swipe's window runs
   // from its first scroll event to its last (the fling included), capped at the SurfaceFlinger-sized
   // window. It logs the frames, how far the page moved, and the time from touch to the first scroll.
-  let up = false;
   async function swipe(i) {
+    // Every swipe is the same flick down the page from its top, with room below it.
+    scrollTo({ top: 0, behavior: "instant" });
+    await sleep(T.PHASES.repositionStillMs);
     const max = document.documentElement.scrollHeight - innerHeight;
-    if (scrollY >= max - 4) up = true;           // at the bottom: swipe back up
-    else if (scrollY <= 4) up = false;           // at the top: swipe down the page
     const x = Math.round((innerWidth / 2) * devicePixelRatio);
     const lo = Math.round(innerHeight * 0.85 * devicePixelRatio), hi = Math.round(innerHeight * 0.15 * devicePixelRatio);
     const y0 = scrollY;
     let downAt = null, first = null, last = null;
     const onDown = (ev) => { if (downAt === null) downAt = ev.timeStamp; };
+    let appliedAt = null;
     const onScroll = (ev) => {
       if (first === null) {
         first = ev.timeStamp;
+        appliedAt = changes.applied;
         log({ t: "measure", stage: "scroll", n: i });
         frameStamps.list = [];
         frameStamps.on = true;
@@ -402,8 +455,8 @@
     };
     addEventListener("pointerdown", onDown, true);
     addEventListener("scroll", onScroll, { passive: true });
-    // Finger from near the bottom to near the top scrolls down the page; the reverse scrolls up.
-    log({ t: "swipe-ready", n: i, x, y1: up ? hi : lo, y2: up ? lo : hi, ms: T.PHASES.swipeMs });
+    // Finger from near the bottom to near the top scrolls down the page.
+    log({ t: "swipe-ready", n: i, x, y1: lo, y2: hi, ms: T.PHASES.swipeMs });
     const cap = S.measureMs(VSYNC);
     const end = performance.now() + T.PHASES.swipeWaitMs;
     while (performance.now() < end) {
@@ -420,6 +473,9 @@
     const windowMs = Math.min(cap, last - first + VSYNC);
     const stamps = frameStamps.list.filter((t) => t <= first + windowMs);
     log({ t: "step", stage: "scroll", n: i, window_ms: Math.round(windowMs), scrolled_px: Math.round(Math.abs(scrollY - y0)),
+          hit_edge: scrollY >= max - 1,
+          // The live updates keep running while it scrolls: how many changes ran during this swipe.
+          changes_during: changes.applied - appliedAt,
           first_scroll_ms: downAt === null ? null : Math.round(first - downAt), raf: S.frameStats(S.intervals(stamps), VSYNC),
           // raw intervals, so the runner can pool all of a run's swipes into one set of frames
           raf_intervals: S.intervals(stamps).map((x) => Math.round(x * 10) / 10) });

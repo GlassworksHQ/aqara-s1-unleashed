@@ -212,6 +212,11 @@ def gesture(pl, size, max_taps=MAX_TAPS):
     return f"input swipe {x} {y1} {x} {y2} {ms}", 1
 
 
+def tap_cap(taps):
+    """The most taps a page may ask for: what --taps asked, never more than MAX_TAPS."""
+    return min(taps or MAX_TAPS, MAX_TAPS)
+
+
 def own_page_finished(stop_mono, stop_at, now):
     """The kiosk's own page counts as finished once it has stopped and OWN_PAGE_QUIET_S have passed
     (wall clock) with no new load. A new load resets stop_mono to None."""
@@ -392,7 +397,7 @@ def cmd_coldstart(dev, a):
             if pl.get("stage") == "scroll":
                 entry["swipes"].append(pl)   # it never scrolled, so no window to read
         elif t in ("input-ready", "swipe-ready") and (t == "swipe-ready" or a.taps):
-            cmd, n = gesture(pl, size, max_taps=a.taps or MAX_TAPS)
+            cmd, n = gesture(pl, size, max_taps=tap_cap(a.taps))
             if cmd is None:
                 # Not sent: the page asked for something off the screen or malformed. That page isn't graded.
                 entry["error"] = f"bad {t} line: {n}"

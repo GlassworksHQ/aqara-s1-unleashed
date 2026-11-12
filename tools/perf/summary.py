@@ -24,7 +24,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import grade as G  # noqa: E402
 
-SCHEMA = "glassworks.perf-summary/1"
+SCHEMA = "glassworks.perf-summary/2"
 
 
 def _med(spread, digits=None):
@@ -51,15 +51,19 @@ def page_summary(s):
         "open_ms": _med(s.get("load_ms")),
         "scroll": {"fps": _med(sc.get("fps"), 1), "p95_ms": _med(sc.get("p95_ms"), 2),
                    "scrolled_px": _med(s.get("scrolled_px")), "sf_valid": s.get("sf_valid") or [],
+                   "during_updates": s.get("swipes_during_updates") or [],
                    "runs": s.get("scroll_runs") or []},
-        "updates": {"p95_ms": _med(up.get("p95_ms"), 2), "runs": s.get("updates_runs") or []},
+        # Change to screen (graded), each run's record (latency and the frames that had a change to
+        # draw), and frame pacing (detail).
+        "updates": {"latency_p95_ms": _med(s.get("latency_p95_ms"), 1), "latency_median_ms": _med(s.get("latency_median_ms"), 1),
+                    "pacing_p95_ms": _med(up.get("p95_ms"), 2), "runs": s.get("updates_runs") or []},
         "runs": {"tap": _n(s.get("inp_ms")), "scroll": len(s.get("scroll_runs") or []),
                  "updates": len(s.get("updates_runs") or []), "open": _n(s.get("load_ms"))},
     }
 
 
 def measurements(rep, report_url="report.json"):
-    """report.json (glassworks.perf/3) -> the summary: measurements and facts, no grade."""
+    """report.json (glassworks.perf/4) -> the summary: measurements and facts, no grade."""
     if not str(rep.get("schema", "")).startswith("glassworks.perf/"):
         raise Refused(f"not a perf report (schema {rep.get('schema')!r})")
     g = rep["grade"]

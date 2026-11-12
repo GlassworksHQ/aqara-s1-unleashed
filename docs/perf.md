@@ -1,11 +1,12 @@
 # Performance test and grade
 
 `tools/perf/run.sh` measures how good a wall panel a frame (a device definition, such as the S1's
-`aqara-s1-plus`) makes, and gives it a grade from **A** to **E**. The letter says **the biggest
+`aqara-s1-plus`) makes, and gives it a grade from **A+** to **E**. The letter says **the biggest
 fixed dashboard on which every wall-panel task still feels good**:
 
 | Grade | Meaning |
 |---|---|
+| A+ | Premium: an A where every task on large dashboards also holds 60 fps |
 | A | A good wall panel even for large dashboards |
 | B | A good wall panel for typical dashboards; large ones stay fluid |
 | C | A good wall panel for typical dashboards |
@@ -13,12 +14,12 @@ fixed dashboard on which every wall-panel task still feels good**:
 | E | Not a good wall panel, even for light dashboards |
 
 The report opens with one line such as "Aqara S1 Plus: C, a good wall panel for typical dashboards.
-Held back by large dashboards: scrolling misses frames (p95 50 ms, 30% late)." (an example of the
+Held back by large dashboards: scrolling averages 41.5 fps (p95 50 ms)." (an example of the
 format, not a measured result). The second sentence names the tasks that keep the frame from the
 next letter up. A table under it shows each page's tasks.
 
 The letter is derived, so it isn't stored anywhere it is shown: a frame's
-[summary](#the-summary-glassworksperf-summary1) holds the measurements, and the site computes the
+[summary](#the-summary-glassworksperf-summary2) holds the measurements, and the site computes the
 letter at render time from the summary and `rubric.json` (see [Showing the grade](#showing-the-grade)).
 
 The grade is measured on three fixed **reference dashboards** that this test ships: light, typical
@@ -105,16 +106,24 @@ fixed before any frame was graded under them (`tools/perf/page/tiers.js`, pinned
 
 | Page | Cards | What | Elements | Height at 960 CSS px wide |
 |---|---|---|---|---|
-| **Light** | 20 | 12 tiles, 5 entities cards of 5 rows, 2 sensor cards with a graph, a clock | 534 | 860 px, about 2 screens on the S1 |
+| **Light** | 20 | 12 tiles, 5 entities cards of 5 rows, 2 sensor cards with a graph, a clock | 534 | 860 px of cards in a 1936 px page (see below) |
 | **Typical** | 50 | 26 tiles, 13 entities cards of 6 rows, 6 sensor cards, 2 history graphs, 2 pictures, a clock | 1446 | 2742 px, about 5.5 screens |
 | **Heavy** | 120 | 50 tiles, 26 entities cards of 8 rows, 4 long lists of 20 rows, 16 sensor cards, 8 history graphs, 15 pictures, a clock | 4513 | 8358 px, about 17 screens |
 
-**The first screen is the same on every page** (`HEAD` in `tiers.js`): the clock, the toggle, 7
-more tiles and one entities card of 5 rows, taken from the page's own counts. The rest of the page
-comes after it, shuffled. Only the first screen changes while the page is live, so every page gets
+**The first screen is the same on every page** (`HEAD` in `tiers.js`): the clock, the toggle, 4 sensor
+tiles and 3 on/off tiles (a light, a switch, a media player), and an "Energy" entities card of 5
+sensor rows, taken from the page's own counts. The rest of the page comes after it, shuffled. Only the first screen changes while the page is live, so every page gets
 the same update stream; the pages differ in how much is around and below it. (Before 2026-11-12 the
 updates went to whatever was on screen. On the S1's smoke5 that was tiles with 180 ms fades on
 light and rows without fades on heavy, so light's updates looked worse than heavy's.)
+
+**Room to flick (protocol 2).** Every page leaves at least 3 screens of scrolling below its top, so
+no swipe reaches the end. Light's 20 cards are only 860 px tall, so its page continues with the
+view's empty background below them, to 1936 px. Before this, light could scroll 380 px, less than
+one swipe travels (about 560 px on the S1), so every light swipe hit the end of the page after about
+380 ms. That is the slow start of a flick on every page: on s1v5, every page scrolled at 39 to
+46 fps in a swipe's first 380 ms and typical and heavy at 51 to 57 fps after it. So light read
+worse than heavy in every position for a reason that was about the test page.
 
 Elements are counted through every shadow root, and heights are from headless Chrome at 960 CSS px
 (2026-11-12). The S1's CSS viewport is 960 × 480 (1440 × 720 at a device pixel ratio of 1.5).
@@ -136,14 +145,28 @@ Each card copies the way Home Assistant's frontend builds it, read from its sour
 No header: HA's kiosk mode hides it. The page scrolls as a document, so a touch scroll goes through
 GeckoView's compositor, as it does in HA.
 
-**Live updates (a project choice).** Once live, the page changes **5 entity states a second**, in a
-seeded order over the first screen's 7 tiles and 5 rows: a tile flips on or off with HA's 180 ms
-transitions, a row changes its text. Its clock ticks every second. The timers aim at fixed times, so
-a late change doesn't push the next ones back. When the page is done, it stops them, so the next
-page never opens over a page that is still updating. A busy home is the reason for that rate: dozens of power and energy sensors that
-report every 5 to 10 s add up to a few state changes a second on one view.
+**Live updates, as Home Assistant does them (protocol 2).** Read from HA's frontend at `77170b4`:
 
-**The order (protocol 1).** Each graded run opens a **warm-up** page first: the light page, with no
+| What HA does | Source | On the page |
+|---|---|---|
+| Every state change reaches the dashboard as it arrives: no throttling in the frontend | [`connection-mixin.ts` L269](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/state/connection-mixin.ts#L269) | Changes are applied as they come |
+| Only the card whose entity changed re-renders | [`has-changed.ts` L67–L86](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/common/has-changed.ts#L67-L86) | Only that card's text or tile changes |
+| A tile's colour comes from whether its entity is active. A sensor with a value is always active, so a value change doesn't change its colour; only on/off changes fade | [`hui-tile-card.ts` L198–L233](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/hui-tile-card.ts#L198-L233), [`state_active.ts`](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/common/entity/state_active.ts) | A sensor's new value changes its text only; an on/off change flips the tile with the 180 ms fade |
+
+The stream: **5 sensor value changes a second** over the first screen's 4 sensor tiles and 5 sensor
+rows, **one on/off change every 2 s** over its 3 on/off tiles, and the clock every second. The rates
+are **project choices**. 5 a second is a busy home: dozens of power and energy sensors that report
+every 5 to 10 s add up to a few changes a second on one view, and those are value changes. Lights and
+switches change on someone's action or an automation, far less often. One every 2 s is still more
+than most homes see; it is there so every window has an HA tile fade in it. The timers aim at fixed
+times, so a late change doesn't push the next ones back. When the page is done, it stops them, so the
+next page never opens over a page that is still updating.
+
+Protocol 1 (2026-11-12, before this) flipped a tile's colour on almost every update, sensor tiles
+included, which HA never does. On s1v5 about half the frames inside those fades were late on every
+page, while text-only and idle frames were nearly all on time.
+
+**The order (protocol 1 and later).** Each graded run opens a **warm-up** page first: the light page, with no
 taps or swipes, not graded. It takes the kiosk's own dashboard's teardown, the first JIT and the
 cold caches. Then the three pages run in an order that turns by one page each run: run 1 light,
 typical, heavy; run 2 typical, heavy, light; run 3 heavy, light, typical. So no page always comes
@@ -157,11 +180,13 @@ Each page runs in phases, one log line per event:
    loading screen is gone. (The kiosk covers every page it loads with "Connecting to Home Assistant"
    and hides it at the page's first paint, or 1.5 s after its load event if that was missed, with a
    300 ms fade. The 2.5 s clear that fallback with 0.7 s to spare.)
-3. **Live updates.** It goes live: warm-up of 1 s, then one window of 100 display refreshes (1.67 s
-   at 60 Hz) of frames while the updates run.
+3. **Live updates.** It goes live: a warm-up of 1 s, then a 4 s window in which each change is timed to
+   the screen (about 26 changes). The first 100 display refreshes (1.67 s at 60 Hz) of it also give
+   the frame pacing (detail).
 4. **Tap.** 10 taps on the toggle while the updates run.
-5. **Scroll.** 6 swipes. Each swipe goes from 85% to 15% of the screen's height in 300 ms, down the
-   page, then back up when it reaches the bottom. The fling is included.
+5. **Scroll.** 6 swipes while the updates still run. Before each, the page jumps back to its top and
+   waits 0.5 s still; each swipe is then the same flick down the page, from 85% to 15% of the
+   screen's height in 300 ms. The fling is included.
 
 ## What it measures
 
@@ -170,8 +195,8 @@ Each page runs in phases, one log line per event:
 | Task | How | Where it comes from |
 |---|---|---|
 | Tap | INP: the worst of 10 taps on the toggle, taken while the live updates run. Event Timing gives the delay, the handler time and the time to the next paint. Taps under 16 ms aren't reported by Event Timing; they count as 16 ms | Each page |
-| Scroll | Real swipes (`input swipe`). A swipe's window runs from its first scroll event until 400 ms with no scroll event, the fling included, capped at 100 refreshes. All of a run's swipes are pooled: rAF over every swipe, SurfaceFlinger over the swipes whose history it kept (decided swipe by swipe). The frames are the worse of the two, each run gets a band, and the grade takes the median band. A run in which SurfaceFlinger kept no swipe rests on rAF only, which can't see frames the compositor dropped: the report says so and the grade is provisional. `scrolled_px` proves the page moved: a page that didn't move is "not measured" | Each page; SurfaceFlinger |
-| Live updates | **The frames that had a change to draw.** Each change is logged with the time it was due, the time it ran and how long its transition lasts (180 ms for a tile, 0 for text). A rAF interval counts when it overlaps a change's span, from due to ran plus the transition: the frame that should draw it, and each frame of its fade. Idle frames, with nothing due or moving, don't count; on a still screen there is nothing to be late for. A change that ran late (a busy main thread) makes the frame it was due in long, and that counts. Graded on rAF only, **a project choice**: between changes the screen is still, so SurfaceFlinger has nothing steady to count, and its change-to-present time includes the engine's one to three frames of buffering on every frame. That time is reported (`change_to_present`), not graded. Each run gets a band; the grade takes the median band. A **live check** at the window's start logs whether the toggle and everything that changes are on screen, and the change log proves the updates ran. If something was off screen, there were no targets, or two or more of the window's state updates are missing, the updates aren't graded (and, if off screen, the taps neither) | Each page |
+| Scroll | Real swipes (`input swipe`), while the live updates run. A swipe's window runs from its first scroll event until 400 ms with no scroll event, the fling included, capped at 100 refreshes. A swipe that reached the end of the page anyway (`hit_edge`) is left out and counted: it stops early, so its window is mostly the flick's slow start. All of a run's other swipes are pooled: rAF over every swipe, SurfaceFlinger over the swipes whose history it kept (decided swipe by swipe). The frames are the worse of the two, judged on the run's scroll level (average fps over the swipes and p95; see [The grade](#the-grade)), and the page takes the median level. A run in which SurfaceFlinger kept no swipe rests on rAF only, which can't see frames the compositor dropped: the report says so and the grade is provisional. `scrolled_px` proves the page moved: a page that didn't move is "not measured". Each swipe logs how many changes ran during it (`changes_during`); a page where none did is provisional | Each page; SurfaceFlinger |
+| Live updates | **Change to screen**: per change, from when the page applied it to the first frame on screen that can show it. The page notes when it applied each change and the next animation frame (the frame the change is drawn in); that frame can reach the screen one refresh later at the earliest, so the first SurfaceFlinger present after that is taken (frames presented sooner were already on their way). A change with no frame within 250 ms counts as that late; one SurfaceFlinger's history doesn't reach isn't counted, and if fewer than half are counted the run isn't. The two clocks are tied by the page's log line to within a few ms, so a value can be a refresh off; the bars are 100 and 200 ms. Each run's level is from the p95 over the window's changes; the page takes the median level. **Frame pacing** over the frames that had a change to draw (a rAF interval counts when it overlaps a change, from when it was due to when it ran plus its transition) decides only the premium level (A+) and is reported. A **live check** at the window's start logs whether the toggle and everything that changes are on screen, and the change log proves the updates ran. If something was off screen, there were no targets, or two or more of the window's sensor updates are missing, the updates aren't graded (and, if off screen, the taps neither) | Each page; SurfaceFlinger |
 | Open the view | From the page's navigation start to **settled**: the first frame followed by 750 ms with no new frame, where that quiet reaches past the page's load event. The search starts at **the frame that shows the first paint**: the first frame at or after it, less 50 ms for the clock mapping. A pause before that frame is mid-load, like a pause before the load event. Settled is never earlier than the load event or the first paint. The page's times come from its own clock, tied to logcat's by its log line (navigation start mapped 11 to 23 ms before PageStart on the S1). Without a load event, a frame after the first paint, or a quiet gap, it is "not measured", never 0. The time from the first paint to the frame that shows it is reported (`paint_to_screen_ms`) | Each page; SurfaceFlinger |
 | Restart | From the app's process start (`Start proc` in logcat) to the engine being ready: GeckoView's own first page, `about:blank`. Once per run, for the whole frame. See [Why restart ends at engine ready](#why-restart-ends-at-engine-ready) | logcat |
 
@@ -236,25 +261,49 @@ display.
 
 ## The grade
 
-**A page passes at a level when every task does:**
+**What it grades: feel, not video.** A wall panel is good when it feels quick and steady: when a
+light or a sensor changes, the new state shows up at once, and when you flick through the dashboard
+it doesn't stutter. People notice how fast a change appears, not the frame rate of its repaint, and
+a panel scrolling at 50 frames a second feels fine even though it isn't 60. So (rubric v5, a user
+decision on 2026-11-12):
+- **Live updates** are graded on how fast a change reaches the screen. Their frame pacing is
+  reported, not graded.
+- **Scroll** is graded on its average frame rate over the swipes, with a cap on hitches. The 60 fps
+  rule is the premium level, which earns **A+**, not A.
+- Tap and opening the view keep their bars.
 
-| Level | Tap | Scroll and live updates | Open the view |
+**Each run gets a level per task**, then the page takes the median level of the runs (the worse of
+the two middles for an even count):
+
+| Task | Premium | Good | Fluid |
 |---|---|---|---|
-| **Smooth** | INP good (≤ 200 ms) | 60 fps: frames band good | good, or needs improvement (up to 4 s) |
-| **Fluid** | INP good (≤ 200 ms) | 30 fps: frames band good or needs improvement | good, or needs improvement (up to 4 s) |
+| Scroll | the 60 fps rule: frames band good (p95 ≤ 17.17 ms, ≤ 5% late, nothing frozen) | average ≥ 50 fps over the swipes, and p95 ≤ 50 ms | average ≥ 30 fps, and p95 ≤ 67 ms |
+| Live updates | good, and the frames that had a change to draw hold the 60 fps bar | 95% of changes on screen within 100 ms | within 200 ms |
+| Tap | INP good (≤ 200 ms) | INP good | INP good |
+| Open the view | ≤ 2.5 s, or up to 4 s | the same | the same |
 
-**The letter is the first one whose pages pass:**
+Below fluid, a measured scroll or live-update level is `slow`. The p95 caps are whole frames at
+60 Hz plus the rubric's 0.5 ms slack: 50.5 ms is three frames, 67.17 ms four, as the user's 50 and
+67 ms. Scroll is measured during the live updates (they keep running while the page scrolls), so
+updates that make scrolling stutter cost the page its scroll level.
+
+**A page is at a level when every task is**, and the letter is the first one whose pages are:
 
 | Grade | Needs |
 |---|---|
-| A | Heavy smooth |
-| B | Typical smooth and Heavy fluid |
+| A+ | Heavy premium: every task there holds 60 fps (the headline reads "A+, premium") |
+| A | Heavy good |
+| B | Typical good and Heavy fluid |
 | C | Typical fluid |
 | D | Light fluid |
 | E | None of the above |
 
+The scale is A+, A, B, C, D, E (a user decision on 2026-11-12; an earlier draft of v5 had premium as
+a label on an A).
+
 **A restart of 5 s or more caps the grade at C.** A panel whose engine takes that long to come back
-after a restart (an update, a crash, a power cut) is not an A or B panel. A cap never raises a letter.
+after a restart (an update, a crash, a power cut) is not an A+, A or B panel. A cap never raises a
+letter. Letters rank by their place in the table, not by spelling.
 
 A measurement that is missing fails whatever needs it, and the grade is marked **provisional**, with
 what is missing listed. Each band counts over the runs **attempted** (`plan.json`, written by
@@ -262,13 +311,14 @@ what is missing listed. Each band counts over the runs **attempted** (`plan.json
 runs than attempted, or a scroll that rests on rAF only also make it provisional.
 
 The headline names the tasks that keep the frame from the next letter up, with their numbers, and
-says if the restart capped it; an A says every task holds 60 fps on large dashboards. (On smoke5 the
-old headline read "E, … Large dashboards scroll at about 53 fps", which read against the letter.)
+says if the restart capped it. An A says what keeps it from A+ ("Short of A+ on large dashboards:
+…"); an A+ says every task holds 60 fps on large dashboards. (On smoke5 the old headline read "E, … Large dashboards scroll at about 53 fps", which read against the letter.)
 The report's table gives every task's value and band per page, and the task that holds each page
 back. Another table gives each page's results at each place in the run order.
 
-Both tables (the levels and the letters) and the restart cap live in `tools/perf/page/rubric.json`
-(`grade`), next to the thresholds. `tools/perf/grade.py` and `tools/perf/grade.ts` both read them,
+The task levels (`scroll_levels`, `update_levels`), the page levels, the letters (A+ first) and the
+restart cap live in `tools/perf/page/rubric.json` (`grade`), next to the thresholds.
+`tools/perf/grade.py` and `tools/perf/grade.ts` both read them,
 and neither holds a rule of its own. `tools/perf/test/grade-cases.json` lists each task's pass rule
 and each letter's boundary with its answer: a frame that just meets a level or a letter gets it, and
 moving any one requirement past its edge drops it. `test_grade.py` checks Python against it and
@@ -295,6 +345,20 @@ The smoke5 fixes (warm-up, turning order, the shared first screen, the change fr
 settle rule) are measurement fixes: each made a page's numbers depend less on where it ran or on a
 clock artefact. They became protocol 1. None moved a threshold or a letter rule. Rubric version 4
 only moved the existing letter rules into `rubric.json`, unchanged, so the site can read them.
+
+**Rubric v5 is different: it came after the S1 had results.** Under v4 the S1's protocol 1 runs
+graded E, held back by scroll and live-update frame pacing. The user then decided, for a reason that
+holds for every frame, that a wall panel is judged on feel, not video: how fast a change shows, and
+whether scrolling stutters (see [The grade](#the-grade)). The new bars are project choices:
+- **Live updates:** 100 ms is RAIL's bound for a response to feel immediate (["complete a transition
+  initiated by user input within 100 ms"](https://web.dev/articles/rail)), applied to a state
+  change; 200 ms is INP's "good" bound.
+- **Scroll:** 50 and 30 fps, with their p95 caps, are the user's numbers.
+
+They weren't picked to give the S1 a letter. Re-graded offline under v5, its s1v5 runs give C:
+typical scrolls at 49.6 to 50.8 fps, just under the good bar in two of three runs. A letter that
+lands where the user guessed it would isn't evidence either way. The record of what changed and when
+is here so anyone can check.
 
 ### Why restart ends at engine ready
 
@@ -424,21 +488,21 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `radio` | (not switched) | The radio's own processes (`otbr-agent`, `cpcd`, `zigbeed`) are measured where they run. Changing the radio mode would change the network |
 | `wall-base` | none | Only if a base is fitted (`sensor.<panel>_base`) |
 
-## The report (`glassworks.perf/3`)
+## The report (`glassworks.perf/4`)
 
 `report.json` has one frame per file. Repeated measurements are given as
 `{"median", "min", "max", "n"}`.
 
 | Key | What |
 |---|---|
-| `schema` | `"glassworks.perf/3"`. A field that changes meaning gets a new version |
+| `schema` | `"glassworks.perf/4"`. A field that changes meaning gets a new version (`/4`, 2026-11-12: `grade.bands` carries scroll and live-update levels, rubric v5) |
 | `protocol_version` | The measurement protocol the pages ran (`null` if the runs disagree). See [Protocol and rubric versions](#protocol-and-rubric-versions) |
 | `measured_on` | The run's date (UTC, from the computer that ran it) |
 | `runs_attempted` | Graded runs attempted (`plan.json`), the count each band is over |
 | `frame` | `id`, `name`, `device` (model, Android, API, ABI, SoC, CPU, RAM, display with density and refresh, temperatures), `app` (package, version, APK bytes on the device, GeckoView version) |
 | `apk` | One entry per APK given with `--apk`: `abis`, `bytes`, `parts_bytes` (dex, native, assets, resources, other) |
-| `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `smooth`, `fluid` or `null`), `bands` (per page: `tap`, `scroll`, `updates`, `load`), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts (a run failed, a task was measured in fewer runs, scrolling rests on rAF only, the pages ran another protocol) |
-| `graded` | `reference`: `start_ms`, `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_bands`, `scroll_band`, `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes` and `swipes_moved`, `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `updates` (the frames that had a change to draw), `updates_bands`, `updates_band`, `updates_runs`, `updates_all_p95_ms` (every frame of the window, detail), `change_to_present_p95_ms` (detail), `updates_errors`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
+| `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts (a run failed, a task was measured in fewer runs, scrolling rests on rAF only, the pages ran another protocol) |
+| `graded` | `reference`: `start_ms`, `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
 | `detail` | `synthetic`, the animation test page: `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `steps_without_sf`, `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `page_lcp_ms`, `page_lcp_from`, `per_run` |
 | `real_use` | Not graded. Your dashboard: `app_start_to_dashboard_ms`, `android_ttid_ms`, `launch`, `stop_to_dashboard_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `errors`, `per_run`. Then `idle`, `peak`, `memory` (`idle`, `peak`, `budget`) and `panes` |
 
@@ -446,7 +510,7 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 opened: `finished-still` (stopped, then quiet), `finished-moving` (stopped, still painting, such as
 a clock card; normal) or `never-finished` (still loading 30 s after engine ready; the grade is provisional).
 
-## The summary (`glassworks.perf-summary/1`)
+## The summary (`glassworks.perf-summary/2`)
 
 `tools/perf/summary.py` writes a small, stable, frame-level summary of a finished report, for places
 that show a frame's grade (glassworks.dev, later a frame's `design/frame.json`). It holds
@@ -456,24 +520,25 @@ Nothing from real use, and nothing device-unique.
 
 | Key | What |
 |---|---|
-| `schema` | `"glassworks.perf-summary/1"` |
+| `schema` | `"glassworks.perf-summary/2"` |
 | `protocol_version` | How it was measured. A site grades it only with a rubric for the same protocol |
-| `report_schema` | The report it came from, `"glassworks.perf/3"` |
+| `report_schema` | The report it came from, `"glassworks.perf/4"` |
 | `measured_on` | The run's date, `YYYY-MM-DD` (UTC) |
 | `frame` | `id`, `name` |
 | `app_version` | The kiosk's version name |
 | `viewport` | `css` (CSS px), `dpr` (device pixel ratio), `default_dpr` (density / 160) |
 | `runs` | `attempted`, `graded` |
-| `pages` | Per page (`light`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`p95_ms` median; `runs` as for scroll), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
+| `pages` | Per page (`light`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
 | `restart_ms` | Process start to engine ready (median) |
 | `gaps` | Measurement facts that leave it short: "1 of 3 graded runs failed or are missing", "heavy: scrolling rests on rAF only in 1 run(s)…". Empty when complete |
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |
 | `report` | A relative path or URL of the full report (`--report-url`) |
 | `complete` | `false` when it was exported with `--allow-provisional` and has gaps, missing measurements or isn't comparable |
 
-The frames bands need each run's stats (each run is banded, then the median band is taken), which is
-why the summary carries `runs` and not only medians. Medians are kept for display. Fields are only
-added in `/1`; a change of meaning is a new schema version.
+The levels need each run's measurements (each run gets a level, then the median level is taken), which
+is why the summary carries `runs` and not only medians. Medians are kept for display. Fields are only
+added within a version; a change of meaning is a new one. `/2` (2026-11-12, rubric v5): `updates`
+carries change to screen and its runs are latency records, where `/1` had frame pacing.
 
 ### Protocol and rubric versions
 
@@ -485,8 +550,11 @@ Two numbers say whether a stored summary can still be graded:
 | `version` (rubric) | `rubric.json` | **How it is judged** changes: a threshold, a level, a letter rule, the restart cap | Graded again with the new rubric at render time. No re-measure |
 
 So a change to the letter table changes every frame's letter on the site without a new run, while a
-change to the pages makes the site ask for a new run. Protocol 1 is this test as of 2026-11-12
-(warm-up, turning order, the shared first screen, change frames, the first-paint settle rule).
+change to the pages makes the site ask for a new run. Protocol 1 (2026-11-12) added the warm-up, the
+turning order, the shared first screen, change frames and the first-paint settle rule. Protocol 2
+(2026-11-12) added room to flick on every page, a flick from the top for every swipe with edge swipes
+left out, the HA-faithful update stream, change-to-screen timing over a 4 s window, and the changes
+counted during each swipe.
 
 ### Showing the grade
 
@@ -497,12 +565,13 @@ The site computes the letter **at render time** from the frame's summary and `ru
 import { gradeSummary } from "./grade.ts";
 const g = gradeSummary(summary, rubric);   // rubric = tools/perf/page/rubric.json
 // g.status: "graded" | "re-measure" | "not-comparable"
-// g.grade, g.meaning, g.levels (per page), g.limits (what keeps it from the next letter), g.provisional
+// g.grade (A+ to E), g.meaning, g.levels (per page), g.limits (what keeps it from the next
+// letter), g.provisional
 ```
 
 | `status` | Show |
 |---|---|
-| `graded` | The letter and its meaning. When `provisional` is set (something wasn't measured, or `gaps` isn't empty), mark it provisional |
+| `graded` | The letter (A+ to E) and its meaning. When `provisional` is set (something wasn't measured, or `gaps` isn't empty), mark it provisional |
 | `re-measure` | "Re-measure", not a letter: the summary's protocol isn't the rubric's |
 | `not-comparable` | No letter, and `why` (from `not_comparable`) |
 
@@ -541,7 +610,7 @@ load) and `t`:
 | `refdash` | Reference dashboard: `tier`, `protocol`, `nodes`, `cards`, `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
 | `warmup` | `stage`, `n`. The page goes live; the runner wakes the screen and stops polling SurfaceFlinger |
 | `measure` | `stage`, `n`. A window starts. For `updates`, the live check: `moving`, `offscreen`, `targets`, `update_every_ms` |
-| `step` | `stage` (`updates`, `scroll`, or a ladder family), `n`, `window_ms` (the window's length on the page's clock), `raf` (frame stats). For `updates`: `t0` (the window's start on the page's clock), `raf_times` and `changes` (`[due, ran, transition ms, kind]`, kind 0 a state update and 1 the clock), all ms after `t0`. For `scroll`: `scrolled_px`, `first_scroll_ms`, `raf_intervals`. The runner reads SurfaceFlinger |
+| `step` | `stage` (`updates`, `scroll`, or a ladder family), `n`, `window_ms` (the window's length on the page's clock), `raf` (frame stats). For `updates`: `t0` (the window's start on the page's clock), `pacing_ms` (the stretch `raf_times` covers), `raf_times` and `changes` (`[due, ran, transition ms, kind, tick]`: kind 0 a sensor value, 1 the clock, 2 an on/off change; tick, the animation frame it was drawn in), all ms after `t0`. For `scroll`: `scrolled_px`, `hit_edge`, `changes_during`, `first_scroll_ms`, `raf_intervals`. The runner reads SurfaceFlinger |
 | `input-ready` | `x`, `y` (device pixels), `taps`. The runner taps |
 | `swipe-ready` | `n`, `x`, `y1`, `y2` (device pixels), `ms`. The runner swipes once |
 | `input` | `stage`, `method`, `taps`, `values`, `inp_ms` |
@@ -587,8 +656,22 @@ What the earlier runs on the S1 (2026-11-12, kiosk 0.4.3, GeckoView 159, Android
   1255 ms, 348 ms later (typical 146 ms, heavy 92 ms), so its load wasn't measured. Rebuilt with the
   first-paint settle rule, light opens in 1754 ms, and heavy in 2137 ms instead of 1357 ms: the old
   rule had let heavy settle at its load event, before its first paint was on screen. Protocol 1's
-  warm-up, turning order and shared first screen answer the rest; they are not yet measured on the
-  S1.
+  warm-up, turning order and shared first screen answer the rest.
+- **s1v5** (d00fb81, protocol 1, 3 runs, S1 Kiosk 0.4.3, orders rotated). Under rubric v4 it graded
+  E. Re-graded offline under v5 (the raw data has what change to screen needs: when each change
+  applied, the rAF frames and SurfaceFlinger's presents), it gives **C, provisional** (protocol 1
+  pages):
+
+  | Page | Scroll (per run) | Live updates, change to screen p95 (per run) | Tap | Opens in |
+  |---|---|---|---|---|
+  | light | 42.6 fps, fluid, in all three runs | 72 to 88 ms, good | 96 ms | 1182 ms |
+  | typical | 49.6, 50.0 and 50.7 fps: fluid, fluid, good, so fluid | 66 to 87 ms, good | 144 ms | 1377 ms |
+  | heavy | 47.7 fps, fluid, in all three runs | 66 to 78 ms, good | 120 ms | 2004 ms |
+
+  Typical misses the good scroll bar by under 0.5 fps in two of three runs, and that decides the C.
+  Light's scroll is the protocol 1 artefact above: every light swipe hit the end of the page, at
+  41 to 46 fps in every position. These were 9 changes per run, so the p95 is the slowest of them.
+  Protocol 2's fixes (room to flick, HA's update stream, the 4 s window) are not yet measured on the S1.
 
 ## Run the tests
 

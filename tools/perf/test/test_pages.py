@@ -58,7 +58,9 @@ class Pages(unittest.TestCase):
         self.assertIn("const SEED = 89;", text)
         self.assertIn("W.mulberry32(SEED)", text)
         self.assertIn("W.makeStates(SEED, 400, 0)", text)
-        self.assertIn("W.makeStates(SEED, 400, tick)", text)   # the live updates are seeded too
+        # The live updates are fixed too: each sensor's next value comes from the tick, no randomness.
+        self.assertIn("(((tick * 13) % 7) - 3) / 10", text)
+        self.assertNotIn("Math.random", text)
         self.assertIn('<script src="tiers.js"></script>', self.read("dashboard.html"))
 
 

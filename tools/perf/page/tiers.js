@@ -22,23 +22,33 @@
   // head, the swipes, the update rate, the windows, or how the runner reads them). rubric.json's
   // protocol_version says which protocol its rules apply to; a summary from another one is
   // re-measured, not graded. test/page.test.mjs pins the two equal.
-  const PROTOCOL = 1;
+  const PROTOCOL = 2;
 
-  // The first screen is the same on every page: the clock, the toggle, `tiles` more tiles and one
-  // entities card of `rows` rows, taken from the page's own counts. Only these change while the page
-  // is live, so every page gets the same update stream; the pages differ in what is around and below.
-  const HEAD = { tiles: 7, rows: 5 };
+  // The first screen is the same on every page: the clock, the toggle, `sensorTiles` sensor tiles
+  // and `switchTiles` on/off tiles (a light, a switch, a media player), and one entities card of
+  // `rows` sensor rows, taken from the page's own counts. Only these change while the page is live,
+  // so every page gets the same update stream; the pages differ in what is around and below.
+  const HEAD = { sensorTiles: 4, switchTiles: 3, rows: 5 };
+  HEAD.tiles = HEAD.sensorTiles + HEAD.switchTiles;
 
-  // While live, the page changes `updatesPerS` entity states per second over the head's tiles and
-  // rows (a seeded order; a tile flips on or off with HA's 180 ms transitions, a row changes its
-  // text), and its clock ticks every second.
-  const LIVE = { updatesPerS: 5, clockEveryMs: 1000, tileTransitionMs: 180 };
+  // While live, as Home Assistant does it (docs/perf.md, "Live updates"): `updatesPerS` sensor value
+  // changes a second over the head's sensor tiles and rows (text only: HA's tile colour doesn't
+  // change with a sensor's value), one on/off change every `flipEveryMs` on the head's on/off tiles
+  // (HA's 180 ms colour transitions), and the clock every second.
+  const LIVE = { updatesPerS: 5, flipEveryMs: 2000, clockEveryMs: 1000, tileTransitionMs: 180 };
 
+  // The updates window is 4 s, so each run's change-to-screen p95 is over about 26 changes. A still
+  // screen presents only when something changes (about 16 frames a second here), so SurfaceFlinger's
+  // 127-frame history still covers it; a change it doesn't cover isn't counted.
   // Phases, in ms. The page stays still after its load event so its load can settle and the
   // kiosk's loading overlay is gone (hidden at first paint, or 1.5 s after the load, 300 ms fade).
   // Then it goes live: warm-up, one window of frames during the updates, the taps, then the swipes.
+  // Each swipe is a flick down the page from its top (the page jumps back and waits still first), and
+  // every page leaves at least `scrollRoomScreens` screens of scrolling below the top, so no flick
+  // reaches the end: a short page gets empty view background below its cards.
   const PHASES = { stillAfterLoadEventMs: 2500, warmupMs: 1000, tapWaitMinMs: 30000,
-                   swipes: 6, swipeMs: 300, scrollQuietMs: 400, swipeWaitMs: 4000 };
+                   swipes: 6, swipeMs: 300, scrollQuietMs: 400, swipeWaitMs: 4000,
+                   scrollRoomScreens: 3, repositionStillMs: 500, updatesWindowMs: 4000 };
 
   function cardCount(t) {
     const s = TIERS[t];

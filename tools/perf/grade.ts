@@ -2,7 +2,7 @@
  *
  * The letter is derived, so it is computed where it is shown: the marketing site (and later the
  * shared frame package, #114) imports this module with a frame's summary (tools/perf/summary.py,
- * glassworks.perf-summary/1) and tools/perf/page/rubric.json. tools/perf/grade.py computes the same
+ * glassworks.perf-summary/2) and tools/perf/page/rubric.json. tools/perf/grade.py computes the same
  * letter from the same two files; test/grade-cases.json and test/test_grade.py's parity test keep
  * them equal. rubric.json is the single source of the thresholds and the letter rules: don't copy a
  * rule into this file.
@@ -22,20 +22,26 @@ export interface Rubric {
   grade: {
     pages: string[];
     tasks: Record<string, string>;
-    levels: { level: string; accepts: Record<string, Band[]> }[];
+    scroll_levels: { level: string; frames_band?: Band[]; fps_min?: number; p95_max_ms?: number }[];
+    update_levels: { level: string; latency_p95_max_ms: number; frames_band?: Band[] }[];
+    below: string;
+    levels: { level: string; accepts: Record<string, string[]> }[];
     letters: { letter: string; meaning: string; needs: Record<string, string> }[];
     fallback: { letter: string; meaning: string };
     start_cap: { band: Band; letter: string };
   };
 }
 
-export interface FrameRun { p95_ms?: number | null; jank_pct?: number | null; frozen_pct?: number | null; n?: number | null }
+export interface FrameRun { p95_ms?: number | null; jank_pct?: number | null; frozen_pct?: number | null; fps?: number | null; n?: number | null }
+
+/** One run's live updates: change to screen, and the frames that had a change to draw. */
+export interface UpdateRun { latency_n?: number | null; latency_median_ms?: number | null; latency_p95_ms?: number | null; frames?: FrameRun | null }
 
 export interface PageSummary {
   inp_ms?: number | null;
   open_ms?: number | null;
   scroll?: { runs?: FrameRun[] } & Record<string, unknown>;
-  updates?: { runs?: FrameRun[] } & Record<string, unknown>;
+  updates?: { runs?: UpdateRun[] } & Record<string, unknown>;
 }
 
 export interface Summary {
@@ -46,8 +52,9 @@ export interface Summary {
   not_comparable?: string | null;
 }
 
-export interface TierInputs { inp_ms?: number | null; load_ms?: number | null; scroll_band?: Band | null; updates_band?: Band | null }
-export type Bands = Record<string, Band | null>;
+export interface TierInputs { inp_ms?: number | null; load_ms?: number | null; scroll_level?: string | null; updates_level?: string | null }
+/** Per task: a band (tap, updates, load) or, for scroll, its level. */
+export type Bands = Record<string, string | null>;
 
 export interface Grade {
   status: "graded" | "re-measure" | "not-comparable";
@@ -91,19 +98,56 @@ export function medianBand(bands: (Band | null)[]): Band | null {
   return bs.length ? bs[Math.floor(bs.length / 2)] : null;
 }
 
+/** One run's scroll level: the first of rubric.json's scroll_levels whose rule holds, or
+ * `below` (measured, below fluid); null when it wasn't measured. */
+export function scrollLevel(st: FrameRun | null | undefined, rubric: Rubric): string | null {
+  if (!st || !st.n) return null;
+  for (const lv of rubric.grade.scroll_levels) {
+    if (lv.frames_band) {
+      const b = frameBand(st, rubric);
+      if (b !== null && lv.frames_band.includes(b)) return lv.level;
+    } else if ((st.fps ?? 0) >= (lv.fps_min as number) && st.p95_ms !== null && st.p95_ms !== undefined && st.p95_ms <= (lv.p95_max_ms as number)) {
+      return lv.level;
+    }
+  }
+  return rubric.grade.below;
+}
+
+/** One run's live-updates level from its change-to-screen p95 (and, for premium, the frames that had
+ * a change to draw), or `below`; null when it wasn't measured. */
+export function updateLevel(run: UpdateRun | null | undefined, rubric: Rubric): string | null {
+  if (!run || !run.latency_n || run.latency_p95_ms === null || run.latency_p95_ms === undefined) return null;
+  for (const lv of rubric.grade.update_levels) {
+    if (run.latency_p95_ms > lv.latency_p95_max_ms) continue;
+    if (lv.frames_band) {
+      const b = frameBand(run.frames, rubric);
+      if (b === null || !lv.frames_band.includes(b)) continue;
+    }
+    return lv.level;
+  }
+  return rubric.grade.below;
+}
+
+/** The middle scroll level of several runs, the worse of the two middles for an even count. */
+export function medianLevel(levels: (string | null)[], rubric: Rubric): string | null {
+  const order = rubric.grade.scroll_levels.map((l) => l.level).concat([rubric.grade.below]);
+  const ls = levels.filter((l): l is string => !!l).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  return ls.length ? ls[Math.floor(ls.length / 2)] : null;
+}
+
 export function tierBands(tier: TierInputs | undefined, rubric: Rubric): Bands {
   const t = tier || {};
   return {
     tap: band(t.inp_ms, rubric.metrics.inp_ms),
-    scroll: t.scroll_band ?? null,
-    updates: t.updates_band ?? null,
+    scroll: t.scroll_level ?? null,
+    updates: t.updates_level ?? null,
     load: band(t.load_ms, rubric.metrics.load_ms),
   };
 }
 
 export function pageLevel(bands: Bands, rubric: Rubric): Level {
   for (const lv of rubric.grade.levels) {
-    if (Object.entries(lv.accepts).every(([task, ok]) => bands[task] !== null && ok.includes(bands[task] as Band))) return lv.level;
+    if (Object.entries(lv.accepts).every(([task, ok]) => bands[task] !== null && ok.includes(bands[task] as string))) return lv.level;
   }
   return null;
 }
@@ -112,7 +156,7 @@ export function pageLevel(bands: Bands, rubric: Rubric): Level {
 export function limits(bands: Bands, level: string, rubric: Rubric): string[] {
   const lv = rubric.grade.levels.find((l) => l.level === level);
   if (!lv) return [];
-  return Object.entries(lv.accepts).filter(([task, ok]) => bands[task] === null || !ok.includes(bands[task] as Band)).map(([task]) => task);
+  return Object.entries(lv.accepts).filter(([task, ok]) => bands[task] === null || !ok.includes(bands[task] as string)).map(([task]) => task);
 }
 
 function levelRank(level: Level, rubric: Rubric): number {
@@ -140,7 +184,9 @@ export function gradeBands(tiers: Record<string, TierInputs>, startMs: number | 
       break;
     }
   }
-  const capped = start === R.start_cap.band && letter < R.start_cap.letter;
+  // Letters rank by their place in the table (A+ first), the fallback last; never by string order.
+  const order = R.letters.map((l) => l.letter).concat([R.fallback.letter]);
+  const capped = start === R.start_cap.band && order.indexOf(letter) < order.indexOf(R.start_cap.letter);
   if (capped) letter = R.start_cap.letter;
   const meaning = (R.letters.find((l) => l.letter === letter) || R.fallback).meaning;
   return {
@@ -169,8 +215,8 @@ export function summaryInputs(summary: Summary, rubric: Rubric): [Record<string,
     tiers[t] = {
       inp_ms: p.inp_ms ?? null,
       load_ms: p.open_ms ?? null,
-      scroll_band: medianBand((p.scroll?.runs || []).map((r) => frameBand(r, rubric))),
-      updates_band: medianBand((p.updates?.runs || []).map((r) => frameBand(r, rubric))),
+      scroll_level: medianLevel((p.scroll?.runs || []).map((r) => scrollLevel(r, rubric)), rubric),
+      updates_level: medianLevel((p.updates?.runs || []).map((r) => updateLevel(r, rubric)), rubric),
     };
   }
   return [tiers, summary.restart_ms ?? null];
@@ -187,7 +233,7 @@ export function summaryInputs(summary: Summary, rubric: Rubric): [Record<string,
 export function gradeSummary(summary: Summary, rubric: Rubric): Grade {
   if (summary.protocol_version !== rubric.protocol_version) {
     return { status: "re-measure", grade: null, meaning: null,
-             why: `measured with protocol ${summary.protocol_version}, these rules are for protocol ${rubric.protocol_version}` };
+             why: `measured with protocol ${summary.protocol_version ?? "unknown"}, these rules are for protocol ${rubric.protocol_version}` };
   }
   if (summary.not_comparable) return { status: "not-comparable", grade: null, meaning: null, why: summary.not_comparable };
   const [tiers, start] = summaryInputs(summary, rubric);

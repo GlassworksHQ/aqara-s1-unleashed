@@ -42,13 +42,14 @@ class Runner(unittest.TestCase):
 
     def test_report_has_every_part(self):
         r = self.rep
-        self.assertEqual(r["schema"], "glassworks.perf/3")
+        self.assertEqual(r["schema"], "glassworks.perf/4")
         self.assertEqual(r["frame"]["device"]["model"], "Test Panel")
         self.assertEqual(r["frame"]["app"]["geckoview"], "159.0")
         g = r["grade"]
-        self.assertEqual(g["grade"], "A")
+        self.assertEqual(g["grade"], "A+")                          # the fake panel holds 60 fps everywhere
         self.assertFalse(g["provisional"], g["missing"])
-        self.assertTrue(g["headline"].startswith("test-frame: A, a good wall panel even for large dashboards."))
+        self.assertTrue(g["headline"].startswith("test-frame: A+, premium."),
+                        g["headline"])
         self.assertEqual(g["viewport"]["state"], "ok")
         ref = r["graded"]["reference"]
         self.assertEqual(ref["errors"], [])
@@ -65,7 +66,8 @@ class Runner(unittest.TestCase):
             self.assertEqual(s["scroll_sources"], ["surfaceflinger"], t)
             self.assertEqual(s["sf_valid"], [True], t)
             self.assertEqual(s["scrolled_px"]["median"], 1400, t)   # two swipes of 700 px
-            self.assertEqual(s["updates_band"], "good", t)
+            self.assertEqual(s["updates_level"], "premium", t)           # changes on screen within a frame or two
+            self.assertEqual(s["swipes_during_updates"], [2], t)
         self.assertEqual(g["start"]["value"], ref["start_ms"]["median"])
         self.assertEqual(r["real_use"]["android_ttid_ms"]["median"], 1714)
         self.assertEqual(r["real_use"]["settle_how"], ["quiet-gap"])
@@ -175,7 +177,10 @@ def refstart(tmp, run=1, **env_extra):
 
 def unasked(tmp):
     p = os.path.join(tmp, "state", "unasked.json")
-    return json.load(open(p)) if os.path.exists(p) else []
+    if not os.path.exists(p):
+        return []
+    with open(p) as f:
+        return json.load(f)
 
 
 class NonceGate(unittest.TestCase):
@@ -231,6 +236,13 @@ class Gestures(unittest.TestCase):
 
 class OwnPageWait(unittest.TestCase):
     """The A fix's time rule, pinned directly: 2 s after the own page stopped, with no new load."""
+
+    def test_the_tap_cap_holds_whatever_taps_asks(self):
+        """--taps 100 doesn't let a page ask for 100 taps."""
+        self.assertEqual(perfrun.tap_cap(100), perfrun.MAX_TAPS)
+        self.assertEqual((perfrun.tap_cap(10), perfrun.tap_cap(0)), (10, perfrun.MAX_TAPS))
+        req = {"t": "input-ready", "x": 720, "y": 360, "taps": 100}
+        self.assertIsNone(perfrun.gesture(req, (1440, 720), max_taps=perfrun.tap_cap(100))[0])
 
     def test_two_seconds_after_the_stop(self):
         self.assertFalse(perfrun.own_page_finished(None, 0.0, 100.0))

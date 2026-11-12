@@ -194,18 +194,21 @@ def refdash(nonce, url):
     if foreign == "after":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     time.sleep(0.7)
-    gw({"t": "refdash", "tier": tier, "protocol": 1, "nodes": 1458, "cards": 50, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
+    gw({"t": "refdash", "tier": tier, "protocol": 2, "nodes": 1458, "cards": 50, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
         "fcp_ms": 150, "lcp_ms": 150, "load_ms": 120, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000})
     time.sleep(1.0)
     gw({"t": "warmup", "stage": "updates", "n": 1})
     time.sleep(0.3)
     gw({"t": "measure", "stage": "updates", "n": 1, "moving": 12, "offscreen": 0, "targets": 10, "update_every_ms": 200,
         "animations": 0, "animations_expected": 0})
+    m0, t0 = now(), time.time() * 1000 - origin
+    paint(m0, m0 + 0.5)      # each change on screen within a frame or two
     time.sleep(0.5)
-    gw({"t": "step", "stage": "updates", "n": 1, "window_ms": 500, "t0": 3000.0,
+    gw({"t": "step", "stage": "updates", "n": 1, "window_ms": 500, "t0": round(t0, 1), "pacing_ms": 500,
         "raf": {"n": 30, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0, "fps": 60},
         "raf_times": [round(i * 16.7, 1) for i in range(31)],
-        "changes": [[100.0, 100.5, 180, 0], [300.0, 300.4, 0, 0], [400.0, 400.2, 0, 1]]})
+        "changes": [[100.0, 100.5, 0, 0, 100.2], [200.0, 200.4, 0, 0, 200.4], [300.0, 300.4, 0, 0, 300.6],
+                    [350.0, 350.3, 180, 2, 350.7], [400.0, 400.2, 0, 1, 400.8]]})
     if taps:
         before = state("taps.json", 0)
         save("asked.json", {"tap": taps})
@@ -233,7 +236,7 @@ def refdash(nonce, url):
         paint(s0, s0 + 0.5)   # the swipe and its fling
         gw({"t": "measure", "stage": "scroll", "n": i})
         time.sleep(0.5)
-        gw({"t": "step", "stage": "scroll", "n": i, "window_ms": 500, "scrolled_px": 700, "first_scroll_ms": 40,
+        gw({"t": "step", "stage": "scroll", "n": i, "window_ms": 500, "scrolled_px": 700, "hit_edge": False, "changes_during": 3, "first_scroll_ms": 40,
             "raf": {"n": 30, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0, "fps": 60},
             "raf_intervals": [16.7] * 30})
         time.sleep(0.2)
