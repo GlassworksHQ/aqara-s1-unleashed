@@ -5,14 +5,15 @@
   "description": "Kiln's step engine: the install flow, the FlowUi contract, the recipe types, and backups.",
   "license": "MIT",
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@glassworks/adb": "0.0.0",
-    "@glassworks/bootpatch": "0.0.0",
     "@glassworks/fastboot": "0.0.0",
     "@glassworks/fel": "0.0.0"
   }

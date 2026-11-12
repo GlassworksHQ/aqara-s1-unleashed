@@ -96,7 +96,7 @@ export interface FlowUi { log; progress(p: Progress); partition(part, state, inf
 export interface Recipe<A, O, R> {
   fel: { checkChip(fel): Promise<string>; loader: A[]; boot(fel, loader, onProgress): Promise<void> };
   checkLayout(fb: Fastboot): Promise<string>;           // throws on the wrong device, returns the log line
-  backup: BackupPlan;                                    // parts, restore, required, idPrefix, db
+  backup: BackupPlan;                                    // parts, restore, required, idPrefix, db, isPatched(boot)
   patching: string;
   patchBoot(ctx: PatchContext<A>): Promise<Uint8Array>;
   writesBeforeBoot(ctx: PatchContext<A>): Promise<FlashStep[]>;  // InstallFlow writes boot after these
@@ -104,7 +104,11 @@ export interface Recipe<A, O, R> {
 }
 ```
 InstallFlow owns the order, the progress, the backup before any write (boot read twice), the read-back
-of every write, and boot last. USB comes in through `Devices`, so `test/flow.test.ts` runs the S1 recipe
+of every write, and boot last. It refuses, before touching the device, a backup plan that doesn't read
+`boot` and every `required` and `restore` part; before writing, a recipe step that writes boot, and a
+patch that gives a stock boot back unchanged (the same boot back is fine on a re-run, when
+`backup.isPatched` says it was patched already). Undo refuses a backup whose boot `isPatched`. kiln-core
+doesn't depend on bootpatch: what "patched" means is the recipe's. USB comes in through `Devices`, so `test/flow.test.ts` runs the S1 recipe
 end to end on simulated hardware with the real 4.5.80 partitions. `backup.ts`: backups in IndexedDB + a
 STORED zip (`zip.ts`) with a `SHA256SUMS` the CLI's `--undo` accepts. kiln-core names no frame: its
 `no-frame-names` test fails on any S1 name.

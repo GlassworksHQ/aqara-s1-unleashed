@@ -8,7 +8,7 @@ export interface BackupMeta {
   id: string;            // <idPrefix>-YYYYMMDD-HHMMSS
   created: string;       // ISO time
   serial?: string;       // fastboot serial: shown only in this browser, never sent anywhere
-  /** The boot partition was already Magisk-patched (a re-run): not the original software. */
+  /** The boot partition was already patched (the recipe's `isPatched`, a re-run): not the original software. */
   bootWasPatched: boolean;
   files: { part: string; size: number; sha256: string }[];
 }

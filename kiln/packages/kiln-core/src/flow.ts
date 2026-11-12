@@ -3,7 +3,6 @@
 // a click, so where the panel re-enumerates (U-Boot's fastboot, then Android's adb) the flow asks the
 // UI for a click unless permission was given before.
 import type { AdbKey, PanelShell } from '@glassworks/adb';
-import { isMagiskPatched } from '@glassworks/bootpatch';
 import type { Fastboot } from '@glassworks/fastboot';
 import type { FelDevice } from '@glassworks/fel';
 import { backupFile, backupId, type BackupFile, type BackupMeta, type BackupStore } from './backup';
@@ -50,7 +49,7 @@ export interface FlowDeps<A extends string> {
   key: AdbKey;
   devices: Devices;
   sleep?: (ms: number) => Promise<void>;
-  /** Branded splash + boot animation (Glass Tile); default true. BRANDING=none in the CLI. */
+  /** The frame's branded splash and boot animation; default true. BRANDING=none in the CLI. */
   branding?: boolean;
 }
 
@@ -116,6 +115,7 @@ export class InstallFlow<A extends string, O, R> {
 
   /** Steps 3-8. Returns once the panel is rebooting into the patched Android. */
   async install(fb: Fastboot): Promise<{ meta: BackupMeta; files: BackupFile[]; bootSha256: string }> {
+    checkBackupPlan(this.recipe.backup);
     fb.log = (l) => this.log(l);
     // 3: layout
     this.log(await this.recipe.checkLayout(fb));
@@ -151,7 +151,7 @@ export class InstallFlow<A extends string, O, R> {
     doneBytes += bootSize;
     if ((await backupFile('boot', again)).sha256 !== boot.sha256) throw new Error('two reads of boot differ: USB is unreliable here. Nothing was changed; try another cable or port.');
     this.log('boot read twice, hashes match');
-    const bootWasPatched = await isMagiskPatched(boot.data);
+    const bootWasPatched = await this.recipe.backup.isPatched(boot.data);
     const meta: BackupMeta = {
       id: backupId(this.recipe.backup.idPrefix), created: new Date().toISOString(), bootWasPatched,
       files: files.map((f) => ({ part: f.part, size: f.data.length, sha256: f.sha256 })),
@@ -178,11 +178,15 @@ export class InstallFlow<A extends string, O, R> {
     };
     const image = await this.recipe.patchBoot(ctx);
     const patchedSha = (await backupFile('boot', image)).sha256;
+    // The same boot back is fine on a re-run (already patched), never on a stock boot.
+    if (patchedSha === boot.sha256 && !bootWasPatched) throw new Error('the patch left boot unchanged, so there is nothing to install. Nothing was written.');
     this.log(`patched boot ${short(patchedSha)} (from ${short(boot.sha256)})`);
     ph('patch', 0.6, 1, 'Preparing the new software', 'Done');
 
     // 6-7: the frame's other writes; 8: boot last, so a failure before it leaves the panel booting
-    const steps = [...await this.recipe.writesBeforeBoot(ctx), { part: 'boot', data: image, what: 'Writing the new software' }];
+    const before = await this.recipe.writesBeforeBoot(ctx);
+    if (before.some((s) => s.part === 'boot')) throw new Error('this recipe writes boot before the last step; boot is written once, last. Nothing was written.');
+    const steps = [...before, { part: 'boot', data: image, what: 'Writing the new software' }];
 
     const flashTotal = steps.reduce((n, s) => n + s.data.length, 0);
     let flashed = 0;
@@ -234,9 +238,10 @@ export class InstallFlow<A extends string, O, R> {
 /** fel-install.sh --undo: the plan's restore partitions back from a backup, each verified. */
 export async function restoreFromBackup(plan: BackupPlan, fb: Fastboot, files: Map<string, Uint8Array>, log: (s: string) => void,
   onProgress?: (part: string, phase: 'write' | 'verify', done: number, total: number) => void): Promise<void> {
+  checkBackupPlan(plan);
   const boot = files.get('boot');
   if (!boot || plan.required.some((p) => !files.get(p))) throw new Error(`this backup has no ${plan.required.join(' or ')}`);
-  if (await isMagiskPatched(boot)) throw new Error('this backup\'s boot is already patched (a re-run backup): use the one from your first install');
+  if (await plan.isPatched(boot)) throw new Error('this backup\'s boot is already patched (a re-run backup): use the one from your first install');
   for (const part of plan.restore) {
     const data = files.get(part);
     if (!data) continue;
@@ -244,4 +249,10 @@ export async function restoreFromBackup(plan: BackupPlan, fb: Fastboot, files: M
     log(`${part} restored and verified`);
   }
   await fb.reboot();
+}
+
+/** Throws unless the plan reads boot and every part undo needs or writes. */
+function checkBackupPlan(plan: BackupPlan): void {
+  const missing = ['boot', ...plan.required, ...plan.restore].find((p) => !plan.parts.includes(p));
+  if (missing) throw new Error(`this recipe's backup plan is broken: it doesn't read ${missing}. Nothing was read.`);
 }
