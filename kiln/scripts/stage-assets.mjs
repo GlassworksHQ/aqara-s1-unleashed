@@ -4,6 +4,7 @@
 // checks every blob against that SHA-256 before using it (src/assets/assets.ts).
 //
 //   node scripts/stage-assets.mjs            (from kiln/; npm run stage)
+//   node scripts/stage-assets.mjs --out apps/kiln/public/assets   (the Next.js app; relative to kiln/)
 //
 // Env overrides: UBOOT_BUILD (default ~/src/u-boot-s1/build-s1), MAGISK_APK
 // (default ~/src/magisk/Magisk-v31.1.apk), KIOSK_APK (default the app's debug build),
@@ -22,7 +23,8 @@ import { fileURLToPath } from 'node:url';
 
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(WEB, '..');
-const OUT = join(WEB, 'public/assets');
+const outArg = process.argv.indexOf('--out');
+const OUT = outArg > 0 ? resolve(WEB, process.argv[outArg + 1]) : join(WEB, 'public/assets');
 const env = (k, d) => process.env[k] || d;
 const UBOOT = env('UBOOT_BUILD', join(homedir(), 'src/u-boot-s1/build-s1'));
 const MAGISK = env('MAGISK_APK', join(homedir(), 'src/magisk/Magisk-v31.1.apk'));

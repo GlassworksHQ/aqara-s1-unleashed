@@ -1,0 +1,36 @@
+{
+  "name": "@glassworks/kiln-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Kiln, the Glassworks installer: a device picker and one wizard per frame, in Next.js.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 5174",
+    "build": "next build",
+    "start": "next start --port 5174",
+    "stage": "node ../../scripts/stage-assets.mjs --out apps/kiln/public/assets",
+    "test": "vitest run",
+    "typecheck": "next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@glassworks/adb": "0.0.0",
+    "@glassworks/aqara-s1-plus-installer": "0.0.0",
+    "@glassworks/brand": "0.0.0",
+    "@glassworks/fastboot": "0.0.0",
+    "@glassworks/fel": "0.0.0",
+    "@glassworks/kiln-core": "0.0.0",
+    "@glassworks/setup-channel": "0.0.0",
+    "@radix-ui/react-collapsible": "1.2.1",
+    "@radix-ui/react-dialog": "1.3.1",
+    "@radix-ui/react-radio-group": "1.5.1",
+    "next": "16.4.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "16.3.3",
+    "@types/react": "^19",
+    "@types/react-dom": "^19"
+  }
+}

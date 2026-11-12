@@ -76,10 +76,12 @@ instead of uninstalling when S1 Kiosk saved the panel's Wi-Fi (Android forgets i
 Wake-word models are not pushed from the browser (CC BY-NC-SA, and GitHub sends no CORS headers);
 the kiosk app fetches them on the panel.
 
-## `assets/` — pinned blobs
+## Pinned blobs
 `scripts/stage-assets.mjs` (`npm run stage`) copies them to `public/assets/blobs/` and writes
 `public/assets/manifest.json` (`{ name, path, sha256, size, license, source }`; both gitignored).
-`new Assets().get(name)` downloads a blob and checks its SHA-256, refusing on a mismatch.
+`--out <dir>` stages somewhere else (Kiln's Next.js app: `apps/kiln/public/assets`).
+`new Assets<AssetName>(base).get(name)` (kiln-core) downloads a blob and checks its SHA-256,
+refusing on a mismatch. `webUsbDevices` (kiln-core) is the real WebUSB behind `Devices`.
 
 ## `kiln-core` (`packages/kiln-core`) — the step engine (owner: main session)
 ```ts

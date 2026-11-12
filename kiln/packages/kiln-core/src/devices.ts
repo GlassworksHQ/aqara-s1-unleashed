@@ -1,7 +1,7 @@
 // The real USB devices behind kiln-core's Devices interface.
 import { Panel, type AdbKey } from '@glassworks/adb';
 import { Fastboot } from '@glassworks/fastboot';
-import type { Devices } from '@glassworks/kiln-core';
+import type { Devices } from './flow';
 
 export const webUsbDevices: Devices = {
   async knownFastboot() {

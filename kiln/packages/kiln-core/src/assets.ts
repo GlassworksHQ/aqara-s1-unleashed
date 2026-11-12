@@ -1,33 +1,31 @@
-// Pinned blobs (scripts/stage-assets.mjs writes public/assets/manifest.json). Every blob is checked
-// against its SHA-256 before use; a mismatch is refused. The names are the S1 recipe's.
-import type { AssetName } from '@glassworks/aqara-s1-plus-installer';
-import { toHex } from '@glassworks/kiln-core';
+// Pinned blobs (kiln/scripts/stage-assets.mjs writes <base>manifest.json). Every blob is checked
+// against its SHA-256 before use; a mismatch is refused. `A` is the recipe's asset names.
+import { toHex } from './backup';
 
-export type { AssetName };
+export interface AssetEntry<A extends string = string> { name: A; path: string; sha256: string; size: number; license: string; source: string }
+export interface Manifest<A extends string = string> { generated: string; assets: AssetEntry<A>[] }
 
-export interface AssetEntry { name: AssetName; path: string; sha256: string; size: number; license: string; source: string }
-export interface Manifest { generated: string; assets: AssetEntry[] }
+export class Assets<A extends string> {
+  private manifest?: Promise<Manifest<A>>;
+  private cache = new Map<A, Promise<Uint8Array>>();
 
-export class Assets {
-  private manifest?: Promise<Manifest>;
-  private cache = new Map<AssetName, Promise<Uint8Array>>();
+  /** `base`: where manifest.json is, ending in a slash (e.g. `/assets/`). */
+  constructor(private readonly base: string, private readonly f: typeof fetch = fetch.bind(globalThis)) {}
 
-  constructor(private readonly base = `${import.meta.env.BASE_URL}assets/`, private readonly f: typeof fetch = fetch.bind(globalThis)) {}
-
-  getManifest(): Promise<Manifest> {
+  getManifest(): Promise<Manifest<A>> {
     this.manifest ??= this.f(`${this.base}manifest.json`, { cache: 'no-cache' }).then(async (r) => {
       if (!r.ok) throw new Error(`installer files are missing (manifest.json: HTTP ${r.status})`);
-      return (await r.json()) as Manifest;
+      return (await r.json()) as Manifest<A>;
     });
     return this.manifest;
   }
 
-  async has(name: AssetName): Promise<boolean> {
+  async has(name: A): Promise<boolean> {
     return (await this.getManifest()).assets.some((a) => a.name === name);
   }
 
   /** Fetches and verifies one blob; reports download progress when the size is known. */
-  get(name: AssetName, onProgress?: (done: number, total: number) => void): Promise<Uint8Array> {
+  get(name: A, onProgress?: (done: number, total: number) => void): Promise<Uint8Array> {
     let p = this.cache.get(name);
     if (!p) {
       p = this.load(name, onProgress);
@@ -37,7 +35,7 @@ export class Assets {
     return p;
   }
 
-  private async load(name: AssetName, onProgress?: (done: number, total: number) => void): Promise<Uint8Array> {
+  private async load(name: A, onProgress?: (done: number, total: number) => void): Promise<Uint8Array> {
     const entry = (await this.getManifest()).assets.find((a) => a.name === name);
     if (!entry) throw new Error(`installer file ${name} is not in the manifest`);
     const url = /^(\/|https?:)/.test(entry.path) ? entry.path : `${this.base}${entry.path}`;

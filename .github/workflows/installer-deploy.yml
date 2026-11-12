@@ -22,6 +22,8 @@ on:
       - '!kiln/test/**'
       - '!kiln/packages/*/test/**'
       - '!kiln/mockup/**'
+      - '!kiln/apps/**'           # Kiln's Next.js app and its brand package: s1.edm.sh serves
+      - '!kiln/packages/brand/**' # the page in kiln/src until the switch (#27)
       - 'frames/*/installer/**'
       - '!frames/*/installer/test/**'
       - '!frames/**/*.md'

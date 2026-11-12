@@ -1,0 +1,127 @@
+{
+  "id": "aqara-s1-plus",
+  "name": "Aqara S1 Plus",
+  "status": "beta",
+  "summary": "The reference frame. Every pane runs on it, including the Zigbee/Thread radio and the wall base.",
+  "project": {
+    "name": "S1 Unleashed",
+    "href": "https://github.com/GlassworksHQ/aqara-s1-unleashed"
+  },
+  "kiln": "/aqara-s1-plus",
+  "model": {
+    "body": {
+      "shape": "rect",
+      "width": 172,
+      "height": 86,
+      "depth": 12,
+      "radius": 2.5
+    },
+    "bezel": 3.5,
+    "screen": {
+      "radius": 1.4
+    },
+    "sides": {
+      "dark": "#8f949d",
+      "light": "#f4f5f7"
+    },
+    "finish": "glass",
+    "mount": "wall"
+  },
+  "recovery": "recovery.json",
+  "specs": [
+    {
+      "label": "SoC",
+      "value": "Allwinner A133"
+    },
+    {
+      "label": "Size",
+      "value": "172 × 86 mm; 42 mm deep with the in-wall box"
+    },
+    {
+      "label": "Screen",
+      "value": "1440 × 720"
+    },
+    {
+      "label": "Radio",
+      "value": "EFR32MG21 on SPI, RCP firmware"
+    },
+    {
+      "label": "Presence",
+      "value": "VI5300 time-of-flight sensor"
+    },
+    {
+      "label": "Audio",
+      "value": "Microphone and speaker"
+    },
+    {
+      "label": "Extras",
+      "value": "Wired wall base on a UART"
+    },
+    {
+      "label": "Root",
+      "value": "FEL, then a patched boot image"
+    }
+  ],
+  "panes": {
+    "assist": {
+      "support": "beta"
+    },
+    "timers": {
+      "support": "beta"
+    },
+    "sendspin": {
+      "support": "beta"
+    },
+    "radio": {
+      "support": "beta",
+      "note": "Zigbee coordinator or router, and Thread."
+    },
+    "sensors": {
+      "support": "beta",
+      "note": "Presence from the time-of-flight sensor."
+    },
+    "base": {
+      "support": "beta"
+    }
+  },
+  "install": {
+    "how": "In the browser, over USB. It backs the panel up first, then roots and flashes it."
+  },
+  "ratings": {
+    "difficulty": {
+      "value": "medium",
+      "detail": "Browser install, but the back cover comes off"
+    },
+    "reversible": {
+      "value": "yes",
+      "detail": "Restores the original software from the backup"
+    },
+    "modifiesAndroid": {
+      "value": "yes",
+      "detail": "Boot image patched, verified boot off"
+    },
+    "root": {
+      "value": "required",
+      "detail": "Magisk and a root helper"
+    },
+    "opensDevice": {
+      "value": "yes",
+      "detail": "To reach the FEL button"
+    },
+    "vendorApps": {
+      "value": "disabled",
+      "detail": "Aqara's apps stay installed"
+    },
+    "wipes": {
+      "value": "no"
+    },
+    "backup": {
+      "value": "automatic",
+      "detail": "Before anything is written"
+    },
+    "updates": {
+      "value": "ha"
+    }
+  },
+  "ratingsNote": "Without root, the app can install over adb on its own, but you lose the radio modes."
+}
