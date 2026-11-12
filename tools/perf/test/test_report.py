@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 import grade as G  # noqa: E402
 import perflib as P  # noqa: E402
 import report as R  # noqa: E402
+import summary as S  # noqa: E402
 
 PKG = "sh.edm.s1kiosk"
 
@@ -836,14 +837,50 @@ class Build(unittest.TestCase):
         self.assertEqual(set(self.rep["graded"]), {"reference"})
         self.assertNotIn("real_use", R.grade_inputs.__code__.co_names)
 
-    def test_no_reference_dashboards_is_provisional_e(self):
+    def test_no_reference_dashboards_is_not_graded(self):
+        """--skip-reference: nothing was measured, so no letter (not a machine-readable E), and the
+        summary says it isn't comparable."""
         for k in (1, 2, 3):
             os.remove(os.path.join(self.dir, f"refstart-{k}.json"))
+        rep = R.build(self.dir)
+        g = rep["grade"]
+        self.assertIsNone(g["grade"])
+        self.assertEqual(g["refused"], "the reference dashboards weren't measured")
+        self.assertTrue(g["headline"].startswith("test-frame: not graded."))
+        s = S.summarise(rep, allow_provisional=True)
+        self.assertEqual(s["not_comparable"], "the reference dashboards weren't measured")
+        self.assertEqual(G.grade_summary(s)["status"], "not-comparable")
+
+    def test_one_lost_page_doesnt_make_the_protocol_unknown(self):
+        """A lost page has no protocol; it mustn't turn a measured frame into "re-measure"."""
+        run = refstart(2, 180)
+        run["tiers"]["typical"] = {"nonce": "typical", "swipes": [], "error": "the page didn't finish"}   # nothing arrived
+        self.write("refstart-2.json", run)
+        rep = R.build(self.dir)
+        self.assertEqual(rep["graded"]["reference"]["protocols"], [G.PROTOCOL_VERSION])
+        self.assertEqual(rep["protocol_version"], G.PROTOCOL_VERSION)
+        s = S.summarise(rep, allow_provisional=True)
+        self.assertEqual(G.grade_summary(s)["status"], "graded")
+
+    def test_an_a_plus_with_pages_missing_doesnt_claim_every_task(self):
+        for k in (1, 2, 3):
+            run = refstart(k, 100, heavy_missed=0)
+            del run["tiers"]["light"], run["tiers"]["typical"]
+            self.write(f"refstart-{k}.json", run)
         g = R.build(self.dir)["grade"]
-        self.assertEqual(g["grade"], "E")
-        self.assertTrue(g["provisional"])
-        self.assertIn("heavy.scroll", g["missing"])
-        self.assertIn("start", g["missing"])
+        self.assertEqual(g["grade"], "A+")                     # the rule: A+ needs only heavy
+        self.assertNotIn("Every task holds", g["headline"])
+        self.assertIn("Provisional", g["headline"])
+
+    def test_old_protocol_data_says_re_measure_to_publish(self):
+        for k in (1, 2, 3):
+            run = refstart(k, 100)
+            for t in run["tiers"].values():
+                t["page"]["protocol"] = 1
+            self.write(f"refstart-{k}.json", run)
+        g = R.build(self.dir)["grade"]
+        self.assertEqual(g["grade"], "B")
+        self.assertIn("Re-measure to publish: the site shows no letter for these pages.", g["headline"])
 
     def test_js_band_is_reported_but_not_graded(self):
         self.assertEqual(self.rep["detail"]["synthetic"]["js_burst_ms"]["median"], 10.0)

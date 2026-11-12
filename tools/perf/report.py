@@ -186,7 +186,9 @@ def change_frames(step, period=None):
     return P.frame_stats(xs, period), None
 
 
-# A change with no frame on screen this long after it is at least this late (and past the fluid bar).
+# A change with no frame on screen by the window's end, and at least this long before it, counts as
+# late as the window can show: from the change to the window's end (so at least this, past the
+# fluid bar). That is conservative: the change may show later still.
 NO_FRAME_MS = 250
 # SurfaceFlinger's present times and the page's frame times are on clocks tied by the page's log
 # line; allow this much for that and for vsync jitter when finding the first frame that can show it.
@@ -197,7 +199,8 @@ def change_to_screen(step, page, period=None):
     """The graded live-updates measure (rubric v5): per change, from when the page applied it (ran)
     to the first frame on screen that can show it. The change is drawn in the next animation frame
     (tick), which reaches the screen one refresh later at the earliest; presents before that are
-    frames already on their way. A change with no frame within NO_FRAME_MS counts as that late.
+    frames already on their way. A change with no frame by the window's end, at least NO_FRAME_MS
+    after it, counts as the time to the window's end (conservative).
     A change SurfaceFlinger's history doesn't reach back to isn't counted.
     Returns ({n, median_ms, p95_ms, max_ms, skipped}, None) or (None, why)."""
     sf = step.get("sf") or {}
@@ -499,7 +502,8 @@ def reference_summary(all_runs):
         "own_page_states": sorted({r["own_page_state"] for r in runs if r.get("own_page_state")}),
         "orders": [r.get("order") for r in runs],
         "bad_page_lines": sum(r.get("bad_page_lines") or 0 for r in all_runs),
-        "protocols": sorted({x.get("protocol") for r in runs for x in r["tiers"].values()}, key=str),
+        # The protocol of every page that reported; a page that was lost says nothing about it.
+        "protocols": sorted({x.get("protocol") for r in runs for x in r["tiers"].values() if not x.get("error")}, key=str),
         "warmups": [r.get("warmup") for r in runs],
         "tiers": tiers,
         "errors": [r["error"] for r in all_runs if r.get("error")],
@@ -573,7 +577,8 @@ def headline(name, g, ref):
         return f"{name}: not graded. {g['refused']}."
     hb = held_back(g, ref)
     out = f"{name}: {g['grade']}, {g['meaning']}."
-    if g["grade"] == G.LETTER_ORDER[0]:
+    if g["grade"] == G.LETTER_ORDER[0] and not g["missing"]:
+        # Only when everything was measured: A+ needs only heavy, and it isn't absolute without the rest.
         out += " Every task holds 60 fps on large dashboards."
     lead = "Short of A+ on" if g["grade"] == G.LETTER_ORDER[1] else "Held back by"
     for t, phrases in hb:
@@ -816,11 +821,18 @@ def build(run_dir, apks=(), budgets=None):
         grade.update(grade=None, meaning=None, refused=vp_reason)
     elif vp_state == "unknown" and ref:
         reasons.append(vp_reason)
+    if not ref:
+        # No reference dashboard was measured (--skip-reference, or no graded run left a file): there is
+        # nothing to grade, so no letter, not an E.
+        grade.update(grade=None, meaning=None, refused="the reference dashboards weren't measured")
     if reasons:
         grade["provisional"] = True
         grade["provisional_reasons"] = reasons
     name = device.get("frame_name") or device["frame"]
     grade["headline"] = headline(name, grade, graded["reference"])
+    if grade["grade"] and ref and ref["protocols"] and ref["protocols"] != [G.PROTOCOL_VERSION]:
+        # The report still gives the letter (for the record); the site won't, for these pages.
+        grade["headline"] += " Re-measure to publish: the site shows no letter for these pages."
 
     s = synthetic_summary(syn) if syn else None
     med = lambda x: x and x["median"]  # noqa: E731

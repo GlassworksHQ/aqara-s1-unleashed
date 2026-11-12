@@ -238,7 +238,7 @@ def refdash(nonce, url):
     if foreign == "after":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     time.sleep(0.7)
-    gw({"t": "refdash", "tier": tier, "protocol": 2, "nodes": 1458, "cards": 50, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
+    gw({"t": "refdash", "tier": tier, "protocol": 3, "nodes": 1458, "cards": 50, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
         "fcp_ms": 150, "lcp_ms": 150, "load_ms": 120, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000})
     time.sleep(1.0)
     gw({"t": "warmup", "stage": "updates", "n": 1})

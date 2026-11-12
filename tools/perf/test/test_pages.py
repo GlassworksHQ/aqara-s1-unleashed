@@ -44,7 +44,6 @@ class Pages(unittest.TestCase):
         A change here needs a matching change in HA's source and in that section."""
         text = self.read("refdash.js")
         for needle in (
-            "transition: background-color 180ms ease-in-out;",                                # hui-tile-card
             "transition: background-color 180ms ease-in-out, opacity 180ms ease-in-out;",      # ha-tile-icon shape
             "transition: color 180ms ease-in-out;",                                            # ha-tile-icon icon
             "[300, 600, 900, 1200].filter((w) => innerWidth >= w).length",                     # hui-masonry-view
@@ -61,6 +60,18 @@ class Pages(unittest.TestCase):
         # The live updates are fixed too: each sensor's next value comes from the tick, no randomness.
         self.assertIn("(((tick * 13) % 7) - 3) / 10", text)
         self.assertNotIn("Math.random", text)
+
+    def test_scroll_during_updates_counts_state_changes_not_the_clock(self):
+        text = self.read("refdash.js")
+        self.assertIn("if (kind !== 1) changes.applied++;", text)
+
+    def test_the_tile_fades_only_what_ha_fades(self):
+        """ha-tile-icon.ts: the icon's shape (background colour, opacity) and the icon's colour. No
+        background fade behind the tile."""
+        text = self.read("refdash.js")
+        self.assertNotIn(".tile .background", text)
+        self.assertIn("transition: background-color 180ms ease-in-out, opacity 180ms ease-in-out;", text)
+        self.assertIn("transition: color 180ms ease-in-out;", text)
         self.assertIn('<script src="tiers.js"></script>', self.read("dashboard.html"))
 
 

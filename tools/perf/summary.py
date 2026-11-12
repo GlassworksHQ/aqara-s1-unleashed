@@ -52,6 +52,7 @@ def page_summary(s):
         "scroll": {"fps": _med(sc.get("fps"), 1), "p95_ms": _med(sc.get("p95_ms"), 2),
                    "scrolled_px": _med(s.get("scrolled_px")), "sf_valid": s.get("sf_valid") or [],
                    "during_updates": s.get("swipes_during_updates") or [],
+                   "swipes_moved": s.get("swipes_moved") or 0, "swipes_at_edge": s.get("swipes_at_edge") or 0,
                    "runs": s.get("scroll_runs") or []},
         # Change to screen (graded), each run's record (latency and the frames that had a change to
         # draw), and frame pacing (detail).
@@ -90,7 +91,9 @@ def measurements(rep, report_url="report.json"):
         "restart_ms": _med(ref.get("start_ms")),
         # Measurement facts, not grade states: what is short, and why the numbers can't be compared.
         "gaps": list(g.get("provisional_reasons") or []),
-        "not_comparable": vp.get("reason") if vp.get("state") == "refused" else None,
+        # Not comparable: not at the default zoom, or nothing was measured to grade (--skip-reference).
+        "not_comparable": (vp.get("reason") if vp.get("state") == "refused"
+                           else g.get("refused") if g.get("grade") is None else None),
         "report": report_url,
     }
 

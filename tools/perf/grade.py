@@ -213,12 +213,13 @@ def grade_summary(summary):
     """The letter from a summary (glassworks.perf-summary/2), as the site computes it with grade.ts.
     status: graded, re-measure (another protocol: these rules don't apply) or not-comparable (the
     measurement says why, e.g. not at the default zoom)."""
+    # Not comparable first: it says why there is nothing to grade, whatever the protocol.
+    if summary.get("not_comparable"):
+        return {"status": "not-comparable", "grade": None, "meaning": None, "why": summary["not_comparable"]}
     if summary.get("protocol_version") != PROTOCOL_VERSION:
         return {"status": "re-measure", "grade": None, "meaning": None,
                 "why": f"measured with protocol {protocol_name(summary.get('protocol_version'))}, "
                        f"these rules are for protocol {PROTOCOL_VERSION}"}
-    if summary.get("not_comparable"):
-        return {"status": "not-comparable", "grade": None, "meaning": None, "why": summary["not_comparable"]}
     g = grade(*summary_inputs(summary))
     g["provisional"] = bool(g["missing"] or summary.get("gaps"))
     g["status"] = "graded"

@@ -231,11 +231,12 @@ export function summaryInputs(summary: Summary, rubric: Rubric): [Record<string,
  * - "not-comparable": the measurement says why (e.g. not at the default zoom); show no letter.
  */
 export function gradeSummary(summary: Summary, rubric: Rubric): Grade {
+  // Not comparable first: it says why there is nothing to grade, whatever the protocol.
+  if (summary.not_comparable) return { status: "not-comparable", grade: null, meaning: null, why: summary.not_comparable };
   if (summary.protocol_version !== rubric.protocol_version) {
     return { status: "re-measure", grade: null, meaning: null,
              why: `measured with protocol ${summary.protocol_version ?? "unknown"}, these rules are for protocol ${rubric.protocol_version}` };
   }
-  if (summary.not_comparable) return { status: "not-comparable", grade: null, meaning: null, why: summary.not_comparable };
   const [tiers, start] = summaryInputs(summary, rubric);
   const g = gradeBands(tiers, start, rubric);
   g.provisional = (g.missing || []).length > 0 || (summary.gaps || []).length > 0;

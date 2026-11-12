@@ -22,7 +22,7 @@
   // head, the swipes, the update rate, the windows, or how the runner reads them). rubric.json's
   // protocol_version says which protocol its rules apply to; a summary from another one is
   // re-measured, not graded. test/page.test.mjs pins the two equal.
-  const PROTOCOL = 2;
+  const PROTOCOL = 3;
 
   // The first screen is the same on every page: the clock, the toggle, `sensorTiles` sensor tiles
   // and `switchTiles` on/off tiles (a light, a switch, a media player), and one entities card of

@@ -56,8 +56,10 @@
     return `<gw-state-icon icon="${name}"></gw-state-icon>`;
   }
 
-  // The 180 ms transitions are HA's: ha-tile-icon (colour, background, opacity) and the tile's
-  // background (hui-tile-card).
+  // The 180 ms transitions are HA's: on a state change only the tile's icon fades, its shape's
+  // background colour and opacity and the icon's colour (ha-tile-icon.ts L125-L143). The tile card's
+  // own transitions (box-shadow, border-color: tile-card-style.ts L10-L15) change only on keyboard
+  // focus, so nothing else fades.
   const CARD_CSS = `
     :host { display: block; background: var(--card); border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,.35); overflow: hidden; }
     h1 { margin: 0; padding: 16px 16px 4px; font-size: 18px; font-weight: 400; }
@@ -70,8 +72,6 @@
     .info .secondary { color: var(--muted); font-size: 12px; }
     .value { color: var(--text); font-variant-numeric: tabular-nums; }
     .tile { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px; }
-    .tile .background { position: absolute; inset: 0; background: transparent; transition: background-color 180ms ease-in-out; }
-    .tile.on .background { background: rgba(255,193,7,.08); }
     .tile .icon { position: relative; width: 36px; height: 36px; border-radius: 18px; display: grid; place-items: center; }
     .tile .icon .shape { position: absolute; inset: 0; border-radius: 18px; background: var(--muted);
       opacity: .2; transition: background-color 180ms ease-in-out, opacity 180ms ease-in-out; }
@@ -108,10 +108,10 @@
     return unit ? `${s.state} ${unit}` : s.state;
   }
 
-  // hui-tile-card: ha-card > background + container > ha-tile-icon (shape + icon) + ha-tile-info.
+  // hui-tile-card (L302-L386): ha-card > ha-tile-container > ha-tile-icon (shape + icon) + ha-tile-info.
   function tileCard(s) {
     const d = s.entity_id.split(".")[0];
-    return card(`<div class="tile${s.state === "on" ? " on" : ""}"><div class="background"></div>
+    return card(`<div class="tile${s.state === "on" ? " on" : ""}">
       <div class="icon"><div class="shape"></div>${icon(ICON_FOR[d] || "plug")}</div>
       <div class="info"><div class="primary">${s.attributes.friendly_name}</div><div class="secondary value">${stateText(s)}</div></div></div>`, 1);
   }
@@ -154,7 +154,7 @@
     return el;
   }
 
-  // hui-picture-card: ha-card > hui-image > img. The images are generated here (no network), as JPEGs
+  // hui-picture-card (L268): ha-card > img. The images are generated here (no network), as JPEGs
   // the engine has to decode, like a camera snapshot.
   function picture(rnd) {
     const c = document.createElement("canvas");
@@ -301,7 +301,7 @@
   // runner times from ran to the first frame on screen that can show that frame (report.py).
   const changes = { on: false, list: [], pending: [], applied: 0 };
   function note(due, d, kind) {
-    changes.applied++;
+    if (kind !== 1) changes.applied++;        // state changes only: the clock doesn't count for "during updates"
     if (!changes.on) return;
     const c = [due, performance.now(), d, kind, null];
     changes.list.push(c);
@@ -479,7 +479,8 @@
     const stamps = frameStamps.list.filter((t) => t <= first + windowMs);
     log({ t: "step", stage: "scroll", n: i, window_ms: Math.round(windowMs), scrolled_px: Math.round(Math.abs(scrollY - y0)),
           hit_edge: scrollY >= max - 1,
-          // The live updates keep running while it scrolls: how many changes ran during this swipe.
+          // The live updates keep running while it scrolls: how many state changes (sensor values and
+          // on/off changes, not the clock) ran during this swipe.
           changes_during: changes.applied - appliedAt,
           first_scroll_ms: downAt === null ? null : Math.round(first - downAt), raf: S.frameStats(S.intervals(stamps), VSYNC),
           // raw intervals, so the runner can pool all of a run's swipes into one set of frames

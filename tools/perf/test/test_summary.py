@@ -114,6 +114,7 @@ class Export(unittest.TestCase):
         self.assertEqual((heavy["inp_ms"], heavy["open_ms"]), (150, 400))
         self.assertEqual((heavy["scroll"]["fps"], heavy["scroll"]["p95_ms"], heavy["scroll"]["scrolled_px"]), (45.0, 33.33, 2100))
         self.assertEqual(heavy["scroll"]["sf_valid"], [True, True, True])
+        self.assertEqual((heavy["scroll"]["swipes_moved"], heavy["scroll"]["swipes_at_edge"]), (9, 0))
         self.assertEqual(len(heavy["scroll"]["runs"]), 3)
         self.assertEqual(heavy["runs"], {"tap": 3, "scroll": 3, "updates": 3, "open": 3})
 
@@ -199,6 +200,13 @@ class Parity(unittest.TestCase):
                 self.assertEqual((py["status"], py["grade"]), ("re-measure", None))
                 self.assertEqual((ts["status"], ts["grade"], ts["why"]), ("re-measure", None, py["why"]))
         self.assertIn("measured with protocol unknown", G.grade_summary(dict(self.sums["B"], protocol_version=None))["why"])
+
+    def test_not_comparable_wins_over_a_missing_protocol_in_both(self):
+        """--skip-reference: nothing measured, so no protocol either. Both say why, not "re-measure"."""
+        s = dict(self.sums["B"], protocol_version=None, not_comparable="the reference dashboards weren't measured")
+        ts, py = ts_grades([s])[0], G.grade_summary(s)
+        self.assertEqual((py["status"], py["why"]), ("not-comparable", "the reference dashboards weren't measured"))
+        self.assertEqual((ts["status"], ts["why"]), (py["status"], py["why"]))
 
 
 if __name__ == "__main__":
