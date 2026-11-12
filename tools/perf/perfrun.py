@@ -1,0 +1,321 @@
+#!/usr/bin/env python3
+"""Device side of the Glassworks perf test (MIT). Called by tools/perf/run.sh; see docs/perf.md.
+
+What it touches on the device:
+  device     read-only (getprop, /proc, dumpsys, wm size).
+  synthetic  `am start` the app if it isn't running, then `am start --es open <page>` (one-off
+             navigation; the saved dashboard URL is not changed), `--es screen on` during each step's warm-up, and `input tap` on the test
+             page's tap target when --taps > 0.
+  coldstart  `am force-stop` the app, `input keyevent KEYCODE_WAKEUP` (the app's own wake intent
+             would start it), then `am start -W` it (it comes back on the saved dashboard).
+  idle       `--es screen on` before each window; otherwise read-only.
+Everything it writes goes to --out on this machine. It records no URLs, hosts or tokens.
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import perflib as P  # noqa: E402
+
+
+class Device:
+    def __init__(self, serial, package, activity):
+        self.adb = [os.environ.get("ADB", "adb")] + (["-s", serial] if serial else [])
+        self.package = package
+        self.component = f"{package}/{activity}"
+        self._layer = None
+
+    def sh(self, cmd, timeout=60):
+        r = subprocess.run(self.adb + ["shell", cmd], capture_output=True, text=True, timeout=timeout)
+        return r.stdout
+
+    def wake(self):
+        subprocess.Popen(self.adb + ["shell", f"am start -n {self.component} --es screen on"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def logcat(self):
+        p = subprocess.Popen(self.adb + ["logcat", "-v", "monotonic", "-T", "1"],
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, errors="replace")
+        p.stdout.readline()  # -T 1 starts with one old line
+        return p
+
+    def sf(self):
+        """(period_ms, present times ns) of the app's SurfaceView, the layer GeckoView draws into."""
+        if not self._layer:
+            for line in self.sh("dumpsys SurfaceFlinger --list").splitlines():
+                if line.startswith(f"SurfaceView - {self.package}/") and not line.startswith("Background"):
+                    self._layer = line.strip()
+                    break
+            if not self._layer:
+                return None, []
+        period, presents = P.parse_sf_latency(self.sh(f"dumpsys SurfaceFlinger --latency '{self._layer}'"))
+        if period is None:
+            self._layer = None
+        return period, presents
+
+    def pids(self, names):
+        """name -> pid for the app's processes and any process named in `names`."""
+        out = {}
+        for line in self.sh("ps -A -o PID,NAME").splitlines()[1:]:
+            parts = line.split(None, 1)
+            if len(parts) == 2 and (parts[1].startswith(self.package) or parts[1] in names):
+                out[parts[1].strip()] = int(parts[0])
+        return out
+
+
+def write_json(path, obj):
+    with open(path, "w") as f:
+        json.dump(obj, f, indent=1)
+
+
+# ---- device
+
+def cmd_device(dev, a):
+    props = {k: dev.sh(f"getprop {k}").strip() for k in (
+        "ro.product.manufacturer", "ro.product.model", "ro.build.version.release", "ro.build.version.sdk",
+        "ro.product.cpu.abi", "ro.product.cpu.abilist", "ro.board.platform", "ro.hardware")}
+    cpuinfo = dev.sh("cat /proc/cpuinfo")
+    parts = sorted(set(re.findall(r"CPU part\s*:\s*(\S+)", cpuinfo)))
+    freqs = dev.sh("cat /sys/devices/system/cpu/cpu*/cpufreq/cpuinfo_max_freq 2>/dev/null").split()
+    pkg = dev.sh(f"dumpsys package {dev.package}")
+    apk_path = dev.sh(f"pm path {dev.package}").strip().replace("package:", "").splitlines()
+    apk_bytes = dev.sh(f"stat -c %s {apk_path[0]}").strip() if apk_path else ""
+    period, _ = dev.sf()
+    size = re.search(r"(\d+)x(\d+)", dev.sh("wm size"))
+    zones = dev.sh("for z in /sys/class/thermal/thermal_zone*; do echo $(cat $z/type) $(cat $z/temp); done 2>/dev/null")
+    write_json(os.path.join(a.out, "device.json"), {
+        "frame": a.frame,
+        "model": props["ro.product.model"], "manufacturer": props["ro.product.manufacturer"],
+        "android": props["ro.build.version.release"], "api": int(props["ro.build.version.sdk"] or 0),
+        "abi": props["ro.product.cpu.abi"], "abilist": props["ro.product.cpu.abilist"].split(","),
+        "soc": props["ro.board.platform"] or props["ro.hardware"],
+        "cpu": {"cores": int(dev.sh("nproc").strip() or 0), "parts": parts,
+                "max_mhz": sorted({int(f) // 1000 for f in freqs if f.isdigit()})},
+        "mem_total_kb": P.parse_proc_meminfo(dev.sh("cat /proc/meminfo"))["mem_total_kb"],
+        "display": {"px": [int(size.group(1)), int(size.group(2))] if size else None,
+                    "density": (re.findall(r"\d+", dev.sh("wm density")) or [None])[-1],
+                    "vsync_ms": round(period, 3) if period else None},
+        "app": {"package": dev.package,
+                "version_name": (re.findall(r"versionName=(\S+)", pkg) or [None])[0],
+                "version_code": (re.findall(r"versionCode=(\d+)", pkg) or [None])[0],
+                "apk_bytes": int(apk_bytes) if apk_bytes.isdigit() else None},
+        "thermal_c": {l.split()[0]: int(l.split()[1]) / 1000 for l in zones.splitlines()
+                      if len(l.split()) == 2 and l.split()[1].lstrip("-").isdigit()},
+        "loadavg": dev.sh("cat /proc/loadavg").split()[:3],
+    })
+
+
+# ---- synthetic: the test page
+
+def cmd_synthetic(dev, a):
+    path = os.path.join(a.out, f"synthetic-{a.run}.jsonl")
+    # The kiosk applies `open` only to a running activity (onNewIntent), so start it first.
+    if not dev.sh(f"pidof {dev.package}").strip():
+        dev.sh(f"am start -n {dev.component}")
+        time.sleep(20)
+    dev.wake()
+    lc = dev.logcat()
+    dev.sh(f"am start -n {dev.component} --es open '{a.url}'")
+    deadline = time.time() + a.timeout
+    measure_mono = None
+    status = "timeout"
+    seen = threading.Event()
+    timer = threading.Timer(a.timeout, lc.terminate)
+    timer.start()
+    no_page = threading.Timer(90, lambda: None if seen.is_set() else lc.terminate())
+    no_page.start()
+    with open(path, "w") as f:
+        for line in lc.stdout:
+            rec = P.parse_logcat_line(line)
+            pl = P.gwperf_payload(rec["msg"]) if rec else None
+            if not pl or pl.get("nonce") != a.nonce:
+                continue
+            pl["mono"] = rec["mono"]
+            seen.set()
+            t = pl.get("t")
+            if t == "warmup":
+                dev.wake()
+            elif t == "measure":
+                measure_mono = rec["mono"]
+            elif t == "step" and measure_mono is not None:
+                period, presents = dev.sf()
+                pl["sf"] = {"period_ms": period, "presents_ms": P.presents_in(presents, measure_mono, rec["mono"])}
+            elif t == "input-ready" and a.taps:
+                threading.Thread(target=tap, args=(dev, pl["x"], pl["y"], pl.get("taps", 10)), daemon=True).start()
+            f.write(json.dumps(pl) + "\n")
+            f.flush()
+            print(f"  {t} {pl.get('stage', '')} {pl.get('n', '')}".rstrip(), file=sys.stderr)
+            if t in ("done", "error"):
+                status = t
+                break
+            if time.time() > deadline:
+                break
+    timer.cancel()
+    no_page.cancel()
+    lc.terminate()
+    if not seen.is_set():
+        status = "the test page sent nothing in 90 s (is the app in front, and adb reverse up?)"
+    if status != "done":
+        sys.exit(f"synthetic run {a.run}: {status}")
+
+
+def tap(dev, x, y, n):
+    for _ in range(n):
+        dev.sh(f"input tap {x} {y}")
+        time.sleep(0.6)
+
+
+# ---- cold start to dashboard
+
+PAGE_RE = re.compile(r"GeckoView:(PageStart|PageStop) uri=(\S+)")
+
+
+def cmd_coldstart(dev, a):
+    dev.sh(f"am force-stop {dev.package}")
+    dev.sh("input keyevent KEYCODE_WAKEUP")
+    time.sleep(a.settle)
+    lc = dev.logcat()
+    presents, period = set(), [None]
+    stop = threading.Event()
+
+    def poll():
+        while not stop.is_set():
+            p, ts = dev.sf()
+            if p:
+                period[0] = p
+                presents.update(ts)
+            stop.wait(1.0)
+
+    poller = threading.Thread(target=poll, daemon=True)
+    poller.start()
+    am = dev.sh(f"am start -W -n {dev.component}", timeout=120)
+    res = {"run": a.run,
+           "am_total_ms": int((re.findall(r"TotalTime: (\d+)", am) or [0])[0]) or None,
+           "ttid_ms": None, "page_start_mono": None, "page_stop_mono": None, "error": None}
+    timer = threading.Timer(a.timeout, lc.terminate)
+    timer.start()
+    for line in lc.stdout:
+        rec = P.parse_logcat_line(line)
+        if not rec:
+            continue
+        if res["ttid_ms"] is None:
+            res["ttid_ms"] = P.parse_displayed(rec["msg"], dev.component)
+        m = PAGE_RE.search(rec["msg"])
+        if not m:
+            continue
+        uri = m.group(2)
+        if m.group(1) == "PageStart" and res["page_start_mono"] is None and uri.startswith("http") \
+                and "127.0.0.1" not in uri:
+            res["page_start_mono"] = rec["mono"]
+        elif m.group(1) == "PageStop" and res["page_start_mono"] is not None:
+            res["page_stop_mono"] = rec["mono"]
+            break
+    timer.cancel()
+    lc.terminate()
+    if res["page_stop_mono"] is None:
+        res["error"] = "dashboard did not finish loading (no GeckoView:PageStop)"
+    else:
+        # Keep sampling until the dashboard has painted nothing new for 2 s (or 20 s pass).
+        end = time.time() + 20
+        last = len(presents)
+        quiet_since = time.time()
+        while time.time() < end and time.time() - quiet_since < 2.0:
+            time.sleep(0.5)
+            if len(presents) != last:
+                last, quiet_since = len(presents), time.time()
+        res["ended_quiet"] = time.time() - quiet_since >= 2.0
+    stop.set()
+    poller.join()
+    res["sf_period_ms"] = period[0]
+    res["presents_mono_ms"] = sorted(t / 1e6 for t in presents)
+    write_json(os.path.join(a.out, f"coldstart-{a.run}.json"), res)
+    if res["error"]:
+        sys.exit(f"cold start {a.run}: {res['error']}")
+
+
+# ---- idle: CPU, frames and memory on the dashboard
+
+def cpu_snapshot(dev, pids):
+    out = dev.sh("cat /proc/stat; " + "; ".join(f"echo PID {p}; cat /proc/{p}/stat" for p in pids.values()))
+    total = P.parse_proc_stat_total(out)
+    procs = {}
+    for name, pid in pids.items():
+        m = re.search(rf"PID {pid}\n(.*)", out)
+        if m and ")" in m.group(1):
+            procs[name] = P.parse_pid_jiffies(m.group(1))
+    return {"total": total, "procs": procs}
+
+
+def cmd_idle(dev, a):
+    radio = [x for x in a.radio_procs.split(",") if x]
+    end = time.time() + a.settle
+    while time.time() < end:
+        dev.wake()
+        time.sleep(min(10, max(0, end - time.time())))
+    dev.wake()
+    time.sleep(3)
+    pids = dev.pids(radio)
+    ncpu = int(dev.sh("nproc").strip() or 1)
+    before = cpu_snapshot(dev, pids)
+    # Frames from before the window are still in SurfaceFlinger's history; keep only newer ones.
+    period, history = dev.sf()
+    newest_before = max(history, default=0)
+    presents = set()
+    t_end = time.time() + a.window
+    while time.time() < t_end:
+        time.sleep(1.5)
+        p, ts = dev.sf()
+        period = p or period
+        presents.update(t for t in ts if t > newest_before)
+    after = cpu_snapshot(dev, pids)
+    dev.wake()
+    by_proc = P.parse_meminfo_by_process(dev.sh("dumpsys meminfo", timeout=120))
+    procs = {}
+    for name, pid, pss in by_proc:
+        role = P.process_role(name, dev.package)
+        if role or name in radio:
+            hwm = re.search(r"VmHWM:\s+(\d+)", dev.sh(f"cat /proc/{pid}/status"))
+            entry = {"pid": pid, "role": role or "radio", "pss_kb": pss, "rss_peak_kb": int(hwm.group(1)) if hwm else None}
+            if role:
+                entry["summary"] = P.parse_meminfo_app(dev.sh(f"dumpsys meminfo {pid}", timeout=60))
+            procs[name] = entry
+    write_json(os.path.join(a.out, f"idle-{a.label}-{a.run}.json"), {
+        "label": a.label, "run": a.run, "window_s": a.window, "ncpu": ncpu,
+        "cpu": P.cpu_percent(before, after, ncpu),
+        "frames": {"period_ms": period, "presents_mono_ms": sorted(t / 1e6 for t in presents)},
+        "processes": procs,
+        "device_mem": P.parse_proc_meminfo(dev.sh("cat /proc/meminfo")),
+    })
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("cmd", choices=["device", "synthetic", "coldstart", "idle"])
+    ap.add_argument("--serial", default=os.environ.get("ANDROID_SERIAL"))
+    ap.add_argument("--package", default="sh.edm.s1kiosk")
+    ap.add_argument("--activity", default=".MainActivity")
+    ap.add_argument("--frame", default="unknown")
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--run", type=int, default=0)
+    ap.add_argument("--url")
+    ap.add_argument("--nonce")
+    ap.add_argument("--taps", type=int, default=0)
+    ap.add_argument("--label", default="all-on")
+    ap.add_argument("--settle", type=float, default=30)
+    ap.add_argument("--window", type=float, default=15)
+    ap.add_argument("--timeout", type=float, default=1200)
+    ap.add_argument("--radio-procs", default="otbr-agent,cpcd,zigbeed")
+    a = ap.parse_args()
+    os.makedirs(a.out, exist_ok=True)
+    dev = Device(a.serial, a.package, a.activity)
+    {"device": cmd_device, "synthetic": cmd_synthetic, "coldstart": cmd_coldstart, "idle": cmd_idle}[a.cmd](dev, a)
+
+
+if __name__ == "__main__":
+    main()
