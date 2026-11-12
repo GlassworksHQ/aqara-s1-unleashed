@@ -15,7 +15,7 @@ import org.robolectric.shadows.ShadowPowerManager
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.frame.AqaraS1Plus
 
-/** The app's README names the screen's logcat tag, and `dumpsys power` shows the wake lock's: both stay as they were. */
+/** Log filters and `dumpsys power` readers know the screen's logcat and wake-lock tags: both stay as they were. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class ScreenTagsTest {

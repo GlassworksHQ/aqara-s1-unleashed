@@ -42,10 +42,15 @@ class PanelDeviceFrameTest {
         val core = File(appRoot, "kiosk/src/main/java/dev/glassworks")
         val sources = core.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
         assertTrue("scan found the core", sources.size >= 5)
+        // Imports, and fully qualified names anywhere else (`sh.edm.s1kiosk.X(...)` needs no import).
+        val qualified = Regex("""\bsh\.edm\.[a-z0-9_.]*[a-z0-9_]""")
         val bad = sources.flatMap { f ->
             f.readLines().withIndex().filter { (_, line) ->
-                val imp = line.trim().takeIf { it.startsWith("import sh.edm.") }?.removePrefix("import ")?.substringBefore(" as ")
-                imp != null && imp.substringBeforeLast('.') !in libPackages
+                val code = line.substringBefore("//").trim()
+                if (code.startsWith("*") || code.startsWith("/*")) return@filter false // KDoc and comments
+                val imp = code.takeIf { it.startsWith("import sh.edm.") }?.removePrefix("import ")?.substringBefore(" as ")
+                if (imp != null) imp.substringBeforeLast('.') !in libPackages
+                else qualified.findAll(code).any { m -> libPackages.none { m.value == it || m.value.startsWith("$it.") } }
             }.map { (i, line) -> "${f.relativeTo(appRoot).path}:${i + 1}: ${line.trim()}" }
         }
         assertEquals("dev.glassworks imports app code:\n${bad.joinToString("\n")}", emptyList<String>(), bad)

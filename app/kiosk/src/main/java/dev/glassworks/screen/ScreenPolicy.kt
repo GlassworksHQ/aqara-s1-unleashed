@@ -39,7 +39,7 @@ class ScreenPolicy(
     /** The app's DeviceAdminReceiver. */
     private val admin: Class<*>,
     private val settings: (Context) -> ScreenSettings,
-    /** The logcat tag. The app's docs name it, so the app picks it. */
+    /** The logcat tag. The app picks it, so its existing log filters keep working. */
     private val logTag: String,
     /** The wake lock's tag, as `dumpsys power` shows it. */
     private val wakeLockTag: String,
@@ -114,7 +114,8 @@ class ScreenPolicy(
         handler.removeCallbacks(tick)
         presence?.stop(ctx)
         light?.stop(ctx)
-        ctx.unregisterReceiver(screenReceiver)
+        // start() may have thrown before it registered the receiver.
+        runCatching { ctx.unregisterReceiver(screenReceiver) }
         brightnessObserver?.let { ctx.contentResolver.unregisterContentObserver(it) }
         brightnessObserver = null
     }
