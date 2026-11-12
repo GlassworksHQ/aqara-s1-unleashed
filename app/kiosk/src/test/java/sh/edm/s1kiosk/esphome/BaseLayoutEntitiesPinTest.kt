@@ -61,8 +61,7 @@ class BaseLayoutEntitiesPinTest {
                 esphomeVersion = PanelDevice.ESPHOME_VERSION, compilationTime = "test", manufacturer = "Aqara",
                 model = "Panel Hub S1 Plus (S1 Kiosk)", voiceFeatures = PanelDevice.VOICE_FEATURES,
             )
-            val base = device.initEntities(identity, WallBase.Config(BaseBackend.LOCALSERVICE))
-            base.stop()
+            device.initEntities(identity, WallBase.Config(BaseBackend.LOCALSERVICE))
             return device.entityList()
         } finally {
             device.stop()
