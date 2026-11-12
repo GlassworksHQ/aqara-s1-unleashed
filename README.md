@@ -345,7 +345,7 @@ Built by [@aguilaair](https://github.com/aguilaair). It stands on the work of
 [openWakeWord](https://github.com/dscripka/openWakeWord) and
 [Tango / ya-webadb](https://github.com/yume-chan/ya-webadb).
 
-S1 Unleashed's own code is **MIT** ([LICENSE](LICENSE)). Third-party parts keep their licences. The main
+S1 Unleashed's own code is **MIT** ([LICENSE](LICENSE)), except the Glassworks core in `dev.glassworks`, which is **MPL-2.0** ([its README](app/kiosk/src/main/java/dev/glassworks/README.md#licence)). Third-party parts keep their licences. The main
 ones are below. [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists everything that ships, with versions
 and sources. On the panel, *Open source licences* in the hidden settings (tap the top-left corner five
 times) shows the same list with each licence's full text.

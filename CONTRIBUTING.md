@@ -32,6 +32,11 @@ Coding agents: start at [AGENTS.md](AGENTS.md).
 A signed test build is made for any branch named `test-build/vX.Y.Z/<name>`
 ([releasing.md](docs/releasing.md)).
 
+## Branding
+
+UI, READMEs and new libraries follow the Glassworks brand. [docs/branding.md](docs/branding.md) says
+where to find it and which badge or banner to use.
+
 ## Labels
 
 | Label | Use |
