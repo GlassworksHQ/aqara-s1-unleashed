@@ -85,8 +85,11 @@ them (read over FEL), and as stock boot0 programmed them (read from Android thro
 | `ADDRMAP1`/`ADDRMAP8` | `0x1f` | `0x3f` | "Disabled" in 6-bit fields |
 | `SCHED[3:0]` | `0x1` | `0x5` | |
 
-With all six matched to stock, everything booted. This likely affects every A133 board with
-DDR4, so it's worth sending upstream. Three smaller fixes followed:
+With all six matched to stock, everything booted. A bisect then showed that **MR0 alone is
+the fix**: without it, U-Boot hangs even with the other five changes; with only MR0, a copy test
+of 16 MiB passes 12 times out of 12. The other five just match boot0. This likely affects every
+A133 board with DDR4, so the MR0 fix goes upstream as a single patch. Three smaller fixes
+followed:
 
 - **CPU clock.** The CPU is pinned to 408 MHz, because there is no SPL driver for the AXP806.
 - **USB uploads.** These go in 64 KiB chunks, because the boot ROM's USB is slow at that clock.
