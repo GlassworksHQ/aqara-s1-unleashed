@@ -1,13 +1,19 @@
 'use client';
-// A frame in Kiln's picker, drawn like glassworks.dev's device cards (DeviceCard.tsx, DeviceBits.tsx,
+// A frame's card, drawn like glassworks.dev's device cards (DeviceCard.tsx, DeviceBits.tsx,
 // TiltCard.tsx at fbfd364): the 3D mockup that rises and floats on hover, leaning toward the pointer;
-// the name and stage; the summary; the three install tags. Here it is a radio item: picking it is
-// what Continue installs. The data is the frame's own (frames/<id>/design/frame.json).
-import * as RadioGroup from '@radix-ui/react-radio-group';
-import { useId, useRef } from 'react';
-import { DeviceModel } from '../device/DeviceModel';
-import { STAGE_TEXT, cardTags, ships, type FrameDesign, type Stage } from '../../frames/catalog';
+// the name and stage; the summary; the three install tags. The data is the frame's own
+// (frames/<id>/design/frame.json).
+//
+// The card's outer element is the caller's: Kiln's is a radio item, the site's a link. Give it
+// `frameCardClass` (with the global `glass` surface) and `useTilt()`'s props, and put `FrameCardBody`
+// inside. The body is all spans, so it is valid inside a button or a link.
+import { useRef } from 'react';
+import { DeviceModel } from './DeviceModel';
+import { STAGE_TEXT, cardTags, type FrameDesign, type Stage } from './frame';
 import s from './FrameCard.module.css';
+
+/** The card's own class: the hover lift, the floating model and the tags. */
+export const frameCardClass = s.card;
 
 /* 24-grid glyphs at 1.6px stroke (glassworks.dev Glyphs.tsx) */
 const G = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true, className: s.tagIcon };
@@ -34,8 +40,12 @@ export function StatusPill({ stage }: { stage: Stage }) {
   );
 }
 
-export function FrameCard({ f }: { f: FrameDesign }) {
-  const ref = useRef<HTMLButtonElement>(null);
+/**
+ * Leans the card's model a few degrees toward a mouse pointer (--tilt-x, --tilt-z), one style write
+ * per frame at most, and nothing on touch or with reduced motion. Spread the result on the card.
+ */
+export function useTilt<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
   const frame = useRef(0);
   const tilt = (x: number, z: number) => {
     cancelAnimationFrame(frame.current);
@@ -44,17 +54,21 @@ export function FrameCard({ f }: { f: FrameDesign }) {
       ref.current?.style.setProperty('--tilt-z', `${z}deg`);
     });
   };
-  const onMove = (e: React.PointerEvent<HTMLElement>) => {
+  const onPointerMove = (e: React.PointerEvent<HTMLElement>) => {
     if (e.pointerType !== 'mouse' || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const r = e.currentTarget.getBoundingClientRect();
     tilt(((e.clientY - r.top) / r.height - 0.5) * -10, ((e.clientX - r.left) / r.width - 0.5) * 14);
   };
-  const installable = ships(f.status) && !!f.kiln;
-  const id = useId();
+  return { ref, onPointerMove, onPointerLeave: () => tilt(0, 0) };
+}
+
+/**
+ * The card's contents: the model, then the name, stage, aka, summary and tags. With `idPrefix`, the
+ * summary and the tags get the ids `<idPrefix>-summary` and `<idPrefix>-tags`, for aria-describedby.
+ */
+export function FrameCardBody({ f, idPrefix }: { f: FrameDesign; idPrefix?: string }) {
   return (
-    <RadioGroup.Item ref={ref} value={f.id} disabled={!installable} className={`glass ${s.card}`} onPointerMove={onMove} onPointerLeave={() => tilt(0, 0)}
-      aria-label={`${f.name}, ${STAGE_TEXT[f.status]}${installable ? '' : ', not installable from Kiln yet'}`}
-      aria-describedby={`${id}-summary ${id}-tags`}>
+    <>
       <span className={s.model}>
         <span className={s.float}><span className={s.bob}><DeviceModel id={f.id} model={f.model} label={`${f.name} running Glassworks`} /></span></span>
         <span className={s.shadow} aria-hidden="true" />
@@ -65,8 +79,8 @@ export function FrameCard({ f }: { f: FrameDesign }) {
           <StatusPill stage={f.status} />
         </span>
         {f.aka && <span className={s.aka}>{f.aka}</span>}
-        <span id={`${id}-summary`} className={s.summary}>{f.summary}</span>
-        <span id={`${id}-tags`} className={s.tags}>
+        <span id={idPrefix ? `${idPrefix}-summary` : undefined} className={s.summary}>{f.summary}</span>
+        <span id={idPrefix ? `${idPrefix}-tags` : undefined} className={s.tags}>
           {cardTags(f.ratings).map((t) => (
             <span key={t.text} className={t.severity ? s[t.severity] : undefined}>
               <TagIcon k={t.key} value={t.value} />
@@ -75,6 +89,6 @@ export function FrameCard({ f }: { f: FrameDesign }) {
           ))}
         </span>
       </span>
-    </RadioGroup.Item>
+    </>
   );
 }

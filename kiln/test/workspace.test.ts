@@ -1,35 +1,39 @@
-// What lets frame recipes outside kiln/ build: tsconfig.base.json's `paths` must reach every export of
-// every package (Node's lookup from frames/ can't), and vite.config.ts needs fs.globSync (Node 22).
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, normalize } from 'node:path';
+// The npm workspace root is the repo root (#114), so code in frames/ and packages/ finds its
+// dependencies by Node's own lookup, with no `paths` or `resolve.dedupe` in between. From every
+// workspace, each dependency it declares is found, and it is the one copy the repo root has.
+import { existsSync, globSync, readFileSync, realpathSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const KILN = join(__dirname, '..');
-const json = (f: string) => JSON.parse(readFileSync(join(KILN, f), 'utf8'));
-const paths: Record<string, string[]> = json('tsconfig.base.json').compilerOptions.paths;
+const REPO = join(__dirname, '..', '..');
+const json = (f: string) => JSON.parse(readFileSync(join(REPO, f), 'utf8'));
+const root = json('package.json') as { workspaces: string[] };
 
-/** TypeScript's choice: an exact key, else the wildcard key with the longest prefix. */
-function mapped(spec: string): string | undefined {
-  if (paths[spec]) return paths[spec][0];
-  const key = Object.keys(paths).filter((k) => k.endsWith('*') && spec.startsWith(k.slice(0, -1)))
-    .sort((a, b) => b.length - a.length)[0];
-  return key ? paths[key]![0]!.replace('*', spec.slice(key.length - 1)) : undefined;
+/** Node's lookup: the nearest node_modules/<name> from `dir` upward. */
+function lookup(dir: string, name: string): string | undefined {
+  for (let d = dir; ; d = dirname(d)) {
+    const hit = join(d, 'node_modules', name);
+    if (existsSync(hit)) return realpathSync(hit);
+    if (dirname(d) === d) return undefined;
+  }
 }
 
-const exportsOf = readdirSync(join(KILN, 'packages')).flatMap((dir) => {
-  const p = json(`packages/${dir}/package.json`) as { name: string; exports: Record<string, string> };
-  return Object.entries(p.exports).map(([sub, file]) => [`${p.name}${sub.slice(1)}`, join('packages', dir, file)] as const);
+const workspaces = root.workspaces.flatMap((w) => globSync(`${w}/package.json`, { cwd: REPO })).map(dirname);
+const deps = workspaces.flatMap((w) => {
+  const p = json(`${w}/package.json`) as { dependencies?: Record<string, string>; peerDependencies?: Record<string, string> };
+  return Object.keys({ ...p.dependencies, ...p.peerDependencies }).map((d) => [w, d] as const);
 });
 
-describe('workspace resolution for code outside kiln/', () => {
-  it.each(exportsOf)('tsconfig paths map %s to its export', (spec, file) => {
-    const to = mapped(spec);
-    expect(to && normalize(to)).toBe(normalize(file));
-    expect(existsSync(join(KILN, file))).toBe(true);
+describe('one workspace at the repo root', () => {
+  it('lists Kiln, its packages and app, every frame recipe and the shared packages', () => {
+    for (const w of ['kiln', 'kiln/packages/kiln-core', 'kiln/apps/kiln', 'frames/aqara-s1-plus/installer', 'packages/frame-card']) {
+      expect(workspaces).toContain(w);
+    }
   });
 
-  it('engines.node asks for Node 22 or later (fs.globSync in vite.config.ts)', () => {
-    const min = /^>=\s*(\d+)/.exec(json('package.json').engines?.node ?? '')?.[1];
-    expect(Number(min)).toBeGreaterThanOrEqual(22);
+  it.each(deps)('%s finds %s, the same copy as the repo root', (w, dep) => {
+    const found = lookup(join(REPO, w), dep);
+    expect(found, `${dep} from ${w}`).toBeDefined();
+    expect(found).toBe(lookup(REPO, dep));
   });
 });

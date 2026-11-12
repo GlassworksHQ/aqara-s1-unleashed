@@ -3,13 +3,13 @@
 // plane with an example dashboard; the body's sides, any parts and a floor shadow are geometry.ts's
 // projection of the frame's model, drawn as SVG behind the glass. Light moves, glass doesn't.
 import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
-import type { FrameModel } from '../../frames/catalog';
-import { MATERIAL } from '../../recovery/materials';
+import type { FrameModel } from './frame';
 import { geometry, type Layout } from './geometry';
+import { PAINT } from './paint';
 import s from './DeviceModel.module.css';
 
-const PAINT = {
-  '--dev-glass': MATERIAL.glass, '--dev-mirror-a': MATERIAL.mirrorA, '--dev-mirror-b': MATERIAL.mirrorB, '--dev-mirror-c': MATERIAL.mirrorC,
+const PAINT_VARS = {
+  '--dev-glass': PAINT.glass, '--dev-mirror-a': PAINT.mirrorA, '--dev-mirror-b': PAINT.mirrorB, '--dev-mirror-c': PAINT.mirrorC,
 } as CSSProperties;
 
 export function DeviceModel({ id, model, label }: { id: string; model: FrameModel; label: string }) {
@@ -25,9 +25,9 @@ export function DeviceModel({ id, model, label }: { id: string; model: FrameMode
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const blur = `kiln-floor-${id}`;
+  const blur = `frame-floor-${id}`;
   return (
-    <div ref={stage} className={s.stage} style={PAINT} role="img" aria-label={label}>
+    <div ref={stage} className={s.stage} style={PAINT_VARS} role="img" aria-label={label}>
       <div className={s.model} data-layout={g.layout} data-finish={g.finish} data-mount={g.mount} style={{ transform: g.transform, ...g.vars } as CSSProperties}>
         {g.mount === 'wall' && <div className={s.shadow} aria-hidden="true" />}
         <svg className={s.sides} viewBox={`0 0 100 ${g.stageH}`} preserveAspectRatio="none" aria-hidden="true">

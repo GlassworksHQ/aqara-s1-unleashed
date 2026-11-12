@@ -4,9 +4,9 @@ The design is in `docs/research/web-installer.md`, and the reference flow in `to
 `tools/install.sh`. Every module is plain TypeScript (ES2022, no framework). Modules talk to each
 other only through the exports below. `app/` is the only module that knows about the UI.
 
-`kiln/` is an npm workspace. The protocol modules are packages in `packages/`, each with its own
-tests: `@glassworks/fel`, `@glassworks/fastboot`, `@glassworks/adb`, `@glassworks/bootpatch`,
-`@glassworks/setup-channel` and `improv-serial`. `@glassworks/kiln-core` (`packages/kiln-core`) is the
+`kiln/` is one of the npm workspaces under the repo root's `package.json`. The protocol modules are
+packages in `kiln/packages/`, each with its own tests: `@glassworks/fel`, `@glassworks/fastboot`, `@glassworks/adb`, `@glassworks/bootpatch`,
+`@glassworks/setup-channel` and `improv-serial`. `@glassworks/kiln-core` (`kiln/packages/kiln-core`) is the
 step engine, and the S1's part is its recipe, `@glassworks/aqara-s1-plus-installer`
 (`frames/aqara-s1-plus/installer`). The page (`app/`, `assets/`) stays in `src/` and imports them all
 by package name.
@@ -127,16 +127,15 @@ CLI's `--undo` accepts. kiln-core names no frame: its `no-frame-names` test fail
 `s1Plus` in `src/recipe.ts`: the A133 check and our U-Boot over FEL, the S1 Plus partition layout,
 the backup and restore lists, `s1Overlay` and the vbmeta and splash writes, and setup through
 `provision.ts` (`PKG`, `DEBLOAT`, Aqara's launcher and services). Also `switch.ts` and `improv.ts`
-(the app's Improv socket). It sits outside `kiln/`, so npm hoists its dependencies where Node's lookup
-from `frames/` doesn't reach: `vite.config.ts` (`resolve.dedupe`) and `tsconfig.base.json` (`paths`)
-resolve them from `kiln/`, and its `test` and `typecheck` scripts run kiln's vitest and tsc.
+(the app's Improv socket). It is a workspace of the npm root at the repo root, like `kiln/` itself, so
+Node finds its dependencies with no extra config.
 
 ## `app/` — the page (owner: main session)
 - `ui.ts`: renders design E (`mockup/option-e.html`) from the flow's events, with the S1 recipe.
 
 ## Running it
 ```
-npm install && npm run stage && npm run dev     # http://localhost:5173 (a secure context)
-npm test                                        # goldens: S1_WEB_GOLDEN=<dir>, else skipped
-npm test -w @glassworks/bootpatch               # one package (or: cd packages/bootpatch && npm test)
+npm install && npm run stage -w kiln && npm run dev -w kiln   # from the repo root; http://localhost:5173 (a secure context)
+npm test                                        # every workspace; goldens: S1_WEB_GOLDEN=<dir>, else skipped
+npm test -w @glassworks/bootpatch               # one package (or: cd kiln/packages/bootpatch && npm test)
 ```

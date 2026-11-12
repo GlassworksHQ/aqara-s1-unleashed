@@ -5,7 +5,7 @@
  * px, measured by DeviceModel.tsx. The 5px fallback is right for a ~500px slot.
  *
  * From glassworks.dev DeviceModel.module.css (fbfd364), with its colours mapped to the brand tokens
- * and the device's paint (--dev-*, materials.ts).
+ * and the device's paint (--dev-*, paint.ts).
  */
 .stage {
   --u: 5px;

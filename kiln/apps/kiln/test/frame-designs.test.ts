@@ -4,12 +4,12 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { geometry } from '../src/components/device/geometry';
-import { FRAMES, PANE_IDS, RATING_KEYS, type FrameDesign } from '../src/frames/catalog';
+import { PANE_IDS, RATING_KEYS, geometry, type FrameDesign } from '@glassworks/frame-card';
+import { FRAMES } from '../src/frames/catalog';
 
 const frames = fileURLToPath(new URL('../../../../frames', import.meta.url));
 const folders = readdirSync(frames, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
-/** geometry.ts shades the sides by mixing two of these, so they must be #rrggbb */
+/** geometry() shades the sides by mixing two of these, so they must be #rrggbb */
 const COLOUR = /^#[0-9a-f]{6}$/i;
 const read = (id: string) => JSON.parse(readFileSync(join(frames, id, 'design', 'frame.json'), 'utf8')) as FrameDesign;
 

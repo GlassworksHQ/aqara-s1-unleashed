@@ -2,15 +2,16 @@
 // Screen 1: pick your panel, with the frames drawn as on glassworks.dev/frames. Each card's data is
 // the frame's own (frames/<id>/design/frame.json). Undo and "finish setting up" stay one quiet link
 // away. A running install shows here too, with the way back to it.
+import { ships } from '@glassworks/frame-card';
 import * as RadioGroup from '@radix-ui/react-radio-group';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { FRAMES, ships } from '../frames/catalog';
+import { FRAMES } from '../frames/catalog';
 import { registry } from '../wizard/registry';
 import { ROUTES, canonical, fromHash, status } from '../wizard/routes';
 import { STEPS } from '../wizard/state';
-import { FrameCard } from './frame-card/FrameCard';
+import { FrameCard } from './FrameCard';
 import { LastRun } from './LastRun';
 import { Shell, useBrowserChip } from './Shell';
 

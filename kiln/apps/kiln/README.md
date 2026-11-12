@@ -54,7 +54,7 @@ Kiln keeps that failure until the next run starts: the picker and Connect say "T
 | `src/wizard/flowUi.ts` | kiln-core's `FlowUi` as wizard actions. `AskBridge` is the "your turn" sheet |
 | `src/wizard/session.ts` | The hardware steps: InstallFlow with the recipe, then the app's setup over adb. Screens only call it |
 | `src/wizard/routes.ts`, `useRouteSync.ts`, `registry.ts` | The routes, and the frame's session that outlives them |
-| `src/frames/catalog.ts`, `src/components/frame-card/`, `src/components/device/` | The picker's frames, from `frames/<id>/design/frame.json` ([frames/README.md](../../../frames/README.md)), drawn as glassworks.dev draws them |
+| `src/frames/catalog.ts`, `src/components/FrameCard.tsx` | The picker's frames, from `frames/<id>/design/frame.json` ([frames/README.md](../../../frames/README.md)), drawn by the card glassworks.dev shares ([`packages/frame-card`](../../../packages/frame-card/README.md)) as radio items |
 | `src/wizard/screens.tsx` | One component per screen of the design, on Radix primitives |
 | `src/frames/aqara-s1-plus.ts` | What the screens say for the S1: the USB names to pick, help links, the radio's next steps |
 | `src/recovery/player.ts` | The recovery-mode player, drawing a frame's data. The S1's is `frames/aqara-s1-plus/design/recovery.json` (canonical); `docs/design/kiln/recovery/` keeps the prototype's copy, and a test keeps them equal |
@@ -68,11 +68,11 @@ Rules that tests guard:
 
 ## Commands
 
-From `kiln/`:
+From the repo root, the npm workspace root:
 
 ```sh
 npm install
-node scripts/stage-assets.mjs --remote --out apps/kiln/public/assets   # the pinned blobs, as on Vercel
+node kiln/scripts/stage-assets.mjs --remote --out apps/kiln/public/assets   # the pinned blobs, as on Vercel
 npm run dev -w @glassworks/kiln-app       # http://localhost:5174
 npm test -w @glassworks/kiln-app          # also part of npm test
 npm run build -w @glassworks/kiln-app     # next build
@@ -84,6 +84,7 @@ or in a build made with `NEXT_PUBLIC_KILN_DEMO=1`.
 
 ## Vercel
 
-`vercel.json` installs and builds from `kiln/` (the workspace root): `npm ci`, then the blobs, then
-`next build`. The project's Root Directory is `kiln/apps/kiln`, with "Include files outside the root
-directory" on (the build reads `kiln/packages`, `frames/`, `tools/`, `branding/` and `docs/img`).
+`vercel.json` installs and builds from the repo root (the workspace root): `npm ci`, then the blobs,
+then `next build`. The project's Root Directory is `kiln/apps/kiln`, with "Include files outside the root
+directory" on (the build reads the root's `package.json` and lockfile, `kiln/packages`, `packages/`,
+`frames/`, `tools/`, `branding/` and `docs/img`).

@@ -4,8 +4,8 @@
 #
 #   app      every module's JVM unit tests, an unsigned release build, and
 #            tools/release/check-update-compat.sh (the APK still updates panels in place)
-#   web      the installer in kiln/ (job id kept, as branch protection names it): typecheck,
-#            tests (incl. packages/*), production build
+#   web      the npm workspaces from the repo root (job id kept, as branch protection names it):
+#            Kiln, its packages, the frame recipes and packages/*: typecheck, tests, both builds
 #   scripts  tools/install.sh's off-device tests and the docs' relative links
 #   root     the root side (radio helper, bundle checks, s1kiosk_verify) in a 32-bit ARM container
 #            under QEMU. Slow, so it runs only when tools/root, tools/radio or this file changes
@@ -60,9 +60,6 @@ jobs:
   web:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: kiln
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -71,11 +68,12 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: kiln/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build
+      - name: The page s1.edm.sh serves builds
+        run: npm run build -w kiln
       - name: Kiln (Next.js) builds
         run: npm run build -w @glassworks/kiln-app
 

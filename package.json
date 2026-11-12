@@ -1,0 +1,32 @@
+{
+  "name": "aqara-s1-unleashed",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The npm workspace root: Kiln (kiln/), each frame's recipe (frames/*/installer), and the packages Kiln and glassworks.dev share (packages/*).",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "kiln",
+    "kiln/packages/*",
+    "kiln/apps/*",
+    "frames/*/installer",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "build": "npm run build -w kiln && npm run build -w @glassworks/kiln-app"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/w3c-web-usb": "^1.0.14",
+    "@types/web-bluetooth": "0.0.22",
+    "jsdom": "26.1.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.7",
+    "vitest": "^5.1.0"
+  }
+}

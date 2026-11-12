@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "installCommand": "cd ../.. && npm ci",
-  "buildCommand": "cd ../.. && node scripts/stage-assets.mjs --remote --out apps/kiln/public/assets && npm run build -w @glassworks/kiln-app",
+  "installCommand": "cd ../../.. && npm ci",
+  "buildCommand": "cd ../../.. && node kiln/scripts/stage-assets.mjs --remote --out apps/kiln/public/assets && npm run build -w @glassworks/kiln-app",
   "git": { "deploymentEnabled": false }
 }
