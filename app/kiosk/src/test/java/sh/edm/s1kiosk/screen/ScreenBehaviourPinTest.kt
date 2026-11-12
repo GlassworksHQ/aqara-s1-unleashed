@@ -310,11 +310,12 @@ class ScreenBehaviourPinTest {
         prefs.autoBrightness = false
         prefs.manualBrightness = 0.4f
         h.start()
+        assertEquals("applied at start, before any light reading (#100)", 0.4f, h.brightness)
         h.light(500f)
-        assertEquals(listOf(0.4f), h.brightnessCalls)
+        assertEquals(emptyList<Float>(), h.brightnessCalls)
         prefs.manualBrightness = 0f
         h.refreshBrightness()
-        assertEquals(listOf(0.4f, -1f), h.brightnessCalls)
+        assertEquals(listOf(-1f), h.brightnessCalls)
     }
 
     @Test fun autoWithoutALightReadingKeepsTheSystemBrightness() {

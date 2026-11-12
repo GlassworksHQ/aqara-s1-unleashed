@@ -27,18 +27,19 @@ import java.time.Duration
 class ScreenPolicyTest {
     private val context: Context = RuntimeEnvironment.getApplication()
 
-    private class Settings : ScreenSettings {
+    private class Settings(
+        override var autoBrightness: Boolean = true,
+        override var manualBrightness: Float = -1f,
+    ) : ScreenSettings {
         override val screenMode = "presence"
         override val idleOffSec = 120
         override val nightWindow = ""
         override val nightIdleOffSec = 20
         override val wakeOnApproach = true
         override val presenceRangeM = 0f
-        override var autoBrightness = true
         override val minBrightness = 0.1f
         override val maxBrightness = 1f
         override val nightMaxBrightness = 0.2f
-        override var manualBrightness = -1f
     }
 
     /** Counts starts and stops, and lets a test send a reading while it is started. */
@@ -51,8 +52,12 @@ class ScreenPolicyTest {
         override fun stop(context: Context) { stops++; presence = null }
     }
 
-    private fun policy(presence: PresenceSource? = null, light: LightSource? = null) = ScreenPolicy(
-        presence, light, admin = Application::class.java, settings = { Settings() },
+    private fun policy(
+        presence: PresenceSource? = null,
+        light: LightSource? = null,
+        settings: Settings = Settings(),
+    ) = ScreenPolicy(
+        presence, light, admin = Application::class.java, settings = { settings },
         logTag = "Test.Screen", wakeLockTag = "test:wake",
     )
 
@@ -112,6 +117,36 @@ class ScreenPolicyTest {
         screen.wake("test")
         assertEquals("test:wake", shadowOf(ShadowPowerManager.getLatestWakeLock()).tag)
         assertTrue(ShadowLog.getLogsForTag("Test.Screen").any { it.msg == "wake (test)" })
+        screen.stop()
+    }
+
+    /** The light sensor reports only on change, so in a dark, still room no reading may come for a long time. */
+    @Test fun startAppliesTheSavedManualBrightnessBeforeAnyLightReading() {
+        val screen = policy(light = FakeSource(), settings = Settings(autoBrightness = false, manualBrightness = 0.4f))
+        val hookBeforeStart = mutableListOf<Float>()
+        screen.onBrightness = { hookBeforeStart += it }
+        hookBeforeStart.clear()
+
+        screen.start(context)
+        val hookAfterStart = mutableListOf<Float>()
+        screen.onBrightness = { hookAfterStart += it }
+
+        assertEquals(0.4f, screen.brightness)
+        assertEquals("a hook set before start", listOf(0.4f), hookBeforeStart)
+        assertEquals("a hook set after start, as the activity does", listOf(0.4f), hookAfterStart)
+        screen.stop()
+    }
+
+    @Test fun startWithAutoBrightnessKeepsTheSystemBrightnessUntilTheFirstLightReading() {
+        val screen = policy(light = FakeSource(), settings = Settings(autoBrightness = true, manualBrightness = 0.4f))
+        val calls = mutableListOf<Float>()
+        screen.onBrightness = { calls += it }
+        calls.clear()
+
+        screen.start(context)
+
+        assertEquals(-1f, screen.brightness)
+        assertEquals(emptyList<Float>(), calls)
         screen.stop()
     }
 }
