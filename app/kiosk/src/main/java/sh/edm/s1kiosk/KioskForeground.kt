@@ -36,10 +36,14 @@ class KioskForeground(
         return if (t == 0) CONNECTED_DEVICE else t
     }
 
-    /** Returns the types the service runs with after this call. */
+    /**
+     * Returns the types the service runs with after this call. When every type is refused, the
+     * first start throws the last refusal, and a later one keeps the types the service runs with.
+     */
     fun promote(micGranted: Boolean, locationGranted: Boolean): Int {
         val want = wanted(micGranted, locationGranted)
-        types?.let { if (it == want) return it }
+        val running = types
+        if (running == want) return running
         val tries = listOf(want, want and LOCATION.inv(), want and MICROPHONE.inv()).filter { it != 0 }.plus(CONNECTED_DEVICE).distinct()
         for ((i, t) in tries.withIndex()) {
             try {
@@ -48,10 +52,10 @@ class KioskForeground(
                 return t
             } catch (e: SecurityException) {
                 onRefused(t, e)
-                if (i == tries.lastIndex) throw e
+                if (i == tries.lastIndex && running == null) throw e
             }
         }
-        error("unreachable")
+        return running!!
     }
 
     companion object {

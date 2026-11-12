@@ -102,6 +102,16 @@ class KioskForegroundTest {
         assertEquals(mic or location, fg.promote(micGranted = true, locationGranted = true))
     }
 
+    @Test fun aRepromoteRefusedForEveryTypeKeepsTheServiceRunning() {
+        val s = Starts()
+        val fg = s.foreground(android14)
+        fg.promote(micGranted = false, locationGranted = false)
+        s.refuse = mic or location or device
+        assertEquals(device, fg.promote(micGranted = true, locationGranted = true))
+        assertEquals(device, fg.types)
+        assertEquals(listOf(mic or location, mic, location, device), s.refused.map { it.first })
+    }
+
     /** Android 10 throws when startForeground passes a type the manifest does not declare. */
     @Test fun theManifestDeclaresEveryTypeTheServiceStartsWith() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
