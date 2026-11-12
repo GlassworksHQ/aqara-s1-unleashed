@@ -238,7 +238,9 @@ class PlaybackScheduler(
     /**
      * Writes one block to the sink (audio thread). Returns false when idle (nothing written).
      *
-     * [owns]: whether the calling audio thread still owns the output.
+     * [owns] is read after each sink call that can block (open, write). Once it is false the step
+     * returns false at once and leaves the audio-thread state alone: an audio thread that was
+     * stuck there past its run's stop can't write into, or reset, the next run's output.
      */
     fun step(owns: () -> Boolean = { true }): Boolean {
         val f: SsFormat?
@@ -256,6 +258,7 @@ class PlaybackScheduler(
         if (f == null) return false
         if (openFormat != f) {
             sink.open(f.sampleRate, f.channels)
+            if (!owns()) return false
             openFormat = f
             clock = OutputClock(f.sampleRate)
             framesWritten = 0; blocks = 0; smooth = 0.0
@@ -323,6 +326,7 @@ class PlaybackScheduler(
         var off = 0
         while (off < n) {
             val w = sink.write(if (off == 0) buf else buf.copyOfRange(off * ch, n * ch), n - off)
+            if (!owns()) return false
             if (w <= 0) break
             off += w
         }
