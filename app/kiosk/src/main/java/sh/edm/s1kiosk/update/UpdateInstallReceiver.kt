@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
 import android.util.Log
+import sh.edm.s1kiosk.glassworks
 
 /**
  * Status of the PackageInstaller fallback session ([UpdateManager.installWithPackageInstaller]):
@@ -24,18 +25,18 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                     @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_INTENT)
                 }
                 if (confirm == null) {
-                    UpdateManager.instance?.onSessionFailed("no confirmation screen")
+                    context.glassworks.updates?.onSessionFailed("no confirmation screen")
                     return
                 }
                 Log.i(UpdateManager.TAG, "package installer asks for confirmation on the panel")
                 try {
                     context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 } catch (e: Exception) {
-                    UpdateManager.instance?.onSessionFailed("cannot show the confirmation (${e.javaClass.simpleName})")
+                    context.glassworks.updates?.onSessionFailed("cannot show the confirmation (${e.javaClass.simpleName})")
                 }
             }
             PackageInstaller.STATUS_SUCCESS -> Log.i(UpdateManager.TAG, "package installer: success")
-            else -> UpdateManager.instance?.onSessionFailed(describe(status, message))
+            else -> context.glassworks.updates?.onSessionFailed(describe(status, message))
                 ?: Log.w(UpdateManager.TAG, "package installer: ${describe(status, message)}")
         }
     }

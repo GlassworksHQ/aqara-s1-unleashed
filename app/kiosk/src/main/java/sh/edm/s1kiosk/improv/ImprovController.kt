@@ -149,7 +149,6 @@ object ImprovController {
     val active: Boolean get() = session?.started == true
 
     fun init(ctx: Context) {
-        sh.edm.s1kiosk.setup.WifiSetupStatus.provider = { c -> ImprovWifiStatus(c) }
         if (initialized) return
         initialized = true
         app = ctx.applicationContext

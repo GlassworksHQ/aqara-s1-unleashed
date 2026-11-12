@@ -7,7 +7,7 @@ import kotlin.math.sqrt
 
 /**
  * What the voice overlay shows, kept by KioskService (main thread). [state] is the same string as
- * `KioskService.voiceState`; [seq] counts state events so a repeated, identical error still shows.
+ * `GlassworksRuntime.voiceState`; [seq] counts state events so a repeated, identical error still shows.
  */
 data class VoiceUi(
     val state: String = "off",

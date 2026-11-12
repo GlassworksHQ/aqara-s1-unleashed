@@ -160,7 +160,7 @@ client whose `client_info` starts with "Home Assistant", and `SubscribeStatesReq
 persisted as `ha_seen`.
 
 Kiosk actions are applied in the running activity exactly like the `adb am start` extras
-(`MainActivity.commandSink`). State changes made on the panel (settings dialog, `adb` extras,
+(`GlassworksRuntime.commandSink`). State changes made on the panel (settings dialog, `adb` extras,
 sensors) are pushed to HA right away (pref listener + `ScreenController` listeners), with a 5 s
 poll as a safety net.
 

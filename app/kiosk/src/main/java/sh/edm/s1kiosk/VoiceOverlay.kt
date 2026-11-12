@@ -173,7 +173,7 @@ class VoiceOverlay(context: Context) : FrameLayout(context) {
 
     // ---------------------------------------------------------------- state changes
 
-    /** Applies the latest voice snapshot (KioskService.voiceUi); [enabled] is prefs.voiceOverlay. */
+    /** Applies the latest voice snapshot (GlassworksRuntime.voiceUi); [enabled] is prefs.voiceOverlay. */
     fun update(next: VoiceUi, enabled: Boolean) {
         val prev = ui
         ui = next

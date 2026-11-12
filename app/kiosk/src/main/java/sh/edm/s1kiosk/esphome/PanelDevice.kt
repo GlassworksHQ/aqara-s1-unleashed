@@ -13,6 +13,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import sh.edm.s1kiosk.BuildConfig
+import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.base.BaseBackend
 import sh.edm.s1kiosk.base.BaseKind
@@ -73,6 +74,7 @@ import java.util.concurrent.TimeUnit
  */
 class PanelDevice(
     context: Context,
+    private val runtime: GlassworksRuntime,
     private val onVoiceEvent: (VoiceEvent) -> Unit,
     /** HelloRequest from an API client (Home Assistant discovery, HaDiscovery.onApiHello). */
     private val onApiHello: (String, java.net.InetAddress?) -> Unit = { _, _ -> },
@@ -142,7 +144,7 @@ class PanelDevice(
      * App updates from GitHub Releases (docs/releasing.md); the "App update" entity. runCatching:
      * the update thread may still report while [stop] has already shut [exec] down.
      */
-    private val updates = UpdateManager(ctx, onChange = { runCatching { exec.execute { server?.publishStates() } } })
+    private val updates = UpdateManager(ctx, runtime, onChange = { runCatching { exec.execute { server?.publishStates() } } })
     @Volatile private var announcing = false
     @Volatile private var mediaPausedForVoice = false
     private var wakeLock: PowerManager.WakeLock? = null
@@ -536,7 +538,7 @@ class PanelDevice(
     private fun toActivity(build: Intent.() -> Unit) {
         val i = Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).apply(build)
         ui {
-            val sink = MainActivity.commandSink
+            val sink = runtime.commandSink
             if (sink != null) sink(i) else try { ctx.startActivity(i) } catch (e: Exception) {
                 EspHomeLog.w("Cannot start MainActivity", e)
             }

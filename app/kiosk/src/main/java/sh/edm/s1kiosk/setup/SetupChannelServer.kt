@@ -5,10 +5,9 @@ import android.content.Intent
 import android.os.SystemClock
 import android.util.Log
 import sh.edm.improv.AdbSocketServer
+import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.InstallerGlue
 import sh.edm.s1kiosk.KioskPrefs
-import sh.edm.s1kiosk.KioskService
-import sh.edm.s1kiosk.MainActivity
 import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.radio.RadioAllow
 import sh.edm.s1kiosk.radio.RadioHelper
@@ -33,9 +32,9 @@ object SetupChannelServer {
 
     private var server: AdbSocketServer? = null
 
-    fun start(context: Context) {
+    fun start(context: Context, runtime: GlassworksRuntime) {
         if (server != null) return
-        val backend = AndroidBackend(context.applicationContext)
+        val backend = AndroidBackend(context.applicationContext, runtime)
         server = AdbSocketServer(SetupChannel.SOCKET, TAG) { input, output ->
             SetupChannel(backend) { Log.i(TAG, it) }.serve(input, output)
         }.also { it.start() }
@@ -46,7 +45,7 @@ object SetupChannelServer {
         server = null
     }
 
-    private class AndroidBackend(private val ctx: Context) : SetupChannel.Backend {
+    private class AndroidBackend(private val ctx: Context, private val runtime: GlassworksRuntime) : SetupChannel.Backend {
         private val prefs = KioskPrefs(ctx)
         @Volatile private var helper = false
         @Volatile private var helperAt = 0L
@@ -54,7 +53,7 @@ object SetupChannelServer {
         init { HaAuth.init(ctx) }
 
         private fun helperInstalled(): Boolean {
-            val r = KioskService.radioRef ?: return false
+            val r = runtime.radio ?: return false
             val now = SystemClock.elapsedRealtime()
             if (helperAt == 0L || now - helperAt > HELPER_CACHE_MS) {
                 helper = r.helperInstalled()
@@ -66,7 +65,7 @@ object SetupChannelServer {
         override fun state(): ChannelState {
             val ip = InstallerGlue.wlanIpv4()
             val haUrl = prefs.haBase.orEmpty()
-            val r = KioskService.radioRef
+            val r = runtime.radio
             return ChannelState(
                 ip = ip,
                 ha = ChannelState.Ha(
@@ -99,7 +98,7 @@ object SetupChannelServer {
             Log.i(TAG, "Home Assistant address set from the installer: $url${if (restart) " (restarting for the secure-context hosts)" else ""}")
             return SetupChannel.HaChange(afterReply = {
                 InstallerGlue.post(if (restart) 300L else 0L) {
-                    val sink = MainActivity.commandSink
+                    val sink = runtime.commandSink
                     if (sink == null) Log.i(TAG, "dashboard not running; it loads the new address when it starts")
                     else sink(if (restart) Intent().putExtra("restart", true) else Intent().putExtra("url", url))
                 }
@@ -108,7 +107,7 @@ object SetupChannelServer {
 
         /** Through RadioController.request, like the panel's radio step; marks that step answered on success. */
         override fun setRadio(id: String): String? {
-            val r = KioskService.radioRef ?: return "The radio controller isn't running yet; try again in a moment."
+            val r = runtime.radio ?: return "The radio controller isn't running yet; try again in a moment."
             val mode = RadioMode.fromId(id) ?: return "Unknown radio mode '$id'."
             val accepted = AtomicBoolean(false)
             val handled = CountDownLatch(1)
@@ -133,7 +132,7 @@ object SetupChannelServer {
         }
 
         override fun setRadioAllow(text: String): String? {
-            val r = KioskService.radioRef ?: return "The radio controller isn't running yet; try again in a moment."
+            val r = runtime.radio ?: return "The radio controller isn't running yet; try again in a moment."
             r.setAllowedClients(text)?.let { return it }
             Log.i(TAG, "radio allowed clients from the installer")
             // The helper re-reads the list within 3 s; give the reply the enforced state.
