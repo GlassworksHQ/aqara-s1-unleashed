@@ -14,6 +14,9 @@ below as the release notes.
   interface. Comes with the radio bundle.
 
 ### Changed
+- **The project moved to [GlassworksHQ/aqara-s1-unleashed](https://github.com/GlassworksHQ/aqara-s1-unleashed).**
+  Panels now check for updates there directly. Older versions keep updating through GitHub's
+  redirect, so nothing needs doing on your panel.
 - **Thread border router docs:** the panel has to be on Home Assistant's network to be its border
   router, and has now been tested as a second border router next to an existing one.
 

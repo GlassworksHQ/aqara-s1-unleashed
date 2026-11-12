@@ -133,7 +133,7 @@ class PanelDevice(
         stackStore = prefs.radioStackStore,
         bundle = RadioBundle(ShellProps, AssetBundleSource(ctx.assets), ctx.filesDir, log = { Log.i(RadioController.TAG, it) }),
         zigbeedFetcher = { dest, progress ->
-            SisdkZigbeed.fetch(dest, ctx.cacheDir, "s1-kiosk/${BuildConfig.VERSION_NAME} (+https://github.com/aguilaair/aqara-s1-unleashed)", progress)
+            SisdkZigbeed.fetch(dest, ctx.cacheDir, "s1-kiosk/${BuildConfig.VERSION_NAME} (+https://github.com/GlassworksHQ/aqara-s1-unleashed)", progress)
         },
     )
     /** The time zone to keep (Aqara resets it at every boot; the root helper puts it back). */

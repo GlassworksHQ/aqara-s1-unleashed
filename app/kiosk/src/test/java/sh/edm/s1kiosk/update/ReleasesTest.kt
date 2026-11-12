@@ -40,9 +40,9 @@ class ReleasesTest {
         val o = Releases.offer(Releases.parse(latest))
         assertEquals(AppVersion(1, 3, 0), o.version)
         assertEquals("s1-kiosk-1.3.0.apk", o.apk.name)
-        assertEquals("https://github.com/aguilaair/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-1.3.0.apk", o.apk.url)
+        assertEquals("https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-1.3.0.apk", o.apk.url)
         assertEquals("s1-kiosk-1.3.0.apk.sha256", o.sha256.name)
-        assertEquals("https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v1.3.0", o.releaseUrl)
+        assertEquals("https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v1.3.0", o.releaseUrl)
         assertTrue(o.notes.startsWith("## What's Changed"))
         // The fixture's .sha256 file and GitHub's own digest agree, as the manager requires.
         assertArrayEquals(o.apk.digest, Releases.parseSha256(resource("s1-kiosk-1.3.0.apk.sha256"), o.apk.name))
@@ -51,7 +51,7 @@ class ReleasesTest {
     @Test fun extraAssetsAreIgnored() {
         val json = edited {
             getJSONArray("assets").put(JSONObject().put("name", "s1-kiosk-1.3.0-debug.apk").put("size", 9)
-                .put("browser_download_url", "https://github.com/aguilaair/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-1.3.0-debug.apk"))
+                .put("browser_download_url", "https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-1.3.0-debug.apk"))
         }
         assertEquals("s1-kiosk-1.3.0.apk", Releases.offer(Releases.parse(json)).apk.name)
     }
@@ -77,19 +77,19 @@ class ReleasesTest {
 
     @Test fun refusesUnexpectedDownloadUrls() {
         fun withUrl(u: String) = edited { getJSONArray("assets").getJSONObject(0).put("browser_download_url", u) }
-        val good = "https://github.com/aguilaair/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-1.3.0.apk"
+        val good = "https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-1.3.0.apk"
         for (bad in listOf(
             good.replace("https://", "http://"),
             good.replace("github.com", "evil.example"),
             good.replace("github.com", "github.com.evil.example"),
             good.replace("/v1.3.0/", "/v1.2.0/"),
             "$good?x=1",
-            "https://github.com/aguilaair/aqara-s1-unleashed/raw/main/s1-kiosk-1.3.0.apk",
+            "https://github.com/GlassworksHQ/aqara-s1-unleashed/raw/main/s1-kiosk-1.3.0.apk",
         )) {
             assertTrue(bad, refusal(withUrl(bad)).contains("unexpected download URL"))
         }
         // A renamed/transferred repo keeps working (GitHub redirects the API; the download path shape is the same).
-        assertEquals(AppVersion(1, 3, 0), Releases.offer(Releases.parse(withUrl(good.replace("aguilaair/", "newowner/")))).version)
+        assertEquals(AppVersion(1, 3, 0), Releases.offer(Releases.parse(withUrl(good.replace("GlassworksHQ/", "newowner/")))).version)
     }
 
     @Test fun malformedJsonNeverCrashes() {

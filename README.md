@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  Current release: <a href="https://github.com/aguilaair/aqara-s1-unleashed/releases/latest"><b>v0.4.1</b></a> ·
+  Current release: <a href="https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/latest"><b>v0.4.1</b></a> ·
   <a href="CHANGELOG.md">What's new</a> ·
   <a href="docs/research/README.md">How we got here</a>
 </p>
@@ -113,7 +113,7 @@ The full walkthrough, per-OS setup and troubleshooting are in **[docs/install.md
 > through the backup, the install and the app setup. The boot patch has been tested on two firmware
 > versions: 4.5.80 and the December 2025 firmware the panel shipped with. So far that is a small
 > number of panels. If anything looks wrong, stop and
-> [open an issue](https://github.com/aguilaair/aqara-s1-unleashed/issues). Your backup is safe.
+> [open an issue](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues). Your backup is safe.
 
 ### The command line
 

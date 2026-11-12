@@ -4,7 +4,7 @@
 // allowed; the installer checks the SHA-256 published with the release before using the bytes.
 export const config = { runtime: 'edge' };
 
-const REPO = 'aguilaair/aqara-s1-unleashed';
+const REPO = 'GlassworksHQ/aqara-s1-unleashed';
 
 export default async function handler(req: Request): Promise<Response> {
   const q = new URL(req.url).searchParams;

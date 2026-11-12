@@ -12,7 +12,7 @@ class UpdateModelTest {
 
     private fun offer(v: String, notes: String = "* new things") = UpdateOffer(
         version = AppVersion.parse(v)!!, tag = "v$v", notes = notes,
-        releaseUrl = "https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v$v",
+        releaseUrl = "https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v$v",
         apk = ReleaseAsset("s1-kiosk-$v.apk", "https://github.com/o/r/releases/download/v$v/s1-kiosk-$v.apk", 100),
         sha256 = ReleaseAsset("s1-kiosk-$v.apk.sha256", "https://github.com/o/r/releases/download/v$v/s1-kiosk-$v.apk.sha256", 85),
     )
@@ -37,7 +37,7 @@ class UpdateModelTest {
         assertFalse(v.missingState)
         assertEquals("1.3.0", v.latestVersion)
         assertEquals("* new things", v.releaseSummary) // the check error is gone
-        assertEquals("https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v1.3.0", v.releaseUrl)
+        assertEquals("https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v1.3.0", v.releaseUrl)
         assertEquals("1.3.0 available", m.statusText())
     }
 
