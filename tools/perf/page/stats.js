@@ -60,10 +60,10 @@
     return bands.reduce((a, b) => (ORDER[b] > ORDER[a] ? b : a));
   }
 
-  // SurfaceFlinger keeps the last 127 presented frames, so a measured window must fit 120 of them
-  // at the display's refresh: 2 s at 60 Hz, 1.33 s at 90 Hz, 1 s at 120 Hz.
+  // SurfaceFlinger keeps the last 127 presented frames, and the runner reads them after the window
+  // ends. 100 refreshes leave 27 slots (450 ms at 60 Hz) for that read: 1.67 s at 60 Hz, 0.83 s at 120 Hz.
   function measureMs(vsyncMs) {
-    return Math.min(2000, Math.floor(120 * (vsyncMs > 0 ? vsyncMs : BUDGET_MS)));
+    return Math.floor(100 * (vsyncMs > 0 ? vsyncMs : BUDGET_MS));
   }
 
   function intervals(timestamps) {

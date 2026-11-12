@@ -47,7 +47,8 @@ def shell(cmd):
     if cmd.startswith("am start"):
         m = re.search(r"--es open '([^']+)'", cmd)
         if m:
-            save("nonce.json", re.search(r"nonce=(\w+)", m.group(1)).group(1))
+            nonce = re.search(r"nonce=(\w+)", m.group(1)).group(1)
+            save("refnonce.json" if "/dashboard.html" in m.group(1) else "nonce.json", [nonce, m.group(1)])
         if " -W " in cmd:
             if not os.environ.get("FAKE_NO_DASHBOARD"):
                 save("cold.json", True)
@@ -141,6 +142,18 @@ def page(nonce):
     gw({"t": "done"})
 
 
+def refdash(nonce, url):
+    """The reference dashboard: navigation, first paint at 150 ms, load event at 120 ms, then still."""
+    origin = time.time() * 1000
+    a = now()
+    paint(a + 0.15, a + 0.5)
+    line("GeckoSession", f"handleMessage GeckoView:PageStart uri={url}")
+    time.sleep(0.7)
+    line("GeckoConsole", "GWPERF " + json.dumps({"nonce": nonce, "t": "refdash", "nodes": 1134, "cards": 43, "fcp_ms": 150,
+                                                 "lcp_ms": 150, "load_ms": 120, "origin_epoch_ms": origin,
+                                                 "epoch_ms": time.time() * 1000}))
+
+
 def dashboard():
     line("ActivityManager", f"Start proc 5555:{PKG}/u0a83 for activity {{{PKG}/{PKG}.MainActivity}}", pid=1918)
     line("ActivityTaskManager", f"Displayed {PKG}/.MainActivity: +1s714ms", pid=1918)
@@ -156,9 +169,13 @@ def logcat():
     end = now() + 60
     while now() < end:
         if state("nonce.json"):
-            nonce = state("nonce.json")
+            nonce = state("nonce.json")[0]
             save("nonce.json", None)
             page(nonce)
+        if state("refnonce.json"):
+            nonce, url = state("refnonce.json")
+            save("refnonce.json", None)
+            refdash(nonce, url)
         if state("stopped.json"):
             save("stopped.json", None)
             line("ActivityManager", f"Force stopping {PKG} appid=10083 user=0: from pid 777", pid=1918)

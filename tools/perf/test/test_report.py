@@ -95,30 +95,56 @@ def frames(start, n, every):
 class WorseOfBoth(unittest.TestCase):
     """Shapes from the S1 smoke run (2026-11-12): rAF and SurfaceFlinger disagree both ways."""
 
-    def stepline(self, raf_every, raf_n, sf_every, sf_n):
+    def stepline(self, raf_every, raf_n, sf_every, sf_n, oldest=9_000):
         raf = P.frame_stats([raf_every] * raf_n, 16.667)
-        return {"raf": raf, "sf": {"period_ms": 16.667, "window_ms": [10_000, 12_000],
+        return {"raf": raf, "sf": {"period_ms": 16.667, "window_ms": [10_000, 12_000], "oldest_ms": oldest,
                                    "presents_ms": frames(10_005, sf_n, sf_every)}}
 
     def test_compositor_drops_frames_the_main_thread_never_sees(self):
         f = R.step_frames(self.stepline(16.667, 118, 31.25, 64))  # css-transform n=128
         self.assertTrue(f["sf_valid"])
         self.assertEqual((f["source"], f["limited_by"]), ("surfaceflinger", "compositor"))
-        self.assertEqual(f["stats"]["n"], 63)
+        self.assertEqual(f["stats"]["n"], 64)   # 63 gaps, plus the 26 ms one at the window's end
 
     def test_main_thread_jank_while_the_compositor_still_animates(self):
         f = R.step_frames(self.stepline(50.0, 40, 33.0, 61))  # reference load
         self.assertEqual((f["source"], f["limited_by"]), ("raf", "main-thread"))
 
-    def test_no_frames_on_screen_means_no_surfaceflinger_data(self):
-        pl = self.stepline(16.667, 120, 16.667, 0)
-        f = R.step_frames(pl)
+    def test_a_stall_at_the_edge_of_the_window_counts(self):
+        f = R.step_frames(self.stepline(16.667, 120, 16.667, 40))  # frames stop 650 ms into a 2 s window
+        self.assertTrue(f["sf_valid"])
+        self.assertEqual((f["source"], f["limited_by"]), ("surfaceflinger", "compositor"))
+        self.assertGreater(f["stats"]["frozen_pct"], 0)   # the 1.35 s with nothing on screen
+
+    def test_a_still_screen_during_an_animation_is_one_long_frame(self):
+        f = R.step_frames(self.stepline(16.667, 120, 16.667, 0))
+        self.assertTrue(f["sf_valid"])
+        self.assertEqual(f["sf"]["max_ms"], 2000)
+
+    def test_evicted_history_falls_back_to_raf(self):
+        f = R.step_frames(self.stepline(16.667, 120, 16.667, 110, oldest=10_400))
         self.assertFalse(f["sf_valid"])
         self.assertEqual((f["source"], f["limited_by"]), ("raf", None))
 
-    def test_frames_from_only_part_of_the_window_are_not_used(self):
-        f = R.step_frames(self.stepline(16.667, 120, 16.667, 40))  # 650 ms of a 2 s window
-        self.assertFalse(f["sf_valid"])
+    def test_equal_views_say_so(self):
+        f = R.step_frames(self.stepline(16.667, 120, 16.667, 120))
+        self.assertEqual((f["source"], f["limited_by"]), ("surfaceflinger", "equal"))
+
+
+class StartOnTheS1(unittest.TestCase):
+    """The S1 smoke run's cold start (2026-11-12): the system relaunched the home-app kiosk."""
+
+    def test_start_and_load_split_the_whole_wait(self):
+        stop = 12741.766
+        c = {"launch": "relaunched-by-system", "ttid_ms": 111, "stop_mono": stop, "proc_mono": 12741.99,
+             "displayed_mono": 12742.161, "page_start_mono": 12746.225, "page_stop_mono": 12752.024, "ended_quiet": True,
+             "presents_mono_ms": [stop * 1000 + d for d in (10336, 10353, 10619, 10669, 10819, 10902, 10952, 11202, 11235, 11518, 14115)]}
+        r = R.coldstart_run(c)
+        self.assertEqual(r["ttid_ms"], 111)              # MainActivity's loading screen
+        self.assertEqual(r["app_start_to_dashboard_ms"], 4235)   # process start to the dashboard's PageStart
+        self.assertEqual(r["dashboard_load_ms"], 7059)
+        self.assertEqual(r["stop_to_dashboard_ms"], 11518)
+        self.assertEqual(r["app_start_to_dashboard_ms"] + r["dashboard_load_ms"], round((stop * 1000 + 11518) - 12741.99 * 1000))
 
 
 class Settle(unittest.TestCase):
@@ -145,7 +171,8 @@ def step(stage, n, p95_frames, run=1, sf=True):
     raf = P.frame_stats(P.intervals(ts), 16.667)
     pl = {"t": "step", "stage": stage, "n": n, "run": run, "raf": raf}
     if sf:
-        pl["sf"] = {"period_ms": 16.667, "presents_ms": [5000 + t for t in ts]}
+        pl["sf"] = {"period_ms": 16.667, "window_ms": [5000, 5000 + ts[-1]], "oldest_ms": 3000,
+                    "presents_ms": [5000 + t for t in ts]}
     return pl
 
 
@@ -189,9 +216,16 @@ class Build(unittest.TestCase):
             with open(os.path.join(self.dir, f"synthetic-{k}.jsonl"), "w") as f:
                 f.write("\n".join(json.dumps(l) for l in synthetic_lines(k, inp, js)))
             self.write(f"coldstart-{k}.json", {"run": k, "ttid_ms": 1700 + 100 * k, "am_total_ms": None,
-                                                "launch": "relaunched-by-system", "stop_mono": 9.5,
+                                                "launch": "relaunched-by-system", "stop_mono": 9.5, "proc_mono": 9.6 + 0.1 * k,
                                                 "page_start_mono": 10.0, "page_stop_mono": 13.0, "ended_quiet": True,
                                                 "presents_mono_ms": [13000, 13100, 13200 + 100 * k, 15000]})
+            # The reference dashboard: process at 20.0 s; navigation at 20.3 s (the page's line is
+            # logged 1 s after its timeOrigin, at 21.3 s); first paint 300 + 100k ms later.
+            self.write(f"refstart-{k}.json", {"run": k, "ttid_ms": 111, "launch": "relaunched-by-system",
+                                              "proc_mono": 20.0, "ended_quiet": True,
+                                              "page": {"t": "refdash", "nodes": 1134, "fcp_ms": 300 + 100 * k, "load_ms": 200,
+                                                       "origin_epoch_ms": 1e12, "epoch_ms": 1e12 + 1000, "mono": 21.3},
+                                              "presents_mono_ms": [20400, 20600, 20700 + 100 * k, 25000]})
         # Panes alternate on, off, on, off, ...
         for k, (on, off) in enumerate([(600_000, 560_000), (602_000, 559_000), (601_000, 561_000)], 1):
             self.write(f"idle-all-on-{k}.json", idle("all-on", k, on, 10.0 + k * 0.1))
@@ -204,53 +238,80 @@ class Build(unittest.TestCase):
             json.dump(obj, f)
 
     def test_schema_and_frame(self):
-        self.assertEqual(self.rep["schema"], "glassworks.perf/1")
+        self.assertEqual(self.rep["schema"], "glassworks.perf/2")
         self.assertEqual(self.rep["frame"]["id"], "test-frame")
         self.assertEqual(self.rep["frame"]["app"]["geckoview"], "159.0")
 
     def test_animation_capacity(self):
-        lad = self.rep["synthetic"]["ladder"]["css-transform"]
+        lad = self.rep["graded"]["synthetic"]["ladder"]["css-transform"]
         self.assertEqual(lad["held_60fps"]["median"], 4)   # 2 of 120 over budget is 1.7 %: still good
         self.assertEqual(lad["held_30fps"]["median"], 8)
         self.assertFalse(lad["held_60fps_at_top"])
-        steps = self.rep["synthetic"]["per_run"][0]["ladder"]["css-transform"]["steps"]
+        steps = self.rep["graded"]["synthetic"]["per_run"][0]["ladder"]["css-transform"]["steps"]
         self.assertEqual([st["n"] for st in steps], [1, 2, 4, 8, 16])   # element counts, not frame counts
         self.assertEqual(steps[0]["frames"]["n"], 120)
-        svg = self.rep["synthetic"]["ladder"]["svg"]
+        svg = self.rep["graded"]["synthetic"]["ladder"]["svg"]
         self.assertEqual(svg["held_60fps"]["median"], 2)
         self.assertTrue(svg["held_60fps_at_top"])   # never missed: a lower bound
-        self.assertNotIn("canvas2d", self.rep["synthetic"]["ladder"])
+        self.assertNotIn("canvas2d", self.rep["graded"]["synthetic"]["ladder"])
 
     def test_frames_come_from_surfaceflinger_when_it_covers_the_window(self):
-        s = self.rep["synthetic"]
+        s = self.rep["graded"]["synthetic"]
         self.assertEqual(s["reference_sources"], ["surfaceflinger"])
+        self.assertEqual(s["reference_limited_by"], ["equal"])
+        self.assertEqual(s["steps_without_sf"], 0)
         self.assertEqual(s["per_run"][0]["scroll"]["source"], "raf")
 
     def test_headline_grade(self):
         g = self.rep["grade"]
         self.assertEqual(g["metrics"]["inp_ms"]["value"], 150)
-        self.assertEqual(g["metrics"]["cold_start_ms"]["value"], 1900)
-        self.assertEqual(g["metrics"]["load_ms"]["value"], 3400)   # PageStart at 10 s; settled at 13.3, 13.4, 13.5 s
-        self.assertEqual(g["load_from"], "dashboard")
-        self.assertEqual(g["components"], {"frames": "good", "load": "needs-improvement", "input": "good", "start": "good"})
-        self.assertEqual(g["grade"], "B")
+        self.assertEqual(g["metrics"]["start_ms"]["value"], 800)   # process 20.0 s -> first paint 20.6 to 20.9 s
+        self.assertEqual(g["metrics"]["load_ms"]["value"], 600)    # navigation 20.3 s -> settled 20.8 to 21.0 s
+        self.assertEqual(self.rep["graded"]["reference_dashboard"]["android_ttid_ms"]["median"], 111)   # not graded
+        self.assertEqual(self.rep["real_use"]["dashboard_load_ms"]["median"], 3400)   # not graded either
+        self.assertEqual(g["components"], {"frames": "good", "load": "good", "input": "good", "start": "good"})
+        self.assertEqual(g["grade"], "A")
         self.assertFalse(g["provisional"])
 
+    def test_the_grade_does_not_move_with_your_home_assistant(self):
+        """Every grade input is in `graded`; nothing from the user's own dashboard reaches it."""
+        before = self.rep["grade"]
+        for k in (1, 2, 3):
+            self.write(f"coldstart-{k}.json", {"run": k, "ttid_ms": 9000, "launch": "am-start", "proc_mono": 1.0,
+                                                "page_start_mono": 2.0, "page_stop_mono": 30.0, "ended_quiet": False,
+                                                "presents_mono_ms": [30000 + 16.7 * i for i in range(600)]})
+            self.write(f"idle-all-on-{k}.json", idle("all-on", k, 1_900_000, 95.0))
+        rep = R.build(self.dir)
+        self.assertEqual(rep["real_use"]["dashboard_load_ms"]["median"], 28000)
+        self.assertEqual(rep["grade"], before)
+
+    def test_grade_inputs_come_only_from_the_graded_part(self):
+        values = R.graded_values(self.rep["graded"])
+        self.assertEqual(values, {k: v["value"] for k, v in self.rep["grade"]["metrics"].items()})
+        self.assertNotIn("real_use", R.graded_values.__code__.co_names)
+
+    def test_no_reference_dashboard_means_load_and_start_are_missing(self):
+        for k in (1, 2, 3):
+            os.remove(os.path.join(self.dir, f"refstart-{k}.json"))
+        g = R.build(self.dir)["grade"]
+        self.assertEqual(g["missing"], ["load", "start"])
+        self.assertTrue(g["provisional"])
+
     def test_js_band_is_reported_but_not_graded(self):
-        self.assertEqual(self.rep["synthetic"]["js_burst_ms"]["median"], 10.0)
-        self.assertEqual(self.rep["synthetic"]["js_band"], "good")
-        self.assertTrue(self.rep["synthetic"]["js_checksum_ok"])
+        self.assertEqual(self.rep["graded"]["synthetic"]["js_burst_ms"]["median"], 10.0)
+        self.assertEqual(self.rep["graded"]["synthetic"]["js_band"], "good")
+        self.assertTrue(self.rep["graded"]["synthetic"]["js_checksum_ok"])
         self.assertNotIn("js", self.rep["grade"]["components"])
 
     def test_memory_and_budget(self):
-        m = self.rep["memory"]
+        m = self.rep["real_use"]["memory"]
         self.assertEqual(m["idle"]["app_pss_kb"]["median"], 601_000)
         self.assertEqual(m["idle"]["by_role_pss_kb"]["gpu"]["median"], 100_000)
         self.assertEqual(m["peak"]["app_pss_kb"], 602_000)
         self.assertTrue(m["budget"]["ok"])
 
     def test_pane_diffs_against_all_on(self):
-        panes = {p["id"]: p for p in self.rep["panes"]}
+        panes = {p["id"]: p for p in self.rep["real_use"]["panes"]}
         self.assertEqual(panes["sendspin"]["pss_kb"], 41_000)
         self.assertTrue(panes["sendspin"]["pss_measurable"])
         self.assertEqual(panes["assist"]["pss_kb"], 500)
@@ -265,27 +326,39 @@ class Build(unittest.TestCase):
         self.write("idle-all-on-9.json", empty)
         self.write("idle-sendspin-off-9.json", dict(empty, label="sendspin-off"))
         rep = R.build(self.dir)
-        self.assertEqual(rep["memory"]["idle"]["app_pss_kb"]["n"], 3)
-        self.assertEqual(rep["memory"]["idle"]["device_used_pct"]["n"], 3)
-        self.assertEqual(rep["memory"]["peak"]["app_pss_kb"], 602_000)
-        self.assertEqual({p["id"]: p for p in rep["panes"]}["sendspin"]["samples_off"], 3)
+        self.assertEqual(rep["real_use"]["memory"]["idle"]["app_pss_kb"]["n"], 3)
+        self.assertEqual(rep["real_use"]["memory"]["idle"]["device_used_pct"]["n"], 3)
+        self.assertEqual(rep["real_use"]["memory"]["peak"]["app_pss_kb"], 602_000)
+        self.assertEqual({p["id"]: p for p in rep["real_use"]["panes"]}["sendspin"]["samples_off"], 3)
 
     def test_a_measured_zero_is_the_lowest_available_memory(self):
         zero = idle("all-on", 9, 600_000, 10.0)
         zero["device_mem"] = {"mem_total_kb": 2_000_000, "mem_available_kb": 0}
         self.write("idle-all-on-9.json", zero)
         rep = R.build(self.dir)
-        self.assertEqual(rep["memory"]["peak"]["mem_available_min_kb"], 0)
-        self.assertFalse(rep["memory"]["budget"]["checks"]["device_available_min"]["ok"])
+        self.assertEqual(rep["real_use"]["memory"]["peak"]["mem_available_min_kb"], 0)
+        self.assertFalse(rep["real_use"]["memory"]["budget"]["checks"]["device_available_min"]["ok"])
+
+    def test_reference_without_surfaceflinger_is_counted(self):
+        lines = synthetic_lines(1, 100, 9.0)
+        for l in lines:
+            if l.get("stage") == "reference":
+                l["sf"]["oldest_ms"] = 99_999
+        run = R.synthetic_run(lines)
+        self.assertEqual(R.synthetic_summary([run])["steps_without_sf"], 1)
+
+    def test_no_scroll_step_is_not_a_moved_scroll(self):
+        lines = [l for l in synthetic_lines(1, 100, 9.0) if l.get("stage") != "scroll"]
+        self.assertIsNone(R.synthetic_summary([R.synthetic_run(lines)])["scroll_moved"])
 
     def test_a_scroll_that_did_not_move_is_flagged(self):
-        s = self.rep["synthetic"]
+        s = self.rep["graded"]["synthetic"]
         self.assertFalse(s["scroll_moved"])
         self.assertEqual(s["per_run"][0]["scroll"]["scrolled_px"], 720)
         self.assertIn("did not move", R.markdown(self.rep))
 
     def test_load_that_fell_back_to_fcp_says_so(self):
-        self.assertEqual(self.rep["synthetic"]["page_lcp_from"], ["fcp", "lcp"])
+        self.assertEqual(self.rep["graded"]["synthetic"]["page_lcp_from"], ["fcp", "lcp"])
         self.assertIn("FCP/LCP", R.markdown(self.rep))
 
     def test_cold_start_records_the_launch_and_the_whole_restart(self):
@@ -299,7 +372,8 @@ class Build(unittest.TestCase):
         r = R.build(self.dir)["real_use"]
         self.assertEqual(len(r["errors"]), 1)
         self.assertEqual(r["dashboard_load_ms"]["n"], 3)
-        self.assertEqual(r["cold_start_ttid_ms"], {"median": 1900, "min": 1800, "max": 2000, "n": 3})
+        self.assertEqual(r["android_ttid_ms"], {"median": 1900, "min": 1800, "max": 2000, "n": 3})
+        self.assertEqual(r["app_start_to_dashboard_ms"]["n"], 3)
         self.assertEqual(r["per_run"][-1]["ttid_ms"], 900)   # kept for diagnosis
 
     def test_apk_sizes_are_kept_only_when_asked(self):
@@ -329,7 +403,10 @@ class Build(unittest.TestCase):
 
     def test_markdown_renders(self):
         md = R.markdown(self.rep)
-        self.assertIn("**Grade: B**", md)
+        self.assertIn("**Grade: A**", md)
+        self.assertIn("## Real use on this dashboard (not graded)", md)
+        self.assertIn("both views equal", md)
+        self.assertLess(md.index("## Reference dashboard (graded)"), md.index("## Real use on this dashboard"))
         self.assertIn("| css-transform | 4 (4 to 4, n=3) |", md)
         self.assertIn("| svg | 2+ (2 to 2, n=3) |", md)
 

@@ -36,7 +36,7 @@ class Thresholds(unittest.TestCase):
         self.check("inp_ms", [(200, GOOD), (201, NI), (500, NI), (501, POOR)])
 
     def test_cold_start_poor_at_five_seconds_or_more(self):
-        self.check("cold_start_ms", [(2500, GOOD), (2501, NI), (4999, NI), (5000, POOR)])
+        self.check("start_ms", [(2500, GOOD), (2501, NI), (4999, NI), (5000, POOR)])
 
     def test_missing_value_has_no_band(self):
         self.assertIsNone(G.band(None, G.METRICS["inp_ms"]))
@@ -59,14 +59,14 @@ class Letter(unittest.TestCase):
 
     def test_frames_component_is_its_worst_metric(self):
         h = G.headline({"frame_p95_ms": 16.67, "frame_jank_pct": 2, "frame_frozen_pct": 0.5,
-                        "load_ms": 1000, "inp_ms": 100, "cold_start_ms": 2000})
+                        "load_ms": 1000, "inp_ms": 100, "start_ms": 2000})
         self.assertEqual(h["components"]["frames"], POOR)
         self.assertEqual(h["grade"], "D")
         self.assertFalse(h["provisional"])
 
     def test_missing_component_makes_the_grade_provisional(self):
         h = G.headline({"frame_p95_ms": 16.67, "frame_jank_pct": 0, "frame_frozen_pct": 0,
-                        "load_ms": 1000, "cold_start_ms": 2000})
+                        "load_ms": 1000, "start_ms": 2000})
         self.assertEqual(h["grade"], "A")
         self.assertTrue(h["provisional"])
         self.assertEqual(h["missing"], ["input"])

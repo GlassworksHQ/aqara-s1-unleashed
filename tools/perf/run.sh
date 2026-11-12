@@ -7,20 +7,20 @@
 #   - Sends `--es screen on` (the kiosk's own wake intent) during warm-ups, so the screen stays on
 #     without changing the idle timeout. It changes no setting.
 #   - Taps the test page's tap target (`input tap`, centre of the screen) to measure input latency.
-#   - Force-stops and restarts the app for each cold start, with KEYCODE_WAKEUP in between so the
-#     screen is on. The last restart puts the saved dashboard back; the exit trap does the same if
-#     the run stops early.
+#   - Force-stops the app for each cold start (KEYCODE_WAKEUP first, so the screen is on); the app
+#     comes back on the saved dashboard. If the run stops early or the last cold start fails, the
+#     exit trap restarts the app.
 #   Read-only otherwise: getprop, /proc, dumpsys meminfo and SurfaceFlinger, logcat.
 #
 # Usage: tools/perf/run.sh --frame aqara-s1-plus [--serial S] [--runs 3] [--out DIR]
-#          [--skip-synthetic] [--skip-real-use] [--taps 10] [--quick] [--apk FILE]...
+#          [--skip-synthetic] [--skip-reference] [--skip-real-use] [--taps 10] [--quick] [--apk FILE]...
 #        tools/perf/run.sh --frame ID --out DIR --idle-only LABEL   # one idle sample (pane diffs)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ADB="${ADB:-adb}"
 FRAME="" RUNS=3 OUT="" PORT=8089 PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
-SYNTH=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=()
+SYNTH=1 REF=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=()
 # Waits, in seconds. Only the off-device test (test/test_runner.py) shortens them.
 IDLE_SETTLE="${GW_PERF_IDLE_SETTLE:-30}" IDLE_WINDOW="${GW_PERF_IDLE_WINDOW:-15}"
 COLD_SETTLE="${GW_PERF_COLD_SETTLE:-3}" COLD_TIMEOUT="${GW_PERF_COLD_TIMEOUT:-120}" RUN_GAP="${GW_PERF_RUN_GAP:-10}"
@@ -36,6 +36,7 @@ while [ $# -gt 0 ]; do
     --taps) TAPS="$2"; shift 2 ;;
     --quick) QUICK=1; shift ;;
     --skip-synthetic) SYNTH=0; shift ;;
+    --skip-reference) REF=0; shift ;;
     --skip-real-use) REAL=0; shift ;;
     --idle-only) IDLE_ONLY="$2"; shift 2 ;;
     --max-start-temp) MAX_TEMP_C="$2"; shift 2 ;;
@@ -93,13 +94,17 @@ if [ -n "$IDLE_ONLY" ]; then
 fi
 
 # A full run starts from an empty directory, so no earlier run's files end up in its report.
-for f in "$OUT"/synthetic-*.jsonl "$OUT"/coldstart-*.json "$OUT"/idle-*.json; do
+for f in "$OUT"/synthetic-*.jsonl "$OUT"/refstart-*.json "$OUT"/coldstart-*.json "$OUT"/idle-*.json; do
   [ -e "$f" ] && { echo "$OUT already holds a run ($(basename "$f")); use a new --out" >&2; exit 2; }
 done
 
-SERVER_PID="" ON_TEST_PAGE=0
+# DASHBOARD_OK=1 while the panel shows the saved dashboard as the runner found it. It clears before
+# anything that leaves it (the test page, a force-stop), and only a cold start that loaded the
+# dashboard sets it again. On exit, the app is restarted unless it is set; that is harmless if the
+# dashboard was up after all.
+SERVER_PID="" DASHBOARD_OK=1
 cleanup() {
-  if [ "$ON_TEST_PAGE" = 1 ]; then
+  if [ "$DASHBOARD_OK" != 1 ]; then
     log "restoring the dashboard (restart the app)"
     sh_dev am force-stop "$PACKAGE" || true
     sh_dev am start -n "$PACKAGE/.MainActivity" >/dev/null || true
@@ -115,15 +120,18 @@ VSYNC=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["display
 log "device recorded; vsync ${VSYNC} ms"
 wait_cool
 
-if [ "$SYNTH" = 1 ]; then
+if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ]; then
   python3 -m http.server --bind 127.0.0.1 "$PORT" --directory "$HERE/page" >"$OUT/server.log" 2>&1 &
   SERVER_PID=$!
   "$ADB" reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
+fi
+
+if [ "$SYNTH" = 1 ]; then
   for k in $(seq 1 "$RUNS"); do
     nonce=$(python3 -c 'import secrets; print(secrets.token_hex(4))')
     url="http://127.0.0.1:$PORT/index.html?run=$k&seed=1&vsync=$VSYNC&nonce=$nonce&taps=$TAPS&quick=$QUICK"
     log "synthetic run $k/$RUNS"
-    ON_TEST_PAGE=1
+    DASHBOARD_OK=0
     thermal "synthetic-$k"
     run synthetic --run "$k" --url "$url" --nonce "$nonce" --taps "$TAPS"
     sleep "$RUN_GAP"
@@ -132,24 +140,34 @@ if [ "$SYNTH" = 1 ]; then
   run idle --label after-synthetic --run 1 --settle 5 --window "$IDLE_WINDOW"
 fi
 
+if [ "$REF" = 1 ]; then
+  # Graded start and load: a cold start straight into the fixed reference dashboard.
+  for k in $(seq 1 "$RUNS"); do
+    log "reference dashboard cold start $k/$RUNS"
+    thermal "refstart-$k"
+    DASHBOARD_OK=0
+    nonce=$(python3 -c 'import secrets; print(secrets.token_hex(4))')
+    run refstart --run "$k" --settle "$COLD_SETTLE" --timeout "$COLD_TIMEOUT" --nonce "$nonce" \
+      --url "http://127.0.0.1:$PORT/dashboard.html?nonce=$nonce" || log "reference run $k failed; see refstart-$k.json"
+    sleep "$RUN_GAP"
+  done
+fi
+
 if [ "$REAL" = 1 ]; then
   for k in $(seq 1 "$RUNS"); do
     log "cold start $k/$RUNS"
     thermal "coldstart-$k"
     # A failed cold start (no dashboard within 120 s) is recorded and the run goes on. Its idle
     # sample is skipped: it wouldn't be the dashboard's.
+    DASHBOARD_OK=0
     if ! run coldstart --run "$k" --settle "$COLD_SETTLE" --timeout "$COLD_TIMEOUT"; then
       log "cold start $k failed; see coldstart-$k.json"
-      ON_TEST_PAGE=0
       continue
     fi
-    ON_TEST_PAGE=0
+    DASHBOARD_OK=1
     log "idle on the dashboard $k/$RUNS"
     run idle --label all-on --run "$k" --settle "$IDLE_SETTLE" --window "$IDLE_WINDOW"
   done
-elif [ "$ON_TEST_PAGE" = 1 ]; then
-  cleanup
-  ON_TEST_PAGE=0
 fi
 
 thermal end

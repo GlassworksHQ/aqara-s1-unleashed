@@ -52,11 +52,11 @@ for (const c of bandCases) {
   });
 }
 
-test("the measured window fits SurfaceFlinger's 127-frame history at any refresh rate", () => {
-  assert.equal(S.measureMs(1000 / 60), 2000);
-  assert.equal(S.measureMs(1000 / 90), 1333);
-  assert.equal(S.measureMs(1000 / 120), 1000);
+test("the measured window leaves SurfaceFlinger's history room for the read after it", () => {
+  assert.equal(S.measureMs(1000 / 60), 1666);
+  assert.equal(S.measureMs(1000 / 90), 1111);
+  assert.equal(S.measureMs(1000 / 120), 833);
   for (const hz of [50, 60, 75, 90, 120, 144]) {
-    assert.ok(S.measureMs(1000 / hz) / (1000 / hz) <= 121, `${hz} Hz`);
+    assert.ok(127 - S.measureMs(1000 / hz) / (1000 / hz) >= 26, `${hz} Hz`);
   }
 });

@@ -79,6 +79,19 @@ def parse_sf_latency(text):
     return period_ms, sorted(set(presents))
 
 
+def layer_number(name):
+    """'SurfaceView - pkg/pkg.MainActivity#3' -> 3 (a newer layer of the same name gets a higher #n)."""
+    m = re.search(r"#(\d+)$", name)
+    return int(m.group(1)) if m else -1
+
+
+def page_to_mono_ms(page, offset_ms):
+    """A time on the page's clock (ms after performance.timeOrigin) -> logcat's monotonic clock, in ms.
+    The page's log line carries Date.now() and logcat stamps the same line, which ties the clocks
+    together (to within the few ms the console takes to reach logcat)."""
+    return page["mono"] * 1000 - (page["epoch_ms"] - (page["origin_epoch_ms"] + offset_ms))
+
+
 def presents_in(presents_ns, start_s, end_s):
     """Present times (ms) inside a monotonic window given in seconds."""
     lo, hi = start_s * 1e9, end_s * 1e9

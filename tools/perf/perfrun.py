@@ -9,6 +9,7 @@ What it touches on the device:
   coldstart  `input keyevent KEYCODE_WAKEUP` (the app's own wake intent would start it), then
              `am force-stop` the app. A home-app kiosk is relaunched by the system; otherwise
              `am start -W` starts it. Either way it comes back on the saved dashboard.
+  refstart   As coldstart, then `am start --es open <reference dashboard>` once the activity is up.
   idle       `--es screen on` before each window; otherwise read-only.
 Everything it writes goes to --out on this machine. It records no URLs, hosts or tokens.
 """
@@ -31,7 +32,6 @@ class Device:
         self.adb = [os.environ.get("ADB", "adb")] + (["-s", serial] if serial else [])
         self.package = package
         self.component = f"{package}/{activity}"
-        self._layer = None
 
     def sh(self, cmd, timeout=60):
         r = subprocess.run(self.adb + ["shell", cmd], capture_output=True, text=True, timeout=timeout)
@@ -48,18 +48,18 @@ class Device:
         return p
 
     def sf(self):
-        """(period_ms, present times ns) of the app's SurfaceView, the layer GeckoView draws into."""
-        if not self._layer:
-            for line in self.sh("dumpsys SurfaceFlinger --list").splitlines():
-                if line.startswith(f"SurfaceView - {self.package}/") and not line.startswith("Background"):
-                    self._layer = line.strip()
-                    break
-            if not self._layer:
-                return None, []
-        period, presents = P.parse_sf_latency(self.sh(f"dumpsys SurfaceFlinger --latency '{self._layer}'"))
-        if period is None:
-            self._layer = None
-        return period, presents
+        """(period_ms, present times ns) of the app's SurfaceView, the layer GeckoView draws into.
+        After a restart an old layer can still be listed; the live one has the newest frame."""
+        names = [l.strip() for l in self.sh("dumpsys SurfaceFlinger --list").splitlines()
+                 if l.startswith(f"SurfaceView - {self.package}/")]
+        best = (None, [])
+        for name in sorted(names, key=P.layer_number, reverse=True):
+            period, presents = P.parse_sf_latency(self.sh(f"dumpsys SurfaceFlinger --latency '{name}'"))
+            if period and max(presents, default=0) > max(best[1], default=0):
+                best = (period, presents)
+            elif period and best[0] is None:
+                best = (period, presents)
+        return best
 
     def pids(self, names):
         """name -> pid for the app's processes and any process named in `names`."""
@@ -147,7 +147,10 @@ def cmd_synthetic(dev, a):
                 measure_mono = rec["mono"]
             elif t == "step" and measure_mono is not None:
                 period, presents = dev.sf()
+                # oldest_ms: how far back SurfaceFlinger's history reached when it was read. If that is
+                # before the window, every frame of the window is in it, and gaps are real.
                 pl["sf"] = {"period_ms": period, "window_ms": [measure_mono * 1000, rec["mono"] * 1000],
+                            "oldest_ms": min(presents) / 1e6 if presents else None,
                             "presents_ms": P.presents_in(presents, measure_mono, rec["mono"])}
             elif t == "input-ready" and a.taps:
                 threading.Thread(target=tap, args=(dev, pl["x"], pl["y"], pl.get("taps", 10)), daemon=True).start()
@@ -182,7 +185,14 @@ PAGE_RE = re.compile(r"GeckoView:(PageStart|PageStop) uri=(\S+)")
 def cmd_coldstart(dev, a):
     """Force-stop, then time the next launch. A kiosk that is the home app is relaunched by the
     system at once (the S1 does it in 0.2 s), so logcat is followed from before the stop, and
-    `am start -W` is sent only if nothing relaunched the app within --settle seconds."""
+    `am start -W` is sent only if nothing relaunched the app within --settle seconds.
+
+    coldstart follows the kiosk's own dashboard (real use, not graded). refstart opens the fixed
+    reference dashboard (--url) the moment the activity is up: the kiosk's own dashboard load was
+    queued in onCreate but Gecko isn't running yet, so the reference load replaces it before any
+    request goes out, and the reference page is the first page the new engine renders (graded)."""
+    ref = a.cmd == "refstart"
+    opened = False
     lc = dev.logcat()
     lines = queue.Queue()
     threading.Thread(target=lambda: [lines.put(l) for l in lc.stdout], daemon=True).start()
@@ -200,13 +210,14 @@ def cmd_coldstart(dev, a):
     poller = threading.Thread(target=poll, daemon=True)
     poller.start()
     res = {"run": a.run, "launch": None, "am_total_ms": None, "ttid_ms": None, "stop_mono": None, "proc_mono": None,
-           "displayed_mono": None, "page_start_mono": None, "page_stop_mono": None, "error": None}
+           "displayed_mono": None, "page_start_mono": None, "page_stop_mono": None, "page": None, "error": None}
     dev.sh("input keyevent KEYCODE_WAKEUP")
     dev.sh(f"am force-stop {dev.package}")
     t0 = time.time()
     proc_re = re.compile(rf"Start proc \d+:{re.escape(dev.package)}/")
     while time.time() - t0 < a.timeout:
-        if res["launch"] is None and time.time() - t0 > a.settle:
+        # Read every queued line first, so a relaunch logged just before --settle isn't missed.
+        if res["launch"] is None and time.time() - t0 > a.settle and lines.empty():
             res["launch"] = "am-start"
             am = dev.sh(f"am start -W -n {dev.component}", timeout=120)
             res["am_total_ms"] = int((re.findall(r"TotalTime: (\d+)", am) or [0])[0]) or None
@@ -228,19 +239,33 @@ def cmd_coldstart(dev, a):
             res["ttid_ms"] = P.parse_displayed(msg, dev.component)
             if res["ttid_ms"] is not None:
                 res["displayed_mono"] = rec["mono"]
+        if ref and res["displayed_mono"] is not None and not opened:
+            opened = True
+            dev.sh(f"am start -n {dev.component} --es open '{a.url}'")
+        pl = P.gwperf_payload(msg)
+        if ref and pl and pl.get("nonce") == a.nonce and pl.get("t") == "refdash":
+            res["page"] = dict(pl, mono=rec["mono"])
         m = PAGE_RE.search(msg)
-        if not m:
-            continue
-        uri = m.group(2)
-        if m.group(1) == "PageStart" and res["page_start_mono"] is None and uri.startswith("http") \
-                and "127.0.0.1" not in uri:
-            res["page_start_mono"] = rec["mono"]
-        elif m.group(1) == "PageStop" and res["page_start_mono"] is not None:
-            res["page_stop_mono"] = rec["mono"]
+        if m:
+            kind, uri = m.group(1), m.group(2)
+            is_target = (a.nonce in uri) if ref else ("127.0.0.1" not in uri)
+            if kind == "PageStart" and uri.startswith("http"):
+                if res["page_start_mono"] is None and is_target:
+                    res["page_start_mono"] = rec["mono"]
+                elif res["page_start_mono"] is not None and not is_target:
+                    res["error"] = "the kiosk loaded another page during the measurement"
+                    break
+            elif kind == "PageStop" and res["page_start_mono"] is not None and res["page_stop_mono"] is None:
+                res["page_stop_mono"] = rec["mono"]
+        # The reference page times itself (its log line); the dashboard's end is GeckoView's PageStop.
+        if res["page"] if ref else res["page_stop_mono"] is not None:
             break
     lc.terminate()
-    if res["page_stop_mono"] is None:
-        res["error"] = f"dashboard did not finish loading within {a.timeout:.0f} s (no GeckoView:PageStop)"
+    what = "the reference dashboard" if ref else "the dashboard"
+    if res["error"]:
+        pass
+    elif not (res["page"] if ref else res["page_stop_mono"]):
+        res["error"] = f"{what} did not finish loading within {a.timeout:.0f} s"
     else:
         # Keep sampling until the dashboard has painted nothing new for 2 s (or 20 s pass).
         end = time.time() + 20
@@ -255,7 +280,7 @@ def cmd_coldstart(dev, a):
     poller.join()
     res["sf_period_ms"] = period[0]
     res["presents_mono_ms"] = sorted(t / 1e6 for t in presents)
-    write_json(os.path.join(a.out, f"coldstart-{a.run}.json"), res)
+    write_json(os.path.join(a.out, f"{a.cmd}-{a.run}.json"), res)
     if res["error"]:
         sys.exit(f"cold start {a.run}: {res['error']}")
 
@@ -317,7 +342,7 @@ def cmd_idle(dev, a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["device", "synthetic", "coldstart", "idle"])
+    ap.add_argument("cmd", choices=["device", "synthetic", "refstart", "coldstart", "idle"])
     ap.add_argument("--serial", default=os.environ.get("ANDROID_SERIAL"))
     ap.add_argument("--package", default="sh.edm.s1kiosk")
     ap.add_argument("--activity", default=".MainActivity")
@@ -334,10 +359,11 @@ def main():
     ap.add_argument("--radio-procs", default="otbr-agent,cpcd,zigbeed")
     a = ap.parse_args()
     if a.timeout is None:
-        a.timeout = 120 if a.cmd == "coldstart" else 1200
+        a.timeout = 120 if a.cmd in ("coldstart", "refstart") else 1200
     os.makedirs(a.out, exist_ok=True)
     dev = Device(a.serial, a.package, a.activity)
-    {"device": cmd_device, "synthetic": cmd_synthetic, "coldstart": cmd_coldstart, "idle": cmd_idle}[a.cmd](dev, a)
+    {"device": cmd_device, "synthetic": cmd_synthetic, "refstart": cmd_coldstart, "coldstart": cmd_coldstart,
+     "idle": cmd_idle}[a.cmd](dev, a)
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ COMPONENTS = {
     "frames": ["frame_p95_ms", "frame_jank_pct", "frame_frozen_pct"],
     "load": ["load_ms"],
     "input": ["inp_ms"],
-    "start": ["cold_start_ms"],
+    "start": ["start_ms"],
 }
 
 # Not in the headline grade: no published standard, so the band is a project choice.

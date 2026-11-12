@@ -40,21 +40,26 @@ class Runner(unittest.TestCase):
 
     def test_report_has_every_part(self):
         r = self.rep
-        self.assertEqual(r["schema"], "glassworks.perf/1")
+        self.assertEqual(r["schema"], "glassworks.perf/2")
         self.assertEqual(r["frame"]["device"]["model"], "Test Panel")
         self.assertEqual(r["frame"]["app"]["geckoview"], "159.0")
         self.assertEqual(r["grade"]["components"], {"frames": "good", "load": "good", "input": "good", "start": "good"})
         self.assertEqual(r["grade"]["grade"], "A")
         self.assertFalse(r["grade"]["provisional"])
-        self.assertEqual(r["synthetic"]["reference_sources"], ["surfaceflinger"])
-        self.assertEqual(r["synthetic"]["inp_ms"]["median"], 48)
-        self.assertEqual(r["real_use"]["cold_start_ttid_ms"]["median"], 1714)
+        self.assertEqual(r["graded"]["synthetic"]["reference_sources"], ["surfaceflinger"])
+        self.assertEqual(r["graded"]["synthetic"]["inp_ms"]["median"], 48)
+        ref = r["graded"]["reference_dashboard"]
+        self.assertEqual(ref["errors"], [])
+        self.assertEqual(ref["nodes"], [1134])
+        self.assertEqual(r["grade"]["metrics"]["start_ms"]["value"], ref["start_ms"]["median"])
+        self.assertEqual(r["grade"]["metrics"]["load_ms"]["value"], ref["load_ms"]["median"])
+        self.assertEqual(r["real_use"]["android_ttid_ms"]["median"], 1714)
         self.assertEqual(r["real_use"]["settle_how"], ["quiet-gap"])
-        self.assertEqual(r["memory"]["idle"]["app_pss_kb"]["median"], 570000)
-        self.assertEqual({p["id"] for p in r["panes"]}, {"radio"})
+        self.assertEqual(r["real_use"]["memory"]["idle"]["app_pss_kb"]["median"], 570000)
+        self.assertEqual({p["id"] for p in r["real_use"]["panes"]}, {"radio"})
 
     def test_frame_counts_come_from_the_fake_screen(self):
-        ref = self.rep["synthetic"]["per_run"][0]["reference"]
+        ref = self.rep["graded"]["synthetic"]["per_run"][0]["reference"]
         self.assertGreater(ref["n"], 25)
         self.assertEqual(ref["p95_ms"], 16.67)
 
@@ -67,10 +72,10 @@ class Runner(unittest.TestCase):
         self.assertEqual([c for c in shell if forbidden.search(c)], [])
         extras = {m for c in shell for m in re.findall(r"--e\w \w+", c)}
         self.assertEqual(extras, {"--es open", "--es screen"})
-        opens = [c for c in shell if "--es open" in c]
-        self.assertEqual(len(opens), 1)
-        self.assertIn("http://127.0.0.1:18089/index.html?", opens[0])
-        self.assertIn("&taps=2&", opens[0])
+        opens = [re.search(r"--es open '([^']+)'", c).group(1) for c in shell if "--es open" in c]
+        self.assertEqual(len(opens), 2)
+        self.assertTrue(opens[0].startswith("http://127.0.0.1:18089/index.html?") and "&taps=2&" in opens[0], opens[0])
+        self.assertTrue(opens[1].startswith("http://127.0.0.1:18089/dashboard.html?nonce="), opens[1])
 
     def test_launch_without_a_system_relaunch_uses_am_start(self):
         self.assertEqual(self.rep["real_use"]["launch"], ["am-start"])
@@ -110,12 +115,27 @@ class HomeRelaunch(unittest.TestCase):
             self.assertNotIn("am start -W", f.read())
 
 
+class LiveLayer(unittest.TestCase):
+    """After a restart SurfaceFlinger can still list the old layer; frames come from the live one."""
+
+    def test_the_layer_with_the_newest_frame_wins(self):
+        sys.path.insert(0, os.path.dirname(HERE))
+        import perfrun
+        dev = perfrun.Device(None, "sh.edm.s1kiosk", ".MainActivity")
+        old = "SurfaceView - sh.edm.s1kiosk/sh.edm.s1kiosk.MainActivity#0"
+        live = "SurfaceView - sh.edm.s1kiosk/sh.edm.s1kiosk.MainActivity#2"
+        lat = {old: "16666666\n1\t5000\t1\n", live: "16666666\n1\t9000\t1\n1\t9016\t1\n"}
+        dev.sh = lambda cmd, timeout=60: (f"{old}\nBackground for -{live}\n{live}\n" if cmd.endswith("--list")
+                                          else lat[cmd.split("'")[1]])
+        self.assertEqual(dev.sf(), (16.666666, [9000, 9016]))
+
+
 class FailedColdStart(unittest.TestCase):
     def test_the_run_goes_on_and_takes_no_idle_sample_for_it(self):
         tmp = tempfile.mkdtemp()
         env, _ = fake_env(tmp, FAKE_NO_DASHBOARD="1", GW_PERF_COLD_SETTLE="0", GW_PERF_COLD_TIMEOUT="3")
         out = os.path.join(tmp, "out")
-        p = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", out, "--skip-synthetic"],
+        p = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", out, "--skip-synthetic", "--skip-reference"],
                            env=env, capture_output=True, text=True, timeout=120)
         self.assertEqual(p.returncode, 0, p.stderr[-2000:])
         self.assertIn("cold start 1 failed", p.stderr)
@@ -123,7 +143,10 @@ class FailedColdStart(unittest.TestCase):
         with open(os.path.join(out, "report.json")) as f:
             r = json.load(f)["real_use"]
         self.assertEqual(len(r["errors"]), 1)
-        self.assertIsNone(r["cold_start_ttid_ms"])
+        self.assertIsNone(r["app_start_to_dashboard_ms"])
+        with open(os.path.join(tmp, "state", "commands.log")) as f:
+            shell = [c for c in f.read().splitlines() if c.startswith("shell am ")]
+        self.assertEqual(shell[-2:], ["shell am force-stop sh.edm.s1kiosk", "shell am start -n sh.edm.s1kiosk/.MainActivity"])
 
 
 class ReusedOut(unittest.TestCase):
@@ -158,7 +181,7 @@ class IdleOnly(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(out, "idle-all-on-1.json")))
         with open(os.path.join(out, "report.json")) as f:
             rep = json.load(f)
-        panes = {p["id"]: p for p in rep["panes"]}
+        panes = {p["id"]: p for p in rep["real_use"]["panes"]}
         self.assertEqual(panes["sendspin"]["samples_on"], 2)
         self.assertEqual(rep["apk"][0]["abis"], ["armeabi-v7a"])   # kept from the first call
 
