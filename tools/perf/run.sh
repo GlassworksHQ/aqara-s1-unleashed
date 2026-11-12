@@ -23,7 +23,7 @@ FRAME="" RUNS=3 OUT="" PORT=8089 PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
 SYNTH=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=()
 # Waits, in seconds. Only the off-device test (test/test_runner.py) shortens them.
 IDLE_SETTLE="${GW_PERF_IDLE_SETTLE:-30}" IDLE_WINDOW="${GW_PERF_IDLE_WINDOW:-15}"
-COLD_SETTLE="${GW_PERF_COLD_SETTLE:-3}" RUN_GAP="${GW_PERF_RUN_GAP:-10}"
+COLD_SETTLE="${GW_PERF_COLD_SETTLE:-3}" COLD_TIMEOUT="${GW_PERF_COLD_TIMEOUT:-120}" RUN_GAP="${GW_PERF_RUN_GAP:-10}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -87,7 +87,7 @@ if [ -n "$IDLE_ONLY" ]; then
   thermal "idle-$IDLE_ONLY-$n"
   log "idle sample '$IDLE_ONLY' #$n"
   run idle --label "$IDLE_ONLY" --run "$n" --settle "$IDLE_SETTLE" --window "$IDLE_WINDOW"
-  python3 "$HERE/report.py" "$OUT" ${APKS[@]+"${APKS[@]}"} >/dev/null
+  python3 "$HERE/report.py" "$OUT" --keep-apk ${APKS[@]+"${APKS[@]}"} >/dev/null
   log "report: $OUT/report.json"
   exit 0
 fi
@@ -131,8 +131,13 @@ if [ "$REAL" = 1 ]; then
   for k in $(seq 1 "$RUNS"); do
     log "cold start $k/$RUNS"
     thermal "coldstart-$k"
-    # A failed cold start (no dashboard within 120 s) is recorded and the run goes on.
-    run coldstart --run "$k" --settle "$COLD_SETTLE" || log "cold start $k failed; see coldstart-$k.json"
+    # A failed cold start (no dashboard within 120 s) is recorded and the run goes on. Its idle
+    # sample is skipped: it wouldn't be the dashboard's.
+    if ! run coldstart --run "$k" --settle "$COLD_SETTLE" --timeout "$COLD_TIMEOUT"; then
+      log "cold start $k failed; see coldstart-$k.json"
+      ON_TEST_PAGE=0
+      continue
+    fi
     ON_TEST_PAGE=0
     log "idle on the dashboard $k/$RUNS"
     run idle --label all-on --run "$k" --settle "$IDLE_SETTLE" --window "$IDLE_WINDOW"

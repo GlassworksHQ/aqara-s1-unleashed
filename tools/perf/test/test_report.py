@@ -1,6 +1,7 @@
 """Parsers and report assembly on made-up device output (formats copied from Android 10)."""
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -293,11 +294,24 @@ class Build(unittest.TestCase):
         self.assertEqual(r["stop_to_dashboard_ms"]["median"], 3900)   # stopped at 9.5 s, settled at 13.4 s
 
     def test_a_failed_cold_start_is_counted_not_graded(self):
-        self.write("coldstart-4.json", {"run": 4, "ttid_ms": 1714, "launch": "relaunched-by-system",
+        self.write("coldstart-4.json", {"run": 4, "ttid_ms": 900, "launch": "relaunched-by-system",
                                         "error": "dashboard did not finish loading within 120 s (no GeckoView:PageStop)"})
         r = R.build(self.dir)["real_use"]
         self.assertEqual(len(r["errors"]), 1)
         self.assertEqual(r["dashboard_load_ms"]["n"], 3)
+        self.assertEqual(r["cold_start_ttid_ms"], {"median": 1900, "min": 1800, "max": 2000, "n": 3})
+        self.assertEqual(r["per_run"][-1]["ttid_ms"], 900)   # kept for diagnosis
+
+    def test_apk_sizes_are_kept_only_when_asked(self):
+        with open(os.path.join(self.dir, "report.json"), "w") as f:
+            json.dump({"apk": [{"file": "old.apk"}]}, f)
+        for keep, want in ((False, []), (True, [{"file": "old.apk"}])):
+            with open(os.path.join(self.dir, "report.json"), "w") as f:
+                json.dump({"apk": [{"file": "old.apk"}]}, f)
+            subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "report.py"), self.dir]
+                           + (["--keep-apk"] if keep else []), check=True, capture_output=True)
+            with open(os.path.join(self.dir, "report.json")) as f:
+                self.assertEqual(json.load(f)["apk"], want)
 
     def test_no_real_use_section_without_real_use_samples(self):
         d = tempfile.mkdtemp()

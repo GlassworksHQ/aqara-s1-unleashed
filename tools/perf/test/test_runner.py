@@ -110,6 +110,22 @@ class HomeRelaunch(unittest.TestCase):
             self.assertNotIn("am start -W", f.read())
 
 
+class FailedColdStart(unittest.TestCase):
+    def test_the_run_goes_on_and_takes_no_idle_sample_for_it(self):
+        tmp = tempfile.mkdtemp()
+        env, _ = fake_env(tmp, FAKE_NO_DASHBOARD="1", GW_PERF_COLD_SETTLE="0", GW_PERF_COLD_TIMEOUT="3")
+        out = os.path.join(tmp, "out")
+        p = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", out, "--skip-synthetic"],
+                           env=env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(p.returncode, 0, p.stderr[-2000:])
+        self.assertIn("cold start 1 failed", p.stderr)
+        self.assertFalse(os.path.exists(os.path.join(out, "idle-all-on-1.json")))
+        with open(os.path.join(out, "report.json")) as f:
+            r = json.load(f)["real_use"]
+        self.assertEqual(len(r["errors"]), 1)
+        self.assertIsNone(r["cold_start_ttid_ms"])
+
+
 class IdleOnly(unittest.TestCase):
     """The pane-diff steps in docs/perf.md, starting from an empty directory."""
 

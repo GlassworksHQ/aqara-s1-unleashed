@@ -49,7 +49,8 @@ def shell(cmd):
         if m:
             save("nonce.json", re.search(r"nonce=(\w+)", m.group(1)).group(1))
         if " -W " in cmd:
-            save("cold.json", True)
+            if not os.environ.get("FAKE_NO_DASHBOARD"):
+                save("cold.json", True)
             return "Starting: Intent\nStatus: ok\nActivity: sh.edm.s1kiosk/.MainActivity\nTotalTime: 1700\nWaitTime: 1710\nComplete\n"
         return "Starting: Intent\n"
     if cmd.startswith("input tap"):

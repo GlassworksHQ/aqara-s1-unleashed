@@ -220,7 +220,7 @@
   // Tap-to-paint latency under the reference load. The runner taps the target with `input tap`;
   // Event Timing gives input delay + processing + presentation per interaction (what INP uses).
   async function input() {
-    const WAIT_MS = 30000;
+    const WAIT_MS = Math.max(30000, TAPS * 2000 + 5000); // adb taps take about 1.5 s each on the S1
     stage.textContent = "";
     const tick = referenceLoad(0, W.mulberry32(SEED + 7));
     let running = true;

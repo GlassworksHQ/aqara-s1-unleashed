@@ -206,7 +206,7 @@ def real_use_summary(cold, idles, package):
     allmem = [app_memory(i) for runs in idles.values() for i in runs]
     roles = sorted({r for m in mems for r in m["by_role"]})
     return {
-        "cold_start_ttid_ms": P.spread([c["ttid_ms"] for c in cold]),
+        "cold_start_ttid_ms": P.spread([c["ttid_ms"] for c in cold if not c.get("error")]),
         "dashboard_load_ms": P.spread([c.get("dashboard_load_ms") for c in cold]),
         "dashboard_page_stop_ms": P.spread([c.get("page_stop_ms") for c in cold]),
         "stop_to_dashboard_ms": P.spread([c.get("stop_to_dashboard_ms") for c in cold]),
@@ -423,11 +423,12 @@ def main():
     ap.add_argument("run_dir")
     ap.add_argument("--apk", action="append", default=[])
     ap.add_argument("--budgets", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "budgets.json"))
+    ap.add_argument("--keep-apk", action="store_true", help="keep the apk sizes of the existing report.json (run.sh --idle-only)")
     a = ap.parse_args()
     rep = build(a.run_dir, a.apk, read_json(a.budgets))
     old = os.path.join(a.run_dir, "report.json")
-    if not a.apk and os.path.exists(old):
-        rep["apk"] = read_json(old).get("apk", [])  # a later --idle-only keeps the sizes measured earlier
+    if a.keep_apk and not a.apk and os.path.exists(old):
+        rep["apk"] = read_json(old).get("apk", [])
     with open(os.path.join(a.run_dir, "report.json"), "w") as f:
         json.dump(rep, f, indent=1)
     md = markdown(rep)
