@@ -11,7 +11,7 @@ const SELF = relative(ROOT, __filename);
 const FRAME_NAMES: [what: string, pattern: RegExp, catches: string[]][] = [
   ['the S1 (s1Overlay, s1kiosk, s1-backup, S1 Plus)', /\bs1/i, ['s1Overlay', 's1-backup', 'S1 Plus']],
   ['Aqara and its packages', /aqara|inhome|com\.lumi|baidu/i, ['Aqara', 'inhome', 'com.lumi.ota', 'com.baidu.input_auto']],
-  ['the S1 Kiosk app id', /sh\.edm|kiosk/i, ['sh.edm.s1kiosk', 'kiosk-apk']],
+  ['the S1 Kiosk app id', /sh\.edm|kiosk/i, ['sh.edm.s1kiosk', 'sh.edm.panel', 'kiosk-apk']],
   ['the S1 chip, board and USB ids', /a133|sunxi|allwinner|r818|quad-core|1f3a|efe8/i,
     ['A133', 'sunxi', 'Allwinner', 'R818', 'QUAD-CORE', '0x1f3a', '0xefe8']],
   ['the S1 partitions and their sizes', /vbmeta_system|vbmeta_vendor|dtbo|0x0*2000000\b|0x0*60000000\b|\b33554432\b|\b1610612736\b/i,
@@ -40,6 +40,13 @@ describe('kiln-core names no frame', () => {
     'catches %s (%s)', (name, _, pattern) => {
       expect(pattern.test(name)).toBe(true);
     });
+
+  // Patterns are flat alternations, so splitting on | gives each alternative.
+  it.each(FRAME_NAMES)('every alternative in the pattern for %s has a sample only it catches', (_, pattern, catches) => {
+    const alts = pattern.source.split('|').map((a) => new RegExp(a, pattern.flags));
+    const unpinned = alts.filter((alt) => !catches.some((n) => alt.test(n) && alts.filter((o) => o.test(n)).length === 1));
+    expect(unpinned.map((a) => a.source)).toEqual([]);
+  });
 
   it.each(FRAME_NAMES)('nothing names %s', (_, pattern) => {
     const hits = sources.flatMap((f) => readFileSync(f, 'utf8').split('\n')
