@@ -36,6 +36,8 @@ Was this our app, the panel, or adb?
 2. **Read the dropbox entries** (2026-11-12, verified; root needed to read the files)
    ```
    $ adb shell su -c 'ls -l /data/system/dropbox'
+   $ adb shell su -c 'cat /data/system/dropbox/system_server_wtf@<timestamp>.txt'
+   $ adb shell su -c 'cat /data/system/dropbox/system_server_crash@<timestamp>.txt'
    … system_server_wtf@…   (ActivityManager)
    … system_server_crash@… (the kiosk's MainActivity)
    … SYSTEM_RESTART@…      (15:23)
@@ -61,16 +63,23 @@ Was this our app, the panel, or adb?
    | 2026-11-12 13:48 | 4 | 21 | the panel was restarted by hand | perf run: repeated force-stop and cold start |
    | 2026-11-12 15:21–15:23 | 20 | 20 | `SYSTEM_RESTART` at 15:23 | `adb install -r` of 0.4.3 over a test build, two installs about 4 minutes apart |
 
-   So the 13:48 "USB drop" was this same failure, not a cable or adb problem.
+   Counted per minute from the file dates:
+   ```
+   $ adb shell su -c 'ls -l /data/system/dropbox' | grep -E 'system_server_(crash|wtf)|SYSTEM_RESTART' \
+       | awk '{print $6, substr($7,1,5), $8}' | sed 's/@.*//' | sort | uniq -c
+   ```
+
+   The 13:48 "USB drop" shows the same ActivityManager failure at the same minute. That it caused
+   the adb disconnect is likely but **untested**; a separate cable or adb fault isn't ruled out.
 
 ## Result
 
 | Claim | Evidence |
 |---|---|
 | The failure is Android 10's ActivityManager, not our code: `updateLruProcessLocked` adds at index -1 | `system_server_wtf` entries, attempt 2 |
-| A fast churn of kiosk processes triggers it: reinstall, force-stop and cold start, and the app's own relaunch | timing table, attempt 3 |
+| **Hypothesis (untested):** a fast churn of kiosk processes triggers it (reinstall, force-stop and cold start, the app's own relaunch), and the app's restart behaviour may contribute | timing only, attempt 3; no test separates the two yet |
 | It ends in a framework restart, and the panel recovers by itself | `SYSTEM_RESTART` at 15:23; at 15:24 the kiosk was resumed, its service in the foreground, still 0.4.3 and `thread_router` |
-| Nothing on storage changed | same APK hash (`8b6a5f00…`), same settings file hash before and after |
+| The installed APK and the app's settings file came through unchanged | same APK hash (`8b6a5f00…`) and same `kiosk.xml` hash before and after; nothing else was checked |
 
 Likely why the kiosk is hit (**untested**): it runs several processes (`:boot`, GeckoView's GPU,
 crash helper and tab processes), and both the system and our own `BootReceiver` / `KioskService` start
@@ -80,11 +89,12 @@ it again at once after a kill. That makes many attach and death events overlap i
 
 Not reproduced on purpose; it costs the shared panel a framework restart. The pattern so far:
 
-1. Install a test build with `adb install -r`, wait for dex2oat (~25 s).
-2. Install the release over it with `adb install -r -d` while the app is running.
+1. Install a test build with `adb install -r <test-build.apk>`, wait for dex2oat (~25 s).
+2. Install the release over it with `adb install -r -d <release.apk>` while the app is running.
 3. Watch `adb shell su -c 'ls -lt /data/system/dropbox | head'` for `system_server_wtf` entries.
 
-This writes the app (install), nothing else. Undo: wait for the restart, then check the app version
+This installs the app, and the failure adds dropbox entries and restarts the framework. We only
+checked that the APK and `kiosk.xml` came through unchanged; other storage wasn't checked. Undo: wait for the restart, then check the app version
 and the radio mode.
 
 ## Mitigation for anyone driving the dev panel (untested)
