@@ -2,6 +2,10 @@ package sh.edm.s1kiosk.esphome
 
 import sh.edm.esphome.*
 import sh.edm.esphome.android.EspHomeMdns
+import dev.glassworks.pane.EntityRegistry
+import dev.glassworks.pane.Pane
+import dev.glassworks.pane.PaneContext
+import dev.glassworks.pane.PanelEvent
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -43,7 +47,7 @@ import sh.edm.s1kiosk.dashboard.DashboardOptions
 import sh.edm.s1kiosk.dashboard.Dashboards
 import sh.edm.s1kiosk.dashboard.StableChange
 import sh.edm.s1kiosk.discovery.HaUrls
-import sh.edm.s1kiosk.sendspin.SendspinPlayer
+import sh.edm.s1kiosk.sendspin.SendspinPane
 import sh.edm.s1kiosk.setup.SetupSignals
 import sh.edm.s1kiosk.update.UpdateManager
 import sh.edm.s1kiosk.voice.TfliteWakeWord
@@ -120,8 +124,8 @@ class PanelDevice(
         play = { chimes().chime() },
         silence = { synchronized(this) { chimePlayer }?.cancel() },
     )
-    /** Native Music Assistant player (Sendspin, docs/sendspin.md); created in startInternal. */
-    @Volatile private var sendspin: SendspinPlayer? = null
+    /** The features that add entities and react to the panel (Sendspin, ...); built in [initEntities]. */
+    @Volatile private var panes: List<Pane> = emptyList()
     /** Zigbee/Thread radio modes (docs/radio.md); applies the stored mode after every start. */
     val radio = RadioController(
         load = { prefs.radioMode },
@@ -182,8 +186,8 @@ class PanelDevice(
         server = null
         voice?.stop()
         voice = null
-        sendspin?.stop("shutdown")
-        sendspin = null
+        panes.forEach { it.stop() }
+        panes = emptyList()
         radio.stop()
         timeZone.stop()
         updates.stop()
@@ -225,7 +229,7 @@ class PanelDevice(
         }
 
         if (voiceEnabled) startVoice()
-        if (prefs.sendspinEnabled) sendspin?.start()
+        panes.forEach { it.start() }
         radio.start()
         timeZone.start()
         updates.start()
@@ -251,7 +255,9 @@ class PanelDevice(
      */
     internal fun initEntities(identity: DeviceIdentity, baseConfig: WallBase.Config): WallBase {
         this.identity = identity
-        sendspin = SendspinPlayer(ctx, prefs, identity.macAddress) { exec.execute { server?.publishStates() } }
+        panes = listOf(
+            SendspinPane(PaneContext(ctx, prefs, identity, publishStates = { runCatching { exec.execute { server?.publishStates() } } })),
+        )
         coreEntities = buildEntities()
         appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
         dashboardRebuild = StableChange(dashboardOptions(appliedDashboards))
@@ -331,7 +337,7 @@ class PanelDevice(
     // ------------------------------------------------------------------ dashboard select
 
     private fun assemble(base: WallBase, layout: BaseLayout): List<ApiEntity> =
-        coreEntities + dashboardSelect(dashboardRebuild.applied()) + baseEntities(base, layout)
+        EntityRegistry(panes).assemble(coreEntities + dashboardSelect(dashboardRebuild.applied()) + baseEntities(base, layout))
 
     private fun currentDashboardOption(list: List<Dashboard>) =
         DashboardOptions.currentOption(prefs.urlSetting, prefs.haBase, list)
@@ -441,17 +447,7 @@ class PanelDevice(
     private fun startServer() {
         val s = ApiServer(ApiServer.DEFAULT_PORT, { identity }, entities, noiseKeys)
         s.voice = controller
-        s.sendspin = object : SendspinTokenSource {
-            override fun clientIdIfStarted() = sendspin?.takeIf { it.started }?.clientId ?: ""
-            override fun pairingToken(): Pair<Int, String?> {
-                val p = sendspin
-                return when {
-                    p == null || !p.started ->
-                        (if (prefs.sendspinEnabled) SendspinApi.STATUS_NOT_READY else SendspinApi.STATUS_DISABLED) to null
-                    else -> SendspinApi.STATUS_OK to p.pairingToken()
-                }
-            }
-        }
+        panes.forEach { it.bind(s) }
         s.onCommand = { exec.execute { s.publishStates() } }
         s.onClientHello = { info, addr ->
             if (HaUrls.isHomeAssistantHello(info)) SetupSignals.onHaHello()
@@ -498,6 +494,8 @@ class PanelDevice(
         server?.replaceKey(k)
     }
 
+    private fun emit(event: PanelEvent) = panes.forEach { it.onEvent(event) }
+
     /** esphome-main thread. */
     private fun onPrefChanged(key: String?) {
         val v = voice
@@ -510,11 +508,8 @@ class PanelDevice(
             "speaker_volume", "speaker_muted" -> applyVolume()
             KioskPrefs.KEY_BLOCK_AQARA_CLOUD, KioskPrefs.KEY_BASE_BACKEND, KioskPrefs.KEY_BASE_TRANSPORT ->
                 reconfigureBase("setting $key changed")
-            KioskPrefs.KEY_SENDSPIN_ENABLED -> if (prefs.sendspinEnabled) sendspin?.start() else sendspin?.stop("user_request")
-            // A new client/hello must carry the changed setting: reconnect.
-            KioskPrefs.KEY_SENDSPIN_UNPAIRED, KioskPrefs.KEY_SENDSPIN_SERVER -> sendspin?.restartSession()
-            KioskPrefs.KEY_SENDSPIN_FLAC -> sendspin?.onFlacSettingChanged()
         }
+        emit(PanelEvent.SettingChanged(key))
         server?.publishStates()
     }
 
@@ -534,12 +529,11 @@ class PanelDevice(
         when (e) {
             is VoiceEvent.WakeDetected, is VoiceEvent.Listening, is VoiceEvent.Speaking -> {
                 if (mediaPlayer.isPlaying && !announcing) { mediaPausedForVoice = true; mediaPlayer.pause() }
-                // Sendspin keeps its timeline (the group plays on); the panel just goes quiet locally.
-                sendspin?.setDucked(true)
+                emit(PanelEvent.SpeakerClaimed(true))
             }
             is VoiceEvent.Idle, is VoiceEvent.Error -> {
                 if (mediaPausedForVoice) { mediaPausedForVoice = false; mediaPlayer.resume() }
-                if (!announcing) sendspin?.setDucked(false)
+                if (!announcing) emit(PanelEvent.SpeakerClaimed(false))
             }
             else -> Unit
         }
@@ -663,15 +657,6 @@ class PanelDevice(
                 )
             },
             handle = ::onMediaCommand,
-        ),
-        // --- Music Assistant (Sendspin): native, synced player (docs/sendspin.md)
-        SwitchEntity(
-            "sendspin", "Music Assistant player (Sendspin)", "mdi:speaker-wireless", EntityCategory.CONFIG,
-            get = { prefs.sendspinEnabled }, set = { prefs.sendspinEnabled = it },
-        ),
-        TextSensorEntity(
-            "sendspin_status", "Music Assistant player status", "mdi:speaker-wireless", EntityCategory.DIAGNOSTIC,
-            get = { sendspin?.statusText() ?: "off" },
         ),
         SwitchEntity(
             "mute_microphone", "Mute microphone", "mdi:microphone-off", EntityCategory.CONFIG,
@@ -833,10 +818,10 @@ class PanelDevice(
         val resume = mediaPlayer.isPlaying
         if (resume) mediaPlayer.pause()
         announcing = true
-        sendspin?.setDucked(true)
+        emit(PanelEvent.SpeakerClaimed(true))
         voicePlayer.play(listOf(url)) {
             announcing = false
-            sendspin?.setDucked(false)
+            emit(PanelEvent.SpeakerClaimed(false))
             if (resume) mediaPlayer.resume()
             exec.execute { server?.publishStates() }
         }
