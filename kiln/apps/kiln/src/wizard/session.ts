@@ -426,7 +426,13 @@ export class Session {
   async radio(): Promise<void> {
     this.setup ??= await this.openSetup();
     if (!this.setup) { this.fail(3, new Error(`${this.d.frame.app} isn't answering. Is it installed and running?`), true); return; }
-    const st = await this.withSetup((x) => x.getState());
+    let st: SetupState;
+    try {
+      st = await this.withSetup((x) => x.getState());
+    } catch (e) {
+      this.fail(3, e, true); // e.g. the app restarted and didn't come back: say so, not "Connecting…" forever
+      return;
+    }
     this.setupPhase({
       phase: 'radio', radio: st.radio,
       note: st.radio.helper ? `Now: ${st.radio.status}` : 'Only Off is available: this panel has no root helper for the radio.',
@@ -438,10 +444,14 @@ export class Session {
     if (s.phase !== 'radio') return;
     if (mode !== this.setup!.state!.radio.mode) {
       this.setupPhase({ ...s, busy: true, note: 'Switching the radio…', error: undefined });
+      // the answer can come after the person has moved on (Done, another route): then it changes nothing here
+      const stale = () => this.closed || this.s.screen !== 'setup' || this.s.setup.phase !== 'radio';
       try {
         const r = await this.withSetup((x) => x.setRadio(mode));
+        if (stale()) return;
         this.setupPhase({ ...s, radio: r.radio, busy: false, note: r.radio.status });
       } catch (e) {
+        if (stale()) return;
         this.setupPhase({ ...s, busy: false, error: (e as Error).message });
         return;
       }

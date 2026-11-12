@@ -311,7 +311,7 @@ function Radio({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'radi
       </RadioGroup.Root>
       <p className={setup.error ? 'status err' : 'status'} role="status">{setup.error ?? setup.note}</p>
       <div className="foot">
-        <button type="button" className="link" onClick={() => session.finish()}>Skip, leave it as it is</button>
+        <button type="button" className="link" disabled={setup.busy || !!s.busy} onClick={() => void session.click('finish', () => session.finish())}>Skip, leave it as it is</button>
         <button type="button" className="btn ember" disabled={setup.busy || !!s.busy} onClick={() => void session.click('radio', () => session.applyRadio(mode))}>Finish</button>
       </div>
     </section>
