@@ -58,6 +58,7 @@ change until Glassworks v1.
 | `PaneContext` | What the core gives a pane: the app context, settings, the device identity, `publishStates()`, `emit()`, `entitiesChanged()` and `sendEvent()`. |
 | `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished, Home Assistant subscribed. A pane raises one with `PaneContext.emit`. |
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
+| `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
 
 ## Writing a pane
 
@@ -115,6 +116,14 @@ server for this. The core owns it, including its restarts.
 Entities come from [esphome-api](../../../../../../libs/esphome-api/README.md). Home Assistant
 keys them by object id, so an object id is permanent: renaming one makes a new entity in every
 home that already has the panel.
+
+## Android versions
+
+Code outside `dev.glassworks.platform` never reads `Build.VERSION.SDK_INT`. If you need a version
+check, add a query to `Platform` that names the capability and says in its KDoc where the boundary
+comes from, then call it. `PlatformTest` pins each boundary, and `PlatformConfinementTest` fails
+`./gradlew test` with the file and line of any other read. The libraries in `app/libs` do not depend
+on Glassworks, so each keeps its own checks in an internal `Compat.kt`, which the same test allows.
 
 ## Threads
 
