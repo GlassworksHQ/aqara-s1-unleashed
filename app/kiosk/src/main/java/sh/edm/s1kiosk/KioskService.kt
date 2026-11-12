@@ -38,15 +38,18 @@ class KioskService : Service() {
     private var device: PanelDevice? = null
     private var discovery: HaDiscovery? = null
     private var wifiScanner: ScreenOffWifiScanner? = null
+    private lateinit var foreground: KioskForeground
 
     override fun onCreate() {
         super.onCreate()
         KioskPrefs(this).migrateRadioStep() // before discovery can save an HA URL in this process
         val notification = buildNotification()
-        val location = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-            .any { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
-        val types = KioskForeground.start(location) { Platform.startForeground(this, NOTIFICATION_ID, notification, it) }
-        Log.i("S1Kiosk", "foreground service types $types (location ${if (types and KioskForeground.LOCATION != 0) "on" else "off"})")
+        foreground = KioskForeground(
+            Platform,
+            onRefused = { t, e -> Log.w("S1Kiosk", "foreground service types $t refused", e) },
+            startWith = { Platform.startForeground(this, NOTIFICATION_ID, notification, it) },
+        )
+        promote()
         glassworks.screen.start(this)
         wifiScanner = glassworks.frame.screenOffWifiScanner(this).also { it.start() }
         glassworks.voiceState = if (KioskPrefs(this).voice.enabled) "idle" else "off"
@@ -97,7 +100,25 @@ class KioskService : Service() {
         super.onDestroy()
     }
 
+    /**
+     * Runs the service with every foreground type it may have now. Called on each start, so
+     * [start] after a runtime grant adds the type without a restart (voice keeps the mic with the
+     * screen off). Does nothing while the types are unchanged.
+     */
+    private fun promote() {
+        val granted = { p: String -> checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED }
+        val before = foreground.types
+        val types = foreground.promote(
+            micGranted = granted(Manifest.permission.RECORD_AUDIO),
+            locationGranted = granted(Manifest.permission.ACCESS_FINE_LOCATION) || granted(Manifest.permission.ACCESS_COARSE_LOCATION),
+        )
+        if (types != before) {
+            Log.i("S1Kiosk", "foreground service types $types (location ${if (types and KioskForeground.LOCATION != 0) "on" else "off"})")
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        promote()
         ImprovController.handleIntent(intent) // --ez improv / release_device_owner (via ImprovActivity)
         return START_STICKY
     }
