@@ -17,7 +17,7 @@ Code: the protocol core is the reusable pure-JVM library [`app/libs/esphome-api`
 (package `sh.edm.esphome`), with mDNS from [`app/libs/esphome-api-android`](../app/libs/esphome-api-android/README.md);
 the panel's entities and glue are `PanelDevice` and `VoiceAssistantController` in
 `app/kiosk/src/main/java/sh/edm/s1kiosk/esphome/`, with the wall base and the Aqara cloud switch in
-`base/WallBasePane.kt`, owned by the foreground `KioskService`, so it
+`base/WallBasePane.kt` and the radio in `radio/RadioPane.kt`, owned by the foreground `KioskService`, so it
 keeps working while the screen is off. Logs: `adb logcat -s S1ESPHome S1Voice`.
 
 ## Add it to Home Assistant

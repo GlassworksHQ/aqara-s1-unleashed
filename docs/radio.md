@@ -640,7 +640,8 @@ also brings a matching host cpcd. No image is shipped; see
 
 ## App side
 
-`app/kiosk/.../radio/RadioController.kt`, `RadioMode.kt`:
+`app/kiosk/.../radio/RadioController.kt`, `RadioMode.kt`. `RadioPane.kt` holds the controller, its Home
+Assistant entities and the Thread join from Home Assistant, as a Glassworks pane:
 
 - The select offers `Off`, `Zigbee coordinator (TCP)`, `Zigbee router (repeater)`, `Thread border router`,
   `Thread router (repeater)` (0.4.3; before, the repeaters were `Zigbee router` and `Thread router`).
