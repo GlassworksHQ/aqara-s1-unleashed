@@ -73,4 +73,10 @@ open class PlatformApi internal constructor(
 }
 
 /** The queries for the Android this app runs on. */
-object Platform : PlatformApi(Build.VERSION.SDK_INT)
+object Platform : PlatformApi(Build.VERSION.SDK_INT) {
+    /**
+     * The ABIs this device runs, preferred first (`Build.SUPPORTED_ABIS`). The S1's 32-bit userspace
+     * gives `armeabi-v7a, armeabi`; an arm64 device gives `arm64-v8a` first.
+     */
+    val supportedAbis: List<String> = Build.SUPPORTED_ABIS.toList()
+}

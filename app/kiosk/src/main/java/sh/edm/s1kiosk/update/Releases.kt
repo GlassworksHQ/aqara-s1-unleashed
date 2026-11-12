@@ -32,6 +32,24 @@ data class UpdateOffer(
     val sha256: ReleaseAsset,
 )
 
+/**
+ * The ABIs this app is built for (`s1Abi` in app/kiosk/build.gradle.kts), each with its release
+ * APK's name stem. Every ABI's APK has the same version and versionCode (docs/releasing.md "ABIs").
+ */
+enum class ApkAbi(val id: String, private val stem: String) {
+    /** The S1's ABI. Its name has been `s1-kiosk-<version>.apk` since the first release, and panels up to 0.4.3 look only for that name. */
+    ARMEABI_V7A("armeabi-v7a", "s1-kiosk"),
+    ARM64_V8A("arm64-v8a", "s1-kiosk-arm64-v8a");
+
+    fun apkName(v: AppVersion) = "$stem-$v.apk"
+    fun shaName(v: AppVersion) = "${apkName(v)}.sha256"
+
+    companion object {
+        /** This app's ABIs among [deviceAbis] (`Build.SUPPORTED_ABIS`), in the device's order of preference. */
+        fun among(deviceAbis: List<String>): List<ApkAbi> = deviceAbis.mapNotNull { id -> entries.firstOrNull { it.id == id } }.distinct()
+    }
+}
+
 class ReleaseFormatException(message: String) : Exception(message)
 
 /** The newest installable release of this app ([offer], or null), and why a newer one was refused. */
@@ -39,8 +57,10 @@ class ReleasePick(val offer: UpdateOffer?, val problem: String?)
 
 /**
  * GitHub Releases as the app's update source (docs/releasing.md). The release workflow
- * (.github/workflows/release.yml) publishes `s1-kiosk-<version>.apk` and `s1-kiosk-<version>.apk.sha256`
- * on tag `v<version>` or `aqara-s1-plus-v<version>`; everything else about a release is ignored.
+ * (.github/workflows/release.yml) publishes one APK and its `.sha256` per [ApkAbi] on tag
+ * `v<version>` or `aqara-s1-plus-v<version>`; everything else about a release is ignored. The app
+ * takes the APK of the first of the device's ABIs that the release has, as Android does for native
+ * libraries.
  *
  * The repo will also hold other frames and libraries (Glassworks), each releasing under its own tag
  * prefix, so "the latest release" may not be this app's. The app lists recent releases and picks
@@ -62,9 +82,6 @@ object Releases {
     const val MAX_SUMMARY = 255
     const val MAX_APK_BYTES = 256L * 1024 * 1024
     const val MAX_SHA_BYTES = 4 * 1024
-
-    fun apkName(v: AppVersion) = "s1-kiosk-$v.apk"
-    fun shaName(v: AppVersion) = "${apkName(v)}.sha256"
 
     /** Parses a release object; throws [ReleaseFormatException] on anything malformed. */
     fun parse(json: String): GithubRelease = try {
@@ -106,13 +123,13 @@ object Releases {
      * pre-release, odd assets), the newest acceptable one is still offered, and [ReleasePick.problem]
      * says what was wrong with the newer one. No release of this app at all: no offer, no problem.
      */
-    fun newest(releases: List<GithubRelease>): ReleasePick {
+    fun newest(releases: List<GithubRelease>, deviceAbis: List<String>): ReleasePick {
         var best: UpdateOffer? = null
         var refused: Pair<AppVersion, String>? = null
         for (r in releases) {
             val v = tagVersion(r.tag) ?: continue
             try {
-                val o = offer(r)
+                val o = offer(r, deviceAbis)
                 if (best == null || o.version > best.version) best = o
             } catch (e: ReleaseFormatException) {
                 if (refused == null || v > refused.first) refused = v to e.message.orEmpty()
@@ -126,10 +143,10 @@ object Releases {
     /**
      * The installable offer in [r], or a [ReleaseFormatException] saying why there is none: drafts,
      * pre-releases (GitHub flag or a SemVer pre-release tag), a tag that isn't one of this app's
-     * ([tagVersion]), or
+     * ([tagVersion]), no APK for any of [deviceAbis] (`Build.SUPPORTED_ABIS`, preferred first), or
      * missing/odd assets. Download URLs must be HTTPS release downloads on github.com for this tag.
      */
-    fun offer(r: GithubRelease): UpdateOffer {
+    fun offer(r: GithubRelease, deviceAbis: List<String>): UpdateOffer {
         if (r.draft) throw ReleaseFormatException("release ${r.tag} is a draft")
         if (r.prerelease) throw ReleaseFormatException("release ${r.tag} is a pre-release")
         val v = tagVersion(r.tag) ?: throw ReleaseFormatException("tag '${r.tag.take(40)}' is not a version of this app")
@@ -140,8 +157,12 @@ object Releases {
             if (!isReleaseDownload(a.url, r.tag, name)) throw ReleaseFormatException("unexpected download URL for $name")
             return a
         }
-        val apk = asset(apkName(v))
-        val sha = asset(shaName(v))
+        val abis = ApkAbi.among(deviceAbis)
+        if (abis.isEmpty()) throw ReleaseFormatException("no APK is built for this device's ABIs (${deviceAbis.joinToString()})")
+        val abi = abis.firstOrNull { a -> r.assets.count { it.name == a.apkName(v) } == 1 }
+            ?: throw ReleaseFormatException("release ${r.tag} has no ${abis.joinToString(" or ") { it.apkName(v) }}")
+        val apk = asset(abi.apkName(v))
+        val sha = asset(abi.shaName(v))
         if (apk.size > MAX_APK_BYTES) throw ReleaseFormatException("${apk.name} is too large (${apk.size} bytes)")
         if (apk.size == 0L) throw ReleaseFormatException("${apk.name} is empty")
         return UpdateOffer(v, r.tag, r.body, r.htmlUrl.takeIf(::isHttps).orEmpty(), apk, sha)
