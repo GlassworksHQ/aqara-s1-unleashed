@@ -207,6 +207,12 @@ The hosted web installer installs the latest release it saw when it was last bui
 (`web/scripts/stage-assets.mjs`). The workflow's last step asks Vercel to rebuild it through the
 `VERCEL_DEPLOY_HOOK` secret; without that secret it only warns, and you redeploy the installer by hand.
 
+Vercel does not build on pushes (`git.deploymentEnabled: false` in `web/vercel.json`), so PRs get no
+Vercel preview. Production builds come only from that deploy hook, called by `release.yml` and by
+[`installer-deploy.yml`](../.github/workflows/installer-deploy.yml). The second runs on a push to
+`main` that changes an installer input (`web/`, `branding/`, or a repo file the installer stages), or
+by hand from the Actions tab.
+
 ## Building a signed APK locally
 
 The same environment variables as CI. Without them, `assembleRelease` produces an **unsigned** APK

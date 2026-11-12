@@ -11,6 +11,9 @@
 //
 // Nothing device-specific is staged: no backups, no Aqara binaries, no keys. public/assets/blobs is
 // gitignored.
+//
+// The hosted installer is rebuilt only when one of its inputs changes on main. If you add a repo
+// file here, add it to the paths in .github/workflows/installer-deploy.yml too.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';

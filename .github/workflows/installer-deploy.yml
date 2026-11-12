@@ -1,0 +1,53 @@
+# Rebuilds the hosted web installer (https://s1.edm.sh, Vercel) only when something it serves changes.
+#
+# Vercel's own Git builds are off (web/vercel.json: git.deploymentEnabled false), because every push
+# to every branch counted against Vercel's deployment limits, even when an Ignored Build Step
+# cancelled it. Production deploys now come from the VERCEL_DEPLOY_HOOK secret (a deploy hook on
+# main), called by:
+#   - this workflow, on a push to main that touches the paths below
+#   - release.yml, after each S1 Kiosk release (the installer picks the latest APK at build time)
+#   - workflow_dispatch, to redeploy by hand
+#
+# The paths are the installer's build inputs: web/ itself, the files web/src imports from outside
+# web/, and the repo files web/scripts/stage-assets.mjs stages (the rest come from assets.lock.json).
+# Keep them in step with those two.
+name: Installer deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '!web/**/*.md'
+      - '!web/test/**'
+      - '!web/packages/*/test/**'
+      - '!web/mockup/**'
+      - 'branding/**'
+      - 'docs/img/fel-button.jpg'
+      - 'tools/install/s1kiosk-switch.sh'
+      - 'tools/radio/s1kiosk_radio.rc'
+      - 'tools/radio/s1kiosk_radio.sh'
+      - 'tools/root/s1kiosk_*.rc'
+      - 'tools/root/s1kiosk_*.sh'
+      - 'tools/root/s1kiosk_*.pub'
+      - '.github/workflows/installer-deploy.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: installer-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Ask Vercel to rebuild the installer
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          # This hook is the only way the installer deploys, so a missing secret fails the run.
+          if [ -z "$VERCEL_DEPLOY_HOOK" ]; then echo "::error::VERCEL_DEPLOY_HOOK not set: the installer was not redeployed"; exit 1; fi
+          curl -fsS -X POST "$VERCEL_DEPLOY_HOOK" > /dev/null && echo "installer rebuild requested"
