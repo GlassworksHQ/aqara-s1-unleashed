@@ -26,6 +26,8 @@ import sh.edm.s1kiosk.frame.WifiScanPolicy.Link
  * `startScan` needs the location permission, location on, and the location app-op allowed. With
  * the screen off, Android 10 allows that op only because KioskService runs with the location type
  * ([sh.edm.s1kiosk.KioskForeground]). A refused scan returns false, and the scanner logs why.
+ * The first refusal for the app-op in each run calls [onForegroundOnly], so the service can take
+ * the location type when location was granted after it started.
  *
  * Runs on its own thread, or on [looper] when given. [start] after [stop] starts again.
  */
@@ -33,6 +35,8 @@ class ScreenOffWifiScanner(
     context: Context,
     private val looper: Looper? = null,
     private val clock: () -> Long = SystemClock::elapsedRealtime,
+    /** On the scanner's thread. */
+    private val onForegroundOnly: () -> Unit = {},
 ) {
     companion object {
         const val TAG = "S1Kiosk.Wifi"
@@ -51,6 +55,7 @@ class ScreenOffWifiScanner(
     private var thread: HandlerThread? = null
     @Volatile private var handler: Handler? = null
     @Volatile private var loggedFailure = false
+    private var reportedForegroundOnly = false
 
     private val due = Runnable { step() }
 
@@ -60,6 +65,7 @@ class ScreenOffWifiScanner(
 
     @Synchronized fun start() {
         if (handler != null) return
+        reportedForegroundOnly = false
         val h = Handler(looper ?: HandlerThread("s1-wifi-scan").also { it.start(); thread = it }.looper)
         handler = h
         ctx.registerReceiver(receiver, IntentFilter().apply {
@@ -100,8 +106,13 @@ class ScreenOffWifiScanner(
         if (scans == null && wasScanning) Log.i(TAG, "screen-off scans stop: ${why(w, scans)}")
         if (d.scanNow) {
             @Suppress("DEPRECATION") val ok = guard("startScan") { wifi.startScan() } ?: false
+            val refused = if (ok) null else refusal()
             Log.i(TAG, "screen off, ${why(w, scans)}: scan $scans " +
-                (if (ok) "started" else "refused (${refusal()})") + ", next in ${d.wakeInMs!! / 1000} s")
+                (if (refused == null) "started" else "refused (${refused.text})") + ", next in ${d.wakeInMs!! / 1000} s")
+            if (refused == WifiScanPolicy.Refusal.FOREGROUND_ONLY && !reportedForegroundOnly) {
+                reportedForegroundOnly = true
+                onForegroundOnly()
+            }
         } else if (scans != null && !wasScanning) {
             Log.i(TAG, "screen off, ${why(w, scans)}: first scan in ${d.wakeInMs!! / 1000} s")
         }
@@ -132,7 +143,7 @@ class ScreenOffWifiScanner(
     }
 
     @Suppress("DEPRECATION")
-    private fun refusal(): String = WifiScanPolicy.refusal(
+    private fun refusal(): WifiScanPolicy.Refusal = WifiScanPolicy.refusal(
         permission = ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED,
         locationOn = runCatching { Settings.Secure.getInt(ctx.contentResolver, Settings.Secure.LOCATION_MODE) }.getOrDefault(1) != 0,
         opAllowed = runCatching {

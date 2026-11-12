@@ -1,12 +1,18 @@
 package sh.edm.s1kiosk
 
 import android.Manifest
+import android.app.AppOpsManager
 import android.app.ForegroundServiceStartNotAllowedException
 import android.app.InvalidForegroundServiceTypeException
 import android.app.MissingForegroundServiceTypeException
 import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.net.wifi.SupplicantState
+import android.net.wifi.WifiManager
+import android.os.PowerManager
+import android.os.Process
+import android.provider.Settings
 import dev.glassworks.platform.PlatformApi
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -21,12 +27,16 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ServiceController
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLooper
+import org.robolectric.shadows.ShadowWifiInfo
 import sh.edm.s1kiosk.gecko.GeckoPinHarness
 import sh.edm.s1kiosk.gecko.GeckoShadows
+import java.time.Duration
 
 /**
  * #93 on Android 14: the service's real startForeground calls, MainActivity's permission result,
- * and the refusals Android 14 throws as IllegalStateException.
+ * and the refusals Android 14 throws as IllegalStateException. #102 on Android 10: a location grant
+ * from outside the app.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(
@@ -66,6 +76,31 @@ class KioskForegroundWiringTest {
 
         h.activity.onRequestPermissionsResult(1, arrayOf(Manifest.permission.RECORD_AUDIO), intArrayOf(PackageManager.PERMISSION_DENIED))
         assertNull(shadowOf(app).nextStartedService)
+    }
+
+    /**
+     * #102: location granted after the service started, as a device owner's setPermissionGrantState
+     * does. The screen-off scan is refused for the app-op, and the service takes the location type.
+     */
+    @Config(sdk = [29])
+    @Test fun aScanRefusedForTheAppOpAfterALocationGrantAddsTheLocationType() {
+        val wifi = app.getSystemService(WifiManager::class.java)
+        @Suppress("DEPRECATION") wifi.setWifiEnabled(true)
+        shadowOf(wifi).setConnectionInfo(ShadowWifiInfo.newInstance().also { shadowOf(it).setSupplicantState(SupplicantState.DISCONNECTED) })
+        shadowOf(wifi).setStartScanSucceeds(false)
+        shadowOf(app.getSystemService(PowerManager::class.java)).setIsInteractive(false)
+        Settings.Secure.putInt(app.contentResolver, Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_HIGH_ACCURACY)
+        shadowOf(app.getSystemService(AppOpsManager::class.java))
+            .setMode(AppOpsManager.OPSTR_FINE_LOCATION, Process.myUid(), app.packageName, AppOpsManager.MODE_IGNORED)
+
+        val s = Robolectric.buildService(KioskService::class.java).create().also { service = it }
+        assertEquals(mic, s.get().foregroundServiceType)
+
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
+        val scanner = ShadowLooper.getAllLoopers().single { it.thread.name == "s1-wifi-scan" }
+        shadowOf(scanner).idleFor(Duration.ofSeconds(10))
+        ShadowLooper.idleMainLooper()
+        assertEquals(mic or location, s.get().foregroundServiceType)
     }
 
     /** Android 14 throws these as ServiceStartNotAllowedException, an IllegalStateException. */

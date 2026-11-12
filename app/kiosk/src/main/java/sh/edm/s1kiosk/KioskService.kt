@@ -51,7 +51,7 @@ class KioskService : Service() {
         )
         promote()
         glassworks.screen.start(this)
-        wifiScanner = glassworks.frame.screenOffWifiScanner(this).also { it.start() }
+        wifiScanner = glassworks.frame.screenOffWifiScanner(this) { main.post { if (wifiScanner != null) promote() } }.also { it.start() }
         glassworks.voiceState = if (KioskPrefs(this).voice.enabled) "idle" else "off"
         glassworks.voiceUi = VoiceUi(glassworks.voiceState)
         glassworks.voiceCancel = { device?.cancelVoice() }
@@ -103,7 +103,8 @@ class KioskService : Service() {
     /**
      * Runs the service with every foreground type it may have now. Called on each start, so
      * [start] after a runtime grant adds the type without a restart (voice keeps the mic with the
-     * screen off). Does nothing while the types are unchanged.
+     * screen off). Also called on the Wi-Fi scanner's first refusal for the location app-op, which
+     * covers a grant from outside the app. Does nothing while the types are unchanged.
      */
     private fun promote() {
         val granted = { p: String -> checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED }
