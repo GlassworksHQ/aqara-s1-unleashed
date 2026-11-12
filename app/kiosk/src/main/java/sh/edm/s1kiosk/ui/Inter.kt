@@ -5,8 +5,8 @@ import android.graphics.Typeface
 import android.graphics.fonts.Font
 import android.graphics.fonts.FontFamily
 import android.graphics.fonts.FontStyle
-import android.os.Build
 import android.util.Log
+import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.R
 import java.nio.ByteBuffer
 import java.util.Locale
@@ -47,7 +47,7 @@ object Inter {
     }
 
     private fun build(context: Context, weight: Int, settings: String): Typeface? {
-        if (failed || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        if (failed || !Platform.hasFontBuilder) return null
         return try {
             // One copy of the file for every instance (Font.Builder(Resources, id) would read it each time).
             val buf = data ?: load(context).let { bytes ->

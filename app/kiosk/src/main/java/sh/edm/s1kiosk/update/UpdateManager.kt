@@ -8,9 +8,9 @@ import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
-import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.BuildConfig
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.radio.ShellProps
@@ -330,7 +330,7 @@ class UpdateManager(
         // Both flags: on Android 9/10, getPackageArchiveInfo with only GET_SIGNING_CERTIFICATES leaves
         // signingInfo null for a downloaded (not installed) APK, so a signed release looked unsigned
         // (found on the panel with 0.4.0). GET_SIGNATURES still fills `signatures` there.
-        val flags = if (Build.VERSION.SDK_INT >= 28) {
+        val flags = if (Platform.hasSigningInfo) {
             PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
         } else {
             PackageManager.GET_SIGNATURES
@@ -342,12 +342,12 @@ class UpdateManager(
 
     @Suppress("DEPRECATION")
     private fun facts(p: PackageInfo): ApkFacts {
-        val modern = if (Build.VERSION.SDK_INT >= 28) p.signingInfo?.apkContentsSigners else null
+        val modern = if (Platform.hasSigningInfo) p.signingInfo?.apkContentsSigners else null
         val signers = ApkCheck.pickSigners(
             modern?.map { it.toByteArray() },
             p.signatures?.map { it.toByteArray() },
         )
-        val code = if (Build.VERSION.SDK_INT >= 28) p.longVersionCode else p.versionCode.toLong()
+        val code = if (Platform.hasLongVersionCode) p.longVersionCode else p.versionCode.toLong()
         return ApkFacts(p.packageName.orEmpty(), p.versionName, code, signers)
     }
 
@@ -420,7 +420,7 @@ class UpdateManager(
                     apk.inputStream().use { it.copyTo(out, 64 * 1024) }
                     s.fsync(out)
                 }
-                val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or Platform.mutablePendingIntentFlag
                 val pending = PendingIntent.getBroadcast(ctx, id, Intent(ctx, UpdateInstallReceiver::class.java), flags)
                 model.onInstalling(a, SystemClock.elapsedRealtime(),
                     "Installing ${a.offer.version}: confirm on the panel's screen (no root update service in this boot image)")

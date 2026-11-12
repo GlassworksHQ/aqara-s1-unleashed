@@ -24,7 +24,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Handler
 import android.os.ParcelUuid
 import android.util.Log
@@ -101,7 +100,7 @@ class ImprovBleServer(
             "leExtendedAdvertising=$ext leMaxAdvDataLength=$maxLen permissions=${permissionsOk()}"
     }
 
-    private fun permissionsOk(): Boolean = if (Build.VERSION.SDK_INT >= 31) {
+    private fun permissionsOk(): Boolean = if (Compat.hasBluetoothRuntimePermissions) {
         listOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT)
             .all { ctx.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
     } else true
@@ -111,7 +110,7 @@ class ImprovBleServer(
     @SuppressLint("MissingPermission")
     @Suppress("DEPRECATION")
     private fun enableBluetoothThenStart(a: BluetoothAdapter): Boolean {
-        if (Build.VERSION.SDK_INT >= 33) return false // enable() is a no-op for apps on 33+
+        if (!Compat.appsCanEnableBluetooth) return false // enable() is a no-op for apps on 33+
         if (btReceiver == null) {
             val r = object : BroadcastReceiver() {
                 override fun onReceive(c: Context, i: Intent) {
@@ -227,7 +226,7 @@ class ImprovBleServer(
         val s = server ?: return
         val c = chars[p.uuid] ?: return
         inFlight = true
-        val ok = if (Build.VERSION.SDK_INT >= 33) {
+        val ok = if (Compat.hasValueNotify) {
             s.notifyCharacteristicChanged(p.device, c, false, p.value) == BluetoothGatt.GATT_SUCCESS
         } else {
             @Suppress("DEPRECATION")

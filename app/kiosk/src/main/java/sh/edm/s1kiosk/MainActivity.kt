@@ -7,7 +7,6 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.PixelFormat
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +20,7 @@ import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.net.Uri
 import android.widget.Toast
+import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.auth.FrontendUrls
 import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.dashboard.DashboardOptions
@@ -176,7 +176,7 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // 8 bits per channel: the dithered backdrop/voice glows would band again on an RGB565 surface.
         window.setFormat(PixelFormat.RGBA_8888)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        if (Platform.hasDisplayCutoutMode) {
             window.attributes = window.attributes.apply {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
@@ -513,7 +513,7 @@ class MainActivity : Activity() {
 
     private fun openWifiSettings() {
         val intents = listOfNotNull(
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) Intent(Settings.Panel.ACTION_WIFI) else null,
+            if (Platform.hasSettingsPanel) Intent(Settings.Panel.ACTION_WIFI) else null,
             Intent(Settings.ACTION_WIFI_SETTINGS),
             // The S1's firmware has no Android Settings app; its own settings app has Network -> WLAN.
             Intent("lumi.settings.SETTINGS").setPackage("com.lumi.settings"),
@@ -780,7 +780,7 @@ class MainActivity : Activity() {
 
     @Suppress("DEPRECATION")
     private fun hideSystemUi() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (Platform.hasWindowInsetsController) {
             window.setDecorFitsSystemWindows(false)
             window.insetsController?.let {
                 it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())

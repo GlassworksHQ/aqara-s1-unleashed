@@ -39,6 +39,9 @@ logcat tags are in [`README.md`](README.md); read it before you add a new one.
 - Components get what they need from `GlassworksRuntime` (owned by `KioskApp`, reached with
   `glassworks` from Android entry points). Don't add new static singletons; this is groundwork for
   the device-neutral core (#16, #30).
+- **Never read `Build.VERSION.SDK_INT` outside `dev.glassworks.platform`.** Add a named query to
+  `Platform` instead (libraries keep theirs in their own `Compat.kt`). `PlatformConfinementTest`
+  fails the build otherwise.
 - Device-specific code (sensors, `/dev/ttyS3`, the radio, Aqara binder calls) belongs behind a seam
   that another frame could replace. Don't spread S1 paths through generic code.
 - Logs use the `S1…` tags listed in the README. **Never log** tokens, API keys, the Noise key, Wi-Fi

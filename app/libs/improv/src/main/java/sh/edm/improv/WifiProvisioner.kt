@@ -16,7 +16,6 @@ import android.net.wifi.SupplicantState
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSuggestion
-import android.os.Build
 import android.os.Handler
 import android.os.SystemClock
 import android.provider.Settings
@@ -66,7 +65,7 @@ class WifiProvisioner(
 
     /** True when addNetwork/enableNetwork are expected to work (see class comment). */
     val legacyApiAllowed: Boolean
-        get() = Build.VERSION.SDK_INT < 29 || isDeviceOwner || (Build.VERSION.SDK_INT == 29 && canDrawOverlays)
+        get() = !Compat.hasNetworkSuggestions || isDeviceOwner || (Compat.isAndroid10 && canDrawOverlays)
 
     val hasLocationPermission: Boolean
         get() = ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -261,7 +260,7 @@ class WifiProvisioner(
     @SuppressLint("DiscouragedPrivateApi", "SoonBlockedPrivateApi")
     private fun requirePmf(c: WifiConfiguration, securityType: Int) {
         runCatching {
-            if (Build.VERSION.SDK_INT >= 30) c.setSecurityParams(securityType)
+            if (Compat.hasSecurityParams) c.setSecurityParams(securityType)
             else WifiConfiguration::class.java.getField("requirePMF").setBoolean(c, true)
         }.onFailure { Log.w(TAG, "could not require PMF", it) }
     }
@@ -353,7 +352,7 @@ class WifiProvisioner(
         }
 
         fun startSuggestion(security: WifiSecurity, password: String, hidden: Boolean) {
-            if (Build.VERSION.SDK_INT < 29) return finish(Outcome.Failed("cannot add networks on this Android version", null))
+            if (!Compat.hasNetworkSuggestions) return finish(Outcome.Failed("cannot add networks on this Android version", null))
             val b = WifiNetworkSuggestion.Builder().setSsid(ssid).setIsHiddenSsid(hidden)
             when (security) {
                 WifiSecurity.PSK -> b.setWpa2Passphrase(password)

@@ -7,7 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.Build
+import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.settings.SettingsMenu
 import android.os.IBinder
 import android.os.Handler
@@ -94,7 +94,7 @@ class KioskService : Service() {
 
     private fun buildNotification(): Notification {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (Platform.hasNotificationChannels) {
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL, "Kiosk", NotificationManager.IMPORTANCE_MIN)
                     .apply { setShowBadge(false) }
@@ -110,7 +110,7 @@ class KioskService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         @Suppress("DEPRECATION")
-        val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, CHANNEL)
+        val b = if (Platform.hasNotificationChannels) Notification.Builder(this, CHANNEL)
         else Notification.Builder(this)
         b.setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle("S1 Kiosk")
@@ -134,7 +134,7 @@ class KioskService : Service() {
 
         fun start(context: Context) {
             val i = Intent(context, KioskService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i)
+            if (Platform.hasForegroundServiceStart) context.startForegroundService(i)
             else context.startService(i)
         }
     }

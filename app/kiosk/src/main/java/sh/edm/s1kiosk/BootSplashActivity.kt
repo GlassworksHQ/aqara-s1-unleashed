@@ -9,7 +9,6 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.PixelFormat
 import android.graphics.Point
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -17,6 +16,7 @@ import android.os.UserManager
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
+import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.setup.LoadingOverlay
 
@@ -59,7 +59,7 @@ class BootSplashActivity : Activity() {
             override fun onReceive(c: Context, i: Intent) { advance() }
         }.also {
             val f = IntentFilter(Intent.ACTION_USER_UNLOCKED)
-            if (Build.VERSION.SDK_INT >= 33) registerReceiver(it, f, RECEIVER_EXPORTED) else registerReceiver(it, f)
+            Platform.registerExportedReceiver(this, it, f)
         }
         Log.i(TAG, "boot splash shown (user locked)")
     }
