@@ -50,6 +50,9 @@ pnpm add @glassworks/frame-card@link:vendor/s1-unleashed/packages/frame-card
 
 and then import the frames' data from `vendor/s1-unleashed/frames/<id>/design/frame.json`.
 
+The package ships TypeScript and CSS modules, not built JavaScript, so the site's Next config must
+compile it: `transpilePackages: ['@glassworks/frame-card']`. Untested on glassworks.dev so far.
+
 - One pin moves the code and the data together, in one reviewed commit of the site.
 - Nothing to publish. The package's imports and `react` resolve from the site's `node_modules`,
   because the submodule sits inside the site's folder. Don't run `npm install` inside the submodule:

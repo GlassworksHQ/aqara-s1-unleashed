@@ -4,9 +4,9 @@ The design is in `docs/research/web-installer.md`, and the reference flow in `to
 `tools/install.sh`. Every module is plain TypeScript (ES2022, no framework). Modules talk to each
 other only through the exports below. `app/` is the only module that knows about the UI.
 
-`kiln/` is an npm workspace. The protocol modules are packages in `packages/`, each with its own
-tests: `@glassworks/fel`, `@glassworks/fastboot`, `@glassworks/adb`, `@glassworks/bootpatch`,
-`@glassworks/setup-channel` and `improv-serial`. `@glassworks/kiln-core` (`packages/kiln-core`) is the
+`kiln/` is one of the npm workspaces under the repo root's `package.json`. The protocol modules are
+packages in `kiln/packages/`, each with its own tests: `@glassworks/fel`, `@glassworks/fastboot`, `@glassworks/adb`, `@glassworks/bootpatch`,
+`@glassworks/setup-channel` and `improv-serial`. `@glassworks/kiln-core` (`kiln/packages/kiln-core`) is the
 step engine, and the S1's part is its recipe, `@glassworks/aqara-s1-plus-installer`
 (`frames/aqara-s1-plus/installer`). The page (`app/`, `assets/`) stays in `src/` and imports them all
 by package name.
