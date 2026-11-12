@@ -214,6 +214,8 @@ test, but it has **not yet met a real base**.
 
 | File | What's in it |
 |---|---|
+| [bringup.md](bringup.md) | The method: how to break into a device step by step, and what the S1 taught us about FEL, U-Boot, fastboot and Android 10 |
+| [TEMPLATE.md](TEMPLATE.md) | Start a new note from this |
 | [hardware.md](hardware.md) | Board, SoC, FEL button, the 3-pin UART console and an ESP32-S3 as the adapter |
 | [boot-log.md](boot-log.md) | Annotated stock boot log: BOOT0 DRAM bring-up, secure-boot state, partitions |
 | [findings.md](findings.md) | Root, SELinux, AVB, partitions, USB/adb defaults; why there is no button-free USB entry |
