@@ -46,7 +46,7 @@ class AssistPaneTest {
                 name = "test", friendlyName = "Test", macAddress = "02:00:00:00:00:01", esphomeVersion = "x",
                 compilationTime = "x", manufacturer = "x", model = "x", voiceFeatures = 0,
             ),
-            publishStates = {}, emit = { events += it },
+            publishStates = {}, emit = { events += it }, entitiesChanged = {}, sendEvent = { _, _ -> },
         ),
         voiceEnabled = voiceEnabled,
         player = object : UrlPlayer {

@@ -6,6 +6,7 @@ import dev.glassworks.pane.EntityRegistry
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PanelEvent
+import dev.glassworks.pane.forEachPane
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -19,9 +20,6 @@ import android.util.Log
 import sh.edm.s1kiosk.BuildConfig
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.KioskPrefs
-import sh.edm.s1kiosk.base.BaseBackend
-import sh.edm.s1kiosk.base.BaseKind
-import sh.edm.s1kiosk.AqaraCloud
 import sh.edm.s1kiosk.MainActivity
 import sh.edm.s1kiosk.timers.TimersPane
 import sh.edm.s1kiosk.auth.HaAuth
@@ -37,10 +35,8 @@ import sh.edm.s1kiosk.radio.SisdkZigbeed
 import sh.edm.s1kiosk.radio.ZigbeeStack
 import sh.edm.s1kiosk.radio.ZigbeeRouterHost
 import sh.edm.s1kiosk.ScreenController
-import sh.edm.s1kiosk.base.BaseEntities
-import sh.edm.s1kiosk.base.BaseLayout
-import sh.edm.s1kiosk.base.UartBaseLink
 import sh.edm.s1kiosk.base.WallBase
+import sh.edm.s1kiosk.base.WallBasePane
 import sh.edm.s1kiosk.dashboard.Dashboard
 import sh.edm.s1kiosk.dashboard.DashboardOptions
 import sh.edm.s1kiosk.dashboard.Dashboards
@@ -70,7 +66,7 @@ import java.util.concurrent.TimeUnit
 /**
  * The panel as one ESPHome device for Home Assistant: native API server (port 6053), mDNS,
  * entities bound to the kiosk settings / [ScreenController], a media player, and the panes
- * (Sendspin, the voice assistant, timers). Owned by KioskService.
+ * (Sendspin, the voice assistant, timers, the wall base). Owned by KioskService.
  *
  * Entity values are read from [KioskPrefs] / [ScreenController] (thread-safe); anything touching
  * the screen or the activity is posted to the main thread. Kiosk actions (URL, reload, zoom,
@@ -107,11 +103,13 @@ class PanelDevice(
     private val voiceEnabled = prefs.voiceEnabled
 
     private var server: ApiServer? = null
+    /** Guards [stopped] and the hand-over of [server] between [startServer] and [stop]. */
+    private val lifecycle = Any()
+    private var stopped = false
     private val noiseKeys = NoiseKeys(prefs.noiseKeyStore)
     private lateinit var identity: DeviceIdentity
     private lateinit var entities: List<ApiEntity>
     private lateinit var coreEntities: List<ApiEntity>
-    private var wallBase: WallBase? = null
     private val voicePlayer = ExoAudioPlayer(context, "voice", AudioAttributes.USAGE_ASSISTANT)
     private val mediaPlayer = ExoAudioPlayer(context, "media", AudioAttributes.USAGE_MEDIA)
     private var chimePlayer: TtsPlayer? = null
@@ -164,20 +162,19 @@ class PanelDevice(
     }
 
     fun stop() {
+        synchronized(lifecycle) { stopped = true }
         prefs.unregisterListener(prefListener)
         ScreenController.removeListener(screenListener)
         HaAuth.removeListener(authListener)
         HaAuth.threadJoin.removeListener(threadJoinListener)
         Dashboards.removeListener(dashboardsListener)
-        wallBase?.stop()
-        wallBase = null
-        exec.shutdownNow()
-        mdns.stop()
-        server?.stop()
-        server = null
-        panes.forEach { it.stop() }
+        // Panes first, while esphome-main still runs: the wall base's thread can still post to it.
+        panes.forEachPane("stop") { it.stop() }
         panes = emptyList()
         assist = null
+        exec.shutdownNow()
+        mdns.stop()
+        synchronized(lifecycle) { server.also { server = null } }?.stop()
         radio.stop()
         timeZone.stop()
         updates.stop()
@@ -201,13 +198,7 @@ class PanelDevice(
             voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
         )
         EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${voiceEnabled}")
-        val baseConfig = wantedBaseConfig()
-        if (baseConfig.backend == BaseBackend.UART) {
-            // ha_master grabbed /dev/ttyS3 at boot: stop it *before* the UART link opens the port
-            // (the link's port guard also refuses to open it while init reports it running).
-            applyAqaraCloud("startup, before opening the wall base port", baseConfig.backend)
-        }
-        val base = initEntities(id, baseConfig)
+        initEntities(id, WallBasePane.wantedConfig(prefs))
         acquireLocks()
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
@@ -216,7 +207,7 @@ class PanelDevice(
             exec.execute { server?.publishStates() }
         }
 
-        panes.forEach { it.start() }
+        panes.forEachPane("start") { it.start() }
         radio.start()
         timeZone.start()
         updates.start()
@@ -228,20 +219,21 @@ class PanelDevice(
         Dashboards.addListener(dashboardsListener)
         exec.scheduleWithFixedDelay({ checkDashboards() }, 2, 2, TimeUnit.SECONDS)
         exec.scheduleWithFixedDelay({ server?.publishStates() }, 5, 5, TimeUnit.SECONDS)
-        base.start()
-        if (baseConfig.backend == BaseBackend.LOCALSERVICE) {
-            // Give the wall-base check time to read the dock class (it needs ha_master), then apply.
-            exec.schedule({ applyAqaraCloud("startup") }, 20, TimeUnit.SECONDS)
-        }
     }
 
     /**
      * The entity list Home Assistant gets at start, built without starting anything (the entity pin
-     * test calls it too). esphome-main; returns the wall base, which [startInternal] then starts.
+     * test calls it too). esphome-main.
      */
-    internal fun initEntities(identity: DeviceIdentity, baseConfig: WallBase.Config): WallBase {
+    internal fun initEntities(identity: DeviceIdentity, baseConfig: WallBase.Config) {
         this.identity = identity
-        val paneContext = PaneContext(ctx, prefs, identity, publishStates = { runCatching { exec.execute { server?.publishStates() } } }, emit = ::emit)
+        val paneContext = PaneContext(
+            ctx, prefs, identity,
+            publishStates = { runCatching { exec.execute { server?.publishStates() } } },
+            emit = ::emit,
+            entitiesChanged = { runCatching { exec.execute { rebuildEntities() } } },
+            sendEvent = { entity, type -> runCatching { exec.execute { server?.sendEvent(entity, type) } } },
+        )
         val assistPane = AssistPane(
             paneContext,
             voiceEnabled,
@@ -265,87 +257,22 @@ class PanelDevice(
                     silence = { synchronized(this) { chimePlayer }?.cancel() },
                 )
             } else null,
+            WallBasePane(paneContext, baseConfig, exec),
         )
         coreEntities = buildEntities()
         appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
         dashboardRebuild = StableChange(dashboardOptions(appliedDashboards))
-        val base = WallBase(ctx, BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE, baseListener, baseConfig)
-        wallBase = base
-        entities = assemble(base, base.tracker.applied())
-        return base
+        entities = assemble()
     }
 
     internal fun entityList(): List<ApiEntity> = entities
 
-    // ------------------------------------------------------------------ wall base backend
-
-    /** One instance, so WallBase.Config equality works across re-applies. */
-    private val ttyGuard: () -> String? = {
-        when (val st = AqaraCloud.daemonState()) {
-            "running", "restarting" -> "ha_master is $st and owns ${UartBaseLink.SERIAL_PATH}"
-            else -> null
-        }
-    }
-
-    private fun wantedBaseConfig(): WallBase.Config {
-        val backend = BaseBackend.resolve(prefs.baseBackend, prefs.blockAqaraCloud)
-        return WallBase.Config(backend, prefs.baseTransport, ttyGuard)
-    }
-
-    /**
-     * esphome-main: apply backend/transport/cloud-blocking changes so that ha_master and the UART
-     * link never hold /dev/ttyS3 at the same time: to UART, stop ha_master first, then open; away
-     * from UART, close the port first, then let ha_master run.
-     */
-    private fun reconfigureBase(why: String) {
-        val base = wallBase ?: return
-        val c = wantedBaseConfig()
-        if (c.backend == BaseBackend.UART) {
-            applyAqaraCloud(why, c.backend)
-            base.reconfigure(c)
-        } else {
-            base.reconfigure(c)
-            applyAqaraCloud(why, c.backend)
-        }
-    }
-
-    // ------------------------------------------------------------------ wall base
-
-    private fun baseEntities(base: WallBase, layout: BaseLayout): List<ApiEntity> =
-        BaseEntities.build(layout, base.tracker, base::setRelay)
-
-    /** Called on the "s1-base" thread; everything is handed to esphome-main. */
-    private val baseListener = object : WallBase.Listener {
-        override fun onStates() { exec.execute { server?.publishStates() } }
-
-        override fun onLayout(layout: BaseLayout) {
-            exec.execute {
-                val base = wallBase ?: return@execute
-                entities = assemble(base, layout)
-                prefs.baseLayout = layout.encode()
-                server?.setEntities(entities)
-                applyAqaraCloud("wall base ${layout.kind}")
-            }
-        }
-
-        override fun onPortBlocked(reason: String) {
-            // Something (re)started ha_master while the UART backend should own the port.
-            exec.execute { applyAqaraCloud("wall base port blocked: $reason") }
-        }
-
-        override fun onButton(channel: Int, type: String) {
-            exec.execute {
-                val e = entities.firstOrNull { it.objectId == BaseEntities.buttonId(channel) } as? EventEntity
-                if (e == null) EspHomeLog.w("base button $channel ($type): no event entity in the current set")
-                else server?.sendEvent(e, type)
-            }
-        }
-    }
+    internal fun paneList(): List<Pane> = panes
 
     // ------------------------------------------------------------------ dashboard select
 
-    private fun assemble(base: WallBase, layout: BaseLayout): List<ApiEntity> =
-        EntityRegistry(panes).assemble(coreEntities + dashboardSelect(dashboardRebuild.applied()) + baseEntities(base, layout))
+    private fun assemble(): List<ApiEntity> =
+        EntityRegistry(panes).assemble(coreEntities + dashboardSelect(dashboardRebuild.applied()))
 
     private fun currentDashboardOption(list: List<Dashboard>) =
         DashboardOptions.currentOption(prefs.urlSetting, prefs.haBase, list)
@@ -370,37 +297,7 @@ class PanelDevice(
      * changed and has been stable for 10 s (at most once a minute); a list change that keeps the
      * same options only updates the option → url_path mapping.
      */
-    @Volatile private var aqaraCloudStatus = "unknown"
-
-    /**
-     * esphome-main: stop Aqara's cloud daemon when blocking is on and no wall base needs it, else
-     * make sure it runs. Re-applied after every start (init restarts it on boot) and on changes.
-     */
-    private fun applyAqaraCloud(why: String, backend: BaseBackend = wallBase?.config?.backend ?: wantedBaseConfig().backend) {
-        val run = when {
-            // The UART link owns /dev/ttyS3: ha_master is never needed (and must not run).
-            backend == BaseBackend.UART -> false
-            !prefs.blockAqaraCloud -> true
-            else -> {
-                // LocalService backend: the base link goes through ha_master.
-                val layout = wallBase?.tracker?.current() ?: BaseLayout.decode(prefs.baseLayout) ?: BaseLayout.NONE
-                layout.kind == BaseKind.SWITCH || layout.kind == BaseKind.UNKNOWN
-            }
-        }
-        val ok = AqaraCloud.setDaemon(run)
-        aqaraCloudStatus = when {
-            !ok -> "error (${AqaraCloud.daemonState().ifBlank { "unknown" }})"
-            !run && !prefs.blockAqaraCloud -> "stopped (UART wall base backend owns ${UartBaseLink.SERIAL_PATH})"
-            !run -> "blocked"
-            prefs.blockAqaraCloud -> "running (needed by the wall base, LocalService backend)"
-            else -> "running"
-        }
-        EspHomeLog.i("Aqara cloud ($why): $aqaraCloudStatus")
-        server?.publishStates()
-    }
-
     private fun checkDashboards() {
-        val base = wallBase ?: return
         val list = Dashboards.latest ?: appliedDashboards
         val wanted = dashboardOptions(list)
         val now = android.os.SystemClock.elapsedRealtime()
@@ -413,7 +310,12 @@ class PanelDevice(
         adoptDashboards(list)
         dashboardRebuild.markApplied(due, now)
         EspHomeLog.i("Dashboard options changed (${due.size}); rebuilding the entity list")
-        entities = assemble(base, base.tracker.applied())
+        rebuildEntities()
+    }
+
+    /** esphome-main: the entity list from the core and every pane again, given to Home Assistant. */
+    private fun rebuildEntities() {
+        entities = assemble()
         server?.setEntities(entities)
     }
 
@@ -424,7 +326,7 @@ class PanelDevice(
 
     private fun startServer() {
         val s = ApiServer(ApiServer.DEFAULT_PORT, { identity }, entities, noiseKeys)
-        panes.forEach { it.bind(s) }
+        panes.forEachPane("bind") { it.bind(s) }
         s.onCommand = { exec.execute { s.publishStates() } }
         s.onClientHello = { info, addr ->
             if (HaUrls.isHomeAssistantHello(info)) SetupSignals.onHaHello()
@@ -449,7 +351,9 @@ class PanelDevice(
             exec.schedule({ if (server == null) startServer() }, 10, TimeUnit.SECONDS)
             return
         }
-        server = s
+        // stop() may have run while this start was in flight: then the server must not outlive it.
+        val kept = synchronized(lifecycle) { if (stopped) false else { server = s; true } }
+        if (!kept) { s.stop(); return }
         mdns.start(identity, s.localPort, encrypted = s.encrypted, provisionable = s.provisionable)
     }
 
@@ -471,15 +375,13 @@ class PanelDevice(
         server?.replaceKey(k)
     }
 
-    private fun emit(event: PanelEvent) = panes.forEach { it.onEvent(event) }
+    private fun emit(event: PanelEvent) = panes.forEachPane("onEvent") { it.onEvent(event) }
 
     /** esphome-main thread. */
     private fun onPrefChanged(key: String?) {
         when (key) {
             "api_encryption", "api_key" -> onApiKeyPrefChanged()
             "speaker_volume", "speaker_muted" -> applyVolume()
-            KioskPrefs.KEY_BLOCK_AQARA_CLOUD, KioskPrefs.KEY_BASE_BACKEND, KioskPrefs.KEY_BASE_TRANSPORT ->
-                reconfigureBase("setting $key changed")
         }
         emit(PanelEvent.SettingChanged(key))
         server?.publishStates()
@@ -682,14 +584,6 @@ class PanelDevice(
         ),
         // --- diagnostics
         TextSensorEntity("ip_address", "IP address", "mdi:ip-network", EntityCategory.DIAGNOSTIC, get = ::ipAddress),
-        SwitchEntity(
-            "block_aqara_cloud", "Block Aqara cloud", "mdi:cloud-off-outline", EntityCategory.CONFIG,
-            get = { prefs.blockAqaraCloud }, set = { prefs.blockAqaraCloud = it },
-        ),
-        TextSensorEntity(
-            "aqara_cloud", "Aqara cloud daemon", "mdi:cloud-outline", EntityCategory.DIAGNOSTIC,
-            get = { aqaraCloudStatus },
-        ),
         // Time zone (docs/install.md "Time zone"): the zone the root helper keeps. Authenticated only.
         TextEntity(
             "time_zone", "Time zone", "mdi:map-clock", maxLength = 64, pattern = "^[A-Za-z0-9_+/-]*$",

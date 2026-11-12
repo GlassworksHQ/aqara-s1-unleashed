@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
  *
  * Stopping it is just `setprop ctl.stop ha_master`. This firmware runs SELinux permissive, so the
  * app's own uid may control init services (verified on device); no root needed. Not persistent by
- * itself: init starts it again on every boot, so [PanelDevice] re-applies the choice after each start.
+ * itself: init starts it again on every boot, so the wall base pane ([sh.edm.s1kiosk.base.WallBasePane]) re-applies the choice after each start.
  *
  * `ha_master` also holds `/dev/ttyS3`, the wall-base UART. With the UART base backend (default) the
  * app speaks that protocol itself (base/UartBaseLink), so ha_master is never needed and is stopped

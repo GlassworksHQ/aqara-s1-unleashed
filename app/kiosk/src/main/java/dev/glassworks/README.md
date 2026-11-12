@@ -55,7 +55,7 @@ change until Glassworks v1.
 | Type | What it is |
 |---|---|
 | `Pane` | A feature: its Home Assistant entities, `start`/`stop`, and what it does when the panel changes. |
-| `PaneContext` | What the core gives a pane: the app context, settings, the device identity, `publishStates()` and `emit()`. |
+| `PaneContext` | What the core gives a pane: the app context, settings, the device identity, `publishStates()`, `emit()`, `entitiesChanged()` and `sendEvent()`. |
 | `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished. A pane raises one with `PaneContext.emit`. |
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
 
@@ -84,12 +84,27 @@ class MusicPane(ctx: PaneContext) : Pane {
 }
 ```
 
-`PanelEvent` is an open interface. A pane handles the events it cares about and ignores the rest
-(`else -> Unit`), so a new event does not touch the panes that do not use it. A pane does not have
+`PanelEvent` is an open interface. A pane handles the events it cares about and ignores the rest:
+a `when` statement (not an expression) may simply leave out the events it does not use, as
+`SendspinPane` does. A new event does not touch the panes that do not use it. A pane does not have
 to add entities: [`TimersPane.kt`](../../sh/edm/s1kiosk/timers/TimersPane.kt) has none and only
 reacts to `TimersChanged` and `TimerFinished`. The voice assistant
 ([`AssistPane.kt`](../../sh/edm/s1kiosk/voice/AssistPane.kt)) is the pane that raises those: it calls
 `ctx.emit(PanelEvent.TimerFinished(name))`, and `SpeakerClaimed` while it listens and talks.
+
+### Entities that change, and events
+
+A pane's entity list may change while the panel runs. The wall base
+([`WallBasePane.kt`](../../sh/edm/s1kiosk/base/WallBasePane.kt)) adds relays, buttons and power
+sensors when a switch base is mounted. The pane then calls `ctx.entitiesChanged()`. The core builds
+the device's list again from its own entities and every pane's `entities()`, and gives it to Home
+Assistant, which reconnects and lists the entities again. `entities()` must return the new list from
+then on.
+
+To fire an ESPHome event, a pane calls `ctx.sendEvent(entity, type)` with an `EventEntity` from its
+current list. Keep the instances: the server only fires events for the entity objects it was given,
+so build the list once per state, not on every `entities()` call. A pane does not hold the API
+server for this. The core owns it, including its restarts.
 
 Entities come from [esphome-api](../../../../../../libs/esphome-api/README.md). Home Assistant
 keys them by object id, so an object id is permanent: renaming one makes a new entity in every
@@ -100,6 +115,10 @@ home that already has the panel.
 The core calls a pane from more than one thread. `start` runs on the device thread, `stop` runs
 from the service, and `onEvent` runs on whichever thread the event happened. A pane guards its own
 state. `publishStates()` is safe from any thread, including while the panel stops.
+
+A pane that throws in `bind`, `start`, `stop` or `onEvent` is logged (`pane <id> failed in <step>`)
+and skipped. The other panes still run. An interruption is the exception: it means the panel is
+stopping, so it goes back to the caller and the panes after it don't run.
 
 ## Licence
 

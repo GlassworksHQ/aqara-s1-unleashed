@@ -8,6 +8,8 @@ import android.content.Context
 import sh.edm.esphome.ApiEntity
 import sh.edm.esphome.ApiServer
 import sh.edm.esphome.DeviceIdentity
+import sh.edm.esphome.EspHomeLog
+import sh.edm.esphome.EventEntity
 import sh.edm.s1kiosk.KioskPrefs
 
 /**
@@ -42,6 +44,19 @@ class PaneContext(
     val publishStates: () -> Unit,
     /** Raises [event] to every pane, this one included. Safe from any thread. */
     val emit: (PanelEvent) -> Unit,
+    /**
+     * Tells the shell that [Pane.entities] now returns a different list. The shell builds the device's
+     * list again from its own entities and every pane's, and gives it to Home Assistant, which then
+     * reconnects and lists the entities again. Safe from any thread; the rebuild runs on the device
+     * thread, after the work already queued there.
+     */
+    val entitiesChanged: () -> Unit,
+    /**
+     * Fires [type] on one of this pane's event entities. Pass the instance from the pane's current
+     * [Pane.entities] list; the server drops an event for an entity it no longer has. Safe from any
+     * thread; a no-op while the server is not running.
+     */
+    val sendEvent: (EventEntity, String) -> Unit,
 )
 
 /**
@@ -66,6 +81,25 @@ interface Pane {
     fun stop() {}
 
     fun onEvent(event: PanelEvent) {}
+}
+
+/**
+ * Runs [block] on every pane. A pane that throws is logged (with [op], the step that failed) and
+ * skipped, so one broken pane never stops the others from starting, stopping or hearing an event.
+ * An interruption is not a failure: it goes back to the caller, with the thread's interrupt flag set.
+ */
+fun List<Pane>.forEachPane(op: String, block: (Pane) -> Unit) {
+    for (pane in this) {
+        try {
+            block(pane)
+        } catch (e: InterruptedException) {
+            // The caller is being cancelled (the device is stopping); that is not this pane failing.
+            Thread.currentThread().interrupt()
+            throw e
+        } catch (t: Throwable) {
+            EspHomeLog.w("pane ${pane.id} failed in $op", t)
+        }
+    }
 }
 
 /** The Home Assistant entity list: the device's own entities plus every pane's. */
