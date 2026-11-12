@@ -6,8 +6,10 @@ other only through the exports below. `app/` is the only module that knows about
 
 `kiln/` is an npm workspace. The protocol modules are packages in `packages/`, each with its own
 tests: `@glassworks/fel`, `@glassworks/fastboot`, `@glassworks/adb`, `@glassworks/bootpatch`,
-`@glassworks/setup-channel` and `improv-serial`. The page (`app/`, `assets/`, `improv/`,
-`provision/`) stays in `src/` and imports them by package name.
+`@glassworks/setup-channel` and `improv-serial`. `@glassworks/kiln-core` (`packages/kiln-core`) is the
+step engine, and the S1's part is its recipe, `@glassworks/aqara-s1-plus-installer`
+(`frames/aqara-s1-plus/installer`). The page (`app/`, `assets/`) stays in `src/` and imports them all
+by package name.
 
 ## `fel` (`packages/fel`) — FEL over WebUSB (sunxi-fel subset; owner: main session, needs the panel)
 ```ts
@@ -59,7 +61,7 @@ export function withVbmetaFlags(vbmeta: Uint8Array, set: number): Uint8Array; //
 export function replaceBootlogo(bootloaderImg: Uint8Array, bmp: Uint8Array): Uint8Array; // == tools/branding/set-bootlogo.py
 ```
 
-## `adb` (`packages/adb`) + `provision/` — after first boot (owner: main session)
+## `adb` (`packages/adb`) + the recipe's `provision.ts` — after first boot (owner: main session)
 ```ts
 export function loadOrCreateAdbKey(storage?: KeyStorage): Promise<AdbKey>;  // { publicKey: 'QAAAA... name', store } (IndexedDB)
 export interface PanelShell { run(cmd): Promise<{ out: string; code: number }>; push(path, data, mode?): Promise<void> }
@@ -67,7 +69,7 @@ export class Panel implements PanelShell { static connect(key, device?): Promise
 export function provision(panel: PanelShell, opts: ProvisionOptions, onStep?): Promise<{ ip?: string }>; // tools/install.sh
 export function unprovision(panel: PanelShell, onStep?): Promise<void>;                                     // install.sh --undo
 ```
-`provision/switch.ts`: when Android refuses the APK over another signing key (a debug build), `provision`
+The recipe's `switch.ts`: when Android refuses the APK over another signing key (a debug build), `provision`
 asks `opts.confirmSwitch(plan)` and then uninstalls + installs, carrying the app's data and Wi-Fi over
 with adb root (panel side: `tools/install/s1kiosk-switch.sh`, same as install.sh). `unprovision` disables
 instead of uninstalling when S1 Kiosk saved the panel's Wi-Fi (Android forgets it with the app).
@@ -79,12 +81,44 @@ the kiosk app fetches them on the panel.
 `public/assets/manifest.json` (`{ name, path, sha256, size, license, source }`; both gitignored).
 `new Assets().get(name)` downloads a blob and checks its SHA-256, refusing on a mismatch.
 
+## `kiln-core` (`packages/kiln-core`) — the step engine (owner: main session)
+```ts
+export class InstallFlow<A, O, R> {        // fel-install.sh steps 1-9 without the DOM
+  constructor(recipe: Recipe<A, O, R>, deps: FlowDeps<A>, ui: FlowUi);
+  bootFromFel(fel: FelDevice): Promise<void>;
+  connectFastboot(): Promise<Fastboot>;
+  install(fb: Fastboot): Promise<{ meta: BackupMeta; files: BackupFile[]; bootSha256: string }>;
+  connectAdb(timeoutMs?: number): Promise<PanelShell>;
+  setUpApp(panel: PanelShell, opts: O): Promise<R>;
+}
+export function restoreFromBackup(plan: BackupPlan, fb: Fastboot, files: Map<string, Uint8Array>, log, onProgress?): Promise<void>; // --undo
+export interface FlowUi { log; progress(p: Progress); partition(part, state, info); ask(kind, action, signal) }
+export interface Recipe<A, O, R> {
+  fel: { checkChip(fel): Promise<string>; loader: A[]; boot(fel, loader, onProgress): Promise<void> };
+  checkLayout(fb: Fastboot): Promise<string>;           // throws on the wrong device, returns the log line
+  backup: BackupPlan;                                    // parts, restore, required, idPrefix, db
+  patching: string;
+  patchBoot(ctx: PatchContext<A>): Promise<Uint8Array>;
+  writesBeforeBoot(ctx: PatchContext<A>): Promise<FlashStep[]>;  // InstallFlow writes boot after these
+  setUp(panel: PanelShell, opts: O, ctx: SetUpContext<A>): Promise<R>;
+}
+```
+InstallFlow owns the order, the progress, the backup before any write (boot read twice), the read-back
+of every write, and boot last. USB comes in through `Devices`, so `test/flow.test.ts` runs the S1 recipe
+end to end on simulated hardware with the real 4.5.80 partitions. `backup.ts`: backups in IndexedDB + a
+STORED zip (`zip.ts`) with a `SHA256SUMS` the CLI's `--undo` accepts. kiln-core names no frame: its
+`no-frame-names` test fails on any S1 name.
+
+## The S1 recipe (`frames/aqara-s1-plus/installer`)
+`s1Plus` in `src/recipe.ts`: the A133 check and our U-Boot over FEL, the S1 Plus partition layout,
+the backup and restore lists, `s1Overlay` and the vbmeta and splash writes, and setup through
+`provision.ts` (`PKG`, `DEBLOAT`, Aqara's launcher and services). Also `switch.ts` and `improv.ts`
+(the app's Improv socket). It sits outside `kiln/`, so npm hoists its dependencies where Node's lookup
+from `frames/` doesn't reach: `vite.config.ts` (`resolve.dedupe`) and `tsconfig.base.json` (`paths`)
+resolve them from `kiln/`, and its `test` and `typecheck` scripts run kiln's vitest and tsc.
+
 ## `app/` — the page (owner: main session)
-- `flow.ts`: `InstallFlow` = `fel-install.sh` steps 1-9 without the DOM (`bootFromFel`, `connectFastboot`,
-  `install`, `connectAdb`, `setUpApp`) + `restoreFromBackup` (= `--undo`). USB comes in through `Devices`,
-  so `test/flow.test.ts` runs it end to end on simulated hardware with the real 4.5.80 partitions.
-- `backup.ts`: backups in IndexedDB + a STORED zip (`zip.ts`) with a `SHA256SUMS` the CLI's `--undo` accepts.
-- `ui.ts`: renders design E (`mockup/option-e.html`) from the flow's events.
+- `ui.ts`: renders design E (`mockup/option-e.html`) from the flow's events, with the S1 recipe.
 
 ## Running it
 ```

@@ -1,8 +1,9 @@
 #!/system/bin/sh
 # Panel side of the signing-key switch (debug build -> release build) in tools/install.sh and the web
-# installer (kiln/src/provision/switch.ts). Android won't update an app across signing keys, so the
-# switch is uninstall + install, which deletes the app's data and the Wi-Fi networks it saved. With
-# root this script carries the data across; the installers re-send Wi-Fi through the new app.
+# installer (frames/aqara-s1-plus/installer/src/switch.ts). Android won't update an app across
+# signing keys, so the switch is uninstall + install, which deletes the app's data and the Wi-Fi
+# networks it saved. With root this script carries the data across; the installers re-send Wi-Fi
+# through the new app.
 #
 # Runs as root: pushed to /data/local/tmp and started with `su -c 'sh <this> <command>'` from adb's
 # shell, only on panels where adb's shell has root (a development boot image, see docs/install.md).

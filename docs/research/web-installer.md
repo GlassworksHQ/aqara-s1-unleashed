@@ -48,7 +48,9 @@ HTTPS.
 ### Module layout
 
 The layout planned before the build, kept as it was. The installer now lives in `kiln/`, and the
-protocol modules in `kiln/packages/` (listed in `kiln/package.json`, `workspaces`).
+protocol modules in `kiln/packages/` (listed in `kiln/package.json`, `workspaces`). The flow is
+`kiln/packages/kiln-core`, and the S1's part of it, provisioning included, is the recipe in
+`frames/aqara-s1-plus/installer`.
 
 ```
 web/

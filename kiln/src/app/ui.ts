@@ -1,4 +1,4 @@
-// The installer page (index.html, design E). Renders flow.ts; all hardware work lives there.
+// The installer page (index.html, design E). Renders kiln-core's InstallFlow with the S1 recipe; all hardware work lives there.
 import felImg from '../../../docs/img/fel-button.jpg?url';
 import { loadOrCreateAdbKey, type AdbKey, type PanelShell } from '@glassworks/adb';
 import { Assets } from '../assets';
