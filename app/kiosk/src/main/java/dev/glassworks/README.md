@@ -56,7 +56,7 @@ change until Glassworks v1.
 |---|---|
 | `Pane` | A feature: its Home Assistant entities, `start`/`stop`, and what it does when the panel changes. |
 | `PaneContext` | What the core gives a pane: the app context, settings, the device identity, `publishStates()`, `emit()`, `entitiesChanged()` and `sendEvent()`. |
-| `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished. A pane raises one with `PaneContext.emit`. |
+| `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished, Home Assistant subscribed. A pane raises one with `PaneContext.emit`. |
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
 
 ## Writing a pane
@@ -91,6 +91,12 @@ to add entities: [`TimersPane.kt`](../../sh/edm/s1kiosk/timers/TimersPane.kt) ha
 reacts to `TimersChanged` and `TimerFinished`. The voice assistant
 ([`AssistPane.kt`](../../sh/edm/s1kiosk/voice/AssistPane.kt)) is the pane that raises those: it calls
 `ctx.emit(PanelEvent.TimerFinished(name))`, and `SpeakerClaimed` while it listens and talks.
+
+The core raises `HomeAssistantSubscribed(address, authenticated)` each time Home Assistant subscribes
+to the states. `authenticated` is true when the connection uses the key Home Assistant provisioned.
+Only then is the address proven to be Home Assistant's, so a pane that trusts the address checks it.
+The radio ([`RadioPane.kt`](../../sh/edm/s1kiosk/radio/RadioPane.kt)) does: it lets only that
+address reach its TCP services.
 
 ### Entities that change, and events
 
