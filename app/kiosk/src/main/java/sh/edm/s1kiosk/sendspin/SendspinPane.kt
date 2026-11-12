@@ -34,9 +34,9 @@ class SendspinPane(ctx: PaneContext) : Pane {
     override fun bind(server: ApiServer) {
         server.sendspin = object : SendspinTokenSource {
             override fun clientIdIfStarted() = player.takeIf { it.started }?.clientId ?: ""
-            override fun pairingToken(): Pair<Int, String?> = when {
-                !player.started -> (if (prefs.sendspinEnabled) SendspinApi.STATUS_NOT_READY else SendspinApi.STATUS_DISABLED) to null
-                else -> SendspinApi.STATUS_OK to player.pairingToken()
+            override fun pairingToken(): Pair<Int, String?> {
+                val status = pairingStatus(prefs.sendspinEnabled, player.started)
+                return status to if (status == SendspinApi.STATUS_OK) player.pairingToken() else null
             }
         }
     }
@@ -59,4 +59,11 @@ class SendspinPane(ctx: PaneContext) : Pane {
             is PanelEvent.SpeakerClaimed -> player.setDucked(event.claimed)
         }
     }
+}
+
+// `started` means "started since boot" and is never cleared, so the setting has to be checked first.
+internal fun pairingStatus(enabled: Boolean, started: Boolean): Int = when {
+    !enabled -> SendspinApi.STATUS_DISABLED
+    !started -> SendspinApi.STATUS_NOT_READY
+    else -> SendspinApi.STATUS_OK
 }

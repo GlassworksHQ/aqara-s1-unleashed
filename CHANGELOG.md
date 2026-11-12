@@ -17,6 +17,9 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Sendspin: Music Assistant pairing was still offered after you switched Sendspin off.** Once the
+  player had started, turning it off in Home Assistant still let the pairing request through. It now
+  says Sendspin is disabled until you turn it back on.
 - **Thread border router: replies from Thread devices stopped after Wi-Fi reconnected.** Turning
   Wi-Fi off and on gives Android's Wi-Fi interface a new number, and the radio helper's routing rule
   for traffic from Thread to your network kept pointing at the old one. It now follows the
