@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.improv
 
+import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.AdminReceiver
 import android.content.ComponentName
 import sh.edm.improv.*
@@ -167,7 +168,7 @@ object ImprovController {
         val probe = ImprovBleServer(app, main, bleListener)
         ble = probe
         Log.i(TAG, "BLE peripheral support: ${probe.capabilityReport()}")
-        Log.i(TAG, "Wi-Fi provisioning: ${wifi.status()} sdk=${Build.VERSION.SDK_INT}")
+        Log.i(TAG, "Wi-Fi provisioning: ${wifi.status()} sdk=${Platform.apiLevel}")
         if (prefs.improvAuto) main.postDelayed(bootCheck, BOOT_GRACE_MS)
     }
 
