@@ -96,7 +96,7 @@ export interface FlowUi { log; progress(p: Progress); partition(part, state, inf
 export interface Recipe<A, O, R> {
   fel: { checkChip(fel): Promise<string>; loader: A[]; boot(fel, loader, onProgress): Promise<void> };
   checkLayout(fb: Fastboot): Promise<string>;           // throws on the wrong device, returns the log line
-  backup: BackupPlan;                                    // parts, restore, required, idPrefix, db, isPatched(boot)
+  backup: BackupPlan;                                    // parts, restore, idPrefix, db, isPatched(boot)
   patching: string;
   patchBoot(ctx: PatchContext<A>): Promise<Uint8Array>;
   writesBeforeBoot(ctx: PatchContext<A>): Promise<FlashStep[]>;  // InstallFlow writes boot after these
@@ -104,14 +104,19 @@ export interface Recipe<A, O, R> {
 }
 ```
 InstallFlow owns the order, the progress, the backup before any write (boot read twice), the read-back
-of every write, and boot last. It refuses, before touching the device, a backup plan that doesn't read
-`boot` and every `required` and `restore` part; before writing, a recipe step that writes boot, and a
-patch that gives a stock boot back unchanged (the same boot back is fine on a re-run, when
-`backup.isPatched` says it was patched already). Undo refuses a backup whose boot `isPatched`. kiln-core
-doesn't depend on bootpatch: what "patched" means is the recipe's. USB comes in through `Devices`, so `test/flow.test.ts` runs the S1 recipe
-end to end on simulated hardware with the real 4.5.80 partitions. `backup.ts`: backups in IndexedDB + a
-STORED zip (`zip.ts`) with a `SHA256SUMS` the CLI's `--undo` accepts. kiln-core names no frame: its
-`no-frame-names` test fails on any S1 name.
+of every write, and boot last. Whatever the recipe says, it refuses:
+
+- before touching the device, a backup plan that doesn't read `boot` and every `restore` part, or has
+  no `isPatched`;
+- before writing, a recipe step that writes boot, and a patch that gives a stock boot back unchanged
+  (the same boot back is fine on a re-run, when `backup.isPatched` says it was patched already);
+- on undo, a backup that lacks boot or any `restore` part, or whose boot `isPatched`.
+
+kiln-core doesn't depend on bootpatch: what "patched" means is the recipe's. USB comes in through
+`Devices`. The S1's end-to-end test is `kiln/test/flow.test.ts`: the S1 recipe on simulated hardware
+with the real 4.5.80 partitions. kiln-core's own `test/flow.test.ts` checks the rules above with a
+made-up frame. `backup.ts`: backups in IndexedDB + a STORED zip (`zip.ts`) with a `SHA256SUMS` the
+CLI's `--undo` accepts. kiln-core names no frame: its `no-frame-names` test fails on any S1 name.
 
 ## The S1 recipe (`frames/aqara-s1-plus/installer`)
 `s1Plus` in `src/recipe.ts`: the A133 check and our U-Boot over FEL, the S1 Plus partition layout,
