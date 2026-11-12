@@ -8,11 +8,12 @@ import dev.glassworks.frame.Frame
 class AqaraS1Plus : Frame {
     override val board = "aqara-s1-plus"
 
-    /** Aqara's cloud daemon, which the wall base pane stops or keeps. */
     val aqaraCloud = AqaraCloud()
 
     /** The time zone to keep (Aqara resets it at every boot; the root helper puts it back). One per device run. */
     fun timeZoneKeeper(onChange: () -> Unit) = TimeZoneKeeper(onChange = onChange)
+
+    val rootUpdates = RootUpdateInstaller()
 
     /**
      * The S1's firmware has no Android Settings app. Its own one (com.lumi.settings: Network, Sounds,
