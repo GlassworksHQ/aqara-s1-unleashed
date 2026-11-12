@@ -59,10 +59,11 @@ class UrlConnectionPoster(private val timeoutMs: Int = 10_000) : HttpPoster {
 
 /** `/auth/token` and `/auth/revoke` calls (Home Assistant `components/auth/__init__.py`). */
 class HaTokenClient(private val http: HttpPoster) {
-    fun exchangeCode(haBase: String, clientId: String, code: String): TokenResult {
+    fun exchangeCode(haBase: String, clientId: String, code: String, codeVerifier: String): TokenResult {
         val (status, body) = http.postForm(
             OAuth.trimBase(haBase) + "/auth/token",
-            OAuth.form("grant_type" to "authorization_code", "code" to code, "client_id" to clientId),
+            OAuth.form("grant_type" to "authorization_code", "code" to code, "client_id" to clientId,
+                "code_verifier" to codeVerifier),
         )
         return TokenResult.parse(status, body)
     }

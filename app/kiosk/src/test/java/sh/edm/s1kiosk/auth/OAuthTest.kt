@@ -16,17 +16,42 @@ class OAuthTest {
         val redirect = OAuth.redirectUri("192.168.3.39:8099")
         assertEquals("http://192.168.3.39:8099/", cid)
         assertEquals("http://192.168.3.39:8099/callback", redirect)
-        val u = OAuth.authorizeUrl("http://192.168.1.100:8123/", cid, redirect, "st/+=")
+        val u = OAuth.authorizeUrl("http://192.168.1.100:8123/", cid, redirect, "st/+=", "chal-_")
         assertTrue(u.startsWith("http://192.168.1.100:8123/auth/authorize?response_type=code&"))
         val q = OAuth.parseQuery(URI(u).rawQuery)
         assertEquals("code", q["response_type"])
         assertEquals(cid, q["client_id"])
         assertEquals(redirect, q["redirect_uri"])
         assertEquals("st/+=", q["state"])
+        assertEquals("chal-_", q["code_challenge"])
+        assertEquals("S256", q["code_challenge_method"])
         // IndieAuth (indieauth.py verify_redirect_uri): same scheme + netloc, no fetch needed.
         val c = URI(cid); val r = URI(redirect)
         assertEquals(c.scheme, r.scheme)
         assertEquals(c.rawAuthority, r.rawAuthority)
+    }
+
+    @Test
+    fun codeChallengeMatchesRfc7636AppendixB() {
+        assertEquals("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+            OAuth.codeChallenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"))
+    }
+
+    @Test
+    fun codeVerifierFitsHaAndIsRandom() {
+        val ha = Regex("^[A-Za-z0-9._~-]{43,128}$") // HA's _verify_code_verifier
+        val a = OAuth.newCodeVerifier()
+        assertTrue(a, ha.matches(a))
+        assertEquals(43, a.length)
+        assertNotEquals(a, OAuth.newCodeVerifier())
+        assertEquals(43, OAuth.codeChallenge(a).length) // HA wants exactly 43 unpadded chars
+    }
+
+    @Test
+    fun pendingSignInToStringHidesTheVerifier() {
+        val p = PendingSignIn("cid", "redir", "http://ha", 0L, codeVerifier = "SECRETVERIFIER")
+        assertFalse(p.toString().contains("SECRETVERIFIER"))
+        assertTrue(p.toString().contains("<redacted>"))
     }
 
     @Test
@@ -52,18 +77,23 @@ class OAuthTest {
     fun stateIsSingleUseAndExpires() {
         var now = 1_000L
         val s = StateStore(ttlMs = 600_000, max = 3, clock = { now })
-        val a = s.create("cid", "redir", "http://ha")
-        val b = s.create("cid", "redir", "http://ha")
+        val na = s.create("cid", "redir", "http://ha")
+        val nb = s.create("cid", "redir", "http://ha")
+        val a = na.state
+        val b = nb.state
         assertNotEquals(a, b)
+        assertNotEquals("a fresh verifier per sign-in", na.codeChallenge, nb.codeChallenge)
         assertTrue(a.length >= 32)
-        assertEquals("cid", s.consume(a)?.clientId)
+        val p = s.consume(a)!!
+        assertEquals("cid", p.clientId)
+        assertEquals("the challenge handed out is the S256 of the stored verifier", na.codeChallenge, OAuth.codeChallenge(p.codeVerifier))
         assertNull("single use", s.consume(a))
         assertNull(s.consume("forged"))
         assertNull(s.consume(null))
         now += 600_000
         assertNull("expired after 10 min", s.consume(b))
         // Bounded: the oldest outstanding state is dropped.
-        val x = s.create("c", "r", "h"); s.create("c", "r", "h"); s.create("c", "r", "h"); s.create("c", "r", "h")
+        val x = s.create("c", "r", "h").state; s.create("c", "r", "h"); s.create("c", "r", "h"); s.create("c", "r", "h")
         assertNull(s.consume(x))
         assertEquals(3, s.size())
     }

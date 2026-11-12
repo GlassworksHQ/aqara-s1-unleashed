@@ -5,6 +5,7 @@ import org.json.JSONObject
 import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 
@@ -25,6 +26,9 @@ import java.util.Base64
  *   unknown/revoked token gives `invalid_grant`. `POST /auth/revoke` with `token` always answers 200.
  * - frontend `src/data/auth.ts` `redirectWithAuthCode`: the phone is sent to
  *   `<redirect_uri>?code=<code>&state=<state>` (plus `&storeToken=true` if ticked).
+ * - PKCE (RFC 7636, S256 only): `components/auth/login_flow.py` `LoginFlowIndexView` takes
+ *   `code_challenge` + `code_challenge_method`; `__init__.py` `TokenView` `_verify_code_verifier` then
+ *   requires `code_verifier` at `/auth/token`. HA before 2026.10 ignores both, so we always send them.
  */
 object OAuth {
     const val SIGNIN_PORT = 8099
@@ -45,11 +49,13 @@ object OAuth {
 
     private val HOST_RE = Regex("^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?(:[0-9]{1,5})?$")
 
-    fun authorizeUrl(haBase: String, clientId: String, redirectUri: String, state: String): String =
+    fun authorizeUrl(haBase: String, clientId: String, redirectUri: String, state: String, codeChallenge: String): String =
         trimBase(haBase) + "/auth/authorize?response_type=code" +
             "&client_id=" + enc(clientId) +
             "&redirect_uri=" + enc(redirectUri) +
-            "&state=" + enc(state)
+            "&state=" + enc(state) +
+            "&code_challenge=" + enc(codeChallenge) +
+            "&code_challenge_method=S256"
 
     /** `http://h:8123/` or `http://h:8123/lovelace/x` → `http://h:8123` (scheme://host[:port]). */
     fun origin(url: String): String? = try {
@@ -91,6 +97,18 @@ object OAuth {
         random.nextBytes(b)
         return Base64.getUrlEncoder().withoutPadding().encodeToString(b)
     }
+
+    /** 32 random bytes → 43 base64url chars, inside HA's `^[A-Za-z0-9._~-]{43,128}$`. */
+    fun newCodeVerifier(): String {
+        val b = ByteArray(32)
+        random.nextBytes(b)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(b)
+    }
+
+    /** S256: base64url (no padding) of SHA-256 over the ASCII verifier. */
+    fun codeChallenge(verifier: String): String =
+        Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)))
 }
 
 /**
@@ -100,12 +118,21 @@ object OAuth {
 data class PendingSignIn(
     val clientId: String, val redirectUri: String, val haBase: String, val createdAt: Long,
     val purpose: String = PURPOSE_SIGNIN,
+    /** PKCE secret for this sign-in. Never log it. */
+    val codeVerifier: String,
 ) {
+    override fun toString() =
+        "PendingSignIn(clientId=$clientId, redirectUri=$redirectUri, haBase=$haBase, createdAt=$createdAt, " +
+            "purpose=$purpose, codeVerifier=<redacted>)"
+
     companion object {
         const val PURPOSE_SIGNIN = "signin"
         const val PURPOSE_THREAD = "thread"
     }
 }
+
+/** What the caller needs to build the authorize URL. The verifier stays in the store. */
+data class NewSignIn(val state: String, val codeChallenge: String)
 
 /**
  * OAuth `state` values handed out by /signin. Single use, expire after [ttlMs] (HA's own codes live
@@ -119,12 +146,13 @@ class StateStore(
     private val pending = LinkedHashMap<String, PendingSignIn>()
 
     @Synchronized
-    fun create(clientId: String, redirectUri: String, haBase: String, purpose: String = PendingSignIn.PURPOSE_SIGNIN): String {
+    fun create(clientId: String, redirectUri: String, haBase: String, purpose: String = PendingSignIn.PURPOSE_SIGNIN): NewSignIn {
         prune()
         while (pending.size >= max) pending.remove(pending.keys.first())
         val s = OAuth.randomState()
-        pending[s] = PendingSignIn(clientId, redirectUri, haBase, clock(), purpose)
-        return s
+        val verifier = OAuth.newCodeVerifier()
+        pending[s] = PendingSignIn(clientId, redirectUri, haBase, clock(), purpose, verifier)
+        return NewSignIn(s, OAuth.codeChallenge(verifier))
     }
 
     /**

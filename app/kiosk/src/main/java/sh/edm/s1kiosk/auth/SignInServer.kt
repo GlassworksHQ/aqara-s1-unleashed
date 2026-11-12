@@ -26,13 +26,14 @@ internal object AuthLog {
  * code for `http://<panel-ip>:8099/signin` and:
  *
  * 1. `GET /signin` → `302` to `<HA>/auth/authorize?response_type=code&client_id=http://<host>/&
- *    redirect_uri=http://<host>/callback&state=<random>`, `<host>` being the `Host` header the phone
+ *    redirect_uri=http://<host>/callback&state=<random>&code_challenge=<S256>&
+ *    code_challenge_method=S256`, `<host>` being the `Host` header the phone
  *    used (so client_id and redirect_uri always share scheme + netloc, which is what HA's IndieAuth
  *    `verify_redirect_uri` accepts without fetching anything).
  * 2. The user signs in to HA on the phone; HA's frontend sends the phone to
  *    `/callback?code=…&state=…`.
  * 3. `GET /callback` → the state is checked (single use, 10 min), the code is exchanged at
- *    `<HA>/auth/token` with the same client_id, and [onSignedIn] gets the refresh token. The phone
+ *    `<HA>/auth/token` with the same client_id and the PKCE `code_verifier`, and [onSignedIn] gets the refresh token. The phone
  *    sees "Panel signed in ✓".
  *
  * `/thread` and `/thread/callback` are the same flow for [ThreadJoin]: an administrator signs in once
@@ -133,8 +134,8 @@ class SignInServer(
             ?: return page(400, "Bad Request", "Can't sign in", "Open this page with the panel's address (scan the QR code).")
         val clientId = OAuth.clientId(host)
         val redirect = OAuth.redirectUri(host)
-        val state = states.create(clientId, redirect, ha)
-        val location = OAuth.authorizeUrl(ha, clientId, redirect, state)
+        val sign = states.create(clientId, redirect, ha)
+        val location = OAuth.authorizeUrl(ha, clientId, redirect, sign.state, sign.codeChallenge)
         return Response(
             302, "Found",
             mapOf("Location" to location, "Cache-Control" to "no-store", "Content-Type" to "text/plain; charset=utf-8"),
@@ -152,7 +153,7 @@ class SignInServer(
                 "Scan the QR code on the panel again.")
         val code = q["code"]?.takeIf { it.isNotEmpty() }
             ?: return page(400, "Bad Request", "Can't sign in", "Home Assistant didn't send an authorization code. Scan the code to try again.")
-        return when (val r = tokens.exchangeCode(pending.haBase, pending.clientId, code)) {
+        return when (val r = tokens.exchangeCode(pending.haBase, pending.clientId, code, pending.codeVerifier)) {
             is TokenResult.Ok -> {
                 val rt = r.refreshToken
                     ?: return page(502, "Bad Gateway", "Can't sign in", "Home Assistant didn't return a refresh token.")
@@ -188,10 +189,10 @@ class SignInServer(
             ?: return page(400, "Bad Request", "Can't sign in", "Open this page with the panel's address (scan the QR code).")
         val clientId = OAuth.clientId(host)
         val redirect = "http://$host${ThreadJoin.CALLBACK}"
-        val state = states.create(clientId, redirect, ha, PendingSignIn.PURPOSE_THREAD)
+        val sign = states.create(clientId, redirect, ha, PendingSignIn.PURPOSE_THREAD)
         return Response(
             302, "Found",
-            mapOf("Location" to OAuth.authorizeUrl(ha, clientId, redirect, state), "Cache-Control" to "no-store",
+            mapOf("Location" to OAuth.authorizeUrl(ha, clientId, redirect, sign.state, sign.codeChallenge), "Cache-Control" to "no-store",
                 "Content-Type" to "text/plain; charset=utf-8"),
             "Redirecting to Home Assistant".toByteArray(),
         )
@@ -210,7 +211,7 @@ class SignInServer(
             "The panel stopped waiting. Start “Get it from Home Assistant” on the panel again, then scan the new code.")
         val code = q["code"]?.takeIf { it.isNotEmpty() }
             ?: return page(400, "Bad Request", "Can't sign in", "Home Assistant didn't send an authorization code. Scan the code to try again.")
-        return when (val r = tokens.exchangeCode(pending.haBase, pending.clientId, code)) {
+        return when (val r = tokens.exchangeCode(pending.haBase, pending.clientId, code, pending.codeVerifier)) {
             is TokenResult.Ok -> {
                 val rt = r.refreshToken
                     ?: return page(502, "Bad Gateway", "Can't sign in", "Home Assistant didn't return a refresh token.")
