@@ -11,8 +11,8 @@
   "scripts": {
     "dev": "vite --host localhost --port 5173",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run && npm test --workspaces",
-    "typecheck": "tsc --noEmit && npm run typecheck --workspaces",
+    "test": "vitest run && npm test --workspaces --if-present",
+    "typecheck": "tsc --noEmit && npm run typecheck --workspaces --if-present",
     "stage": "node scripts/stage-assets.mjs",
     "vercel-build": "node scripts/stage-assets.mjs --remote && npm run build"
   },

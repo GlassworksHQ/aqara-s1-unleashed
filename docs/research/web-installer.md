@@ -47,6 +47,9 @@ HTTPS.
 
 ### Module layout
 
+The layout planned before the build, kept as it was. The installer now lives in `kiln/`, and the
+protocol modules in `kiln/packages/` (listed in `kiln/package.json`, `workspaces`).
+
 ```
 web/
   mockup/index.html          clickable static mockup (this PR)
