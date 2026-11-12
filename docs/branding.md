@@ -25,7 +25,7 @@ image follows GitHub's theme.
 | Part | Badge or banner | Where it goes |
 |---|---|---|
 | S1 Unleashed as a whole (a frame) | **Built on Glassworks** (`badge-on-*.svg`) | Top of [README.md](../README.md), already there. The badge rules also ask for it on the app's About screen |
-| A library in `app/libs/` | **Library banner** (`banner-library-<name>-on-*.svg`) | Top of that library's README |
+| A library in `app/libs/` | **Library banner** (`banner-library-<name>-on-*.svg`), then the MIT licence, status and roadmap badges | Top of that library's README. Copy the header of [improv's README](../app/libs/improv/README.md) |
 | The Glassworks core (`dev.glassworks.*`), including the pane API | **Core banner** (`banner-core-on-*.svg`) as the header, and the **core badge** (`badge-core-on-*.svg`) | `app/kiosk/src/main/java/dev/glassworks/README.md` |
 | A pane | **Pane badge** (`badge-pane-on-*.svg`) | The pane's README |
 | The installer (`web/`, `tools/install.sh`) | **Kiln badge** (`badge-kiln-on-*.svg`) | Kiln's README. The S1 installer is still S1-branded until it moves into Kiln |
@@ -34,9 +34,11 @@ Device-specific code lives in the frame, so it doesn't get a badge of its own.
 
 ## Licence, status and roadmap
 
-Use the Glassworks info badges, not shields.io: `badge-license`, `badge-roadmap`, and one status
+Use the Glassworks info badges, not shields.io: a licence badge, `badge-roadmap`, and one status
 badge for the stage the project is at: `badge-status-under-development`, `badge-status-alpha`,
 `badge-status-beta` or `badge-status-stable`. Each comes as `-on-dark.svg` and `-on-light.svg`. They're on [/brand#info](https://www.glassworks.dev/brand#info), with a README snippet.
+The licence badge is `badge-license` (MPL-2.0) for the Glassworks core and `badge-license-mit` (MIT)
+for the libraries in `app/libs/`, which are MIT like the rest of this repo.
 They sit on the same field as the part badges, so a header reads as one set. If you need one that
 isn't there, add it to the generator. Only a live value, such as the latest release version, still
 needs shields.io or a release link.
