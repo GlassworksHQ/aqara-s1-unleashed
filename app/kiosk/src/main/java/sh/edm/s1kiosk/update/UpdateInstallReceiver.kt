@@ -4,8 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
-import android.os.Build
 import android.util.Log
+import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.glassworks
 
 /**
@@ -19,11 +19,7 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty()
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                val confirm = if (Build.VERSION.SDK_INT >= 33) {
-                    intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
-                } else {
-                    @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_INTENT)
-                }
+                val confirm = Platform.intentExtra(intent, Intent.EXTRA_INTENT)
                 if (confirm == null) {
                     context.glassworks.updates?.onSessionFailed("no confirmation screen")
                     return
