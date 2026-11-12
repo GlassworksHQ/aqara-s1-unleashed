@@ -42,21 +42,31 @@ const CLEAN_TIPS: [string, string][] = [
 ];
 
 /**
- * `wrote`: whether a write was flashed and verified before it stopped. `installed`: the new software
- * was already in place (the setup step), so nothing more could break.
+ * What reached the panel before it stopped: `verified`, a write was flashed and read back; `maybe`, a
+ * write started and didn't finish; `none`. `installed`: the new software was already in place (the
+ * setup step), so nothing more could break.
  */
-export function explain(e: unknown, at: number, wrote: boolean, installed = false): Failure {
+export type Written = 'none' | 'maybe' | 'verified';
+
+export function explain(e: unknown, at: number, written: Written, installed = false): Failure {
   const raw = e instanceof Error ? e.message : String(e);
-  const rule = RULES.find((r) => r.test(e, raw));
-  const written = installed ? 'The new software is in place.' : wrote ? 'Part of the new software was written.' : 'Nothing was written.';
-  const fix = !installed && wrote
+  // On an installed panel a cancelled picker is the adb one: the recovery-mode advice doesn't apply.
+  const rule = installed && named('NotFoundError')(e)
+    ? { title: 'Nothing was picked.', fix: 'Try again, and pick the panel in the browser\'s list.' }
+    : RULES.find((r) => r.test(e, raw));
+  const changed = !installed && written !== 'none';
+  const said = installed ? 'The new software is in place.'
+    : written === 'verified' ? 'Part of the new software was written.'
+    : written === 'maybe' ? 'Part of the new software may have been written.'
+    : 'Nothing was written.';
+  const fix = changed
     ? 'Don\'t unplug it yet: put it in recovery mode again and use Undo with your backup.'
     : rule?.fix ?? (installed ? 'Unplug it, plug it back in, and use Finish setting up.' : 'Unplug it and start again from recovery mode.');
   return {
-    title: rule?.title ?? (wrote && !installed ? 'Something went wrong while writing.' : 'Something went wrong.'),
-    body: `${written} ${fix}`,
-    wrote: wrote && !installed,
-    tips: wrote && !installed ? WRITTEN_TIPS : CLEAN_TIPS,
+    title: rule?.title ?? (changed ? 'Something went wrong while writing.' : 'Something went wrong.'),
+    body: `${said} ${fix}`,
+    wrote: changed,
+    tips: changed ? WRITTEN_TIPS : CLEAN_TIPS,
     raw: rule && named('NotFoundError')(e) ? '' : raw,
     at,
   };

@@ -128,7 +128,8 @@ export class Session {
 
   private fail(at: number, e: unknown, installed = false) {
     console.error(e);
-    this.dispatch({ type: 'fail', failure: explain(e, at, this.s.wrote, installed) });
+    const written = this.s.wrote ? 'verified' : this.s.touched ? 'maybe' : 'none';
+    this.dispatch({ type: 'fail', failure: explain(e, at, written, installed) });
   }
 
   /**

@@ -78,4 +78,13 @@ describe('wizard state', () => {
     expect(eta(s, 300_000)).toBe('50% · ~5 min');
     expect(eta(s, 40_000)).toBe('50% · under a minute');
   });
+
+  it('marks a possible write at the first flash or verify progress, and clears it on a new run', () => {
+    let s = run(initial(), { type: 'start', flow: 'install', now: 0 }, progress(0.5, 'backup'), progress(0.58, 'patch'));
+    expect(s.touched).toBe(false);
+    s = reduce(s, progress(0.6, 'flash'));
+    expect(s.touched).toBe(true);
+    expect(s.wrote).toBe(false);
+    expect(reduce(s, { type: 'start', flow: 'install', now: 1 }).touched).toBe(false);
+  });
 });

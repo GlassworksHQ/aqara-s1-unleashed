@@ -33,7 +33,7 @@ export interface RadioPlan { title: string; lead: string; steps: RadioStep[] }
 export interface Failure {
   title: string;
   body: string;
-  /** whether anything reached the panel's storage before it stopped */
+  /** whether anything may have reached the panel's storage before it stopped */
   wrote: boolean;
   tips: [string, string][];
   raw: string;
@@ -68,6 +68,11 @@ export interface WizardState {
   progress: { overall: number; phase: Phase; title: string; sub: string; started: number };
   /** a write was flashed and verified: from here on, a failure has changed the panel */
   wrote: boolean;
+  /**
+   * a write may have started: the first flash or verify progress. A failure from here on may have
+   * changed the panel, even before any write is verified (explain.ts says so).
+   */
+  touched: boolean;
   log: string[];
   parts: [string, Part][];
   setup: Setup;
@@ -102,6 +107,7 @@ export function initial(flow: Flow = 'install'): WizardState {
     screen: flow === 'undo' ? 'undo' : 'connect',
     progress: { overall: 0, phase: 'boot', title: 'Starting', sub: '', started: 0 },
     wrote: false,
+    touched: false,
     log: [],
     parts: [],
     setup: { phase: 'waiting', note: '' },
@@ -115,13 +121,15 @@ export function reduce(s: WizardState, a: Action): WizardState {
       return { ...s, screen: a.screen, flow: a.flow ?? s.flow, ask: undefined };
     case 'start':
       return {
-        ...s, flow: a.flow, screen: 'firing', ask: undefined, wrote: false, log: [], parts: [], failure: undefined,
+        ...s, flow: a.flow, screen: 'firing', ask: undefined, wrote: false, touched: false, log: [], parts: [], failure: undefined,
         progress: { overall: 0, phase: 'boot', title: 'Starting', sub: '', started: a.now },
       };
     case 'progress': {
       // Progress never goes backwards, even when the flow's phases alternate.
       const overall = Math.max(s.progress.overall, Math.min(1, a.p.overall));
-      return { ...s, progress: { ...s.progress, overall, phase: a.p.phase, title: a.p.title, sub: a.p.sub } };
+      // kiln-core reports flash and verify only from inside a write (flashVerified)
+      const touched = s.touched || a.p.phase === 'flash' || a.p.phase === 'verify';
+      return { ...s, touched, progress: { ...s.progress, overall, phase: a.p.phase, title: a.p.title, sub: a.p.sub } };
     }
     case 'log': {
       const log = [...s.log, a.line].slice(-LOG_LIMIT);

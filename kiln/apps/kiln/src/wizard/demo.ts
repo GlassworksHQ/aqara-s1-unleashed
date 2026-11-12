@@ -282,12 +282,12 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
       return;
     case 'error':
       install();
-      dispatch({ type: 'fail', failure: explain(new Error('transfer error: the device was disconnected'), 2, false) });
+      dispatch({ type: 'fail', failure: explain(new Error('transfer error: the device was disconnected'), 2, 'none') });
       return;
     case 'error-written':
       install();
       dispatch({ type: 'log', line: '10:15:00 vbmeta flashed and verified' });
-      dispatch({ type: 'fail', failure: explain(new Error('boot: read-back does not match what was written'), 2, true) });
+      dispatch({ type: 'fail', failure: explain(new Error('boot: read-back does not match what was written'), 2, 'verified') });
       return;
   }
 }

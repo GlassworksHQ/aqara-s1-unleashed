@@ -59,7 +59,7 @@ describe('the last failure', () => {
     const store = new Store(initial());
     store.dispatch({ type: 'start', flow: 'install', now: 0 });
     store.dispatch({ type: 'log', line: '10:00:00 boot saved, 32 MiB' });
-    store.dispatch({ type: 'fail', failure: explain(new Error('transferIn: the device was disconnected'), 2, false) });
+    store.dispatch({ type: 'fail', failure: explain(new Error('transferIn: the device was disconnected'), 2, 'none') });
     return { store, close: () => {} };
   };
 
