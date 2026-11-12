@@ -163,4 +163,61 @@ class ReleasesTest {
         val s = Releases.summary("**One line.**\n\n### Fixed\n- A thing.\n- Another thing.", "Install failed: x")
         assertEquals("Install failed: x\n\n**One line.**\n\n### Fixed\n- A thing.\n- Another thing.", s)
     }
+
+    // ---------------------------------------------------------------- one repo, several frames
+
+    /** The fixture as release [version] under [tag] (assets and their URLs follow), optionally a draft. */
+    private fun release(tag: String, version: String = "1.3.0", draft: Boolean = false): JSONObject {
+        val json = latest.replace("1.3.0", version).replace("/download/v$version/", "/download/$tag/")
+        return JSONObject(json).put("tag_name", tag).put("draft", draft)
+    }
+    private fun list(vararg r: JSONObject) = JSONArray(r.toList()).toString()
+
+    @Test fun tagsOfThisAppOnly() {
+        assertEquals(AppVersion(1, 2, 3), Releases.tagVersion("v1.2.3"))
+        assertEquals(AppVersion(1, 2, 3), Releases.tagVersion("aqara-s1-plus-v1.2.3"))
+        assertNull(Releases.tagVersion("lululemon-mirror-v1.2.3"))
+        assertNull(Releases.tagVersion("esphome-api-v1.2.3"))
+        assertNull(Releases.tagVersion("aqara-s1-v1.2.3"))
+        assertNull(Releases.tagVersion("installer-files-3"))
+    }
+
+    @Test fun prefixedTagIsInstallable() {
+        val o = Releases.offer(Releases.parse(release("aqara-s1-plus-v1.3.0").toString()))
+        assertEquals(AppVersion(1, 3, 0), o.version)
+        assertEquals("https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/aqara-s1-plus-v1.3.0/s1-kiosk-1.3.0.apk", o.apk.url)
+    }
+
+    @Test fun picksThisAppsNewestReleaseAmongOthers() {
+        // Newest first, as GitHub lists them: another frame and a library released after this app.
+        val other = release("lululemon-mirror-v2.0.0", "2.0.0")
+        val lib = release("esphome-api-v1.1.0", "1.1.0")
+        val pick = Releases.newest(Releases.parseList(list(other, lib, release("aqara-s1-plus-v1.4.0", "1.4.0"), release("v1.3.0"))))
+        assertEquals(AppVersion(1, 4, 0), pick.offer!!.version)
+        assertNull(pick.problem)
+    }
+
+    @Test fun oldPlainTagsStillCount() {
+        val pick = Releases.newest(Releases.parseList(list(release("installer-files-3"), release("v1.3.0"))))
+        assertEquals(AppVersion(1, 3, 0), pick.offer!!.version)
+    }
+
+    @Test fun aRefusedNewerReleaseStillOffersTheOlderOne() {
+        val pick = Releases.newest(Releases.parseList(list(release("aqara-s1-plus-v1.4.0", "1.4.0", draft = true), release("v1.3.0"))))
+        assertEquals(AppVersion(1, 3, 0), pick.offer!!.version)
+        assertTrue(pick.problem!!.contains("draft"))
+    }
+
+    @Test fun noReleaseOfThisAppIsNotAProblem() {
+        val pick = Releases.newest(Releases.parseList(list(release("lululemon-mirror-v2.0.0", "2.0.0"))))
+        assertNull(pick.offer)
+        assertNull(pick.problem)
+        assertNull(Releases.newest(emptyList()).offer)
+    }
+
+    @Test fun malformedListIsRefused() {
+        for (bad in listOf("", "{}", "[1]", "[{\"assets\": []}]")) {
+            try { Releases.parseList(bad); fail("accepted '$bad'") } catch (_: ReleaseFormatException) {}
+        }
+    }
 }

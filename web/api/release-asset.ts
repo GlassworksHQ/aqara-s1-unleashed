@@ -10,7 +10,7 @@ export default async function handler(req: Request): Promise<Response> {
   const q = new URL(req.url).searchParams;
   const tag = q.get('tag') ?? '';
   const name = q.get('name') ?? '';
-  const m = /^v(\d+\.\d+\.\d+)$/.exec(tag);
+  const m = /^(?:aqara-s1-plus-)?v(\d+\.\d+\.\d+)$/.exec(tag);
   if (!m || name !== `s1-kiosk-${m[1]}.apk`) return new Response('not an S1 Kiosk release asset', { status: 400 });
   const upstream = await fetch(`https://github.com/${REPO}/releases/download/${tag}/${name}`, { redirect: 'follow' });
   if (!upstream.ok || !upstream.body) return new Response(`GitHub answered ${upstream.status}`, { status: 502 });
