@@ -653,6 +653,16 @@ class Build(unittest.TestCase):
         light = next(l for l in md.splitlines() if l.startswith("| light | "))
         self.assertEqual(light.split(" | ")[1].count("scroll "), 2)              # runs 1 and 4 both opened light first
 
+    def test_a_failed_run_doesnt_say_an_empty_protocol(self):
+        """smoke7's report printed "the pages ran protocol ;" when its only run had failed."""
+        for k in (1, 2, 3):
+            run = refstart(k, 100)
+            run["error"] = "the reference dashboards did not finish within 600 s"
+            self.write(f"refstart-{k}.json", run)
+        g = R.build(self.dir)["grade"]
+        self.assertFalse(any("protocol" in r for r in g["provisional_reasons"]), g["provisional_reasons"])
+        self.assertIn("3 of 3 graded runs failed or are missing", g["provisional_reasons"])
+
     def test_the_grade_does_not_move_with_your_home_assistant(self):
         """Every grade input comes from the reference dashboards; nothing from your own dashboard,
         your panes or your network reaches it, on the real-use side or inside a graded run."""

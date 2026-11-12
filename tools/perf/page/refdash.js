@@ -259,8 +259,13 @@
     return r.width > 0 && r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth;
   }
 
+  let logSeq = 0;
   function log(obj) {
-    console.log("GWPERF " + JSON.stringify(Object.assign({ run: RUN, nonce: NONCE }, obj)));
+    // Split when long: logcat keeps only 1023 bytes of a console line (stats.js, consoleLines).
+    logSeq++;
+    for (const l of S.consoleLines("GWPERF", `${NONCE}:${logSeq}`, JSON.stringify(Object.assign({ run: RUN, nonce: NONCE }, obj)))) {
+      console.log(l);
+    }
   }
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

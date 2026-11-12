@@ -1,0 +1,115 @@
+{
+ "_comment": "The reference pages' log lines as the S1 Plus logged them (keys only, no values): smoke7 at d60ec95, S1 Kiosk 0.4.3, read from the panel's logcat on 2026-11-12. step/updates comes from the page code in headless Chrome, because all four of smoke7's were cut off. test_runner.FakeMatchesThePanel holds the fake adb to these shapes.",
+ "tag": "Isolated Web Content",
+ "max_line_bytes": 1023,
+ "from_page_code": [
+  "step/updates"
+ ],
+ "shapes": {
+  "done": [
+   "nonce",
+   "run",
+   "stage",
+   "t"
+  ],
+  "input": [
+   "inp_ms",
+   "method",
+   "nonce",
+   "run",
+   "stage",
+   "t",
+   "taps",
+   "values"
+  ],
+  "input-ready": [
+   "nonce",
+   "run",
+   "t",
+   "taps",
+   "x",
+   "y"
+  ],
+  "measure/scroll": [
+   "n",
+   "nonce",
+   "run",
+   "stage",
+   "t"
+  ],
+  "measure/updates": [
+   "animations",
+   "animations_expected",
+   "moving",
+   "n",
+   "nonce",
+   "offscreen",
+   "run",
+   "stage",
+   "t",
+   "targets",
+   "update_every_ms"
+  ],
+  "refdash": [
+   "cards",
+   "css",
+   "dpr",
+   "epoch_ms",
+   "fcp_ms",
+   "lcp_ms",
+   "load_ms",
+   "nodes",
+   "nonce",
+   "origin_epoch_ms",
+   "protocol",
+   "run",
+   "scroll_height",
+   "t",
+   "tier"
+  ],
+  "step/scroll": [
+   "changes_during",
+   "first_scroll_ms",
+   "hit_edge",
+   "n",
+   "nonce",
+   "raf",
+   "raf_intervals",
+   "run",
+   "scrolled_px",
+   "stage",
+   "t",
+   "window_ms"
+  ],
+  "swipe-ready": [
+   "ms",
+   "n",
+   "nonce",
+   "run",
+   "t",
+   "x",
+   "y1",
+   "y2"
+  ],
+  "warmup/updates": [
+   "n",
+   "nonce",
+   "run",
+   "stage",
+   "t"
+  ],
+  "step/updates": [
+   "changes",
+   "n",
+   "nonce",
+   "pacing_ms",
+   "raf",
+   "raf_times",
+   "run",
+   "stage",
+   "t",
+   "t0",
+   "window_ms"
+  ]
+ }
+}

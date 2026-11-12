@@ -601,8 +601,14 @@ and RAM per frame and pane, with budgets. It can read these reports as they are:
 
 ## Page log lines
 
-The pages write one console line per event, `GWPERF {json}`. GeckoView passes page console output
-to logcat under the `GeckoConsole` tag. Every line has `run`, `nonce` (the runner's id for that page
+The pages write one console line per event, `GWPERF {json}`. It reaches logcat from the content
+process (tag `Isolated Web Content` on the S1), and **only its first 1023 bytes arrive** (read from
+the S1's logcat, 2026-11-12: smoke7's four 4 s updates steps, about 1.5 KB each, were cut there and
+didn't parse; logcat itself allows 4068 bytes). So a page line longer than 900 bytes is split into
+numbered parts, `GWPERF+ <nonce>:<n> <k>/<parts> <chunk>` (`stats.js`, `consoleLines`), and the
+runner joins them (`perflib.PageLines`). A line that still doesn't parse is counted
+(`bad_page_lines`) and makes the grade provisional. A page that says done without its updates step
+doesn't fail the run: its other tasks stand, and its live updates read "not measured". Every line has `run`, `nonce` (the runner's id for that page
 load) and `t`:
 
 | `t` | Fields |
@@ -671,7 +677,13 @@ What the earlier runs on the S1 (2026-11-12, kiosk 0.4.3, GeckoView 159, Android
   Typical misses the good scroll bar by under 0.5 fps in two of three runs, and that decides the C.
   Light's scroll is the protocol 1 artefact above: every light swipe hit the end of the page, at
   41 to 46 fps in every position. These were 9 changes per run, so the p95 is the slowest of them.
-  Protocol 2's fixes (room to flick, HA's update stream, the 4 s window) are not yet measured on the S1.
+- **smoke7** (d60ec95, protocol 2, one run, 2026-11-12) failed with "did not finish within 600 s"
+  although all three pages finished. Every updates step was cut at 1023 bytes in logcat and didn't
+  parse, and the runner then counted the run as failed. Fixed: long lines are split, and a lost step
+  no longer fails a run. Its other measurements, re-read: light's page is 1936 px tall; every swipe
+  moved 559 to 563 px without reaching an edge, with 8 or 9 live changes during each. Scroll is good
+  on every page (light 56.0 fps, typical 53.8, heavy 53.5, p95 33 ms), so protocol 2 removed light's
+  scroll artefact. Live updates weren't measured in that run.
 
 ## Run the tests
 

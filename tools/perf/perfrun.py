@@ -138,9 +138,10 @@ def cmd_synthetic(dev, a):
     no_page = threading.Timer(90, lambda: None if seen.is_set() else lc.terminate())
     no_page.start()
     with open(path, "w") as f:
+        lines_in = P.PageLines()
         for line in lc.stdout:
             rec = P.parse_logcat_line(line)
-            pl = P.gwperf_payload(rec["msg"]) if rec else None
+            pl = lines_in.feed(rec["msg"]) if rec else None
             if not pl or pl.get("nonce") != a.nonce:
                 continue
             pl["mono"] = rec["mono"]
@@ -283,7 +284,8 @@ def cmd_coldstart(dev, a):
            "displayed_mono": None, "engine_mono": None, "engine_uri": None, "own_page_start_mono": None,
            "own_page_stop_mono": None, "own_page_loads": 0, "own_page_state": None,
            "page_start_mono": None, "page_stop_mono": None, "tiers": {}, "order": tiers, "warmup": None,
-           "between": [], "error": None}
+           "between": [], "bad_page_lines": 0, "error": None}
+    page_lines = P.PageLines()
     st = {"engine_at": None, "own_stop_at": 0.0, "current": None, "measure_mono": None, "break_after": None,
           "opened": 0, "next_at": None, "gestures": []}
     size = screen_size(dev) if ref else None
@@ -343,7 +345,8 @@ def cmd_coldstart(dev, a):
             if res["ttid_ms"] is not None:
                 res["displayed_mono"] = rec["mono"]
         cur = st["current"]
-        pl = P.gwperf_payload(msg)
+        pl = page_lines.feed(msg)
+        res["bad_page_lines"] = page_lines.bad
         if cur and pl and pl.get("nonce") == cur[1]:
             return handle_page(cur[0], pl, rec)
         m = PAGE_RE.search(msg)
@@ -479,8 +482,14 @@ def cmd_coldstart(dev, a):
         pass
     elif res["engine_mono"] is None:
         res["error"] = f"GeckoView never started a page within {a.timeout:.0f} s"
-    elif ref and (st["opened"] < len(slots) or not all("step" in e for e in res["tiers"].values())):
+    elif ref and st["opened"] < len(slots):
         res["error"] = f"the reference dashboards did not finish within {a.timeout:.0f} s"
+    # A page that said done without its updates step (smoke7: the line was cut off in logcat) isn't a
+    # failed run: its other measurements stand, and the report says what is missing.
+    res["missing_steps"] = [t for t, e in res["tiers"].items() if "step" not in e] if ref else []
+    if res["missing_steps"]:
+        print(f"  {', '.join(res['missing_steps'])}: no updates step; {page_lines.bad} page line(s) didn't parse",
+              file=sys.stderr)
     elif not ref and res["own_page_stop_mono"] is None:
         res["error"] = f"the dashboard did not finish loading within {a.timeout:.0f} s"
     elif not ref:

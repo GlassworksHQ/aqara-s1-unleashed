@@ -1,5 +1,6 @@
 /* Glassworks perf test page (MIT). Runs the stages in order and logs one `GWPERF {json}` console
- * line per event, which GeckoView writes to logcat (tag GeckoConsole). tools/perf/perfrun.py reads
+ * line per event, which reaches logcat from the content process (tag "Isolated Web Content" on the
+ * S1; at most 1023 bytes of a line, so long lines are split: stats.js consoleLines). tools/perf/perfrun.py reads
  * them; the line types and fields are documented in docs/perf.md ("Page log lines").
  *
  * The grade's frames and input come from the reference dashboards (refdash.js); this page is the
@@ -26,8 +27,13 @@
 
   const NONCE = q.get("nonce") || "";
 
+  let logSeq = 0;
   function log(obj) {
-    console.log("GWPERF " + JSON.stringify(Object.assign({ run: RUN, nonce: NONCE }, obj)));
+    // Split when long: logcat keeps only 1023 bytes of a console line (stats.js, consoleLines).
+    logSeq++;
+    for (const l of S.consoleLines("GWPERF", `${NONCE}:${logSeq}`, JSON.stringify(Object.assign({ run: RUN, nonce: NONCE }, obj)))) {
+      console.log(l);
+    }
   }
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const nextFrame = () => new Promise((r) => requestAnimationFrame(r));

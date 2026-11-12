@@ -130,7 +130,51 @@ def shell(cmd):
 LOCK = threading.Lock()
 
 
+# As on the S1 (2026-11-12): a page's console line reaches logcat from the content process, tagged
+# "Isolated Web Content", and only its first 1023 bytes arrive.
+PAGE_TAG, PAGE_LINE_BYTES = "Isolated Web Content", 1023
+PAGE_LINE_MAX = 900     # stats.js LINE_MAX: longer lines are split, as the page does
+
+
+def page_lines(key, text):
+    """The page's consoleLines (stats.js), in Python."""
+    if len(text) <= PAGE_LINE_MAX:
+        return ["GWPERF " + text]
+    parts, i = [], 0
+    while i < len(text):
+        j = min(len(text), i + PAGE_LINE_MAX)
+        while j < len(text) and j > i + 1 and (text[j - 1].isspace() or text[j].isspace()):
+            j -= 1
+        parts.append(text[i:j])
+        i = j
+    return [f"GWPERF+ {key} {k}/{len(parts)} {p}" for k, p in enumerate(parts)]
+
+
+SEQ = [0]
+
+
+def shape_of(obj):
+    """A page line's type, as test/page-lines.json keys them."""
+    t = obj.get("t")
+    staged = t in ("measure", "step", "warmup") and obj.get("stage") in ("updates", "scroll")
+    return f"{t}/{obj['stage']}" if staged else t
+
+
+def page_log(obj, split=True, record=True):
+    SEQ[0] += 1
+    text = json.dumps(obj, separators=(",", ":"))
+    if record:
+        # The reference page's lines' keys, so test_runner can hold the fake to the panel's shapes
+        # (test/page-lines.json).
+        with open(os.path.join(STATE, "page-lines.jsonl"), "a") as f:
+            f.write(json.dumps({"shape": shape_of(obj), "keys": sorted(obj)}) + "\n")
+    for l in (page_lines(f"{obj.get('nonce')}:{SEQ[0]}", text) if split else ["GWPERF " + text]):
+        line(PAGE_TAG, l)
+
+
 def line(tag, msg, pid=4242):
+    if tag == PAGE_TAG:
+        msg = msg.encode()[:PAGE_LINE_BYTES].decode(errors="ignore")
     with LOCK:
         print(f"{now():10.3f}  {pid}  {pid + 1} I {tag}: {msg}", flush=True)
 
@@ -144,7 +188,7 @@ def noise(every):
 
 def page(nonce):
     def gw(obj):
-        line("GeckoConsole", "GWPERF " + json.dumps(dict(obj, run=1, nonce=nonce)))
+        page_log(dict(obj, run=1, nonce=nonce), split=not os.environ.get("FAKE_NO_SPLIT"), record=False)
 
     gw({"t": "hello", "ua": "Mozilla/5.0 (Android 10; Mobile; rv:159.0) Gecko/159.0 Firefox/159.0", "load": {"lcp_ms": 420}})
     gw({"t": "js", "runs": 30, "median_ms": 9.5, "p95_ms": 12.0, "checksum": 7, "expected": 7})
@@ -174,7 +218,7 @@ def refdash(nonce, url):
     dpr = float(os.environ.get("FAKE_DPR", "1.5"))
 
     def gw(obj):
-        line("GeckoConsole", "GWPERF " + json.dumps(dict(obj, nonce=nonce, run=1)))
+        page_log(dict(obj, nonce=nonce, run=1), split=not os.environ.get("FAKE_NO_SPLIT"))
 
     if foreign == "before":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
@@ -188,7 +232,7 @@ def refdash(nonce, url):
         # The last page's requests, replayed late into this one (its console lines can arrive after
         # the next page opened). The runner must answer only the current page's nonce.
         for t in ("swipe-ready", "input-ready"):
-            line("GeckoConsole", "GWPERF " + json.dumps({"t": t, "nonce": stale, "run": 1, "n": 0, "x": 720, "y": 360,
+            line(PAGE_TAG, "GWPERF " + json.dumps({"t": t, "nonce": stale, "run": 1, "n": 0, "x": 720, "y": 360,
                                                           "y1": 612, "y2": 108, "ms": 300, "taps": 2}))
     save("last_nonce.json", nonce)
     if foreign == "after":
@@ -204,11 +248,13 @@ def refdash(nonce, url):
     m0, t0 = now(), time.time() * 1000 - origin
     paint(m0, m0 + 0.5)      # each change on screen within a frame or two
     time.sleep(0.5)
+    # As long as the real page's (smoke7's were cut at 1023 bytes; this one is about 1.8 KB, so it is
+    # split): a change every 10 ms over the 500 ms window, and 31 rAF times.
+    changes = [[round(10.0 * k, 1), round(10.0 * k + 0.4, 1), 180 if k % 9 == 4 else 0, 2 if k % 9 == 4 else 0,
+                round(10.0 * k + 0.6, 1)] for k in range(1, 49)]
     gw({"t": "step", "stage": "updates", "n": 1, "window_ms": 500, "t0": round(t0, 1), "pacing_ms": 500,
         "raf": {"n": 30, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0, "fps": 60},
-        "raf_times": [round(i * 16.7, 1) for i in range(31)],
-        "changes": [[100.0, 100.5, 0, 0, 100.2], [200.0, 200.4, 0, 0, 200.4], [300.0, 300.4, 0, 0, 300.6],
-                    [350.0, 350.3, 180, 2, 350.7], [400.0, 400.2, 0, 1, 400.8]]})
+        "raf_times": [round(i * 16.7, 1) for i in range(31)], "changes": changes})
     if taps:
         before = state("taps.json", 0)
         save("asked.json", {"tap": taps})

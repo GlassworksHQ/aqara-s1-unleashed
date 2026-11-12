@@ -321,8 +321,11 @@ def tier_run(tier, entry, presents_ms):
     page, step = entry.get("page"), entry.get("step")
     out = {"tier": tier, "css": page and page.get("css"), "dpr": page and page.get("dpr"),
            "protocol": page and page.get("protocol")}
-    if entry.get("error") or not page or not step:
+    if entry.get("error") or not page:
         return dict(out, error=entry.get("error") or "incomplete")
+    # A lost updates step (smoke7: cut off in logcat) leaves only the live updates unmeasured.
+    no_step = not step
+    step = step or {}
     if not page.get("load_ms") or not page.get("fcp_ms"):
         out["load_error"] = "no load event or first paint reported"
     else:
@@ -360,6 +363,8 @@ def tier_run(tier, entry, presents_ms):
         out["updates_error"] = why
     why, voids_taps = live_check_failed(entry.get("measure") or {}, step)
     out["state_ticks"] = state_ticks(step)
+    if no_step:
+        why = "the page's updates step never arrived"
     if why:
         out.update(updates=None, latency=None, updates_run=None, updates_error=why)
     inp = entry.get("input") or {}
@@ -392,6 +397,7 @@ def reference_run(c):
     else:
         start = round((engine - proc) * 1000)
     tiers = {t: tier_run(t, e, c.get("presents_mono_ms") or []) for t, e in (c.get("tiers") or {}).items()}
+    base["bad_page_lines"] = c.get("bad_page_lines") or 0
     order = c.get("order") or list(c.get("tiers") or {})
     for t, r in tiers.items():
         r["position"] = order.index(t) + 1 if t in order else None
@@ -492,6 +498,7 @@ def reference_summary(all_runs):
         "launch": sorted({r["launch"] for r in runs if r.get("launch")}),
         "own_page_states": sorted({r["own_page_state"] for r in runs if r.get("own_page_state")}),
         "orders": [r.get("order") for r in runs],
+        "bad_page_lines": sum(r.get("bad_page_lines") or 0 for r in all_runs),
         "protocols": sorted({x.get("protocol") for r in runs for x in r["tiers"].values()}, key=str),
         "warmups": [r.get("warmup") for r in runs],
         "tiers": tiers,
@@ -794,8 +801,13 @@ def build(run_dir, apks=(), budgets=None):
         # painting (a clock card) is normal and changes nothing.
         reasons.append("the kiosk's own page never finished loading in a graded run (Home Assistant down?)")
     reasons += coverage_reasons(ref, attempted)
-    if ref and ref["protocols"] != [G.PROTOCOL_VERSION]:
-        reasons.append(f"the pages ran protocol {', '.join(map(str, ref['protocols']))}; this rubric is for protocol {G.PROTOCOL_VERSION}")
+    if ref and ref.get("bad_page_lines"):
+        reasons.append(f"{ref['bad_page_lines']} page line(s) didn't parse (cut off in logcat?)")
+    # Only the graded runs' pages count; a run that failed has none (smoke7 printed "protocol " with
+    # nothing after it). A page that didn't say reads as "unknown", as in grade.ts.
+    if ref and ref["protocols"] and ref["protocols"] != [G.PROTOCOL_VERSION]:
+        reasons.append(f"the pages ran protocol {', '.join(G.protocol_name(p) for p in ref['protocols'])}; "
+                       f"this rubric is for protocol {G.PROTOCOL_VERSION}")
     vp_state, vp_reason = viewport_check(ref, device) if ref else ("unknown", None)
     grade["viewport"] = {"state": vp_state, "reason": vp_reason}
     if vp_state == "refused":

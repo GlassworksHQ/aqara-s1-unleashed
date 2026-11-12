@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RUN = os.path.join(os.path.dirname(HERE), "run.sh")
 sys.path.insert(0, os.path.dirname(HERE))
 import perfrun  # noqa: E402
+import report  # noqa: E402
 
 
 class Runner(unittest.TestCase):
@@ -166,11 +168,11 @@ class HomeRelaunch(unittest.TestCase):
         self.assertGreater(c["engine_mono"], c["proc_mono"])
 
 
-def refstart(tmp, run=1, **env_extra):
+def refstart(tmp, run=1, taps=0, **env_extra):
     env, state = fake_env(tmp, GW_PERF_COLD_SETTLE="0", **env_extra)
     p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
                         "--out", tmp, "--run", str(run), "--settle", "0", "--url", "http://127.0.0.1:1/dashboard.html",
-                        "--taps", "0", "--timeout", "90", "--between-quiet", "0.3"], env=env, capture_output=True, text=True, timeout=150)
+                        "--taps", str(taps), "--timeout", "90", "--between-quiet", "0.3"], env=env, capture_output=True, text=True, timeout=150)
     with open(os.path.join(tmp, f"refstart-{run}.json")) as f:
         return p, json.load(f)
 
@@ -181,6 +183,92 @@ def unasked(tmp):
         return []
     with open(p) as f:
         return json.load(f)
+
+
+class FakeMatchesThePanel(unittest.TestCase):
+    """smoke7 failed on the panel while CI was green: the fake logged shorter lines than the page
+    does. The fake must log the reference page's lines in the shapes the S1 logged them
+    (test/page-lines.json), and as long."""
+
+    def test_every_line_has_the_panels_keys(self):
+        with open(os.path.join(HERE, "page-lines.json")) as f:
+            want = json.load(f)["shapes"]
+        tmp = tempfile.mkdtemp()
+        p, _ = refstart(tmp, taps=2, FAKE_SWIPES="1")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        got = {}
+        with open(os.path.join(tmp, "state", "page-lines.jsonl")) as f:
+            for l in f:
+                d = json.loads(l)
+                got.setdefault(d["shape"], set()).add(tuple(d["keys"]))
+        self.assertEqual(sorted(got), sorted(want))
+        for shape, keys in want.items():
+            with self.subTest(shape):
+                self.assertEqual(got[shape], {tuple(keys)})
+
+
+class LongLines(unittest.TestCase):
+    """The S1 keeps 1023 bytes of a page's console line (smoke7, 2026-11-12). Pages split longer
+    lines into parts (stats.js consoleLines) and the runner joins them (perflib.PageLines)."""
+
+    def test_a_run_with_real_sized_lines_completes(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNone(c["error"])
+        self.assertEqual((c["missing_steps"], c["bad_page_lines"]), ([], 0))
+        for t, e in c["tiers"].items():
+            self.assertEqual(len(e["step"]["changes"]), 48, t)            # about 1.8 KB, joined from parts
+
+    def test_smoke7_unsplit_lines_are_cut_and_said_not_a_failed_run(self):
+        """The page lines as d60ec95 logged them: the updates steps are cut at 1023 bytes. The run
+        isn't failed: scroll, taps and loads stand, and the report says what didn't parse."""
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, FAKE_NO_SPLIT="1")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNone(c["error"])
+        self.assertEqual(c["missing_steps"], ["light", "typical", "heavy"])
+        self.assertEqual(c["bad_page_lines"], 4)                         # the warm-up's and each page's
+        with open(os.path.join(tmp, "device.json"), "w") as f:
+            json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
+        rep = report.build(tmp)
+        self.assertIn("4 page line(s) didn't parse (cut off in logcat?)", rep["grade"]["provisional_reasons"])
+        t = rep["graded"]["reference"]["tiers"]["light"]
+        self.assertIsNotNone(t["scroll"])
+        self.assertEqual(t["updates_errors"], ["the page's updates step never arrived"])
+        self.assertNotIn("protocol ;", rep["grade"]["headline"])
+
+    def test_page_lines_joins_parts_and_counts_what_doesnt_parse(self):
+        pl = perfrun.P.PageLines()
+        self.assertEqual(pl.feed('x GWPERF {"t":"done"}'), {"t": "done"})
+        self.assertIsNone(pl.feed('GWPERF+ ab:1 0/2 {"t":"st'))
+        self.assertIsNone(pl.feed("an unrelated line in between"))
+        self.assertEqual(pl.feed('GWPERF+ ab:1 1/2 ep","n":1}'), {"t": "step", "n": 1})
+        self.assertIsNone(pl.feed('GWPERF {"t":"step","changes":[[1,2'))     # cut off
+        self.assertIsNone(pl.feed("GWPERF+ nonsense"))
+        self.assertEqual(pl.bad, 2)
+
+    def test_the_pages_splitter_and_the_runners_joiner_agree(self):
+        """stats.js (run in node) splits; perflib joins. Every part fits the panel's 1023 bytes."""
+        node = shutil.which("node")
+        if not node:
+            if os.environ.get("CI"):
+                raise AssertionError("node is needed")
+            raise unittest.SkipTest("node isn't installed (CI has it)")
+        text = json.dumps({"t": "step", "names": ["Entity %d sensor" % i for i in range(120)], "x": list(range(200))},
+                          separators=(",", ":"))
+        js = ("const S=require(process.argv[1]);const t=require('fs').readFileSync(0,'utf8');"
+              "process.stdout.write(JSON.stringify(S.consoleLines('GWPERF','n0:7',t)))")
+        out = subprocess.run([node, "-e", js, os.path.join(os.path.dirname(HERE), "page", "stats.js")],
+                             input=text, capture_output=True, text=True, timeout=30)
+        lines = json.loads(out.stdout)
+        self.assertGreater(len(lines), 2)
+        self.assertTrue(all(len(l.encode()) <= 1023 for l in lines), [len(l) for l in lines])
+        self.assertTrue(all(l == l.strip() for l in lines))                  # logcat may trim
+        pl = perfrun.P.PageLines()
+        got = [pl.feed("I Isolated Web Content: " + l) for l in lines]
+        self.assertEqual(got[-1], json.loads(text))
+        self.assertEqual(pl.bad, 0)
 
 
 class NonceGate(unittest.TestCase):

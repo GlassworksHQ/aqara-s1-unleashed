@@ -92,3 +92,14 @@ test("each reference dashboard has at least everything the one below it has", ()
 test("the pages' protocol is the one rubric.json's rules are for", () => {
   assert.equal(T.PROTOCOL, rubric.protocol_version);
 });
+
+test("page lines fit the 1023 bytes the S1 keeps of a console line (smoke7)", () => {
+  assert.deepEqual(S.consoleLines("GWPERF", "n:1", '{"t":"done"}'), ['GWPERF {"t":"done"}']);
+  const text = JSON.stringify({ t: "step", changes: Array.from({ length: 60 }, (_, k) => [k * 20, k * 20 + 0.4, 0, 0, k * 20 + 9]) });
+  const lines = S.consoleLines("GWPERF", "abcdef12:42", text);
+  assert.ok(text.length > 1023 && lines.length >= 2);
+  for (const l of lines) assert.ok(Buffer.byteLength(l) <= 1023, `${Buffer.byteLength(l)} bytes`);
+  const parts = lines.map((l) => l.match(/^GWPERF\+ abcdef12:42 (\d+)\/(\d+) (.*)$/s));
+  assert.ok(parts.every((m, k) => m && Number(m[1]) === k && Number(m[2]) === lines.length));
+  assert.equal(parts.map((m) => m[3]).join(""), text);
+});

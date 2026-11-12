@@ -110,6 +110,43 @@ def parse_logcat_line(line):
     return {"mono": float(m.group(1)), "pid": int(m.group(2)), "level": m.group(4), "tag": m.group(5).strip(), "msg": m.group(6)}
 
 
+class PageLines:
+    """Page console lines -> payloads. A long line comes in numbered parts ("GWPERF+ key k/n chunk",
+    stats.js consoleLines), because logcat keeps only 1023 bytes of a page's console line. feed()
+    returns the payload once a whole line is in, else None. A GWPERF line that doesn't parse (cut
+    off) is counted in `bad`, never dropped silently."""
+
+    PART_RE = re.compile(r"(\S+) (\d+)/(\d+) (.*)$", re.S)
+
+    def __init__(self):
+        self.parts, self.bad = {}, 0
+
+    def _parse(self, text):
+        try:
+            pl = json.loads(text)
+        except ValueError:
+            self.bad += 1
+            return None
+        return pl if isinstance(pl, dict) else None
+
+    def feed(self, msg):
+        i = msg.find("GWPERF+ ")
+        if i >= 0:
+            m = self.PART_RE.match(msg[i + 8:])
+            if not m:
+                self.bad += 1
+                return None
+            key, k, n, chunk = m.group(1), int(m.group(2)), int(m.group(3)), m.group(4)
+            got = self.parts.setdefault(key, {})
+            got[k] = chunk
+            if len(got) < n:
+                return None
+            del self.parts[key]
+            return self._parse("".join(got[j] for j in range(n))) if all(j in got for j in range(n)) else None
+        i = msg.find("GWPERF ")
+        return self._parse(msg[i + 7:]) if i >= 0 else None
+
+
 def gwperf_payload(msg):
     i = msg.find("GWPERF ")
     if i < 0:
