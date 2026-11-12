@@ -11,6 +11,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.util.Collections
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -77,7 +78,10 @@ class SendspinRunsTest {
     @Volatile private var firstConnectThread: Thread? = null
     private val firstConnectEntered = CountDownLatch(1)
 
-    /** Writes nowhere. With [holdFirstOpen], the first open blocks (ignoring interrupts) until [openGate] opens. */
+    /**
+     * Writes nowhere, and records who wrote. With [holdFirstOpen] or [holdFirstWrite], the first open
+     * or write blocks (ignoring interrupts) until its gate opens.
+     */
     private inner class FakeSink : AudioSink {
         override fun open(sampleRate: Int, channels: Int) {
             if (holdFirstOpen && firstOpenThread == null) {
@@ -86,11 +90,28 @@ class SendspinRunsTest {
                 openGate.awaitIgnoringInterrupts()
             }
         }
-        override fun write(buf: ShortArray, frames: Int): Int { Thread.sleep(5); return frames }
+        override fun write(buf: ShortArray, frames: Int): Int {
+            writes += Thread.currentThread() to oldRunStopped
+            if (holdFirstWrite && firstWriteThread == null) {
+                firstWriteThread = Thread.currentThread()
+                firstWriteEntered.countDown()
+                writeGate.awaitIgnoringInterrupts()
+                return frames / 2 // cut short, as when the output is released under a blocking write
+            }
+            Thread.sleep(5)
+            return frames
+        }
         override fun timestamp(out: LongArray) = false
         override fun setGain(gain: Float) {}
         override fun close() {}
     }
+    /** Every write: the writing thread, and whether the test had stopped the old run by then. */
+    private val writes = CopyOnWriteArrayList<Pair<Thread, Boolean>>()
+    @Volatile private var oldRunStopped = false
+    @Volatile private var holdFirstWrite = false
+    @Volatile private var firstWriteThread: Thread? = null
+    private val firstWriteEntered = CountDownLatch(1)
+    private val writeGate = CountDownLatch(1)
     @Volatile private var holdFirstOpen = false
     @Volatile private var firstOpenThread: Thread? = null
     private val firstOpenEntered = CountDownLatch(1)
@@ -129,6 +150,7 @@ class SendspinRunsTest {
 
     @After fun tearDown() {
         openGate.countDown()
+        writeGate.countDown()
         firstEndGate.countDown()
         player.stop()
         connectGate.countDown()
@@ -284,15 +306,46 @@ class SendspinRunsTest {
         conns.awaitAt(0)
         assertTrue("old audio thread stuck opening the output", firstOpenEntered.await(5, TimeUnit.SECONDS))
         player.stop() // gives up on the old audio thread after 1 s
+        oldRunStopped = true
         player.start()
         conns.awaitAt(1)
         assertTrue("new pipeline idle", pipelines[1].pipeline.awaitIdle(3_000))
         assertTrue("the new stream plays", player.outputActive)
+        awaitAWriteFromAnotherThreadThan(firstOpenThread!!)
 
         openGate.countDown() // the old audio thread wakes up, sees it's no longer current and exits
         firstOpenThread!!.join(3_000)
         assertFalse("the old audio thread ended", firstOpenThread!!.isAlive)
         assertTrue("the old audio thread didn't end the new stream", player.outputActive)
+        assertFalse("the old audio thread wrote after its run stopped", writes.contains(firstOpenThread!! to true))
+    }
+
+    @Test
+    fun anOldAudioThreadStuckInAWriteDoesNotWriteIntoTheNewRun() {
+        holdFirstWrite = true
+        player.start()
+        conns.awaitAt(0)
+        assertTrue("old audio thread stuck in a write", firstWriteEntered.await(5, TimeUnit.SECONDS))
+        player.stop() // gives up on the old audio thread after 1 s
+        oldRunStopped = true
+        player.start()
+        conns.awaitAt(1)
+        awaitAWriteFromAnotherThreadThan(firstWriteThread!!)
+
+        writeGate.countDown() // the stuck write returns short; the rest of its block must not follow it
+        firstWriteThread!!.join(3_000)
+        assertFalse("the old audio thread ended", firstWriteThread!!.isAlive)
+        assertFalse("the old audio thread wrote after its run stopped", writes.contains(firstWriteThread!! to true))
+        assertTrue("the new stream plays", player.outputActive)
+    }
+
+    /** Waits until the new run's audio thread writes, so the old thread wakes into a running output. */
+    private fun awaitAWriteFromAnotherThreadThan(old: Thread) {
+        val deadline = System.nanoTime() + 5_000_000_000L
+        while (writes.none { it.first !== old }) {
+            assertTrue("the new audio thread writes", System.nanoTime() < deadline)
+            Thread.sleep(5)
+        }
     }
 
     private fun MutableList<Fake>.awaitAt(i: Int): Fake {
