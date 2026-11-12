@@ -42,6 +42,19 @@ describe('Session.close', () => {
     expect(close).toHaveBeenCalledTimes(1);
   });
 
+  it('reports a sign-in tab the browser blocked, instead of waiting on it', async () => {
+    const s = demoSession('home-assistant');
+    await s.route('home-assistant');
+    (s as unknown as { d: { openTab: () => null } }).d.openTab = () => null;
+    vi.stubGlobal('window', { open: () => null }); // the pop-up blocker said no, twice
+    s.signIn('http://homeassistant.local:8123');
+    for (let i = 0; i < 100 && s.store.state.setup.phase === 'ha' && !(s.store.state.setup as { error?: string }).error; i++) await wait(20);
+    expect(s.store.state.setup).toMatchObject({ phase: 'ha', signingIn: false, error: expect.stringMatching(/blocked the sign-in tab/) });
+    expect(status(s.store.state)).toBe('idle');
+    vi.unstubAllGlobals();
+    s.close();
+  });
+
   it('counts a sign-in waiting on its tab as running', async () => {
     const s = demoSession('home-assistant');
     await s.route('home-assistant');

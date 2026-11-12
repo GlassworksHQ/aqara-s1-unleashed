@@ -402,7 +402,8 @@ export class Session {
       try {
         const st = url === this.setup?.state?.ha.url ? this.setup.state : await this.withSetup((x) => x.setHa(url));
         if (!st.ha.signinUrl) throw new Error('the panel has no sign-in page yet (is it on Wi-Fi?)');
-        if (tab) tab.location.href = st.ha.signinUrl; else window.open(st.ha.signinUrl, '_blank');
+        if (tab) tab.location.href = st.ha.signinUrl;
+        else if (!window.open(st.ha.signinUrl, '_blank')) throw new Error('The browser blocked the sign-in tab. Allow pop-ups for this page, then sign in again.');
       } catch (e) {
         tab?.close();
         const cur = this.s.setup;

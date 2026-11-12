@@ -215,7 +215,12 @@ function Wifi({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'wifi'
   const [pick, setPick] = useState('');
   const [other, setOther] = useState('');
   const [psk, setPsk] = useState('');
-  useEffect(() => { if (!pick && setup.networks) setPick(setup.networks[0]?.ssid ?? '\u0000other'); }, [setup.networks, pick]);
+  // a pick that a rescan no longer lists goes too: Connect must not send a network the panel can't see
+  useEffect(() => {
+    const nets = setup.networks;
+    if (!nets) return;
+    if (!pick || (pick !== '\u0000other' && !nets.some((n) => n.ssid === pick))) setPick(nets[0]?.ssid ?? '\u0000other');
+  }, [setup.networks, pick]);
   const isOther = pick === '\u0000other';
   const chosen = nets.find((n) => n.ssid === pick);
   const secure = isOther || !!chosen?.secure;
@@ -276,12 +281,14 @@ function Wifi({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'wifi'
 
 /** 6 · Home Assistant: the address it found, and sign-in on the panel's own page (no token in this browser). */
 function HomeAssistant({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'ha' }> }) {
-  const [url, setUrl] = useState(setup.ha.url || setup.ha.discovered || 'http://homeassistant.local:8123');
+  const suggested = setup.ha.url || setup.ha.discovered || 'http://homeassistant.local:8123';
+  const [typed, setTyped] = useState<string>();
+  const url = typed ?? suggested; // follows what the panel finds until the person types
   return (
     <section className="card" aria-labelledby="h">
       <h2 id="h">{setup.ha.signedIn ? 'Signed in to Home Assistant.' : 'Sign in to Home Assistant.'}</h2>
       <p className="lede">{setup.ha.discovered ? `Found at ${new URL(setup.ha.discovered).host}.` : 'Not found by itself. Type its address.'}</p>
-      <label className="field"><span>Address</span><input className="input" value={url} onChange={(e) => setUrl(e.target.value)} inputMode="url" autoComplete="off" /></label>
+      <label className="field"><span>Address</span><input className="input" value={url} onChange={(e) => setTyped(e.target.value)} inputMode="url" autoComplete="off" /></label>
       {!setup.ha.signedIn && <button type="button" className="btn ghost" style={{ justifySelf: 'start' }} disabled={!!s.busy} onClick={() => void session.click('sign-in', () => session.signIn(url.trim()))}>Sign in</button>}
       {setup.ha.signedIn && <p className="status ok">The panel is signed in.</p>}
       {setup.note && !setup.ha.signedIn && <p className="status" role="status">{setup.note}</p>}
