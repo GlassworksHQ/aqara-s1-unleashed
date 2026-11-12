@@ -191,7 +191,9 @@ poll as a safety net.
     is back (available or validated; callbacks debounced, at most one such retry per 30 s) instead of
     after its backoff.
   - Ignored: drafts, pre-releases (GitHub's flag or a `-rc` tag), and releases without both
-    `s1-kiosk-<version>.apk` and `.sha256`. Assets must download from github.com over HTTPS.
+    the APK for one of the device's ABIs and its `.sha256`. The S1 (`armeabi-v7a`) takes
+    `s1-kiosk-<version>.apk`; an `arm64-v8a` device takes `s1-kiosk-arm64-v8a-<version>.apk`
+    ([releasing.md](releasing.md#abis)). Assets must download from github.com over HTTPS.
 - **Install:**
   1. Download the `.sha256`, then the APK over HTTPS into `files/update/`. `in_progress` is set and
      `progress` goes 0-100 %.

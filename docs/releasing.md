@@ -5,10 +5,11 @@ Panels update themselves from GitHub Releases: the app lists
 and shows the result in Home Assistant as **update.s1_panel_app_update**
 ([esphome.md](esphome.md#app-updates)). A release is built and published by
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) when you push a `v*` or
-`aqara-s1-plus-v*` tag. It holds two assets:
+`aqara-s1-plus-v*` tag. It holds one APK per ABI, each with its `.sha256` (see [ABIs](#abis)):
 
-- `s1-kiosk-<version>.apk`, signed with the release key;
-- `s1-kiosk-<version>.apk.sha256`, its `sha256sum` line.
+- `s1-kiosk-<version>.apk`, the `armeabi-v7a` APK the S1 runs, signed with the release key;
+- `s1-kiosk-arm64-v8a-<version>.apk`, the same app for `arm64-v8a` devices;
+- `s1-kiosk-<version>.apk.sha256` and `s1-kiosk-arm64-v8a-<version>.apk.sha256`, their `sha256sum` lines.
 
 Every release **must be signed with the same key**. Android only installs an update signed with the
 key of the installed app, and the app refuses anything else before trying. Lose the key and every
@@ -153,6 +154,35 @@ Versions are `MAJOR.MINOR.PATCH`, with minor and patch below 100. The versionCod
 than the last one. Pre-release tags (`v1.2.3-rc.1`) are refused by the workflow, and the app would
 ignore them anyway.
 
+### ABIs
+
+The app is built once per ABI, because each GeckoView AAR is for one ABI and carries its own classes
+and `omni.ja`, so two cannot go into one APK. `-Ps1Abi=<abi>` (or `S1_ABI`) picks it, and without it
+the build is `armeabi-v7a`, the S1's:
+
+```sh
+./gradlew :kiosk:assembleRelease                      # armeabi-v7a
+./gradlew :kiosk:assembleRelease -Ps1Abi=arm64-v8a    # arm64-v8a
+```
+
+| ABI | Release asset | Radio bundle | Who runs it |
+|---|---|---|---|
+| `armeabi-v7a` | `s1-kiosk-<version>.apk` | yes | the S1 (32-bit userspace), other 32-bit devices |
+| `arm64-v8a` | `s1-kiosk-arm64-v8a-<version>.apk` | no (the bundle is the S1's root side) | arm64 tablets, the arm64 emulator |
+
+- **Every ABI's APK has the same versionCode**, `major*10000 + minor*100 + patch`. Store schemes put
+  the ABI in the versionCode because a store must choose between APKs. Here the app chooses: it
+  takes the APK of the first ABI in `Build.SUPPORTED_ABIS` (the device's order of preference) that
+  the release has (`update/Releases.kt`, `ApkAbi`). So versions go up per ABI exactly as they did
+  before, and `ApkCheck` still wants the versionCode of the release's version.
+- **The S1's asset name never changes.** Apps up to 0.4.3 and the web installer only know
+  `s1-kiosk-<version>.apk`. An S1 lists `armeabi-v7a, armeabi`, so it keeps taking that file.
+- An arm64 device that also runs 32-bit code falls back to `s1-kiosk-<version>.apk` for releases
+  that have no arm64 APK (all releases up to 0.4.3). An arm64-only device skips them.
+- A device whose ABIs the app is not built for (x86_64) gets no offer, and the update entity says why.
+- Adding an ABI means adding it to `s1Abis` in `app/kiosk/build.gradle.kts`, to `ApkAbi`, and to
+  `ABIS` in both workflows. `ApkAbiListsTest` fails if they disagree.
+
 **Tags, now that the repo will hold other frames and libraries (Glassworks).** Each of them releases
 under its own tag prefix, and this app's is `aqara-s1-plus-` (the board id it reports, since other S1
 models may get their own frame). From 0.4.4 the app accepts both `v1.2.3` and
@@ -182,11 +212,12 @@ The workflow then:
    zigbeed itself), then signs the radio bundle in the `sign-bundle` job (environment `radio-signing`,
    main only, every input checked against committed hashes; `tools/radio/make-bundle.py --app-version`,
    version = the versionCode, checked against `tools/root/s1kiosk_bundle.pub`);
-3. builds `:kiosk:assembleRelease` with `S1_VERSION=1.0.0` and the bundle as APK assets. The build
-   fails if a key is missing (`S1_REQUIRE_RELEASE_SIGNING=true`);
-4. runs `apksigner verify --print-certs`, so the certificate fingerprint is in the log, checks
-   the package name and version, that the signed bundle is in the APK and that no zigbeed is;
-5. writes the `.sha256`;
+3. builds `:kiosk:assembleRelease` with `S1_VERSION=1.0.0` once per ABI, the `armeabi-v7a` one with
+   the bundle as APK assets. The build fails if a key is missing (`S1_REQUIRE_RELEASE_SIGNING=true`);
+4. runs `apksigner verify --print-certs` on each APK, so the certificate fingerprint is in the log,
+   checks the package name, version and native code ABI, that the signed bundle is in the
+   `armeabi-v7a` APK and not in the others, and that no zigbeed is anywhere;
+5. writes a `.sha256` for each;
 6. creates the release, with that version's CHANGELOG.md section as the notes. The bundle is not
    published on its own (its Silicon Labs libcpc may only be distributed inside the product).
 7. asks Vercel to rebuild the web installer, so it installs the new release (`VERCEL_DEPLOY_HOOK`).
@@ -234,12 +265,13 @@ To try a branch on a panel that runs a release, without losing the app's data, l
 ```sh
 git push origin HEAD:test-build/<name>          # builds as the latest release's version
 git push origin HEAD:test-build/v1.2.3/<name>   # builds as 1.2.3 (panel on an unreleased version)
-gh run download <run-id> -n s1-kiosk-test-<sha>
+gh run download <run-id> -n s1-kiosk-test-<sha>              # armeabi-v7a, for the S1
 adb install -r s1-kiosk-test-*.apk
+gh run download <run-id> -n s1-kiosk-test-arm64-v8a-<sha>    # arm64-v8a, its own artifact
 ```
 
 [`test-build.yml`](../.github/workflows/test-build.yml) runs the unit tests and builds the release
-variant with the release key. It takes the latest release's version, or the one in the branch name
+variant with the release key, once per ABI. It takes the latest release's version, or the one in the branch name
 (Android refuses to install a lower versionCode, so a panel on an unreleased version needs that). The
 APK then installs over the panel's app, HA's update entity offers nothing, and the next real release
 replaces it. It carries **no
