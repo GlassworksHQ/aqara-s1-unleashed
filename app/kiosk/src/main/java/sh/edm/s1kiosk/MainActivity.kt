@@ -1136,20 +1136,6 @@ class MainActivity : Activity() {
     }
 
     private val messageDelegate = object : WebExtension.MessageDelegate {
-        override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
-            val type = (message as? JSONObject)?.optString("type")
-            if (type != "config" && type != "state" && type != "activity")
-                Log.d(TAG, "ext message '$type' from ${sender.url} topLevel=${sender.isTopLevel}")
-            return when (type) {
-                "config" -> GeckoResult.fromValue(configJson())
-                "state" -> GeckoResult.fromValue(stateJson())
-                "activity" -> { glassworks.screen.userActivity(); null }
-                "getExternalAuth" -> externalAuth(message as JSONObject, sender)
-                "revokeExternalAuth" -> revokeExternalAuth(sender)
-                else -> null
-            }
-        }
-
         override fun onConnect(port: WebExtension.Port) {
             ports += port
             port.setDelegate(object : WebExtension.PortDelegate {
