@@ -34,6 +34,14 @@ tools/root/build-verify.sh && tools/radio/test/run.sh  # root side, in an armhf 
 CI (`.github/workflows/pr.yml`) runs all of these. Run the ones for the area you touched before
 you open a PR.
 
+## Principles
+
+Glassworks is an opinionated, simple Home Assistant panel controller. **Read
+[`docs/principles.md`](docs/principles.md) before you propose or build a feature**, and check new
+panes against [What makes a pane](app/kiosk/src/main/java/dev/glassworks/README.md#what-makes-a-pane).
+In short: HA is the brain, ESPHome is the wire, the dashboard is the UI, and nothing gets installed
+in HA. If a request goes against it, say so and point at the page instead of building around it.
+
 ## Hard rules
 
 1. **Never brick the panel, and always keep a way back.** Read first, write second. Back up every
