@@ -1,16 +1,11 @@
 // The panel's own partitions, kept in this browser (IndexedDB) and offered as a zip download.
 // It is the undo: the first backup of a panel is its only copy of the original software.
-import { toHex } from '../assets/assets';
+// Which partitions, and the id prefix, come from the frame's Recipe (BackupPlan).
 import { crc32, zipBlob } from './zip';
-
-export const BACKUP_PARTS = ['boot', 'vbmeta', 'vbmeta_system', 'vbmeta_vendor', 'dtbo', 'misc', 'recovery', 'env', 'bootloader'] as const;
-export type BackupPart = (typeof BACKUP_PARTS)[number];
-/** What undo writes back (fel-install.sh --undo). */
-export const RESTORE_PARTS = ['boot', 'vbmeta', 'bootloader'] as const;
 
 export interface BackupFile { part: string; data: Uint8Array; sha256: string; crc: number }
 export interface BackupMeta {
-  id: string;            // s1-backup-YYYYMMDD-HHMMSS
+  id: string;            // <idPrefix>-YYYYMMDD-HHMMSS
   created: string;       // ISO time
   serial?: string;       // fastboot serial: shown only in this browser, never sent anywhere
   /** The boot partition was already Magisk-patched (a re-run): not the original software. */
@@ -18,13 +13,17 @@ export interface BackupMeta {
   files: { part: string; size: number; sha256: string }[];
 }
 
+export function toHex(b: ArrayBuffer): string {
+  return Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, '0')).join('');
+}
+
 export async function backupFile(part: string, data: Uint8Array): Promise<BackupFile> {
   return { part, data, sha256: toHex(await crypto.subtle.digest('SHA-256', data as Uint8Array<ArrayBuffer>)), crc: crc32(data) };
 }
 
-export function backupId(d = new Date()): string {
+export function backupId(prefix: string, d = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');
-  return `s1-backup-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  return `${prefix}-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
 /** Same format as `shasum -a 256 *.img` (fel-install.sh), so the CLI's --undo accepts the unzipped backup. */
@@ -76,7 +75,7 @@ export async function readBackupZip(zip: Blob): Promise<{ id: string; files: Map
 
 /** IndexedDB: one record per backup (meta + files). */
 export class BackupStore {
-  constructor(private readonly db = 's1-unleashed-backups') {}
+  constructor(private readonly db: string) {}
 
   private open(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {

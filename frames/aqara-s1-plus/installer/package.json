@@ -14,6 +14,9 @@
   },
   "dependencies": {
     "@glassworks/adb": "0.0.0",
+    "@glassworks/bootpatch": "0.0.0",
+    "@glassworks/fel": "0.0.0",
+    "@glassworks/kiln-core": "0.0.0",
     "improv-serial": "0.1.0"
   }
 }

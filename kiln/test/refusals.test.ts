@@ -2,11 +2,11 @@
 // stops before anything is written. No goldens needed.
 import { describe, expect, it } from 'vitest';
 import type { AdbKey } from '@glassworks/adb';
-import type { AssetName } from '../src/assets';
+import { s1Plus, type AssetName } from '@glassworks/aqara-s1-plus-installer';
 import { Fastboot } from '@glassworks/fastboot';
 import { A133, FelDevice } from '@glassworks/fel';
 import { FakeBrom, FakeUboot } from '@glassworks/fel/fakes';
-import { InstallFlow, restoreFromBackup, type FlowUi } from '../src/app/flow';
+import { InstallFlow, restoreFromBackup, type FlowUi } from '@glassworks/kiln-core';
 
 function flow() {
   const fetched: AssetName[] = [];
@@ -14,7 +14,7 @@ function flow() {
   const parts: string[] = [];
   const ui: FlowUi = { log: () => {}, progress: () => {}, partition: (p) => { parts.push(p); }, ask: (_, action) => action() };
   const key = { publicKey: 'QAAAA test@example' } as AdbKey;
-  const f = new InstallFlow({
+  const f = new InstallFlow(s1Plus, {
     asset: async (n) => { fetched.push(n); return new Uint8Array(16); },
     hasAsset: async () => true,
     backups: { save: async (m) => { saved.push(m); }, original: async () => undefined },
@@ -48,7 +48,7 @@ describe('refusals before any write', () => {
   it('undo refuses a backup without vbmeta and writes nothing', async () => {
     const uboot = new FakeUboot();
     const files = new Map([['boot', new Uint8Array(4096)], ['bootloader', new Uint8Array(4096)]]);
-    await expect(restoreFromBackup(new Fastboot(uboot), files, () => {})).rejects.toThrow('this backup has no boot or vbmeta');
+    await expect(restoreFromBackup(s1Plus.backup, new Fastboot(uboot), files, () => {})).rejects.toThrow('this backup has no boot or vbmeta');
     expect(uboot.flashed).toEqual([]);
     expect(uboot.rebooted).toBe(false);
   });

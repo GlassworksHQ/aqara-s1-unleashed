@@ -31,6 +31,7 @@
     "@glassworks/bootpatch": "0.0.0",
     "@glassworks/fastboot": "0.0.0",
     "@glassworks/fel": "0.0.0",
+    "@glassworks/kiln-core": "0.0.0",
     "@glassworks/setup-channel": "0.0.0",
     "improv-serial": "0.1.0"
   }

@@ -60,6 +60,9 @@ export interface SwitchResult {
   notes: string[];
 }
 
+/** What provision found and did: the panel's Wi-Fi address, if it has one, and any key switch. */
+export interface Provisioned { ip?: string; switched?: SwitchResult }
+
 /** Android won't update the installed S1 Kiosk with this APK (other signing key), and no switch was made. */
 export class KeyMismatchError extends Error {
   constructor(readonly plan: SwitchPlan) {
@@ -159,7 +162,7 @@ export async function deviceInfo(p: PanelShell): Promise<{ model: string; sdk: s
 }
 
 export async function provision(p: PanelShell, opts: ProvisionOptions, onStep: StepFn = () => {},
-  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<{ ip?: string; switched?: SwitchResult }> {
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<Provisioned> {
   const r = new Runner(p, onStep);
   r.step('Device');
   const { model, sdk } = await deviceInfo(p);
