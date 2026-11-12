@@ -17,6 +17,11 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Wi-Fi reconnects while the screen is off.** If Wi-Fi dropped at night (a router restart, an
+  outage), the panel stayed offline until someone woke the screen, because its Wi-Fi chip can't scan
+  on its own with the screen off. The app now asks for a scan every 10 s to 2 minutes while Wi-Fi is
+  not connected and the screen is off, so the panel comes back within a couple of minutes. It needs
+  location on and the app's location permission, which the installer grants.
 - **Sign-in: someone on your network who reads the sign-in code can no longer use it.** Both sign-ins (the
   dashboard QR code and the administrator sign-in for the Thread join) now use PKCE, so Home Assistant
   only hands out the panel's token to the panel itself. Needs Home Assistant 2026.10 or later to take

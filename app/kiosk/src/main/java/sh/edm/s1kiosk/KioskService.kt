@@ -18,6 +18,7 @@ import sh.edm.s1kiosk.auth.UrlConnectionPoster
 import dev.glassworks.frame.systemSettings
 import sh.edm.s1kiosk.discovery.HaDiscovery
 import sh.edm.s1kiosk.esphome.PanelDevice
+import sh.edm.s1kiosk.frame.ScreenOffWifiScanner
 import sh.edm.s1kiosk.improv.ImprovController
 import sh.edm.s1kiosk.improv.ImprovSerialServer
 import sh.edm.s1kiosk.setup.SetupChannelServer
@@ -34,12 +35,14 @@ class KioskService : Service() {
     private val main = Handler(Looper.getMainLooper())
     private var device: PanelDevice? = null
     private var discovery: HaDiscovery? = null
+    private var wifiScanner: ScreenOffWifiScanner? = null
 
     override fun onCreate() {
         super.onCreate()
         KioskPrefs(this).migrateRadioStep() // before discovery can save an HA URL in this process
         startForeground(NOTIFICATION_ID, buildNotification())
         ScreenController.start(this)
+        wifiScanner = glassworks.frame.screenOffWifiScanner(this).also { it.start() }
         glassworks.voiceState = if (KioskPrefs(this).voice.enabled) "idle" else "off"
         glassworks.voiceUi = VoiceUi(glassworks.voiceState)
         glassworks.voiceCancel = { device?.cancelVoice() }
@@ -83,6 +86,8 @@ class KioskService : Service() {
         discovery = null
         glassworks.discovery = null
         HaAuth.stopServer()
+        wifiScanner?.stop()
+        wifiScanner = null
         super.onDestroy()
     }
 
