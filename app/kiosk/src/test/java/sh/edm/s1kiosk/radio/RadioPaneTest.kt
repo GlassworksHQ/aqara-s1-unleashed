@@ -22,6 +22,7 @@ import sh.edm.esphome.ProtoWriter
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.auth.HaAuth
+import sh.edm.s1kiosk.auth.ThreadFetch
 import java.net.InetAddress
 
 /** A panel with a v4 root helper; `setprop` is stored, nothing runs. Documentation addresses only (RFC 5737). */
@@ -109,5 +110,16 @@ class RadioPaneTest {
         pane.stop()
         assertNull(runtime.radio)
         assertNull(HaAuth.threadJoin.deliver)
+    }
+
+    @Test fun stopLeavesAThreadJoinDeliveryItDidNotSet() {
+        val other: (ThreadFetch.Ok) -> String? = { null }
+        HaAuth.threadJoin.deliver = other
+        try {
+            pane.stop()
+            assertSame(other, HaAuth.threadJoin.deliver)
+        } finally {
+            HaAuth.threadJoin.deliver = null
+        }
     }
 }
