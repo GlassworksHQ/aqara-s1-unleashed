@@ -344,7 +344,8 @@ class PanelDevice(
         val s = server ?: return
         mdns.stop()
         exec.schedule({
-            if (server === s) mdns.start(identity, s.localPort, encrypted = s.encrypted, provisionable = s.provisionable)
+            // Like the first registration in startServer(): never once stop() has begun.
+            unlessStopped { if (server === s) mdns.start(identity, s.localPort, encrypted = s.encrypted, provisionable = s.provisionable) }
         }, 1500, TimeUnit.MILLISECONDS)
     }
 
