@@ -11,8 +11,9 @@ const FRAME_NAMES: [what: string, pattern: RegExp][] = [
   ['the S1 (s1Overlay, s1kiosk, s1-backup, S1 Plus)', /\bs1/i],
   ['Aqara and its packages', /aqara|inhome|com\.lumi|baidu/i],
   ['the S1 Kiosk app id', /sh\.edm|kiosk/i],
-  ['the S1 chip', /a133|sunxi|allwinner|r818/i],
-  ['the S1 partition sizes', /0x0*2000000\b|0x0*60000000\b|\b33554432\b|\b1610612736\b/i],
+  ['the S1 chip, board and USB ids', /a133|sunxi|allwinner|r818|quad-core|1f3a|efe8/i],
+  ['the S1 partitions and their sizes', /vbmeta_system|vbmeta_vendor|dtbo|0x0*2000000\b|0x0*60000000\b|\b33554432\b|\b1610612736\b/i],
+  ['the S1 boot patch, radio and branding', /magisk|overlay|radio|otbr|zigbee|thread_router|glass.?tile/i],
   ['the S1 debloat list', /debloat/i],
 ];
 

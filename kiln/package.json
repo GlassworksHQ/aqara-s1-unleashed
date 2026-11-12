@@ -5,6 +5,9 @@
   "description": "Browser (WebUSB) installer for the Aqara Panel Hub S1 Plus. See docs/research/web-installer.md.",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "workspaces": [
     "packages/*",
     "../frames/*/installer"
