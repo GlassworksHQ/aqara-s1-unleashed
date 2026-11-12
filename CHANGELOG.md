@@ -17,6 +17,11 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Sign-in: someone on your network who reads the sign-in code can no longer use it.** Both sign-ins (the
+  dashboard QR code and the administrator sign-in for the Thread join) now use PKCE, so Home Assistant
+  only hands out the panel's token to the panel itself. Needs Home Assistant 2026.10 or later to take
+  effect; older versions sign in as before. A sign-in that was halfway through when the update
+  arrived needs a new scan.
 - **Sendspin: Music Assistant pairing was still offered after you switched Sendspin off.** Once the
   player had started, turning it off in Home Assistant still let the pairing request through. It now
   says Sendspin is disabled until you turn it back on.
