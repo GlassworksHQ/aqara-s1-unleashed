@@ -62,6 +62,7 @@ class PlatformOnDeviceTest {
         assertEquals(Build.VERSION.SDK_INT, Platform.apiLevel)
         assertEquals(34, Platform.apiLevel)
         assertEquals(PendingIntent.FLAG_MUTABLE, Platform.mutablePendingIntentFlag)
+        assertEquals(Build.SUPPORTED_ABIS.toList(), Platform.supportedAbis)
     }
 
     @Test

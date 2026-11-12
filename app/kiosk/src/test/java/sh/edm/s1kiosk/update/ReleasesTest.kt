@@ -15,11 +15,14 @@ import java.security.MessageDigest
 /** Release JSON parsing and asset selection, against a fixture shaped like GitHub's real response. */
 class ReleasesTest {
 
+    /** `Build.SUPPORTED_ABIS` on the S1 (32-bit userspace). */
+    private val S1 = listOf("armeabi-v7a", "armeabi")
+
     private fun resource(name: String) = javaClass.classLoader!!.getResource("update/$name")!!.readText()
     private val latest = resource("release_latest.json")
     private fun edited(edit: JSONObject.() -> Unit) = JSONObject(latest).apply(edit).toString()
     private fun refusal(json: String): String = try {
-        Releases.offer(Releases.parse(json))
+        Releases.offer(Releases.parse(json), S1)
         fail("expected a refusal"); ""
     } catch (e: ReleaseFormatException) {
         e.message!!
@@ -37,7 +40,7 @@ class ReleasesTest {
     }
 
     @Test fun selectsTheTwoAssets() {
-        val o = Releases.offer(Releases.parse(latest))
+        val o = Releases.offer(Releases.parse(latest), S1)
         assertEquals(AppVersion(1, 3, 0), o.version)
         assertEquals("s1-kiosk-1.3.0.apk", o.apk.name)
         assertEquals("https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-1.3.0.apk", o.apk.url)
@@ -53,7 +56,7 @@ class ReleasesTest {
             getJSONArray("assets").put(JSONObject().put("name", "s1-kiosk-1.3.0-debug.apk").put("size", 9)
                 .put("browser_download_url", "https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-1.3.0-debug.apk"))
         }
-        assertEquals("s1-kiosk-1.3.0.apk", Releases.offer(Releases.parse(json)).apk.name)
+        assertEquals("s1-kiosk-1.3.0.apk", Releases.offer(Releases.parse(json), S1).apk.name)
     }
 
     @Test fun refusesDraftsAndPrereleases() {
@@ -89,14 +92,14 @@ class ReleasesTest {
             assertTrue(bad, refusal(withUrl(bad)).contains("unexpected download URL"))
         }
         // A renamed/transferred repo keeps working (GitHub redirects the API; the download path shape is the same).
-        assertEquals(AppVersion(1, 3, 0), Releases.offer(Releases.parse(withUrl(good.replace("GlassworksHQ/", "newowner/")))).version)
+        assertEquals(AppVersion(1, 3, 0), Releases.offer(Releases.parse(withUrl(good.replace("GlassworksHQ/", "newowner/"))), S1).version)
     }
 
     @Test fun malformedJsonNeverCrashes() {
         for (bad in listOf("", "null", "[]", "{", "{\"message\":\"Not Found\"}", "<html>rate limited</html>",
             "{\"tag_name\": 5, \"assets\": \"nope\"}")) {
             try {
-                Releases.offer(Releases.parse(bad))
+                Releases.offer(Releases.parse(bad), S1)
                 fail("'$bad' should be refused")
             } catch (_: ReleaseFormatException) {
             }
@@ -131,7 +134,7 @@ class ReleasesTest {
     }
 
     @Test fun summaryIsTidyAndShort() {
-        val o = Releases.offer(Releases.parse(latest))
+        val o = Releases.offer(Releases.parse(latest), S1)
         val s = Releases.summary(o.notes)
         assertFalse(s.contains("Full Changelog"))
         assertFalse(s.contains("\r"))
@@ -183,7 +186,7 @@ class ReleasesTest {
     }
 
     @Test fun prefixedTagIsInstallable() {
-        val o = Releases.offer(Releases.parse(release("aqara-s1-plus-v1.3.0").toString()))
+        val o = Releases.offer(Releases.parse(release("aqara-s1-plus-v1.3.0").toString()), S1)
         assertEquals(AppVersion(1, 3, 0), o.version)
         assertEquals("https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/aqara-s1-plus-v1.3.0/s1-kiosk-1.3.0.apk", o.apk.url)
     }
@@ -192,27 +195,119 @@ class ReleasesTest {
         // Newest first, as GitHub lists them: another frame and a library released after this app.
         val other = release("lululemon-mirror-v2.0.0", "2.0.0")
         val lib = release("esphome-api-v1.1.0", "1.1.0")
-        val pick = Releases.newest(Releases.parseList(list(other, lib, release("aqara-s1-plus-v1.4.0", "1.4.0"), release("v1.3.0"))))
+        val pick = Releases.newest(Releases.parseList(list(other, lib, release("aqara-s1-plus-v1.4.0", "1.4.0"), release("v1.3.0"))), S1)
         assertEquals(AppVersion(1, 4, 0), pick.offer!!.version)
         assertNull(pick.problem)
     }
 
     @Test fun oldPlainTagsStillCount() {
-        val pick = Releases.newest(Releases.parseList(list(release("installer-files-3"), release("v1.3.0"))))
+        val pick = Releases.newest(Releases.parseList(list(release("installer-files-3"), release("v1.3.0"))), S1)
         assertEquals(AppVersion(1, 3, 0), pick.offer!!.version)
     }
 
     @Test fun aRefusedNewerReleaseStillOffersTheOlderOne() {
-        val pick = Releases.newest(Releases.parseList(list(release("aqara-s1-plus-v1.4.0", "1.4.0", draft = true), release("v1.3.0"))))
+        val pick = Releases.newest(Releases.parseList(list(release("aqara-s1-plus-v1.4.0", "1.4.0", draft = true), release("v1.3.0"))), S1)
         assertEquals(AppVersion(1, 3, 0), pick.offer!!.version)
         assertTrue(pick.problem!!.contains("draft"))
     }
 
     @Test fun noReleaseOfThisAppIsNotAProblem() {
-        val pick = Releases.newest(Releases.parseList(list(release("lululemon-mirror-v2.0.0", "2.0.0"))))
+        val pick = Releases.newest(Releases.parseList(list(release("lululemon-mirror-v2.0.0", "2.0.0"))), S1)
         assertNull(pick.offer)
         assertNull(pick.problem)
-        assertNull(Releases.newest(emptyList()).offer)
+        assertNull(Releases.newest(emptyList(), S1).offer)
+    }
+
+    /** The fixture with an arm64-v8a APK and `.sha256` beside the S1's, as the release workflow publishes them. */
+    private fun withArm64(json: String = latest): String = JSONObject(json).apply {
+        val assets = getJSONArray("assets")
+        for (i in 0 until assets.length()) {
+            val a = JSONObject(assets.getJSONObject(i).toString())
+            val name = a.getString("name").replace("s1-kiosk-", "s1-kiosk-arm64-v8a-")
+            a.put("name", name).put("size", a.getLong("size") + 1)
+                .put("browser_download_url", a.getString("browser_download_url").substringBeforeLast('/') + "/" + name)
+            assets.put(a)
+        }
+    }.toString()
+
+    @Test fun theS1AssetNameNeverChanges() {
+        // Panels up to 0.4.3 look only for this name, and the web installer too.
+        assertEquals("s1-kiosk-1.3.0.apk", ApkAbi.ARMEABI_V7A.apkName(AppVersion(1, 3, 0)))
+        assertEquals("s1-kiosk-1.3.0.apk.sha256", ApkAbi.ARMEABI_V7A.shaName(AppVersion(1, 3, 0)))
+        assertEquals("s1-kiosk-arm64-v8a-1.3.0.apk", ApkAbi.ARM64_V8A.apkName(AppVersion(1, 3, 0)))
+    }
+
+    @Test fun theS1TakesItsOwnApkWhenArm64IsThereToo() {
+        val o = Releases.offer(Releases.parse(withArm64()), S1)
+        assertEquals("s1-kiosk-1.3.0.apk", o.apk.name)
+        assertEquals("s1-kiosk-1.3.0.apk.sha256", o.sha256.name)
+    }
+
+    @Test fun anArm64DeviceTakesTheArm64Apk() {
+        for (abis in listOf(listOf("arm64-v8a"), listOf("arm64-v8a", "armeabi-v7a", "armeabi"))) {
+            val o = Releases.offer(Releases.parse(withArm64()), abis)
+            assertEquals("$abis", "s1-kiosk-arm64-v8a-1.3.0.apk", o.apk.name)
+            assertEquals("https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-arm64-v8a-1.3.0.apk", o.apk.url)
+            assertEquals("s1-kiosk-arm64-v8a-1.3.0.apk.sha256", o.sha256.name)
+            assertEquals(15L, o.apk.size)
+        }
+    }
+
+    @Test fun anArm64DeviceThatRuns32BitFallsBackToTheS1Apk() {
+        // Every release up to 0.4.3 has only the armeabi-v7a APK.
+        val o = Releases.offer(Releases.parse(latest), listOf("arm64-v8a", "armeabi-v7a", "armeabi"))
+        assertEquals("s1-kiosk-1.3.0.apk", o.apk.name)
+    }
+
+    @Test fun anArm64OnlyDeviceRefusesAReleaseWithoutArm64() {
+        val e = try { Releases.offer(Releases.parse(latest), listOf("arm64-v8a")); null } catch (e: ReleaseFormatException) { e }
+        assertTrue(e!!.message!!.contains("has no s1-kiosk-arm64-v8a-1.3.0.apk"))
+        // newest() skips such releases for the next one that has the device's APK.
+        val pick = Releases.newest(Releases.parseList(list(release("v1.3.0"), JSONObject(withArm64(release("v1.2.0", "1.2.0").toString())))), listOf("arm64-v8a"))
+        assertEquals(AppVersion(1, 2, 0), pick.offer!!.version)
+        assertTrue(pick.problem!!.contains("arm64-v8a"))
+    }
+
+    @Test fun anAbiWithHalfItsPairIsSkippedForTheNextOne() {
+        // arm64 APK uploaded, its .sha256 not (yet): a device that also runs 32-bit takes the complete S1 pair.
+        val halfArm64 = JSONObject(withArm64()).apply {
+            val assets = getJSONArray("assets")
+            (0 until assets.length()).first { assets.getJSONObject(it).getString("name") == "s1-kiosk-arm64-v8a-1.3.0.apk.sha256" }
+                .let { assets.remove(it) }
+        }.toString()
+        val o = Releases.offer(Releases.parse(halfArm64), listOf("arm64-v8a", "armeabi-v7a", "armeabi"))
+        assertEquals("s1-kiosk-1.3.0.apk", o.apk.name)
+        assertEquals("s1-kiosk-1.3.0.apk.sha256", o.sha256.name)
+        val e = try { Releases.offer(Releases.parse(halfArm64), listOf("arm64-v8a")); null } catch (e: ReleaseFormatException) { e }
+        assertTrue(e!!.message!!.contains("has no s1-kiosk-arm64-v8a-1.3.0.apk with s1-kiosk-arm64-v8a-1.3.0.apk.sha256"))
+    }
+
+    @Test fun aRepeatedDeviceAbiCountsOnce() {
+        assertEquals(listOf(ApkAbi.ARM64_V8A, ApkAbi.ARMEABI_V7A), ApkAbi.among(listOf("arm64-v8a", "armeabi-v7a", "arm64-v8a", "armeabi", "armeabi-v7a")))
+        val e = try { Releases.offer(Releases.parse(latest), listOf("arm64-v8a", "arm64-v8a")); null } catch (e: ReleaseFormatException) { e }
+        assertEquals("release v1.3.0 has no s1-kiosk-arm64-v8a-1.3.0.apk with s1-kiosk-arm64-v8a-1.3.0.apk.sha256", e!!.message)
+    }
+
+    @Test fun aReleaseWithOnlyTheSha256IsNotAPair() {
+        val noApk = edited { getJSONArray("assets").remove(0) } // the fixture's s1-kiosk-1.3.0.apk
+        assertEquals(listOf("s1-kiosk-1.3.0.apk.sha256"), Releases.parse(noApk).assets.map { it.name })
+        val e = try { Releases.offer(Releases.parse(noApk), S1); null } catch (e: ReleaseFormatException) { e }
+        assertEquals("release v1.3.0 has no s1-kiosk-1.3.0.apk with s1-kiosk-1.3.0.apk.sha256", e!!.message)
+    }
+
+    @Test fun theRefusalNamesEveryPairTheDeviceCouldUse() {
+        val e = try { Releases.offer(Releases.parse(edited { put("assets", JSONArray()) }), listOf("arm64-v8a", "armeabi-v7a", "armeabi")); null }
+            catch (e: ReleaseFormatException) { e }
+        assertEquals(
+            "release v1.3.0 has no s1-kiosk-arm64-v8a-1.3.0.apk with s1-kiosk-arm64-v8a-1.3.0.apk.sha256" +
+                " or s1-kiosk-1.3.0.apk with s1-kiosk-1.3.0.apk.sha256",
+            e!!.message,
+        )
+    }
+
+    @Test fun aDeviceWithNoBuiltAbiGetsNoOffer() {
+        val e = try { Releases.offer(Releases.parse(withArm64()), listOf("x86_64")); null } catch (e: ReleaseFormatException) { e }
+        assertTrue(e!!.message!!.contains("no APK is built for this device's ABIs (x86_64)"))
     }
 
     @Test fun malformedListIsRefused() {

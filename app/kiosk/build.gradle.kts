@@ -14,6 +14,14 @@ val s1VersionCode: Int? = s1Version?.let { v ->
     major.toInt() * 10000 + minor.toInt() * 100 + patch.toInt()
 }
 
+// The ABI this APK is built for: -Ps1Abi=arm64-v8a or S1_ABI. Unset: armeabi-v7a, the S1's. One APK per
+// ABI, because each per-ABI GeckoView AAR carries its own classes.jar and omni.ja, so two cannot share a
+// classpath (docs/releasing.md "ABIs"). Every ABI's APK has the same versionCode.
+val s1Abis = listOf("armeabi-v7a", "arm64-v8a") // update/Releases.kt ApkAbi, release.yml and test-build.yml list the same
+val s1Abi: String = ((findProperty("s1Abi") as String?) ?: System.getenv("S1_ABI"))
+    ?.trim()?.takeIf { it.isNotEmpty() } ?: "armeabi-v7a"
+if (s1Abi !in s1Abis) throw GradleException("s1Abi '$s1Abi' must be one of ${s1Abis.joinToString()}")
+
 // Release signing comes only from the environment (CI secrets or a local shell; docs/releasing.md).
 // Nothing set: the release APK is unsigned (never signed with the debug key). Partly set, or
 // S1_REQUIRE_RELEASE_SIGNING=true without a key: the release build fails (checkReleaseSigning).
@@ -36,8 +44,8 @@ android {
         versionCode = s1VersionCode ?: 1
         versionName = s1Version ?: "0.1.0"
 
-        // The Panel Hub S1 Plus runs 32-bit Android 10 (A133 with an armeabi-v7a userspace).
-        ndk { abiFilters += listOf("armeabi-v7a") }
+        // The Panel Hub S1 Plus runs 32-bit Android 10 (A133 with an armeabi-v7a userspace): the default.
+        ndk { abiFilters += listOf(s1Abi) }
 
         // No hard-coded dashboard: the default URL setting is "auto" (Home Assistant is discovered,
         // see docs/onboarding.md). A URL saved in the prefs is kept.
@@ -85,13 +93,13 @@ android {
 }
 
 dependencies {
-    implementation("org.mozilla.geckoview:geckoview-armeabi-v7a:159.0.20261102144711") {
+    implementation("org.mozilla.geckoview:geckoview-$s1Abi:159.0.20261102144711") {
         // Proprietary Google Play services (play-services-fido/-base/-basement/-tasks), used only for
         // WebAuthn/passkeys. The panel has no Play services, so they could never run; excluding them
         // keeps the APK free software (as Firefox's F-Droid builds do). HA's login doesn't use WebAuthn.
         exclude(group = "com.google.android.gms")
     }
-    // Voice assistant: openWakeWord inference (ships armeabi-v7a, minSdk 19).
+    // Voice assistant: openWakeWord inference (ships every ABI; abiFilters keeps the one built, minSdk 19).
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     // Libraries extracted from this app (app/libs/). esphome-api brings BouncyCastle (Noise), which
     // Sendspin's encryption also uses.
@@ -118,6 +126,11 @@ tasks.withType<Test>().configureEach {
     (project.findProperty("s1MockupDir") as String?)?.let { systemProperty("s1.mockupDir", it) }
     // PanelEntitiesPinTest rewrites its golden file with -Ps1RegenGolden=true.
     (project.findProperty("s1RegenGolden") as String?)?.let { systemProperty("s1.regenGolden", it) }
+    // ApkAbiListsTest reads the workflows and this file. Declared as inputs, so a change to either
+    // re-runs the tests instead of taking them UP-TO-DATE or FROM-CACHE.
+    inputs.dir(rootProject.file("../.github/workflows")).withPropertyName("workflows")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file("build.gradle.kts").withPropertyName("kioskBuildScript").withPathSensitivity(PathSensitivity.NONE)
 }
 
 // Open source licences screen (hidden settings → "Open source licences"): the repo's

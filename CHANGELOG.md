@@ -8,6 +8,10 @@ below as the release notes.
 ## [Unreleased]
 
 ### Added
+- **Releases now include an APK for 64-bit Android devices.** Each release carries
+  `s1-kiosk-arm64-v8a-<version>.apk` beside the S1's APK, for arm64-v8a tablets and similar devices.
+  It is experimental and has only run on an emulator. S1 panels keep updating from
+  `s1-kiosk-<version>.apk` as before.
 - **The panel gets your Thread network from Home Assistant**, instead of you copying the dataset.
   *Get it from Home Assistant* on the panel's Thread router card (setup screen and settings menu), or
   the *Join Home Assistant's Thread network* button on its device page, reads your preferred Thread
