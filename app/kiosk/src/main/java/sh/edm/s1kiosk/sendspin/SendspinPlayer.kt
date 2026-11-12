@@ -136,11 +136,15 @@ class SendspinPlayer(
     private val haBase: () -> String?,
     private val macAddress: String,
     private val onStatusChanged: () -> Unit = {},
+    val store: SsStore = PrefsSsStore(context),
+    private val connect: (url: String, hello: SsHelloInfo, hooks: SsPlayerHooks) -> SsConnection =
+        { url, hello, hooks -> SendspinSession(url, store, hello, { prefs.unpairedAccess }, hooks) },
+    private val newPipeline: (out: PcmOutput, onFlacFailed: (String) -> Unit) -> AudioPipeline =
+        { out, onFlacFailed -> AudioPipeline(out, { MediaCodecFlacDecoder() }, onFlacFailed) },
 ) {
     private val ctx = context.applicationContext
-    val store: SsStore = PrefsSsStore(ctx)
     private val sink = AudioTrackSink()
-    @Volatile private var session: SendspinSession? = null
+    @Volatile private var session: SsConnection? = null
     private val scheduler = PlaybackScheduler(sink, { session?.timeFilter?.snapshot ?: EMPTY })
     @Volatile private var running = false
     @Volatile private var ducked = false
@@ -207,7 +211,7 @@ class SendspinPlayer(
         applyGain()
         scheduler.outputDelayUs = store.outputDelayMs * 1000L
         SsLog.i("FLAC decoder: ${flacDecoder ?: "none"}; offering ${offeredFormats().joinToString { it.codec }}")
-        pipeline = AudioPipeline(scheduler, { MediaCodecFlacDecoder() }, ::onFlacFailed)
+        pipeline = newPipeline(scheduler, ::onFlacFailed)
         audioThread = Thread({ audioLoop() }, "ss-audio").apply { isDaemon = true; start() }
         connThread = Thread({ connectLoop() }, "ss-conn").apply { isDaemon = true; start() }
         statsThread = Thread({ statsLoop() }, "ss-stats").apply { isDaemon = true; start() }
@@ -252,7 +256,7 @@ class SendspinPlayer(
      * stuck), the connection is dropped so the socket doesn't outlive [stop]. Returns whether the
      * caller was interrupted while it waited.
      */
-    private fun closeOffThisThread(s: SendspinSession, reason: String): Boolean {
+    private fun closeOffThisThread(s: SsConnection, reason: String): Boolean {
         val closer = Thread({ s.close(reason) }, "ss-close").apply { isDaemon = true; start() }
         var interrupted = false
         try {
@@ -306,7 +310,7 @@ class SendspinPlayer(
                 if (!sleep(10_000)) break
                 continue
             }
-            val s = SendspinSession(url, store, hello(), { prefs.unpairedAccess }, hooks)
+            val s = connect(url, hello(), hooks)
             session = s
             SsLog.i("Connecting to $url")
             val r = s.run()
