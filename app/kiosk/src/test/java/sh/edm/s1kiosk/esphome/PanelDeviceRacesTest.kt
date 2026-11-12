@@ -11,7 +11,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -44,9 +43,14 @@ import java.util.Base64
  * `stop()` is called from a hook at the chosen point. Where the hook sits outside the `lifecycle`
  * lock, that is the same as a `stop()` that waited for the step before it. Where the hook sits
  * inside a step (the two marked below), `stop()` runs at the end of that step: a real `stop()`
- * would wait for the lock and run right after it, with the same result.
+ * would wait for the lock and run right after it, with the same end state. The lock is reentrant,
+ * so there the whole of `stop()` runs while the step holds it. These tests therefore can't show a
+ * deadlock between a step and a waiting `stop()`, nor a worker interrupted by `shutdownNow()` in
+ * the middle of a step (the fake executor's `shutdownNow()` only sets a flag).
  *
- * Each test names the guard it pins; removing that guard makes it fail.
+ * Each test names the guard it pins; removing that guard makes it fail. The delayed readvertise's
+ * `server === s` is the exception: today the server only goes away in `stop()`, under the same lock
+ * that sets `stopped`, so `unlessStopped` already covers it and no test can tell it apart.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
@@ -169,7 +173,7 @@ class PanelDeviceRacesTest {
         assertEquals("the first registration, and this one", 2, mdns.starts.size)
     }
 
-    /** Guard: `server === s` (the server is already gone once stop() has finished). */
+    /** Guard: `unlessStopped` together with `server === s` (removing both makes it fail; see the class comment). */
     @Test fun theDelayedReadvertiseAfterStopRegistersNothing() {
         startup()
         changeTheKey()
