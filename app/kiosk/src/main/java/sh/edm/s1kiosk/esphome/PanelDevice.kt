@@ -181,7 +181,7 @@ class PanelDevice(
             voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
         )
         EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${voiceEnabled}")
-        if (!unlessStopped { initEntities(id, WallBasePane.wantedConfig(prefs.wallBase)); acquireLocks() }) return
+        if (!unlessStopped { initEntities(id, WallBasePane.wantedConfig(prefs.wallBase, runtime.frame.aqaraCloud)); acquireLocks() }) return
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
         voicePlayer.onStateChanged = {
@@ -238,7 +238,7 @@ class PanelDevice(
                     silence = { synchronized(this) { chimePlayer }?.cancel() },
                 )
             } else null,
-            WallBasePane(paneContext, baseConfig, exec),
+            WallBasePane(paneContext, baseConfig, exec, runtime.frame.aqaraCloud),
             RadioPane(paneContext, runtime, panelIp = ::ipAddress),
         )
         coreEntities = buildEntities()

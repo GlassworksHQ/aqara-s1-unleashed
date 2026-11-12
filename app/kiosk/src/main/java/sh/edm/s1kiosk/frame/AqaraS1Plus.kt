@@ -8,6 +8,9 @@ import dev.glassworks.frame.Frame
 class AqaraS1Plus : Frame {
     override val board = "aqara-s1-plus"
 
+    /** Aqara's cloud daemon, which the wall base pane stops or keeps. */
+    val aqaraCloud = AqaraCloud()
+
     /**
      * The S1's firmware has no Android Settings app. Its own one (com.lumi.settings: Network, Sounds,
      * Display, Updates, Advanced settings incl. factory reset) is normally reached from Aqara's
