@@ -33,7 +33,7 @@ app has done a full install on a real panel from a Vercel preview (#27).
 | `src/wizard/session.ts` | The hardware steps: InstallFlow with the recipe, then the app's setup over adb. Screens only call it |
 | `src/wizard/screens.tsx` | One component per screen of the design, on Radix primitives |
 | `src/frames/aqara-s1-plus.ts` | What the screens say for the S1: the USB names to pick, help links, the radio's next steps |
-| `src/recovery/player.ts` | The recovery-mode player, drawing a frame's data (`frames/*/installer/recovery.json`) |
+| `src/recovery/player.ts` | The recovery-mode player, drawing a frame's data. The S1's is `frames/aqara-s1-plus/installer/recovery.json` (canonical); `docs/design/kiln/recovery/` keeps the prototype's copy, and a test keeps them equal |
 
 Rules that tests guard:
 

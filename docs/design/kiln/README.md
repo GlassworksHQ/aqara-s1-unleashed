@@ -44,6 +44,11 @@ panel's own coordinates (lying face down, the long edge at `y = 0` furthest away
 draws the device at the brand's 30° angle and animates the steps. Adding a frame means measuring
 it, not drawing an animation. This section moves into the generated `frame.json` once #35 lands.
 
+Kiln reads the S1's data from [`frames/aqara-s1-plus/installer/recovery.json`](../../../frames/aqara-s1-plus/installer/recovery.json),
+which is the canonical copy. [`recovery/aqara-s1-plus.json`](recovery/aqara-s1-plus.json) is this
+prototype's input and adds only `photo`. Kiln's tests fail if the two differ otherwise
+(`kiln/apps/kiln/test/recovery-data.test.ts`).
+
 | Field | Meaning |
 |---|---|
 | `body` | `w`, `h`, `thickness`, `radius` in mm |
