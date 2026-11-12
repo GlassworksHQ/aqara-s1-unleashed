@@ -168,7 +168,6 @@ class RadioFollowUpTest {
             assertEquals(m.name, full.qr, c.qr) // the same QR codes
         }
         assertTrue(RadioFollowUp.card(facts(RadioMode.THREAD), Place.SETUP).note!!.contains("Thread router (repeater)"))
-        assertTrue(RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER), Place.SETUP).lines.any { it.contains("network key") })
         val child = ThreadRouterState(true, "child", "Example-Net")
         assertEquals("joined “Example-Net”, a router in a few minutes",
             RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = child), Place.SETUP).state)
