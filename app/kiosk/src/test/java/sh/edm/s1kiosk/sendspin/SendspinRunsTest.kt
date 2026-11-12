@@ -240,6 +240,22 @@ class SendspinRunsTest {
         assertEquals("the new session's output delay", delay + 900, player.store.outputDelayMs)
     }
 
+    @Test
+    fun theNextRunDoesNotShowTheStoppedRunsTitle() {
+        player.start()
+        val old = conns.awaitAt(0)
+        old.hooks.onMetadata("Old title", "Old artist")
+        old.releaseOnClose = false // its stream/end comes too late to clear the title
+        player.stop()
+        player.start()
+        val new = conns.awaitAt(1)
+        new.hooks.onStatus(SendspinSession.Status(SendspinSession.Phase.PLAYING, serverName = "Music Assistant", paired = true))
+        assertFalse(player.statusText(), player.statusText().contains("Old title"))
+
+        new.hooks.onMetadata("New title", "New artist")
+        assertTrue(player.statusText(), player.statusText().endsWith(": New artist – New title"))
+    }
+
     private fun MutableList<Fake>.awaitAt(i: Int): Fake {
         val deadline = System.nanoTime() + 5_000_000_000L
         while (size <= i) {

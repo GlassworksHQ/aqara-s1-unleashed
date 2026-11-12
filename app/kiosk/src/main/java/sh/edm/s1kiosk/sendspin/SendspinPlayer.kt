@@ -262,6 +262,7 @@ class SendspinPlayer(
     @Synchronized fun stop(reason: String = "user_request") {
         val r = current ?: return
         synchronized(outputLock) { current = null }
+        nowPlaying = null // the stopped run's stream/end can come too late to clear it
         r.netCallback?.let { cb -> runCatching { ctx.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) } }
         var interrupted = session?.let { closeOffThisThread(it, reason) } ?: false
         session = null
