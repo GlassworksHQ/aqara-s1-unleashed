@@ -1,3 +1,5 @@
+export { Assets, type AssetEntry, type Manifest } from './assets';
+export { webUsbDevices } from './devices';
 export {
   BackupStore, backupFile, backupId, backupZip, readBackupZip, sha256sums, toHex, type BackupFile, type BackupMeta,
 } from './backup';

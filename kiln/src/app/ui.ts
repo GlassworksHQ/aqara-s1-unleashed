@@ -1,7 +1,6 @@
 // The installer page (index.html, design E). Renders kiln-core's InstallFlow with the S1 recipe; all hardware work lives there.
 import felImg from '../../../docs/img/fel-button.jpg?url';
 import { loadOrCreateAdbKey, type AdbKey, type PanelShell } from '@glassworks/adb';
-import { Assets } from '../assets';
 import type { Fastboot } from '@glassworks/fastboot';
 import { FelDevice } from '@glassworks/fel';
 import { SETUP_SOCKET, SetupChannel, validHaUrl, type SetupState } from '@glassworks/setup-channel';
@@ -10,10 +9,9 @@ import {
   type AssetName, type ByteStream, type Provisioned, type SetUpOptions,
 } from '@glassworks/aqara-s1-plus-installer';
 import {
-  BackupRefused, BackupStore, InstallFlow, backupZip, fmtSize, readBackupZip, restoreFromBackup,
+  Assets, BackupRefused, BackupStore, InstallFlow, backupZip, fmtSize, readBackupZip, restoreFromBackup, webUsbDevices,
   type AskKind, type Bar, type BackupFile, type BackupMeta, type FlowUi, type PartState, type Progress,
 } from '@glassworks/kiln-core';
-import { webUsbDevices } from './devices';
 import { giveBackApps } from './undo';
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector<T>(s)!;
@@ -152,7 +150,7 @@ class Installer {
   private mode: Mode = 'install';
   private cur: ScreenId | null = null;
   private errAt = 1;
-  private assets = new Assets();
+  private assets = new Assets<AssetName>(`${import.meta.env.BASE_URL}assets/`);
   private backups = new BackupStore(s1Plus.backup.db);
   private key?: AdbKey;
   private flow?: InstallFlow<AssetName, SetUpOptions, Provisioned>;
