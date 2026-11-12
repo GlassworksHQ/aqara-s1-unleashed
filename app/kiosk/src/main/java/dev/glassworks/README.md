@@ -55,7 +55,7 @@ change until Glassworks v1.
 | Type | What it is |
 |---|---|
 | `Pane` | A feature: its Home Assistant entities, `start`/`stop`, and what it does when the panel changes. |
-| `PaneContext` | What the core gives a pane: the app context, settings, the device identity, `publishStates()`, `emit()`, `entitiesChanged()` and `sendEvent()`. |
+| `PaneContext` | What the core gives a pane: the app context, `prefs(namespace)` for its settings, the device identity, `publishStates()`, `emit()`, `entitiesChanged()` and `sendEvent()`. |
 | `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished, Home Assistant subscribed. A pane raises one with `PaneContext.emit`. |
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
 
@@ -115,6 +115,30 @@ server for this. The core owns it, including its restarts.
 Entities come from [esphome-api](../../../../../../libs/esphome-api/README.md). Home Assistant
 keys them by object id, so an object id is permanent: renaming one makes a new entity in every
 home that already has the panel.
+
+## Settings
+
+A pane gets its settings file with `ctx.prefs(id)`, where the namespace is the pane's own id. It
+wraps the file in its own typed class and reads and writes only its own keys there, as the Sendspin
+pane does with [`SendspinPrefs`](../../sh/edm/s1kiosk/sendspin/SendspinPrefs.kt):
+
+```kotlin
+private val prefs = SendspinPrefs(ctx.prefs(id))
+```
+
+The frame decides which file holds a namespace. A namespace is the owner of a set of keys, not a
+file or a key prefix. On the S1 every pane's settings stay in `kiosk.xml`, under the key names they
+had before panes ([`KioskPrefs.PANE_FILES`](../../sh/edm/s1kiosk/KioskPrefs.kt)), because panels
+update in place and no stored value may move. `PrefsPinTest` pins every file, key, type and default.
+`ctx.prefs` refuses a namespace the frame does not know.
+
+When a key in a pane's file changes, the core raises `PanelEvent.SettingChanged(key)` to every pane.
+A pane matches its own key constants and ignores the rest.
+
+A pane may also keep a file of its own that no other code reads, such as Sendspin's pairing secrets
+in `sendspin.xml`. Until the settings menu moves into the panes
+([migration step 5](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/20)), the S1's
+settings menu, setup screen and intent extras edit pane settings through the same typed classes.
 
 ## Threads
 
