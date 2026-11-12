@@ -60,6 +60,7 @@ change until Glassworks v1.
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
 | `ScreenPolicy` | (`dev.glassworks.screen`) Wake on approach, idle off, the night window and its timeout, the brightness curve and the screen mode. It reads the frame's `PresenceSource` and `LightSource` and the app's `ScreenSettings`. One per process, on `GlassworksRuntime.screen`. |
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
+| `Engine` | (`dev.glassworks.engine`) The web engine that shows the dashboard: open a page, load, reload, go back, restart after a crash, and talk to the page's scripts. `GeckoEngine` (`dev.glassworks.engine.gecko`) is the only code that uses GeckoView. One per process, on `GlassworksRuntime.engine`. |
 
 ## Writing a pane
 
@@ -169,6 +170,31 @@ presence source is the VI5300 time-of-flight sensor, with Lumi's `proximity_thre
 and its light source is the MK6212 sensor. Its panes are the wall base (with Aqara's cloud daemon,
 which holds the wall base UART) and the time zone. It also holds the root update service. The rest of
 the planned frame (screen off, installer) comes in the next migration steps.
+
+## Engine
+
+The shell shows the dashboard through `dev.glassworks.engine.Engine`, not through GeckoView.
+`engine.open(activity, host, background)` gives a `Page`. The shell adds `page.view` to its layout
+and calls `load`, `reload`, `goBack`, `restart` and `post`. The page reports to the shell's
+`PageHost`, always on the main thread:
+
+| `PageHost` call | When |
+|---|---|
+| `onPageStart(url)`, `onPageStop(success)`, `onFirstPaint()`, `onLocationChange(url)` | The page loads. |
+| `redirect(url)` | Before each top-level load in the page's own window. Return a URL to load instead, or null. |
+| `onContentGone(killed)` | The content process crashed or was killed. The shell calls `page.restart()` and loads again. |
+| `onAndroidPermissions(permissions, answer)` | The page needs Android runtime permissions, which only an activity can ask for. |
+| `onConnect(port)`, `onPortMessage(port, message)` | A page script opened a native port, or sent a JSON object on one. `PagePort` has the page's `url` and `topLevel`. |
+
+It is a kiosk engine. It allows every page permission without a prompt and grants the microphone and
+the camera. It reads `EngineSettings` (secure-context hosts, zoom, remote debugging) once, at the
+first `open`, so a change needs a process restart. `engine.started` says what it started with.
+
+`GeckoEngine` takes the S1's values: the built-in extension (`assets/extension`, id
+`helper@s1kiosk.edm.sh`, native app `s1kiosk`), the log tag and the settings from `KioskPrefs`.
+GeckoView allows one runtime per process, so `GlassworksRuntime` holds the one engine.
+`EngineConfinementTest` fails `./gradlew test` if code outside `dev.glassworks.engine.gecko` names
+`org.mozilla.gecko`.
 
 ## Threads
 
