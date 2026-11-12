@@ -164,13 +164,14 @@ class PanelDevice(
         HaAuth.removeListener(authListener)
         HaAuth.threadJoin.removeListener(threadJoinListener)
         Dashboards.removeListener(dashboardsListener)
+        // Panes first, while esphome-main still runs: the wall base's thread can still post to it.
+        panes.forEachPane("stop") { it.stop() }
+        panes = emptyList()
+        assist = null
         exec.shutdownNow()
         mdns.stop()
         server?.stop()
         server = null
-        panes.forEachPane("stop") { it.stop() }
-        panes = emptyList()
-        assist = null
         radio.stop()
         timeZone.stop()
         updates.stop()
