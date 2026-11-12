@@ -157,6 +157,24 @@ class ForeignPage(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertEqual(c["error"], "the kiosk loaded another page while a reference dashboard was measured")
 
+    def test_a_page_after_the_last_reference_page(self):
+        code, c = self.run_with("end")
+        self.assertNotEqual(code, 0)
+        self.assertEqual(c["error"], "the kiosk loaded another page while a reference dashboard was measured")
+
+    def test_a_second_load_of_the_kiosks_own_page_restarts_the_wait(self):
+        tmp = tempfile.mkdtemp()
+        env, _ = fake_env(tmp, FAKE_OWN_RELOAD="1", GW_PERF_COLD_SETTLE="0")
+        p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
+                            "--out", tmp, "--run", "1", "--settle", "0", "--url", "http://127.0.0.1:1/dashboard.html",
+                            "--taps", "0"], env=env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(p.returncode, 0, p.stderr[-2000:])
+        with open(os.path.join(tmp, "refstart-1.json")) as f:
+            c = json.load(f)
+        self.assertEqual(c["own_page_loads"], 2)
+        self.assertEqual(c["engine_uri"], "about:blank")
+        self.assertIsNone(c["error"])
+
     def test_a_page_after_the_reference_page(self):
         code, c = self.run_with("after")
         self.assertNotEqual(code, 0)

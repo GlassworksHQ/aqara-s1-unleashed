@@ -423,7 +423,55 @@ class Build(unittest.TestCase):
         self.assertEqual(rep["real_use"]["dashboard_load_ms"]["median"], 28000)
         self.assertFalse(rep["real_use"]["memory"]["budget"]["ok"])   # the 1.9 GB samples did arrive
         self.assertEqual(rep["graded"]["reference"]["own_page_quiet"], [False])
-        self.assertEqual(rep["grade"], before)
+        g = rep["grade"]
+        for k in ("grade", "meaning", "bands", "start", "capped_by_start", "missing"):
+            self.assertEqual(g[k], before[k], k)
+        # A hung Home Assistant can't move the letter; it only flags the grade.
+        self.assertTrue(g["provisional"])
+        self.assertEqual(g["provisional_reasons"], ["the kiosk's own page never went quiet in a graded run (Home Assistant down?)"])
+
+    def test_a_run_that_ended_in_an_error_is_not_graded(self):
+        before = self.rep["grade"]
+        bad = refstart(4, 900, busy_missed=100)
+        bad.update(error="the kiosk loaded another page while a reference dashboard was measured", engine_mono=29.0)
+        self.write("refstart-4.json", bad)
+        rep = R.build(self.dir)
+        ref = rep["graded"]["reference"]
+        self.assertEqual((ref["runs"], ref["graded_runs"], len(ref["errors"])), (4, 3, 1))
+        self.assertEqual(rep["grade"]["bands"], before["bands"])
+        self.assertEqual(rep["grade"]["start"], before["start"])
+
+    def test_frames_are_banded_per_run_then_the_median_band(self):
+        """Three runs, each poor for a different reason. Per-measure medians would read good."""
+        stats = [{"n": 100, "p95_ms": 50.0, "jank_pct": 4, "frozen_pct": 0, "fps": 40},
+                 {"n": 100, "p95_ms": 16.67, "jank_pct": 60, "frozen_pct": 0, "fps": 30},
+                 {"n": 100, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 1, "fps": 58}]
+        runs = []
+        for k, st in enumerate(stats, 1):
+            run = refstart(k, 100)
+            step = run["tiers"]["typical"]["step"]
+            step["raf"] = st
+            step["sf"]["oldest_ms"] = step["sf"]["window_ms"][0] + 1   # history evicted: rAF only
+            runs.append(R.reference_run(run))
+        ref = R.reference_summary(runs)
+        self.assertEqual(ref["tiers"]["typical"]["frames_bands"], ["poor", "poor", "poor"])
+        tiers, start = R.grade_inputs({"reference": ref})
+        self.assertEqual(G.grade(tiers, start)["bands"]["typical"]["frames"], "poor")
+        medians = {k: ref["tiers"]["typical"]["frames"][k]["median"] for k in ("p95_ms", "jank_pct", "frozen_pct")}
+        self.assertEqual(G.frame_band(dict(medians, n=100)), "good")   # what per-measure medians would say
+
+    def test_median_band_of_an_even_count_is_the_worse_middle(self):
+        self.assertEqual(R.median_band(["good", "poor"]), "poor")
+        self.assertEqual(R.median_band(["good", "good", "needs-improvement", "poor"]), "needs-improvement")
+
+    def test_start_needs_about_blank_as_the_engines_first_page(self):
+        run = refstart(1, 100)
+        run["engine_uri"] = "http://192.0.2.10:8123/lovelace"
+        r = R.reference_run(run)
+        self.assertIsNone(r["start_ms"])
+        self.assertIn("not about:blank", r["start_error"])
+        run["engine_uri"] = "about:blank"
+        self.assertEqual(R.reference_run(run)["start_ms"], 700)
 
     def test_grade_inputs_come_only_from_the_reference_dashboards(self):
         tiers, start = R.grade_inputs(self.rep["graded"])

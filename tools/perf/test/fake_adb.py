@@ -145,7 +145,8 @@ def refdash(nonce, url):
     (typical and busy keep painting), one measured window, the taps, done."""
     tier = re.search(r"tier=(\w+)", url).group(1)
     taps = int(re.search(r"taps=(\d+)", url).group(1))
-    foreign = os.environ.get("FAKE_FOREIGN_PAGE") if tier == "light" else None
+    foreign = os.environ.get("FAKE_FOREIGN_PAGE")
+    foreign = foreign if (foreign == "end") == (tier == "busy") else None
 
     def gw(obj):
         line("GeckoConsole", "GWPERF " + json.dumps(dict(obj, nonce=nonce, run=1)))
@@ -182,6 +183,9 @@ def refdash(nonce, url):
         gw({"t": "input", "stage": tier, "method": "event-timing", "taps": state("taps.json", 0) - before,
             "values": [16, 48], "inp_ms": 48})
     gw({"t": "done", "stage": tier})
+    if foreign == "end":
+        time.sleep(0.3)
+        line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
 
 
 def dashboard():
@@ -198,6 +202,11 @@ def dashboard():
     line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     time.sleep(0.8)
     line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
+    if os.environ.get("FAKE_OWN_RELOAD"):
+        time.sleep(0.5)   # a sign-in redirect: the kiosk loads its page a second time
+        line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace/0?external_auth=1")
+        time.sleep(0.8)
+        line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
 
 
 def logcat():

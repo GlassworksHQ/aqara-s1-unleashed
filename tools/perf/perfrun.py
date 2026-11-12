@@ -232,12 +232,14 @@ def cmd_coldstart(dev, a):
     dev.sh(f"am force-stop {dev.package}")
     t0 = time.time()
     engine_at = None
+    own_stop_at = 0.0
     current = None  # (tier, nonce) of the reference page being measured
     measure_mono = None
     proc_re = re.compile(rf"Start proc \d+:{re.escape(dev.package)}/")
 
     def open_next():
-        nonlocal current
+        nonlocal current, measure_mono
+        measure_mono = None
         tier = tiers[len(res["tiers"])]
         nonce = secrets.token_hex(4)
         current = (tier, nonce)
@@ -246,16 +248,24 @@ def cmd_coldstart(dev, a):
         url = f"{a.url}?tier={tier}&nonce={nonce}&run={a.run}&vsync={a.vsync}&taps={a.taps}"
         dev.sh(f"am start -n {dev.component} --es open '{url}'")
 
+    break_after = None
     while time.time() - t0 < a.timeout:
+        if break_after and time.time() > break_after and lines.empty():
+            break
         # Read every queued line first, so a relaunch logged just before --settle isn't missed.
         if res["launch"] is None and time.time() - t0 > a.settle and lines.empty():
             res["launch"] = "am-start"
             am = dev.sh(f"am start -W -n {dev.component}", timeout=120)
             res["am_total_ms"] = int((re.findall(r"TotalTime: (\d+)", am) or [0])[0]) or None
         if ref and current is None and engine_at and lines.empty():
-            own_done = res["own_page_stop_mono"] is not None
+            # Open once the kiosk's own page has stopped for 2 s with no new load, and the screen is
+            # still; or after --own-page-wait if it never finishes (Home Assistant down).
+            own_done = res["own_page_stop_mono"] is not None and time.time() - own_stop_at >= 2.0
             if own_done or time.time() - engine_at > a.own_page_wait:
-                res["own_page_quiet"] = quiet_for(2.0, 10.0) if own_done else False
+                quiet = quiet_for(2.0, 10.0) if own_done else False
+                if own_done and not lines.empty():
+                    continue  # something was logged meanwhile; read it first (a new load restarts the wait)
+                res["own_page_quiet"] = quiet
                 open_next()
         try:
             rec = P.parse_logcat_line(lines.get(timeout=0.2))
@@ -306,7 +316,9 @@ def cmd_coldstart(dev, a):
                     entry["error"] = pl.get("message")
                 print(f"  {tier} {t}", file=sys.stderr)
                 if len(res["tiers"]) == len(tiers):
-                    break
+                    # Keep watching briefly: another page now means one was on its way during the last tier.
+                    break_after = time.time() + 1.5
+                    continue
                 open_next()
             continue
         m = PAGE_RE.search(msg)
@@ -315,15 +327,19 @@ def cmd_coldstart(dev, a):
         kind, uri = m.group(1), m.group(2)
         if kind == "PageStart" and res["engine_mono"] is None:
             res["engine_mono"] = rec["mono"]
+            res["engine_uri"] = uri
             engine_at = time.time()
         if kind == "PageStart" and not uri.startswith("http"):
             continue
         if current is None:
-            # Before the first open: the kiosk's own first page (its dashboard).
-            if kind == "PageStart" and res["own_page_start_mono"] is None:
-                res["own_page_start_mono"] = rec["mono"]
+            # Before the first open: the kiosk's own first page (its dashboard). A second one (a
+            # reload, a sign-in redirect) restarts the wait: the reference pages must not meet it.
+            if kind == "PageStart":
+                res["own_page_loads"] = res.get("own_page_loads", 0) + 1
+                res["own_page_start_mono"], res["own_page_stop_mono"] = rec["mono"], None
             elif kind == "PageStop" and res["own_page_start_mono"] is not None and res["own_page_stop_mono"] is None:
                 res["own_page_stop_mono"] = rec["mono"]
+                own_stop_at = time.time()
                 if not ref:
                     break
         elif kind == "PageStart":

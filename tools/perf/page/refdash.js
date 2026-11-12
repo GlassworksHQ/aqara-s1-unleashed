@@ -317,7 +317,8 @@
 
   async function main() {
     await reportLoad();
-    await sleep(T.PHASES.stillAfterLoadMs);
+    const loaded = (performance.getEntriesByType("navigation")[0] || {}).loadEventEnd || performance.now();
+    await sleep(Math.max(0, loaded + T.PHASES.stillAfterLoadEventMs - performance.now()));
     const state = { measuring: false, stamps: [] };
     goLive((ts) => { if (state.measuring) state.stamps.push(ts); });
     await frames(state);

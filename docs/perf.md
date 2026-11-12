@@ -17,9 +17,12 @@ animated dashboards average about 13 fps, with 90% of frames late." (an example 
 measured result).
 
 The grade is measured on three fixed **reference dashboards** that this test ships: light, typical
-and busy. They are seeded and load nothing from the network. So the grade doesn't change when your
-Home Assistant, your dashboard or your network does. The bands underneath come from published
-guidelines (Core Web Vitals, RAIL, Android vitals), not from any frame's own numbers.
+and busy. They are seeded and load nothing from the network. So the grade doesn't depend on your
+Home Assistant, your dashboard or your network. The one way your panel's own setup reaches it is
+background load: the panes, the radio and the device's heat keep running while the reference
+dashboards are measured, as they do every day (see [What the grade does and doesn't tell
+you](#what-the-grade-does-and-doesnt-tell-you)). The bands underneath come from published guidelines
+(Core Web Vitals, RAIL, Android vitals), not from any frame's own numbers.
 
 The test also measures the panel as you run it (your own dashboard, memory, CPU and the panes) and
 reports it separately. That part is never in the grade. It needs no app changes: every page runs in
@@ -93,7 +96,7 @@ three tiers fill the strip (`tools/perf/page/tiers.js`):
 |---|---|---|
 | **Light** | 5 sensor chips whose states change every 2 s. Nothing animates | Most dashboards: cards, icons and text. A real one on the S1 presented about 0.1 frames/s at idle |
 | **Typical** | Light, plus 4 spinning fan icons, 2 pulsing icons, a progress ring and a clock that ticks every second | A dashboard with HA's default animated bits |
-| **Busy** | Typical, plus 6 more spinners, a line chart redrawn every frame, and 24 chips of which a tenth update their numbers every frame | Many animations and frequent updates (the test page's old reference load) |
+| **Busy** | Typical, plus 6 more spinners, a line chart redrawn every frame, and 24 chips of which 3 update their numbers every frame, so each one every 8 frames | Many animations and frequent updates (the test page's old reference load) |
 
 **Why the strip.** Gecko doesn't run CSS animations that are off screen. In the first version the
 animated cards came after the static ones. On the S1's 960 × 480 CSS viewport that put them all
@@ -110,7 +113,13 @@ as a frozen one.
 
 Each page runs the same phases:
 1. It renders while still, so its load can end. It reports its load times.
-2. It stays still for 2 s, then goes live: the tier's updates and animations start.
+2. It stays still until 2.5 s after its load event, then goes live: the tier's updates and animations
+   start. The kiosk covers every page it loads with its own loading screen ("Connecting to Home
+   Assistant") and hides it at the page's first paint, or 1.5 s after the load event if that was
+   missed, with a 300 ms fade. The 2.5 s clear that fallback with 0.7 s to spare, so the screen is
+   never covered during a measured window. On the S1 the overlay was gone at least 2.5 s before every
+   window (the smoke run of 6f32a54). Frames presented when it hides count toward the load's settle: they are
+   what you see.
 3. Warm-up of 1 s, the live check, then one measured window of 100 display refreshes (1.67 s at 60 Hz).
 4. The taps on the toggle, while the tier stays live.
 
@@ -132,9 +141,17 @@ dashboard.
 | Start | A cold start: from the app's process start (`Start proc` in logcat) to the engine being ready, which is GeckoView's own first page (`PageStart about:blank`). See [Why start is engine ready](#why-start-is-engine-ready) |
 
 Each graded run is one cold start, then the three reference dashboards in turn. They are opened once
-the kiosk's own first page has gone quiet (or after 30 s if it never loads, for example with Home
-Assistant down), so they never compete with it. While they are measured, any other page the kiosk
-loads, before a reference page starts or after, makes the run an error. That run isn't graded.
+the kiosk's own first page has stopped for 2 s with no new load, and the screen is still, so they
+never compete with it. A second load of the kiosk's own page (a reload, a sign-in redirect)
+restarts that wait. If the kiosk's page never finishes within 30 s (Home Assistant down or hung),
+they open anyway, and the grade is marked **provisional**: the kiosk may still have been retrying
+its page while they ran. The letter itself is kept, because dropping a measurement would let Home
+Assistant move it.
+
+While the reference dashboards are measured, and for 1.5 s after the last one, any other page the
+kiosk loads makes the run an error. A run that ends in an error isn't graded at all. Each run's
+frames get their own band, and the grade takes the median band across runs (the worse of the two
+middles for an even count), so three runs that are each poor for a different reason are poor.
 
 ### Reported, not graded
 
@@ -237,11 +254,19 @@ An earlier version opened a reference page straight after `Displayed` and timed 
 On the S1 that `open` was dropped: until GeckoView's session is up, the kiosk ignores `open`
 (#103's pins found the same). Sending it once the session is up races the kiosk's own dashboard
 load, which already talks to Home Assistant. So start ends at **engine ready**, the engine's own
-first page (`about:blank`). That comes before the kiosk does anything for Home Assistant. Both ends
+first page (`about:blank`; the report records it, and a start whose first page is anything else
+isn't graded). That comes before the kiosk does anything for Home Assistant. Both ends
 are stamped on the device in logcat, so the harness's adb round trips aren't in it. The first paint
 of a real page is graded as part of load, on the reference dashboards. On frames that aren't the
 home app, the runner waits 3 s before it starts the app itself; that wait isn't in start either,
 because start begins at the process start.
+
+**How the 5 s bound compares with Android vitals.** Engine ready comes after TTID, so passing 5 s
+here is harder than passing it on TTID. It still ends before any page has painted, so it is more
+lenient than a bound on the time to the first real content. Proposal, not adopted: also cap the
+grade at C when engine ready plus the light reference dashboard's first paint reaches 5 s. That sum
+approximates the time to a first painted page after a cold start, from two numbers that don't
+depend on Home Assistant. On the S1 smoke run it was 3.0 s plus 0.8 s.
 
 ## What the grade does and doesn't tell you
 

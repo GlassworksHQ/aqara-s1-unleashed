@@ -86,7 +86,8 @@ def tier_bands(tier):
     """{frames, inp, load} bands of one reference dashboard's measurements (None if not measured)."""
     tier = tier or {}
     return {
-        "frames": frame_band(tier.get("frames")),
+        # frames_band: the median of each run's band, when the caller has the runs; else from the stats.
+        "frames": tier.get("frames_band") or frame_band(tier.get("frames")),
         "inp": band(tier.get("inp_ms"), METRICS["inp_ms"]),
         "load": band(tier.get("load_ms"), METRICS["load_ms"]),
     }
