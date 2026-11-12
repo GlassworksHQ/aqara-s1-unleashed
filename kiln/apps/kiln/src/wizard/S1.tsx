@@ -32,7 +32,10 @@ function realSession(): Session {
 
 /**
  * One session per page load. React's StrictMode runs component setup twice in development, and a
- * second Session would load (or create) a second adb key in IndexedDB at the same time.
+ * second Session would load (or create) a second adb key in IndexedDB at the same time. So it is not
+ * reset on unmount (StrictMode unmounts and mounts again). Kiln's own links back to `/` are plain
+ * links (full page loads, no next/link). The browser's Back button returns client-side: the session
+ * then lives on, and the picker's Continue shows it again, which keeps a running write in view.
  */
 let page: { session: Session; demo?: Demo; entered: boolean } | undefined;
 

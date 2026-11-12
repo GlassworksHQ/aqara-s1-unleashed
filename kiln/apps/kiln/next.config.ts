@@ -15,7 +15,11 @@ const config: NextConfig = {
     },
   },
   outputFileTracingRoot: repo,
-  // Kiln has no next/image, so it never loads sharp (whose libvips is LGPL; hard rule 4 in AGENTS.md).
+  // Kiln has no next/image, and this keeps Next's image optimizer, the code that loads sharp, off.
+  // It doesn't change the traces: with or without it, sharp, its LGPL libvips (@img/*), detect-libc,
+  // semver and @emnapi/runtime appear only in the full `next start` server's trace
+  // (.next/next-server.js.nft.json), not in the minimal server's or any route's. What guards hard
+  // rule 4 is checking the deployed function's files (PR #104, "Before merge").
   images: { unoptimized: true },
   // The same caching as kiln/vercel.json: the manifest is always fresh, a blob for five minutes.
   async headers() {
