@@ -156,8 +156,9 @@ class SignInServerTest {
      */
     @Test
     fun aLoopbackListenerOnTheNextPortsDoesNotAnswerForTheServer() {
-        val next = ServerSocket(0).use { it.localPort }
-        val squatters = (next + 1..minOf(next + 20, 65535)).mapNotNull { p ->
+        // Pick on 127.0.0.1 too, and start low enough that 20 ports above it exist.
+        val next = ServerSocket(0, 0, loopback).use { it.localPort }.coerceAtMost(65535 - 21)
+        val squatters = (next + 1..next + 20).mapNotNull { p ->
             try {
                 HttpServer.create(InetSocketAddress(loopback, p), 0).apply {
                     createContext("/") { ex -> ex.sendResponseHeaders(200, -1); ex.close() }
@@ -165,12 +166,14 @@ class SignInServerTest {
                 }
             } catch (_: java.io.IOException) { null }
         }
+        // Without held ports the test would pass without reproducing #99.
+        assertTrue("held ${squatters.size} of 20 loopback ports", squatters.size >= 15)
         val s = signInServer()
         try {
             s.start()
             val c = URL("http://127.0.0.1:${s.localPort}/signin").openConnection() as HttpURLConnection
             c.instanceFollowRedirects = false
-            assertEquals("answered by the sign-in server on port ${s.localPort}", 302, c.responseCode)
+            assertEquals("the sign-in server on port ${s.localPort} answers /signin with its redirect", 302, c.responseCode)
         } finally {
             s.stop()
             squatters.forEach { it.stop(0) }
