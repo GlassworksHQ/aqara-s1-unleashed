@@ -6,6 +6,7 @@ import dev.glassworks.pane.EntityRegistry
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PanelEvent
+import dev.glassworks.pane.forEachPane
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -175,7 +176,7 @@ class PanelDevice(
         mdns.stop()
         server?.stop()
         server = null
-        panes.forEach { it.stop() }
+        panes.forEachPane("stop") { it.stop() }
         panes = emptyList()
         assist = null
         radio.stop()
@@ -216,7 +217,7 @@ class PanelDevice(
             exec.execute { server?.publishStates() }
         }
 
-        panes.forEach { it.start() }
+        panes.forEachPane("start") { it.start() }
         radio.start()
         timeZone.start()
         updates.start()
@@ -424,7 +425,7 @@ class PanelDevice(
 
     private fun startServer() {
         val s = ApiServer(ApiServer.DEFAULT_PORT, { identity }, entities, noiseKeys)
-        panes.forEach { it.bind(s) }
+        panes.forEachPane("bind") { it.bind(s) }
         s.onCommand = { exec.execute { s.publishStates() } }
         s.onClientHello = { info, addr ->
             if (HaUrls.isHomeAssistantHello(info)) SetupSignals.onHaHello()
@@ -471,7 +472,7 @@ class PanelDevice(
         server?.replaceKey(k)
     }
 
-    private fun emit(event: PanelEvent) = panes.forEach { it.onEvent(event) }
+    private fun emit(event: PanelEvent) = panes.forEachPane("onEvent") { it.onEvent(event) }
 
     /** esphome-main thread. */
     private fun onPrefChanged(key: String?) {

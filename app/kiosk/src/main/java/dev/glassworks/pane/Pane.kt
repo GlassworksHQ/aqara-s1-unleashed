@@ -8,6 +8,7 @@ import android.content.Context
 import sh.edm.esphome.ApiEntity
 import sh.edm.esphome.ApiServer
 import sh.edm.esphome.DeviceIdentity
+import sh.edm.esphome.EspHomeLog
 import sh.edm.s1kiosk.KioskPrefs
 
 /**
@@ -66,6 +67,20 @@ interface Pane {
     fun stop() {}
 
     fun onEvent(event: PanelEvent) {}
+}
+
+/**
+ * Runs [block] on every pane. A pane that throws is logged (with [op], the step that failed) and
+ * skipped, so one broken pane never stops the others from starting, stopping or hearing an event.
+ */
+fun List<Pane>.forEachPane(op: String, block: (Pane) -> Unit) {
+    for (pane in this) {
+        try {
+            block(pane)
+        } catch (t: Throwable) {
+            EspHomeLog.w("pane ${pane.id} failed in $op", t)
+        }
+    }
 }
 
 /** The Home Assistant entity list: the device's own entities plus every pane's. */
