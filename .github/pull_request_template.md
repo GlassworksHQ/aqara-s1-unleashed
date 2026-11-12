@@ -16,3 +16,13 @@
 - [ ] Docs updated (`README.md` status table, `docs/`), if behaviour or entities changed
 - [ ] Nothing logs tokens, keys, Wi-Fi passwords or Thread datasets
 - [ ] Changes to the boot patch, root helper or radio say so above; they need a real panel
+- [ ] UI changes have screenshots below (before and after for a changed screen)
+- [ ] Hardware or reverse-engineering findings are written up in `docs/research/`, dead ends included
+
+## Screenshots
+
+<!-- Required for any change to the app's screens, the web installer or the boot branding.
+     Before (from main) and after, at the same state and size, with a caption saying what to look at.
+     Panel: adb exec-out screencap -p > after.png. No panel: the app's *Mockups tests
+     (-Ps1MockupDir=<dir>) or the installer's ?demo= states. No real addresses, tokens or network names.
+     Delete this section if nothing on screen changes. -->

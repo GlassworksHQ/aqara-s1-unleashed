@@ -21,6 +21,13 @@ python3 tools/check-doc-links.py                     # docs links
 - Say in the PR what you tested on: a real panel (model, firmware, HA version) or tests only.
 - Add a line to `CHANGELOG.md` under **[Unreleased]** if people running a panel will notice it.
 - Changes to the boot patch, root helper or radio need testing on a real panel before merge.
+- **UI changes need screenshots** in the PR: before and after for a changed screen, after for a new
+  one. Without a panel, use the app's mockup tests or the installer's `?demo=` states
+  ([AGENTS.md](AGENTS.md#pull-requests)).
+- **Write down what you find on the hardware** in `docs/research/`, including what didn't work
+  ([the playbook](docs/research/bringup.md), [template](docs/research/TEMPLATE.md)).
+
+Coding agents: start at [AGENTS.md](AGENTS.md).
 
 A signed test build is made for any branch named `test-build/vX.Y.Z/<name>`
 ([releasing.md](docs/releasing.md)).

@@ -27,6 +27,15 @@
   <a href="docs/research/README.md">How we got here</a>
 </p>
 
+<p align="center">
+  <a href="https://www.glassworks.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-on-dark.svg">
+      <img alt="Built on Glassworks" src="https://www.glassworks.dev/brand/badge-on-light.svg" height="30">
+    </picture>
+  </a>
+</p>
+
 ---
 
 ## Why
