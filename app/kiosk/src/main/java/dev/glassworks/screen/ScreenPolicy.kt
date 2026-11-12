@@ -97,6 +97,8 @@ class ScreenPolicy(
         lastActivity = SystemClock.elapsedRealtime()
         screenOn = pm.isInteractive
         watchSystemBrightness()
+        // The light sensor reports only on change, so auto brightness off can't wait for a reading.
+        updateBrightness()
         presence?.start(ctx, ::onPresence)
         light?.start(ctx, ::onLux)
         ctx.registerReceiver(screenReceiver, IntentFilter().apply {
