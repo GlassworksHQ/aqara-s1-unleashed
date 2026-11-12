@@ -1,0 +1,20 @@
+{
+  "_comment": "The perf rubric, read by tools/perf/grade.py and by the test page (perf.js, to stop the ladder). docs/perf.md cites each source. Change on purpose, with the docs and the tests.",
+  "version": 1,
+  "one_frame_ms": 16.667,
+  "vsync_slack_ms": 0.5,
+  "metrics": {
+    "frame_p95_ms": {"good_max": 17.167, "poor_above": 33.833,
+      "source": "web.dev RAIL (16 ms frame budget); Android vitals slow frame (> 16 ms). One and two frames at 60 Hz, plus 0.5 ms slack"},
+    "frame_jank_pct": {"good_max": 5, "poor_above": 50,
+      "source": "good: same as p95 within budget (derived); poor: Play Console 'excessive slow frames' (> 50% over 16 ms)"},
+    "frame_frozen_pct": {"good_max": 0, "poor_above": 0.1,
+      "source": "Android vitals frozen frame (> 700 ms); poor: Play Console 'excessive frozen frames' (> 0.1%); good 0%: project choice"},
+    "load_ms": {"good_max": 2500, "poor_above": 4000, "source": "Core Web Vitals LCP (good <= 2.5 s, poor > 4 s)"},
+    "inp_ms": {"good_max": 200, "poor_above": 500, "source": "Core Web Vitals INP (good <= 200 ms, poor > 500 ms)"},
+    "cold_start_ms": {"good_max": 2500, "poor_at": 5000,
+      "source": "poor: Android vitals excessive cold start (>= 5 s, TTID); good <= 2.5 s: project choice (LCP's bound)"}
+  },
+  "js_burst_ms": {"good_max": 16.667, "poor_above": 50,
+    "source": "project choice: one state burst fits in a frame; poor past RAIL's 50 ms input budget"}
+}

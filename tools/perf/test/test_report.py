@@ -87,6 +87,39 @@ class Parsers(unittest.TestCase):
         self.assertEqual(cpu["procs_pct_of_core"]["app"], 20.0)
 
 
+def frames(start, n, every):
+    return [start + every * i for i in range(n)]
+
+
+class WorseOfBoth(unittest.TestCase):
+    """Shapes from the S1 smoke run (2026-11-12): rAF and SurfaceFlinger disagree both ways."""
+
+    def stepline(self, raf_every, raf_n, sf_every, sf_n):
+        raf = P.frame_stats([raf_every] * raf_n, 16.667)
+        return {"raf": raf, "sf": {"period_ms": 16.667, "window_ms": [10_000, 12_000],
+                                   "presents_ms": frames(10_005, sf_n, sf_every)}}
+
+    def test_compositor_drops_frames_the_main_thread_never_sees(self):
+        f = R.step_frames(self.stepline(16.667, 118, 31.25, 64))  # css-transform n=128
+        self.assertTrue(f["sf_valid"])
+        self.assertEqual((f["source"], f["limited_by"]), ("surfaceflinger", "compositor"))
+        self.assertEqual(f["stats"]["n"], 63)
+
+    def test_main_thread_jank_while_the_compositor_still_animates(self):
+        f = R.step_frames(self.stepline(50.0, 40, 33.0, 61))  # reference load
+        self.assertEqual((f["source"], f["limited_by"]), ("raf", "main-thread"))
+
+    def test_no_frames_on_screen_means_no_surfaceflinger_data(self):
+        pl = self.stepline(16.667, 120, 16.667, 0)
+        f = R.step_frames(pl)
+        self.assertFalse(f["sf_valid"])
+        self.assertEqual((f["source"], f["limited_by"]), ("raf", None))
+
+    def test_frames_from_only_part_of_the_window_are_not_used(self):
+        f = R.step_frames(self.stepline(16.667, 120, 16.667, 40))  # 650 ms of a 2 s window
+        self.assertFalse(f["sf_valid"])
+
+
 class Settle(unittest.TestCase):
     def test_last_frame_before_a_quiet_gap(self):
         frames = [900, 1000, 1016, 1033, 1050, 2000]
@@ -117,14 +150,16 @@ def step(stage, n, p95_frames, run=1, sf=True):
 
 def synthetic_lines(run, inp, js_ms):
     lines = [{"t": "hello", "run": run, "ua": "Mozilla/5.0 (Android 10; Mobile; rv:159.0) Gecko/159.0 Firefox/159.0",
-              "load": {"lcp_ms": 300, "fcp_ms": 250}}]
+              "load": {"lcp_ms": None, "fcp_ms": 250, "lcp_from": "fcp"} if run == 2 else {"lcp_ms": 300, "fcp_ms": 250, "lcp_from": "lcp"}}]
     lines.append({"t": "js", "run": run, "median_ms": js_ms, "p95_ms": js_ms * 1.5, "checksum": 7, "expected": 7})
     for n, missed in [(1, 0), (2, 0), (4, 2), (8, 20), (16, 90)]:
         lines.append(step("css-transform", n, missed, run))
     for n in (1, 2):
         lines.append(step("svg", n, 0, run))
     lines.append(step("reference", 1, 3, run))
-    lines.append(step("scroll", 240, 0, run, sf=False))
+    sc = step("scroll", 240, 0, run, sf=False)
+    sc["scrolled_px"] = 0 if run == 3 else 720
+    lines.append(sc)
     lines.append({"t": "input", "run": run, "method": "event-timing", "taps": 10, "values": [16] * 9 + [inp], "inp_ms": inp})
     lines.append({"t": "done", "run": run})
     return lines
@@ -152,7 +187,8 @@ class Build(unittest.TestCase):
         for k, (inp, js) in enumerate([(120, 9.0), (180, 10.0), (150, 12.0)], 1):
             with open(os.path.join(self.dir, f"synthetic-{k}.jsonl"), "w") as f:
                 f.write("\n".join(json.dumps(l) for l in synthetic_lines(k, inp, js)))
-            self.write(f"coldstart-{k}.json", {"run": k, "ttid_ms": 1700 + 100 * k, "am_total_ms": 1700,
+            self.write(f"coldstart-{k}.json", {"run": k, "ttid_ms": 1700 + 100 * k, "am_total_ms": None,
+                                                "launch": "relaunched-by-system", "stop_mono": 9.5,
                                                 "page_start_mono": 10.0, "page_stop_mono": 13.0, "ended_quiet": True,
                                                 "presents_mono_ms": [13000, 13100, 13200 + 100 * k, 15000]})
         # Panes alternate on, off, on, off, ...
@@ -176,6 +212,9 @@ class Build(unittest.TestCase):
         self.assertEqual(lad["held_60fps"]["median"], 4)   # 2 of 120 over budget is 1.7 %: still good
         self.assertEqual(lad["held_30fps"]["median"], 8)
         self.assertFalse(lad["held_60fps_at_top"])
+        steps = self.rep["synthetic"]["per_run"][0]["ladder"]["css-transform"]["steps"]
+        self.assertEqual([st["n"] for st in steps], [1, 2, 4, 8, 16])   # element counts, not frame counts
+        self.assertEqual(steps[0]["frames"]["n"], 120)
         svg = self.rep["synthetic"]["ladder"]["svg"]
         self.assertEqual(svg["held_60fps"]["median"], 2)
         self.assertTrue(svg["held_60fps_at_top"])   # never missed: a lower bound
@@ -237,6 +276,42 @@ class Build(unittest.TestCase):
         rep = R.build(self.dir)
         self.assertEqual(rep["memory"]["peak"]["mem_available_min_kb"], 0)
         self.assertFalse(rep["memory"]["budget"]["checks"]["device_available_min"]["ok"])
+
+    def test_a_scroll_that_did_not_move_is_flagged(self):
+        s = self.rep["synthetic"]
+        self.assertFalse(s["scroll_moved"])
+        self.assertEqual(s["per_run"][0]["scroll"]["scrolled_px"], 720)
+        self.assertIn("did not move", R.markdown(self.rep))
+
+    def test_load_that_fell_back_to_fcp_says_so(self):
+        self.assertEqual(self.rep["synthetic"]["page_lcp_from"], ["fcp", "lcp"])
+        self.assertIn("FCP/LCP", R.markdown(self.rep))
+
+    def test_cold_start_records_the_launch_and_the_whole_restart(self):
+        r = self.rep["real_use"]
+        self.assertEqual(r["launch"], ["relaunched-by-system"])
+        self.assertEqual(r["stop_to_dashboard_ms"]["median"], 3900)   # stopped at 9.5 s, settled at 13.4 s
+
+    def test_a_failed_cold_start_is_counted_not_graded(self):
+        self.write("coldstart-4.json", {"run": 4, "ttid_ms": 1714, "launch": "relaunched-by-system",
+                                        "error": "dashboard did not finish loading within 120 s (no GeckoView:PageStop)"})
+        r = R.build(self.dir)["real_use"]
+        self.assertEqual(len(r["errors"]), 1)
+        self.assertEqual(r["dashboard_load_ms"]["n"], 3)
+
+    def test_no_real_use_section_without_real_use_samples(self):
+        d = tempfile.mkdtemp()
+        for name in ("device.json", "synthetic-1.jsonl"):
+            with open(os.path.join(self.dir, name)) as f, open(os.path.join(d, name), "w") as g:
+                g.write(f.read())
+        self.write_to(d, "idle-after-synthetic-1.json", idle("after-synthetic", 1, 500_000, 10.0))
+        md = R.markdown(R.build(d))
+        self.assertNotIn("## Real use", md)
+        self.assertIn("## Memory budget", md)
+
+    def write_to(self, d, name, obj):
+        with open(os.path.join(d, name), "w") as f:
+            json.dump(obj, f)
 
     def test_markdown_renders(self):
         md = R.markdown(self.rep)

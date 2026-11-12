@@ -23,7 +23,7 @@ FRAME="" RUNS=3 OUT="" PORT=8089 PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
 SYNTH=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=()
 # Waits, in seconds. Only the off-device test (test/test_runner.py) shortens them.
 IDLE_SETTLE="${GW_PERF_IDLE_SETTLE:-30}" IDLE_WINDOW="${GW_PERF_IDLE_WINDOW:-15}"
-COLD_SETTLE="${GW_PERF_COLD_SETTLE:-8}" RUN_GAP="${GW_PERF_RUN_GAP:-10}"
+COLD_SETTLE="${GW_PERF_COLD_SETTLE:-3}" RUN_GAP="${GW_PERF_RUN_GAP:-10}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -54,9 +54,10 @@ run() { python3 "$HERE/perfrun.py" "$@" --package "$PACKAGE" --frame "$FRAME" --
 sh_dev() { "$ADB" shell "$@" | tr -d '\r'; }
 log() { echo "[$(date +%H:%M:%S)] $*" >&2; }
 
-thermal() { # "<phase>\t<zone>=<°C> ..." into thermal.tsv
+thermal() { # "<phase>\t<zone>=<°C> ..." into thermal.tsv; zones report m°C or °C
   local t
-  t=$(sh_dev 'for z in /sys/class/thermal/thermal_zone*; do echo "$(cat $z/type)=$(cat $z/temp)"; done 2>/dev/null' | tr '\n' ' ')
+  t=$(sh_dev 'for z in /sys/class/thermal/thermal_zone*; do echo "$(cat $z/type) $(cat $z/temp)"; done 2>/dev/null' \
+    | awk 'NF == 2 { v = $2 > 1000 ? $2 / 1000 : $2; printf "%s=%.1f ", $1, v }')
   printf '%s\t%s\n' "$1" "$t" >> "$OUT/thermal.tsv"
 }
 
@@ -115,8 +116,7 @@ if [ "$SYNTH" = 1 ]; then
   "$ADB" reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
   for k in $(seq 1 "$RUNS"); do
     nonce=$(python3 -c 'import secrets; print(secrets.token_hex(4))')
-    input=$([ "$TAPS" -gt 0 ] && echo 1 || echo 0)
-    url="http://127.0.0.1:$PORT/index.html?run=$k&seed=1&vsync=$VSYNC&nonce=$nonce&input=$input&quick=$QUICK"
+    url="http://127.0.0.1:$PORT/index.html?run=$k&seed=1&vsync=$VSYNC&nonce=$nonce&taps=$TAPS&quick=$QUICK"
     log "synthetic run $k/$RUNS"
     ON_TEST_PAGE=1
     thermal "synthetic-$k"
@@ -131,7 +131,8 @@ if [ "$REAL" = 1 ]; then
   for k in $(seq 1 "$RUNS"); do
     log "cold start $k/$RUNS"
     thermal "coldstart-$k"
-    run coldstart --run "$k" --settle "$COLD_SETTLE"
+    # A failed cold start (no dashboard within 120 s) is recorded and the run goes on.
+    run coldstart --run "$k" --settle "$COLD_SETTLE" || log "cold start $k failed; see coldstart-$k.json"
     ON_TEST_PAGE=0
     log "idle on the dashboard $k/$RUNS"
     run idle --label all-on --run "$k" --settle "$IDLE_SETTLE" --window "$IDLE_WINDOW"

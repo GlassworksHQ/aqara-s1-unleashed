@@ -7,11 +7,10 @@
 <style>
   :root { color-scheme: dark; --bg: #111318; --card: #1c1f26; --text: #e3e5ea; --muted: #9aa0ab; --accent: #03a9f4; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 16px/1.3 system-ui, sans-serif; overflow: hidden; }
-  body.scrolling { overflow-y: scroll; }
   #status { position: fixed; left: 12px; bottom: 8px; color: var(--muted); font-size: 13px; z-index: 9; }
   #hero { position: absolute; inset: 0; display: grid; place-items: center; font-size: 40px; font-weight: 600; }
   #stage { position: absolute; inset: 0; }
-  body.scrolling #stage { position: static; }
+  #scroller { position: absolute; inset: 0; overflow-y: scroll; }
   .box { position: absolute; width: 40px; height: 40px; border-radius: 8px; background: var(--accent); will-change: transform; }
   .spin { animation: spin 1.2s linear infinite; }
   .pulse { animation: pulse 0.9s ease-in-out infinite alternate; will-change: opacity; }

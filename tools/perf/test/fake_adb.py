@@ -106,6 +106,9 @@ def shell(cmd):
     if cmd.startswith("wm density"):
         return "Physical density: 240\n"
     if cmd.startswith("am force-stop"):
+        save("stopped.json", True)
+        if os.environ.get("FAKE_HOME_RELAUNCH"):
+            save("cold.json", True)
         return ""
     return ""
 
@@ -138,6 +141,7 @@ def page(nonce):
 
 
 def dashboard():
+    line("ActivityManager", f"Start proc 5555:{PKG}/u0a83 for activity {{{PKG}/{PKG}.MainActivity}}", pid=1918)
     line("ActivityTaskManager", f"Displayed {PKG}/.MainActivity: +1s714ms", pid=1918)
     a = now()
     paint(a + 0.2, a + 1.2)  # the screen paints whether or not anyone reads logcat
@@ -148,18 +152,19 @@ def dashboard():
 
 def logcat():
     print("    1.000  1  1 I old: line from before", flush=True)
-    for _ in range(40):
+    end = now() + 60
+    while now() < end:
         if state("nonce.json"):
             nonce = state("nonce.json")
             save("nonce.json", None)
             page(nonce)
-            break
+        if state("stopped.json"):
+            save("stopped.json", None)
+            line("ActivityManager", f"Force stopping {PKG} appid=10083 user=0: from pid 777", pid=1918)
         if state("cold.json"):
             save("cold.json", None)
             dashboard()
-            break
         time.sleep(0.05)
-    time.sleep(30)
 
 
 def main():

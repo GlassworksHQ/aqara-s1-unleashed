@@ -4,28 +4,18 @@ Bands follow Core Web Vitals: good, needs-improvement, poor. Thresholds come fro
 guidelines and do not depend on any frame's own numbers. Change them only on purpose, with the
 docs and test/test_grade.py in the same PR.
 """
-RUBRIC_VERSION = 1
+import json
+import os
 
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "page", "rubric.json")) as _f:
+    RUBRIC = json.load(_f)
+
+RUBRIC_VERSION = RUBRIC["version"]
 GOOD, NI, POOR = "good", "needs-improvement", "poor"
 ORDER = {GOOD: 0, NI: 1, POOR: 2}
 
-ONE_FRAME_MS = 1000 / 60
-# Frame times are snapped to whole vsyncs; 0.5 ms covers displays that run slightly under 60 Hz.
-VSYNC_SLACK_MS = 0.5
-
 # metric id -> (good if value <= good_max, poor if value > poor_above or >= poor_at)
-METRICS = {
-    "frame_p95_ms": {"good_max": ONE_FRAME_MS + VSYNC_SLACK_MS, "poor_above": 2 * ONE_FRAME_MS + VSYNC_SLACK_MS,
-                     "source": "web.dev RAIL (16 ms frame budget); Android vitals slow frame (> 16 ms)"},
-    "frame_jank_pct": {"good_max": 5, "poor_above": 50,
-                       "source": "good: same as p95 within budget (derived); poor: Play Console 'excessive slow frames' (> 50% over 16 ms)"},
-    "frame_frozen_pct": {"good_max": 0, "poor_above": 0.1,
-                         "source": "Android vitals frozen frame (> 700 ms); Play Console 'excessive frozen frames' (> 0.1%)"},
-    "load_ms": {"good_max": 2500, "poor_above": 4000, "source": "Core Web Vitals LCP (good <= 2.5 s, poor > 4 s)"},
-    "inp_ms": {"good_max": 200, "poor_above": 500, "source": "Core Web Vitals INP (good <= 200 ms, poor > 500 ms)"},
-    "cold_start_ms": {"good_max": 2500, "poor_at": 5000,
-                      "source": "poor: Android vitals excessive cold start (>= 5 s, TTID); good: project choice (same 2.5 s as LCP)"},
-}
+METRICS = RUBRIC["metrics"]
 
 # Components of the headline grade; a component's band is the worst band of its metrics.
 COMPONENTS = {
@@ -35,9 +25,8 @@ COMPONENTS = {
     "start": ["cold_start_ms"],
 }
 
-# Not in the headline grade: no published standard, so these bands are project choices.
-JS_BURST = {"good_max": ONE_FRAME_MS, "poor_above": 50,
-            "source": "project choice: one state burst fits in a frame (16.7 ms); poor past RAIL's 50 ms input budget"}
+# Not in the headline grade: no published standard, so the band is a project choice.
+JS_BURST = RUBRIC["js_burst_ms"]
 
 
 def band(value, rule):
@@ -106,7 +95,8 @@ def headline(values):
 
 def memory_budget(memory, budget):
     """#68-style budget check. memory: app_pss_peak_kb, mem_total_kb, mem_available_min_kb.
-    budget: app_pss_max_pct_of_ram, device_available_min_pct (tools/perf/budgets.json)."""
+    budget: app_pss_max_pct_of_ram, device_available_min_pct (tools/perf/budgets.json).
+    ok is None unless every budgeted value was measured."""
     total = memory.get("mem_total_kb")
     if not total:
         return None
@@ -119,5 +109,11 @@ def memory_budget(memory, budget):
         "device_available_min": {"value_kb": avail, "budget_kb": round(avail_min),
                                  "ok": None if avail is None else avail >= avail_min},
     }
-    oks = [c["ok"] for c in checks.values() if c["ok"] is not None]
-    return {"budget": budget, "checks": checks, "ok": all(oks) if oks else None}
+    oks = [c["ok"] for c in checks.values()]
+    ok = False if False in oks else (None if None in oks else True)
+    return {"budget": budget, "checks": checks, "ok": ok}
+
+
+def frame_budget(budgets, frame_id):
+    """The default budget with the frame's override on top, so an override may name one key."""
+    return dict(budgets["default"], **budgets.get("frames", {}).get(frame_id, {}))

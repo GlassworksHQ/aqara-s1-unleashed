@@ -2,8 +2,8 @@
  * line per event, which GeckoView writes to logcat (tag GeckoConsole). tools/perf/perfrun.py reads
  * them; the line types and fields are documented in docs/perf.md ("Page log lines").
  *
- * Query: run=<k> seed=<n> vsync=<ms> nonce=<id> (echoed in every line) input=1 (the runner will
- * tap) quick=1 (short ladder, for a smoke test) families=a,b (subset of the ladder).
+ * Query: run=<k> seed=<n> vsync=<ms> nonce=<id> (echoed in every line) taps=<n> (the runner will
+ * tap n times; 0 skips the input stage) quick=1 (short ladder, for a smoke test) families=a,b.
  */
 (function () {
   "use strict";
@@ -13,9 +13,9 @@
   const SEED = Number(q.get("seed") || 1);
   const VSYNC = Number(q.get("vsync") || 1000 / 60);
   const QUICK = q.get("quick") === "1";
-  const WANT_INPUT = q.get("input") === "1";
+  const TAPS = Math.max(0, Number(q.get("taps") || 0));
 
-  const WARMUP_MS = 1000, MEASURE_MS = 2000, COOLDOWN_MS = 1200;
+  const WARMUP_MS = 1000, MEASURE_MS = S.measureMs(VSYNC), COOLDOWN_MS = 1200;
   const STEPS = QUICK ? [1, 16, 128] : [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
 
   const stage = document.getElementById("stage");
@@ -180,12 +180,7 @@
     return raf;
   }
 
-  function band(st) {
-    if (!st || !st.n) return "poor";
-    if (st.p95_ms <= S.BUDGET_MS + 0.5 && st.jank_pct <= 5) return "good";
-    if (st.p95_ms <= 2 * S.BUDGET_MS + 0.5 && st.jank_pct <= 50) return "needs-improvement";
-    return "poor";
-  }
+  let RUBRIC = null;
 
   async function ladder() {
     const only = (q.get("families") || "").split(",").filter(Boolean);
@@ -193,37 +188,39 @@
       if (only.length && !only.includes(name)) continue;
       for (const n of STEPS) {
         const st = await runAnimated(build, n, name);
-        if (band(st) === "poor") break;
+        if ((S.frameBand(st, RUBRIC) || "poor") === "poor") break;
       }
     }
   }
 
+  // The page itself can't scroll (html is overflow: hidden), so the list gets its own scroller.
+  // scrolled_px shows the scroll happened; a stage that moved nothing paints nothing.
   async function scroll() {
     stage.textContent = "";
-    document.body.classList.add("scrolling");
-    haCards(240, W.mulberry32(SEED));
-    window.scrollTo(0, 0);
+    const sc = document.createElement("div");
+    sc.id = "scroller";
+    stage.appendChild(sc);
+    haCards(240, W.mulberry32(SEED), sc);
     log({ t: "warmup", stage: "scroll", n: 240 });
     await sleep(WARMUP_MS);
     const stamps = [];
+    const top0 = sc.scrollTop;
     log({ t: "measure", stage: "scroll", n: 240 });
     const end = performance.now() + MEASURE_MS;
     while (performance.now() < end) {
       const ts = await nextFrame();
-      window.scrollBy(0, 6);
+      sc.scrollTop += 6;
       stamps.push(ts);
     }
-    log({ t: "step", stage: "scroll", n: 240, raf: S.frameStats(S.intervals(stamps), VSYNC) });
-    document.body.classList.remove("scrolling");
+    log({ t: "step", stage: "scroll", n: 240, scrolled_px: Math.round(sc.scrollTop - top0), raf: S.frameStats(S.intervals(stamps), VSYNC) });
     stage.textContent = "";
-    window.scrollTo(0, 0);
     await sleep(COOLDOWN_MS);
   }
 
   // Tap-to-paint latency under the reference load. The runner taps the target with `input tap`;
   // Event Timing gives input delay + processing + presentation per interaction (what INP uses).
   async function input() {
-    const TAPS = 10, WAIT_MS = 15000;
+    const WAIT_MS = 30000;
     stage.textContent = "";
     const tick = referenceLoad(0, W.mulberry32(SEED + 7));
     let running = true;
@@ -318,32 +315,40 @@
         new PerformanceObserver((l) => { for (const e of l.getEntries()) lcp = e.renderTime || e.startTime; })
           .observe({ type: "largest-contentful-paint", buffered: true });
       } catch (e) { lcp = null; }
-      const done = () => setTimeout(() => {
+      // After the load event, wait for the first paint to be reported (up to 3 s), then 300 ms
+      // more so the largest paint is in too.
+      const paintEntry = () => performance.getEntriesByName("first-contentful-paint")[0];
+      const done = async () => {
+        const end = performance.now() + 3000;
+        while (!paintEntry() && lcp === null && performance.now() < end) await sleep(100);
+        await sleep(300);
         const nav = performance.getEntriesByType("navigation")[0] || {};
-        const fcp = (performance.getEntriesByName("first-contentful-paint")[0] || {}).startTime;
+        const fcp = (paintEntry() || {}).startTime;
         resolve({
+          lcp_from: lcp === null ? (fcp === undefined ? null : "fcp") : "lcp",
           fetch_ms: Math.round(nav.responseEnd || 0),
           dcl_ms: Math.round(nav.domContentLoadedEventEnd || 0),
           load_ms: Math.round(nav.loadEventEnd || 0),
           fcp_ms: fcp === undefined ? null : Math.round(fcp),
           lcp_ms: lcp === null ? null : Math.round(lcp),
         });
-      }, 500);
+      };
       if (document.readyState === "complete") done(); else addEventListener("load", done);
     });
   }
 
   async function main() {
     const load = await pageLoad();
+    RUBRIC = await (await fetch("rubric.json")).json();
     log({
       t: "hello", seed: SEED, vsync_ms: VSYNC, ua: navigator.userAgent, dpr: devicePixelRatio,
-      css: [innerWidth, innerHeight], cores: navigator.hardwareConcurrency || null, load,
+      css: [innerWidth, innerHeight], cores: navigator.hardwareConcurrency || null, measure_ms: MEASURE_MS, load,
     });
     await js();
     await ladder();
     await runAnimated(referenceLoad, 1, "reference");
     await scroll();
-    if (WANT_INPUT) await input();
+    if (TAPS) await input();
     status.textContent = "done";
     hero.style.display = "";
     hero.textContent = "done";

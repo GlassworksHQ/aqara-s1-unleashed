@@ -20,7 +20,7 @@ import perflib as P  # noqa: E402
 
 SCHEMA = "glassworks.perf/1"
 SETTLE_GAP_MS = 750
-SF_MIN_COVERAGE = 0.8
+SF_MIN_SPAN = 0.8
 FAMILIES = ["css-transform", "css-opacity", "svg", "canvas2d", "ha-cards"]
 
 
@@ -37,20 +37,36 @@ def read_jsonl(path):
 # ---- synthetic
 
 def step_frames(pl):
-    """Frame stats for one step: SurfaceFlinger presents when they cover the window, else rAF."""
+    """Frame stats for one step, graded on the worse of SurfaceFlinger and rAF.
+
+    rAF misses frames the compositor drops (CSS animations run off the main thread); SurfaceFlinger
+    misses main-thread jank while the compositor still animates something. SurfaceFlinger counts
+    only when its frames span most of the window: fewer frames than rAF is a finding, not a gap."""
     raf = pl.get("raf") or {"n": 0}
     sf = pl.get("sf") or {}
     pres = sf.get("presents_ms") or []
-    sf_stats = P.frame_stats(P.intervals(pres), sf.get("period_ms")) if len(pres) > 1 else {"n": 0}
-    coverage = sf_stats["n"] / raf["n"] if raf.get("n") else 0
-    use_sf = sf_stats["n"] and coverage >= SF_MIN_COVERAGE
-    return {"source": "surfaceflinger" if use_sf else "raf", "stats": sf_stats if use_sf else raf,
-            "raf": raf, "sf": sf_stats, "sf_coverage": round(coverage, 2)}
+    win = sf.get("window_ms")
+    win_ms = (win[1] - win[0]) if win else (raf["n"] * 1000 / raf["fps"] if raf.get("fps") else 0)
+    span = (pres[-1] - pres[0]) if len(pres) > 1 else 0
+    sf_valid = bool(win_ms) and span >= SF_MIN_SPAN * win_ms
+    sf_stats = P.frame_stats(P.intervals(pres), sf.get("period_ms")) if sf_valid else {"n": 0}
+
+    def key(st):
+        return (G.ORDER.get(G.frame_band(st), -1), st.get("p95_ms") or 0, st.get("jank_pct") or 0)
+
+    if sf_valid and key(sf_stats) > key(raf):
+        chosen, source, limited = sf_stats, "surfaceflinger", "compositor"
+    elif sf_valid and key(raf) > key(sf_stats):
+        chosen, source, limited = raf, "raf", "main-thread"
+    else:
+        chosen, source, limited = (sf_stats, "surfaceflinger", None) if sf_valid else (raf, "raf", None)
+    return {"source": source, "limited_by": limited, "stats": chosen, "raf": raf, "sf": sf_stats,
+            "sf_valid": sf_valid, "sf_span_pct": round(100 * span / win_ms) if win_ms else 0}
 
 
 def synthetic_run(lines):
     hello = next((l for l in lines if l["t"] == "hello"), {})
-    steps = [dict(stage=l["stage"], n=l["n"], **step_frames(l)) for l in lines if l["t"] == "step"]
+    steps = [dict(stage=l["stage"], n=l["n"], scrolled_px=l.get("scrolled_px"), **step_frames(l)) for l in lines if l["t"] == "step"]
     js = next((l for l in lines if l["t"] == "js"), None)
     inp = next((l for l in lines if l["t"] == "input"), None)
     ladder = {}
@@ -60,15 +76,17 @@ def synthetic_run(lines):
             ladder[fam] = {"held_60fps": G.capacity(fs, {G.GOOD}),
                            "held_30fps": G.capacity(fs, {G.GOOD, G.NI}),
                            "top_step": max(n for n, _ in fs),
-                           "steps": [{"n": s["n"], "source": s["source"], "sf_coverage": s["sf_coverage"], **s["stats"]}
-                                     for s in steps if s["stage"] == fam]}
+                           "steps": [{"n": s["n"], "source": s["source"], "limited_by": s["limited_by"],
+                                      "sf_valid": s["sf_valid"], "frames": s["stats"]} for s in steps if s["stage"] == fam]}
     ref = next((s for s in steps if s["stage"] == "reference"), None)
     scroll = next((s for s in steps if s["stage"] == "scroll"), None)
     return {
         "ua": hello.get("ua"), "page_load": hello.get("load") or {}, "dpr": hello.get("dpr"),
         "ladder": ladder,
-        "reference": ref and {"source": ref["source"], "sf_coverage": ref["sf_coverage"], **ref["stats"]},
-        "scroll": scroll and {"source": scroll["source"], **scroll["stats"]},
+        "reference": ref and {"source": ref["source"], "limited_by": ref["limited_by"], "sf_valid": ref["sf_valid"],
+                              "raf": ref["raf"], "sf": ref["sf"], **ref["stats"]},
+        "scroll": scroll and {"source": scroll["source"], "scrolled_px": scroll["scrolled_px"],
+                              "moved": bool(scroll["scrolled_px"]), **scroll["stats"]},
         "js": js and {"median_ms": js["median_ms"], "p95_ms": js["p95_ms"],
                       "checksum_ok": js["checksum"] == js["expected"]},
         "input": inp and {"method": inp["method"], "taps": inp["taps"], "inp_ms": inp["inp_ms"] if inp["taps"] else None},
@@ -100,12 +118,18 @@ def synthetic_summary(runs):
         "ladder": ladder,
         "reference": {k: sp(lambda r, k=k: (r["reference"] or {}).get(k)) for k in ("p95_ms", "median_ms", "jank_pct", "frozen_pct", "fps")},
         "reference_sources": sorted({x["source"] for x in ref}),
+        "reference_limited_by": sorted({x["limited_by"] for x in ref if x["limited_by"]}),
+        "steps_without_sf": sum(1 for r in runs for f in r["ladder"].values() for st in f["steps"] if not st["sf_valid"]),
+        "scroll_moved": all((r["scroll"] or {}).get("moved") for r in runs if r["scroll"]),
         "scroll": {k: sp(lambda r, k=k: (r["scroll"] or {}).get(k)) for k in ("p95_ms", "jank_pct", "fps")},
         "js_burst_ms": sp(lambda r: (r["js"] or {}).get("median_ms")),
         "js_checksum_ok": all((r["js"] or {}).get("checksum_ok") for r in runs) if runs else None,
         "inp_ms": sp(lambda r: (r["input"] or {}).get("inp_ms")),
         "input_method": sorted({r["input"]["method"] for r in runs if r["input"]}),
         "page_lcp_ms": sp(lambda r: r["page_load"].get("lcp_ms") or r["page_load"].get("fcp_ms")),
+        # Engines without LCP report FCP instead, an earlier paint, so the load reads as faster.
+        "page_lcp_from": sorted({r["page_load"].get("lcp_from") or ("lcp" if r["page_load"].get("lcp_ms") else "fcp")
+                                 for r in runs if r["page_load"]}),
     }
 
 
@@ -127,12 +151,14 @@ def visual_settle(presents_ms, stop_ms, ended_quiet, gap_ms=SETTLE_GAP_MS):
 
 
 def coldstart_run(c):
+    base = {"ttid_ms": c.get("ttid_ms"), "launch": c.get("launch"), "am_total_ms": c.get("am_total_ms")}
     if c.get("error") or c.get("page_start_mono") is None:
-        return {"ttid_ms": c.get("ttid_ms"), "error": c.get("error")}
+        return dict(base, error=c.get("error") or "no dashboard PageStart")
     start, stop = c["page_start_mono"] * 1000, c["page_stop_mono"] * 1000
     settle, how = visual_settle(c.get("presents_mono_ms") or [], stop, c.get("ended_quiet", False))
-    return {"ttid_ms": c.get("ttid_ms"), "am_total_ms": c.get("am_total_ms"),
-            "page_stop_ms": round(stop - start), "dashboard_load_ms": round(settle - start), "settle": how}
+    killed = c.get("stop_mono")
+    return dict(base, page_stop_ms=round(stop - start), dashboard_load_ms=round(settle - start), settle=how,
+                stop_to_dashboard_ms=round(settle - killed * 1000) if killed else None)
 
 
 def app_memory(idle, package_roles=None):
@@ -183,7 +209,9 @@ def real_use_summary(cold, idles, package):
         "cold_start_ttid_ms": P.spread([c["ttid_ms"] for c in cold]),
         "dashboard_load_ms": P.spread([c.get("dashboard_load_ms") for c in cold]),
         "dashboard_page_stop_ms": P.spread([c.get("page_stop_ms") for c in cold]),
+        "stop_to_dashboard_ms": P.spread([c.get("stop_to_dashboard_ms") for c in cold]),
         "settle_how": sorted({c["settle"] for c in cold if c.get("settle")}),
+        "launch": sorted({c["launch"] for c in cold if c.get("launch")}),
         "errors": [c["error"] for c in cold if c.get("error")],
         "idle": {
             "samples": len(on),
@@ -287,7 +315,7 @@ def build(run_dir, apks=(), budgets=None):
     grade["load_from"] = "dashboard" if med(r and r["dashboard_load_ms"]) else ("test-page" if load else None)
 
     budgets = budgets or {"default": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15}, "frames": {}}
-    budget = budgets["frames"].get(device["frame"], budgets["default"])
+    budget = G.frame_budget(budgets, device["frame"])
     memory = None
     if r:
         memory = {"idle": r["idle"], "peak": r["peak"], "budget": G.memory_budget(
@@ -354,16 +382,22 @@ def markdown(rep):
         for fam, v in s["ladder"].items():
             out.append(f"| {fam} | {fmt(v['held_60fps'], plus=v['held_60fps_at_top'])} | {fmt(v['held_30fps'], plus=v['held_30fps_at_top'])} |")
         out += ["", f"Reference load p95 {fmt(s['reference']['p95_ms'], ' ms')}, jank {fmt(s['reference']['jank_pct'], ' %')}, "
-                    f"frames from {', '.join(s['reference_sources']) or 'n/a'}.",
-                f"Scroll p95 {fmt(s['scroll']['p95_ms'], ' ms')}. INP {fmt(s['inp_ms'], ' ms')} ({', '.join(s['input_method']) or 'not measured'}).",
+                    f"frames from {', '.join(s['reference_sources']) or 'n/a'}"
+                    + (f", limited by the {' and '.join(s['reference_limited_by'])}" if s["reference_limited_by"] else "") + ".",
+                f"Scroll p95 {fmt(s['scroll']['p95_ms'], ' ms')}" + ("" if s["scroll_moved"] else " (the list did not move: not a measurement)")
+                + f". INP {fmt(s['inp_ms'], ' ms')} ({', '.join(s['input_method']) or 'not measured'}).",
                 f"JS state burst {fmt(s['js_burst_ms'], ' ms')} (band {s['js_band'] or 'n/a'}, checksum {'ok' if s['js_checksum_ok'] else 'MISMATCH'}). "
-                f"Test page LCP {fmt(s['page_lcp_ms'], ' ms')}."]
+                f"Test page {'/'.join(x.upper() for x in s['page_lcp_from']) or 'LCP'} {fmt(s['page_lcp_ms'], ' ms')}."]
+        if s["steps_without_sf"]:
+            out.append(f"{s['steps_without_sf']} ladder step(s) had no usable SurfaceFlinger frames and use rAF only.")
     r = rep["real_use"]
-    if r:
+    if r and (r["idle"]["samples"] or r["per_run"]):
         i = r["idle"]
         out += ["", "## Real use", "",
-                f"Cold start (TTID) {fmt(r['cold_start_ttid_ms'], ' ms')}. Dashboard load {fmt(r['dashboard_load_ms'], ' ms')} "
-                f"({', '.join(r['settle_how']) or 'n/a'}); its load event {fmt(r['dashboard_page_stop_ms'], ' ms')}.",
+                f"Cold start (TTID) {fmt(r['cold_start_ttid_ms'], ' ms')} ({', '.join(r['launch']) or 'n/a'}). "
+                f"Dashboard load {fmt(r['dashboard_load_ms'], ' ms')} ({', '.join(r['settle_how']) or 'n/a'}); "
+                f"its load event {fmt(r['dashboard_page_stop_ms'], ' ms')}; force-stop to a settled dashboard "
+                f"{fmt(r['stop_to_dashboard_ms'], ' ms')}." + (f" Failed cold starts: {len(r['errors'])}." if r["errors"] else ""),
                 f"Idle: app PSS {fmt(i['app_pss_kb'], ' MB', 1024)}, device RAM in use {fmt(i['device_used_pct'], ' %')}, "
                 f"app CPU {fmt(i['cpu_app_pct_of_core'], ' % of a core')}, device busy {fmt(i['cpu_device_busy_pct'], ' %')}, "
                 f"{fmt(i['frames']['presented_fps'], ' frames/s')} presented."]
@@ -391,6 +425,9 @@ def main():
     ap.add_argument("--budgets", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "budgets.json"))
     a = ap.parse_args()
     rep = build(a.run_dir, a.apk, read_json(a.budgets))
+    old = os.path.join(a.run_dir, "report.json")
+    if not a.apk and os.path.exists(old):
+        rep["apk"] = read_json(old).get("apk", [])  # a later --idle-only keeps the sizes measured earlier
     with open(os.path.join(a.run_dir, "report.json"), "w") as f:
         json.dump(rep, f, indent=1)
     md = markdown(rep)

@@ -101,6 +101,32 @@ class MemoryBudget(unittest.TestCase):
         r = G.memory_budget(dict(mem, mem_available_min_kb=250_000), b)
         self.assertFalse(r["checks"]["device_available_min"]["ok"])
 
+    def test_not_ok_when_a_budgeted_value_is_missing(self):
+        b = {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15}
+        r = G.memory_budget({"mem_total_kb": 2_000_000, "app_pss_peak_kb": 900_000, "mem_available_min_kb": None}, b)
+        self.assertIsNone(r["ok"])
+        r = G.memory_budget({"mem_total_kb": 2_000_000, "app_pss_peak_kb": 1_500_000, "mem_available_min_kb": None}, b)
+        self.assertFalse(r["ok"])
+
+    def test_a_frame_override_may_name_one_key(self):
+        budgets = {"default": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15},
+                   "frames": {"mirror": {"app_pss_max_pct_of_ram": 60}}}
+        self.assertEqual(G.frame_budget(budgets, "mirror"), {"app_pss_max_pct_of_ram": 60, "device_available_min_pct": 15})
+        self.assertEqual(G.frame_budget(budgets, "other"), budgets["default"])
+
+
+class SharedRules(unittest.TestCase):
+    def test_band_cases_the_page_also_checks(self):
+        with open(os.path.join(HERE, "band-cases.json")) as f:
+            for c in json.load(f):
+                with self.subTest(c["name"]):
+                    self.assertEqual(G.frame_band(c["stats"]), c["band"])
+
+    def test_frame_bounds_are_one_and_two_frames_plus_slack(self):
+        r = G.RUBRIC
+        self.assertAlmostEqual(r["metrics"]["frame_p95_ms"]["good_max"], r["one_frame_ms"] + r["vsync_slack_ms"], places=2)
+        self.assertAlmostEqual(r["metrics"]["frame_p95_ms"]["poor_above"], 2 * r["one_frame_ms"] + r["vsync_slack_ms"], places=2)
+
 
 class FrameStats(unittest.TestCase):
     def test_matches_the_shared_cases(self):

@@ -8,6 +8,8 @@ const require = createRequire(import.meta.url);
 const S = require("../page/stats.js");
 const W = require("../page/workload.js");
 const cases = JSON.parse(readFileSync(new URL("./stats-cases.json", import.meta.url)));
+const bandCases = JSON.parse(readFileSync(new URL("./band-cases.json", import.meta.url)));
+const rubric = JSON.parse(readFileSync(new URL("../page/rubric.json", import.meta.url)));
 
 for (const c of cases) {
   test(`frameStats matches perflib.frame_stats: ${c.name}`, () => {
@@ -42,4 +44,19 @@ test("a burst reports only entities whose text changed", () => {
 
 test("the JS workload checksum is pinned (the page reports it; a mismatch means the work changed)", () => {
   assert.equal(W.expectedChecksum(W.JS_SPEC), 4197945554);
+});
+
+for (const c of bandCases) {
+  test(`the ladder stops on the grader's rule (grade.frame_band): ${c.name}`, () => {
+    assert.equal(S.frameBand(c.stats, rubric), c.band);
+  });
+}
+
+test("the measured window fits SurfaceFlinger's 127-frame history at any refresh rate", () => {
+  assert.equal(S.measureMs(1000 / 60), 2000);
+  assert.equal(S.measureMs(1000 / 90), 1333);
+  assert.equal(S.measureMs(1000 / 120), 1000);
+  for (const hz of [50, 60, 75, 90, 120, 144]) {
+    assert.ok(S.measureMs(1000 / hz) / (1000 / hz) <= 121, `${hz} Hz`);
+  }
 });

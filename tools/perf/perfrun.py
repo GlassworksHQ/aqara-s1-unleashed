@@ -6,14 +6,16 @@ What it touches on the device:
   synthetic  `am start` the app if it isn't running, then `am start --es open <page>` (one-off
              navigation; the saved dashboard URL is not changed), `--es screen on` during each step's warm-up, and `input tap` on the test
              page's tap target when --taps > 0.
-  coldstart  `am force-stop` the app, `input keyevent KEYCODE_WAKEUP` (the app's own wake intent
-             would start it), then `am start -W` it (it comes back on the saved dashboard).
+  coldstart  `input keyevent KEYCODE_WAKEUP` (the app's own wake intent would start it), then
+             `am force-stop` the app. A home-app kiosk is relaunched by the system; otherwise
+             `am start -W` starts it. Either way it comes back on the saved dashboard.
   idle       `--es screen on` before each window; otherwise read-only.
 Everything it writes goes to --out on this machine. It records no URLs, hosts or tokens.
 """
 import argparse
 import json
 import os
+import queue
 import re
 import subprocess
 import sys
@@ -145,7 +147,8 @@ def cmd_synthetic(dev, a):
                 measure_mono = rec["mono"]
             elif t == "step" and measure_mono is not None:
                 period, presents = dev.sf()
-                pl["sf"] = {"period_ms": period, "presents_ms": P.presents_in(presents, measure_mono, rec["mono"])}
+                pl["sf"] = {"period_ms": period, "window_ms": [measure_mono * 1000, rec["mono"] * 1000],
+                            "presents_ms": P.presents_in(presents, measure_mono, rec["mono"])}
             elif t == "input-ready" and a.taps:
                 threading.Thread(target=tap, args=(dev, pl["x"], pl["y"], pl.get("taps", 10)), daemon=True).start()
             f.write(json.dumps(pl) + "\n")
@@ -177,10 +180,12 @@ PAGE_RE = re.compile(r"GeckoView:(PageStart|PageStop) uri=(\S+)")
 
 
 def cmd_coldstart(dev, a):
-    dev.sh(f"am force-stop {dev.package}")
-    dev.sh("input keyevent KEYCODE_WAKEUP")
-    time.sleep(a.settle)
+    """Force-stop, then time the next launch. A kiosk that is the home app is relaunched by the
+    system at once (the S1 does it in 0.2 s), so logcat is followed from before the stop, and
+    `am start -W` is sent only if nothing relaunched the app within --settle seconds."""
     lc = dev.logcat()
+    lines = queue.Queue()
+    threading.Thread(target=lambda: [lines.put(l) for l in lc.stdout], daemon=True).start()
     presents, period = set(), [None]
     stop = threading.Event()
 
@@ -194,19 +199,36 @@ def cmd_coldstart(dev, a):
 
     poller = threading.Thread(target=poll, daemon=True)
     poller.start()
-    am = dev.sh(f"am start -W -n {dev.component}", timeout=120)
-    res = {"run": a.run,
-           "am_total_ms": int((re.findall(r"TotalTime: (\d+)", am) or [0])[0]) or None,
-           "ttid_ms": None, "page_start_mono": None, "page_stop_mono": None, "error": None}
-    timer = threading.Timer(a.timeout, lc.terminate)
-    timer.start()
-    for line in lc.stdout:
-        rec = P.parse_logcat_line(line)
+    res = {"run": a.run, "launch": None, "am_total_ms": None, "ttid_ms": None, "stop_mono": None, "proc_mono": None,
+           "displayed_mono": None, "page_start_mono": None, "page_stop_mono": None, "error": None}
+    dev.sh("input keyevent KEYCODE_WAKEUP")
+    dev.sh(f"am force-stop {dev.package}")
+    t0 = time.time()
+    proc_re = re.compile(rf"Start proc \d+:{re.escape(dev.package)}/")
+    while time.time() - t0 < a.timeout:
+        if res["launch"] is None and time.time() - t0 > a.settle:
+            res["launch"] = "am-start"
+            am = dev.sh(f"am start -W -n {dev.component}", timeout=120)
+            res["am_total_ms"] = int((re.findall(r"TotalTime: (\d+)", am) or [0])[0]) or None
+        try:
+            rec = P.parse_logcat_line(lines.get(timeout=0.2))
+        except queue.Empty:
+            continue
         if not rec:
             continue
+        msg = rec["msg"]
+        if res["stop_mono"] is None:
+            if f"Force stopping {dev.package} " in msg:
+                res["stop_mono"] = rec["mono"]
+            continue
+        if res["proc_mono"] is None and proc_re.search(msg):
+            res["proc_mono"] = rec["mono"]
+            res["launch"] = res["launch"] or "relaunched-by-system"
         if res["ttid_ms"] is None:
-            res["ttid_ms"] = P.parse_displayed(rec["msg"], dev.component)
-        m = PAGE_RE.search(rec["msg"])
+            res["ttid_ms"] = P.parse_displayed(msg, dev.component)
+            if res["ttid_ms"] is not None:
+                res["displayed_mono"] = rec["mono"]
+        m = PAGE_RE.search(msg)
         if not m:
             continue
         uri = m.group(2)
@@ -216,10 +238,9 @@ def cmd_coldstart(dev, a):
         elif m.group(1) == "PageStop" and res["page_start_mono"] is not None:
             res["page_stop_mono"] = rec["mono"]
             break
-    timer.cancel()
     lc.terminate()
     if res["page_stop_mono"] is None:
-        res["error"] = "dashboard did not finish loading (no GeckoView:PageStop)"
+        res["error"] = f"dashboard did not finish loading within {a.timeout:.0f} s (no GeckoView:PageStop)"
     else:
         # Keep sampling until the dashboard has painted nothing new for 2 s (or 20 s pass).
         end = time.time() + 20
@@ -309,9 +330,11 @@ def main():
     ap.add_argument("--label", default="all-on")
     ap.add_argument("--settle", type=float, default=30)
     ap.add_argument("--window", type=float, default=15)
-    ap.add_argument("--timeout", type=float, default=1200)
+    ap.add_argument("--timeout", type=float, default=None, help="seconds; default 1200 (synthetic), 120 (coldstart)")
     ap.add_argument("--radio-procs", default="otbr-agent,cpcd,zigbeed")
     a = ap.parse_args()
+    if a.timeout is None:
+        a.timeout = 120 if a.cmd == "coldstart" else 1200
     os.makedirs(a.out, exist_ok=True)
     dev = Device(a.serial, a.package, a.activity)
     {"device": cmd_device, "synthetic": cmd_synthetic, "coldstart": cmd_coldstart, "idle": cmd_idle}[a.cmd](dev, a)

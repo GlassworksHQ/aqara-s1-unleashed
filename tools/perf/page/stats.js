@@ -43,13 +43,36 @@
     };
   }
 
+  function band(value, rule) {
+    if (value === null || value === undefined) return null;
+    if ("poor_at" in rule && value >= rule.poor_at) return "poor";
+    if ("poor_above" in rule && value > rule.poor_above) return "poor";
+    return value <= rule.good_max ? "good" : "needs-improvement";
+  }
+
+  const ORDER = { good: 0, "needs-improvement": 1, poor: 2 };
+
+  // The same rule as grade.frame_band: the worst band of p95, jank and frozen frames.
+  function frameBand(stats, rubric) {
+    if (!stats || !stats.n) return null;
+    const m = rubric.metrics;
+    const bands = [band(stats.p95_ms, m.frame_p95_ms), band(stats.jank_pct, m.frame_jank_pct), band(stats.frozen_pct, m.frame_frozen_pct)];
+    return bands.reduce((a, b) => (ORDER[b] > ORDER[a] ? b : a));
+  }
+
+  // SurfaceFlinger keeps the last 127 presented frames, so a measured window must fit 120 of them
+  // at the display's refresh: 2 s at 60 Hz, 1.33 s at 90 Hz, 1 s at 120 Hz.
+  function measureMs(vsyncMs) {
+    return Math.min(2000, Math.floor(120 * (vsyncMs > 0 ? vsyncMs : BUDGET_MS)));
+  }
+
   function intervals(timestamps) {
     const out = [];
     for (let i = 1; i < timestamps.length; i++) out.push(timestamps[i] - timestamps[i - 1]);
     return out;
   }
 
-  const api = { BUDGET_MS, FROZEN_MS, frameStats, intervals, nearestRank };
+  const api = { BUDGET_MS, FROZEN_MS, frameStats, intervals, nearestRank, band, frameBand, measureMs };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWStats = api;
 })(this);

@@ -1,10 +1,12 @@
 """run.sh and perfrun.py end to end against test/fake_adb.py (no device)."""
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN = os.path.join(os.path.dirname(HERE), "run.sh")
@@ -57,16 +59,55 @@ class Runner(unittest.TestCase):
         self.assertEqual(ref["p95_ms"], 16.67)
 
     def test_it_never_changes_a_setting(self):
-        bad = [c for c in self.commands if "--es url" in c or "setprop" in c or "settings put" in c or " pm " in c and "pm path" not in c]
-        self.assertEqual(bad, [])
-        self.assertEqual(sum(1 for c in self.commands if c.startswith("shell input tap 720 360")), 2)
-        opens = [c for c in self.commands if "--es open" in c]
+        shell = [c[len("shell "):] for c in self.commands if c.startswith("shell ")]
+        inputs = sorted({c for c in shell if c.startswith("input ")})
+        self.assertEqual(inputs, ["input keyevent KEYCODE_WAKEUP", "input tap 720 360"])
+        self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 2)
+        forbidden = re.compile(r"(^|[;&|]\s*)(settings|svc|cmd|setprop|am broadcast|pm (?!path\b))|--es url|--ez ")
+        self.assertEqual([c for c in shell if forbidden.search(c)], [])
+        extras = {m for c in shell for m in re.findall(r"--e\w \w+", c)}
+        self.assertEqual(extras, {"--es open", "--es screen"})
+        opens = [c for c in shell if "--es open" in c]
         self.assertEqual(len(opens), 1)
         self.assertIn("http://127.0.0.1:18089/index.html?", opens[0])
+        self.assertIn("&taps=2&", opens[0])
+
+    def test_launch_without_a_system_relaunch_uses_am_start(self):
+        self.assertEqual(self.rep["real_use"]["launch"], ["am-start"])
 
     def test_the_dashboard_comes_back_last(self):
         starts = [c for c in self.commands if c.startswith("shell am start") and "screen on" not in c]
         self.assertTrue(starts[-1].startswith("shell am start -W"), starts[-3:])
+
+
+def fake_env(tmp, **extra):
+    state = os.path.join(tmp, "state")
+    os.makedirs(state, exist_ok=True)
+    adb = os.path.join(tmp, "adb")
+    with open(adb, "w") as f:
+        f.write(f'#!/bin/sh\nexec "{sys.executable}" "{os.path.join(HERE, "fake_adb.py")}" "$@"\n')
+    os.chmod(adb, 0o755)
+    env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="1", **extra)
+    env.pop("ANDROID_SERIAL", None)
+    return env, state
+
+
+class HomeRelaunch(unittest.TestCase):
+    """The S1's kiosk is the home app: force-stop and the system starts it again at once."""
+
+    def test_the_system_relaunch_is_the_cold_start(self):
+        tmp = tempfile.mkdtemp()
+        env, state = fake_env(tmp, FAKE_HOME_RELAUNCH="1")
+        p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "coldstart",
+                            "--out", tmp, "--run", "1", "--settle", "3"], env=env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(p.returncode, 0, p.stderr[-2000:])
+        with open(os.path.join(tmp, "coldstart-1.json")) as f:
+            c = json.load(f)
+        self.assertEqual(c["launch"], "relaunched-by-system")
+        self.assertEqual(c["ttid_ms"], 1714)
+        self.assertIsNotNone(c["page_stop_mono"])
+        with open(os.path.join(state, "commands.log")) as f:
+            self.assertNotIn("am start -W", f.read())
 
 
 class IdleOnly(unittest.TestCase):
@@ -74,24 +115,22 @@ class IdleOnly(unittest.TestCase):
 
     def test_samples_count_up_and_the_pane_diff_appears(self):
         tmp = tempfile.mkdtemp()
-        state = os.path.join(tmp, "state")
-        os.makedirs(state)
-        adb = os.path.join(tmp, "adb")
-        with open(adb, "w") as f:
-            f.write(f'#!/bin/sh\nexec "{sys.executable}" "{os.path.join(HERE, "fake_adb.py")}" "$@"\n')
-        os.chmod(adb, 0o755)
-        env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="1")
-        env.pop("ANDROID_SERIAL", None)
+        env, _ = fake_env(tmp)
         out = os.path.join(tmp, "panes")
-        for label in ("all-on", "all-on", "sendspin-off"):
-            p = subprocess.run([RUN, "--frame", "test-frame", "--out", out, "--idle-only", label],
+        apk = os.path.join(tmp, "app.apk")
+        with zipfile.ZipFile(apk, "w") as z:
+            z.writestr("lib/armeabi-v7a/libxul.so", b"y" * 300)
+        for label, more in (("all-on", ["--apk", apk]), ("all-on", []), ("sendspin-off", [])):
+            p = subprocess.run([RUN, "--frame", "test-frame", "--out", out, "--idle-only", label] + more,
                                env=env, capture_output=True, text=True, timeout=120)
             self.assertEqual(p.returncode, 0, p.stderr[-2000:])
         self.assertTrue(os.path.exists(os.path.join(out, "idle-all-on-0.json")))
         self.assertTrue(os.path.exists(os.path.join(out, "idle-all-on-1.json")))
         with open(os.path.join(out, "report.json")) as f:
-            panes = {p["id"]: p for p in json.load(f)["panes"]}
+            rep = json.load(f)
+        panes = {p["id"]: p for p in rep["panes"]}
         self.assertEqual(panes["sendspin"]["samples_on"], 2)
+        self.assertEqual(rep["apk"][0]["abis"], ["armeabi-v7a"])   # kept from the first call
 
 
 if __name__ == "__main__":
