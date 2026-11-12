@@ -20,6 +20,9 @@ import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.net.Uri
 import android.widget.Toast
+import dev.glassworks.engine.Page
+import dev.glassworks.engine.PageHost
+import dev.glassworks.engine.PagePort
 import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.auth.FrontendUrls
 import sh.edm.s1kiosk.auth.HaAuth
@@ -45,22 +48,12 @@ import sh.edm.s1kiosk.setup.RadioFollowUp
 import sh.edm.s1kiosk.improv.ImprovController
 import sh.edm.s1kiosk.improv.ImprovWifiStatus
 import sh.edm.s1kiosk.radio.RadioMode
-import org.mozilla.geckoview.AllowOrDeny
-import org.mozilla.geckoview.GeckoResult
-import org.mozilla.geckoview.GeckoSession
-import org.mozilla.geckoview.GeckoSession.PermissionDelegate
-import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission
-import org.mozilla.geckoview.GeckoSession.PermissionDelegate.MediaSource
-import org.mozilla.geckoview.GeckoSessionSettings
-import org.mozilla.geckoview.GeckoView
-import org.mozilla.geckoview.WebExtension
 import org.json.JSONObject
 import kotlin.system.exitProcess
 
 class MainActivity : Activity() {
 
     private lateinit var prefs: KioskPrefs
-    private lateinit var geckoView: GeckoView
     private lateinit var loadingOverlay: LoadingOverlay
     private lateinit var settingsOverlay: KioskSettingsOverlay
     private lateinit var voiceOverlay: VoiceOverlay
@@ -68,10 +61,10 @@ class MainActivity : Activity() {
     private lateinit var threadJoinOverlay: sh.edm.s1kiosk.setup.ThreadJoinOverlay
     private lateinit var setupOverlay: SetupOverlay
     private lateinit var wifiStatus: WifiSetupStatus
-    private var session: GeckoSession? = null
+    private lateinit var root: android.widget.FrameLayout
+    private var page: Page? = null
     private val handler = Handler(Looper.getMainLooper())
-    private var pendingAndroidPermission: PermissionDelegate.Callback? = null
-    private var canGoBack = false
+    private var pendingAndroidPermission: ((Boolean) -> Unit)? = null
     private var currentUrl: String? = null
 
     /** "Sign in on this panel instead" was chosen: don't cover HA's login page again (this process). */
@@ -110,7 +103,7 @@ class MainActivity : Activity() {
             Log.i(TAG, "Signed out; showing the sign-in screen")
             usePanelLogin = false
             signedOutHere = true
-            prefs.url.takeIf { it.isNotEmpty() }?.let { session?.loadUri(it) }
+            prefs.url.takeIf { it.isNotEmpty() }?.let { page?.load(it) }
         }
         refreshSetup()
     }
@@ -188,7 +181,6 @@ class MainActivity : Activity() {
         // full-screen window); until it is ready the loading screen draws 8-bit gradients.
         val real = android.graphics.Point().also { @Suppress("DEPRECATION") windowManager.defaultDisplay.getRealSize(it) }
         Backdrop.prewarm(maxOf(real.x, real.y), minOf(real.x, real.y))
-        geckoView = GeckoView(this)
         loadingOverlay = LoadingOverlay(this)
         voiceOverlay = VoiceOverlay(this).apply {
             onCancel = { glassworks.voiceCancel?.invoke() }
@@ -221,8 +213,9 @@ class MainActivity : Activity() {
         }
         // Improv-aware from the start: KioskService (which registers the provider) starts after this.
         wifiStatus = ImprovWifiStatus(this)
-        setContentView(android.widget.FrameLayout(this).apply {
-            addView(geckoView, android.widget.FrameLayout.LayoutParams(-1, -1))
+        root = android.widget.FrameLayout(this)
+        setContentView(root.apply {
+            // startSession adds the page at index 0, under everything.
             addView(loadingOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // under the setup screen
             addView(setupOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
             // Z order (elevation): setup 20 dp > voice 16 dp > timers 12 dp > page.
@@ -270,26 +263,9 @@ class MainActivity : Activity() {
     }
 
     private fun startSession() {
-        val s = GeckoSession(
-            GeckoSessionSettings.Builder()
-                .usePrivateMode(false)
-                .useTrackingProtection(false)
-                .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
-                .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
-                .allowJavascript(true)
-                .build()
-        )
-        s.permissionDelegate = permissionDelegate
-        s.contentDelegate = contentDelegate
-        s.navigationDelegate = navigationDelegate
-        s.progressDelegate = progressDelegate
-        s.open(KioskApp.runtime(this))
-        KioskApp.helperExtension(this).accept({ ext ->
-            if (ext != null) s.webExtensionController.setMessageDelegate(ext, messageDelegate, "s1kiosk")
-        }, { e -> Log.e(TAG, "helper extension failed", e) })
-        geckoView.setSession(s)
-        geckoView.coverUntilFirstPaint(BACKGROUND) // dark, not white, until the page paints
-        session = s
+        val p = glassworks.engine.open(this, pageHost, BACKGROUND) // dark, not white, until the page paints
+        root.addView(p.view, 0, android.widget.FrameLayout.LayoutParams(-1, -1))
+        page = p
         loadDashboard()
     }
 
@@ -308,7 +284,7 @@ class MainActivity : Activity() {
             return
         }
         dashboardLoadAt = SystemClock.elapsedRealtime()
-        session?.loadUri(externalize(url))
+        page?.load(externalize(url))
     }
 
     private var dashboardLoadAt = 0L
@@ -617,7 +593,7 @@ class MainActivity : Activity() {
         setupOverlay.hide()
         // Show HA's own login page (or the dashboard if the GeckoView session is still logged in).
         if (!HaAuth.signedIn && !FrontendUrls.isAuthorizePage(currentUrl, prefs.haBase)) {
-            prefs.url.takeIf { it.isNotEmpty() }?.let { session?.loadUri(it) }
+            prefs.url.takeIf { it.isNotEmpty() }?.let { page?.load(it) }
         }
         refreshSetup()
     }
@@ -649,21 +625,12 @@ class MainActivity : Activity() {
         Log.i(TAG, "Home Assistant at $url (dashboard setting: ${prefs.urlSetting})")
         refreshSetup()
         if (!prefs.isAutoUrl) return
-        if (prefs.secureHosts() != KioskApp.startupSecureHosts) {
+        if (prefs.secureHosts() != glassworks.engine.started?.secureHosts.orEmpty()) {
             // The HA host must be in dom.securecontext.allowlist (mic), which Gecko reads at startup.
             restartProcess()
             return
         }
         loadDashboard()
-    }
-
-    private fun restartSession() {
-        session?.let {
-            geckoView.releaseSession()
-            it.close()
-        }
-        session = null
-        startSession()
     }
 
     // ---- intents (see app/README.md):
@@ -763,9 +730,9 @@ class MainActivity : Activity() {
             restartProcess()
             return
         }
-        if (fromNewIntent && intent.getBooleanExtra("reload", false)) session?.reload()
+        if (fromNewIntent && intent.getBooleanExtra("reload", false)) page?.reload()
         // One-off navigation that does NOT change the saved dashboard URL.
-        if (fromNewIntent) intent.getStringExtra("open")?.takeIf { it.isNotBlank() }?.let { session?.loadUri(it) }
+        if (fromNewIntent) intent.getStringExtra("open")?.takeIf { it.isNotBlank() }?.let { page?.load(it) }
     }
 
     // ---- immersive full screen
@@ -968,7 +935,7 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (::settingsOverlay.isInitialized && settingsOverlay.isShowing) { settingsOverlay.hide(); return }
-        if (canGoBack) session?.goBack()
+        page?.goBack()
     }
 
     // ---- Android runtime permissions (mic/camera) for Gecko
@@ -984,85 +951,37 @@ class MainActivity : Activity() {
         if (requestCode == REQ_GECKO) {
             val cb = pendingAndroidPermission
             pendingAndroidPermission = null
-            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) cb?.grant()
-            else cb?.reject()
+            cb?.invoke(grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED })
         }
     }
 
-    private val permissionDelegate = object : PermissionDelegate {
-        override fun onAndroidPermissionsRequest(
-            session: GeckoSession,
-            permissions: Array<out String>?,
-            callback: PermissionDelegate.Callback
-        ) {
-            val missing = permissions.orEmpty()
-                .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+    // ---- what the page reports (dev.glassworks.engine)
+
+    private val pageHost = object : PageHost {
+        override fun onAndroidPermissions(permissions: List<String>, answer: (Boolean) -> Unit) {
+            val missing = permissions.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
             if (missing.isEmpty()) {
-                callback.grant()
+                answer(true)
             } else {
-                pendingAndroidPermission?.reject()
-                pendingAndroidPermission = callback
+                pendingAndroidPermission?.invoke(false)
+                pendingAndroidPermission = answer
                 requestPermissions(missing.toTypedArray(), REQ_GECKO)
             }
         }
 
-        override fun onContentPermissionRequest(
-            session: GeckoSession,
-            perm: ContentPermission
-        ): GeckoResult<Int> {
-            Log.i(TAG, "Granting content permission ${perm.permission} for ${perm.uri}")
-            return GeckoResult.fromValue(ContentPermission.VALUE_ALLOW)
-        }
-
-        override fun onMediaPermissionRequest(
-            session: GeckoSession,
-            uri: String,
-            video: Array<out MediaSource>?,
-            audio: Array<out MediaSource>?,
-            callback: PermissionDelegate.MediaCallback
-        ) {
-            val mic = audio?.firstOrNull { it.source == MediaSource.SOURCE_MICROPHONE } ?: audio?.firstOrNull()
-            val cam = video?.firstOrNull { it.source == MediaSource.SOURCE_CAMERA } ?: video?.firstOrNull()
-            Log.i(TAG, "Granting media for $uri: audio=${mic?.name} video=${cam?.name}")
-            callback.grant(cam, mic)
-        }
-    }
-
-    // ---- content / navigation / progress
-
-    private val contentDelegate = object : GeckoSession.ContentDelegate {
-        override fun onFirstContentfulPaint(session: GeckoSession) {
+        override fun onFirstPaint() {
             handler.post { loadingOverlay.hide() }
         }
 
-        override fun onCrash(session: GeckoSession) {
-            Log.e(TAG, "Content process crashed; restarting session")
-            handler.post { restartSession() }
+        override fun onContentGone(killed: Boolean) {
+            Log.e(TAG, "Content process ${if (killed) "killed" else "crashed"}; restarting session")
+            handler.post {
+                page?.restart()
+                loadDashboard()
+            }
         }
 
-        override fun onKill(session: GeckoSession) {
-            Log.e(TAG, "Content process killed; restarting session")
-            handler.post { restartSession() }
-        }
-    }
-
-    private val navigationDelegate = object : GeckoSession.NavigationDelegate {
-        override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
-            this@MainActivity.canGoBack = canGoBack
-        }
-
-        // target=_blank / window.open: keep it in the single kiosk session.
-        override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
-            session.loadUri(uri)
-            return null
-        }
-
-        override fun onLocationChange(
-            session: GeckoSession,
-            url: String?,
-            perms: MutableList<PermissionDelegate.ContentPermission>,
-            hasUserGesture: Boolean,
-        ) {
+        override fun onLocationChange(url: String?) {
             currentUrl = url
             // An unauthenticated HA frontend redirects to /auth/authorize: the setup screen covers it
             // with the QR code (unless the user asked for the panel's own login page).
@@ -1071,28 +990,24 @@ class MainActivity : Activity() {
 
         // Once signed in, every top-level HA page gets external_auth=1, so the content script
         // installs window.externalApp before the frontend starts (also after reloads and redirects).
-        override fun onLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny>? {
-            if (!HaAuth.signedIn || request.target != GeckoSession.NavigationDelegate.TARGET_WINDOW_CURRENT) return null
+        override fun redirect(url: String): String? {
+            if (!HaAuth.signedIn) return null
             val base = HaAuth.signedInBase
-            val target = when {
-                FrontendUrls.isAuthorizePage(request.uri, base) -> prefs.url.takeIf { it.isNotEmpty() }?.let(::externalize)
-                FrontendUrls.needsFlag(request.uri, base) -> FrontendUrls.withFlag(request.uri)
+            return when {
+                FrontendUrls.isAuthorizePage(url, base) -> prefs.url.takeIf { it.isNotEmpty() }?.let(::externalize)
+                FrontendUrls.needsFlag(url, base) -> FrontendUrls.withFlag(url)
                 else -> null
-            } ?: return null
-            handler.post { session.loadUri(target) }
-            return GeckoResult.fromValue(AllowOrDeny.DENY)
+            }
         }
-    }
 
-    private val progressDelegate = object : GeckoSession.ProgressDelegate {
-        override fun onPageStart(session: GeckoSession, url: String) {
+        override fun onPageStart(url: String) {
             handler.removeCallbacks(retryLoad)
             handler.removeCallbacks(hideLoading)
             offlineShown = false
             if (url.startsWith("http")) loadingOverlay.show("Connecting to Home Assistant", Uri.parse(url).host ?: "")
         }
 
-        override fun onPageStop(session: GeckoSession, success: Boolean) {
+        override fun onPageStop(success: Boolean) {
             if (success) {
                 handler.postDelayed(hideLoading, 1500) // in case first-contentful-paint was missed
             } else {
@@ -1107,11 +1022,15 @@ class MainActivity : Activity() {
                 handler.postDelayed(retryLoad, RETRY_MS)
             }
         }
+
+        // ---- page <-> app messaging (assets/extension/content.js)
+
+        override fun onConnect(port: PagePort) {
+            port.post(JSONObject().put("type", "state").put("state", stateJson()))
+        }
+
+        override fun onPortMessage(port: PagePort, message: JSONObject) = onPortRequest(message, port)
     }
-
-    // ---- page <-> app messaging (assets/extension/content.js)
-
-    private val ports = mutableSetOf<WebExtension.Port>()
 
     private fun configJson() = JSONObject()
         .put("hideHeader", prefs.hideHeader)
@@ -1126,38 +1045,11 @@ class MainActivity : Activity() {
         .put("voice", glassworks.voiceState)
 
     private fun pushConfig() {
-        val msg = JSONObject().put("type", "config").put("config", configJson())
-        ports.toList().forEach { runCatching { it.postMessage(msg) } }
+        page?.post(JSONObject().put("type", "config").put("config", configJson()))
     }
 
     private fun pushState() {
-        val msg = JSONObject().put("type", "state").put("state", stateJson())
-        ports.toList().forEach { runCatching { it.postMessage(msg) } }
-    }
-
-    private val messageDelegate = object : WebExtension.MessageDelegate {
-        override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
-            val type = (message as? JSONObject)?.optString("type")
-            if (type != "config" && type != "state" && type != "activity")
-                Log.d(TAG, "ext message '$type' from ${sender.url} topLevel=${sender.isTopLevel}")
-            return when (type) {
-                "config" -> GeckoResult.fromValue(configJson())
-                "state" -> GeckoResult.fromValue(stateJson())
-                "activity" -> { glassworks.screen.userActivity(); null }
-                "getExternalAuth" -> externalAuth(message as JSONObject, sender)
-                "revokeExternalAuth" -> revokeExternalAuth(sender)
-                else -> null
-            }
-        }
-
-        override fun onConnect(port: WebExtension.Port) {
-            ports += port
-            port.setDelegate(object : WebExtension.PortDelegate {
-                override fun onDisconnect(port: WebExtension.Port) { ports -= port }
-                override fun onPortMessage(message: Any, port: WebExtension.Port) = onPortRequest(message, port)
-            })
-            port.postMessage(JSONObject().put("type", "state").put("state", stateJson()))
-        }
+        page?.post(JSONObject().put("type", "state").put("state", stateJson()))
     }
 
     /**
@@ -1165,21 +1057,20 @@ class MainActivity : Activity() {
      * `{type: "reply", id, ...}` out. Used instead of sendNativeMessage replies, which don't reach
      * the page in this GeckoView build ("Invalid event data for callback").
      */
-    private fun onPortRequest(message: Any, port: WebExtension.Port) {
-        val m = message as? JSONObject ?: return
-        if (m.optString("type") == "dashboards") { onDashboards(m, port.sender); return }
+    private fun onPortRequest(m: JSONObject, port: PagePort) {
+        if (m.optString("type") == "dashboards") { onDashboards(m, port); return }
         val id = m.optInt("id", -1)
         if (id < 0) return
-        fun reply(o: Any?) {
-            val out = (o as? JSONObject) ?: JSONObject().put("success", false)
+        fun reply(o: JSONObject?) {
+            val out = o ?: JSONObject().put("success", false)
             out.put("type", "reply").put("id", id)
-            handler.post { runCatching { port.postMessage(out) } }
+            handler.post { runCatching { port.post(out) } }
         }
         when (m.optString("type")) {
             "config" -> reply(JSONObject().put("config", configJson()))
             "state" -> reply(JSONObject().put("state", stateJson()))
-            "getExternalAuth" -> externalAuth(m, port.sender).accept { r -> reply(r) }
-            "revokeExternalAuth" -> revokeExternalAuth(port.sender).accept { r -> reply(r) }
+            "getExternalAuth" -> externalAuth(m, port, ::reply)
+            "revokeExternalAuth" -> revokeExternalAuth(port, ::reply)
             else -> reply(null)
         }
     }
@@ -1189,8 +1080,8 @@ class MainActivity : Activity() {
      * own `lovelace/dashboards/list`), for the ESPHome "Dashboard" select. Only the top-level page on
      * the Home Assistant the panel uses is believed.
      */
-    private fun onDashboards(m: JSONObject, sender: WebExtension.MessageSender) {
-        if (!sender.isTopLevel || !FrontendUrls.sameOrigin(sender.url, prefs.haBase)) {
+    private fun onDashboards(m: JSONObject, sender: PagePort) {
+        if (!sender.topLevel || !FrontendUrls.sameOrigin(sender.url, prefs.haBase)) {
             Log.w(TAG, "dashboard list from ${sender.url} ignored (not the Home Assistant in use)")
             return
         }
@@ -1200,18 +1091,18 @@ class MainActivity : Activity() {
     }
 
     /** Only the signed-in HA origin may ask for tokens. */
-    private fun senderAllowed(sender: WebExtension.MessageSender): Boolean =
-        sender.isTopLevel && FrontendUrls.sameOrigin(sender.url, HaAuth.signedInBase)
+    private fun senderAllowed(sender: PagePort): Boolean =
+        sender.topLevel && FrontendUrls.sameOrigin(sender.url, HaAuth.signedInBase)
 
     /** `externalApp.getExternalAuth` → `{success, access_token, expires_in}` (never logged). */
-    private fun externalAuth(msg: JSONObject, sender: WebExtension.MessageSender): GeckoResult<Any> {
+    private fun externalAuth(msg: JSONObject, sender: PagePort, reply: (JSONObject) -> Unit) {
         if (!senderAllowed(sender)) {
             Log.w(TAG, "getExternalAuth from ${sender.url} refused (not the signed-in Home Assistant)")
-            return GeckoResult.fromValue(JSONObject().put("success", false))
+            reply(JSONObject().put("success", false))
+            return
         }
-        val result = GeckoResult<Any>()
         HaAuth.accessToken(force = msg.optBoolean("force")) { a ->
-            val reply = when (a) {
+            val r = when (a) {
                 is HaAuth.Access.Ok -> JSONObject().put("success", true)
                     .put("access_token", a.accessToken)
                     // GeckoView native-message replies go through GeckoBundle, which has no Long:
@@ -1222,20 +1113,15 @@ class MainActivity : Activity() {
                     JSONObject().put("success", false)
                 }
             }
-            Log.d(TAG, "getExternalAuth -> success=${reply.optBoolean("success")}")
-            handler.post { result.complete(reply) }
+            Log.d(TAG, "getExternalAuth -> success=${r.optBoolean("success")}")
+            reply(r)
         }
-        return result
     }
 
     /** `externalApp.revokeExternalAuth`: the user logged out in the HA frontend. */
-    private fun revokeExternalAuth(sender: WebExtension.MessageSender): GeckoResult<Any> {
-        if (!senderAllowed(sender)) return GeckoResult.fromValue(JSONObject().put("success", false))
-        val result = GeckoResult<Any>()
-        HaAuth.signOut("logged out in the frontend") {
-            handler.post { result.complete(JSONObject().put("success", true)) }
-        }
-        return result
+    private fun revokeExternalAuth(sender: PagePort, reply: (JSONObject) -> Unit) {
+        if (!senderAllowed(sender)) { reply(JSONObject().put("success", false)); return }
+        HaAuth.signOut("logged out in the frontend") { reply(JSONObject().put("success", true)) }
     }
 
     override fun onDestroy() {
