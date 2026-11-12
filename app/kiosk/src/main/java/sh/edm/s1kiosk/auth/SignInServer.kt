@@ -205,6 +205,9 @@ class SignInServer(
         }
         val pending = states.consume(q["state"], PendingSignIn.PURPOSE_THREAD)
             ?: return page(400, "Bad Request", "This link has expired", "Scan the QR code on the panel again.")
+        // Closed on the panel, or timed out, since this sign-in started: don't join after all.
+        if (!join.armed()) return page(409, "Conflict", "Not waiting for a sign-in",
+            "The panel stopped waiting. Start “Get it from Home Assistant” on the panel again, then scan the new code.")
         val code = q["code"]?.takeIf { it.isNotEmpty() }
             ?: return page(400, "Bad Request", "Can't sign in", "Home Assistant didn't send an authorization code. Scan the code to try again.")
         return when (val r = tokens.exchangeCode(pending.haBase, pending.clientId, code)) {

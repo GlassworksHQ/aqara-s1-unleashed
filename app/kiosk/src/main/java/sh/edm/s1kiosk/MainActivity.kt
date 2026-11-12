@@ -132,6 +132,11 @@ class MainActivity : Activity() {
                 threadJoinOverlay.render(s, url)
             }
             s is sh.edm.s1kiosk.auth.ThreadJoin.State.Idle -> threadJoinOverlay.hide()
+            // How it ended, also when the panel's own sign-in did it (no QR code was up).
+            s is sh.edm.s1kiosk.auth.ThreadJoin.State.Joined || s is sh.edm.s1kiosk.auth.ThreadJoin.State.Failed -> {
+                if (settingsOverlay.isShowing) settingsOverlay.hide()
+                threadJoinOverlay.render(s, url)
+            }
             threadJoinOverlay.isShowing -> threadJoinOverlay.render(s, url)
         }
     }
@@ -231,6 +236,8 @@ class MainActivity : Activity() {
         loadingOverlay.show("Starting up", if (hasNetwork()) "Connecting to Home Assistant…" else "Reconnecting to Wi-Fi…")
         HaAuth.addListener(authListener)
         HaAuth.threadJoin.addListener(threadJoinListener)
+        // Recreated while the QR code was up: show it again (posted, so a newer update still wins).
+        (HaAuth.threadJoin.state as? sh.edm.s1kiosk.auth.ThreadJoin.State.NeedsAdmin)?.let(threadJoinListener)
         SetupSignals.addListener(setupSignalListener)
         wifiStatus.observe { refreshSetup() }
         ImprovController.inlineHost = improvHost

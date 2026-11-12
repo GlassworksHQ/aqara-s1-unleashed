@@ -414,6 +414,10 @@ class RadioController(
         if (!available(RadioMode.THREAD_ROUTER)) {
             return "Thread router needs a newer root helper on the panel (see the Radio helper sensor)"
         }
+        // request() would refuse the mode switch after the dataset was stored, and the join would look done.
+        if (mode != RadioMode.THREAD_ROUTER && firmware.flashing()) {
+            return "a radio firmware update is running; try again when it's done"
+        }
         setThreadDataset(hex)?.let { return it }
         if (mode != RadioMode.THREAD_ROUTER) request(RadioMode.THREAD_ROUTER.label, "thread-join")
         return null

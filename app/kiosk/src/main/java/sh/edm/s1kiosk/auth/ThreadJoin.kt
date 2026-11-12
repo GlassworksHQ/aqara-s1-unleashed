@@ -35,7 +35,10 @@ class ThreadJoin(
         object Working : State() { override fun toString() = "Working" }
         /** Waiting for an administrator to scan the QR code (until [until], clock ms). */
         class NeedsAdmin(val until: Long, val why: String) : State() { override fun toString() = "NeedsAdmin($why)" }
-        class Joined(val networkName: String) : State() { override fun toString() = "Joined($networkName)" }
+        /** [revoked]: false when the one-off administrator sign-in couldn't be deleted (HA unreachable). */
+        class Joined(val networkName: String, val revoked: Boolean = true) : State() {
+            override fun toString() = "Joined($networkName${if (revoked) "" else ", sign-in not revoked"})"
+        }
         class Failed(val reason: String) : State() { override fun toString() = "Failed($reason)" }
     }
 
@@ -46,6 +49,9 @@ class ThreadJoin(
         private set
 
     private val listeners = CopyOnWriteArrayList<(State) -> Unit>()
+
+    /** Bumped by every [start] and [onGrant]: a result from an older attempt is dropped. */
+    private var attempt = 0
     fun addListener(l: (State) -> Unit) { listeners += l }
     fun removeListener(l: (State) -> Unit) { listeners -= l }
 
@@ -79,20 +85,26 @@ class ThreadJoin(
      * code) or [State.Failed]. No-op while a fetch is running.
      */
     fun start() {
-        synchronized(this) {
+        val mine = synchronized(this) {
             if (state is State.Working) return
             set(State.Working)
+            ++attempt
         }
         val base = haBase()
         if (base == null) { set(State.Failed("Home Assistant's address isn't known yet")); return }
+        // Applies a result only if no newer attempt (another start, or an admin's sign-in) came since.
+        fun current(apply: () -> Unit) = synchronized(this) { if (attempt == mine) apply() }
         panelToken { token ->
-            if (token == null) { needsAdmin("the panel isn't signed in to Home Assistant"); return@panelToken }
+            if (token == null) { current { needsAdmin("the panel isn't signed in to Home Assistant") }; return@panelToken }
             exec.execute {
-                when (val r = fetch(base, token)) {
-                    is ThreadFetch.Ok -> finish(r)
-                    ThreadFetch.NotAdmin -> needsAdmin("the panel's Home Assistant user isn't an administrator")
-                    is ThreadFetch.NoPreferred -> set(State.Failed(noPreferred(r)))
-                    is ThreadFetch.Failed -> set(State.Failed(r.reason))
+                val r = fetch(base, token)
+                current {
+                    when (r) {
+                        is ThreadFetch.Ok -> finish(r)
+                        ThreadFetch.NotAdmin -> needsAdmin("the panel's Home Assistant user isn't an administrator")
+                        is ThreadFetch.NoPreferred -> set(State.Failed(noPreferred(r)))
+                        is ThreadFetch.Failed -> set(State.Failed(r.reason))
+                    }
                 }
             }
         }
@@ -106,21 +118,24 @@ class ThreadJoin(
      * Runs on the sign-in server's connection thread (blocks for the fetch).
      */
     fun onGrant(auth: StoredAuth, grant: TokenResult.Ok): Outcome {
-        set(State.Working)
+        synchronized(this) { attempt++; set(State.Working) }
+        var revoked = false
         val r = try {
             fetch(auth.haBase, grant.accessToken)
         } finally {
             // The panel keeps no administrator credentials: revoke now, whatever happened.
-            val sent = tokens.revoke(auth)
-            AuthLog.i("Thread join: one-off sign-in revoked${if (sent) "" else " (Home Assistant not reachable)"}")
+            revoked = tokens.revoke(auth)
+            if (revoked) AuthLog.i("Thread join: one-off sign-in revoked")
+            else AuthLog.w("Thread join: couldn't revoke the one-off sign-in (Home Assistant not reachable)")
         }
+        val notRevoked = " The panel couldn't delete this sign-in: remove it under your Home Assistant profile → Security → Refresh tokens."
         return when (r) {
             is ThreadFetch.Ok -> {
-                val err = finish(r)
+                val err = finish(r, revoked)
                 if (err == null) Outcome(true, "Joining ${r.networkName.ifEmpty { "your Thread network" }} ✓",
-                    "The panel has your Thread network's settings and is joining it as a Thread router. " +
-                        "You can close this page; you were signed out of the panel again.")
-                else Outcome(false, "Couldn't join", err)
+                    "The panel has your Thread network's settings and is joining it as a Thread router. You can close this page." +
+                        if (revoked) " You were signed out of the panel again." else notRevoked)
+                else Outcome(false, "Couldn't join", err + if (revoked) "" else notRevoked)
             }
             ThreadFetch.NotAdmin -> {
                 needsAdmin("the user who signed in isn't an administrator")
@@ -141,10 +156,10 @@ class ThreadJoin(
     }
 
     /** Delivers the dataset; returns null when accepted. */
-    private fun finish(r: ThreadFetch.Ok): String? {
+    private fun finish(r: ThreadFetch.Ok, revoked: Boolean = true): String? {
         val d = deliver
         val err = if (d == null) "the panel's radio isn't running" else d(r)
-        set(if (err == null) State.Joined(r.networkName) else State.Failed(err))
+        set(if (err == null) State.Joined(r.networkName, revoked) else State.Failed(err))
         return err
     }
 

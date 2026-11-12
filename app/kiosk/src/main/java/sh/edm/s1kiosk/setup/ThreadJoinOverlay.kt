@@ -94,8 +94,9 @@ class ThreadJoinOverlay(context: Context) : FrameLayout(context) {
             is ThreadJoin.State.Joined -> {
                 title.text = "Joining ${s.networkName.ifEmpty { "your Thread network" }}"
                 body.text = "It becomes a router in a few minutes."
-                status.setTextColor(GREEN)
-                status.text = "The admin sign-in was used once and deleted."
+                status.setTextColor(if (s.revoked) GREEN else AMBER)
+                status.text = if (s.revoked) "The admin sign-in was used once and deleted."
+                    else "Couldn't delete the admin sign-in: remove it in your Home Assistant profile → Security."
                 postDelayed(autoHide, 8_000)
             }
             is ThreadJoin.State.Failed -> {

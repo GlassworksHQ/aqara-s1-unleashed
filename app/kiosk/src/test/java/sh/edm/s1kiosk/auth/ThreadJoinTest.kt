@@ -12,8 +12,10 @@ class ThreadJoinTest {
     /** Records /auth/revoke calls; nothing else is expected. */
     private class FakeHttp : HttpPoster {
         val revoked = ArrayList<String>()
+        var reachable = true
         override fun postForm(url: String, body: String): Pair<Int, String> {
             assertTrue(url, url.endsWith("/auth/revoke"))
+            if (!reachable) return -1 to ""
             revoked += OAuth.parseQuery(body)["token"]!!
             return 200 to ""
         }
@@ -30,12 +32,13 @@ class ThreadJoinTest {
         panelToken: String? = null,
         haBase: String? = "http://ha:8123",
         deliverError: String? = null,
+        exec: Executor = direct,
     ) = ThreadJoin(
         client = HaThreadClient { ha() },
         tokens = HaTokenClient(http),
         haBase = { haBase },
         panelToken = { done -> done(panelToken) },
-        exec = direct,
+        exec = exec,
         armMs = 600_000L,
         clock = { now },
     ).apply { deliver = { r -> delivered += r; deliverError } }
@@ -112,6 +115,28 @@ class ThreadJoinTest {
         val noHa = join({ FakeHa() }, haBase = null)
         noHa.start()
         assertTrue(noHa.state is ThreadJoin.State.Failed)
+    }
+
+    @Test
+    fun aRevokeThatFailsIsReported() {
+        http.reachable = false
+        val j = join({ FakeHa(token = "ADMIN") })
+        j.arm()
+        val o = j.onGrant(StoredAuth("http://ha:8123", "c", "ADMIN-RT"), TokenResult.Ok("ADMIN", 1800, "ADMIN-RT"))
+        assertTrue(o.ok)
+        assertTrue(o.text, o.text.contains("Refresh tokens"))
+        assertFalse((j.state as ThreadJoin.State.Joined).revoked)
+    }
+
+    @Test
+    fun anOlderAttemptsResultIsDropped() {
+        val queued = ArrayList<Runnable>()
+        val admin = join({ FakeHa(token = "ADMIN") }, panelToken = "PANEL", exec = { queued += it })
+        admin.start() // the panel's own (non-admin) fetch is still out
+        admin.onGrant(StoredAuth("http://ha:8123", "c", "RT2"), TokenResult.Ok("ADMIN", 1800, "RT2"))
+        assertTrue(admin.state is ThreadJoin.State.Joined)
+        queued.forEach { it.run() } // the panel's fetches answer late
+        assertTrue("an admin's join isn't undone by the panel's late answer", admin.state is ThreadJoin.State.Joined)
     }
 
     @Test
