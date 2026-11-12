@@ -103,6 +103,9 @@ class PanelDevice(
     private val voiceEnabled = prefs.voiceEnabled
 
     private var server: ApiServer? = null
+    /** Guards [stopped] and the hand-over of [server] between [startServer] and [stop]. */
+    private val lifecycle = Any()
+    private var stopped = false
     private val noiseKeys = NoiseKeys(prefs.noiseKeyStore)
     private lateinit var identity: DeviceIdentity
     private lateinit var entities: List<ApiEntity>
@@ -159,6 +162,7 @@ class PanelDevice(
     }
 
     fun stop() {
+        synchronized(lifecycle) { stopped = true }
         prefs.unregisterListener(prefListener)
         ScreenController.removeListener(screenListener)
         HaAuth.removeListener(authListener)
@@ -170,8 +174,7 @@ class PanelDevice(
         assist = null
         exec.shutdownNow()
         mdns.stop()
-        server?.stop()
-        server = null
+        synchronized(lifecycle) { server.also { server = null } }?.stop()
         radio.stop()
         timeZone.stop()
         updates.stop()
@@ -348,7 +351,9 @@ class PanelDevice(
             exec.schedule({ if (server == null) startServer() }, 10, TimeUnit.SECONDS)
             return
         }
-        server = s
+        // stop() may have run while this start was in flight: then the server must not outlive it.
+        val kept = synchronized(lifecycle) { if (stopped) false else { server = s; true } }
+        if (!kept) { s.stop(); return }
         mdns.start(identity, s.localPort, encrypted = s.encrypted, provisionable = s.provisionable)
     }
 

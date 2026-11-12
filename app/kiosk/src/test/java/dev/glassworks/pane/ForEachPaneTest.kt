@@ -7,6 +7,7 @@ package dev.glassworks.pane
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import sh.edm.esphome.EspHomeLog
@@ -44,6 +45,24 @@ class ForEachPaneTest {
         assertEquals(1, logs.size)
         assertEquals("pane broken failed in onEvent", logs[0].first)
         assertTrue(logs[0].second is IllegalStateException)
+    }
+
+    @Test fun anInterruptionStopsTheLoopAndKeepsTheInterruptFlag() {
+        val first = Recorder("first")
+        val last = Recorder("last")
+        val interrupted = object : Pane {
+            override val id = "interrupted"
+            override fun onEvent(event: PanelEvent) = throw InterruptedException()
+        }
+        try {
+            listOf(first, interrupted, last).forEachPane("start") { it.onEvent(PanelEvent.SettingChanged("x")) }
+            fail("the interruption must reach the caller")
+        } catch (_: InterruptedException) {
+        }
+        assertTrue(Thread.interrupted())
+        assertEquals(1, first.events.size)
+        assertTrue(last.events.isEmpty())
+        assertTrue(logs.isEmpty())
     }
 
     @Test fun nothingIsLoggedWhenEveryPaneSucceeds() {

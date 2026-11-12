@@ -86,11 +86,16 @@ interface Pane {
 /**
  * Runs [block] on every pane. A pane that throws is logged (with [op], the step that failed) and
  * skipped, so one broken pane never stops the others from starting, stopping or hearing an event.
+ * An interruption is not a failure: it goes back to the caller, with the thread's interrupt flag set.
  */
 fun List<Pane>.forEachPane(op: String, block: (Pane) -> Unit) {
     for (pane in this) {
         try {
             block(pane)
+        } catch (e: InterruptedException) {
+            // The caller is being cancelled (the device is stopping); that is not this pane failing.
+            Thread.currentThread().interrupt()
+            throw e
         } catch (t: Throwable) {
             EspHomeLog.w("pane ${pane.id} failed in $op", t)
         }
