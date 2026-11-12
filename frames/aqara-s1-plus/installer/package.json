@@ -6,8 +6,7 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./recovery.json": "./recovery.json"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "test": "cd ../../../kiln && npx vitest run --dir ../frames/aqara-s1-plus/installer",

@@ -8,5 +8,5 @@ const read = (p: string) => JSON.parse(readFileSync(new URL(`../../../../${p}`, 
 it('the design copy of the S1 recovery data equals the frame\'s, photo aside', () => {
   const { photo, ...design } = read('docs/design/kiln/recovery/aqara-s1-plus.json');
   expect(photo).toBeTypeOf('string');
-  expect(design).toEqual(read('frames/aqara-s1-plus/installer/recovery.json'));
+  expect(design).toEqual(read('frames/aqara-s1-plus/design/recovery.json'));
 });

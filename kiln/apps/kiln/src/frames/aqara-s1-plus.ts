@@ -1,7 +1,7 @@
 // What Kiln's screens say and show for the Aqara S1 Plus. The hardware steps are the recipe's
 // (@glassworks/aqara-s1-plus-installer); this is the words, the drawing data and the links.
 import type { AskKind } from '@glassworks/kiln-core';
-import recovery from '@glassworks/aqara-s1-plus-installer/recovery.json';
+import recovery from '../../../../../frames/aqara-s1-plus/design/recovery.json';
 import photo from '../../../../../docs/img/fel-button.jpg';
 import type { RecoveryData } from '../recovery/player';
 import type { RadioPlan } from '../wizard/state';
