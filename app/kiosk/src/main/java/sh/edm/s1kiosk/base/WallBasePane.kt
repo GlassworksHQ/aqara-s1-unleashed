@@ -9,7 +9,7 @@ import sh.edm.esphome.EspHomeLog
 import sh.edm.esphome.EventEntity
 import sh.edm.esphome.SwitchEntity
 import sh.edm.esphome.TextSensorEntity
-import sh.edm.s1kiosk.AqaraCloud
+import sh.edm.s1kiosk.frame.AqaraCloud
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
@@ -25,6 +25,7 @@ class WallBasePane(
     private val ctx: PaneContext,
     config: WallBase.Config,
     private val device: ScheduledExecutorService,
+    private val cloud: AqaraCloud,
 ) : Pane {
     override val id = "wall-base"
 
@@ -85,7 +86,7 @@ class WallBasePane(
      * from UART, close the port first, then let ha_master run.
      */
     private fun reconfigure(why: String) {
-        val c = wantedConfig(prefs)
+        val c = wantedConfig(prefs, cloud)
         if (c.backend == BaseBackend.UART) {
             applyAqaraCloud(why, c.backend)
             base.reconfigure(c)
@@ -110,9 +111,9 @@ class WallBasePane(
                 current.kind == BaseKind.SWITCH || current.kind == BaseKind.UNKNOWN
             }
         }
-        val ok = AqaraCloud.setDaemon(run)
+        val ok = cloud.setDaemon(run)
         aqaraCloudStatus = when {
-            !ok -> "error (${AqaraCloud.daemonState().ifBlank { "unknown" }})"
+            !ok -> "error (${cloud.daemonState().ifBlank { "unknown" }})"
             !run && !prefs.blockAqaraCloud -> "stopped (UART wall base backend owns ${UartBaseLink.SERIAL_PATH})"
             !run -> "blocked"
             prefs.blockAqaraCloud -> "running (needed by the wall base, LocalService backend)"
@@ -147,16 +148,8 @@ class WallBasePane(
     }
 
     companion object {
-        /** One instance, so WallBase.Config equality works across re-applies. */
-        private val ttyGuard: () -> String? = {
-            when (val st = AqaraCloud.daemonState()) {
-                "running", "restarting" -> "ha_master is $st and owns ${UartBaseLink.SERIAL_PATH}"
-                else -> null
-            }
-        }
-
         /** The backend and transport the settings ask for. */
-        fun wantedConfig(prefs: WallBasePrefs): WallBase.Config =
-            WallBase.Config(BaseBackend.resolve(prefs.backend, prefs.blockAqaraCloud), prefs.transport, ttyGuard)
+        fun wantedConfig(prefs: WallBasePrefs, cloud: AqaraCloud): WallBase.Config =
+            WallBase.Config(BaseBackend.resolve(prefs.backend, prefs.blockAqaraCloud), prefs.transport, cloud.uartHolder)
     }
 }

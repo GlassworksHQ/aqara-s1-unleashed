@@ -3,6 +3,7 @@ package sh.edm.s1kiosk
 import android.content.Context
 import android.content.Intent
 import sh.edm.s1kiosk.discovery.HaDiscovery
+import sh.edm.s1kiosk.frame.AqaraS1Plus
 import sh.edm.s1kiosk.radio.RadioController
 import sh.edm.s1kiosk.update.UpdateManager
 import sh.edm.s1kiosk.voice.VoiceUi
@@ -11,7 +12,10 @@ import sh.edm.s1kiosk.voice.VoiceUi
  * What the app's components hand each other while the process runs. [KioskApp] owns the one
  * instance; Android entry points get it with [glassworks], everything else is given it.
  */
-class GlassworksRuntime {
+class GlassworksRuntime(
+    /** The device this app runs on, made once with the runtime. */
+    val frame: AqaraS1Plus,
+) {
 
     /** Set while KioskService runs; the setup screen and the setup channel apply radio changes through it. */
     @Volatile var radio: RadioController? = null

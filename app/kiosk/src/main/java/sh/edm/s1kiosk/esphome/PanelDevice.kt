@@ -33,6 +33,7 @@ import sh.edm.s1kiosk.dashboard.DashboardOptions
 import sh.edm.s1kiosk.dashboard.Dashboards
 import sh.edm.s1kiosk.dashboard.StableChange
 import sh.edm.s1kiosk.discovery.HaUrls
+import sh.edm.s1kiosk.frame.TimeZoneKeeper
 import sh.edm.s1kiosk.sendspin.SendspinPane
 import sh.edm.s1kiosk.setup.SetupSignals
 import sh.edm.s1kiosk.update.UpdateManager
@@ -90,7 +91,7 @@ class PanelDevice(
     private val main = Handler(Looper.getMainLooper())
     private val exec: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "esphome-main").apply { isDaemon = true } }
-    private val mdns = EspHomeMdns(ctx, board = "aqara-s1-plus")
+    private val mdns = EspHomeMdns(ctx, board = runtime.frame.board)
     private val voiceEnabled = prefs.voice.enabled
 
     private var server: ApiServer? = null
@@ -107,8 +108,7 @@ class PanelDevice(
     /** The features that add entities and react to the panel (Sendspin, voice, timers, ...); built in [initEntities]. */
     @Volatile private var panes: List<Pane> = emptyList()
     private var assist: AssistPane? = null
-    /** The time zone to keep (Aqara resets it at every boot; the root helper puts it back). */
-    private val timeZone = sh.edm.s1kiosk.TimeZoneKeeper(onChange = { runCatching { exec.execute { server?.publishStates() } } })
+    private val timeZone = runtime.frame.timeZoneKeeper(onChange = { runCatching { exec.execute { server?.publishStates() } } })
     /**
      * App updates from GitHub Releases (docs/releasing.md); the "App update" entity. runCatching:
      * the update thread may still report while [stop] has already shut [exec] down.
@@ -181,7 +181,7 @@ class PanelDevice(
             voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
         )
         EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${voiceEnabled}")
-        if (!unlessStopped { initEntities(id, WallBasePane.wantedConfig(prefs.wallBase)); acquireLocks() }) return
+        if (!unlessStopped { initEntities(id, WallBasePane.wantedConfig(prefs.wallBase, runtime.frame.aqaraCloud)); acquireLocks() }) return
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
         voicePlayer.onStateChanged = {
@@ -238,7 +238,7 @@ class PanelDevice(
                     silence = { synchronized(this) { chimePlayer }?.cancel() },
                 )
             } else null,
-            WallBasePane(paneContext, baseConfig, exec),
+            WallBasePane(paneContext, baseConfig, exec, runtime.frame.aqaraCloud),
             RadioPane(paneContext, runtime, panelIp = ::ipAddress),
         )
         coreEntities = buildEntities()
@@ -512,7 +512,7 @@ class PanelDevice(
             "time_zone", "Time zone", "mdi:map-clock", maxLength = 64, pattern = "^[A-Za-z0-9_+/-]*$",
             get = { timeZone.text() },
             set = { v ->
-                timeZone.set(v)?.let { Log.w(sh.edm.s1kiosk.TimeZoneKeeper.TAG, "Time zone: $it") }
+                timeZone.set(v)?.let { Log.w(TimeZoneKeeper.TAG, "Time zone: $it") }
                 exec.execute { server?.publishStates() }
             },
         ).apply { authOnly = true },

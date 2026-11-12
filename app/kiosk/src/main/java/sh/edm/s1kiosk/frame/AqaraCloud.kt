@@ -1,6 +1,7 @@
-package sh.edm.s1kiosk
+package sh.edm.s1kiosk.frame
 
 import android.util.Log
+import sh.edm.s1kiosk.base.UartBaseLink
 import java.util.concurrent.TimeUnit
 
 /**
@@ -17,13 +18,28 @@ import java.util.concurrent.TimeUnit
  * before the port is opened; only the LocalService backend keeps it running while a base is attached.
  * Stopping it does not trip com.lumi.systemmanager's cloud watchdog (Wi-Fi reassociate): that only
  * fires on a cloud-state *change* event, which the dead daemon never sends.
+ *
+ * The S1 frame holds the one instance ([AqaraS1Plus.aqaraCloud]).
  */
-object AqaraCloud {
-    private const val TAG = "S1Kiosk.AqaraCloud"
-    private const val SERVICE = "ha_master"
+class AqaraCloud {
+    private companion object {
+        const val TAG = "S1Kiosk.AqaraCloud"
+        const val SERVICE = "ha_master"
+    }
 
     /** init's view of the daemon: "running", "stopped", "restarting", or "" if unknown. */
     fun daemonState(): String = run("getprop", "init.svc.$SERVICE")
+
+    /**
+     * Why the wall base UART is not free (ha_master holds it while it runs), or null when it is.
+     * One lambda per instance, so WallBase.Config equality holds across re-applies.
+     */
+    val uartHolder: () -> String? = {
+        when (val st = daemonState()) {
+            "running", "restarting" -> "$SERVICE is $st and owns ${UartBaseLink.SERIAL_PATH}"
+            else -> null
+        }
+    }
 
     /** Starts or stops the daemon; returns true if init reports the wanted state afterwards. */
     fun setDaemon(running: Boolean): Boolean {

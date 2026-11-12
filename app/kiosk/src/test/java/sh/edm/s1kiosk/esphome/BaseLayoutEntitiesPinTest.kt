@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.esphome
 
+import sh.edm.s1kiosk.frame.AqaraS1Plus
 import android.app.Application
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -54,7 +55,7 @@ class BaseLayoutEntitiesPinTest {
     private fun entitiesWith(layout: BaseLayout): List<ApiEntity> {
         val app = RuntimeEnvironment.getApplication()
         KioskPrefs(app).wallBase.layout = layout.encode()
-        val device = PanelDevice(app, GlassworksRuntime(), onVoiceEvent = {})
+        val device = PanelDevice(app, GlassworksRuntime(AqaraS1Plus()), onVoiceEvent = {})
         try {
             val identity = DeviceIdentity(
                 name = PanelDevice.NAME, friendlyName = PanelDevice.FRIENDLY_NAME, macAddress = "02:00:00:00:00:01",

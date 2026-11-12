@@ -149,6 +149,18 @@ comes from, then call it. `PlatformTest` pins each boundary, and `PlatformConfin
 `./gradlew test` with the file and line of any other read. The libraries in `app/libs` do not depend
 on Glassworks, so each keeps its own checks in an internal `Compat.kt`, which the same test allows.
 
+## Frames
+
+A frame (`dev.glassworks.frame.Frame`) is what the core asks the device. Today that is two things:
+`board`, the `board` TXT record in the mDNS advert, and `systemSettingsIntents()`, the device's own
+settings screens, best first. `Frame.systemSettings(context)` picks the first that resolves. The app
+makes one frame at start, and `GlassworksRuntime` holds it.
+
+The S1's frame is [`AqaraS1Plus`](../../sh/edm/s1kiosk/frame/AqaraS1Plus.kt) (`aqara-s1-plus`). It
+also holds the parts only the S1 has: Aqara's cloud daemon, the time zone keeper and the root update
+service. The rest of the planned frame (presence, light, screen off, installer, panes) comes in the
+next migration steps.
+
 ## Threads
 
 The core calls a pane from more than one thread. `start` runs on the device thread, `stop` runs

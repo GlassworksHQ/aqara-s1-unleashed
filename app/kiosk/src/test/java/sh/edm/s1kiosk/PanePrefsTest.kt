@@ -1,5 +1,7 @@
 package sh.edm.s1kiosk
 
+import sh.edm.s1kiosk.frame.AqaraCloud
+import sh.edm.s1kiosk.frame.AqaraS1Plus
 import android.app.Application
 import android.content.SharedPreferences
 import dev.glassworks.pane.Pane
@@ -107,8 +109,8 @@ class PanePrefsTest {
     private fun panes() = sequence {
         yield(drive(SendspinPane(ctx, haBase = { null }), SendspinPrefs.KEY_FLAC))
         yield(drive(assist(), VoicePrefs.KEY_MIC_GAIN))
-        yield(drive(WallBasePane(ctx, WallBase.Config(BaseBackend.LOCALSERVICE), device), start = false))
-        yield(drive(RadioPane(ctx, GlassworksRuntime(), panelIp = { null }), start = false))
+        yield(drive(WallBasePane(ctx, WallBase.Config(BaseBackend.LOCALSERVICE), device, AqaraCloud()), start = false))
+        yield(drive(RadioPane(ctx, GlassworksRuntime(AqaraS1Plus()), panelIp = { null }), start = false))
         yield(drive(TimersPane(ctx, schedule = { _, _ -> device.submit {} }, play = {}, silence = {})))
     }
 

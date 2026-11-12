@@ -16,6 +16,7 @@ import sh.edm.esphome.ApiEntity
 import sh.edm.esphome.DeviceIdentity
 import sh.edm.esphome.EventEntity
 import sh.edm.s1kiosk.KioskPrefs
+import sh.edm.s1kiosk.frame.AqaraCloud
 import java.util.concurrent.Executors
 
 @RunWith(RobolectricTestRunner::class)
@@ -38,6 +39,7 @@ class WallBasePaneTest {
         ),
         WallBase.Config(BaseBackend.LOCALSERVICE),
         device,
+        AqaraCloud(),
     )
 
     private val pane = newPane()

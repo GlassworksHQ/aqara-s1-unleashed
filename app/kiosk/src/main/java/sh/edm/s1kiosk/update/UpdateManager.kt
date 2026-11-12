@@ -13,8 +13,6 @@ import android.util.Log
 import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.BuildConfig
 import sh.edm.s1kiosk.GlassworksRuntime
-import sh.edm.s1kiosk.radio.ShellProps
-import sh.edm.s1kiosk.radio.SysProps
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -44,9 +42,9 @@ class UpdateManager(
     context: Context,
     private val runtime: GlassworksRuntime,
     private val onChange: () -> Unit,
-    private val props: SysProps = ShellProps,
 ) {
     private val ctx = context.applicationContext
+    private val root = runtime.frame.rootUpdates
     private val exec: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "s1-update").apply { isDaemon = true } }
     val model = UpdateModel(BuildConfig.VERSION_NAME)
@@ -63,8 +61,8 @@ class UpdateManager(
         runtime.updates = this
         exec.execute {
             cleanup()
-            reportPreviousRootInstall()
-            model.installNote = if (rootHelperPresent()) "" else NO_HELPER_NOTE
+            root.lastFailure()?.let { model.onInfo("Last update failed: $it") }
+            model.installNote = if (root.present()) "" else NO_HELPER_NOTE
             onChange()
         }
         registerNetwork()
@@ -278,7 +276,12 @@ class UpdateManager(
         val pending = File(dir, UpdateHelper.PENDING_NAME)
         if (!part.renameTo(pending)) return fail(a, "cannot move the APK into place")
         Log.i(TAG, "verified ${o.apk.name} (sha256 ${Releases.hex(digest)})")
-        if (rootHelperPresent()) installWithRootHelper(a) else installWithPackageInstaller(a, pending)
+        if (!root.present()) return installWithPackageInstaller(a, pending)
+        root.install(
+            a.offer.version.toString(),
+            installing = { model.onInstalling(a, SystemClock.elapsedRealtime(), it); onChange() },
+            over = { expired(a) || stopped },
+        )?.let { fail(a, it) }
     }
 
     /** Streams the APK into [part], reporting progress; returns its SHA-256, or null after a failure. */
@@ -349,55 +352,6 @@ class UpdateManager(
         )
         val code = if (Platform.hasLongVersionCode) p.longVersionCode else p.versionCode.toLong()
         return ApkFacts(p.packageName.orEmpty(), p.versionName, code, signers)
-    }
-
-    // ------------------------------------------------------------------ root helper
-
-    private fun rootHelperPresent(): Boolean = props.get(UpdateHelper.PROP_VERSION).trim().toIntOrNull()?.let { it >= 1 } == true
-
-    /**
-     * Starts the root service and follows its status. On success `pm` replaces the app, which kills
-     * this process: the new version reads the final status at start ([reportPreviousRootInstall]).
-     */
-    private fun installWithRootHelper(a: UpdateModel.Attempt) {
-        props.set(UpdateHelper.PROP_STATUS, "requested")
-        props.set("ctl.start", UpdateHelper.SERVICE)
-        model.onInstalling(a, SystemClock.elapsedRealtime(), "Installing ${a.offer.version} (root update service)")
-        onChange()
-        val started = SystemClock.elapsedRealtime()
-        var lastDetail = ""
-        while (!expired(a) && !stopped) {
-            val st = UpdateHelper.parseStatus(props.get(UpdateHelper.PROP_STATUS))
-            val waited = SystemClock.elapsedRealtime() - started
-            when (st?.state) {
-                "ok" -> {
-                    // Normally never seen: pm kills us first. Seen if pm didn't (e.g. same process kept).
-                    Log.i(TAG, "root update service: ok ${st.detail}")
-                    model.onInstalling(a, SystemClock.elapsedRealtime(), "Installed ${a.offer.version}; restarting")
-                    onChange()
-                    return
-                }
-                "error" -> return fail(a, "root update service: ${st.detail}")
-                "running" -> if (st.detail != lastDetail) {
-                    lastDetail = st.detail
-                    Log.i(TAG, "root update service: ${st.detail}")
-                }
-                else -> if (waited > HELPER_START_TIMEOUT_MS) {
-                    return fail(a, "the root update service did not start (${UpdateHelper.SERVICE})")
-                }
-            }
-            try { Thread.sleep(1_000) } catch (_: InterruptedException) { return }
-        }
-    }
-
-    /** At start: the result of an install the root service did while this process was replaced. */
-    private fun reportPreviousRootInstall() {
-        val st = UpdateHelper.parseStatus(props.get(UpdateHelper.PROP_STATUS)) ?: return
-        when (st.state) {
-            // success shows as the new installed version; only failures need a line on the card
-            "ok" -> Log.i(TAG, "last root install: ok ${st.detail}")
-            "error" -> { Log.w(TAG, "last root install failed: ${st.detail}"); model.onInfo("Last update failed: ${st.detail}") }
-        }
     }
 
     // ------------------------------------------------------------------ PackageInstaller fallback
@@ -503,7 +457,6 @@ class UpdateManager(
         private const val MAX_JSON_BYTES = 1024 * 1024
         private const val FREE_SPACE_MARGIN = 32L * 1024 * 1024
         private const val PROGRESS_PUBLISH_MS = 1_000L
-        private const val HELPER_START_TIMEOUT_MS = 30_000L
 
         private fun readCapped(input: InputStream, max: Int): ByteArray = input.use {
             val out = java.io.ByteArrayOutputStream()

@@ -7,11 +7,12 @@ import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.WebExtension
+import sh.edm.s1kiosk.frame.AqaraS1Plus
 import java.io.File
 
 class KioskApp : Application() {
 
-    val glassworks = GlassworksRuntime()
+    val glassworks = GlassworksRuntime(AqaraS1Plus())
 
     companion object {
         private const val TAG = "S1Kiosk"

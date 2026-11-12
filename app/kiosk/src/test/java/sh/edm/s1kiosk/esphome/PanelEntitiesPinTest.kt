@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.esphome
 
+import sh.edm.s1kiosk.frame.AqaraS1Plus
 import android.app.Application
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -51,7 +52,7 @@ class PanelEntitiesPinTest {
     }
 
     private fun realEntityList(): List<ApiEntity> {
-        val device = PanelDevice(RuntimeEnvironment.getApplication(), GlassworksRuntime(), onVoiceEvent = {})
+        val device = PanelDevice(RuntimeEnvironment.getApplication(), GlassworksRuntime(AqaraS1Plus()), onVoiceEvent = {})
         try {
             val identity = DeviceIdentity(
                 name = PanelDevice.NAME, friendlyName = PanelDevice.FRIENDLY_NAME, macAddress = "02:00:00:00:00:01",
