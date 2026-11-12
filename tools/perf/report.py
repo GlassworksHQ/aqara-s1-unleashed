@@ -182,9 +182,29 @@ def tier_run(tier, entry, presents_ms):
             out["load_ms"] = round(settle - nav)
     f = step_frames(step, MOTION[tier])
     inp = entry.get("input") or {}
-    return dict(out, frames=f["stats"], source=f["source"], limited_by=f["limited_by"], sf_valid=f["sf_valid"],
-                inp_ms=inp.get("inp_ms") if inp.get("taps") else None, input_method=inp.get("method"),
-                fcp_ms=page.get("fcp_ms"), nodes=page.get("nodes"))
+    out.update(frames=f["stats"], source=f["source"], limited_by=f["limited_by"], sf_valid=f["sf_valid"],
+               inp_ms=inp.get("inp_ms") if inp.get("taps") else None, input_method=inp.get("method"),
+               fcp_ms=page.get("fcp_ms"), nodes=page.get("nodes"))
+    why = live_check_failed(tier, entry.get("measure") or {})
+    if why:
+        # The frames (and with the toggle off screen, the taps) aren't of the page as defined.
+        out.update(frames=None, frames_error=why)
+        if "toggle or a live element is off screen" in why:
+            out["inp_ms"] = None
+    return out
+
+
+def live_check_failed(tier, check):
+    """Why this tier's frames can't be trusted, or None. Gecko doesn't run CSS animations that are
+    off screen, so a page whose animated elements were off screen, or whose animations weren't
+    running, shows a still screen that would read as frozen frames."""
+    if "offscreen" not in check:
+        return "no live check (a page from before it was added)" if MOTION[tier] else None
+    if check["offscreen"]:
+        return f"the toggle or a live element is off screen ({check['offscreen']} of {check['moving']})"
+    if MOTION[tier] and check.get("animations") != check.get("animations_expected"):
+        return f"{check.get('animations')} of {check.get('animations_expected')} animations running"
+    return None
 
 
 def reference_run(c):
@@ -204,10 +224,11 @@ def reference_summary(runs):
         rs = [r["tiers"][t] for r in runs if t in r["tiers"] and not r["tiers"][t].get("error")]
         if not rs:
             continue
-        fr = [x["frames"] for x in rs]
+        fr = [x["frames"] for x in rs if x["frames"]]
         tiers[t] = {
             "frames": {k: P.spread([f.get(k) for f in fr]) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")},
-            "sources": sorted({x["source"] for x in rs}),
+            "frames_errors": [x["frames_error"] for x in rs if x.get("frames_error")],
+            "sources": sorted({x["source"] for x in rs if x["frames"]}),
             "limited_by": sorted({x["limited_by"] for x in rs if x["limited_by"]}),
             "inp_ms": P.spread([x["inp_ms"] for x in rs]),
             "input_method": sorted({x["input_method"] for x in rs if x["input_method"]}),
@@ -248,10 +269,13 @@ def headline(name, g, ref):
     """'Aqara S1 Plus: C, good for typical dashboards. Busy animated dashboards drop to about 13 fps.'"""
     out = f"{name}: {g['grade']}, {g['meaning']}."
     tiers = (ref or {}).get("tiers") or {}
+    # The first tier (busiest first) that isn't smooth: its average rate and how many frames were late,
+    # so "55 fps" next to a band that isn't good doesn't read as smooth.
     for t, label in (("busy", "Busy animated"), ("typical", "Typical"), ("light", "Light")):
         if g["bands"][t]["frames"] not in (G.GOOD, None) and tiers.get(t):
-            fps = tiers[t]["frames"]["fps"]
-            out += f" {label} dashboards drop to about {fps['median']:.0f} fps." if fps else ""
+            fps, jank = tiers[t]["frames"]["fps"], tiers[t]["frames"]["jank_pct"]
+            if fps and jank:
+                out += f" {label} dashboards average about {fps['median']:.0f} fps, with {jank['median']:.0f}% of frames late."
             break
     slow = [f"{t} {m}" for t in G.TIERS for m in ("inp", "load") if g["bands"][t][m] == G.POOR]
     if slow:
@@ -522,6 +546,8 @@ def markdown(rep):
                     f"{', '.join(ref['launch']) or 'n/a'}). Android's TTID {fmt(ref['android_ttid_ms'], ' ms')}: the first "
                     "frame of the kiosk's loading screen; not graded."]
         for t, s in ref["tiers"].items():
+            if s["frames_errors"]:
+                out.append(f"{t}: frames not measured in {len(s['frames_errors'])} run(s) ({'; '.join(sorted(set(s['frames_errors'])))}).")
             if s["load_errors"]:
                 out.append(f"{t}: load not measured in {len(s['load_errors'])} run(s) ({'; '.join(sorted(set(s['load_errors'])))}).")
         if ref["errors"]:

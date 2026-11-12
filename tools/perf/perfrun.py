@@ -288,6 +288,7 @@ def cmd_coldstart(dev, a):
                 dev.wake()
             elif t == "measure":
                 measure_mono = rec["mono"]
+                entry["measure"] = pl
             elif t == "step" and measure_mono is not None:
                 p, ts = dev.sf()
                 # The page's own window length: the step line itself lands a little later.

@@ -13,7 +13,8 @@ the frame handles well**:
 | E | Slow even on light dashboards |
 
 The report opens with one line such as "Aqara S1 Plus: C, good for typical dashboards. Busy
-animated dashboards drop to about 13 fps." (an example of the format, not a measured result).
+animated dashboards average about 13 fps, with 90% of frames late." (an example of the format, not a
+measured result).
 
 The grade is measured on three fixed **reference dashboards** that this test ships: light, typical
 and busy. They are seeded and load nothing from the network. So the grade doesn't change when your
@@ -77,24 +78,40 @@ tools/perf/report.py <dir>` rebuilds the report from the raw files at any time, 
 
 ## The reference dashboards
 
-`tools/perf/page/dashboard.html?tier=…` renders a fixed Home Assistant-like dashboard: 44 cards
-(weather, a "Living room" toggle, 12 entities cards with 6 rows each, 24 tiles, 4 sensor cards with a
-line chart, 2 gauges), about 1150 elements counted with the cards' shadow roots (headless Chrome,
-2026-11-12). Each card is a custom element with its own shadow root, and each row nests icon, name
-and state the way HA's rows do. It renders from a seeded 400-entity states payload after the page
-loads, as HA's frontend does. The icons are simple SVGs drawn for it, the font is the system font,
-and nothing comes from the network. The three tiers add to it (`tools/perf/page/tiers.js`):
+`tools/perf/page/dashboard.html?tier=…` renders a fixed Home Assistant-like dashboard. A **live
+strip** of small cards sits at the top, under the tabs. It holds everything that moves or changes
+once the page is live, so all of it is on screen on any frame. Below it are 44 static cards (a
+"Living room" toggle, weather, 12 entities cards with 6 rows each, 24 tiles, 4 sensor cards with a
+line chart, 2 gauges). Each card is a custom element with its own shadow root, and each row nests
+icon, name and state the way HA's rows do. The page renders from a seeded 400-entity states payload
+after it loads, as HA's frontend does. The icons are simple SVGs drawn for it, the font is the
+system font, and nothing comes from the network. With the strip, the pages have 1185 (light), 1248
+(typical) and 1491 (busy) elements, counted with the shadow roots (headless Chrome, 2026-11-12). The
+three tiers fill the strip (`tools/perf/page/tiers.js`):
 
 | Tier | What it adds | Stands for |
 |---|---|---|
-| **Light** | Nothing animates. 5 states change every 2 s | Most dashboards: cards, icons and text. A real one on the S1 presented about 0.1 frames/s at idle |
+| **Light** | 5 sensor chips whose states change every 2 s. Nothing animates | Most dashboards: cards, icons and text. A real one on the S1 presented about 0.1 frames/s at idle |
 | **Typical** | Light, plus 4 spinning fan icons, 2 pulsing icons, a progress ring and a clock that ticks every second | A dashboard with HA's default animated bits |
-| **Busy** | Typical, plus 6 more spinners, a line chart redrawn every frame, and a tenth of 24 tiles updating their numbers every frame | Many animations and frequent updates (the test page's old reference load) |
+| **Busy** | Typical, plus 6 more spinners, a line chart redrawn every frame, and 24 chips of which a tenth update their numbers every frame | Many animations and frequent updates (the test page's old reference load) |
+
+**Why the strip.** Gecko doesn't run CSS animations that are off screen. In the first version the
+animated cards came after the static ones. On the S1's 960 × 480 CSS viewport that put them all
+below the fold, so Typical showed a still page apart from its clock. SurfaceFlinger saw 3 frames in
+1.67 s, and the report read that as frozen frames: p95 1017 ms, 2.4 fps (the S1 smoke run of 6f32a54,
+2026-11-12). On the S1's viewport the strip ends at about 270 CSS px on Busy.
+
+**The live check.** When the measured window starts, the page logs how many of its moving elements
+and its toggle are off screen, and how many of its CSS animations are running. A tier's frames are
+graded only when nothing is off screen and every expected animation runs (Typical 7, Busy 13).
+Otherwise its frames are "not measured", and the grade is provisional. If the toggle is off screen,
+its taps aren't graded either. So a frame with a small or narrow screen can't get a still page read
+as a frozen one.
 
 Each page runs the same phases:
 1. It renders while still, so its load can end. It reports its load times.
 2. It stays still for 2 s, then goes live: the tier's updates and animations start.
-3. Warm-up of 1 s, then one measured window of 100 display refreshes (1.67 s at 60 Hz).
+3. Warm-up of 1 s, the live check, then one measured window of 100 display refreshes (1.67 s at 60 Hz).
 4. The taps on the toggle, while the tier stays live.
 
 The tiers, the card mix and the DOM size are **project choices**. They were fixed before any frame
@@ -180,8 +197,9 @@ The first letter whose every requirement holds is the grade:
 not an A or B panel, however well it renders afterwards. A cap never raises a letter.
 
 A measurement that is missing fails whatever needs it, and the grade is marked **provisional**,
-with what is missing listed. The headline adds why the letter isn't higher. It gives the fps the
-next tier up drops to, names any poor INP or load, and says if the start capped it.
+with what is missing listed. The headline adds why the letter isn't higher. For the busiest tier
+that isn't smooth, it gives the average fps and the share of frames that were late. It names any
+poor INP or load, and says if the start capped it.
 
 `tools/perf/grade.py` holds this table (`LETTERS`). `tools/perf/test/test_grade.py` checks each
 letter's boundary: a frame that just meets a letter gets it, and moving any one requirement past its
@@ -369,6 +387,13 @@ These read-only checks were done on the S1 on 2026-11-12 (kiosk 0.4.3, GeckoView
   GeckoView's `about:blank` follows about 3 s later, and the dashboard's `PageStart` about 1.5 s
   after that. An `open` sent at `Displayed` was dropped (the full run of 12e7172, 09:29 panel time):
   the session wasn't up yet.
+
+The smoke run of 6f32a54 (`--quick`, one run) found the off-screen animations described under
+[The reference dashboards](#the-reference-dashboards). Its test page ladder also showed how much one
+run varies at a band's edge. At 16 spinning boxes, SurfaceFlinger presented 47 frames in the window,
+evenly spread, against 78 in each of the three runs of the earlier full run, at similar temperatures
+and load. Quick mode measures the same way as a full run; the difference is the compositor's rate
+from run to run. Read ladder counts from a full run's median, not from one quick run.
 
 A `--quick` smoke run (one run, 2026-11-12, an earlier version with a 2 s window) showed the test
 page working through GeckoView. Its lines reached logcat and the JS checksum matched. At 128

@@ -148,6 +148,55 @@ class StartOnTheS1(unittest.TestCase):
         self.assertEqual(r["app_start_to_dashboard_ms"] + r["dashboard_load_ms"], round((stop * 1000 + 11518) - 12741.99 * 1000))
 
 
+class TypicalOnTheS1(unittest.TestCase):
+    """The S1 smoke run of 6f32a54 (2026-11-12): Typical read p95 1017 ms, 2.4 fps, because its
+    spinners, pulses, ring and clock were below the fold of the 960x480 CSS viewport. Gecko doesn't
+    run CSS animations off screen, so SurfaceFlinger saw only the clock's tick. These are that run's
+    numbers: window 1668 ms, 3 frames presented (gaps of 1015.5 and 16.6 ms), rAF 100 frames at 60 fps."""
+
+    def entry(self, check):
+        w0 = 23445480.0
+        e = tier_entry("typical", 0, 40)
+        e["step"]["raf"] = {"n": 100, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0, "fps": 60.07}
+        e["step"]["sf"] = {"period_ms": 16.666666, "window_ms": [w0, w0 + 1668], "oldest_ms": 23410021.0,
+                           "presents_ms": [23445529.0, 23446544.5, 23446561.1]}
+        if check is None:
+            del e["measure"]
+        else:
+            e["measure"] = dict({"t": "measure"}, **check)
+        return e
+
+    def test_the_old_page_without_a_live_check_is_not_graded(self):
+        r = R.tier_run("typical", self.entry(None), load_frames())
+        self.assertIsNone(r["frames"])
+        self.assertEqual(r["frames_error"], "no live check (a page from before it was added)")
+
+    def test_animations_off_screen_are_not_graded(self):
+        r = R.tier_run("typical", self.entry({"moving": 14, "offscreen": 8, "animations": 0, "animations_expected": 7}), load_frames())
+        self.assertIsNone(r["frames"])
+        self.assertIsNone(r["inp_ms"])
+        self.assertIn("off screen (8 of 14)", r["frames_error"])
+
+    def test_animations_not_running_are_not_graded(self):
+        r = R.tier_run("typical", self.entry({"moving": 14, "offscreen": 0, "animations": 0, "animations_expected": 7}), load_frames())
+        self.assertEqual(r["frames_error"], "0 of 7 animations running")
+
+    def test_with_everything_on_screen_and_running_a_gap_is_a_real_stall(self):
+        r = R.tier_run("typical", self.entry({"moving": 14, "offscreen": 0, "animations": 7, "animations_expected": 7}), load_frames())
+        self.assertEqual(r["frames"]["p95_ms"], 1016.67)
+        self.assertEqual(G.frame_band(r["frames"]), G.POOR)
+
+    def test_the_grade_marks_typical_frames_missing_instead_of_poor(self):
+        run = refstart(1, 40)
+        run["tiers"]["typical"] = self.entry(None)
+        refs = R.reference_summary([R.reference_run(run)])
+        tiers, start = R.grade_inputs({"reference": refs})
+        g = G.grade(tiers, start)
+        self.assertIsNone(g["bands"]["typical"]["frames"])
+        self.assertIn("typical.frames", g["missing"])
+        self.assertTrue(g["provisional"])
+
+
 class ReferenceLoad(unittest.TestCase):
     """The graded load is a number only when it could be measured; never 0 by default."""
 
@@ -244,6 +293,7 @@ def synthetic_lines(run, js_ms):
 
 
 NAV = {"light": 30.0, "typical": 40.0, "busy": 50.0}   # when each reference dashboard starts, s
+ANIMATIONS = {"light": 0, "typical": 7, "busy": 13}
 
 
 def tier_entry(tier, missed, inp, load_ms=200, fcp_ms=150):
@@ -258,6 +308,7 @@ def tier_entry(tier, missed, inp, load_ms=200, fcp_ms=150):
             "page": {"t": "refdash", "tier": tier, "nodes": 1144, "fcp_ms": fcp_ms, "load_ms": load_ms,
                      "origin_epoch_ms": 1e12 + nav * 1000, "epoch_ms": 1e12 + nav * 1000 + 1000, "mono": nav + 1.0},
             "live_mono": nav + 3.0, "step": st,
+            "measure": {"t": "measure", "moving": 14, "offscreen": 0, "animations": ANIMATIONS[tier], "animations_expected": ANIMATIONS[tier]},
             "input": {"t": "input", "method": "event-timing", "taps": 10, "inp_ms": inp}}
 
 
@@ -347,7 +398,7 @@ class Build(unittest.TestCase):
         self.assertEqual(g["start"], {"value": 800, "band": "good"})   # process 20.0 s -> engine 20.7 to 20.9 s
         self.assertFalse(g["provisional"])
         self.assertEqual(g["headline"], "test-frame: B, good for typical dashboards; busy ones stay fluid. "
-                                        "Busy animated dashboards drop to about 51 fps.")
+                                        "Busy animated dashboards average about 51 fps, with 17% of frames late.")
         ref = self.rep["graded"]["reference"]
         self.assertEqual(ref["tiers"]["light"]["load_ms"]["median"], 400)   # navigation -> last paint at 0.4 s
         self.assertEqual(ref["tiers"]["light"]["inp_ms"]["median"], 150)

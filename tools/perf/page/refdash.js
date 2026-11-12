@@ -56,6 +56,10 @@
     .big { font-size: 34px; font-weight: 300; padding: 4px 16px; font-variant-numeric: tabular-nums; }
     .fc { display: flex; justify-content: space-between; padding: 8px 16px 14px; font-size: 12px; color: var(--muted); }
     svg.chart, canvas.chart { display: block; width: 100%; height: 70px; }
+    .chip { display: flex; align-items: center; gap: 6px; padding: 4px 8px; height: 30px; font-size: 12px; white-space: nowrap; overflow: hidden; }
+    .chip .v { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .chip svg { flex: none; }
+    canvas.spark { display: block; width: 100%; height: 38px; }
     :host([live]) .spin svg { animation: spin 1.2s linear infinite; }
     :host([live]) .pulse svg { animation: pulse 0.9s ease-in-out infinite alternate; }
     :host([live]) .ring circle.arc { animation: ring 2s linear infinite; }
@@ -123,34 +127,65 @@
     return card(`<h2>Forecast</h2><div class="big">${icon("sun", true)} 18 °C</div><div class="fc">${days}</div>`);
   }
 
-  const live = { rows: [], tiles: [], clock: null, canvas: null, toggle: null };
+  const live = { rows: [], chips: [], frameChips: [], clock: null, canvas: null, toggle: null };
 
+  // A small card in the live strip: icon, name, value. `motion` is "spin" or "pulse".
+  function chip(iconName, name, value, motion) {
+    return card(`<div class="chip"><span class="${motion || ""}">${icon(iconName, true)}</span><span>${name}</span>
+      <span class="v">${value}</span></div>`);
+  }
+
+  // Everything that moves or changes once the page is live sits in a strip at the top, so it is on
+  // screen on any frame: Gecko doesn't run CSS animations that are off screen, and a page whose
+  // animations don't run would read as a frozen screen. The static cards follow.
   function render() {
     const rnd = W.mulberry32(SEED);
     const states = JSON.parse(W.makeStates(SEED, 400, 0));
     document.getElementById("tabs").innerHTML = "<b>Home</b><span>Energy</span><span>Climate</span><span>Media</span><span>Security</span>";
+    const strip = document.getElementById("strip");
+    const add = (el, wide) => { if (wide) el.classList.add("wide"); strip.appendChild(el); live.chips.push(el); return el; };
+    for (let i = 0; i < SPEC.updatesPerTick; i++) add(chip("therm", `Sensor ${i + 1}`, stateText(states[i * 6])));
+    for (let i = 0; i < SPEC.spinners; i++) add(chip("fan", `Fan ${i + 1}`, "on", "spin"));
+    for (let i = 0; i < SPEC.pulses; i++) add(chip("bolt", `Alert ${i + 1}`, "on", "pulse"));
+    if (SPEC.ring) {
+      add(card(`<div class="chip ring"><svg viewBox="0 0 100 100" width="24" height="24">
+        <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="14"/>
+        <circle class="arc" cx="50" cy="50" r="40" fill="none" stroke="var(--accent)" stroke-width="14" stroke-dasharray="251" stroke-dashoffset="125"/></svg>
+        <span>Washer</span></div>`));
+    }
+    if (SPEC.clock) live.clock = add(chip("sun", "Time", "12:00:00"));
+    for (let i = 0; i < SPEC.frameTiles; i++) live.frameChips.push(add(chip("plug", `Plug ${i + 1}`, "0.0 W")));
+    if (SPEC.sparkline) live.canvas = add(card(`<canvas class="spark" width="576" height="76"></canvas>`), true).shadowRoot.querySelector("canvas");
+
     const view = document.getElementById("view");
     const cols = [0, 1, 2, 3].map(() => { const c = document.createElement("div"); c.className = "col"; view.appendChild(c); return c; });
     let k = 0;
     const put = (el) => { cols[k++ % cols.length].appendChild(el); return el; };
-    put(weatherCard(rnd));
     live.toggle = put(tileCard({ entity_id: "light.living_room", state: "off", attributes: { friendly_name: "Living room" } }));
+    put(weatherCard(rnd));
     for (let i = 0; i < 12; i++) live.rows.push(put(entitiesCard(`Room ${i + 1}`, states.slice(i * 6, i * 6 + 6))));
-    for (let i = 0; i < 24; i++) {
-      const motion = i < SPEC.spinners ? "spin" : i < SPEC.spinners + SPEC.pulses ? "pulse" : "";
-      live.tiles.push(put(tileCard(states[80 + i], motion === "spin" ? "fan" : null, motion)));
-    }
+    for (let i = 0; i < 24; i++) put(tileCard(states[80 + i]));
     for (let i = 0; i < 4; i++) put(sensorCard(states[i * 6], rnd));
     put(gaugeCard("Battery", 72));
     put(gaugeCard("Humidity", 48));
-    if (SPEC.ring) put(card(`<h2>Washing machine</h2><svg class="ring" viewBox="0 0 100 100" style="display:block;width:120px;height:120px;margin:4px auto 12px">
-      <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="10"/>
-      <circle class="arc" cx="50" cy="50" r="40" fill="none" stroke="var(--accent)" stroke-width="10" stroke-dasharray="251" stroke-dashoffset="125"/></svg>`));
-    if (SPEC.clock) live.clock = put(card(`<h2>Time</h2><div class="big">12:00:00</div>`));
-    if (SPEC.sparkline) {
-      const c = put(card(`<h2>Power</h2><canvas class="chart" width="600" height="140"></canvas>`));
-      live.canvas = c.shadowRoot.querySelector("canvas");
+  }
+
+  // What the runner needs to trust the frames: is everything that should move on screen, and are the
+  // CSS animations really running?
+  function liveCheck() {
+    const inView = (el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth;
+    };
+    const moving = live.chips.concat([live.toggle]);
+    let running = 0;
+    for (const c of live.chips) {
+      for (const el of c.shadowRoot.querySelectorAll(".spin svg, .pulse svg, .ring circle.arc")) {
+        if (el.getAnimations().some((a) => a.playState === "running")) running++;
+      }
     }
+    return { moving: moving.length, offscreen: moving.filter((el) => !inView(el)).length,
+             animations: running, animations_expected: SPEC.spinners + SPEC.pulses + (SPEC.ring ? 1 : 0) };
   }
 
   function nodeCount() {
@@ -194,17 +229,15 @@
       tick++;
       const states = JSON.parse(W.makeStates(SEED, 400, tick));
       for (let i = 0; i < SPEC.updatesPerTick; i++) {
-        const cardEl = live.rows[(tick + i) % live.rows.length];
-        const v = cardEl.shadowRoot.querySelectorAll(".value")[i % 6];
-        v.textContent = stateText(states[(tick * 7 + i) % states.length]);
+        live.chips[i].shadowRoot.querySelector(".v").textContent = stateText(states[(tick * 7 + i * 6) % states.length]);
       }
     }, SPEC.updateEveryMs);
     if (live.clock) {
       let sec = 0;
-      const big = live.clock.shadowRoot.querySelector(".big");
-      setInterval(() => { sec++; big.textContent = `12:${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`; }, 1000);
+      const v = live.clock.shadowRoot.querySelector(".v");
+      setInterval(() => { sec++; v.textContent = `12:${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`; }, 1000);
     }
-    const tileStates = live.tiles.slice(0, SPEC.frameTiles).map((t) => t.shadowRoot.querySelector(".state"));
+    const tileStates = live.frameChips.map((t) => t.shadowRoot.querySelector(".v"));
     const g = live.canvas && live.canvas.getContext("2d");
     let k = 0;
     const per = Math.max(1, Math.ceil(SPEC.frameTiles / 10));
@@ -214,12 +247,12 @@
         tileStates[i].textContent = ((i * 37 + k * 0.37) % 100).toFixed(1) + " W";
       }
       if (g) {
-        g.clearRect(0, 0, 600, 140);
+        g.clearRect(0, 0, 576, 76);
         g.strokeStyle = "#03a9f4";
         g.lineWidth = 3;
         g.beginPath();
         for (let i = 0; i < 64; i++) {
-          const x = (i / 63) * 600, y = 70 + 45 * Math.sin(ts / 500 + i / 5);
+          const x = (i / 63) * 576, y = 38 + 30 * Math.sin(ts / 500 + i / 5);
           if (i) g.lineTo(x, y); else g.moveTo(x, y);
         }
         g.stroke();
@@ -233,7 +266,7 @@
   async function frames(state) {
     log({ t: "warmup", stage: TIER, n: 1 });
     await sleep(T.PHASES.warmupMs);
-    log({ t: "measure", stage: TIER, n: 1 });
+    log(Object.assign({ t: "measure", stage: TIER, n: 1 }, liveCheck()));
     const t0 = performance.now();
     state.stamps = [];
     state.measuring = true;
