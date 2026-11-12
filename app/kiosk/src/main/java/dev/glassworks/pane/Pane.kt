@@ -10,14 +10,26 @@ import sh.edm.esphome.ApiServer
 import sh.edm.esphome.DeviceIdentity
 import sh.edm.s1kiosk.KioskPrefs
 
-/** Something on the panel that panes may react to. Delivered on any thread. */
-sealed interface PanelEvent {
+/**
+ * Something on the panel that panes may react to. Delivered on any thread. Not sealed: a pane ignores
+ * the events it does not know, so adding an event does not change any other pane.
+ */
+interface PanelEvent {
     /** A panel setting changed (the SharedPreferences key). */
     data class SettingChanged(val key: String?) : PanelEvent
 
     /** Voice or an announcement holds the speaker (true) or let it go (false): other audio goes quiet locally. */
     data class SpeakerClaimed(val claimed: Boolean) : PanelEvent
+
+    /** A timer reached zero. [name] is what Home Assistant sent ("" when unnamed). */
+    data class TimerFinished(val name: String) : PanelEvent
+
+    /** The timers that are running or paused now, as the voice assistant reports them. Replaces the previous list. */
+    data class TimersChanged(val timers: List<PanelTimer>) : PanelEvent
 }
+
+/** One voice timer as Home Assistant reports it. */
+data class PanelTimer(val id: String, val name: String, val totalSeconds: Int, val secondsLeft: Int, val active: Boolean)
 
 /** What the shell gives a pane when it builds it. */
 class PaneContext(
