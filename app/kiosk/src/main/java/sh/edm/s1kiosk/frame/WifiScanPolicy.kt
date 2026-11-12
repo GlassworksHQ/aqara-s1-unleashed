@@ -79,18 +79,27 @@ class WifiScanPolicy(
 
     private fun notBeforeGap(t: Long) = lastScanAt?.let { maxOf(t, it + minGapMs) } ?: t
 
+    /** Why Android refused a scan, as [refusal] tells it. */
+    enum class Refusal(val text: String) {
+        NO_PERMISSION("no location permission"),
+        LOCATION_OFF("location off"),
+        FOREGROUND_ONLY("location not allowed in the background (app-op foreground-only)"),
+        DOZE("device idle (Doze)"),
+        THROTTLED("throttled"),
+    }
+
     companion object {
         /**
          * Why Android refused a scan, from what the app can read. Android 10 checks the permission,
          * then location on, then the location app-op, which with a granted permission is allowed
          * in the foreground only. Throttling is what is left.
          */
-        fun refusal(permission: Boolean, locationOn: Boolean, opAllowed: Boolean, deviceIdle: Boolean): String = when {
-            !permission -> "no location permission"
-            !locationOn -> "location off"
-            !opAllowed -> "location not allowed in the background (app-op foreground-only)"
-            deviceIdle -> "device idle (Doze)"
-            else -> "throttled"
+        fun refusal(permission: Boolean, locationOn: Boolean, opAllowed: Boolean, deviceIdle: Boolean): Refusal = when {
+            !permission -> Refusal.NO_PERMISSION
+            !locationOn -> Refusal.LOCATION_OFF
+            !opAllowed -> Refusal.FOREGROUND_ONLY
+            deviceIdle -> Refusal.DOZE
+            else -> Refusal.THROTTLED
         }
     }
 }
