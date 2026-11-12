@@ -363,8 +363,10 @@ The original design notes:
 - **PKCE.** The callback is plain HTTP on the LAN, so both sign-ins (this one and the Thread join's
   admin sign-in) use PKCE (RFC 7636, S256). Each attempt gets a fresh secret that stays on the panel.
   HA gets its hash at `/auth/authorize` and the secret itself at `/auth/token`, so a code read off the
-  network can't be redeemed by anyone else. HA checks it from 2026.10 on (verified against 2026.11.0,
-  2026-11-11); older versions ignore it and sign in as before.
+  phone-to-panel callback can't be redeemed by anyone else. It doesn't protect the panel's own request
+  to HA: if HA is on plain `http://`, that request and its tokens can be read on the network as before.
+  HA checks PKCE from 2026.10 on (verified against 2026.11.0, 2026-11-11); older versions ignore it and
+  sign in as before.
 - **External auth bridge.** The HA frontend supports being embedded by an app that owns the tokens.
   This is how the Companion app avoids the login page. Load the dashboard with
   `?external_auth=1` and expose `window.externalApp.getExternalAuth()/revokeExternalAuth()` (our
