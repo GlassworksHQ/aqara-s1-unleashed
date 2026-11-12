@@ -1,6 +1,9 @@
-package sh.edm.s1kiosk
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import android.annotation.SuppressLint
+package dev.glassworks.screen
+
 import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -8,51 +11,53 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.database.ContentObserver
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import java.util.Calendar
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.log10
 
 /**
- * Screen policy driven by the panel's own sensors, replacing Aqara's DND/idle logic.
+ * When the screen is on and how bright it is, from the frame's [presence] and [light] sources.
  *
- * Hardware (from `dumpsys sensorservice`):
- *  - "vi5300 Proximity Sensor" (ST VL53L-class time-of-flight, wake-up sensor). The Lumi HAL reports
- *    `1.0` when something is closer than the threshold in `settings secure proximity_threshold`,
- *    otherwise a larger value. The threshold is programmed by com.lumi.systemmanager.
- *  - "mk6212 Ambient Light Sensor" (lux).
- *
- * Policy:
  *  - Approaching the panel wakes the screen, and it stays on while someone is near.
  *  - After `idleOffSec` with nobody near and no touch, the screen turns off
  *    (`nightIdleOffSec` inside the night window).
  *  - Brightness follows ambient light (log curve), capped lower at night.
  *
- * Turning the screen off uses DevicePolicyManager.lockNow() when the app is an active device admin
- * (`adb shell dpm set-active-admin sh.edm.s1kiosk/.AdminReceiver`). Otherwise it
- * releases KEEP_SCREEN_ON and lets the system screen_off_timeout expire.
+ * Turning the screen off uses DevicePolicyManager.lockNow() when [admin] is an active device admin.
+ * Otherwise it releases KEEP_SCREEN_ON and lets the system screen_off_timeout expire.
+ *
+ * One per process (on the app's runtime). Everything runs on the main thread unless a member says otherwise.
  */
-@SuppressLint("StaticFieldLeak")
-object ScreenController : SensorEventListener {
-    private const val TAG = "S1Kiosk.Screen"
-    private const val TICK_MS = 1000L
+class ScreenPolicy(
+    private val presence: PresenceSource?,
+    private val light: LightSource?,
+    /** The app's DeviceAdminReceiver. */
+    private val admin: Class<*>,
+    private val settings: (Context) -> ScreenSettings,
+    /** The logcat tag. The app picks it, so its existing log filters keep working. */
+    private val logTag: String,
+    /** The wake lock's tag, as `dumpsys power` shows it. */
+    private val wakeLockTag: String,
+) {
+    private companion object {
+        const val TICK_MS = 1000L
+    }
 
     private lateinit var ctx: Context
-    private lateinit var prefs: KioskPrefs
+    private lateinit var prefs: ScreenSettings
     private lateinit var pm: PowerManager
     private lateinit var dpm: DevicePolicyManager
-    private lateinit var admin: ComponentName
+    private lateinit var adminComponent: ComponentName
     private val handler = Handler(Looper.getMainLooper())
     private var started = false
+    private var brightnessObserver: ContentObserver? = null
 
-    // --- live state (read by the settings dialog / web extension)
+    // --- live state, readable from any thread
     @Volatile var near = false; private set
     @Volatile var proximityRaw = Float.NaN; private set
     @Volatile var lux = Float.NaN; private set
@@ -69,7 +74,7 @@ object ScreenController : SensorEventListener {
     var onStateChanged: (() -> Unit)? = null
 
     /** Extra state listeners (e.g. the ESPHome API), fired with [onStateChanged]; main thread. */
-    private val listeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+    private val listeners = CopyOnWriteArrayList<() -> Unit>()
 
     fun addListener(l: () -> Unit) { listeners += l }
     fun removeListener(l: () -> Unit) { listeners -= l }
@@ -85,22 +90,15 @@ object ScreenController : SensorEventListener {
         if (started) return
         started = true
         ctx = context.applicationContext
-        prefs = KioskPrefs(ctx)
+        prefs = settings(ctx)
         pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
         dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        admin = ComponentName(ctx, AdminReceiver::class.java)
+        adminComponent = ComponentName(ctx, admin)
+        lastActivity = SystemClock.elapsedRealtime()
         screenOn = pm.isInteractive
         watchSystemBrightness()
-
-        val sm = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        sm.getDefaultSensor(Sensor.TYPE_PROXIMITY)?.let {
-            Log.i(TAG, "proximity: ${it.name} vendor=${it.vendor} max=${it.maximumRange} wakeUp=${it.isWakeUpSensor}")
-            sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
-        }
-        sm.getDefaultSensor(Sensor.TYPE_LIGHT)?.let {
-            Log.i(TAG, "light: ${it.name} vendor=${it.vendor} max=${it.maximumRange}")
-            sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
-        }
+        presence?.start(ctx, ::onPresence)
+        light?.start(ctx, ::onLux)
         ctx.registerReceiver(screenReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -109,31 +107,28 @@ object ScreenController : SensorEventListener {
         handler.post(tick)
     }
 
-    /** Lumi's threshold table (index -> decimetres), from com.lumi.systemmanager Monitor.java. */
-    private val RANGE_DM = intArrayOf(0, 1, 2, 4, 6, 8, 10, 12, 15, 20, 25)
-
-    /**
-     * Program the VI5300 presence range. com.lumi.systemmanager observes
-     * `secure proximity_threshold` (an index into RANGE_DM) and writes it to the sensor driver.
-     * Needs WRITE_SECURE_SETTINGS (granted over adb); silently skipped otherwise.
-     */
-    fun applyPresenceRange() {
-        val m = prefs.presenceRangeM
-        if (m <= 0f) return
-        val dm = (m * 10).toInt()
-        val idx = RANGE_DM.indices.minByOrNull { kotlin.math.abs(RANGE_DM[it] - dm) } ?: return
-        try {
-            android.provider.Settings.Secure.putInt(ctx.contentResolver, "proximity_threshold", idx)
-            Log.i(TAG, "presence range ${m}m -> proximity_threshold=$idx (${RANGE_DM[idx] / 10.0} m)")
-        } catch (e: SecurityException) {
-            Log.w(TAG, "No WRITE_SECURE_SETTINGS; can't set presence range")
-        }
+    /** Undoes [start]: the sensors, the screen broadcasts, the brightness observer and the tick. [start] may run again. */
+    fun stop() {
+        if (!started) return
+        started = false
+        handler.removeCallbacks(tick)
+        presence?.stop(ctx)
+        light?.stop(ctx)
+        // start() may have thrown before it registered the receiver.
+        runCatching { ctx.unregisterReceiver(screenReceiver) }
+        brightnessObserver?.let { ctx.contentResolver.unregisterContentObserver(it) }
+        brightnessObserver = null
     }
 
-    val isAdmin: Boolean get() = started && dpm.isAdminActive(admin)
+    /** Passes the saved presence range to the presence source. */
+    fun applyPresenceRange() {
+        if (started) presence?.setRange(ctx, prefs.presenceRangeM)
+    }
+
+    val isAdmin: Boolean get() = started && dpm.isAdminActive(adminComponent)
 
     fun removeAdmin() {
-        if (isAdmin) dpm.removeActiveAdmin(admin)
+        if (isAdmin) dpm.removeActiveAdmin(adminComponent)
     }
 
     /** Touch / page interaction / voice activity. */
@@ -154,27 +149,27 @@ object ScreenController : SensorEventListener {
     }
 
     fun wake(reason: String) {
-        Log.i(TAG, "wake ($reason)")
+        Log.i(logTag, "wake ($reason)")
         lastActivity = SystemClock.elapsedRealtime()
         setKeepOn(true)
         if (!pm.isInteractive) {
             @Suppress("DEPRECATION")
             val wl = pm.newWakeLock(
                 PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                    PowerManager.ON_AFTER_RELEASE, "s1kiosk:wake"
+                    PowerManager.ON_AFTER_RELEASE, wakeLockTag
             )
             wl.acquire(3000)
         }
     }
 
     fun sleep(reason: String) {
-        Log.i(TAG, "sleep ($reason) admin=$isAdmin")
+        Log.i(logTag, "sleep ($reason) admin=$isAdmin")
         if (isAdmin) {
             try {
                 dpm.lockNow()
                 return
             } catch (e: SecurityException) {
-                Log.w(TAG, "lockNow failed", e)
+                Log.w(logTag, "lockNow failed", e)
             }
         }
         // Fallback: let the system timeout turn the screen off.
@@ -207,7 +202,7 @@ object ScreenController : SensorEventListener {
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             screenOn = i.action == Intent.ACTION_SCREEN_ON
-            Log.i(TAG, "screen ${if (screenOn) "ON" else "OFF"}")
+            Log.i(logTag, "screen ${if (screenOn) "ON" else "OFF"}")
             if (screenOn) {
                 lastActivity = SystemClock.elapsedRealtime()
                 setKeepOn(true)
@@ -216,31 +211,24 @@ object ScreenController : SensorEventListener {
         }
     }
 
-    override fun onSensorChanged(e: SensorEvent) {
-        when (e.sensor.type) {
-            Sensor.TYPE_PROXIMITY -> {
-                proximityRaw = e.values[0]
-                val nowNear = e.values[0] == 1f
-                if (nowNear != near) {
-                    near = nowNear
-                    Log.i(TAG, "presence ${if (near) "NEAR" else "far"} (raw=${e.values[0]})")
-                    if (near) {
-                        lastActivity = SystemClock.elapsedRealtime()
-                        if (!screenOn && prefs.wakeOnApproach) wake("approach")
-                    }
-                    notifyChanged()
-                }
-            }
-            Sensor.TYPE_LIGHT -> {
-                val prev = lux
-                lux = e.values[0]
-                updateBrightness()
-                if (prev.isNaN() || kotlin.math.abs(prev - lux) > maxOf(5f, prev * 0.2f)) notifyChanged()
-            }
+    private fun onPresence(nowNear: Boolean, raw: Float) {
+        proximityRaw = raw
+        if (nowNear == near) return
+        near = nowNear
+        Log.i(logTag, "presence ${if (near) "NEAR" else "far"} (raw=$raw)")
+        if (near) {
+            lastActivity = SystemClock.elapsedRealtime()
+            if (!screenOn && prefs.wakeOnApproach) wake("approach")
         }
+        notifyChanged()
     }
 
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    private fun onLux(value: Float) {
+        val prev = lux
+        lux = value
+        updateBrightness()
+        if (prev.isNaN() || kotlin.math.abs(prev - lux) > maxOf(5f, prev * 0.2f)) notifyChanged()
+    }
 
     /** Re-applies the brightness policy after a settings change (main thread). */
     fun refreshBrightness() {
@@ -256,17 +244,19 @@ object ScreenController : SensorEventListener {
     private fun watchSystemBrightness() {
         val startedAt = SystemClock.elapsedRealtime()
         val uri = android.provider.Settings.System.getUriFor(android.provider.Settings.System.SCREEN_BRIGHTNESS)
-        ctx.contentResolver.registerContentObserver(uri, false, object : ContentObserver(Handler(Looper.getMainLooper())) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
                 if (SystemClock.elapsedRealtime() - startedAt < 30_000) return // boot-time writes by the firmware
                 if (!prefs.autoBrightness && prefs.manualBrightness <= 0f) return // already following the system
-                Log.i(TAG, "system brightness slider moved: following it (auto brightness off)")
+                Log.i(logTag, "system brightness slider moved: following it (auto brightness off)")
                 prefs.autoBrightness = false
                 prefs.manualBrightness = 0f // <= 0: no window override, i.e. the system value
                 refreshBrightness()
                 notifyChanged()
             }
-        })
+        }
+        ctx.contentResolver.registerContentObserver(uri, false, observer)
+        brightnessObserver = observer
     }
 
     /** Fixed brightness from Home Assistant: turns auto brightness off (main thread). */

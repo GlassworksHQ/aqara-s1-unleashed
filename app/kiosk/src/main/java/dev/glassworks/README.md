@@ -58,6 +58,7 @@ change until Glassworks v1.
 | `PaneContext` | What the core gives a pane: the app context, `prefs(namespace)` for its settings, the device identity, `publishStates()`, `emit()`, `entitiesChanged()` and `sendEvent()`. |
 | `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished, Home Assistant subscribed. A pane raises one with `PaneContext.emit`. |
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
+| `ScreenPolicy` | (`dev.glassworks.screen`) Wake on approach, idle off, the night window and its timeout, the brightness curve and the screen mode. It reads the frame's `PresenceSource` and `LightSource` and the app's `ScreenSettings`. One per process, on `GlassworksRuntime.screen`. |
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
 
 ## Writing a pane
@@ -151,15 +152,23 @@ on Glassworks, so each keeps its own checks in an internal `Compat.kt`, which th
 
 ## Frames
 
-A frame (`dev.glassworks.frame.Frame`) is what the core asks the device. Today that is two things:
-`board`, the `board` TXT record in the mDNS advert, and `systemSettingsIntents()`, the device's own
-settings screens, best first. `Frame.systemSettings(context)` picks the first that resolves. The app
-makes one frame at start, and `GlassworksRuntime` holds it.
+A frame (`dev.glassworks.frame.Frame`) is what the core asks the device:
 
-The S1's frame is [`AqaraS1Plus`](../../sh/edm/s1kiosk/frame/AqaraS1Plus.kt) (`aqara-s1-plus`). It
-also holds the parts only the S1 has: Aqara's cloud daemon, the time zone keeper and the root update
-service. The rest of the planned frame (presence, light, screen off, installer, panes) comes in the
-next migration steps.
+| Member | What it is |
+|---|---|
+| `board` | The `board` TXT record in the mDNS advert. |
+| `presence`, `light` | The sensors `ScreenPolicy` reads. Null when the device has none. A `PresenceSource` reports near or not with the raw value, and may support `setRange(metres)`. |
+| `systemSettingsIntents()` | The device's own settings screens, best first. `Frame.systemSettings(context)` picks the first that resolves. |
+| `panes(ctx, device)` | The panes only this device has. The shell builds them with its own, once per device run, and runs them like any other. |
+
+The app makes one frame at start, and `GlassworksRuntime` holds it. The device shell
+(`PanelDevice`) reads only these members; `PanelDeviceFrameTest` fails if it reaches past them.
+
+The S1's frame is [`AqaraS1Plus`](../../sh/edm/s1kiosk/frame/AqaraS1Plus.kt) (`aqara-s1-plus`). Its
+presence source is the VI5300 time-of-flight sensor, with Lumi's `proximity_threshold` range table,
+and its light source is the MK6212 sensor. Its panes are the wall base (with Aqara's cloud daemon,
+which holds the wall base UART) and the time zone. It also holds the root update service. The rest of
+the planned frame (screen off, installer) comes in the next migration steps.
 
 ## Threads
 

@@ -24,7 +24,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import sh.edm.s1kiosk.ScreenController
+import sh.edm.s1kiosk.glassworks
 
 /**
  * "Allow Wi-Fi setup over Bluetooth?" card, styled like the user's tablet-home-card (design tokens
@@ -133,7 +133,7 @@ class ImprovOverlay(private val ctx: Context) {
     private fun build(): FrameLayout {
         val scrim = object : FrameLayout(ctx) {
             override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-                if (ev.actionMasked == MotionEvent.ACTION_DOWN) ScreenController.userActivity()
+                if (ev.actionMasked == MotionEvent.ACTION_DOWN) ctx.glassworks.screen.userActivity()
                 return super.dispatchTouchEvent(ev)
             }
         }

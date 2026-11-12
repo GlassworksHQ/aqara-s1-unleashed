@@ -54,5 +54,5 @@ adb shell service call A_device_control 7 i32 0 i32 0   # disable DND (2nd arg: 
 adb shell service call A_device_control 7 i32 1 i32 0   # restore
 ```
 
-Night behaviour now lives in the kiosk's `ScreenController`: a configurable night window, a shorter
+Night behaviour now lives in the kiosk's screen policy (`dev.glassworks.screen.ScreenPolicy`): a configurable night window, a shorter
 idle timeout and a lower brightness cap, with wake on approach. See [sensors.md](../sensors.md).

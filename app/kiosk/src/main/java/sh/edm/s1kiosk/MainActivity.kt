@@ -244,17 +244,17 @@ class MainActivity : Activity() {
         wifiStatus.observe { refreshSetup() }
         ImprovController.inlineHost = improvHost
         KioskService.start(this)
-        ScreenController.start(this)
-        ScreenController.onKeepScreenOn = { on ->
+        glassworks.screen.start(this)
+        glassworks.screen.onKeepScreenOn = { on ->
             if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
-        ScreenController.onBrightness = { b ->
+        glassworks.screen.onBrightness = { b ->
             window.attributes = window.attributes.apply {
                 screenBrightness = if (b < 0f) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else b
             }
         }
-        ScreenController.onStateChanged = {
+        glassworks.screen.onStateChanged = {
             pushState()
             timerOverlay.refresh()
         }
@@ -724,7 +724,7 @@ class MainActivity : Activity() {
         intent.getStringExtra("night_window")?.let { prefs.nightWindow = it }
         if (intent.hasExtra("presence_range_m")) {
             prefs.presenceRangeM = intent.getFloatExtra("presence_range_m", 0f)
-            ScreenController.applyPresenceRange()
+            glassworks.screen.applyPresenceRange()
         }
         if (intent.hasExtra("voice_enabled")) { prefs.voice.enabled = intent.getBooleanExtra("voice_enabled", true); needsRestart = true }
         // Applied live by PanelDevice (it listens to the prefs).
@@ -746,13 +746,13 @@ class MainActivity : Activity() {
         if (intent.hasExtra("api_encryption")) prefs.apiEncryption = intent.getBooleanExtra("api_encryption", false)
         if (intent.hasExtra("auto_brightness")) {
             prefs.autoBrightness = intent.getBooleanExtra("auto_brightness", true)
-            ScreenController.refreshBrightness()
+            glassworks.screen.refreshBrightness()
         }
         when (intent.getStringExtra("screen")) {
-            "off" -> ScreenController.sleep("intent")
-            "on" -> ScreenController.wake("intent")
+            "off" -> glassworks.screen.sleep("intent")
+            "on" -> glassworks.screen.wake("intent")
         }
-        if (intent.getBooleanExtra("remove_admin", false)) ScreenController.removeAdmin()
+        if (intent.getBooleanExtra("remove_admin", false)) glassworks.screen.removeAdmin()
         // The kiosk settings menu: the notification, or `--ez kiosk_settings true` (also from a cold start).
         if (SettingsMenu.requested { k -> if (intent.hasExtra(k)) intent.getBooleanExtra(k, false) else null }) {
             intent.removeExtra(SettingsMenu.EXTRA)
@@ -802,7 +802,7 @@ class MainActivity : Activity() {
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
-            ScreenController.userActivity()
+            glassworks.screen.userActivity()
             val corner = 80 * resources.displayMetrics.density
             if (ev.x < corner && ev.y < corner) {
                 val now = SystemClock.uptimeMillis()
@@ -897,7 +897,7 @@ class MainActivity : Activity() {
                 radioRunning = radio != null,
                 allowedNow = SettingsMenu.allowedNow(radio != null, radio?.allowedNow()),
                 version = BuildConfig.VERSION_NAME,
-                status = ScreenController.statusLine() + " · voice=" + glassworks.voiceState,
+                status = glassworks.screen.statusLine() + " · voice=" + glassworks.voiceState,
                 radio = radioFacts(),
             ),
         )
@@ -1118,11 +1118,11 @@ class MainActivity : Activity() {
         .put("hideSidebar", prefs.hideSidebar)
 
     private fun stateJson() = JSONObject()
-        .put("presence", ScreenController.near)
-        .put("proximityRaw", ScreenController.proximityRaw.let { if (it.isNaN()) JSONObject.NULL else it.toDouble() })
-        .put("lux", ScreenController.lux.let { if (it.isNaN()) JSONObject.NULL else it.toDouble() })
-        .put("screenOn", ScreenController.screenOn)
-        .put("night", ScreenController.isNight())
+        .put("presence", glassworks.screen.near)
+        .put("proximityRaw", glassworks.screen.proximityRaw.let { if (it.isNaN()) JSONObject.NULL else it.toDouble() })
+        .put("lux", glassworks.screen.lux.let { if (it.isNaN()) JSONObject.NULL else it.toDouble() })
+        .put("screenOn", glassworks.screen.screenOn)
+        .put("night", glassworks.screen.isNight())
         .put("voice", glassworks.voiceState)
 
     private fun pushConfig() {
@@ -1143,7 +1143,7 @@ class MainActivity : Activity() {
             return when (type) {
                 "config" -> GeckoResult.fromValue(configJson())
                 "state" -> GeckoResult.fromValue(stateJson())
-                "activity" -> { ScreenController.userActivity(); null }
+                "activity" -> { glassworks.screen.userActivity(); null }
                 "getExternalAuth" -> externalAuth(message as JSONObject, sender)
                 "revokeExternalAuth" -> revokeExternalAuth(sender)
                 else -> null
@@ -1247,9 +1247,9 @@ class MainActivity : Activity() {
             lastImprovInline = false
             ImprovController.inlineHost = null // the overlay takes over if Improv is still running
         }
-        ScreenController.onKeepScreenOn = null
-        ScreenController.onBrightness = null
-        ScreenController.onStateChanged = null
+        glassworks.screen.onKeepScreenOn = null
+        glassworks.screen.onBrightness = null
+        glassworks.screen.onStateChanged = null
         glassworks.onVoiceUi = null
         glassworks.commandSink = null
         handler.removeCallbacksAndMessages(null)
