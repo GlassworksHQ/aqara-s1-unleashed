@@ -32,7 +32,8 @@ versions are the ones Gradle resolves.
 
 ### GeckoView (browser engine)
 
-- Module: `org.mozilla.geckoview:geckoview-armeabi-v7a:159.0.20261102144711`
+- Module: `org.mozilla.geckoview:geckoview-armeabi-v7a:159.0.20261102144711` (the armeabi-v7a APK),
+  `org.mozilla.geckoview:geckoview-arm64-v8a:159.0.20261102144711` (the arm64-v8a APK)
 - Licence: MPL-2.0. Some engine libraries are LGPL-2.1-or-later: `liblgpllibs.so`, and
   `libmozavcodec.so`/`libmozavutil.so` (parts of FFmpeg). Other parts are under other free licences.
 - Copyright: Mozilla Foundation and contributors
