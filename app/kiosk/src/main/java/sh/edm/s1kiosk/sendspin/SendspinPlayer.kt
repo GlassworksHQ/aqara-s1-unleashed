@@ -228,6 +228,8 @@ class SendspinPlayer(
     @Synchronized fun stop(reason: String = "user_request") {
         if (!running) return
         running = false
+        // The old session's reader may still be finishing: from here on its hook calls are dropped.
+        sessionGen.incrementAndGet()
         netCallback?.let { cb -> runCatching { ctx.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) } }
         netCallback = null
         var interrupted = session?.let { closeOffThisThread(it, reason) } ?: false
@@ -306,7 +308,7 @@ class SendspinPlayer(
                 if (!sleep(10_000)) break
                 continue
             }
-            val s = SendspinSession(url, store, hello(), { prefs.sendspinUnpairedAccess }, hooks)
+            val s = SendspinSession(url, store, hello(), { prefs.sendspinUnpairedAccess }, hooksFor(sessionGen.incrementAndGet()))
             session = s
             SsLog.i("Connecting to $url")
             val r = s.run()
@@ -440,6 +442,27 @@ class SendspinPlayer(
     }
 
     // ------------------------------------------------------------------ session hooks
+
+    /** Which session may still drive the player; bumped for every new session and by [stop]. */
+    private val sessionGen = java.util.concurrent.atomic.AtomicInteger()
+
+    /**
+     * The hooks for one session. [stop] doesn't wait for the old reader thread, so after a quick
+     * stop and start it can still deliver a late `stream/end` or status: those are dropped once a
+     * newer session (or [stop]) has taken over, so they can't end the new pipeline.
+     */
+    internal fun hooksFor(gen: Int): SsPlayerHooks = object : SsPlayerHooks by hooks {
+        private val current get() = gen == sessionGen.get()
+        override fun onStreamStart(format: SsFormat, codecHeader: ByteArray?) { if (current) hooks.onStreamStart(format, codecHeader) }
+        override fun onStreamClear(fromTimestampUs: Long?) { if (current) hooks.onStreamClear(fromTimestampUs) }
+        override fun onStreamEnd() { if (current) hooks.onStreamEnd() }
+        override fun onAudio(chunk: SsAudioChunk, receivedNanos: Long) { if (current) hooks.onAudio(chunk, receivedNanos) }
+        override fun onMetadata(title: String?, artist: String?) { if (current) hooks.onMetadata(title, artist) }
+        override fun onStatus(status: SendspinSession.Status) { if (current) hooks.onStatus(status) }
+    }
+
+    /** The generation a new session gets; for tests. */
+    internal fun nextSessionGen(): Int = sessionGen.incrementAndGet()
 
     private val hooks = object : SsPlayerHooks {
         // Everything goes through the pipeline, in order: it decodes off the network and audio threads.
