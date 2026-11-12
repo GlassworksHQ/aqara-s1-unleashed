@@ -53,6 +53,30 @@ describe('AskBridge', () => {
     expect(st.get().ask).toBeUndefined();
   });
 
+  it('starts one picker for two clicks in one tick', () => {
+    const st = store();
+    const bridge = new AskBridge(st.dispatch);
+    const action = vi.fn(() => new Promise<string>(() => {}));
+    void bridge.open('fastboot', action, new AbortController().signal);
+    void bridge.click();
+    void bridge.click();
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a synchronous throw and lets the next click try again', async () => {
+    const st = store();
+    const bridge = new AskBridge(st.dispatch);
+    let n = 0;
+    const asked = bridge.open('adb', () => {
+      if (n++ === 0) throw new Error('this browser has no WebUSB (use Chrome or Edge)');
+      return Promise.resolve('panel');
+    }, new AbortController().signal);
+    await bridge.click();
+    expect(st.get().ask).toEqual({ kind: 'adb', busy: false, error: 'this browser has no WebUSB (use Chrome or Edge)' });
+    await bridge.click();
+    await expect(asked).resolves.toBe('panel');
+  });
+
   it('closes the sheet when the device turns up by itself', () => {
     const st = store();
     const bridge = new AskBridge(st.dispatch);

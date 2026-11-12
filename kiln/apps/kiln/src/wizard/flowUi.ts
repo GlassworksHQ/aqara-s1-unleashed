@@ -35,7 +35,8 @@ export class AskBridge {
     const p = this.pending;
     if (!p || this.picking) return Promise.resolve(); // a second click while the picker is open
     this.picking = true;
-    const run = p.action();
+    let run: Promise<unknown>;
+    try { run = p.action(); } catch (e) { run = Promise.reject(e); } // a synchronous throw takes the same path
     this.dispatch({ type: 'ask-busy' });
     return run.finally(() => { this.picking = false; }).then(
       (v) => {
