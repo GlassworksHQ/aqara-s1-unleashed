@@ -2,13 +2,14 @@
   "name": "@glassworks/brand",
   "version": "0.0.0",
   "private": true,
-  "description": "The Glassworks brand for Kiln: tokens, the mark's geometry and the Kiln icon, generated from glassworks.dev.",
+  "description": "The Glassworks brand for Kiln: tokens, the mark's geometry, and Kiln's favicon and app icon, generated from glassworks.dev.",
   "license": "MIT",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./tokens.css": "./src/tokens.css",
-    "./icon-kiln.svg": "./src/icon-kiln.svg"
+    "./favicon-kiln.svg": "./src/favicon-kiln.svg",
+    "./app-icon-kiln.svg": "./src/app-icon-kiln.svg"
   },
   "scripts": {
     "sync": "node sync.mjs",

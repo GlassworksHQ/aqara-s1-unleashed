@@ -1,4 +1,5 @@
 {
   "repo": "GlassworksHQ/glassworks.dev",
-  "ref": "fbfd364f5f87570b3f0a95639340b7ac4cb38a6e"
+  "ref": "33166cc8df694b422f4b45e4389234c68bb7d26e",
+  "note": "GlassworksHQ/glassworks.dev#12 (brand/kiln-favicon) adds favicon-kiln.svg and app-icon-kiln.svg; move this to main once it merges."
 }

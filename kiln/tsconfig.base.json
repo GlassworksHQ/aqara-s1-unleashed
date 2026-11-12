@@ -14,7 +14,8 @@
     "paths": {
       "@glassworks/*": ["./packages/*/src/index.ts"],
       "@glassworks/brand/tokens.css": ["./packages/brand/src/tokens.css"],
-      "@glassworks/brand/icon-kiln.svg": ["./packages/brand/src/icon-kiln.svg"],
+      "@glassworks/brand/favicon-kiln.svg": ["./packages/brand/src/favicon-kiln.svg"],
+      "@glassworks/brand/app-icon-kiln.svg": ["./packages/brand/src/app-icon-kiln.svg"],
       "@glassworks/fel/transport": ["./packages/fel/src/transport.ts"],
       "@glassworks/fel/fakes": ["./packages/fel/test/fakes.ts"],
       "@glassworks/setup-channel": ["./packages/setup-channel/src/channel.ts"],

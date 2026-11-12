@@ -339,7 +339,7 @@ file, its `package.json` licence and author are given. What it adds:
 - **Inter** and **JetBrains Mono** (the font files, served by `next/font`): OFL-1.1. "Copyright (c) 2016
   The Inter Project Authors (https://github.com/rsms/inter)"; "Copyright 2020 The JetBrains Mono Project
   Authors (https://github.com/JetBrains/JetBrainsMono)". Fetched from Google Fonts at build time.
-- The Glassworks tokens, mark and Kiln icon (`kiln/packages/brand`) are Glassworks' own, from
+- The Glassworks tokens, mark, and Kiln's favicon and app icon (`kiln/packages/brand`) are Glassworks' own, from
   https://github.com/GlassworksHQ/glassworks.dev.
 
 Not shipped, by the build's traces:
