@@ -6,9 +6,11 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AdbKey, PanelShell } from '@glassworks/adb';
-import { BACKUP_PARTS, backupZip, readBackupZip, sha256sums, type BackupFile, type BackupMeta } from '../src/app/backup';
-import { InstallFlow, restoreFromBackup, type AskKind, type FlowUi, type Progress } from '../src/app/flow';
-import type { AssetName } from '../src/assets';
+import { s1Plus, type AssetName } from '@glassworks/aqara-s1-plus-installer';
+import {
+  InstallFlow, backupZip, readBackupZip, restoreFromBackup, sha256sums,
+  type AskKind, type BackupFile, type BackupMeta, type FlowUi, type Progress,
+} from '@glassworks/kiln-core';
 import { Fastboot } from '@glassworks/fastboot';
 import { FelDevice } from '@glassworks/fel';
 import { FakeBrom, FakeUboot, eq, makeSpl } from '@glassworks/fel/fakes';
@@ -19,6 +21,7 @@ const G = process.env.S1_WEB_GOLDEN ?? join(B, 'web-golden');
 const HAVE = existsSync(join(STOCK, 'boot.img')) && existsSync(join(G, 'out/SHA256SUMS'));
 const rd = (p: string) => new Uint8Array(readFileSync(p));
 const SPL = join(homedir(), 'src/u-boot-s1/build-s1/u-boot-sunxi-with-spl.bin');
+const BACKUP_PARTS = s1Plus.backup.parts;
 
 function assets(): Record<AssetName, () => Uint8Array> {
   const ov = (f: string) => () => rd(join(G, 'fixtures/overlay', f));
@@ -88,7 +91,7 @@ describe.skipIf(!HAVE)('install flow on simulated hardware with the real 4.5.80 
     };
     const u = ui();
     let fastbootAsks = 0;
-    const flow = new InstallFlow({
+    const flow = new InstallFlow(s1Plus, {
       asset: async (n) => a[n](),
       hasAsset: async () => true,
       backups: { save: async (meta, files) => { saved.push({ meta, files }); }, original: async () => undefined },
@@ -138,11 +141,11 @@ describe.skipIf(!HAVE)('install flow on simulated hardware with the real 4.5.80 
 
     // undo from that zip: stock boot, vbmeta, splash back
     const u2 = new FakeUboot(layout.map(([n, x]) => [n, n === 'super' ? x : uboot.data(n)]));
-    await restoreFromBackup(new Fastboot(u2), back.files, () => {});
+    await restoreFromBackup(s1Plus.backup, new Fastboot(u2), back.files, () => {});
     for (const part of ['boot', 'vbmeta', 'bootloader']) expect(eq(u2.data(part), rd(join(STOCK, `${part}.img`)))).toBe(true);
     // and refuses a re-run backup whose boot is already patched
     const patched = new Map(back.files); patched.set('boot', uboot.data('boot'));
-    await expect(restoreFromBackup(new Fastboot(new FakeUboot(layout)), patched, () => {})).rejects.toThrow(/already patched/);
+    await expect(restoreFromBackup(s1Plus.backup, new Fastboot(new FakeUboot(layout)), patched, () => {})).rejects.toThrow(/already patched/);
   }, 120_000);
 
   it('a second run on the installed panel produces the same boot and flashes nothing else', async () => {
@@ -159,7 +162,7 @@ describe.skipIf(!HAVE)('install flow on simulated hardware with the real 4.5.80 
       store: { generateKey: () => { throw new Error('unused'); }, iterateKeys: () => [] },
     };
     const u = ui();
-    const flow = new InstallFlow({
+    const flow = new InstallFlow(s1Plus, {
       asset: async (n) => a[n](), hasAsset: async () => true,
       backups: { save: async () => {}, original: async () => undefined }, key, sleep: async () => {},
       devices: { knownFastboot: async () => new Fastboot(uboot), requestFastboot: async () => { throw new Error('x'); }, knownAdb: async () => undefined, requestAdb: async () => { throw new Error('x'); } },

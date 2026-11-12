@@ -1,1 +1,1 @@
-export { Assets, toHex, type AssetEntry, type AssetName, type Manifest } from './assets';
+export { Assets, type AssetEntry, type AssetName, type Manifest } from './assets';

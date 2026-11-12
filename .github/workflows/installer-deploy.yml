@@ -8,9 +8,9 @@
 #   - release.yml, after each S1 Kiosk release (the installer picks the latest APK at build time)
 #   - workflow_dispatch, to redeploy by hand
 #
-# The paths are the installer's build inputs: kiln/ itself, the files kiln/src imports from outside
-# kiln/, and the repo files kiln/scripts/stage-assets.mjs stages (the rest come from assets.lock.json).
-# Keep them in step with those two.
+# The paths are the installer's build inputs: kiln/ itself, the frame recipes it imports
+# (frames/*/installer), the files those import from outside kiln/, and the repo files
+# kiln/scripts/stage-assets.mjs stages (the rest come from assets.lock.json). Keep them in step.
 name: Installer deploy
 
 on:
@@ -22,6 +22,9 @@ on:
       - '!kiln/test/**'
       - '!kiln/packages/*/test/**'
       - '!kiln/mockup/**'
+      - 'frames/*/installer/**'
+      - '!frames/*/installer/test/**'
+      - '!frames/**/*.md'
       - 'branding/**'
       - 'docs/img/fel-button.jpg'
       - 'tools/install/s1kiosk-switch.sh'

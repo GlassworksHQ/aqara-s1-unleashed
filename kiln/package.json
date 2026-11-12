@@ -5,8 +5,12 @@
   "description": "Browser (WebUSB) installer for the Aqara Panel Hub S1 Plus. See docs/research/web-installer.md.",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "../frames/*/installer"
   ],
   "scripts": {
     "dev": "vite --host localhost --port 5173",
@@ -26,9 +30,11 @@
   },
   "dependencies": {
     "@glassworks/adb": "0.0.0",
+    "@glassworks/aqara-s1-plus-installer": "0.0.0",
     "@glassworks/bootpatch": "0.0.0",
     "@glassworks/fastboot": "0.0.0",
     "@glassworks/fel": "0.0.0",
+    "@glassworks/kiln-core": "0.0.0",
     "@glassworks/setup-channel": "0.0.0",
     "improv-serial": "0.1.0"
   }

@@ -1,14 +1,20 @@
-// The installer page (index.html, design E). Renders flow.ts; all hardware work lives there.
+// The installer page (index.html, design E). Renders kiln-core's InstallFlow with the S1 recipe; all hardware work lives there.
 import felImg from '../../../docs/img/fel-button.jpg?url';
 import { loadOrCreateAdbKey, type AdbKey, type PanelShell } from '@glassworks/adb';
 import { Assets } from '../assets';
+import type { Fastboot } from '@glassworks/fastboot';
 import { FelDevice } from '@glassworks/fel';
-import { describeSwitch, unprovision } from '../provision';
 import { SETUP_SOCKET, SetupChannel, validHaUrl, type SetupState } from '@glassworks/setup-channel';
-import { IMPROV_SOCKET, ImprovSerialClient, PacketReader, PacketType, Rpc, State as ImprovState, frame, parseResult, strings, type ByteStream } from '../improv';
-import { BackupStore, backupZip, readBackupZip, type BackupFile, type BackupMeta } from './backup';
+import {
+  IMPROV_SOCKET, ImprovSerialClient, PacketReader, PacketType, Rpc, State as ImprovState, describeSwitch, frame, parseResult, s1Plus, strings, unprovision,
+  type AssetName, type ByteStream, type Provisioned, type SetUpOptions,
+} from '@glassworks/aqara-s1-plus-installer';
+import {
+  BackupRefused, BackupStore, InstallFlow, backupZip, fmtSize, readBackupZip, restoreFromBackup,
+  type AskKind, type Bar, type BackupFile, type BackupMeta, type FlowUi, type PartState, type Progress,
+} from '@glassworks/kiln-core';
 import { webUsbDevices } from './devices';
-import { InstallFlow, fmtSize, restoreFromBackup, type AskKind, type Bar, type FlowUi, type PartState, type Progress } from './flow';
+import { giveBackApps } from './undo';
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector<T>(s)!;
 const $$ = (s: string) => [...document.querySelectorAll<HTMLElement>(s)];
@@ -147,9 +153,9 @@ class Installer {
   private cur: ScreenId | null = null;
   private errAt = 1;
   private assets = new Assets();
-  private backups = new BackupStore();
+  private backups = new BackupStore(s1Plus.backup.db);
   private key?: AdbKey;
-  private flow?: InstallFlow;
+  private flow?: InstallFlow<AssetName, SetUpOptions, Provisioned>;
   private result?: { meta: BackupMeta; files: BackupFile[] };
   private panel?: PanelShell;
   private undoFiles?: Map<string, Uint8Array>;
@@ -369,9 +375,9 @@ class Installer {
     this.setRoute('resume');
   }
 
-  private async getFlow(): Promise<InstallFlow> {
+  private async getFlow(): Promise<InstallFlow<AssetName, SetUpOptions, Provisioned>> {
     this.key ??= await loadOrCreateAdbKey();
-    this.flow ??= new InstallFlow({
+    this.flow ??= new InstallFlow(s1Plus, {
       asset: (n, p) => this.assets.get(n, p),
       hasAsset: (n) => this.assets.has(n),
       backups: this.backups,
@@ -1216,13 +1222,18 @@ class Installer {
       try {
         this.key ??= await loadOrCreateAdbKey();
         const panel = (await webUsbDevices.knownAdb(this.key)) ?? (await webUsbDevices.requestAdb(this.key));
-        await unprovision(panel, (s, d) => { this.undoNote('busy', 'Giving the panel back to Aqara\'s apps', s || d || ''); });
+        await giveBackApps(s1Plus.backup, this.undoFiles, () =>
+          unprovision(panel, (s, d) => { this.undoNote('busy', 'Giving the panel back to Aqara\'s apps', s || d || ''); }));
         this.appsGivenBack = true;
         this.renderUndoOrder();
         this.undoNote('ok', 'Aqara\'s apps are back', 'Next: restore the original software. Click Continue, then put the panel in FEL mode.');
       } catch (e) {
-        const msg = e instanceof DOMException && e.name === 'NotFoundError' ? 'Nothing was picked.' : (e as Error).message;
-        this.undoNote('err', 'Could not reach the panel over adb', `${msg} Is it running and plugged in? Then try again, or choose "Back to how it came from Aqara".`);
+        if (e instanceof BackupRefused) {
+          this.undoNote('err', 'This backup can\'t undo the install', `${e.message}. Nothing on the panel was changed.`);
+        } else {
+          const msg = e instanceof DOMException && e.name === 'NotFoundError' ? 'Nothing was picked.' : (e as Error).message;
+          this.undoNote('err', 'Could not reach the panel over adb', `${msg} Is it running and plugged in? Then try again, or choose "Back to how it came from Aqara".`);
+        }
       } finally {
         go.disabled = false;
       }
@@ -1231,11 +1242,11 @@ class Installer {
     this.show('fel');
   }
 
-  private async runRestore(fb: Awaited<ReturnType<InstallFlow['connectFastboot']>>) {
-    const parts = ['boot', 'vbmeta', 'bootloader'].filter((p) => this.undoFiles!.has(p));
+  private async runRestore(fb: Fastboot) {
+    const parts = s1Plus.backup.restore.filter((p) => this.undoFiles!.has(p));
     const total = parts.reduce((n, p) => n + this.undoFiles!.get(p)!.length, 0);
     const before = (part: string) => parts.slice(0, parts.indexOf(part)).reduce((n, p) => n + this.undoFiles!.get(p)!.length, 0);
-    await restoreFromBackup(fb, this.undoFiles!, (l) => this.log(`${new Date().toTimeString().slice(0, 8)} ${l}`), (part, phase, d, t) => {
+    await restoreFromBackup(s1Plus.backup, fb, this.undoFiles!, (l) => this.log(`${new Date().toTimeString().slice(0, 8)} ${l}`), (part, phase, d, t) => {
       const done = before(part);
       const write = (done + (phase === 'write' ? d : t)) / total;
       const verify = (done + (phase === 'verify' ? d : 0)) / total;

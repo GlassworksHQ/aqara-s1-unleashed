@@ -10,6 +10,15 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@glassworks/*": ["./packages/*/src/index.ts"],
+      "@glassworks/fel/transport": ["./packages/fel/src/transport.ts"],
+      "@glassworks/fel/fakes": ["./packages/fel/test/fakes.ts"],
+      "@glassworks/setup-channel": ["./packages/setup-channel/src/channel.ts"],
+      "improv-serial": ["./packages/improv-serial/src/index.ts"],
+      "improv-serial/adb": ["./packages/improv-serial/src/adb.ts"],
+      "vitest": ["./node_modules/vitest"]
+    }
   }
 }

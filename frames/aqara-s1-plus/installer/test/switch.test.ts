@@ -11,9 +11,9 @@ import { IMPROV_SOCKET, PacketReader, PacketType, Rpc, frame, parseResult, strin
 import { KeyMismatchError, provision, unprovision } from '../src/provision';
 import {
   SWITCH_SCRIPT, describeSwitch, isKeyMismatch, parseWifiList, parseWifiOwner, xmlUnescape, type SwitchPlan,
-} from '../src/provision/switch';
+} from '../src/switch';
 
-const REPO = join(__dirname, '../..');
+const REPO = join(__dirname, '../../../..');
 const FIX = join(REPO, 'tools/install/test/fixtures');
 const fixture = (f: string) => readFileSync(join(FIX, f), 'utf8');
 const SCRIPT = join(REPO, 'tools/install/s1kiosk-switch.sh');

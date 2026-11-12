@@ -1,18 +1,12 @@
 // Pinned blobs (scripts/stage-assets.mjs writes public/assets/manifest.json). Every blob is checked
-// against its SHA-256 before use; a mismatch is refused.
+// against its SHA-256 before use; a mismatch is refused. The names are the S1 recipe's.
+import type { AssetName } from '@glassworks/aqara-s1-plus-installer';
+import { toHex } from '@glassworks/kiln-core';
 
-export type AssetName =
-  | 'uboot-spl' | 'uboot' | 'magisk' | 'otbr-agent' | 'ot-ctl'
-  | 'radio-rc' | 'radio-sh' | 'firstboot-rc' | 'firstboot-sh' | 'netwatch-rc' | 'netwatch-sh' | 'update-rc' | 'update-sh'
-  | 'bundle-rc' | 'bundle-sh' | 'verify' | 'bundle-pub'
-  | 'branding-rc' | 'bootanimation' | 'bootlogo' | 'kiosk-apk' | 'keyboard-apk';
+export type { AssetName };
 
 export interface AssetEntry { name: AssetName; path: string; sha256: string; size: number; license: string; source: string }
 export interface Manifest { generated: string; assets: AssetEntry[] }
-
-export function toHex(b: ArrayBuffer): string {
-  return Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, '0')).join('');
-}
 
 export class Assets {
   private manifest?: Promise<Manifest>;

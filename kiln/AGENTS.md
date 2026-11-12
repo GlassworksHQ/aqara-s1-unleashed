@@ -18,11 +18,19 @@ both in the same PR.
 
 | Path | What |
 |---|---|
-| `src/`, `test/`, `index.html` | The page: `app/` (UI and flow), `provision/`, `assets/`, `improv/` |
+| `src/`, `test/`, `index.html` | The page: `app/` (the UI), `assets/` |
 | `packages/fel`, `fastboot`, `adb`, `bootpatch`, `setup-channel`, `improv-serial` | Protocol modules: TypeScript source, each with its own tests. Not published (`"private": true`) |
+| `packages/kiln-core` | The step engine: `InstallFlow`, the `FlowUi` contract, the `Recipe` types, backups |
+| `../frames/aqara-s1-plus/installer` | The S1 recipe (`s1Plus`), provisioning, the signing-key switch, the app's Improv socket |
 
 A package never imports from `src/`. Packages import each other by name (`@glassworks/fel`), and
-declare those names in their `package.json`.
+declare those names in their `package.json`. kiln-core names no frame (`test/no-frame-names.test.ts`).
+
+A recipe in `../frames/*/installer` is a workspace outside `kiln/`, and npm puts its dependencies in
+`kiln/node_modules`, which Node's lookup from `frames/` never reaches. `vite.config.ts` resolves them
+from `kiln/` (`resolve.dedupe`, read from the recipe's `package.json`) and `tsconfig.base.json` maps
+them (`paths`). Don't link `node_modules` into `frames/`: `npm install` then prunes packages through
+the link.
 
 ## Rules
 
@@ -32,15 +40,17 @@ declare those names in their `package.json`.
   you change the overlay, change the shell script too and regenerate the goldens
   (`S1_WEB_GOLDEN=<dir> npm test`; without it the golden tests are skipped).
 - **Backups come before writes, and writes are verified by read-back.** Keep the refusal points
-  from the CLI: wrong SoC id, unexpected partition layout, a backup `boot` that is already patched.
+  from the CLI: wrong SoC id, unexpected partition layout, a backup `boot` that is already patched
+  (`test/refusals.test.ts`).
 - Assets (U-Boot, Magisk, the APK) are pinned by SHA-256 in `assets.lock.json` and checked on download.
   Bump the hash and the source together.
 - Only `app/` touches the DOM. Other modules talk through their exports, so `test/flow.test.ts` can
   run the whole flow on simulated hardware (`packages/fel/test/fakes.ts`, imported as
   `@glassworks/fel/fakes`). New USB behaviour needs a fake for it.
 - `oem run:` commands must fit fastboot's 64-byte command limit, prefix included.
-- The installer will become **Kiln**, generic across frames. Keep S1-specific constants (`A133`,
-  partition names, VID:PID) in one place rather than inline.
+- The installer is becoming **Kiln**, generic across frames. S1 specifics (partition sizes and
+  names, the A133 check, `s1Overlay`, the debloat list, `PKG`) go in the S1 recipe, never in
+  kiln-core.
 
 ## Commands
 

@@ -1,0 +1,8 @@
+{
+  "extends": "../../../kiln/tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["w3c-web-usb", "vite/client", "node"],
+    "typeRoots": ["../../../kiln/node_modules/@types", "../../../kiln/node_modules"]
+  },
+  "include": ["src", "test"]
+}
