@@ -55,7 +55,7 @@ change until Glassworks v1.
 | Type | What it is |
 |---|---|
 | `Pane` | A feature: its Home Assistant entities, `start`/`stop`, and what it does when the panel changes. |
-| `PaneContext` | What the core gives a pane: the app context, settings, the device identity, `publishStates()` and `emit()`. |
+| `PaneContext` | What the core gives a pane: the app context, settings, the device identity, `publishStates()`, `emit()`, `entitiesChanged()` and `sendEvent()`. |
 | `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished. A pane raises one with `PaneContext.emit`. |
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
 
@@ -91,6 +91,20 @@ to add entities: [`TimersPane.kt`](../../sh/edm/s1kiosk/timers/TimersPane.kt) ha
 reacts to `TimersChanged` and `TimerFinished`. The voice assistant
 ([`AssistPane.kt`](../../sh/edm/s1kiosk/voice/AssistPane.kt)) is the pane that raises those: it calls
 `ctx.emit(PanelEvent.TimerFinished(name))`, and `SpeakerClaimed` while it listens and talks.
+
+### Entities that change, and events
+
+A pane's entity list may change while the panel runs. The wall base
+([`WallBasePane.kt`](../../sh/edm/s1kiosk/base/WallBasePane.kt)) adds relays, buttons and power
+sensors when a switch base is mounted. The pane then calls `ctx.entitiesChanged()`. The core builds
+the device's list again from its own entities and every pane's `entities()`, and gives it to Home
+Assistant, which reconnects and lists the entities again. `entities()` must return the new list from
+then on.
+
+To fire an ESPHome event, a pane calls `ctx.sendEvent(entity, type)` with an `EventEntity` from its
+current list. Keep the instances: the server only fires events for the entity objects it was given,
+so build the list once per state, not on every `entities()` call. A pane does not hold the API
+server for this. The core owns it, including its restarts.
 
 Entities come from [esphome-api](../../../../../../libs/esphome-api/README.md). Home Assistant
 keys them by object id, so an object id is permanent: renaming one makes a new entity in every

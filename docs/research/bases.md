@@ -95,11 +95,11 @@ There are two backends (`WallBase` + a `BaseLink`), chosen by the pref `base_bac
 
 - **`uart` (default via `auto`): `UartBaseLink`**, the app's own driver for the UART protocol
   ([base-protocol.md](base-protocol.md)). `ha_master` is not needed, so it is always stopped.
-  - **Port ownership.** `ha_master` grabs `/dev/ttyS3` at boot. On start, PanelDevice first runs
+  - **Port ownership.** `ha_master` grabs `/dev/ttyS3` at boot. On start, the wall base pane (`WallBasePane`) first runs
     `setprop ctl.stop ha_master` and waits for init to report `stopped`; only then does the link
     open the port. Before opening, and every 10 s while the port is open, the link asks a guard
     that reads `init.svc.ha_master`. If the daemon is `running`/`restarting` again, the link closes
-    the port, reports *Base: unavailable* and has PanelDevice stop it again; it retries every 5 s.
+    the port, reports *Base: unavailable* and has the pane stop it again; it retries every 5 s.
     When switching away from UART, the port is closed **before** ha_master may start. The two
     never hold the port at the same time.
   - **Setup.** The port is opened with File streams, then

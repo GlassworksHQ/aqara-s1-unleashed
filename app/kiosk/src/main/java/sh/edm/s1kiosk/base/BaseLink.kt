@@ -18,7 +18,7 @@ interface BaseLink {
          * event/report, so a dock resource in it should make WallBase re-read the dock class.
          */
         fun onValues(values: Map<String, Any>, via: String, apply: Boolean, dockTrigger: Boolean)
-        /** The link can't own its port right now (e.g. ha_master runs); see PanelDevice. */
+        /** The link can't own its port right now (e.g. ha_master runs); see WallBasePane. */
         fun onBlocked(reason: String) {}
     }
 
