@@ -36,7 +36,8 @@ A full run with `--runs 3` should take under 20 minutes (an estimate from the st
 timed on a device). A synthetic run is at most about 4.5 minutes, and less on a slow device,
 because the ladder stops sooner. A real-use run is about 1.5 minutes.
 
-The output directory holds the raw files, `report.json` and `report.md`. `python3
+The output directory holds the raw files, `report.json` and `report.md`. A full run needs a new or
+empty directory; `--idle-only` adds samples to an existing one. `python3
 tools/perf/report.py <dir>` rebuilds the report from the raw files at any time, without the device.
 
 ### What it changes on the device

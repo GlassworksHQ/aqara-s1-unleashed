@@ -92,6 +92,11 @@ if [ -n "$IDLE_ONLY" ]; then
   exit 0
 fi
 
+# A full run starts from an empty directory, so no earlier run's files end up in its report.
+for f in "$OUT"/synthetic-*.jsonl "$OUT"/coldstart-*.json "$OUT"/idle-*.json; do
+  [ -e "$f" ] && { echo "$OUT already holds a run ($(basename "$f")); use a new --out" >&2; exit 2; }
+done
+
 SERVER_PID="" ON_TEST_PAGE=0
 cleanup() {
   if [ "$ON_TEST_PAGE" = 1 ]; then

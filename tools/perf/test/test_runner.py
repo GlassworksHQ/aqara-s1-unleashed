@@ -126,6 +126,20 @@ class FailedColdStart(unittest.TestCase):
         self.assertIsNone(r["cold_start_ttid_ms"])
 
 
+class ReusedOut(unittest.TestCase):
+    def test_a_full_run_refuses_a_directory_with_an_earlier_run(self):
+        tmp = tempfile.mkdtemp()
+        env, _ = fake_env(tmp)
+        out = os.path.join(tmp, "out")
+        os.makedirs(out)
+        with open(os.path.join(out, "idle-all-on-1.json"), "w") as f:
+            f.write("{}")
+        p = subprocess.run([RUN, "--frame", "test-frame", "--out", out, "--skip-synthetic"],
+                           env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("use a new --out", p.stderr)
+
+
 class IdleOnly(unittest.TestCase):
     """The pane-diff steps in docs/perf.md, starting from an empty directory."""
 
