@@ -62,6 +62,96 @@ change until Glassworks v1.
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
 | `Engine` | (`dev.glassworks.engine`) The web engine that shows the dashboard: open a page, load, reload, go back, restart after a crash, and talk to the page's scripts. `GeckoEngine` (`dev.glassworks.engine.gecko`) is the only code that uses GeckoView. One per process, on `GlassworksRuntime.engine`. |
 
+## What makes a pane
+
+Glassworks is native to Home Assistant: a panel joins HA as an ESPHome device and needs nothing
+else. Panes keep it that way. The reasons are in
+[Glassworks Principles](../../../../../../../docs/principles.md). Before you write a pane, check
+it against these four rules.
+
+### 1. It adds something only the panel can do
+
+A pane uses the panel's hardware or its place on the wall: the camera, mics, speaker, radios,
+Bluetooth, NFC, its sensors. If a Home Assistant dashboard can already do it, it belongs in a
+dashboard, not in a pane.
+
+| A pane | A dashboard |
+|---|---|
+| Wake on presence, the room's light level | Clock, weather, a photo frame |
+| Voice, timers, announcements | An alarm keypad |
+| A Zigbee or Thread radio, a Bluetooth proxy | A calendar, a to-do list |
+| The panel's camera in HA | Showing other cameras |
+
+### 2. It works through ESPHome alone
+
+Every pane works fully through the panel's ESPHome device. Adopting the device in HA is the only
+setup.
+
+- Its **state** is entities.
+- The **settings worth changing from HA** are config entities (`EntityCategory.CONFIG`). The rest
+  stay on the panel and its Manage page.
+- Its **commands** are ESPHome actions (`esphome.<node>_<action>`).
+- What it **reports** goes out as events (`EventEntity`).
+
+Settings for the whole house are HA's job: a scene or a script sets the same entity on every panel.
+
+### 3. Other protocols are opt-in outputs
+
+A pane can also speak another protocol when that makes the panel do more. Sendspin (Music
+Assistant) and Matter already do. That's allowed when all of these hold:
+
+- **It's an open standard that something else already speaks**, with no code of ours on the other
+  end: ONVIF and RTSP (HA's ONVIF integration, Frigate, UniFi Protect), Sendspin, Matter, AirPlay.
+- **It's off by default**, with its own switch in the pane. That switch is a config entity too.
+- **The pane works without it.** Turn it off, and rule 2 still holds.
+- **It has no settings screen of its own.** Its settings are entities, like everything else.
+
+### 4. The panel's HA sign-in only reads
+
+The panel signs in to Home Assistant as a user, to show the dashboard. A pane may use that sign-in
+to read from HA what ESPHome can't carry: the preferred Thread network (the radio pane), or a
+camera's stream. It never uses it to control HA, or to watch entities in place of ESPHome.
+
+When a read needs an administrator and the panel's user isn't one, ask an admin to sign in once,
+use the token for that read and revoke it straight away, as
+[`ThreadJoin.kt`](../../sh/edm/s1kiosk/auth/ThreadJoin.kt) does. The panel keeps no admin
+credentials.
+
+A *person* signed in on the Manage page is different: they act with their own HA rights, like the
+HA app does.
+
+### Never
+
+- A Home Assistant custom integration, or anything installed from the marketplace.
+- A cloud service, or an account with us.
+- A protocol only our own code speaks.
+- Panels coordinating among themselves in place of HA.
+
+### Entities
+
+The ESPHome device is an API, not the settings screen. Keep the list a person sees short:
+
+| Kind | Category | Enabled by default | Example |
+|---|---|---|---|
+| Something people put on a dashboard or automate on | none | Yes | Presence, screen on/off, the media player |
+| A setting someone would change from HA | `CONFIG` | Only the common ones | Night mode, wake word, do not disturb |
+| Health and versions | `DIAGNOSTIC` | No, except the few people check | Wi-Fi signal, CPU, radio firmware |
+
+- A pane adds at most a handful of uncategorised entities.
+- **Enabled by default only if people reach for it day to day.** "Restart app" is on: people use
+  it. "Radio mode" is off: you set it once. Everything else gets `disabledByDefault = true`. HA
+  creates it, leaves it off and doesn't record it. Anyone can turn it on from the device page, and
+  the panel's settings menu and Manage page can always change it.
+- A pane that's off adds nothing to the list a person sees (#67).
+
+### Example: the camera pane
+
+| Part | Rule | On by default |
+|---|---|---|
+| Presence from the camera (`binary_sensor`) | 2 | Yes, when the pane is on |
+| Snapshots as an ESPHome camera entity | 2 | Yes, when the pane is on |
+| ONVIF/RTSP stream for Frigate or UniFi Protect | 3 | No |
+
 ## Writing a pane
 
 A pane takes its `PaneContext` in the constructor and overrides only what it needs. This is the
