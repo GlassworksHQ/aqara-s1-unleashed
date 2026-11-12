@@ -9,6 +9,10 @@
     ".": "./src/index.ts",
     "./adb": "./src/adb.ts"
   },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
   "peerDependencies": {
     "@yume-chan/adb": ">=2.0.0"
   },

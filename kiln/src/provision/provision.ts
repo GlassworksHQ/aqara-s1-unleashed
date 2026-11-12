@@ -2,7 +2,7 @@
 // same "try" (never fails) vs "run" (must succeed) split. Wake-word models are not pushed from here:
 // their license (CC BY-NC-SA) keeps them out of our hosting and GitHub sends no CORS headers, so the
 // kiosk app downloads them on the panel itself.
-import type { PanelShell } from '../adb/panel';
+import type { PanelShell } from '@glassworks/adb';
 import {
   type SwitchOutcome, type SwitchPlan, dropAdmin, isKeyMismatch, panelWifi, planSwitch, resendWifi, switchSigningKey, wifiAtRisk,
 } from './switch';

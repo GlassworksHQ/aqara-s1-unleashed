@@ -1,10 +1,10 @@
 // Simulated devices for the tests: the A133 boot ROM's FEL and our U-Boot's fastboot.
 import { expect } from 'vitest';
-import { A133, FEL_CHUNK, type BulkTransport } from '../src/fel';
+import { A133, FEL_CHUNK, type BulkTransport } from '../src';
 import {
   AW_FEL_1_EXEC, AW_FEL_1_READ, AW_FEL_1_WRITE, AW_FEL_VERSION, AW_USB_READ, AW_USB_WRITE,
   READL_CODE_SIZE, SCTLR_CODE, STACKINFO_CODE, checkEgon, readlCode, rmrCode, splThunk,
-} from '../src/fel/protocol';
+} from '../src/protocol';
 
 export const u32 = (b: Uint8Array, o: number) => new DataView(b.buffer, b.byteOffset).getUint32(o, true);
 export const eq = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);

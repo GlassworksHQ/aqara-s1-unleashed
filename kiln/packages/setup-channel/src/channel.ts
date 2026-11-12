@@ -16,7 +16,7 @@
 //   The app may also push {"event":"state","state":SetupState} whenever something changes
 //   (signed in, radio status, Wi-Fi), so the installer doesn't have to poll.
 //   No secrets ever cross this channel (no tokens, no keys, no passwords).
-import type { ByteStream } from '../improv';
+import type { ByteStream } from 'improv-serial';
 
 export const SETUP_SOCKET = 'localabstract:s1kiosk_setup';
 

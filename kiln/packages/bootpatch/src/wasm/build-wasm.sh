@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Rebuild bootpatch.wasm (magiskboot v31.1's gzip/xz, see src/lib.rs) in Docker, reproducibly.
 #
-#   kiln/src/bootpatch/wasm/build-wasm.sh          # writes bootpatch.wasm next to this script
-#   CHECK=1 kiln/src/bootpatch/wasm/build-wasm.sh  # rebuild into a temp dir and compare
+#   kiln/packages/bootpatch/src/wasm/build-wasm.sh          # writes bootpatch.wasm next to this script
+#   CHECK=1 kiln/packages/bootpatch/src/wasm/build-wasm.sh  # rebuild into a temp dir and compare
 #
 # Pinned: the rust image by digest (Rust 1.91.1, linux/arm64), crate versions in Cargo.toml (=x.y.z)
 # and Cargo.lock (--locked). Paths are remapped so the output does not depend on where it is built.

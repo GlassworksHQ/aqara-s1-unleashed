@@ -1,10 +1,10 @@
 // The installer page (index.html, design E). Renders flow.ts; all hardware work lives there.
 import felImg from '../../../docs/img/fel-button.jpg?url';
-import { loadOrCreateAdbKey, type AdbKey, type PanelShell } from '../adb';
+import { loadOrCreateAdbKey, type AdbKey, type PanelShell } from '@glassworks/adb';
 import { Assets } from '../assets';
-import { FelDevice } from '../fel';
+import { FelDevice } from '@glassworks/fel';
 import { describeSwitch, unprovision } from '../provision';
-import { SETUP_SOCKET, SetupChannel, validHaUrl, type SetupState } from '../setup/channel';
+import { SETUP_SOCKET, SetupChannel, validHaUrl, type SetupState } from '@glassworks/setup-channel';
 import { IMPROV_SOCKET, ImprovSerialClient, PacketReader, PacketType, Rpc, State as ImprovState, frame, parseResult, strings, type ByteStream } from '../improv';
 import { BackupStore, backupZip, readBackupZip, type BackupFile, type BackupMeta } from './backup';
 import { webUsbDevices } from './devices';

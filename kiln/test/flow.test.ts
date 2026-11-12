@@ -5,13 +5,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { AdbKey, PanelShell } from '../src/adb';
+import type { AdbKey, PanelShell } from '@glassworks/adb';
 import { BACKUP_PARTS, backupZip, readBackupZip, sha256sums, type BackupFile, type BackupMeta } from '../src/app/backup';
 import { InstallFlow, restoreFromBackup, type AskKind, type FlowUi, type Progress } from '../src/app/flow';
 import type { AssetName } from '../src/assets';
-import { Fastboot } from '../src/fastboot';
-import { FelDevice } from '../src/fel';
-import { FakeBrom, FakeUboot, eq, makeSpl } from './fakes';
+import { Fastboot } from '@glassworks/fastboot';
+import { FelDevice } from '@glassworks/fel';
+import { FakeBrom, FakeUboot, eq, makeSpl } from '@glassworks/fel/fakes';
 
 const B = join(homedir(), 'src/aqara-panel-backups');
 const STOCK = join(B, 'install-4.5.80-20261109-203611');

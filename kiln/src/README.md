@@ -4,7 +4,12 @@ The design is in `docs/research/web-installer.md`, and the reference flow in `to
 `tools/install.sh`. Every module is plain TypeScript (ES2022, no framework). Modules talk to each
 other only through the exports below. `app/` is the only module that knows about the UI.
 
-## `fel/` — FEL over WebUSB (sunxi-fel subset; owner: main session, needs the panel)
+`kiln/` is an npm workspace. The protocol modules are packages in `packages/`, each with its own
+tests: `@glassworks/fel`, `@glassworks/fastboot`, `@glassworks/adb`, `@glassworks/bootpatch`,
+`@glassworks/setup-channel` and `improv-serial`. The page (`app/`, `assets/`, `improv/`,
+`provision/`) stays in `src/` and imports them by package name.
+
+## `fel` (`packages/fel`) — FEL over WebUSB (sunxi-fel subset; owner: main session, needs the panel)
 ```ts
 export const FEL_FILTER: USBDeviceFilter;                  // { vendorId: 0x1f3a, productId: 0xefe8 }
 export class FelDevice {
@@ -24,7 +29,7 @@ export function bootUboot(fel: FelDevice, splWithUboot: Uint8Array, ubootBin: Ui
 export const A133: { socId: 0x1855; sidSecureBootReg: 0x030060a0; ubootAddr: 0x4a000000; /* ... */ };
 ```
 
-## `fastboot/` — our U-Boot's fastboot (owner: main session)
+## `fastboot` (`packages/fastboot`) — our U-Boot's fastboot (owner: main session)
 ```ts
 export const FASTBOOT_FILTER: USBDeviceFilter;             // U-Boot gadget VID:PID
 export class Fastboot {
@@ -37,7 +42,7 @@ export class Fastboot {
 }
 ```
 
-## `bootpatch/` — byte-exact boot image + partition edits (owner: patcher agent; pure, no USB)
+## `bootpatch` (`packages/bootpatch`) — byte-exact boot image + partition edits (owner: patcher agent; pure, no USB)
 ```ts
 export interface OverlayFile { path: string; mode: number; data: Uint8Array }  // e.g. 'overlay.d/sbin/x', 0o700
 export interface PatchInput {
@@ -54,7 +59,7 @@ export function withVbmetaFlags(vbmeta: Uint8Array, set: number): Uint8Array; //
 export function replaceBootlogo(bootloaderImg: Uint8Array, bmp: Uint8Array): Uint8Array; // == tools/branding/set-bootlogo.py
 ```
 
-## `adb/` + `provision/` — after first boot (owner: main session)
+## `adb` (`packages/adb`) + `provision/` — after first boot (owner: main session)
 ```ts
 export function loadOrCreateAdbKey(storage?: KeyStorage): Promise<AdbKey>;  // { publicKey: 'QAAAA... name', store } (IndexedDB)
 export interface PanelShell { run(cmd): Promise<{ out: string; code: number }>; push(path, data, mode?): Promise<void> }
@@ -85,4 +90,5 @@ the kiosk app fetches them on the panel.
 ```
 npm install && npm run stage && npm run dev     # http://localhost:5173 (a secure context)
 npm test                                        # goldens: S1_WEB_GOLDEN=<dir>, else skipped
+npm test -w @glassworks/bootpatch               # one package (or: cd packages/bootpatch && npm test)
 ```

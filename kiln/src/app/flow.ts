@@ -1,12 +1,11 @@
 // tools/install/fel-install.sh in the browser, without the DOM: the UI drives it and renders its
 // events. WebUSB only opens a new device from a click, so where the panel re-enumerates (U-Boot's
 // fastboot, then Android's adb) the flow asks the UI for a click unless permission was given before.
-import type { AdbKey } from '../adb/key';
-import type { PanelShell } from '../adb/panel';
+import type { AdbKey, PanelShell } from '@glassworks/adb';
 import type { AssetName } from '../assets/assets';
-import { isMagiskPatched, patchBoot, replaceBootlogo, s1Overlay, vbmetaFlags, withVbmetaFlags } from '../bootpatch';
-import type { Fastboot } from '../fastboot/fastboot';
-import { bootUboot, checkChip, type FelDevice } from '../fel';
+import { isMagiskPatched, patchBoot, replaceBootlogo, s1Overlay, vbmetaFlags, withVbmetaFlags } from '@glassworks/bootpatch';
+import type { Fastboot } from '@glassworks/fastboot';
+import { bootUboot, checkChip, type FelDevice } from '@glassworks/fel';
 import { provision, type ProvisionOptions } from '../provision/provision';
 import {
   BACKUP_PARTS, RESTORE_PARTS, backupFile, backupId, type BackupFile, type BackupMeta, type BackupStore,

@@ -196,7 +196,7 @@ adb: the peer uid (`LocalSocket.peerCredentials`) must be 2000 (adbd as shell) o
 the installer's adb key, is the physical authorization, so there is no Allow tap. Connections can
 come one after another (or side by side, up to 4). The client side is the protocol source of truth:
 the [`improv-serial`](../kiln/packages/improv-serial/README.md) package (`kiln/packages/improv-serial/`)
-and `kiln/src/setup/channel.ts`.
+and `kiln/packages/setup-channel/src/channel.ts`.
 
 **Wi-Fi: Improv Serial on `@s1kiosk_improv`** (`ImprovSerial.kt` in the [Improv library](../app/libs/improv/README.md), pure, `ImprovSerialTest`;
 glue `app/kiosk/…/improv/ImprovSerialServer.kt`). [Improv Serial](https://www.improv-wifi.com/serial/) framing

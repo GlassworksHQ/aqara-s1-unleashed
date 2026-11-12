@@ -4,7 +4,7 @@
     adb forward tcp:0 localabstract:s1kiosk_improv            # prints the local port
     printf '%s\\0%s' "$ssid" "$password" | improv-send.py <port>
 
-Same protocol as kiln/src/improv/serial.ts (https://www.improv-wifi.com/serial/). The details come on
+Same protocol as kiln/packages/improv-serial/src/serial.ts (https://www.improv-wifi.com/serial/). The details come on
 stdin, never as arguments, and the password is never printed. Exit status: 0 connected, 3 the panel
 could not join (wrong password or out of range), 1 anything else.
 """

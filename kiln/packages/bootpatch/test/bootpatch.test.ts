@@ -11,13 +11,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { parseBootImage } from '../src/bootpatch/bootimg';
-import { type Compressor, loadCompressor } from '../src/bootpatch/compress';
-import { Cpio, S_IFDIR, S_IFREG, patchEncryption, patchVerity } from '../src/bootpatch/cpio';
-import { crc32, grepProp, magiskConfigText } from '../src/bootpatch/magisk';
+import { parseBootImage } from '../src/bootimg';
+import { type Compressor, loadCompressor } from '../src/compress';
+import { Cpio, S_IFDIR, S_IFREG, patchEncryption, patchVerity } from '../src/cpio';
+import { crc32, grepProp, magiskConfigText } from '../src/magisk';
 import {
   type OverlayFile, isMagiskPatched, patchBoot, replaceBootlogo, s1Overlay, vbmetaFlags, withVbmetaFlags,
-} from '../src/bootpatch/index';
+} from '../src/index';
 
 const GOLDEN = process.env.S1_WEB_GOLDEN ?? join(homedir(), 'src/aqara-panel-backups/web-golden');
 const HAVE_GOLDEN = existsSync(join(GOLDEN, 'out/SHA256SUMS'));

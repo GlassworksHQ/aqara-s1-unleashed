@@ -1,7 +1,6 @@
 // The real USB devices behind flow.ts's Devices interface.
-import { Panel } from '../adb/panel';
-import type { AdbKey } from '../adb/key';
-import { Fastboot } from '../fastboot/fastboot';
+import { Panel, type AdbKey } from '@glassworks/adb';
+import { Fastboot } from '@glassworks/fastboot';
 import type { Devices } from './flow';
 
 export const webUsbDevices: Devices = {

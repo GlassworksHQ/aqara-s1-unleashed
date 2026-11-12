@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
  * The setup channel (pure; the Android side is SetupChannelServer): everything the panel's own
  * onboarding asks for besides Wi-Fi, so the web installer can do it from the computer. Abstract
  * socket `@s1kiosk_setup`, reached through adb `localabstract:`; only adb is accepted (AdbPeer).
- * The client is kiln/src/setup/channel.ts (protocol source of truth); keep both in sync.
+ * The client is kiln/packages/setup-channel/src/channel.ts (protocol source of truth); keep both in sync.
  *
  * One JSON object per line, UTF-8, both ways. Requests carry an `id`; the reply echoes it:
  * ```

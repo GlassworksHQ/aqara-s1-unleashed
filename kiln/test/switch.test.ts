@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { PanelShell } from '../src/adb';
+import type { PanelShell } from '@glassworks/adb';
 import { IMPROV_SOCKET, PacketReader, PacketType, Rpc, frame, parseResult, strings, type ByteStream } from '../src/improv';
 import { KeyMismatchError, provision, unprovision } from '../src/provision';
 import {

@@ -1,0 +1,17 @@
+{
+  "name": "@glassworks/fel",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FEL over WebUSB: the sunxi-fel subset that boots our U-Boot on the A133.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./transport": "./src/transport.ts",
+    "./fakes": "./test/fakes.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

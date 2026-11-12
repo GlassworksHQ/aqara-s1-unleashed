@@ -15,7 +15,7 @@ Breaking into hardware has its own playbook: [`docs/research/bringup.md`](docs/r
 |---|---|---|
 | `app/kiosk` | S1 Kiosk, the GeckoView kiosk app (`sh.edm.s1kiosk`, never rename it) | Kotlin, Android |
 | `app/libs/*` | Libraries split out of the app: `esphome-api` (JVM), `esphome-api-android`, `improv` | Kotlin |
-| `kiln/` | The WebUSB installer (FEL → fastboot → boot patch → adb), served at s1.edm.sh | TypeScript, Vite, Rust→WASM |
+| `kiln/` | Kiln, the WebUSB installer (FEL → fastboot → boot patch → adb), served at s1.edm.sh. An npm workspace: the page in `src/`, protocol modules in `packages/` | TypeScript, Vite, Rust→WASM |
 | `tools/fel`, `tools/install` | FEL boot, U-Boot board files and patches, the CLI installer | bash |
 | `tools/root`, `tools/radio` | Init services in the patched boot image: root helper, update and bundle services | `/system/bin/sh` (mksh), C |
 | `docs/` | User guides; `docs/research/` holds the engineering notes and evidence | Markdown |

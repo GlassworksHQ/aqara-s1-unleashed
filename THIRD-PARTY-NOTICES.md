@@ -289,7 +289,7 @@ The page's JavaScript and WebAssembly ([`kiln/`](kiln)):
 - **Tango / ya-webadb**: MIT, Copyright (c) 2020-2025 Simon Chan. https://github.com/yume-chan/ya-webadb.
   `@yume-chan/adb` 2.6.4, `@yume-chan/adb-daemon-webusb` 2.3.2, `@yume-chan/stream-extra` 2.6.1, and
   their `@yume-chan/*` dependencies.
-- **`bootpatch.wasm`**: this project's `kiln/src/bootpatch/wasm` (MIT), statically linked with these
+- **`bootpatch.wasm`**: this project's `kiln/packages/bootpatch/src/wasm` (MIT), statically linked with these
   crates:
   - flate2 1.1.10 (MIT OR Apache-2.0)
   - zlib-rs 0.6.8 (Zlib)
@@ -298,7 +298,7 @@ The page's JavaScript and WebAssembly ([`kiln/`](kiln)):
     hybrid-array 0.4.15, typenum 1.20.1 and cfg-if 1.0.5 (MIT OR Apache-2.0)
   - the Rust standard library (MIT OR Apache-2.0)
 
-  The list is in `kiln/src/bootpatch/wasm/THIRD_PARTY.txt`. No Magisk code is included.
+  The list is in `kiln/packages/bootpatch/src/wasm/THIRD_PARTY.txt`. No Magisk code is included.
 
 ---
 

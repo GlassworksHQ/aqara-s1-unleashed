@@ -1,7 +1,7 @@
 // Fastboot client for our FEL-booted U-Boot (tools/fel/uboot): getvar, oem run, download + flash,
 // and the 'upload' command added by patch 0002, which tools/install/fb-read-partition.sh uses to read
 // partitions back. Same transport as FEL (fel/transport.ts).
-import { WebUsbBulk, type BulkTransport } from '../fel/transport';
+import { WebUsbBulk, type BulkTransport } from '@glassworks/fel/transport';
 
 /** U-Boot's fastboot gadget (CONFIG_USB_GADGET_VENDOR_NUM/PRODUCT_NUM in our defconfig). */
 export const FASTBOOT_FILTER: USBDeviceFilter = { vendorId: 0x1f3a, productId: 0x1010 };

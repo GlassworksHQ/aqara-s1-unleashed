@@ -14,7 +14,7 @@
 // root the app starts fresh and the Wi-Fi step asks for the password again.
 //
 // The Wi-Fi password never goes into a command line, a log line or an error message.
-import type { PanelShell } from '../adb/panel';
+import type { PanelShell } from '@glassworks/adb';
 import { IMPROV_SOCKET, ImprovSerialClient } from '../improv';
 import switchScript from '../../../tools/install/s1kiosk-switch.sh?raw';
 

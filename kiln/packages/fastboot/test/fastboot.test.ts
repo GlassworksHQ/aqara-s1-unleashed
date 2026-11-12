@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Fastboot, FastbootError } from '../src/fastboot';
-import { FakeUboot } from './fakes';
+import { Fastboot, FastbootError } from '../src';
+import { FakeUboot } from '@glassworks/fel/fakes';
 
 describe('Fastboot against a simulated U-Boot', () => {
   it('getvar', async () => {

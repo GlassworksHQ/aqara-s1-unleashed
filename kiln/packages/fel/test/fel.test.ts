@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { A133, FEL_CHUNK, FelDevice, bootUboot } from '../src/fel';
+import { A133, FEL_CHUNK, FelDevice, bootUboot } from '../src';
 import { FakeBrom, eq, makeSpl, u32 } from './fakes';
-import { AW_FEL_1_WRITE, AW_USB_WRITE, checkEgon, felRequest, splThunk, splWritePlan, usbRequest } from '../src/fel/protocol';
+import { AW_FEL_1_WRITE, AW_USB_WRITE, checkEgon, felRequest, splThunk, splWritePlan, usbRequest } from '../src/protocol';
 
 
 describe('FEL byte layouts', () => {

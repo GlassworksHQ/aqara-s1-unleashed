@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ByteStream } from '../src/improv';
-import { SetupChannel, validHaUrl, type SetupState } from '../src/setup/channel';
+import type { ByteStream } from 'improv-serial';
+import { SetupChannel, validHaUrl, type SetupState } from '../src/channel';
 
 const base: SetupState = {
   ip: '192.168.1.50',
