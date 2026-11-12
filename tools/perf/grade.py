@@ -17,17 +17,37 @@ ORDER = {GOOD: 0, NI: 1, POOR: 2}
 # metric id -> (good if value <= good_max, poor if value > poor_above or >= poor_at)
 METRICS = RUBRIC["metrics"]
 
-# Components of the headline grade; a component's band is the worst band of its metrics.
-COMPONENTS = {
-    "frames": ["frame_p95_ms", "frame_jank_pct", "frame_frozen_pct"],
-    "load": ["load_ms"],
-    "input": ["inp_ms"],
-    "start": ["start_ms"],
-}
+TIERS = ["light", "typical", "busy"]
+SMOOTH = {GOOD}          # 60 fps: the frames band is good (p95 within one frame, jank <= 5%, no freeze)
+FLUID = {GOOD, NI}       # 30 fps: not poor (p95 within two frames, jank <= 50%, frozen <= 0.1%)
+NOT_POOR = {GOOD, NI}
 
-# Not in the headline grade: no published standard, so the band is a project choice.
+# The letters, best first: (letter, plain meaning, {tier: {measure: accepted bands}}). The first
+# letter whose every requirement holds is the grade; none holds -> E. The bands underneath are the
+# cited ones (rubric.json); the tiers and this table are project choices, fixed before any frame was
+# graded (docs/perf.md, "The grade").
+LETTERS = [
+    ("A", "handles busy, animated dashboards smoothly",
+     {"busy": {"frames": SMOOTH, "inp": {GOOD}, "load": {GOOD}},
+      "typical": {"inp": {GOOD}, "load": {GOOD}},
+      "light": {"inp": {GOOD}, "load": {GOOD}}}),
+    ("B", "good for typical dashboards; busy ones stay fluid",
+     {"busy": {"frames": FLUID, "inp": {GOOD}, "load": {GOOD}},
+      "typical": {"frames": SMOOTH, "inp": {GOOD}, "load": {GOOD}},
+      "light": {"inp": {GOOD}, "load": {GOOD}}}),
+    ("C", "good for typical dashboards",
+     {"typical": {"frames": FLUID, "inp": {GOOD}, "load": NOT_POOR},
+      "light": {"inp": {GOOD}, "load": NOT_POOR}}),
+    ("D", "fine for light dashboards; animation stutters",
+     {"light": {"frames": FLUID, "inp": NOT_POOR, "load": NOT_POOR}}),
+]
+E_MEANING = "slow even on light dashboards"
+MEANINGS = dict([(l, m) for l, m, _ in LETTERS] + [("E", E_MEANING)])
+# A poor start (process start to engine ready >= 5 s, Android vitals' bound) caps the letter here.
+START_CAP = "C"
+
+# Not in the grade: no published standard, so the band is a project choice.
 JS_BURST = RUBRIC["js_burst_ms"]
-
 
 def band(value, rule):
     if value is None:
@@ -62,34 +82,40 @@ def capacity(steps, accept):
     return best
 
 
-def letter(component_bands):
-    """A: all good. B: no poor, one needs-improvement. C: no poor, more. D: one poor. E: two or more poor."""
-    bs = list(component_bands)
-    poor = bs.count(POOR)
-    ni = bs.count(NI)
-    if poor >= 2:
-        return "E"
-    if poor == 1:
-        return "D"
-    if ni >= 2:
-        return "C"
-    if ni == 1:
-        return "B"
-    return "A"
+def tier_bands(tier):
+    """{frames, inp, load} bands of one reference dashboard's measurements (None if not measured)."""
+    tier = tier or {}
+    return {
+        "frames": frame_band(tier.get("frames")),
+        "inp": band(tier.get("inp_ms"), METRICS["inp_ms"]),
+        "load": band(tier.get("load_ms"), METRICS["load_ms"]),
+    }
 
 
-def headline(values):
-    """values: metric id -> number or None. Returns the grade, each component's band, and what is missing."""
-    metric_bands = {k: band(values.get(k), rule) for k, rule in METRICS.items()}
-    comps = {c: worst(metric_bands[m] for m in ms) for c, ms in COMPONENTS.items()}
-    missing = [c for c, b in comps.items() if b is None]
+def meets(bands, needs):
+    return all(bands[t][m] in ok for t, req in needs.items() for m, ok in req.items())
+
+
+def grade(tiers, start_ms):
+    """tiers: {light|typical|busy: {"frames": frame stats, "inp_ms", "load_ms"}}; start_ms: process
+    start to engine ready. Returns the letter, its plain meaning, every band, and what is missing.
+    A missing measurement fails whatever needs it, and the grade is then provisional."""
+    bands = {t: tier_bands((tiers or {}).get(t)) for t in TIERS}
+    start = band(start_ms, METRICS["start_ms"])
+    missing = [f"{t}.{m}" for t in TIERS for m, b in bands[t].items() if b is None] + ([] if start else ["start"])
+    letter = next((l for l, _, needs in LETTERS if meets(bands, needs)), "E")
+    capped = start == POOR and letter < START_CAP
+    if capped:
+        letter = START_CAP
     return {
         "rubric_version": RUBRIC_VERSION,
-        "grade": letter(b for b in comps.values() if b) if len(missing) < len(comps) else None,
+        "grade": letter,
+        "meaning": MEANINGS[letter],
+        "capped_by_start": capped,
         "provisional": bool(missing),
         "missing": missing,
-        "components": comps,
-        "metrics": {k: {"value": values.get(k), "band": metric_bands[k]} for k in METRICS},
+        "bands": bands,
+        "start": {"value": start_ms, "band": start},
     }
 
 

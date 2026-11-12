@@ -42,37 +42,73 @@ class Thresholds(unittest.TestCase):
         self.assertIsNone(G.band(None, G.METRICS["inp_ms"]))
 
 
+SMOOTH = {"n": 100, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0}      # 60 fps: frames band good
+FLUID = {"n": 100, "p95_ms": 33.33, "jank_pct": 20, "frozen_pct": 0}      # 30 fps: needs improvement
+CHOPPY = {"n": 100, "p95_ms": 50.0, "jank_pct": 80, "frozen_pct": 0}      # under 30 fps: poor
+INP = {"good": 100, "ni": 300, "poor": 600}
+LOAD = {"good": 1000, "ni": 3000, "poor": 5000}
+
+
+def tiers(light=SMOOTH, typical=SMOOTH, busy=SMOOTH, inp=None, load=None, drop=()):
+    """All good unless told otherwise; inp/load: {tier: "ni"|"poor"}."""
+    inp, load = inp or {}, load or {}
+    out = {}
+    for t, fr in (("light", light), ("typical", typical), ("busy", busy)):
+        if t not in drop:
+            out[t] = {"frames": fr, "inp_ms": INP[inp.get(t, "good")], "load_ms": LOAD[load.get(t, "good")]}
+    return out
+
+
 class Letter(unittest.TestCase):
-    def test_letters(self):
-        cases = [
-            ([GOOD] * 4, "A"),
-            ([GOOD, GOOD, GOOD, NI], "B"),
-            ([GOOD, NI, GOOD, NI], "C"),
-            ([NI] * 4, "C"),
-            ([POOR, GOOD, GOOD, GOOD], "D"),
-            ([POOR, NI, NI, NI], "D"),
-            ([POOR, POOR, GOOD, GOOD], "E"),
-        ]
-        for bands, want in cases:
-            with self.subTest(bands=bands):
-                self.assertEqual(G.letter(bands), want)
+    """Each letter's boundary: the frame that just meets a letter gets it, and moving one requirement
+    past its edge drops it. docs/perf.md, "The grade", has the same table."""
 
-    def test_frames_component_is_its_worst_metric(self):
-        h = G.headline({"frame_p95_ms": 16.67, "frame_jank_pct": 2, "frame_frozen_pct": 0.5,
-                        "load_ms": 1000, "inp_ms": 100, "start_ms": 2000})
-        self.assertEqual(h["components"]["frames"], POOR)
-        self.assertEqual(h["grade"], "D")
-        self.assertFalse(h["provisional"])
+    CASES = [
+        ("all good", tiers(), "A"),
+        ("busy only fluid", tiers(busy=FLUID), "B"),
+        ("busy INP needs improvement", tiers(inp={"busy": "ni"}), "C"),
+        ("busy load needs improvement", tiers(load={"busy": "ni"}), "C"),
+        ("busy choppy, typical smooth", tiers(busy=CHOPPY), "C"),
+        ("typical only fluid", tiers(typical=FLUID, busy=FLUID), "C"),
+        ("typical fluid, typical load needs improvement", tiers(typical=FLUID, busy=CHOPPY, load={"typical": "ni"}), "C"),
+        ("typical fluid, light load needs improvement", tiers(typical=FLUID, busy=CHOPPY, load={"light": "ni"}), "C"),
+        ("typical INP needs improvement", tiers(typical=FLUID, busy=CHOPPY, inp={"typical": "ni"}), "D"),
+        ("light INP needs improvement", tiers(busy=CHOPPY, inp={"light": "ni"}), "D"),
+        ("typical load poor", tiers(busy=CHOPPY, load={"typical": "poor"}), "D"),
+        ("typical choppy", tiers(typical=CHOPPY, busy=CHOPPY), "D"),
+        ("light only fluid", tiers(light=FLUID, typical=CHOPPY, busy=CHOPPY), "D"),
+        ("light choppy", tiers(light=CHOPPY, typical=CHOPPY, busy=CHOPPY), "E"),
+        ("light INP poor", tiers(typical=CHOPPY, busy=CHOPPY, inp={"light": "poor"}), "E"),
+        ("light load poor", tiers(typical=CHOPPY, busy=CHOPPY, load={"light": "poor"}), "E"),
+    ]
 
-    def test_missing_component_makes_the_grade_provisional(self):
-        h = G.headline({"frame_p95_ms": 16.67, "frame_jank_pct": 0, "frame_frozen_pct": 0,
-                        "load_ms": 1000, "start_ms": 2000})
-        self.assertEqual(h["grade"], "A")
-        self.assertTrue(h["provisional"])
-        self.assertEqual(h["missing"], ["input"])
+    def test_each_letter_boundary(self):
+        for name, ts, want in self.CASES:
+            with self.subTest(name):
+                g = G.grade(ts, 1000)
+                self.assertEqual(g["grade"], want)
+                self.assertEqual(g["meaning"], G.MEANINGS[want])
+                self.assertFalse(g["provisional"])
 
-    def test_nothing_measured_has_no_grade(self):
-        self.assertIsNone(G.headline({})["grade"])
+    def test_a_poor_start_caps_the_letter_at_c(self):
+        self.assertEqual(G.grade(tiers(), 4999)["grade"], "A")
+        g = G.grade(tiers(), 5000)
+        self.assertEqual((g["grade"], g["capped_by_start"]), ("C", True))
+        self.assertEqual(G.grade(tiers(busy=FLUID), 6000)["grade"], "C")
+        g = G.grade(tiers(typical=CHOPPY, busy=CHOPPY), 6000)
+        self.assertEqual((g["grade"], g["capped_by_start"]), ("D", False))   # a cap never raises a letter
+
+    def test_a_missing_dashboard_fails_what_needs_it_and_is_provisional(self):
+        g = G.grade(tiers(drop=("busy",)), 1000)
+        self.assertEqual(g["grade"], "C")
+        self.assertTrue(g["provisional"])
+        self.assertEqual(g["missing"], ["busy.frames", "busy.inp", "busy.load"])
+
+    def test_nothing_measured_is_e_and_provisional(self):
+        g = G.grade({}, None)
+        self.assertEqual(g["grade"], "E")
+        self.assertTrue(g["provisional"])
+        self.assertIn("start", g["missing"])
 
 
 class Capacity(unittest.TestCase):

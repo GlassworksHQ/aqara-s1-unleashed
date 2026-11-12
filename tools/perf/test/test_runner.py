@@ -40,42 +40,51 @@ class Runner(unittest.TestCase):
 
     def test_report_has_every_part(self):
         r = self.rep
-        self.assertEqual(r["schema"], "glassworks.perf/2")
+        self.assertEqual(r["schema"], "glassworks.perf/3")
         self.assertEqual(r["frame"]["device"]["model"], "Test Panel")
         self.assertEqual(r["frame"]["app"]["geckoview"], "159.0")
-        self.assertEqual(r["grade"]["components"], {"frames": "good", "load": "good", "input": "good", "start": "good"})
-        self.assertEqual(r["grade"]["grade"], "A")
-        self.assertFalse(r["grade"]["provisional"])
-        self.assertEqual(r["graded"]["synthetic"]["reference_sources"], ["surfaceflinger"])
-        self.assertEqual(r["graded"]["synthetic"]["inp_ms"]["median"], 48)
-        ref = r["graded"]["reference_dashboard"]
+        g = r["grade"]
+        self.assertEqual(g["grade"], "A")
+        self.assertFalse(g["provisional"], g["missing"])
+        self.assertTrue(g["headline"].startswith("test-frame: A, handles busy, animated dashboards smoothly."))
+        ref = r["graded"]["reference"]
         self.assertEqual(ref["errors"], [])
-        self.assertEqual(ref["nodes"], [1134])
-        self.assertEqual(r["grade"]["metrics"]["start_ms"]["value"], ref["start_ms"]["median"])
-        self.assertEqual(r["grade"]["metrics"]["load_ms"]["value"], ref["load_ms"]["median"])
+        self.assertEqual(set(ref["tiers"]), {"light", "typical", "busy"})
+        self.assertEqual(ref["tiers"]["light"]["inp_ms"]["median"], 48)
+        self.assertEqual(ref["tiers"]["light"]["sources"], ["raf"])
+        self.assertEqual(ref["tiers"]["typical"]["sources"], ["surfaceflinger"])
+        self.assertEqual(ref["tiers"]["light"]["load_errors"], [])
+        self.assertEqual(g["start"]["value"], ref["start_ms"]["median"])
         self.assertEqual(r["real_use"]["android_ttid_ms"]["median"], 1714)
         self.assertEqual(r["real_use"]["settle_how"], ["quiet-gap"])
         self.assertEqual(r["real_use"]["memory"]["idle"]["app_pss_kb"]["median"], 570000)
         self.assertEqual({p["id"] for p in r["real_use"]["panes"]}, {"radio"})
 
     def test_frame_counts_come_from_the_fake_screen(self):
-        ref = self.rep["graded"]["synthetic"]["per_run"][0]["reference"]
-        self.assertGreater(ref["n"], 25)
-        self.assertEqual(ref["p95_ms"], 16.67)
+        busy = self.rep["graded"]["reference"]["per_run"][0]["tiers"]["busy"]
+        self.assertTrue(busy["sf_valid"])
+        self.assertGreater(busy["frames"]["n"], 20)
 
     def test_it_never_changes_a_setting(self):
         shell = [c[len("shell "):] for c in self.commands if c.startswith("shell ")]
         inputs = sorted({c for c in shell if c.startswith("input ")})
         self.assertEqual(inputs, ["input keyevent KEYCODE_WAKEUP", "input tap 720 360"])
-        self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 2)
+        self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 6)   # 2 taps on each reference dashboard
         forbidden = re.compile(r"(^|[;&|]\s*)(settings|svc|cmd|setprop|am broadcast|pm (?!path\b))|--es url|--ez ")
         self.assertEqual([c for c in shell if forbidden.search(c)], [])
         extras = {m for c in shell for m in re.findall(r"--e\w \w+", c)}
         self.assertEqual(extras, {"--es open", "--es screen"})
         opens = [re.search(r"--es open '([^']+)'", c).group(1) for c in shell if "--es open" in c]
-        self.assertEqual(len(opens), 2)
-        self.assertTrue(opens[0].startswith("http://127.0.0.1:18089/index.html?") and "&taps=2&" in opens[0], opens[0])
-        self.assertTrue(opens[1].startswith("http://127.0.0.1:18089/dashboard.html?nonce="), opens[1])
+        self.assertEqual(len(opens), 4)
+        self.assertTrue(opens[0].startswith("http://127.0.0.1:18089/index.html?"), opens[0])
+        for url, tier in zip(opens[1:], ("light", "typical", "busy")):
+            self.assertTrue(url.startswith(f"http://127.0.0.1:18089/dashboard.html?tier={tier}&nonce=") and "&taps=2" in url, url)
+
+    def test_the_reference_dashboards_open_only_once_the_session_is_up(self):
+        """On the S1, `open` before GeckoView's first page is dropped (#103's pins); the fake does the same."""
+        i_blank = next(i for i, c in enumerate(self.commands) if "dashboard.html" in c)
+        stops = [i for i, c in enumerate(self.commands) if c.startswith("shell am force-stop")]
+        self.assertGreater(i_blank, stops[0])
 
     def test_launch_without_a_system_relaunch_uses_am_start(self):
         self.assertEqual(self.rep["real_use"]["launch"], ["am-start"])
@@ -113,6 +122,45 @@ class HomeRelaunch(unittest.TestCase):
         self.assertIsNotNone(c["page_stop_mono"])
         with open(os.path.join(state, "commands.log")) as f:
             self.assertNotIn("am start -W", f.read())
+
+    def test_graded_run_on_a_home_app_kiosk(self):
+        tmp = tempfile.mkdtemp()
+        env, state = fake_env(tmp, FAKE_HOME_RELAUNCH="1")
+        p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
+                            "--out", tmp, "--run", "1", "--settle", "3", "--url", "http://127.0.0.1:1/dashboard.html",
+                            "--taps", "0"], env=env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(p.returncode, 0, p.stderr[-2000:])
+        with open(os.path.join(tmp, "refstart-1.json")) as f:
+            c = json.load(f)
+        self.assertEqual(c["launch"], "relaunched-by-system")
+        self.assertTrue(c["own_page_quiet"])
+        self.assertEqual(sorted(c["tiers"]), ["busy", "light", "typical"])
+        self.assertTrue(all("step" in e and "page" in e for e in c["tiers"].values()))
+        self.assertGreater(c["engine_mono"], c["proc_mono"])
+
+
+class ForeignPage(unittest.TestCase):
+    """While the reference dashboards are measured, any other page the kiosk loads, before the
+    reference page starts or after, makes the run an error: it isn't graded."""
+
+    def run_with(self, where):
+        tmp = tempfile.mkdtemp()
+        env, _ = fake_env(tmp, FAKE_FOREIGN_PAGE=where, GW_PERF_COLD_SETTLE="0")
+        p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
+                            "--out", tmp, "--run", "1", "--settle", "0", "--url", "http://127.0.0.1:1/dashboard.html",
+                            "--taps", "0"], env=env, capture_output=True, text=True, timeout=120)
+        with open(os.path.join(tmp, "refstart-1.json")) as f:
+            return p.returncode, json.load(f)
+
+    def test_a_page_before_the_reference_page(self):
+        code, c = self.run_with("before")
+        self.assertNotEqual(code, 0)
+        self.assertEqual(c["error"], "the kiosk loaded another page while a reference dashboard was measured")
+
+    def test_a_page_after_the_reference_page(self):
+        code, c = self.run_with("after")
+        self.assertNotEqual(code, 0)
+        self.assertEqual(c["error"], "the kiosk loaded another page while a reference dashboard was measured")
 
 
 class LiveLayer(unittest.TestCase):

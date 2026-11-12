@@ -60,3 +60,24 @@ test("the measured window leaves SurfaceFlinger's history room for the read afte
     assert.ok(127 - S.measureMs(1000 / hz) / (1000 / hz) >= 26, `${hz} Hz`);
   }
 });
+
+const T = require("../page/tiers.js");
+
+test("the three reference dashboards are fixed: light, typical, busy", () => {
+  assert.deepEqual(T.ORDER, ["light", "typical", "busy"]);
+  assert.deepEqual(T.TIERS.light, { updateEveryMs: 2000, updatesPerTick: 5, spinners: 0, pulses: 0, ring: false, clock: false,
+                                    sparkline: false, frameTiles: 0, motion: false });
+  assert.deepEqual(T.TIERS.typical, { updateEveryMs: 2000, updatesPerTick: 5, spinners: 4, pulses: 2, ring: true, clock: true,
+                                      sparkline: false, frameTiles: 0, motion: true });
+  assert.deepEqual(T.TIERS.busy, { updateEveryMs: 2000, updatesPerTick: 5, spinners: 10, pulses: 2, ring: true, clock: true,
+                                   sparkline: true, frameTiles: 24, motion: true });
+});
+
+test("each reference dashboard has at least everything the one below it has", () => {
+  for (const [lo, hi] of [["light", "typical"], ["typical", "busy"]]) {
+    for (const [k, v] of Object.entries(T.TIERS[lo])) {
+      const w = T.TIERS[hi][k];
+      assert.ok(typeof v === "number" ? w >= v : (!v || w), `${hi}.${k} >= ${lo}.${k}`);
+    }
+  }
+});

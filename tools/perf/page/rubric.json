@@ -1,6 +1,6 @@
 {
   "_comment": "The perf rubric, read by tools/perf/grade.py and by the test page (perf.js, to stop the ladder). docs/perf.md cites each source. Change on purpose, with the docs and the tests.",
-  "version": 2,
+  "version": 3,
   "one_frame_ms": 16.667,
   "vsync_slack_ms": 0.5,
   "metrics": {
@@ -22,17 +22,17 @@
     "load_ms": {
       "good_max": 2500,
       "poor_above": 4000,
-      "source": "Core Web Vitals LCP bounds (good <= 2.5 s, poor > 4 s), applied to the reference dashboard from navigation start to the last frame before 750 ms of quiet (at least as late as its LCP, so stricter)"
+      "source": "Core Web Vitals LCP bounds (good <= 2.5 s, poor > 4 s), applied to each reference dashboard from navigation start to settled (the first frame followed by 750 ms of quiet, after the load event). Settled is at or after the largest paint, so this is stricter than LCP"
     },
     "inp_ms": {
       "good_max": 200,
       "poor_above": 500,
-      "source": "Core Web Vitals INP (good <= 200 ms, poor > 500 ms)"
+      "source": "Core Web Vitals INP (good <= 200 ms, poor > 500 ms), taps on each reference dashboard's toggle"
     },
     "start_ms": {
       "good_max": 2500,
       "poor_at": 5000,
-      "source": "app process start to the reference dashboard's first contentful paint. poor: Android vitals' excessive cold start bound (>= 5 s), which vitals apply to TTID; here it applies to a later point, so stricter. good <= 2.5 s: project choice (LCP's bound)"
+      "source": "app process start to engine ready (GeckoView's own first PageStart). poor: Android vitals' excessive cold start bound (>= 5 s), which vitals apply to TTID. good <= 2.5 s: project choice (LCP's bound)"
     }
   },
   "js_burst_ms": {

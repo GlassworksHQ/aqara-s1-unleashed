@@ -3,7 +3,7 @@
 
     python3 tools/perf/report.py <run-dir> [--apk app.apk ...] [--budgets tools/perf/budgets.json]
 
-The report schema (glassworks.perf/1) is documented in docs/perf.md.
+The report schema (glassworks.perf/3) is documented in docs/perf.md.
 """
 import argparse
 import glob
@@ -18,9 +18,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import grade as G  # noqa: E402
 import perflib as P  # noqa: E402
 
-SCHEMA = "glassworks.perf/2"
+SCHEMA = "glassworks.perf/3"
 SETTLE_GAP_MS = 750
 FAMILIES = ["css-transform", "css-opacity", "svg", "canvas2d", "ha-cards"]
+# Reference dashboards with something always moving. Light is still between its state updates, so
+# SurfaceFlinger has nothing to count there, and its frames come from rAF (main-thread) only.
+MOTION = {"light": False, "typical": True, "busy": True}
 
 
 def read_json(path):
@@ -33,7 +36,7 @@ def read_jsonl(path):
         return [json.loads(l) for l in f if l.strip()]
 
 
-# ---- synthetic
+# ---- frames
 
 def sf_intervals(pres, win, period):
     """Frame intervals over the whole window. Gaps at its edges count when they are longer than 1.5
@@ -47,22 +50,22 @@ def sf_intervals(pres, win, period):
     return out
 
 
-def step_frames(pl):
-    """Frame stats for one step, graded on the worse of SurfaceFlinger and rAF.
+def step_frames(pl, motion=True):
+    """Frame stats for one window, graded on the worse of SurfaceFlinger and rAF.
 
     rAF misses frames the compositor drops (CSS animations run off the main thread); SurfaceFlinger
     misses main-thread jank while the compositor still animates something. SurfaceFlinger's data is
     complete when its history reached back before the window: then every gap in the window, edges
-    included, is a real stall. If the history didn't reach back (evicted) or there was no layer,
-    only rAF is used."""
+    included, is a real stall. If it didn't (evicted), or nothing is meant to move (motion=False:
+    a still page presents nothing, which isn't a stall), only rAF is used."""
     raf = pl.get("raf") or {"n": 0}
     sf = pl.get("sf") or {}
     pres = sf.get("presents_ms") or []
     win, period, oldest = sf.get("window_ms"), sf.get("period_ms"), sf.get("oldest_ms")
     if "oldest_ms" in sf:
-        sf_valid = bool(win and period and oldest is not None and oldest <= win[0])
+        sf_valid = bool(motion and win and period and oldest is not None and oldest <= win[0])
     else:  # runs from before oldest_ms was recorded
-        sf_valid = bool(win and period and len(pres) > 1)
+        sf_valid = bool(motion and win and period and len(pres) > 1)
     sf_stats = P.frame_stats(sf_intervals(pres, win, period), period) if sf_valid else {"n": 0}
 
     def key(st):
@@ -79,11 +82,12 @@ def step_frames(pl):
     return {"source": source, "limited_by": limited, "stats": chosen, "raf": raf, "sf": sf_stats, "sf_valid": sf_valid}
 
 
+# ---- the test page (detail, not graded)
+
 def synthetic_run(lines):
     hello = next((l for l in lines if l["t"] == "hello"), {})
     steps = [dict(stage=l["stage"], n=l["n"], scrolled_px=l.get("scrolled_px"), **step_frames(l)) for l in lines if l["t"] == "step"]
     js = next((l for l in lines if l["t"] == "js"), None)
-    inp = next((l for l in lines if l["t"] == "input"), None)
     ladder = {}
     for fam in FAMILIES:
         fs = [(s["n"], s["stats"]) for s in steps if s["stage"] == fam]
@@ -93,18 +97,14 @@ def synthetic_run(lines):
                            "top_step": max(n for n, _ in fs),
                            "steps": [{"n": s["n"], "source": s["source"], "limited_by": s["limited_by"],
                                       "sf_valid": s["sf_valid"], "frames": s["stats"]} for s in steps if s["stage"] == fam]}
-    ref = next((s for s in steps if s["stage"] == "reference"), None)
     scroll = next((s for s in steps if s["stage"] == "scroll"), None)
     return {
         "ua": hello.get("ua"), "page_load": hello.get("load") or {}, "dpr": hello.get("dpr"),
         "ladder": ladder,
-        "reference": ref and {"source": ref["source"], "limited_by": ref["limited_by"], "sf_valid": ref["sf_valid"],
-                              "raf": ref["raf"], "sf": ref["sf"], **ref["stats"]},
         "scroll": scroll and {"source": scroll["source"], "scrolled_px": scroll["scrolled_px"],
                               "moved": bool(scroll["scrolled_px"]), **scroll["stats"]},
         "js": js and {"median_ms": js["median_ms"], "p95_ms": js["p95_ms"],
                       "checksum_ok": js["checksum"] == js["expected"]},
-        "input": inp and {"method": inp["method"], "taps": inp["taps"], "inp_ms": inp["inp_ms"] if inp["taps"] else None},
         "complete": any(l["t"] == "done" for l in lines),
     }
 
@@ -126,22 +126,15 @@ def synthetic_summary(runs):
             fam_runs = [r["ladder"][fam] for r in runs if fam in r["ladder"]]
             for k in ("held_60fps", "held_30fps"):
                 ladder[fam][k + "_at_top"] = all(x[k] == x["top_step"] for x in fam_runs)
-    ref = [r["reference"] for r in runs if r["reference"]]
     return {
         "runs": len(runs),
         "complete_runs": sum(1 for r in runs if r["complete"]),
         "ladder": ladder,
-        "reference": {k: sp(lambda r, k=k: (r["reference"] or {}).get(k)) for k in ("p95_ms", "median_ms", "jank_pct", "frozen_pct", "fps")},
-        "reference_sources": sorted({x["source"] for x in ref}),
-        "reference_limited_by": sorted({x["limited_by"] for x in ref if x["limited_by"]}),
-        "steps_without_sf": sum(1 for r in runs for f in r["ladder"].values() for st in f["steps"] if not st["sf_valid"])
-        + sum(1 for x in ref if not x["sf_valid"]),
+        "steps_without_sf": sum(1 for r in runs for f in r["ladder"].values() for st in f["steps"] if not st["sf_valid"]),
         "scroll_moved": all(r["scroll"]["moved"] for r in runs if r["scroll"]) if any(r["scroll"] for r in runs) else None,
         "scroll": {k: sp(lambda r, k=k: (r["scroll"] or {}).get(k)) for k in ("p95_ms", "jank_pct", "fps")},
         "js_burst_ms": sp(lambda r: (r["js"] or {}).get("median_ms")),
         "js_checksum_ok": all((r["js"] or {}).get("checksum_ok") for r in runs) if runs else None,
-        "inp_ms": sp(lambda r: (r["input"] or {}).get("inp_ms")),
-        "input_method": sorted({r["input"]["method"] for r in runs if r["input"]}),
         "page_lcp_ms": sp(lambda r: r["page_load"].get("lcp_ms") or r["page_load"].get("fcp_ms")),
         # Engines without LCP report FCP instead, an earlier paint, so the load reads as faster.
         "page_lcp_from": sorted({r["page_load"].get("lcp_from") or ("lcp" if r["page_load"].get("lcp_ms") else "fcp")
@@ -149,7 +142,128 @@ def synthetic_summary(runs):
     }
 
 
-# ---- real use
+# ---- the reference dashboards (graded)
+
+def settle_before(frames_ms, loaded_ms, live_ms, gap_ms=SETTLE_GAP_MS):
+    """When a reference dashboard finished loading: the first frame followed by gap_ms with no new
+    frame, where the quiet reaches past the load event (a pause before the load event is mid-load),
+    and never before the load event. Frames are those between navigation start and the page going
+    live; the page is still for 2 s before that, so the quiet before live_ms counts as a gap.
+    Returns (ms, None), or (None, why) when it can't be measured: never 0 by default."""
+    fs = sorted(frames_ms)
+    if not fs:
+        return None, "no frames on screen while it loaded"
+    for i, f in enumerate(fs):
+        nxt = fs[i + 1] if i + 1 < len(fs) else live_ms
+        if nxt - f >= gap_ms and nxt > loaded_ms:
+            return max(f, loaded_ms), None
+    return None, "it never went still before going live"
+
+
+def tier_run(tier, entry, presents_ms):
+    """One reference dashboard in one run: load (page clock + SurfaceFlinger), frames, INP."""
+    page, step = entry.get("page"), entry.get("step")
+    out = {"tier": tier}
+    if entry.get("error") or not page or not step:
+        return dict(out, error=entry.get("error") or "incomplete")
+    if not page.get("load_ms") or not page.get("fcp_ms"):
+        out["load_error"] = "no load event or first paint reported"
+    else:
+        nav = P.page_to_mono_ms(page, 0)
+        loaded = P.page_to_mono_ms(page, page["load_ms"])
+        fcp = P.page_to_mono_ms(page, page["fcp_ms"])
+        live = entry.get("live_mono", 0) * 1000
+        settle, why = settle_before([t for t in presents_ms if nav <= t <= live], loaded, live)
+        if why:
+            out["load_error"] = why
+        elif settle < fcp:
+            out["load_error"] = "settled before its first paint"
+        else:
+            out["load_ms"] = round(settle - nav)
+    f = step_frames(step, MOTION[tier])
+    inp = entry.get("input") or {}
+    return dict(out, frames=f["stats"], source=f["source"], limited_by=f["limited_by"], sf_valid=f["sf_valid"],
+                inp_ms=inp.get("inp_ms") if inp.get("taps") else None, input_method=inp.get("method"),
+                fcp_ms=page.get("fcp_ms"), nodes=page.get("nodes"))
+
+
+def reference_run(c):
+    """One graded run: the cold start (start = process start to engine ready, both stamped on the
+    device, so the harness's adb round trips aren't in it), then each reference dashboard."""
+    base = {"ttid_ms": c.get("ttid_ms"), "launch": c.get("launch"), "own_page_quiet": c.get("own_page_quiet")}
+    proc, engine = c.get("proc_mono"), c.get("engine_mono")
+    start = round((engine - proc) * 1000) if proc is not None and engine is not None else None
+    tiers = {t: tier_run(t, e, c.get("presents_mono_ms") or []) for t, e in (c.get("tiers") or {}).items()}
+    return dict(base, start_ms=start, tiers=tiers, error=c.get("error"))
+
+
+def reference_summary(runs):
+    starts = [r["start_ms"] for r in runs]
+    tiers = {}
+    for t in G.TIERS:
+        rs = [r["tiers"][t] for r in runs if t in r["tiers"] and not r["tiers"][t].get("error")]
+        if not rs:
+            continue
+        fr = [x["frames"] for x in rs]
+        tiers[t] = {
+            "frames": {k: P.spread([f.get(k) for f in fr]) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")},
+            "sources": sorted({x["source"] for x in rs}),
+            "limited_by": sorted({x["limited_by"] for x in rs if x["limited_by"]}),
+            "inp_ms": P.spread([x["inp_ms"] for x in rs]),
+            "input_method": sorted({x["input_method"] for x in rs if x["input_method"]}),
+            "load_ms": P.spread([x.get("load_ms") for x in rs]),
+            "load_errors": [x["load_error"] for x in rs if x.get("load_error")],
+            "fcp_ms": P.spread([x["fcp_ms"] for x in rs]),
+            "nodes": sorted({x["nodes"] for x in rs if x.get("nodes")}),
+        }
+    return {
+        "runs": len(runs),
+        "start_ms": P.spread(starts),
+        # Android's TTID: the first frame of the launched activity, which on a kiosk is its own
+        # loading screen. Reported, not graded.
+        "android_ttid_ms": P.spread([r["ttid_ms"] for r in runs]),
+        "launch": sorted({r["launch"] for r in runs if r.get("launch")}),
+        # False: the kiosk's own page never finished (Home Assistant down?), so the reference pages
+        # were opened after a fixed wait instead. Still graded; the flag explains a slow run.
+        "own_page_quiet": sorted({r["own_page_quiet"] for r in runs}, key=str),
+        "tiers": tiers,
+        "errors": [r["error"] for r in runs if r.get("error")],
+        "per_run": runs,
+    }
+
+
+def grade_inputs(graded):
+    """The grade's inputs: medians from the reference dashboards only, so the grade can't depend on
+    anyone's own Home Assistant."""
+    ref = graded.get("reference") or {}
+    med = lambda x: x and x["median"]  # noqa: E731
+    tiers = {}
+    for t, s in (ref.get("tiers") or {}).items():
+        fr = {k: med(s["frames"][k]) for k in ("p95_ms", "jank_pct", "frozen_pct", "n")}
+        tiers[t] = {"frames": fr if fr["n"] else None, "inp_ms": med(s["inp_ms"]), "load_ms": med(s["load_ms"])}
+    return tiers, med(ref.get("start_ms"))
+
+
+def headline(name, g, ref):
+    """'Aqara S1 Plus: C, good for typical dashboards. Busy animated dashboards drop to about 13 fps.'"""
+    out = f"{name}: {g['grade']}, {g['meaning']}."
+    tiers = (ref or {}).get("tiers") or {}
+    for t, label in (("busy", "Busy animated"), ("typical", "Typical"), ("light", "Light")):
+        if g["bands"][t]["frames"] not in (G.GOOD, None) and tiers.get(t):
+            fps = tiers[t]["frames"]["fps"]
+            out += f" {label} dashboards drop to about {fps['median']:.0f} fps." if fps else ""
+            break
+    slow = [f"{t} {m}" for t in G.TIERS for m in ("inp", "load") if g["bands"][t][m] == G.POOR]
+    if slow:
+        out += " Poor: " + ", ".join(slow) + "."
+    if g["capped_by_start"]:
+        out += f" A poor start ({g['start']['value'] / 1000:.1f} s) caps it at {G.START_CAP}."
+    if g["provisional"]:
+        out += " Provisional: not everything was measured."
+    return out
+
+
+# ---- real use (not graded)
 
 def visual_settle(presents_ms, stop_ms, ended_quiet, gap_ms=SETTLE_GAP_MS):
     """When the dashboard stopped painting: the first frame at or after PageStop that is followed by
@@ -172,42 +286,11 @@ def coldstart_run(c):
         return dict(base, error=c.get("error") or "no dashboard PageStart")
     start, stop = c["page_start_mono"] * 1000, c["page_stop_mono"] * 1000
     settle, how = visual_settle(c.get("presents_mono_ms") or [], stop, c.get("ended_quiet", False))
-    killed, proc = c.get("stop_mono"), c.get("proc_mono")
+    killed, proc, engine = c.get("stop_mono"), c.get("proc_mono"), c.get("engine_mono")
     return dict(base, page_stop_ms=round(stop - start), dashboard_load_ms=round(settle - start), settle=how,
                 app_start_to_dashboard_ms=round(start - proc * 1000) if proc else None,
+                engine_ready_ms=round((engine - proc) * 1000) if proc and engine else None,
                 stop_to_dashboard_ms=round(settle - killed * 1000) if killed else None)
-
-
-def reference_run(c):
-    """One refstart run: the fixed reference dashboard opened right after a cold start. Times come
-    from the page's own clock (navigation start, FCP, load event), mapped onto logcat's."""
-    base = {"ttid_ms": c.get("ttid_ms"), "launch": c.get("launch")}
-    page, proc = c.get("page"), c.get("proc_mono")
-    if c.get("error") or not page or proc is None or page.get("fcp_ms") is None:
-        return dict(base, error=c.get("error") or "no first paint of the reference dashboard")
-    nav = P.page_to_mono_ms(page, 0)
-    fcp = P.page_to_mono_ms(page, page["fcp_ms"])
-    loaded = P.page_to_mono_ms(page, page.get("load_ms") or 0)
-    settle, how = visual_settle(c.get("presents_mono_ms") or [], loaded, c.get("ended_quiet", False))
-    return dict(base, start_ms=round(fcp - proc * 1000), load_ms=round(settle - nav), settle=how,
-                fcp_ms=page["fcp_ms"], nodes=page.get("nodes"), cards=page.get("cards"))
-
-
-def reference_summary(runs):
-    ok = [r for r in runs if not r.get("error")]
-    return {
-        "runs": len(runs),
-        "start_ms": P.spread([r["start_ms"] for r in ok]),
-        "load_ms": P.spread([r["load_ms"] for r in ok]),
-        # Android's TTID: the first frame of the launched activity, which on a kiosk is its own
-        # loading screen. Reported, not graded.
-        "android_ttid_ms": P.spread([r["ttid_ms"] for r in ok]),
-        "settle_how": sorted({r["settle"] for r in ok}),
-        "launch": sorted({r["launch"] for r in runs if r.get("launch")}),
-        "nodes": sorted({r["nodes"] for r in ok if r.get("nodes")}),
-        "errors": [r["error"] for r in runs if r.get("error")],
-        "per_run": runs,
-    }
 
 
 def app_memory(idle, package_roles=None):
@@ -339,20 +422,7 @@ def apk_sizes(paths):
 
 # ---- assemble
 
-def graded_values(graded):
-    """The grade's inputs. It reads only the graded part, which comes from the pages this test ships,
-    so the grade can't depend on anyone's own Home Assistant."""
-    s, ref = graded.get("synthetic"), graded.get("reference_dashboard")
-    med = lambda x: x and x["median"]  # noqa: E731
-    return {
-        "frame_p95_ms": med(s and s["reference"]["p95_ms"]),
-        "frame_jank_pct": med(s and s["reference"]["jank_pct"]),
-        "frame_frozen_pct": med(s and s["reference"]["frozen_pct"]),
-        "load_ms": med(ref and ref["load_ms"]),
-        "inp_ms": med(s and s["inp_ms"]),
-        "start_ms": med(ref and ref["start_ms"]),
-    }
-
+# ---- assemble
 
 def build(run_dir, apks=(), budgets=None):
     device = read_json(os.path.join(run_dir, "device.json"))
@@ -366,13 +436,15 @@ def build(run_dir, apks=(), budgets=None):
         i = read_json(p)
         idles.setdefault(i["label"], []).append(i)
 
+    graded = {"reference": reference_summary(refs) if refs else None}
+    tiers, start = grade_inputs(graded)
+    grade = G.grade(tiers, start)
+    name = device.get("frame_name") or device["frame"]
+    grade["headline"] = headline(name, grade, graded["reference"])
+
     s = synthetic_summary(syn) if syn else None
     med = lambda x: x and x["median"]  # noqa: E731
-    graded = {
-        "synthetic": s and dict(s, js_band=G.band(med(s["js_burst_ms"]), G.JS_BURST), per_run=syn),
-        "reference_dashboard": reference_summary(refs) if refs else None,
-    }
-    grade = G.headline(graded_values(graded))
+    detail = {"synthetic": s and dict(s, js_band=G.band(med(s["js_burst_ms"]), G.JS_BURST), per_run=syn)}
 
     r = real_use_summary(cold, idles, package) if (cold or idles) else None
     real_use = None
@@ -386,11 +458,13 @@ def build(run_dir, apks=(), budgets=None):
     gv = next((geckoview_version(x["ua"]) for x in syn if x["ua"]), None)
     return {
         "schema": SCHEMA,
-        "frame": {"id": device["frame"], "device": {k: v for k, v in device.items() if k not in ("frame", "app")},
+        "frame": {"id": device["frame"], "name": name,
+                  "device": {k: v for k, v in device.items() if k not in ("frame", "frame_name", "app")},
                   "app": dict(device["app"], geckoview=gv)},
         "apk": apk_sizes(apks),
         "grade": grade,
         "graded": graded,
+        "detail": detail,
         "real_use": real_use,
     }
 
@@ -420,46 +494,53 @@ def device_line(dev, app):
     return ", ".join(p for p in parts if p) + "."
 
 
+def band_cell(b):
+    return b or "n/a"
+
+
 def markdown(rep):
     g = rep["grade"]
     dev = rep["frame"]["device"]
     app = rep["frame"]["app"]
-    out = [f"# Perf report: {rep['frame']['id']}", "", device_line(dev, app), "",
-           f"**Grade: {g['grade'] or 'none'}**" + (f" (provisional: {', '.join(g['missing'])} not measured)" if g["provisional"] else ""),
-           "", "The grade comes only from the pages this test ships (the test page and the reference dashboard), "
-           "so it doesn't depend on your Home Assistant.",
-           "", "| Component | Metric | Value | Band |", "|---|---|---|---|"]
-    for comp, metrics in G.COMPONENTS.items():
-        for m in metrics:
-            v = g["metrics"][m]
-            out.append(f"| {comp} | {m} | {v['value'] if v['value'] is not None else 'n/a'} | {v['band'] or 'n/a'} |")
-    s = rep["graded"]["synthetic"]
+    out = [f"# Perf report: {rep['frame']['name']}", "", device_line(dev, app), "",
+           f"**{g['headline']}**", "",
+           "The grade comes only from the three reference dashboards this test ships (light, typical, busy), "
+           "so it doesn't depend on your Home Assistant.", ""]
+    ref = rep["graded"]["reference"]
+    if ref:
+        out += ["| Dashboard | Frames (p95, fps) | Frames | INP | INP | Load | Load |", "|---|---|---|---|---|---|---|"]
+        for t in G.TIERS:
+            s, b = ref["tiers"].get(t), g["bands"][t]
+            if not s:
+                out.append(f"| {t} | not measured | | | | | |")
+                continue
+            fr = s["frames"]
+            frames = f"{fmt(fr['p95_ms'], ' ms')}, {fmt(fr['fps'], ' fps')}"
+            out.append(f"| {t} | {frames} | {band_cell(b['frames'])} | {fmt(s['inp_ms'], ' ms')} | {band_cell(b['inp'])} "
+                       f"| {fmt(s['load_ms'], ' ms')} | {band_cell(b['load'])} |")
+        out += ["", f"Start, app process to engine ready: {fmt(ref['start_ms'], ' ms')} ({band_cell(g['start']['band'])}; "
+                    f"{', '.join(ref['launch']) or 'n/a'}). Android's TTID {fmt(ref['android_ttid_ms'], ' ms')}: the first "
+                    "frame of the kiosk's loading screen; not graded."]
+        for t, s in ref["tiers"].items():
+            if s["load_errors"]:
+                out.append(f"{t}: load not measured in {len(s['load_errors'])} run(s) ({'; '.join(sorted(set(s['load_errors'])))}).")
+        if ref["errors"]:
+            out.append(f"Failed runs: {len(ref['errors'])} ({'; '.join(sorted(set(ref['errors'])))}).")
+        if not all(ref["own_page_quiet"]):
+            out.append("Some runs opened the reference dashboards before the kiosk's own page finished.")
+    s = rep["detail"]["synthetic"]
     if s:
-        out += ["", "## Animations it can handle", "",
+        out += ["", "## Detail: animations it can handle (test page, not graded)", "",
                 "Largest element count before the first step that missed the target (median of runs). "
                 "A + means it held at the ladder's last step.", "",
                 "| Family | 60 fps | 30 fps |", "|---|---|---|"]
         for fam, v in s["ladder"].items():
             out.append(f"| {fam} | {fmt(v['held_60fps'], plus=v['held_60fps_at_top'])} | {fmt(v['held_30fps'], plus=v['held_30fps_at_top'])} |")
-        out += ["", f"Reference load p95 {fmt(s['reference']['p95_ms'], ' ms')}, jank {fmt(s['reference']['jank_pct'], ' %')}, "
-                    f"frames from {', '.join(s['reference_sources']) or 'n/a'}"
-                    + (f", limited by the {' and '.join(x for x in s['reference_limited_by'] if x != 'equal')}"
-                       if set(s["reference_limited_by"]) - {"equal"} else
-                       ", both views equal" if s["reference_limited_by"] else "") + ".",
-                f"Scroll p95 {fmt(s['scroll']['p95_ms'], ' ms')}" + (" (the list did not move: not a measurement)" if s["scroll_moved"] is False else "")
-                + f". INP {fmt(s['inp_ms'], ' ms')} ({', '.join(s['input_method']) or 'not measured'}).",
-                f"JS state burst {fmt(s['js_burst_ms'], ' ms')} (band {s['js_band'] or 'n/a'}, checksum {'ok' if s['js_checksum_ok'] else 'MISMATCH'}). "
+        out += ["", f"Scroll p95 {fmt(s['scroll']['p95_ms'], ' ms')}" + (" (the list did not move: not a measurement)" if s["scroll_moved"] is False else "")
+                + f". JS state burst {fmt(s['js_burst_ms'], ' ms')} (band {s['js_band'] or 'n/a'}, checksum {'ok' if s['js_checksum_ok'] else 'MISMATCH'}). "
                 f"Test page {'/'.join(x.upper() for x in s['page_lcp_from']) or 'LCP'} {fmt(s['page_lcp_ms'], ' ms')}."]
         if s["steps_without_sf"]:
             out.append(f"{s['steps_without_sf']} step(s) had no complete SurfaceFlinger history and use rAF only.")
-    ref = rep["graded"]["reference_dashboard"]
-    if ref:
-        out += ["", "## Reference dashboard (graded)", "",
-                f"Start, app process to the reference dashboard's first paint {fmt(ref['start_ms'], ' ms')} "
-                f"({', '.join(ref['launch']) or 'n/a'}). Load {fmt(ref['load_ms'], ' ms')} ({', '.join(ref['settle_how']) or 'n/a'}). "
-                f"Android's TTID {fmt(ref['android_ttid_ms'], ' ms')}: the first frame of the kiosk's loading screen; "
-                f"not graded. {', '.join(map(str, ref['nodes'])) or 'n/a'} elements."
-                + (f" Failed runs: {len(ref['errors'])} ({'; '.join(sorted(set(ref['errors'])))})." if ref["errors"] else "")]
     r = rep["real_use"]
     if r and (r["idle"]["samples"] or r["per_run"]):
         i = r["idle"]
@@ -480,7 +561,7 @@ def markdown(rep):
             val = "n/a" if c["value_kb"] is None else f"{c['value_kb'] / 1024:.0f} MB"
             out.append(f"- {k}: {val} against {c['budget_kb'] / 1024:.0f} MB: {'ok' if c['ok'] else 'over' if c['ok'] is False else 'n/a'}")
     if r and r["panes"]:
-        out += ["", "## Panes", "", "| Pane | Method | PSS | CPU |", "|---|---|---|---|"]
+        out += ["", "## Panes (real use, not graded)", "", "| Pane | Method | PSS | CPU |", "|---|---|---|---|"]
         for p in r["panes"]:
             pss = f"{p['pss_kb'] / 1024:.1f} MB" + ("" if p.get("pss_measurable", True) else " (within noise)")
             cpu = p.get("cpu_pct_of_core")

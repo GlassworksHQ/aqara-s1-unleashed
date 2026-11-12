@@ -2,8 +2,11 @@
  * line per event, which GeckoView writes to logcat (tag GeckoConsole). tools/perf/perfrun.py reads
  * them; the line types and fields are documented in docs/perf.md ("Page log lines").
  *
- * Query: run=<k> seed=<n> vsync=<ms> nonce=<id> (echoed in every line) taps=<n> (the runner will
- * tap n times; 0 skips the input stage) quick=1 (short ladder, for a smoke test) families=a,b.
+ * The grade's frames and input come from the reference dashboards (refdash.js); this page is the
+ * detail: the animation ladder, the scroll stage and the JS workload.
+ *
+ * Query: run=<k> seed=<n> vsync=<ms> nonce=<id> (echoed in every line) quick=1 (short ladder, for a
+ * smoke test) families=a,b (subset of the ladder).
  */
 (function () {
   "use strict";
@@ -13,7 +16,6 @@
   const SEED = Number(q.get("seed") || 1);
   const VSYNC = Number(q.get("vsync") || 1000 / 60);
   const QUICK = q.get("quick") === "1";
-  const TAPS = Math.max(0, Number(q.get("taps") || 0));
 
   const WARMUP_MS = 1000, MEASURE_MS = S.measureMs(VSYNC), COOLDOWN_MS = 1200;
   const STEPS = QUICK ? [1, 16, 128] : [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
@@ -125,30 +127,6 @@
     "ha-cards": haCards,
   };
 
-  // The reference load the headline grade uses: a busy wall dashboard. 24 updating tiles,
-  // 6 spinning icons, a 64-point sparkline redrawn every frame. A project choice (docs/perf.md).
-  function referenceLoad(_n, rnd) {
-    const ticks = [haCards(24, rnd), cssBoxes("spin")(6, rnd), canvasParticles(0, rnd)];
-    const cv = stage.querySelector("canvas");
-    cv.style.cssText = "inset:auto 12px 28px auto;width:360px;height:120px";
-    cv.width = Math.round(360 * devicePixelRatio);
-    cv.height = Math.round(120 * devicePixelRatio);
-    const g = cv.getContext("2d");
-    ticks[2] = (t) => {
-      g.clearRect(0, 0, cv.width, cv.height);
-      g.strokeStyle = "#03a9f4";
-      g.lineWidth = 2 * devicePixelRatio;
-      g.beginPath();
-      for (let i = 0; i < 64; i++) {
-        const y = cv.height / 2 + (cv.height / 3) * Math.sin(t / 500 + i / 5);
-        const x = (i / 63) * cv.width;
-        if (i) g.lineTo(x, y); else g.moveTo(x, y);
-      }
-      g.stroke();
-    };
-    return (t) => { for (const f of ticks) if (f) f(t); };
-  }
-
   // ---- measuring
 
   async function runAnimated(build, n, label) {
@@ -169,12 +147,14 @@
     requestAnimationFrame(loop);
     await sleep(WARMUP_MS);
     log({ t: "measure", stage: label, n });
+    const t0 = performance.now();
     measuring = true;
     await sleep(MEASURE_MS);
     measuring = false;
+    const windowMs = Math.round(performance.now() - t0);
     running = false;
     const raf = S.frameStats(S.intervals(stamps), VSYNC);
-    log({ t: "step", stage: label, n, raf });
+    log({ t: "step", stage: label, n, window_ms: windowMs, raf });
     stage.textContent = "";
     await sleep(COOLDOWN_MS);
     return raf;
@@ -206,67 +186,15 @@
     const stamps = [];
     const top0 = sc.scrollTop;
     log({ t: "measure", stage: "scroll", n: 240 });
-    const end = performance.now() + MEASURE_MS;
+    const t0 = performance.now();
+    const end = t0 + MEASURE_MS;
     while (performance.now() < end) {
       const ts = await nextFrame();
       sc.scrollTop += 6;
       stamps.push(ts);
     }
-    log({ t: "step", stage: "scroll", n: 240, scrolled_px: Math.round(sc.scrollTop - top0), raf: S.frameStats(S.intervals(stamps), VSYNC) });
-    stage.textContent = "";
-    await sleep(COOLDOWN_MS);
-  }
-
-  // Tap-to-paint latency under the reference load. The runner taps the target with `input tap`;
-  // Event Timing gives input delay + processing + presentation per interaction (what INP uses).
-  async function input() {
-    const WAIT_MS = Math.max(30000, TAPS * 2000 + 5000); // adb taps take about 1.5 s each on the S1
-    stage.textContent = "";
-    const tick = referenceLoad(0, W.mulberry32(SEED + 7));
-    let running = true;
-    const loop = (ts) => { if (running) { tick(ts); requestAnimationFrame(loop); } };
-    requestAnimationFrame(loop);
-    const tap = document.createElement("div");
-    tap.id = "tap";
-    tap.textContent = "off";
-    document.body.appendChild(tap);
-    const durations = new Map();
-    let po = null;
-    const hasET = typeof PerformanceEventTiming !== "undefined";
-    if (hasET) {
-      po = new PerformanceObserver((list) => {
-        for (const e of list.getEntries()) {
-          if (!e.interactionId) continue;
-          durations.set(e.interactionId, Math.max(durations.get(e.interactionId) || 0, e.duration));
-        }
-      });
-      po.observe({ type: "event", durationThreshold: 16, buffered: true });
-    }
-    const approx = [];
-    let taps = 0;
-    tap.addEventListener("pointerdown", (ev) => {
-      taps++;
-      tap.classList.toggle("on");
-      tap.textContent = tap.classList.contains("on") ? "on" : "off";
-      for (const v of stage.querySelectorAll(".card .value")) v.textContent = tap.textContent;
-      const t0 = ev.timeStamp;
-      requestAnimationFrame(() => requestAnimationFrame((t2) => approx.push(t2 - t0)));
-    });
-    await sleep(WARMUP_MS);
-    const r = tap.getBoundingClientRect();
-    const dpr = devicePixelRatio;
-    log({ t: "input-ready", taps: TAPS, x: Math.round((r.left + r.width / 2) * dpr), y: Math.round((r.top + r.height / 2) * dpr) });
-    const end = performance.now() + WAIT_MS;
-    while (taps < TAPS && performance.now() < end) await sleep(100);
-    await sleep(500);
-    running = false;
-    if (po) { for (const e of po.takeRecords()) if (e.interactionId) durations.set(e.interactionId, Math.max(durations.get(e.interactionId) || 0, e.duration)); po.disconnect(); }
-    // Event Timing skips interactions under its 16 ms threshold; count those as 16 ms (an upper bound).
-    const values = hasET ? Array.from(durations.values()) : approx.slice();
-    if (hasET) while (values.length < taps) values.push(16);
-    values.sort((a, b) => a - b);
-    log({ t: "input", method: hasET ? "event-timing" : "raf2", taps, values: values.map((v) => Math.round(v)), inp_ms: values.length ? Math.round(values[values.length - 1]) : null });
-    tap.remove();
+    log({ t: "step", stage: "scroll", n: 240, window_ms: Math.round(performance.now() - t0),
+          scrolled_px: Math.round(sc.scrollTop - top0), raf: S.frameStats(S.intervals(stamps), VSYNC) });
     stage.textContent = "";
     await sleep(COOLDOWN_MS);
   }
@@ -346,9 +274,7 @@
     });
     await js();
     await ladder();
-    await runAnimated(referenceLoad, 1, "reference");
     await scroll();
-    if (TAPS) await input();
     status.textContent = "done";
     hero.style.display = "";
     hero.textContent = "done";
