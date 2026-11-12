@@ -69,6 +69,6 @@ class ThreadNetworkTest {
         assertTrue(ThreadRouterState(true, "router", "N").joined)
         assertFalse(ThreadRouterState(true, "detached", "N").joined)
         assertTrue(ThreadRouterState(true, "child", "N").describe().contains("becomes a router"))
-        assertTrue(ThreadRouterState(false, null, null).describe().startsWith("no dataset yet"))
+        assertTrue(ThreadRouterState(false, null, null).describe().startsWith("not on a Thread network yet"))
     }
 }

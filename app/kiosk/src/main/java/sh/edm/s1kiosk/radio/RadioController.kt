@@ -407,6 +407,23 @@ class RadioController(
     }
 
     /**
+     * "Join Home Assistant's Thread network" (auth/ThreadJoin): the dataset HA gave, then *Thread
+     * router* mode if the panel isn't in it yet. Returns null when accepted, else why not.
+     */
+    fun joinThreadNetwork(hex: String): String? {
+        if (!available(RadioMode.THREAD_ROUTER)) {
+            return "Thread router needs a newer root helper on the panel (see the Radio helper sensor)"
+        }
+        // request() would refuse the mode switch after the dataset was stored, and the join would look done.
+        if (mode != RadioMode.THREAD_ROUTER && firmware.flashing()) {
+            return "a radio firmware update is running; try again when it's done"
+        }
+        setThreadDataset(hex)?.let { return it }
+        if (mode != RadioMode.THREAD_ROUTER) request(RadioMode.THREAD_ROUTER.label, "thread-join")
+        return null
+    }
+
+    /**
      * From the `Radio mode` select (and the setup screen's radio step). Unknown labels are ignored;
      * unavailable modes are refused. [done] runs on the radio thread once the request was handled:
      * true = accepted and applied (see [statusText] for how it went), false = refused/unknown, with

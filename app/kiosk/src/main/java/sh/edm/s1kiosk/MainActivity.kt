@@ -63,6 +63,7 @@ class MainActivity : Activity() {
     private lateinit var settingsOverlay: KioskSettingsOverlay
     private lateinit var voiceOverlay: VoiceOverlay
     private lateinit var timerOverlay: TimerOverlay
+    private lateinit var threadJoinOverlay: sh.edm.s1kiosk.setup.ThreadJoinOverlay
     private lateinit var setupOverlay: SetupOverlay
     private lateinit var wifiStatus: WifiSetupStatus
     private var session: GeckoSession? = null
@@ -113,6 +114,37 @@ class MainActivity : Activity() {
     }
 
     private val setupSignalListener: () -> Unit = { refreshSetup() }
+
+    /**
+     * "Join Home Assistant's Thread network" (auth/ThreadJoin), from the settings menu, the setup
+     * screen or Home Assistant's button: the QR code shows whenever an administrator's sign-in is
+     * needed; how it ends shows only if the overlay is already up.
+     */
+    private val threadJoinListener: (sh.edm.s1kiosk.auth.ThreadJoin.State) -> Unit = { s ->
+        handler.post { if (!isDestroyed) showThreadJoin(s) }
+    }
+
+    private fun showThreadJoin(s: sh.edm.s1kiosk.auth.ThreadJoin.State) {
+        val url = sh.edm.s1kiosk.auth.ThreadJoin.url(HaUrls.localIpv4())
+        when {
+            s is sh.edm.s1kiosk.auth.ThreadJoin.State.NeedsAdmin -> {
+                if (settingsOverlay.isShowing) settingsOverlay.hide()
+                threadJoinOverlay.render(s, url)
+            }
+            s is sh.edm.s1kiosk.auth.ThreadJoin.State.Idle -> threadJoinOverlay.hide()
+            // How it ended, also when the panel's own sign-in did it (no QR code was up).
+            s is sh.edm.s1kiosk.auth.ThreadJoin.State.Joined || s is sh.edm.s1kiosk.auth.ThreadJoin.State.Failed -> {
+                if (settingsOverlay.isShowing) settingsOverlay.hide()
+                threadJoinOverlay.render(s, url)
+            }
+            threadJoinOverlay.isShowing -> threadJoinOverlay.render(s, url)
+        }
+    }
+
+    private fun startThreadJoin(from: String) {
+        Log.i(TAG, "Join Home Assistant's Thread network ($from)")
+        HaAuth.threadJoin.start()
+    }
 
     private val setupTick = object : Runnable {
         override fun run() {
@@ -173,6 +205,9 @@ class MainActivity : Activity() {
             onRadioContinue = ::finishRadioStep
             onRadioRun = { r, done -> runRadio(r, "setup screen", done) }
         }
+        threadJoinOverlay = sh.edm.s1kiosk.setup.ThreadJoinOverlay(this).apply {
+            onClose = { HaAuth.threadJoin.disarm(); hide() }
+        }
         settingsOverlay = KioskSettingsOverlay(this).apply {
             onSave = ::saveSettings
             onReload = { hide(); loadDashboard() }
@@ -191,7 +226,8 @@ class MainActivity : Activity() {
             // Z order (elevation): setup 20 dp > voice 16 dp > timers 12 dp > page.
             addView(timerOverlay, timerOverlay.layoutParams())
             addView(voiceOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
-            addView(settingsOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // 24 dp: above everything
+            addView(settingsOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // 24 dp
+            addView(threadJoinOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // 26 dp: above everything
         })
         // The launch backdrop (res/drawable/launch_backdrop.xml) covers the cold start; once our own
         // views have drawn, a plain colour behind them costs the GPU nothing on every later frame.
@@ -199,6 +235,9 @@ class MainActivity : Activity() {
         // Visible from the first frame: the dashboard's first paint or the setup screen replaces it.
         loadingOverlay.show("Starting up", if (hasNetwork()) "Connecting to Home Assistant…" else "Reconnecting to Wi-Fi…")
         HaAuth.addListener(authListener)
+        HaAuth.threadJoin.addListener(threadJoinListener)
+        // Recreated while the QR code was up: show it again (posted, so a newer update still wins).
+        (HaAuth.threadJoin.state as? sh.edm.s1kiosk.auth.ThreadJoin.State.NeedsAdmin)?.let(threadJoinListener)
         SetupSignals.addListener(setupSignalListener)
         wifiStatus.observe { refreshSetup() }
         ImprovController.inlineHost = improvHost
@@ -811,6 +850,7 @@ class MainActivity : Activity() {
                 RadioFollowUp.Action.ROUTER_JOIN -> r.routerJoin()
                 RadioFollowUp.Action.ROUTER_LEAVE -> r.routerLeave()
                 RadioFollowUp.Action.THREAD_LEAVE -> r.threadLeave()
+                RadioFollowUp.Action.THREAD_JOIN_HA -> startThreadJoin(source)
             }
         }
         handler.postDelayed({ refreshRadioViews() }, 400)
@@ -1198,6 +1238,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         HaAuth.removeListener(authListener)
+        HaAuth.threadJoin.removeListener(threadJoinListener)
         SetupSignals.removeListener(setupSignalListener)
         wifiStatus.observe(null)
         if (ImprovController.inlineHost === improvHost) {

@@ -7,6 +7,15 @@ below as the release notes.
 
 ## [Unreleased]
 
+### Added
+- **The panel gets your Thread network from Home Assistant**, instead of you copying the dataset.
+  *Get it from Home Assistant* on the panel's Thread router card (setup screen and settings menu), or
+  the *Join Home Assistant's Thread network* button on its device page, reads your preferred Thread
+  network from Home Assistant and makes the panel a Thread router. Home Assistant only gives a Thread
+  network's settings to administrators, so unless the panel is signed in as one, it shows a QR code:
+  scan it and sign in as an administrator on your phone. The panel uses that sign-in once and deletes
+  it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
+
 ### Fixed
 - **Thread border router: replies from Thread devices stopped after Wi-Fi reconnected.** Turning
   Wi-Fi off and on gives Android's Wi-Fi interface a new number, and the radio helper's routing rule

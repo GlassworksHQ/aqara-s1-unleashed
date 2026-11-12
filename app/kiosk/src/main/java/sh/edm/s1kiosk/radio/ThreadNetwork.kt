@@ -58,7 +58,7 @@ data class ThreadRouterState(val dataset: Boolean, val role: String?, val networ
 
     /** One line for the card and HA's `Radio status`. */
     fun describe(): String = when {
-        !dataset -> "no dataset yet: waiting for the Thread network's active dataset"
+        !dataset -> "not on a Thread network yet"
         else -> {
             val net = network?.let { " “$it”" } ?: ""
             when (role) {
@@ -76,7 +76,7 @@ data class ThreadRouterState(val dataset: Boolean, val role: String?, val networ
     fun short(): String {
         val net = network?.let { " “$it”" } ?: ""
         return when {
-            !dataset -> "no dataset yet"
+            !dataset -> "not joined yet"
             role == "router" || role == "leader" -> "joined$net as a $role"
             role == "child" -> "joined$net, a router in a few minutes"
             role == "detached" -> "looking for the network$net"
