@@ -64,13 +64,30 @@ import java.util.concurrent.TimeUnit
  * the screen or the activity is posted to the main thread. Kiosk actions (URL, reload, zoom,
  * header, restart) go to [MainActivity] as intents, exactly like the `adb am start` extras.
  */
-class PanelDevice(
+class PanelDevice internal constructor(
     context: Context,
     private val runtime: GlassworksRuntime,
     private val onVoiceEvent: (VoiceEvent) -> Unit,
     /** HelloRequest from an API client (Home Assistant discovery, HaDiscovery.onApiHello). */
-    private val onApiHello: (String, java.net.InetAddress?) -> Unit = { _, _ -> },
+    private val onApiHello: (String, java.net.InetAddress?) -> Unit,
+    /** esphome-main. A test passes one it runs by hand, to choose when queued work happens. */
+    private val exec: ScheduledExecutorService,
+    private val mdns: MdnsAdvertiser,
+    /** The API server's port. A test passes 0 for any free one. */
+    private val apiPort: Int,
 ) {
+
+    constructor(
+        context: Context,
+        runtime: GlassworksRuntime,
+        onVoiceEvent: (VoiceEvent) -> Unit,
+        onApiHello: (String, java.net.InetAddress?) -> Unit = { _, _ -> },
+    ) : this(
+        context, runtime, onVoiceEvent, onApiHello,
+        exec = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "esphome-main").apply { isDaemon = true } },
+        mdns = EspHomeMdnsAdvertiser(EspHomeMdns(context.applicationContext, board = runtime.frame.board)),
+        apiPort = ApiServer.DEFAULT_PORT,
+    )
 
     companion object {
         // Keep the library's logs under the tag the docs use (`adb logcat -s S1ESPHome`).
@@ -89,9 +106,6 @@ class PanelDevice(
     private val ctx = context.applicationContext
     private val prefs = KioskPrefs(ctx)
     private val main = Handler(Looper.getMainLooper())
-    private val exec: ScheduledExecutorService =
-        Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "esphome-main").apply { isDaemon = true } }
-    private val mdns = EspHomeMdns(ctx, board = runtime.frame.board)
     private val voiceEnabled = prefs.voice.enabled
 
     private var server: ApiServer? = null
@@ -307,7 +321,7 @@ class PanelDevice(
     }
 
     private fun startServer() {
-        val s = ApiServer(ApiServer.DEFAULT_PORT, { identity }, entities, noiseKeys)
+        val s = ApiServer(apiPort, { identity }, entities, noiseKeys)
         panes.forEachPane("bind") { it.bind(s) }
         s.onCommand = { exec.execute { s.publishStates() } }
         s.onClientHello = { info, addr ->
@@ -328,7 +342,7 @@ class PanelDevice(
         try {
             s.start()
         } catch (e: IOException) {
-            EspHomeLog.w("Cannot listen on ${ApiServer.DEFAULT_PORT}: ${e.message}; retrying in 10 s")
+            EspHomeLog.w("Cannot listen on $apiPort: ${e.message}; retrying in 10 s")
             exec.schedule({ if (server == null) startServer() }, 10, TimeUnit.SECONDS)
             return
         }
