@@ -24,13 +24,19 @@ class Vi5300Presence : PresenceSource {
         val RANGE_DM = intArrayOf(0, 1, 2, 4, 6, 8, 10, 12, 15, 20, 25)
     }
 
+    private var registered: SensorEventListener? = null
+
     override fun start(context: Context, onReading: (near: Boolean, raw: Float) -> Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         sm.getDefaultSensor(Sensor.TYPE_PROXIMITY)?.let {
             Log.i(TAG, "proximity: ${it.name} vendor=${it.vendor} max=${it.maximumRange} wakeUp=${it.isWakeUpSensor}")
-            sm.registerListener(listener(Sensor.TYPE_PROXIMITY) { v -> onReading(v == 1f, v) }, it, SensorManager.SENSOR_DELAY_NORMAL)
+            val l = listener(Sensor.TYPE_PROXIMITY) { v -> onReading(v == 1f, v) }
+            sm.registerListener(l, it, SensorManager.SENSOR_DELAY_NORMAL)
+            registered = l
         }
     }
+
+    override fun stop(context: Context) = unregister(context, registered).also { registered = null }
 
     /** Writes the nearest index of [RANGE_DM]. Needs WRITE_SECURE_SETTINGS (granted over adb); skipped otherwise. */
     override fun setRange(context: Context, metres: Float) {
@@ -48,13 +54,23 @@ class Vi5300Presence : PresenceSource {
 
 /** The S1's "mk6212 Ambient Light Sensor", in lux. */
 class Mk6212Light : LightSource {
+    private var registered: SensorEventListener? = null
+
     override fun start(context: Context, onLux: (Float) -> Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         sm.getDefaultSensor(Sensor.TYPE_LIGHT)?.let {
             Log.i(TAG, "light: ${it.name} vendor=${it.vendor} max=${it.maximumRange}")
-            sm.registerListener(listener(Sensor.TYPE_LIGHT, onLux), it, SensorManager.SENSOR_DELAY_NORMAL)
+            val l = listener(Sensor.TYPE_LIGHT, onLux)
+            sm.registerListener(l, it, SensorManager.SENSOR_DELAY_NORMAL)
+            registered = l
         }
     }
+
+    override fun stop(context: Context) = unregister(context, registered).also { registered = null }
+}
+
+private fun unregister(context: Context, l: SensorEventListener?) {
+    if (l != null) (context.getSystemService(Context.SENSOR_SERVICE) as SensorManager).unregisterListener(l)
 }
 
 private fun listener(type: Int, onValue: (Float) -> Unit) = object : SensorEventListener {

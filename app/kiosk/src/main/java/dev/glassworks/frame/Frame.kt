@@ -31,7 +31,7 @@ interface Frame {
     fun systemSettingsIntents(): List<Intent>
 
     /**
-     * The panes only this device has (its wall base, its own entities). The shell builds them once per
+     * The panes only this device has, for its own hardware and settings. The shell builds them once per
      * device run, next to its own, and runs them like any other. [device] is the shell's device thread.
      */
     fun panes(ctx: PaneContext, device: ScheduledExecutorService): List<Pane>

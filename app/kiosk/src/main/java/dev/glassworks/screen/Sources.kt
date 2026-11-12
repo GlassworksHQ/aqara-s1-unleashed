@@ -11,6 +11,9 @@ interface PresenceSource {
     /** Starts reporting. [onReading] runs on the main thread for every reading, changed or not. [raw] is the sensor's own value. */
     fun start(context: Context, onReading: (near: Boolean, raw: Float) -> Unit)
 
+    /** Stops reporting. [start] may run again. */
+    fun stop(context: Context)
+
     /** Sets how far away still counts as near. 0 or less leaves the device's own setting alone. */
     fun setRange(context: Context, metres: Float) {}
 }
@@ -19,6 +22,9 @@ interface PresenceSource {
 interface LightSource {
     /** Starts reporting. [onLux] runs on the main thread for every reading. */
     fun start(context: Context, onLux: (Float) -> Unit)
+
+    /** Stops reporting. [start] may run again. */
+    fun stop(context: Context)
 }
 
 /** What [ScreenPolicy] reads on every decision. The app keeps these in its own settings file under its own keys. */

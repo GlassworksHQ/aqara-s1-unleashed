@@ -69,8 +69,9 @@ class ScreenPinHarness {
         TimeZone.setDefault(savedZone)
     }
 
-    /** An earlier policy keeps its sensor listeners; it must not report into this one's records. */
+    /** Each test, and each restart within one, gets a policy no earlier one reports into. */
     private fun detach() {
+        screen.stop()
         screen.onKeepScreenOn = null
         screen.onBrightness = null
         screen.onStateChanged = null

@@ -39,9 +39,12 @@ class ScreenPolicy(
     /** The app's DeviceAdminReceiver. */
     private val admin: Class<*>,
     private val settings: (Context) -> ScreenSettings,
+    /** The logcat tag. The app's docs name it, so the app picks it. */
+    private val logTag: String,
+    /** The wake lock's tag, as `dumpsys power` shows it. */
+    private val wakeLockTag: String,
 ) {
     private companion object {
-        const val TAG = "S1Kiosk.Screen"
         const val TICK_MS = 1000L
     }
 
@@ -52,6 +55,7 @@ class ScreenPolicy(
     private lateinit var adminComponent: ComponentName
     private val handler = Handler(Looper.getMainLooper())
     private var started = false
+    private var brightnessObserver: ContentObserver? = null
 
     // --- live state, readable from any thread
     @Volatile var near = false; private set
@@ -90,6 +94,7 @@ class ScreenPolicy(
         pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
         dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         adminComponent = ComponentName(ctx, admin)
+        lastActivity = SystemClock.elapsedRealtime()
         screenOn = pm.isInteractive
         watchSystemBrightness()
         presence?.start(ctx, ::onPresence)
@@ -100,6 +105,18 @@ class ScreenPolicy(
         })
         applyPresenceRange()
         handler.post(tick)
+    }
+
+    /** Undoes [start]: the sensors, the screen broadcasts, the brightness observer and the tick. [start] may run again. */
+    fun stop() {
+        if (!started) return
+        started = false
+        handler.removeCallbacks(tick)
+        presence?.stop(ctx)
+        light?.stop(ctx)
+        ctx.unregisterReceiver(screenReceiver)
+        brightnessObserver?.let { ctx.contentResolver.unregisterContentObserver(it) }
+        brightnessObserver = null
     }
 
     /** Passes the saved presence range to the presence source. */
@@ -131,27 +148,27 @@ class ScreenPolicy(
     }
 
     fun wake(reason: String) {
-        Log.i(TAG, "wake ($reason)")
+        Log.i(logTag, "wake ($reason)")
         lastActivity = SystemClock.elapsedRealtime()
         setKeepOn(true)
         if (!pm.isInteractive) {
             @Suppress("DEPRECATION")
             val wl = pm.newWakeLock(
                 PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                    PowerManager.ON_AFTER_RELEASE, "s1kiosk:wake"
+                    PowerManager.ON_AFTER_RELEASE, wakeLockTag
             )
             wl.acquire(3000)
         }
     }
 
     fun sleep(reason: String) {
-        Log.i(TAG, "sleep ($reason) admin=$isAdmin")
+        Log.i(logTag, "sleep ($reason) admin=$isAdmin")
         if (isAdmin) {
             try {
                 dpm.lockNow()
                 return
             } catch (e: SecurityException) {
-                Log.w(TAG, "lockNow failed", e)
+                Log.w(logTag, "lockNow failed", e)
             }
         }
         // Fallback: let the system timeout turn the screen off.
@@ -184,7 +201,7 @@ class ScreenPolicy(
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             screenOn = i.action == Intent.ACTION_SCREEN_ON
-            Log.i(TAG, "screen ${if (screenOn) "ON" else "OFF"}")
+            Log.i(logTag, "screen ${if (screenOn) "ON" else "OFF"}")
             if (screenOn) {
                 lastActivity = SystemClock.elapsedRealtime()
                 setKeepOn(true)
@@ -197,7 +214,7 @@ class ScreenPolicy(
         proximityRaw = raw
         if (nowNear == near) return
         near = nowNear
-        Log.i(TAG, "presence ${if (near) "NEAR" else "far"} (raw=$raw)")
+        Log.i(logTag, "presence ${if (near) "NEAR" else "far"} (raw=$raw)")
         if (near) {
             lastActivity = SystemClock.elapsedRealtime()
             if (!screenOn && prefs.wakeOnApproach) wake("approach")
@@ -226,17 +243,19 @@ class ScreenPolicy(
     private fun watchSystemBrightness() {
         val startedAt = SystemClock.elapsedRealtime()
         val uri = android.provider.Settings.System.getUriFor(android.provider.Settings.System.SCREEN_BRIGHTNESS)
-        ctx.contentResolver.registerContentObserver(uri, false, object : ContentObserver(Handler(Looper.getMainLooper())) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
                 if (SystemClock.elapsedRealtime() - startedAt < 30_000) return // boot-time writes by the firmware
                 if (!prefs.autoBrightness && prefs.manualBrightness <= 0f) return // already following the system
-                Log.i(TAG, "system brightness slider moved: following it (auto brightness off)")
+                Log.i(logTag, "system brightness slider moved: following it (auto brightness off)")
                 prefs.autoBrightness = false
                 prefs.manualBrightness = 0f // <= 0: no window override, i.e. the system value
                 refreshBrightness()
                 notifyChanged()
             }
-        })
+        }
+        ctx.contentResolver.registerContentObserver(uri, false, observer)
+        brightnessObserver = observer
     }
 
     /** Fixed brightness from Home Assistant: turns auto brightness off (main thread). */

@@ -18,7 +18,10 @@ class GlassworksRuntime(
     val frame: AqaraS1Plus,
 ) {
     /** The screen's on/off and brightness, from the frame's sensors. MainActivity and KioskService start it. */
-    val screen = ScreenPolicy(frame.presence, frame.light, AdminReceiver::class.java, settings = ::KioskPrefs)
+    val screen = ScreenPolicy(
+        frame.presence, frame.light, AdminReceiver::class.java, settings = ::KioskPrefs,
+        logTag = "S1Kiosk.Screen", wakeLockTag = "s1kiosk:wake",
+    )
 
     /** Set while KioskService runs; the setup screen and the setup channel apply radio changes through it. */
     @Volatile var radio: RadioController? = null
