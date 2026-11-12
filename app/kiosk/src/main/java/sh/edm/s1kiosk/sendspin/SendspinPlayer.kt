@@ -141,9 +141,9 @@ class SendspinPlayer(
         { url, hello, hooks -> SendspinSession(url, store, hello, { prefs.unpairedAccess }, hooks) },
     private val newPipeline: (out: PcmOutput, onFlacFailed: (String) -> Unit) -> AudioPipeline =
         { out, onFlacFailed -> AudioPipeline(out, { MediaCodecFlacDecoder() }, onFlacFailed) },
+    private val sink: AudioSink = AudioTrackSink(),
 ) {
     private val ctx = context.applicationContext
-    private val sink = AudioTrackSink()
     @Volatile private var session: SsConnection? = null
     private val scheduler = PlaybackScheduler(sink, { session?.timeFilter?.snapshot ?: EMPTY })
     /** The run since the last [start], or null when stopped. Written only under this player's lock. */
@@ -243,7 +243,7 @@ class SendspinPlayer(
         scheduler.outputDelayUs = store.outputDelayMs * 1000L
         SsLog.i("FLAC decoder: ${flacDecoder ?: "none"}; offering ${offeredFormats().joinToString { it.codec }}")
         val r = Run()
-        current = r
+        synchronized(outputLock) { current = r }
         r.audioThread.start(); r.connThread.start(); r.statsThread.start()
         // After a Wi-Fi drop, reconnect as soon as the network is back instead of waiting out the
         // back-off (which grows to 60 s): a wedged link left the player silent for a minute or more.
@@ -378,8 +378,14 @@ class SendspinPlayer(
         } catch (t: Throwable) {
             SsLog.w("audio thread failed", t)
         } finally {
-            scheduler.end()
-            scheduler.step() // closes the sink
+            // Not once a newer run has started: [stop] waits for this thread only so long, and the
+            // next run's audio thread then owns the scheduler and the sink.
+            synchronized(outputLock) {
+                if (current == null || current === r) {
+                    scheduler.end()
+                    scheduler.step() // closes the sink
+                }
+            }
         }
     }
 

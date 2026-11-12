@@ -77,6 +77,25 @@ class SendspinRunsTest {
     @Volatile private var firstConnectThread: Thread? = null
     private val firstConnectEntered = CountDownLatch(1)
 
+    /** Writes nowhere. With [holdFirstOpen], the first open blocks (ignoring interrupts) until [openGate] opens. */
+    private inner class FakeSink : AudioSink {
+        override fun open(sampleRate: Int, channels: Int) {
+            if (holdFirstOpen && firstOpenThread == null) {
+                firstOpenThread = Thread.currentThread()
+                firstOpenEntered.countDown()
+                openGate.awaitIgnoringInterrupts()
+            }
+        }
+        override fun write(buf: ShortArray, frames: Int): Int { Thread.sleep(5); return frames }
+        override fun timestamp(out: LongArray) = false
+        override fun setGain(gain: Float) {}
+        override fun close() {}
+    }
+    @Volatile private var holdFirstOpen = false
+    @Volatile private var firstOpenThread: Thread? = null
+    private val firstOpenEntered = CountDownLatch(1)
+    private val openGate = CountDownLatch(1)
+
     private val player = SendspinPlayer(
         app, prefs, { null }, "02:00:00:00:00:01",
         connect = { _, _, hooks ->
@@ -105,9 +124,11 @@ class SendspinRunsTest {
             val rec = Rec(out, firstEndGate.takeIf { pipelines.isEmpty() && holdFirstEnd })
             AudioPipeline(rec, { error("no FLAC in this test") }, onFlacFailed).also { pipelines += Made(it, rec, onFlacFailed) }
         },
+        sink = FakeSink(),
     )
 
     @After fun tearDown() {
+        openGate.countDown()
         firstEndGate.countDown()
         player.stop()
         connectGate.countDown()
@@ -254,6 +275,24 @@ class SendspinRunsTest {
 
         new.hooks.onMetadata("New title", "New artist")
         assertTrue(player.statusText(), player.statusText().endsWith(": New artist – New title"))
+    }
+
+    @Test
+    fun anOldAudioThreadThatOutlivesTheStopLeavesTheNewStreamAlone() {
+        holdFirstOpen = true
+        player.start()
+        conns.awaitAt(0)
+        assertTrue("old audio thread stuck opening the output", firstOpenEntered.await(5, TimeUnit.SECONDS))
+        player.stop() // gives up on the old audio thread after 1 s
+        player.start()
+        conns.awaitAt(1)
+        assertTrue("new pipeline idle", pipelines[1].pipeline.awaitIdle(3_000))
+        assertTrue("the new stream plays", player.outputActive)
+
+        openGate.countDown() // the old audio thread wakes up, sees it's no longer current and exits
+        firstOpenThread!!.join(3_000)
+        assertFalse("the old audio thread ended", firstOpenThread!!.isAlive)
+        assertTrue("the old audio thread didn't end the new stream", player.outputActive)
     }
 
     private fun MutableList<Fake>.awaitAt(i: Int): Fake {
