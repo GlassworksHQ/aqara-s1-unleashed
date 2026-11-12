@@ -123,10 +123,14 @@ class RadioFollowUpTest {
         val c = RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = waiting), Place.SETTINGS)
         assertNull(c.qr)
         assertNull(RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = waiting), Place.SETUP).qr)
-        assertEquals(waiting.describe(), c.state)
-        assertEquals("No dataset", c.badge)
+        assertEquals("Not joined", c.badge)
+        assertNull(c.state) // the title already says it
         assertTrue(c.datasetField)
-        assertEquals(listOf(Action.THREAD_JOIN_HA, Action.THREAD_LEAVE), c.actions)
+        assertEquals(listOf(Action.THREAD_JOIN_HA), c.actions) // no Leave: nothing to leave
+        // a network but not in it yet: Leave (start over), no Get it
+        val joining = RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = ThreadRouterState(true, "detached", null)), Place.SETTINGS)
+        assertEquals(listOf(Action.THREAD_LEAVE), joining.actions)
+        assertEquals("Joining", joining.badge)
         assertTrue(c.note!!.contains("network key"))
         assertEquals(1, c.lines.size)
         assertTrue(c.lines[0].startsWith("Get it from Home Assistant"))
@@ -171,7 +175,7 @@ class RadioFollowUpTest {
         val child = ThreadRouterState(true, "child", "Example-Net")
         assertEquals("joined “Example-Net”, a router in a few minutes",
             RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = child), Place.SETUP).state)
-        assertEquals("no dataset yet",
+        assertEquals("not joined yet",
             RadioFollowUp.card(facts(RadioMode.THREAD_ROUTER, thread = ThreadRouterState(false, null, null)), Place.SETUP).state)
     }
 

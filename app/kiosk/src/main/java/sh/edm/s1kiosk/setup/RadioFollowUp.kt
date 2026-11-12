@@ -259,10 +259,13 @@ object RadioFollowUp {
                 ) else Card(
                     f.mode, "Give the panel your Thread network",
                     listOf("Get it from Home Assistant. Not signed in as an admin? It shows a code to sign in once."),
-                    state = t?.describe() ?: statusDetail(f),
-                    badge = if (t?.dataset == true) "Dataset set" else "No dataset",
+                    // No network yet: the title says it all, and the one way forward is Get it from Home Assistant.
+                    // A network but not in it yet (joining): Leave, to start over.
+                    state = if (t?.dataset == true) t.describe() else if (t == null) statusDetail(f) else null,
+                    badge = if (t?.dataset == true) "Joining" else "Not joined",
                     note = DATASET_KEY,
-                    datasetField = true, actions = listOf(Action.THREAD_JOIN_HA) + leave, more = more,
+                    datasetField = true,
+                    actions = if (t?.dataset == true) leave else listOf(Action.THREAD_JOIN_HA), more = more,
                 )
             }
         }

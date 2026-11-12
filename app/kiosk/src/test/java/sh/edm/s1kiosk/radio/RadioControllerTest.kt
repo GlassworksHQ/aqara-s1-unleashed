@@ -391,7 +391,7 @@ class RadioControllerTest {
         val c = controller(init, initial = "thread_router")
         init.props[RadioHelper.PROP_STATUS] = "ok thread_router: ready to join: waiting for a Thread dataset from Home Assistant"
         c.refresh()
-        assertEquals("ok Thread router (repeater): no dataset yet: waiting for the Thread network's active dataset", c.statusText())
+        assertEquals("ok Thread router (repeater): not on a Thread network yet", c.statusText())
         assertEquals(false, c.threadRouterState()!!.dataset)
         init.props[RadioHelper.PROP_STATUS] = "ok thread_router: joined as child, network \"Example-Net\""
         c.refresh()
