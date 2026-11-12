@@ -127,16 +127,15 @@ CLI's `--undo` accepts. kiln-core names no frame: its `no-frame-names` test fail
 `s1Plus` in `src/recipe.ts`: the A133 check and our U-Boot over FEL, the S1 Plus partition layout,
 the backup and restore lists, `s1Overlay` and the vbmeta and splash writes, and setup through
 `provision.ts` (`PKG`, `DEBLOAT`, Aqara's launcher and services). Also `switch.ts` and `improv.ts`
-(the app's Improv socket). It sits outside `kiln/`, so npm hoists its dependencies where Node's lookup
-from `frames/` doesn't reach: `vite.config.ts` (`resolve.dedupe`) and `tsconfig.base.json` (`paths`)
-resolve them from `kiln/`, and its `test` and `typecheck` scripts run kiln's vitest and tsc.
+(the app's Improv socket). It is a workspace of the npm root at the repo root, like `kiln/` itself, so
+Node finds its dependencies with no extra config.
 
 ## `app/` — the page (owner: main session)
 - `ui.ts`: renders design E (`mockup/option-e.html`) from the flow's events, with the S1 recipe.
 
 ## Running it
 ```
-npm install && npm run stage && npm run dev     # http://localhost:5173 (a secure context)
-npm test                                        # goldens: S1_WEB_GOLDEN=<dir>, else skipped
-npm test -w @glassworks/bootpatch               # one package (or: cd packages/bootpatch && npm test)
+npm install && npm run stage -w kiln && npm run dev -w kiln   # from the repo root; http://localhost:5173 (a secure context)
+npm test                                        # every workspace; goldens: S1_WEB_GOLDEN=<dir>, else skipped
+npm test -w @glassworks/bootpatch               # one package (or: cd kiln/packages/bootpatch && npm test)
 ```

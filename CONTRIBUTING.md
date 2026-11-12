@@ -21,7 +21,7 @@ build, the installer's typecheck, tests and build, the install scripts' tests an
 
 ```sh
 cd app && ./gradlew test :kiosk:assembleDebug        # the app
-cd kiln && npm install && npm run stage && npm test   # the web installer
+npm install && npm run stage -w kiln && npm test     # the web installer, from the repo root
 tools/install/test/install-tests.sh                  # the install scripts
 python3 tools/check-doc-links.py                     # docs links
 ```

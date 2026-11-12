@@ -1,10 +1,10 @@
 // The 3D device mockup's geometry, ported from glassworks.dev `src/components/deviceGeometry.ts`
-// (fbfd364), so Kiln's frame cards draw devices exactly as the site does. The site keeps its models in
-// a table there; here each frame's model comes from its own `frames/<id>/design/frame.json` (the
+// (fbfd364), one copy for Kiln's frame cards and the site's. The site keeps its models in a
+// table there; here each frame's model comes from its own `frames/<id>/design/frame.json` (the
 // `model` section in planning's decisions.md, "frame.json describes the device's look in millimetres").
 // The maths is the site's, unchanged: fit the body to the stage, pose it for its mount, shade the
 // sides that face the viewer, and give the CSS-3D front glass the same transform.
-import type { FrameModel } from '../../frames/catalog';
+import type { FrameModel } from './frame';
 
 type V3 = [number, number, number];
 

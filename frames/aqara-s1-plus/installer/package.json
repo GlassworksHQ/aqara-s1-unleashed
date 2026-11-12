@@ -9,8 +9,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "cd ../../../kiln && npx vitest run --dir ../frames/aqara-s1-plus/installer",
-    "typecheck": "cd ../../../kiln && npx tsc --noEmit -p ../frames/aqara-s1-plus/installer"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@glassworks/adb": "0.0.0",

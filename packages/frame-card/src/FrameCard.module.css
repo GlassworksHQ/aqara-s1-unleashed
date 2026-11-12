@@ -1,6 +1,7 @@
 /*
- * glassworks.dev's device card (DeviceCard.module.css, DeviceBits.module.css at fbfd364), on the same
- * tokens. Added for Kiln: it is a radio item, and the picked card gets Kiln's ember ring.
+ * glassworks.dev's device card (DeviceCard.module.css, DeviceBits.module.css at fbfd364), on the
+ * Glassworks tokens (--sky, --edge, --r-tile, …), which the page provides. A caller's states, such as
+ * Kiln's picked card, go in the caller's own styles.
  */
 .card {
   display: grid;
@@ -28,17 +29,6 @@
 .card:focus-visible {
   outline: 2px solid var(--sky);
   outline-offset: 3px;
-}
-
-.card[data-state="checked"] {
-  border-color: color-mix(in srgb, var(--ember-b) 55%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--ember-b) 35%, transparent),
-    0 24px 60px -30px color-mix(in srgb, var(--ember-b) 70%, transparent);
-}
-
-.card[data-disabled] {
-  cursor: default;
 }
 
 /* the device rises out of the card and floats, leaning toward the pointer */
