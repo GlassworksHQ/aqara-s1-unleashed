@@ -9,41 +9,54 @@ package sh.edm.s1kiosk.frame
  * scans and nothing reconnects until the screen wakes. Any scan's results go through the framework's
  * network selection, so an app scan is enough to reconnect.
  *
- * The delays back off to [delaysMs]' last value and stay there. Android 10 lets a foreground app
- * (the kiosk's foreground service counts) start 4 scans in 120 s. The default delays start at most
- * 3 in any 120 s, so no scan is throttled.
+ * Scans come [delaysMs] apart, backing off to the last value. A screen wake or a reconnect starts the
+ * back-off over, but no scan ever comes less than [minGapMs] after the previous one. Android 10 lets
+ * a foreground app (the kiosk's foreground service counts) start 4 scans in 120 s, counting a scan
+ * exactly 120 s old. A 40 s gap allows at most 3 scans in any 120 s, so no scan is throttled.
+ *
+ * A supplicant stuck in a connecting state for [connectTimeoutMs] counts as not connected.
  */
-class WifiScanPolicy(private val delaysMs: List<Long> = listOf(10_000, 30_000, 60_000, 120_000)) {
+class WifiScanPolicy(
+    private val delaysMs: List<Long> = listOf(10_000, 40_000, 60_000, 120_000),
+    private val minGapMs: Long = 40_000,
+    private val connectTimeoutMs: Long = 60_000,
+) {
+    enum class Link { DOWN, CONNECTING, CONNECTED }
 
-    data class Wifi(val enabled: Boolean, val connecting: Boolean, val screenOn: Boolean) {
-        val needsScan: Boolean get() = enabled && !connecting && !screenOn
-    }
+    data class Wifi(val enabled: Boolean, val link: Link, val screenOn: Boolean)
 
-    sealed interface Next {
-        /** No scan is wanted. Cancel the pending one, if any. */
-        data object Stop : Next
-        /** Keep the pending scan as it is. */
-        data object Keep : Next
-        /** Scan after [delayMs], in place of any pending scan. */
-        data class ScanIn(val delayMs: Long) : Next
-    }
+    /** Scan now when [scanNow]. Call [decide] again after [wakeInMs], or never when it is null. */
+    data class Decision(val scanNow: Boolean, val wakeInMs: Long?)
 
     /** Scans started since the scans began; null while no scans are wanted. */
     var scans: Int? = null
         private set
 
-    /** After any change to [w]. */
-    fun onChange(w: Wifi): Next = when {
-        !w.needsScan -> { scans = null; Next.Stop }
-        scans == null -> { scans = 0; Next.ScanIn(delaysMs[0]) }
-        else -> Next.Keep
+    private var nextAt = 0L
+    private var lastScanAt: Long? = null
+    private var connectingSince: Long? = null
+
+    /** After any change to [w], and when the last [Decision.wakeInMs] is up. [now] is a monotonic clock in ms. */
+    fun decide(w: Wifi, now: Long): Decision {
+        val since = if (w.link == Link.CONNECTING) connectingSince ?: now else null
+        connectingSince = since
+        val stuck = since != null && now - since >= connectTimeoutMs
+        val wanted = w.enabled && !w.screenOn && (w.link == Link.DOWN || stuck)
+        if (!wanted) {
+            scans = null
+            val stuckAt = if (since != null && w.enabled && !w.screenOn) since + connectTimeoutMs else null
+            return Decision(false, stuckAt?.minus(now))
+        }
+        val done = scans ?: 0.also { nextAt = notBeforeGap(now + delaysMs[0]) }
+        if (now < nextAt) {
+            scans = done
+            return Decision(false, nextAt - now)
+        }
+        lastScanAt = now
+        scans = done + 1
+        nextAt = notBeforeGap(now + delaysMs[minOf(done + 1, delaysMs.lastIndex)])
+        return Decision(true, nextAt - now)
     }
 
-    /** When the pending scan is due. [Next.ScanIn] means: scan now, and again after its delay. */
-    fun onDue(w: Wifi): Next {
-        if (!w.needsScan) return onChange(w)
-        val n = (scans ?: 0) + 1
-        scans = n
-        return Next.ScanIn(delaysMs[minOf(n, delaysMs.lastIndex)])
-    }
+    private fun notBeforeGap(t: Long) = lastScanAt?.let { maxOf(t, it + minGapMs) } ?: t
 }
