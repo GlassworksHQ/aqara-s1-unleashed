@@ -23,14 +23,15 @@ import dev.glassworks.platform.PlatformApi
  */
 class KioskForeground(
     private val platform: PlatformApi,
-    private val onRefused: (types: Int, e: SecurityException) -> Unit,
+    /** A start was refused: a missing permission, or (Android 14+) a type or start the system forbids. */
+    private val onRefused: (types: Int, e: RuntimeException) -> Unit,
     private val startWith: (types: Int) -> Unit,
 ) {
     /** The types the service runs with, or null before the first [promote]. */
     var types: Int? = null
         private set
 
-    fun wanted(micGranted: Boolean, locationGranted: Boolean): Int {
+    private fun wanted(micGranted: Boolean, locationGranted: Boolean): Int {
         val t = (if (micGranted || !platform.foregroundServiceTypesNeedTheirPermission) MICROPHONE else 0) or
             (if (locationGranted) LOCATION else 0)
         return if (t == 0) CONNECTED_DEVICE else t
@@ -50,7 +51,12 @@ class KioskForeground(
                 startWith(t)
                 types = t
                 return t
-            } catch (e: SecurityException) {
+            } catch (e: RuntimeException) {
+                // SecurityException: a missing permission. IllegalStateException: Android 14's
+                // ServiceStartNotAllowedException family (a type that is missing or not allowed, a
+                // start from the background). [startWith] is only startForeground, so no other bug
+                // lands here; anything else still throws.
+                if (e !is SecurityException && e !is IllegalStateException) throw e
                 onRefused(t, e)
                 if (i == tries.lastIndex && running == null) throw e
             }
@@ -62,5 +68,10 @@ class KioskForeground(
         const val MICROPHONE = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         const val LOCATION = ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
         const val CONNECTED_DEVICE = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+
+        /** The manifest names of [types], for the log: `microphone, location`. */
+        fun names(types: Int): String =
+            listOf(MICROPHONE to "microphone", LOCATION to "location", CONNECTED_DEVICE to "connectedDevice")
+                .filter { types and it.first != 0 }.joinToString(", ") { it.second }
     }
 }

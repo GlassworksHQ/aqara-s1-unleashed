@@ -46,7 +46,7 @@ class KioskService : Service() {
         val notification = buildNotification()
         foreground = KioskForeground(
             Platform,
-            onRefused = { t, e -> Log.w("S1Kiosk", "foreground service types $t refused", e) },
+            onRefused = { t, e -> Log.w("S1Kiosk", "foreground service types $t (${KioskForeground.names(t)}) refused", e) },
             startWith = { Platform.startForeground(this, NOTIFICATION_ID, notification, it) },
         )
         promote()
@@ -113,7 +113,7 @@ class KioskService : Service() {
             locationGranted = granted(Manifest.permission.ACCESS_FINE_LOCATION) || granted(Manifest.permission.ACCESS_COARSE_LOCATION),
         )
         if (types != before) {
-            Log.i("S1Kiosk", "foreground service types $types (location ${if (types and KioskForeground.LOCATION != 0) "on" else "off"})")
+            Log.i("S1Kiosk", "foreground service types $types (${KioskForeground.names(types)}; location ${if (types and KioskForeground.LOCATION != 0) "on" else "off"})")
         }
     }
 

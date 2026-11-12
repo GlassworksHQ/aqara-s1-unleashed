@@ -19,7 +19,7 @@ class KioskForegroundTest {
     /** A fake `startForeground` that refuses, as Android 14 does, any type in [refuse]. */
     private class Starts(var refuse: Int = 0) {
         val calls = mutableListOf<Int>()
-        val refused = mutableListOf<Pair<Int, SecurityException>>()
+        val refused = mutableListOf<Pair<Int, RuntimeException>>()
         fun foreground(platform: PlatformApi) = KioskForeground(platform, { t, e -> refused += t to e }) {
             calls += it
             if (it and refuse != 0) throw SecurityException("refused $it")
@@ -110,6 +110,21 @@ class KioskForegroundTest {
         assertEquals(device, fg.promote(micGranted = true, locationGranted = true))
         assertEquals(device, fg.types)
         assertEquals(listOf(mic or location, mic, location, device), s.refused.map { it.first })
+    }
+
+    /** Only refusals fall back. Another exception is a bug, and it still throws on the first try. */
+    @Test fun anUnrelatedExceptionIsNotTakenForARefusal() {
+        val s = Starts()
+        val fg = KioskForeground(android14, { t, e -> s.refused += t to e }) { s.calls += it; throw IllegalArgumentException("not a subset of the manifest") }
+        assertThrows(IllegalArgumentException::class.java) { fg.promote(micGranted = true, locationGranted = true) }
+        assertEquals(listOf(mic or location), s.calls)
+        assertTrue(s.refused.isEmpty())
+    }
+
+    @Test fun theLogNamesEachType() {
+        assertEquals("microphone, location", KioskForeground.names(136))
+        assertEquals("connectedDevice", KioskForeground.names(device))
+        assertEquals("microphone", KioskForeground.names(mic))
     }
 
     /** Android 10 throws when startForeground passes a type the manifest does not declare. */
