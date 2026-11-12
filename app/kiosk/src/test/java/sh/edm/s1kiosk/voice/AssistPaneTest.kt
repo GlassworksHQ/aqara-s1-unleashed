@@ -119,7 +119,7 @@ class AssistPaneTest {
         p.dispatch(VoiceEvent.Listening)
         p.dispatch(VoiceEvent.Idle)
         assertEquals(0, speaker.pauses)
-        assertEquals(listOf<PanelEvent>(PanelEvent.SpeakerClaimed(true)), events) // no release while announcing
+        assertEquals(listOf<PanelEvent>(PanelEvent.SpeakerClaimed(true)), events)
     }
 
     @Test
