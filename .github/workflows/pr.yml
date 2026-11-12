@@ -1,0 +1,124 @@
+# Checks every pull request (and every push to main) without any secrets, so it runs the same on
+# forks. Nothing is signed or published here: test-build.yml makes installable builds and
+# release.yml makes releases.
+#
+#   app      every module's JVM unit tests, an unsigned release build, and
+#            tools/release/check-update-compat.sh (the APK still updates panels in place)
+#   web      the installer: typecheck, tests (incl. packages/*), production build
+#   scripts  tools/install.sh's off-device tests and the docs' relative links
+#   root     the root side (radio helper, bundle checks, s1kiosk_verify) in a 32-bit ARM container
+#            under QEMU. Slow, so it runs only when tools/root, tools/radio or this file changes
+name: PR checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # Same toolchain as release.yml.
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
+
+      - name: Android SDK platform
+        run: sdkmanager --install "platforms;android-37.2"
+
+      - name: Unit tests
+        working-directory: app
+        run: ./gradlew --no-daemon test
+
+      - name: Release build (unsigned)
+        working-directory: app
+        run: ./gradlew --no-daemon :kiosk:assembleRelease
+
+      - name: Still updates panels in place
+        run: tools/release/check-update-compat.sh app/kiosk/build/outputs/apk/release/kiosk-release-unsigned.apk
+
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  scripts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: tools/install.sh off-device tests
+        run: tools/install/test/install-tests.sh
+      - name: Docs links
+        run: python3 tools/check-doc-links.py
+
+  root:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Changed?
+        id: changed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ] \
+             || git diff --name-only "$BASE" HEAD -- tools/root tools/radio .github/workflows/pr.yml | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing under tools/root or tools/radio changed; skipping the root-side tests."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        if: steps.changed.outputs.run == 'true'
+        with:
+          platforms: arm
+
+      - name: Build and self-test s1kiosk_verify
+        if: steps.changed.outputs.run == 'true'
+        run: tools/root/build-verify.sh
+
+      - name: Root-side tests
+        if: steps.changed.outputs.run == 'true'
+        run: tools/radio/test/run.sh
