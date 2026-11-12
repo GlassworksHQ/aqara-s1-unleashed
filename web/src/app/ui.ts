@@ -83,7 +83,7 @@ function demoSetup(): ByteStream {
       options: [
         { id: 'off', label: 'Off', detail: 'The radio stays idle. Choose this if you don\'t use Zigbee or Thread here.' },
         { id: 'zigbee_tcp', label: 'Zigbee coordinator', detail: 'Home Assistant runs a Zigbee network (ZHA) on this panel\'s radio, over the network.' },
-        { id: 'thread', label: 'Thread border router', detail: 'Runs a Thread network for Matter devices, through Home Assistant\'s OpenThread Border Router integration.', experimental: true },
+        { id: 'thread', label: 'Thread border router', detail: 'Runs a Thread network for Matter devices, through Home Assistant\'s OpenThread Border Router integration.' },
         // the app's repeater roles (RadioStep.OPTIONS), experimental like there
         { id: 'zigbee_router', label: 'Zigbee router (repeater)', detail: 'Joins the Zigbee network you already have.', experimental: true, repeater: true },
         { id: 'thread_router', label: 'Thread router (repeater)', detail: 'Joins the Thread network you already have.', experimental: true, repeater: true },
@@ -980,7 +980,7 @@ class Installer {
         ],
       },
       thread: {
-        title: 'Use the border router in Home Assistant', lead: 'The panel is now a Thread border router (experimental): it runs its own Thread network for Home Assistant\'s OpenThread Border Router integration. To join a Thread network you already have as a repeater, choose Thread router (repeater) instead.',
+        title: 'Use the border router in Home Assistant', lead: 'The panel is now a Thread border router: it runs its own Thread network for Home Assistant\'s OpenThread Border Router integration. To join a Thread network you already have as a repeater, choose Thread router (repeater) instead.',
         steps: [
           { title: 'Add OpenThread Border Router', body: 'Opens the integration setup in Home Assistant. Enter this URL. If you already have a border router, Home Assistant can use both.',
             kv: [['URL', `http://${ip}:8081`, true]], link: otbrAdd },

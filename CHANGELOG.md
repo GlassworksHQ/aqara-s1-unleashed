@@ -7,6 +7,16 @@ below as the release notes.
 
 ## [Unreleased]
 
+### Fixed
+- **Thread border router: replies from Thread devices stopped after Wi-Fi reconnected.** Turning
+  Wi-Fi off and on gives Android's Wi-Fi interface a new number, and the radio helper's routing rule
+  for traffic from Thread to your network kept pointing at the old one. It now follows the
+  interface. Comes with the radio bundle.
+
+### Changed
+- **Thread border router docs:** the panel has to be on Home Assistant's network to be its border
+  router, and has now been tested as a second border router next to an existing one.
+
 ## [0.4.3] - 2026-11-11
 
 **Pick the radio's role on the panel with role tiles and QR codes, voice timers you can move or hide, and a new typeface.**

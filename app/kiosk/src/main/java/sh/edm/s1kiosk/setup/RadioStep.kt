@@ -9,8 +9,8 @@ import sh.edm.s1kiosk.radio.RadioMode
  *
  * Offered, as verified on the reference panel (docs/radio.md):
  *  - Off (default) and Zigbee coordinator (ZHA over TCP): verified end to end with bellows.
- *  - Thread border router, experimental: Home Assistant's OTBR REST API verified, routing between
- *    the LAN and Thread devices not yet tested with a real device.
+ *  - Thread border router: verified with real Matter devices, as the only border router and next to
+ *    an existing one (must be on Home Assistant's network).
  *  - Zigbee router (repeater) and Thread router (repeater) ([Option.repeater]), experimental: both
  *    joined a real home network. Both need the v2 root helper.
  * [COMING_SOON] is empty now; it stays for roles that are shown but not selectable.
@@ -37,7 +37,6 @@ object RadioStep {
         Option(
             RadioMode.THREAD, "Thread border router",
             "Runs a Thread network for Home Assistant (OTBR).",
-            experimental = true,
         ),
         Option(
             RadioMode.ZIGBEE_ROUTER, "Zigbee router (repeater)",

@@ -71,7 +71,7 @@ class SetupChannelTest {
             val id = opt.getString("id")
             assertTrue(opt.getString("label").isNotEmpty() && opt.getString("detail").isNotEmpty())
             // `experimental` and `repeater` only where true (optional in RadioOption).
-            if (id in setOf("thread", "zigbee_router", "thread_router")) assertEquals(true, opt.get("experimental"))
+            if (id in setOf("zigbee_router", "thread_router")) assertEquals(true, opt.get("experimental"))
             else assertFalse(opt.has("experimental"))
             if (id.endsWith("_router")) assertEquals(true, opt.get("repeater")) else assertFalse(opt.has("repeater"))
         }

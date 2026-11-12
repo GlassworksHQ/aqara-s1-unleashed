@@ -18,7 +18,7 @@ Set **Radio mode** on the panel's device page:
 | **Off** (default) | Nothing; the radio is idle | Works |
 | **Zigbee coordinator (TCP)** | The coordinator of a Zigbee network, for ZHA (or Zigbee2MQTT, below) | Works with ZHA; Zigbee2MQTT experimental |
 | **Zigbee router (repeater)** | A repeater in your existing Zigbee network | Experimental; joined a real home network |
-| **Thread border router** | Runs its own Thread network, for Home Assistant's OpenThread Border Router integration | Experimental |
+| **Thread border router** | Runs its own Thread network, for Home Assistant's OpenThread Border Router integration | Works |
 | **Thread router (repeater)** | A repeater in your existing Thread network | Experimental; joined a real home network |
 
 *Thread border router* and *Thread router (repeater)* are different roles: the border router starts a
@@ -89,18 +89,33 @@ network, untouched. The Zigbee router mode always uses Aqara's stack.
 Zigbee2MQTT gives the radio 5 seconds to answer its reset, and this stack takes about 4.3. If a start
 fails now and then with a reset timeout, restart Zigbee2MQTT; it usually works the next time.
 
-## Thread border router (experimental)
+## Thread border router
 
-This mode makes the panel a border router with its own Thread network. To extend a Thread network you
-already have, use *Thread router (repeater)* instead.
+**The panel must be on the same network as Home Assistant** (same Wi-Fi/VLAN, with IPv6, which
+home routers normally have). A border router can only show Home Assistant the way to your Thread
+devices on its own network. If the panel sits on a separate IoT network, Home Assistant's OTBR
+integration can still connect to it, but it can't reach any device through it.
+[Why](radio.md#same-network-as-home-assistant).
+
+This mode makes the panel a border router. On its own it starts a Thread network of its own; to
+extend a network you already have, *Thread router (repeater)* is the simple way. The panel can also
+be a second border router in your existing network, but for now that takes joining it by hand
+([radio.md](radio.md#thread-border-router-build-profilebr-2026-11-10)).
 
 1. Set **Radio mode** to *Thread border router*.
 2. In Home Assistant, add the **OpenThread Border Router** integration with the URL
    `http://<panel IP>:8081`. On the panel, the setup screen and the settings menu show this URL and a
    QR code that opens the integration's setup in Home Assistant on your phone.
 
-Home Assistant's side of this has been tested. Traffic between your network and real Thread devices
-through the panel hasn't been tested yet.
+Tested so far, both after Wi-Fi dropped and after a restart:
+
+- **As your only border router:** a Matter bulb added with the Home Assistant app as usual, then
+  switched and dimmed from Home Assistant.
+- **Next to an existing border router** (Home Assistant's own, Apple's): the panel joins the same
+  network, and traffic between your network and real Matter devices flows through it both ways.
+
+If the panel has started its own network while you already have one, Home Assistant lists both under
+*Settings → Devices & services → Thread*; keep yours as the preferred one.
 
 ## Repeater modes (experimental)
 
