@@ -16,7 +16,7 @@ import { explain } from './explain';
 import { Session, type SessionDeps } from './session';
 
 export const DEMOS = ['run', 'selftest', 'connect', 'ask-fastboot', 'install', 'ask-adb', 'app', 'wifi', 'wifi-fail', 'home-assistant', 'radio', 'radio-next',
-  'done', 'undo', 'undo-connect', 'restore', 'undo-done', 'error', 'error-written'] as const;
+  'done', 'undo', 'undo-refused', 'undo-connect', 'restore', 'undo-done', 'error', 'error-written'] as const;
 export type Demo = (typeof DEMOS)[number];
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -263,6 +263,10 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
       return;
     case 'undo':
       await session.openUndo();
+      return;
+    case 'undo-refused': // what "Give back Aqara's apps" shows for a backup undo can't restore
+      await session.openUndo();
+      dispatch({ type: 'undo', patch: { depth: 'keep', note: { kind: 'err', title: 'This backup can\'t undo the install.', sub: 'This backup has no vbmeta or bootloader. Nothing on the panel was changed.' } } });
       return;
     case 'undo-connect':
       await session.openUndo();

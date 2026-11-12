@@ -9,7 +9,7 @@ import {
   type AssetName, type Provisioned, type SetUpOptions,
 } from '@glassworks/aqara-s1-plus-installer';
 import {
-  InstallFlow, backupZip, fmtSize, readBackupZip, restoreFromBackup,
+  BackupRefused, InstallFlow, backupZip, checkRestorable, fmtSize, readBackupZip, restoreFromBackup,
   type BackupFile, type BackupMeta, type BackupStore, type Devices, type Recipe,
 } from '@glassworks/kiln-core';
 import { SETUP_SOCKET, SetupChannel, validHaUrl, type SetupState } from '@glassworks/setup-channel';
@@ -538,17 +538,29 @@ export class Session {
       const key = this.key;
       if (!key) { this.dispatch({ type: 'undo', patch: { note: { kind: 'err', title: 'Not ready yet.', sub: 'Click Continue again in a moment.' } } }); return Promise.resolve(); }
       const picked = this.d.devices.requestAdb(key);
-      return this.giveBack(picked);
+      return this.giveBack(picked, this.undoFiles);
     }
     this.dispatch({ type: 'go', screen: 'connect', flow: 'undo' });
     return Promise.resolve();
   }
 
-  private async giveBack(picked: Promise<PanelShell>) {
+  /**
+   * Giving the panel back to Aqara's apps removes or disables S1 Kiosk, so it only happens for a
+   * backup undo can restore (kiln-core's checkRestorable, the check the restore itself runs). A backup
+   * that can't be restored stops here, with nothing on the panel changed.
+   */
+  private async giveBack(picked: Promise<PanelShell>, files: ReadonlyMap<string, Uint8Array>) {
     const busy = (sub: string) => this.dispatch({ type: 'undo', patch: { note: { kind: 'busy', title: 'Giving the panel back to Aqara\'s apps', sub } } });
     busy(`In the browser's list, pick ${this.d.frame.asks.connect.pick}.`);
     try {
       const panel = await picked;
+      try {
+        await checkRestorable(this.d.recipe.backup, files);
+      } catch (e) {
+        if (!(e instanceof BackupRefused)) throw e;
+        this.dispatch({ type: 'undo', patch: { note: { kind: 'err', title: 'This backup can\'t undo the install.', sub: `${e.message.charAt(0).toUpperCase()}${e.message.slice(1)}. Nothing on the panel was changed.` } } });
+        return;
+      }
       await unprovision(panel, (s, d) => busy(s || d || ''));
       this.dispatch({ type: 'undo', patch: { appsBack: true, note: { kind: 'ok', title: 'Aqara\'s apps are back.', sub: 'Next, put the original software back: Continue, then recovery mode.' } } });
     } catch (e) {
