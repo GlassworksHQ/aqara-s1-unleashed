@@ -11,6 +11,7 @@ import org.robolectric.annotation.Config
 import sh.edm.esphome.ApiEntity
 import sh.edm.esphome.DeviceIdentity
 import sh.edm.s1kiosk.GlassworksRuntime
+import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.base.BaseBackend
 import sh.edm.s1kiosk.base.WallBase
 import java.io.File
@@ -40,6 +41,13 @@ class PanelEntitiesPinTest {
         val golden = javaClass.getResourceAsStream("/$GOLDEN")?.bufferedReader()?.readText()
         assertNotNull("$GOLDEN missing; regenerate it (see the class KDoc)", golden)
         assertEquals(golden, actual)
+    }
+
+    /** Voice off keeps the same entities: Home Assistant would drop the voice ones otherwise. */
+    @Test fun voiceOffKeepsTheSameEntities() {
+        if (System.getProperty("s1.regenGolden") == "true") return
+        KioskPrefs(RuntimeEnvironment.getApplication()).voiceEnabled = false
+        assertEquals(javaClass.getResourceAsStream("/$GOLDEN")?.bufferedReader()?.readText(), describe(realEntityList()))
     }
 
     private fun realEntityList(): List<ApiEntity> {
