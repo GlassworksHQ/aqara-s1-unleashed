@@ -82,6 +82,9 @@ The core calls a pane from more than one thread. `start` runs on the device thre
 from the service, and `onEvent` runs on whichever thread the event happened. A pane guards its own
 state. `publishStates()` is safe from any thread, including while the panel stops.
 
+A pane that throws in `bind`, `start`, `stop` or `onEvent` is logged (`pane <id> failed in <step>`)
+and skipped. The other panes still run.
+
 ## Licence
 
 The files in `dev.glassworks` are licensed under the
