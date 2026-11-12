@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.settings.SettingsMenu
 import android.os.IBinder
@@ -18,6 +20,7 @@ import sh.edm.s1kiosk.auth.UrlConnectionPoster
 import dev.glassworks.frame.systemSettings
 import sh.edm.s1kiosk.discovery.HaDiscovery
 import sh.edm.s1kiosk.esphome.PanelDevice
+import sh.edm.s1kiosk.frame.ScreenOffWifiScanner
 import sh.edm.s1kiosk.improv.ImprovController
 import sh.edm.s1kiosk.improv.ImprovSerialServer
 import sh.edm.s1kiosk.setup.SetupChannelServer
@@ -34,12 +37,18 @@ class KioskService : Service() {
     private val main = Handler(Looper.getMainLooper())
     private var device: PanelDevice? = null
     private var discovery: HaDiscovery? = null
+    private var wifiScanner: ScreenOffWifiScanner? = null
 
     override fun onCreate() {
         super.onCreate()
         KioskPrefs(this).migrateRadioStep() // before discovery can save an HA URL in this process
-        startForeground(NOTIFICATION_ID, buildNotification())
+        val notification = buildNotification()
+        val location = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            .any { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+        val types = KioskForeground.start(location) { Platform.startForeground(this, NOTIFICATION_ID, notification, it) }
+        Log.i("S1Kiosk", "foreground service types $types (location ${if (types and KioskForeground.LOCATION != 0) "on" else "off"})")
         glassworks.screen.start(this)
+        wifiScanner = glassworks.frame.screenOffWifiScanner(this).also { it.start() }
         glassworks.voiceState = if (KioskPrefs(this).voice.enabled) "idle" else "off"
         glassworks.voiceUi = VoiceUi(glassworks.voiceState)
         glassworks.voiceCancel = { device?.cancelVoice() }
@@ -83,6 +92,8 @@ class KioskService : Service() {
         discovery = null
         glassworks.discovery = null
         HaAuth.stopServer()
+        wifiScanner?.stop()
+        wifiScanner = null
         super.onDestroy()
     }
 

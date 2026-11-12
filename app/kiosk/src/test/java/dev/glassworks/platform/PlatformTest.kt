@@ -26,6 +26,7 @@ class PlatformTest {
         Triple("hasDisplayCutoutMode", 28) { it.hasDisplayCutoutMode },
         Triple("hasSigningInfo", 28) { it.hasSigningInfo },
         Triple("hasLongVersionCode", 28) { it.hasLongVersionCode },
+        Triple("hasForegroundServiceTypes", 29) { it.hasForegroundServiceTypes },
         Triple("hasSettingsPanel", 29) { it.hasSettingsPanel },
         Triple("hasFontBuilder", 29) { it.hasFontBuilder },
         Triple("hasWindowInsetsController", 30) { it.hasWindowInsetsController },

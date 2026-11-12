@@ -4,7 +4,9 @@
 
 package dev.glassworks.platform
 
+import android.app.Notification
 import android.app.PendingIntent
+import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -41,6 +43,12 @@ open class PlatformApi internal constructor(
     /** `PackageInfo.longVersionCode` exists (Android 9). Below it, `versionCode` is an Int. */
     val hasLongVersionCode: Boolean get() = apiLevel >= 28
 
+    /**
+     * `Service.startForeground` takes the service types (Android 10). Below it, the call has no
+     * types and the manifest's types do not exist.
+     */
+    val hasForegroundServiceTypes: Boolean get() = apiLevel >= 29
+
     /** `Settings.Panel` (the Wi-Fi sheet over the app) exists (Android 10). */
     val hasSettingsPanel: Boolean get() = apiLevel >= 29
 
@@ -64,6 +72,16 @@ open class PlatformApi internal constructor(
     fun registerExportedReceiver(context: Context, receiver: BroadcastReceiver, filter: IntentFilter) {
         if (apiLevel >= 33) context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
         else context.registerReceiver(receiver, filter)
+    }
+
+    /**
+     * Makes [service] a foreground service with exactly [types] (a subset of its manifest types).
+     * Without types, Android 14 starts it with every manifest type and throws when one of them
+     * lacks its permission. Below Android 10 the types are dropped.
+     */
+    fun startForeground(service: Service, id: Int, notification: Notification, types: Int) {
+        if (hasForegroundServiceTypes) service.startForeground(id, notification, types)
+        else service.startForeground(id, notification)
     }
 
     /** An [Intent] extra, read with the typed getter from Android 13 and the deprecated one below. */

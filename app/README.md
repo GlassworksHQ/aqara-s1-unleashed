@@ -162,7 +162,9 @@ above). Otherwise it falls back to a network suggestion the user must approve. S
 the current SSID also need the location permission:
 `adb shell pm grant sh.edm.s1kiosk android.permission.ACCESS_FINE_LOCATION` (already
 granted by `adb install -g`, or self-granted when device owner). Details, sources and limits:
-[docs/onboarding.md](../docs/onboarding.md).
+[docs/onboarding.md](../docs/onboarding.md). With the permission granted, the kiosk's service runs
+with the `location` foreground type as well as `microphone`, so the Wi-Fi scans it starts with the
+screen off are allowed (#3, see [docs/radio.md](../docs/radio.md)).
 
 ## Debugging
 
@@ -175,8 +177,10 @@ python3 tools/gecko-eval/gecko_eval.py 'JSON.stringify({w: innerWidth, h: innerH
 ```
 
 Gecko's prefs are written to `files/geckoview-config.yaml` at startup and logged under the
-`S1Kiosk` tag. Sign-in and HA discovery log under `S1Auth` / `S1Discovery`, the Music Assistant player
-under `S1Sendspin` (with a `sync:` line every 10 s while playing). None of them log tokens or keys. Page console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
+`S1Kiosk` tag. Sign-in and HA discovery log under `S1Auth` / `S1Discovery`, the Music Assistant
+player under `S1Sendspin` (with a `sync:` line every 10 s while playing). The Wi-Fi scans the app
+starts while the screen is off log under `S1Kiosk.Wifi`. None of them log tokens or keys. Page
+console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
 
 > If the screen is blank/white and `innerWidth` is 0, the **display is off**. Gecko drops its
 > surface while the screen sleeps. Check `adb shell dumpsys power | grep mWakefulness`.

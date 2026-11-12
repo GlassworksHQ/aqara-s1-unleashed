@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.frame
 
+import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import dev.glassworks.frame.Frame
@@ -25,6 +26,9 @@ class AqaraS1Plus : Frame {
     )
 
     val rootUpdates = RootUpdateInstaller()
+
+    /** Its Wi-Fi chip has no PNO scans, so the app scans while the screen is off (#3). One per service run. */
+    fun screenOffWifiScanner(context: Context) = ScreenOffWifiScanner(context)
 
     /**
      * The S1's firmware has no Android Settings app. Its own one (com.lumi.settings: Network, Sounds,
