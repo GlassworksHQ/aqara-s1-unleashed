@@ -12,6 +12,7 @@
 | [radio-guide.md](radio-guide.md) | Using the Zigbee/Thread radio: ZHA, Zigbee2MQTT, Thread, repeaters, who may connect |
 | [radio.md](radio.md) | The radio's technical reference: how each mode works, tests, firmware, the root helper |
 | [releasing.md](releasing.md) | For maintainers: the signing keys, GitHub secrets, tagging a release, the radio bundle |
+| [branding.md](branding.md) | Where the Glassworks brand lives, and which badge or banner each part of this repo uses |
 | [legal.md](legal.md) | Legal notes: your own device, no copy protection bypassed, what is and isn't shipped, trademarks, licences ([third-party notices](../THIRD-PARTY-NOTICES.md)) |
 
 What changed in each release: [CHANGELOG.md](../CHANGELOG.md). The app itself is documented in

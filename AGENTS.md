@@ -116,6 +116,13 @@ when (`2026-11-10`). Prefer tables for comparisons and numbered steps for proced
 "experimental" and "not yet met a real base" are fine to write. Mail to upstream projects (U-Boot,
 TF-A, Magisk, HA) is terse and follows their own conventions.
 
+## Branding
+
+Follow the Glassworks brand: [glassworks.dev/brand](https://www.glassworks.dev/brand). Which badge or
+banner each part of this repo uses, and how to add one for a new library, is in
+[`docs/branding.md`](docs/branding.md). Use the supplied SVGs. Don't redraw or recolour them. Ember is
+Kiln's colour only, and status colours mean status only.
+
 ## Naming (Glassworks)
 
 **Frame** = a device definition (the S1 is `aqara-s1-plus`). **Pane** = a plugin (radio, wall base,
