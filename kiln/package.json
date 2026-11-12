@@ -10,6 +10,7 @@
   },
   "workspaces": [
     "packages/*",
+    "apps/*",
     "../frames/*/installer"
   ],
   "scripts": {
@@ -24,6 +25,7 @@
     "@types/node": "^22.20.5",
     "@types/w3c-web-usb": "^1.0.14",
     "@types/web-bluetooth": "0.0.22",
+    "jsdom": "26.1.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.7",
     "vitest": "^5.1.0"

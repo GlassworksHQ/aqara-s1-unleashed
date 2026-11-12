@@ -1,0 +1,33 @@
+{
+  "frame": "aqara-s1-plus",
+  "name": "Aqara S1 Plus",
+  "body": { "w": 172, "h": 86, "thickness": 12, "radius": 4 },
+  "cover": {
+    "screws": [
+      [5.3, 6], [58.5, 6.6], [113.5, 6.6], [166.7, 11.9], [166.7, 43],
+      [166.7, 74.8], [86, 80], [5.3, 80], [5.3, 43]
+    ],
+    "features": [
+      { "kind": "ribs", "at": [82.7, 4], "size": [85.3, 78] },
+      { "kind": "plate", "at": [4.6, 4], "size": [76, 78] },
+      { "kind": "hole", "at": [19.8, 43], "size": [13.2, 17.2] },
+      { "kind": "hole", "at": [66.2, 43], "size": [13.2, 17.2] },
+      { "kind": "plate", "at": [46.3, 20.5], "size": [11.2, 7.3] },
+      { "kind": "clip", "at": [11.2, 6], "size": [6.6, 7.9] },
+      { "kind": "clip", "at": [11.2, 72], "size": [6.6, 7.9] },
+      { "kind": "clip", "at": [66.2, 6], "size": [6.6, 7.9] },
+      { "kind": "clip", "at": [66.2, 72], "size": [6.6, 7.9] }
+    ]
+  },
+  "board": [
+    { "kind": "speaker", "at": [13.2, 6], "size": [23.2, 26.5] },
+    { "kind": "speaker", "at": [135.6, 6], "size": [23.2, 26.5] },
+    { "kind": "shield", "at": [49.6, 31.8], "size": [39.7, 34.4] },
+    { "kind": "window", "at": [95.9, 39.7], "r": 5.3 },
+    { "kind": "chip", "at": [19.8, 49.6], "size": [13.2, 13.2] }
+  ],
+  "button": { "at": [104.9, 52.9], "what": "the small button on the board, right of the shield's notch, below the round sensor window" },
+  "port": { "edge": "top", "at": 86, "kind": "usb-c" },
+  "steps": ["screws", "cover", "hold", "plug"],
+  "ready": { "seconds": 2, "says": "In recovery mode. Let go." }
+}

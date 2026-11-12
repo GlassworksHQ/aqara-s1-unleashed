@@ -1,0 +1,4 @@
+.next/
+public/assets/blobs/
+public/assets/manifest.json
+next-env.d.ts
