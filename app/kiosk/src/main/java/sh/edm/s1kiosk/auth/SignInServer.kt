@@ -33,8 +33,8 @@ internal object AuthLog {
  * 2. The user signs in to HA on the phone; HA's frontend sends the phone to
  *    `/callback?code=…&state=…`.
  * 3. `GET /callback` → the state is checked (single use, 10 min), the code is exchanged at
- *    `<HA>/auth/token` with the same client_id and the PKCE `code_verifier`, and [onSignedIn] gets the refresh token. The phone
- *    sees "Panel signed in ✓".
+ *    `<HA>/auth/token` with the same client_id and the PKCE `code_verifier`, and [onSignedIn] gets
+ *    the refresh token. The phone sees "Panel signed in ✓".
  *
  * `/thread` and `/thread/callback` are the same flow for [ThreadJoin]: an administrator signs in once
  * so the panel can read HA's Thread dataset; the tokens are revoked right after. `/thread` only works

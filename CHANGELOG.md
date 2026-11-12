@@ -17,6 +17,11 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Sign-in: someone on your network who reads the sign-in code can no longer use it.** Both sign-ins (the
+  dashboard QR code and the administrator sign-in for the Thread join) now use PKCE, so Home Assistant
+  only hands out the panel's token to the panel itself. Needs Home Assistant 2026.10 or later to take
+  effect; older versions sign in as before. A sign-in that was halfway through when the update
+  arrived needs a new scan.
 - **Thread border router: replies from Thread devices stopped after Wi-Fi reconnected.** Turning
   Wi-Fi off and on gives Android's Wi-Fi interface a new number, and the radio helper's routing rule
   for traffic from Thread to your network kept pointing at the old one. It now follows the
