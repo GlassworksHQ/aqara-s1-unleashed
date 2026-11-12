@@ -4,7 +4,7 @@
 // the name and stage; the summary; the three install tags. Here it is a radio item: picking it is
 // what Continue installs. The data is the frame's own (frames/<id>/design/frame.json).
 import * as RadioGroup from '@radix-ui/react-radio-group';
-import { useRef } from 'react';
+import { useId, useRef } from 'react';
 import { DeviceModel } from '../device/DeviceModel';
 import { STAGE_TEXT, cardTags, ships, type FrameDesign, type Stage } from '../../frames/catalog';
 import s from './FrameCard.module.css';
@@ -50,9 +50,11 @@ export function FrameCard({ f }: { f: FrameDesign }) {
     tilt(((e.clientY - r.top) / r.height - 0.5) * -10, ((e.clientX - r.left) / r.width - 0.5) * 14);
   };
   const installable = ships(f.status) && !!f.kiln;
+  const id = useId();
   return (
     <RadioGroup.Item ref={ref} value={f.id} disabled={!installable} className={`glass ${s.card}`} onPointerMove={onMove} onPointerLeave={() => tilt(0, 0)}
-      aria-label={`${f.name}, ${STAGE_TEXT[f.status]}${installable ? '' : ', not installable from Kiln yet'}`}>
+      aria-label={`${f.name}, ${STAGE_TEXT[f.status]}${installable ? '' : ', not installable from Kiln yet'}`}
+      aria-describedby={`${id}-summary ${id}-tags`}>
       <span className={s.model}>
         <span className={s.float}><span className={s.bob}><DeviceModel id={f.id} model={f.model} label={`${f.name} running Glassworks`} /></span></span>
         <span className={s.shadow} aria-hidden="true" />
@@ -63,8 +65,8 @@ export function FrameCard({ f }: { f: FrameDesign }) {
           <StatusPill stage={f.status} />
         </span>
         {f.aka && <span className={s.aka}>{f.aka}</span>}
-        <span className={s.summary}>{f.summary}</span>
-        <span className={s.tags} aria-label={installable ? 'Install' : 'Install, expected'}>
+        <span id={`${id}-summary`} className={s.summary}>{f.summary}</span>
+        <span id={`${id}-tags`} className={s.tags}>
           {cardTags(f.ratings).map((t) => (
             <span key={t.text} className={t.severity ? s[t.severity] : undefined}>
               <TagIcon k={t.key} value={t.value} />

@@ -311,7 +311,10 @@ async function selfTest(session: Session) {
     say(`isMagiskPatched(demo boot) = ${await isMagiskPatched(demoBootImage())}`);
   } catch (e) { ok = false; say(`FAIL wasm: ${(e as Error).message}`); }
   const assets = new Assets<AssetName>('/assets/');
-  const list = (await assets.getManifest()).assets;
+  let list: Awaited<ReturnType<typeof assets.getManifest>>['assets'] = [];
+  try {
+    list = (await assets.getManifest()).assets;
+  } catch (e) { ok = false; say(`FAIL manifest: ${(e as Error).message}`); }
   for (const [i, a] of list.entries()) {
     try {
       const b = await assets.get(a.name);

@@ -46,6 +46,11 @@ describe('the picker', () => {
     expect(screen.queryByText(/still working/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(router.push).toHaveBeenCalledWith('/aqara-s1-plus');
+    // the summary and install tags reach screen readers as the card's description
+    const s1 = screen.getByRole('radio', { name: /Aqara S1 Plus, Beta/ });
+    const described = (s1.getAttribute('aria-describedby') ?? '').split(' ').map((id) => document.getElementById(id)?.textContent ?? '').join(' ');
+    expect(described).toMatch(/The reference frame\./);
+    expect(described).toMatch(/Medium install.*Reversible.*Modifies Android/);
   });
 
   it('during an install: says so, leads back to it, and Continue goes there too', () => {

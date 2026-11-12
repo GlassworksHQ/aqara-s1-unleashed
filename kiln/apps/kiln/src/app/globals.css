@@ -241,6 +241,9 @@ h2.huge { font-size: 44px; font-weight: 200; }
   top: 50%;
   transform: translate(-50%, -50%);
   width: min(420px, calc(100vw - 32px));
+  /* a short or zoomed viewport scrolls the sheet, not the page, so Close stays reachable */
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   display: grid;
   gap: 10px;
   padding: 22px 24px;
