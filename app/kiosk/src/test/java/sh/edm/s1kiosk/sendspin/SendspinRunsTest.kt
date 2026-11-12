@@ -27,13 +27,24 @@ class SendspinRunsTest {
         server = "ws://192.0.2.10:8927/sendspin"
     }
 
-    private class Rec : PcmOutput {
+    /** Records what a pipeline sends and passes it on to the player's output. [holdEnd] keeps a stream/end in the decode thread. */
+    private class Rec(private val out: PcmOutput, private val holdEnd: CountDownLatch?) : PcmOutput {
         val events: MutableList<String> = Collections.synchronizedList(mutableListOf())
-        override fun start(f: SsFormat) { events += "start" }
-        override fun push(c: PcmChunk) {}
-        override fun clear(fromUs: Long?) { events += "clear" }
-        override fun end() { events += "end" }
+        val endEntered = CountDownLatch(1)
+        val endPassedOn = CountDownLatch(1)
+        override fun start(f: SsFormat) { events += "start"; out.start(f) }
+        override fun push(c: PcmChunk) { out.push(c) }
+        override fun clear(fromUs: Long?) { events += "clear"; out.clear(fromUs) }
+        override fun end() {
+            events += "end"
+            endEntered.countDown()
+            holdEnd?.awaitIgnoringInterrupts()
+            out.end()
+            endPassedOn.countDown()
+        }
     }
+
+    private class Made(val pipeline: AudioPipeline, val rec: Rec, val flacFailed: (String) -> Unit)
 
     private class Fake(val hooks: SsPlayerHooks, private val script: (Fake) -> Unit) : SsConnection {
         override val timeFilter = TimeFilter()
@@ -49,13 +60,18 @@ class SendspinRunsTest {
             return SendspinSession.Result(true, true, "closed")
         }
         override fun status() = SendspinSession.Status(SendspinSession.Phase.CLOSED, closeReason = "server closed the connection")
-        override fun close(reason: String?) { if (releaseOnClose) release.countDown() }
+        val closeReasons: MutableList<String?> = Collections.synchronizedList(mutableListOf())
+        val closed = CountDownLatch(1)
+
+        override fun close(reason: String?) { closeReasons += reason; closed.countDown(); if (releaseOnClose) release.countDown() }
         override fun abort() = close(null)
         override fun sendState() { sentStates++ }
     }
 
     private val conns: MutableList<Fake> = Collections.synchronizedList(mutableListOf())
-    private val pipelines: MutableList<Pair<AudioPipeline, Rec>> = Collections.synchronizedList(mutableListOf())
+    private val pipelines: MutableList<Made> = Collections.synchronizedList(mutableListOf())
+    @Volatile private var holdFirstEnd = false
+    private val firstEndGate = CountDownLatch(1)
     private val connectGate = CountDownLatch(1)
     @Volatile private var holdFirstConnect = false
     @Volatile private var firstConnectThread: Thread? = null
@@ -85,13 +101,14 @@ class SendspinRunsTest {
                 }
             }.also { conns += it }
         },
-        newPipeline = { _, onFlacFailed ->
-            val rec = Rec()
-            AudioPipeline(rec, { error("no FLAC in this test") }, onFlacFailed).also { pipelines += it to rec }
+        newPipeline = { out, onFlacFailed ->
+            val rec = Rec(out, firstEndGate.takeIf { pipelines.isEmpty() && holdFirstEnd })
+            AudioPipeline(rec, { error("no FLAC in this test") }, onFlacFailed).also { pipelines += Made(it, rec, onFlacFailed) }
         },
     )
 
     @After fun tearDown() {
+        firstEndGate.countDown()
         player.stop()
         connectGate.countDown()
         conns.forEach { it.release.countDown() }
@@ -111,12 +128,14 @@ class SendspinRunsTest {
     @Test
     fun aLateStreamEndFromTheStoppedRunDoesNotEndTheNewStream() {
         val oldThread = stopAndStartWhileTheOldReaderIsStuck()
-        val (newPipeline, newRec) = pipelines[1]
+        val newPipeline = pipelines[1].pipeline
+        val newRec = pipelines[1].rec
         assertTrue("new pipeline idle", newPipeline.awaitIdle(3_000))
         assertEquals("the new session started the new stream", listOf("start"), newRec.events.toList())
 
         conns[0].release.countDown() // the old reader wakes up and sends its stream/end
         oldThread.join(3_000)
+        assertFalse("the old reader ended", oldThread.isAlive)
         assertTrue("new pipeline idle", newPipeline.awaitIdle(3_000))
         assertEquals("the old session's stream/end didn't reach the new pipeline", listOf("start"), newRec.events.toList())
 
@@ -132,6 +151,7 @@ class SendspinRunsTest {
 
         conns[0].release.countDown() // the old session ends: CLOSED from its hooks and from its loop
         oldThread.join(3_000)
+        assertFalse("the old reader ended", oldThread.isAlive)
         assertEquals("ready, paired with Music Assistant", player.statusText())
         player.setVolume(40)
         assertEquals("a volume change still reaches the new session", 1, conns[1].sentStates)
@@ -163,6 +183,61 @@ class SendspinRunsTest {
         assertEquals("ready, paired with Music Assistant", player.statusText())
         player.setVolume(40)
         assertEquals("a volume change reaches the new session", 1, new.sentStates)
+    }
+
+    @Test
+    fun aStreamEndStillInTheOldDecodeThreadDoesNotStopTheNewOutput() {
+        holdFirstEnd = true
+        player.start()
+        val old = conns.awaitAt(0)
+        assertTrue("old pipeline idle", pipelines[0].pipeline.awaitIdle(3_000))
+        old.hooks.onStreamEnd() // queued before the stop; the decode thread is still in it when the stop comes
+        assertTrue("old decode thread in stream/end", pipelines[0].rec.endEntered.await(3, TimeUnit.SECONDS))
+        player.stop()
+        player.start()
+        conns.awaitAt(1)
+        assertTrue("new pipeline idle", pipelines[1].pipeline.awaitIdle(3_000))
+        assertTrue("the new stream plays", player.outputActive)
+
+        firstEndGate.countDown()
+        assertTrue("old decode thread done with stream/end", pipelines[0].rec.endPassedOn.await(3, TimeUnit.SECONDS))
+        assertTrue("the old run's stream/end didn't end the new stream", player.outputActive)
+
+        conns[1].hooks.onStreamEnd()
+        assertTrue("new pipeline idle", pipelines[1].pipeline.awaitIdle(3_000))
+        assertFalse("the new run's own stream/end does", player.outputActive)
+    }
+
+    @Test
+    fun aFlacFailureFromTheStoppedRunLeavesTheNewRunAlone() {
+        stopAndStartWhileTheOldReaderIsStuck()
+        pipelines[0].flacFailed("old decoder")
+        assertFalse("FLAC still offered: ${player.statusText()}", player.statusText().contains("FLAC off"))
+
+        pipelines[1].flacFailed("new decoder")
+        assertTrue(player.statusText(), player.statusText().endsWith("; FLAC off, using PCM: new decoder"))
+        assertTrue("the new run's own failure reconnects it", conns[1].closed.await(3, TimeUnit.SECONDS))
+        assertEquals(listOf<String?>("restart"), conns[1].closeReasons.toList())
+    }
+
+    @Test
+    fun volumeMuteAndDelayFromTheStoppedRunDoNotReachTheNewRun() {
+        stopAndStartWhileTheOldReaderIsStuck()
+        val volume = player.volume
+        val delay = player.store.outputDelayMs
+        conns[0].hooks.onVolume(volume / 2)
+        conns[0].hooks.onMute(true)
+        conns[0].hooks.onOutputDelay(delay + 900)
+        assertEquals("volume", volume, player.volume)
+        assertFalse("muted", player.muted)
+        assertEquals("output delay", delay, player.store.outputDelayMs)
+
+        conns[1].hooks.onVolume(volume / 2)
+        conns[1].hooks.onMute(true)
+        conns[1].hooks.onOutputDelay(delay + 900)
+        assertEquals("the new session's volume", volume / 2, player.volume)
+        assertTrue("the new session's mute", player.muted)
+        assertEquals("the new session's output delay", delay + 900, player.store.outputDelayMs)
     }
 
     private fun MutableList<Fake>.awaitAt(i: Int): Fake {

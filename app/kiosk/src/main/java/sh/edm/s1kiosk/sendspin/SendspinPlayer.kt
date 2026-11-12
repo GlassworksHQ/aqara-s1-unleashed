@@ -504,6 +504,8 @@ class SendspinPlayer(
     fun setMuted(muted: Boolean) { store.muted = muted; applyGain(); session?.sendState() }
     val volume: Int get() = store.volume
     val muted: Boolean get() = store.muted
+    /** Tests: whether the shared scheduler is playing a stream. */
+    internal val outputActive: Boolean get() = scheduler.isActive
 
     companion object {
         /** The session waits up to 1 s for the server to hang up after the goodbye; allow for that. */
