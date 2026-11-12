@@ -10,7 +10,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.net.HttpURLConnection
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.net.URI
 import java.net.URL
 import java.util.Collections
@@ -29,6 +31,7 @@ class SignInServerTest {
     private lateinit var server: SignInServer
     private var signedIn: Pair<StoredAuth, TokenResult.Ok>? = null
     @Volatile private var haKnown = true
+    private val loopback = InetAddress.getByName("127.0.0.1")
     private val revoked = Collections.synchronizedList(ArrayList<String>())
 
     @Before
@@ -71,10 +74,12 @@ class SignInServerTest {
         }
         ha.start()
         haBase = "http://127.0.0.1:${ha.address.port}"
-        server = SignInServer(0, { if (haKnown) "$haBase/" else null }, HaTokenClient(UrlConnectionPoster()),
-            { auth, ok -> signedIn = auth to ok })
+        server = signInServer()
         server.start()
     }
+
+    private fun signInServer() = SignInServer(0, { if (haKnown) "$haBase/" else null }, HaTokenClient(UrlConnectionPoster()),
+        { auth, ok -> signedIn = auth to ok }, bindAddress = loopback)
 
     @After
     fun tearDown() {
@@ -141,6 +146,38 @@ class SignInServerTest {
         // Refresh with the stored token and client_id.
         val r = HaTokenClient(UrlConnectionPoster()).refresh(auth) as TokenResult.Ok
         assertEquals("AT2", r.accessToken)
+    }
+
+    /**
+     * #99: other processes on the machine listen on 127.0.0.1 ports too (Gradle test servers, dev
+     * servers). On macOS a wildcard listener on port 0 can get one of their ports, and a request to
+     * 127.0.0.1 then reaches them (a 200 instead of the 302). Holding the next ports on 127.0.0.1
+     * makes that happen every time there; a server on 127.0.0.1 never gets a held port.
+     */
+    @Test
+    fun aLoopbackListenerOnTheNextPortsDoesNotAnswerForTheServer() {
+        // Pick on 127.0.0.1 too, and start low enough that 20 ports above it exist.
+        val next = ServerSocket(0, 0, loopback).use { it.localPort }.coerceAtMost(65535 - 21)
+        val squatters = (next + 1..next + 20).mapNotNull { p ->
+            try {
+                HttpServer.create(InetSocketAddress(loopback, p), 0).apply {
+                    createContext("/") { ex -> ex.sendResponseHeaders(200, -1); ex.close() }
+                    start()
+                }
+            } catch (_: java.io.IOException) { null }
+        }
+        // Without held ports the test would pass without reproducing #99.
+        assertTrue("held ${squatters.size} of 20 loopback ports", squatters.size >= 15)
+        val s = signInServer()
+        try {
+            s.start()
+            val c = URL("http://127.0.0.1:${s.localPort}/signin").openConnection() as HttpURLConnection
+            c.instanceFollowRedirects = false
+            assertEquals("the sign-in server on port ${s.localPort} answers /signin with its redirect", 302, c.responseCode)
+        } finally {
+            s.stop()
+            squatters.forEach { it.stop(0) }
+        }
     }
 
     @Test
@@ -239,7 +276,7 @@ class SignInServerTest {
         val join = ThreadJoin(HaThreadClient { HaThreadClientTest.FakeHa(token = "AT") }, tokens,
             { haBase }, { done -> done(null) }, { it.run() })
         join.deliver = { r -> delivered += r; null }
-        val s = SignInServer(0, { "$haBase/" }, tokens, { _, _ -> error("not the panel sign-in") }, thread = join)
+        val s = SignInServer(0, { "$haBase/" }, tokens, { _, _ -> error("not the panel sign-in") }, thread = join, bindAddress = loopback)
         s.start()
         return s to join
     }
