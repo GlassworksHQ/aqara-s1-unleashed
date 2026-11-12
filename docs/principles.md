@@ -147,7 +147,10 @@ and HA's device page stays short. So every entity has a place:
 | Health and versions | `DIAGNOSTIC` | No, except the few people check | Wi-Fi signal, CPU, radio firmware |
 
 - **A pane adds at most a handful of uncategorised entities.** Everything else is config or
-  diagnostic, and most of it is disabled by default, so a new panel arrives with a short list.
+  diagnostic.
+- **Enabled by default only if people reach for it day to day.** Restarting the app, yes. Changing
+  the radio mode, no: that's set once, on the panel or the Manage page. Anyone can turn a disabled
+  entity on from HA's device page.
 - **Not every setting is an entity.** Hardware calibration, one-off setup and anything nobody would
   change from an automation stay on the panel and its Manage page.
 - **A pane that's off adds nothing to the list a person sees.**

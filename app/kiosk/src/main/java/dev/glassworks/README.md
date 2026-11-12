@@ -138,8 +138,10 @@ The ESPHome device is an API, not the settings screen. Keep the list a person se
 | Health and versions | `DIAGNOSTIC` | No, except the few people check | Wi-Fi signal, CPU, radio firmware |
 
 - A pane adds at most a handful of uncategorised entities.
-- `disabledByDefault = true` for anything most people won't use. HA creates it, leaves it off and
-  doesn't record it, and anyone can turn it on from the device page.
+- **Enabled by default only if people reach for it day to day.** "Restart app" is on: people use
+  it. "Radio mode" is off: you set it once. Everything else gets `disabledByDefault = true`. HA
+  creates it, leaves it off and doesn't record it. Anyone can turn it on from the device page, and
+  the panel's settings menu and Manage page can always change it.
 - A pane that's off adds nothing to the list a person sees (#67).
 
 ### Example: the camera pane
