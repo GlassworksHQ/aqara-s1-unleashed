@@ -25,7 +25,7 @@ tools/perf/run.sh --frame aqara-s1-plus --runs 3 --out perf-s1
 | `--frame` | (required) | The frame id that goes in the report |
 | `--serial` | `$ANDROID_SERIAL` | Which device |
 | `--runs` | 3 | Repeats of each part. The report gives the median and range |
-| `--taps` | 10 | Taps for the input test (0 skips it; the grade is then provisional) |
+| `--taps` | 10 | Taps for the input test, passed to the page in its URL (0 skips the stage; the grade is then provisional) |
 | `--skip-synthetic`, `--skip-real-use` | | Run only one part |
 | `--quick` | | Short ladder (1, 16 and 128 elements), to check the setup works |
 | `--apk FILE` | | Add the APK's size per ABI to the report (repeat for each ABI) |
@@ -51,11 +51,13 @@ tools/perf/report.py <dir>` rebuilds the report from the raw files at any time, 
   15 s.
 - **Taps:** for the input test, the runner taps the middle of the test page (`input tap`). Nothing
   else is touched.
-- **Cold starts** force-stop and restart the app, with the system `KEYCODE_WAKEUP` key in between
-  (the kiosk's wake intent would start the app). Each restart comes back on the saved dashboard,
-  so the last one also puts the dashboard back. If the run stops early, the exit trap restarts the
-  app for the same reason. While the app restarts, Home Assistant sees the panel go offline for a
-  few seconds.
+- **Cold starts** send the system `KEYCODE_WAKEUP` key (the kiosk's wake intent would start the
+  app) and force-stop the app. A kiosk that is the device's home app, like the S1's, is started
+  again by the system at once (0.2 s on the S1, 2026-11-12); that relaunch is the cold start.
+  Otherwise the runner starts it with `am start -W` after 3 s. Each restart comes back on the saved
+  dashboard, so the last one also puts the dashboard back. If the run stops early, the exit trap
+  restarts the app for the same reason. While the app restarts, Home Assistant sees the panel go
+  offline for a few seconds.
 - Everything else is read-only: `getprop`, `/proc`, `dumpsys meminfo`, `dumpsys SurfaceFlinger
   --latency`, logcat.
 
@@ -66,14 +68,14 @@ There are two parts. The **synthetic** part is a fixed test page, the same for e
 
 | What | How | Where it comes from |
 |---|---|---|
-| Animation ladder | Five families of animated elements, each doubling from 1 to 1024: CSS transform, CSS opacity, SVG, canvas 2D, and Home Assistant-like tiles whose numbers change every frame. Per step: 1 s warm-up, 2 s measured, 1.2 s still. A family stops at its first *poor* step | Test page |
-| Frame times | Every presented frame of the kiosk's GeckoView surface, from SurfaceFlinger (`dumpsys SurfaceFlinger --latency`), inside each step's window. `requestAnimationFrame` times are kept too, and used only if SurfaceFlinger covered less than 80% of them | SurfaceFlinger; page |
+| Animation ladder | Five families of animated elements, each doubling from 1 to 1024: CSS transform, CSS opacity, SVG, canvas 2D, and Home Assistant-like tiles whose numbers change every frame. Per step: 1 s warm-up, a measured window, 1.2 s still. The window is 2 s, or 120 refreshes on displays faster than 60 Hz (1.33 s at 90 Hz), so it fits in SurfaceFlinger's 127-frame history. A family stops at its first *poor* step, by the same rule the grade uses (`tools/perf/page/rubric.json`) | Test page |
+| Frame times | Two views of each window. SurfaceFlinger (`dumpsys SurfaceFlinger --latency`) gives every frame of the kiosk's GeckoView surface that reached the screen. `requestAnimationFrame` gives the page's main-thread frames. They disagree both ways: CSS animations run on the compositor, which can drop frames while the main thread keeps time (on the S1, 64 of 118 frames at 128 spinning boxes); and a busy main thread can stall while the compositor still moves something. Each step is graded on the **worse** of the two, and the report says which one limited it (`limited_by`: `compositor` or `main-thread`). SurfaceFlinger counts when its frames span at least 80% of the window; a screen that didn't change has no frames, and then rAF alone is used | SurfaceFlinger; page |
 | Reference load | One fixed mix that stands for a busy wall dashboard: 24 updating tiles, 6 spinning icons and a sparkline redrawn every frame | Test page |
-| Scroll | A list of 240 tiles scrolled by script, 6 px a frame for 2 s. Reported, not graded | Test page |
+| Scroll | A list of 240 tiles in its own scroller, scrolled by script 6 px a frame through one window. `scrolled_px` shows that it moved; a scroll that moved nothing is flagged, not measured. Reported, not graded | Test page |
 | Input (tap to paint) | 10 taps on a toggle while the reference load runs. Event Timing gives the delay, the handler time and the time to the next paint, which is what INP measures. Taps under 16 ms aren't reported by Event Timing; they count as 16 ms | Test page |
 | JS speed | A Home Assistant-like state update for 400 entities: parse the JSON, format every entity through a template, diff against the last update, sort the changes, update the changed tiles, then force a layout. 30 timed after 5 warm-ups. A checksum shows that the work ran | Test page |
-| Test page load | Largest Contentful Paint of the page itself | Test page |
-| Cold start | Time to initial display: Android's own `Displayed …: +Nms` line, after `am force-stop` | logcat |
+| Test page load | Largest Contentful Paint of the page itself. An engine without LCP reports First Contentful Paint instead (an earlier paint), and the report says which (`page_lcp_from`) | Test page |
+| Cold start | Time to initial display: Android's own `Displayed …: +Nms` line, after the force-stop. The report records how the app came back (`launch`: `relaunched-by-system` or `am-start`) and the whole restart, from the force-stop to a settled dashboard. If no dashboard finishes loading within 120 s, that run is recorded as an error, isn't graded, and the run goes on | logcat |
 | Dashboard load | From GeckoView's `PageStart` for the dashboard to the last frame before the dashboard stops painting for 750 ms, after its load event (`PageStop`). If the dashboard never goes still, for example because something on it always animates, the `PageStop` time is used and the report says `no-quiet-gap` | logcat, SurfaceFlinger |
 | Memory | PSS of every app process (the app, Gecko's GPU, content and crash helper processes), the main process's App Summary (Java heap, native heap, code, graphics…), each process's peak RSS (`VmHWM`), the radio's processes, and `MemTotal`/`MemAvailable`. At idle on the dashboard, and the highest sample of the run (peak) | `dumpsys meminfo`, `/proc` |
 | CPU at idle | Jiffies of every app and radio process over 15 s, and the whole device's busy share | `/proc/stat`, `/proc/<pid>/stat` |
@@ -89,14 +91,19 @@ Each metric gets a band, as in Core Web Vitals: **good**, **needs improvement** 
 
 | Metric | Good | Poor | Source |
 |---|---|---|---|
-| Frame time, p95, at the reference load | ≤ 16.7 ms (one frame at 60 fps) | > 33.3 ms (two frames) | [RAIL](https://web.dev/articles/rail): "the maximum budget for each frame is 16 ms (1000 ms / 60 frames per second ≈ 16 ms)". [Android vitals](https://developer.android.com/topic/performance/vitals/render): slow frames take longer than 16 ms |
+| Frame time, p95, at the reference load | ≤ 17.17 ms (one frame at 60 Hz, 16.67 ms, plus 0.5 ms slack) | > 33.83 ms (two frames plus slack) | [RAIL](https://web.dev/articles/rail): "the maximum budget for each frame is 16 ms (1000 ms / 60 frames per second ≈ 16 ms)". [Android vitals](https://developer.android.com/topic/performance/vitals/render): slow frames take longer than 16 ms |
 | Jank rate at the reference load (frames over 16.7 ms) | ≤ 5% | > 50% | Poor: [Play Console](https://support.google.com/googleplay/android-developer/answer/9844486) "excessive slow frames", more than 50% of frames over 16 ms. Good: the same as a p95 within budget |
-| Frozen frames at the reference load (over 700 ms) | 0% | > 0.1% | [Android vitals](https://developer.android.com/topic/performance/vitals/render): frozen frames take longer than 700 ms; Play Console "excessive frozen frames" is more than 0.1% |
+| Frozen frames at the reference load (over 700 ms) | 0% (**a project choice**) | > 0.1% | [Android vitals](https://developer.android.com/topic/performance/vitals/render): frozen frames take longer than 700 ms; Play Console "excessive frozen frames" is more than 0.1% |
 | Load (the dashboard; the test page if there is no dashboard run) | ≤ 2.5 s | > 4 s | [Core Web Vitals LCP](https://web.dev/articles/lcp): "Good LCP values are 2.5 seconds or less, poor values are greater than 4.0 seconds" |
 | Input: worst tap to next paint | ≤ 200 ms | > 500 ms | [Core Web Vitals INP](https://web.dev/articles/inp): good at or below 200 ms, poor above 500 ms |
-| Cold start (time to initial display) | < 2.5 s | ≥ 5 s | Poor: [Android vitals](https://developer.android.com/topic/performance/vitals/launch-time) counts a cold start that "takes 5 seconds or longer" as excessive, measured as TTID. Good: **a project choice**. No source gives a good bound, so we use LCP's 2.5 s, because a kiosk cold start ends in a page load |
+| Cold start (time to initial display) | ≤ 2.5 s | ≥ 5 s | Poor: [Android vitals](https://developer.android.com/topic/performance/vitals/launch-time) counts a cold start that "takes 5 seconds or longer" as excessive, measured as TTID. Good: **a project choice**. No source gives a good bound, so we use LCP's 2.5 s, because a kiosk cold start ends in a page load |
 
-Between good and poor is **needs improvement**. The sources were checked on 2026-11-12.
+Between good and poor is **needs improvement**. The sources were checked on 2026-11-12. The
+thresholds live in one file, `tools/perf/page/rubric.json`. `grade.py` grades from it, and the test
+page reads it to stop the ladder, so the two can't disagree.
+
+A measured window holds about 120 frames, so a single frozen frame is 0.8% of it, which is poor.
+One freeze of 700 ms or more in a busy dashboard is enough to grade the frames part poor.
 
 Frame times are snapped to whole display refreshes before the percentile is taken. On a 60 Hz
 display, a 16.9 ms frame made its refresh, and a 33 ms frame missed one. Without snapping, timer
@@ -151,7 +158,8 @@ These have no published standard. They get their own sections in the report, wit
 | CPU at idle | reported only | No standard. Lower means less heat and power on a panel that never sleeps |
 | Idle frames | reported only | A still dashboard should present almost nothing. A clock or an animated card adds frames |
 
-The memory budgets are in `tools/perf/budgets.json`, with a default and a per-frame override.
+The memory budgets are in `tools/perf/budgets.json`, with a default and a per-frame override. An
+override names only the keys it changes; the rest come from the default.
 
 ## What the grade does and doesn't tell you
 
@@ -168,15 +176,17 @@ The memory budgets are in `tools/perf/budgets.json`, with a default and a per-fr
 - The ladder's counts are for **this page's** elements. A Home Assistant card is heavier than a
   test tile, so treat the counts as a comparison between frames, not a card budget.
 - The input test taps one toggle. Real interactions (opening a more-info dialog) do more work.
-- SurfaceFlinger counts frames that reached the screen. If a frame's report says `raf` instead,
-  SurfaceFlinger wasn't available there and the numbers come from the page's own frame callbacks.
-  Those can miss frames that the compositor dropped.
+- `source: raf` on a step means either the main thread was the worse of the two
+  (`limited_by: main-thread`), or the screen didn't change during the window, so SurfaceFlinger had
+  nothing to count (`sf_valid: false`). The report counts the second kind (`steps_without_sf`).
 
 ## Memory and CPU per pane
 
 What each pane adds is measured by turning that pane off through its Home Assistant entity and
-comparing with everything on. The runner doesn't talk to Home Assistant. You toggle the entity, and
-take an idle sample after each change. Alternate on and off, three times each. Use a separate
+comparing with everything on. You need an admin account in Home Assistant, and a panel you are
+allowed to disturb: while a pane is off, the panel doesn't play music or hear its wake word. The
+runner doesn't talk to Home Assistant. You toggle the entity, and take an idle sample after each
+change. Alternate on and off, three times each. Use a separate
 output directory: the full run's `all-on` samples come 30 s after a cold start, and a panel that has
 been up for a while may use more memory, so mixing them could bias the difference.
 
@@ -185,7 +195,11 @@ tools/perf/run.sh --frame aqara-s1-plus --out perf-s1-panes --idle-only all-on
 # turn the pane off in Home Assistant, wait 10 s
 tools/perf/run.sh --frame aqara-s1-plus --out perf-s1-panes --idle-only sendspin-off
 # turn it back on, wait 10 s, and repeat both steps twice more
+# finish with the pane back on, as you found it
 ```
+
+For `assist`, "off" means the mute switch is **on**: `--idle-only assist-off` is taken with
+`switch.<panel>_mute_microphone` on, and you finish by turning it off again.
 
 Each `<pane>-off` label is compared with the `all-on` samples. If a difference is smaller than the
 spread of the `all-on` samples, the report says "within noise". On the S1:
@@ -207,9 +221,9 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `frame` | `id`, `device` (model, Android, API, ABI, SoC, CPU, RAM, display, temperatures), `app` (package, version, APK bytes on the device, GeckoView version) |
 | `apk` | One entry per APK given with `--apk`: `abis`, `bytes`, `parts_bytes` (dex, native, assets, resources, other) |
 | `grade` | `grade`, `provisional`, `missing`, `components` (each part's band), `metrics` (each value and band), `load_from`, `rubric_version` |
-| `synthetic` | `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `reference`, `scroll`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `inp_ms`, `input_method`, `page_lcp_ms`, and `per_run` with every step |
-| `real_use` | `cold_start_ttid_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `idle` (memory by process role, main process breakdown, radio, device RAM in use, CPU, idle frames), `peak`, `errors`, `per_run` |
-| `memory` | `idle`, `peak` and `budget` (each check's value, budget and `ok`) |
+| `synthetic` | `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `reference` (with `limited_by`), `reference_sources`, `reference_limited_by`, `steps_without_sf`, `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `inp_ms`, `input_method`, `page_lcp_ms`, `page_lcp_from`, and `per_run` with every step (`source`, `limited_by`, `sf_valid`, and both the rAF and SurfaceFlinger stats) |
+| `real_use` | `cold_start_ttid_ms`, `launch`, `stop_to_dashboard_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `idle` (memory by process role, main process breakdown, radio, device RAM in use, CPU, idle frames), `peak`, `errors`, `per_run` |
+| `memory` | `idle`, `peak` and `budget` (each check's value, budget and `ok`; `ok` is `null` when a budgeted value wasn't measured) |
 | `panes` | One entry per pane: `id`, `method` (`off-diff` or `process`), `pss_kb`, `cpu_pct_of_core`, the noise, and whether each is measurable |
 
 Repeated measurements are given as `{"median", "min", "max", "n"}`.
@@ -266,6 +280,15 @@ These read-only checks were done on the S1 on 2026-11-12 (kiosk 0.4.3, GeckoView
   crash helper. The app process is under a third of the total PSS, so the report adds them all up.
 - logcat has `ActivityTaskManager: Displayed sh.edm.s1kiosk/.MainActivity: +Nms` and GeckoView's
   `GeckoView:PageStart` and `PageStop` lines (debug level, present in the release build).
+- The kiosk is the S1's home app. After `am force-stop` the system starts it again within 0.2 s,
+  and the dashboard's `PageStart` follows about 4 s later. That is why a cold start follows logcat
+  from before the force-stop.
+
+A `--quick` smoke run (one run, 2026-11-12, an earlier version of the runner) showed the page
+working through GeckoView. The page's lines reached logcat and the JS checksum matched. It also
+showed why both frame views matter. At 128 spinning CSS boxes, rAF kept 60 fps (118 frames in 2 s)
+while SurfaceFlinger presented 64. Its scroll stage moved nothing, which led to the scroller fix.
+It isn't the example result: it ran the short ladder once, without the real-use part.
 
 ## Run the tests
 
