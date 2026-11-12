@@ -170,6 +170,6 @@ Same shape and threat model as `s1kiosk_update`:
   back to the boot image's helper if it fails or the bundle's helper keeps exiting.
 
 ## Next
-- Browser installer (WebUSB): built, in [`web/`](../../web/src/README.md); design in
+- Browser installer (WebUSB): built, in [`kiln/`](../../kiln/src/README.md); design in
   [web-installer.md](web-installer.md), user guide in [docs/install.md](../install.md).
 - After `fel-install.sh`, `tools/install.sh` installs and configures the kiosk app over adb.

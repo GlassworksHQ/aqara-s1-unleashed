@@ -82,14 +82,15 @@ class PlaybackSchedulerTest {
 
     /** Runs [seconds] of playback, keeping ~1 s queued; returns the sync errors (µs) after [warmupS]. */
     private fun run(sink: SimSink, seconds: Int, outputDelayMs: Int = 0, warmupS: Double = 1.5, feeder: Feeder? = null,
-                    sched: PlaybackScheduler = PlaybackScheduler(sink, { snapshot }, { sink.now })): Pair<PlaybackScheduler, List<Double>> {
+                    sched: PlaybackScheduler = PlaybackScheduler(sink, { snapshot }, { sink.now }),
+                    owns: () -> Boolean = { true }): Pair<PlaybackScheduler, List<Double>> {
         sched.outputDelayUs = outputDelayMs * 1000L
         val f = feeder ?: Feeder(firstServerTsUs = sink.now / 1000 + serverOffsetUs + 400_000)
         sched.start(SsFormat.PCM_48K_STEREO_16)
         val end = sink.now + seconds * 1_000_000_000L
         while (sink.now < end) {
             while (f.nextTs < sink.now / 1000 + serverOffsetUs + 1_000_000) sched.push(f.chunk(rate))
-            sched.step()
+            sched.step(owns)
         }
         val warm = sink.presented.first().first + (warmupS * 1e9).toLong()
         val errs = sink.presented.filter { it.first > warm }.map { (t, idx) ->
@@ -177,6 +178,68 @@ class PlaybackSchedulerTest {
         val (_, errs) = run(sink, 3, feeder = f, sched = sched, warmupS = 0.2)
         assertEquals(2, sink.opens)
         assertTrue("max error ${errs.maxAbs()} µs", errs.maxAbs() < 100)
+    }
+
+    /**
+     * Passes calls on to [sim], except the one call [stuckAt] names ("open" or "write"). That call
+     * returns only after [handOver] has run, and what it wrote went to the old output, so not to [sim].
+     */
+    private class StuckOnce(private val sim: SimSink, private val staleFrames: (Int) -> Int) : AudioSink {
+        var stuckAt: String? = null
+        var handOver: () -> Unit = {}
+        /** From the stuck call's return to the end of the old owner's step. */
+        var stale = false
+        var staleWrites = 0
+        override fun open(sampleRate: Int, channels: Int) {
+            if (stuckAt == "open") { stuckAt = null; handOver(); stale = true; return }
+            sim.open(sampleRate, channels)
+        }
+        override fun write(buf: ShortArray, frames: Int): Int {
+            if (stuckAt == "write") { stuckAt = null; handOver(); stale = true; return staleFrames(frames) }
+            if (stale) staleWrites++
+            return sim.write(buf, frames)
+        }
+        override fun timestamp(out: LongArray) = sim.timestamp(out)
+        override fun setGain(gain: Float) {}
+        override fun close() {}
+    }
+
+    /**
+     * The old owner's step is stuck in [at] while its run stops and the next run starts and plays
+     * for a second (#96). Then the old step returns, and the next run plays on for 2 s.
+     */
+    private fun staleStepDuringAHandOver(at: String, staleFrames: (Int) -> Int = { it }) {
+        val sim = SimSink(ppm = 0.0, latencyNs = 40_000_000, jitterNs = 0)
+        val out = StuckOnce(sim, staleFrames)
+        val sched = PlaybackScheduler(out, { snapshot }, { sim.now })
+        var owner = 1
+        val oldOwns = { owner == 1 }
+        val newOwns = { owner == 2 }
+        if (at == "write") run(sim, 2, sched = sched, owns = oldOwns) else sched.start(SsFormat.PCM_48K_STEREO_16)
+        val next = Feeder(sim.now / 1000 + serverOffsetUs + 400_000)
+        out.handOver = {
+            owner = 2
+            sched.end()
+            sim.presented.clear()
+            run(sim, 1, warmupS = 0.0, feeder = next, sched = sched, owns = newOwns)
+        }
+        out.stuckAt = at
+        sched.step(oldOwns)
+        out.stale = false
+        val playedBefore = sim.presented.size
+        val (_, errs) = run(sim, 2, warmupS = 0.5, feeder = next, sched = sched, owns = newOwns)
+        assertEquals("$at: the old step wrote nothing more", 0, out.staleWrites)
+        assertTrue("$at: the next run kept playing", sim.presented.size - playedBefore > rate * 3 / 2)
+        assertTrue("$at: the next run stayed in sync: max error ${errs.maxAbs()} µs", errs.maxAbs() < 100)
+    }
+
+    @Test
+    fun aStepStuckInOpenLeavesTheNextOwnersOutputAlone() = staleStepDuringAHandOver("open")
+
+    @Test
+    fun aStepStuckInWriteLeavesTheNextOwnersOutputAlone() {
+        staleStepDuringAHandOver("write")
+        staleStepDuringAHandOver("write") { it / 2 } // cut short: the rest of the block must not follow
     }
 
     @Test

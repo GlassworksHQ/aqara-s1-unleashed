@@ -4,9 +4,10 @@
 #
 #   app      every module's JVM unit tests, an unsigned release build, and
 #            tools/release/check-update-compat.sh (the APK still updates panels in place)
-#   web      the installer: typecheck, tests (incl. packages/*), production build
-#   scripts  tools/install.sh's off-device tests, the perf test's rubric and parsers (tools/perf),
-#            and the docs' relative links
+#   web      the installer in kiln/ (job id kept, as branch protection names it): typecheck,
+#            tests (incl. packages/*), production build
+#   scripts  tools/install.sh's off-device tests, the perf test's rubric, report and grade
+#            (tools/perf), and the docs' relative links
 #   root     the root side (radio helper, bundle checks, s1kiosk_verify) in a 32-bit ARM container
 #            under QEMU. Slow, so it runs only when tools/root, tools/radio or this file changes
 name: PR checks
@@ -62,7 +63,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: web
+        working-directory: kiln
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -71,7 +72,7 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: kiln/package-lock.json
       - run: npm ci
       - run: npm run typecheck
       - run: npm test

@@ -8,6 +8,10 @@ below as the release notes.
 ## [Unreleased]
 
 ### Added
+- **Releases now include an APK for 64-bit Android devices.** Each release carries
+  `s1-kiosk-arm64-v8a-<version>.apk` beside the S1's APK, for arm64-v8a tablets and similar devices.
+  It is experimental and has only run on an emulator. S1 panels keep updating from
+  `s1-kiosk-<version>.apk` as before.
 - **The panel gets your Thread network from Home Assistant**, instead of you copying the dataset.
   *Get it from Home Assistant* on the panel's Thread router card (setup screen and settings menu), or
   the *Join Home Assistant's Thread network* button on its device page, reads your preferred Thread
@@ -17,6 +21,18 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Wi-Fi reconnects while the screen is off.** If Wi-Fi dropped at night (a router restart, an
+  outage), the panel stayed offline until someone woke the screen, because its Wi-Fi chip can't scan
+  on its own with the screen off. The app now asks for a scan 10 s after Wi-Fi drops, then after
+  40 s, 60 s and every 120 s, while Wi-Fi is not connected and the screen is off. It needs the app's
+  location permission, which the installer grants, and location turned on. The app's always-on
+  service now also runs as a location service, because Android 10 only lets an app use location
+  with the screen off that way. The app reads no location. On the reference panel, Wi-Fi was back
+  about 20 s after it was turned off and on, with the screen still asleep.
+- **Android 14 and newer: the app no longer crashes on a fresh install.** Before the microphone
+  permission was granted, the app's always-on service stopped at once and Android showed "S1 Kiosk
+  keeps stopping". The service now starts without the microphone, and takes it as soon as you allow
+  it, so voice starts without a restart. S1 panels run Android 10 and are not affected.
 - **Sendspin: switching the Music Assistant player off and on quickly leaves one connection.** After a
   quick off and on, or a setting change that restarts the player, the old connection could end the new
   stream, make the status say "disconnected" while the panel was connected, or connect a second time

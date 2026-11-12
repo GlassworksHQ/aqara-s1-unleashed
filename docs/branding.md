@@ -28,7 +28,7 @@ image follows GitHub's theme.
 | A library in `app/libs/` | **Library banner** (`banner-library-<name>-on-*.svg`), then the MIT licence, status and roadmap badges | Top of that library's README. Copy the header of [improv's README](../app/libs/improv/README.md) |
 | The Glassworks core (`dev.glassworks.*`), including the pane API | **Core banner** (`banner-core-on-*.svg`) as the header, and the **core badge** (`badge-core-on-*.svg`) | `app/kiosk/src/main/java/dev/glassworks/README.md` |
 | A pane | **Pane badge** (`badge-pane-on-*.svg`) | The pane's README |
-| The installer (`web/`, `tools/install.sh`) | **Kiln badge** (`badge-kiln-on-*.svg`) | Kiln's README. The S1 installer is still S1-branded until it moves into Kiln |
+| The installer (`kiln/`, `tools/install.sh`) | **Kiln badge** (`badge-kiln-on-*.svg`) | Kiln's README. The S1 installer is still S1-branded until it moves into Kiln |
 
 Device-specific code lives in the frame, so it doesn't get a badge of its own.
 

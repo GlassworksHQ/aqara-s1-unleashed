@@ -1,19 +1,34 @@
 package sh.edm.s1kiosk.frame
 
+import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import dev.glassworks.frame.Frame
+import dev.glassworks.pane.PaneContext
+import sh.edm.s1kiosk.base.WallBasePane
+import sh.edm.s1kiosk.base.WallBasePrefs
+import java.util.concurrent.ScheduledExecutorService
 
 /** The Aqara Panel Hub S1 Plus, the frame this app is built for. */
 class AqaraS1Plus : Frame {
     override val board = "aqara-s1-plus"
 
-    val aqaraCloud = AqaraCloud()
+    override val presence = Vi5300Presence()
 
-    /** The time zone to keep (Aqara resets it at every boot; the root helper puts it back). One per device run. */
-    fun timeZoneKeeper(onChange: () -> Unit) = TimeZoneKeeper(onChange = onChange)
+    override val light = Mk6212Light()
+
+    private val aqaraCloud = AqaraCloud()
+
+    /** The time zone that Aqara resets at every boot and the root helper puts back, and the wall base. */
+    override fun panes(ctx: PaneContext, device: ScheduledExecutorService) = listOf(
+        TimeZonePane(ctx),
+        WallBasePane(ctx, WallBasePane.wantedConfig(WallBasePrefs(ctx.prefs("wall-base")), aqaraCloud), device, aqaraCloud),
+    )
 
     val rootUpdates = RootUpdateInstaller()
+
+    /** Its Wi-Fi chip has no PNO scans, so the app scans while the screen is off (#3). One per service run. */
+    fun screenOffWifiScanner(context: Context) = ScreenOffWifiScanner(context)
 
     /**
      * The S1's firmware has no Android Settings app. Its own one (com.lumi.settings: Network, Sounds,

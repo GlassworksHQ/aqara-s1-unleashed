@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.settings.SettingsMenu
 import android.os.IBinder
@@ -18,6 +20,7 @@ import sh.edm.s1kiosk.auth.UrlConnectionPoster
 import dev.glassworks.frame.systemSettings
 import sh.edm.s1kiosk.discovery.HaDiscovery
 import sh.edm.s1kiosk.esphome.PanelDevice
+import sh.edm.s1kiosk.frame.ScreenOffWifiScanner
 import sh.edm.s1kiosk.improv.ImprovController
 import sh.edm.s1kiosk.improv.ImprovSerialServer
 import sh.edm.s1kiosk.setup.SetupChannelServer
@@ -34,12 +37,21 @@ class KioskService : Service() {
     private val main = Handler(Looper.getMainLooper())
     private var device: PanelDevice? = null
     private var discovery: HaDiscovery? = null
+    private var wifiScanner: ScreenOffWifiScanner? = null
+    private lateinit var foreground: KioskForeground
 
     override fun onCreate() {
         super.onCreate()
         KioskPrefs(this).migrateRadioStep() // before discovery can save an HA URL in this process
-        startForeground(NOTIFICATION_ID, buildNotification())
-        ScreenController.start(this)
+        val notification = buildNotification()
+        foreground = KioskForeground(
+            Platform,
+            onRefused = { t, e -> Log.w("S1Kiosk", "foreground service types $t (${KioskForeground.names(t)}) refused", e) },
+            startWith = { Platform.startForeground(this, NOTIFICATION_ID, notification, it) },
+        )
+        promote()
+        glassworks.screen.start(this)
+        wifiScanner = glassworks.frame.screenOffWifiScanner(this).also { it.start() }
         glassworks.voiceState = if (KioskPrefs(this).voice.enabled) "idle" else "off"
         glassworks.voiceUi = VoiceUi(glassworks.voiceState)
         glassworks.voiceCancel = { device?.cancelVoice() }
@@ -68,8 +80,8 @@ class KioskService : Service() {
         glassworks.voiceState = glassworks.voiceUi.state
         Log.i("S1Kiosk.Voice", "voice: ${glassworks.voiceState}")
         // Talking to the panel counts as activity: wake the screen and keep it on.
-        if (e !is VoiceEvent.Idle && e !is VoiceEvent.Error) ScreenController.wake("voice")
-        ScreenController.onStateChanged?.invoke()
+        if (e !is VoiceEvent.Idle && e !is VoiceEvent.Error) glassworks.screen.wake("voice")
+        glassworks.screen.onStateChanged?.invoke()
     }
 
     override fun onDestroy() {
@@ -83,10 +95,30 @@ class KioskService : Service() {
         discovery = null
         glassworks.discovery = null
         HaAuth.stopServer()
+        wifiScanner?.stop()
+        wifiScanner = null
         super.onDestroy()
     }
 
+    /**
+     * Runs the service with every foreground type it may have now. Called on each start, so
+     * [start] after a runtime grant adds the type without a restart (voice keeps the mic with the
+     * screen off). Does nothing while the types are unchanged.
+     */
+    private fun promote() {
+        val granted = { p: String -> checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED }
+        val before = foreground.types
+        val types = foreground.promote(
+            micGranted = granted(Manifest.permission.RECORD_AUDIO),
+            locationGranted = granted(Manifest.permission.ACCESS_FINE_LOCATION) || granted(Manifest.permission.ACCESS_COARSE_LOCATION),
+        )
+        if (types != before) {
+            Log.i("S1Kiosk", "foreground service types $types (${KioskForeground.names(types)}; location ${if (types and KioskForeground.LOCATION != 0) "on" else "off"})")
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        promote()
         ImprovController.handleIntent(intent) // --ez improv / release_device_owner (via ImprovActivity)
         return START_STICKY
     }

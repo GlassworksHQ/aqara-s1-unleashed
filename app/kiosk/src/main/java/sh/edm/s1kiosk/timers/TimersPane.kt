@@ -8,8 +8,8 @@ import android.os.Handler
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PanelEvent
+import dev.glassworks.screen.ScreenPolicy
 import sh.edm.esphome.EspHomeLog
-import sh.edm.s1kiosk.ScreenController
 import sh.edm.s1kiosk.TimerBoard
 import java.util.concurrent.Future
 
@@ -23,8 +23,8 @@ import java.util.concurrent.Future
 class TimersPane(
     private val chimes: TimerChimes,
     private val ui: (() -> Unit) -> Unit,
-    private val wakeScreen: () -> Unit = { ScreenController.wake("timer") },
-    private val screenChanged: () -> Unit = { ScreenController.onStateChanged?.invoke() },
+    private val wakeScreen: () -> Unit,
+    private val screenChanged: () -> Unit,
 ) : Pane {
     override val id = "timers"
 
@@ -34,10 +34,15 @@ class TimersPane(
      */
     constructor(
         ctx: PaneContext,
+        screen: ScreenPolicy,
         schedule: (delayMs: Long, action: () -> Unit) -> Future<*>,
         play: () -> Unit,
         silence: () -> Unit,
-    ) : this(TimerChimes(schedule, play, silence), mainThread(ctx))
+    ) : this(
+        TimerChimes(schedule, play, silence), mainThread(ctx),
+        wakeScreen = { screen.wake("timer") },
+        screenChanged = { screen.onStateChanged?.invoke() },
+    )
 
     override fun start() {
         TimerBoard.onDismissed = { chimes.stop() }

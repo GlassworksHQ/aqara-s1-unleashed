@@ -32,7 +32,8 @@ versions are the ones Gradle resolves.
 
 ### GeckoView (browser engine)
 
-- Module: `org.mozilla.geckoview:geckoview-armeabi-v7a:159.0.20261102144711`
+- Module: `org.mozilla.geckoview:geckoview-armeabi-v7a:159.0.20261102144711` (the armeabi-v7a APK),
+  `org.mozilla.geckoview:geckoview-arm64-v8a:159.0.20261102144711` (the arm64-v8a APK)
 - Licence: MPL-2.0. Some engine libraries are LGPL-2.1-or-later: `liblgpllibs.so`, and
   `libmozavcodec.so`/`libmozavutil.so` (parts of FFmpeg). Other parts are under other free licences.
 - Copyright: Mozilla Foundation and contributors
@@ -209,7 +210,7 @@ The bundle carries no radio firmware.
 ## 3. Web installer downloads
 
 The files the installer at https://s1.edm.sh serves and writes to the panel. Pinned by SHA-256 in
-[`web/assets.lock.json`](web/assets.lock.json) and in `web/scripts/stage-assets.mjs`.
+[`kiln/assets.lock.json`](kiln/assets.lock.json) and in `kiln/scripts/stage-assets.mjs`.
 
 ### U-Boot SPL and U-Boot (`u-boot-sunxi-with-spl.bin`, `u-boot.bin`)
 
@@ -284,12 +285,12 @@ All MIT, from this repository:
 
 ## 4. The web installer page itself
 
-The page's JavaScript and WebAssembly ([`web/`](web)):
+The page's JavaScript and WebAssembly ([`kiln/`](kiln)):
 
 - **Tango / ya-webadb**: MIT, Copyright (c) 2020-2025 Simon Chan. https://github.com/yume-chan/ya-webadb.
   `@yume-chan/adb` 2.6.4, `@yume-chan/adb-daemon-webusb` 2.3.2, `@yume-chan/stream-extra` 2.6.1, and
   their `@yume-chan/*` dependencies.
-- **`bootpatch.wasm`**: this project's `web/src/bootpatch/wasm` (MIT), statically linked with these
+- **`bootpatch.wasm`**: this project's `kiln/packages/bootpatch/src/wasm` (MIT), statically linked with these
   crates:
   - flate2 1.1.10 (MIT OR Apache-2.0)
   - zlib-rs 0.6.8 (Zlib)
@@ -298,7 +299,7 @@ The page's JavaScript and WebAssembly ([`web/`](web)):
     hybrid-array 0.4.15, typenum 1.20.1 and cfg-if 1.0.5 (MIT OR Apache-2.0)
   - the Rust standard library (MIT OR Apache-2.0)
 
-  The list is in `web/src/bootpatch/wasm/THIRD_PARTY.txt`. No Magisk code is included.
+  The list is in `kiln/packages/bootpatch/src/wasm/THIRD_PARTY.txt`. No Magisk code is included.
 
 ---
 

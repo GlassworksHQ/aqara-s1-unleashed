@@ -40,7 +40,7 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
 - **Kiosk mode for HA**: a built-in Gecko web extension (`assets/extension/`) hides the HA dashboard
   header and the sidebar. Add `?kiosk=0` to the URL to show them for one page; while you're editing a
   dashboard they're left visible.
-- **Screen policy from the panel's own sensors** (`ScreenController`, see
+- **Screen policy from the panel's own sensors** (`dev.glassworks.screen.ScreenPolicy` with the S1 frame's sensors, see
   [docs/sensors.md](../docs/sensors.md)): wake on approach (VI5300 ToF), off after idle, a night window
   with a shorter timeout and lower brightness cap, auto-brightness from the MK6212 light sensor. Runs in
   a foreground `KioskService`, so it works while the screen is off. It replaces Aqara's DND
@@ -162,7 +162,9 @@ above). Otherwise it falls back to a network suggestion the user must approve. S
 the current SSID also need the location permission:
 `adb shell pm grant sh.edm.s1kiosk android.permission.ACCESS_FINE_LOCATION` (already
 granted by `adb install -g`, or self-granted when device owner). Details, sources and limits:
-[docs/onboarding.md](../docs/onboarding.md).
+[docs/onboarding.md](../docs/onboarding.md). With the permission granted, the kiosk's service runs
+with the `location` foreground type as well as `microphone`, so the Wi-Fi scans it starts with the
+screen off are allowed (#3, see [docs/radio.md](../docs/radio.md)).
 
 ## Debugging
 
@@ -175,8 +177,10 @@ python3 tools/gecko-eval/gecko_eval.py 'JSON.stringify({w: innerWidth, h: innerH
 ```
 
 Gecko's prefs are written to `files/geckoview-config.yaml` at startup and logged under the
-`S1Kiosk` tag. Sign-in and HA discovery log under `S1Auth` / `S1Discovery`, the Music Assistant player
-under `S1Sendspin` (with a `sync:` line every 10 s while playing). None of them log tokens or keys. Page console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
+`S1Kiosk` tag. Sign-in and HA discovery log under `S1Auth` / `S1Discovery`, the Music Assistant
+player under `S1Sendspin` (with a `sync:` line every 10 s while playing). The Wi-Fi scans the app
+starts while the screen is off log under `S1Kiosk.Wifi`. None of them log tokens or keys. Page
+console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
 
 > If the screen is blank/white and `innerWidth` is 0, the **display is off**. Gecko drops its
 > surface while the screen sleeps. Check `adb shell dumpsys power | grep mWakefulness`.
@@ -229,7 +233,7 @@ Parts of the app are standalone modules other projects can use:
 - [`libs/improv`](libs/improv/README.md): Improv Wi-Fi for Android: a BLE GATT server, Improv Serial
   (including over adb, from a web page over USB), Wi-Fi joining that works on Android 10+, and the
   pure-Kotlin protocol and state machines. Its browser client is
-  [`web/packages/improv-serial`](../web/packages/improv-serial/README.md).
+  [`kiln/packages/improv-serial`](../kiln/packages/improv-serial/README.md).
 
 They build with the app (`./gradlew :esphome-api:test :esphome-api-android:assembleDebug
 :improv:testDebugUnitTest`) and aren't published to a Maven repository or npm yet.

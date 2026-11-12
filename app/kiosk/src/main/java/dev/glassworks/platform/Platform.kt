@@ -4,7 +4,9 @@
 
 package dev.glassworks.platform
 
+import android.app.Notification
 import android.app.PendingIntent
+import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -41,6 +43,19 @@ open class PlatformApi internal constructor(
     /** `PackageInfo.longVersionCode` exists (Android 9). Below it, `versionCode` is an Int. */
     val hasLongVersionCode: Boolean get() = apiLevel >= 28
 
+    /**
+     * `Service.startForeground` takes the service types (Android 10). Below it, the call has no
+     * types and the manifest's types do not exist.
+     */
+    val hasForegroundServiceTypes: Boolean get() = apiLevel >= 29
+
+    /**
+     * `startForeground` throws a `SecurityException` for a type whose runtime permission is not
+     * granted, such as microphone without `RECORD_AUDIO` (Android 14, for apps targeting it). Below
+     * it the type is accepted, and only the access itself is refused.
+     */
+    val foregroundServiceTypesNeedTheirPermission: Boolean get() = apiLevel >= 34
+
     /** `Settings.Panel` (the Wi-Fi sheet over the app) exists (Android 10). */
     val hasSettingsPanel: Boolean get() = apiLevel >= 29
 
@@ -66,6 +81,16 @@ open class PlatformApi internal constructor(
         else context.registerReceiver(receiver, filter)
     }
 
+    /**
+     * Makes [service] a foreground service with exactly [types] (a subset of its manifest types).
+     * Without types, Android 14 starts it with every manifest type and throws when one of them
+     * lacks its permission. Below Android 10 the types are dropped.
+     */
+    fun startForeground(service: Service, id: Int, notification: Notification, types: Int) {
+        if (hasForegroundServiceTypes) service.startForeground(id, notification, types)
+        else service.startForeground(id, notification)
+    }
+
     /** An [Intent] extra, read with the typed getter from Android 13 and the deprecated one below. */
     fun intentExtra(intent: Intent, name: String): Intent? =
         if (apiLevel >= 33) intent.getParcelableExtra(name, Intent::class.java)
@@ -73,4 +98,10 @@ open class PlatformApi internal constructor(
 }
 
 /** The queries for the Android this app runs on. */
-object Platform : PlatformApi(Build.VERSION.SDK_INT)
+object Platform : PlatformApi(Build.VERSION.SDK_INT) {
+    /**
+     * The ABIs this device runs, preferred first (`Build.SUPPORTED_ABIS`). The S1's 32-bit userspace
+     * gives `armeabi-v7a, armeabi`; an arm64 device gives `arm64-v8a` first.
+     */
+    val supportedAbis: List<String> = Build.SUPPORTED_ABIS.toList()
+}

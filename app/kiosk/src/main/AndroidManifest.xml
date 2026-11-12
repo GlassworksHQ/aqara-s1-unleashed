@@ -15,6 +15,10 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- With the location service type, Android 10 lets the screen-off Wi-Fi scans use location (#3). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- KioskService's type when neither of the two above is granted: Android 14 refuses a service without a type. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- App updates without the boot image's root update service (update/UpdateManager.kt): a
          PackageInstaller session, confirmed on the panel's screen. -->
@@ -107,7 +111,7 @@
         <service
             android:name=".KioskService"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="microphone|location|connectedDevice" />
 
         <!-- Optional device admin (force-lock only) to switch the screen off instantly. -->
         <receiver

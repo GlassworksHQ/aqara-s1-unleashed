@@ -1,6 +1,6 @@
 # Rebuilds the hosted web installer (https://s1.edm.sh, Vercel) only when something it serves changes.
 #
-# Vercel's own Git builds are off (web/vercel.json: git.deploymentEnabled false), because every push
+# Vercel's own Git builds are off (kiln/vercel.json: git.deploymentEnabled false), because every push
 # to every branch counted against Vercel's deployment limits, even when an Ignored Build Step
 # cancelled it. Production deploys now come from the VERCEL_DEPLOY_HOOK secret (a deploy hook on
 # main), called by:
@@ -8,8 +8,8 @@
 #   - release.yml, after each S1 Kiosk release (the installer picks the latest APK at build time)
 #   - workflow_dispatch, to redeploy by hand
 #
-# The paths are the installer's build inputs: web/ itself, the files web/src imports from outside
-# web/, and the repo files web/scripts/stage-assets.mjs stages (the rest come from assets.lock.json).
+# The paths are the installer's build inputs: kiln/ itself, the files kiln/src imports from outside
+# kiln/, and the repo files kiln/scripts/stage-assets.mjs stages (the rest come from assets.lock.json).
 # Keep them in step with those two.
 name: Installer deploy
 
@@ -17,11 +17,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'web/**'
-      - '!web/**/*.md'
-      - '!web/test/**'
-      - '!web/packages/*/test/**'
-      - '!web/mockup/**'
+      - 'kiln/**'
+      - '!kiln/**/*.md'
+      - '!kiln/test/**'
+      - '!kiln/packages/*/test/**'
+      - '!kiln/mockup/**'
       - 'branding/**'
       - 'docs/img/fel-button.jpg'
       - 'tools/install/s1kiosk-switch.sh'

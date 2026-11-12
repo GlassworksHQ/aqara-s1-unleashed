@@ -1,5 +1,13 @@
 # Contributing
 
+## Where to ask
+
+- **Questions, ideas and frame bring-up** (porting Glassworks to a new device): [Discussions](https://github.com/GlassworksHQ/aqara-s1-unleashed/discussions). Answers there stay searchable for the next person.
+- **Bugs and hardware reports:** an issue, from the templates below.
+- **Security problems:** privately, as [SECURITY.md](SECURITY.md) says. Not in Discussions or an issue.
+
+Bring-up notes that others can build on belong in [`docs/research/`](docs/research/README.md), in the same PR as the work. Everyone here follows the [code of conduct](CODE_OF_CONDUCT.md).
+
 ## Issues
 
 Pick a template: **Bug**, **Hardware report** (a model, firmware or base we haven't tested), or
@@ -13,7 +21,7 @@ build, the installer's typecheck, tests and build, the install scripts' tests an
 
 ```sh
 cd app && ./gradlew test :kiosk:assembleDebug        # the app
-cd web && npm install && npm run stage && npm test   # the web installer
+cd kiln && npm install && npm run stage && npm test   # the web installer
 tools/install/test/install-tests.sh                  # the install scripts
 python3 tools/check-doc-links.py                     # docs links
 ```

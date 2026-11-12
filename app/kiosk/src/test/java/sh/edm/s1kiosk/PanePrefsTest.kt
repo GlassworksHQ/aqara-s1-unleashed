@@ -111,7 +111,7 @@ class PanePrefsTest {
         yield(drive(assist(), VoicePrefs.KEY_MIC_GAIN))
         yield(drive(WallBasePane(ctx, WallBase.Config(BaseBackend.LOCALSERVICE), device, AqaraCloud()), start = false))
         yield(drive(RadioPane(ctx, GlassworksRuntime(AqaraS1Plus()), panelIp = { null }), start = false))
-        yield(drive(TimersPane(ctx, schedule = { _, _ -> device.submit {} }, play = {}, silence = {})))
+        yield(drive(TimersPane(ctx, GlassworksRuntime(AqaraS1Plus()).screen, schedule = { _, _ -> device.submit {} }, play = {}, silence = {})))
     }
 
     private fun assist() = AssistPane(

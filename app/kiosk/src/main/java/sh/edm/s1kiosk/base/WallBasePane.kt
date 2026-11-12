@@ -33,6 +33,8 @@ class WallBasePane(
     /** What [WallBase] reports to; internal so a test can play the base. */
     internal val baseListener: WallBase.Listener = Listener()
     private val base = WallBase(ctx.context, BaseLayout.decode(prefs.layout) ?: BaseLayout.NONE, baseListener, config)
+    /** The backend and transport it runs; internal so a test can see what the frame built. */
+    internal val config: WallBase.Config get() = base.config
 
     /** The layout whose entities Home Assistant has (set before [PaneContext.entitiesChanged]). */
     @Volatile private var layout: BaseLayout = base.tracker.applied()

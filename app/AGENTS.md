@@ -5,8 +5,9 @@ logcat tags are in [`README.md`](README.md); read it before you add a new one.
 
 ## The target
 
-- **Android 10, 32-bit `armeabi-v7a` only**, 1440×720 landscape, density 1.5 (960×480 dp). The CPU is
+- **Android 10, 32-bit `armeabi-v7a`**, 1440×720 landscape, density 1.5 (960×480 dp). The CPU is
   slow and RAM is shared with Gecko, so keep work off the main thread and don't add heavy deps.
+  An `arm64-v8a` APK is built too (`-Ps1Abi=arm64-v8a`, [`../docs/releasing.md`](../docs/releasing.md#abis)).
 - **GeckoView, not WebView.** The system WebView is Chromium 74 and can't render the current HA
   frontend. Page-side changes go in the Gecko web extension (`kiosk/src/main/assets/extension/`).
 - **Never change `wm density`** on the panel to scale the UI. It breaks GeckoView's surface until a
@@ -42,6 +43,8 @@ logcat tags are in [`README.md`](README.md); read it before you add a new one.
 - **Never read `Build.VERSION.SDK_INT` outside `dev.glassworks.platform`.** Add a named query to
   `Platform` instead (libraries keep theirs in their own `Compat.kt`). `PlatformConfinementTest`
   fails the build otherwise.
+- **Never use GeckoView outside `dev.glassworks.engine.gecko`.** Everything else goes through
+  `Engine` and `Page` (`glassworks.engine`). `EngineConfinementTest` fails the build otherwise.
 - Device-specific code (sensors, `/dev/ttyS3`, the radio, Aqara binder calls) belongs behind a seam
   that another frame could replace. Don't spread S1 paths through generic code. The S1's own parts
   live in `sh.edm.s1kiosk.frame`, reached through `glassworks.frame` (`AqaraS1Plus`).
@@ -71,7 +74,8 @@ Every UI change needs screenshots in the PR, before and after (see [`../AGENTS.m
 - Instead, push to `test-build/<name>`. CI builds a release-signed APK of the latest release's version;
   use the workflow's `version` input if the panel runs a newer, unreleased version (Android refuses a
   lower `versionCode`). Then `gh run download <run-id> -n s1-kiosk-test-<sha>` and
-  `adb install -r s1-kiosk-test-*.apk`. Creating these branches needs admin rights.
+  `adb install -r s1-kiosk-test-*.apk`. That artifact is the S1's `armeabi-v7a` APK; the
+  `arm64-v8a` one is `s1-kiosk-test-arm64-v8a-<sha>`. Creating these branches needs admin rights.
 - Test builds carry no radio bundle, so the root side stays as it was.
 - `ANDROID_SERIAL` selects the panel for adb. Don't export it before running `fastboot`; see
   [`../tools/AGENTS.md`](../tools/AGENTS.md).

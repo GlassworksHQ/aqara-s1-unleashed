@@ -100,7 +100,7 @@ adb shell pm disable-user --user 0 com.baidu.input_auto      # undo: pm enable +
 
 Aqara's DND schedule (22:00–07:00) forces the screen off 15 s after every wake. It's disabled through
 Lumi's own service (`service call A_device_control 7 i32 0 i32 0`; undo with `i32 1`), and the kiosk's
-`ScreenController` handles night behaviour instead. See [screen-policy.md](screen-policy.md).
+screen policy (`ScreenPolicy`) handles night behaviour instead. See [screen-policy.md](screen-policy.md).
 
 ### Still on the list
 

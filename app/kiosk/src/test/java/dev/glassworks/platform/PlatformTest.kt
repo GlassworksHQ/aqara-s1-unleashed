@@ -26,9 +26,11 @@ class PlatformTest {
         Triple("hasDisplayCutoutMode", 28) { it.hasDisplayCutoutMode },
         Triple("hasSigningInfo", 28) { it.hasSigningInfo },
         Triple("hasLongVersionCode", 28) { it.hasLongVersionCode },
+        Triple("hasForegroundServiceTypes", 29) { it.hasForegroundServiceTypes },
         Triple("hasSettingsPanel", 29) { it.hasSettingsPanel },
         Triple("hasFontBuilder", 29) { it.hasFontBuilder },
         Triple("hasWindowInsetsController", 30) { it.hasWindowInsetsController },
+        Triple("foregroundServiceTypesNeedTheirPermission", 34) { it.foregroundServiceTypesNeedTheirPermission },
     )
 
     @Test
@@ -62,6 +64,7 @@ class PlatformOnDeviceTest {
         assertEquals(Build.VERSION.SDK_INT, Platform.apiLevel)
         assertEquals(34, Platform.apiLevel)
         assertEquals(PendingIntent.FLAG_MUTABLE, Platform.mutablePendingIntentFlag)
+        assertEquals(Build.SUPPORTED_ABIS.toList(), Platform.supportedAbis)
     }
 
     @Test

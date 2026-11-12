@@ -1,8 +1,10 @@
 # Signed kiosk release on a version tag (docs/releasing.md):
 #   git tag v1.2.3 && git push origin v1.2.3
-# Builds app/kiosk with the release key (secrets of the `release-signing` environment), names the APK
-# s1-kiosk-<version>.apk, writes its .sha256 and publishes both on a GitHub Release with
-# notes from CHANGELOG.md. Panels find it through the app's update entity in Home Assistant.
+# Builds app/kiosk once per ABI with the release key (secrets of the `release-signing` environment),
+# names the APKs s1-kiosk-<version>.apk (armeabi-v7a, the S1's; never rename it) and
+# s1-kiosk-arm64-v8a-<version>.apk, writes a .sha256 for each and publishes all four on a GitHub
+# Release with notes from CHANGELOG.md. Every ABI's APK has the same versionCode (docs/releasing.md
+# "ABIs"). Panels find theirs through the app's update entity in Home Assistant.
 #
 # The APK carries the signed radio bundle (docs/radio.md "Radio bundles"): the radio helper,
 # otbr-agent/ot-ctl and the Silicon Labs Zigbee runtime (never Silicon Labs' zigbeed itself). Its key
@@ -12,8 +14,9 @@
 #   sign-bundle  the only job that can read S1_RADIO_BUNDLE_KEY (an environment secret of the
 #                `radio-signing` environment). Signs only commits on main, takes nothing from the other
 #                job without checking it against committed hashes, runs no third-party action
-#   release      builds and publishes the APK with the signed bundle (APK key from the
-#                `release-signing` environment; no bundle key)
+#   release      builds and publishes the APKs, the armeabi-v7a one with the signed bundle (APK key
+#                from the `release-signing` environment; no bundle key). The bundle is the S1's root
+#                side, so the arm64-v8a APK, which no S1 runs, carries none
 # Every action is pinned by commit SHA (the tag in the comment is what it was at the time).
 name: Release
 
@@ -101,12 +104,12 @@ jobs:
             { echo "::error::the Silicon Labs runtime does not match tools/radio/sisdk-runtime.sha256"; exit 1; }
           find . -type f -exec chmod 0644 {} +
           chmod 0755 zigbeed.sh lib/ld-linux-armhf.so.3
-          # otbr-agent/ot-ctl: the pinned border-router build the web installer ships (web/assets.lock.json).
+          # otbr-agent/ot-ctl: the pinned border-router build the web installer ships (kiln/assets.lock.json).
           cd "$GITHUB_WORKSPACE"; mkdir -p "$RUNNER_TEMP/radio-in"
           python3 - "$RUNNER_TEMP/radio-in" <<'PY'
           import hashlib, json, sys, urllib.request
           out = sys.argv[1]
-          for a in json.load(open('web/assets.lock.json'))['assets']:
+          for a in json.load(open('kiln/assets.lock.json'))['assets']:
               if a['name'] not in ('otbr-agent', 'ot-ctl'):
                   continue
               data = urllib.request.urlopen(a['url']).read()
@@ -152,11 +155,12 @@ jobs:
     # The APK key lives in this environment, not in repository secrets, so only main, test-build/**
     # and release tags can reach it, never a workflow on some other branch (docs/releasing.md).
     environment: release-signing
-    timeout-minutes: 45
+    timeout-minutes: 60   # two APK builds
     permissions:
       contents: write # create the release and upload its assets (GITHUB_TOKEN only)
     env:
       VERSION: ${{ needs.inputs.outputs.version }}
+      ABIS: armeabi-v7a arm64-v8a   # the same list as app/kiosk/build.gradle.kts s1Abis and Releases.kt ApkAbi
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -199,7 +203,7 @@ jobs:
           printf '%s' "$S1_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/s1kiosk-release.jks"
           echo "S1_KEYSTORE_FILE=$RUNNER_TEMP/s1kiosk-release.jks" >> "$GITHUB_ENV"
 
-      - name: Build the release APK
+      - name: Build the release APKs, one per ABI
         working-directory: app
         env:
           S1_VERSION: ${{ env.VERSION }}
@@ -207,33 +211,50 @@ jobs:
           S1_KEYSTORE_PASSWORD: ${{ secrets.S1_KEYSTORE_PASSWORD }}
           S1_KEY_ALIAS: ${{ secrets.S1_KEY_ALIAS }}
           S1_KEY_PASSWORD: ${{ secrets.S1_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon :kiosk:assembleRelease
+        run: |
+          mkdir -p "$RUNNER_TEMP/apk"
+          for abi in $ABIS; do
+            bundle="$S1_RADIO_BUNDLE_ASSETS"; [ "$abi" = armeabi-v7a ] || bundle=""
+            S1_RADIO_BUNDLE_ASSETS="$bundle" ./gradlew --no-daemon :kiosk:assembleRelease -Ps1Abi="$abi"
+            cp kiosk/build/outputs/apk/release/kiosk-release.apk "$RUNNER_TEMP/apk/$abi.apk"
+          done
 
       - name: Name, verify and checksum
         run: |
           mkdir dist
-          apk="dist/s1-kiosk-$VERSION.apk"
-          cp app/kiosk/build/outputs/apk/release/kiosk-release.apk "$apk"
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)/apksigner"
-          "$apksigner" verify --verbose --print-certs "$apk"
-          tools/release/check-update-compat.sh --signed "$apk"   # the release key, stable identifiers
           aapt2="$(dirname "$apksigner")/aapt2"
-          badging="$("$aapt2" dump badging "$apk" | head -n 1)"
-          echo "$badging"
-          case "$badging" in
-            *"name='sh.edm.s1kiosk'"*"versionName='$VERSION'"*) ;;
-            *) echo "::error::APK package/version is not sh.edm.s1kiosk $VERSION"; exit 1 ;;
-          esac
-          unzip -l "$apk" | grep -q 'assets/radio-bundle/manifest.sig$' || { echo "::error::APK has no signed radio bundle"; exit 1; }
-          if unzip -l "$apk" | grep -q 'assets/radio-bundle/.*zigbeed$'; then echo "::error::Silicon Labs' zigbeed must never be in the APK"; exit 1; fi
-          (cd dist && sha256sum "s1-kiosk-$VERSION.apk" > "s1-kiosk-$VERSION.apk.sha256" && cat "s1-kiosk-$VERSION.apk.sha256")
+          # = Releases.kt ApkAbi.apkName (ApkAbiListsTest runs this line). The S1's name has no ABI in it:
+          # panels up to 0.4.3 look only for s1-kiosk-<version>.apk.
+          apk_name() { if [ "$1" = armeabi-v7a ]; then echo "s1-kiosk-$VERSION.apk"; else echo "s1-kiosk-$1-$VERSION.apk"; fi; }
+          for abi in $ABIS; do
+            name="$(apk_name "$abi")"
+            apk="dist/$name"
+            cp "$RUNNER_TEMP/apk/$abi.apk" "$apk"
+            "$apksigner" verify --verbose --print-certs "$apk"
+            tools/release/check-update-compat.sh --signed "$apk"   # the release key, stable identifiers
+            badging="$("$aapt2" dump badging "$apk")"
+            echo "${badging%%$'\n'*}"
+            case "${badging%%$'\n'*}" in
+              *"name='sh.edm.s1kiosk'"*"versionName='$VERSION'"*) ;;
+              *) echo "::error::$name: package/version is not sh.edm.s1kiosk $VERSION"; exit 1 ;;
+            esac
+            native="$(sed -n "s/^native-code: //p" <<<"$badging")"
+            [ "$native" = "'$abi'" ] || { echo "::error::$name has native code for $native, not '$abi'"; exit 1; }
+            if [ "$abi" = armeabi-v7a ]; then
+              unzip -l "$apk" | grep -q 'assets/radio-bundle/manifest.sig$' || { echo "::error::$name has no signed radio bundle"; exit 1; }
+            elif unzip -l "$apk" | grep -q 'assets/radio-bundle/'; then
+              echo "::error::$name must not carry the S1's radio bundle"; exit 1
+            fi
+            if unzip -l "$apk" | grep -q 'assets/radio-bundle/.*zigbeed$'; then echo "::error::Silicon Labs' zigbeed must never be in the APK"; exit 1; fi
+            (cd dist && sha256sum "$name" > "$name.sha256" && cat "$name.sha256")
+          done
 
       - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            "dist/s1-kiosk-$VERSION.apk" "dist/s1-kiosk-$VERSION.apk.sha256" \
+          gh release create "$GITHUB_REF_NAME" dist/*.apk dist/*.apk.sha256 \
             --verify-tag --latest --title "S1 Kiosk $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
           # --latest: apps up to 0.4.3 only read releases/latest, so an S1 release must always be the
           # one marked latest. Releases of other frames and libraries in this repo use --latest=false.

@@ -58,7 +58,9 @@ change until Glassworks v1.
 | `PaneContext` | What the core gives a pane: the app context, `prefs(namespace)` for its settings, the device identity, `publishStates()`, `emit()`, `entitiesChanged()` and `sendEvent()`. |
 | `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished, Home Assistant subscribed. A pane raises one with `PaneContext.emit`. |
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
+| `ScreenPolicy` | (`dev.glassworks.screen`) Wake on approach, idle off, the night window and its timeout, the brightness curve and the screen mode. It reads the frame's `PresenceSource` and `LightSource` and the app's `ScreenSettings`. One per process, on `GlassworksRuntime.screen`. |
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
+| `Engine` | (`dev.glassworks.engine`) The web engine that shows the dashboard: open a page, load, reload, go back, restart after a crash, and talk to the page's scripts. `GeckoEngine` (`dev.glassworks.engine.gecko`) is the only code that uses GeckoView. One per process, on `GlassworksRuntime.engine`. |
 
 ## Writing a pane
 
@@ -151,15 +153,48 @@ on Glassworks, so each keeps its own checks in an internal `Compat.kt`, which th
 
 ## Frames
 
-A frame (`dev.glassworks.frame.Frame`) is what the core asks the device. Today that is two things:
-`board`, the `board` TXT record in the mDNS advert, and `systemSettingsIntents()`, the device's own
-settings screens, best first. `Frame.systemSettings(context)` picks the first that resolves. The app
-makes one frame at start, and `GlassworksRuntime` holds it.
+A frame (`dev.glassworks.frame.Frame`) is what the core asks the device:
 
-The S1's frame is [`AqaraS1Plus`](../../sh/edm/s1kiosk/frame/AqaraS1Plus.kt) (`aqara-s1-plus`). It
-also holds the parts only the S1 has: Aqara's cloud daemon, the time zone keeper and the root update
-service. The rest of the planned frame (presence, light, screen off, installer, panes) comes in the
-next migration steps.
+| Member | What it is |
+|---|---|
+| `board` | The `board` TXT record in the mDNS advert. |
+| `presence`, `light` | The sensors `ScreenPolicy` reads. Null when the device has none. A `PresenceSource` reports near or not with the raw value, and may support `setRange(metres)`. |
+| `systemSettingsIntents()` | The device's own settings screens, best first. `Frame.systemSettings(context)` picks the first that resolves. |
+| `panes(ctx, device)` | The panes only this device has. The shell builds them with its own, once per device run, and runs them like any other. |
+
+The app makes one frame at start, and `GlassworksRuntime` holds it. The device shell
+(`PanelDevice`) reads only these members; `PanelDeviceFrameTest` fails if it reaches past them.
+
+The S1's frame is [`AqaraS1Plus`](../../sh/edm/s1kiosk/frame/AqaraS1Plus.kt) (`aqara-s1-plus`). Its
+presence source is the VI5300 time-of-flight sensor, with Lumi's `proximity_threshold` range table,
+and its light source is the MK6212 sensor. Its panes are the wall base (with Aqara's cloud daemon,
+which holds the wall base UART) and the time zone. It also holds the root update service. The rest of
+the planned frame (screen off, installer) comes in the next migration steps.
+
+## Engine
+
+The shell shows the dashboard through `dev.glassworks.engine.Engine`, not through GeckoView.
+`engine.open(activity, host, background)` gives a `Page`. The shell adds `page.view` to its layout
+and calls `load`, `reload`, `goBack`, `restart` and `post`. The page reports to the shell's
+`PageHost`, always on the main thread:
+
+| `PageHost` call | When |
+|---|---|
+| `onPageStart(url)`, `onPageStop(success)`, `onFirstPaint()`, `onLocationChange(url)` | The page loads. |
+| `redirect(url)` | Before each top-level load in the page's own window. Return a URL to load instead, or null. |
+| `onContentGone(killed)` | The content process crashed or was killed. The shell calls `page.restart()` and loads again. |
+| `onAndroidPermissions(permissions, answer)` | The page needs Android runtime permissions, which only an activity can ask for. |
+| `onConnect(port)`, `onPortMessage(port, message)` | A page script opened a native port, or sent a JSON object on one. `PagePort` has the page's `url` and `topLevel`. |
+
+It is a kiosk engine. It allows every page permission without a prompt and grants the microphone and
+the camera. It reads `EngineSettings` (secure-context hosts, zoom, remote debugging) once, at the
+first `open`, so a change needs a process restart. `engine.started` says what it started with.
+
+`GeckoEngine` takes the S1's values: the built-in extension (`assets/extension`, id
+`helper@s1kiosk.edm.sh`, native app `s1kiosk`), the log tag and the settings from `KioskPrefs`.
+GeckoView allows one runtime per process, so `GlassworksRuntime` holds the one engine.
+`EngineConfinementTest` fails `./gradlew test` if code outside `dev.glassworks.engine.gecko` names
+`org.mozilla.gecko`.
 
 ## Threads
 

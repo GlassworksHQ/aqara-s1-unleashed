@@ -945,7 +945,19 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
   reconnects by itself: it relies on PNO (offloaded) scans, which this Wi-Fi chip doesn't support
   (`PnoScanListener onFailure: -3(not supported)`), and does no periodic scans with the screen off.
   Waking the screen reconnected within ~16 s. The network watchdog doesn't catch it (no gateway =
-  nothing to test). Affects every mode, not only Thread.
+  nothing to test). Affects every mode, not only Thread. The app now starts the scans itself
+  while the screen is off and Wi-Fi is not connected (#3): 10 s after Wi-Fi drops, then after
+  40 s, 60 s and every 120 s. Scans are never less than 40 s apart, so Android does not throttle
+  them within one run of the app's service (a restart of the service forgets the last scan). A
+  connect that keeps trying for 60 s counts as not connected; drops under 15 s don't restart that
+  count. Log tag `S1Kiosk.Wifi`. Android 10 refuses an app's scan without the location
+  permission (the installer grants it), with location off, or when the location app-op is
+  foreground-only and the app is not in the foreground. The first panel run (2026-11-12, b47ce54)
+  failed on the last one: every scan was refused (`UID … has no location permission`), with the
+  permission granted, because a foreground service counts as foreground for location only with
+  the `location` type. The kiosk's service now runs with `microphone|location`. Verified
+  2026-11-12 (dd6401a): with the screen asleep, `svc wifi disable`/`enable` reconnected 21 s after
+  the enable (one scan, at 10 s), and Home Assistant was back 5 s later.
 - **Aqara's watchdog** keeps restarting things. The helper re-enforces every 3 s; a Z3Gateway start
   is caught by its wrapper's 6 s sleep, but this is a race, verified once.
 - **Multi-PAN (`zigbee_tcp_thread`)** is not offered and untested.

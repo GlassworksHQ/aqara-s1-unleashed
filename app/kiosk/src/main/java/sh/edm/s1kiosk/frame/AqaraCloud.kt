@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
  * Stopping it does not trip com.lumi.systemmanager's cloud watchdog (Wi-Fi reassociate): that only
  * fires on a cloud-state *change* event, which the dead daemon never sends.
  *
- * The S1 frame holds the one instance ([AqaraS1Plus.aqaraCloud]).
+ * The S1 frame holds the one instance and hands it to the wall base pane it builds ([AqaraS1Plus.panes]).
  */
 class AqaraCloud {
     private companion object {

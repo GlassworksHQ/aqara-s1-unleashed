@@ -1,6 +1,6 @@
 #!/system/bin/sh
 # Panel side of the signing-key switch (debug build -> release build) in tools/install.sh and the web
-# installer (web/src/provision/switch.ts). Android won't update an app across signing keys, so the
+# installer (kiln/src/provision/switch.ts). Android won't update an app across signing keys, so the
 # switch is uninstall + install, which deletes the app's data and the Wi-Fi networks it saved. With
 # root this script carries the data across; the installers re-send Wi-Fi through the new app.
 #

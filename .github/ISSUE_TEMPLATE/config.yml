@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Questions and frame authors
+    url: https://github.com/GlassworksHQ/aqara-s1-unleashed/discussions
+    about: Ask a question, share an idea, or talk about bringing up a new device.
   - name: Install guide and troubleshooting
     url: https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/docs/install.md#troubleshooting
     about: Most installer problems are covered here.

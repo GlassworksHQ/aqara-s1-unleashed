@@ -74,7 +74,7 @@ is FNV-1a of the `object_id` (stable).
 
 | Entity | object_id | What it does |
 |---|---|---|
-| light `Screen` | `screen` | on → wake the screen, off → screen off (`ScreenController.wake/sleep`); brightness sets a fixed brightness and turns *Auto brightness* off |
+| light `Screen` | `screen` | on → wake the screen, off → screen off (`ScreenPolicy.wake/sleep`); brightness sets a fixed brightness and turns *Auto brightness* off |
 | switch `Auto brightness` | `auto_brightness` | light-sensor brightness curve |
 | binary_sensor `Presence` (occupancy) | `presence` | VI5300 ToF "near" |
 | sensor `Illuminance` (lx) | `illuminance` | MK6212 light sensor |
@@ -164,7 +164,7 @@ persisted as `ha_seen`.
 
 Kiosk actions are applied in the running activity exactly like the `adb am start` extras
 (`GlassworksRuntime.commandSink`). State changes made on the panel (settings dialog, `adb` extras,
-sensors) are pushed to HA right away (pref listener + `ScreenController` listeners), with a 5 s
+sensors) are pushed to HA right away (pref listener + `ScreenPolicy` listeners), with a 5 s
 poll as a safety net.
 
 ### App updates
@@ -191,7 +191,9 @@ poll as a safety net.
     is back (available or validated; callbacks debounced, at most one such retry per 30 s) instead of
     after its backoff.
   - Ignored: drafts, pre-releases (GitHub's flag or a `-rc` tag), and releases without both
-    `s1-kiosk-<version>.apk` and `.sha256`. Assets must download from github.com over HTTPS.
+    the APK for one of the device's ABIs and its `.sha256`. The S1 (`armeabi-v7a`) takes
+    `s1-kiosk-<version>.apk`; an `arm64-v8a` device takes `s1-kiosk-arm64-v8a-<version>.apk`
+    ([releasing.md](releasing.md#abis)). Assets must download from github.com over HTTPS.
 - **Install:**
   1. Download the `.sha256`, then the APK over HTTPS into `files/update/`. `in_progress` is set and
      `progress` goes 0-100 %.

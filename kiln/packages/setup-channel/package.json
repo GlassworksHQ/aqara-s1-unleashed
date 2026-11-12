@@ -1,0 +1,16 @@
+{
+  "name": "@glassworks/setup-channel",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Client for the kiosk app's setup channel: line-delimited JSON over an adb byte stream.",
+  "license": "MIT",
+  "type": "module",
+  "exports": { ".": "./src/channel.ts" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "improv-serial": "0.1.0"
+  }
+}
