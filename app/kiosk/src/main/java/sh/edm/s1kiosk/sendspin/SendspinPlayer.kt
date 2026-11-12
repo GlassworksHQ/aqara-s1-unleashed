@@ -230,7 +230,7 @@ class SendspinPlayer(
         running = false
         netCallback?.let { cb -> runCatching { ctx.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) } }
         netCallback = null
-        session?.close(reason)
+        session?.let { closeOffThisThread(it, reason) }
         synchronized(wake) { wake.notifyAll() }
         connThread?.interrupt(); audioThread?.interrupt(); statsThread?.interrupt()
         pipeline?.close()
@@ -241,6 +241,20 @@ class SendspinPlayer(
         connThread = null; audioThread = null; statsThread = null
         status = SendspinSession.Status(SendspinSession.Phase.CLOSED)
         onStatusChanged()
+    }
+
+    /**
+     * Sends the goodbye and closes the socket on a thread of its own, and waits for it (at most
+     * [CLOSE_WAIT_MS]). [stop] runs on the main thread when the app's service stops, and Android
+     * refuses network I/O there.
+     */
+    private fun closeOffThisThread(s: SendspinSession, reason: String) {
+        val closer = Thread({ s.close(reason) }, "ss-close").apply { isDaemon = true; start() }
+        try {
+            closer.join(CLOSE_WAIT_MS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 
     /** Reconnects so a new `client/hello` carries a changed setting (unpaired access, server URL). */
@@ -461,6 +475,8 @@ class SendspinPlayer(
     val muted: Boolean get() = store.muted
 
     companion object {
+        /** The session waits up to 1 s for the server to hang up after the goodbye; allow for that. */
+        private const val CLOSE_WAIT_MS = 1_500L
         const val DEFAULT_SERVER_PORT = 8927
         const val DEFAULT_PATH = "/sendspin"
         /**
