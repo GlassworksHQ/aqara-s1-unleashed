@@ -3,38 +3,38 @@
   "assets": [
     {
       "name": "uboot-spl",
-      "url": "https://github.com/aguilaair/aqara-s1-unleashed/releases/download/installer-files-2/u-boot-sunxi-with-spl.bin",
+      "url": "https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/installer-files-2/u-boot-sunxi-with-spl.bin",
       "sha256": "b2e6820a4b5d1a074b97d0b9135da06b3f378f893418a6b33dc99d81f4621ffa",
       "license": "GPL-2.0-or-later AND BSD-3-Clause",
-      "source": "U-Boot https://github.com/u-boot/u-boot/commit/934995f642a21ca7f35fa9aed5f061394fcba243 + our patches, defconfig and dts at https://github.com/aguilaair/aqara-s1-unleashed/tree/8b2bf488fed3c7ba8343a32c67c9651066479128/tools/fel/uboot (the packed TF-A BL31, never run by the installer: tools/fel/tfa)"
+      "source": "U-Boot https://github.com/u-boot/u-boot/commit/934995f642a21ca7f35fa9aed5f061394fcba243 + our patches, defconfig and dts at https://github.com/GlassworksHQ/aqara-s1-unleashed/tree/8b2bf488fed3c7ba8343a32c67c9651066479128/tools/fel/uboot (the packed TF-A BL31, never run by the installer: tools/fel/tfa)"
     },
     {
       "name": "uboot",
-      "url": "https://github.com/aguilaair/aqara-s1-unleashed/releases/download/installer-files-2/u-boot.bin",
+      "url": "https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/installer-files-2/u-boot.bin",
       "sha256": "ea0050fd92e46dffcd5a61e286b991bc19d62f383e8d9611c111585cd576b98e",
       "license": "GPL-2.0-or-later",
-      "source": "U-Boot https://github.com/u-boot/u-boot/commit/934995f642a21ca7f35fa9aed5f061394fcba243 + our patches, defconfig and dts at https://github.com/aguilaair/aqara-s1-unleashed/tree/8b2bf488fed3c7ba8343a32c67c9651066479128/tools/fel/uboot"
+      "source": "U-Boot https://github.com/u-boot/u-boot/commit/934995f642a21ca7f35fa9aed5f061394fcba243 + our patches, defconfig and dts at https://github.com/GlassworksHQ/aqara-s1-unleashed/tree/8b2bf488fed3c7ba8343a32c67c9651066479128/tools/fel/uboot"
     },
     {
       "name": "otbr-agent",
-      "url": "https://github.com/aguilaair/aqara-s1-unleashed/releases/download/installer-files-2/otbr-agent",
+      "url": "https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/installer-files-2/otbr-agent",
       "sha256": "dbf671761139257631f90bda050cb10f1da975b4f4bf3b01f68136aa3426a69c",
       "license": "BSD-3-Clause AND Apache-2.0 AND MIT AND Zlib AND LicenseRef-Silabs-MSLA AND LGPL-2.1-or-later AND GPL-3.0-or-later WITH GCC-exception-3.1",
-      "source": "https://github.com/aguilaair/aqara-s1-unleashed/blob/main/docs/radio.md (ot-br-posix border-router build, tools/radio/build-otbr.sh PROFILE=br)"
+      "source": "https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/docs/radio.md (ot-br-posix border-router build, tools/radio/build-otbr.sh PROFILE=br)"
     },
     {
       "name": "ot-ctl",
-      "url": "https://github.com/aguilaair/aqara-s1-unleashed/releases/download/installer-files-2/ot-ctl",
+      "url": "https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/installer-files-2/ot-ctl",
       "sha256": "cbbfb98b332b0197ff0613e0c85e4f06b4719e0ad09e450c8301365928feab6a",
       "license": "BSD-3-Clause AND LGPL-2.1-or-later AND GPL-3.0-or-later WITH GCC-exception-3.1",
-      "source": "https://github.com/aguilaair/aqara-s1-unleashed/blob/main/docs/radio.md (ot-br-posix border-router build, tools/radio/build-otbr.sh PROFILE=br)"
+      "source": "https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/docs/radio.md (ot-br-posix border-router build, tools/radio/build-otbr.sh PROFILE=br)"
     },
     {
       "name": "verify",
-      "url": "https://github.com/aguilaair/aqara-s1-unleashed/releases/download/installer-files-3/s1kiosk_verify",
+      "url": "https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/installer-files-3/s1kiosk_verify",
       "sha256": "6aa0dd83947540c2a4de8d3a86e65a8ce5b7b10520f13e16b20e591c5bcb9f80",
       "license": "MIT AND BSD-2-Clause",
-      "source": "https://github.com/aguilaair/aqara-s1-unleashed/tree/main/tools/root (s1kiosk_verify.c + Monocypher 4.0.3 + musl; reproducible with tools/root/build-verify.sh)"
+      "source": "https://github.com/GlassworksHQ/aqara-s1-unleashed/tree/main/tools/root (s1kiosk_verify.c + Monocypher 4.0.3 + musl; reproducible with tools/root/build-verify.sh)"
     },
     {
       "name": "magisk",

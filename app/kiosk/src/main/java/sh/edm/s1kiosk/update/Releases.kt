@@ -40,7 +40,7 @@ class ReleaseFormatException(message: String) : Exception(message)
  */
 object Releases {
     /** owner/repo of the official releases. */
-    const val REPO = "aguilaair/aqara-s1-unleashed"
+    const val REPO = "GlassworksHQ/aqara-s1-unleashed"
     const val LATEST_URL = "https://api.github.com/repos/$REPO/releases/latest"
 
     /** HA caps `release_summary` at 255 characters; the full notes are behind `release_url`. */

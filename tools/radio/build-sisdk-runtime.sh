@@ -132,7 +132,7 @@ under the Silicon Labs Master Software License Agreement (MSLA). The panel downl
 Labs' own release (Simplicity SDK v2025.6.3, debian-bookworm.zip) and checks its SHA-256.
 
 zigbeed.sh
-  Part of S1 Unleashed (MIT): https://github.com/aguilaair/aqara-s1-unleashed (tools/radio/sisdk/).
+  Part of S1 Unleashed (MIT): https://github.com/GlassworksHQ/aqara-s1-unleashed (tools/radio/sisdk/).
 
 lib/libcpc.so.3
   Compiled, unmodified, from Silicon Labs cpc-daemon $CPCD_TAG (commit $CPCD_COMMIT):

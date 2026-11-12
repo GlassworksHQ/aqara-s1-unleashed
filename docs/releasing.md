@@ -1,7 +1,7 @@
 # Releasing the kiosk app
 
 Panels update themselves from GitHub Releases: the app checks
-`https://api.github.com/repos/aguilaair/aqara-s1-unleashed/releases/latest` and shows the result in Home
+`https://api.github.com/repos/GlassworksHQ/aqara-s1-unleashed/releases/latest` and shows the result in Home
 Assistant as **update.s1_panel_app_update** ([esphome.md](esphome.md#app-updates)). A release is
 built and published by [`.github/workflows/release.yml`](../.github/workflows/release.yml) when you
 push a `v*` tag. It holds two assets:
@@ -61,13 +61,13 @@ from the file or from a prompt, so nothing ends up in your shell history:
 ```sh
 cd ~/secure
 # The keystore, base64-encoded, from the file:
-base64 < s1kiosk-release.jks | gh secret set S1_KEYSTORE_B64 --repo aguilaair/aqara-s1-unleashed
+base64 < s1kiosk-release.jks | gh secret set S1_KEYSTORE_B64 --repo GlassworksHQ/aqara-s1-unleashed
 # Passwords: gh prompts for them ("Paste your secret"); the same password twice for PKCS12.
-gh secret set S1_KEYSTORE_PASSWORD --repo aguilaair/aqara-s1-unleashed
-gh secret set S1_KEY_PASSWORD --repo aguilaair/aqara-s1-unleashed
+gh secret set S1_KEYSTORE_PASSWORD --repo GlassworksHQ/aqara-s1-unleashed
+gh secret set S1_KEY_PASSWORD --repo GlassworksHQ/aqara-s1-unleashed
 # The alias is not secret:
-gh secret set S1_KEY_ALIAS --repo aguilaair/aqara-s1-unleashed --body s1kiosk
-gh secret list --repo aguilaair/aqara-s1-unleashed
+gh secret set S1_KEY_ALIAS --repo GlassworksHQ/aqara-s1-unleashed --body s1kiosk
+gh secret list --repo GlassworksHQ/aqara-s1-unleashed
 ```
 
 The workflow uses only these four secrets, the radio bundle key below, the optional `VERCEL_DEPLOY_HOOK`
@@ -89,7 +89,7 @@ openssl pkey -in ~/secure/s1kiosk-radio-bundle-ed25519.pem -pubout -outform DER 
   > tools/root/s1kiosk_bundle.pub
 # The secret: an environment secret of the `radio-signing` environment (Settings -> Environments;
 # create the environment first), so only the release workflow's signing job can read it:
-gh secret set S1_RADIO_BUNDLE_KEY --env radio-signing --repo aguilaair/aqara-s1-unleashed \
+gh secret set S1_RADIO_BUNDLE_KEY --env radio-signing --repo GlassworksHQ/aqara-s1-unleashed \
   < ~/secure/s1kiosk-radio-bundle-ed25519.pem
 ```
 
@@ -116,7 +116,7 @@ The boot image's signature checker is one of them since the radio bundle loader:
 
 ```sh
 tools/root/build-verify.sh      # reproducible; must print sha256 6aa0dd83…9f80 (the lock's pin)
-gh release upload installer-files-3 tools/root/out/s1kiosk_verify --repo aguilaair/aqara-s1-unleashed
+gh release upload installer-files-3 tools/root/out/s1kiosk_verify --repo GlassworksHQ/aqara-s1-unleashed
 ```
 
 (Create the `installer-files-3` release first if it doesn't exist, e.g. as a copy of
@@ -138,7 +138,7 @@ it a one-sentence summary. The release fails early if the section is missing.
 git switch main && git pull
 git tag -a v1.0.0 -m "S1 Kiosk 1.0.0"
 git push origin v1.0.0
-gh run watch --repo aguilaair/aqara-s1-unleashed   # or the Actions tab
+gh run watch --repo GlassworksHQ/aqara-s1-unleashed   # or the Actions tab
 ```
 
 The workflow then:

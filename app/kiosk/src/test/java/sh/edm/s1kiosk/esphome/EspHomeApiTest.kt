@@ -84,7 +84,7 @@ class EspHomeApiTest {
                 updateCommands += c
                 update = when (c) {
                     2 -> update.copy(missingState = false, latestVersion = "1.3.0", releaseSummary = "* new things",
-                        releaseUrl = "https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v1.3.0")
+                        releaseUrl = "https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v1.3.0")
                     1 -> update.copy(inProgress = true, hasProgress = true, progress = 42f)
                     else -> update
                 }
@@ -218,7 +218,7 @@ class EspHomeApiTest {
             assertEquals("1.2.0", checked.getString("current"))
             assertEquals("S1 Kiosk", checked.getString("title"))
             assertEquals("* new things", checked.getString("summary"))
-            assertEquals("https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v1.3.0", checked.getString("url"))
+            assertEquals("https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v1.3.0", checked.getString("url"))
             val installing = r.getJSONObject("update_installing")
             assertTrue(installing.getBoolean("has_progress"))
             assertEquals(42.0, installing.getDouble("progress"), 0.001)
