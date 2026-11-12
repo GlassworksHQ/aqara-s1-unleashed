@@ -88,6 +88,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         isVerticalScrollBarEnabled = false
         isFillViewport = false
         overScrollMode = View.OVER_SCROLL_NEVER
+        setPadding(0, px(30f), 0, px(30f))
+        clipToPadding = false
         addView(column, LayoutParams(-1, -2))
     }
     private val rail = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -113,8 +115,10 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         elevation = 24 * dp // above the setup screen (20 dp) and the voice overlay (16 dp)
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(px(36f), px(30f), px(30f), px(30f))
-            addView(rail, LinearLayout.LayoutParams(px(270f), -1).apply { marginEnd = px(24f) })
+            setPadding(px(36f), 0, px(30f), 0)
+            addView(rail, LinearLayout.LayoutParams(px(270f), -1).apply {
+                marginEnd = px(24f); topMargin = px(30f); bottomMargin = px(30f)
+            })
             addView(scroll, LinearLayout.LayoutParams(0, -1, 1f))
         }
         addView(content, LayoutParams(-1, -1))
@@ -162,7 +166,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         val r = Rect()
         v.getDrawingRect(r)
         scroll.offsetDescendantRectToMyCoords(v, r)
-        val y = if (alignBottom) r.bottom + px(16f) - scroll.height else r.top - px(16f)
+        val y = if (alignBottom) r.bottom + px(16f) + scroll.paddingBottom - scroll.height else r.top - px(16f) - scroll.paddingTop
         scroll.scrollTo(0, y.coerceAtLeast(0))
     }
 
@@ -376,9 +380,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
 
     private fun setKeyboardInset(inset: Int) {
         keyboardInset = inset
-        // The content's 30 dp bottom padding already sits between the column and the screen edge.
         val lp = scroll.layoutParams as LinearLayout.LayoutParams
-        val margin = (inset - px(30f)).coerceAtLeast(0) + if (inset > 0) px(12f) else 0
+        val margin = if (inset > 0) (inset + px(12f) - scroll.paddingBottom).coerceAtLeast(0) else 0
         if (lp.bottomMargin != margin) { lp.bottomMargin = margin; scroll.layoutParams = lp }
     }
 
@@ -390,11 +393,11 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         runCatching { scroll.offsetDescendantRectToMyCoords(v, r) }.onFailure { return }
         val top = r.top - px(40f) // its label too
         val bottom = r.bottom + px(12f)
-        val viewTop = scroll.scrollY
-        val viewBottom = viewTop + scroll.height
+        val viewTop = scroll.scrollY + scroll.paddingTop
+        val viewBottom = scroll.scrollY + scroll.height - scroll.paddingBottom
         when {
-            top < viewTop -> scroll.smoothScrollTo(0, top.coerceAtLeast(0))
-            bottom > viewBottom -> scroll.smoothScrollTo(0, bottom - scroll.height)
+            top < viewTop -> scroll.smoothScrollTo(0, (top - scroll.paddingTop).coerceAtLeast(0))
+            bottom > viewBottom -> scroll.smoothScrollTo(0, bottom - viewBottom + scroll.scrollY)
         }
     }
 
