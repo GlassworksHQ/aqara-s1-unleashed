@@ -117,7 +117,8 @@ from the service, and `onEvent` runs on whichever thread the event happened. A p
 state. `publishStates()` is safe from any thread, including while the panel stops.
 
 A pane that throws in `bind`, `start`, `stop` or `onEvent` is logged (`pane <id> failed in <step>`)
-and skipped. The other panes still run.
+and skipped. The other panes still run. An interruption is the exception: it means the panel is
+stopping, so it goes back to the caller and the panes after it don't run.
 
 ## Licence
 
