@@ -1,8 +1,8 @@
 <p align="center">
   <a href="https://www.glassworks.dev">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/lockup-on-dark.svg">
-      <img alt="Glassworks" src="https://www.glassworks.dev/brand/lockup-on-light.svg" height="64">
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/banner-core-on-dark.svg">
+      <img alt="Glassworks core" src="https://www.glassworks.dev/brand/banner-core-on-light.svg" width="640">
     </picture>
   </a>
 </p>
@@ -15,9 +15,28 @@
 </p>
 
 <p align="center">
-  <a href="#licence"><img alt="Licence: MPL-2.0" src="https://img.shields.io/badge/licence-MPL--2.0-blue"></a>
-  <img alt="Status: experimental" src="https://img.shields.io/badge/status-experimental-orange">
-  <a href="https://github.com/orgs/GlassworksHQ/projects/1"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-Glassworks%20v1-informational"></a>
+  <a href="https://www.glassworks.dev/brand#parts">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-core-on-dark.svg">
+      <img alt="Glassworks core" src="https://www.glassworks.dev/brand/badge-core-on-light.svg" height="30">
+    </picture>
+  </a>
+  <a href="#licence">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-license-on-dark.svg">
+      <img alt="License: MPL-2.0" src="https://www.glassworks.dev/brand/badge-license-on-light.svg" height="30">
+    </picture>
+  </a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-status-under-development-on-dark.svg">
+    <img alt="Status: under development" src="https://www.glassworks.dev/brand/badge-status-under-development-on-light.svg" height="30">
+  </picture>
+  <a href="https://github.com/orgs/GlassworksHQ/projects/1">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-roadmap-on-dark.svg">
+      <img alt="Roadmap" src="https://www.glassworks.dev/brand/badge-roadmap-on-light.svg" height="30">
+    </picture>
+  </a>
 </p>
 
 ---
