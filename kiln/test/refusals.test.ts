@@ -48,7 +48,15 @@ describe('refusals before any write', () => {
   it('undo refuses a backup without vbmeta and writes nothing', async () => {
     const uboot = new FakeUboot();
     const files = new Map([['boot', new Uint8Array(4096)], ['bootloader', new Uint8Array(4096)]]);
-    await expect(restoreFromBackup(s1Plus.backup, new Fastboot(uboot), files, () => {})).rejects.toThrow('this backup has no boot or vbmeta');
+    await expect(restoreFromBackup(s1Plus.backup, new Fastboot(uboot), files, () => {})).rejects.toThrow('this backup has no vbmeta');
+    expect(uboot.flashed).toEqual([]);
+    expect(uboot.rebooted).toBe(false);
+  });
+
+  it('undo refuses a backup without the splash partition, instead of restoring the rest', async () => {
+    const uboot = new FakeUboot();
+    const files = new Map([['boot', new Uint8Array(4096)], ['vbmeta', new Uint8Array(4096)]]);
+    await expect(restoreFromBackup(s1Plus.backup, new Fastboot(uboot), files, () => {})).rejects.toThrow('this backup has no bootloader');
     expect(uboot.flashed).toEqual([]);
     expect(uboot.rebooted).toBe(false);
   });

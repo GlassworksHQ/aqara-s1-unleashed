@@ -29,12 +29,10 @@ export interface Recipe<A extends string, O, R> {
 }
 
 export interface BackupPlan {
-  /** Read in this order and kept. Must include `boot` (read twice and patched) and every `required` and `restore` part. */
+  /** Read in this order and kept. Must include `boot` (read twice and patched) and every `restore` part. */
   parts: readonly string[];
-  /** What undo writes back, in this order. Parts the backup lacks are skipped. */
+  /** What undo writes back, in this order. Undo refuses a backup that lacks boot or any of these. */
   restore: readonly string[];
-  /** Undo refuses a backup without these. */
-  required: readonly string[];
   /** Backup ids, and the zip's name, are `<idPrefix>-YYYYMMDD-HHMMSS`. */
   idPrefix: string;
   /** The IndexedDB database that keeps backups. It holds people's only copy of their original software: never rename it. */

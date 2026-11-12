@@ -42,7 +42,6 @@ export const s1Plus: Recipe<AssetName, SetUpOptions, Provisioned> = {
     parts: ['boot', 'vbmeta', 'vbmeta_system', 'vbmeta_vendor', 'dtbo', 'misc', 'recovery', 'env', 'bootloader'],
     // fel-install.sh --undo: boot, vbmeta and splash
     restore: ['boot', 'vbmeta', 'bootloader'],
-    required: ['boot', 'vbmeta'],
     idPrefix: 's1-backup',
     db: 's1-unleashed-backups',
     isPatched: isMagiskPatched,

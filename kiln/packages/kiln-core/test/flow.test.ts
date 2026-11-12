@@ -8,7 +8,7 @@ import { InstallFlow, restoreFromBackup, type BackupMeta, type BackupPlan, type 
 /** The made-up frame marks a patched boot with 0xee in its first byte. */
 const MARK = 0xee;
 const plan: BackupPlan = {
-  parts: ['boot', 'vbmeta'], restore: ['boot', 'vbmeta'], required: ['boot'],
+  parts: ['boot', 'vbmeta'], restore: ['boot', 'vbmeta'],
   idPrefix: 'test-backup', db: 'test-backups', isPatched: async (boot) => boot[0] === MARK,
 };
 
@@ -54,12 +54,13 @@ describe('InstallFlow keeps its rules whatever the recipe does', () => {
   });
 
   it.each([
-    ['no boot', { ...plan, parts: ['vbmeta'], restore: ['vbmeta'], required: [] }, 'boot'],
-    ['a required part it never reads', { ...plan, required: ['boot', 'extra'] }, 'extra'],
-    ['a restore part it never reads', { ...plan, restore: ['boot', 'spare'] }, 'spare'],
-  ])('refuses a backup plan with %s before reading anything', async (_, backup, missing) => {
+    ['no boot', { ...plan, parts: ['vbmeta'], restore: ['vbmeta'] }, 'it doesn\'t read boot'],
+    ['a restore part it never reads', { ...plan, restore: ['boot', 'spare'] }, 'it doesn\'t read spare'],
+    // a recipe written in plain JS can leave it out
+    ['no isPatched', { ...plan, isPatched: undefined } as unknown as BackupPlan, 'it has no isPatched'],
+  ])('refuses a backup plan with %s before reading anything', async (_, backup, why) => {
     const t = run(recipe({ backup }));
-    await expect(t.install()).rejects.toThrow(`this recipe's backup plan is broken: it doesn't read ${missing}. Nothing was read.`);
+    await expect(t.install()).rejects.toThrow(`this recipe's backup plan is broken: ${why}. Nothing was read.`);
     expect(t.uboot.commands).toEqual([]);
     await expect(restoreFromBackup(backup, new Fastboot(t.uboot), new Map(), () => {})).rejects.toThrow('backup plan is broken');
     expect(t.uboot.commands).toEqual([]);
@@ -80,12 +81,19 @@ describe('InstallFlow keeps its rules whatever the recipe does', () => {
     expect(t.uboot.flashed).toEqual(['boot']);
   });
 
+  it('undo refuses a backup that lacks a restore part, and writes nothing', async () => {
+    const u = new FakeUboot();
+    await expect(restoreFromBackup(plan, new Fastboot(u), new Map([['boot', new Uint8Array(4096)]]), () => {}))
+      .rejects.toThrow('this backup has no vbmeta');
+    expect(u.flashed).toEqual([]);
+  });
+
   it('asks the recipe whether boot is patched, for the backup and for undo', async () => {
     const t = run(recipe());
     expect((await t.install()).meta.bootWasPatched).toBe(false);
     const patched = new Uint8Array(4096); patched[0] = MARK;
     const u = new FakeUboot();
-    await expect(restoreFromBackup(plan, new Fastboot(u), new Map([['boot', patched]]), () => {}))
+    await expect(restoreFromBackup(plan, new Fastboot(u), new Map([['boot', patched], ['vbmeta', new Uint8Array(4096)]]), () => {}))
       .rejects.toThrow('this backup\'s boot is already patched (a re-run backup): use the one from your first install');
     expect(u.flashed).toEqual([]);
   });

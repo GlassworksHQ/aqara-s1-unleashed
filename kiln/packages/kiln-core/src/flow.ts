@@ -239,20 +239,21 @@ export class InstallFlow<A extends string, O, R> {
 export async function restoreFromBackup(plan: BackupPlan, fb: Fastboot, files: Map<string, Uint8Array>, log: (s: string) => void,
   onProgress?: (part: string, phase: 'write' | 'verify', done: number, total: number) => void): Promise<void> {
   checkBackupPlan(plan);
-  const boot = files.get('boot');
-  if (!boot || plan.required.some((p) => !files.get(p))) throw new Error(`this backup has no ${plan.required.join(' or ')}`);
+  const missing = [...new Set(['boot', ...plan.restore])].filter((p) => !files.get(p));
+  if (missing.length) throw new Error(`this backup has no ${missing.join(' or ')}`);
+  const boot = files.get('boot')!;
   if (await plan.isPatched(boot)) throw new Error('this backup\'s boot is already patched (a re-run backup): use the one from your first install');
   for (const part of plan.restore) {
-    const data = files.get(part);
-    if (!data) continue;
-    await fb.flashVerified(part, data, (phase, d, t) => onProgress?.(part, phase, d, t));
+    await fb.flashVerified(part, files.get(part)!, (phase, d, t) => onProgress?.(part, phase, d, t));
     log(`${part} restored and verified`);
   }
   await fb.reboot();
 }
 
-/** Throws unless the plan reads boot and every part undo needs or writes. */
+/** Throws unless the plan reads boot and every part undo writes, and can tell a patched boot. */
 function checkBackupPlan(plan: BackupPlan): void {
-  const missing = ['boot', ...plan.required, ...plan.restore].find((p) => !plan.parts.includes(p));
-  if (missing) throw new Error(`this recipe's backup plan is broken: it doesn't read ${missing}. Nothing was read.`);
+  const broken = (why: string) => new Error(`this recipe's backup plan is broken: ${why}. Nothing was read.`);
+  const missing = ['boot', ...plan.restore].find((p) => !plan.parts.includes(p));
+  if (missing) throw broken(`it doesn't read ${missing}`);
+  if (typeof plan.isPatched !== 'function') throw broken('it has no isPatched');
 }
