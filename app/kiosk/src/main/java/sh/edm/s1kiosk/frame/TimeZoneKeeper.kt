@@ -1,4 +1,4 @@
-package sh.edm.s1kiosk
+package sh.edm.s1kiosk.frame
 
 import android.util.Log
 import sh.edm.s1kiosk.radio.RadioHelper

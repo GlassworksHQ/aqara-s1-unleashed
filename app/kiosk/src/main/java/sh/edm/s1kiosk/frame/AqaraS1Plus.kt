@@ -11,6 +11,9 @@ class AqaraS1Plus : Frame {
     /** Aqara's cloud daemon, which the wall base pane stops or keeps. */
     val aqaraCloud = AqaraCloud()
 
+    /** The time zone to keep (Aqara resets it at every boot; the root helper puts it back). One per device run. */
+    fun timeZoneKeeper(onChange: () -> Unit) = TimeZoneKeeper(onChange = onChange)
+
     /**
      * The S1's firmware has no Android Settings app. Its own one (com.lumi.settings: Network, Sounds,
      * Display, Updates, Advanced settings incl. factory reset) is normally reached from Aqara's

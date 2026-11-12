@@ -1,4 +1,4 @@
-package sh.edm.s1kiosk
+package sh.edm.s1kiosk.frame
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
