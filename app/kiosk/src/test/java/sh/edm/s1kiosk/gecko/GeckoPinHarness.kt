@@ -176,16 +176,6 @@ class GeckoPinHarness(
         private fun holdRestarts() {
             val f = ImprovController::class.java.getDeclaredField("settleUntil").apply { isAccessible = true }
             f.setLong(ImprovController, Long.MAX_VALUE)
-            forgetProcessStatics()
-        }
-
-        /** Before the refactor the app kept the GeckoRuntime and the helper extension in KioskApp statics. */
-        private fun forgetProcessStatics() {
-            for (name in listOf("runtime", "helper")) {
-                val f = runCatching { sh.edm.s1kiosk.KioskApp::class.java.getDeclaredField(name) }.getOrNull() ?: continue
-                f.isAccessible = true
-                f.set(null, null)
-            }
         }
     }
 }
