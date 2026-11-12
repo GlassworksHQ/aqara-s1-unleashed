@@ -13,6 +13,8 @@ import sh.edm.esphome.ApiEntity
 import sh.edm.esphome.DeviceIdentity
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.KioskPrefs
+import sh.edm.s1kiosk.base.BaseBackend
+import sh.edm.s1kiosk.base.WallBasePane
 import sh.edm.s1kiosk.base.BaseKind
 import sh.edm.s1kiosk.base.BaseLayout
 import java.io.File
@@ -53,6 +55,7 @@ class BaseLayoutEntitiesPinTest {
     private fun entitiesWith(layout: BaseLayout): List<ApiEntity> {
         val app = RuntimeEnvironment.getApplication()
         KioskPrefs(app).wallBase.layout = layout.encode()
+        KioskPrefs(app).wallBase.backend = BaseBackend.LOCALSERVICE.pref
         val device = PanelDevice(app, GlassworksRuntime(AqaraS1Plus()), onVoiceEvent = {})
         try {
             val identity = DeviceIdentity(
@@ -61,6 +64,7 @@ class BaseLayoutEntitiesPinTest {
                 model = "Panel Hub S1 Plus (S1 Kiosk)", voiceFeatures = PanelDevice.VOICE_FEATURES,
             )
             device.initEntities(identity)
+            assertEquals(BaseBackend.LOCALSERVICE, device.paneList().filterIsInstance<WallBasePane>().single().config.backend)
             return device.entityList()
         } finally {
             device.stop()

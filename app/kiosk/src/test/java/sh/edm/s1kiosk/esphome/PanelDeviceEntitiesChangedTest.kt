@@ -11,6 +11,7 @@ import org.robolectric.annotation.Config
 import sh.edm.esphome.DeviceIdentity
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.KioskPrefs
+import sh.edm.s1kiosk.base.BaseBackend
 import sh.edm.s1kiosk.base.BaseKind
 import sh.edm.s1kiosk.base.BaseLayout
 import sh.edm.s1kiosk.base.WallBasePane
@@ -23,6 +24,7 @@ class PanelDeviceEntitiesChangedTest {
     @Test fun aNewBaseLayoutAddsItsEntitiesAndKeepsTheRest() {
         val app = RuntimeEnvironment.getApplication()
         KioskPrefs(app).wallBase.layout = ""
+        KioskPrefs(app).wallBase.backend = BaseBackend.LOCALSERVICE.pref
         val device = PanelDevice(app, GlassworksRuntime(AqaraS1Plus()), onVoiceEvent = {})
         try {
             device.initEntities(

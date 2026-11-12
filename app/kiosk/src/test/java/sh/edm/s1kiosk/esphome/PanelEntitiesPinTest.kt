@@ -13,6 +13,8 @@ import sh.edm.esphome.ApiEntity
 import sh.edm.esphome.DeviceIdentity
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.KioskPrefs
+import sh.edm.s1kiosk.base.BaseBackend
+import sh.edm.s1kiosk.base.WallBasePane
 import java.io.File
 
 /**
@@ -20,7 +22,7 @@ import java.io.File
  * an entity: Home Assistant keys entities by object id, so a changed id is a new entity).
  *
  * It builds the real list through [PanelDevice.initEntities], the same code the device runs at start,
- * with no wall base and no dashboards, and compares it with `panel-entities.golden.txt`: one line per
+ * with no wall base, the LocalService wall base backend and no dashboards, and compares it with `panel-entities.golden.txt`: one line per
  * entity, sorted by object id (order does not matter to Home Assistant). Fields: object id, key,
  * class, name, icon, device class, category, authOnly, select options.
  *
@@ -49,8 +51,16 @@ class PanelEntitiesPinTest {
         assertEquals(javaClass.getResourceAsStream("/$GOLDEN")?.bufferedReader()?.readText(), describe(realEntityList()))
     }
 
-    private fun realEntityList(): List<ApiEntity> {
-        val device = PanelDevice(RuntimeEnvironment.getApplication(), GlassworksRuntime(AqaraS1Plus()), onVoiceEvent = {})
+    /** The default UART backend gives Home Assistant the same entities as LocalService. */
+    @Test fun theUartBackendKeepsTheSameEntities() {
+        if (System.getProperty("s1.regenGolden") == "true") return
+        assertEquals(javaClass.getResourceAsStream("/$GOLDEN")?.bufferedReader()?.readText(), describe(realEntityList(BaseBackend.UART)))
+    }
+
+    private fun realEntityList(backend: BaseBackend = BaseBackend.LOCALSERVICE): List<ApiEntity> {
+        val app = RuntimeEnvironment.getApplication()
+        KioskPrefs(app).wallBase.backend = backend.pref
+        val device = PanelDevice(app, GlassworksRuntime(AqaraS1Plus()), onVoiceEvent = {})
         try {
             val identity = DeviceIdentity(
                 name = PanelDevice.NAME, friendlyName = PanelDevice.FRIENDLY_NAME, macAddress = "02:00:00:00:00:01",
@@ -58,6 +68,7 @@ class PanelEntitiesPinTest {
                 model = "Panel Hub S1 Plus (S1 Kiosk)", voiceFeatures = PanelDevice.VOICE_FEATURES,
             )
             device.initEntities(identity)
+            assertEquals(backend, device.paneList().filterIsInstance<WallBasePane>().single().config.backend)
             return device.entityList()
         } finally {
             device.stop()
