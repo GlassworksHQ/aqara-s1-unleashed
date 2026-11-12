@@ -1,4 +1,39 @@
-# improv (Android)
+<p align="center">
+  <a href="https://www.glassworks.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/banner-library-improv-on-dark.svg">
+      <img alt="improv, a Glassworks library" src="https://www.glassworks.dev/brand/banner-library-improv-on-light.svg" width="640">
+    </picture>
+  </a>
+</p>
+
+<h1 align="center">improv</h1>
+
+<p align="center">
+  <b>Improv Wi-Fi for Android, over BLE, serial or adb.</b><br>
+  The device side: it takes the credentials and joins the network.
+</p>
+
+<p align="center">
+  <a href="../../../LICENSE">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-license-mit-on-dark.svg">
+      <img alt="License: MIT" src="https://www.glassworks.dev/brand/badge-license-mit-on-light.svg" height="30">
+    </picture>
+  </a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-status-alpha-on-dark.svg">
+    <img alt="Status: alpha" src="https://www.glassworks.dev/brand/badge-status-alpha-on-light.svg" height="30">
+  </picture>
+  <a href="https://github.com/orgs/GlassworksHQ/projects/1">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-roadmap-on-dark.svg">
+      <img alt="Roadmap" src="https://www.glassworks.dev/brand/badge-roadmap-on-light.svg" height="30">
+    </picture>
+  </a>
+</p>
+
+---
 
 The device side of [Improv Wi-Fi](https://www.improv-wifi.com/) for Android. It lets a phone,
 Home Assistant's `improv_ble` integration or improv-wifi.com send Wi-Fi credentials to an Android

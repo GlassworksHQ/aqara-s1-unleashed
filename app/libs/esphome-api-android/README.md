@@ -1,4 +1,39 @@
-# esphome-api-android
+<p align="center">
+  <a href="https://www.glassworks.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/banner-library-esphome-api-android-on-dark.svg">
+      <img alt="esphome-api-android, a Glassworks library" src="https://www.glassworks.dev/brand/banner-library-esphome-api-android-on-light.svg" width="640">
+    </picture>
+  </a>
+</p>
+
+<h1 align="center">esphome-api-android</h1>
+
+<p align="center">
+  <b>Android helpers for esphome-api: mDNS discovery.</b><br>
+  Home Assistant finds the device on its own.
+</p>
+
+<p align="center">
+  <a href="../../../LICENSE">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-license-mit-on-dark.svg">
+      <img alt="License: MIT" src="https://www.glassworks.dev/brand/badge-license-mit-on-light.svg" height="30">
+    </picture>
+  </a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-status-beta-on-dark.svg">
+    <img alt="Status: beta" src="https://www.glassworks.dev/brand/badge-status-beta-on-light.svg" height="30">
+  </picture>
+  <a href="https://github.com/orgs/GlassworksHQ/projects/1">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-roadmap-on-dark.svg">
+      <img alt="Roadmap" src="https://www.glassworks.dev/brand/badge-roadmap-on-light.svg" height="30">
+    </picture>
+  </a>
+</p>
+
+---
 
 Android helpers for [esphome-api](../esphome-api/README.md). For now that's `EspHomeMdns`, which
 advertises the device over mDNS with Android's `NsdManager`, so Home Assistant discovers it on its
