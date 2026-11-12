@@ -282,6 +282,29 @@ class ReleasesTest {
         assertTrue(e!!.message!!.contains("has no s1-kiosk-arm64-v8a-1.3.0.apk with s1-kiosk-arm64-v8a-1.3.0.apk.sha256"))
     }
 
+    @Test fun aRepeatedDeviceAbiCountsOnce() {
+        assertEquals(listOf(ApkAbi.ARM64_V8A, ApkAbi.ARMEABI_V7A), ApkAbi.among(listOf("arm64-v8a", "armeabi-v7a", "arm64-v8a", "armeabi", "armeabi-v7a")))
+        val e = try { Releases.offer(Releases.parse(latest), listOf("arm64-v8a", "arm64-v8a")); null } catch (e: ReleaseFormatException) { e }
+        assertEquals("release v1.3.0 has no s1-kiosk-arm64-v8a-1.3.0.apk with s1-kiosk-arm64-v8a-1.3.0.apk.sha256", e!!.message)
+    }
+
+    @Test fun aReleaseWithOnlyTheSha256IsNotAPair() {
+        val noApk = edited { getJSONArray("assets").remove(0) } // the fixture's s1-kiosk-1.3.0.apk
+        assertEquals(listOf("s1-kiosk-1.3.0.apk.sha256"), Releases.parse(noApk).assets.map { it.name })
+        val e = try { Releases.offer(Releases.parse(noApk), S1); null } catch (e: ReleaseFormatException) { e }
+        assertEquals("release v1.3.0 has no s1-kiosk-1.3.0.apk with s1-kiosk-1.3.0.apk.sha256", e!!.message)
+    }
+
+    @Test fun theRefusalNamesEveryPairTheDeviceCouldUse() {
+        val e = try { Releases.offer(Releases.parse(edited { put("assets", JSONArray()) }), listOf("arm64-v8a", "armeabi-v7a", "armeabi")); null }
+            catch (e: ReleaseFormatException) { e }
+        assertEquals(
+            "release v1.3.0 has no s1-kiosk-arm64-v8a-1.3.0.apk with s1-kiosk-arm64-v8a-1.3.0.apk.sha256" +
+                " or s1-kiosk-1.3.0.apk with s1-kiosk-1.3.0.apk.sha256",
+            e!!.message,
+        )
+    }
+
     @Test fun aDeviceWithNoBuiltAbiGetsNoOffer() {
         val e = try { Releases.offer(Releases.parse(withArm64()), listOf("x86_64")); null } catch (e: ReleaseFormatException) { e }
         assertTrue(e!!.message!!.contains("no APK is built for this device's ABIs (x86_64)"))

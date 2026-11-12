@@ -126,6 +126,11 @@ tasks.withType<Test>().configureEach {
     (project.findProperty("s1MockupDir") as String?)?.let { systemProperty("s1.mockupDir", it) }
     // PanelEntitiesPinTest rewrites its golden file with -Ps1RegenGolden=true.
     (project.findProperty("s1RegenGolden") as String?)?.let { systemProperty("s1.regenGolden", it) }
+    // ApkAbiListsTest reads the workflows and this file. Declared as inputs, so a change to either
+    // re-runs the tests instead of taking them UP-TO-DATE or FROM-CACHE.
+    inputs.dir(rootProject.file("../.github/workflows")).withPropertyName("workflows")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file("build.gradle.kts").withPropertyName("kioskBuildScript").withPathSensitivity(PathSensitivity.NONE)
 }
 
 // Open source licences screen (hidden settings → "Open source licences"): the repo's

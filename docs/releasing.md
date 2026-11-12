@@ -184,9 +184,10 @@ the build is `armeabi-v7a`, the S1's:
   for the device's next ABI.
 - **Known gap, not reachable today.** If a release ever had only `s1-kiosk-<version>.apk`, an arm64
   device that runs 32-bit code and has the arm64 APK installed would update to the 32-bit APK. That
-  moves the app to slower 32-bit code until a release has an arm64 APK again. `release.yml` publishes
-  every ABI's APK in one `gh release create`, after all of them are built and checked, so a release
-  has all of them or none. Keep it that way, or make the app prefer the ABI it is running.
+  moves the app to slower 32-bit code until a release has an arm64 APK again. `release.yml` creates
+  the release only after every ABI's APK is built and checked, and uploads them all in one
+  `gh release create`, so a release has all of them unless an upload fails partway. Keep it that
+  way, or make the app prefer the ABI it is running.
 - A device whose ABIs the app is not built for (x86_64) gets no offer, and the update entity says why.
 - Adding an ABI means adding it to `s1Abis` in `app/kiosk/build.gradle.kts`, to `ApkAbi`, and to
   `ABIS` in both workflows. `ApkAbiListsTest` fails if they disagree.

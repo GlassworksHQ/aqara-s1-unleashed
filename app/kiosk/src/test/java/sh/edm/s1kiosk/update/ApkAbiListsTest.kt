@@ -51,6 +51,20 @@ class ApkAbiListsTest {
         }
     }
 
+    @Test fun `each workflow names every APK through apk_name and nowhere else`() {
+        val calls = mapOf(
+            ".github/workflows/release.yml" to """name="${'$'}(apk_name "${'$'}abi")"""",
+            ".github/workflows/test-build.yml" to """apk="dist/${'$'}abi/${'$'}(apk_name "${'$'}abi")"""",
+        )
+        val literal = Regex("""\b[A-Za-z_]+="[^"]*s1-kiosk-""")
+        for ((wf, call) in calls) {
+            val lines = File(repo, wf).readLines().map { it.trim() }
+            assertEquals("$wf: the APK name comes from apk_name", 1, lines.count { it == call })
+            val stray = lines.filter { !it.startsWith("apk_name() {") && !it.startsWith("#") && literal.containsMatchIn(it) }
+            assertEquals("$wf: APK names written outside apk_name", emptyList<String>(), stray)
+        }
+    }
+
     @Test fun `both workflows build every ABI`() {
         for (wf in listOf(".github/workflows/release.yml", ".github/workflows/test-build.yml")) {
             assertEquals(wf, ids, listed(wf, Regex("""^\s+ABIS: ([a-z0-9 _-]+?)\s*(#|$)""")))
