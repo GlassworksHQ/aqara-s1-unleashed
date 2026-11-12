@@ -15,6 +15,8 @@ const config: NextConfig = {
     },
   },
   outputFileTracingRoot: repo,
+  // Kiln has no next/image, so it never loads sharp (whose libvips is LGPL; hard rule 4 in AGENTS.md).
+  images: { unoptimized: true },
   // The same caching as kiln/vercel.json: the manifest is always fresh, a blob for five minutes.
   async headers() {
     return [

@@ -19,6 +19,7 @@ library in the APK is missing from section 1.
 2. [Radio bundle (inside release APKs)](#2-radio-bundle-inside-release-apks)
 3. [Web installer downloads](#3-web-installer-downloads)
 4. [The web installer page itself](#4-the-web-installer-page-itself)
+   - [Kiln, the Next.js installer (not live yet)](#kiln-the-nextjs-installer-not-live-yet)
 5. [Not distributed by this project](#5-not-distributed-by-this-project)
 6. [Corresponding source for GPL, LGPL and MPL parts](#6-corresponding-source-for-gpl-lgpl-and-mpl-parts)
 
@@ -300,6 +301,45 @@ The page's JavaScript and WebAssembly ([`kiln/`](kiln)):
   - the Rust standard library (MIT OR Apache-2.0)
 
   The list is in `kiln/packages/bootpatch/src/wasm/THIRD_PARTY.txt`. No Magisk code is included.
+
+### Kiln, the Next.js installer (not live yet)
+
+[`kiln/apps/kiln`](kiln/apps/kiln) serves the same installer code (above) through Next.js. It isn't on
+s1.edm.sh yet (#27). Checked against its lockfile and a production build on 2026-11-12. What it adds:
+
+- **Next.js** 16.4.6 (`next`, `@next/env`): MIT, Copyright (c) 2025 Vercel, Inc. https://github.com/vercel/next.js
+  (tag `v16.4.6`). Next ships third-party code it has compiled in under `next/dist/compiled/`, each
+  with its licence file there, among them the copy of React it serves App Router pages with.
+- **React** and **React DOM** 19.3.0, **scheduler** 0.28.0: MIT, Copyright (c) Meta Platforms, Inc. and
+  affiliates. https://github.com/facebook/react
+- **styled-jsx** 5.1.6, **client-only** 0.0.1: MIT, Copyright (c) Vercel, Inc. (Next's server runtime).
+- **@swc/helpers** 0.5.23: Apache-2.0, by 강동윤 (kdy1) and the SWC contributors. https://github.com/swc-project/swc
+- **Radix Primitives**: MIT, Copyright (c) 2022 WorkOS. https://github.com/radix-ui/primitives.
+  `@radix-ui/react-dialog` 1.3.1, `@radix-ui/react-radio-group` 1.5.1, `@radix-ui/react-collapsible` 1.2.1,
+  and the `@radix-ui/*` packages they use: `primitive` 1.2.0, `react-collection` 1.2.0,
+  `react-compose-refs` 1.1.5, `react-context` 1.3.0, `react-direction` 1.2.0,
+  `react-dismissable-layer` 1.2.1, `react-focus-guards` 1.2.0, `react-focus-scope` 1.3.1, `react-id`
+  1.1.4, `react-portal` 1.2.0, `react-presence` 1.1.11, `react-primitive` 2.2.0, `react-roving-focus`
+  1.2.1, `react-slot` 1.5.0, `react-use-callback-ref` 1.1.5, `react-use-controllable-state` 1.3.0,
+  `react-use-effect-event` 0.0.5, `react-use-is-hydrated` 0.1.3, `react-use-layout-effect` 1.1.4,
+  `react-use-size` 1.1.5.
+- What Radix's dialog uses: **react-remove-scroll** 2.7.2, **react-remove-scroll-bar** 2.3.8,
+  **react-style-singleton** 2.2.3, **use-callback-ref** 1.3.3, **use-sidecar** 1.1.3, **aria-hidden**
+  1.2.6, **get-nonce** 1.0.1: MIT, Copyright (c) 2017-2020 Anton Korzunov (https://github.com/theKashey).
+  **detect-node-es** 1.1.0: MIT, Copyright (c) 2017 Ilya Kantor. **tslib** 2.9.1: 0BSD, Copyright (c)
+  Microsoft Corporation.
+- **Inter** and **JetBrains Mono** (the font files, served by `next/font`): OFL-1.1. Copyright 2016 The
+  Inter Project Authors (https://github.com/rsms/inter); Copyright 2020 The JetBrains Mono Project
+  Authors (https://github.com/JetBrains/JetBrainsMono). Fetched from Google Fonts at build time.
+- The Glassworks tokens, mark and Kiln icon (`kiln/packages/brand`) are Glassworks' own, from
+  https://github.com/GlassworksHQ/glassworks.dev.
+
+Not shipped: the build tools Next uses (`@next/swc-*`, postcss, caniuse-lite, baseline-browser-mapping
+and their dependencies) and **sharp** with its LGPL libvips. Kiln has no `next/image` and sets
+`images.unoptimized`. The server traces of a production build (`.next/next-minimal-server.js.nft.json`
+and every route's) list only `next`, `react`, `client-only`, `styled-jsx` and `@swc/helpers`. Only the
+full `next start` server's trace (`.next/next-server.js.nft.json`) names sharp. Vercel should run the
+minimal server; check the deployed function's files for `@img/sharp-libvips` before going live.
 
 ---
 
