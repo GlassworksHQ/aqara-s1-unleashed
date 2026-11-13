@@ -46,12 +46,12 @@ Kiln was the first to use it, and #114 moved it here, so there is one copy.
 
 | Export | What |
 |---|---|
-| `FrameCardBody` | The card's contents: the model that rises and floats on hover, the name and stage, the summary, the three install tags. All spans, so it fits inside a button or a link |
-| `frameCardClass`, `useTilt()` | For the card's outer element, which is the caller's (Kiln: a radio item; the site: a link). The class lifts the card on hover; the hook leans the model toward a mouse pointer |
+| `FrameCardBody` | The card's contents: the model that rises and floats on hover, the name and stage, the summary, the three install tags. Props: `f`, the frame; `idPrefix`, ids for the summary and tags (for `aria-describedby`); `as`, `h2`, `h3` or `h4` to make the name a heading. Without `as` the text is all spans, so it fits inside a button. Use `as` only in a link or another block |
+| `frameCardClass`, `useTilt()` | For the card's outer element, which is the caller's (Kiln: a radio item; the site: a link). The class lifts the card on hover and doesn't underline a link's text; the hook leans the model toward a mouse pointer |
 | `StatusPill` | The stage pill, as on the status badges |
-| `DeviceModel` | The 3D mockup alone: the body's sides as SVG behind a CSS-3D front glass with an example dashboard |
+| `DeviceModel` | The 3D mockup alone: the body's sides as SVG behind a CSS-3D front glass with an example dashboard. Props: `id`, `model`, `label`, and `aspect`, the stage's width / height. It is 2 (2:1, as on the cards) by default; a portrait frame's own page can ask for a taller stage, e.g. `0.8` |
 | `geometry()` | The projection `DeviceModel` draws, as plain data. Pure, so tests can call it |
-| `FrameDesign`, `FrameModel`, `Stage`, `cardTags()`, `STAGE_TEXT`, `ships()`, `RATING_KEYS`, `PANE_IDS` | The `frame.json` types and the card's words for them |
+| `FrameDesign`, `FrameModel`, `Stage`, `Support`, `RatingKey`, `cardTags()`, `STAGE_TEXT`, `ships()`, `RATING_KEYS`, `PANE_IDS` | The `frame.json` types and the card's words for them. `ships()` takes a frame's `Stage` or a pane's `Support`: true for alpha, beta and stable, false for the rest, including `depends`, `unknown` and `no` |
 
 The page provides the Glassworks tokens (`--sky`, `--edge`, `--r-tile`, `--muted`, …) and the global
 `glass` surface class: Kiln from `@glassworks/brand`, the site from its own `globals.css`. The only
@@ -64,8 +64,17 @@ import { FrameCardBody, frameCardClass, useTilt, type FrameDesign } from '@glass
 
 function Card({ f }: { f: FrameDesign }) {
   const tilt = useTilt<HTMLAnchorElement>();
-  return <a {...tilt} href={`/frames/${f.id}`} className={`glass ${frameCardClass}`}><FrameCardBody f={f} /></a>;
+  return <a {...tilt} href={`/frames/${f.id}`} className={`glass ${frameCardClass}`}><FrameCardBody f={f} as="h2" /></a>;
 }
+```
+
+In a link, the card's text isn't underlined, and `as="h2"` makes the frame's name a heading for the
+page's outline. Inside a `<button>` (Kiln's picker), leave `as` out: a heading isn't allowed there.
+
+A frame's own page can draw the mockup alone, on a taller stage for a portrait frame:
+
+```tsx
+<DeviceModel id={`${f.id}-hero`} model={f.model} label={`${f.name} running Glassworks`} aspect={f.model.body.height > f.model.body.width ? 0.8 : 2} />
 ```
 
 The source is TypeScript and CSS modules, not built. Next.js compiles it like the app's own code.
@@ -106,4 +115,5 @@ instead, and this package can move with the core.
 ## Commands
 
 From the repo root: `npm test -w @glassworks/frame-card`, `npm run typecheck -w @glassworks/frame-card`.
+`test/card.test.tsx` checks the props above; `ships()`'s type is checked by the typecheck.
 Kiln's `test/frame-designs.test.ts` draws every frame with `geometry()`.
