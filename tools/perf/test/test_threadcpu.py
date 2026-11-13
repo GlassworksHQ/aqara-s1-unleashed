@@ -39,6 +39,13 @@ class Shares(unittest.TestCase):
         _, rows = T.shares(before, after, procs, hz=100, window=10.0)
         self.assertEqual(rows, [("otbr-agent", 7000, "otbr", 10.0)])
 
+    def test_processes_with_the_same_name_add_up(self):
+        procs = {100: "app:tab", 200: "app:tab"}
+        before = (0.0, {100: 0, 200: 0}, {})
+        after = (10.0, {100: 100, 200: 200}, {})
+        totals, _ = T.shares(before, after, procs, hz=100, window=10.0)
+        self.assertEqual(totals, {"app:tab": 30.0})
+
 
 if __name__ == "__main__":
     unittest.main()

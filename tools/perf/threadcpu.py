@@ -74,7 +74,10 @@ def shares(before, after, procs, hz, window):
     Thread rows only cover threads alive at both ends; the process totals cover all of them.
     """
     pct = lambda d: 100 * d / hz / window  # noqa: E731
-    totals = {procs[p]: pct(j - before[1][p]) for p, j in after[1].items() if p in before[1]}
+    totals = {}
+    for p, j in after[1].items():
+        if p in before[1]:
+            totals[procs[p]] = totals.get(procs[p], 0) + pct(j - before[1][p])
     rows = [
         (procs[p], tid, name, pct(j - before[2][tid][2]))
         for tid, (p, name, j) in after[2].items()

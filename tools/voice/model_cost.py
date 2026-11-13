@@ -3,7 +3,8 @@
 
 For docs/research/idle-cpu.md (#105). For each .tflite: its input, the multiply-accumulates of its
 conv, fully-connected and batch-matmul ops, and the mean time of one call (LiteRT, one thread,
-XNNPACK). The host time is only good for ratios between models; the panel is far slower.
+XNNPACK). The host time is elapsed time (perf_counter), only good for ratios between models;
+the panel is far slower.
 
   tools/voice/fetch-models.sh --no-push    # or download the files and check them against ModelFetcher.FILES
   uv run --with ai-edge-litert --with numpy python -I tools/voice/model_cost.py \\
@@ -46,7 +47,9 @@ def macs(path):
         elif name == "FULLY_CONNECTED":
             total += out * int(shape[ins[1]][-1])
         elif name == "BATCH_MATMUL":
-            total += out * int(shape[ins[0]][-1])
+            # The reduction dim is A's other matrix dim from the output's rows, whatever adj_x is.
+            a, rows = shape[ins[0]], shape[op["outputs"][0]][-2]
+            total += out * int(a[-2] if a[-1] == rows and a[-2] != rows else a[-1])
     return total
 
 

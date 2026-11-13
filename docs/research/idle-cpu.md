@@ -101,7 +101,7 @@ on screen. Which thread is it, is that work needed, and what would make it small
    `ModelFetcher.FILES`), timed with LiteRT, one thread, XNNPACK, on an Apple-silicon Mac, five
    runs (`tools/voice/model_cost.py`):
 
-   | Model | Input → output | Work per 80 ms frame | Host time | Share |
+   | Model | Input → output | Work per 80 ms frame | Host time per call (elapsed) | Share |
    |---|---|---|---|---|
    | `melspectrogram` | 1760 samples → 8 × 32 | 2.2 MMAC | 0.20 to 0.29 ms | 12 to 16% |
    | `embedding_model` | 76 × 32 mel → 96 floats, 20 conv layers | **42.0 MMAC** | 1.31 to 1.85 ms | **83 to 87%** |
@@ -118,7 +118,7 @@ on screen. Which thread is it, is that work needed, and what would make it small
    ESPHome's own wake word engine, microWakeWord, runs streaming int8 models (v2, from
    `esphome/micro-wake-word-models`, Apache-2.0) on an ESP32-S3. Counted and timed the same way:
 
-   | Model | Input | Work per call | Calls per s | Work per s | Host CPU per s of audio |
+   | Model | Input | Work per call | Calls per s | Work per s | Host elapsed time per s of audio |
    |---|---|---|---|---|---|
    | openWakeWord (all three models) | 80 ms frame | 44.3 MMAC | 12.5 | 554 MMAC | about 20 ms |
    | microWakeWord `hey_jarvis` | 3 × 40 int8 features (30 ms) | 0.02 MMAC | 33 | 0.7 MMAC | 0.1 to 0.8 ms |
