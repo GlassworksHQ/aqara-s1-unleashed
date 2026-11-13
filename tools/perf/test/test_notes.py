@@ -93,14 +93,32 @@ class Shapes(unittest.TestCase):
                 self.assertLessEqual(len(" ".join(body).split()), 85)    # the maintainer's own example is 83
 
     def test_the_worst_three_limits_each_with_one_number(self):
-        """s1cam3 fails five tasks; the three furthest past their fluid bar are open the view (heavy
-        35.7 s against 4 s), scroll (heavy 5.7 fps against 30) and live updates (0.7 s against 0.2).
-        Each is quoted once, on the lightest page it fails on."""
+        """s1cam3 fails five tasks. Each is quoted once, on the lightest page it fails on, and ranked by
+        that number: live updates (heavy 0.7 s against 0.2 s), scroll (typical's slowest frames 117 ms
+        against 67 ms) and open the view (typical 6.6 s against 4 s) beat the tap (heavy 290 ms
+        against 200 ms) and the camera (typical 4.2 s against 4 s)."""
         limits = N.notes(run("s1cam3"))["limits"]
         self.assertEqual(limits, "Bigger dashboards slow down: typical scrolls at 25 fps and takes 6.6 s to open, "
                                  "and heavy takes 0.7 s to show a change.")
         self.assertNotIn("tap", limits)
         self.assertNotIn("camera", limits)
+
+    def test_a_camera_limit_quotes_only_the_number_that_fails(self):
+        """The verifier on #206: "first frame 4.2 s, 100% of frames shown" quoted a strength."""
+        t = run("s1cam3")["graded"]["reference"]["tiers"]
+        self.assertEqual(N._limit("camera", t["typical"])[1], "takes 4.2 s to show its camera")      # 100% shown passes
+        heavy = N._limit("camera", t["heavy"])[1]
+        self.assertTrue(heavy.startswith("stalls its camera for"), heavy)                          # 3.7 s first frame passes
+        for r in t["heavy"]["camera_runs"]:
+            r["stall_total_ms"] = 0
+        self.assertEqual(N._limit("camera", t["heavy"])[1], "shows 35% of its camera's frames")
+
+    def test_no_camera_credit_on_a_page_without_one(self):
+        rep = fast()
+        rep["grade"]["levels"] = {"light": "premium", "typical": None, "heavy": None}
+        good = N.notes(rep)["good"]
+        self.assertTrue(good.startswith("Light dashboards feel good"))
+        self.assertNotIn("camera", good)                                 # light has none
 
     def test_a_scroll_with_enough_frames_says_what_failed(self):
         self.assertIn("typical scrolls unevenly (slowest frames 80 ms)", N.notes(run("s1v7"))["limits"])
@@ -203,6 +221,9 @@ class CausesNeedEvidence(unittest.TestCase):
         rep = run("s1cam3")
         rep["ram"]["budget"]["checks"]["device_available_min"].update(value_kb=200_000, ok=False)
         self.assertIn("free memory falls to 195 MB", N.memory_sentence(rep))
+        rep = run("s1cam3")
+        rep["ram"]["budget"]["checks"]["device_available_min"].update(value_kb=None, ok=None)
+        self.assertEqual(N.memory_sentence(rep), "The app's memory peaks at 889 of 988 MB.")   # not "isn't the limit"
         rep["ram"] = None
         self.assertIsNone(N.memory_sentence(rep))
 
@@ -210,7 +231,7 @@ class CausesNeedEvidence(unittest.TestCase):
         self.assertNotIn("restart", N.notes(run("s1cam3"))["text"])    # poor, but it doesn't cap a D
         rep = run("s1cam3")
         rep["grade"]["capped_by_start"] = True
-        self.assertTrue(N.notes(rep)["limits"].startswith("Bigger dashboards slow down: a restart takes 12 s, and typical"))
+        self.assertTrue(N.notes(rep)["limits"].startswith("Bigger dashboards slow down: a restart takes 12 s, typical scrolls at 25 fps, and heavy"))
 
     def test_a_restart_that_wasnt_measured_is_counted(self):
         rep = run("s1cam3")
@@ -261,6 +282,14 @@ class InTheReport(unittest.TestCase):
         ram = R.reference_ram({"ref-idle": [TR.ram_idle("ref-idle", 300_000, cpu=c) for c in (40.0, 46.0, 50.0)]},
                               [], "sh.edm.s1kiosk", budgets, 2_000_000)
         self.assertEqual(ram["reference_idle"]["cpu_app_pct_of_core"]["median"], 46.0)
+
+    def test_report_md_says_provisional_once(self):
+        """The headline already gives the reasons; the notes under it leave their clause out."""
+        rep = run("s1v7")
+        md = R.markdown(dict(rep, detail={"synthetic": None}, real_use=None, apk=[]))
+        self.assertEqual(md.count("Provisional"), 1, md[:1500])
+        self.assertIn(S1V7.split(" Provisional:")[0], md)
+        self.assertIn("Provisional: measured with an older version", N.notes(rep)["text"])     # the summary keeps it
 
     def test_under_the_headline_and_in_the_summary(self):
         rep = run("s1cam3")

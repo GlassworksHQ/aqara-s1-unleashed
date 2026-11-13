@@ -1327,12 +1327,17 @@ def band_cell(b):
     return b or "n/a"
 
 
+def notes_md(n):
+    """The notes under the headline, which already says why the grade is provisional or refused."""
+    return " ".join(x for x in [n["good"], n["limits"]] + n["causes"] if x)
+
+
 def markdown(rep):
     g = rep["grade"]
     dev = rep["frame"]["device"]
     app = rep["frame"]["app"]
     out = [f"# {G.NAME} report: {rep['frame']['name']}", "", device_line(dev, app), "",
-           f"**{g['headline']}**", "", (rep.get("notes") or N.notes(rep))["text"], "",
+           f"**{g['headline']}**", "", notes_md(rep.get("notes") or N.notes(rep)), "",
            "The grade comes only from the three reference dashboards this test ships (light, typical, heavy), "
            "so it doesn't depend on your Home Assistant. Background load (panes, the radio, heat) still reaches it.", ""]
     ref = rep["graded"]["reference"]
@@ -1454,12 +1459,13 @@ def markdown(rep):
 
 
 def noise_word(measurable, tol):
-    """A share's suffix: nothing when measurable; with no tolerance (one sample a side), not measurable."""
-    return "" if measurable else " (not measurable)" if tol is None else " (within tolerance)"
+    """A share's suffix: nothing when measurable or when there is no tolerance (its cell says why)."""
+    return "" if measurable or tol is None else " (within tolerance)"
 
 
-def tol_mb(kb):
-    return "none (one sample)" if kb is None else f"±{kb / 1024:.1f} MB"
+def tol_cell(p):
+    n = f"n={p['samples_on']} on, {p['samples_off']} off"
+    return f"none: under 2 samples a side ({n})" if p["pss_tolerance_kb"] is None else f"±{p['pss_tolerance_kb'] / 1024:.1f} MB ({n})"
 
 
 def budget_word(ok):
@@ -1520,7 +1526,7 @@ def ram_markdown(ram):
             word = "not measurable" if pb.get("measurable") is False else budget_word(pb.get("ok"))
             cap = "none" if pb.get("budget_kb") is None else f"{pb['budget_kb'] / 1024:.0f} MB, {word}"
             out.append(f"| {p['id']} | {p['pss_kb'] / 1024:+.1f} MB{noise_word(p['pss_measurable'], p['pss_tolerance_kb'])} "
-                       f"| {tol_mb(p['pss_tolerance_kb'])} (n={p['samples_on']} on, {p['samples_off']} off) | {cap} "
+                       f"| {tol_cell(p)} | {cap} "
                        f"| {p['cpu_pct_of_core']:+.1f} % of a core{noise_word(p['cpu_measurable'], p['cpu_tolerance_pct'])} |")
         out += [""] + [f"- {n}" for n in notes] if notes else []
     if ram.get("screen_off_samples"):

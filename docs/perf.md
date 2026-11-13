@@ -709,12 +709,14 @@ is 83; the test caps it at 85), plus one when the grade is provisional:
 1. **What's good**, in one sentence: the heaviest page that reaches a level, and what is quick,
    smooth or fluid there ("Light dashboards feel good: …"). Without a level, the page with the most
    good or fluid tasks ("… come closest").
-2. **What holds it back**, in one sentence, at most three limits. They are the tasks furthest past
-   their fluid bar on any page (rubric.json: scroll 30 fps and 67 ms, a change 200 ms, a tap
-   200 ms, open the view 4 s, a camera's first frame 4 s and 85% of frames shown). Each gets one
-   rounded number, on the lightest page it fails on. A scroll with enough frames on average but
-   uneven ones says its slowest frames instead of its fps. The restart is named only when it caps
-   the letter.
+2. **What holds it back**, in one sentence, at most three limits. Each failing task is quoted
+   once, with one rounded number, on the lightest page it fails on, and ranked by how far that
+   number is past its fluid bar (rubric.json: scroll 30 fps and 67 ms, a change 200 ms, a tap
+   200 ms, open the view 4 s, a camera's first frame 4 s, 85% of its frames shown and 1 s of
+   stalls). So the number shown is why it was picked. Only a number that fails is quoted: a scroll
+   with enough frames on average but uneven ones gives its slowest frames, and a camera its first
+   frame, its frames shown or its stalls, whichever is furthest past. The restart is named only
+   when it caps the letter.
 3. **The likely cause**, in one sentence, only when the report holds evidence for it. The first
    that applies:
 
@@ -726,12 +728,15 @@ is 83; the test caps it at 85), plus one when the grade is provisional:
    | The test itself | The fake Home Assistant sent a change more than 200 ms late | "its fake Home Assistant sent changes late" |
 
 4. **Memory**, when RAM was measured: "Memory isn't the limit (X of Y MB)", the app's peak against
-   its budget, or "Memory is a limit" with the budget it misses.
+   its budget, when both the peak and the device's available memory are within the frame's budgets;
+   "Memory is a limit" with the budget it misses; or only the peak ("The app's memory peaks at X
+   of Y MB") when available memory wasn't read.
 5. **Provisional**, only when the grade is: one plain clause from the run's protocols and what is
    missing, not the reasons' wording. A run of an older protocol reads "measured with an older
    version of the test" (", without cameras" when its camera tasks are missing, since cameras came
    with protocol 5); every other reason and missing task is counted ("2 things weren't measured
-   fully"). The report keeps the reasons in full (`grade.provisional_reasons`).
+   fully"). The report keeps the reasons in full (`grade.provisional_reasons`). report.md leaves
+   this clause out under its headline, which already gives the reasons.
 
 Not said: heat, unless something shows throttling (the run records temperatures, in `thermal`, but
 no clock speeds), and nothing on long tasks, which the run doesn't record. The notes judge tasks by
@@ -925,11 +930,13 @@ Assistant:
   less the median of the "off" samples, both counted **without `:boot`** (below). With `--runs 3`,
   each median is of three samples.
 - **The tolerance** is the larger noise band of the two sets (`perflib.noise_band`): twice an
-  estimate of one sample's standard deviation σ. Up to four samples the estimate is the range
-  divided by d2(n) (1.128, 1.693, 2.059 for two, three, four: the expected range of n normal
-  samples, the control-chart constant). From five it is 1.4826 × the median absolute deviation, so
-  one odd sample doesn't set it. Both estimate σ, so the band doesn't grow with more runs, unlike
-  max − min. Not the median absolute deviation at three: it is the smaller of the two gaps, so two
+  estimate of one sample's standard deviation σ. Up to seven samples the estimate is the range
+  divided by d2(n) (1.128, 1.693, 2.059, 2.326, 2.534, 2.704 for two to seven: the expected range
+  of n normal samples, the control-chart constant). From eight it is 1.4826 × the median absolute
+  deviation, so one odd sample doesn't set it; there it averages about 1.8 σ, a little under the
+  range's 2 σ, and reads a zero difference as measurable in under 1% of runs (simulated). The MAD
+  at five averaged only 1.64 σ (5% false "measurable"; the verifier on #196), so the range runs to
+  seven. Both estimate σ, so the band doesn't grow with more runs, unlike max − min. Not the median absolute deviation at three: it is the smaller of the two gaps, so two
   samples that agree gave 0 whatever the third (the verifier on #196: 11% of normal draws under
   0.2 σ). Under two samples on either side there is no tolerance (`null`) and the share isn't
   measurable. CPU's tolerance is the same band.
@@ -986,15 +993,17 @@ Assistant:
 
   On s1p3's own samples (computed with this report, 2026-11-13, not a new run):
 
-  | s1p3, as | Tolerance | Assist PSS | Sendspin PSS | Budget check |
-  |---|---|---|---|---|
-  | reported then (max − min, `:boot` in) | ±31.6 MB | +5.2 MB | +0.3 MB | "ok" (wrongly) |
-  | recorded, read now (noise band, `:boot` apart) | ±37.4 MB | +5.2 MB | −1.5 MB | not measurable |
-  | without the cold first sample (as the warm-up should give) | ±10.4 MB | +2.3 MB | −4.4 MB | not measurable (2 "off" samples) |
+  | s1p3, as | Assist PSS (tolerance) | Sendspin PSS (tolerance) | Budget check |
+  |---|---|---|---|
+  | reported then (max − min, `:boot` in) | +5.2 MB (±31.6) | +0.3 MB (±31.6) | "ok" (wrongly) |
+  | recorded, read now (noise band, `:boot` apart) | +5.2 MB (±37.4) | −1.5 MB (±37.4) | not measurable |
+  | without the cold first sample (as the warm-up should give) | +2.3 MB (±10.2) | −4.4 MB (±10.4) | not measurable (2 "off" samples) |
 
   Read now, the recorded tolerance is wider than before: with three samples the cold one counts in
   full, as it should. The last row leaves `ref-panes-off-1` out, so its "off" set has two samples
-  and gets no budget verdict; its tolerance, ±10.4 MB, is within a quarter of the 48 MB budget. A
+  and gets no budget verdict; both panes' tolerances (Assist ±10.2 MB, Sendspin ±10.4 MB) are
+  within a quarter of the 48 MB budget. Each pane's tolerance is the larger of its own "on" set's
+  band and the shared "off" set's, so the panes differ only when an "on" set is the noisier. A
   run with the warm-up has three warm ones. Whether it brings the S1 near ±10 MB is for the next
   run on the panel (after #181).
 - **Waiting on #67**: `radio`, `wall-base`, `timers`, `time-zone` and `diagnostics` have no on/off switch until
@@ -1270,7 +1279,7 @@ above), so Assist is off by its microphone mute: its running cost, not the model
 Assist's CPU matches [#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)'s 37%
 (the wake word's model). Neither pane's PSS is measurable at this tolerance, so these runs can't say
 whether either fits its 48 MB budget. Read with the noise band and `:boot` apart, the same samples
-give ±37.4 MB, and ±10.4 MB without the cold first sample ([RAM](#ram)). The app at idle on the typical
+give ±37.4 MB for both, and ±10.2 MB (Assist) and ±10.4 MB (Sendspin) without the cold first sample ([RAM](#ram)). The app at idle on the typical
 reference dashboard, all panes off: 565 to 596 MB.
 
 **smoke9** (8c0027b, one run, 2026-11-13, protocol 4 as first written: each reference dashboard a

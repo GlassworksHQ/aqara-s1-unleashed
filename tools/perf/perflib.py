@@ -62,14 +62,15 @@ def spread(values):
 
 
 # d2(n): the expected range of n normal samples in standard deviations (the control-chart constant).
-D2 = {2: 1.128, 3: 1.693, 4: 2.059}
+D2 = {2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534, 7: 2.704}
 
 
 def noise_band(xs):
     """Twice an estimate of one sample's standard deviation (#186), or None under two samples.
-    Up to four samples: the range / d2(n), since the median absolute deviation of three samples is the
-    smaller of two gaps and is 0 when two agree. From five: 1.4826 × the median absolute deviation, so
-    one odd sample doesn't set it. Both estimate σ, so the band doesn't grow with more samples.
+    Up to seven samples: the range / d2(n), since the median absolute deviation of three samples is
+    the smaller of two gaps and is 0 when two agree, and at five it still averages only 1.64 σ. From
+    eight: 1.4826 × the median absolute deviation (about 1.8 σ there), so one odd sample doesn't set
+    it. Both estimate σ, so the band doesn't grow with more samples.
     test_report.NoiseBand checks it by simulation."""
     if len(xs) < 2:
         return None

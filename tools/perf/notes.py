@@ -26,6 +26,7 @@ TAP_MS = G.METRICS["inp_ms"]["good_max"]          # fluid accepts a good tap onl
 OPEN_MS = G.METRICS["load_ms"]["poor_above"]       # fluid accepts good and needs-improvement
 CAM_FIRST_MS = _CAM["fluid"]["first_frame_max_ms"]
 CAM_SHOWN_PCT = _CAM["fluid"]["shown_min_pct"]
+CAM_STALL_MS = _CAM["fluid"]["stall_total_max_ms"]
 
 # A camera page starves (the player asks for video late) when a stream's segments arrive this far
 # apart, against 1 s segments (camera.py SEGMENT_S), while each fetch is quicker than FAST_FETCH_MS.
@@ -68,10 +69,12 @@ def _tiers(rep):
 
 
 def _camera(t):
+    """Medians of each run's worst stream: first frame, % shown, stalls in all."""
     runs = (t or {}).get("camera_runs") or []
-    ff = [r["first_frame_ms"] for r in runs if r.get("first_frame_ms") is not None]
-    shown = [r["shown_pct"] for r in runs if r.get("shown_pct") is not None]
-    return (statistics.median(ff) if ff else None), (statistics.median(shown) if shown else None)
+    def med(k):
+        xs = [r[k] for r in runs if r.get(k) is not None]
+        return statistics.median(xs) if xs else None
+    return med("first_frame_ms"), med("shown_pct"), med("stall_total_ms")
 
 
 def _limit(task, t):
@@ -94,11 +97,14 @@ def _limit(task, t):
         v = _med(t["inp_ms"])
         return v / TAP_MS, f"takes {_time(v)} to answer a tap"
     if task == "camera":
-        ff, shown = _camera(t)
-        if shown is not None and shown < CAM_SHOWN_PCT:
-            return CAM_SHOWN_PCT / max(shown, 1), f"shows {shown:.0f}% of its camera's frames"
-        if ff is not None:
-            return ff / CAM_FIRST_MS, f"takes {_time(ff)} to show its camera"
+        # Only the number that fails its bar (a passing one would read as a strength): the furthest past.
+        ff, shown, stall = _camera(t)
+        options = [(ff / CAM_FIRST_MS, f"takes {_time(ff)} to show its camera") if ff is not None else None,
+                   (CAM_SHOWN_PCT / max(shown, 1), f"shows {shown:.0f}% of its camera's frames") if shown is not None else None,
+                   (stall / CAM_STALL_MS, f"stalls its camera for {_time(stall)}") if stall is not None else None]
+        options = [o for o in options if o]
+        failing = [o for o in options if o[0] > 1]
+        return max(failing or options) if options else None
     return None
 
 
@@ -135,8 +141,9 @@ def good_sentence(rep):
 
 
 def limits_sentence(rep):
-    """The worst limits (furthest past their fluid bar on any page), each quoted once, on the
-    lightest page it fails on. A slow restart only when it caps the letter."""
+    """The worst limits, each quoted once on the lightest page it fails on, and ranked by how far
+    that quoted number is past its fluid bar, so the number shown is the reason it was picked. A
+    slow restart only when it caps the letter."""
     bands, tiers = _bands(rep), _tiers(rep)
     found = []
     for t in G.TASKS:
@@ -144,9 +151,8 @@ def limits_sentence(rep):
         scored = [(p, _limit(t, tiers.get(p))) for p in bad]
         scored = [(p, s) for p, s in scored if s]
         if scored:
-            worst = max(s[0] for _, s in scored)
-            page, (_, phrase) = scored[0]
-            found.append((worst, PAGES.index(page), G.TASKS.index(t), page, phrase))
+            page, (how_far, phrase) = scored[0]
+            found.append((how_far, PAGES.index(page), G.TASKS.index(t), page, phrase))
     found.sort(key=lambda f: (-f[0], f[1], f[2]))
     g = rep.get("grade") or {}
     restart = g.get("capped_by_start") and (g.get("start") or {}).get("value")
@@ -241,8 +247,11 @@ def memory_sentence(rep):
         return f"Memory is a limit: the app peaks at {mb(peak['value_kb'])} MB, over its {mb(peak['budget_kb'])} MB budget."
     if avail.get("ok") is False:
         return f"Memory is a limit: free memory falls to {mb(avail['value_kb'])} MB, under the {mb(avail['budget_kb'])} MB the frame keeps."
-    if peak.get("ok"):
+    if peak.get("ok") and avail.get("ok"):
         return f"Memory isn't the limit ({mb(peak['value_kb'])} of {mb(peak['budget_kb'])} MB)."
+    if peak.get("ok"):
+        # Available memory wasn't read: only the app's own peak is known.
+        return f"The app's memory peaks at {mb(peak['value_kb'])} of {mb(peak['budget_kb'])} MB."
     return None
 
 
