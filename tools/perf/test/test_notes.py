@@ -225,6 +225,17 @@ class CausesNeedEvidence(unittest.TestCase):
             r["media"]["codecs"] = ["c2.android.avc.decoder"]
         self.assertIn("even though the decoder keeps up", self.cause(rep))   # not "hardware"
 
+    def test_webrtc_runs_carry_no_segment_evidence(self):
+        """#202: on a WebRTC run the segment fetches are the HLS player's, before WebRTC took over."""
+        rep = run("s1cam3")
+        for r in rep["graded"]["reference"]["tiers"]["heavy"]["camera_runs"]:
+            r["path"] = "web_rtc"
+        self.assertNotIn("cameras get video late", self.cause(rep))
+        rep = self.no_main(rep)
+        for r in rep["graded"]["reference"]["tiers"]["heavy"]["camera_runs"]:
+            r["fetches"]["segment"]["total_ms"] = {"median": 800, "p95": 1500, "max": 2000}
+        self.assertNotIn("link", self.cause(rep))
+
     def test_slow_fetches_point_at_the_link(self):
         rep = self.no_main(run("s1cam3"))
         self.assertNotIn("link", self.cause(rep))
@@ -263,9 +274,16 @@ class CausesNeedEvidence(unittest.TestCase):
         self.assertTrue(N.notes(rep)["limits"].startswith("Bigger dashboards slow down: a restart takes 12 s, typical scrolls at 25 fps, and heavy"))
 
     def test_a_restart_that_wasnt_measured_is_counted(self):
-        rep = run("s1cam3")
+        rep = current(run("s1cam3"))
         rep["grade"].update(start={"value": None, "band": None}, missing=["start"], provisional=True)
         self.assertTrue(N.notes(rep)["text"].endswith("Provisional: 1 thing wasn't measured fully."))
+
+
+def current(rep):
+    """A fixture run as if it ran this rubric's protocol: s1cam3 ran protocol 5, and since #202 the
+    rubric is for protocol 6, which these tests aren't about."""
+    rep["graded"]["reference"]["protocols"] = [G.PROTOCOL_VERSION]
+    return rep
 
 
 class Provisional(unittest.TestCase):
@@ -278,7 +296,7 @@ class Provisional(unittest.TestCase):
         self.assertIn("the pages ran protocol 4; this rubric is for protocol 5", rep["grade"]["provisional_reasons"])
 
     def test_other_reasons_and_missing_tasks_are_counted(self):
-        rep = run("s1cam3")
+        rep = current(run("s1cam3"))
         rep["grade"].update(provisional=True, missing=["heavy.updates"],
                             provisional_reasons=["1 of 3 graded runs failed or are missing", "the fake Home Assistant sent a live change 250 ms late"])
         self.assertEqual(N.provisional_sentence(rep), "Provisional: 3 things weren't measured fully.")

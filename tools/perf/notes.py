@@ -195,7 +195,11 @@ def limits_sentence(rep):
 
 def _starving_run(r):
     """True when one run shows a player that gets video late while its decoder keeps up; None when
-    the run lacks any of the three kinds of evidence (they are never combined across runs)."""
+    the run lacks any of the three kinds of evidence (they are never combined across runs). HLS runs
+    only: a WebRTC run's segment fetches are the HLS player's, which runs only until WebRTC has video
+    (#202), so they say nothing about the stream that was graded."""
+    if (r.get("path") or "hls") != "hls":
+        return None
     seg = ((r.get("fetches") or {}).get("segment")) or {}
     gap, fetch = seg.get("arrival_gap_max_ms"), (seg.get("total_ms") or {}).get("p95")
     decoded = sum(s.get("decoded") or 0 for s in r.get("detail") or [])
@@ -228,7 +232,7 @@ def _slow_fetch(rep):
         if (_bands(rep).get(p) or {}).get("camera") in NOT_A_LIMIT:
             continue
         p95 = [((r.get("fetches") or {}).get("segment") or {}).get("total_ms", {}).get("p95")
-               for r in _tiers(rep).get(p, {}).get("camera_runs") or []]
+               for r in _tiers(rep).get(p, {}).get("camera_runs") or [] if (r.get("path") or "hls") == "hls"]
         if any(x is not None and x >= SLOW_FETCH_MS for x in p95):
             return True
     return False
