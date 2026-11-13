@@ -351,6 +351,9 @@ class FakeSplitsLikeThePage(unittest.TestCase):
         import fake_adb as F
         with open(os.path.join(os.path.dirname(HERE), "page", "tiers.json")) as f:
             self.assertEqual(json.load(f)["PROTOCOL"], F.PROTOCOL)
+        # Equal today also when the fake writes the number itself; it must read it from the pages.
+        with open(os.path.join(HERE, "fake_adb.py")) as f:
+            self.assertEqual(re.findall(r"PROTOCOL\s*=\s*\d|[\"']protocol[\"']\s*:\s*\d", f.read()), [])
 
 
 class LongLines(unittest.TestCase):
@@ -382,7 +385,7 @@ class LongLines(unittest.TestCase):
         with open(os.path.join(tmp, "device.json"), "w") as f:
             json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
         rep = report.build(tmp)
-        self.assertIn("4 page line(s) didn't parse (cut off in logcat?)", rep["grade"]["provisional_reasons"])
+        self.assertIn("4 page line(s) didn't parse or never arrived whole (cut off in logcat?)", rep["grade"]["provisional_reasons"])
         t = rep["graded"]["reference"]["tiers"]["light"]
         self.assertIsNotNone(t["scroll"])
         self.assertEqual(t["updates_errors"], ["the page's updates step never arrived"])
@@ -936,10 +939,21 @@ class PaneRam(unittest.TestCase):
         def st(voice, mic_muted, sendspin):
             return [{"mic_muted": mic_muted, "sendspin_enabled": sendspin}, {"voice_enabled": voice}]
         off, assist, sendspin = st("false", "true", "false"), st("true", "false", "false"), st("false", "true", "true")
-        self.assertEqual(self.read("intents.json"), (off + assist + sendspin) * 2 + st("true", "false", "false"))
+        # A warm-up cycle first (#186), then the two recorded ones.
+        self.assertEqual(self.read("intents.json"), (off + assist + sendspin) * 3 + st("true", "false", "false"))
         self.assertEqual(self.read("settings.json"), {"voice_enabled": "true", "sendspin_enabled": "false", "mic_muted": "false"})   # as given
         self.assertEqual(self.read("saved_url.json"), RESTORE)
-        self.assertEqual(self.read("urls_set.json"), ["http://127.0.0.1:18091/clarity-ref/typical"] * 6 + [RESTORE])
+        self.assertEqual(self.read("urls_set.json"), ["http://127.0.0.1:18091/clarity-ref/typical"] * 9 + [RESTORE])
+
+    def test_the_warm_up_cycle_is_sampled_but_not_reported(self):
+        """#186: s1p3's first sample had the GPU process 15 MB low. Cycle 0 runs every state and keeps
+        its files in warmup/, which the report doesn't read."""
+        self.assertEqual(sorted(os.listdir(os.path.join(self.out, "warmup"))),
+                         sorted(f"{k}-ref-{s}-0.json" for k in ("idle", "panes") for s in ("panes-off", "assist-on", "sendspin-on")))
+        self.assertFalse([f for f in os.listdir(self.out) if f.endswith("-0.json")])
+        with open(os.path.join(self.out, "report.json")) as f:
+            ram = json.load(f)["ram"]
+        self.assertEqual({(p["samples_on"], p["samples_off"]) for p in ram["panes"]}, {(2, 2)})
 
     def test_the_report_gives_each_panes_share(self):
         with open(os.path.join(self.out, "report.json")) as f:
@@ -956,7 +970,8 @@ class PaneRam(unittest.TestCase):
         self.assertNotIn("off_by", panes["assist"])
         with open(os.path.join(self.out, "panes-ref-assist-on-1.json")) as f:
             self.assertEqual(json.load(f)["state"], {"voice": True, "sendspin": False, "mic": True})
-        self.assertEqual(ram["pane_budget"]["assist"], {"value_kb": 30000, "budget_kb": 49152, "ok": True})
+        self.assertEqual(ram["pane_budget"]["assist"], {"value_kb": 30000, "budget_kb": 49152, "tolerance_kb": 0,
+                                                        "measurable": True, "ok": True})
         self.assertEqual({p["id"] for p in ram["panes_waiting"]}, {"radio", "wall-base", "timers", "time-zone", "diagnostics"})
         self.assertIsNone(ram["reference_idle"])          # no graded runs here
 

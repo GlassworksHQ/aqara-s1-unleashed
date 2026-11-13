@@ -61,6 +61,14 @@ def spread(values):
     return {"median": _r2(statistics.median(xs)), "min": _r2(min(xs)), "max": _r2(max(xs)), "n": len(xs)}
 
 
+def noise_band(xs):
+    """Twice the robust standard deviation of repeated samples: 2 × 1.4826 × their median absolute
+    deviation from the median. Unlike max − min it doesn't grow with more samples, and one odd sample
+    doesn't set it (#186). For three normal samples it is about the expected range (1.7 σ)."""
+    m = statistics.median(xs)
+    return 2 * 1.4826 * statistics.median(abs(x - m) for x in xs)
+
+
 # ---- SurfaceFlinger `dumpsys SurfaceFlinger --latency <layer>`
 # Line 1 is the refresh period in ns; each later line is desired-present, actual-present and
 # frame-ready time in ns (CLOCK_MONOTONIC). Unpresented rows are 0 or INT64_MAX.

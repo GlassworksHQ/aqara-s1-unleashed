@@ -1227,9 +1227,15 @@ def ram_idle(label, main_kb, cpu=1.0):
             "cpu": {"procs_pct_of_core": {pkg: cpu}, "device_busy_pct": 10}}
 
 
+def with_boot(sample, boot_kb=29_000):
+    s = dict(sample, processes=dict(sample["processes"]))
+    s["processes"]["sh.edm.s1kiosk:boot"] = {"pid": 3, "role": "boot", "pss_kb": boot_kb, "rss_peak_kb": boot_kb}
+    return s
+
+
 class PaneOnAlone(unittest.TestCase):
     """#68: a pane's share is the median of its on-alone samples less the median of the all-off ones;
-    the tolerance is the larger spread of the two sets."""
+    the tolerance is the larger noise band (2 × 1.4826 × MAD) of the two sets (#186)."""
 
     def test_share_and_tolerance(self):
         idles = {"ref-panes-off": [ram_idle("ref-panes-off", v) for v in (100_000, 104_000, 101_000)],
@@ -1237,11 +1243,35 @@ class PaneOnAlone(unittest.TestCase):
                  "ref-sendspin-on": [ram_idle("ref-sendspin-on", v) for v in (102_000, 103_000, 101_000)]}
         panes = {p["id"]: p for p in R.pane_on_alone(idles, "sh.edm.s1kiosk")}
         self.assertEqual(panes["assist"]["pss_kb"], 30_000)                  # 331 000 - 301 000
-        self.assertEqual(panes["assist"]["pss_tolerance_kb"], 6_000)         # the on set's spread is the larger
+        self.assertEqual(panes["assist"]["pss_tolerance_kb"], 2_965)         # MAD 1 000 in each set; max - min was 6 000
         self.assertTrue(panes["assist"]["pss_measurable"])
         self.assertEqual(panes["sendspin"]["pss_kb"], 1_000)
-        self.assertFalse(panes["sendspin"]["pss_measurable"])                # inside the 4 000 tolerance
+        self.assertFalse(panes["sendspin"]["pss_measurable"])                # inside the 2 965 tolerance
         self.assertEqual(panes["assist"]["by_role_pss_kb"], {"gpu": 0, "main": 30_000})
+        self.assertEqual((panes["assist"]["boot_samples_on"], panes["assist"]["boot_pss_kb"]), (0, None))
+
+    def test_the_tolerance_doesnt_grow_with_more_samples(self):
+        """#186: max - min only grows with n. Nine samples with the same scatter as three, plus one
+        odd one, keep the tolerance of three."""
+        three = [100_000, 101_000, 102_000]
+        nine = three * 3 + [130_000]
+        def tol(off):
+            idles = {"ref-panes-off": [ram_idle("ref-panes-off", v) for v in off],
+                     "ref-assist-on": [ram_idle("ref-assist-on", v + 30_000) for v in three]}
+            return R.pane_on_alone(idles, "sh.edm.s1kiosk")[0]["pss_tolerance_kb"]
+        self.assertEqual(tol(three), 2_965)
+        self.assertEqual(tol(nine), 2_965)
+
+    def test_boot_is_reported_apart_from_the_share(self):
+        """#186: `:boot` (29 MB) ran in 1 of 3 Sendspin samples in s1p3 and made its tolerance ±22 MB."""
+        off = [ram_idle("ref-panes-off", v) for v in (100_000, 101_000, 102_000)]
+        on = [ram_idle("ref-sendspin-on", v) for v in (110_000, 111_000)] + [with_boot(ram_idle("ref-sendspin-on", 112_000))]
+        p = R.pane_on_alone({"ref-panes-off": off, "ref-sendspin-on": on}, "sh.edm.s1kiosk")[0]
+        self.assertEqual((p["pss_kb"], p["pss_tolerance_kb"]), (10_000, 2_965))
+        self.assertEqual((p["boot_samples_on"], p["boot_samples_off"], p["boot_pss_kb"]), (1, 0, 29_000))
+        self.assertNotIn("boot", p["by_role_pss_kb"])
+        md = "\n".join(R.ram_markdown({"panes": [p], "pane_budget": {}}))
+        self.assertIn("`:boot` (28.3 MB) ran in 1 of 3 on and 0 of 3 off sample(s)", md)
 
     def test_nothing_without_the_all_off_samples(self):
         self.assertEqual(R.pane_on_alone({"ref-assist-on": [ram_idle("ref-assist-on", 1)]}, "sh.edm.s1kiosk"), [])
@@ -1256,7 +1286,7 @@ class PaneOnAlone(unittest.TestCase):
         self.assertEqual(ram["reference_idle"]["app_pss_kb"]["median"], 500_000)
         self.assertEqual(ram["graded_peak"]["app_pss_kb"], 540_000)
         self.assertEqual(ram["graded_peak"]["by_role_pss_kb"], {"gpu": 200_000, "main": 340_000})
-        self.assertEqual(ram["pane_budget"]["assist"]["ok"], False)          # 30 MB against 20 MB
+        self.assertEqual(ram["pane_budget"]["assist"]["ok"], False)          # 30 MB against 20 MB, one sample each
         self.assertEqual(ram["panes_waiting"], [{"id": "radio", "waiting_on": "#67"}])
         self.assertTrue(ram["budget"]["ok"])
         self.assertIsNone(R.reference_ram({}, [], "sh.edm.s1kiosk", budgets, 2_000_000))

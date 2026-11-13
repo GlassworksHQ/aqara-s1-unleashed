@@ -69,7 +69,7 @@ tools/perf/run.sh --frame aqara-s1-plus --name "Aqara S1 Plus" --runs 3 \
 | `--serial` | `$ANDROID_SERIAL` | Which device |
 | `--runs` | 3 | Repeats of each part. The report gives the median and range |
 | `--restore-dashboard` | (required for the grade) | The kiosk's dashboard setting now: a URL, or `auto`. The graded part puts it back when it ends and on any exit. The runner can't read it (it never reads app data), so you give it. It can't be the fake Home Assistant's address |
-| `--pane-ram` | | Also measure each switchable pane's RAM, with the panes' settings now, which it puts back: `assist=on,sendspin=on,mic=on` (`mic` is Assist's microphone: on unless muted). See [RAM](#ram) |
+| `--pane-ram` | | Also measure each switchable pane's RAM, with the panes' settings now, which it puts back: `assist=on,sendspin=on,mic=on` (`mic` is Assist's microphone: on unless muted). It runs one warm-up cycle first, not recorded. See [RAM](#ram) |
 | `--taps` | 10 | Taps on each reference dashboard's toggle. 0 skips them: tap isn't measured, which fails every level, so the grade is E, provisional |
 | `--skip-synthetic`, `--skip-reference`, `--skip-real-use` | | Skip the animation test page (detail), the reference dashboards (the grade), or the real-use part. Skipping the reference dashboards gives no grade (refused, not an E) |
 | `--quick` | | Short ladder on the animation test page (1, 16 and 128 elements), to check the setup works |
@@ -874,10 +874,14 @@ Assistant:
 - **Per pane**, with `--pane-ram assist=on,sendspin=on,mic=on` (the settings now, put back
   afterwards). The kiosk is pointed at the typical reference dashboard. In each run the runner turns every switchable
   pane off and takes an idle sample (`ref-panes-off`), then turns each pane on by itself and takes one
-  (`ref-<pane>-on`). A pane's share is the median of its "on" samples less the median of the "off"
-  samples. The **tolerance** is the larger spread (max − min) of the two sets; a share inside it is
-  reported as "within tolerance", not as a number to act on. With `--runs 3`, each median is of
-  three samples. The switches are the kiosk's own extras, named in the frame's `budgets.json`
+  (`ref-<pane>-on`). Before the first run it does one **warm-up cycle**, every state once, whose
+  files go to `warmup/` and aren't in the report (#186: the first sample ran low, below). A pane's
+  share is the median of its "on" samples less the median of the "off" samples, both counted
+  **without `:boot`** (below). The **tolerance** is the larger noise band of the two sets:
+  2 × 1.4826 × the median absolute deviation (`perflib.noise_band`), twice a standard deviation
+  that one odd sample doesn't set. For three samples it is about what max − min was, but it doesn't
+  grow with more runs. A share inside it is reported as "within tolerance", not as a number to act
+  on. With `--runs 3`, each median is of three samples. CPU's tolerance is the same band. The switches are the kiosk's own extras, named in the frame's `budgets.json`
   (`switch`): `voice_enabled` for `assist` and `sendspin_enabled` for `sendspin`. `mute` names
   Assist's microphone mute (`mic_muted`) and `state` what the kiosk's log shows while the pane runs
   (below). Turning Assist off
@@ -901,25 +905,34 @@ Assistant:
   wake word, recorder and inference; [idle-cpu.md](research/idle-cpu.md) step 7), not the code and
   model it loads. The report says so (`off_by: "mute"`). s1v7's pane numbers are not valid; the S1's
   are s1p1 and s1p3 ([Example](#example-aqara-s1-plus)).
-- **The tolerance is too wide for the pane budgets yet.** On the S1 (s1p3, 2026-11-13) it was
-  ±31.6 MB, two thirds of the 48 MB budget. A share with that uncertainty can't establish whether
-  the pane fits its budget. The budget check (`pane_budget`, and the summary's `budget_ok`) compares
-  the share alone, so its "ok" says nothing about fit while the share isn't measurable. Two things
-  made it wide, neither of them a pane:
-  1. **The first sample is low.** In both s1p1 and s1p3 the first sample (`ref-panes-off-1`) had
+- **The budget check needs a tolerance it can trust.** A pane's budget is checked (`pane_budget`,
+  and the summary's `budget_ok`) only when the tolerance is at most a quarter of the budget
+  (`grade.PANE_TOLERANCE_MAX_OF_BUDGET`). Then a share read as "ok" is at most a quarter over it.
+  Wider, the check says **not measurable** (`measurable: false`, `ok: null`), not "ok". On the S1
+  (s1p3, 2026-11-13) the tolerance was ±31.6 MB (max − min), two thirds of the 48 MB budget, and
+  the report still said "ok". Two things made it wide, neither of them a pane (#186):
+  1. **The first sample was low.** In both s1p1 and s1p3 the first sample (`ref-panes-off-1`) had
      the GPU process at 141 to 142 MB, against 155 to 157 MB in every later one. In s1p3 the app was
-     17.4 to 33.3 MB under the other samples (with `:boot` left out). It sets the panes-off spread (564.7 to 596.4 MB).
+     17.4 to 33.3 MB under the other samples (with `:boot` left out). It set the panes-off spread
+     (564.7 to 596.4 MB). The warm-up cycle is for this. Why the first sample is low is untested.
   2. **`:boot` comes and goes.** The direct-boot home activity's process (29.2 MB) was in 2 of 12
      samples (s1p1's `ref-sendspin-on-1` and s1p3's `ref-sendspin-on-3`), not in the other two
      Sendspin samples. That is what s1p1's Sendspin +50 MB was. Why it runs then is untested; it is a
-     HOME activity, so a restart may start it.
+     HOME activity, so a restart may start it. It isn't a pane, so a pane's share leaves it out, and
+     the report says how often it ran (`boot_samples_on`, `boot_samples_off`) and its size
+     (`boot_pss_kb`).
 
-  Leaving out s1p3's first sample and counting the app without `:boot` gives a tolerance of about
-  ±9 MB, from the same samples (computed, not a new run). So the fix, not made yet: an unrecorded
-  warm-up cycle before the first run, and `:boot` reported apart from the pane's share (or a RAM
-  read that waits for it to exit). More runs alone won't do it: the tolerance is the spread
-  (max − min), which only grows with more samples. With more runs it would have to be another
-  statistic, such as the median absolute deviation.
+  On s1p3's own samples (computed with this report, 2026-11-13, not a new run):
+
+  | s1p3, as | Tolerance | Assist PSS | Sendspin PSS | Budget check |
+  |---|---|---|---|---|
+  | reported then (max − min, `:boot` in) | ±31.6 MB | +5.2 MB | +0.3 MB | "ok" (wrongly) |
+  | recorded, read now (noise band, `:boot` apart) | ±17.1 MB | +5.2 MB | −1.5 MB | not measurable |
+  | without the cold first sample (as the warm-up should give) | ±8.5 MB | +2.3 MB | −4.4 MB | ok |
+
+  The last row leaves `ref-panes-off-1` out, so its "off" set has two samples; a run with the
+  warm-up has three warm ones. Whether the warm-up brings the S1 to about ±9 MB is for the next run
+  on the panel (after #181).
 - **Waiting on #67**: `radio`, `wall-base`, `timers`, `time-zone` and `diagnostics` have no on/off switch until
   [#67](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/67), so they aren't measured on
   their own. The report lists them. The radio's processes are measured where they run.
@@ -984,8 +997,8 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `frame` | `id`, `name`, `device` (model, Android, API, ABI, SoC, CPU, RAM, display with density and refresh, temperatures), `app` (package, version, APK bytes on the device, GeckoView version) |
 | `apk` | One entry per APK given with `--apk`: `abis`, `bytes`, `parts_bytes` (dex, native, assets, resources, other) |
 | `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (over 200 ms, one update interval, is provisional). `null` without the log, which is provisional for protocol 4 |
-| `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb`, `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`, `verified`, `excluded`, and `off_by: "mute"` when Assist was off by its mute alone; or `id`, `method` and `error` when no sample ran as asked), `screen_off_samples` (idle samples the screen went off in, left out), `panes_waiting` (`id`, `waiting_on`, `note`), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `ok`). See [RAM](#ram) |
-| `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts (a run failed, a task was measured in fewer runs, scrolling rests on rAF only, the pages ran another protocol) |
+| `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb`, `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`, `verified`, `excluded`, `boot_samples_on` and `boot_samples_off` (samples `:boot` ran in, left out of the share), `boot_pss_kb` (its median PSS, or `null`), and `off_by: "mute"` when Assist was off by its mute alone; or `id`, `method` and `error` when no sample ran as asked), `screen_off_samples` (idle samples the screen went off in, left out), `panes_waiting` (`id`, `waiting_on`, `note`), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `tolerance_kb`, `measurable` (the tolerance is at most a quarter of the budget), `ok` (`null` when not measurable)). See [RAM](#ram) |
+| `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts: the kiosk's own page never finished loading in a graded run; graded runs failed or are missing; the restart or a task was measured in fewer runs than attempted; a page's live changes rest on a loose clock tie; no swipe ran during the live updates; scrolling rests on rAF only; the fake Home Assistant's log is missing, or it didn't know or failed a command, or sent a change late; page lines didn't parse or never arrived whole (`bad_page_lines`); swipes were answered with no scroll step back (`lost_scroll_steps`); the pages ran another protocol; the viewport couldn't be checked |
 | `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `camera_runs` (each run's worst stream, with each stream as `detail`, and as detail `fetches` (the HLS fetch times) and `media` (the decoders the view got, from logcat)), `camera_levels` (per run) and `camera_level` (graded), `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
 | `detail` | `synthetic`, the animation test page: `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `steps_without_sf`, `screen_off_runs` (left out of the rest), `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `page_lcp_ms`, `page_lcp_from`, `per_run` |
 | `real_use` | Not graded. Your dashboard: `app_start_to_dashboard_ms`, `android_ttid_ms`, `launch`, `stop_to_dashboard_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `errors`, `screen_off_samples`, `per_run`. Then `idle`, `peak`, `memory` (`idle`, `peak`, `budget`) and `panes` |
@@ -1021,7 +1034,7 @@ from real use, and nothing device-unique.
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |
 | `report` | A relative path or URL of the full report (`--report-url`) |
 | `complete` | `false` when it was exported with `--allow-provisional` and has gaps, missing measurements or isn't comparable |
-| `ram` | Not graded; `null` if not measured. In kB: `idle_app_pss_kb` and `idle_by_process_pss_kb` (medians at idle on the typical reference dashboard), `peak_app_pss_kb` and `peak_by_process_pss_kb` (the peak during the graded tasks), `panes` (each: `id`, `pss_kb`, `tolerance_kb`, `measurable`, `runs`, `budget_kb` and `budget_ok` (the frame's pane budget and whether the share is within it; `null` without a budget; read it with `measurable`, since a share inside the tolerance can't show that the pane fits), and `off_by` when the report has it. Only panes whose every sample was checked against the kiosk's log (`verified`) are listed: one with no number, or from a run before that check (such as s1v7), isn't), `panes_waiting` (pane ids), `budget_ok` (`true`, `false` or `null`) |
+| `ram` | Not graded; `null` if not measured. In kB: `idle_app_pss_kb` and `idle_by_process_pss_kb` (medians at idle on the typical reference dashboard), `peak_app_pss_kb` and `peak_by_process_pss_kb` (the peak during the graded tasks), `panes` (each: `id`, `pss_kb`, `tolerance_kb`, `measurable`, `runs`, `budget_kb` and `budget_ok` (the frame's pane budget and whether the share is within it; `null` without a budget, or when the tolerance is too wide to tell), `budget_measurable` (`false` when the tolerance is more than a quarter of the budget; `null` without one), and `off_by` when the report has it. Only panes whose every sample was checked against the kiosk's log (`verified`) are listed: one with no number, or from a run before that check (such as s1v7), isn't), `panes_waiting` (pane ids), `budget_ok` (`true`, `false` or `null`) |
 | `apk` | Not graded; `null` if no APK was given. Per APK: `file`, `abis`, `bytes` |
 
 The levels need each run's measurements (each run gets a level, then the median level is taken), which
@@ -1132,7 +1145,12 @@ load) and `t`:
 The restart page logs with an empty nonce (its parts are numbered `restart:<n>`): only `refdash` and
 `done`, kept in `refstart-<k>.json` under `restart_page`. A warm-up view (`--warmup-tier`, none by
 default since protocol 4) is a view opened with `taps=0&swipes=0&warmup=1`; its lines are kept
-under `warmup`, not graded.
+under `warmup`, not graded. Its lines that don't parse still count in `bad_page_lines` (one count
+for the run), but its swipes don't count in `lost_scroll_steps`, which adds up the graded views only.
+
+Each view in `refstart-<k>.json` `tiers` also has `swipes_asked` (the swipes the runner sent),
+`lost_scroll_steps` (those with no scroll step back: `swipes_asked` less the steps that came), and
+`lost_lines` (page lines whose parts hadn't all arrived when the view said done).
 
 The runner and the harness talk through the fake Home Assistant, never through adb:
 
@@ -1184,7 +1202,8 @@ above), so Assist is off by its microphone mute: its running cost, not the model
 
 Assist's CPU matches [#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)'s 37%
 (the wake word's model). Neither pane's PSS is measurable at this tolerance, so these runs can't say
-whether either fits its 48 MB budget ([why, and the fix](#ram)). The app at idle on the typical
+whether either fits its 48 MB budget. Read with the noise band and `:boot` apart, the same samples
+give ±17.1 MB, and ±8.5 MB without the cold first sample ([RAM](#ram)). The app at idle on the typical
 reference dashboard, all panes off: 565 to 596 MB.
 
 **smoke9** (8c0027b, one run, 2026-11-13, protocol 4 as first written: each reference dashboard a

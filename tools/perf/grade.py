@@ -281,12 +281,19 @@ def frame_budget(default, frame=None):
             "panes": frame.get("panes") or default.get("panes") or {}}
 
 
+# A pane's share can be checked against its budget only when its tolerance is at most this part of
+# the budget (#186). Then a share read as within budget is at most a quarter over it.
+PANE_TOLERANCE_MAX_OF_BUDGET = 0.25
+
+
 def pane_budgets(panes, budgets):
     """Each measured pane's PSS against its budget (ram_pss_max_kb). ok is None when the pane has no
-    budget or wasn't measured."""
+    budget, wasn't measured, or its tolerance is too wide to tell (measurable false)."""
     out = {}
     for p in panes:
         cap = (budgets.get(p["id"]) or {}).get("ram_pss_max_kb")
-        out[p["id"]] = {"value_kb": p.get("pss_kb"), "budget_kb": cap,
-                        "ok": None if cap is None or p.get("pss_kb") is None else p["pss_kb"] <= cap}
+        tol = p.get("pss_tolerance_kb")
+        measurable = None if cap is None or tol is None else tol <= PANE_TOLERANCE_MAX_OF_BUDGET * cap
+        out[p["id"]] = {"value_kb": p.get("pss_kb"), "budget_kb": cap, "tolerance_kb": tol, "measurable": measurable,
+                        "ok": None if cap is None or p.get("pss_kb") is None or measurable is False else p["pss_kb"] <= cap}
     return out

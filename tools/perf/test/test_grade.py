@@ -285,6 +285,16 @@ class MemoryBudget(unittest.TestCase):
                            {"assist": {"ram_pss_max_kb": 49152}, "sendspin": {"ram_pss_max_kb": 49152}})
         self.assertEqual((r["assist"]["ok"], r["sendspin"]["ok"], r["x"]["ok"]), (False, True, None))
 
+    def test_a_tolerance_wider_than_a_quarter_of_the_budget_is_not_measurable(self):
+        """#186: s1p3's ±31.6 MB against 48 MB said "ok" for a share it couldn't place."""
+        b = {"assist": {"ram_pss_max_kb": 49152}}
+        wide = G.pane_budgets([{"id": "assist", "pss_kb": 5_300, "pss_tolerance_kb": 32_400}], b)["assist"]
+        self.assertEqual((wide["measurable"], wide["ok"]), (False, None))
+        at = G.pane_budgets([{"id": "assist", "pss_kb": 5_300, "pss_tolerance_kb": 12_288}], b)["assist"]
+        self.assertEqual((at["measurable"], at["ok"]), (True, True))
+        over = G.pane_budgets([{"id": "assist", "pss_kb": 60_000, "pss_tolerance_kb": 8_700}], b)["assist"]
+        self.assertEqual((over["measurable"], over["ok"]), (True, False))
+
 
 class SharedRules(unittest.TestCase):
     def test_band_cases_the_page_also_checks(self):

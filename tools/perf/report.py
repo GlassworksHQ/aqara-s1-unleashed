@@ -897,12 +897,18 @@ def sample_matches(sample, label, panes):
     return True
 
 
+def _without_boot(m):
+    return m["app_pss_kb"] - m["by_role"].get("boot", {}).get("pss_kb", 0)
+
+
 def pane_on_alone(ref_idles, package, panes=None):
     """Each switchable pane on by itself (`ref-<pane>-on`) against every pane off (`ref-panes-off`),
     on the same reference dashboard: the difference of the medians. The tolerance is the larger of
-    the two sets' spreads (max - min); a difference inside it is noise. Only samples that ran what
-    their label says count (sample_matches); without that record a result is `verified: false`, and
-    with none left it is an error, not a number (s1v7: the kiosk lost every switch)."""
+    the two sets' noise bands (perflib.noise_band); a difference inside it is noise. Only samples that
+    ran what their label says count (sample_matches); without that record a result is `verified:
+    false`, and with none left it is an error, not a number (s1v7: the kiosk lost every switch).
+    The direct-boot home activity's process (`:boot`, about 29 MB on the S1) isn't a pane and comes
+    and goes between samples (#186), so the share leaves it out and gives how often it ran."""
     panes = {k: v for k, v in (panes or {}).items() if v.get("switch")}
     checked = {lab: [(i, sample_matches(i, lab, panes)) for i in _valid(runs)] for lab, runs in ref_idles.items()}
     off = [i for i, ok in checked.get("ref-panes-off", []) if ok is not False]
@@ -916,7 +922,7 @@ def pane_on_alone(ref_idles, package, panes=None):
     # Assist off by its microphone mute alone (the kiosk kept voice on): its running cost only.
     muted_only = any((i.get("panes_state") or {}).get("voice") for i in off)
     off_m = [app_memory(i) for i in off]
-    off_pss = [m["app_pss_kb"] for m in off_m]
+    off_pss = [_without_boot(m) for m in off_m]
     off_cpu = [app_cpu(i, package)["app_pct_of_core"] for i in off]
     out = []
     for label, pairs in sorted(checked.items()):
@@ -929,16 +935,20 @@ def pane_on_alone(ref_idles, package, panes=None):
                         "error": f"the kiosk didn't run {label[len(REF_LABEL):-3]} on by itself in {bad} sample(s)"})
             continue
         on_m = [app_memory(i) for i in runs]
-        on_pss = [m["app_pss_kb"] for m in on_m]
+        on_pss = [_without_boot(m) for m in on_m]
         on_cpu = [app_cpu(i, package)["app_pct_of_core"] for i in runs]
         d = statistics.median(on_pss) - statistics.median(off_pss)
-        tol = max(max(off_pss) - min(off_pss), max(on_pss) - min(on_pss))
-        roles = sorted({r for m in on_m + off_m for r in m["by_role"]})
+        tol = round(max(P.noise_band(off_pss), P.noise_band(on_pss)))
+        roles = sorted({r for m in on_m + off_m for r in m["by_role"]} - {"boot"})
+        boot = [m["by_role"]["boot"]["pss_kb"] for m in on_m + off_m if "boot" in m["by_role"]]
         d_cpu = statistics.median(on_cpu) - statistics.median(off_cpu)
-        cpu_tol = max(max(off_cpu) - min(off_cpu), max(on_cpu) - min(on_cpu))
+        cpu_tol = max(P.noise_band(off_cpu), P.noise_band(on_cpu))
         out.append({
             "id": label[len(REF_LABEL):-3], "method": "on-alone", "samples_on": len(runs), "samples_off": len(off),
             "pss_kb": round(d), "pss_tolerance_kb": tol, "pss_measurable": abs(d) > tol,
+            "boot_samples_on": sum(1 for m in on_m if "boot" in m["by_role"]),
+            "boot_samples_off": sum(1 for m in off_m if "boot" in m["by_role"]),
+            "boot_pss_kb": round(statistics.median(boot)) if boot else None,
             "by_role_pss_kb": {r: round(statistics.median([m["by_role"].get(r, {}).get("pss_kb", 0) for m in on_m])
                                         - statistics.median([m["by_role"].get(r, {}).get("pss_kb", 0) for m in off_m])) for r in roles},
             "cpu_pct_of_core": round(d_cpu, 2), "cpu_tolerance_pct": round(cpu_tol, 2), "cpu_measurable": abs(d_cpu) > cpu_tol,
@@ -1150,7 +1160,7 @@ def build(run_dir, apks=(), budgets=None):
     fake_log = fake_ha_log(os.path.join(run_dir, "fakeha.jsonl"))
     reasons += fake_ha_reasons(fake_log, bool(ref) and G.PROTOCOL_VERSION in (ref.get("protocols") or []))
     if ref and ref.get("bad_page_lines"):
-        reasons.append(f"{ref['bad_page_lines']} page line(s) didn't parse (cut off in logcat?)")
+        reasons.append(f"{ref['bad_page_lines']} page line(s) didn't parse or never arrived whole (cut off in logcat?)")
     if ref and ref.get("lost_scroll_steps"):
         # A swipe whose step never came isn't in the pool, so the scroll level rests on fewer swipes.
         reasons.append(f"{ref['lost_scroll_steps']} swipe(s) answered with no scroll step back")
@@ -1455,8 +1465,9 @@ def ram_markdown(ram):
             out.append(f"- {k}: {val} against {c['budget_kb'] / 1024:.0f} MB: {budget_word(c['ok'])}")
     if ram.get("panes"):
         out += ["", "Each pane on by itself against every pane off, on the typical reference dashboard (median of runs; "
-                    "the tolerance is the larger spread of the two sets). Only samples whose kiosk log shows what their "
-                    "label says count:", "",
+                    "the tolerance is twice the robust standard deviation of the noisier set, from its median absolute "
+                    "deviation; `:boot` left out). Only samples whose kiosk log shows what their label says count. A budget "
+                    f"is checked only when the tolerance is at most {G.PANE_TOLERANCE_MAX_OF_BUDGET:.0%} of it:", "",
                 "| Pane | PSS | Tolerance | Budget | CPU |", "|---|---|---|---|---|"]
         notes = []
         for p in ram["panes"]:
@@ -1470,8 +1481,13 @@ def ram_markdown(ram):
                 notes.append(f"{p['id']}: not checked (samples from before the kiosk's log was read); it may not have been off.")
             if p.get("excluded"):
                 notes.append(f"{p['id']}: {p['excluded']} sample(s) left out, the kiosk didn't run what their label says.")
+            if p.get("boot_samples_on") or p.get("boot_samples_off"):
+                notes.append(f"{p['id']}: `:boot` ({p['boot_pss_kb'] / 1024:.1f} MB) ran in {p['boot_samples_on']} of "
+                             f"{p['samples_on']} on and {p['boot_samples_off']} of {p['samples_off']} off sample(s); "
+                             "it isn't a pane, so the share leaves it out.")
             pb = (ram.get("pane_budget") or {}).get(p["id"]) or {}
-            cap = "none" if pb.get("budget_kb") is None else f"{pb['budget_kb'] / 1024:.0f} MB, {budget_word(pb.get('ok'))}"
+            word = "not measurable" if pb.get("measurable") is False else budget_word(pb.get("ok"))
+            cap = "none" if pb.get("budget_kb") is None else f"{pb['budget_kb'] / 1024:.0f} MB, {word}"
             out.append(f"| {p['id']} | {p['pss_kb'] / 1024:+.1f} MB{'' if p['pss_measurable'] else ' (within tolerance)'} "
                        f"| ±{p['pss_tolerance_kb'] / 1024:.1f} MB (n={p['samples_on']} on, {p['samples_off']} off) | {cap} "
                        f"| {p['cpu_pct_of_core']:+.1f} % of a core{'' if p['cpu_measurable'] else ' (within tolerance)'} |")
