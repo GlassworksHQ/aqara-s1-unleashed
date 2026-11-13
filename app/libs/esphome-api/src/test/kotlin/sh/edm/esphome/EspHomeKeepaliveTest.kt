@@ -130,10 +130,14 @@ class EspHomeKeepaliveTest {
         }
 
         inner class HeldOut(o: OutputStream) : FilterOutputStream(o) {
-            override fun write(b: ByteArray, off: Int, len: Int) = out.write(b, off, len)
+            override fun write(b: ByteArray, off: Int, len: Int) {
+                // Before the bytes leave: the answer can be read before flush() runs (#204).
+                if (armed) flushed = true
+                out.write(b, off, len)
+            }
             override fun flush() {
                 val hold = armed
-                if (hold) { armed = false; flushed = true }
+                if (hold) armed = false
                 out.flush()
                 if (hold) heldUntilHandled = handled.await(10, TimeUnit.SECONDS)
             }
