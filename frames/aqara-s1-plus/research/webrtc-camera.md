@@ -1,8 +1,10 @@
 # WebRTC cameras on the S1: does GeckoView play them, and with which decoder?
 
-**Status (2026-11-13): partly working.** A real camera plays live over WebRTC in the kiosk. The video
-is very likely decoded in software (Gecko's bundled FFmpeg), not by the Allwinner hardware decoder that
-HLS gets. That is read from the logs, not proven. Frame rate and dropped frames weren't measured.
+**Status (2026-11-13): partly working.** A real camera plays live in the kiosk, and the frontend started
+WebRTC. That WebRTC (not HLS, which the frontend shows while WebRTC starts) drew the frames on screen
+is likely but not proven. The video is very likely decoded in software (Gecko's bundled FFmpeg), not by
+the Allwinner hardware decoder that HLS gets. That is read from the logs, not proven. Frame rate and
+dropped frames weren't measured.
 
 Device: Aqara Panel Hub S1 Plus, S1 Kiosk test build 5427a67, GeckoView 159. Home Assistant 2026.11
 with go2rtc loaded. Tools: adb (read-only), the kiosk's one-shot `--es open` extra.
@@ -24,10 +26,15 @@ because go2rtc has been built into HA since 2024.11 (#202). Before grading WebRT
    ```
    The camera is a high-resolution channel of a network video recorder, through HA's go2rtc. The
    kiosk's saved dashboard URL was unchanged; it went back to the dashboard afterwards.
-   - **The frontend took the WebRTC path.** The page logged a WebRTC warning from the browser ("Using
-     five or more STUN/TURN servers slows down discovery"). HLS logs nothing like it.
+   - **The frontend started WebRTC.** The page logged a WebRTC warning from the browser ("Using
+     five or more STUN/TURN servers slows down discovery"). HLS logs nothing like it. This shows that
+     WebRTC started, not that it drew the frames: with go2rtc, HA's frontend shows HLS until WebRTC has
+     video, and keeps HLS if WebRTC never gets any (`ha-camera-stream.ts`).
    - **It played live.** Across 10 s, about 226,000 pixels changed by more than 3 levels (compression
-     noise on a still room), so frames were updating.
+     noise on a still room), so frames were updating. From which player is not recorded. No `/api/hls/`
+     requests in the period, or the video element's `srcObject`, would settle it (next time).
+   - The commands for the pixel count and the CPU numbers below weren't recorded with the results;
+     only the results were reported. Redo them with the commands written down before relying on them.
 2. **Which decoder** (same session, read-only, verified)
    - `libmozavcodec.so` (Gecko's bundled FFmpeg) was loaded in the tab process.
    - logcat had no `MediaCodec`, `CCodec` or `OMXNodeInstance` lines for the stream.
@@ -53,7 +60,7 @@ Not measured: frames per second and dropped frames. `getStats` isn't reachable o
 
 | | HLS (hls.js on MSE) | WebRTC |
 |---|---|---|
-| Plays in GeckoView on the S1 | yes (s1cam3) | yes (this note) |
+| Plays in GeckoView on the S1 | yes (s1cam3) | started, and the camera played live; WebRTC as the player on screen is likely, not proven (this note) |
 | Decoder | `OMX.allwinner.video.decoder.avc`, hardware (logcat, verified) | very likely Gecko's FFmpeg, software (logcat and the loaded library, read) |
 | Who fetches the video | hls.js, on the page's main thread | the browser's media stack |
 

@@ -645,6 +645,14 @@ class Restart(unittest.TestCase):
         self.assertTrue(c["fallback"]["typical-hls"]["done"])
         self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
         self.assertTrue(all(e.get("done") for e in c["tiers"].values()))
+        self.assertEqual(c["fallback"]["heavy-hls"]["error"], "the screen went off during this view")
+
+    def test_a_screen_off_in_a_graded_view_stays_the_runs_error_when_a_copy_follows(self):
+        """CodeRabbit on #205: the copies after it must not take a graded view's screen-off away."""
+        p, c, _ = self.run_short(90, fallback="typical-hls,heavy-hls", FAKE_SCREEN_OFF="typical")
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("the screen went off during the graded run", c["error"])
+        self.assertNotIn("fallback_error", c)
 
     def test_the_screen_is_kept_awake_while_views_open_but_not_while_live(self):
         p, c, log = self.run_short(120, FAKE_SLOW_VIEW="2.5", GW_PERF_KEEP_AWAKE_S="0.7")

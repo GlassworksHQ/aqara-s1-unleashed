@@ -85,6 +85,18 @@ class Turn(unittest.TestCase):
         self.assertEqual(r.attributes["XOR-RELAYED-ADDRESS"][0], "127.0.0.1")
         self.assertEqual(r.attributes["LIFETIME"], webrtc.TURN_LIFETIME)
 
+    def test_the_relay_reaches_only_this_computers_loopback(self):
+        """Not a relay to anywhere: a permission for another address is refused (CodeRabbit, #205)."""
+        for peer, want in ((("192.0.2.10", 5000), webrtc.stun.Class.ERROR), (("127.0.0.1", 5000), webrtc.stun.Class.RESPONSE)):
+            m = webrtc.stun.Message(webrtc.stun.Method.CREATE_PERMISSION, webrtc.stun.Class.REQUEST,
+                                    attributes={"XOR-PEER-ADDRESS": peer, "USERNAME": webrtc.TURN_USER,
+                                                "REALM": webrtc.TURN_REALM, "NONCE": webrtc.TURN_NONCE})
+            m.add_message_integrity(webrtc.TURN_KEY)
+            r = self.ask(m)
+            self.assertEqual(r.message_class, want, peer)
+            if want == webrtc.stun.Class.ERROR:
+                self.assertEqual(r.attributes["ERROR-CODE"][0], 403)
+
     def test_the_browser_gets_the_relay_over_tcp_and_relay_only(self):
         c = webrtc.client_config(8090)["configuration"]
         self.assertEqual(c["iceServers"][0]["urls"], "turn:127.0.0.1:8090?transport=tcp")

@@ -1327,17 +1327,23 @@ def camera_detail(ref):
 def webrtc_detail(c):
     """A run's WebRTC streams in a few words (#202): the decoder the browser reports, frames dropped
     and frozen by its own counts, and the candidate pair. Empty for HLS."""
-    ws = [s["webrtc"] for s in c.get("detail") or [] if s.get("webrtc")]
+    ws = [s["webrtc"] for s in c.get("detail") or [] if (s.get("webrtc") or {}).get("inbound")]
     if not ws:
         return ""
     decs = sorted({w.get("decoder") or "not reported" for w in ws})
     hw = sorted({"hardware" if w.get("power_efficient") else "software" for w in ws if w.get("power_efficient") is not None})
     cand = sorted({f"{(w.get('candidate') or {}).get('local')}/{(w.get('candidate') or {}).get('relay')}" for w in ws
                    if w.get("candidate")})
-    total = lambda k: sum(w.get(k) or 0 for w in ws)  # noqa: E731
+
+    def total(k, fmt="{:.0f}"):
+        """The streams' sum; n/a when no stream reported it, and marked when only some did."""
+        got = [w[k] for w in ws if w.get(k) is not None]
+        if not got:
+            return "n/a"
+        return fmt.format(sum(got)) + ("" if len(got) == len(ws) else f" (from {len(got)} of {len(ws)} streams)")
     return (f"decoder {', '.join(decs)}" + (f" ({', '.join(hw)})" if hw else "")
-            + f", {total('frames_decoded'):.0f} frames decoded, {total('frames_dropped'):.0f} dropped, "
-            f"{total('freezes'):.0f} freezes ({total('freeze_s'):.1f} s), candidate {', '.join(cand) or 'n/a'}")
+            + f", {total('frames_decoded')} frames decoded, {total('frames_dropped')} dropped, "
+            f"{total('freezes')} freezes ({total('freeze_s', '{:.1f}')} s), candidate {', '.join(cand) or 'n/a'}")
 
 
 def camera_cell(s_, b):

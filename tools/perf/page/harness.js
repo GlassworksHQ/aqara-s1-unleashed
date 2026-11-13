@@ -453,7 +453,9 @@
       };
     };
     const missing = { found: false, first_frame_ms: null, shown_pct: null, max_gap_ms: null, stall_total_ms: null };
-    const streams = [];
+    // Every player's counts first, at t1; only then the awaits for getStats, during which the
+    // others would go on counting.
+    const streams = [], peersOf = [];
     for (let i = 0; i < Math.max(cams.expected, cams.list.length); i++) {
       const c = cams.list[i], r = c && c.recs[cams.path];
       const out = Object.assign({ path: cams.path }, r ? stream(r) : missing);
@@ -464,13 +466,13 @@
         o.counting = false;
         return { path: k, first_frame_ms: o.first === null ? null : r1(o.first - cams.nav), connected: o.el.isConnected };
       }) : [];
-      if (r && cams.path === "web_rtc") {
-        // The WebRTC receiver's own counts over the same window (getStats), detail: frames decoded,
-        // dropped and frozen, the decoder it used, the codec, and the candidate pair (relay over TCP).
-        const s1 = await peerStats(r);
-        out.webrtc = S.webrtcStats(await r.s0, s1);
-      }
       streams.push(out);
+      peersOf.push(r && cams.path === "web_rtc" ? r : null);
+    }
+    // The WebRTC receiver's own counts over the window (getStats), detail: frames decoded, dropped
+    // and frozen, the decoder it used, the codec, and the candidate pair (relay over TCP).
+    for (let i = 0; i < streams.length; i++) {
+      if (peersOf[i]) streams[i].webrtc = S.webrtcStats(await peersOf[i].s0, await peerStats(peersOf[i]));
     }
     if (cams.obs) {
       for (const e of cams.obs.takeRecords()) if (e.name.includes("/api/hls/")) cams.fetches.push(e.toJSON());

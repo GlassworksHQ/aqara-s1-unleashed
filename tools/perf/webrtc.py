@@ -152,6 +152,9 @@ class TurnConn(asyncio.Protocol):
                 self.relay.close()
                 self.relay = None
             self.reply(m, LIFETIME=min(life, TURN_LIFETIME))
+        elif m.attributes.get("XOR-PEER-ADDRESS", ("",))[0] != "127.0.0.1":
+            # The peer is on this computer's loopback; the relay reaches nothing else.
+            self.reply(m, stun.Class.ERROR, ERROR_CODE=(403, "Forbidden"))
         elif m.message_method == M.CREATE_PERMISSION:
             self.perms.add(m.attributes["XOR-PEER-ADDRESS"][0])
             self.reply(m)
@@ -164,6 +167,9 @@ class TurnConn(asyncio.Protocol):
     async def allocate(self, m):
         loop = asyncio.get_running_loop()
         self.relay, _ = await loop.create_datagram_endpoint(lambda: _Relay(self), local_addr=("127.0.0.1", 0))
+        if self.tr.is_closing():                  # the browser left while it was made
+            self.relay.close()
+            return
         self.reply(m, XOR_RELAYED_ADDRESS=self.relay.get_extra_info("sockname")[:2],
                    XOR_MAPPED_ADDRESS=self.client, LIFETIME=TURN_LIFETIME)
 
@@ -225,7 +231,7 @@ class WebRTC:
         s = self.sessions[sid] = {"ready": asyncio.Event(), "pc": None, "entity_id": entity_id}
         try:
             if profile not in self.aus:
-                self.aus[profile] = await self.loop.run_in_executor(None, camera.access_units, self.streams(profile))
+                self.aus[profile] = await self.loop.run_in_executor(None, lambda: camera.access_units(self.streams(profile)))
             if not any("H264" in line for line in sdp.splitlines() if line.startswith("a=rtpmap")):
                 raise RuntimeError("the offer has no H.264 video")
             first = {}

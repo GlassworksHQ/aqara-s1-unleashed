@@ -592,13 +592,20 @@ class CameraFallback(unittest.TestCase):
 
     def test_webrtc_detail_names_the_decoder_and_the_relay(self):
         line = camera_line("typical")
-        line["streams"][0]["webrtc"] = {"frames_decoded": 290, "frames_dropped": 3, "freezes": 1, "freeze_s": 0.6,
+        line["streams"][0]["webrtc"] = {"inbound": True, "frames_decoded": 290, "frames_dropped": 3, "freezes": 1, "freeze_s": 0.6,
                                         "decoder": "libvpx", "power_efficient": False,
                                         "candidate": {"local": "relay", "relay": "tcp", "protocol": "udp"}}
         run = R.camera_run(line, "typical")
         self.assertEqual(R.webrtc_detail(run), "decoder libvpx (software), 290 frames decoded, 3 dropped, 1 freezes (0.6 s), "
                                                "candidate relay/tcp")
         self.assertEqual(R.webrtc_detail(R.camera_run(camera_line("typical", path="hls"), "typical")), "")
+        # Counters the browser didn't report read n/a, never 0; a partial sum says so.
+        bare = camera_line("heavy")
+        for k, st in enumerate(bare["streams"]):
+            st["webrtc"] = {"inbound": True, "frames_decoded": 100, "frames_dropped": None if k else 2,
+                            "freezes": None, "freeze_s": None, "decoder": None, "power_efficient": None, "candidate": None}
+        self.assertEqual(R.webrtc_detail(R.camera_run(bare, "heavy")),
+                         "decoder not reported, 400 frames decoded, 2 (from 1 of 4 streams) dropped, n/a freezes (n/a s), candidate n/a")
         # Protocol 5's lines don't name a path: HLS was the only one.
         old = camera_line("typical")
         del old["path"]

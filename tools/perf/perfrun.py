@@ -692,15 +692,20 @@ def cmd_coldstart(dev, a):
     elif ref and st["current"] and not entry_of(st["current"][0]).get("done") and not entry_of(st["current"][0]).get("error"):
         # The last view never said done (smoke10's heavy, with the screen off): not a lost line.
         res["error"] = f"{st['current'][0]} didn't finish within {a.timeout:.0f} s"
+    graded_done = ref and all((res["tiers"].get(t) or {}).get("done") or (res["tiers"].get(t) or {}).get("error") for t in tiers)
+    if res["error"] and graded_done and fallback and st["current"] and st["current"][0] in fallback:
+        # A fallback view that failed fails only itself: the graded views were done. Only the
+        # errors above, which come from the view the run stopped in; the screen check comes after.
+        res["fallback_error"], res["error"] = res["error"], None
+        print(f"  fallback: {res['fallback_error']}", file=sys.stderr)
     offs = [x for x in res.get("screen_off", []) if x["during"] not in fallback]
     if ref and not res["error"] and offs:
         res["error"] = (f"the screen went off during the graded run ({len(offs)} time(s), first "
                         f"{offs[0]['during']}): with the screen off nothing timed is the panel's")
-    graded_done = ref and all((res["tiers"].get(t) or {}).get("done") or (res["tiers"].get(t) or {}).get("error") for t in tiers)
-    if res["error"] and graded_done and fallback and st["current"] and st["current"][0] in fallback:
-        # A fallback view that failed fails only itself: the graded views were done.
-        res["fallback_error"], res["error"] = res["error"], None
-        print(f"  fallback: {res['fallback_error']}", file=sys.stderr)
+    for x in res.get("screen_off", []):
+        if x["during"] in res["fallback"]:
+            # A copy measured with the screen off isn't the panel's either: said on that copy.
+            res["fallback"][x["during"]].setdefault("error", "the screen went off during this view")
     # A page that said done without its updates step (smoke7: the line was cut off in logcat) isn't a
     # failed run: its other measurements stand, and the report says what is missing.
     res["missing_steps"] = [t for t, e in res["tiers"].items() if "step" not in e] if ref else []
