@@ -1,11 +1,14 @@
-"""Clarity's camera streams (MIT): HLS segments for the reference dashboards' live camera cards (#174).
+"""Clarity's camera streams (MIT): the H.264 video of the reference dashboards' live camera cards
+(#174, #202), as HLS segments and as one Annex B stream for WebRTC.
 
-HA's `stream` integration serves a camera as HLS (fMP4 segments, H.264), and HA's frontend plays it
-with hls.js on MSE (ha-hls-player.ts), which on a panel ends in its hardware decoder. The fake Home
-Assistant serves the same: these segments, made here with ffmpeg from its moving test pattern
-(`testsrc`, with its burnt-in counter), so no video is in the repo. The flags make the bytes the same
-on every run with the same ffmpeg (bitexact, one encoder thread); the manifest records the ffmpeg
-version and every file's SHA-256.
+Real setups play a camera over WebRTC (go2rtc in HA, webrtc.py here) or HLS (HA's `stream`
+integration: fMP4 segments, which HA's frontend plays with hls.js on MSE). The fake Home Assistant
+serves both from one encode, made here with ffmpeg from its moving test pattern (`testsrc`, with its
+burnt-in counter), so no video is in the repo. `stream.h264` is the segments' own bitstream, remuxed
+(`-c copy`), so both paths carry the same bytes. I and P frames only (`-bf 0`), as IP cameras send:
+browsers' WebRTC receivers don't reorder B-frames (protocol 6; protocol 5's segments had them). The
+flags make the bytes the same on every run with the same ffmpeg (bitexact, one encoder thread); the
+manifest records the ffmpeg version and every file's SHA-256.
 
   python3 tools/perf/camera.py          # make them (once) and print where they are
 
@@ -35,13 +38,19 @@ CACHE = os.environ.get("GW_PERF_CACHE") or os.path.join(os.path.expanduser("~"),
 def ffmpeg_args(profile, seconds=LOOP_S):
     p = PROFILES[profile]
     return ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", f"testsrc=size={p['size']}:rate={FPS}",
-            "-t", str(seconds), "-c:v", "libx264", "-profile:v", "main", "-pix_fmt", "yuv420p", "-preset", "veryfast",
+            "-t", str(seconds), "-c:v", "libx264", "-profile:v", "main", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-bf", "0",
             "-g", str(FPS * SEGMENT_S), "-keyint_min", str(FPS * SEGMENT_S), "-sc_threshold", "0",
             "-b:v", p["bitrate"], "-maxrate", p["bitrate"], "-bufsize", p["bufsize"],
             "-threads", "1", "-x264-params", "threads=1", "-fflags", "+bitexact", "-flags:v", "+bitexact",
             "-map_metadata", "-1", "-f", "hls", "-hls_time", str(SEGMENT_S), "-hls_segment_type", "fmp4",
             "-hls_fmp4_init_filename", "init.mp4", "-hls_segment_filename", "seg%03d.m4s",
             "-hls_playlist_type", "vod", "index.m3u8"]
+
+
+# The segments' bitstream as Annex B (SPS and PPS before every IDR), for the WebRTC peer: read from
+# the segments joined (init.mp4 then seg*.m4s, a valid fragmented MP4) on stdin.
+ANNEXB_ARGS = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "mp4", "-i", "pipe:0", "-c:v", "copy",
+               "-bsf:v", "h264_mp4toannexb", "-fflags", "+bitexact", "-f", "h264", "stream.h264"]
 
 
 def sha256(path):
@@ -75,7 +84,7 @@ def _made():
     if not re.search(r"\blibx264\b", encoders):
         raise Unavailable("this computer's ffmpeg has no libx264 encoder, which Clarity's camera streams need")
     version = subprocess.run(["ffmpeg", "-hide_banner", "-version"], capture_output=True, text=True).stdout.splitlines()[0]
-    key = hashlib.sha256((version + json.dumps([ffmpeg_args(p) for p in sorted(PROFILES)])).encode()).hexdigest()[:12]
+    key = hashlib.sha256((version + json.dumps([ffmpeg_args(p) for p in sorted(PROFILES)] + [ANNEXB_ARGS])).encode()).hexdigest()[:12]
     out = os.path.join(CACHE, f"camera-{key}")
     if not os.path.exists(os.path.join(out, "manifest.json")):
         shutil.rmtree(out, ignore_errors=True)
@@ -84,10 +93,40 @@ def _made():
             d = os.path.join(out, prof)
             os.makedirs(d)
             subprocess.run(ffmpeg_args(prof), cwd=d, check=True)
+            parts = ["init.mp4"] + sorted(f for f in os.listdir(d) if f.endswith(".m4s"))
+            joined = b"".join(open(os.path.join(d, f), "rb").read() for f in parts)
+            subprocess.run(ANNEXB_ARGS, cwd=d, input=joined, check=True)
             files[prof] = {f: sha256(os.path.join(d, f)) for f in sorted(os.listdir(d)) if f != "index.m3u8"}
         with open(os.path.join(out, "manifest.json"), "w") as f:
             json.dump({"ffmpeg": version, "fps": FPS, "segment_s": SEGMENT_S, "loop_s": LOOP_S, "files": files}, f, indent=1)
     return out
+
+
+def access_units(path):
+    """An Annex B stream's access units, in order. One slice per picture (x264 with one thread), so an
+    access unit ends at its picture's slice (NAL types 1 and 5); SPS, PPS and SEI go with the next."""
+    with open(path, "rb") as f:
+        data = f.read()
+    starts, i = [], 0
+    while True:
+        i = data.find(b"\x00\x00\x01", i)
+        if i < 0:
+            break
+        starts.append(i - 1 if i and data[i - 1] == 0 else i)
+        i += 3
+    aus, cur = [], b""
+    for k, s in enumerate(starts):
+        nal = data[s:starts[k + 1] if k + 1 < len(starts) else len(data)]
+        cur += nal
+        if nal[nal.index(b"\x00\x00\x01") + 3] & 0x1F in (1, 5):
+            aus.append(cur)
+            cur = b""
+    return aus
+
+
+def annexb(profile):
+    """The profile's whole loop as one Annex B H.264 stream (the WebRTC peer's video)."""
+    return os.path.join(root(), profile, "stream.h264")
 
 
 def segments(profile):

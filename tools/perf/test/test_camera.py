@@ -2,6 +2,7 @@
 
 camera.py (#174): the streams' settings, and that ffmpeg makes the same bytes twice (when ffmpeg is on
 this computer; CI's runner has it)."""
+import json
 import os
 import shutil
 import subprocess
@@ -20,7 +21,8 @@ class Settings(unittest.TestCase):
     def test_h264_main_hls_fmp4_one_second_segments(self):
         a = camera.ffmpeg_args("720p")
         for flag in (["-c:v", "libx264"], ["-profile:v", "main"], ["-hls_segment_type", "fmp4"], ["-hls_time", "1"],
-                     ["-g", "15"], ["-threads", "1"], ["-fflags", "+bitexact"], ["-flags:v", "+bitexact"]):
+                     ["-g", "15"], ["-threads", "1"], ["-fflags", "+bitexact"], ["-flags:v", "+bitexact"],
+                     ["-bf", "0"]):
             self.assertTrue(any(a[i:i + 2] == flag for i in range(len(a))), flag)
         self.assertIn("testsrc=size=1280x720:rate=15", " ".join(a))           # a moving pattern with a counter, no file
         self.assertIn("testsrc=size=640x360:rate=15", " ".join(camera.ffmpeg_args("360p")))
@@ -85,6 +87,30 @@ class SameBytes(unittest.TestCase):
             out.append({f: camera.sha256(os.path.join(d, f)) for f in sorted(os.listdir(d)) if f != "index.m3u8"})
         self.assertEqual(out[0], out[1])
         self.assertEqual(sorted(out[0]), ["init.mp4", "seg000.m4s", "seg001.m4s"])
+
+    def test_webrtc_gets_the_segments_pictures_without_b_frames(self):
+        """#202: stream.h264 is the segments' bitstream as Annex B: the same 30 pictures in 2 s, a
+        keyframe with its SPS and PPS every second, and no B-frames (browsers' WebRTC can't reorder)."""
+        if not shutil.which("ffmpeg"):
+            if os.environ.get("CI"):
+                raise AssertionError("ffmpeg is needed for this test (CI installs it)")
+            raise unittest.SkipTest("ffmpeg isn't on this computer")
+        d = tempfile.mkdtemp()
+        subprocess.run(camera.ffmpeg_args("360p", seconds=2), cwd=d, check=True)
+        joined = b"".join(open(os.path.join(d, f), "rb").read() for f in ("init.mp4", "seg000.m4s", "seg001.m4s"))
+        subprocess.run(camera.ANNEXB_ARGS, cwd=d, input=joined, check=True)
+        probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=has_b_frames,profile",
+                                "-of", "json", os.path.join(d, "stream.h264")], capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(probe.stdout)["streams"][0], {"profile": "Main", "has_b_frames": 0})
+        aus = camera.access_units(os.path.join(d, "stream.h264"))
+        self.assertEqual(len(aus), 30)
+
+        def types(au):
+            return [au[i + 3] & 0x1F for i in range(len(au) - 3) if au[i:i + 3] == b"\x00\x00\x01"]
+        for k, au in enumerate(aus):
+            self.assertEqual(types(au)[-1], 5 if k % 15 == 0 else 1, k)          # one picture each, IDR every 15
+            if k % 15 == 0:
+                self.assertTrue({7, 8} <= set(types(au)), k)                         # SPS and PPS before each IDR
 
 
 if __name__ == "__main__":
