@@ -517,7 +517,9 @@ export class Session {
     } catch (e) {
       if (mine !== this.choice) return;
       const msg = String((e as Error)?.message ?? e);
-      this.dispatch({ type: 'undo', patch: { note: { kind: 'err', title: 'Couldn\'t read the backup in this browser.', sub: `${msg}${/[.!?]$/.test(msg) ? '' : '.'} Use a backup file instead.` } } });
+      const note = { kind: 'err' as const, title: 'Couldn\'t read the backup in this browser.', sub: `${msg}${/[.!?]$/.test(msg) ? '' : '.'} Use a backup file instead.` };
+      // a file already in use stays; with none, the label must not say this browser has no backup
+      this.dispatch({ type: 'undo', patch: this.s.undo.source ? { note } : { note, file: 'This browser\'s backup can\'t be read.' } });
       return;
     }
     if (mine !== this.choice) return;

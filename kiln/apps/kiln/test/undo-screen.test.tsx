@@ -61,6 +61,7 @@ describe('the Undo screen', () => {
   it('says when this browser\'s backup can\'t be read', async () => {
     const s = await undo('undo-unreadable');
     expect(screen.getByText('Couldn\'t read the backup in this browser.')).toBeTruthy();
+    expect(screen.queryByText('No backup in this browser.')).toBeNull();
     expect(link(/Use a backup file/).disabled).toBe(false);
     expect(link(/^Continue$/).disabled).toBe(true);
     s.close();

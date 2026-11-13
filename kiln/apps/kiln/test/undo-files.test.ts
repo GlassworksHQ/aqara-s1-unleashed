@@ -105,11 +105,24 @@ describe('Undo with backup files', () => {
     const s = session(async () => { throw new DOMException('The operation failed for reasons unrelated to the database itself.', 'UnknownError'); });
     await expect(s.openUndo()).resolves.toBeUndefined();
     expect(s.store.state.undo).toMatchObject({
-      ready: false, source: undefined,
+      ready: false, source: undefined, file: 'This browser\'s backup can\'t be read.',
       note: { kind: 'err', title: 'Couldn\'t read the backup in this browser.', sub: 'The operation failed for reasons unrelated to the database itself. Use a backup file instead.' },
     });
     expect(boot(s)).toBeUndefined();
-    await expect(s.undoFromBrowser()).resolves.toBeUndefined(); // "Use this browser's" reads it again
+  });
+
+  it('keeps a file in use when "Use this browser\'s" can\'t read this browser\'s backup', async () => {
+    const s = session(async () => { throw new Error('IndexedDB is closed'); });
+    await s.openUndo();
+    const file = s.undoFromFile(new File(['b'], 'b.zip'));
+    gates.open('b.zip');
+    await file;
+    await expect(s.undoFromBrowser()).resolves.toBeUndefined();
+    expect(s.store.state.undo).toMatchObject({
+      source: 'file', ready: true, file: 'b · 1 partitions · checked',
+      note: { kind: 'err', sub: 'IndexedDB is closed. Use a backup file instead.' },
+    });
+    expect(boot(s)).toEqual(new Uint8Array([2]));
   });
 
   it('keeps the backup once "keep its settings" gave the apps back', async () => {
