@@ -5,6 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
@@ -45,7 +46,9 @@ class UartBaseLinkEmulatorTest {
         val script = listOf("../../tools/bracket/base_emulator.py", "../tools/bracket/base_emulator.py", "tools/bracket/base_emulator.py")
             .map(::File).firstOrNull { it.isFile }
         assumeTrue("tools/bracket/base_emulator.py not found from ${File(".").absolutePath}", script != null)
-        val port = ServerSocket(0).use { it.localPort }
+        // Picked on 127.0.0.1, where the emulator listens: on macOS a wildcard pick can be a port
+        // another process holds there (#113).
+        val port = ServerSocket(0, 0, InetAddress.getLoopbackAddress()).use { it.localPort }
         val emu = ProcessBuilder(py, "-I", "-u", script!!.absolutePath, "--port", port.toString(), "--report-interval", "1", "--no-hello")
             .redirectErrorStream(true).start()
         val emuLog = Collections.synchronizedList(ArrayList<String>())

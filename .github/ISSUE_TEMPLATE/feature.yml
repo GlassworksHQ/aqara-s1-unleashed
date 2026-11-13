@@ -2,6 +2,11 @@ name: Feature request
 description: Something the panel should do that it doesn't.
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Glassworks is opinionated on purpose: Home Assistant is the brain, ESPHome is the wire, and nothing gets installed in HA. Have a look at [Glassworks Principles](https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/docs/principles.md) first. If a HA dashboard or automation can already do it, we'll probably point you there.
+
   - type: textarea
     id: problem
     attributes:

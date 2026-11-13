@@ -1,0 +1,323 @@
+{
+  "id": "lululemon-mirror",
+  "name": "lululemon Studio Mirror",
+  "aka": "Originally sold as Mirror, by Mirror.co",
+  "status": "planned",
+  "summary": "A full-length mirror with a 40-inch portrait screen behind it. The original version takes a new Android image over fastboot.",
+  "notice": "Only the original version works: a Qualcomm board, stock software 1.x and a screen of about 40 inches. The later version (software 5.x, about 43 inches, a blue button on the top edge) has a locked NXP board.",
+  "model": {
+    "body": {
+      "shape": "rect",
+      "width": 536,
+      "height": 1336,
+      "depth": 43,
+      "radius": 3
+    },
+    "bezel": 0,
+    "screen": {
+      "width": 498,
+      "height": 885,
+      "top": 170,
+      "radius": 2
+    },
+    "sides": {
+      "dark": "#0c0d10",
+      "light": "#3b3f49"
+    },
+    "finish": "mirror",
+    "mount": "lean",
+    "lean": 7,
+    "parts": [
+      {
+        "kind": "tube",
+        "from": [
+          -262.0,
+          638.0,
+          -15.5
+        ],
+        "to": [
+          -262.0,
+          854.0,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      },
+      {
+        "kind": "tube",
+        "from": [
+          -262.0,
+          854.0,
+          -15.5
+        ],
+        "to": [
+          -260.34,
+          864.51,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      },
+      {
+        "kind": "tube",
+        "from": [
+          -260.34,
+          864.51,
+          -15.5
+        ],
+        "to": [
+          -255.51,
+          873.98,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      },
+      {
+        "kind": "tube",
+        "from": [
+          -255.51,
+          873.98,
+          -15.5
+        ],
+        "to": [
+          -247.98,
+          881.51,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      },
+      {
+        "kind": "tube",
+        "from": [
+          -247.98,
+          881.51,
+          -15.5
+        ],
+        "to": [
+          -238.51,
+          886.34,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      },
+      {
+        "kind": "tube",
+        "from": [
+          -238.51,
+          886.34,
+          -15.5
+        ],
+        "to": [
+          -228.0,
+          888.0,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      },
+      {
+        "kind": "tube",
+        "from": [
+          -228.0,
+          888.0,
+          -15.5
+        ],
+        "to": [
+          228.0,
+          888.0,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      },
+      {
+        "kind": "tube",
+        "from": [
+          228.0,
+          888.0,
+          -15.5
+        ],
+        "to": [
+          238.51,
+          886.34,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      },
+      {
+        "kind": "tube",
+        "from": [
+          238.51,
+          886.34,
+          -15.5
+        ],
+        "to": [
+          247.98,
+          881.51,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      },
+      {
+        "kind": "tube",
+        "from": [
+          247.98,
+          881.51,
+          -15.5
+        ],
+        "to": [
+          255.51,
+          873.98,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      },
+      {
+        "kind": "tube",
+        "from": [
+          255.51,
+          873.98,
+          -15.5
+        ],
+        "to": [
+          260.34,
+          864.51,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      },
+      {
+        "kind": "tube",
+        "from": [
+          260.34,
+          864.51,
+          -15.5
+        ],
+        "to": [
+          262.0,
+          854.0,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      },
+      {
+        "kind": "tube",
+        "from": [
+          262.0,
+          854.0,
+          -15.5
+        ],
+        "to": [
+          262.0,
+          638.0,
+          -15.5
+        ],
+        "diameter": 9,
+        "color": "#4b4f58"
+      }
+    ]
+  },
+  "specs": [
+    {
+      "label": "Size",
+      "value": "About 1336 × 536 × 43 mm (40-inch version, from reviews)"
+    },
+    {
+      "label": "SoC",
+      "value": "Qualcomm MSM8916"
+    },
+    {
+      "label": "Android",
+      "value": "6.0.1 (stock software 1.x)"
+    },
+    {
+      "label": "Screen",
+      "value": "40-inch 1080p, portrait, behind a two-way mirror"
+    },
+    {
+      "label": "Presence",
+      "value": "5 MP front camera"
+    },
+    {
+      "label": "Audio",
+      "value": "Microphone and stereo speakers"
+    },
+    {
+      "label": "Mount",
+      "value": "Leans on the wall on its stand, or mounts flat on the wall"
+    }
+  ],
+  "panes": {
+    "assist": {
+      "support": "planned",
+      "note": "It has a microphone."
+    },
+    "timers": {
+      "support": "planned",
+      "note": "Needs Assist."
+    },
+    "sendspin": {
+      "support": "planned",
+      "note": "It has stereo speakers."
+    },
+    "radio": {
+      "support": "no",
+      "note": "No Zigbee or Thread radio."
+    },
+    "sensors": {
+      "support": "unknown",
+      "note": "Presence would come from the camera."
+    },
+    "base": {
+      "support": "no",
+      "note": "S1 only."
+    }
+  },
+  "install": {
+    "how": "It installs by flashing system and userdata over fastboot from a computer."
+  },
+  "ratings": {
+    "difficulty": {
+      "value": "medium",
+      "detail": "Open it up and press a button to enter fastboot"
+    },
+    "reversible": {
+      "value": "no",
+      "detail": "lululemon's software is erased for good"
+    },
+    "modifiesAndroid": {
+      "value": "yes",
+      "detail": "System and userdata are replaced"
+    },
+    "root": {
+      "value": "unknown"
+    },
+    "opensDevice": {
+      "value": "yes",
+      "detail": "To reach the fastboot button"
+    },
+    "vendorApps": {
+      "value": "removed",
+      "detail": "With the rest of the stock software"
+    },
+    "wipes": {
+      "value": "yes"
+    },
+    "backup": {
+      "value": "unavailable",
+      "detail": "There's no way to save the stock image first"
+    },
+    "updates": {
+      "value": "planned"
+    }
+  },
+  "ratingsNote": "Check before flashing: fastboot must report MSM8916 and the expected partition sizes. If anything differs, stop."
+}

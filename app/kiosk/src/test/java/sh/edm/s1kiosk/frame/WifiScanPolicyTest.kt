@@ -112,10 +112,11 @@ class WifiScanPolicyTest {
 
     /** The panel run of b47ce54: permission granted, location on, app-op foreground-only, screen off. */
     @Test fun aRefusedScanNamesTheFirstCauseAndroidChecks() {
-        val r = WifiScanPolicy::refusal
+        val r = { p: Boolean, l: Boolean, o: Boolean, d: Boolean -> WifiScanPolicy.refusal(p, l, o, d).text }
         assertEquals("no location permission", r(false, false, false, true))
         assertEquals("location off", r(true, false, false, true))
         assertEquals("location not allowed in the background (app-op foreground-only)", r(true, true, false, false))
+        assertEquals("the app-op comes before Doze", "location not allowed in the background (app-op foreground-only)", r(true, true, false, true))
         assertEquals("device idle (Doze)", r(true, true, true, true))
         assertEquals("throttled", r(true, true, true, false))
     }

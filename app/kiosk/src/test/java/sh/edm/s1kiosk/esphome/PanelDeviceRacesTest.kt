@@ -94,7 +94,8 @@ class PanelDeviceRacesTest {
     }
 
     private fun newDevice(context: Context) =
-        PanelDevice(context, runtime, onVoiceEvent = {}, onApiHello = { _, _ -> }, exec = exec, mdns = mdns, apiPort = 0)
+        PanelDevice(context, runtime, onVoiceEvent = {}, onApiHello = { _, _ -> }, exec = exec, mdns = mdns, apiPort = 0,
+            apiBindAddress = InetAddress.getLoopbackAddress())
 
     /** start() queues the startup on esphome-main; this runs it, and what it queues. */
     private fun startup() {

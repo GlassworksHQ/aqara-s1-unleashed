@@ -330,6 +330,8 @@ browser, the radio and the wall base protocol: it's all written up in
 | Path | What |
 |---|---|
 | [`kiln/`](kiln/src/README.md) | The browser (WebUSB) installer |
+| `frames/` | One folder per device: its Kiln recipe (`installer/`) and its data (`design/frame.json`) |
+| [`packages/`](packages/frame-card/README.md) | Code shared with glassworks.dev: the frame card and 3D renderer |
 | [`app/`](app/README.md) | S1 Kiosk, the Android app (GeckoView, ESPHome API, voice, Sendspin) |
 | `tools/` | Command-line installer, U-Boot/FEL build, boot patch, radio helper, dev tools |
 | [`branding/`](branding/glass-tile/README.md) | Glass Tile boot splash and animation, social preview |

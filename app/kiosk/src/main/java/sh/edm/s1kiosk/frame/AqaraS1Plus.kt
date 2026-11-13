@@ -28,7 +28,8 @@ class AqaraS1Plus : Frame {
     val rootUpdates = RootUpdateInstaller()
 
     /** Its Wi-Fi chip has no PNO scans, so the app scans while the screen is off (#3). One per service run. */
-    fun screenOffWifiScanner(context: Context) = ScreenOffWifiScanner(context)
+    fun screenOffWifiScanner(context: Context, onForegroundOnly: () -> Unit) =
+        ScreenOffWifiScanner(context, onForegroundOnly = onForegroundOnly)
 
     /**
      * The S1's firmware has no Android Settings app. Its own one (com.lumi.settings: Network, Sounds,

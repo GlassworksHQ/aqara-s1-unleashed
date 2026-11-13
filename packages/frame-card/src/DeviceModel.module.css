@@ -1,0 +1,309 @@
+/*
+ * The slab's shape uses only percentages and aspect-ratio, which every engine
+ * handles the same way. (Container units here rendered at window size in Gecko.)
+ * Depth and perspective need lengths, so they use --u: 1% of the stage width in
+ * px, measured by DeviceModel.tsx. The 5px fallback is right for a ~500px slot.
+ *
+ * From glassworks.dev DeviceModel.module.css (fbfd364), with its colours mapped to the brand tokens
+ * and the device's paint (--dev-*, paint.ts).
+ */
+.stage {
+  --u: 5px;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 2 / 1;
+  display: grid;
+}
+
+.model {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  perspective: calc(var(--u) * 170);
+}
+
+/* Sizes and angles (--wp, --ar, --rad, --du, --sr, --rx, --ry, --lean) and the
+   screen box (--scr-x/y/w/h) are set inline by geometry() in geometry.ts,
+   the same numbers that draw the sides. */
+
+.shadow,
+.device {
+  grid-area: 1 / 1;
+  width: var(--wp);
+  aspect-ratio: var(--ar);
+}
+
+/* the panel's shadow on the wall behind it */
+.shadow {
+  border-radius: var(--rad);
+  background: color-mix(in srgb, black 38%, transparent);
+  filter: blur(calc(var(--u) * 3.5));
+  transform: translate(5%, 9%) scale(0.94);
+}
+
+/* the front glass: one plane, rotated, then pushed out to the front face.
+   geometry.ts projects the sides with exactly this transform. */
+.device {
+  position: relative;
+  transform: rotateX(var(--rx)) rotateY(var(--ry)) rotateX(var(--lean, 0deg))
+    translateZ(calc(var(--u) * var(--du) * 0.5));
+}
+
+/* the slab's sides, computed and shaded; stage units, 100 x 50 */
+.sides {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.front {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--rad);
+  background: var(--dev-glass);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, white 9%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+}
+
+.screen {
+  container-type: inline-size;
+  /* placed on the face from the model: the face minus the bezel, or a
+     smaller screen behind a mirror */
+  position: absolute;
+  left: var(--scr-x);
+  top: var(--scr-y);
+  width: var(--scr-w);
+  height: var(--scr-h);
+  overflow: hidden;
+  border-radius: calc(var(--u) * var(--sr));
+  background:
+    radial-gradient(
+      60% 90% at 8% 0%,
+      color-mix(in srgb, var(--sky) 22%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      55% 90% at 96% 100%,
+      color-mix(in srgb, var(--violet) 20%, transparent),
+      transparent 70%
+    ),
+    var(--night);
+}
+
+/* the reflection: a soft diagonal band that slides with the pointer */
+.glare {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--rad);
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 34%,
+    color-mix(in srgb, white 7%, transparent) 44%,
+    color-mix(in srgb, white 13%, transparent) 49%,
+    color-mix(in srgb, white 5%, transparent) 55%,
+    transparent 64%
+  );
+  background-size: 260% 100%;
+  background-position: var(--sheen, 30%) 0;
+  transition: background-position 0.5s ease;
+}
+
+/* ---------- example dashboard, sized in cqw of the screen ---------- */
+.dash {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 3cqw;
+  padding: 4cqw 4.5cqw;
+  color: var(--s-fg);
+  font-family: var(--f-sans);
+  line-height: 1.2;
+}
+
+.clock {
+  display: grid;
+  align-content: end;
+  gap: 0.8cqw;
+}
+
+.time {
+  font-size: 13cqw;
+  font-weight: 200;
+  letter-spacing: -0.03em;
+  line-height: 0.9;
+  font-variant-numeric: tabular-nums;
+}
+
+.date {
+  font-size: 2.1cqw;
+  color: var(--s-mu);
+}
+
+.weather {
+  font-size: 2.1cqw;
+  color: var(--s-fa);
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.6cqw;
+  align-content: center;
+}
+
+.tile {
+  display: grid;
+  gap: 0.7cqw;
+  padding: 2cqw 2.2cqw;
+  border-radius: 2cqw;
+  background: color-mix(in srgb, white 5%, transparent);
+  border: 1px solid color-mix(in srgb, white 8%, transparent);
+}
+
+.tileLit {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--sky) 38%, transparent),
+    color-mix(in srgb, var(--violet) 38%, transparent)
+  );
+  border-color: transparent;
+}
+
+.tileName {
+  font-size: 1.9cqw;
+  color: var(--s-mu);
+}
+
+.tileLit .tileName {
+  color: color-mix(in srgb, var(--s-fg) 90%, var(--s-mu));
+}
+
+.tileValue {
+  font-size: 2.7cqw;
+  font-weight: 500;
+}
+
+/* square panel: clock on top, two tiles below */
+.model[data-layout="square"] .dash {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr auto;
+  gap: 5cqw;
+  padding: 7cqw;
+}
+
+.model[data-layout="square"] .time {
+  font-size: 24cqw;
+}
+
+.model[data-layout="square"] .date {
+  font-size: 4.4cqw;
+}
+
+.model[data-layout="square"] .tiles {
+  gap: 3.5cqw;
+}
+
+.model[data-layout="square"] .tile {
+  padding: 4cqw;
+  border-radius: 4cqw;
+  gap: 1.4cqw;
+}
+
+.model[data-layout="square"] .tileName {
+  font-size: 4cqw;
+}
+
+.model[data-layout="square"] .tileValue {
+  font-size: 5.4cqw;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glare {
+    transition: none;
+  }
+}
+
+/* portrait screen: clock on top, tiles in a column */
+.model[data-layout="portrait"] .dash {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
+  align-content: start;
+  gap: 8cqw;
+  padding: 12cqw 8cqw;
+}
+
+.model[data-layout="portrait"] .clock {
+  align-content: start;
+  gap: 2cqw;
+}
+
+.model[data-layout="portrait"] .time {
+  font-size: 26cqw;
+}
+
+.model[data-layout="portrait"] .date,
+.model[data-layout="portrait"] .weather {
+  font-size: 4.6cqw;
+}
+
+.model[data-layout="portrait"] .tiles {
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 3.5cqw;
+}
+
+.model[data-layout="portrait"] .tile {
+  padding: 4.5cqw 5cqw;
+  border-radius: 4cqw;
+  gap: 1.4cqw;
+}
+
+.model[data-layout="portrait"] .tileName {
+  font-size: 4.2cqw;
+}
+
+.model[data-layout="portrait"] .tileValue {
+  font-size: 6cqw;
+}
+
+/* mirror finish: silvered dark glass, the screen showing through it, a
+   stronger reflection */
+.model[data-finish="mirror"] .front {
+  /* silvered: it reflects the room, so lighter than plain black glass */
+  background:
+    linear-gradient(175deg, color-mix(in srgb, white 6%, transparent), transparent 30%),
+    linear-gradient(160deg, var(--dev-mirror-a), var(--dev-mirror-b) 45%, var(--dev-mirror-c));
+}
+
+.model[data-finish="mirror"] .screen {
+  opacity: 0.82;
+  background:
+    radial-gradient(
+      70% 50% at 20% 10%,
+      color-mix(in srgb, var(--sky) 12%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      60% 40% at 90% 95%,
+      color-mix(in srgb, var(--violet) 10%, transparent),
+      transparent 70%
+    ),
+    transparent;
+}
+
+.model[data-finish="mirror"] .glare {
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    color-mix(in srgb, white 10%, transparent) 42%,
+    color-mix(in srgb, white 20%, transparent) 48%,
+    color-mix(in srgb, white 7%, transparent) 56%,
+    transparent 66%
+  );
+  background-size: 260% 100%;
+  background-position: var(--sheen, 30%) 0;
+}

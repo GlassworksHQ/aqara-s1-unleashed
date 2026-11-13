@@ -14,3 +14,6 @@ dumps/
 # release signing keys: never commit (docs/releasing.md)
 *.jks
 *.keystore
+
+# npm workspace root (package.json)
+node_modules/

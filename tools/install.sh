@@ -56,7 +56,7 @@ run() { if [[ $DRY -eq 1 ]]; then echo "  + $*"; else "$@"; fi; }
 try() { if [[ $DRY -eq 1 ]]; then echo "  + $* || true"; else "$@" || true; fi; }
 sh_() { run adb shell "$@"; }
 
-# ---- Wi-Fi ownership and the signing-key switch (docs/install.md; kiln/src/provision/switch.ts) ----
+# ---- Wi-Fi ownership and the signing-key switch (docs/install.md; frames/aqara-s1-plus/installer/src/switch.ts) ----
 # Android 10 forgets every Wi-Fi network an app saved when that app is uninstalled, and S1 Kiosk
 # saves the panel's Wi-Fi itself (Improv). The Wi-Fi password is only ever held in a shell variable:
 # never echoed, never in a command line (it reaches improv-send.py on stdin), never in a file.

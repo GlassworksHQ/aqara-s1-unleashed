@@ -1,0 +1,22 @@
+{
+  "name": "@glassworks/aqara-s1-plus-installer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Kiln's recipe for the Aqara Panel Hub S1 Plus: device checks, backup plan, boot patch, and provisioning.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@glassworks/adb": "0.0.0",
+    "@glassworks/bootpatch": "0.0.0",
+    "@glassworks/fel": "0.0.0",
+    "@glassworks/kiln-core": "0.0.0",
+    "improv-serial": "0.1.0"
+  }
+}

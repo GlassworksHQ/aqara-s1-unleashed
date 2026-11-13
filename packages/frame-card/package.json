@@ -1,0 +1,21 @@
+{
+  "name": "@glassworks/frame-card",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A frame's card and 3D device mockup, drawn from frames/<id>/design/frame.json. Shared by Kiln and glassworks.dev.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@types/react": "^19"
+  }
+}

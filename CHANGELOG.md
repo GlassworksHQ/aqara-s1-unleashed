@@ -21,6 +21,10 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **The screen starts at your saved brightness.** With *Auto brightness* off, the app used the
+  system brightness after a restart until the light sensor reported a change, while Home Assistant
+  already showed your saved brightness. In a dark, still room that could last a long time. The app
+  now applies your saved brightness as soon as it starts.
 - **Wi-Fi reconnects while the screen is off.** If Wi-Fi dropped at night (a router restart, an
   outage), the panel stayed offline until someone woke the screen, because its Wi-Fi chip can't scan
   on its own with the screen off. The app now asks for a scan 10 s after Wi-Fi drops, then after
@@ -37,6 +41,11 @@ below as the release notes.
   quick off and on, or a setting change that restarts the player, the old connection could end the new
   stream, make the status say "disconnected" while the panel was connected, or connect a second time
   next to the new one. Now the old connection can't touch the new one.
+- **Undo refuses an incomplete backup instead of half-restoring it.** Undo puts back boot, vbmeta and
+  the splash. A backup missing one of them (a damaged or hand-made `.zip` or folder) used to restore
+  the rest and report success, leaving our splash on the panel. Now the web installer and
+  `fel-install.sh --undo` both refuse it before writing anything, and the
+  [install guide](docs/install.md#undo) says how to put back boot and vbmeta by hand.
 - **Sign-in: someone on your network who reads the sign-in code can no longer use it.** Both sign-ins (the
   dashboard QR code and the administrator sign-in for the Thread join) now use PKCE, so Home Assistant
   only hands out the panel's token to the panel itself. Needs Home Assistant 2026.10 or later to take

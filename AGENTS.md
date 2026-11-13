@@ -15,7 +15,9 @@ Breaking into hardware has its own playbook: [`docs/research/bringup.md`](docs/r
 |---|---|---|
 | `app/kiosk` | S1 Kiosk, the GeckoView kiosk app (`sh.edm.s1kiosk`, never rename it) | Kotlin, Android |
 | `app/libs/*` | Libraries split out of the app: `esphome-api` (JVM), `esphome-api-android`, `improv` | Kotlin |
-| `kiln/` | Kiln, the WebUSB installer (FEL → fastboot → boot patch → adb), served at s1.edm.sh. An npm workspace: the page in `src/`, protocol modules in `packages/` | TypeScript, Vite, Rust→WASM |
+| `kiln/` | Kiln, the WebUSB installer (FEL → fastboot → boot patch → adb), served at s1.edm.sh. The page in `src/`, protocol modules in `packages/`, the Next.js app in `apps/kiln` | TypeScript, Vite, Next.js, Rust→WASM |
+| `frames/<id>/` | Everything about one frame: its Kiln recipe (`installer/`) and its design data (`design/frame.json`, `recovery.json`) | TypeScript, JSON |
+| `packages/` | Packages Kiln and glassworks.dev share: `frame-card`, the frame card and 3D device mockup | TypeScript, React |
 | `tools/fel`, `tools/install` | FEL boot, U-Boot board files and patches, the CLI installer | bash |
 | `tools/root`, `tools/radio` | Init services in the patched boot image: root helper, update and bundle services | `/system/bin/sh` (mksh), C |
 | `docs/` | User guides; `docs/research/` holds the engineering notes and evidence | Markdown |
@@ -25,7 +27,7 @@ Breaking into hardware has its own playbook: [`docs/research/bringup.md`](docs/r
 
 ```sh
 cd app && ./gradlew test :kiosk:assembleDebug        # app + libs: unit tests and a debug APK
-cd kiln && npm install && npm run stage && npm test   # installer (also: npm run typecheck, npm run build)
+npm install && npm run stage -w kiln && npm test     # npm workspaces, from the repo root (also: npm run typecheck, npm run build)
 tools/install/test/install-tests.sh                  # install scripts, off-device
 python3 tools/check-doc-links.py                     # relative links and #anchors in docs
 tools/root/build-verify.sh && tools/radio/test/run.sh  # root side, in an armhf container (Docker)
@@ -33,6 +35,14 @@ tools/root/build-verify.sh && tools/radio/test/run.sh  # root side, in an armhf 
 
 CI (`.github/workflows/pr.yml`) runs all of these. Run the ones for the area you touched before
 you open a PR.
+
+## Principles
+
+Glassworks is an opinionated, simple Home Assistant panel controller. **Read
+[`docs/principles.md`](docs/principles.md) before you propose or build a feature**, and check new
+panes against [What makes a pane](app/kiosk/src/main/java/dev/glassworks/README.md#what-makes-a-pane).
+In short: HA is the brain, ESPHome is the wire, the dashboard is the UI, and nothing gets installed
+in HA. If a request goes against it, say so and point at the page instead of building around it.
 
 ## Hard rules
 
@@ -71,7 +81,7 @@ you open a PR.
     `adb shell input keyevent KEYCODE_WAKEUP`.
   - Without a panel: the app's Robolectric mockups at the panel's size
     (`./gradlew :kiosk:testDebugUnitTest --tests '*Mockups*' -Ps1MockupDir=<dir>`); add a mockup
-    for a new view. The installer's dev states: `npm run dev`, then `?demo=wifi`, `?demo=wifi-fail`, ….
+    for a new view. The installer's dev states: `npm run dev -w kiln`, then `?demo=wifi`, `?demo=wifi-fail`, ….
   - *Before* comes from `main`, at the same state and size as *after*.
   - Upload them to the PR body (GitHub user attachments). Don't commit PR screenshots to the repo;
     only images that docs use go in `docs/img/` (as `.webp`).

@@ -4,10 +4,12 @@ The design is in `docs/research/web-installer.md`, and the reference flow in `to
 `tools/install.sh`. Every module is plain TypeScript (ES2022, no framework). Modules talk to each
 other only through the exports below. `app/` is the only module that knows about the UI.
 
-`kiln/` is an npm workspace. The protocol modules are packages in `packages/`, each with its own
-tests: `@glassworks/fel`, `@glassworks/fastboot`, `@glassworks/adb`, `@glassworks/bootpatch`,
-`@glassworks/setup-channel` and `improv-serial`. The page (`app/`, `assets/`, `improv/`,
-`provision/`) stays in `src/` and imports them by package name.
+`kiln/` is one of the npm workspaces under the repo root's `package.json`. The protocol modules are
+packages in `kiln/packages/`, each with its own tests: `@glassworks/fel`, `@glassworks/fastboot`, `@glassworks/adb`, `@glassworks/bootpatch`,
+`@glassworks/setup-channel` and `improv-serial`. `@glassworks/kiln-core` (`kiln/packages/kiln-core`) is the
+step engine, and the S1's part is its recipe, `@glassworks/aqara-s1-plus-installer`
+(`frames/aqara-s1-plus/installer`). The page (`app/`, `assets/`) stays in `src/` and imports them all
+by package name.
 
 ## `fel` (`packages/fel`) — FEL over WebUSB (sunxi-fel subset; owner: main session, needs the panel)
 ```ts
@@ -59,7 +61,7 @@ export function withVbmetaFlags(vbmeta: Uint8Array, set: number): Uint8Array; //
 export function replaceBootlogo(bootloaderImg: Uint8Array, bmp: Uint8Array): Uint8Array; // == tools/branding/set-bootlogo.py
 ```
 
-## `adb` (`packages/adb`) + `provision/` — after first boot (owner: main session)
+## `adb` (`packages/adb`) + the recipe's `provision.ts` — after first boot (owner: main session)
 ```ts
 export function loadOrCreateAdbKey(storage?: KeyStorage): Promise<AdbKey>;  // { publicKey: 'QAAAA... name', store } (IndexedDB)
 export interface PanelShell { run(cmd): Promise<{ out: string; code: number }>; push(path, data, mode?): Promise<void> }
@@ -67,28 +69,73 @@ export class Panel implements PanelShell { static connect(key, device?): Promise
 export function provision(panel: PanelShell, opts: ProvisionOptions, onStep?): Promise<{ ip?: string }>; // tools/install.sh
 export function unprovision(panel: PanelShell, onStep?): Promise<void>;                                     // install.sh --undo
 ```
-`provision/switch.ts`: when Android refuses the APK over another signing key (a debug build), `provision`
+The recipe's `switch.ts`: when Android refuses the APK over another signing key (a debug build), `provision`
 asks `opts.confirmSwitch(plan)` and then uninstalls + installs, carrying the app's data and Wi-Fi over
 with adb root (panel side: `tools/install/s1kiosk-switch.sh`, same as install.sh). `unprovision` disables
 instead of uninstalling when S1 Kiosk saved the panel's Wi-Fi (Android forgets it with the app).
 Wake-word models are not pushed from the browser (CC BY-NC-SA, and GitHub sends no CORS headers);
 the kiosk app fetches them on the panel.
 
-## `assets/` — pinned blobs
+## Pinned blobs
 `scripts/stage-assets.mjs` (`npm run stage`) copies them to `public/assets/blobs/` and writes
 `public/assets/manifest.json` (`{ name, path, sha256, size, license, source }`; both gitignored).
-`new Assets().get(name)` downloads a blob and checks its SHA-256, refusing on a mismatch.
+`--out <dir>` stages somewhere else (Kiln's Next.js app: `apps/kiln/public/assets`).
+`new Assets<AssetName>(base).get(name)` (kiln-core) downloads a blob and checks its SHA-256,
+refusing on a mismatch. `webUsbDevices` (kiln-core) is the real WebUSB behind `Devices`.
+
+## `kiln-core` (`packages/kiln-core`) — the step engine (owner: main session)
+```ts
+export class InstallFlow<A, O, R> {        // fel-install.sh steps 1-9 without the DOM
+  constructor(recipe: Recipe<A, O, R>, deps: FlowDeps<A>, ui: FlowUi);
+  bootFromFel(fel: FelDevice): Promise<void>;
+  connectFastboot(): Promise<Fastboot>;
+  install(fb: Fastboot): Promise<{ meta: BackupMeta; files: BackupFile[]; bootSha256: string }>;
+  connectAdb(timeoutMs?: number): Promise<PanelShell>;
+  setUpApp(panel: PanelShell, opts: O): Promise<R>;
+}
+export function restoreFromBackup(plan: BackupPlan, fb: Fastboot, files: Map<string, Uint8Array>, log, onProgress?): Promise<void>; // --undo
+export interface FlowUi { log; progress(p: Progress); partition(part, state, info); ask(kind, action, signal) }
+export interface Recipe<A, O, R> {
+  fel: { checkChip(fel): Promise<string>; loader: A[]; boot(fel, loader, onProgress): Promise<void> };
+  checkLayout(fb: Fastboot): Promise<string>;           // throws on the wrong device, returns the log line
+  backup: BackupPlan;                                    // parts, restore, idPrefix, db, isPatched(boot)
+  patching: string;
+  patchBoot(ctx: PatchContext<A>): Promise<Uint8Array>;
+  writesBeforeBoot(ctx: PatchContext<A>): Promise<FlashStep[]>;  // InstallFlow writes boot after these
+  setUp(panel: PanelShell, opts: O, ctx: SetUpContext<A>): Promise<R>;
+}
+```
+InstallFlow owns the order, the progress, the backup before any write (boot read twice), the read-back
+of every write, and boot last. Whatever the recipe says, it refuses:
+
+- before touching the device, a backup plan that doesn't read and restore `boot`, doesn't read every
+  `restore` part, or has no `isPatched`;
+- before writing, a recipe step that writes boot or a part the plan doesn't both back up and restore,
+  and a patch that gives a stock boot back unchanged (the same boot back is fine on a re-run, when
+  `backup.isPatched` says it was patched already);
+- on undo, a backup that lacks any `restore` part, or whose boot `isPatched` (`checkRestorable`, which
+  throws `BackupRefused`). The page's "keep the panel's settings" undo calls it before it gives the
+  apps back (`src/app/undo.ts`), since that removes S1 Kiosk.
+
+kiln-core doesn't depend on bootpatch: what "patched" means is the recipe's. USB comes in through
+`Devices`. The S1's end-to-end test is `kiln/test/flow.test.ts`: the S1 recipe on simulated hardware
+with the real 4.5.80 partitions. kiln-core's own `test/flow.test.ts` checks the rules above with a
+made-up frame. `backup.ts`: backups in IndexedDB + a STORED zip (`zip.ts`) with a `SHA256SUMS` the
+CLI's `--undo` accepts. kiln-core names no frame: its `no-frame-names` test fails on any S1 name.
+
+## The S1 recipe (`frames/aqara-s1-plus/installer`)
+`s1Plus` in `src/recipe.ts`: the A133 check and our U-Boot over FEL, the S1 Plus partition layout,
+the backup and restore lists, `s1Overlay` and the vbmeta and splash writes, and setup through
+`provision.ts` (`PKG`, `DEBLOAT`, Aqara's launcher and services). Also `switch.ts` and `improv.ts`
+(the app's Improv socket). It is a workspace of the npm root at the repo root, like `kiln/` itself, so
+Node finds its dependencies with no extra config.
 
 ## `app/` — the page (owner: main session)
-- `flow.ts`: `InstallFlow` = `fel-install.sh` steps 1-9 without the DOM (`bootFromFel`, `connectFastboot`,
-  `install`, `connectAdb`, `setUpApp`) + `restoreFromBackup` (= `--undo`). USB comes in through `Devices`,
-  so `test/flow.test.ts` runs it end to end on simulated hardware with the real 4.5.80 partitions.
-- `backup.ts`: backups in IndexedDB + a STORED zip (`zip.ts`) with a `SHA256SUMS` the CLI's `--undo` accepts.
-- `ui.ts`: renders design E (`mockup/option-e.html`) from the flow's events.
+- `ui.ts`: renders design E (`mockup/option-e.html`) from the flow's events, with the S1 recipe.
 
 ## Running it
 ```
-npm install && npm run stage && npm run dev     # http://localhost:5173 (a secure context)
-npm test                                        # goldens: S1_WEB_GOLDEN=<dir>, else skipped
-npm test -w @glassworks/bootpatch               # one package (or: cd packages/bootpatch && npm test)
+npm install && npm run stage -w kiln && npm run dev -w kiln   # from the repo root; http://localhost:5173 (a secure context)
+npm test                                        # every workspace; goldens: S1_WEB_GOLDEN=<dir>, else skipped
+npm test -w @glassworks/bootpatch               # one package (or: cd kiln/packages/bootpatch && npm test)
 ```
