@@ -296,6 +296,18 @@ class SignInServer(
         const val CONTINUE = "/signin/continue"
         const val THREAD_CONTINUE = "/thread/continue"
 
+        /**
+         * Every page's headers: no caching, and nothing but its own inline style may run or load (the
+         * pages have no script, image or font, and any injected markup stays inert).
+         */
+        val PAGE_HEADERS = mapOf(
+            "Content-Type" to "text/html; charset=utf-8",
+            "Cache-Control" to "no-store",
+            "Content-Security-Policy" to "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+            "X-Content-Type-Options" to "nosniff",
+            "Referrer-Policy" to "no-referrer",
+        )
+
         fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
         /** The stack tells the state, as on the panel: outlined to start, lit when done, rose and dashed for a problem. */
@@ -364,7 +376,7 @@ svg rect{stroke:var(--pl);stroke-width:2.4}.p0{stroke-opacity:.7}.p1{stroke-opac
 </style></head><body><header>${mark(if (look == Look.DONE) Look.DONE else Look.START, "m")}<span>$name</span></header>
 <main>${mark(look, "big")}<div class="copy"><h1>$heading</h1><p>$text</p>$tile</div>""" +
                 """<div class="act">$button${if (foot.isNotEmpty()) "<div class=\"foot\">${esc(foot)}</div>" else ""}</div></main></body></html>"""
-            return Response(status, reason, mapOf("Content-Type" to "text/html; charset=utf-8", "Cache-Control" to "no-store"),
+            return Response(status, reason, PAGE_HEADERS,
                 html.toByteArray(Charsets.UTF_8))
         }
     }

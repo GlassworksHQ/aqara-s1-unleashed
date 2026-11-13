@@ -360,5 +360,13 @@ class SignInServerTest {
         assertTrue(html.contains("<svg")) // the mark is inline
         assertTrue(html.contains("Glassworks Panel"))
         for (external in listOf("<script", "<link", "src=", "@import", "url(http")) assertTrue(external, !html.contains(external))
+        // ... and the browser enforces it: only the page's own inline style, no sniffing, no referrer.
+        assertEquals("default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'", r.headers["Content-Security-Policy"])
+        assertEquals("nosniff", r.headers["X-Content-Type-Options"])
+        assertEquals("no-referrer", r.headers["Referrer-Policy"])
+        // The same on a page that answers: the landing.
+        val landing = server.handle(SignInServer.Request("GET", "/", emptyMap(), emptyMap()))
+        assertEquals(200, landing.status)
+        for (h in listOf("Content-Security-Policy", "X-Content-Type-Options", "Referrer-Policy")) assertEquals(h, r.headers[h], landing.headers[h])
     }
 }
