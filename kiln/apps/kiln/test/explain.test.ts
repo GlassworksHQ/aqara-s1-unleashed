@@ -109,3 +109,18 @@ describe('a failure during a write, through the session', () => {
     s.close();
   });
 });
+
+describe('the panel\'s history in a failure', () => {
+  it('on an installed panel (set-up), an earlier write changes neither the words nor the way on', () => {
+    const closed = new DOMException('No device selected.', 'NotFoundError');
+    for (const at of [1, 3]) expect(explain(closed, at, 'none', true, 'written')).toEqual(explain(closed, at, 'none', true));
+    const refused = new BackupRefused('this backup has no boot');
+    expect(explain(refused, 3, 'none', true, 'written').body).toBe(explain(refused, 3, 'none', true).body);
+  });
+
+  it('when the tab can\'t remember earlier tries, it neither claims nothing was written nor sends to Undo', () => {
+    const f = explain(new Error('transferIn: the device was disconnected'), 2, 'none', false, 'unknown');
+    expect(f.body).toBe('This attempt wrote nothing. Kiln can\'t tell if an earlier try in this browser tab did. Try a cable straight into this computer.');
+    expect(f.wrote).toBe(false);
+  });
+});

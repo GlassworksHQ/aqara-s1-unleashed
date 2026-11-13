@@ -4,7 +4,7 @@
 import type { PanelShell } from '@glassworks/adb';
 import {
   PacketReader, PacketType, Rpc, State as ImprovState, frame, parseResult, s1Plus, strings,
-  type AssetName, type ByteStream, type Provisioned, type SetUpOptions,
+  type AppPhase, type AssetName, type ByteStream, type Provisioned, type SetUpOptions,
 } from '@glassworks/aqara-s1-plus-installer';
 import type { Fastboot } from '@glassworks/fastboot';
 import type { FelDevice } from '@glassworks/fel';
@@ -15,18 +15,30 @@ import { s1PlusUi } from '../frames/aqara-s1-plus';
 import { explain } from './explain';
 import { Session, type SessionDeps } from './session';
 
-export const DEMOS = ['run', 'selftest', 'connect', 'ask-fastboot', 'install', 'ask-adb', 'app', 'wifi', 'wifi-fail', 'home-assistant', 'radio', 'radio-next',
+export const DEMOS = ['run', 'selftest', 'connect', 'ask-fastboot', 'install', 'ask-adb', 'app', 'app-update', 'app-installing', 'app-keyboard', 'wifi', 'wifi-new', 'wifi-fail', 'home-assistant', 'radio', 'radio-next', 'radio-thread', 'radio-thread-old',
   'done', 'undo', 'undo-refused', 'undo-refused-splash', 'undo-apps-back', 'undo-unreadable', 'undo-connect', 'restore', 'undo-done', 'error', 'error-written'] as const;
 export type Demo = (typeof DEMOS)[number];
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const IP = '192.0.2.50';
 
+/** Whether the simulated panel is on Wi-Fi: its app's setup state and Android's `dumpsys wifi` read it. */
+interface Net { online: boolean }
+
+/** `dumpsys wifi` on a panel on the made-up "Home Net", in Android 10's shape (switch.ts parseWifiOwner). */
+const DUMPSYS_WIFI = [
+  'mWifiInfo SSID: Home Net, BSSID: 02:00:00:00:00:01, Supplicant state: COMPLETED, RSSI: -48, Net ID: 0, score: 60',
+  'Configured networks Begin ----',
+  '* ID: 0 SSID: "Home Net" PROVIDER-NAME: null BSSID: null FQDN: null PRIO: 0 HIDDEN: false',
+  ' cuid=10071 cname=sh.edm.s1kiosk luid=10071',
+  'Configured networks End ----',
+].join('\n');
+
 /** The app's setup channel on a simulated panel. */
-function setupStream(): ByteStream {
+function setupStream(net: Net): ByteStream {
   let cb: (c: Uint8Array) => void = () => {};
   const state: SetupState = {
-    ip: IP,
+    ip: net.online ? IP : undefined,
     ha: { discovered: 'http://homeassistant.local:8123', url: '', signedIn: false, signinUrl: `http://${IP}:8099/signin` },
     radio: {
       mode: 'off', status: 'Off: radio idle', helper: true,
@@ -52,6 +64,7 @@ function setupStream(): ByteStream {
           state.radio.status = m.mode === 'off' ? 'Off: radio idle' : 'ok Zigbee coordinator (TCP): listening on :6638 (waiting for Home Assistant to connect over ESPHome)';
           state.radio.allowed = m.mode === 'off' ? undefined : '';
         }
+        state.ip = net.online ? IP : undefined;
         send({ id: m.id, ok: true, state }, m.op === 'set_radio' ? 1500 : 200);
       }
     },
@@ -59,7 +72,7 @@ function setupStream(): ByteStream {
 }
 
 /** A panel answering Improv Serial; `fail`: a wrong password. */
-function improvStream(fail: boolean): ByteStream {
+function improvStream(fail: boolean, net: Net): ByteStream {
   const reader = new PacketReader();
   let cb: (c: Uint8Array) => void = () => {};
   const send = (t: number, d: Uint8Array, ms = 0) => setTimeout(() => cb(frame(t, d)), ms);
@@ -73,7 +86,7 @@ function improvStream(fail: boolean): ByteStream {
     write: async (data) => {
       for (const p of reader.push(data)) {
         const cmd = p.data[0];
-        if (cmd === Rpc.RequestState) send(PacketType.State, Uint8Array.of(ImprovState.Ready));
+        if (cmd === Rpc.RequestState) send(PacketType.State, Uint8Array.of(net.online ? ImprovState.Provisioned : ImprovState.Ready));
         if (cmd === Rpc.ScanWifi) {
           [['Home Net', '-48', 'YES'], ['Home Net 5G', '-62', 'YES'], ['Neighbours', '-74', 'YES'], ['Cafe Guest', '-83', 'NO']]
             .forEach((n, i) => result(Rpc.ScanWifi, n, 600 + i * 40));
@@ -83,18 +96,26 @@ function improvStream(fail: boolean): ByteStream {
           void parseResult(p.data);
           send(PacketType.State, Uint8Array.of(ImprovState.Provisioning), 900);
           if (fail) send(PacketType.Error, Uint8Array.of(0x03), 4200);
-          else { send(PacketType.State, Uint8Array.of(ImprovState.Provisioned), 4200); result(Rpc.WifiSettings, [`http://${IP}:6053`], 4250); }
+          else { setTimeout(() => { net.online = true; }, 4200); send(PacketType.State, Uint8Array.of(ImprovState.Provisioned), 4200); result(Rpc.WifiSettings, [`http://${IP}:6053`], 4250); }
         }
       }
     },
   };
 }
 
-export function simulatedPanel(wifiFails = false): PanelShell {
+/** `online`: on Wi-Fi already, as a panel set up with Aqara's app is. */
+/** `app`: S1 Kiosk's version on the panel (`dumpsys package`), or null when it isn't installed. */
+export function simulatedPanel(wifiFails = false, online = true, app: { name: string; code: number } | null = { name: '0.5.0', code: 500 }): PanelShell {
+  const net: Net = { online };
+  const out = (cmd: string) => cmd === 'getprop sys.boot_completed' || cmd.startsWith('grep -c') ? '1\n'
+    : cmd === 'pm path sh.edm.s1kiosk' && app ? 'package:/data/app/sh.edm.s1kiosk-1/base.apk\n'
+    : cmd === 'dumpsys package sh.edm.s1kiosk' && app ? `    versionCode=${app.code} minSdk=26 targetSdk=34\n    versionName=${app.name}\n`
+    : cmd === 'dumpsys wifi' && net.online ? DUMPSYS_WIFI
+    : cmd.startsWith('ip -4') && net.online ? `3: wlan0    inet ${IP}/24 brd 192.0.2.255 scope global wlan0\n` : '';
   return {
-    run: async (cmd) => ({ out: cmd === 'getprop sys.boot_completed' ? '1\n' : cmd.startsWith('grep -c') ? '1\n' : '', code: 0 }),
+    run: async (cmd) => ({ out: out(cmd), code: 0 }),
     push: async () => {},
-    openStream: async (svc) => (svc === SETUP_SOCKET ? setupStream() : improvStream(wifiFails)),
+    openStream: async (svc) => (svc === SETUP_SOCKET ? setupStream(net) : improvStream(wifiFails, net)),
   };
 }
 
@@ -163,8 +184,19 @@ const demoRecipe: Recipe<AssetName, SetUpOptions, Provisioned> = {
     return image;
   },
   writesBeforeBoot: async ({ backup, log }) => { log('vbmeta flags: 0'); return [{ part: 'vbmeta', data: backup.get('vbmeta')!, what: 'Turning off verified boot' }]; },
-  setUp: async (_panel, _opts, { step }) => {
-    for (const s of ['Installing S1 Kiosk', 'Setting it as the home screen', 'Applying your settings']) { step(s); await wait(500); }
+  setUp: async (_panel, opts, { step }) => {
+    // provision's phases, in its order, without the panel's real durations
+    const phases: [AppPhase, string, number][] = [
+      [{ step: 'apk', apk: 'kiosk', stage: 'copy' }, 'Install kiosk app', 600], [{ step: 'apk', apk: 'kiosk', stage: 'install' }, '', 2500],
+      [{ step: 'home' }, 'Permissions', 600],
+      ...(opts.keyboard !== false ? [[{ step: 'apk', apk: 'keyboard', stage: 'copy' }, 'Keyboard', 200], [{ step: 'apk', apk: 'keyboard', stage: 'install' }, '', 600]] as [AppPhase, string, number][] : []),
+      [{ step: 'prefs' }, '', 300], [{ step: 'start' }, 'Start the kiosk', 400],
+    ];
+    for (const [phase, s, ms] of phases) {
+      opts.onPhase?.(phase);
+      if (s) step(s);
+      await wait(ms);
+    }
     return { ip: IP };
   },
 };
@@ -172,7 +204,10 @@ const demoRecipe: Recipe<AssetName, SetUpOptions, Provisioned> = {
 /** A session on the simulated panel. */
 export function demoSession(which: Demo): Session {
   const saved: { meta: BackupMeta; files: BackupFile[] }[] = [];
-  const panel = simulatedPanel(which === 'wifi-fail');
+  // run and the app's first-install states start without S1 Kiosk on the panel; radio-thread-old has 0.4.3
+  const app = ['run', 'app', 'app-installing', 'app-keyboard'].includes(which) ? null
+    : which === 'radio-thread-old' ? { name: '0.4.3', code: 403 } : { name: '0.5.0', code: 500 };
+  const panel = simulatedPanel(which === 'wifi-fail', which !== 'wifi-fail' && which !== 'wifi-new', app);
   let adbAllowed = which !== 'run'; // the static states start on an installed panel
   const deps: SessionDeps = {
     recipe: demoRecipe,
@@ -244,11 +279,20 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
       dispatch({ type: 'setup', setup: { phase: 'waiting', note: 'The panel is starting its new software. The first start takes a minute or two.' } });
       void session.asks.open('adb', () => new Promise(() => {}), never);
       return;
-    case 'app':
+    case 'app': // a first install: the panel has no S1 Kiosk yet
+    case 'app-update': // S1 Kiosk is on the panel: installing replaces it
       await session.route('resume');
-      dispatch({ type: 'setup', setup: { phase: 'settings', update: false } });
       return;
-    case 'wifi':
+    case 'app-installing': // Android installing and optimising the app
+    case 'app-keyboard': // the next APK: the on-screen keyboard
+      await session.route('resume');
+      dispatch({ type: 'setup', setup: { phase: 'settings', update: false, chosen: { clock24: true, keyboard: true }, installing: [
+        { step: 'apk', apk: 'kiosk', stage: 'copy' }, { step: 'apk', apk: 'kiosk', stage: 'install' },
+        ...(which === 'app-keyboard' ? [{ step: 'home' }, { step: 'apk', apk: 'keyboard', stage: 'install' }] as AppPhase[] : []),
+      ] } });
+      return;
+    case 'wifi': // the panel is on Wi-Fi already
+    case 'wifi-new': // it isn't: the networks it can see
     case 'wifi-fail':
       await session.route('wifi');
       return;
@@ -261,6 +305,11 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
     case 'radio-next':
       await session.route('radio');
       await session.applyRadio('zigbee_tcp');
+      return;
+    case 'radio-thread': // a Thread router, on an S1 Kiosk that gets the network from Home Assistant
+    case 'radio-thread-old': // the same on 0.4.3, which can't
+      await session.route('radio');
+      await session.applyRadio('thread_router');
       return;
     case 'done':
       dispatch({ type: 'done', done: {

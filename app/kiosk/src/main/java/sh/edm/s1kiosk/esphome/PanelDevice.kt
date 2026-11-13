@@ -93,8 +93,19 @@ class PanelDevice internal constructor(
         // Keep the library's logs under the tag the docs use (`adb logcat -s S1ESPHome`).
         init { EspHomeLog.tag = "S1ESPHome" }
 
+        /**
+         * The ESPHome node name. Home Assistant's config entry keeps it (`device_name`) and the mDNS
+         * service is named after it. Never change it. Entity ids don't come from it: HA prefixes a new
+         * entity's id with the device's name as HA shows it ([FRIENDLY_NAME], or the user's own).
+         */
         const val NAME = "s1-panel"
-        const val FRIENDLY_NAME = "S1 Panel"
+
+        /**
+         * What Home Assistant calls the panel (#63), from DeviceInfo and the mDNS `friendly_name`. HA's
+         * device registry takes it on every connect unless someone renamed the device there. Entity ids
+         * already registered never change: their unique ids are the MAC and the object id.
+         */
+        const val FRIENDLY_NAME = "Glassworks Panel"
         /** Reported ESPHome version (recent, so HA doesn't treat the device as outdated). */
         const val ESPHOME_VERSION = "2026.10.2"
         /** Same flags as an ESPHome voice_assistant with a media player (Voice PE): no SPEAKER. */

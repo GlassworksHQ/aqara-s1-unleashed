@@ -24,7 +24,7 @@ afterEach(() => cleanup());
 describe('Try again after a failed write', () => {
   it('a device list closed on the retry asks for recovery mode, and keeps Undo', async () => {
     const s = demoSession('error-written'); // its Connect is a picker closed with nothing picked
-    render(<Wizard session={s} frame={s1PlusUi} />);
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
     await act(() => enterDemo(s, 'error-written'));
     expect(screen.getByRole('heading', { name: 'Something went wrong while writing.' })).toBeTruthy();
 

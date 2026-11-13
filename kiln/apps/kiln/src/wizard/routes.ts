@@ -69,7 +69,9 @@ export function canonical(s: WizardState): Step {
   }
 }
 
-const SET_UP: Step[] = ['set-up', 'wifi', 'home-assistant', 'radio'];
+/** The set-up steps, in order. Each can be gone back to (Back, the rail) while set-up waits for the person. */
+export const SET_UP = ['set-up', 'wifi', 'home-assistant', 'radio'] as const satisfies readonly Step[];
+const inSetUp = (step: Step | undefined): step is (typeof SET_UP)[number] => SET_UP.includes(step as never);
 
 /**
  * Whether the address bar may stay on `step` for this state: its canonical step, or, while a panel is
@@ -77,7 +79,7 @@ const SET_UP: Step[] = ['set-up', 'wifi', 'home-assistant', 'radio'];
  */
 export function fits(s: WizardState, step: Step | undefined): boolean {
   if (step === canonical(s)) return true;
-  return s.screen === 'setup' && s.setup.phase === 'waiting' && step !== undefined && SET_UP.includes(step);
+  return s.screen === 'setup' && s.setup.phase === 'waiting' && inSetUp(step);
 }
 
 export type Status = 'idle' | 'running' | 'finished';
@@ -100,6 +102,8 @@ export type Decision =
   | { kind: 'stay' }
   /** point the address bar at this step, without a history entry */
   | { kind: 'replace'; step: Step }
+  /** point it at this step with a history entry, so Back returns to the step before */
+  | { kind: 'push'; step: Step }
   /** enter this route; `fresh`: on a new session, the old one having started something */
   | { kind: 'enter'; step: Step; fresh: boolean };
 
@@ -113,13 +117,21 @@ export function onNavigate(s: WizardState, started: boolean, step: Step | undefi
   if (fits(s, step)) return { kind: 'stay' };
   const st = status(s);
   if (st === 'running') return { kind: 'replace', step: here }; // a running flow stays on screen
+  // another set-up step of the panel this session holds: the same session, so nothing entered is lost
+  if (s.screen === 'setup' && inSetUp(step)) return { kind: 'enter', step, fresh: false };
   if (ENTRIES[step]) return { kind: 'enter', step, fresh: started };
   return st === 'finished' ? { kind: 'replace', step: here } : { kind: 'replace', step: START_OF[step] };
 }
 
-/** When the state moved on by itself, the URL follows. */
+/**
+ * When the state moved on by itself, the URL follows. Moving forward through set-up adds a history
+ * entry, so Back goes to the step before; everything else replaces.
+ */
 export function onState(s: WizardState, step: Step | undefined): Decision {
-  return fits(s, step) ? { kind: 'stay' } : { kind: 'replace', step: canonical(s) };
+  if (fits(s, step)) return { kind: 'stay' };
+  const to = canonical(s);
+  const forward = inSetUp(step) && inSetUp(to) && SET_UP.indexOf(to) > SET_UP.indexOf(step);
+  return { kind: forward ? 'push' : 'replace', step: to };
 }
 
 /** s1.edm.sh's (and docs/install.md's) hash links, and this app's older ones, to routes. */

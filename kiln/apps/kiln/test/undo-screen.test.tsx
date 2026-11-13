@@ -21,7 +21,7 @@ afterEach(() => cleanup());
 
 async function undo(which: Demo) {
   const s = demoSession(which);
-  render(<Wizard session={s} frame={s1PlusUi} />);
+  render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
   await act(() => enterDemo(s, which));
   return s;
 }

@@ -20,7 +20,7 @@ export interface RecoveryData {
   labels?: Partial<Record<string, string>>;
 }
 
-export const LABELS: Record<string, string> = { screws: 'Screws out', cover: 'Back off', hold: 'Hold the button', plug: 'Plug in' };
+export const LABELS: Record<string, string> = { screws: 'Take out the screws', cover: 'Remove the back cover', hold: 'Hold the button', plug: 'Plug in the USB cable' };
 
 const C = Math.cos(Math.PI / 6);
 const SN = 0.5;

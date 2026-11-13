@@ -172,7 +172,7 @@ class SendspinPlayer(
 
     /** Built per connection: the formats can change between connections. */
     private fun hello() = SsHelloInfo(
-        name = "S1 Panel",
+        name = "Glassworks Panel",
         productName = "Panel Hub S1 Plus (S1 Kiosk)",
         manufacturer = "Aqara",
         softwareVersion = "S1 Kiosk ${BuildConfig.VERSION_NAME}",
