@@ -144,7 +144,9 @@ h2.huge { font-size: 44px; font-weight: 200; }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 999px; padding: 11px 20px; font-weight: 500; font-size: 15px; border: 1px solid transparent; cursor: pointer; text-decoration: none; background: none; }
 .btn:disabled { opacity: 0.45; cursor: default; }
-.btn.ember { background: var(--ember-gradient); color: var(--on-ember); box-shadow: 0 8px 30px -10px color-mix(in srgb, var(--ember-b) 70%, transparent); }
+/* border-box: the gradient spans the transparent border too, instead of repeating a sliver of its
+   far end under it at both ends of the pill */
+.btn.ember { background: var(--ember-gradient) border-box; color: var(--on-ember); box-shadow: 0 8px 30px -10px color-mix(in srgb, var(--ember-b) 70%, transparent); }
 .btn.ghost { border-color: var(--edge); color: var(--fg); background: var(--glass); }
 .btn.pulsing { animation: glowp 1.8s ease-in-out infinite; }
 @keyframes glowp { 50% { box-shadow: 0 8px 40px -6px color-mix(in srgb, var(--ember-b) 95%, transparent); } }
@@ -181,8 +183,13 @@ h2.huge { font-size: 44px; font-weight: 200; }
 .recview svg { display: block; width: 100%; height: auto; }
 .beats { display: flex; gap: 6px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
 .beats li { font-size: 12.5px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--edge); color: var(--faint); transition: background 0.3s, color 0.3s; }
+/* where the animation is, drawn like the rail's current step: a progress marker, not a button */
+.beats li { display: inline-flex; align-items: center; gap: 7px; }
+.beats li::before { content: ""; width: 7px; height: 7px; border-radius: 50%; border: 1.5px dashed var(--faint); flex: none; }
 .beats li.past { color: var(--muted); }
-.beats li.on { background: var(--ember-gradient); color: var(--on-ember); border-color: transparent; }
+.beats li.past::before { border: 0; background: var(--muted); }
+.beats li.on { color: var(--fg); background: var(--glass); border-color: color-mix(in srgb, var(--fg) 24%, transparent); }
+.beats li.on::before { border: 1.5px solid var(--ember-b); box-shadow: 0 0 8px color-mix(in srgb, var(--ember-b) 50%, transparent); }
 
 .list { display: grid; border: 1px solid var(--edge); border-radius: 14px; overflow: hidden; }
 .opt { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border: 0; border-top: 1px solid var(--edge); background: none; text-align: left; cursor: pointer; width: 100%; }
