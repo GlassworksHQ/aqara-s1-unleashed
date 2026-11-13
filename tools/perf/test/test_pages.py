@@ -94,6 +94,10 @@ class Harness(unittest.TestCase):
         self.assertIn('from: "sent"', self.text)
         self.assertIn("const SLOT = /^01JC1ARITY([SF])(\\d{5})(\\d{10})$/;", self.text)
 
+    def test_a_stream_that_didnt_start_is_an_error_not_a_slow_panel(self):
+        self.assertIn("if (j.gen === undefined) throw new Error(`the live stream didn't start", self.text)
+        self.assertIn("if (on) throw e;", self.text)
+
     def test_frames_are_asked_for_only_while_a_view_is_measured(self):
         """F10: no rAF loop between views or at idle."""
         self.assertIn("if (!frames.ticking) return;", self.text)

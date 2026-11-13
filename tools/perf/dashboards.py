@@ -347,6 +347,7 @@ class Stream:
         self.set_state, self.states, self.stop, self.gen = set_state, states, threading.Event(), gen
         # The schedule's zero, on the fake's monotonic clock: change k goes out at start + k / rate.
         self.start = time.monotonic()
+        self.thread = None
         self.record = record or (lambda entry: None)
         h = head()
         self.targets, self.switches = h["sensors"] + h["rows"], h["switches"]
@@ -367,6 +368,8 @@ class Stream:
             wait = min(nxt_k, nxt_f) - time.monotonic()
             if wait > 0 and self.stop.wait(wait):
                 return
+            if self.stop.is_set():
+                return                       # stopped while it waited: send nothing more
             if time.monotonic() >= nxt_k:
                 k += 1
                 e, v = self.sensor_change(k)

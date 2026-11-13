@@ -310,13 +310,17 @@
     try {
       const r = await fetch(`/clarity/${on ? "live" : "still"}?nonce=${encodeURIComponent(V.nonce)}`, { cache: "no-store" });
       if (on) {
-        const j = await r.json();
+        const j = r.ok ? await r.json() : {};
+        // No stream, no measure: a schedule that never ran must not read as a slow panel.
+        if (j.gen === undefined) throw new Error(`the live stream didn't start (HTTP ${r.status})`);
         live.gen = j.gen;
         // When the fake started the schedule, on the page's clock; without a clock tie, when the
         // harness asked (earlier than the fake started, so it counts against the panel).
         live.liveAt = live.offset !== null && j.start_ms !== undefined ? j.start_ms - live.offset : live.askedAt;
       }
-    } catch (e) { /* the fake is gone */ }
+    } catch (e) {
+      if (on) throw e;                    // the view logs an error and isn't graded
+    }
   }
 
   async function updatesWindow(head) {
@@ -482,6 +486,9 @@
         await openView(cmd);
       } catch (e) {
         log({ t: "error", message: String((e && e.stack) || e) });
+        try { await stream(false); } catch (e2) { /* the fake is gone */ }
+        unwatch();
+        frames.ticking = false;
       }
     }
   }

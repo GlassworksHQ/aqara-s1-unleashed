@@ -371,6 +371,10 @@ def dashboard():
         # harness (no nonce: restart mode) says when it was usable, then done.
         line("GeckoSession", f"handleMessage GeckoView:PageStart uri={saved}")
         origin = time.time() * 1000 - 200
+        if os.environ.get("FAKE_RESTART_SLOW"):
+            # As on the S1: HA's load event (PageStop) comes long before the dashboard is usable.
+            line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
+            time.sleep(float(os.environ["FAKE_RESTART_SLOW"]))
         time.sleep(0.5)
         page_log({"t": "refdash", "tier": "start", "protocol": PROTOCOL, "frontend": "20261028.5", "nodes": 1082, "cards": 22,
                   "cards_rendered": 20, "css": [960, 480],

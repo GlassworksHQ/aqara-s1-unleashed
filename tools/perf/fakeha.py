@@ -139,17 +139,22 @@ class Hub:
 
     def stream(self, on):
         """Start (a new generation of) the live stream, or stop it. Returns the generation and, for a
-        start, the schedule's zero on the fake's monotonic clock (ms)."""
+        start, the schedule's zero on the fake's monotonic clock (ms). A stopped stream's worker is
+        waited for (outside the lock its set_state needs), so it sends nothing after this returns."""
         with self.lock:
-            if self._stream:
-                self._stream.stop.set()
-                self._stream = None
+            old, self._stream = self._stream, None
+            if old:
+                old.stop.set()
+        if old and old.thread:
+            old.thread.join(timeout=5)
+        with self.lock:
             if on:
                 self.gen += 1
                 gen = self.gen
                 self._stream = D.Stream(self.set_state, self.states, gen=gen,
                                         record=lambda e: self.record(dict(e, t=time.time(), gen=gen)))
-                threading.Thread(target=self._stream.run, daemon=True).start()
+                self._stream.thread = threading.Thread(target=self._stream.run, daemon=True)
+                self._stream.thread.start()
                 return {"gen": gen, "start_ms": round(self._stream.start * 1000, 3)}
             return {"gen": self.gen}
 
@@ -403,8 +408,11 @@ class Handler(BaseHTTPRequestHandler):
             Handler.hub.open_view(q)
             return self.send_bytes(204, b"", "text/plain")
         if path == "/clarity/cancel":
-            # The runner, before each restart: a view that was cut short leaves no command behind.
+            # The runner, before each restart: a view that was cut short leaves no command, no stream
+            # and no changed state behind, as /clarity/still would have.
             Handler.hub.done_view()
+            Handler.hub.stream(False)
+            Handler.hub.reset()
             return self.send_bytes(204, b"", "text/plain")
         if path == "/clarity/next":
             after = urllib.parse.parse_qs(url.query).get("after", [""])[0]

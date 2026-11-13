@@ -553,6 +553,26 @@ class Restart(unittest.TestCase):
         # Usable comes after the engine is ready: the restart now includes loading HA's frontend.
         self.assertGreater(run["start_ms"], run["engine_ready_ms"])
 
+    def test_the_views_wait_for_the_restart_page_not_its_load_event(self):
+        """HA's load event comes seconds before the start view is usable (on the S1, 10 s restarts).
+        A page that has finished loading mustn't open the views: the restart's usable line would then
+        arrive while a view is current and be dropped (CodeRabbit on 0c620b0)."""
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, FAKE_RESTART_SLOW="3")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNotNone(c.get("restart_page"))
+        self.assertEqual(c["own_page_state"], "reference")
+        self.assertIsNone(self.build(tmp)["graded"]["reference"]["per_run"][0]["start_error"])
+
+    def test_a_warm_up_view_that_is_also_graded_is_refused(self):
+        with FakeHA() as ha:
+            tmp = tempfile.mkdtemp()
+            env, _ = fake_env(tmp, FAKE_HA_URL=ha.url)
+            p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart", "--out", tmp,
+                                "--url", ha.url, "--warmup-tier", "light"], env=env, capture_output=True, text=True, timeout=60)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("cached the second time", p.stderr)
+
     def test_no_reference_dashboard_after_the_restart_is_not_measured(self):
         """If the kiosk came back to something else, the restart isn't measured (never engine ready instead)."""
         tmp = tempfile.mkdtemp()

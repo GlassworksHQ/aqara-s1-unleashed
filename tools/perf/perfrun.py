@@ -254,6 +254,10 @@ def cmd_coldstart(dev, a):
     empty queue. Before deciding, the loop reads everything queued so far (drain)."""
     ref = a.cmd == "refstart"
     base = [t for t in a.tiers.split(",") if t] if ref else []
+    if ref and a.warmup_tier and a.warmup_tier in base:
+        # The frontend keeps a view it has shown (hui-root's _viewCache): the graded open of that view
+        # would skip building it.
+        sys.exit(f"--warmup-tier {a.warmup_tier} is also graded; a view shown twice is cached the second time")
     turn = (a.run - 1) % len(base) if base else 0
     tiers = base[turn:] + base[:turn]
     slots = (["warmup"] if ref and a.warmup_tier else []) + tiers
@@ -375,6 +379,7 @@ def cmd_coldstart(dev, a):
             if kind == "PageStart":
                 res["own_page_loads"] += 1
                 res["own_page_start_mono"], res["own_page_stop_mono"] = rec["mono"], None
+                res["own_page_uri"] = uri
             elif kind == "PageStop" and res["own_page_start_mono"] is not None and res["own_page_stop_mono"] is None:
                 res["own_page_stop_mono"] = rec["mono"]
                 st["own_stop_at"] = time.time()
@@ -503,7 +508,12 @@ def cmd_coldstart(dev, a):
             st["next_at"] = time.time()
         if ref and st["current"] is None and st["engine_at"] and not st.get("restart_done_at") and not st["opened"] \
                 and not res.get("restart_page"):
-            finished = own_page_finished(res["own_page_stop_mono"], st["own_stop_at"], time.time())
+            # The kiosk came back to the reference dashboard: only its harness says when the restart
+            # ended (refdash, then done), and HA's load event comes well before that, so a page that
+            # finished loading mustn't open the views (it would cut the restart's lines off). The
+            # wait for the kiosk's own page is for a kiosk that came back somewhere else.
+            on_reference = "/clarity-ref/" in (res.get("own_page_uri") or "")
+            finished = not on_reference and own_page_finished(res["own_page_stop_mono"], st["own_stop_at"], time.time())
             if finished or time.time() - st["engine_at"] > a.own_page_wait:
                 before = (res["own_page_stop_mono"], res["own_page_loads"])
                 still = quiet_for(2.0, 10.0) if finished else False

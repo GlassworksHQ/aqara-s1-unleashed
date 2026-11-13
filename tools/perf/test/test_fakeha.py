@@ -19,6 +19,7 @@ import urllib.parse
 HERE = os.path.dirname(os.path.abspath(__file__))
 os.environ.setdefault("GW_PERF_FRONTEND", os.path.join(HERE, "stub_frontend"))
 sys.path.insert(0, os.path.dirname(HERE))
+import dashboards as D  # noqa: E402
 import fakeha  # noqa: E402
 
 
@@ -184,6 +185,26 @@ class FakeHA(unittest.TestCase):
         self.http("GET", "/clarity/still?nonce=t")
         hub = fakeha.Handler.hub
         self.assertEqual({e: v["state"] for e, v in hub.states.items()}, first)
+
+    def test_a_stopped_stream_sends_nothing_more_and_cancel_ends_a_cut_view(self):
+        """CodeRabbit on 0c620b0: a worker past its stop check could write after the reset, and a view
+        cut short left its stream running into the next restart."""
+        hub = fakeha.Hub()
+        hub.stream(True)
+        time.sleep(0.5)
+        hub.stream(False)
+        hub.reset()
+        snap = {e: v["state"] for e, v in hub.states.items()}
+        time.sleep(0.5)
+        self.assertEqual({e: v["state"] for e, v in hub.states.items()}, snap)
+        self.assertEqual(snap, {e: v["state"] for e, v in D.states().items()})
+        # A view cut short: its stream still runs when the runner cancels before the next restart.
+        self.http("GET", "/clarity/live?nonce=t")
+        time.sleep(0.5)
+        self.assertEqual(self.http("GET", "/clarity/cancel")[0], 204)
+        live = fakeha.Handler.hub
+        self.assertIsNone(live._stream)
+        self.assertEqual({e: v["state"] for e, v in live.states.items()}, {e: v["state"] for e, v in D.states().items()})
 
     def test_the_runner_opens_views_through_it(self):
         self.assertEqual(self.http("GET", "/clarity/open?view=typical&nonce=ab12&run=1&taps=10&vsync=16.667")[0], 204)

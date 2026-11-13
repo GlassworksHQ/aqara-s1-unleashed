@@ -211,14 +211,14 @@ if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
   # the animation test page (under /clarity/page/). The first use fetches the frontend (117 MB).
   python3 "$HERE/hafrontend.py" >/dev/null
   # Something else on the port (an earlier run's fake left behind) would answer for ours.
-  if curl -s -o /dev/null "http://127.0.0.1:$PORT/manifest.json"; then
+  if curl -s -o /dev/null --connect-timeout 1 --max-time 3 "http://127.0.0.1:$PORT/manifest.json"; then
     echo "port $PORT is already in use (an earlier run's fake Home Assistant?); stop it or use --port" >&2
     exit 2
   fi
   # fakeha.jsonl: every command the frontend sent, and the stream's sends (report.py checks them).
   python3 "$HERE/fakeha.py" --port "$PORT" --log "$OUT/fakeha.jsonl" >"$OUT/server.log" 2>&1 &
   SERVER_PID=$!
-  for _ in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$PORT/manifest.json" && break; sleep 0.5; done
+  for _ in $(seq 1 60); do curl -s -o /dev/null --connect-timeout 1 --max-time 3 "http://127.0.0.1:$PORT/manifest.json" && break; sleep 0.5; done
   kill -0 "$SERVER_PID" 2>/dev/null || { echo "the fake Home Assistant didn't start; see $OUT/server.log" >&2; exit 2; }
   "$ADB" reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
 fi
