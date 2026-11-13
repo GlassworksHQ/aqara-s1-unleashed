@@ -28,7 +28,7 @@ its old name because the installers read these files from here.
 ## What the panel allows
 
 Measured 2026-11-12. The format facts are read from Android 10's `BootAnimation.cpp`; the rest is
-in [the research note](../../docs/research/boot-animation.md).
+in [the research note](../../frames/aqara-s1-plus/research/boot-animation.md).
 
 - **The zip rides in the boot image.** Patched with Kiln's `patchBoot` on the stock 4.5.80 boot
   image and today's overlay, the 32 MiB partition has 10.31 MB free without an animation and

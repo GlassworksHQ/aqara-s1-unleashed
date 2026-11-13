@@ -159,8 +159,11 @@ ignore them anyway.
 ### ABIs
 
 The app is built once per ABI, because each GeckoView AAR is for one ABI and carries its own classes
-and `omni.ja`, so two cannot go into one APK. `-Ps1Abi=<abi>` (or `S1_ABI`) picks it, and without it
-the build is `armeabi-v7a`, the S1's:
+and `omni.ja`, so two cannot go into one APK. The release builds one APK for every ABI that some
+frame's device runs: each frame lists its ABIs in `abis` in `frames/<id>/design/frame.json`
+([frames/README.md](../frames/README.md#designframejson)). `tools/release/frame-abis.sh` prints that
+list for the workflows. `-Ps1Abi=<abi>` (or `S1_ABI`) picks the ABI; without it the build is the S1's
+first ABI, `armeabi-v7a`:
 
 ```sh
 ./gradlew :kiosk:assembleRelease                      # armeabi-v7a
@@ -170,7 +173,7 @@ the build is `armeabi-v7a`, the S1's:
 | ABI | Release asset | Radio bundle | Who runs it |
 |---|---|---|---|
 | `armeabi-v7a` | `s1-kiosk-<version>.apk` | yes | the S1 (32-bit userspace), other 32-bit devices |
-| `arm64-v8a` | `s1-kiosk-arm64-v8a-<version>.apk` | no (the bundle is the S1's root side) | arm64 tablets, the arm64 emulator |
+| `arm64-v8a` | `s1-kiosk-arm64-v8a-<version>.apk` | no (the bundle is the S1's root side) | arm64 tablets (generic-android), the arm64 emulator. The Mirror (Android 6) is planned: the app needs API 26, so it waits for the legacy APK (#198) |
 
 - **Every ABI's APK has the same versionCode**, `major*10000 + minor*100 + patch`. Store schemes put
   the ABI in the versionCode because a store must choose between APKs. Here the app chooses: it
@@ -190,8 +193,9 @@ the build is `armeabi-v7a`, the S1's:
   `gh release create`, so a release has all of them unless an upload fails partway. Keep it that
   way, or make the app prefer the ABI it is running.
 - A device whose ABIs the app is not built for (x86_64) gets no offer, and the update entity says why.
-- Adding an ABI means adding it to `s1Abis` in `app/kiosk/build.gradle.kts`, to `ApkAbi`, and to
-  `ABIS` in both workflows. `ApkAbiListsTest` fails if they disagree.
+- Adding an ABI means adding it to a frame's `abis`, to `ApkAbi`, to `apk_name` in both workflows
+  if its name differs, and an upload step in `test-build.yml`. Gradle and the workflows' loops take
+  the list from the frames. `ApkAbiListsTest` fails if the app and the frames disagree.
 
 **Tags, now that the repo will hold other frames and libraries (Glassworks).** Each of them releases
 under its own tag prefix, and this app's is `aqara-s1-plus-` (the board id it reports, since other S1
@@ -221,7 +225,11 @@ The workflow then:
    image and Ubuntu snapshot; it must reproduce `tools/radio/sisdk-runtime.sha256`; never Silicon Labs'
    zigbeed itself), then signs the radio bundle in the `sign-bundle` job (environment `radio-signing`,
    main only, every input checked against committed hashes; `tools/radio/make-bundle.py --app-version`,
-   version = the versionCode, checked against `tools/root/s1kiosk_bundle.pub`);
+   version = the versionCode, checked against `tools/root/s1kiosk_bundle.pub`). PR CI catches most drift
+   before a tag does. The `size` job in `pr.yml` caches the runtime under a key made from the script,
+   `tools/radio/sisdk/` and the hash file. When one of them changes, it rebuilds from scratch and checks
+   the hashes. On a cache hit, it only checks the cached files against the hashes. So drift outside the
+   repo (the Ubuntu snapshot, the cpc-daemon tag) still shows first in this fresh release build;
 3. builds `:kiosk:assembleRelease` with `S1_VERSION=1.0.0` once per ABI, the `armeabi-v7a` one with
    the bundle as APK assets. The build fails if a key is missing (`S1_REQUIRE_RELEASE_SIGNING=true`);
 4. runs `apksigner verify --print-certs` on each APK, so the certificate fingerprint is in the log,

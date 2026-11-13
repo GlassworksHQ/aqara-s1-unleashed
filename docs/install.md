@@ -210,7 +210,7 @@ tools/install.sh --url http://homeassistant.local:8123 \
 - Already have adb on a panel? `tools/install.sh` alone sets up the app without root. You only
   get the radio modes with the root helper from `fel-install.sh`.
 
-How each step works, and why: [research/root.md](research/root.md) and [research/fel.md](research/fel.md).
+How each step works, and why: [frames/aqara-s1-plus/research/root.md](../frames/aqara-s1-plus/research/root.md) and [frames/aqara-s1-plus/research/fel.md](../frames/aqara-s1-plus/research/fel.md).
 
 ## Switching a development build to a release
 
@@ -236,7 +236,7 @@ plan without changing anything.
 
 - **Root** here means that adb's shell can run `su`. That is only the case with a development boot
   image (`DEV_SU_HOURS`) or a Magisk policy for the adb shell, see
-  [research/root.md](research/root.md#persistent-root-magisk--the-s1-kiosk-root-helper). A normal
+  [frames/aqara-s1-plus/research/root.md](../frames/aqara-s1-plus/research/root.md#persistent-root-magisk--the-s1-kiosk-root-helper). A normal
   install doesn't give adb root. The installer checks with `su -c id`.
 - The Wi-Fi password is never written to a file, a log or the screen. A network that S1 Kiosk didn't
   save, for example one set up in Aqara's settings, is not affected.
@@ -331,4 +331,4 @@ fastboot reboot
 | "Unknown hardware" | The installer stopped before writing anything. That panel isn't a layout it knows; please [open an issue](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues). |
 | A read-back didn't match | The installer stops and doesn't restart the panel. Retry, or restore from your backup with *Undo*. FEL is always available. |
 | `adb` or another tool already holds the panel | Run `adb kill-server` and close other flashing tools. |
-| The screen turns off at night | That's the kiosk's night mode, which you can tune in Home Assistant. With `install.sh --keep-dnd`, Aqara's own Do Not Disturb (22:00–07:00) also forces it off; see [research/screen-policy.md](research/screen-policy.md). |
+| The screen turns off at night | That's the kiosk's night mode, which you can tune in Home Assistant. With `install.sh --keep-dnd`, Aqara's own Do Not Disturb (22:00–07:00) also forces it off; see [frames/aqara-s1-plus/research/screen-policy.md](../frames/aqara-s1-plus/research/screen-policy.md). |

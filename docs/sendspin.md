@@ -292,6 +292,12 @@ What the panel does (`Flac.kt`, `AudioPipeline.kt`, `MediaCodecFlacDecoder.kt`):
   buffer and re-creates the AudioTrack, so nothing stale plays after a seek. With
   `from_timestamp` it drops only buffered chunks at or after that time. `stream/end` and losing
   `playback` or the player role stop output and clear buffers.
+- Each start of the player (the Sendspin switch turned on, or the app starting) gets its own
+  scheduler and its own AudioTrack output, used only by that run's audio thread. That thread
+  releases the track when it exits. If it is still stuck in the output after the stop gave up
+  waiting for it (1 s), it can't keep, write into or close the next run's track, and it releases
+  its own track when it comes back (#109). A setting change (unpaired access, server, FLAC) only
+  reconnects the session, and the run keeps its output.
 - Reported timing: `required_lead_time_ms` 300 (AudioTrack creation + its 100 ms buffer +
   network), `min_buffer_ms` 200, `output_delay_ms` 0–5000 (MA's per-player "static delay" sends
   `set_output_delay`; persisted). `supported_commands`: `volume`, `mute`, `set_output_delay`.

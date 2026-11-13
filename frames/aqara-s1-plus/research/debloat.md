@@ -46,13 +46,13 @@ All ship in read-only `/vendor/app` (one in `/system/app`), so all are restorabl
 
 ## Apply / undo
 
-A reversible script lives at [`tools/debloat/debloat.sh`](../../tools/debloat/debloat.sh)
+A reversible script lives at [`tools/debloat/debloat.sh`](../../../tools/debloat/debloat.sh)
 (`disable` / `enable` / `status`). It disables the safe set and leaves
 system-critical packages alone.
 
 ## Applied on the reference unit (2026-11-09)
 
-- S1 Kiosk ([app/](../../app/README.md)) installed and set as HOME with
+- S1 Kiosk ([app/](../../../app/README.md)) installed and set as HOME with
   `cmd package set-home-activity sh.edm.s1kiosk/.MainActivity`.
 - `debloat.sh disable` + `disable-launcher` applied: all 9 packages in the safe set and the Aqara launcher
   are disabled. `com.lumi.settings` and `com.lumi.systemmanager` are still enabled.
@@ -78,7 +78,7 @@ then calls `AlarmManager.setTimeZone` with the first `TimeZone.getAvailableIDs()
 offset matches: `Antarctica/Casey` (logcat tag `PropReceiver`, "syncTimeZone … / setTimeZoneOffset id …").
 The app can't set the zone (`SET_TIME_ZONE` is signature|privileged), so the root helper (v4) keeps the
 owner's zone (`persist.s1kiosk.timezone`) with the same `service call alarm 3` and re-applies it whenever
-`persist.sys.timezone` drifts ([../radio.md](../radio.md#root-helper-contract-v4), [../install.md](../install.md#time-zone)).
+`persist.sys.timezone` drifts ([../radio.md](../../../docs/radio.md#root-helper-contract-v4), [../install.md](../../../docs/install.md#time-zone)).
 
 Home Assistant's UI language is a **per-user HA profile setting** (Profile → Localization), not the
 Android locale.

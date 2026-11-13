@@ -83,6 +83,7 @@ class RadioMockups {
         a.setContentView(o, ViewGroup.LayoutParams(-1, -1))
         val radio = radioDefinition(a, FixedReadout(f, allowedNow = if (f.mode == RadioMode.OFF) null else "192.0.2.20"))
         o.show(MenuFixture.model(a, radio, status = "screen on · presence near"))
+        o.previewSection("radio")
         idle()
         val target = prepare(o)
         layout(o)
@@ -110,8 +111,8 @@ class RadioMockups {
         save(name, o)
     }
 
-    /** The Radio section's top (its label, the tiles). */
-    private fun section(o: KioskSettingsOverlay): View = Mockup.label(o, "Radio").parent as View
+    /** The Radio page's top (its chips). */
+    private fun section(o: KioskSettingsOverlay): View = radio(o).section.tiles
     private fun radio(o: KioskSettingsOverlay) = o.previewNative("radio") as RadioSettingsView
     private fun panel(o: KioskSettingsOverlay): View = radio(o).section.panel
 
@@ -134,6 +135,11 @@ class RadioMockups {
         shot("07-thread-router-waiting-for-dataset", waitingThread) { section(it) }
         shot("08-thread-router-advanced-open", waitingThread, bottom = true) { o -> radio(o).section.previewOpen(dataset = true); panel(o) }
         shot("09-thread-router-joined", threadRouter) { section(it) }
+        shot("09b-thread-router-leave", threadRouter, bottom = true) { o ->
+            // The active card's Leave (the Off block has one too, hidden): a ghost, not rose.
+            generateSequence(listOf<View>(o)) { l -> l.flatMap { v -> (v as? android.view.ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null } }
+                .flatten().filterIsInstance<android.widget.TextView>().first { it.text.toString() == "Leave Thread network" && it.isShown }
+        }
         shot("10-how-does-this-work-open", coordinator, bottom = true) { o -> radio(o).section.previewOpen(more = true); panel(o) }
         shot("11-confirm-switch", coordinator) { o ->
             radio(o).previewDialog.show(RadioFollowUp.ask(Request.Mode(RadioMode.THREAD_ROUTER), coordinator)!!) {}

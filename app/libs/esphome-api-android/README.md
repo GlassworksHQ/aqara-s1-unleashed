@@ -57,4 +57,4 @@ while HA can still provision one.
 implementation(project(":esphome-api-android"))
 ```
 
-The module's manifest adds `INTERNET`, which the API server's socket needs. minSdk 26.
+The module's manifest adds `INTERNET`, which the API server's socket needs. minSdk 23 (Android 6).

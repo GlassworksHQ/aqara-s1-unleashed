@@ -1,14 +1,14 @@
 # Zigbee2MQTT on the panel's radio (research, 2026-11-10)
 
 Goal: make the panel's Zigbee coordinator usable by **Zigbee2MQTT** (zigbee-herdsman), not only ZHA.
-Starting point is [../radio.md](../radio.md): EFR32 with Aqara's multi-PAN RCP over CPC, Aqara's
+Starting point is [../radio.md](../../../docs/radio.md): EFR32 with Aqara's multi-PAN RCP over CPC, Aqara's
 zigbeed 7.3.3 (**EZSP 12**) on spinel IID 1, EZSP over TCP :6638 from the root helper.
 
 Status: research plus **panel tests of steps 1 and 2 (2026-11-10, results in [section 6](#6-panel-results-2026-11-10))**.
 Both work: Z2M's `ezsp` adapter on today's zigbeed, and Z2M's `ember` adapter on SiLabs' zigbeed 8.2.2
 running against the **stock RCP**. No radio firmware was flashed, and none is needed for path B.
 **Step 3 (product) is implemented (2026-11-10) but not yet run on the panel:** helper v4's `Zigbee stack`
-choice ([../radio.md](../radio.md#zigbee-stack-aqara-or-silicon-labs-helper-v4)), the app downloading
+choice ([../radio.md](../../../docs/radio.md#zigbee-stack-aqara-or-silicon-labs-helper-v4)), the app downloading
 zigbeed from Silicon Labs, and the runtime in the signed radio bundle. Off-device tests pass.
 
 ## Summary
@@ -327,7 +327,7 @@ IID 2 never meets zigbeed, one protocol at a time). ZHA works too: bellows suppo
 
 ### Step 3 (only after step 2 passes): productize — **implemented in helper v4 (2026-11-10), panel test pending**
 
-What was built (details in [../radio.md](../radio.md#zigbee-stack-aqara-or-silicon-labs-helper-v4)):
+What was built (details in [../radio.md](../../../docs/radio.md#zigbee-stack-aqara-or-silicon-labs-helper-v4)):
 a `Zigbee stack` select (`persist.s1kiosk.radio_zigbee`), the helper running our zigbeed instead of
 `zigbee_zigbeed` in coordinator mode, the pty drain before the bridge (for both stacks), NVM copies
 (`zigbee-nvm/sisdk-*.nvm`), the runtime in the signed radio bundle, and the app fetching zigbeed from
@@ -454,7 +454,7 @@ No spinel errors or asserts in the following 60 s.
   `host_token.nvm`.
 - The helper integration (step 3): implemented and covered by off-device tests
   (`tools/radio/test/run.sh`, `RadioV4Test`), not run on the panel yet. Panel steps are in the v4 test
-  plan (the final report of 2026-11-10 / [../radio.md](../radio.md#zigbee-stack-aqara-or-silicon-labs-helper-v4)).
+  plan (the final report of 2026-11-10 / [../radio.md](../../../docs/radio.md#zigbee-stack-aqara-or-silicon-labs-helper-v4)).
 - The RSTACK margin: zigbeed 8.2.2 answers in 4.1-4.4 s, herdsman's `ember` waits 5 s. Thin; watch
   Zigbee2MQTT restarts in the soak test.
 

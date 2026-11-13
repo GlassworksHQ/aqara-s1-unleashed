@@ -15,9 +15,10 @@ import org.robolectric.annotation.Config
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.radio.ui.RadioFollowUp
 
-/** Init without a root helper unless asked: `ctl.start/stop` flip init.svc.*, other props are stored. */
+/** Init without a root helper unless asked: `ctl.start/stop` flip init.svc.*, `ctl.restart` is recorded, other props are stored. */
 internal class TestInit(helper: Boolean = false) : SysProps {
     val props = HashMap<String, String>()
+    val restarts = ArrayList<String>()
 
     init {
         for (s in AqaraRadio.ALL) props["init.svc.$s"] = "running" // stock boot state
@@ -32,7 +33,7 @@ internal class TestInit(helper: Boolean = false) : SysProps {
         when (name) {
             "ctl.start" -> props["init.svc.$value"] = "running"
             "ctl.stop" -> props["init.svc.$value"] = "stopped"
-            "ctl.restart" -> {}
+            "ctl.restart" -> restarts += value
             else -> props[name] = value
         }
     }
@@ -114,6 +115,90 @@ class RadioDefinitionTest {
     }
 
     @Test
+    fun settingsSwitchAsksBeforeOffAndOnShowsTheRoles() {
+        // #63 round 2: the radio's on/off at the top right of its page.
+        prefs.radio.mode = RadioMode.ZIGBEE_TCP.id
+        val d = definition()
+        val master = d.settings().single().master!!
+        assertTrue(master.value())
+        assertEquals("Turn the radio off?", master.confirm(false)!!.title)
+        prefs.radio.mode = RadioMode.OFF.id
+        assertNull(master.confirm(false)) // already off: nothing to ask
+        assertFalse(master.value())
+        var answer: String? = "unanswered"
+        master.save(true) { answer = it }
+        assertNull(answer)
+        assertTrue(d.choosing) // on, with no role yet: the roles show, the radio stays off
+        assertTrue(master.value())
+    }
+
+    @Test
+    fun offWhileARoleIsStillQueuedWins() {
+        // CodeRabbit on #163: the role request runs on the radio thread and sets the mode only then. Off in
+        // that window read "already off", sent nothing, and the queued role started the radio after it.
+        val base = TestInit(helper = true)
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val hold = java.util.concurrent.atomic.AtomicBoolean(false)
+        val props = object : SysProps by base {
+            override fun get(name: String): String { if (hold.get()) gate.await(5, java.util.concurrent.TimeUnit.SECONDS); return base.get(name) }
+        }
+        prefs.radio.mode = RadioMode.OFF.id
+        val c = RadioController(props, load = { prefs.radio.mode }, store = { prefs.radio.mode = it }, inline = false, log = {}, filesDir = tmp.root)
+        val d = radioDefinition(app, TestReadout(c, prefs))
+        hold.set(true) // the radio thread stalls on its next property read
+        c.request(RadioMode.ZIGBEE_TCP.label, "test") // the role, queued
+        assertEquals(RadioMode.OFF, c.mode) // not applied yet
+        assertTrue(c.requestPending)
+        val master = d.settings().single().master!!
+        master.save(false) {} // Off, in that window
+        hold.set(false)
+        gate.countDown()
+        val until = System.currentTimeMillis() + 10_000
+        while ((c.requestPending || c.mode != RadioMode.OFF) && System.currentTimeMillis() < until) Thread.sleep(20)
+        assertFalse(c.requestPending)
+        assertEquals(RadioMode.OFF, c.mode) // Off ran after the role
+    }
+
+    @Test
+    fun cantRunReadsOnlyTheRadiosCachedFacts() {
+        // CodeRabbit on #163: the menu asks on the main thread; helperInstalled() may spawn getprop.
+        val base = TestInit(helper = false)
+        var reads = 0
+        val props = object : SysProps by base { override fun get(name: String): String { reads++; return base.get(name) } }
+        val c = RadioController(props, load = { prefs.radio.mode }, store = { prefs.radio.mode = it }, inline = true, log = {}, filesDir = tmp.root)
+        val d = radioDefinition(app, TestReadout(c, prefs))
+        val section = d.settings().single()
+        reads = 0
+        assertEquals(null, section.unavailable()) // before the radio's first refresh: not known, not "can't run"
+        assertEquals(0, reads)
+        c.refresh()
+        reads = 0
+        assertEquals(RadioDefinition.NO_HELPER, section.unavailable())
+        assertEquals(0, reads) // no property read on the caller's thread
+    }
+
+    @Test
+    fun aRouterHostThatFailedIsAProblemInTheNav() {
+        // CodeRabbit on #163: the helper says ok while its router host fails; the card said Error, the nav green.
+        fun status(mode: RadioMode, text: String) = radioDefinition(app, FixedReadout(
+            RadioFollowUp.Facts(mode, text, HelperFacts(true, 4), ZigbeeStack.AQARA, null, null, "http://homeassistant.local:8123", "192.0.2.10"),
+        )).settings().single().status()
+        assertEquals(dev.glassworks.pane.SettingsStatus.PROBLEM, status(RadioMode.ZIGBEE_ROUTER, "ok Zigbee router (repeater): router host error: no answer"))
+        assertEquals(dev.glassworks.pane.SettingsStatus.OK, status(RadioMode.ZIGBEE_TCP, "ok Zigbee coordinator (TCP): listening on :6638"))
+        assertEquals(dev.glassworks.pane.SettingsStatus.WORKING, status(RadioMode.ZIGBEE_TCP, "applying Zigbee coordinator (TCP)…"))
+        assertEquals(null, status(RadioMode.OFF, "ok Off: Aqara radio services stopped"))
+    }
+
+    @Test
+    fun aRequestThatNeverQueuedIsntPending() {
+        // Verifier bd94c950: after stop() the radio thread refuses work; the count must not leak.
+        val c = RadioController(TestInit(), load = { prefs.radio.mode }, store = { prefs.radio.mode = it }, inline = false, log = {}, filesDir = tmp.root)
+        c.stop()
+        runCatching { c.request(RadioMode.OFF.label, "test") }
+        assertFalse(c.requestPending)
+    }
+
+    @Test
     fun aPanelSetUpBeforeTheStepNeverSeesIt() {
         prefs.urlSetting = "http://homeassistant.local:8123/" // a saved dashboard URL is a trace of setup
         assertTrue(definition().step.done())
@@ -145,6 +230,62 @@ class RadioDefinitionTest {
         assertFalse(d.step.done())
         assertNull(d.step.ops.getValue("set_mode").run(org.json.JSONObject("""{"mode":"off"}""")))
         assertTrue(d.step.done())
+    }
+
+    @Test
+    fun keepingTheModeAnswersTheStepWithoutARestart() {
+        val init = TestInit(helper = true).apply {
+            props[RadioHelper.PROP_MODE] = RadioMode.OFF.id
+            props[RadioHelper.PROP_STATUS] = "ok off: Aqara radio services stopped, radio idle"
+        }
+        val c = controller(init).also { it.start() }
+        init.restarts.clear()
+        val d = definition(c)
+        assertFalse(d.step.channelState()!!.getBoolean("answered"))
+        assertNull(d.step.ops.getValue("set_mode").run(org.json.JSONObject("""{"mode":"off"}""")))
+        assertTrue("Kiln's keep Off answers the panel's radio step", d.step.done())
+        assertTrue(d.step.channelState()!!.getBoolean("answered"))
+        assertEquals("the radio helper isn't restarted", emptyList<String>(), init.restarts)
+    }
+
+    @Test
+    fun keepingAModeThatFailedAsksTheRadioAgain() {
+        val init = TestInit(helper = true).apply {
+            props[RadioHelper.PROP_MODE] = RadioMode.OFF.id
+            props[RadioHelper.PROP_STATUS] = "error off: cpcd did not stop"
+        }
+        val c = controller(init).also { it.start() }
+        init.restarts.clear()
+        val d = definition(c)
+        d.step.ops.getValue("set_mode").run(org.json.JSONObject("""{"mode":"off"}"""))
+        assertEquals("a failed mode is a retry, not a keep", listOf(RadioHelper.SERVICE), init.restarts)
+    }
+
+    @Test
+    fun keepingAModeWhileAnotherIsQueuedGoesAfterIt() {
+        // Off over the channel while a role is still queued with the mode still Off: the shortcut would
+        // answer "kept" and the role would start the radio after it.
+        val base = TestInit(helper = true)
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val hold = java.util.concurrent.atomic.AtomicBoolean(false)
+        val props = object : SysProps by base {
+            override fun get(name: String): String { if (hold.get()) gate.await(5, java.util.concurrent.TimeUnit.SECONDS); return base.get(name) }
+        }
+        prefs.radio.mode = RadioMode.OFF.id
+        val c = RadioController(props, load = { prefs.radio.mode }, store = { prefs.radio.mode = it }, inline = false, log = {}, filesDir = tmp.root)
+        val d = radioDefinition(app, TestReadout(c, prefs))
+        hold.set(true)
+        c.request(RadioMode.ZIGBEE_TCP.label, "test")
+        assertEquals(RadioMode.OFF, c.mode)
+        assertTrue(c.requestPending)
+        val off = Thread { d.step.ops.getValue("set_mode").run(org.json.JSONObject("""{"mode":"off"}""")) }.apply { start() }
+        Thread.sleep(200)
+        hold.set(false)
+        gate.countDown()
+        off.join(20_000)
+        val until = System.currentTimeMillis() + 10_000
+        while ((c.requestPending || c.mode != RadioMode.OFF) && System.currentTimeMillis() < until) Thread.sleep(20)
+        assertEquals("Off ran after the queued role", RadioMode.OFF, c.mode)
     }
 
     @Test

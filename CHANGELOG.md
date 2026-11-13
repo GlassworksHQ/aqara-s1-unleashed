@@ -8,6 +8,13 @@ below as the release notes.
 ## [Unreleased]
 
 ### Changed
+- **The wake word uses far less CPU.** The panel now listens with microWakeWord, the engine Home
+  Assistant Voice PE uses, instead of openWakeWord. On the S1, the microphone's thread went from
+  about 37% of a core to about 4%. Your wake word stays as it was (Hey Jarvis, Alexa or Hey
+  Mycroft), and Okay Nabu is new. The panel downloads the new models itself once. *Wake word
+  threshold* now means the new engine's cutoff: each word starts at its own (0.9 to 0.97), lower
+  is more sensitive, and a threshold you set for openWakeWord doesn't carry over. The old
+  openWakeWord words stay in the list as "(openWakeWord)" for this release.
 - **A new boot screen.** The power-on logo and the boot animation now show the Glassworks mark:
   three glass plates drop into place, the top one lights up from sky to violet, and "Glassworks" and
   "On Aqara S1 Plus" fade in. While the panel finishes starting, the stack floats and the top plate
@@ -23,6 +30,15 @@ below as the release notes.
   radio asks Zigbee or Thread and the role, then shows what to do in Home Assistant, where a Thread
   router can join Home Assistant's Thread network. A step that is already done says so with
   Continue, and the list on the left opens a step you've done.
+- **Settings apply as you change them.** The settings menu has the new look: one section at a time,
+  each setting with its value under it. A switch takes effect when you tap it, and a value when you
+  save it. There is no *Save & restart* any more; the few changes that need the app to restart (the
+  dashboard's address, zoom, secure hosts) say so and offer *Restart now*. The list on the left is
+  the same as setup's: Dashboard, Screen, then your panes (Voice, Music, Radio) under Panes, then
+  Log and About. Each pane has its on/off at the top right of its page; turning the radio off asks
+  first. The radio's roles are picked as in setup, Zigbee or Thread first. On the Screen page the
+  presence range is a slider, and the idle times and the night window are picked, not typed. About
+  shows the version; the screen and sensor line moved to Log.
 - **The panel is called Glassworks Panel, in Home Assistant too.** A panel you already added keeps all
   its entity ids, so automations and dashboards keep working; Home Assistant shows the device under
   the new name after the update, unless you renamed it yourself. On Home Assistant 2025.12 or later,
@@ -32,9 +48,6 @@ below as the release notes.
 - **New pages on your phone when you scan the panel's code.** Signing in and sharing your Thread
   network open a short page first that says what happens, then *Continue to Home Assistant*. They
   follow your phone's light or dark mode.
-- **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
-  page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
-  Nothing in the sections changed.
 
 ### Added
 - **Kiln shows what the panel is doing while S1 Kiosk goes in.** On kiln.glassworks.dev the app's
@@ -64,6 +77,9 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Keeping the radio Off in Kiln finishes the panel's radio step.** A fresh panel installed with
+  Kiln no longer asks *Radio* again on its own screen when you left the radio Off. Choosing the mode
+  the radio already runs doesn't restart it. Needs the S1 Kiosk release with this fix.
 - **Kiln's Done always offers your backup.** After an install, Done shows the backup's download even
   when set-up ran after leaving and coming back to the wizard, or after a reload. Before, it could
   show no download, and the backup was only in that browser. When a browser blocks site storage,
@@ -388,11 +404,11 @@ below as the release notes.
 - Panels running a development build need a one-time reinstall to switch to release builds (Android
   won't update an app across signing keys). That resets the app's settings.
 
-[Unreleased]: https://github.com/aguilaair/aqara-s1-unleashed/compare/v0.4.3...HEAD
-[0.4.3]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.3
-[0.4.2]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.2
-[0.4.1]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.1
-[0.4.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.0
-[0.3.1]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.1
-[0.3.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.0
-[0.2.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.2.0
+[Unreleased]: https://github.com/GlassworksHQ/aqara-s1-unleashed/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.3
+[0.4.2]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.2
+[0.4.1]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.1
+[0.4.0]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.0
+[0.3.1]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.3.1
+[0.3.0]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.3.0
+[0.2.0]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.2.0

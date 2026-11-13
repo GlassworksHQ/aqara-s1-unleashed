@@ -851,7 +851,7 @@ run, and the grade is provisional.
   temperatures.
 - **Background load matters.** The radio, voice wake word and Sendspin run during every part, as
   they do in daily use. That is the one way the panel's own setup can reach the grade: a pane that
-  uses the CPU all the time (on the S1, the wake word: [idle-cpu.md](research/idle-cpu.md), #105)
+  uses the CPU all the time (on the S1, the wake word: [idle-cpu.md](../frames/aqara-s1-plus/research/idle-cpu.md), #105)
   slows the reference dashboards too. The device's idle busy share is in the report.
 - **Screen brightness** doesn't change the work the app does. Over a long run it can add heat.
 - The reference dashboards use HA's default card types. Custom cards, cameras and maps are heavier
@@ -960,7 +960,7 @@ Assistant:
   [#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)'s 37%. So the runner also
   mutes the microphone (`mic_muted`) for "off" states, which the kiosk applies live, and stops after
   two tries at `voice_enabled`. When voice stayed on, Assist's share is its running cost only (the
-  wake word, recorder and inference; [idle-cpu.md](research/idle-cpu.md) step 7), not the code and
+  wake word, recorder and inference; [idle-cpu.md](../frames/aqara-s1-plus/research/idle-cpu.md) step 7), not the code and
   model it loads. The report says so (`off_by: "mute"`). s1v7's pane numbers are not valid; the S1's
   are s1p1 and s1p3 ([Example](#example-aqara-s1-plus)).
 - **The budget check needs enough evidence.** A pane's budget is checked (`pane_budget`, and the
@@ -1008,7 +1008,7 @@ Assistant:
    isn't the panel's.
 2. Gecko's GPU process holds a large part of the app's PSS (about 210 MB of 700 MB on the S1, s1v6),
    and that depends on the graphics driver: the emulator's is not the S1's PowerVR Rogue GE8300
-   (read on the panel 2026-11-12, [boot-animation.md](research/boot-animation.md)).
+   (read on the panel 2026-11-12, [boot-animation.md](../frames/aqara-s1-plus/research/boot-animation.md)).
 3. The panes need what an emulator fakes or lacks: Assist a microphone and a voice pipeline,
    Sendspin a Music Assistant server and audio output, the radio its serial port and the root side.
    Their memory without those isn't their memory on a panel.

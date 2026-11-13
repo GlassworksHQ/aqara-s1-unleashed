@@ -14,13 +14,24 @@ val s1VersionCode: Int? = s1Version?.let { v ->
     major.toInt() * 10000 + minor.toInt() * 100 + patch.toInt()
 }
 
-// The ABI this APK is built for: -Ps1Abi=arm64-v8a or S1_ABI. Unset: armeabi-v7a, the S1's. One APK per
-// ABI, because each per-ABI GeckoView AAR carries its own classes.jar and omni.ja, so two cannot share a
-// classpath (docs/releasing.md "ABIs"). Every ABI's APK has the same versionCode.
-val s1Abis = listOf("armeabi-v7a", "arm64-v8a") // update/Releases.kt ApkAbi, release.yml and test-build.yml list the same
+// The ABI this APK is built for: -Ps1Abi=arm64-v8a or S1_ABI. Unset: the S1's. One APK per ABI, because
+// each per-ABI GeckoView AAR carries its own classes.jar and omni.ja, so two cannot share a classpath
+// (docs/releasing.md "ABIs"). Every ABI's APK has the same versionCode. Each frame declares the ABIs its
+// device runs (`abis` in frames/<id>/design/frame.json), and the release builds them all (#98).
+val frameAbis: Map<String, List<String>> = layout.projectDirectory.dir("../../frames").asFile.listFiles().orEmpty()
+    .map { File(it, "design/frame.json") }.filter { it.isFile }.sortedBy { it.parentFile.parentFile.name }
+    .associate { f ->
+        val abis = ((groovy.json.JsonSlurper().parse(f) as? Map<*, *>)?.get("abis") as? List<*>)
+            ?.takeIf { it.isNotEmpty() && it.all { a -> a is String } }
+            ?: throw GradleException("$f: abis must be a non-empty list of ABI names, e.g. [\"armeabi-v7a\"]")
+        f.parentFile.parentFile.name to abis.map { it as String }
+    }
+val releaseAbis = frameAbis.values.flatten().distinct()
+    .ifEmpty { throw GradleException("no frame declares abis (frames/*/design/frame.json)") }
 val s1Abi: String = ((findProperty("s1Abi") as String?) ?: System.getenv("S1_ABI"))
-    ?.trim()?.takeIf { it.isNotEmpty() } ?: "armeabi-v7a"
-if (s1Abi !in s1Abis) throw GradleException("s1Abi '$s1Abi' must be one of ${s1Abis.joinToString()}")
+    ?.trim()?.takeIf { it.isNotEmpty() }
+    ?: frameAbis["aqara-s1-plus"]?.first() ?: throw GradleException("frames/aqara-s1-plus/design/frame.json is missing")
+if (s1Abi !in releaseAbis) throw GradleException("s1Abi '$s1Abi' must be one of ${releaseAbis.joinToString()}")
 
 // Release signing comes only from the environment (CI secrets or a local shell; docs/releasing.md).
 // Nothing set: the release APK is unsigned (never signed with the debug key). Partly set, or
@@ -99,7 +110,8 @@ dependencies {
         // keeps the APK free software (as Firefox's F-Droid builds do). HA's login doesn't use WebAuthn.
         exclude(group = "com.google.android.gms")
     }
-    // Voice assistant: openWakeWord inference (ships every ABI; abiFilters keeps the one built, minSdk 19).
+    // Voice assistant: wake word inference, microWakeWord and the legacy openWakeWord (ships every ABI;
+    // abiFilters keeps the one built, minSdk 19).
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     // Libraries extracted from this app (app/libs/). esphome-api brings BouncyCastle (Noise), which
     // Sendspin's encryption also uses.
@@ -113,7 +125,7 @@ dependencies {
     // XZ decoder (pure Java, 0BSD) for Silicon Labs' zigbeed .deb (radio/SisdkZigbeed.kt).
     implementation("org.tukaani:xz:1.10")
 
-    // JVM unit tests for the ESPHome API (against aioesphomeapi) and openWakeWord buffering.
+    // JVM unit tests for the ESPHome API (against aioesphomeapi) and the wake word engines.
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")
     // Mock-up screenshots of the real settings/setup views (RadioMockups, only with -Ps1MockupDir=<dir>).
@@ -126,11 +138,16 @@ tasks.withType<Test>().configureEach {
     (project.findProperty("s1MockupDir") as String?)?.let { systemProperty("s1.mockupDir", it) }
     // PanelEntitiesPinTest rewrites its golden file with -Ps1RegenGolden=true.
     (project.findProperty("s1RegenGolden") as String?)?.let { systemProperty("s1.regenGolden", it) }
-    // ApkAbiListsTest reads the workflows and this file. Declared as inputs, so a change to either
-    // re-runs the tests instead of taking them UP-TO-DATE or FROM-CACHE.
+    // ApkAbiListsTest reads the workflows, this file, every frame's frame.json and frame-abis.sh. Declared
+    // as inputs, so a change to any of them re-runs the tests instead of taking them UP-TO-DATE or FROM-CACHE.
     inputs.dir(rootProject.file("../.github/workflows")).withPropertyName("workflows")
         .withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file("build.gradle.kts").withPropertyName("kioskBuildScript").withPathSensitivity(PathSensitivity.NONE)
+    inputs.files(fileTree(rootProject.file("../frames")) { include("*/design/frame.json") }, rootProject.file("../tools/release/frame-abis.sh"))
+        .withPropertyName("frameAbis").withPathSensitivity(PathSensitivity.RELATIVE)
+    // WakeWordsTest checks that the host fetch script pins the same models as the app.
+    inputs.file(rootProject.file("../tools/voice/fetch-models.sh")).withPropertyName("fetchModels")
+        .withPathSensitivity(PathSensitivity.NONE)
     // ContentScriptReadyTest runs the web extension's content.js under node: a change to it re-runs the tests.
     inputs.dir("src/main/assets/extension").withPropertyName("webExtension").withPathSensitivity(PathSensitivity.RELATIVE)
 }

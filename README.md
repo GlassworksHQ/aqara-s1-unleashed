@@ -56,7 +56,7 @@ account, soldering, or a terminal.
 home screen. HA's header and sidebar are hidden. You sign in by scanning a QR code with your
 phone, so you never type a password on the wall. You pick which dashboard it shows in HA.
 
-**A voice assistant.** On-device wake word (openWakeWord), Assist pipelines, timers and
+**A voice assistant.** On-device wake word (microWakeWord), Assist pipelines, timers and
 announcements, with a calm full-screen overlay while you talk.
 
 | | |
@@ -66,7 +66,7 @@ announcements, with a calm full-screen overlay while you talk.
 | 👋 **Wakes when you walk up** | The screen wakes as you approach, turns off when the room is empty, and dims at night. It is driven by the panel's own sensors. [More](docs/sensors.md) |
 | 📡 **Radio for Home Assistant** | The panel's Zigbee/Thread radio can be a Zigbee coordinator for ZHA or (experimental) Zigbee2MQTT, a Thread border router, or a repeater in your existing network. You switch roles from HA. [How to](docs/radio-guide.md) |
 | 🔄 **Updates in Home Assistant** | New versions show up under *Settings → Updates*, and one click installs them. Fixes for the radio side come with them. [More](#updates) |
-| 🔌 **Wall base relays** | A driver for the mains relay base that speaks its UART protocol directly, with no Aqara daemon. Not yet tried on a real base. [More](docs/research/bases.md) |
+| 🔌 **Wall base relays** | A driver for the mains relay base that speaks its UART protocol directly, with no Aqara daemon. Not yet tried on a real base. [More](frames/aqara-s1-plus/research/bases.md) |
 | 🔒 **No Aqara cloud** | Aqara's launcher, apps, updater and cloud daemon are switched off (reversibly), so the panel stops talking to Aqara. |
 | ✨ **Its own boot screen** | The Glassworks splash and boot animation: glass plates drop into place and the top one lights up. [More](branding/glass-tile/README.md) |
 
@@ -291,7 +291,7 @@ there again.
 <summary><b>Does the panel still talk to Aqara's cloud?</b></summary>
 
 No. The kiosk stops Aqara's cloud daemon a few seconds after boot and disables Aqara's apps and
-updater. It does reach out to GitHub: once to download the openWakeWord models, and about once a
+updater. It does reach out to GitHub: once to download the wake word models, and about once a
 day to check for S1 Kiosk updates. If you choose the Silicon Labs Zigbee stack, it downloads that
 from Silicon Labs' GitHub once. Everything else stays on your LAN.
 </details>
@@ -345,7 +345,7 @@ Built by [@aguilaair](https://github.com/aguilaair). It stands on the work of
 [linux-sunxi](https://linux-sunxi.org/) (sunxi-tools, U-Boot), [Magisk](https://github.com/topjohnwu/Magisk),
 [Home Assistant](https://www.home-assistant.io/), [ESPHome](https://esphome.io/),
 [Music Assistant](https://music-assistant.io/), [OpenThread](https://openthread.io/),
-[openWakeWord](https://github.com/dscripka/openWakeWord) and
+[microWakeWord](https://github.com/kahrendt/microWakeWord), [openWakeWord](https://github.com/dscripka/openWakeWord) and
 [Tango / ya-webadb](https://github.com/yume-chan/ya-webadb).
 
 S1 Unleashed's own code is **MIT** ([LICENSE](LICENSE)), except the Glassworks core in `dev.glassworks`, which is **MPL-2.0** ([its README](app/kiosk/src/main/java/dev/glassworks/README.md#licence)). Third-party parts keep their licences. The main
@@ -364,10 +364,12 @@ times) shows the same list with each licence's full text.
 | Simple Keyboard | Apache-2.0 | Optional on-screen keyboard |
 | GeckoView | MPL-2.0 | Maven dependency of S1 Kiosk |
 | TensorFlow Lite, Media3 ExoPlayer, ZXing | Apache-2.0 | Wake word inference, audio, QR codes |
+| TFLite Micro audio frontend, kissfft | Apache-2.0, BSD-3-Clause | Ported to Kotlin for the wake word's audio features |
+| microWakeWord models | Apache-2.0 | **Not shipped.** The panel downloads them itself. |
 | Bouncy Castle | MIT-style | ESPHome API encryption |
 | Tango (ya-webadb) | MIT | adb over WebUSB in the installer |
 | Inter | SIL OFL 1.1 | Boot branding, fetched at build time |
-| openWakeWord models | **CC BY-NC-SA 4.0** | **Not shipped.** The panel downloads them itself. Non-commercial. |
+| openWakeWord models (legacy, this release only) | **CC BY-NC-SA 4.0** | **Not shipped.** Only used if you pick a legacy word. Non-commercial. |
 
 **Not affiliated with Aqara or Lumi United.** Aqara and the product names are trademarks of their
 owners and are used here only to say which device this works with. No Aqara software is

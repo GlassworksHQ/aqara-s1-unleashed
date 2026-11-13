@@ -525,8 +525,11 @@ export class Session {
   async applyRadio(mode: string): Promise<void> {
     const s = this.s.setup;
     if (s.phase !== 'radio') return;
-    if (mode !== this.setup!.state!.radio.mode) {
-      this.setupPhase({ ...s, busy: true, note: 'Switching the radio…', error: undefined });
+    const was = this.setup!.state!.radio;
+    // keeping the mode still answers the panel's radio step (a fresh panel left on Off); an app that
+    // doesn't say whether it's answered restarts the radio on a same-mode request, so it's left alone
+    if (mode !== was.mode || was.answered === false) {
+      this.setupPhase({ ...s, busy: true, note: mode !== was.mode ? 'Switching the radio…' : s.note, error: undefined });
       // the answer can come after the person has moved on (Done, another route): then it changes nothing here
       const stale = () => this.closed || this.s.screen !== 'setup' || this.s.setup.phase !== 'radio';
       try {

@@ -122,10 +122,8 @@ class ScreenPolicy(
         brightnessObserver = null
     }
 
-    /** Passes the saved presence range to the presence source. */
-    fun applyPresenceRange() {
-        if (started) presence?.setRange(ctx, prefs.presenceRangeM)
-    }
+    /** Passes the saved presence range to the presence source: null, or why it didn't take. */
+    fun applyPresenceRange(): String? = if (started) presence?.setRange(ctx, prefs.presenceRangeM) else null
 
     val isAdmin: Boolean get() = started && dpm.isAdminActive(adminComponent)
 
