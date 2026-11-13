@@ -25,7 +25,6 @@ import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Action
 import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Health
 import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Request
 import sh.edm.s1kiosk.ui.Glass
-import sh.edm.s1kiosk.ui.Wrap
 
 /**
  * The settings menu's Radio section: the modes as chips ([tiles], #63: the one in effect lit; tapping
@@ -59,22 +58,22 @@ class RadioSectionView(private val context: Context) {
     private var datasetOpen = false
     private var datasetResult: Pair<Boolean, String>? = null
 
-    // ------------------------------------------------------------------ chips
+    // ------------------------------------------------------------------ the picker
 
-    /** Off first, then the modes as setup's Panes step names them. */
-    private val chipList = listOf(RadioMode.OFF, RadioMode.ZIGBEE_TCP, RadioMode.THREAD, RadioMode.ZIGBEE_ROUTER, RadioMode.THREAD_ROUTER)
-        .mapNotNull { m -> RadioStep.OPTIONS.firstOrNull { it.mode == m } }
-        .map { o -> o.mode to Glass(context).chip(if (o.mode == RadioMode.OFF) "Off" else o.title).apply { setOnClickListener { tap(o.mode) } } }
+    /**
+     * Turned on at the section's top right and not given a mode yet: the picker shows, the radio stays
+     * off until a role is picked (#63 round 2).
+     */
+    var choosing = false
 
-    /** The modes as chips (#63): the one in effect is lit; tapping another asks to switch. */
-    val tiles = Wrap(context, s.px(10f), s.px(10f)).apply { chipList.forEach { (_, c) -> addView(c) } }
+    /** Design C (#63 round 2), as setup's radio step: Zigbee or Thread, then the role. Tapping another role asks to switch. */
+    val tiles = RadioTechPicker(context).apply { onPick = { m -> tap(m) } }
 
     private fun bindChips(f: RadioFollowUp.Facts) {
         val running = (flow.running as? Request.Mode)?.mode
-        chipList.forEach { (m, c) ->
-            c.chosen = m == (running ?: f.mode)
-            c.isEnabled = flow.running == null
-        }
+        tiles.chosen = (running ?: f.mode).takeIf { it != RadioMode.OFF }
+        tiles.isEnabled = flow.running == null
+        tiles.visibility = if (f.mode != RadioMode.OFF || choosing || running != null) View.VISIBLE else View.GONE
     }
 
     // ------------------------------------------------------------------ panel: header strip
@@ -98,7 +97,7 @@ class RadioSectionView(private val context: Context) {
         gravity = Gravity.CENTER_HORIZONTAL
         setPadding(s.px(24f), s.px(22f), s.px(24f), s.px(22f))
         addView(s.text(26f, SetupStyle.TX, SetupStyle.REGULAR).apply { text = "The radio is off"; gravity = Gravity.CENTER })
-        addView(s.text(17f, SetupStyle.MU, SetupStyle.REGULAR).apply { text = "Want to turn it on? Tap a role above."; gravity = Gravity.CENTER },
+        addView(s.text(17f, SetupStyle.MU, SetupStyle.REGULAR).apply { text = "Turn it on at the top right, then pick what it does."; gravity = Gravity.CENTER },
             LinearLayout.LayoutParams(-2, -2).apply { topMargin = s.px(4f) })
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -197,7 +196,7 @@ class RadioSectionView(private val context: Context) {
         })
     }
     private val actionRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-    /** Joining is the way forward (accent); the Leave actions are red. */
+    /** Joining is the way forward (accent); the Leave actions are ghosts. */
     private val primaryActions = setOf(Action.ROUTER_JOIN, Action.THREAD_JOIN_HA)
     private val actionButtons = Action.entries.associateWith { a ->
         s.button(a.label, accent = a in primaryActions).apply {
@@ -537,11 +536,12 @@ class RadioSectionView(private val context: Context) {
         b.alpha = if (running != null && !mine) 0.5f else 1f
     }
 
+    /** Leave and the like: a ghost button. Status colours are for status, never a button (#63 D1-D6); the dialog asks first. */
     private fun danger(b: TextView) {
-        b.setTextColor(SetupStyle.ROSE)
+        b.setTextColor(SetupStyle.TX)
         b.background = GradientDrawable().apply {
             cornerRadius = 16 * s.dp
-            setColor(RoleStyle.tint(SetupStyle.ROSE, 0.10f)); setStroke(s.px(1f).coerceAtLeast(1), RoleStyle.tint(SetupStyle.ROSE, 0.40f))
+            setColor(Glass.S2); setStroke(s.px(1f).coerceAtLeast(1), SetupStyle.BD)
         }
     }
 
@@ -593,22 +593,12 @@ private class Indeterminate(context: Context) : android.view.View(context) {
 }
 
 /**
- * The centred confirmation dialog over the dimmed menu: the roles a switch goes between (icons), the
- * question, the consequence in plain words, Cancel and the action: white for Switch, red for Leave.
+ * The centred confirmation dialog over the dimmed menu: the question, the consequence in plain words,
+ * Cancel and the action, white (#63 D3: no icon row; a status colour is never a button).
  */
 class RadioDialog(context: Context) : FrameLayout(context) {
     private val s = SetupStyle(context)
     private var answer: ((Boolean) -> Unit)? = null
-    private val fromIcon = RoleIcon(context, RoleStyle.Glyph.HUB, RoleStyle.ZIGBEE, 28f)
-    private val toIcon = RoleIcon(context, RoleStyle.Glyph.REPEATER, RoleStyle.THREAD, 28f)
-    private val arrow = s.text(20f, SetupStyle.FA, SetupStyle.REGULAR).apply { text = "→" }
-    private val icons = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        addView(fromIcon)
-        addView(arrow, LinearLayout.LayoutParams(-2, -2).apply { marginStart = s.px(12f); marginEnd = s.px(12f) })
-        addView(toIcon)
-    }
     private val title = s.text(23f, SetupStyle.TX, SetupStyle.MEDIUM)
     private val body = s.text(16f, SetupStyle.MU, SetupStyle.REGULAR).apply { setLineSpacing(0f, 1.3f) }
     private val yes = s.button("", accent = false).apply { setOnClickListener { close(true) } }
@@ -623,7 +613,6 @@ class RadioDialog(context: Context) : FrameLayout(context) {
             background = GradientDrawable().apply { cornerRadius = 24 * s.dp; setColor(SetupStyle.SHEET); setStroke(s.px(1f), SetupStyle.BD) }
             setPadding(s.px(26f), s.px(24f), s.px(26f), s.px(22f))
             isClickable = true
-            addView(icons, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = s.px(14f) })
             addView(title)
             addView(body, LinearLayout.LayoutParams(-1, -2).apply { topMargin = s.px(8f) })
             addView(LinearLayout(context).apply {
@@ -643,21 +632,9 @@ class RadioDialog(context: Context) : FrameLayout(context) {
         title.text = a.title
         body.text = a.body
         yes.text = a.button
-        if (a.destructive) {
-            yes.setTextColor(SetupStyle.BG)
-            yes.background = GradientDrawable().apply { cornerRadius = 16 * s.dp; setColor(SetupStyle.ROSE) }
-        } else {
-            yes.setTextColor(SetupStyle.BG)
-            yes.background = GradientDrawable().apply { cornerRadius = 16 * s.dp; setColor(SetupStyle.TX) }
-        }
-        val from = a.from; val to = a.to
-        if (to != null) {
-            toIcon.glyph = RoleStyle.glyph(to); toIcon.color = RoleStyle.hue(to); toIcon.invalidate()
-            fromIcon.visibility = if (from != null) VISIBLE else GONE
-            arrow.visibility = fromIcon.visibility
-            from?.let { fromIcon.glyph = RoleStyle.glyph(it); fromIcon.color = RoleStyle.hue(it); fromIcon.invalidate() }
-            icons.visibility = VISIBLE
-        } else icons.visibility = GONE
+        // One white button, also for Leave: the words say what it costs (#63 D3).
+        yes.setTextColor(SetupStyle.BG)
+        yes.background = GradientDrawable().apply { cornerRadius = 16 * s.dp; setColor(SetupStyle.TX) }
         visibility = VISIBLE
         bringToFront()
     }

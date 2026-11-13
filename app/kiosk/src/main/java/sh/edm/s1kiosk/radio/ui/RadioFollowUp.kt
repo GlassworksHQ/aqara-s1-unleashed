@@ -335,7 +335,8 @@ object RadioFollowUp {
             "Switch",
         )
         is Request.Mode -> if (f != null && f.mode == r.mode) null else {
-            val to = RadioStep.OPTIONS.firstOrNull { it.mode == r.mode }?.title ?: r.mode.label
+            // The short name, as the picker says it (#63 D3).
+            val to = RadioStep.shortName(r.mode)
             Ask(
                 r,
                 if (r.mode == RadioMode.OFF) "Turn the radio off?" else "Switch to $to?",

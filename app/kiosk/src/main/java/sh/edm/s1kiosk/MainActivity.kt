@@ -24,6 +24,7 @@ import dev.glassworks.engine.PageHost
 import dev.glassworks.engine.PagePort
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.applyFrom
+import dev.glassworks.pane.paneSections
 import dev.glassworks.pane.settingsOrder
 import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.auth.FrontendUrls
@@ -744,7 +745,8 @@ class MainActivity : Activity() {
                 brightness = { glassworks.screen.refreshBrightness() },
             ),
         )
-        val paneSections = panes.flatMap { it.settings() }
+        // Each pane's section with its on/off at the top right; Voice and Music have only that for now.
+        val paneSections = paneSections(panes)
         settingsOverlay.show(
             KioskSettingsOverlay.Model(settingsOrder(core.sections(), paneSections), BuildConfig.VERSION_NAME, paneSections.map { it.id }.toSet()),
         )

@@ -42,6 +42,9 @@ class SettingsMenuTest {
         when (i) {
             is SettingsItem.Text -> listOf(i.title)
             is SettingsItem.Switch -> listOf(i.title)
+            is SettingsItem.Slider -> listOf(i.title)
+            is SettingsItem.Duration -> listOf(i.title)
+            is SettingsItem.TimeRange -> listOf(i.title)
             is SettingsItem.Link -> listOf(i.title)
             is SettingsItem.Note -> listOf("note")
             is SettingsItem.Info -> listOf("info")
@@ -82,9 +85,24 @@ class SettingsMenuTest {
 
     @Test
     fun theS1sSectionsInOrder() {
-        assertEquals(listOf("dashboard", "screen", "radio", "about"), menu().map { it.id })
-        assertEquals(listOf("Dashboard", "Screen", "Radio", "About"), menu().map { it.title })
+        assertEquals(listOf("dashboard", "screen", "voice", "sendspin", "radio", "log", "about"), menu().map { it.id })
+        assertEquals(listOf("Dashboard", "Screen", "Voice", "Music", "Radio", "Log", "About"), menu().map { it.title })
         assertEquals("Zigbee / Thread radio", menu().first { it.id == "radio" }.heading)
+    }
+
+    @Test
+    fun everyPaneHasItsOnOff() {
+        // #63 round 2: a pane's on/off is its section's, at the top right. Voice and Music have nothing
+        // else yet and say so; the radio gives its own, which asks before turning off.
+        val m = menu().associateBy { it.id }
+        assertEquals("Voice", m.getValue("voice").master!!.title)
+        assertEquals(true, m.getValue("voice").master!!.restartsApp)
+        assertEquals(listOf("note"), titles(m.getValue("voice").items))
+        assertEquals(dev.glassworks.pane.NO_SETTINGS, (m.getValue("sendspin").items[0] as SettingsItem.Note).text())
+        assertEquals(null, m.getValue("dashboard").master)
+        val radio = m.getValue("radio").master!!
+        assertFalse(radio.value()) // the fixture's radio is off
+        assertEquals(null, radio.confirm(true)) // on only shows the roles
     }
 
     @Test
@@ -110,6 +128,16 @@ class SettingsMenuTest {
             m["screen"],
         )
         assertEquals(listOf("info", CoreSettings.LICENCES_TITLE), m["about"])
+        assertEquals(listOf("info"), m["log"]) // the screen and sensor line moved here from About
+    }
+
+    @Test
+    fun aboutHasNoDebugLine() {
+        val about = menu().first { it.id == "about" }.items[0] as SettingsItem.Info
+        assertEquals("S1 Kiosk 0.4.3", about.title())
+        assertEquals("", about.detail())
+        val log = menu().first { it.id == "log" }.items[0] as SettingsItem.Info
+        assertEquals("screen on", log.detail())
     }
 
     @Test
@@ -136,14 +164,14 @@ class SettingsMenuTest {
     @Test
     fun eachSettingWritesWhatItSays() {
         val prefs = KioskPrefs(app)
-        val typed = mapOf(
-            "Home Assistant" to " ", "Zoom" to "1.5", "Secure hosts" to "ha.local", "Presence range" to "",
-            "Turn off when idle" to "x", "At night" to "23:00-06:00", "At night, turn off after" to "30",
-        )
+        val typed = mapOf("Home Assistant" to " ", "Zoom" to "1.5", "Secure hosts" to "ha.local")
         val problems = ArrayList<String?>()
-        for (s in menu()) for (i in s.items) when (i) {
+        for (s in menu().filter { it.id == "dashboard" || it.id == "screen" }) for (i in s.items) when (i) {
             is SettingsItem.Text -> typed[i.title]?.let { v -> i.save(v) { problems += it } }
             is SettingsItem.Switch -> i.save(i.title == "Brightness") { problems += it }
+            is SettingsItem.Slider -> i.save(2.1f) { problems += it }
+            is SettingsItem.Duration -> i.save(if (i.title == "Turn off when idle") 300 else 30) { problems += it }
+            is SettingsItem.TimeRange -> i.save("23:00-06:00") { problems += it }
             else -> {}
         }
         assertEquals(List(10) { null }, problems)
@@ -152,11 +180,38 @@ class SettingsMenuTest {
         assertEquals("ha.local", prefs.extraSecureHosts)
         assertFalse(prefs.hideHeader); assertFalse(prefs.hideSidebar) // one switch for both
         assertEquals("always", prefs.screenMode)
-        assertEquals(120, prefs.idleOffSec) // not a number: the default
+        assertEquals(300, prefs.idleOffSec)
         assertEquals(30, prefs.nightIdleOffSec)
         assertEquals("23:00-06:00", prefs.nightWindow)
-        assertEquals(0f, prefs.presenceRangeM)
+        assertEquals(2.1f, prefs.presenceRangeM)
         assertTrue(prefs.autoBrightness)
+    }
+
+    @Test
+    fun theScreenPageIsPickedNotTyped() {
+        // #63 round 2: a slider for the presence range, durations from a list with their units, the night
+        // window from steps. Nothing on the page opens the keyboard.
+        val screen = menu().first { it.id == "screen" }.items
+        assertTrue(screen.none { it is SettingsItem.Text })
+        val range = screen.filterIsInstance<SettingsItem.Slider>().single()
+        assertEquals(0f, range.min); assertEquals(CoreSettings.RANGE_MAX_M, range.max); assertEquals(0.1f, range.step)
+        assertEquals("The sensor's own (1.5 m)", range.shown(0f))
+        assertEquals("Up to 2.1 m", range.shown(2.1f))
+        val idle = screen.filterIsInstance<SettingsItem.Duration>().first()
+        assertEquals(listOf("After 30 s", "After 1 minute", "After 2 minutes", "After 5 minutes", "After 10 minutes", "After 30 minutes", "Never"), idle.choices.map(idle.shown))
+    }
+
+    @Test
+    fun aRangeTheSensorRefusesIsSaidAndNotKept() {
+        // F5: the sensor's range needs a permission; without it the slider says so and the old value stays.
+        val prefs = KioskPrefs(app)
+        prefs.presenceRangeM = 1.2f
+        val radio = radioDefinition(app, FixedReadout(off))
+        val screen = MenuFixture.model(app, radio, live = CoreSettings.Live(presenceRange = { "no permission" })).sections.first { it.id == "screen" }
+        var why: String? = null
+        screen.items.filterIsInstance<SettingsItem.Slider>().single().save(2f) { why = it }
+        assertEquals("no permission", why)
+        assertEquals(1.2f, prefs.presenceRangeM)
     }
 
     @Test

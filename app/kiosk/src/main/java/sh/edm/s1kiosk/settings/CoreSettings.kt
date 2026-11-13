@@ -8,15 +8,16 @@ import sh.edm.s1kiosk.KioskPrefs
 import java.util.Locale
 
 /**
- * The settings sections the app has itself, before and after the panes': Dashboard, Screen, About
- * (#63). Network, Log and Security have nothing yet. Values are read when the menu opens; each change
+ * The settings sections the app has itself, before and after the panes': Dashboard, Screen, Log and
+ * About (#63). Network and Security have nothing yet. Durations and the night window are picked, the
+ * presence range is a slider: nothing on the Screen page is typed (#63 round 2). Values are read when the menu opens; each change
  * applies on its own. The ones Gecko reads at start (the dashboard's address, zoom, secure hosts) ask
  * for a restart, as their adb extras always did.
  */
 class CoreSettings(
     private val prefs: KioskPrefs,
     private val version: String,
-    /** The screen and sensor status line under the version. */
+    /** The screen and sensor status line, on the Log page (diagnostics, not About's). */
     private val status: () -> String,
     /** The device's own settings app, when it has one (the frame's systemSettings). */
     private val deviceSettings: SettingsItem.Link?,
@@ -27,8 +28,8 @@ class CoreSettings(
     class Live(
         /** Full screen: the page hides or shows HA's header and sidebar. */
         val fullScreen: () -> Unit = {},
-        /** The presence sensor takes the new range. */
-        val presenceRange: () -> Unit = {},
+        /** The presence sensor takes the new range: null, or why it couldn't. */
+        val presenceRange: () -> String? = { null },
         /** Brightness follows the light sensor, or stops. */
         val brightness: () -> Unit = {},
     )
@@ -58,28 +59,34 @@ class CoreSettings(
             switch("Wake when someone's near", "Uses the presence sensor · up to ${range()}", { prefs.screenMode == "presence" }) {
                 prefs.screenMode = if (it) "presence" else "always"
             },
-            text(
-                "Presence range", "The sensor's own (1.5 m)", TextKind.DECIMAL,
-                value = { if (prefs.presenceRangeM > 0f) number(prefs.presenceRangeM) else "" },
-                shown = { v -> v.toFloatOrNull()?.let { "Up to ${number(it)} m" } ?: "" },
-            ) { prefs.presenceRangeM = it.toFloatOrNull() ?: 0f; live.presenceRange() },
-            text(
-                "Turn off when idle", "120", TextKind.NUMBER, value = { prefs.idleOffSec.toString() },
-                shown = { v -> v.toIntOrNull()?.let(::afterIdle) ?: v },
-            ) { prefs.idleOffSec = it.toIntOrNull() ?: 120 },
-            text(
-                "At night", "22:00-07:00", TextKind.PLAIN, value = { prefs.nightWindow },
-                shown = { w -> if (w.isBlank()) "Off" else "${w.replace("-", " – ")} · off after ${prefs.nightIdleOffSec} s" },
-            ) { prefs.nightWindow = it },
-            text(
-                "At night, turn off after", "20", TextKind.NUMBER, value = { prefs.nightIdleOffSec.toString() },
-                shown = { v -> v.toIntOrNull()?.let { "$it s" } ?: v },
-            ) { prefs.nightIdleOffSec = it.toIntOrNull() ?: 20 },
+            SettingsItem.Slider(
+                "Presence range", value = { prefs.presenceRangeM }, min = 0f, max = RANGE_MAX_M, step = 0.1f,
+                shown = { v -> if (v <= 0f) "The sensor's own (1.5 m)" else "Up to ${number(v)} m" },
+            ) { v, done ->
+                val old = prefs.presenceRangeM
+                prefs.presenceRangeM = v
+                val why = live.presenceRange()
+                if (why != null) prefs.presenceRangeM = old
+                done(why)
+            },
+            SettingsItem.Duration(
+                "Turn off when idle", value = { prefs.idleOffSec }, choices = IDLE_CHOICES, shown = ::afterIdle,
+            ) { v, done -> prefs.idleOffSec = v; done(null) },
+            SettingsItem.TimeRange(
+                "At night", value = { prefs.nightWindow },
+                shown = { w -> if (w.isBlank()) "Off" else w.replace("-", " – ") },
+            ) { v, done -> prefs.nightWindow = v; done(null) },
+            SettingsItem.Duration(
+                "At night, turn off after", value = { prefs.nightIdleOffSec }, choices = NIGHT_CHOICES, shown = ::afterIdle,
+            ) { v, done -> prefs.nightIdleOffSec = v; done(null) },
             switch("Brightness", "Follows the room's light", { prefs.autoBrightness }) { prefs.autoBrightness = it; live.brightness() },
             deviceSettings,
         )),
+        SettingsPlace.LOG to SettingsSection("log", "Log", listOf(
+            SettingsItem.Info(title = { "Screen and sensors" }, detail = status),
+        )),
         SettingsPlace.ABOUT to SettingsSection("about", "About", listOf(
-            SettingsItem.Info(title = { "S1 Kiosk $version" }, detail = status),
+            SettingsItem.Info(title = { "S1 Kiosk $version" }, detail = { "" }),
             licences,
         )),
     )
@@ -102,6 +109,11 @@ class CoreSettings(
     companion object {
         const val LICENCES_TITLE = "Open source licences"
         const val LICENCES_DETAIL = "The open-source software in the app and the radio package"
+
+        /** The presence sensor's furthest (Home Assistant's `Presence range` number goes as far). */
+        const val RANGE_MAX_M = 2.5f
+        val IDLE_CHOICES = listOf(30, 60, 120, 300, 600, 1800, 0)
+        val NIGHT_CHOICES = listOf(10, 20, 30, 60, 120, 300)
 
         /** "After 2 minutes", "After 45 s", "Never" (0). */
         fun afterIdle(sec: Int): String = when {

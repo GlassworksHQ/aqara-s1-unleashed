@@ -114,6 +114,24 @@ class RadioDefinitionTest {
     }
 
     @Test
+    fun settingsSwitchAsksBeforeOffAndOnShowsTheRoles() {
+        // #63 round 2: the radio's on/off at the top right of its page.
+        prefs.radio.mode = RadioMode.ZIGBEE_TCP.id
+        val d = definition()
+        val master = d.settings().single().master!!
+        assertTrue(master.value())
+        assertEquals("Turn the radio off?", master.confirm(false)!!.title)
+        prefs.radio.mode = RadioMode.OFF.id
+        assertNull(master.confirm(false)) // already off: nothing to ask
+        assertFalse(master.value())
+        var answer: String? = "unanswered"
+        master.save(true) { answer = it }
+        assertNull(answer)
+        assertTrue(d.choosing) // on, with no role yet: the roles show, the radio stays off
+        assertTrue(master.value())
+    }
+
+    @Test
     fun aPanelSetUpBeforeTheStepNeverSeesIt() {
         prefs.urlSetting = "http://homeassistant.local:8123/" // a saved dashboard URL is a trace of setup
         assertTrue(definition().step.done())

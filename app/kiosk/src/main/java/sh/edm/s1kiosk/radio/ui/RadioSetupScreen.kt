@@ -67,7 +67,7 @@ internal class RadioSetupScreen(
             }
             Phase.FOLLOW_UP -> {
                 val mode = def.readout.mode()
-                card.title("${RadioStep.OPTIONS.firstOrNull { it.mode == mode }?.title?.substringBefore(" (") ?: "The radio"} is on.")
+                card.title("${if (mode == RadioMode.OFF) "The radio" else RadioStep.shortName(mode)} is on.")
                 card.body(null)
                 def.readout.facts()?.let(section::bind)
                 card.content(followUp)

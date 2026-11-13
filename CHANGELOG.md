@@ -25,8 +25,12 @@ below as the release notes.
 - **Settings apply as you change them.** The settings menu has the new look: one section at a time,
   each setting with its value under it. A switch takes effect when you tap it, and a value when you
   save it. There is no *Save & restart* any more; the few changes that need the app to restart (the
-  dashboard's address, zoom, secure hosts) say so and offer *Restart now*. The radio's modes are a row
-  of choices.
+  dashboard's address, zoom, secure hosts) say so and offer *Restart now*. The list on the left is
+  the same as setup's: Dashboard, Screen, then your panes (Voice, Music, Radio) under Panes, then
+  Log and About. Each pane has its on/off at the top right of its page; turning the radio off asks
+  first. The radio's roles are picked as in setup, Zigbee or Thread first. On the Screen page the
+  presence range is a slider, and the idle times and the night window are picked, not typed. About
+  shows the version; the screen and sensor line moved to Log.
 - **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
   page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
   Nothing in the sections changed.

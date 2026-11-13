@@ -8,6 +8,7 @@ import android.util.Log
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
+import dev.glassworks.pane.SettingsStatus
 import dev.glassworks.pane.PaneChoice
 import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupOp
@@ -101,6 +102,12 @@ class RadioDefinition(
      * current until Continue there. In memory only: after a restart there is nothing left to show.
      */
     @Volatile var followUpOpen = false
+
+    /**
+     * Settings' switch turned on while the radio is off: the picker shows, and the radio stays off until a
+     * role is picked (#63 round 2). Cleared once a mode is on, or the switch goes off.
+     */
+    @Volatile var choosing = false
 
     val step: SetupStep = object : SetupStep {
         override val id = "radio"
@@ -277,7 +284,11 @@ class RadioDefinition(
 
     // ------------------------------------------------------------------ settings
 
-    /** The settings menu's Radio section: the modes as chips and the panel, then who may connect. */
+    /**
+     * The settings menu's Radio section: on/off at the top right (asks before Off), the roles (design C)
+     * and the panel, then who may connect. Its dot follows the radio's status; without the root helper
+     * the radio can't run, and the nav says so.
+     */
     override fun settings(): List<SettingsSection> {
         val running = readout.running()
         val allow = SettingsItem.Text(
@@ -293,7 +304,37 @@ class RadioDefinition(
             SettingsItem.Native(NATIVE_KEY) { host -> RadioSettingsView(host, this) },
             SettingsItem.Group("Who may connect", listOf(allow, allowedNow)),
         ) else listOf(allow, allowedNow) // nothing to drive without the controller: no picker or card
-        return listOf(SettingsSection(id, "Radio", items, heading = "Zigbee / Thread radio"))
+        return listOf(SettingsSection(
+            id, "Radio", items, heading = "Zigbee / Thread radio", master = master(),
+            status = ::settingsStatus,
+            unavailable = { if (readout.controller() != null && !helperInstalled()) NO_HELPER else null },
+        ))
+    }
+
+    /** The section's on/off: on shows the roles; off asks first, then turns the radio off (settings' log source). */
+    private fun master() = SettingsItem.Switch(
+        "Zigbee / Thread radio", "", value = { readout.mode() != RadioMode.OFF || choosing },
+        confirm = { on ->
+            val now = readout.mode()
+            if (on || now == RadioMode.OFF) null
+            else SettingsItem.Confirm("Turn the radio off?", RadioFollowUp.switchConsequence(now, RadioMode.OFF), "Turn off")
+        },
+    ) { on, done ->
+        choosing = on && readout.mode() == RadioMode.OFF
+        if (on || readout.mode() == RadioMode.OFF) done(null)
+        else Thread({ done(setModeFrom(RadioMode.OFF.id, "settings menu")) }, "s1-radio-off").apply { isDaemon = true; start() }
+    }
+
+    /** The nav's dot: green when the mode runs, amber while it starts, rose when it failed; none when off. */
+    private fun settingsStatus(): SettingsStatus? {
+        val mode = readout.mode()
+        if (mode == RadioMode.OFF) return null
+        val status = readout.controller()?.statusText() ?: return null
+        return when (RadioStep.classify(mode, true, status)) {
+            RadioStep.Result.OK -> SettingsStatus.OK
+            RadioStep.Result.APPLYING -> SettingsStatus.WORKING
+            RadioStep.Result.REFUSED, RadioStep.Result.ERROR -> SettingsStatus.PROBLEM
+        }
     }
 
     /** A new allow-list: the old list stays on an error; otherwise done once the radio thread handed it to the helper. */
@@ -334,6 +375,8 @@ class RadioDefinition(
         private const val MAIN_TAG = "S1Kiosk"
         internal const val NATIVE_KEY = "radio"
         internal const val NOT_RUNNING = "The kiosk service isn't running yet; try again in a moment."
+        /** Why the radio can't run (the settings page; the nav says "Can't run"). */
+        internal const val NO_HELPER = "it needs the root helper, which the installer puts on the panel"
         private const val CHANNEL_NOT_RUNNING = "The radio controller isn't running yet; try again in a moment."
         /** Wait for RadioController to take the request, then for it to report how it went (client waits 30 s). */
         private const val RADIO_ACCEPT_MS = 15_000L

@@ -38,8 +38,9 @@ on this radio (Home Assistant dropped that kind of sharing too).
 
 The kiosk settings menu (tap the top-left corner five times) has a **Radio** section:
 
-- the same roles as **Radio mode**, as a row of choices: Off, Zigbee coordinator, Thread border router,
-  Zigbee repeater β and Thread repeater β, the one that is on lit. Tap another to switch; it asks
+- the radio's switch at the top right: off turns the radio off (it asks first), on shows the roles;
+- the same roles as **Radio mode**, technology first: **Zigbee** (Coordinator, Repeater β) and
+  **Thread** (Border router, Repeater β), the one that is on lit. Tap another to switch; it asks
   first, because it restarts the radio;
 - under them, what to do next for the role that is on, with a QR code your phone can scan to open
   the right page in Home Assistant (shown once the panel knows Home Assistant's address), and the role's

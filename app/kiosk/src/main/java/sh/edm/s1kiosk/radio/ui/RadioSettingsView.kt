@@ -5,7 +5,7 @@ import dev.glassworks.pane.SettingsItem
 import sh.edm.s1kiosk.radio.RadioDefinition
 
 /**
- * The settings menu's live radio views: the modes as chips, then the panel (radio/ui/RadioSectionView),
+ * The settings menu's live radio views: the roles (design C, [RadioTechPicker]), then the panel (radio/ui/RadioSectionView),
  * made once per menu and kept across openings, so the dataset field keeps its focus and text. Their
  * confirmations open [dialog], centred over the whole menu. Main thread.
  */
@@ -30,6 +30,8 @@ internal class RadioSettingsView(private val host: SettingsItem.NativeHost, priv
     /** Follows the radio: status, router state, Thread role. */
     override fun refresh() {
         def.readout.controller()?.refreshSoon()
+        if (def.readout.mode() != sh.edm.s1kiosk.radio.RadioMode.OFF) def.choosing = false
+        section.choosing = def.choosing
         def.readout.facts()?.let(section::bind)
     }
 

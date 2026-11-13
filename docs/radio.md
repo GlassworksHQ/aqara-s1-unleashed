@@ -666,18 +666,20 @@ Assistant entities and the Thread join from Home Assistant, as a Glassworks pane
   mode the role and the network's name, from the helper (`joined “Name” as a child; it becomes a
   router when the network promotes it`, `… as a router`, `dataset set, looking for the network`,
   `not on a Thread network yet`).
-- Setup screen, Panes step (#63): the radio is one card, "Zigbee / Thread radio", with a switch (off =
-  Off) and the four other modes as chips under the cards (Zigbee coordinator, Thread border router,
-  Zigbee repeater β, Thread repeater β). Continue applies it through the same request as the setup
-  channel's `radio.set_mode`. The follow-up card (QR codes, stack choice, Join/Leave, the dataset
-  field) is in the settings menu. The setup channel (web installer) offers the same five options;
+- Setup screen (#63 round 2): on the Panes step the radio is one card, "Zigbee / Thread radio", with a
+  switch (off = Off). Turned on, it has its own step under Panes: the roles technology first
+  (`radio/ui/RadioTechPicker`: Zigbee coordinator or repeater β, Thread border router or repeater β),
+  applied with Continue through the same request as the setup channel's `radio.set_mode`, then the
+  role's follow-up card (QR codes, stack choice, Join/Leave, the dataset field), as in the settings
+  menu. The setup channel (web installer) offers the same five options;
   options carry optional `experimental` and `repeater` flags. `radio.set_mode` accepts only those options' ids
   (`RadioStep.OPTIONS`): a mode the step doesn't offer is refused with "Unknown radio mode", even when
   `RadioMode` has it ([onboarding.md](onboarding.md#from-the-web-installer-improv-serial--setup-channel-over-adb-)).
-- Kiosk settings menu, Radio section (`radio/ui/RadioSectionView`): the modes as chips (#63; the one in
-  effect lit, another asks to switch; before #63 a row of role tiles), then a panel with
+- Kiosk settings menu, Radio section (`radio/ui/RadioSectionView`): the radio's on/off at the top
+  right (the section's master switch; off asks first, on shows the roles), the roles as in setup
+  (`RadioTechPicker`, #63 round 2; the one in effect lit, another asks to switch), then a panel with
   a header strip in the role's colour and a status pill (`RadioFollowUp.health`): Off as an empty state
-  ("Tap a role above"); the active role's follow-up
+  ("Turn it on at the top right"); the active role's follow-up
   card (QR code, settings, Zigbee stack choice, Join/Leave, the Thread role and dataset state, a
   write-only `Thread dataset` field behind "Advanced", the long text behind "How does this work?");
   *Starting …* while a role starts; a refused switch in plain words with the role that is still
