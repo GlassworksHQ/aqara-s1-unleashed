@@ -64,12 +64,15 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   Verified on the panel: `getUserMedia({audio:true})` returns a live 48 kHz track.
 - HOME + LAUNCHER intent filters (can be the default launcher), `BootReceiver`
   (`BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`).
-- Back button navigates inside the page and never leaves the kiosk.
+- Back closes the topmost layer (a settings picker, the settings menu, a setup preview), else navigates
+  inside the page, and never leaves the kiosk.
 - If the page fails to load (HA restarting, Wi-Fi not up yet), it retries every 10 s.
   Crashed or killed content processes are restarted.
-- Hidden settings: **tap the top-left corner 5 times within 3 s** (or `--ez settings true`) to set the
-  URL, zoom, secure hosts, kiosk/screen options, open Android settings, or reload. The dialog also shows
-  live sensor status.
+- Hidden settings: **tap the top-left corner 5 times within 3 s** (or `--ez settings true`) for the
+  settings menu (#63): Dashboard (address, full screen, zoom, secure hosts), Screen (presence, idle and
+  night times, brightness, Aqara's own settings), each pane under Panes with its on/off, Log (the live
+  screen and sensor line) and About. Changes apply as you make them; the few that need a restart offer
+  one.
 - **Kiosk mode for HA**: a built-in Gecko web extension (`assets/extension/`) hides the HA dashboard
   header and the sidebar. Add `?kiosk=0` to the URL to show them for one page; while you're editing a
   dashboard they're left visible.

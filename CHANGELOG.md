@@ -32,9 +32,6 @@ below as the release notes.
   first. The radio's roles are picked as in setup, Zigbee or Thread first. On the Screen page the
   presence range is a slider, and the idle times and the night window are picked, not typed. About
   shows the version; the screen and sensor line moved to Log.
-- **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
-  page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
-  Nothing in the sections changed.
 
 ### Added
 - **Kiln's picker lists Generic Android as planned.** Next to the S1 and the Mirror, a card for any

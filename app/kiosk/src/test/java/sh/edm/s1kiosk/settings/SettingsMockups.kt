@@ -51,13 +51,13 @@ class SettingsMockups {
         return o
     }
 
-    /** Illustrative: a pane that can't run on this panel, to show how the menu says so. */
+    /** Made up: a pane that can't run on this panel, to show how the menu says so (none can't on the S1 today). */
     private val cantRun = object : dev.glassworks.pane.PaneDefinition {
-        override val id = "base"
+        override val id = "example"
         override fun settings() = listOf(dev.glassworks.pane.SettingsSection(
-            "base", "Wall base", listOf(dev.glassworks.pane.SettingsItem.Note { "The wall base's settings." }),
-            master = dev.glassworks.pane.SettingsItem.Switch("Wall base", "", { false }) { _, d -> d(null) },
-            unavailable = { "it needs the wall base attached" },
+            "example", "Example pane", listOf(dev.glassworks.pane.SettingsItem.Note { "An example pane's settings." }),
+            master = dev.glassworks.pane.SettingsItem.Switch("Example pane", "", { false }) { _, d -> d(null) },
+            unavailable = { "it needs a camera, and this panel has none" },
         ))
     }
 
@@ -88,7 +88,7 @@ class SettingsMockups {
         shot("settings-12-night-window", menu(radioRunning = true), "screen") { it.previewEdit("At night") }
         shot("settings-13-radio-on", menu(radioRunning = true, facts = coordinator), "radio")
         shot("settings-14-radio-off-asks", menu(radioRunning = true, facts = coordinator), "radio") { it.previewConfirm("radio") }
-        shot("settings-15-pane-cant-run", menu(radioRunning = true, extra = listOf(cantRun)), "base")
+        shot("settings-15-pane-cant-run", menu(radioRunning = true, extra = listOf(cantRun)), "example")
         shot("settings-17-rail-panes-open", menu(radioRunning = true), "voice") // the whole rail, About above Done
         shot("settings-16-screen-scrolled", menu(radioRunning = true), "screen") { o ->
             Mockup.layout(o)
