@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Fastboot, FastbootError } from '../src';
+import type { BulkTransport } from '@glassworks/fel/transport';
 import { FakeUboot } from '@glassworks/fel/fakes';
 
 describe('Fastboot against a simulated U-Boot', () => {
@@ -71,5 +72,41 @@ describe('Fastboot reboot', () => {
     const u = new FakeUboot();
     u.out = async () => { throw new Error('USB write failed'); };
     await expect(new Fastboot(u).reboot()).rejects.toThrow(/write failed/);
+  });
+});
+
+describe('the S1 wire', () => {
+  // Every USB call of a flash, read-back and reboot, with its size and timeout. The S1 install
+  // depends on these exact calls (1 MiB transfers, 256-byte reply reads, 10 s for getvar, 120 s
+  // otherwise). A change here needs a real panel install before merge.
+  it('flashVerified and reboot make exactly these USB calls', async () => {
+    const u = new FakeUboot([['boot', 0x400000]]);
+    const calls: string[] = [];
+    const rec: BulkTransport = {
+      out: async (d, ms) => { calls.push(`out ${d.length < 64 ? new TextDecoder().decode(d) : d.length} ${ms}`); await u.out(d); },
+      in: async (n, ms) => { calls.push(`in ${n} ${ms}`); return u.in(n); },
+      inPacket: async (n, ms) => { calls.push(`inPacket ${n} ${ms}`); return u.inPacket(n); },
+      close: async () => { calls.push('close'); await u.close(); },
+    };
+    const fb = new Fastboot(rec);
+    await fb.flashVerified('boot', new Uint8Array(0x280005).fill(1));
+    await fb.reboot();
+    const reply = (ms: number) => `inPacket 256 ${ms}`;
+    const cmd = (c: string, ms = 120000) => [`out ${c} ${ms}`, reply(ms)];
+    expect(calls).toEqual([
+      ...cmd('getvar:partition-size:boot', 10000),
+      ...cmd('download:00280005'),
+      'out 1048576 120000', 'out 1048576 120000', 'out 524293 120000', reply(120000),
+      ...cmd('flash:boot'), reply(120000), // INFOwriting, then OKAY
+      ...cmd('getvar:partition-size:boot', 10000),
+      ...cmd('oem run:mmc dev 1'),
+      ...cmd('oem run:part start mmc 1 boot s'),
+      ...cmd('oem run:part size mmc 1 boot n'),
+      ...cmd('oem run:mmc read 0x50000000 $s $n'),
+      ...cmd('oem run:setexpr fastboot_upload_size $n * 200'),
+      ...cmd('upload'),
+      'in 1048576 120000', 'in 1048576 120000', 'in 1048576 120000', 'in 1048576 120000', reply(120000),
+      'out reboot 10000', 'inPacket 256 5000', 'close',
+    ]);
   });
 });
