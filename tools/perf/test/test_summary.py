@@ -139,7 +139,7 @@ class Export(unittest.TestCase):
                                     # One sample a side: no tolerance, so no claim (s1p1 read ±0.0 MB and "ok").
                                     "panes": [{"id": "assist", "pss_kb": 30_000, "tolerance_kb": None, "measurable": False, "runs": 1,
                                                "budget_kb": 49152, "budget_ok": None, "budget_measurable": False}],
-                                    "panes_not_switched": ["radio"], "budget_ok": True})
+                                    "panes_waiting": [], "panes_not_switched": ["radio"], "budget_ok": True})
         self.assertEqual(s["apk"], [{"file": "s1-kiosk.apk", "abis": ["armeabi-v7a"], "bytes": 90_000_000}])
         plain = S.summarise(self.reps["B"])
         self.assertEqual((plain["ram"], plain["apk"]), (None, None))

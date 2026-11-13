@@ -11,6 +11,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLooper
+import sh.edm.esphome.EspHomeLog
 import sh.edm.esphome.Msg
 import sh.edm.esphome.ProtoMessage
 import sh.edm.esphome.ProtoWriter
@@ -81,6 +82,34 @@ class PanelDevicePaneSwitchesTest {
         assertEquals("the dashboard check and the state refresh only", 2, second.periodic)
     }
 
+    /**
+     * #210 review: a switch turned off after its pane started, and before the shell listens to the
+     * settings, still stops the pane once startup is done, and the pane hears its own switch (the wall
+     * base then puts Aqara's daemon as the blocking setting wants it). The wall base's start schedules
+     * a task: that is when this test turns it off.
+     */
+    @Test fun aSwitchTurnedOffDuringStartupStopsItsPane() {
+        device.stop()
+        waitThread("s1-base", false)
+        val logged = java.util.Collections.synchronizedList(ArrayList<String>())
+        val sink = EspHomeLog.sink
+        EspHomeLog.sink = EspHomeLog.Sink { level, tag, msg, t -> logged += msg; sink.log(level, tag, msg, t) }
+        try {
+            val second = ManualExecutor()
+            var once = true
+            second.afterSchedule = { if (once) { once = false; switch("wall-base").on = false } }
+            device = PanelDevice(app, runtime, onVoiceEvent = {}, onApiHello = { _, _ -> }, exec = second, mdns = RecordingMdns(),
+                apiPort = 0, apiBindAddress = InetAddress.getLoopbackAddress())
+            device.start()
+            second.runDue()
+            assertEquals("turned off during startup", false, once)
+            waitThread("s1-base", false)
+            assertTrue("the wall base heard its switch: ${logged.filter { "Aqara" in it }}", logged.any { it.startsWith("Aqara cloud (wall base off)") })
+        } finally {
+            EspHomeLog.sink = sink
+        }
+    }
+
     @Test fun diagnosticsOffStopsSamplingAndOnStartsItAgain() {
         assertEquals("the dashboard check, the state refresh and the diagnostics sample", 3, exec.periodic)
         set("diagnostics", false)
@@ -111,6 +140,7 @@ class PanelDevicePaneSwitchesTest {
         }
         Client(port).use { assertEquals(PanelDevice.VOICE_FEATURES, it.voiceFeatures()) }
         Client(port).use { c ->
+            c.voiceFeatures() // answered: the server has this connection, so the fan-out reaches it
             set("assist", false)
             c.awaitDisconnectRequest()
         }

@@ -521,8 +521,7 @@ in."), with the way to change it second ("Use another network", "Add it by hand"
    step stays until its Continue. Answering persists `setup_radio_done` (so does a mode set from the
    web installer over the setup channel). A panel set up before the radio step existed has it marked
    done once at the first start of the new build (`RadioDefinition`'s one-time check: a known HA,
-   `ha_seen`, an API key, a skipped HA step or a stored radio mode), so it never sees it. The wall
-   base has no on/off setting yet, so it has no card.
+   `ha_seen`, an API key, a skipped HA step or a stored radio mode), so it never sees it.
 5. **Done**: the lit stack on its own, "You're all set." and "Opening your dashboard…". The dashboard
    loads (unless it's already showing), then the screen fades out.
 

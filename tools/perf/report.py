@@ -892,12 +892,17 @@ def sample_matches(sample, label, panes):
     if not st or st.get("voice") is None:
         return None
     on = label[len(REF_LABEL):-3] if label.endswith("-on") else None
+    unrecorded = False
     for pid, p in panes.items():
-        # A pane the sample didn't record (a run from before its switch, #67) can't count against it.
-        ran_it = st.get(p["state"]) if p.get("state") else None
-        if ran_it is not None and ran_it != (pid == on):
+        if not p.get("state"):
+            continue
+        ran_it = st.get(p["state"])
+        if ran_it is None:
+            # A run from before the pane's switch (#67): it counts, but isn't checked for this pane.
+            unrecorded = True
+        elif ran_it != (pid == on):
             return False
-    return True
+    return None if unrecorded else True
 
 
 def _without_boot(m):
@@ -1000,6 +1005,9 @@ def reference_ram(ref_idles, refstarts, package, budgets, mem_total_kb):
         } if bm else None,
         "panes": pane_on_alone(ref_idles, package, budgets["panes"]),
         "screen_off_samples": sorted(f"{i['label']}-{i['run']}" for runs in ref_idles.values() for i in runs if i.get("screen_off")),
+        # Kept in glassworks.perf/4, where fields are only added: no frame's pane waits on a switch since #67.
+        "panes_waiting": [{"id": k, "waiting_on": v["waiting_on"], **({"note": v["note"]} if v.get("note") else {})}
+                          for k, v in sorted(budgets["panes"].items()) if v.get("waiting_on")],
         "panes_not_switched": [{"id": k, "why": v["not_switched"], **({"note": v["note"]} if v.get("note") else {})}
                                for k, v in sorted(budgets["panes"].items()) if v.get("not_switched")],
     }

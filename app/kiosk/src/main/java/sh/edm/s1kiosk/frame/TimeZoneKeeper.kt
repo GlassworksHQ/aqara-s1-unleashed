@@ -54,9 +54,19 @@ class TimeZoneKeeper(
         exec?.scheduleWithFixedDelay({ post { refresh() } }, 30, 30, TimeUnit.SECONDS)
     }
 
+    /**
+     * Stops the checks, and waits up to 5 s for a running write: `setprop` keeps going when its thread is
+     * interrupted, and [release] must not clear the zone before it lands.
+     */
     fun stop() {
-        exec?.shutdownNow()
+        val e = exec ?: return
         exec = null
+        e.shutdownNow()
+        try {
+            e.awaitTermination(5, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 
     /** From the `Time zone` entity. Returns null when accepted, else why not (nothing changes then). */
@@ -82,6 +92,9 @@ class TimeZoneKeeper(
             props.set(PROP, "")
             log("time zone pane off: no longer keeping $zone")
         }
+        wanted = ""
+        shown = "off: the panel keeps no time zone"
+        onChange()
         return zone
     }
 

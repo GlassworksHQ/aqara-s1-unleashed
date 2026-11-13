@@ -237,6 +237,8 @@ class PanelDevice internal constructor(
             exec.scheduleWithFixedDelay({ checkDashboards() }, 2, 2, TimeUnit.SECONDS)
             exec.scheduleWithFixedDelay({ server?.publishStates() }, 5, 5, TimeUnit.SECONDS)
         }
+        // A switch changed after its pane started and before the listener above: no event came for it.
+        for (key in applySwitches()) emit(PanelEvent.SettingChanged(key))
     }
 
     /**
@@ -414,19 +416,22 @@ class PanelDevice internal constructor(
     private fun voiceFeatures() = if (switches[ASSIST]?.on != false) VOICE_FEATURES else 0
 
     /**
-     * esphome-main: starts each pane that was turned on and stops each that was turned off (#67). When voice
-     * changed, the device info changes too, and Home Assistant reconnects to read it.
+     * esphome-main: starts each pane that was turned on and stops each that was turned off (#67), and
+     * returns their switches' keys. When voice changed, the device info changes too, and Home Assistant
+     * reconnects to read it.
      */
-    private fun applySwitches() {
+    private fun applySwitches(): List<String> {
+        val changed = ArrayList<String>()
         for (pane in panes) {
             val on = isOn(pane)
             if (on == (pane.id in started)) continue
             if (on) {
-                if (!unlessStopped { listOf(pane).forEachPane("start") { it.start() }; started += pane.id }) return
+                if (!unlessStopped { listOf(pane).forEachPane("start") { it.start() }; started += pane.id }) return changed
             } else {
                 started -= pane.id
                 listOf(pane).forEachPane("stop") { it.stop() }
             }
+            switches[pane.id]?.let { changed += it.key }
             EspHomeLog.i("Pane ${pane.id} ${if (on) "on" else "off"}")
         }
         val features = voiceFeatures()
@@ -436,6 +441,7 @@ class PanelDevice internal constructor(
             EspHomeLog.i("voice=${features != 0}: Home Assistant reconnects to read the voice features")
             rebuildEntities()
         }
+        return changed
     }
 
     /** The chime player, made on first use (from the ESPHome, voice or main thread). */

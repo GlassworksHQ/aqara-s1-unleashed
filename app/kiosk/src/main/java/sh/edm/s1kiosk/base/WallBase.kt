@@ -71,7 +71,9 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
 
     private fun now() = SystemClock.elapsedRealtime()
 
-    fun start() {
+    /** Starts the link with [c]: the config wanted now, which may have changed while the base was stopped. */
+    fun start(c: Config = config) {
+        config = c
         if (exec.isShutdown) exec = newThread()
         exec.execute { startLink() }
         exec.scheduleWithFixedDelay({ safe("tick") { tick() } }, 1, 1, TimeUnit.SECONDS)

@@ -32,6 +32,7 @@ class TimeZonePaneTest {
 
     private val props = Props()
     private val switch = TimeZoneDefinition(KioskPrefs(app).paneFile("time-zone")).switch
+    private val keeper = TimeZoneKeeper(props, zones = { setOf("Europe/Berlin") }, inline = true, log = {})
     private val pane = TimeZonePane(
         PaneContext(
             app, KioskPrefs(app)::paneFile,
@@ -42,7 +43,7 @@ class TimeZonePaneTest {
             publishStates = {}, emit = {}, entitiesChanged = {}, sendEvent = { _, _ -> },
         ),
         TimeZonePrefs(KioskPrefs(app).paneFile("time-zone")),
-        TimeZoneKeeper(props, zones = { setOf("Europe/Berlin") }, inline = true, log = {}),
+        keeper,
     )
 
     /** What the shell does for a switch: start or stop the pane, then tell every pane the key changed. */
@@ -61,6 +62,17 @@ class TimeZonePaneTest {
         turn(false)
         turn(true)
         assertEquals("Europe/Berlin", props.p[TimeZoneKeeper.PROP])
+    }
+
+    /** #210 review: off, Home Assistant no longer reads the old zone as kept; on, it reads it again. */
+    @Test fun offTheEntitiesSayNoZoneIsKept() {
+        pane.start()
+        assertEquals("Europe/Berlin", keeper.text())
+        turn(false)
+        assertEquals("", keeper.text())
+        assertEquals("off: the panel keeps no time zone", keeper.statusText())
+        turn(true)
+        assertEquals("Europe/Berlin", keeper.text())
     }
 
     @Test fun theAppStoppingKeepsTheZone() {

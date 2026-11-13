@@ -113,23 +113,52 @@ class WallBasePaneTest {
         }
     }
 
+    private fun paneWith(config: WallBase.Config, init: FakeInit) = WallBasePane(
+        PaneContext(
+            app, KioskPrefs(app)::paneFile,
+            DeviceIdentity(
+                name = "test", friendlyName = "Test", macAddress = "02:00:00:00:00:01", esphomeVersion = "x",
+                compilationTime = "x", manufacturer = "x", model = "x", voiceFeatures = 0,
+            ),
+            publishStates = {}, emit = {}, entitiesChanged = {}, sendEvent = { _, _ -> },
+        ),
+        config, device, init.cloud,
+    )
+
+    /** What the shell does when the switch changes: the pane started or stopped, then it hears its own key. */
+    private fun turn(p: WallBasePane, on: Boolean) {
+        switch.on = on
+        if (on) p.start() else p.stop()
+        p.onEvent(PanelEvent.SettingChanged(WallBasePrefs.KEY_ENABLED))
+        device.submit {}.get(5, TimeUnit.SECONDS)
+    }
+
+    /** #210 review: a backend and transport chosen while the base is off are the ones it starts with. */
+    @Test fun aBackendChosenWhileOffIsTheOneItStartsWith() {
+        val p = paneWith(WallBase.Config(BaseBackend.LOCALSERVICE), FakeInit())
+        try {
+            p.start()
+            turn(p, false)
+            prefs.backend = "uart"
+            prefs.transport = "tcp:127.0.0.1:1" // the emulator's, nothing listening: the link only retries
+            p.onEvent(PanelEvent.SettingChanged(WallBasePrefs.KEY_BACKEND))
+            p.onEvent(PanelEvent.SettingChanged(WallBasePrefs.KEY_TRANSPORT))
+            device.submit {}.get(5, TimeUnit.SECONDS)
+            turn(p, true)
+            assertEquals(BaseBackend.UART to "tcp:127.0.0.1:1", p.config.backend to p.config.transport)
+        } finally {
+            p.stop()
+            switch.on = true
+            prefs.backend = "auto"
+            prefs.transport = ""
+        }
+    }
+
     private fun turnedOffAfterUart(blocked: Boolean): String {
         val init = FakeInit()
         prefs.blockAqaraCloud = blocked
-        val p = WallBasePane(
-            PaneContext(
-                app, KioskPrefs(app)::paneFile,
-                DeviceIdentity(
-                    name = "test", friendlyName = "Test", macAddress = "02:00:00:00:00:01", esphomeVersion = "x",
-                    compilationTime = "x", manufacturer = "x", model = "x", voiceFeatures = 0,
-                ),
-                publishStates = {}, emit = {}, entitiesChanged = {}, sendEvent = { _, _ -> },
-            ),
-            // The emulator's transport, nothing listening: the link only retries.
-            WallBase.Config(BaseBackend.UART, "tcp:127.0.0.1:1"),
-            device,
-            init.cloud,
-        )
+        // The emulator's transport, nothing listening: the link only retries.
+        val p = paneWith(WallBase.Config(BaseBackend.UART, "tcp:127.0.0.1:1"), init)
         try {
             p.start()
             assertEquals("the UART link owns the port: ha_master stopped", "stopped", init.state)

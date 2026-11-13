@@ -300,6 +300,54 @@ class AssistPaneTest {
         assertEquals(PanelEvent.SpeakerClaimed(false), events.single())
     }
 
+    /**
+     * #210 review: voice turned off in the middle of a run ends the run. Its Idle resumes the music it
+     * paused and lets go of the speaker; nothing else would, with the watchdog gone.
+     */
+    @Test
+    fun turnedOffMidRunItResumesTheMusicAndLetsGoOfTheSpeaker() {
+        val p = started()
+        val server = ApiServer(0, { identity }, emptyList(), null as sh.edm.esphome.NoiseKeys?, java.net.InetAddress.getLoopbackAddress())
+        p.bind(server)
+        server.start()
+        try {
+            java.net.Socket(java.net.InetAddress.getLoopbackAddress(), server.localPort).use { s ->
+                // As Home Assistant: hello, then subscribe to the voice assistant.
+                val out = s.getOutputStream()
+                out.write(frame(sh.edm.esphome.Msg.HELLO_REQUEST, ProtoWriter().string(1, "Home Assistant 2026.11.0").uint32(2, 1).uint32(3, 10).toByteArray()))
+                out.write(frame(sh.edm.esphome.Msg.SUBSCRIBE_VOICE_ASSISTANT_REQUEST, ProtoWriter().bool(1, true).toByteArray()))
+                out.flush()
+                val c = input.controller!!
+                val end = System.currentTimeMillis() + 5_000
+                while (!c.isSubscribed && System.currentTimeMillis() < end) Thread.sleep(10)
+                assertTrue("Home Assistant subscribed", c.isSubscribed)
+                speaker.playing = true
+                assertTrue("a run started", c.onWakeWord("hey jarvis"))
+                assertEquals(1, speaker.pauses)
+                assertEquals(PanelEvent.SpeakerClaimed(true), events.last { it is PanelEvent.SpeakerClaimed })
+
+                p.stop() // voice turned off while it listens
+
+                assertEquals("the music plays again", 1, speaker.resumes)
+                assertEquals(PanelEvent.SpeakerClaimed(false), events.last { it is PanelEvent.SpeakerClaimed })
+            }
+        } finally {
+            server.stop()
+        }
+    }
+
+    private val identity = DeviceIdentity(
+        name = "test", friendlyName = "Test", macAddress = "02:00:00:00:00:01", esphomeVersion = "x",
+        compilationTime = "x", manufacturer = "x", model = "x", voiceFeatures = 0,
+    )
+
+    private fun frame(type: Int, payload: ByteArray): ByteArray {
+        val o = java.io.ByteArrayOutputStream()
+        fun varint(v: Int) { var x = v; while (x >= 0x80) { o.write((x and 0x7F) or 0x80); x = x ushr 7 }; o.write(x) }
+        o.write(0); varint(payload.size); varint(type); o.write(payload)
+        return o.toByteArray()
+    }
+
     @Test
     fun turnedOffAndOnAgainItTakesTheServerAndClearsTheTimers() {
         val p = started()
