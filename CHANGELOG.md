@@ -12,6 +12,13 @@ below as the release notes.
   three glass plates drop into place, the top one lights up from sky to violet, and "Glassworks" and
   "On Aqara S1 Plus" fade in. While the panel finishes starting, the stack floats and the top plate
   breathes. It reaches a panel when you run the installer again.
+- **The panel is called Glassworks Panel, in Home Assistant too.** A panel you already added keeps all
+  its entity ids, so automations and dashboards keep working; Home Assistant shows the device under
+  the new name after the update, unless you renamed it yourself. A panel added from now on gets
+  entity ids that start with `glassworks_panel_`.
+- **New pages on your phone when you scan the panel's code.** Signing in and sharing your Thread
+  network open a short page first that says what happens, then *Continue to Home Assistant*. They
+  follow your phone's light or dark mode.
 - **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
   page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
   Nothing in the sections changed.

@@ -77,7 +77,7 @@ export function radioPlan(mode: string, ip: string, haUrl: string, allowed: stri
           kv: [['Radio type', 'EZSP'], ['Serial path', `socket://${ip}:6638`, true], ['Port speed', 'Leave as is (115200)']],
           link: 'https://my.home-assistant.io/redirect/config_flow_start/?domain=zha' },
         { title: 'Pair your Zigbee devices', body: 'Opens Home Assistant\'s Zigbee “Add device”, which starts pairing for a few minutes. Put each device in pairing mode.', link: zhaAdd },
-        { title: 'Using Zigbee2MQTT instead? (experimental)', body: 'On the panel\'s device in Home Assistant (S1 Panel, under ESPHome), set Zigbee stack to Silicon Labs 8.2.2. The panel downloads it from Silicon Labs, which takes a minute. Then point Zigbee2MQTT at the panel. If the panel\'s Radio helper says v3, install the panel\'s software with Kiln once more first.',
+        { title: 'Using Zigbee2MQTT instead? (experimental)', body: 'On the panel\'s device in Home Assistant (Glassworks Panel, under ESPHome), set Zigbee stack to Silicon Labs 8.2.2. The panel downloads it from Silicon Labs, which takes a minute. Then point Zigbee2MQTT at the panel. If the panel\'s Radio helper says v3, install the panel\'s software with Kiln once more first.',
           kv: [['adapter', 'ember'], ['port', `tcp://${ip}:6638`, true]] },
       ],
     },
@@ -92,13 +92,13 @@ export function radioPlan(mode: string, ip: string, haUrl: string, allowed: stri
       title: 'Join your Zigbee network.', lead: 'The panel is now a Zigbee router (repeater, experimental). It joins your existing network and extends it.',
       steps: [
         { title: 'Open pairing in Home Assistant', body: 'Opens your Zigbee “Add device”, which lets new devices join for a few minutes.', link: zhaAdd },
-        { title: 'Tell the panel to join', body: 'In Home Assistant, open the panel\'s device (S1 Panel, under ESPHome) and press Join Zigbee network. It shows up in ZHA as a router.' },
+        { title: 'Tell the panel to join', body: 'In Home Assistant, open the panel\'s device (Glassworks Panel, under ESPHome) and press Join Zigbee network. It shows up in ZHA as a router.' },
       ],
     },
     thread_router: (app.code ?? 0) >= THREAD_FROM_HA ? {
       title: 'Join your Thread network.', lead: 'The panel is now a Thread router (repeater, experimental). It gets your Thread network from Home Assistant and extends it.',
       steps: [
-        { title: 'Let the panel get it from Home Assistant', body: 'On the panel\'s device in Home Assistant (S1 Panel, under ESPHome), press Join Home Assistant\'s Thread network. Or tap Get it from Home Assistant on the panel\'s Thread router card. The panel reads your preferred Thread network from Home Assistant itself. Home Assistant gives it only to administrators: if the panel isn\'t signed in as one, it shows a QR code. Scan it and sign in as an administrator on your phone; the panel uses that sign-in once.',
+        { title: 'Let the panel get it from Home Assistant', body: 'On the panel\'s device in Home Assistant (Glassworks Panel, under ESPHome), press Join Home Assistant\'s Thread network. Or tap Get it from Home Assistant on the panel\'s Thread router card. The panel reads your preferred Thread network from Home Assistant itself. Home Assistant gives it only to administrators: if the panel isn\'t signed in as one, it shows a QR code. Scan it and sign in as an administrator on your phone; the panel uses that sign-in once.',
           link: esphome, primary: 'Open the panel in Home Assistant' },
         { ...joining, body: `The panel's Thread join sensor says how it went. ${joining.body}` },
       ],
@@ -107,7 +107,7 @@ export function radioPlan(mode: string, ip: string, haUrl: string, allowed: stri
       lead: `The panel is now a Thread router (repeater, experimental). S1 Kiosk ${app.version ?? 'on this panel'} can't get your Thread network from Home Assistant itself; newer versions can. Until it updates, More help shows how to give it the network by hand.`,
       steps: [joining],
       more: [
-        { title: 'Give it your Thread network\'s dataset', body: 'In ESPHome, open the panel\'s device (S1 Panel) → Configuration and paste the dataset into Thread dataset. Spaces or line breaks in the copy are fine. The dataset contains the network key: paste it only there. It is never shown again.',
+        { title: 'Give it your Thread network\'s dataset', body: 'In ESPHome, open the panel\'s device (Glassworks Panel) → Configuration and paste the dataset into Thread dataset. Spaces or line breaks in the copy are fine. The dataset contains the network key: paste it only there. It is never shown again.',
           link: esphome,
           how: { title: 'Where to copy the dataset', body: 'On Home Assistant\'s Thread page, under Preferred network, open ⓘ Network information and copy Active dataset TLVs. Home Assistant shows it to admin users, for a network from an OpenThread Border Router it manages.', link: threadPage, linkText: 'Open the Thread page' } },
       ],
@@ -117,7 +117,7 @@ export function radioPlan(mode: string, ip: string, haUrl: string, allowed: stri
   if (!plan) return undefined;
   // Helper v3 firewall: the radio's ports only open to Home Assistant, once it has added the panel.
   if ((mode === 'zigbee_tcp' || mode === 'thread') && allowed === '') {
-    return { ...plan, steps: [{ title: 'First, add the panel to Home Assistant', body: 'Only Home Assistant can reach the radio, and the panel learns its address when Home Assistant adds the panel. If you haven\'t yet: in Home Assistant open Settings → Devices & services, and add the S1 Panel shown under Discovered (ESPHome). Until then the radio refuses every connection.',
+    return { ...plan, steps: [{ title: 'First, add the panel to Home Assistant', body: 'Only Home Assistant can reach the radio, and the panel learns its address when Home Assistant adds the panel. If you haven\'t yet: in Home Assistant open Settings → Devices & services, and add the Glassworks Panel shown under Discovered (ESPHome). Until then the radio refuses every connection.',
       link: 'https://my.home-assistant.io/redirect/integrations/' }, ...plan.steps] };
   }
   return plan;

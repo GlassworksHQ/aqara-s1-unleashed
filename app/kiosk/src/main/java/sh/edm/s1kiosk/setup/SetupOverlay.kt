@@ -25,6 +25,7 @@ import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupScreen
 import dev.glassworks.pane.SetupStep
 import sh.edm.s1kiosk.auth.OAuth
+import sh.edm.s1kiosk.esphome.PanelDevice
 
 /**
  * The first-boot setup screen (docs/onboarding.md, step 4): a native, full-screen overlay over the
@@ -95,7 +96,7 @@ class SetupOverlay(
     private val flow = SetupFlow.ids(paneSteps.map { it.id })
 
     // ---- left: the steps
-    private val brand = label("S1 Panel · Setup")
+    private val brand = label("${PanelDevice.FRIENDLY_NAME} · Setup")
     private val railTitle = text(30f, TX, LIGHT).apply { letterSpacing = -0.02f; text = "Let's set up\nyour panel"; setLineSpacing(0f, 1.0f) }
     /** One row per step, in [flow] order. */
     private val rows = flow.map { id ->
@@ -363,7 +364,7 @@ class SetupOverlay(
                     primary.setOnClickListener { submit() }
                 } else {
                     cardTitle.text = "Add the panel to Home Assistant"
-                    cardBody.text = "In Home Assistant: Settings → Devices & services → S1 Panel discovered → Add."
+                    cardBody.text = "In Home Assistant: Settings → Devices & services → ${PanelDevice.FRIENDLY_NAME} discovered → Add."
                     tiles.visibility = View.VISIBLE
                     // Manual add: Add integration → ESPHome → host + port.
                     tileA.bind("Manual add · ESPHome", "${m.panelIp ?: "<panel IP>"} · port 6053")

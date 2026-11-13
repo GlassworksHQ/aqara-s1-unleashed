@@ -18,7 +18,7 @@ lightly tested end to end. Nothing below is implemented unless marked ✅.
    through adb, see [From the web installer](#from-the-web-installer-improv-serial--setup-channel-over-adb-)).
    Without it, a fresh or reset panel gets Wi-Fi through **Improv via BLE**, with an on-screen
    picker as fallback.
-2. **HA finds it.** "New device discovered: S1 Panel" appears in HA → click **Add**. HA generates
+2. **HA finds it.** "New device discovered: Glassworks Panel" appears in HA → click **Add**. HA generates
    and pushes the encryption key itself.
 3. **Sign in with your phone.** The panel shows a QR code. Scan it, sign in to HA on the phone (normal
    HA login, password manager works), done. The panel never shows a login form.
@@ -114,7 +114,7 @@ hostname.
 - From the Mac (bleak 3.1 + py-improv-ble-client 2.0.1): found as "MagicPad S1 Plus" (the BT
   adapter name, unchanged) with RSSI around -50, `device_filter()` = True (HA would discover it),
   MTU 517, capabilities 7, `need_authorization` True, identify OK (screen wakes, card pulses, 3 beeps),
-  device info `S1 Kiosk, 0.1.0, Aqara Panel Hub S1 Plus/sun50iw10p1, S1 Panel`, hostname RPC →
+  device info `S1 Kiosk, 0.1.0, Aqara Panel Hub S1 Plus/sun50iw10p1, Glassworks Panel`, hostname RPC →
   error 0x02. Scan returned 0 networks because the app doesn't hold the location permission yet
   (see below). After `--ez improv false` nothing advertises the Improv service.
 - **At the time not tested on the device**: sending Wi-Fi credentials / joining a network (unit
@@ -207,7 +207,7 @@ glue `app/kiosk/…/improv/ImprovSerialServer.kt`). [Improv Serial](https://www.
   the same `WifiProvisioner` as Improv via BLE (it turns Wi-Fi on first). Then state Provisioned +
   an RPC result with `http://<ip>:8099/signin`, or error 0x03 and back to Ready.
 - Request state (+ the URL as a result when provisioned), request device info (`S1 Kiosk`, app
-  version, `Allwinner A133`, `S1 Panel`).
+  version, `Allwinner A133`, `Glassworks Panel`).
 - Scan: a fresh WifiManager scan (Wi-Fi turned on if off; results on `SCAN_RESULTS_AVAILABLE` or after
   15 s at most, cached ones at once if the scan is throttled). Hidden SSIDs are skipped, one entry per
   SSID keeping the strongest, strongest first; one RPC result `[ssid, rssi, YES|NO]` each, then an
@@ -364,11 +364,16 @@ This is the part that removes the login screen. Implemented in `auth/` (`OAuth.k
 The original design notes:
 
 - **QR → phone → HA OAuth.** The panel runs a tiny HTTP server (e.g. `:8099`) and shows a QR code for
-  `http://<panel-ip>:8099/signin`. That page redirects the phone to HA's standard OAuth endpoint:
+  `http://<panel-ip>:8099/signin`. That page says what signing in is for (#63: "Sign in this panel.",
+  the Home Assistant address, and that the panel never sees the password); its *Continue to Home
+  Assistant* (`/signin/continue`) redirects the phone to HA's standard OAuth endpoint:
   `/auth/authorize?client_id=http://<panel-ip>:8099/&redirect_uri=http://<panel-ip>:8099/callback`.
   HA uses IndieAuth: the client is identified by its URL, so nothing has to be registered in HA. The
   user signs in on the phone. HA redirects the phone back to the panel with an auth code, and the panel
-  exchanges it for a **refresh token** (`/auth/token`). The phone shows "Panel signed in ✓".
+  exchanges it for a **refresh token** (`/auth/token`). The phone shows "Panel signed in.". The Thread
+  join's QR code (`/thread`) works the same way: a page that asks for an administrator, then
+  `/thread/continue`. The pages are one template in `SignInServer.kt` (system font, inline mark, dark
+  or light as the phone is).
 - **PKCE.** The callback is plain HTTP on the LAN, so both sign-ins (this one and the Thread join's
   admin sign-in) use PKCE (RFC 7636, S256). Each attempt gets a fresh secret that stays on the panel.
   HA gets its hash at `/auth/authorize` and the secret itself at `/auth/token`, so a code read off the
@@ -473,7 +478,7 @@ Laid out for 960×480 dp.
    **subscribes to states**. HA's config flow only probes DeviceInfo during discovery, so a plain
    Hello doesn't count. `ApiServer.onStatesSubscribed` → `PanelDevice` persists `ha_seen` and
    notifies `SetupSignals`. Until then the step shows "In Home Assistant: Settings → Devices &
-   services → S1 Panel discovered → Add", the panel's IP + port 6053 for a manual ESPHome add, and
+   services → Glassworks Panel discovered → Add", the panel's IP + port 6053 for a manual ESPHome add, and
    the HA URL (or the manual URL field from step 3 when HA wasn't found). **Skip for now** persists
    `setup_ha_skipped` (for kiosk-only use without the ESPHome device).
 3. **Radio** (`radio/ui/RadioStep.kt`, `RadioStepTest`): Off (default), Zigbee coordinator (ZHA or

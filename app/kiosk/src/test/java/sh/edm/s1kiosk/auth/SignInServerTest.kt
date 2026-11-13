@@ -105,7 +105,12 @@ class SignInServerTest {
     @Test
     fun fullFlow() {
         System.setProperty("sun.net.http.allowRestrictedHeaders", "true")
-        val (code, location, _) = get("/signin")
+        // The QR code's page says what signing in is for, then Continue goes to Home Assistant (#63).
+        val (landing, _, page) = get("/signin")
+        assertEquals(200, landing)
+        assertTrue(page, page.contains("Sign in this panel.") && page.contains("href=\"${SignInServer.CONTINUE}\""))
+        assertTrue(page, page.contains("never sees your password"))
+        val (code, location, _) = get(SignInServer.CONTINUE)
         assertEquals(302, code)
         assertNotNull(location)
         val loc = URI(location!!)
@@ -171,7 +176,7 @@ class SignInServerTest {
         val s = signInServer()
         try {
             s.start()
-            val c = URL("http://127.0.0.1:${s.localPort}/signin").openConnection() as HttpURLConnection
+            val c = URL("http://127.0.0.1:${s.localPort}${SignInServer.CONTINUE}").openConnection() as HttpURLConnection
             c.instanceFollowRedirects = false
             assertEquals("the sign-in server on port ${s.localPort} answers /signin with its redirect", 302, c.responseCode)
         } finally {
@@ -182,7 +187,7 @@ class SignInServerTest {
 
     @Test
     fun stolenCodeIsUselessWithoutTheVerifier() {
-        val (_, location, _) = get("/signin")
+        val (_, location, _) = get(SignInServer.CONTINUE)
         val q = OAuth.parseQuery(URI(location!!).rawQuery)
         val http = HaTokenClient(UrlConnectionPoster())
 
@@ -210,7 +215,7 @@ class SignInServerTest {
 
     @Test
     fun expiredOrUsedCode() {
-        val (_, location, _) = get("/signin")
+        val (_, location, _) = get(SignInServer.CONTINUE)
         val state = OAuth.parseQuery(URI(location!!).rawQuery)["state"]!!
         val (cb, _, body) = get("/callback?code=unknown&state=${OAuth.enc(state)}")
         assertEquals(400, cb)
@@ -222,7 +227,7 @@ class SignInServerTest {
     fun badRequests() {
         assertEquals(400, get("/callback?code=x&state=forged").first)
         assertEquals(400, get("/callback?code=x").first)
-        val (_, location, _) = get("/signin")
+        val (_, location, _) = get(SignInServer.CONTINUE)
         val state = OAuth.parseQuery(URI(location!!).rawQuery)["state"]!!
         assertEquals(400, get("/callback?state=${OAuth.enc(state)}").first) // no code
         assertEquals(400, get("/callback?error=access_denied").first)
@@ -242,7 +247,7 @@ class SignInServerTest {
 
     @Test
     fun haUnreachableAtCallback() {
-        val (_, location, _) = get("/signin")
+        val (_, location, _) = get(SignInServer.CONTINUE)
         val state = OAuth.parseQuery(URI(location!!).rawQuery)["state"]!!
         ha.stop(0)
         val (cb, _, body) = get("/callback?code=c&state=${OAuth.enc(state)}")
@@ -252,9 +257,9 @@ class SignInServerTest {
 
     @Test
     fun handlerRejectsBadHost() {
-        val r = server.handle(SignInServer.Request("GET", "/signin", emptyMap(), mapOf("host" to "a@b")))
+        val r = server.handle(SignInServer.Request("GET", SignInServer.CONTINUE, emptyMap(), mapOf("host" to "a@b")))
         assertEquals(400, r.status)
-        val ok = server.handle(SignInServer.Request("GET", "/signin", emptyMap(), mapOf("host" to "192.168.3.39:8099")))
+        val ok = server.handle(SignInServer.Request("GET", SignInServer.CONTINUE, emptyMap(), mapOf("host" to "192.168.3.39:8099")))
         assertEquals(302, ok.status)
         val q = OAuth.parseQuery(URI(ok.headers["Location"]).rawQuery)
         assertEquals("http://192.168.3.39:8099/", q["client_id"])
@@ -298,7 +303,11 @@ class SignInServerTest {
             assertEquals(409, get(s, ThreadJoin.PATH).first)
 
             join.arm()
-            val (code, location, _) = get(s, ThreadJoin.PATH)
+            // The QR code's page says who must sign in and why it's safe, then Continue (#63).
+            val (landing, _, page) = get(s, ThreadJoin.PATH)
+            assertEquals(200, landing)
+            assertTrue(page, page.contains("administrator") && page.contains("href=\"${SignInServer.THREAD_CONTINUE}\""))
+            val (code, location, _) = get(s, SignInServer.THREAD_CONTINUE)
             assertEquals(302, code)
             val q = OAuth.parseQuery(URI(location!!).rawQuery)
             val panel = "127.0.0.1:${s.localPort}"
@@ -330,7 +339,7 @@ class SignInServerTest {
     fun signinStateIsNoGoodForThread() {
         val (s, join) = threadServer(ArrayList())
         try {
-            val (_, location, _) = get(s, "/signin")
+            val (_, location, _) = get(s, SignInServer.CONTINUE)
             val state = OAuth.parseQuery(URI(location!!).rawQuery)["state"]!!
             join.arm()
             assertEquals(400, get(s, "${ThreadJoin.CALLBACK}?code=x&state=${OAuth.enc(state)}").first)
@@ -341,5 +350,15 @@ class SignInServerTest {
         }
         // The panel's server without ThreadJoin doesn't serve /thread at all.
         assertEquals(404, get(ThreadJoin.PATH).first)
+    }
+
+    @Test
+    fun pagesAreSelfContainedAndFollowTheDevicesTheme() {
+        val r = server.handle(SignInServer.Request("GET", "/nope", emptyMap(), emptyMap()))
+        val html = r.body.toString(Charsets.UTF_8)
+        assertTrue(html.contains("prefers-color-scheme:light")) // dark and light follow the device
+        assertTrue(html.contains("<svg")) // the mark is inline
+        assertTrue(html.contains("Glassworks Panel"))
+        for (external in listOf("<script", "<link", "src=", "@import", "url(http")) assertTrue(external, !html.contains(external))
     }
 }
