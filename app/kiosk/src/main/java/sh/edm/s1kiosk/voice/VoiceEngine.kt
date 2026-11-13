@@ -22,13 +22,23 @@ import java.util.concurrent.TimeUnit
  * release, every openWakeWord `*.tflite` already in the models dir except the shared
  * melspectrogram/embedding models. The active word id is persisted by the caller through
  * [onActiveWordChanged].
+ *
+ * A detection reports the word of the detector that fired. While a new word loads, the old one keeps
+ * listening as itself. If the new word fails to load, the old detector is closed (a word HA didn't
+ * pick must not answer), the error is reported, and loading is retried every 30 s.
+ *
+ * [loadDetector] loads a word's model; null loads the real ones (tests pass a fake).
  */
 class VoiceEngine(
     context: Context,
     private val config: VoiceConfig,
     initialWord: String,
     private val onActiveWordChanged: (String) -> Unit,
+    loadDetector: ((WakeWord) -> WakeDetector)? = null,
 ) : VoiceInput {
+
+    /** A loaded model and the word it detects. */
+    private class Loaded(val id: String, val phrase: String, val detector: WakeDetector)
 
     @Volatile override var controller: VoiceAssistantController? = null
     @Volatile override var threshold: Float = config.threshold
@@ -38,10 +48,15 @@ class VoiceEngine(
     private val exec: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "voice-main").apply { isDaemon = true } }
 
+    private val load: (WakeWord) -> WakeDetector = loadDetector ?: { word ->
+        when (word) {
+            is WakeWord.Micro -> loadMicro(word.model)
+            is WakeWord.Legacy -> loadLegacy("${word.id}.tflite")
+        }
+    }
     private val wwLock = Any()
-    private var wakeWord: WakeDetector? = null // guarded by wwLock
+    @Volatile private var loaded: Loaded? = null // written under wwLock
     @Volatile private var activeWord: String = initialWord
-    @Volatile private var phrase: String = WakeWords.parse(initialWord)?.phrase ?: ""
     private var mic: Microphone? = null
     @Volatile private var gain = config.micGain
     // Mic thread only: level stats for the current pipeline run.
@@ -61,7 +76,7 @@ class VoiceEngine(
         running = true
         this.muted = muted
         exec.execute { loadModel() }
-        exec.scheduleWithFixedDelay({ if (wakeWord == null && activeWord.isNotEmpty()) loadModel() }, 30, 30, TimeUnit.SECONDS)
+        exec.scheduleWithFixedDelay({ if (loaded == null && activeWord.isNotEmpty()) loadModel() }, 30, 30, TimeUnit.SECONDS)
         if (!muted) exec.execute { startMic() }
     }
 
@@ -70,7 +85,7 @@ class VoiceEngine(
         exec.shutdownNow()
         mic?.stop()
         mic = null
-        synchronized(wwLock) { wakeWord?.close(); wakeWord = null }
+        replace(null)
     }
 
     override fun setMuted(m: Boolean) {
@@ -102,7 +117,6 @@ class VoiceEngine(
         }
         if (id == activeWord) return
         activeWord = id
-        phrase = WakeWords.parse(id)?.phrase ?: ""
         onActiveWordChanged(id)
         if (running) exec.execute { loadModel() }
     }
@@ -121,32 +135,39 @@ class VoiceEngine(
         try { onError?.invoke(msg) } catch (_: Exception) {}
     }
 
+    private fun replace(next: Loaded?) {
+        val old = synchronized(wwLock) { loaded.also { loaded = next } }
+        if (old != null && old !== next) old.detector.close()
+    }
+
     /** Executor thread. Loads [activeWord], replacing the current one. */
     private fun loadModel() {
         val id = activeWord
         val word = WakeWords.parse(id)
         if (word == null) {
-            synchronized(wwLock) { wakeWord?.close(); wakeWord = null }
+            replace(null)
             VoiceLog.i("No wake word selected; wake word detection off")
             return
         }
-        try {
-            val ww = when (word) {
-                is WakeWord.Micro -> loadMicro(word.model)
-                is WakeWord.Legacy -> loadLegacy("${word.id}.tflite")
-            }
-            if (id != activeWord) { ww.close(); return }
-            synchronized(wwLock) { wakeWord?.close(); wakeWord = ww }
+        if (loaded?.id == id) return
+        val failure = try {
+            val detector = load(word)
+            if (id != activeWord) { detector.close(); return }
+            replace(Loaded(id, word.phrase, detector))
             lastError = null
             val engine = if (word is WakeWord.Micro) "microWakeWord" else "openWakeWord"
-            VoiceLog.i("Wake word '$id' ('$phrase', $engine) loaded; threshold $threshold")
+            VoiceLog.i("Wake word '$id' ('${word.phrase}', $engine) loaded; threshold $threshold")
+            return
         } catch (e: ModelsMissingException) {
-            val msg = e.message ?: "Wake word models missing"
-            if (msg != lastError) error(msg) // don't spam on every retry
-            lastError = msg
+            e.message ?: "Wake word models missing"
         } catch (e: Throwable) {
-            error("Wake word init failed: ${e.message}")
+            "Wake word init failed: ${e.message}"
         }
+        if (id != activeWord) return
+        loaded?.let { VoiceLog.w("Wake word '${it.id}' stopped: '$id' could not load") }
+        replace(null)
+        if (failure != lastError) error(failure) // don't spam on every retry
+        lastError = failure
     }
 
     /**
@@ -189,7 +210,7 @@ class VoiceEngine(
     }
 
     /** Mic thread. */
-    private fun onMicFrame(frame: ShortArray) {
+    internal fun onMicFrame(frame: ShortArray) {
         val c = controller
         val state = c?.currentState
         val streaming = state == VoiceAssistantController.State.STARTING || state == VoiceAssistantController.State.STREAMING
@@ -212,10 +233,12 @@ class VoiceEngine(
             runPeak = 0; runSumSq = 0.0; runSamples = 0
         }
         val t0 = nowMs()
+        var phrase = ""
         val score = synchronized(wwLock) {
-            val ww = wakeWord ?: return
+            val l = loaded ?: return
+            phrase = l.phrase
             try {
-                ww.process(frame)
+                l.detector.process(frame)
             } catch (e: Exception) {
                 VoiceLog.w("wake word inference failed", e)
                 return

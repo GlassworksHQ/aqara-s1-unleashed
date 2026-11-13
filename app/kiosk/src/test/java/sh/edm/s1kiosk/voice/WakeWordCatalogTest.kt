@@ -21,7 +21,7 @@ class WakeWordCatalogTest {
     private val dir: File = Files.createTempDirectory("models").toFile()
     private val stored = ArrayList<String>()
     private fun engine(word: String = "hey_jarvis") =
-        VoiceEngine(RuntimeEnvironment.getApplication(), VoiceConfig(modelsDir = dir), word) { stored += it }
+        VoiceEngine(RuntimeEnvironment.getApplication(), VoiceConfig(modelsDir = dir), word, onActiveWordChanged = { stored += it })
 
     @Test
     fun theFourMicroWakeWordWordsAreAlwaysOffered() {
