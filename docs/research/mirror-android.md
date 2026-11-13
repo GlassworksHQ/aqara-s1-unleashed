@@ -35,28 +35,35 @@ it), **read** (from a source, cited) or **untested**.
    and `docs/recovery.md`, `docs/supported-devices.md` (`2f2f31c`).
    `Onemoremichael/lulu-mirror-software-only` `docs/BUILD.md`, `docs/COMPATIBILITY.md`,
    `docs/PROVENANCE.md` (`efddcbd`, 2026-10-21).
-3. **Read the stock kernel's config.** `lulu-mirror-software-only` publishes `build/kernel.config`,
-   which `PROVENANCE.md` describes as the "observed kernel configuration" of the running kernel. We
-   grepped it for the options that decide the paths below:
+3. **Read a config for the stock kernel.** `lulu-mirror-software-only` publishes
+   `build/kernel.config`. `PROVENANCE.md` calls it the "observed kernel configuration for
+   compatibility build", taken from `running-kernel-build.config`. It is the config that project
+   builds its `wlan.ko` against, not a dump we took from a unit, so treat each line as **read, not
+   verified** until probe 2 below confirms it. We grepped it for the options that decide the paths
+   below:
    ```
-   $ grep -E '^(# )?CONFIG_(MODULE_SIG|KEXEC|KALLSYMS_ALL|ANDROID_BINDER_DEVICES|PID_NS|...)' kernel.config
+   $ grep -E '^(# )?CONFIG_(LOCALVERSION|IKCONFIG_PROC|MODULES|MODULE_SIG|KALLSYMS_ALL|ANDROID_BINDER_IPC|ANDROID_BINDER_IPC_32BIT|SECCOMP_FILTER|PID_NS|USER_NS|HOTPLUG_CPU|MSM_SCM|MSM_KGSL|FB_MSM_MDSS|SECURITY_SELINUX_DEVELOP)=?' kernel.config
    CONFIG_LOCALVERSION="-perf-gf46dad5260f"
    CONFIG_IKCONFIG_PROC=y
    CONFIG_MODULES=y
    # CONFIG_MODULE_SIG is not set
    CONFIG_KALLSYMS_ALL=y
-   CONFIG_ANDROID_BINDER_IPC=y          (no CONFIG_ANDROID_BINDER_DEVICES line)
+   CONFIG_ANDROID_BINDER_IPC=y
+   # CONFIG_ANDROID_BINDER_IPC_32BIT is not set
    CONFIG_SECCOMP_FILTER=y
    # CONFIG_PID_NS is not set
    # CONFIG_USER_NS is not set
    CONFIG_HOTPLUG_CPU=y
-   CONFIG_MSM_SCM=y                     (no ARM_PSCI line)
+   CONFIG_MSM_SCM=y
    CONFIG_MSM_KGSL=y
    CONFIG_FB_MSM_MDSS=y
    CONFIG_SECURITY_SELINUX_DEVELOP=y
    ```
-   No `CONFIG_KEXEC` line at all. arm64 kexec only reached Linux in 4.8 ("arm64/kexec: Add core
-   kexec support", 2016-06-27), so a 3.10 arm64 kernel has no such option.
+   The file has no `CONFIG_KEXEC`, `CONFIG_ANDROID_BINDER_DEVICES` or `CONFIG_ARM_PSCI` line at
+   all. arm64 kexec only reached Linux in 4.8 ("arm64/kexec: Add core kexec support",
+   2016-06-27), so a 3.10 arm64 kernel has no such option. The only LVDS panel driver enabled is
+   `CONFIG_FB_MSM_LVDS_CHIMEI_WXGA_PANEL`, a 1280×800 panel, not the Mirror's 1920×1080 one. So
+   this config says little about the display path.
 4. **Read the teardown** (mdthats.me, "Smart Mirror Teardown", 2026) for the chips.
 5. **Read what exists for msm8916.** The LineageOS org's `android_device_wileyfox_crackling` and
    `android_kernel_cyanogen_msm8916` (branches, `Makefile`, `lineageos_crackling_defconfig`), XDA
@@ -74,12 +81,12 @@ What it rules out is in the next section.
 |---|---|---|---|
 | SoC | Qualcomm Snapdragon 410E, **APQ8016E** (the modem-less MSM8916), 4× Cortex-A53 at 1.2 GHz | Teardown; `msm8916_64` build. Read | — |
 | PMIC | PM8916 | Teardown. Read | No |
-| RAM / eMMC | **1 GB** / 8 GB, a Micron package | `supported-devices.md`; teardown. Read | — |
-| Reference board | Inforce IFC6309 (build `IFC-6309-2.0-MIR`). Inforce's last Android BSP for it is **7.1.1 on kernel 3.10.49** (V3.0, 2018), behind a login | Inforce/Penguin release; `os-replacement.md`. Read | — |
+| RAM / eMMC | **1 GB** / 8 GB. The teardown guesses a Micron multi-chip package (RAM and eMMC), from its marking | `supported-devices.md`; teardown. Read; the package is the teardown's guess | — |
+| Reference board | Inforce IFC6309 (build `IFC-6309-2.0-MIR`). The newest Inforce Android BSP we found for it is **7.1.1 on kernel 3.10.49** (V3.0, 2018), behind a login | Inforce/Penguin release; `os-replacement.md`. Read | — |
 | Stock kernel | 3.10.49, `-perf-gf46dad5260f`, arm64. Stays on the unit; the community image keeps it | `COMPATIBILITY.md`; `kernel.config`. Read | — |
 | Userspace ABI | arm64-v8a with 32-bit secondary (community image) | #40. Verified 2026-11-12 | — |
 | GPU | Adreno 306 (`qcom,adreno-306.0` upstream) | Upstream `msm8916.dtsi`. Read | **Yes** on the stock kernel (KGSL, Adreno GLES blobs). No on mainline (Mesa freedreno) |
-| Display | Samsung LTI400HN01, 40" 1920×1080 LVDS panel, used portrait. Downstream `FB_MSM_MDSS` with LVDS panel drivers; the bridge chip is unnamed | Teardown; `kernel.config`. Read | The display HAL (`hardware/qcom/display`) is open source. The LVDS bridge has no known mainline driver. **Untested** which chip it is |
+| Display | Samsung LTI400HN01, 40" 1920×1080 LVDS panel, used portrait. Downstream `FB_MSM_MDSS`. Whether a separate LVDS bridge chip sits between the SoC and the panel, and which, is not known: the teardown names none | Teardown; `kernel.config`. Read | The display HAL (`hardware/qcom/display`) is open source. The LVDS bridge has no known mainline driver. **Untested** which chip it is |
 | Wi-Fi / BT | WCN3660B on the SoC's WCNSS | Teardown. Read | Firmware (`wcnss`) in the unit's `modem` partition; `wlan.ko` (prima, GPL) built from source; NV calibration data |
 | Audio | SoC codec; TI TPA3116D2 class-D amp; mics on a Conexant CX20921 far-field board (two mics) | Teardown. Read | The audio HAL is open source; ACDB calibration libraries are not. How the CX20921 connects is **untested** |
 | Camera | OmniVision OV5640 | Teardown. Read | **Yes** on Android: Qualcomm's `mm-camera` plus a sensor library (the community used a Quectel SDK, #40). Mainline has `ov5640` and CAMSS |
@@ -91,15 +98,15 @@ What it rules out is in the next section.
 | What | Android | Kernel | Gaps | Source |
 |---|---|---|---|---|
 | Stock / community image | 6.0.1 (API 23) | 3.10.49 stock | — | #40, `COMPATIBILITY.md`. Read |
-| Inforce IFC6309 BSP | 7.1.1 (API 25), the ceiling | 3.10.49 | Not public (TechWeb login). Signed with Inforce's key, not necessarily the Mirror's. Still below 26 | Inforce release; `os-replacement.md`. Read |
-| LineageOS, Wileyfox Swift (`crackling`, msm8916, arm64) | Official branches `lineage-15.1`, `16.0`, `17.1` (Android 8.1 to 10) | **3.10.108**, with `CONFIG_ANDROID_BINDER_DEVICES="binder,hwbinder,vndbinder"` backported | Uses Android 6/7-era Qualcomm blobs with shims. Official support ended February 2022 | GitHub, LineageOS org. Read |
+| Inforce IFC6309 BSP | 7.1.1 (API 25), the newest we found. `COMPATIBILITY.md` calls Android 7.x "an investigation target, not … an established ceiling" | 3.10.49 | Not public (TechWeb login). Signed with Inforce's key, not necessarily the Mirror's. Still below 26 | Inforce release; `os-replacement.md`. Read |
+| LineageOS, Wileyfox Swift (`crackling`, msm8916, arm64) | Official branches `lineage-15.1`, `16.0`, `17.1` (Android 8.1 to 10) | **3.10.108**, with `CONFIG_ANDROID_BINDER_DEVICES="binder,hwbinder,vndbinder"` backported | Uses Android 6/7-era Qualcomm blobs with shims. `lineage-17.1` is its last branch; LineageOS no longer builds it | GitHub, LineageOS org (branch list). Read |
 | Unofficial LineageOS 18.1 (Android 11) | `crackling`, `a5lte` (Galaxy A5 2015) | Downstream 3.10 kernels | "Testing" builds, GApps don't fit (crackling) | XDA threads. Read through search results |
 | Mainline Linux | — | 7.x; upstream `msm8916.dtsi` has MDP5/DSI, Adreno 306, Venus, CAMSS and WCNSS nodes; `apq8016-sbc.dts` (DragonBoard 410c); about 50 msm8916 and apq8016 device-tree files | No LVDS bridge for this board, no Mirror DTS. `msm8916-mainline` keeps a fork for many phones | Upstream tree; `msm8916-mainline/linux`. Read |
 | Android on mainline | AOSP on the DragonBoard 410c with freedreno and drm_hwcomposer (Collabora, 2017–2018). SoMainline documents the `freedreno` + `gbm_gralloc` + `drm_hwcomposer` setup | Mainline | Camera, audio and HW video decode not covered. Nobody has published a maintained msm8916 Android-on-mainline build that we found | Collabora blog; SoMainline docs. Read |
 | lk2nd | Secondary bootloader for msm8916, installed in `boot` | — | The Mirror's LK refuses it (below) | `msm8916-mainline/lk2nd`. Read |
 
-So Android 8 to 11 does reach msm8916, but only with a **rebuilt** 3.10 kernel (binder domains,
-other Oreo backports) and a matching ramdisk. All of that lives in `boot`.
+So Android 8 to 11 does reach msm8916, but only with a **rebuilt** 3.10 kernel (a backported
+binder driver with its three devices, other Oreo backports) and a matching ramdisk. All of that lives in `boot`.
 
 ### 3. The gate: the boot image is signed and stays Android 6
 
@@ -118,7 +125,12 @@ What follows from it (read, reasoned from the table, not tried):
 - A newer `system` cannot boot under Android 6 `init` and its SELinux policy. Android 8+ needs its
   own `init`, `hwservicemanager` and policy, and the stock `fstab` has no `/vendor`.
 - The stock kernel has no `hwbinder` or `vndbinder` (no `CONFIG_ANDROID_BINDER_DEVICES`). Android 8
-  vendor code talks over `/dev/hwbinder`. LineageOS had to backport this to 3.10.
+  vendor code talks over `/dev/hwbinder`. The driver itself is short too, not just the device
+  nodes. HIDL uses scatter-gather transactions (`BC_TRANSACTION_SG`), added upstream on 2017-02-10
+  (`7980240b6d63`, Linux 4.11). The 3.10 msm8916 kernel's `binder.h` on `cm-13.0` doesn't have it.
+  The `lineage-17.1` branch does, so LineageOS backported the driver. The protocol version is not
+  the gap: with `CONFIG_ANDROID_BINDER_IPC_32BIT` unset, 3.10's `binder.h` already defines
+  `BINDER_CURRENT_PROTOCOL_VERSION 8`, the 64-bit ABI that Android 8 requires.
 - An Android userspace in a container (the Waydroid or Anbox idea) needs PID namespaces. The stock
   kernel has `# CONFIG_PID_NS is not set`. That rules it out.
 
@@ -129,12 +141,29 @@ loads (Wi-Fi works). So code we put in `system` can run inside the signed kernel
 boot, the way `kexec-kindle-mt8512` boots any kernel on a locked Kindle and `fabianishere/kexec-mod`
 does for arm64. The boot chain is never written.
 
+First, the module has to load at every boot, as root, before anything else needs the screen. That
+means an `insmod` that the stock `init.rc` already runs from `/system`, or a `/system` binary or
+script that stock `init` starts as root. There are two candidates, both **untested** on this
+ramdisk:
+
+- Qualcomm (CAF) `init.qcom.rc` files define `qcom-post-boot`, which runs
+  `/system/etc/init.qcom.post_boot.sh` as `user root`. We read this in older CAF trees, not in the
+  Mirror's own `init.qcom.rc`. The community build ships and edits that script (`build/prepare.py`).
+- The Wi-Fi HAL loads `wlan.ko` from `/system/lib/modules/pronto/` (`build/container-build.sh`).
+  That load comes late, from the framework, under its SELinux domain.
+
+Probe 9 below shows which path exists.
+
 Why it is a spike and not a plan (all untested):
 
 - arm64 kexec does not exist in 3.10. The module would backport the 4.8+ relocation and
   `cpu_soft_restart` code to 3.10 by hand.
-- MSM8916 here has no PSCI (`CONFIG_MSM_SCM=y`, no `ARM_PSCI`). Parking and restarting the
-  secondary CPUs through Qualcomm's TZ is the known hard part. lk2nd exists partly for this reason.
+- The stock kernel brings up secondary CPUs through Qualcomm SCM calls (`CONFIG_MSM_SCM=y`, no
+  `ARM_PSCI` in its config). Upstream `msm8916.dtsi` instead uses PSCI over SMC
+  (`enable-method = "psci"`, `method = "smc"`), which the TZ firmware provides. So the spike must
+  answer two things: can the module park the secondary CPUs so the new kernel can start them, and
+  does PSCI still answer after kexec from a kernel that never used it? lk2nd exists partly
+  because of this kind of CPU hand-off.
 - The new kernel must re-initialise the display, the PMIC and the LVDS bridge that the stock kernel
   already set up. Wrong regulator settings on a 40" panel are a hardware risk, not just a crash.
 - Every boot runs the stock kernel and Android 6 `init` first, then kexec. Boot takes about twice
@@ -150,7 +179,7 @@ for one experienced developer, after kexec works.
 | Kernel | Downstream 3.10 rebuilt with Oreo backports (from `crackling`'s kernel or CAF), plus the Mirror's board DT and LVDS panel from the live device tree | Same as (a) | Mainline 7.x with a new Mirror DTS and an LVDS bridge driver | Mainline, same as (c) |
 | Android | LineageOS 15.1 to 17.1 (API 27 to 29) | Any GSI | AOSP 12+ with Mesa | None |
 | Proprietary userspace | Adreno GLES, camera, ACDB audio, keymaster, from LA.BR.1.2.7 with shims | Same as (a), moved into `/vendor` | **None needed** for GPU and display; firmware only. Camera via libcamera, video decode immature | Firmware only |
-| Extra blockers | 1 GB RAM: Android 8.1+ runs as Android Go on ≤1 GB | No `vendor` partition; GPT changes need EDL or `boot` access; `system` is 1228 MB, smaller than most recent GSIs | No mainline LVDS bridge driver; audio routing; HW video decode in Android on V4L2 is not mature; 1 GB RAM | Not an Android frame (below) |
+| Extra blockers | 1 GB RAM. Google steers ≤1 GB devices to the Android Go configuration (`ro.config.low_ram` and friends); for our own build it is a choice, not automatic | No `vendor` partition; GPT changes need EDL or `boot` access; `system` is 1228 MB, smaller than most recent GSIs | No mainline LVDS bridge driver; audio routing; HW video decode in Android on V4L2 is not mature; 1 GB RAM | Not an Android frame (below) |
 | Effort | Spike + 1–3 months | More than (a), for no gain | Spike + 3–6 months or more | Spike + 1–2 months, but a different product |
 | Brick risk | Low for storage: only `system` and `userdata` are written. Moderate hardware risk from a kernel driving the PMIC and panel | Higher: needs repartitioning | Same as (a) | Same as (a) |
 | Way back | `fastboot flash system` with the community image (LK and `boot` are never written) | Repartitioning has no safe undo without EDL | Same as (a) | Same as (a) |
@@ -189,13 +218,16 @@ costs the most work.
 | Effort | Low: one Gradle module (#39) | A spike of uncertain outcome, then 1–3 months |
 | Blobs to ship | None beyond what the community image already needs | The same userspace blobs, plus shims |
 | Risk to the unit | None new | Kernel driving the PMIC and LVDS panel; storage stays recoverable |
-| RAM | 1 GB, Android 6 | 1 GB, Android 8.1+ as Go. Same pressure for GeckoView |
+| RAM | 1 GB, Android 6 | 1 GB, Android 8.1+, probably with the Go low-RAM settings. Same pressure for GeckoView |
 
 Reasons:
 
-1. The boot chain is the blocker, not the blobs. Two other projects tried both entry points (signed
-   `fastboot boot` and EDL) and both enforce the OEM key.
-2. Even the vendor's own BSP stops at Android 7.1.1 (API 25), below what GeckoView needs.
+1. The boot chain is the blocker, not the blobs. `lululemon-mirror-repurpose` ran both entry
+   points (`fastboot boot` and EDL), and both enforce the OEM key.
+   `lulu-mirror-software-only` keeps the signed boot chain and says a newer Android "needs a
+   separate compatibility project"; it did not test the entry points itself.
+2. The newest vendor BSP we found for the reference board is Android 7.1.1 (API 25), still below
+   what GeckoView needs.
 3. The only crack, kexec from a module, has no prior art on a 3.10 arm64 Qualcomm kernel that we
    found. Every path above waits on it.
 4. The frozen engine's risk can be contained (HA origin only). A modern image doesn't fix the 1 GB
@@ -221,8 +253,9 @@ written). The S1 is plugged in too, so address the Mirror by transport: `adb dev
 | 6 | `adb -t <n> shell 'head -2 /proc/meminfo; cat /proc/device-tree/model; echo'` | RAM as the kernel sees it, and the board's DT model |
 | 7 | `adb -t <n> shell 'find /proc/device-tree -iname "*lvds*" -o -iname "*panel*" -o -iname "*bridge*" \| head -40'` | Which LVDS bridge the board uses. Don't dump `chosen/bootargs`: it holds the serial |
 | 8 | In fastboot (`frame.json`: open the back, press the button): `fastboot getvar all` | Already #41 step 2. Note `secure`, `unlocked`, `version-bootloader`. Redact `serialno` |
+| 9 | `adb -t <n> shell 'getprop \| grep -e init.svc.qcom-post-boot -e wlan.driver; grep -n -e post_boot -e insmod /init*.rc'` | Whether stock `init` runs `init.qcom.post_boot.sh` (and as which user), and any `insmod` it does from `/system`. The `grep` of `/init*.rc` may be denied to `shell`; note it if so |
 
-Then, only if probes 2 and 4 confirm unsigned modules and no kexec, decide whether to fund a
+Then, only if probes 2, 4 and 9 confirm unsigned modules, no kexec and a root load path at boot, decide whether to fund a
 time-boxed kexec spike. It would write `system` (a test image with the module) and nothing else. The
 way back is the published Glass Panes `system.img`, checked against its `SHA256SUMS`, and
 `userdata` from a backup taken first.
@@ -230,8 +263,11 @@ way back is the published Glass Panes `system.img`, checked against its `SHA256S
 ## Open questions
 
 - Does the stock kernel let `shell` read `/proc/config.gz` and `/proc/device-tree`? (Probes 2, 7.)
-- Which LVDS bridge and panel timings does the board use? The live device tree should say.
-- Can a kexec module park the secondary CPUs on this TZ without PSCI? Only a spike answers it.
+- Which LVDS bridge (if any) and panel timings does the board use? The published config only enables a
+  1280×800 Chimei LVDS driver, so it doesn't answer this. The live device tree should.
+- Can a kexec module park the secondary CPUs on this TZ, and does PSCI work after kexec? Only a
+  spike answers it.
+- Does stock `init` run anything from `/system` as root early enough to load the module? (Probe 9.)
 - How does the CX20921 mic board connect (USB, I2S)? It matters for Assist on every path.
 - Would GeckoView with the HA frontend fit in 1 GB on Android 6? This is the same question for the
   frozen engine, and nobody has measured it.
@@ -262,6 +298,11 @@ All opened 2026-11-13.
   [Galaxy A5 2015 LineageOS 18.1](https://xdaforums.com/t/samsung-galaxy-a5-2015-lineage-18-1-custom-rom-tutorial.4728212/),
   [How to repartition for vendor and use GSIs](https://xdaforums.com/t/guide-how-to-repartition-for-vendor-and-how-to-use-gsis.3789787/)
   (through search results).
+- Binder: LineageOS [`android_kernel_cyanogen_msm8916`](https://github.com/LineageOS/android_kernel_cyanogen_msm8916)
+  `drivers/staging/android/uapi/binder.h` on `cm-13.0` and `lineage-17.1`, and upstream
+  [`7980240b6d63` "binder: Add support for scatter-gather"](https://github.com/torvalds/linux/commit/7980240b6d63).
+- `qcom-post-boot` in CAF `init.qcom.rc`, e.g. [CodeAurora `qrd-gb-ssss-7225`](https://source.codeaurora.org/external/gigabyte/qrd-gb-ssss-7225/plain/android/system/core/rootdir/etc/init.qcom.rc)
+  (through search results); `lulu-mirror-software-only` `build/prepare.py` and `build/container-build.sh`.
 - Upstream Linux: [`arch/arm64/boot/dts/qcom/msm8916.dtsi`](https://github.com/torvalds/linux/blob/master/arch/arm64/boot/dts/qcom/msm8916.dtsi),
   `drivers/media/i2c/ov5640.c`, history of `arch/arm64/kernel/machine_kexec.c`.
 - [`msm8916-mainline/linux`](https://github.com/msm8916-mainline/linux) and [`msm8916-mainline/lk2nd`](https://github.com/msm8916-mainline/lk2nd).
