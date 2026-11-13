@@ -667,7 +667,7 @@ Assistant:
   this way stops the whole pane, unlike the mute switch (below), which leaves its model loaded. It
   also leaves out the timers pane, which only comes from the voice assistant, so `assist`'s share
   includes the timers'.
-- **Waiting on #67**: `radio`, `wall-base`, `timers` and `time-zone` have no on/off switch until
+- **Waiting on #67**: `radio`, `wall-base`, `timers`, `time-zone` and `diagnostics` have no on/off switch until
   [#67](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/67), so they aren't measured on
   their own. The report lists them. The radio's processes are measured where they run.
 
@@ -844,7 +844,7 @@ per frame and pane, with budgets. Its two halves come from different places:
   frame's size budget in the same `frames/<id>/budgets.json`. That is its own pull request, stacked on
   this one. `--apk` still adds sizes to a device report.
 - **Panes** use the ids from the code (`assist`, `sendspin`, `radio`, `wall-base`, `timers`,
-  `time-zone`). Only `assist` and `sendspin` can be switched today; the others wait on
+  `time-zone`, `diagnostics`). Only `assist` and `sendspin` can be switched today; the others wait on
   [#67](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/67).
 
 ## Page log lines

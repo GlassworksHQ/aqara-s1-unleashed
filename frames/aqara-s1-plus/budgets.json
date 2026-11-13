@@ -10,6 +10,7 @@
     "radio": { "waiting_on": "#67", "note": "its processes run outside the app and are measured in place" },
     "wall-base": { "waiting_on": "#67" },
     "timers": { "waiting_on": "#67", "note": "comes only with the voice assistant, so it is inside assist's share" },
-    "time-zone": { "waiting_on": "#67" }
+    "time-zone": { "waiting_on": "#67" },
+    "diagnostics": { "waiting_on": "#67" }
   }
 }

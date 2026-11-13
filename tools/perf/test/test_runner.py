@@ -788,7 +788,7 @@ class PaneRam(unittest.TestCase):
         self.assertTrue(panes["assist"]["pss_measurable"])
         self.assertEqual(panes["assist"]["method"], "on-alone")
         self.assertEqual(ram["pane_budget"]["assist"], {"value_kb": 30000, "budget_kb": 49152, "ok": True})
-        self.assertEqual({p["id"] for p in ram["panes_waiting"]}, {"radio", "wall-base", "timers", "time-zone"})
+        self.assertEqual({p["id"] for p in ram["panes_waiting"]}, {"radio", "wall-base", "timers", "time-zone", "diagnostics"})
         self.assertIsNone(ram["reference_idle"])          # no graded runs here
 
     def test_a_pane_setting_it_cant_put_back_is_refused_before_the_device_is_touched(self):
