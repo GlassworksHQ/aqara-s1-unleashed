@@ -220,7 +220,9 @@ The workflow then:
    image and Ubuntu snapshot; it must reproduce `tools/radio/sisdk-runtime.sha256`; never Silicon Labs'
    zigbeed itself), then signs the radio bundle in the `sign-bundle` job (environment `radio-signing`,
    main only, every input checked against committed hashes; `tools/radio/make-bundle.py --app-version`,
-   version = the versionCode, checked against `tools/root/s1kiosk_bundle.pub`);
+   version = the versionCode, checked against `tools/root/s1kiosk_bundle.pub`). PR CI catches a runtime
+   that no longer reproduces before a tag does. The `size` job in `pr.yml` runs the same build and hash
+   check whenever the script, `tools/radio/sisdk/` or the hash file changes;
 3. builds `:kiosk:assembleRelease` with `S1_VERSION=1.0.0` once per ABI, the `armeabi-v7a` one with
    the bundle as APK assets. The build fails if a key is missing (`S1_REQUIRE_RELEASE_SIGNING=true`);
 4. runs `apksigner verify --print-certs` on each APK, so the certificate fingerprint is in the log,
