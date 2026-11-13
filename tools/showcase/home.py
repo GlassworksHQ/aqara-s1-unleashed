@@ -7,8 +7,9 @@ What it doesn't set comes from Clarity's dashboards.py. Everything is seeded and
 render.mjs also gives the browser's clock, so every run draws the same picture. Names are made up, the
 pictures are drawn here (no camera, no real place, no faces), and nothing comes from a real home.
 
-Two variants, for the maintainer to pick from (VARIANT): "rich" (graphs, camera, media) and "calm"
-(tiles and one graph).
+One dashboard, two views with the same sections: "home" (up to four columns, landscape screens) and
+"portrait" (two columns). Every section is SECTION_ROWS grid rows tall, so on any screen each row of
+sections ends level and no column stops early.
 """
 import datetime
 import math
@@ -22,8 +23,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import dashboards as _clarity  # noqa: E402
 
 DASHBOARD = "showcase"
-VARIANTS = ("rich", "calm")
-VARIANT = "rich"
 SEED = 144
 # The moment every render shows: an evening (lights on, the day's graphs full). The clock shows its
 # time; nothing shows its date.
@@ -71,7 +70,13 @@ ENTITIES = {
     "light.hallway": _light("Hallway"),
     "light.bedroom": _light("Bedroom", 20),
     "light.porch": _light("Porch", 60),
+    "light.floor_lamp": _light("Floor lamp", 30),
+    "switch.tv": ("on", {"friendly_name": "TV"}),
+    "switch.sprinklers": ("off", {"friendly_name": "Sprinklers"}),
+    "cover.garage_door": ("closed", {"friendly_name": "Garage door", "device_class": "garage", "supported_features": 3}),
     "switch.coffee_machine": ("off", {"friendly_name": "Coffee machine"}),
+    "switch.dishwasher": ("on", {"friendly_name": "Dishwasher"}),
+    "switch.kettle": ("off", {"friendly_name": "Kettle"}),
     "switch.garden_lights": ("on", {"friendly_name": "Garden lights"}),
     "media_player.living_room": ("playing", {
         "friendly_name": "Living room speaker", "device_class": "speaker", "volume_level": 0.3,
@@ -81,18 +86,36 @@ ENTITIES = {
     "camera.front_garden": ("idle", {
         "friendly_name": "Front garden", "access_token": "showcase",
         "entity_picture": "/api/camera_proxy/camera.front_garden?token=showcase", "supported_features": 0}),
+    "camera.driveway": ("idle", {
+        "friendly_name": "Driveway", "access_token": "showcase",
+        "entity_picture": "/api/camera_proxy/camera.driveway?token=showcase", "supported_features": 0}),
     "lock.front_door": ("locked", {"friendly_name": "Front door", "supported_features": 0}),
-    "cover.bedroom_blinds": ("closed", {"friendly_name": "Bedroom blinds", "current_position": 0,
-                                        "device_class": "blind", "supported_features": 15}),
+    "cover.bedroom_blinds": ("open", {"friendly_name": "Bedroom blinds", "current_position": 40,
+                                      "device_class": "blind", "supported_features": 15}),
     "binary_sensor.back_door": ("off", {"friendly_name": "Back door", "device_class": "door"}),
     "binary_sensor.hall_motion": ("off", {"friendly_name": "Hall motion", "device_class": "motion"}),
+    "alarm_control_panel.home": ("armed_home", {"friendly_name": "Alarm", "code_arm_required": False,
+                                                "code_format": None, "supported_features": 7}),
+    "vacuum.robot": ("docked", {"friendly_name": "Robot vacuum", "battery_level": 100, "supported_features": 12380}),
+    "fan.air_purifier": ("on", {"friendly_name": "Air purifier", "percentage": 40, "percentage_step": 20,
+                                "supported_features": 1}),
+    "todo.shopping_list": ("3", {"friendly_name": "Shopping list", "supported_features": 15}),
+    "scene.movie_night": ("2026-11-12T18:02:00+00:00", {"friendly_name": "Movie night"}),
+    "scene.good_night": ("2026-11-11T22:40:00+00:00", {"friendly_name": "Good night"}),
     "sensor.living_room_temperature": _sensor("Living room", 20.6, "temperature", "°C"),
     "sensor.living_room_humidity": _sensor("Living room humidity", 46, "humidity", "%"),
+    "sensor.bedroom_humidity": _sensor("Bedroom humidity", 52, "humidity", "%"),
+    "sensor.living_room_co2": _sensor("CO₂", 612, "carbon_dioxide", "ppm"),
+    "sensor.living_room_pm25": _sensor("PM2.5", 6, "pm25", "µg/m³"),
     "sensor.bedroom_temperature": _sensor("Bedroom", 18.2, "temperature", "°C"),
+    "sensor.fridge_temperature": _sensor("Fridge", 4.1, "temperature", "°C"),
     "sensor.outdoor_temperature": _sensor("Outside", 9.4, "temperature", "°C"),
     "sensor.home_power": _sensor("Power", 412, "power", "W"),
     "sensor.energy_today": _sensor("Energy today", 7.8, "energy", "kWh", "total_increasing"),
 }
+
+SHOPPING = [("Oat milk", "needs_action"), ("Lemons", "needs_action"), ("Coffee beans", "needs_action"),
+            ("Bread", "completed")]
 
 
 def states():
@@ -104,14 +127,18 @@ def states():
 def config():
     return dict(_clarity.config(), location_name="Home", latitude=52.0, longitude=5.0,
                 components=["frontend", "lovelace", "history", "recorder", "sensor", "light", "switch", "binary_sensor",
-                            "climate", "media_player", "lock", "cover", "camera", "weather", "person"])
+                            "climate", "media_player", "lock", "cover", "camera", "weather", "person",
+                            "alarm_control_panel", "vacuum", "fan", "todo", "scene"])
 
 
 def services():
     s = {"name": "", "description": "", "fields": {}, "target": {"entity": [{}]}}
     names = {"light": ["turn_on", "turn_off", "toggle"], "switch": ["turn_on", "turn_off", "toggle"],
              "lock": ["lock", "unlock"], "cover": ["open_cover", "close_cover", "stop_cover"],
-             "climate": ["set_temperature", "set_hvac_mode"], "media_player": ["media_play_pause", "media_next_track"]}
+             "climate": ["set_temperature", "set_hvac_mode"], "media_player": ["media_play_pause", "media_next_track"],
+             "alarm_control_panel": ["alarm_arm_home", "alarm_arm_away", "alarm_arm_night", "alarm_disarm"],
+             "vacuum": ["start", "pause", "return_to_base"], "fan": ["set_percentage"], "scene": ["turn_on"],
+             "todo": ["add_item", "update_item"]}
     return {d: {n: s for n in ns} for d, ns in names.items()}
 
 
@@ -131,79 +158,98 @@ def dashboards_list():
 
 # ---- the dashboard
 
-def _tile(entity, **extra):
-    return {"type": "tile", "entity": entity, **extra}
+SECTION_ROWS = 10      # every section's height in grid rows (56 px each, plus 8 px gaps), its heading included
+
+
+def _rows(card, rows, columns=12):
+    return dict(card, grid_options={"rows": rows, "columns": columns})
+
+
+def _tile(entity, features=(), **extra):
+    card = {"type": "tile", "entity": entity, **extra}
+    if features:
+        card["features"] = [{"type": f, **o} for f, o in features]
+        card["features_position"] = "bottom"
+        card["grid_options"] = {"columns": 12, "rows": 2}
+    return card
 
 
 def _heading(title, *badges):
-    return {"type": "heading", "heading": title, "heading_style": "title",
-            "badges": [{"type": "entity", "entity": b} for b in badges]}
+    """A section's title, exactly one grid row tall, so every section is SECTION_ROWS rows."""
+    return _rows({"type": "heading", "heading": title, "heading_style": "title",
+                  "badges": [{"type": "entity", "entity": b} for b in badges]}, 1)
 
 
-def _graph(title, entities, hours=12):
-    return {"type": "history-graph", "title": title, "hours_to_show": hours, "entities": entities}
+def _graph(title, entities, rows, hours=12):
+    return _rows({"type": "history-graph", "title": title, "hours_to_show": hours, "entities": entities}, rows)
 
 
-CLOCK = {"type": "clock", "clock_size": "large", "time_format": "24", "no_background": True}
-WEATHER = {"type": "weather-forecast", "entity": "weather.home", "show_forecast": True, "forecast_type": "daily",
-           "forecast_slots": 4}
+def _camera(entity, rows):
+    return _rows({"type": "picture-entity", "entity": entity, "camera_view": "auto", "show_state": False,
+                  "fit_mode": "cover"}, rows)
+
+
 BADGES = ([{"type": "entity", "entity": e, "show_name": True} for e in ("person.alex", "person.sam")]
-          + [{"type": "entity", "entity": e} for e in ("lock.front_door", "sensor.home_power")])
+          + [{"type": "entity", "entity": e} for e in ("alarm_control_panel.home", "lock.front_door", "sensor.home_power")])
 
-
-def _rich():
-    return [
-        {"type": "grid", "cards": [CLOCK, WEATHER,
-                                   _graph("Temperature", ["sensor.living_room_temperature", "sensor.outdoor_temperature"])]},
-        {"type": "grid", "cards": [_heading("Living room", "sensor.living_room_temperature", "sensor.living_room_humidity"),
-                                   {"type": "thermostat", "entity": "climate.living_room"},
-                                   _tile("light.living_room"), _tile("light.dining_table"),
-                                   {"type": "media-control", "entity": "media_player.living_room"}]},
-        {"type": "grid", "cards": [_heading("Front garden", "binary_sensor.back_door"),
-                                   {"type": "picture-entity", "entity": "camera.front_garden", "camera_view": "auto",
-                                    "show_state": False},
-                                   _tile("lock.front_door"), _tile("light.porch"), _tile("switch.garden_lights"),
-                                   _tile("binary_sensor.hall_motion")]},
-        {"type": "grid", "cards": [_heading("Energy", "sensor.home_power"),
-                                   {"type": "statistics-graph", "title": "This week", "entities": ["sensor.energy_today"],
-                                    "period": "day", "days_to_show": 7, "chart_type": "bar", "stat_types": ["change"]},
-                                   _graph("Power", ["sensor.home_power"])]},
-        {"type": "grid", "cards": [_heading("Kitchen and bedroom", "sensor.bedroom_temperature"),
-                                   _tile("light.kitchen"), _tile("switch.coffee_machine"),
-                                   _tile("climate.bedroom"), _tile("light.bedroom"),
-                                   _tile("cover.bedroom_blinds", grid_options={"columns": 12})]},
-    ]
-
-
-def _calm():
-    return [
-        {"type": "grid", "cards": [CLOCK, WEATHER]},
-        {"type": "grid", "cards": [_heading("Living room", "sensor.living_room_temperature", "sensor.living_room_humidity"),
-                                   _tile("climate.living_room", grid_options={"columns": 12}),
-                                   _tile("light.living_room"), _tile("light.dining_table"),
-                                   _tile("media_player.living_room", grid_options={"columns": 12})]},
-        {"type": "grid", "cards": [_heading("Entrance", "binary_sensor.back_door"),
-                                   _tile("lock.front_door"), _tile("light.porch"),
-                                   _tile("light.hallway"), _tile("binary_sensor.hall_motion")]},
-        {"type": "grid", "cards": [_heading("Climate"),
-                                   _graph("Temperature", ["sensor.living_room_temperature", "sensor.outdoor_temperature"])]},
-        {"type": "grid", "cards": [_heading("Kitchen and bedroom", "sensor.bedroom_temperature"),
-                                   _tile("light.kitchen"), _tile("switch.coffee_machine"),
-                                   _tile("climate.bedroom"), _tile("light.bedroom")]},
-    ]
+SECTIONS = [
+    {"type": "grid", "cards": [
+        _rows({"type": "clock", "clock_size": "large", "time_format": "24", "no_background": True}, 2),
+        _rows({"type": "weather-forecast", "entity": "weather.home", "show_forecast": True, "forecast_type": "daily",
+               "forecast_slots": 4}, 4),
+        _graph("Temperature", ["sensor.living_room_temperature", "sensor.outdoor_temperature"], 4)]},
+    {"type": "grid", "cards": [
+        _heading("Living room", "sensor.living_room_temperature", "sensor.living_room_humidity"),
+        _rows({"type": "thermostat", "entity": "climate.living_room"}, 5),
+        _tile("light.living_room"), _tile("light.dining_table"),
+        _tile("light.floor_lamp"), _tile("switch.tv"),
+        _tile("media_player.living_room", [("media-player-volume-slider", {})], show_entity_picture=True,
+              vertical=False)]},
+    {"type": "grid", "cards": [
+        _heading("Front garden", "binary_sensor.back_door"),
+        _camera("camera.front_garden", 5),
+        _tile("lock.front_door"), _tile("light.porch"), _tile("switch.garden_lights"), _tile("binary_sensor.hall_motion"),
+        _tile("cover.garage_door"), _tile("switch.sprinklers"),
+        _tile("scene.movie_night", hide_state=True), _tile("scene.good_night", hide_state=True)]},
+    {"type": "grid", "cards": [
+        _heading("Energy", "sensor.home_power"),
+        _rows({"type": "statistics-graph", "title": "This week", "entities": ["sensor.energy_today"], "period": "day",
+               "days_to_show": 7, "chart_type": "bar", "stat_types": ["change"]}, 5),
+        _graph("Power", ["sensor.home_power"], 4)]},
+    {"type": "grid", "cards": [
+        _heading("Kitchen", "sensor.fridge_temperature"),
+        _tile("light.kitchen", [("light-brightness", {})]),
+        _tile("switch.coffee_machine"), _tile("switch.dishwasher"),
+        _tile("switch.kettle"), _tile("light.hallway"),
+        _rows({"type": "todo-list", "entity": "todo.shopping_list", "hide_create": True}, 5)]},
+    {"type": "grid", "cards": [
+        _heading("Bedroom", "sensor.bedroom_temperature", "sensor.bedroom_humidity"),
+        _rows({"type": "thermostat", "entity": "climate.bedroom"}, 5),
+        _tile("light.bedroom", [("light-brightness", {})]),
+        _tile("cover.bedroom_blinds", [("cover-open-close", {})])]},
+    {"type": "grid", "cards": [
+        _heading("Air", "sensor.living_room_co2"),
+        _graph("Humidity", ["sensor.living_room_humidity", "sensor.bedroom_humidity"], 6),
+        _tile("sensor.living_room_co2"), _tile("sensor.living_room_pm25"),
+        _tile("fan.air_purifier", [("fan-speed", {"style": "slider"})])]},
+    {"type": "grid", "cards": [
+        _heading("Security", "lock.front_door"),
+        _camera("camera.driveway", 5),
+        _tile("alarm_control_panel.home", [("alarm-modes", {"modes": ["armed_home", "armed_away", "armed_night", "disarmed"]})]),
+        _tile("vacuum.robot", [("vacuum-commands", {"commands": ["start_pause", "return_home"]})])]},
+]
 
 
 def lovelace(url_path):
     if url_path != DASHBOARD:
         return {"views": [{"title": "Home", "cards": []}]}
-    sections = _rich() if VARIANT == "rich" else _calm()
-    return {"views": [{"title": "Home", "path": "home", "type": "sections", "max_columns": 4,
-                       "dense_section_placement": True, "badges": BADGES, "sections": sections}]}
+    return {"views": [{"title": title, "path": path, "type": "sections", "max_columns": cols, "badges": BADGES,
+                       "sections": SECTIONS} for title, path, cols in (("Home", "home", 4), ("Portrait", "portrait", 2))]}
 
 
 def cards():
-    """How many cards the dashboard draws (render.mjs waits for all of them)."""
-    return sum(len(s["cards"]) for s in lovelace(DASHBOARD)["views"][0]["sections"])
+    """How many cards a view draws (render.mjs waits for all of them)."""
+    return sum(len(s["cards"]) for s in SECTIONS)
 
 
 # ---- a day of history: smooth, plausible curves, the same on every run
@@ -224,6 +270,11 @@ def _curve(entity_id, t):
         return 18.1 + 2.5 * warm + 0.4 * _bump(hour, 14.5, 2.0) + 0.03 * noise
     if entity_id == "sensor.bedroom_temperature":
         return 17.6 + 0.7 * math.sin((hour - 14) / 24 * 2 * math.pi) + 0.03 * noise
+    if entity_id == "sensor.living_room_humidity":
+        # dry with the heating on, a bump while cooking
+        return 51 - 5 / (1 + math.exp(-(hour - 7.5) * 1.5)) + 6 * _bump(hour, 18.6, 0.8) + 0.3 * noise
+    if entity_id == "sensor.bedroom_humidity":
+        return 55 - 4 * _bump(hour, 13, 3.5) + 0.3 * noise
     if entity_id == "sensor.home_power":
         return (210 + 30 * noise + 850 * _bump(hour, 7.6, 0.6) + 380 * _bump(hour, 12.6, 0.5)
                 + 1150 * _bump(hour, 18.4, 0.9))
@@ -240,7 +291,7 @@ def history(entity_ids, start, end, now=None):
             continue
         pts, t = [], t0 - t0 % 300
         while t <= t1:
-            pts.append({"s": str(round(_curve(e, t), 2 if "temperature" in e else 0)), "lu": t})
+            pts.append({"s": str(round(_curve(e, t), 2 if "temperature" in e or "humidity" in e else 0)), "lu": t})
             t += 300
         if pts:
             pts[0]["a"] = {}
@@ -281,7 +332,13 @@ def forecast():
     return {"type": "daily", "forecast": out}
 
 
+def shopping():
+    """todo/item/subscribe: the shopping list."""
+    return {"items": [{"uid": f"showcase-{k}", "summary": text, "status": status} for k, (text, status) in enumerate(SHOPPING)]}
+
+
 HANDLERS = {
+    "todo/item/subscribe": lambda c, m: (c.result(m["id"]), c.event(m["id"], shopping())),
     "weather/subscribe_forecast": lambda c, m: (c.result(m["id"]), c.event(m["id"], forecast())),
     "recorder/get_statistics_metadata": lambda c, m: c.result(m["id"], [{
         "statistic_id": "sensor.energy_today", "source": "recorder", "name": None, "has_mean": False, "has_sum": True,
@@ -306,12 +363,20 @@ ICONS = {
     "media_player": {"_": {"default": "mdi:cast", "state": {"playing": "mdi:cast-connected", "off": "mdi:cast-off"}},
                      "speaker": {"default": "mdi:speaker", "state": {"playing": "mdi:speaker-play", "off": "mdi:speaker-off"}}},
     "cover": {"_": {"default": "mdi:window-open", "state": {"closed": "mdi:window-closed"}},
+              "garage": {"default": "mdi:garage", "state": {"open": "mdi:garage-open"}},
               "blind": {"default": "mdi:blinds-horizontal", "state": {"closed": "mdi:blinds-horizontal-closed"}}},
     "climate": {"_": {"default": "mdi:thermostat"}},
     "camera": {"_": {"default": "mdi:video", "state": {"off": "mdi:video-off"}}},
     "person": {"_": {"default": "mdi:account", "state": {"not_home": "mdi:account-arrow-right"}}},
     "weather": {"_": {"default": "mdi:weather-partly-cloudy"}},
+    "alarm_control_panel": {"_": {"default": "mdi:shield", "state": {"armed_home": "mdi:shield-home",
+                                                                     "armed_away": "mdi:shield-lock", "disarmed": "mdi:shield-off"}}},
+    "vacuum": {"_": {"default": "mdi:robot-vacuum"}},
+    "fan": {"_": {"default": "mdi:fan", "state": {"off": "mdi:fan-off"}}},
+    "todo": {"_": {"default": "mdi:clipboard-list"}},
+    "scene": {"_": {"default": "mdi:palette"}},
 }
+ICONS["sensor"].update({"carbon_dioxide": {"default": "mdi:molecule-co2"}, "pm25": {"default": "mdi:blur"}})
 
 
 def icons(category, integration=None):
@@ -332,6 +397,10 @@ STATES = {
     "binary_sensor.door": {"on": "Open", "off": "Closed"},
     "binary_sensor.motion": {"on": "Detected", "off": "Clear"},
     "weather._": {"partlycloudy": "Partly cloudy", "rainy": "Rainy", "sunny": "Sunny", "cloudy": "Cloudy"},
+    "alarm_control_panel._": {"armed_home": "Armed home", "armed_away": "Armed away", "armed_night": "Armed night",
+                              "disarmed": "Disarmed"},
+    "vacuum._": {"docked": "Docked", "cleaning": "Cleaning", "returning": "Returning"},
+    "fan._": {"on": "On", "off": "Off"},
 }
 
 
@@ -393,6 +462,33 @@ def _garden(u, v):
     return tuple(int(max(0, min(255, x * vig))) for x in c)
 
 
+def _driveway(u, v):
+    """A driveway at night as a camera sees it: a garage with a lit door, a parked car, a lamp."""
+    if v < 0.34:
+        c = _mix((10, 16, 34), (34, 44, 74), v / 0.34)
+    else:
+        c = _mix((44, 44, 48), (70, 68, 66), (v - 0.34) / 0.66)
+        if abs(u - 0.5) < 0.08 + (v - 0.34) * 0.5:
+            c = _mix((58, 56, 56), (96, 92, 86), (v - 0.34) / 0.66)
+    if 0.08 < u < 0.62 and 0.16 < v < 0.52:
+        c = (46, 40, 38)
+        if 0.16 < u < 0.54 and 0.26 < v < 0.52:
+            c = _mix((150, 120, 84), (98, 80, 60), (v - 0.26) / 0.26) if int(v * 60) % 3 else (84, 68, 52)
+    if 0.56 < u < 0.92 and 0.52 < v < 0.76:
+        body = (0.56 < u < 0.92 and 0.62 < v < 0.76) or (0.62 < u < 0.86 and 0.52 < v < 0.62)
+        if body:
+            c = (24, 28, 36) if not (0.65 < u < 0.83 and 0.54 < v < 0.61) else (54, 64, 82)
+    for wx in (0.62, 0.86):
+        if (u - wx) ** 2 * 4 + (v - 0.78) ** 2 < 0.0012:
+            c = (14, 14, 16)
+    glow = math.exp(-((u - 0.94) ** 2 * 60 + (v - 0.18) ** 2 * 50))
+    c = _mix(c, (255, 214, 150), glow * 0.6)
+    if abs(u - 0.94) < 0.006 and v > 0.18:
+        c = (30, 30, 34)
+    vig = 1 - 0.35 * ((u - 0.5) ** 2 + (v - 0.5) ** 2) * 2
+    return tuple(int(max(0, min(255, x * vig))) for x in c)
+
+
 def _art(u, v):
     """Album art: a soft sky-to-violet field with a low sun."""
     c = _mix((40, 60, 130), (140, 80, 170), v * 0.8 + u * 0.2)
@@ -411,6 +507,8 @@ def asset(name):
     if name not in _assets:
         if name == "still-camera.front_garden.png":
             _assets[name] = ("image/png", _png(640, 360, _garden))
+        elif name == "still-camera.driveway.png":
+            _assets[name] = ("image/png", _png(640, 360, _driveway))
         elif name == "showcase-art.png":
             _assets[name] = ("image/png", _png(300, 300, _art))
         else:

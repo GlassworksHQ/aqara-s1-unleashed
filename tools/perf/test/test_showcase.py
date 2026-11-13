@@ -1,9 +1,10 @@
 """python3 -m unittest discover -s tools/perf/test
 
 The showcase home (tools/showcase/home.py) served by the fake Home Assistant, as render.mjs serves it
-for the device renders: its own dashboards (both variants) and made-up states, the forecast, the
-energy statistics, the camera still and the album art, HA's icons and state names, nothing that shows
-a date, the same data and pictures every time, and every command the frontend sends still answered.
+for the device renders: its own dashboard (two views, the same sections, each the same height) and
+made-up states, the forecast, the energy statistics, the shopping list, the camera stills and the album
+art, HA's icons and state names, nothing that shows a date, the same data and pictures every time, and
+every command the frontend sends still answered.
 Runs on a stub frontend."""
 import datetime
 import http.client
@@ -48,10 +49,8 @@ class Showcase(unittest.TestCase):
         self.assertTrue(res["success"], (msg, res))
         return res["result"]
 
-    def view(self, ws, variant):
-        home.VARIANT = variant
-        self.addCleanup(setattr, home, "VARIANT", "rich")
-        return self.result(ws, {"type": "lovelace/config", "url_path": "showcase", "force": False})["views"][0]
+    def views(self, ws):
+        return self.result(ws, {"type": "lovelace/config", "url_path": "showcase", "force": False})["views"]
 
     @staticmethod
     def cards(view):
@@ -65,35 +64,56 @@ class Showcase(unittest.TestCase):
             out |= {b["entity"] for b in c.get("badges", [])}
         return out
 
-    def test_its_own_dashboards_and_states(self):
+    def test_its_own_dashboard_and_states(self):
         ws = self.connect()
         panels = self.result(ws, {"type": "get_panels"})
         self.assertIn("showcase", panels)
         self.assertNotIn("clarity-ref", panels)
         states = {s["entity_id"] for s in self.result(ws, {"type": "get_states"})}
         self.assertEqual(states, set(home.ENTITIES))
-        for variant in home.VARIANTS:
-            with self.subTest(variant):
-                view = self.view(ws, variant)
-                self.assertEqual(self.entities(view) - states, set(), "cards name only showcase entities")
-                self.assertEqual(len(self.cards(view)), home.cards(), "what render.mjs waits for")
+        for view in self.views(ws):
+            self.assertEqual(self.entities(view) - states, set(), "cards name only showcase entities")
+            self.assertEqual(len(self.cards(view)), home.cards(), "what render.mjs waits for")
 
-    def test_the_rich_one_has_graphs_a_camera_and_music(self):
-        types = {c["type"] for c in self.cards(self.view(self.connect(), "rich"))}
+    def test_landscape_and_portrait_show_the_same_sections(self):
+        home_view, portrait = self.views(self.connect())
+        self.assertEqual((home_view["path"], home_view["max_columns"], portrait["path"], portrait["max_columns"]),
+                         ("home", 4, "portrait", 2))
+        self.assertEqual(home_view["sections"], portrait["sections"])
+
+    def test_every_section_is_as_tall_as_the_others(self):
+        """In grid rows, so a row of sections ends level on any screen and no column stops early."""
+        def rows(card):
+            opts = card.get("grid_options", {})
+            if "rows" in opts:
+                return opts["rows"], opts.get("columns", 12)
+            return 1, opts.get("columns", 6)          # a plain tile: one row, half the width
+        for k, section in enumerate(home.SECTIONS):
+            with self.subTest(section=k):
+                used = 0
+                for card in section["cards"]:
+                    r, cols = rows(card)
+                    used += r * cols
+                self.assertEqual(used, home.SECTION_ROWS * 12, "grid cells: rows x 12 columns")
+
+    def test_a_full_home(self):
+        types = {c["type"] for c in self.cards(self.views(self.connect())[0])}
         self.assertLessEqual({"clock", "weather-forecast", "history-graph", "statistics-graph", "thermostat",
-                              "picture-entity", "media-control", "tile", "heading"}, types)
+                              "picture-entity", "todo-list", "tile", "heading"}, types)
+        cameras = [c for c in self.cards(self.views(self.connect())[0]) if c["type"] == "picture-entity"]
+        self.assertEqual(len(cameras), 2)
 
     def test_nothing_shows_a_date(self):
-        ws = self.connect()
         evening = datetime.datetime.fromtimestamp(home.NOW, datetime.timezone.utc).hour
-        for variant in home.VARIANTS:
-            for c in self.cards(self.view(ws, variant)):
-                with self.subTest(variant=variant, card=c["type"]):
-                    if c["type"] == "history-graph":
-                        # its axis names the day only when the window crosses midnight
-                        self.assertLessEqual(c["hours_to_show"], evening)
-                    if c["type"] == "clock":
-                        self.assertNotIn("date", json.dumps(c))
+        for c in self.cards(self.views(self.connect())[0]):
+            with self.subTest(card=c["type"]):
+                if c["type"] == "history-graph":
+                    # its axis names the day only when the window crosses midnight
+                    self.assertLessEqual(c["hours_to_show"], evening)
+                if c["type"] == "clock":
+                    self.assertNotIn("date", json.dumps(c))
+                if c.get("entity", "").startswith("scene."):
+                    self.assertTrue(c.get("hide_state"), "a scene's state is when it last ran")
 
     def test_the_forecast_and_the_energy_week(self):
         ws = self.connect()
@@ -106,9 +126,17 @@ class Showcase(unittest.TestCase):
         week = home.statistics(["sensor.energy_today"], None, None, "day")["sensor.energy_today"]
         self.assertEqual([p["change"] > 0 for p in week], [True] * 7)
 
-    def test_the_camera_still_and_the_album_art(self):
+    def test_the_shopping_list(self):
+        ws = self.connect()
+        res, _ = ws.call({"type": "todo/item/subscribe", "entity_id": "todo.shopping_list"})
+        self.assertTrue(res["success"])
+        ev = ws.recv()
+        self.assertEqual([i["summary"] for i in ev["event"]["items"]], [t for t, _ in home.SHOPPING])
+
+    def test_the_camera_stills_and_the_album_art(self):
         port = self.srv.server_address[1]
-        for path in ("/api/camera_proxy/camera.front_garden?token=showcase", "/clarity/showcase-art.png"):
+        for path in ("/api/camera_proxy/camera.front_garden?token=showcase", "/api/camera_proxy/camera.driveway?token=showcase",
+                     "/clarity/showcase-art.png"):
             with self.subTest(path):
                 conn = http.client.HTTPConnection("127.0.0.1", port)
                 conn.request("GET", path)
@@ -124,6 +152,7 @@ class Showcase(unittest.TestCase):
         self.assertEqual(first, home.history(ids, None, None))
         self.assertGreater(len(first["sensor.home_power"]), 100)
         self.assertEqual(home._png(32, 18, home._garden), home._png(32, 18, home._garden))
+        self.assertNotEqual(home._png(32, 18, home._garden), home._png(32, 18, home._driveway))
 
     def test_has_icons_and_state_names(self):
         ws = self.connect()

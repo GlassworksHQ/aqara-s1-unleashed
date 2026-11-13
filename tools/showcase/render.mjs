@@ -7,8 +7,8 @@
 // profile. Needs python3, Node 22+ (its WebSocket) and Chrome (CHROME=<path> for another one). The
 // first run fetches HA's frontend (tools/perf/hafrontend.py, checked by SHA-256).
 //
-//   node tools/showcase/render.mjs [--variant rich|calm] [--out <dir>] [frame-id ...]
-// --out writes <dir>/<frame-id>.webp instead of the frames' own files (e.g. to compare the variants).
+//   node tools/showcase/render.mjs [--out <dir>] [frame-id ...]
+// --out writes <dir>/<frame-id>.webp instead of the frames' own files (e.g. to compare with them).
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -16,9 +16,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-// CSS px per screen px. The S1's own density is 1.5 (app/AGENTS.md); 1 is the kiosk's zoom at 67%,
-// which fits a whole home on a wall panel's screen, as people set it up to show one.
-const DENSITY = Number(process.env.SHOWCASE_DENSITY ?? 1);
+// Screen px per CSS px. The S1's own density is 1.5 (app/AGENTS.md); 1 is the kiosk's zoom at 67%. Each
+// frame is drawn at the density, from MIN_DENSITY to MAX_DENSITY, at which the screen's bottom edge falls
+// just under a row of sections: as many whole rows as fit, none cut through.
+const MIN_DENSITY = 0.6;
+const MAX_DENSITY = 1.1;
+// The view's own padding under the last row, kept on screen.
+const BOTTOM_PAD = 12;
 // A frame without one screen size (generic-android) is drawn as a common 10" tablet.
 const DEFAULT_DISPLAY = { width: 1920, height: 1200 };
 const QUALITY = 82;
@@ -66,6 +70,40 @@ const READY = `(() => {
   const styled = all.some((el) => el.id === 'gw-kiosk');
   return JSON.stringify({ cards, images: imgs.length, loaded, styled });
 })()`;
+
+// Each section's box, in CSS px: the dashboard's grid of sections, row by row.
+const SECTION_BOXES = `(() => {
+  const out = [];
+  const walk = (root) => root.querySelectorAll('*').forEach((el) => {
+    if (el.tagName === 'HUI-SECTION') { const r = el.getBoundingClientRect(); out.push({ top: r.top, bottom: r.bottom, left: r.left }); }
+    if (el.shadowRoot) walk(el.shadowRoot);
+  });
+  walk(document);
+  return JSON.stringify(out);
+})()`;
+
+/** Sections grouped into rows (same top): [{ top, bottom, spread }], spread = how unevenly the row ends. */
+function rowsOf(boxes) {
+  const rows = [];
+  for (const b of [...boxes].sort((x, y) => x.top - y.top)) {
+    const row = rows.find((r) => Math.abs(r.top - b.top) < 4);
+    if (row) row.bottoms.push(b.bottom);
+    else rows.push({ top: b.top, bottoms: [b.bottom] });
+  }
+  return rows.map((r) => ({ top: r.top, bottom: Math.max(...r.bottoms), spread: Math.max(...r.bottoms) - Math.min(...r.bottoms) }));
+}
+
+/** The density at which the screen (height px) shows rows 1..k whole and nothing of row k+1: the most rows that fit. */
+function fold(rows, height) {
+  for (let k = rows.length; k >= 1; k--) {
+    const need = rows[k - 1].bottom + BOTTOM_PAD;
+    const d = Math.min(MAX_DENSITY, height / need);
+    if (d < MIN_DENSITY) continue;
+    if (k < rows.length && rows[k].top < height / d) continue;
+    return { density: d, rows: k };
+  }
+  throw new Error(`no density from ${MIN_DENSITY} to ${MAX_DENSITY} ends the screen between rows: ${JSON.stringify(rows)}`);
+}
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -118,18 +156,33 @@ async function cdp(url) {
 
 async function render(c, base, home, frame) {
   const display = frame.display ?? DEFAULT_DISPLAY;
+  const view = display.height > display.width ? 'portrait' : 'home';
   const { browserContextId } = await c.send('Target.createBrowserContext');
   const { targetId } = await c.send('Target.createTarget', { url: 'about:blank', browserContextId });
   const { sessionId } = await c.send('Target.attachToTarget', { targetId, flatten: true });
   const s = (m, p) => c.send(m, p, sessionId);
-  await s('Page.enable');
-  await s('Emulation.setDeviceMetricsOverride', {
-    width: Math.round(display.width / DENSITY), height: Math.round(display.height / DENSITY), deviceScaleFactor: DENSITY, mobile: false,
+  const metrics = (d) => s('Emulation.setDeviceMetricsOverride', {
+    width: Math.round(display.width / d), height: Math.round(display.height / d), deviceScaleFactor: d, mobile: false,
   });
+  // Settled: two captures a second apart are the same.
+  const settle = async () => {
+    let last = '';
+    for (let t = 0; t < 30; t++) {
+      await wait(1000);
+      const { data } = await s('Page.captureScreenshot', { format: 'png' });
+      if (data === last) return;
+      last = data;
+    }
+    throw new Error(`${frame.id}: the page never stopped changing`);
+  };
+  const rows = async () => rowsOf(JSON.parse((await s('Runtime.evaluate', { expression: SECTION_BOXES, returnByValue: true })).result.value));
+
+  await s('Page.enable');
+  await metrics(1);
   await s('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
   await s('Emulation.setTimezoneOverride', { timezoneId: 'UTC' });
   await s('Page.addScriptToEvaluateOnNewDocument', { source: inject(home.now) });
-  await s('Page.navigate', { url: `${base}/showcase/home` });
+  await s('Page.navigate', { url: `${base}/showcase/${view}` });
 
   let state;
   const ready = () => state.styled && state.loaded && state.cards >= home.cards;
@@ -139,28 +192,28 @@ async function render(c, base, home, frame) {
     await wait(500);
   }
   if (!ready()) throw new Error(`${frame.id}: the dashboard didn't finish drawing (${JSON.stringify(state)}, ${home.cards} cards)`);
+  await settle();
 
-  // Settled: two captures a second apart are the same.
-  let last = '';
-  for (let t = 0; t < 30; t++) {
-    await wait(1000);
-    const { data } = await s('Page.captureScreenshot', { format: 'png' });
-    if (data === last) break;
-    last = data;
-    if (t === 29) throw new Error(`${frame.id}: the page never stopped changing`);
+  // A wider page can lay the cards out a little differently: fold again until it holds.
+  let f = fold(await rows(), display.height);
+  for (let t = 0; t < 4; t++) {
+    await metrics(f.density);
+    await settle();
+    const again = fold(await rows(), display.height);
+    if (Math.abs(again.density - f.density) < 0.002 && again.rows === f.rows) break;
+    f = again;
   }
+  const shown = (await rows()).slice(0, f.rows);
   const { data } = await s('Page.captureScreenshot', { format: 'webp', quality: QUALITY });
   await c.send('Target.disposeBrowserContext', { browserContextId });
-  return Buffer.from(data, 'base64');
+  return { webp: Buffer.from(data, 'base64'), view, density: f.density, rows: f.rows, spread: Math.max(...shown.map((r) => r.spread)) };
 }
 
 async function main() {
   const args = process.argv.slice(2);
   const opt = (name) => { const i = args.indexOf(name); return i < 0 ? undefined : args.splice(i, 2)[1]; };
-  const variant = opt('--variant') ?? 'rich';
   const outDir = opt('--out');
   const want = args;
-  if (!['rich', 'calm'].includes(variant)) throw new Error(`no such variant: ${variant}`);
   const frames = readdirSync(join(ROOT, 'frames'))
     .filter((id) => existsSync(join(ROOT, 'frames', id, 'design', 'frame.json')) && (!want.length || want.includes(id)))
     .map((id) => JSON.parse(readFileSync(join(ROOT, 'frames', id, 'design', 'frame.json'), 'utf8')));
@@ -168,7 +221,6 @@ async function main() {
 
   const serve = `import sys; sys.path[:0] = ${JSON.stringify([join(ROOT, 'tools', 'perf'), join(ROOT, 'tools', 'showcase')])}
 import fakeha, home
-home.VARIANT = ${JSON.stringify(variant)}
 srv = fakeha.serve(0, harness=False, home=home)
 print("serving on", srv.server_address[1], "cards", home.cards(), "now", int(home.NOW * 1000), flush=True)
 srv.serve_forever()`;
@@ -190,11 +242,12 @@ srv.serve_forever()`;
     const base = `http://127.0.0.1:${ha.match[1]}`;
     const home = { cards: Number(ha.match[2]), now: Number(ha.match[3]) };
     for (const f of frames) {
-      const webp = await render(c, base, home, f);
+      const r = await render(c, base, home, f);
       const out = outDir ? join(outDir, `${f.id}.webp`) : join(ROOT, 'frames', f.id, 'design', 'render.webp');
-      writeFileSync(out, webp);
+      writeFileSync(out, r.webp);
       const d = f.display ?? DEFAULT_DISPLAY;
-      console.log(`${f.id} (${variant}): ${d.width}x${d.height}, ${(webp.length / 1024).toFixed(1)} KiB -> ${out}`);
+      console.log(`${f.id}: ${d.width}x${d.height}, ${(r.webp.length / 1024).toFixed(1)} KiB, view ${r.view}, density ${r.density.toFixed(3)}, ` +
+        `${r.rows} row(s) of sections, rows end within ${r.spread.toFixed(0)} px -> ${out}`);
     }
     console.log(`(${product})`);
     c.close();
