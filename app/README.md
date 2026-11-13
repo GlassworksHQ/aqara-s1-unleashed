@@ -44,8 +44,9 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
 - Full-screen immersive `GeckoView`, landscape, `FLAG_KEEP_SCREEN_ON`.
 - Loads a configurable URL. The default `auto` finds Home Assistant (mDNS `_home-assistant._tcp`,
   or the address of HA's ESPHome connection) and loads its default dashboard. A saved URL is kept.
-- **First-boot setup screen** (native, in the dashboard's style): Wi-Fi → Add to Home Assistant →
-  Sign in → Done, with checks; it moves on by itself. It only appears when the panel is really not
+- **First-boot setup screen** (native, in the Glassworks look): Wi-Fi → Home Assistant (add it, sign
+  in) → Panes (choose which, then each pane's own steps, such as the radio's role) → Done; it moves on
+  by itself, and a step that is done says so with Continue. It only appears when the panel is really not
   set up (offline for 30 s, HA unknown, HA never added the panel within 2 min of startup, or HA's
   login page with no refresh token), never on a working panel. See
   [docs/onboarding.md](../docs/onboarding.md#setup-screen-).
