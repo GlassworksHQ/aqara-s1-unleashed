@@ -43,11 +43,9 @@ def hexc(h):
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
 
-# Night (#0a0b0f) moved to the nearest colour RGB 565 holds exactly. The bootanimation surface is
-# RGB_565 with dithering off (BootAnimation.cpp lines 284, 878), so #0a0b0f would show as (8,8,8) or
-# (8,12,16) depending on the GPU's rounding, next to a splash at (10,11,15). #080c10 is the same
-# colour on both, so the splash hands over without a step.
-BG = hexc("#080c10")
+# The brand's night. The S1 composites its boot animation in 32-bit (measured 2026-11-12), so it
+# shows exactly; on an RGB 565 surface it would not (docs/research/boot-animation.md, step 5).
+BG = hexc("#0a0b0f")
 
 # ---------------------------------------------------------------- fonts (OFL)
 FONT_CACHE = "/tmp/s1-unleashed-fonts"

@@ -1,9 +1,10 @@
 # Boot animation: what Android 10 and the boot image allow
 
-**Status (2026-11-12): read, measured on a host, and the panel read with read-only adb; not yet
-played on a panel.** The #63 animation fits the boot image with 2.05 MB to spare, and holds one frame
-in GPU memory at a time. The design's corner glows don't fit and were dropped. The panel's player is
-a vendor-modified one, so how it handles this zip is still untested.
+**Status (2026-11-12): working when played on a running panel; the real boot is untested.** The #63
+animation fits the boot image with 2.05 MB to spare and holds one frame in GPU memory at a time. The
+panel's vendor-modified player plays it right: trimmed frames in place, the intro at full speed, the
+loop running, in 32-bit colour. The design's corner glows don't fit and were dropped. Playing it as
+the panel boots, and the splash, still need a panel run.
 
 Device: Aqara S1 Plus, firmware 4.5.80 (stock `boot` from a local backup, not in the repo). Tools:
 AOSP `frameworks/base` at `android-10.0.0_r41`, Kiln's `@glassworks/bootpatch`, Pillow 13, oxipng.
@@ -46,7 +47,7 @@ loops 7.2 s at 30 fps. Can the panel's boot animation carry that, and what does 
    FIT none:                ramdisk  2540832 end 23244800 of 33554432, left 10309632
    FIT Glass Tile (4.26 MB): ramdisk  6497510 end 27201536 of 33554432, left  6352896
    FIT #63, glows (19.9 MB): patched image (42295872 bytes) does not fit in the original 33554432: refusing
-   FIT #63, final (8.69 MB): left  2045952
+   FIT #63, final (8.72 MB): ramdisk 10799772 end 31504384 of 33554432, left  2050048
    ```
    PNG data barely gzips (about 6%).
 
@@ -86,23 +87,42 @@ loops 7.2 s at 30 fps. Can the panel's boot animation carry that, and what does 
    - `no audio.wav could be found!` and the `videoPath` line are not in AOSP's `cmds/bootanimation`
      at android-10.0.0_r41 (`BootAnimation.cpp`, `audioplay.cpp`, `bootanimation_main.cpp`,
      `BootAnimationUtil.cpp`), and the second comes from another thread. The panel's player is a
-     modified one, probably Allwinner's, with a boot video path. How it reads `trim.txt`, repeated
-     part names and `p` parts is untested.
+     modified one, probably Allwinner's, with a boot video path. Step 6 tests how it plays this zip.
 
-5. **The surface format** (2026-11-12, read, and simulated on a host). AOSP's player makes its
-   surface `PIXEL_FORMAT_RGB_565` (line 284) and turns dithering off (line 878). On 565, `#0a0b0f`
-   becomes (8,8,8) if the GPU truncates or (8,12,16) if it rounds, next to a splash at (10,11,15).
-   `#080c10` is (8,12,16) both ways, so the boot branding's background is `#080c10`: at most 2 levels
-   from `#0a0b0f`. Truncated to 565, the lit plate keeps its look (610 colours in the stack region
-   instead of 4929; the grain hides the steps).
+5. **The surface format in AOSP** (2026-11-12, read, and simulated on a host). AOSP's player makes
+   its surface `PIXEL_FORMAT_RGB_565` (line 284) and turns dithering off (line 878). On 565, `#0a0b0f`
+   becomes (8,8,8) if the GPU truncates or (8,12,16) if it rounds, next to a splash at (10,11,15): a
+   step at the hand-off. `#080c10` is (8,12,16) both ways. Truncated to 565, the lit plate keeps its
+   look (610 colours in the stack region instead of 4929; the grain hides the steps). Step 6 shows the
+   S1 doesn't draw in 565, so this is a note for other frames: one whose player does should use a
+   background that 565 holds exactly.
+
+6. **Played on the panel** (2026-11-12, verified by the root: S1 Kiosk 0.4.3, Magisk dev boot).
+   The zip of commit 3e46f00 (background `#080c10`) was bind-mounted over
+   `/system/media/bootanimation.zip`, `bootanimation` run as root with `screenrecord`, then stopped,
+   unmounted and cleaned up; the panel was left as found. No partition was written.
+   - The frames fill the 1440x720 screen, and the stack, wordmark and device line sit where the
+     host renders put them, so the vendor player places trimmed frames by `trim.txt`.
+   - The loop keeps moving (the plate at different heights in stills 2 s apart) and doesn't stop.
+     Repeated part names and `p` parts work.
+   - Memory: the player's RSS was 25.6 MB, then 26.2 MB 20 s later. No growth per loop.
+   - The background read exactly (8,12,16) at two corners. The lit plate had 230 distinct red values
+     in one still (238 in the stack region of each of the three stills); 565 allows at most 32.
+     **The S1 composites its boot animation in 32-bit**, so the background is the brand's `#0a0b0f`.
+   - Speed: matching each recorded frame (resampled to 30 fps) to the zip frame it shows gives one
+     zip frame per recorded frame through the whole drop (recorded frames 0–91 and 124–143; 92–123
+     are the lit plateau, identical in the crop compared). So the intro plays at the full 30 fps on a
+     running panel. Under the load of a real boot it is untested.
+   - The first second of the recording shows the dashboard before the player covers it. That part
+     is personal and stays out of the PR.
 
 ## Result
 
 | | Full design | Shipped |
 |---|---|---|
-| Corner glows | yes | no (flat `#080c10`, night as RGB 565 holds it) |
+| Corner glows | yes | no (flat `#0a0b0f`) |
 | Frames | 1440x720 | trimmed, about 300x485 in the loop |
-| Zip | 19.9 MB, doesn't fit | 8.69 MB, 2.05 MB left in `boot` |
+| Zip | 19.9 MB, doesn't fit | 8.72 MB, 2.05 MB left in `boot` |
 | Loop | `c 0 0`: 216 textures kept | `p 1 0 part1` x25, then `p 0 0 part2` (1 frame): one texture at a time |
 | part0 | 4.0 s | 4.8 s, so the loop starts where the reference's curves repeat |
 
@@ -115,17 +135,28 @@ The zip also lives in RAM (Magisk's tmpfs) for as long as the panel runs: 8.7 MB
 2. The fit numbers need a stock `boot.img` (never in the repo) and Kiln's `patchBoot`: call it as
    `kiln/packages/bootpatch/test/bootpatch.test.ts` does for `stock-4.5.80`, with
    `branding: { bootAnimation: <zip> }`, and read `ramdisk_size` at offset 16 of the result. Host only.
+3. Playing a zip on a running panel (step 6) needs root (a Magisk dev boot) and writes no
+   partition; a reboot undoes it:
+   ```
+   adb push bootanimation.zip /data/local/tmp/gw-boot.zip
+   adb shell su -c 'mount -o bind /data/local/tmp/gw-boot.zip /system/media/bootanimation.zip'
+   adb shell su -c 'setprop service.bootanim.exit 0'
+   adb shell screenrecord --time-limit 30 /data/local/tmp/gw-boot.mp4 &
+   adb shell su -c bootanimation &
+   adb exec-out screencap -p > still.png                  # during the loop
+   adb shell su -c 'setprop service.bootanim.exit 1'      # the player exits
+   adb shell su -c 'umount /system/media/bootanimation.zip'
+   adb pull /data/local/tmp/gw-boot.mp4 && adb shell rm /data/local/tmp/gw-boot.zip /data/local/tmp/gw-boot.mp4
+   ```
+   The recording starts on whatever the screen shows, so cut the start before sharing it.
 
 ## Open questions
 
-All need a panel (hard rule 5):
+All need a real boot on a panel (hard rule 5):
 
-- Does the vendor's player read this zip as AOSP's would? It is modified (step 4). Playing it shows
-  it: each frame at its trim rect, the drop at full speed, and the loop going on past 7.2 s.
-- Is the player's surface really RGB 565? A `screencap` while it plays shows it: on 565 the lit
-  plate has only the 32 red and 32 blue levels 565 can hold, on 888 it has the frame's own values.
-  The background is (8,12,16) either way.
+- Does the splash hand over to frame 0 without a step? The splash is written to `bootloader`; only
+  a power-on shows both.
+- Does the intro keep 30 fps while the system starts? Step 6 measured it on a running panel. Each
+  frame is a 300x485 or smaller PNG, less than the old animation's 800x400, so it should.
 - How long does a slow boot take (first boot after an install)? 25 loops cover 3 minutes. After
   that the stack holds still.
-- Is decoding a 300x485 PNG each frame fast enough at 30 fps while the system starts? The old
-  animation decoded 800x400 frames in its intro, so it should be.
