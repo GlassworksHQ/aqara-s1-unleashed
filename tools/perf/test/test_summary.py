@@ -21,7 +21,7 @@ import summary as S  # noqa: E402
 import test_report as T  # noqa: E402
 
 SUMMARY_KEYS = {"schema", "test", "protocol_version", "report_schema", "measured_on", "frame", "app_version", "viewport",
-                "runs", "pages", "restart_ms", "gaps", "not_comparable", "report", "complete", "ram", "apk"}
+                "runs", "pages", "restart_ms", "gaps", "not_comparable", "report", "complete", "ram", "apk", "notes"}
 PAGE_KEYS = {"inp_ms", "open_ms", "scroll", "updates", "camera", "runs"}
 GRADE_KEYS = ("grade", "meaning", "levels", "bands", "capped_by_start", "missing", "provisional", "start")
 

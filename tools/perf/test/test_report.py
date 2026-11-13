@@ -1313,6 +1313,13 @@ class NoiseBand(unittest.TestCase):
         self.assertLess(low, 0.02)                         # it rarely collapses (the MAD: 11 %)
         self.assertLess(false, 0.06)                       # a zero difference reads measurable about 3.5 % of the time
 
+    def test_five_samples(self):
+        """The verifier on #196: the MAD at five averaged 1.64 σ (5% false "measurable");
+        range / d2 runs through seven."""
+        mean, low, false = self.sim(5)
+        self.assertAlmostEqual(mean, 2.0, delta=0.1)
+        self.assertLess(false, 0.03)
+
     def test_it_doesnt_grow_with_more_samples(self):
         self.assertLess(self.sim(9)[0], self.sim(3)[0])
 
@@ -1366,9 +1373,11 @@ class PaneOnAlone(unittest.TestCase):
                          (None, False, None, False))
         b = G.pane_budgets([p], {"assist": {"ram_pss_max_kb": 49152}})["assist"]
         self.assertEqual((b["measurable"], b["ok"]), (False, None))
-        md = "\n".join(R.ram_markdown({"panes": [p], "pane_budget": {}}))
-        self.assertIn("none (one sample)", md)
-        self.assertIn("+29.3 MB (not measurable)", md)                       # no tolerance, so not "within" one
+        md = "\n".join(R.ram_markdown({"panes": [p], "pane_budget": {"assist": b | {"budget_kb": 49152}}}))
+        row = next(l for l in md.splitlines() if l.startswith("| assist |"))
+        # The verifier on #196: the row said "not measurable" three times, and "one sample" at 3 on.
+        self.assertEqual(row, "| assist | +29.3 MB | none: under 2 samples a side (n=3 on, 1 off) | 48 MB, not measurable "
+                              "| +0.0 % of a core |")
         self.assertNotIn("within tolerance", md)
 
     def test_boot_is_reported_apart_from_the_share(self):
