@@ -150,6 +150,7 @@ h2.huge { font-size: 44px; font-weight: 200; }
 @keyframes glowp { 50% { box-shadow: 0 8px 40px -6px color-mix(in srgb, var(--ember-b) 95%, transparent); } }
 .link { color: var(--link); background: none; border: 0; padding: 0; cursor: pointer; font-size: 14px; text-decoration: none; }
 .link:hover { text-decoration: underline; }
+.link:disabled { opacity: 0.45; cursor: default; text-decoration: none; }
 
 /* ---- pieces ---- */
 .bar { height: 6px; border-radius: 999px; background: var(--well); overflow: hidden; }

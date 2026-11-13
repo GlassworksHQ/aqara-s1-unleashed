@@ -1,7 +1,7 @@
 // The frame's current session, outside React, so it outlives route changes and the picker can see
 // a running install. Type-only imports: the picker reads this without loading the engine.
 import type { Session } from './session';
-import type { Failure, WizardState } from './state';
+import type { Changed, Failure, WizardState } from './state';
 
 export interface Entry {
   /** the frame's route base, e.g. /aqara-s1-plus */
@@ -20,6 +20,29 @@ export interface Entry {
  */
 export interface LastFailure { name: string; when: Date; failure: Failure; log: string[] }
 
+/**
+ * The panel's history (WizardState.changed) for this browser tab, per frame base. A new session (Back
+ * to Kiln, then the frame again) starts from it, and so does a reload (sessionStorage), so neither
+ * forgets that an earlier step changed the panel. Only a run reaching Done clears it.
+ */
+const history = new Map<string, Changed>();
+const storageKey = (base: string) => `kiln:changed:${base}`;
+
+function recall(base: string): Changed | undefined {
+  if (history.has(base)) return history.get(base);
+  try {
+    const v = sessionStorage.getItem(storageKey(base));
+    return v === 'written' || v === 'apps' ? v : undefined;
+  } catch { return undefined; }
+}
+
+function remember(base: string, c: Changed | undefined) {
+  if (c) history.set(base, c); else history.delete(base);
+  try {
+    if (c) sessionStorage.setItem(storageKey(base), c); else sessionStorage.removeItem(storageKey(base));
+  } catch { /* no storage: this page load still has `history` */ }
+}
+
 let current: Entry | undefined;
 let lastFailure: LastFailure | undefined;
 let unwatch: (() => void) | undefined;
@@ -36,6 +59,7 @@ function watch(e: Entry) {
   let prev = e.session.store.state;
   unwatch = e.session.store.subscribe(() => {
     const s = e.session.store.state;
+    if (s.changed !== prev.changed) remember(e.base, s.changed);
     if (prev.screen === 'error' && s.screen !== 'error') { keep(e, prev); notify(); }
     if (s.screen === 'firing' && prev.screen !== 'firing' && lastFailure) { lastFailure = undefined; notify(); }
     prev = s;
@@ -51,6 +75,8 @@ export const registry = {
       current.session.close();
     }
     current = e;
+    const earlier = recall(e.base);
+    if (earlier) e.session.store.dispatch({ type: 'changed', by: earlier });
     watch(e);
     notify();
     return e;
@@ -61,7 +87,11 @@ export const registry = {
     return () => { listeners.delete(l); };
   },
   /** Tests only. */
-  clear() { unwatch?.(); unwatch = undefined; current = undefined; lastFailure = undefined; },
+  clear() {
+    unwatch?.(); unwatch = undefined; current = undefined; lastFailure = undefined;
+    for (const base of history.keys()) remember(base, undefined);
+    try { for (const k of Object.keys(sessionStorage)) if (k.startsWith('kiln:changed:')) sessionStorage.removeItem(k); } catch { /* none */ }
+  },
 };
 
 /** The stopped run as a text file: what happened, then the technical log. */

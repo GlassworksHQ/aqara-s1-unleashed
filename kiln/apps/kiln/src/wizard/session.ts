@@ -129,7 +129,7 @@ export class Session {
   private fail(at: number, e: unknown, installed = false) {
     console.error(e);
     const written = this.s.wrote ? 'verified' : this.s.touched ? 'maybe' : 'none';
-    this.dispatch({ type: 'fail', failure: explain(e, at, written, installed) });
+    this.dispatch({ type: 'fail', failure: explain(e, at, written, installed, this.s.changed) });
   }
 
   /**
@@ -497,11 +497,17 @@ export class Session {
   // ---- undo -----------------------------------------------------------------------------------
 
   async openUndo(): Promise<void> {
+    if (this.s.undo.locked) {
+      // the apps were given back against the backup in use: keep it, and keep its label
+      this.dispatch({ type: 'go', screen: 'undo', flow: 'undo' });
+      this.dispatch({ type: 'undo', patch: { checking: false } });
+      return;
+    }
     const mine = ++this.choice;
     this.undoFiles = undefined;
     this.undoBackup = undefined;
     this.dispatch({ type: 'go', screen: 'undo', flow: 'undo' });
-    this.dispatch({ type: 'undo', patch: { source: undefined, inBrowser: undefined, file: undefined, ready: false, appsBack: false, note: undefined } });
+    this.dispatch({ type: 'undo', patch: { source: undefined, inBrowser: undefined, file: undefined, ready: false, checking: false, appsBack: false, note: undefined } });
     let orig: BackupMeta | undefined;
     try { orig = await this.d.backups.original(); } catch { /* no IndexedDB */ }
     if (!orig || mine !== this.choice) return;
@@ -511,7 +517,17 @@ export class Session {
 
   /** `mine`: the choice this load is for. A file picked while it reads is newer, so this load then lands nowhere. */
   private async useBrowserBackup(meta: BackupMeta, mine: number) {
-    const files = await this.d.backups.files(meta);
+    let files: BackupFile[];
+    try {
+      files = await this.d.backups.files(meta);
+    } catch (e) {
+      if (mine !== this.choice) return;
+      const msg = String((e as Error)?.message ?? e);
+      const note = { kind: 'err' as const, title: 'Couldn\'t read the backup in this browser.', sub: `${msg}${/[.!?]$/.test(msg) ? '' : '.'} Use a backup file instead.` };
+      // a file already in use stays; with none, the label must not say this browser has no backup
+      this.dispatch({ type: 'undo', patch: this.s.undo.source ? { note } : { note, file: 'This browser\'s backup can\'t be read.' } });
+      return;
+    }
     if (mine !== this.choice) return;
     this.undoBackup = { meta, files };
     this.undoFiles = new Map(files.map((f) => [f.part, f.data]));
@@ -527,8 +543,11 @@ export class Session {
 
   /** Only the latest backup choice may land: an earlier file's check that ends later is dropped. */
   private choice = 0;
+  private givingBack = false;
 
   async undoFromFile(f: File): Promise<void> {
+    // locked: the apps were given back against the backup in use; givingBack: they are being, against it
+    if (this.s.undo.locked || this.givingBack) return;
     const mine = ++this.choice;
     this.undoFiles = undefined;
     this.dispatch({ type: 'undo', patch: { source: 'file', ready: false, checking: true, file: `Checking ${f.name}…` } });
@@ -545,6 +564,7 @@ export class Session {
   }
 
   async undoFromBrowser(): Promise<void> {
+    if (this.s.undo.locked || this.givingBack) return;
     const mine = ++this.choice;
     const orig = await this.d.backups.original().catch(() => undefined);
     if (orig && mine === this.choice) await this.useBrowserBackup(orig, mine);
@@ -561,7 +581,10 @@ export class Session {
       const key = this.key;
       if (!key) { this.dispatch({ type: 'undo', patch: { note: { kind: 'err', title: 'Not ready yet.', sub: 'Click Continue again in a moment.' } } }); return Promise.resolve(); }
       const picked = this.d.devices.requestAdb(key);
-      return this.giveBack(picked, this.undoFiles);
+      // the give-back takes the choice: a backup read still pending can no longer land
+      ++this.choice;
+      this.givingBack = true;
+      return this.giveBack(picked, this.undoFiles).finally(() => { this.givingBack = false; });
     }
     this.dispatch({ type: 'go', screen: 'connect', flow: 'undo' });
     return Promise.resolve();
@@ -586,13 +609,14 @@ export class Session {
         this.dispatch({ type: 'undo', patch: { note: {
           kind: 'err',
           title: e instanceof BackupRefused ? 'This backup can\'t undo the install.' : 'Kiln can\'t check this backup.',
-          sub: `${msg.charAt(0).toUpperCase()}${msg.slice(1)}. Nothing on the panel was changed.`,
+          sub: `${msg.charAt(0).toUpperCase()}${msg.slice(1)}. This step changed nothing on the panel.`,
           link: { href: this.d.frame.help.undo, text: 'Undo by hand' },
         } } });
         return;
       }
+      this.dispatch({ type: 'changed', by: 'apps' }); // before it starts: a give-back that stops partway has changed the panel too
       await unprovision(panel, (s, d) => busy(s || d || ''));
-      this.dispatch({ type: 'undo', patch: { appsBack: true, note: { kind: 'ok', title: 'Aqara\'s apps are back.', sub: 'Next, put the original software back: Continue, then recovery mode.' } } });
+      this.dispatch({ type: 'undo', patch: { appsBack: true, locked: true, note: { kind: 'ok', title: 'Aqara\'s apps are back.', sub: 'Next, put the original software back: Continue, then recovery mode.' } } });
     } catch (e) {
       const msg = notPicked(e) ? 'Nothing was picked.' : (e as Error).message;
       this.dispatch({ type: 'undo', patch: { note: { kind: 'err', title: 'Couldn\'t reach the panel over adb.', sub: `${msg} Is it running and plugged in?` } } });

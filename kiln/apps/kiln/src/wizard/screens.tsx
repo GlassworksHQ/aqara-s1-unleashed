@@ -48,7 +48,7 @@ export function Connect({ s, session, frame }: P) {
     <section className="card" aria-labelledby="h">
       <h2 id="h" className="huge">Hold the button. Plug it in.</h2>
       <Recovery frame={frame} />
-      <p className="small">Then click Connect and pick <code>{frame.felPick}</code>.{s.flow === 'undo' ? ' Nothing is written until your backup checks out.' : ' Nothing is written yet.'}</p>
+      <p className="small">Then click Connect and pick <code>{frame.felPick}</code>.{s.flow === 'undo' ? ' Nothing is written until your backup checks out.' : s.changed ? ' An earlier try already changed the panel.' : ' Nothing is written yet.'}</p>
       {driver && <p className="small">{driver} <a className="link" href={frame.help.drivers} target="_blank" rel="noopener">How</a></p>}
       <LastRun />
       <div className="foot">
@@ -215,11 +215,15 @@ function Wifi({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'wifi'
   const [pick, setPick] = useState('');
   const [other, setOther] = useState('');
   const [psk, setPsk] = useState('');
-  // a pick that a rescan no longer lists goes too: Connect must not send a network the panel can't see
+  // a pick that a rescan no longer lists goes too: Connect must not send a network the panel can't see,
+  // nor the dropped network's password to the one that replaces it
   useEffect(() => {
     const nets = setup.networks;
     if (!nets) return;
-    if (!pick || (pick !== '\u0000other' && !nets.some((n) => n.ssid === pick))) setPick(nets[0]?.ssid ?? '\u0000other');
+    if (!pick || (pick !== '\u0000other' && !nets.some((n) => n.ssid === pick))) {
+      setPick(nets[0]?.ssid ?? '\u0000other');
+      setPsk('');
+    }
   }, [setup.networks, pick]);
   const isOther = pick === '\u0000other';
   const chosen = nets.find((n) => n.ssid === pick);
@@ -423,9 +427,8 @@ export function Undo({ s, session, frame }: P) {
       <div className="foot">
         <span className="links">
           {u.source !== 'browser' && <><span>{u.file ?? 'No backup in this browser.'}</span><span aria-hidden="true">·</span></>}
-          {u.source === 'file' && u.inBrowser
-            ? <button type="button" className="link" disabled={u.checking} onClick={() => void session.undoFromBrowser()}>Use this browser&apos;s</button>
-            : <button type="button" className="link" disabled={u.checking} onClick={() => file.current?.click()}>{u.source === 'file' ? 'Another file' : 'Use a backup file'}</button>}
+          {u.source === 'file' && u.inBrowser && <><button type="button" className="link" disabled={u.checking || u.locked || !!s.busy} onClick={() => void session.undoFromBrowser()}>Use this browser&apos;s</button><span aria-hidden="true">·</span></>}
+          <button type="button" className="link" disabled={u.checking || u.locked || !!s.busy} onClick={() => file.current?.click()}>{u.source === 'file' ? 'Another file' : 'Use a backup file'}</button>
         </span>
         <button type="button" className="btn ember" disabled={!u.ready || !!s.busy} onClick={() => void session.click('undo-continue', () => session.undoContinue())}>
           {keep && !u.appsBack ? frame.undo.keep.button : 'Continue'}

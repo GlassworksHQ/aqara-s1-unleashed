@@ -36,7 +36,7 @@ describe('Undo, keeping the settings', () => {
     expect(session.store.state.undo).toMatchObject({
       appsBack: false,
       note: {
-        kind: 'err', title: 'This backup can\'t undo the install.', sub: expect.stringMatching(/^This backup has no .+\. Nothing on the panel was changed\.$/),
+        kind: 'err', title: 'This backup can\'t undo the install.', sub: expect.stringMatching(/^This backup has no .+\. This step changed nothing on the panel\.$/),
         link: { href: s1PlusUi.help.undo, text: 'Undo by hand' }, // docs/install.md#undo: the way on
       },
     });
@@ -49,7 +49,7 @@ describe('Undo, keeping the settings', () => {
     expect(panel.run).not.toHaveBeenCalled();
     const note = session.store.state.undo.note!;
     expect(note).toMatchObject({ kind: 'err', title: 'Kiln can\'t check this backup.', link: { href: s1PlusUi.help.undo } });
-    expect(note.sub).toMatch(/not-backed-up.*Nothing on the panel was changed\.$/);
+    expect(note.sub).toMatch(/not-backed-up.*This step changed nothing on the panel\.$/);
     expect(note.title).not.toMatch(/adb/);
   });
 
