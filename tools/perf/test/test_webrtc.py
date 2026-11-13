@@ -148,6 +148,7 @@ class Session(unittest.TestCase):
     def test_a_relay_only_browser_plays_the_camera(self):
         from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
         from aiortc.rtcconfiguration import RTCIceTransportPolicy
+        since = time.time()                                   # the log is shared with the other tests
         ws = self.connect()
         cfg, _ = ws.call({"type": "camera/webrtc/get_client_config", "entity_id": "camera.clarity_cam_0"})
         conf = cfg["result"]["configuration"]
@@ -222,6 +223,77 @@ class Session(unittest.TestCase):
         self.assertTrue(any(e.get("webrtc_closed") == "camera.clarity_cam_0" for e in log))
         self.assertTrue(any(e.get("webrtc_ice") == "completed" for e in log))
         self.assertFalse([e for e in log if e.get("webrtc_error")])
+        # The relay timed the peer's checks through the browser (round 3's question on the S1): when
+        # the browser's TCP connection closes, its record says how many came back, and how fast.
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            with open(self.log) as f:
+                closed = [json.loads(line) for line in f if '"turn_closed"' in line]
+            used = [e for e in closed if e["to_peer"] and e["t"] >= since]
+            if used:
+                break
+            time.sleep(0.2)
+        self.assertTrue(used, "no relay connection carried the session")
+        checks = used[0]["checks"]
+        self.assertGreaterEqual(checks["answered"], 1)
+        self.assertLess(checks["median_ms"], 500)
+        # This client closed its connection first: the peer lost it from the browser's side, not by consent.
+        mine = [e for e in log if e["t"] >= since]
+        self.assertEqual({e.get("reason") for e in mine if e.get("lost")}, {"remote"})
+        self.assertFalse([e for e in mine if e.get("aioice")])
+
+
+    def test_a_browser_that_stops_answering_loses_ice_by_consent_and_says_so(self):
+        """The S1's heavy view (smoke3): the panel's answers stopped reaching the peer, aiortc's
+        consent expired 30 s after connecting, and HA's player made another session. Here with
+        aioice's check every 0.2 s and the relay dropping what the browser sends: the fake's log says
+        the session was lost by consent, and the relay's record counts the checks never answered."""
+        from unittest import mock
+        from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
+        from aiortc.rtcconfiguration import RTCIceTransportPolicy
+        ws = self.connect()
+        cfg, _ = ws.call({"type": "camera/webrtc/get_client_config", "entity_id": "camera.clarity_cam_1"})
+        conf = cfg["result"]["configuration"]
+        mute = {"on": False}
+        tcp_in = webrtc.TurnConn.data_received
+
+        def maybe_drop(conn, data):
+            if mute["on"]:
+                return None                                  # nothing the browser sends reaches the relay
+            return tcp_in(conn, data)
+
+        async def play():
+            s = conf["iceServers"][0]
+            pc = RTCPeerConnection(RTCConfiguration(iceServers=[RTCIceServer(s["urls"], s["username"], s["credential"])],
+                                                    iceTransportPolicy=RTCIceTransportPolicy(conf["iceTransportPolicy"])))
+            pc.addTransceiver("audio", direction="recvonly")
+            pc.addTransceiver("video", direction="recvonly")
+            await pc.setLocalDescription(await pc.createOffer())
+            loop = asyncio.get_running_loop()
+            res, _ = await loop.run_in_executor(None, ws.call, {"type": "camera/webrtc/offer", "entity_id": "camera.clarity_cam_1",
+                                                                "offer": pc.localDescription.sdp})
+            await loop.run_in_executor(None, ws.recv)                       # the session's id
+            answer = await loop.run_in_executor(None, ws.recv)
+            await pc.setRemoteDescription(RTCSessionDescription(answer["event"]["answer"], "answer"))
+            await asyncio.sleep(1.5)
+            mute["on"] = True
+            await asyncio.sleep(8)                           # 6 checks, each 0.2 s apart plus 0.5 s unanswered
+            mute["on"] = False                               # so the client's own TURN teardown is answered
+            await pc.close()
+            return res
+
+        with mock.patch.object(webrtc.aioice.ice, "CONSENT_INTERVAL", 0.2), mock.patch.object(webrtc.TurnConn, "data_received", maybe_drop):
+            res = asyncio.run(play())
+        ws.call({"type": "unsubscribe_events", "subscription": res["id"]})
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            with open(self.log) as f:
+                log = [json.loads(line) for line in f]
+            if [e for e in log if e.get("lost") and e.get("reason") == "consent"]:
+                break
+            time.sleep(0.2)
+        self.assertTrue([e for e in log if e.get("aioice", "").endswith("Consent to send expired")])
+        self.assertTrue([e for e in log if e.get("lost") and e.get("reason") == "consent"])
 
 
 if __name__ == "__main__":

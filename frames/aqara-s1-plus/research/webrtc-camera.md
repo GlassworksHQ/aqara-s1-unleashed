@@ -1,6 +1,6 @@
 # WebRTC cameras on the S1: does GeckoView play them, and with which decoder?
 
-**Status (2026-11-13): partly working.** A real camera plays live in the kiosk, and the frontend started
+**Status (2026-11-13): partly working; Clarity's WebRTC now connects on this panel (smoke 3, below).** A real camera plays live in the kiosk, and the frontend started
 WebRTC. That WebRTC (not HLS, which the frontend shows while WebRTC starts) drew the frames on screen
 is likely but not proven. The video is very likely decoded in software (Gecko's bundled FFmpeg), not by
 the Allwinner hardware decoder that HLS gets. That is read from the logs, not proven. Frame rate and
@@ -77,6 +77,72 @@ What it means for Clarity (protocol 6, #202):
 Clarity's first WebRTC smoke on this panel (2026-11-13, about 20:20 UTC) didn't connect: GeckoView
 got no relay candidate from the test's TURN relay on loopback. Why, and the fix, are in
 [docs/research/gecko-turn.md](../../../docs/research/gecko-turn.md).
+
+## Clarity's WebRTC smokes on this panel (#202)
+
+| Smoke (2026-11-13, the root) | At | WebRTC | Why |
+|---|---|---|---|
+| 1, about 20:20 UTC | d668e26 | never connected | Gecko won't use a TURN server at a loopback IP ([gecko-turn.md](../../../docs/research/gecko-turn.md)) |
+| 2, about 20:49 UTC | a718f9c | allocated, no candidate | the allocation said the browser was on loopback (adb reverse) |
+| 3, later that evening | 5ae5884 | **connected**: 22 relay candidates from the panel, ICE completed 11 of 11 | heavy's counts broke (below) |
+
+Smoke 3, typical (verified): first frame 6.3 s from the navigation, 99.6% shown (the receiver's own
+counts), 367 frames decoded, no freeze.
+
+**Heavy re-made its sessions, and the counts went negative** (verified from `fakeha.jsonl` and the
+page's camera line):
+1. All four cameras connected about 1.5 to 3 s after heavy opened (the Mac's clock, relative:
+   163.5 to 164.7 s).
+2. About 31 s later (194.9 and 195.6 s), aiortc closed ICE for two of them. The browser hadn't
+   unsubscribed: the sessions were still open.
+3. 26 to 33 s after that, those two cameras sent new offers (221.1 and 228.7 s), which connected.
+   The other two lost ICE the same way later (241.5 and 246.0 s) and re-offered at 271.8 and 272.1 s.
+4. The older subscriptions were closed only when the page's websocket closed (412.3 s), long after
+   the view had gone (293.2 s).
+5. The page diffed one getStats snapshot at the window's start against one at its end. The end one
+   was a different receiver (Gecko can reuse the stats id with new counters), so camera 0 read -189
+   frames decoded and -0.7% shown; camera 2 had no inbound video at the end and fell back to its
+   frame callbacks (0.2%).
+
+**Why the sessions were re-made** (read from the frontend at the pinned tag, `ha-web-rtc-player.ts`;
+the order of events above fits it):
+- On `iceConnectionState` "failed", the player calls `restartIce()`. That fires `negotiationneeded`,
+  and `_startNegotiation` sends a new `camera/webrtc/offer` on the same RTCPeerConnection. It
+  overwrites `_unsub` without unsubscribing the previous offer, so the old session stays open until
+  the websocket closes (point 4).
+- So it isn't a re-render on scroll or on state updates: the video element stayed the same (its
+  frame callbacks went on), and HA's player renegotiated after ICE failed. Gecko reports "failed" some
+  time after traffic stops, which fits the 26 to 33 s between aiortc's close and the new offers.
+- The harness now records, per camera, each connection's ICE states and offers (`connections` in
+  the WebRTC detail), so the next run shows this directly.
+
+**Why ICE was lost** (the first cause is read from aioice 0.13.0; the second is inferred):
+- aioice's consent check (RFC 7675) sends one Binding request every 4 to 6 s (`CONSENT_INTERVAL` 5,
+  randomised), gives the answer 0.5 s (`RETRY_RTO`, no retransmission), and closes ICE after 6
+  unanswered in a row (`CONSENT_FAILURES`): about 30 s. An answer later than 0.5 s counts as none.
+  RFC 7675 lets consent last 30 s from the last answer, however late each is; browsers and pion (in
+  go2rtc) are that lenient. So aiortc is stricter than a real setup's peer.
+- The relay's counts for those two connections: the panel's datagrams to the Mac (`to_peer`) were 112
+  and 125 over their lives, about 4 a second for 28 to 31 s, then none; typical's ran 70 s at the
+  same rate. Either the panel's answers came later than 0.5 s (TCP through adb carries them behind
+  the video, and heavy keeps the panel's CPU busy), or the panel stopped sending.
+- The relay now times each of aiortc's checks through the panel (`checks` in `turn_closed`:
+  answered, the median and longest round trip, how many over 500 ms, the late ones with when, and
+  unanswered), and the fake marks an ICE loss `reason: consent` when aioice's consent expired. The
+  next smoke tells the two apart. If the answers were only late, the drops are the test's (aiortc's
+  strictness, the TCP transport), not the panel's, and that is a decision for the maintainer.
+
+**The counts now** (`stats.js` `webrtcWindow`): the page samples every connection that carries a
+camera's video once a second. Each receiver (connection, stats id, SSRC) counts only its own
+increments: one first seen after the window's start counts from 0, a counter that goes back counts
+on from 0, and no count is negative. The time between samples in which no receiver decoded a frame
+is `no_video_ms`; the graded stalls stay those of the video element's frame callbacks, which already
+counted heavy's gaps (37 s of stalls on camera 0 in smoke 3).
+
+**Decoders on heavy, smoke 3** (logcat): 4 `OMX.allwinner.video.decoder.avc`, then 6
+`c2.android.avc.decoder` (software), then 5 OMX. HA's frontend starts an HLS player for each camera
+before WebRTC has video, and the log doesn't say which player each decoder served, so this neither
+confirms nor rules out step 2's software decoding for WebRTC.
 
 ## How to reproduce
 

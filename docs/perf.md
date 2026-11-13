@@ -601,12 +601,27 @@ its WebRTC player's video. A camera whose WebRTC never showed a frame fails the 
 showed one meanwhile.
 
 **Detail, not graded:**
-- **The receiver's own counts** (`webrtc` on each stream, from `getStats` over the window, `stats.js`
-  `webrtcStats`): frames received, decoded and dropped, freezes and their time, pauses, packets lost,
+- **The receiver's own counts** (`webrtc` on each stream, `stats.js` `webrtcWindow`): frames received, decoded and dropped, freezes and their time, pauses, packets lost,
   NACKs and PLIs, the jitter buffer, the codec and its fmtp line, and the candidate pair (`relay`
   over `tcp` on a panel). Also the decoder the browser names (`decoderImplementation`,
   `powerEfficientDecoder`); an engine may leave them out. The harness lists the page's
-  `RTCPeerConnection`s to read them, and changes nothing about them.
+  `RTCPeerConnection`s to read them, and changes nothing about them. The page samples every
+  connection that carries the camera's video once a second, because HA's player can renegotiate or
+  replace it mid-window (on the S1's heavy view it did, after ICE failed: research note below). Each
+  receiver (connection, stats id, SSRC) counts only its own increments: one that appears mid-window
+  counts from 0, a counter that goes back counts on from 0, two receivers are never subtracted, and
+  no count is negative. `sessions` and `receivers` say how many there were; `no_video_ms` is the time
+  between samples in which none decoded a frame. `connections` lists each one: when HA's player made
+  it, its offers (a `restartIce` is a second one) and its ICE states. The graded stalls stay those of
+  the video element, which count the time between sessions too. The report says when a camera
+  needed another session.
+- **The relay's view** (`fakeha.jsonl`): each relay connection's datagrams both ways when it
+  closes, and the round trip of each of aiortc's ICE checks through the browser (`checks`). aiortc
+  closes ICE when 6 checks in a row go unanswered within 0.5 s (aioice's consent check, about 30 s);
+  that ICE loss is logged with `lost` and `reason: consent`. It is stricter than RFC 7675 and than
+  go2rtc's peer, so a slow panel can lose ICE here where a real setup wouldn't; the `checks` record
+  shows whether that happened
+  ([frames/aqara-s1-plus/research/webrtc-camera.md](../frames/aqara-s1-plus/research/webrtc-camera.md)).
 - **The other player** (`others` on each stream): HLS's first frame while WebRTC started, and
   whether the frontend had removed it by the window's end.
 - **The decoders from logcat**, as for HLS (`media`). On the S1 a real camera over WebRTC logged no

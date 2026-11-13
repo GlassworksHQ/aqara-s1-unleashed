@@ -281,31 +281,78 @@ test("videoGaps: frames presented inside a stall say the callbacks stalled, not 
   assert.equal(S.videoGaps(times, [10, 11, 12, 28, 29], 0, 1500).stall_total_ms, 1067);
 });
 
-// ---- a WebRTC stream's receiver counts (#202): getStats over the camera window, detail
+// ---- a WebRTC camera's receiver counts (#202): getStats samples over the camera window, every receiver
 
-test("webrtcStats: the inbound video's counts over the window, its decoder, codec and candidate pair", () => {
-  const before = [{ id: "IT1", type: "inbound-rtp", kind: "video", framesReceived: 10, framesDecoded: 9, framesDropped: 0,
-                    freezeCount: 0, totalFreezesDuration: 0, jitterBufferDelay: 1, jitterBufferEmittedCount: 9 }];
-  const after = [
-    { id: "IT1", type: "inbound-rtp", kind: "video", codecId: "C1", framesReceived: 130, framesDecoded: 128, framesDropped: 2,
-      freezeCount: 1, totalFreezesDuration: 0.4, jitterBufferDelay: 7, jitterBufferEmittedCount: 129,
-      decoderImplementation: "ExternalDecoder", powerEfficientDecoder: true },
+const rx = (id, ssrc, n, extra = {}) => ({ id, ssrc, type: "inbound-rtp", kind: "video", framesReceived: n + 1, framesDecoded: n,
+                                           framesDropped: Math.floor(n / 50), freezeCount: Math.floor(n / 100), ...extra });
+const at = (t, ...pcs) => ({ t, pcs: pcs.map(([pc, reports]) => ({ pc, reports })) });
+
+test("webrtcWindow: one receiver over the window, its decoder, codec and candidate pair", () => {
+  const end = [
+    rx("IT1", 7, 128, { codecId: "C1", jitterBufferDelay: 7, jitterBufferEmittedCount: 129, freezeCount: 1, totalFreezesDuration: 0.4,
+                        decoderImplementation: "ExternalDecoder", powerEfficientDecoder: true }),
     { id: "IA1", type: "inbound-rtp", kind: "audio", framesDecoded: 999 },
     { id: "C1", type: "codec", mimeType: "video/H264", sdpFmtpLine: "packetization-mode=1;profile-level-id=42e01f" },
     { id: "T1", type: "transport", selectedCandidatePairId: "P1" },
     { id: "P1", type: "candidate-pair", localCandidateId: "L1", state: "succeeded" },
     { id: "L1", type: "local-candidate", candidateType: "relay", relayProtocol: "tcp", protocol: "udp" },
   ];
-  const w = S.webrtcStats(before, after);
-  assert.deepEqual([w.frames_received, w.frames_decoded, w.frames_dropped, w.freezes, w.freeze_s], [120, 119, 2, 1, 0.4]);
+  const w = S.webrtcWindow([at(0, ["a", [rx("IT1", 7, 8, { jitterBufferDelay: 1, jitterBufferEmittedCount: 9, freezeCount: 0, totalFreezesDuration: 0 })]]),
+                            at(8000, ["a", end])]);
+  assert.deepEqual([w.frames_received, w.frames_decoded, w.frames_dropped, w.freezes, w.freeze_s], [120, 120, 2, 1, 0.4]);
   assert.equal(w.jitter_buffer_ms, 50);                    // 6 s over 120 frames
-  assert.deepEqual([w.decoder, w.power_efficient, w.codec], ["ExternalDecoder", true, "video/H264"]);
+  assert.deepEqual([w.decoder, w.power_efficient, w.codec, w.sessions, w.receivers, w.no_video_ms],
+                   ["ExternalDecoder", true, "video/H264", 1, 1, 0]);
   assert.deepEqual(w.candidate, { local: "relay", relay: "tcp", protocol: "udp" });
-  // An engine that leaves fields out: null, never 0; no start snapshot counts from 0.
-  const bare = S.webrtcStats(null, [{ id: "I", type: "inbound-rtp", mediaType: "video", framesDecoded: 5 }]);
-  assert.deepEqual([bare.frames_decoded, bare.freezes, bare.decoder, bare.power_efficient, bare.candidate], [5, null, null, null, null]);
-  assert.equal(S.webrtcStats(before, null), null);
-  assert.deepEqual(S.webrtcStats(null, [{ id: "A", type: "inbound-rtp", kind: "audio" }]), { inbound: false });
+  // Fields an engine leaves out: null, never 0.
+  const bare = S.webrtcWindow([at(0, ["a", [{ id: "I", type: "inbound-rtp", mediaType: "video", framesDecoded: 5 }]]),
+                               at(1000, ["a", [{ id: "I", type: "inbound-rtp", mediaType: "video", framesDecoded: 20 }]])]);
+  assert.deepEqual([bare.frames_decoded, bare.freezes, bare.decoder, bare.power_efficient, bare.candidate], [15, null, null, null, null]);
+  assert.equal(S.webrtcWindow([]), null);
+  assert.deepEqual(S.webrtcWindow([at(0, ["a", [{ id: "A", type: "inbound-rtp", kind: "audio" }]])]), { inbound: false, sessions: 0, receivers: 0 });
+});
+
+test("webrtcWindow: a second session mid-window counts from 0, and two receivers are never subtracted", () => {
+  // The S1's heavy view (smoke3): the first connection's ICE failed, HA's player made a new session;
+  // in Gecko the new receiver's stats can even reuse the old id. The old diff read -189 frames.
+  const w = S.webrtcWindow([
+    at(0, ["pc1", [rx("IT01V", 11, 300)]]),
+    at(1000, ["pc1", [rx("IT01V", 11, 315)]]),
+    at(2000, ["pc1", [rx("IT01V", 11, 315)]]),          // ICE failed: nothing decoded
+    at(3000),                                          // no connection carries the video
+    at(4000, ["pc2", [rx("IT01V", 22, 6)]]),           // the new session, same stats id, from 0
+    at(5000, ["pc2", [rx("IT01V", 22, 21)]]),
+  ]);
+  assert.equal(w.frames_decoded, 15 + 21);
+  assert.equal(w.sessions, 2);
+  assert.equal(w.receivers, 2);
+  assert.equal(w.no_video_ms, 2000);                   // 1 to 2 s and 2 to 3 s; 3 to 4 s decoded 6
+  // The same connection renegotiated (restartIce): same key, counters back to low values.
+  const reneg = S.webrtcWindow([at(0, ["pc1", [rx("IT01V", 11, 300)]]), at(1000, ["pc1", [rx("IT01V", 11, 330)]]),
+                                at(2000, ["pc1", [rx("IT01V", 11, 12)]])]);
+  assert.deepEqual([reneg.frames_decoded, reneg.sessions], [30 + 12, 1]);
+});
+
+test("webrtcWindow: a receiver gone by the window's end keeps what it counted", () => {
+  const w = S.webrtcWindow([at(0, ["pc1", [rx("IT1", 1, 10)]]), at(1000, ["pc1", [rx("IT1", 1, 25)]]), at(2000), at(3000)]);
+  assert.deepEqual([w.inbound, w.frames_decoded, w.no_video_ms], [true, 15, 2000]);
+});
+
+test("webrtcWindow: no count is ever negative, whatever the receivers do", () => {
+  let seed = 7;
+  const rnd = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  for (let trial = 0; trial < 200; trial++) {
+    const samples = [];
+    for (let i = 0; i < 12; i++) {
+      const pcs = [];
+      for (const pc of ["pc1", "pc2", "pc3"]) if (rnd(3)) pcs.push([pc, [rx(rnd(2) ? "X" : "Y", rnd(3), rnd(500))]]);
+      samples.push(at(i * 1000, ...pcs));
+    }
+    const w = S.webrtcWindow(samples);
+    for (const k of ["frames_received", "frames_decoded", "frames_dropped", "freezes", "no_video_ms"]) {
+      assert.ok(w[k] === null || w[k] === undefined || w[k] >= 0, `${k} ${w[k]} in trial ${trial}`);
+    }
+  }
 });
 
 // ---- frames shown (#202's verifier): Gecko's getVideoPlaybackQuality reads 0 for a MediaStream video
@@ -324,4 +371,7 @@ test("shownFrames: WebRTC's own counts first; a quality that reads 0 while frame
   assert.deepEqual(S.shownFrames({ quality: { decoded: 77, dropped: 1 }, webrtc: null, callbacks: 60, rvfc: true }), { frames: 76, source: "quality" });
   assert.deepEqual(S.shownFrames({ quality: { decoded: 0, dropped: 0 }, webrtc: null, callbacks: 0, rvfc: true }), { frames: 0, source: "quality" });
   assert.deepEqual(S.shownFrames({ quality: null, webrtc: null, callbacks: 0, rvfc: false }), { frames: null, source: "none" });
+  // framesDropped can count frames dropped before decoding too: never fewer than 0 shown.
+  assert.deepEqual(S.shownFrames({ quality: null, webrtc: { frames_decoded: 10, frames_dropped: 40 }, callbacks: 3, rvfc: true }),
+                   { frames: 0, source: "webrtc" });
 });

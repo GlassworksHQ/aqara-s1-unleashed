@@ -51,11 +51,18 @@
 
   // The page's WebRTC connections (HA's ha-web-rtc-player makes one per camera), so the camera task
   // can read each stream's getStats. The connection is the browser's own; only the list is ours.
-  const peers = [];
+  // Per connection, what HA's player did with it: when it was made, its ICE states and how many
+  // offers it made (restartIce makes another on the same connection). Detail for the camera task.
+  const peers = [], peerInfo = new WeakMap();
+  let peerCount = 0;
   const NativePC = window.RTCPeerConnection;
   if (NativePC) {
     const ClarityPC = function (config) {
       const pc = new NativePC(config);
+      const info = { n: ++peerCount, born: performance.now(), ice: [], offers: 0 };
+      peerInfo.set(pc, info);
+      pc.addEventListener("iceconnectionstatechange", () => info.ice.push([performance.now(), pc.iceConnectionState]));
+      pc.addEventListener("signalingstatechange", () => { if (pc.signalingState === "have-local-offer") info.offers++; });
       peers.push(pc);
       for (let i = peers.length - 1; i >= 0; i--) if (peers[i].signalingState === "closed") peers.splice(i, 1);
       return pc;
@@ -342,23 +349,25 @@
   }
 
   // The connection that carries a WebRTC player's video, by its track.
-  function peerOf(el) {
-    const st = el.srcObject, track = st && st.getVideoTracks && st.getVideoTracks()[0];
-    if (!track) return null;
-    return peers.find((pc) => pc.signalingState !== "closed" &&
-      pc.getReceivers().some((r) => r.track && r.track.id === track.id)) || null;
+  // The connections that carry a WebRTC player's video now, by its tracks.
+  function peersOf(el) {
+    const st = el.srcObject, ids = new Set(((st && st.getVideoTracks && st.getVideoTracks()) || []).map((t) => t.id));
+    if (!ids.size) return [];
+    return peers.filter((pc) => pc.signalingState !== "closed" && pc.getReceivers().some((r) => r.track && ids.has(r.track.id)));
   }
 
-  async function peerStats(rec) {
-    const pc = rec && peerOf(rec.el);
-    if (!pc) return null;
-    try {
-      const out = [];
-      (await pc.getStats()).forEach((x) => out.push(x));
-      return out;
-    } catch (e) {
-      return null;
-    }
+  // One getStats() sample of every connection carrying the camera's video (stats.js webrtcWindow),
+  // timed when it is asked for. HA's player may change connections mid-window, so the window is
+  // sampled every second, not diffed between two snapshots.
+  function sample(rec) {
+    const t = performance.now(), pcs = peersOf(rec.el);
+    for (const pc of pcs) rec.pcsSeen.add(pc);
+    const p = Promise.all(pcs.map((pc) => pc.getStats().then((stats) => {
+      const reports = [];
+      stats.forEach((x) => reports.push(x));
+      return { pc: peerInfo.get(pc).n, reports };
+    }, () => null))).then((got) => { rec.samples.push({ t, pcs: got.filter(Boolean) }); });
+    rec.pending.push(p);
   }
 
   // Finds the view's cameras and their videos as HA builds them (inside the camera cards' shadow
@@ -418,8 +427,15 @@
         r.pfs = [];
         r.ticks = [];
         r.q0 = r.el.getVideoPlaybackQuality ? r.el.getVideoPlaybackQuality() : null;
-        r.s0 = peerStats(r);
+        r.samples = [];
+        r.pending = [];
+        r.pcsSeen = new Set();
       }
+    }
+    if (cams.path === "web_rtc") {
+      const graded = () => cams.list.map((c) => c.recs.web_rtc).filter(Boolean);
+      for (const r of graded()) sample(r);
+      cams.sampler = setInterval(() => { for (const r of graded()) sample(r); }, 1000);
     }
   }
 
@@ -430,6 +446,7 @@
   async function camerasEnd() {
     if (!cams.expected) return;
     const t1 = performance.now(), dur = t1 - cams.t0, fps = C.CAMERA.fps;
+    clearInterval(cams.sampler);
     // Everything at t1 that can be read at once; the receiver's getStats is asked for now too, and
     // read after the loop (an await here would let the other players count on).
     const stream = (r) => {
@@ -438,7 +455,7 @@
       const q1 = r.el.getVideoPlaybackQuality ? r.el.getVideoPlaybackQuality() : null;
       const decoded = q1 && r.q0 ? q1.totalVideoFrames - r.q0.totalVideoFrames : null;
       const dropped = q1 && r.q0 ? q1.droppedVideoFrames - r.q0.droppedVideoFrames : null;
-      if (cams.path === "web_rtc") r.s1 = peerStats(r);
+      if (cams.path === "web_rtc") sample(r);
       const g = S.videoGaps(times, r.el.requestVideoFrameCallback ? r.pfs : null, cams.t0, t1);
       return {
         found: true, w: r.el.videoWidth, h: r.el.videoHeight,
@@ -452,7 +469,7 @@
     const missing = { found: false, first_frame_ms: null, shown_pct: null, max_gap_ms: null, stall_total_ms: null };
     // Every player's counts first, at t1; only then the awaits for getStats, during which the
     // others would go on counting.
-    const streams = [], peersOf = [];
+    const streams = [], webrtcRecs = [];
     for (let i = 0; i < Math.max(cams.expected, cams.list.length); i++) {
       const c = cams.list[i], r = c && c.recs[cams.path];
       const out = Object.assign({ path: cams.path }, r ? stream(r) : missing);
@@ -464,7 +481,7 @@
         return { path: k, first_frame_ms: o.first === null ? null : r1(o.first - cams.nav), connected: o.el.isConnected };
       }) : [];
       streams.push(out);
-      peersOf.push(r && cams.path === "web_rtc" ? r : null);
+      webrtcRecs.push(r && cams.path === "web_rtc" ? r : null);
     }
     // The WebRTC receiver's own counts over the window (getStats): frames decoded, dropped and
     // frozen, the decoder it used, the codec, and the candidate pair (relay over TCP). Then each
@@ -472,7 +489,19 @@
     for (let i = 0; i < streams.length; i++) {
       const out = streams[i], r = cams.list[i] && cams.list[i].recs[cams.path];
       if (!r) continue;
-      if (peersOf[i]) out.webrtc = S.webrtcStats(await r.s0, await r.s1);
+      if (webrtcRecs[i]) {
+        await Promise.all(r.pending);
+        out.webrtc = S.webrtcWindow(r.samples.slice().sort((a, b) => a.t - b.t));
+        // Each connection the camera's video came over in the window: when HA's player made it, its
+        // offers (a restartIce is a second one) and its ICE states, after the navigation.
+        if (out.webrtc) {
+          out.webrtc.connections = [...r.pcsSeen].map((pc) => {
+            const info = peerInfo.get(pc);
+            return { n: info.n, made_ms: r1(info.born - cams.nav), offers: info.offers,
+                     ice: info.ice.map(([t, st]) => [r1(t - cams.nav), st]) };
+          });
+        }
+      }
       const s = S.shownFrames({ quality: out.decoded === null ? null : { decoded: out.decoded, dropped: out.dropped },
                                 webrtc: out.webrtc || null, callbacks: out.callbacks, rvfc: !!r.el.requestVideoFrameCallback });
       out.frames = s.frames;

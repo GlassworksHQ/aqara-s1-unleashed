@@ -328,4 +328,8 @@ test("in Gecko, the harness grades a WebRTC camera's frames shown from the recei
   assert.ok(s.first_frame_ms > 0, `first frame ${s.first_frame_ms}`);
   assert.ok(s.shown_pct > 0, `shown ${s.shown_pct}% from ${s.source}`);
   assert.ok(s.source.startsWith("webrtc"), s.source);
+  // The connections the camera's video came over (#202, the S1's heavy): here one, connected once.
+  assert.ok(s.webrtc.connections.length >= 1 && s.webrtc.connections[0].ice.some(([, st]) => st === "connected"),
+            JSON.stringify(s.webrtc.connections));
+  assert.ok(s.webrtc.frames_decoded > 0 && s.webrtc.receivers >= 1);
 });

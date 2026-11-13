@@ -207,38 +207,63 @@
     return out;
   }
 
-  // A WebRTC video's receiver over a window, from two getStats() snapshots (arrays of reports): the
-  // inbound video's counts over the window (frames received, decoded, dropped; freezes and pauses as
-  // the browser counts them), the decoder it reports (decoderImplementation, powerEfficientDecoder:
-  // whether it is hardware; an engine may leave them out), the codec, and the candidate pair in use
-  // (relay over TCP through adb reverse, on a panel). Detail; null without the end snapshot.
-  function webrtcStats(before, after) {
-    if (!after) return null;
-    const index = (rs) => new Map((rs || []).map((r) => [r.id, r]));
-    const a = index(after), b = index(before);
-    const inbound = (after || []).find((r) => r.type === "inbound-rtp" && (r.kind || r.mediaType) === "video");
-    if (!inbound) return { inbound: false };
-    const was = b.get(inbound.id) || {};
-    const delta = (k) => (typeof inbound[k] === "number" ? round2(inbound[k] - (typeof was[k] === "number" ? was[k] : 0)) : null);
-    const codec = a.get(inbound.codecId) || {};
-    const transport = (after || []).find((r) => r.type === "transport" && r.selectedCandidatePairId);
-    const pair = (transport && a.get(transport.selectedCandidatePairId)) ||
-      (after || []).find((r) => r.type === "candidate-pair" && (r.nominated || r.selected) && r.state === "succeeded");
-    const local = pair ? a.get(pair.localCandidateId) || {} : {};
-    const jb = delta("jitterBufferDelay"), jbn = delta("jitterBufferEmittedCount");
+  // A WebRTC camera over a window, from getStats() samples of every connection that carried its
+  // video (HA's player can make a new one, or renegotiate the same one, mid-window: #202, the S1's
+  // heavy view). `samples`: [{t, pcs: [{pc, reports}]}] in time order, the first at the window's
+  // start. Each inbound video receiver (its connection, id and SSRC) counts its own increments only:
+  // one first seen after the window's start counts from 0, a counter that goes back (a receiver
+  // reset) counts on from 0, and two receivers are never subtracted, so no count is negative.
+  // `no_video_ms`: the time between samples in which no receiver decoded a frame (between
+  // sessions, or a stalled one); the graded stalls come from the video element (videoGaps).
+  const RX = ["framesReceived", "framesDecoded", "framesDropped", "keyFramesDecoded", "freezeCount", "totalFreezesDuration",
+              "pauseCount", "totalPausesDuration", "packetsLost", "nackCount", "pliCount", "jitterBufferDelay",
+              "jitterBufferEmittedCount"];
+  function webrtcWindow(samples) {
+    if (!samples || !samples.length) return null;
+    const total = Object.fromEntries(RX.map((k) => [k, null]));
+    const prev = new Map(), pcs = new Set();
+    let last = null, noVideo = 0, lastT = null;
+    samples.forEach((smp, i) => {
+      let decoded = 0;                     // frames decoded since the sample before, all receivers
+      for (const { pc, reports } of smp.pcs || []) {
+        const byId = new Map((reports || []).map((r) => [r.id, r]));
+        for (const r of reports || []) {
+          if (r.type !== "inbound-rtp" || (r.kind || r.mediaType) !== "video") continue;
+          const key = `${pc}|${r.id}|${r.ssrc}`;
+          pcs.add(pc);
+          const was = prev.get(key) || (i === 0 ? r : {});
+          for (const k of RX) {
+            if (typeof r[k] !== "number") continue;
+            const before = typeof was[k] === "number" ? was[k] : 0;
+            const add = r[k] >= before ? r[k] - before : r[k];       // a reset counts on from 0
+            total[k] = (total[k] || 0) + add;
+            if (k === "framesDecoded") decoded += add;
+          }
+          prev.set(key, r);
+          const transport = (reports || []).find((x) => x.type === "transport" && x.selectedCandidatePairId);
+          const pair = (transport && byId.get(transport.selectedCandidatePairId)) ||
+            (reports || []).find((x) => x.type === "candidate-pair" && (x.nominated || x.selected) && x.state === "succeeded");
+          last = { r, codec: byId.get(r.codecId) || {}, local: pair ? byId.get(pair.localCandidateId) || {} : null };
+        }
+      }
+      if (lastT !== null && decoded === 0) noVideo += smp.t - lastT;
+      lastT = smp.t;
+    });
+    if (!last) return { inbound: false, sessions: 0, receivers: 0 };
+    const r2 = (k) => (total[k] === null ? null : round2(total[k]));
     return {
-      inbound: true,
-      frames_received: delta("framesReceived"), frames_decoded: delta("framesDecoded"),
-      frames_dropped: delta("framesDropped"), key_frames: delta("keyFramesDecoded"),
-      freezes: delta("freezeCount"), freeze_s: delta("totalFreezesDuration"),
-      pauses: delta("pauseCount"), pause_s: delta("totalPausesDuration"),
-      packets_lost: delta("packetsLost"), nacks: delta("nackCount"), plis: delta("pliCount"),
-      jitter_buffer_ms: jb !== null && jbn ? round2((1000 * jb) / jbn) : null,
-      decoder: inbound.decoderImplementation || null,
-      power_efficient: typeof inbound.powerEfficientDecoder === "boolean" ? inbound.powerEfficientDecoder : null,
-      codec: codec.mimeType || null, fmtp: codec.sdpFmtpLine || null,
-      candidate: pair ? { local: local.candidateType || null, relay: local.relayProtocol || null,
-                          protocol: local.protocol || null } : null,
+      inbound: true, sessions: pcs.size, receivers: prev.size, no_video_ms: round2(noVideo),
+      frames_received: r2("framesReceived"), frames_decoded: r2("framesDecoded"), frames_dropped: r2("framesDropped"),
+      key_frames: r2("keyFramesDecoded"), freezes: r2("freezeCount"), freeze_s: r2("totalFreezesDuration"),
+      pauses: r2("pauseCount"), pause_s: r2("totalPausesDuration"), packets_lost: r2("packetsLost"),
+      nacks: r2("nackCount"), plis: r2("pliCount"),
+      jitter_buffer_ms: total.jitterBufferDelay !== null && total.jitterBufferEmittedCount
+        ? round2((1000 * total.jitterBufferDelay) / total.jitterBufferEmittedCount) : null,
+      decoder: last.r.decoderImplementation || null,
+      power_efficient: typeof last.r.powerEfficientDecoder === "boolean" ? last.r.powerEfficientDecoder : null,
+      codec: last.codec.mimeType || null, fmtp: last.codec.sdpFmtpLine || null,
+      candidate: last.local ? { local: last.local.candidateType || null, relay: last.local.relayProtocol || null,
+                                protocol: last.local.protocol || null } : null,
     };
   }
 
@@ -251,16 +276,16 @@
   //   in one rendering update: Chrome, 2026-11-13, 60 callbacks for 77 frames).
   function shownFrames({ quality, webrtc, callbacks, rvfc }) {
     if (webrtc && typeof webrtc.frames_decoded === "number") {
-      return { frames: webrtc.frames_decoded - (webrtc.frames_dropped || 0), source: "webrtc" };
+      return { frames: Math.max(0, webrtc.frames_decoded - (webrtc.frames_dropped || 0)), source: "webrtc" };
     }
     if (quality && typeof quality.decoded === "number" && !(quality.decoded === 0 && callbacks > 0)) {
-      return { frames: quality.decoded - (quality.dropped || 0), source: "quality" };
+      return { frames: Math.max(0, quality.decoded - (quality.dropped || 0)), source: "quality" };
     }
     return rvfc ? { frames: callbacks, source: "rvfc" } : { frames: null, source: "none" };
   }
 
   const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines,
-                skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps, webrtcStats, shownFrames };
+                skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps, webrtcWindow, shownFrames };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWStats = api;
 })(this);

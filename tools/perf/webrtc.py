@@ -25,6 +25,7 @@ peer, and reads nothing from the device.
 import asyncio
 import fractions
 import hashlib
+import logging
 import os
 import socket
 import struct
@@ -115,6 +116,10 @@ class TurnConn(asyncio.Protocol):
     def __init__(self, server):
         self.server, self.buf, self.relay, self.perms, self.chan, self.peer_chan = server, b"", None, set(), {}, {}
         self.to_peer = self.from_peer_n = 0        # datagrams relayed each way (logged when it closes)
+        # The peer's ICE checks (aiortc's consent checks once connected) on their way to the browser,
+        # by transaction id, and how long each answer took through the browser: aiortc gives an
+        # answer 0.5 s and drops ICE after 6 checks in a row without one (aioice CONSENT_*).
+        self.checks, self.check_rtt, self.late = {}, [], []
 
     def mapped(self):
         """XOR-MAPPED-ADDRESS: the browser as this relay sees it. Through adb reverse that is always
@@ -135,9 +140,16 @@ class TurnConn(asyncio.Protocol):
         self.server.conns.discard(self)
         if self.relay:
             self.relay.close()
+        rtt = sorted(self.check_rtt)
         self.server.record({"t": time.time(), "turn_closed": list(self.client), "to_peer": self.to_peer,
                             "from_peer": self.from_peer_n, "permissions": sorted(self.perms),
-                            "channels": len(self.chan)})
+                            "channels": len(self.chan),
+                            # The peer's checks through the browser: answered (round trip, ms), over
+                            # 500 ms (late for aiortc: the first 20, with when), and never answered.
+                            "checks": {"answered": len(rtt), "unanswered": len(self.checks),
+                                       "median_ms": round(rtt[len(rtt) // 2]) if rtt else None,
+                                       "max_ms": round(rtt[-1]) if rtt else None,
+                                       "over_500_ms": sum(1 for x in rtt if x > 500), "late": self.late}})
 
     def data_received(self, data):
         self.buf += data
@@ -152,6 +164,7 @@ class TurnConn(asyncio.Protocol):
                 if peer and self.relay:
                     self.relay.sendto(payload, peer)
                     self.to_peer += 1
+                    self.answer_seen(payload)
                 continue
             size = 20 + struct.unpack("!H", self.buf[2:4])[0]
             if len(self.buf) < size:
@@ -178,6 +191,7 @@ class TurnConn(asyncio.Protocol):
             if m.message_method == M.SEND and self.relay and m.attributes.get("XOR-PEER-ADDRESS", ("",))[0] in self.perms:
                 self.relay.sendto(m.attributes.get("DATA", b""), m.attributes["XOR-PEER-ADDRESS"])
                 self.to_peer += 1
+                self.answer_seen(m.attributes.get("DATA", b""))
             return
         if m.message_class != stun.Class.REQUEST:
             return
@@ -223,10 +237,22 @@ class TurnConn(asyncio.Protocol):
                             "mapped": list(self.mapped())})
         self.reply(m, XOR_RELAYED_ADDRESS=relayed, XOR_MAPPED_ADDRESS=self.mapped(), LIFETIME=TURN_LIFETIME)
 
+    def answer_seen(self, data):
+        """A STUN Binding success from the browser to the peer: the answer to one of the peer's checks."""
+        if len(data) >= 20 and data[:2] == b"\x01\x01":
+            sent = self.checks.pop(data[8:20], None)
+            if sent is not None:
+                rtt = (time.monotonic() - sent) * 1000
+                self.check_rtt.append(rtt)
+                if rtt > 500 and len(self.late) < 20:
+                    self.late.append([round(time.time(), 1), round(rtt)])
+
     def from_peer(self, data, addr):
         if addr[0] not in self.perms:
             return
         self.from_peer_n += 1
+        if len(data) >= 20 and data[:2] == b"\x00\x01":       # a STUN Binding request: the peer's check
+            self.checks[data[8:20]] = time.monotonic()
         num = self.peer_chan.get(addr)
         if num is not None:
             self.tr.write(struct.pack("!HH", num, len(data)) + data + bytes(-len(data) % 4))
@@ -255,6 +281,18 @@ class WebRTC:
         # interface (and leaves loopback out).
         self.addr = media_address()
         aioice.ice.get_host_addresses = lambda use_ipv4=True, use_ipv6=True: [self.addr]
+        # aioice says when a connection's consent expired (6 checks in a row unanswered within
+        # 0.5 s); the ICE close that follows is then marked with that reason.
+        self.consent_expired_at = 0.0
+        webrtc = self
+
+        class _Consent(logging.Handler):
+            def emit(self, rec):
+                if "Consent to send expired" in rec.getMessage():
+                    webrtc.consent_expired_at = time.monotonic()
+                    webrtc.record({"t": time.time(), "aioice": rec.getMessage()})
+        logging.getLogger("aioice.ice").addHandler(_Consent())
+        logging.getLogger("aioice.ice").setLevel(logging.INFO)
         self.loop = asyncio.new_event_loop()
         self.conns = set()
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
@@ -307,7 +345,14 @@ class WebRTC:
 
             @pc.on("iceconnectionstatechange")
             def _ice():
-                self.record({"t": time.time(), "webrtc_ice": pc.iceConnectionState, "session": sid})
+                # `lost`: closed while the browser was still subscribed (not by its unsubscribe):
+                # `reason` consent when aioice's consent had just expired, else the browser's side
+                # closed (DTLS or the connection ended).
+                lost = pc.iceConnectionState == "closed" and sid in self.sessions
+                extra = {}
+                if lost:
+                    extra = {"lost": True, "reason": "consent" if time.monotonic() - self.consent_expired_at < 2 else "remote"}
+                self.record(dict({"t": time.time(), "webrtc_ice": pc.iceConnectionState, "session": sid}, **extra))
 
             await pc.setLocalDescription(await pc.createAnswer())
             answer = pc.localDescription.sdp

@@ -1372,9 +1372,13 @@ def webrtc_detail(c):
         if not got:
             return "n/a"
         return fmt.format(sum(got)) + ("" if len(got) == len(ws) else f" (from {len(got)} of {len(ws)} streams)")
+    # More than one session for a camera: HA's player made another (after ICE failed, #202's S1 heavy).
+    again = [w for w in ws if (w.get("sessions") or 0) > 1 or any((cn.get("offers") or 0) > 1 for cn in w.get("connections") or [])]
+    restarts = (f", {len(again)} of {len(ws)} streams needed another WebRTC session"
+                f" (no video for {sum(w.get('no_video_ms') or 0 for w in again) / 1000:.1f} s in all)") if again else ""
     return (f"decoder {', '.join(decs)}" + (f" ({', '.join(hw)})" if hw else "")
             + f", {total('frames_decoded')} frames decoded, {total('frames_dropped')} dropped, "
-            f"{total('freezes')} freezes ({total('freeze_s', '{:.1f}')} s), candidate {', '.join(cand) or 'n/a'}")
+            f"{total('freezes')} freezes ({total('freeze_s', '{:.1f}')} s), candidate {', '.join(cand) or 'n/a'}{restarts}")
 
 
 def camera_cell(s_, b):

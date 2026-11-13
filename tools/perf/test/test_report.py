@@ -600,6 +600,12 @@ class CameraFallback(unittest.TestCase):
         self.assertEqual(R.webrtc_detail(run), "decoder libvpx (software), 290 frames decoded, 3 dropped, 1 freezes (0.6 s), "
                                                "candidate relay/tcp")
         self.assertEqual(R.webrtc_detail(R.camera_run(camera_line("typical", path="hls"), "typical")), "")
+        # A camera that needed another session (the S1's heavy, smoke3): said, with its time without video.
+        again = camera_line("typical")
+        again["streams"][0]["webrtc"] = {"inbound": True, "frames_decoded": 200, "sessions": 1, "no_video_ms": 31000,
+                                         "connections": [{"n": 3, "made_ms": 900, "offers": 2, "ice": [[2000, "connected"], [33000, "failed"]]}]}
+        self.assertTrue(R.webrtc_detail(R.camera_run(again, "typical")).endswith(
+            "1 of 1 streams needed another WebRTC session (no video for 31.0 s in all)"))
         # Counters the browser didn't report read n/a, never 0; a partial sum says so.
         bare = camera_line("heavy")
         for k, st in enumerate(bare["streams"]):
