@@ -411,6 +411,20 @@ boot_resource "$LOGO" "$T/undo/bootloader.img" other
 out=$(fel_undo); rc=$?
 check "a splash that isn't ours: exit 0" test "$rc" -eq 0
 check "and it is restored" cmp -s "$T/undo/bootloader.img" "$T/emmc/bootloader"
+# The splash check itself fails (a broken list, a crash): undo stops rather than guess.
+REAL_PY=$(command -v python3)
+w "$T/fbin/python3" <<STUB
+#!/bin/sh
+case " \$* " in *" --ours "*) echo "Traceback: the list is broken" >&2; exit 1 ;; esac
+exec "$REAL_PY" "\$@"
+STUB
+rm -f "$T/emmc/bootloader"
+out=$(fel_undo); rc=$?
+rm -f "$T/fbin/python3"
+check "splash check fails: refused" test "$rc" -ne 0
+check "and says why" has "$out" "could not check the splash in $T/undo/bootloader.img. Nothing was changed."
+check "before any tool runs" test ! -s "$T/tools.log"
+check "nothing written" test ! -e "$T/emmc/bootloader"
 
 echo "== docs/install.md#undo: the by-hand check passes boot and vbmeta, and stops on either"
 CHK=$(awk '/install-tests.sh runs this block/ {f = 1; next} f && /^```sh$/ {g = 1; next} g && /^```$/ {exit} g' "$REPO/docs/install.md")

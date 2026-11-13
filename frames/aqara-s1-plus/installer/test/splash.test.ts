@@ -15,6 +15,7 @@ import { REPO, bootResource, otherBootlogo, ourBootlogo } from './fakes';
 const LIST = join(REPO, 'branding/bootlogos.json');
 /** isPatched needs a real boot image; these tests are about the splash, so boot counts as stock. */
 const plan: BackupPlan = { ...s1Plus.backup, isPatched: async () => false };
+const sha256 = (d: Uint8Array) => createHash('sha256').update(d).digest('hex');
 const backup = (bootloader: Uint8Array) => new Map([['boot', new Uint8Array(16)], ['vbmeta', new Uint8Array(16)], ['bootloader', bootloader]]);
 const cli = (img: Uint8Array) => {
   const dir = mkdtempSync(join(tmpdir(), 's1-splash-'));
@@ -29,7 +30,10 @@ describe('undo and our splash', () => {
   const installed = replaceBootlogo(stock, ourBootlogo());
 
   it('reads BOOTLOGO.BMP through its FAT chain', () => {
-    expect(readBootlogo(installed)).toEqual(ourBootlogo());
+    // lengths and hashes: on a mismatch, vitest's diff of two 3 MB arrays never finishes
+    const bmp = readBootlogo(installed);
+    expect(bmp?.length).toBe(ourBootlogo().length);
+    expect(sha256(bmp!)).toBe(sha256(ourBootlogo()));
   });
 
   it('refuses a backup whose splash is ours', async () => {
@@ -55,6 +59,8 @@ describe('undo and our splash', () => {
     expect(await isOurSplash(stock)).toBe(false);
   });
 
+  // Entries are permanent: panels in the field still carry old splashes. No test can catch a removed
+  // entry once its bootlogo.bmp is gone from the tree, so never remove one.
   it('knows every bootlogo.bmp in branding/ (common.build lists each one it writes)', () => {
     const listed = new Set((JSON.parse(readFileSync(LIST, 'utf8')) as { bootlogos: { sha256: string }[] }).bootlogos.map((b) => b.sha256));
     const bmps: string[] = [];
@@ -67,7 +73,7 @@ describe('undo and our splash', () => {
     };
     walk(join(REPO, 'branding'));
     expect(bmps.length).toBeGreaterThan(0);
-    for (const p of bmps) expect(listed, `${relative(REPO, p)} is not in branding/bootlogos.json`).toContain(createHash('sha256').update(readFileSync(p)).digest('hex'));
+    for (const p of bmps) expect(listed, `${relative(REPO, p)} is not in branding/bootlogos.json`).toContain(sha256(readFileSync(p)));
   });
 });
 
