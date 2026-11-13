@@ -108,6 +108,15 @@ class PanelCode(
     @Synchronized
     fun current(): Shown? = pending?.shown?.takeIf { clock() < it.untilMs }
 
+    /** Hides the code if it has run out (the panel calls this when [Shown.untilMs] passes). A newer code stays. */
+    fun expire() {
+        val hide = synchronized(this) {
+            val p = pending
+            (p != null && clock() >= p.shown.untilMs).also { if (it) pending = null }
+        }
+        if (hide) display(null)
+    }
+
     /** Hides the code (the person at the panel closed it, or the browser cancelled). */
     fun dismiss() {
         synchronized(this) { pending = null }

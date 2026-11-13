@@ -16,8 +16,10 @@ object Redact {
     private val rules: List<Pair<Regex, (MatchResult) -> String>> = listOf(
         Regex("eyJ[A-Za-z0-9_-]{4,}\\.[A-Za-z0-9_-]{4,}\\.[A-Za-z0-9_-]+") to { _ -> "<token>" },
         Regex("(?i)\\bBearer\\s+[A-Za-z0-9._~+/=-]+") to { _ -> "Bearer <token>" },
-        Regex("(?i)\\b([a-z_]*(?:token|password|passwd|passphrase|psk|secret|api_?key|network_?key|noise_?key|key|dataset|tlv|code_verifier))(\"?\\s*[:=]\\s*\"?)([^\\s\"',&}]+)") to
-            { m -> m.groupValues[1] + m.groupValues[2] + "<removed>" },
+        // A quoted value to its closing quote; an unquoted one to the end of the field (`&`, `;`, line end),
+        // so a Wi-Fi password with spaces or commas goes whole.
+        Regex("(?i)\\b([a-z_]*(?:token|password|passwd|passphrase|psk|secret|api_?key|network_?key|noise_?key|key|dataset|tlv|code_verifier))(\"?\\s*[:=]\\s*)(\"[^\"\\n]*\"|'[^'\\n]*'|[^&;\\n]+)") to
+            { m -> m.groupValues[1] + m.groupValues[2] + (if (m.groupValues[3].startsWith("\"")) "\"<removed>\"" else if (m.groupValues[3].startsWith("'")) "'<removed>'" else "<removed>") },
         Regex("(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{43}=") to { _ -> "<key>" },
         Regex("\\b(?:[0-9A-Fa-f]{2}[:-]){7}[0-9A-Fa-f]{2}\\b") to { _ -> "<eui64>" },
         Regex("\\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\\b") to { _ -> "<mac>" },

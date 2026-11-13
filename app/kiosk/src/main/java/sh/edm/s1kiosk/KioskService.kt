@@ -65,6 +65,8 @@ class KioskService : Service() {
             main.post {
                 if (shown != null) glassworks.screen.wake("panel code")
                 codeOverlay?.show(shown)
+                // Off the screen when it runs out (expire() leaves a newer code alone), so it doesn't keep the screen on.
+                if (shown != null) main.postDelayed({ glassworks.panelCode.expire() }, (shown.untilMs - System.currentTimeMillis()).coerceAtLeast(0) + 500)
             }
         }
         val d = HaDiscovery(this, UrlConnectionPoster(timeoutMs = 5_000)) { url, source ->

@@ -51,7 +51,9 @@ class ManageServer(
     private val random = SecureRandom()
 
     fun handle(req: HttpRequest): HttpResponse {
-        if (req.path in qrPaths || (req.path == "/" && !setUp())) return qrPage(req)
+        if (req.path in qrPaths) return qrPage(req)
+        // Before setup, / is the QR sign-in, except for a browser already signed in to Manage (with the code).
+        if (req.path == "/" && !setUp() && sessions.lookup(req.cookies[SESSION], haBase()) == null) return qrPage(req)
         if (!hostAllowed(req.headers["host"], ownHosts())) return HttpResponse.text(400, "Open this page with the panel's address.")
         if (req.method != "GET" && req.method != "HEAD" && req.method != "POST") return HttpResponse.text(405, "Not allowed.")
         if (req.method == "POST" && !sameOrigin(req)) return HttpResponse.text(403, "This form didn't come from the panel's own page.")
@@ -111,6 +113,11 @@ class ManageServer(
                     button = """<a class="btn" href="/">Back to sign in</a>"""))
             }
             is HaSignIn.Result.Ok -> {
+                // Authenticated against the address the sign-in started with: if the panel's has changed since, start again.
+                if (r.haBase != haBase()?.trim()?.trimEnd('/')) {
+                    return html(409, PageShell.qrPage(name(), "Home Assistant's address changed", "Sign in again.", PageShell.Look.PROBLEM,
+                        button = """<a class="btn" href="/">Back to sign in</a>"""))
+                }
                 val (token, s) = sessions.create(r.user.name, SignedInWith.HOME_ASSISTANT, SessionStore.browserName(req.headers["user-agent"]), r.remember, haBase())
                 event("${r.user.name} signed in with Home Assistant (${s.browser})")
                 // HA sent the browser here from another site: a redirect would still be cross-site, and the

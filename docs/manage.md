@@ -69,11 +69,19 @@ manage a panel. Whether other users get a say is open (#124).
   removed, so you can attach them to an issue.
 
 **What plain HTTP on your network doesn't protect.** The page is `http://`, like Home Assistant on
-`http://`. Someone who can read your Wi-Fi traffic can see the few seconds of the Home Assistant
-sign-in and the panel's cookie. With that cookie they can use the Manage page as you, until it's
-signed out. They can't use Home Assistant (that token is already revoked), and they can't reboot
-the panel (that needs the code on its screen). Use a network you trust; HTTPS on the panel may come
-later.
+`http://`. Someone who can read your Wi-Fi traffic can see:
+
+- **The panel's cookie.** With it they can use the Manage page as you until it's signed out. The
+  cookie gets them nothing else: not Home Assistant (the panel already revoked that token), and not a
+  reboot (that needs the code on the panel's screen).
+- **Your Home Assistant password, if Home Assistant itself is on `http://`.** You type it on Home
+  Assistant's own login page, not on the panel, so the panel never has it; but over plain HTTP that page
+  sends it in the clear, as it does whenever you sign in to Home Assistant over `http://`. Revoking the
+  token doesn't change the password. Use HTTPS for Home Assistant, or multi-factor sign-in, if that
+  matters on your network.
+
+Someone who can *change* traffic can also change the page. Use a network you trust; HTTPS on the panel
+may come later.
 
 ## For developers
 

@@ -30,6 +30,7 @@ class ManageLog(
     @Synchronized
     fun append(e: LogEntry) {
         dir.mkdirs()
+        prune()
         if (current.length() >= fileBytes) {
             old.delete()
             current.renameTo(old)
@@ -41,12 +42,25 @@ class ManageLog(
     /** Newest first, at most [limit]. [level]: only that level and worse. [search]: case-insensitive, in source or text. */
     @Synchronized
     fun read(level: LogEntry.Level = LogEntry.Level.INFO, search: String = "", limit: Int = 500): List<LogEntry> {
+        prune()
         val since = clock() - keepMs
         val all = (readFile(old) + readFile(current)).filter { it.timeMs >= since && it.level >= level }
         val q = search.trim().lowercase()
         return all.asReversed().asSequence()
             .filter { q.isEmpty() || q in it.text.lowercase() || q in it.source.lowercase() }
             .take(limit).toList()
+    }
+
+    /** Takes lines older than [keepMs] off the disk, also when nothing new is written. Cheap when there are none. */
+    private fun prune() {
+        val since = clock() - keepMs
+        for (f in listOf(old, current)) {
+            if (!f.exists()) continue
+            val first = f.bufferedReader(Charsets.UTF_8).use { it.readLine() }?.let(::parse) ?: continue
+            if (first.timeMs >= since) continue
+            val keep = f.readLines(Charsets.UTF_8).filter { (parse(it)?.timeMs ?: 0) >= since }
+            if (keep.isEmpty()) f.delete() else f.writeText(keep.joinToString("\n", postfix = "\n"), Charsets.UTF_8)
+        }
     }
 
     private fun readFile(f: File): List<LogEntry> = if (!f.exists()) emptyList() else f.readLines(Charsets.UTF_8).mapNotNull(::parse)
@@ -84,15 +98,20 @@ class ManageLog(
  * Android shows an app only its own lines. [source] picks the tags and names them.
  */
 class LogcatTail(private val log: ManageLog, private val source: (String) -> String?, private val onError: (String) -> Unit = {}) {
-    @Volatile private var process: Process? = null
+    private var running = false
+    private var process: Process? = null
 
+    @Synchronized
     fun start() {
-        if (process != null) return
+        if (running) return
+        running = true
         Thread({
             try {
                 // -T 1: from now on; earlier lines were copied by the previous run, or were before the app started.
                 val p = ProcessBuilder("logcat", "-v", "epoch", "-T", "1").redirectErrorStream(true).start()
-                process = p
+                // stop() may have run while logcat started: then this process is not wanted.
+                val keep = synchronized(this) { if (running) { process = p; true } else false }
+                if (!keep) { p.destroy(); return@Thread }
                 BufferedReader(InputStreamReader(p.inputStream)).useLines { lines ->
                     for (l in lines) ManageLog.fromLogcat(l, source)?.let { runCatching { log.append(it) } }
                 }
@@ -102,7 +121,9 @@ class LogcatTail(private val log: ManageLog, private val source: (String) -> Str
         }, "glassworks-log").apply { isDaemon = true; start() }
     }
 
+    @Synchronized
     fun stop() {
+        running = false
         process?.destroy()
         process = null
     }

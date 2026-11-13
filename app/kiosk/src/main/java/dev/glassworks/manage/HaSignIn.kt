@@ -62,7 +62,8 @@ class HaSignIn(
                   val redirectUri: String, val remember: Boolean, val next: String, val createdMs: Long)
 
     sealed class Result {
-        class Ok(val user: HaUser, val remember: Boolean, val next: String) : Result()
+        /** [haBase]: the HA address the person was checked against. */
+        class Ok(val user: HaUser, val remember: Boolean, val next: String, val haBase: String) : Result()
         class Failed(val title: String, val text: String) : Result()
     }
 
@@ -117,7 +118,7 @@ class HaSignIn(
         return when {
             user == null -> Result.Failed("Can't sign in", "Home Assistant didn't say who signed in.")
             !user.isAdmin -> Result.Failed("Administrators only", "${user.name} isn't a Home Assistant administrator. Sign in with an administrator's account.")
-            else -> Result.Ok(user, p.remember, p.next)
+            else -> Result.Ok(user, p.remember, p.next, p.haBase)
         }
     }
 

@@ -126,6 +126,9 @@ class ManagePartsTest {
             "Authorization: Bearer abc.DEF-123" to "Authorization: Bearer <token>",
             "refresh_token=RT-12345&x=1" to "refresh_token=<removed>&x=1",
             "{\"password\": \"hunter2\"}" to "{\"password\": \"<removed>\"}",
+            "{\"password\": \"hunter two\"}" to "{\"password\": \"<removed>\"}",
+            "psk=My Wifi Password" to "psk=<removed>",
+            "password=ab,cd&x=1" to "password=<removed>&x=1",
             "psk=MyWifiPassword" to "psk=<removed>",
             "wifi passphrase: hunter22" to "wifi passphrase: <removed>",
             "noise key AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" to "noise key <key>",
@@ -154,6 +157,31 @@ class ManagePartsTest {
         assertEquals(listOf("Wake word heard (0.82)", "ZHA disconnected"), again.read().map { it.text })
         assertEquals(listOf("ZHA disconnected"), again.read(LogEntry.Level.WARNING).map { it.text })
         assertEquals(listOf("Wake word heard (0.82)"), again.read(search = "wake").map { it.text })
+    }
+
+    @Test fun expiredLinesLeaveTheDiskEvenWhenNothingNewIsWritten() {
+        val logDir = File(dir, "log-old")
+        val log = ManageLog(logDir, clock = { now })
+        log.append(LogEntry(now, LogEntry.Level.INFO, "Radio", "joined"))
+        now += 8L * 86_400_000
+        assertTrue(log.read().isEmpty())
+        assertFalse("the file with only old lines is gone", File(logDir, "log.0").exists())
+    }
+
+    @Test fun anExpiredCodeLeavesTheScreenButANewerOneStays() {
+        val c = code()
+        val shown = ArrayList<PanelCode.Shown?>()
+        c.display = { shown += it }
+        c.ok("signin", "a")
+        now += 4 * 60_000L
+        c.expire()
+        assertEquals("not run out yet", 1, shown.size)
+        now += 60_000L
+        c.expire()
+        assertNull(shown.last())
+        c.ok("signin", "b")
+        c.expire()
+        assertNotNull("a newer code stays up", shown.last())
     }
 
     @Test fun theLogRedactsWhatItWrites() {

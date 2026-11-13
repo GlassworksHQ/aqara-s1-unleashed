@@ -54,6 +54,28 @@ class ManageServerTest {
         assertTrue(b.get("/signin").text().contains("""<a class="to" href="/">Manage this panel"""))
     }
 
+    @Test fun beforeSetupABrowserSignedInWithTheCodeStillGetsTheOverview() {
+        f.setUp = false
+        val b = f.Browser()
+        b.get("/log")
+        b.post("/manage/code", mapOf("next" to "/"))
+        assertEquals("/", b.post("/manage/code", mapOf("next" to "/", "code" to f.shown.last()!!.code)).headers["Location"])
+        assertTrue(b.get("/").text().contains("Running"))
+        assertTrue("others still get the QR sign-in", f.Browser().get("/").text().contains("QR /"))
+    }
+
+    @Test fun aSignInStartedBeforeHasAddressChangedIsRefused() {
+        val b = f.Browser()
+        b.get("/")
+        val loc = b.post("/manage/ha", mapOf("next" to "/")).headers["Location"]!!
+        val state = HttpServer.parseQuery(loc.substringAfter('?'))["state"]
+        f.haBase = "http://192.0.2.11:8123"
+        val cb = b.get("/manage/callback?code=CODE&state=$state")
+        assertEquals(409, cb.status)
+        assertNull(b.cookies[ManageServer.SESSION])
+        assertEquals("the token is still revoked", listOf("REFRESH"), f.revoked)
+    }
+
     @Test fun aLinkFromAnotherSiteReloadsItselfSoTheStrictCookieComesAlong() {
         val b = f.Browser()
         b.signInWithHa()
