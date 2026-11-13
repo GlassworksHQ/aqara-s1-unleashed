@@ -94,7 +94,8 @@
     }
   },
   "install": {
-    "how": "In the browser, over USB. It backs the panel up first, then roots and flashes it."
+    "how": "In the browser, over USB. It backs the panel up first, then roots and flashes it.",
+    "href": "https://s1.edm.sh"
   },
   "ratings": {
     "difficulty": {
