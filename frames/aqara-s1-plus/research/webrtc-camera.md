@@ -32,7 +32,7 @@ because go2rtc has been built into HA since 2024.11 (#202). Before grading WebRT
    - `libmozavcodec.so` (Gecko's bundled FFmpeg) was loaded in the tab process.
    - logcat had no `MediaCodec`, `CCodec` or `OMXNodeInstance` lines for the stream.
    - For comparison, HLS on the same panel logs an `OMX.allwinner.video.decoder.avc` instance per
-     stream, and its flushes (s1cam3, [docs/perf.md](../perf.md#live-camera-streams-174-protocol-5)).
+     stream, and its flushes (s1cam3, [docs/perf.md](../../../docs/perf.md#live-camera-streams-174-protocol-5)).
 
    So the WebRTC video was very likely decoded in software. This is **read** from the logs, not
    proven: a loaded library isn't proof that it decoded this stream.

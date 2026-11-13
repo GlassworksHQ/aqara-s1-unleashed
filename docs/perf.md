@@ -569,7 +569,7 @@ showed one meanwhile.
   whether the frontend had removed it by the window's end.
 - **The decoders from logcat**, as for HLS (`media`). On the S1 a real camera over WebRTC logged no
   `MediaCodec` lines, and Gecko's FFmpeg was loaded: very likely software decoding, where HLS gets
-  the hardware decoder ([research/webrtc-camera.md](research/webrtc-camera.md), 2026-11-13). So the
+  the hardware decoder ([frames/aqara-s1-plus/research/webrtc-camera.md](../frames/aqara-s1-plus/research/webrtc-camera.md), 2026-11-13). So the
   WebRTC number on the S1 may be CPU-bound. That is still the number a real setup gets.
 
 **The HLS fallback** (detail, never in the grade). After each run's graded views, the runner opens

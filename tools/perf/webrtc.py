@@ -18,7 +18,6 @@ hashes). It listens on 127.0.0.1 and reads nothing from the device.
 import asyncio
 import fractions
 import hashlib
-import os
 import socket
 import struct
 import threading
@@ -298,7 +297,3 @@ def available():
         return True
     except ImportError:
         return False
-
-
-if __name__ == "__main__":
-    print(os.path.abspath(__file__))

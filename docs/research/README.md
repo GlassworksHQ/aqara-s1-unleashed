@@ -222,7 +222,6 @@ This page is the index of every note. Notes about one device live with its frame
 | [bringup.md](bringup.md) | The method: how to break into a device step by step, and what the S1 taught us about FEL, U-Boot, fastboot and Android 10 |
 | [TEMPLATE.md](TEMPLATE.md) | Start a new note from this |
 | [microwakeword.md](microwakeword.md) | Replacing openWakeWord with microWakeWord: the Kotlin port of TFLite Micro's audio frontend, the models, test speech, and what is left for the panel |
-| [webrtc-camera.md](webrtc-camera.md) | A real camera over WebRTC in GeckoView on the S1: it plays, very likely with software decoding (Gecko's FFmpeg) where HLS gets the hardware decoder (#202) |
 
 ### Aqara S1 Plus ([`frames/aqara-s1-plus/research/`](../../frames/aqara-s1-plus/research/))
 
@@ -243,6 +242,7 @@ This page is the index of every note. Notes about one device live with its frame
 | [framework-restart.md](../../frames/aqara-s1-plus/research/framework-restart.md) | Android 10's ActivityManager breaking during fast kiosk restarts, and `system_server` restarting; the likely (untested) cause of the panel "dropping off USB" |
 | [boot-animation.md](../../frames/aqara-s1-plus/research/boot-animation.md) | What Android 10's boot animation and the 32 MiB boot image allow: texture caching, trim, the size budget, and what was cut from the #63 design |
 | [idle-cpu.md](../../frames/aqara-s1-plus/research/idle-cpu.md) | Why the kiosk uses ~40% of a core at idle: the wake word's embedding model, per-thread numbers, and the options (#105) |
+| [webrtc-camera.md](../../frames/aqara-s1-plus/research/webrtc-camera.md) | A real camera over WebRTC in GeckoView on the S1: it plays, very likely with software decoding (Gecko's FFmpeg) where HLS gets the hardware decoder (#202) |
 
 ### lululemon Studio Mirror ([`frames/lululemon-mirror/research/`](../../frames/lululemon-mirror/research/))
 
