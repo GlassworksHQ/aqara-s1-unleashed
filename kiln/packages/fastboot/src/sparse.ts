@@ -257,6 +257,11 @@ export async function* splitBlob(blob: Blob, splitSize: number) {
     // AOSP source code does the same. Whole blocks, so a split raw chunk stays valid.
     const safeSendValue =
         Math.floor((splitSize * (7 / 8)) / header.blockSize) * header.blockSize;
+    if (safeSendValue < header.blockSize) {
+        throw new ImageError(
+            `Maximum download size ${splitSize} is too small to hold one ${header.blockSize}-byte block`
+        );
+    }
 
     // Remove CRC32 (if present), otherwise splitting will invalidate it
     header.crc32 = 0;
