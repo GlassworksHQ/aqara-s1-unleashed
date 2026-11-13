@@ -666,11 +666,13 @@ Assistant entities and the Thread join from Home Assistant, as a Glassworks pane
   mode the role and the network's name, from the helper (`joined “Name” as a child; it becomes a
   router when the network promotes it`, `… as a router`, `dataset set, looking for the network`,
   `not on a Thread network yet`).
-- Setup screen, Panes step (#63): the radio is one card, "Zigbee / Thread radio", with a switch (off =
-  Off) and the four other modes as chips under the cards (Zigbee coordinator, Thread border router,
-  Zigbee repeater β, Thread repeater β). Continue applies it through the same request as the setup
-  channel's `radio.set_mode`. The follow-up card (QR codes, stack choice, Join/Leave, the dataset
-  field) is in the settings menu. The setup channel (web installer) offers the same five options;
+- Setup screen (#63 round 2): on the Panes step the radio is one card, "Zigbee / Thread radio", with a
+  switch (off = Off). Turned on, it has its own step under Panes: the roles technology first
+  (`radio/ui/RadioTechPicker`: Zigbee coordinator or repeater β, Thread border router or repeater β),
+  applied with Continue through the same request as the setup channel's `radio.set_mode`, then the
+  role's follow-up card (QR codes, Join, the dataset field), as in the settings menu. The step holds
+  from its Continue until the card's own Continue, also while the radio applies. The controls that ask
+  first (the Zigbee stack, Leave) are in the settings menu only. In a preview nothing reaches the radio. The setup channel (web installer) offers the same five options;
   options carry optional `experimental` and `repeater` flags. `radio.set_mode` accepts only those options' ids
   (`RadioStep.OPTIONS`): a mode the step doesn't offer is refused with "Unknown radio mode", even when
   `RadioMode` has it ([onboarding.md](onboarding.md#from-the-web-installer-improv-serial--setup-channel-over-adb-)).

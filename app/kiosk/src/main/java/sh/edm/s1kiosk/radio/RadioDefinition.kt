@@ -102,6 +102,13 @@ class RadioDefinition(
      */
     @Volatile var followUpOpen = false
 
+    /**
+     * Setup's radio step is being answered: from its Continue (or "Change the mode") until its
+     * follow-up's Continue. The controller stores the mode before the helper answers, so without this the
+     * 2 s setup tick read the step as done mid-apply and showed Done over a failure (verifier 4bc205dc).
+     */
+    @Volatile var answering = false
+
     val step: SetupStep = object : SetupStep {
         override val id = "radio"
         override val title = "Radio"
@@ -111,7 +118,7 @@ class RadioDefinition(
          * Answered in setup (the mode, then its follow-up) or over the setup channel, or a mode was
          * chosen with HA's `Radio mode` select.
          */
-        override fun done() = (stepDone || prefs.mode != null) && !followUpOpen
+        override fun done() = (stepDone || prefs.mode != null) && !followUpOpen && !answering
 
         override fun channelState() = channelJson()
 
@@ -136,7 +143,8 @@ class RadioDefinition(
         title = "Zigbee / Thread radio",
         detail = "For your devices",
         on = { readout.mode() != RadioMode.OFF },
-        apply = { on -> if (on) null else applyChoice(RadioMode.OFF.id) },
+        // Off on Panes also lets go of the radio's own step, half answered or not.
+        apply = { on -> if (on) null else { answering = false; followUpOpen = false; applyChoice(RadioMode.OFF.id) } },
     )
 
     /**
