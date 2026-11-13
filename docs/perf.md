@@ -704,7 +704,7 @@ Under the headline, every report has a short paragraph in plain words (`notes`, 
 by fixed rules in `tools/perf/notes.py` from the report alone, so the same report always gives the
 same text. It never gives the letter or its meaning. It is a summary: every number it leaves out
 is in the report body. At most four sentences and about 70 words (the maintainer's model, 2026-11-13,
-is 83), plus one when the grade is provisional:
+is 83; the test caps it at 85), plus one when the grade is provisional:
 
 1. **What's good**, in one sentence: the heaviest page that reaches a level, and what is quick,
    smooth or fluid there ("Light dashboards feel good: …"). Without a level, the page with the most
@@ -727,6 +727,11 @@ is 83), plus one when the grade is provisional:
 
 4. **Memory**, when RAM was measured: "Memory isn't the limit (X of Y MB)", the app's peak against
    its budget, or "Memory is a limit" with the budget it misses.
+5. **Provisional**, only when the grade is: one plain clause from the run's protocols and what is
+   missing, not the reasons' wording. A run of an older protocol reads "measured with an older
+   version of the test" (", without cameras" when its camera tasks are missing, since cameras came
+   with protocol 5); every other reason and missing task is counted ("2 things weren't measured
+   fully"). The report keeps the reasons in full (`grade.provisional_reasons`).
 
 Not said: heat, unless something shows throttling (the run records temperatures, in `thermal`, but
 no clock speeds), and nothing on long tasks, which the run doesn't record. The notes judge tasks by
@@ -735,8 +740,8 @@ the report's rubric, so `notes.rubric` names its version. On the S1:
 | Run | Notes |
 |---|---|
 | s1cam3 (protocol 5, 3 runs) | Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger dashboards slow down: typical scrolls at 25 fps and takes 6.6 s to open, and heavy takes 0.7 s to show a change. The likely limit is the browser's main thread: it stays busy (97% of a core on typical with a camera playing), so cameras get video late even though the hardware decoder keeps up. Memory isn't the limit (889 of 988 MB). |
-| s1v7 (protocol 4, provisional under the protocol 5 rubric) | Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 4.8 s to open. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: the pages ran protocol 4; this rubric is for protocol 5; the cameras weren't measured. |
-| smoke11 (protocol 4, 1 run, provisional) | Light dashboards feel good: taps and opening a view are quick, and scrolling and live updates are fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 5.2 s to open, and heavy takes 230 ms to answer a tap. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (748 of 988 MB). Provisional: the pages ran protocol 4; this rubric is for protocol 5; the cameras weren't measured. |
+| s1v7 (protocol 4, provisional under the protocol 5 rubric) | Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 4.8 s to open. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: measured with an older version of the test, without cameras. |
+| smoke11 (protocol 4, 1 run, provisional) | Light dashboards feel good: taps and opening a view are quick, and scrolling and live updates are fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 5.2 s to open, and heavy takes 230 ms to answer a tap. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (748 of 988 MB). Provisional: measured with an older version of the test, without cameras. |
 
 The task levels (`scroll_levels`, `update_levels`), the page levels, the letters (A+ first) and the
 restart cap live in `tools/perf/page/rubric.json` (`grade`), next to the thresholds.

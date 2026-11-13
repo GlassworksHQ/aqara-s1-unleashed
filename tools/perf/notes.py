@@ -247,15 +247,30 @@ def memory_sentence(rep):
 
 
 def provisional_sentence(rep):
+    """One plain clause for why the grade is provisional; the report lists the reasons in full.
+    From the run's protocols and what is missing, not from the reasons' wording."""
     g = rep.get("grade") or {}
     if not g.get("provisional"):
         return None
-    why = list(g.get("provisional_reasons") or [])
-    word = {"tap": "taps", "scroll": "scrolling", "updates": "live updates", "load": "opening a view", "camera": "the cameras"}
-    missing = sorted({word[m.split(".")[1]] if "." in m else "the restart" for m in g.get("missing") or []})
-    if missing:
-        why.append(f"{_join(missing)} {'wasn' if missing == ['the restart'] else 'weren'}'t measured")
-    return "Provisional: " + "; ".join(why or ["not everything was measured"]) + "."
+    protocols = (((rep.get("graded") or {}).get("reference") or {}).get("protocols")) or []
+    other = [p for p in protocols if p != G.PROTOCOL_VERSION]
+    missing = list(g.get("missing") or [])
+    parts = []
+    if other:
+        older = all(isinstance(p, int) and p < G.PROTOCOL_VERSION for p in other)
+        clause = f"measured with {'an older' if older else 'another'} version of the test"
+        cams = [m for m in missing if m.endswith(".camera")]
+        if older and cams:
+            # Cameras came with protocol 5 (#174): an older run has none to measure.
+            clause += ", without cameras"
+            missing = [m for m in missing if m not in cams]
+        parts.append(clause)
+    # Everything else: each other reason, and each task not measured.
+    n = len(g.get("provisional_reasons") or []) - (1 if other else 0) + len(missing)
+    if n > 0:
+        what = "1 thing wasn't" if n == 1 else f"{n} things weren't"
+        parts.append(f"{'and ' if parts else ''}{what} measured fully")
+    return "Provisional: " + (", ".join(parts) if parts else "not everything was measured fully") + "."
 
 
 def notes(rep):

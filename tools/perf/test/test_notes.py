@@ -29,14 +29,15 @@ S1V7 = (
     "Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger "
     "dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 4.8 s to open. The likely "
     "limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the "
-    "page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: the pages ran protocol 4; "
-    "this rubric is for protocol 5; the cameras weren't measured.")
+    "page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: measured with an older "
+    "version of the test, without cameras.")
+
 SMOKE11 = (
     "Light dashboards feel good: taps and opening a view are quick, and scrolling and live updates are fluid. "
     "Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 5.2 s to open, and "
     "heavy takes 230 ms to answer a tap. The likely limit is the browser's main thread: it stays busy (46% of a "
     "core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (748 of 988 "
-    "MB). Provisional: the pages ran protocol 4; this rubric is for protocol 5; the cameras weren't measured.")
+    "MB). Provisional: measured with an older version of the test, without cameras.")
 
 
 def fast():
@@ -64,7 +65,9 @@ class RealRuns(unittest.TestCase):
 
     def test_the_docs_show_what_the_code_writes(self):
         with open(os.path.join(HERE, "..", "..", "..", "docs", "perf.md")) as f:
-            self.assertIn(S1CAM3, f.read())
+            docs = f.read()
+        for text in (S1CAM3, S1V7, SMOKE11):
+            self.assertIn(text, docs)
 
     def test_the_same_report_gives_the_same_text(self):
         self.assertEqual(N.notes(run("s1cam3")), N.notes(run("s1cam3")))
@@ -209,10 +212,38 @@ class CausesNeedEvidence(unittest.TestCase):
         rep["grade"]["capped_by_start"] = True
         self.assertTrue(N.notes(rep)["limits"].startswith("Bigger dashboards slow down: a restart takes 12 s, and typical"))
 
-    def test_a_restart_that_wasnt_measured_says_so(self):
+    def test_a_restart_that_wasnt_measured_is_counted(self):
         rep = run("s1cam3")
         rep["grade"].update(start={"value": None, "band": None}, missing=["start"], provisional=True)
-        self.assertTrue(N.notes(rep)["text"].endswith("the restart wasn't measured."))
+        self.assertTrue(N.notes(rep)["text"].endswith("Provisional: 1 thing wasn't measured fully."))
+
+
+class Provisional(unittest.TestCase):
+    """One plain clause, from the run's protocols and what is missing; the report keeps the reasons."""
+
+    def test_an_older_protocol_without_cameras(self):
+        rep = run("s1v7")
+        self.assertEqual(N.provisional_sentence(rep), "Provisional: measured with an older version of the test, without cameras.")
+        self.assertNotIn("rubric is for protocol", N.notes(rep)["text"])
+        self.assertIn("the pages ran protocol 4; this rubric is for protocol 5", rep["grade"]["provisional_reasons"])
+
+    def test_other_reasons_and_missing_tasks_are_counted(self):
+        rep = run("s1cam3")
+        rep["grade"].update(provisional=True, missing=["heavy.updates"],
+                            provisional_reasons=["1 of 3 graded runs failed or are missing", "the fake Home Assistant sent a live change 250 ms late"])
+        self.assertEqual(N.provisional_sentence(rep), "Provisional: 3 things weren't measured fully.")
+        rep = run("s1v7")
+        rep["grade"]["provisional_reasons"].append("1 of 3 graded runs failed or are missing")
+        self.assertEqual(N.provisional_sentence(rep),
+                         "Provisional: measured with an older version of the test, without cameras, and 1 thing wasn't measured fully.")
+
+    def test_a_newer_protocol_is_another_version(self):
+        rep = run("s1v7")
+        rep["graded"]["reference"]["protocols"] = [G.PROTOCOL_VERSION + 1]
+        self.assertEqual(N.provisional_sentence(rep), "Provisional: measured with another version of the test, and 2 things weren't measured fully.")
+
+    def test_not_provisional_says_nothing(self):
+        self.assertIsNone(N.provisional_sentence(run("s1cam3")))
 
 
 class InTheReport(unittest.TestCase):
