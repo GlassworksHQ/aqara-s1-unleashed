@@ -1,10 +1,12 @@
 # microWakeWord on the S1: can it replace openWakeWord, and what does it cost?
 
-**Status (2026-11-13): working; CPU measured on the panel, voice tests pending.** S1 Kiosk runs
+**Status (2026-11-13): working; CPU and synthetic-voice detection measured on the panel, false
+wakes pending.** S1 Kiosk runs
 microWakeWord's four official models behind a Kotlin port of the TFLite Micro audio frontend. The
 port matches the frontend's C code bit for bit, and all four models fire on their own word in a
 synthesised clip and nowhere else. On the S1 the wake word's thread went from 37.9% to 3.7% of a
-core. Detection with real voices and false wakes are not measured yet.
+core, and macOS text-to-speech from about 1 m woke it 36 times in 40 tries. Real people's voices and
+false wakes are not measured yet.
 
 Device: Aqara S1 Plus (Allwinner A133, Android 10, armeabi-v7a), S1 Kiosk 0.4.3 before the change.
 Tools: pymicro-features 2.0.2, pymicro-wakeword 2.5.0, ai-edge-litert 2.3.0, TensorFlow 2.16.1,
@@ -122,8 +124,8 @@ pymicro-wakeword get, and without native code of our own (#175)?
 | Features | float mel model | integer frontend in Kotlin, bit-exact to the C |
 | Inference | every 80 ms | every 30 ms, int8 |
 | Panel CPU, unmuted (main process / `voice-mic`) | 40.8% / 37.9% of a core | **8.1% and 6.5% / 3.7%** (target under 10%) |
-| Detections at 2 m, 10 tries per word | not measured | **pending** |
-| False wakes, 30 min | not measured | **pending** |
+| Detections, 10 synthetic voices at about 1 m | not measured | **36/40**: Okay Nabu 10, Alexa 9, Hey Mycroft 9, Hey Jarvis 8 |
+| False wakes, 30 min (Hey Jarvis) | not measured | **pending** (run in progress) |
 
 ## How to reproduce
 
@@ -155,12 +157,30 @@ Plus, S1 Kiosk 0.4.3, then test build `e88f1148` (6c1b5f8) installed over it wit
   threshold 0.97`. TFLite 2.16.1's Java API on armeabi-v7a runs the resource-variable models.
 - No FATAL in logcat.
 
-**Pending:** each word said 10 times at about 2 m, and 30 minutes of room or TV sound for false
-wakes. Both need the maintainer.
+**Detection with synthetic voices** (2026-11-13, verified; run by the panel's owner). Test build
+5427a67, unmuted. macOS text-to-speech from a Mac's speaker about 1 m from the panel, 10 voices in
+turn (Samantha, Alex, Daniel, Karen, Moira, Tessa, Fred, Victoria, Rishi, Fiona), one try per voice,
+22 s apart because each detection starts an Assist run that listens for about 15 s.
+`tools/voice/tts-trial.sh "<phrase>" 10` counted the `detected (score …)` lines in logcat:
+
+| Word (cutoff) | Detected | Missed | Scores of the detections |
+|---|---|---|---|
+| Okay Nabu (0.97) | 10/10 | | 0.976 to 0.996 |
+| Alexa (0.9) | 9/10 | Rishi | 0.906 to 0.995 |
+| Hey Mycroft (0.95) | 9/10 | Victoria | 0.950 to 0.996 |
+| Hey Jarvis (0.97) | 8/10 | Daniel, Rishi | 0.981 to 0.996 |
+
+These are synthetic voices at about 1 m, not people at the 2 m #175 asks for. Several detections
+sit just above the cutoff (Alexa 0.906, Mycroft 0.950), so a quieter or farther speaker will miss
+more often.
+
+**False wakes:** a 30-minute run on Hey Jarvis with `tools/voice/false-wake.sh` (macOS voices reading
+sentences without a wake word, some with near-misses such as "Jarvis Street") is in progress. The
+count goes here.
 
 ## Open questions
 
-- Detection and false wakes with real voices and the S1's microphones. The cutoffs are ESPHome's,
+- Detection at 2 m with real people, and false wakes from room and TV sound. The cutoffs are ESPHome's,
   tuned for Voice PE's microphones and its XMOS front end, which the S1 doesn't have.
 - Whether wake-word work at `THREAD_PRIORITY_URGENT_AUDIO` still costs dashboard fps (#105's open
   question): a Clarity run, muted vs unmuted.
