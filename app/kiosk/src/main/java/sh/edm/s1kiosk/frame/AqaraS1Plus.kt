@@ -5,6 +5,8 @@ import android.content.Intent
 import android.provider.Settings
 import dev.glassworks.frame.Frame
 import dev.glassworks.pane.PaneContext
+import sh.edm.s1kiosk.KioskPrefs
+import sh.edm.s1kiosk.base.WallBaseDefinition
 import sh.edm.s1kiosk.base.WallBasePane
 import sh.edm.s1kiosk.base.WallBasePrefs
 import java.util.concurrent.ScheduledExecutorService
@@ -25,6 +27,9 @@ class AqaraS1Plus : Frame {
         WallBasePane(ctx, WallBasePane.wantedConfig(WallBasePrefs(ctx.prefs("wall-base")), aqaraCloud), device, aqaraCloud),
     )
 
+    /** The wall base's adb extras. The time zone has nothing to set. */
+    override fun paneDefinitions(context: Context) = listOf(WallBaseDefinition(WallBasePrefs(KioskPrefs(context).paneFile("wall-base"))))
+
     val rootUpdates = RootUpdateInstaller()
 
     /** Its Wi-Fi chip has no PNO scans, so the app scans while the screen is off (#3). One per service run. */
@@ -40,6 +45,13 @@ class AqaraS1Plus : Frame {
      */
     override fun systemSettingsIntents() = listOf(
         Intent(Settings.ACTION_SETTINGS),
-        Intent("lumi.settings.SETTINGS").setPackage("com.lumi.settings"),
+        LUMI_SETTINGS,
     )
+
+    /** No Android Settings app on its firmware: Aqara's own one has Network -> WLAN. */
+    override fun wifiSettingsIntents() = super.wifiSettingsIntents() + LUMI_SETTINGS
+
+    private companion object {
+        val LUMI_SETTINGS: Intent get() = Intent("lumi.settings.SETTINGS").setPackage("com.lumi.settings")
+    }
 }

@@ -17,16 +17,17 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import sh.edm.s1kiosk.settings.SettingsMenu.Entry
+import dev.glassworks.pane.SettingsItem
+import dev.glassworks.pane.SettingsSection
 import sh.edm.s1kiosk.setup.Backdrop
-import sh.edm.s1kiosk.setup.RadioFollowUp
 
 /**
  * The kiosk settings menu, in the setup screen's look (setup/SetupOverlay): the dithered backdrop,
  * glass cards, amber accent, the same type scale and buttons. Left: title, version, the sections (tap
- * to jump) and Save & restart / Reload / Close. Right: one glass card per section, scrolling
- * ([SettingsMenu.layout] decides what is in them). A full-screen overlay in MainActivity's window, above
- * the setup screen; it edits nothing until "Save & restart" ([onSave] with the [Values]).
+ * to jump) and Save & restart / Reload / Close. Right: one glass card per [SettingsSection], scrolling,
+ * in the order [Model.sections] has them (dev.glassworks.pane.settingsOrder). A full-screen overlay in
+ * MainActivity's window, above the setup screen; it edits nothing until "Save & restart" ([onSave] with
+ * every field's save, in order).
  *
  * The window is full screen, where Android doesn't resize for the keyboard (adjustResize is ignored
  * with FLAG_FULLSCREEN), so the menu measures how much of it the keyboard covers and shortens the
@@ -34,43 +35,14 @@ import sh.edm.s1kiosk.setup.RadioFollowUp
  */
 class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
 
-    /** What the menu edits, as typed (MainActivity parses and saves them as before). */
-    data class Values(
-        val url: String,
-        val zoom: String,
-        val secureHosts: String,
-        val hideHeader: Boolean,
-        val radioAllow: String,
-        val presence: Boolean,
-        val idleOff: String,
-        val nightIdleOff: String,
-        val nightWindow: String,
-        val presenceRange: String,
-        val autoBrightness: Boolean,
-    )
-
     data class Model(
-        val values: Values,
-        val facts: SettingsMenu.Facts,
-        /** The kiosk service (and so the radio) runs: the allow-list can be edited. */
-        val radioRunning: Boolean,
-        /** [SettingsMenu.allowedNow]. */
-        val allowedNow: String,
+        val sections: List<SettingsSection>,
         val version: String,
-        /** Screen/sensor status line. */
-        val status: String,
-        /** The radio as the picker and follow-up card show it; null when the kiosk service isn't running. */
-        val radio: RadioFollowUp.Facts? = null,
     )
 
-    var onSave: ((Values) -> Unit)? = null
+    /** "Save & restart": each field's save as typed now, in menu order. */
+    var onSave: ((List<(done: (String?) -> Unit) -> Unit>) -> Unit)? = null
     var onReload: (() -> Unit)? = null
-    var onAqaraSettings: (() -> Unit)? = null
-    var onLicences: (() -> Unit)? = null
-    /** Radio requests from the picker and the follow-up card (same RadioController calls as the HA entities). */
-    var onRadioRun: ((RadioFollowUp.Request, (String?) -> Unit) -> Unit)? = null
-    /** `Thread dataset` typed or pasted on the panel: null = handed over, else why not. */
-    var onThreadDataset: ((String) -> String?)? = null
 
     var isShowing = false
         private set
@@ -78,10 +50,9 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     private val dp = resources.displayMetrics.density
     private fun px(v: Float) = (v * dp).toInt()
 
-    // Edited state for the current show()
-    private val fields = HashMap<Entry, EditText>()
-    private val toggles = HashMap<Entry, Toggle>()
-    private val cards = HashMap<SettingsMenu.Section, View>()
+    // Edited state for the current show(): each editable item's save with its value as shown now, in menu order
+    private val edits = ArrayList<() -> (done: (String?) -> Unit) -> Unit>()
+    private val cards = HashMap<String, View>()
 
     private val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
     private val scroll = ScrollView(context).apply {
@@ -97,14 +68,13 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
 
     private val keyboardWatch = ViewTreeObserver.OnGlobalLayoutListener { followKeyboard() }
 
-    // The Radio section's live parts (role tiles + panel): made once, kept across show()s, updated by
-    // [updateRadio]. Its confirmations open [radioDialog], centred over the whole menu.
-    private val radioDialog = RadioDialog(context)
-    private val radio = RadioSectionView(context).apply {
-        onRun = { r, done -> onRadioRun?.invoke(r, done) }
-        onDataset = { v -> onThreadDataset?.invoke(v) ?: "The kiosk service isn't running." }
-        onFieldFocus = { v -> v.post { reveal(v) } }
-        onAsk = { a, answer -> hideKeyboard(); radioDialog.show(a, answer) }
+    /** Native items' views ([SettingsItem.Native], e.g. the radio's tiles): made once, kept across show()s. */
+    private val natives = LinkedHashMap<String, SettingsItem.NativeView>()
+    private val nativeHost = object : SettingsItem.NativeHost {
+        override val context: Context get() = this@KioskSettingsOverlay.context
+        override fun addLayer(layer: View) { addView(layer, LayoutParams(-1, -1)) }
+        override fun reveal(field: View) = this@KioskSettingsOverlay.reveal(field)
+        override fun hideKeyboard() = this@KioskSettingsOverlay.hideKeyboard()
     }
 
     init {
@@ -122,7 +92,6 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             addView(scroll, LinearLayout.LayoutParams(0, -1, 1f))
         }
         addView(content, LayoutParams(-1, -1))
-        addView(radioDialog, LayoutParams(-1, -1))
         visibility = View.GONE
     }
 
@@ -145,7 +114,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     fun hide() {
         if (!isShowing) return
         isShowing = false
-        radioDialog.dismiss()
+        natives.values.forEach { it.reset() }
         hideKeyboard()
         findFocus()?.clearFocus()
         viewTreeObserver.removeOnGlobalLayoutListener(keyboardWatch)
@@ -153,15 +122,14 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         animate().alpha(0f).setDuration(200).withEndAction { if (!isShowing) visibility = View.GONE }.start()
     }
 
-    /** New radio facts while the menu is open (MainActivity, every couple of seconds and on changes). */
-    fun updateRadio(f: RadioFollowUp.Facts?) {
-        if (!isShowing || f == null) return
-        radio.bind(f)
+    /** While the menu is open (MainActivity, every couple of seconds): the native views read their state again. */
+    fun refresh() {
+        if (!isShowing) return
+        natives.values.forEach { it.refresh() }
     }
 
-    /** Previews (RadioMockups): the radio views, and scrolling one of them to the top of the column. */
-    internal val previewRadio: RadioSectionView get() = radio
-    internal val previewDialog: RadioDialog get() = radioDialog
+    /** Previews (the mock-ups): a native item's view, and scrolling a view to the top of the column. */
+    internal fun previewNative(key: String): SettingsItem.NativeView? = natives[key]
     internal fun previewScrollTo(v: View, alignBottom: Boolean = false) {
         val r = Rect()
         v.getDrawingRect(r)
@@ -170,37 +138,27 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         scroll.scrollTo(0, y.coerceAtLeast(0))
     }
 
-    /** The values as currently typed. */
-    fun current(): Values {
-        fun f(e: Entry) = fields[e]?.text?.toString().orEmpty()
-        fun t(e: Entry) = toggles[e]?.checked ?: false
-        return Values(
-            url = f(Entry.URL), zoom = f(Entry.ZOOM), secureHosts = f(Entry.SECURE_HOSTS), hideHeader = t(Entry.HIDE_HEADER),
-            radioAllow = f(Entry.RADIO_ALLOW),
-            presence = t(Entry.PRESENCE), idleOff = f(Entry.IDLE_OFF), nightIdleOff = f(Entry.NIGHT_IDLE_OFF),
-            nightWindow = f(Entry.NIGHT_WINDOW), presenceRange = f(Entry.PRESENCE_RANGE), autoBrightness = t(Entry.AUTO_BRIGHTNESS),
-        )
-    }
+    /** Every field's save with its value as typed now, in menu order. */
+    fun current(): List<(done: (String?) -> Unit) -> Unit> = edits.map { it() }
 
     // ------------------------------------------------------------------ building
 
     private fun build(m: Model) {
-        fields.clear(); toggles.clear(); cards.clear()
+        edits.clear(); cards.clear()
         column.removeAllViews()
-        (radio.tiles.parent as? android.view.ViewGroup)?.removeView(radio.tiles)
-        (radio.panel.parent as? android.view.ViewGroup)?.removeView(radio.panel)
-        radioDialog.dismiss()
-        m.radio?.let { radio.bind(it) }
-        val layout = SettingsMenu.layout(m.facts)
-        layout.forEachIndexed { i, (section, entries) ->
-            val card = card(section, entries, m)
-            cards[section] = card
+        natives.values.forEach { n ->
+            (n.view.parent as? android.view.ViewGroup)?.removeView(n.view)
+            n.reset()
+        }
+        m.sections.forEachIndexed { i, section ->
+            val card = card(section)
+            cards[section.id] = card
             column.addView(card, LinearLayout.LayoutParams(-1, -2).apply { if (i > 0) topMargin = px(14f) })
         }
-        buildRail(m, layout.map { it.first })
+        buildRail(m)
     }
 
-    private fun buildRail(m: Model, sections: List<SettingsMenu.Section>) {
+    private fun buildRail(m: Model) {
         rail.removeAllViews()
         rail.addView(label("S1 Unleashed · Kiosk"))
         rail.addView(text(30f, TX, LIGHT).apply { letterSpacing = -0.02f; text = "Settings" },
@@ -208,7 +166,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         rail.addView(text(15f, MU, REGULAR).apply { text = "S1 Kiosk ${m.version}" },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(4f) })
         val nav = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        sections.forEach { s ->
+        m.sections.forEach { s ->
             nav.addView(navRow(s), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(4f) })
         }
         rail.addView(nav, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(20f) })
@@ -224,7 +182,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10f) })
     }
 
-    private fun navRow(s: SettingsMenu.Section) = LinearLayout(context).apply {
+    private fun navRow(s: SettingsSection) = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(px(12f), px(9f), px(12f), px(9f))
@@ -235,39 +193,46 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         }, LinearLayout.LayoutParams(px(6f), px(6f)).apply { marginEnd = px(12f) })
         addView(text(16f, TX, MEDIUM).apply { text = s.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END })
         isClickable = true
-        setOnClickListener { cards[s]?.let { c -> scroll.smoothScrollTo(0, c.top) } }
+        setOnClickListener { cards[s.id]?.let { c -> scroll.smoothScrollTo(0, c.top) } }
     }
 
-    private fun card(section: SettingsMenu.Section, entries: List<Entry>, m: Model): View =
-        if (section == SettingsMenu.Section.RADIO && Entry.RADIO_MODE in entries) radioCard(entries, m) else LinearLayout(context).apply {
+    /**
+     * A section's card: its label, then its items, two narrow fields to a row. A section with a native
+     * view has no card of its own: the native views sit in the column with their own surfaces, and its
+     * groups get cards.
+     */
+    private fun card(section: SettingsSection): View =
+        if (section.items.any { it is SettingsItem.Native }) unframed(section) else LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         background = glass(22f)
         setPadding(px(24f), px(20f), px(24f), px(22f))
         addView(label(section.title))
-        SettingsMenu.rows(entries).forEach { row ->
-            val v = if (row.size == 2) pair(entry(row[0], m), entry(row[1], m)) else entry(row[0], m)
+        SettingsMenu.rows(section.items).forEach { row ->
+            val v = if (row.size == 2) pair(item(row[0]), item(row[1])) else item(row[0])
             addView(v, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14f) })
         }
     }
 
-    /**
-     * The Radio section without an outer card: the role tiles and the panel sit in the column (their
-     * own surfaces), then "who may connect" in a card of its own.
-     */
-    private fun radioCard(entries: List<Entry>, m: Model) = LinearLayout(context).apply {
+    private fun unframed(section: SettingsSection) = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(0, px(4f), 0, 0)
-        addView(label(SettingsMenu.Section.RADIO.title), LinearLayout.LayoutParams(-1, -2).apply { marginStart = px(4f) })
-        addView(entry(Entry.RADIO_MODE, m), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10f) })
-        addView(entry(Entry.RADIO_FOLLOW_UP, m), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12f) })
-        val allow = entries.filter { it == Entry.RADIO_ALLOW || it == Entry.RADIO_ALLOWED_NOW }
-        if (allow.isNotEmpty()) addView(LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = glass(22f)
-            setPadding(px(24f), px(18f), px(24f), px(20f))
-            addView(label("Who may connect"))
-            allow.forEach { addView(entry(it, m), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12f) }) }
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14f) })
+        addView(label(section.title), LinearLayout.LayoutParams(-1, -2).apply { marginStart = px(4f) })
+        section.items.forEachIndexed { i, it ->
+            val gap = when {
+                it is SettingsItem.Group -> 14f
+                i == 0 -> 10f
+                else -> 12f
+            }
+            addView(item(it), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(gap) })
+        }
+    }
+
+    private fun group(g: SettingsItem.Group) = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        background = glass(22f)
+        setPadding(px(24f), px(18f), px(24f), px(20f))
+        addView(label(g.title))
+        g.items.forEach { addView(item(it), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12f) }) }
     }
 
     private fun pair(a: View, b: View) = LinearLayout(context).apply {
@@ -276,71 +241,58 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         addView(b, LinearLayout.LayoutParams(0, -2, 1f))
     }
 
-    private fun entry(e: Entry, m: Model): View {
-        val v = m.values
-        val number = InputType.TYPE_CLASS_NUMBER
-        val decimal = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-        val uri = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-        val plain = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        return when (e) {
-            Entry.URL -> field(e, "Dashboard URL", v.url, "auto (find Home Assistant)", uri)
-            Entry.ZOOM -> field(e, "Zoom (1.0 – 2.0)", v.zoom, "auto (device density)", decimal)
-            Entry.SECURE_HOSTS -> field(e, "Extra secure-context hosts", v.secureHosts, "e.g. homeassistant.local,192.168.1.100", uri)
-            Entry.HIDE_HEADER -> toggle(e, "Hide Home Assistant's header & sidebar", "The dashboard fills the screen", v.hideHeader)
-            Entry.RADIO_MODE -> radio.tiles
-            Entry.RADIO_FOLLOW_UP -> radio.panel
-            Entry.RADIO_ALLOW -> field(e, "IP addresses or ranges, or any", v.radioAllow, "empty = Home Assistant only", uri).also {
-                fields[e]?.isEnabled = m.radioRunning
-            }
-            Entry.RADIO_ALLOWED_NOW -> text(13.5f, MU, REGULAR).apply { text = m.allowedNow; setLineSpacing(0f, 1.2f) }
-            Entry.PRESENCE -> toggle(e, "Screen follows presence", "Off when idle, on when someone comes close", v.presence)
-            Entry.IDLE_OFF -> field(e, "Screen off after idle (s, 0 = never)", v.idleOff, "120", number)
-            Entry.NIGHT_IDLE_OFF -> field(e, "At night: off after (s)", v.nightIdleOff, "20", number)
-            Entry.NIGHT_WINDOW -> field(e, "Night window", v.nightWindow, "22:00-07:00 (empty = off)", plain)
-            Entry.PRESENCE_RANGE -> field(e, "Presence range (m, 0.1 – 2.5)", v.presenceRange, "firmware default (1.5 m)", decimal)
-            Entry.AUTO_BRIGHTNESS -> toggle(e, "Auto brightness", "Follows the light sensor", v.autoBrightness)
-            Entry.AQARA_SETTINGS -> link(SettingsMenu.AQARA_TITLE, SettingsMenu.AQARA_DETAIL) { onAqaraSettings?.invoke() }
-            Entry.VERSION -> LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(text(16f, TX, MEDIUM).apply { text = "S1 Kiosk ${m.version}" })
-                addView(text(13f, FA, REGULAR).apply { text = m.status; setLineSpacing(0f, 1.2f) },
-                    LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(4f) })
-            }
-            Entry.LICENCES -> link("Open source licences", "The open-source software in the app and the radio package") { onLicences?.invoke() }
+    private fun item(i: SettingsItem): View = when (i) {
+        is SettingsItem.Text -> field(i)
+        is SettingsItem.Switch -> toggle(i)
+        is SettingsItem.Link -> link(i.title, i.detail) { i.open(context) }
+        is SettingsItem.Note -> text(13.5f, MU, REGULAR).apply { text = i.text(); setLineSpacing(0f, 1.2f) }
+        is SettingsItem.Info -> LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(text(16f, TX, MEDIUM).apply { text = i.title() })
+            addView(text(13f, FA, REGULAR).apply { text = i.detail(); setLineSpacing(0f, 1.2f) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(4f) })
         }
+        is SettingsItem.Group -> group(i)
+        is SettingsItem.Native -> natives.getOrPut(i.key) { i.create(nativeHost) }.also { it.refresh() }.view
     }
 
-    private fun field(e: Entry, title: String, value: String, hintText: String, type: Int): View {
+    private fun field(i: SettingsItem.Text): View {
         val edit = EditText(context).apply {
             textSize = 16f
             typeface = Inter.typeface(context, REGULAR, 16f)
             setTextColor(TX)
             setHintTextColor(FA)
-            hint = hintText
-            inputType = type
+            hint = i.hint
+            inputType = when (i.kind) {
+                SettingsItem.TextKind.PLAIN -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                SettingsItem.TextKind.ADDRESS -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+                SettingsItem.TextKind.NUMBER -> InputType.TYPE_CLASS_NUMBER
+                SettingsItem.TextKind.DECIMAL -> InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            }
             // No full-screen "extract" editor in landscape: the field itself stays visible above the keyboard.
             imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_FLAG_NO_EXTRACT_UI
             setSingleLine()
-            setText(value)
+            setText(i.value())
             background = glass(14f)
             setPadding(px(16f), px(11f), px(16f), px(11f))
             setOnFocusChangeListener { f, has -> if (has) f.post { reveal(f) } }
+            isEnabled = i.enabled()
         }
-        fields[e] = edit
+        edits += { val v = edit.text?.toString().orEmpty(); { done -> i.save(v, done) } }
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            addView(text(13.5f, MU, REGULAR).apply { text = title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END })
+            addView(text(13.5f, MU, REGULAR).apply { text = i.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END })
             addView(edit, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f) })
         }
     }
 
-    private fun toggle(e: Entry, title: String, detail: String, on: Boolean): View {
-        val sw = Toggle(context).apply { checked = on }
-        toggles[e] = sw
+    private fun toggle(i: SettingsItem.Switch): View {
+        val sw = Toggle(context).apply { checked = i.value() }
+        edits += { val v = sw.checked; { done -> i.save(v, done) } }
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            addView(texts(title, detail), LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = px(16f) })
+            addView(texts(i.title, i.detail), LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = px(16f) })
             addView(sw, LinearLayout.LayoutParams(px(52f), px(30f)))
             isClickable = true
             setOnClickListener { sw.checked = !sw.checked }

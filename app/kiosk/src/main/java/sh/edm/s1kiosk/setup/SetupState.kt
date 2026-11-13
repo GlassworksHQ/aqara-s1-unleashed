@@ -15,29 +15,41 @@ package sh.edm.s1kiosk.setup
  *      not skipped by the user);
  *   4. no HA session: no refresh token *and* the page actually landed on HA's login page (or the
  *      user signed out on this panel), unless "Sign in on this panel instead" was chosen;
- *   5. the radio mode was never chosen on this panel (online, HA step done). A panel that was set up
- *      before the radio step existed has it marked done once ([radioStepDoneOnUpgrade]), so it
- *      never sees it;
+ *   5. a pane's step isn't done (online, HA step done), e.g. the radio mode was never chosen;
  *   and, without the grace period, (1) while Improv (Wi-Fi over Bluetooth) is running or Wi-Fi
  *   details came from the computer: Improv's Allow prompt and the join's progress live in the
  *   Wi-Fi step.
  *   Once shown, it stays until every step is done (no flicker between steps).
  * - **Which step is current while it's shown?** The first one that isn't done, in order Wi-Fi →
- *   Add to HA → Radio → Sign in. Done means: online; HA has subscribed to the panel's states (it
- *   added the panel) or the user skipped it; a radio mode was applied or the step skipped; signed in
- *   or not needed.
+ *   Add to HA → the panes' steps → Sign in. Done means: online; HA has subscribed to the panel's
+ *   states (it added the panel) or the user skipped it; the pane's step says so; signed in or not
+ *   needed.
  *
- * Radio comes before Sign in: it belongs with adding the panel (Zigbee coordinator means adding ZHA
- * in the same Devices & services page), and signing in is what loads the dashboard, so it stays the
- * hand-off at the end instead of being interrupted by one more question.
+ * The panes' steps come before Sign in: they belong with adding the panel (Zigbee coordinator means
+ * adding ZHA in the same Devices & services page), and signing in is what loads the dashboard, so it
+ * stays the hand-off at the end instead of being interrupted by one more question.
  */
-enum class SetupStep(val id: String) {
-    WIFI("wifi"), HA("ha"), RADIO("radio"), SIGNIN("signin"), DONE("done");
+object SetupFlow {
+    const val WIFI = "wifi"
+    const val HA = "ha"
+    const val SIGNIN = "signin"
+    const val DONE = "done"
 
-    companion object {
-        fun parse(s: String?): SetupStep? = entries.firstOrNull { it.id.equals(s?.trim(), ignoreCase = true) }
-    }
+    /** Every step in order: the core's, with the panes' steps ([paneSteps], their ids) before Sign in. */
+    fun ids(paneSteps: List<String>): List<String> = listOf(WIFI, HA) + paneSteps + listOf(SIGNIN, DONE)
+
+    /** A step id from `--es setup_step <id>` ([paneSteps] are the panes' ids), or null. */
+    fun parse(s: String?, paneSteps: List<String>): String? =
+        ids(paneSteps).firstOrNull { it.equals(s?.trim(), ignoreCase = true) }
 }
+
+/** A pane's setup step as [SetupState] sees it. */
+data class PaneStepFacts(
+    val id: String,
+    val done: Boolean,
+    /** Why the screen shows while it isn't done, for the log. */
+    val reason: String,
+)
 
 data class SetupInputs(
     /** A network with internet/LAN connectivity is up. */
@@ -66,10 +78,8 @@ data class SetupInputs(
     val usePanelLogin: Boolean,
     /** The setup screen is already up (not a preview): it stays until every step is done. */
     val showing: Boolean = false,
-    /** Persisted: the radio step was answered (or the panel was set up before the step existed). */
-    val radioStepDone: Boolean = false,
-    /** A radio mode is stored (chosen with HA's `Radio mode` select): the question is answered. */
-    val radioModeStored: Boolean = false,
+    /** The panes' steps, in order. */
+    val paneSteps: List<PaneStepFacts> = emptyList(),
     /** Improv (Wi-Fi over Bluetooth), for the Wi-Fi step. */
     val improv: ImprovFacts = ImprovFacts(),
     /** No trace of an earlier setup at all (see [SetupState.neverSetUp]): a fresh panel. */
@@ -85,17 +95,24 @@ data class SetupRules(
 
 data class SetupDecision(
     val show: Boolean,
-    /** The current step while shown ([SetupStep.DONE] when nothing is left). */
-    val step: SetupStep,
+    /** The current step's id while shown ([SetupFlow.DONE] when nothing is left). */
+    val step: String,
     val wifiDone: Boolean,
     val haDone: Boolean,
     val signinDone: Boolean,
     /** Why it is shown (for the log), empty when hidden. */
     val reasons: List<String>,
-    val radioDone: Boolean = true,
+    /** The ids of the panes' steps that are done. */
+    val paneDone: Set<String> = emptySet(),
     /** Improv's status block for the Wi-Fi step. */
     val improv: WifiStep.ImprovLine = WifiStep.improv(ImprovFacts()),
-)
+) {
+    /** Every step that is done, by id ([SetupFlow.DONE] never is: it's where the screen ends). */
+    val done: Set<String>
+        get() = paneDone + listOfNotNull(
+            SetupFlow.WIFI.takeIf { wifiDone }, SetupFlow.HA.takeIf { haDone }, SetupFlow.SIGNIN.takeIf { signinDone },
+        )
+}
 
 object SetupState {
 
@@ -105,7 +122,7 @@ object SetupState {
 
         val wifiDone = i.online
         val haDone = i.haKnown && haEverRecorded
-        val radioDone = i.radioStepDone || i.radioModeStored
+        val pending = i.paneSteps.firstOrNull { !it.done }
 
         val reasons = ArrayList<String>(4)
         // Improv's Allow prompt and the installer's join progress live in the Wi-Fi step: no grace then.
@@ -117,42 +134,38 @@ object SetupState {
             reasons += "not added to home assistant"
         }
         if (i.online && i.haKnown && wantsSignin) reasons += "sign-in needed"
-        if (wifiDone && haDone && !radioDone) reasons += "radio mode not chosen"
+        if (wifiDone && haDone && pending != null) reasons += pending.reason
 
         // Only "done" once it's actually known: a stored sign-in, or Wi-Fi + HA are done and nothing
         // asks for one. (Before, a fresh offline panel showed sign-in as complete.)
         val signinDone = i.signedIn || (wifiDone && haDone && !wantsSignin)
         val step = when {
-            !wifiDone -> SetupStep.WIFI
-            !i.haKnown -> SetupStep.HA
-            !haDone -> SetupStep.HA
-            !radioDone -> SetupStep.RADIO
-            !signinDone -> SetupStep.SIGNIN
-            else -> SetupStep.DONE
+            !wifiDone -> SetupFlow.WIFI
+            !haDone -> SetupFlow.HA
+            pending != null -> pending.id
+            !signinDone -> SetupFlow.SIGNIN
+            else -> SetupFlow.DONE
         }
         // Once up, the screen stays until everything is done, so it doesn't flicker away between
         // steps (e.g. Wi-Fi joined, HA not discovered yet). It can't start on its own though.
-        val show = reasons.isNotEmpty() || (i.showing && step != SetupStep.DONE)
-        return SetupDecision(show, step, wifiDone, haDone, signinDone, reasons, radioDone, WifiStep.improv(i.improv))
+        val show = reasons.isNotEmpty() || (i.showing && step != SetupFlow.DONE)
+        val paneDone = i.paneSteps.filter { it.done }.map { it.id }.toSet()
+        return SetupDecision(show, step, wifiDone, haDone, signinDone, reasons, paneDone, WifiStep.improv(i.improv))
     }
 
-    /**
-     * Run once when a build with the radio step first starts (KioskPrefs.migrateRadioStep): true =
-     * the panel was already set up, so mark the step done and never show it. Any trace of an earlier
-     * setup counts: a known Home Assistant (saved dashboard URL or discovered), HA added the panel or
-     * provisioned an API key, the HA step was skipped, or a radio mode was chosen in HA. A fresh
-     * install has none of these at its first start.
-     */
     /**
      * True when nothing shows this panel was ever set up: no Home Assistant known or recorded, no API
      * key, no skipped or answered steps, no sign-in. Such a panel skips the offline grace period.
      */
     fun neverSetUp(
-        haKnown: Boolean, haSeen: Boolean, apiKeySet: Boolean, haSkipped: Boolean, radioStepDone: Boolean,
-        radioModeStored: Boolean, signedIn: Boolean,
-    ): Boolean = !(haKnown || haSeen || apiKeySet || haSkipped || radioStepDone || radioModeStored || signedIn)
+        haKnown: Boolean, haSeen: Boolean, apiKeySet: Boolean, haSkipped: Boolean, paneStepDone: Boolean, signedIn: Boolean,
+    ): Boolean = !(haKnown || haSeen || apiKeySet || haSkipped || paneStepDone || signedIn)
 
-    fun radioStepDoneOnUpgrade(
-        haKnown: Boolean, haSeen: Boolean, apiKeySet: Boolean, haSkipped: Boolean, radioModeStored: Boolean,
-    ): Boolean = haKnown || haSeen || apiKeySet || haSkipped || radioModeStored
+    /**
+     * Any trace of an earlier setup: a known Home Assistant (saved dashboard URL or discovered), HA
+     * added the panel or provisioned an API key, or the HA step was skipped. A step added in a later
+     * build is marked done on a panel like that, so it never sees it. A fresh install has none of these.
+     */
+    fun setUpBefore(haKnown: Boolean, haSeen: Boolean, apiKeySet: Boolean, haSkipped: Boolean): Boolean =
+        haKnown || haSeen || apiKeySet || haSkipped
 }

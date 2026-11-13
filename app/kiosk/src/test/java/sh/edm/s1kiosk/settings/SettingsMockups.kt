@@ -8,9 +8,13 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.RuntimeEnvironment
+import sh.edm.s1kiosk.KioskPrefs
+import sh.edm.s1kiosk.radio.FixedReadout
 import sh.edm.s1kiosk.radio.HelperFacts
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.ZigbeeStack
+import sh.edm.s1kiosk.radio.radioDefinition
 import sh.edm.s1kiosk.setup.RadioFollowUp
 import sh.edm.s1kiosk.ui.Mockup
 
@@ -31,20 +35,12 @@ class SettingsMockups {
         null, null, "http://homeassistant.local:8123", "192.0.2.10",
     )
 
-    private fun values() = KioskSettingsOverlay.Values(
-        url = "http://homeassistant.local:8123/lovelace/panel", zoom = "1.25", secureHosts = "", hideHeader = true, radioAllow = "",
-        presence = true, idleOff = "120", nightIdleOff = "20", nightWindow = "22:00-07:00", presenceRange = "", autoBrightness = true,
-    )
-
     private fun menu(radioRunning: Boolean, deviceSettings: Boolean = true): KioskSettingsOverlay {
         val o = Mockup.show(KioskSettingsOverlay(Mockup.activity()))
-        o.show(
-            KioskSettingsOverlay.Model(
-                values = values(), facts = SettingsMenu.Facts(deviceSettings = deviceSettings, radio = radioRunning),
-                radioRunning = radioRunning, allowedNow = SettingsMenu.allowedNow(radioRunning, null), version = "0.4.3",
-                status = "screen on · presence near · voice=idle", radio = if (radioRunning) off else null,
-            ),
-        )
+        val app = RuntimeEnvironment.getApplication()
+        KioskPrefs(app).apply { urlSetting = "http://homeassistant.local:8123/lovelace/panel"; zoom = 1.25f }
+        val radio = radioDefinition(app, FixedReadout(if (radioRunning) off else null, running = radioRunning))
+        o.show(MenuFixture.model(app, radio, deviceSettings, status = "screen on · presence near · voice=idle"))
         Mockup.idle()
         return o
     }

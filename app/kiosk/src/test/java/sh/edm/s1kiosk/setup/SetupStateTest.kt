@@ -9,6 +9,9 @@ class SetupStateTest {
 
     private val min = 60_000L
 
+    /** The S1's one pane step, the radio. */
+    private fun radio(done: Boolean) = listOf(PaneStepFacts("radio", done, "radio mode not chosen"))
+
     /**
      * The already-configured desk panel: Wi-Fi, HA connects over ESPHome, a saved dashboard URL
      * (so HA is known), a cookie session (no refresh token, never on the login page). Its radio step
@@ -18,15 +21,13 @@ class SetupStateTest {
         online = true, offlineForMs = 0, haKnown = true, haSeen = haSeen, apiKeySet = apiKey, haSkipped = false,
         haHelloThisProcess = hello, uptimeMs = uptimeMs, signedIn = false, onAuthPage = false,
         signedOut = false, usePanelLogin = false,
-        radioStepDone = SetupState.radioStepDoneOnUpgrade(
-            haKnown = true, haSeen = haSeen, apiKeySet = apiKey, haSkipped = false, radioModeStored = false,
-        ),
+        paneSteps = radio(SetupState.setUpBefore(haKnown = true, haSeen = haSeen, apiKeySet = apiKey, haSkipped = false)),
     )
 
     private val fresh = SetupInputs(
         online = true, offlineForMs = 0, haKnown = false, haSeen = false, apiKeySet = false, haSkipped = false,
         haHelloThisProcess = false, uptimeMs = 5_000, signedIn = false, onAuthPage = false,
-        signedOut = false, usePanelLogin = false,
+        signedOut = false, usePanelLogin = false, paneSteps = radio(false),
     )
 
     @Test
@@ -35,20 +36,19 @@ class SetupStateTest {
         val first = fresh.copy(online = false, offlineForMs = 0, uptimeMs = 1_000, neverSetUp = true)
         val d = SetupState.decide(first)
         assertTrue(d.reasons.toString(), d.show)
-        assertEquals(SetupStep.WIFI, d.step)
+        assertEquals(SetupFlow.WIFI, d.step)
     }
 
     @Test
     fun neverSetUpIsFalseForAnyTraceOfSetup() {
-        assertTrue(SetupState.neverSetUp(false, false, false, false, false, false, false))
+        assertTrue(SetupState.neverSetUp(false, false, false, false, false, false))
         val traces = listOf(
-            SetupState.neverSetUp(true, false, false, false, false, false, false),
-            SetupState.neverSetUp(false, true, false, false, false, false, false),
-            SetupState.neverSetUp(false, false, true, false, false, false, false),
-            SetupState.neverSetUp(false, false, false, true, false, false, false),
-            SetupState.neverSetUp(false, false, false, false, true, false, false),
-            SetupState.neverSetUp(false, false, false, false, false, true, false),
-            SetupState.neverSetUp(false, false, false, false, false, false, true),
+            SetupState.neverSetUp(true, false, false, false, false, false),
+            SetupState.neverSetUp(false, true, false, false, false, false),
+            SetupState.neverSetUp(false, false, true, false, false, false),
+            SetupState.neverSetUp(false, false, false, true, false, false),
+            SetupState.neverSetUp(false, false, false, false, true, false),
+            SetupState.neverSetUp(false, false, false, false, false, true),
         )
         assertTrue(traces.none { it })
     }
@@ -72,7 +72,7 @@ class SetupStateTest {
     fun deskPanelOnceHaSeenStaysHiddenEvenWhenHaIsDown() {
         val d = SetupState.decide(deskPanel(60 * min, haSeen = true, apiKey = false, hello = false))
         assertFalse(d.show)
-        assertEquals(SetupStep.DONE, d.step)
+        assertEquals(SetupFlow.DONE, d.step)
     }
 
     @Test
@@ -82,11 +82,11 @@ class SetupStateTest {
         val long = i.copy(offlineForMs = 31_000)
         val d = SetupState.decide(long)
         assertTrue(d.show)
-        assertEquals(SetupStep.WIFI, d.step)
+        assertEquals(SetupFlow.WIFI, d.step)
         // Back online: the sticky screen is done and goes away.
         val back = SetupState.decide(i.copy(online = true, offlineForMs = 0, showing = true))
         assertFalse(back.show)
-        assertEquals(SetupStep.DONE, back.step)
+        assertEquals(SetupFlow.DONE, back.step)
     }
 
     @Test
@@ -101,7 +101,7 @@ class SetupStateTest {
         // Factory-reset panel, no Wi-Fi yet: nothing is known about sign-in, so it must not be ticked.
         val d = SetupState.decide(fresh.copy(online = false, offlineForMs = 60_000))
         assertTrue(d.show)
-        assertEquals(SetupStep.WIFI, d.step)
+        assertEquals(SetupFlow.WIFI, d.step)
         assertFalse(d.wifiDone)
         assertFalse(d.haDone)
         assertFalse(d.signinDone)
@@ -112,7 +112,7 @@ class SetupStateTest {
         val i = deskPanel(5 * min, haSeen = true, apiKey = true, hello = true).copy(onAuthPage = true)
         val d = SetupState.decide(i)
         assertTrue(d.show)
-        assertEquals(SetupStep.SIGNIN, d.step)
+        assertEquals(SetupFlow.SIGNIN, d.step)
         assertEquals(listOf("sign-in needed"), d.reasons)
         // "Sign in on this panel instead": leave HA's login page alone.
         assertFalse(SetupState.decide(i.copy(usePanelLogin = true)).show)
@@ -123,7 +123,7 @@ class SetupStateTest {
     @Test
     fun signOutOnThePanelShowsSignin() {
         val i = deskPanel(5 * min, haSeen = true, apiKey = true, hello = true).copy(signedOut = true)
-        assertEquals(SetupStep.SIGNIN, SetupState.decide(i).step)
+        assertEquals(SetupFlow.SIGNIN, SetupState.decide(i).step)
         assertTrue(SetupState.decide(i).show)
     }
 
@@ -133,7 +133,7 @@ class SetupStateTest {
         assertFalse("boot grace", SetupState.decide(boot).show)
         val d = SetupState.decide(boot.copy(offlineForMs = 45_000))
         assertTrue(d.show)
-        assertEquals(SetupStep.WIFI, d.step)
+        assertEquals(SetupFlow.WIFI, d.step)
         assertFalse(d.wifiDone)
     }
 
@@ -143,7 +143,7 @@ class SetupStateTest {
         var i = fresh
         var d = SetupState.decide(i)
         assertTrue(d.show)
-        assertEquals(SetupStep.HA, d.step)
+        assertEquals(SetupFlow.HA, d.step)
         assertTrue(d.wifiDone)
 
         // HA found by mDNS; not added yet, within the 2 min grace: the trigger is gone but the
@@ -151,33 +151,33 @@ class SetupStateTest {
         i = i.copy(haKnown = true, showing = true)
         d = SetupState.decide(i)
         assertTrue(d.show)
-        assertEquals(SetupStep.HA, d.step)
+        assertEquals(SetupFlow.HA, d.step)
         assertTrue(d.reasons.isEmpty())
 
         // HA's discovery probe says Hello: not "added" yet.
         i = i.copy(haHelloThisProcess = true, onAuthPage = true)
         d = SetupState.decide(i)
-        assertEquals(SetupStep.HA, d.step)
+        assertEquals(SetupFlow.HA, d.step)
         assertFalse(d.haDone)
 
         // HA added the panel (subscribed): on to the radio step.
         i = i.copy(haSeen = true)
         d = SetupState.decide(i)
-        assertEquals(SetupStep.RADIO, d.step)
+        assertEquals("radio", d.step)
         assertTrue(d.haDone)
-        assertFalse(d.radioDone)
+        assertFalse("radio" in d.paneDone)
         assertTrue(d.show)
 
         // A radio mode applied (or skipped): on to sign-in.
-        i = i.copy(radioStepDone = true)
+        i = i.copy(paneSteps = radio(true))
         d = SetupState.decide(i)
-        assertEquals(SetupStep.SIGNIN, d.step)
-        assertTrue(d.radioDone)
+        assertEquals(SetupFlow.SIGNIN, d.step)
+        assertTrue("radio" in d.paneDone)
 
         // Signed in with the QR code: done, the screen goes.
         i = i.copy(signedIn = true, onAuthPage = false)
         d = SetupState.decide(i)
-        assertEquals(SetupStep.DONE, d.step)
+        assertEquals(SetupFlow.DONE, d.step)
         assertFalse(d.show)
     }
 
@@ -187,15 +187,15 @@ class SetupStateTest {
         assertFalse(SetupState.decide(i.copy(uptimeMs = 119_000)).show)
         val d = SetupState.decide(i.copy(uptimeMs = 121_000))
         assertTrue(d.show)
-        assertEquals(SetupStep.HA, d.step)
+        assertEquals(SetupFlow.HA, d.step)
         assertEquals(listOf("not added to home assistant"), d.reasons)
         // Any recorded evidence suppresses it (a panel with its radio step done).
-        val r = i.copy(radioStepDone = true)
+        val r = i.copy(paneSteps = radio(true))
         assertFalse(SetupState.decide(r.copy(uptimeMs = 121_000, apiKeySet = true)).show)
         assertFalse(SetupState.decide(r.copy(uptimeMs = 121_000, haSeen = true)).show)
         assertFalse(SetupState.decide(r.copy(uptimeMs = 121_000, haHelloThisProcess = true)).show)
         // Without it, the HA step being done moves on to the radio question instead.
-        assertEquals(SetupStep.RADIO, SetupState.decide(i.copy(uptimeMs = 121_000, haSeen = true)).step)
+        assertEquals("radio", SetupState.decide(i.copy(uptimeMs = 121_000, haSeen = true)).step)
     }
 
     @Test
@@ -203,54 +203,73 @@ class SetupStateTest {
         val i = fresh.copy(haKnown = true, uptimeMs = 5 * min, showing = true, haSkipped = true)
         val d = SetupState.decide(i)
         assertTrue(d.haDone)
-        assertEquals(SetupStep.RADIO, d.step)
+        assertEquals("radio", d.step)
         assertTrue(d.show)
-        val r = i.copy(radioStepDone = true)
+        val r = i.copy(paneSteps = radio(true))
         assertFalse(SetupState.decide(r).show)
-        assertEquals(SetupStep.SIGNIN, SetupState.decide(r.copy(onAuthPage = true)).step)
+        assertEquals(SetupFlow.SIGNIN, SetupState.decide(r.copy(onAuthPage = true)).step)
     }
 
     @Test
     fun stepParsing() {
-        assertEquals(SetupStep.WIFI, SetupStep.parse("wifi"))
-        assertEquals(SetupStep.HA, SetupStep.parse(" HA "))
-        assertEquals(SetupStep.SIGNIN, SetupStep.parse("signin"))
-        assertEquals(SetupStep.RADIO, SetupStep.parse("radio"))
-        // Step order: the rail and the preview rely on it.
-        assertEquals(listOf("wifi", "ha", "radio", "signin", "done"), SetupStep.entries.map { it.id })
-        assertEquals(SetupStep.DONE, SetupStep.parse("done"))
-        assertEquals(null, SetupStep.parse("nope"))
-        assertEquals(null, SetupStep.parse(null))
+        val panes = listOf("radio")
+        assertEquals(SetupFlow.WIFI, SetupFlow.parse("wifi", panes))
+        assertEquals(SetupFlow.HA, SetupFlow.parse(" HA ", panes))
+        assertEquals(SetupFlow.SIGNIN, SetupFlow.parse("signin", panes))
+        assertEquals("radio", SetupFlow.parse("radio", panes))
+        // Step order: the rail and the preview rely on it. The panes' steps go before Sign in.
+        assertEquals(listOf("wifi", "ha", "radio", "signin", "done"), SetupFlow.ids(panes))
+        assertEquals(SetupFlow.DONE, SetupFlow.parse("done", panes))
+        assertEquals(null, SetupFlow.parse("radio", emptyList()))
+        assertEquals(null, SetupFlow.parse("nope", panes))
+        assertEquals(null, SetupFlow.parse(null, panes))
+    }
+
+    @Test
+    fun paneStepsComeInOrderBetweenHaAndSignin() {
+        val two = listOf(PaneStepFacts("radio", false, "radio mode not chosen"), PaneStepFacts("camera", false, "camera not set up"))
+        val i = fresh.copy(haKnown = true, haSeen = true, paneSteps = two, onAuthPage = true)
+        var d = SetupState.decide(i)
+        assertEquals("radio", d.step)
+        assertEquals(listOf("sign-in needed", "radio mode not chosen"), d.reasons)
+        d = SetupState.decide(i.copy(paneSteps = listOf(two[0].copy(done = true), two[1])))
+        assertEquals("camera", d.step)
+        assertEquals(setOf("radio"), d.paneDone)
+        assertEquals(listOf("sign-in needed", "camera not set up"), d.reasons)
+        d = SetupState.decide(i.copy(paneSteps = two.map { it.copy(done = true) }))
+        assertEquals(SetupFlow.SIGNIN, d.step)
+        assertEquals(setOf("wifi", "ha", "radio", "camera"), d.done)
+        // A frame with no pane steps: Wi-Fi, Home Assistant, Sign in.
+        assertEquals(SetupFlow.SIGNIN, SetupState.decide(i.copy(paneSteps = emptyList())).step)
     }
 
     // ---- radio step
 
     @Test
-    fun radioUpgradeMarksAnAlreadySetUpPanelDone() {
-        fun up(known: Boolean = false, seen: Boolean = false, key: Boolean = false, skipped: Boolean = false, mode: Boolean = false) =
-            SetupState.radioStepDoneOnUpgrade(known, seen, key, skipped, mode)
+    fun anyTraceOfAnEarlierSetupCounts() {
+        fun up(known: Boolean = false, seen: Boolean = false, key: Boolean = false, skipped: Boolean = false) =
+            SetupState.setUpBefore(known, seen, key, skipped)
         assertFalse("fresh install", up())
         assertTrue(up(known = true))
         assertTrue(up(seen = true))
         assertTrue(up(key = true))
         assertTrue(up(skipped = true))
-        assertTrue(up(mode = true))
     }
 
     @Test
     fun setUpPanelNeverSeesTheRadioStep() {
         // Desk panel after the upgrade, every trigger it can hit: a long Wi-Fi dropout, a sign-out.
         val desk = deskPanel(10 * min, haSeen = true, apiKey = true, hello = true)
-        assertTrue(desk.radioStepDone)
+        assertTrue(desk.paneSteps.single().done)
         assertFalse(SetupState.decide(desk).show)
         val dropout = SetupState.decide(desk.copy(online = false, offlineForMs = 60_000))
-        assertEquals(SetupStep.WIFI, dropout.step)
+        assertEquals(SetupFlow.WIFI, dropout.step)
         val back = SetupState.decide(desk.copy(showing = true))
         assertFalse(back.show)
-        assertEquals(SetupStep.DONE, back.step)
+        assertEquals(SetupFlow.DONE, back.step)
         val signout = SetupState.decide(desk.copy(signedOut = true, showing = true))
-        assertEquals(SetupStep.SIGNIN, signout.step)
-        assertTrue(signout.radioDone)
+        assertEquals(SetupFlow.SIGNIN, signout.step)
+        assertTrue("radio" in signout.paneDone)
     }
 
     @Test
@@ -259,20 +278,19 @@ class SetupStateTest {
         val i = fresh.copy(haKnown = true, haSeen = true, uptimeMs = 3_000)
         val d = SetupState.decide(i)
         assertTrue(d.show)
-        assertEquals(SetupStep.RADIO, d.step)
+        assertEquals("radio", d.step)
         assertEquals(listOf("radio mode not chosen"), d.reasons)
-        // Answered (persisted): gone for good.
-        assertFalse(SetupState.decide(i.copy(radioStepDone = true)).show)
+        // Answered (persisted, or a mode chosen with HA's select: RadioDefinitionTest): gone for good.
+        assertFalse(SetupState.decide(i.copy(paneSteps = radio(true))).show)
         // A mode chosen with HA's select also answers it.
-        assertFalse(SetupState.decide(i.copy(radioModeStored = true)).show)
     }
 
     @Test
     fun radioStepNeedsWifiAndHaFirst() {
         val i = fresh.copy(online = false, offlineForMs = 60_000, haKnown = true, haSeen = true)
-        assertEquals(SetupStep.WIFI, SetupState.decide(i).step)
+        assertEquals(SetupFlow.WIFI, SetupState.decide(i).step)
         assertFalse("not a reason while offline", "radio mode not chosen" in SetupState.decide(i).reasons)
-        assertEquals(SetupStep.HA, SetupState.decide(fresh.copy(haKnown = true, showing = true)).step)
+        assertEquals(SetupFlow.HA, SetupState.decide(fresh.copy(haKnown = true, showing = true)).step)
     }
 
     // ---- Improv / installer Wi-Fi
@@ -284,7 +302,7 @@ class SetupStateTest {
         val improv = ImprovFacts(running = true, state = sh.edm.improv.ImprovState.AUTHORIZATION_REQUIRED)
         val d = SetupState.decide(boot.copy(improv = improv))
         assertTrue(d.show)
-        assertEquals(SetupStep.WIFI, d.step)
+        assertEquals(SetupFlow.WIFI, d.step)
         assertEquals(WifiStep.Phase.STARTING, d.improv.phase)
         assertEquals(WifiStep.Phase.READY, SetupState.decide(boot.copy(improv = improv.copy(advertising = true))).improv.phase)
         // Installer Wi-Fi in flight: same.

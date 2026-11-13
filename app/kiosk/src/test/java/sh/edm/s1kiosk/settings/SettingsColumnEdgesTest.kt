@@ -18,9 +18,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import sh.edm.s1kiosk.radio.FixedReadout
 import sh.edm.s1kiosk.radio.HelperFacts
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.ZigbeeStack
+import sh.edm.s1kiosk.radio.radioDefinition
 import sh.edm.s1kiosk.setup.RadioFollowUp
 import sh.edm.s1kiosk.ui.Inter
 import java.io.File
@@ -47,16 +49,7 @@ class SettingsColumnEdgesTest {
             RadioMode.OFF, "ok Off: Aqara radio services stopped, radio idle", HelperFacts(true, 4), ZigbeeStack.AQARA,
             null, null, "http://homeassistant.local:8123", "192.0.2.10",
         )
-        overlay.show(
-            KioskSettingsOverlay.Model(
-                values = KioskSettingsOverlay.Values(
-                    url = "", zoom = "", secureHosts = "", hideHeader = true, radioAllow = "", presence = true, idleOff = "120",
-                    nightIdleOff = "20", nightWindow = "22:00-07:00", presenceRange = "", autoBrightness = true,
-                ),
-                facts = SettingsMenu.Facts(deviceSettings = true, radio = true), radioRunning = true,
-                allowedNow = SettingsMenu.allowedNow(true, null), version = "0.4.3", status = "screen on", radio = radio,
-            ),
-        )
+        overlay.show(MenuFixture.model(a, radioDefinition(a, FixedReadout(radio))))
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
         layout()
         scroll = generateSequence(listOf<View>(overlay)) { level -> level.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null } }

@@ -1,11 +1,16 @@
 package sh.edm.s1kiosk.setup
 
+import android.content.Context
+import dev.glassworks.pane.SetupHost
+import dev.glassworks.pane.SetupOp
+import dev.glassworks.pane.SetupStep
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import sh.edm.s1kiosk.radio.RadioDefinition
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.PipedInputStream
@@ -14,7 +19,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * The app side of kiln/packages/setup-channel/src/channel.ts, against the simulated app in
- * kiln/packages/setup-channel/test/setup-channel.test.ts.
+ * kiln/packages/setup-channel/test/setup-channel.test.ts. The radio here is a fake step with the real
+ * state shape (RadioDefinition.channelJson); SetupChannelStepsTest runs the real one.
  */
 class SetupChannelTest {
 
@@ -22,10 +28,12 @@ class SetupChannelTest {
         ip = "192.168.1.50",
         ha = ChannelState.Ha(discovered = "http://homeassistant.local:8123", url = "", signedIn = false,
             signinUrl = "http://192.168.1.50:8099/signin"),
-        radio = ChannelState.Radio(mode = "off", status = "Off", options = ChannelState.OPTIONS, helper = false),
     )
 
-    private class Fake(var state: ChannelState) : SetupChannel.Backend {
+    /** What the fake radio step reports. */
+    private data class Radio(val mode: String = "off", val status: String = "Off", val helper: Boolean = false, val allowed: String? = null)
+
+    private class Fake(var state: ChannelState, var radio: Radio = Radio()) : SetupChannel.Backend {
         val calls = mutableListOf<String>()
         var radioError: String? = null
         var haError: String? = null
@@ -37,23 +45,38 @@ class SetupChannelTest {
             state = state.copy(ha = state.ha.copy(url = url))
             return SetupChannel.HaChange(afterReply = { after += "reload $url" })
         }
-        override fun setRadioAllow(text: String): String? {
-            calls += "set_radio_allow $text"
-            if (text == "bad") return "Not an IP address or CIDR: “bad”."
-            state = state.copy(radio = state.radio.copy(allowed = text.ifEmpty { "192.0.2.10" }))
-            return null
+
+        val step = object : SetupStep {
+            override val id = "radio"
+            override val title = "Radio"
+            override val reason = "radio mode not chosen"
+            override fun done() = false
+            override fun detail(done: Boolean) = ""
+            override fun channelState() = RadioDefinition.channelJson(radio.mode, radio.status, radio.helper, radio.allowed)
+            override val ops = mapOf(
+                "set_mode" to SetupOp { r ->
+                    val id = r.optString("mode", "")
+                    if (id !in RADIO_MODES) return@SetupOp "Unknown radio mode '$id'."
+                    calls += "set_radio $id"
+                    radioError ?: run { radio = radio.copy(mode = id); null }
+                },
+                "set_allow" to SetupOp { r ->
+                    val text = r.optString("allow", "")
+                    calls += "set_radio_allow $text"
+                    if (text == "bad") "Not an IP address or CIDR: “bad”."
+                    else { radio = radio.copy(allowed = text.ifEmpty { "192.0.2.10" }); null }
+                },
+            )
+            override val legacyOps = mapOf("set_radio" to "set_mode", "set_radio_allow" to "set_allow")
+            override fun screen(context: Context, host: SetupHost) = throw UnsupportedOperationException()
         }
-        override fun setRadio(id: String): String? {
-            calls += "set_radio $id"
-            radioError?.let { return it }
-            state = state.copy(radio = state.radio.copy(mode = id))
-            return null
-        }
+
+        fun channel() = SetupChannel(this, listOf(step))
     }
 
     @Test
     fun stateJsonHasTheSetupStateShape() {
-        val o = base.toJson()
+        val o = JSONObject(Fake(base).channel().handle("""{"id":1,"op":"state"}""").first).getJSONObject("state")
         assertEquals(setOf("ip", "ha", "radio"), o.keyNames())
         assertEquals("192.168.1.50", o.getString("ip"))
         val ha = o.getJSONObject("ha")
@@ -82,21 +105,23 @@ class SetupChannelTest {
 
     @Test
     fun optionalFieldsAreLeftOutWhenUnknown() {
-        val bare = ChannelState(null, ChannelState.Ha(null, "", false, null), base.radio).toJson()
-        assertEquals(setOf("ha", "radio"), bare.keyNames())
+        val bare = ChannelState(null, ChannelState.Ha(null, "", false, null)).toJson()
+        assertEquals(setOf("ha"), bare.keyNames())
         assertEquals(setOf("url", "signedIn"), bare.getJSONObject("ha").keyNames())
     }
 
     @Test
     fun channelOffersThePanelsOptions() {
-        assertEquals(RadioStep.OPTIONS.map { it.mode.id }, ChannelState.OPTIONS.map { it.id })
-        assertEquals(RadioStep.OPTIONS.map { it.title }, ChannelState.OPTIONS.map { it.label })
-        assertTrue(RadioStep.COMING_SOON.none { s -> ChannelState.OPTIONS.any { it.id == s.mode.id } })
+        val opts = RadioDefinition.channelOptions()
+        val ids = (0 until opts.length()).map { opts.getJSONObject(it).getString("id") }
+        assertEquals(RadioStep.OPTIONS.map { it.mode.id }, ids)
+        assertEquals(RadioStep.OPTIONS.map { it.title }, (0 until opts.length()).map { opts.getJSONObject(it).getString("label") })
+        assertTrue(RadioStep.COMING_SOON.none { s -> s.mode.id in ids })
     }
 
     @Test
     fun noSecretsInTheState() {
-        val s = base.toJson().toString().lowercase()
+        val s = Fake(base).channel().handle("""{"op":"state"}""").first.lowercase()
         for (w in listOf("token", "key", "password", "psk", "secret")) assertFalse(w, w in s)
     }
 
@@ -126,7 +151,7 @@ class SetupChannelTest {
     @Test
     fun setRadioAllowAndTheAllowedField() {
         val fake = Fake(base)
-        val c = SetupChannel(fake)
+        val c = fake.channel()
         assertFalse(reply(c, """{"id":1,"op":"state"}""").getJSONObject("state").getJSONObject("radio").has("allowed"))
         val r = reply(c, """{"id":2,"op":"set_radio_allow","allow":"198.51.100.23"}""")
         assertTrue(r.getBoolean("ok"))
@@ -142,7 +167,7 @@ class SetupChannelTest {
     @Test
     fun stateAndSetHaRoundTripIdsEchoed() {
         val fake = Fake(base)
-        val c = SetupChannel(fake)
+        val c = fake.channel()
         val r1 = reply(c, """{"id":1,"op":"state"}""")
         assertEquals(1, r1.getInt("id"))
         assertTrue(r1.getBoolean("ok"))
@@ -161,7 +186,7 @@ class SetupChannelTest {
     @Test
     fun errorsAreOkFalseWithAReason() {
         val fake = Fake(base)
-        val c = SetupChannel(fake)
+        val c = fake.channel()
         reply(c, """{"id":3,"op":"set_ha","url":"homeassistant.local"}""").let {
             assertEquals(3, it.getInt("id")); assertFalse(it.getBoolean("ok")); assertTrue(it.getString("error").contains("web address"))
             assertFalse(it.has("state"))
@@ -181,8 +206,8 @@ class SetupChannelTest {
 
     @Test
     fun setRadioOk() {
-        val fake = Fake(base.copy(radio = base.radio.copy(helper = true)))
-        val r = reply(SetupChannel(fake), """{"id":9,"op":"set_radio","mode":"zigbee_tcp"}""")
+        val fake = Fake(base, Radio(helper = true))
+        val r = reply(fake.channel(), """{"id":9,"op":"set_radio","mode":"zigbee_tcp"}""")
         assertTrue(r.getBoolean("ok"))
         assertEquals("zigbee_tcp", r.getJSONObject("state").getJSONObject("radio").getString("mode"))
     }
@@ -190,7 +215,7 @@ class SetupChannelTest {
     @Test
     fun pushesOnlyChangesAfterTheClientSawTheState() {
         val fake = Fake(base)
-        val c = SetupChannel(fake)
+        val c = fake.channel()
         assertNull(c.pushIfChanged()) // nothing before the first state
         reply(c, """{"id":1,"op":"state"}""")
         assertNull(c.pushIfChanged())
@@ -225,7 +250,7 @@ class SetupChannelTest {
         val input = ("""{"id":1,"op":"state"}""" + "\r\n\n" + """{"id":2,"op":"set_ha","url":"http://ha.local:8123"}""" + "\n" +
             """{"id":3,"op":"set_radio","mode":"thread"}""" + "\n").toByteArray()
         val out = ByteArrayOutputStream()
-        SetupChannel(fake).serve(Chunked(input), out, pollMs = 10)
+        fake.channel().serve(Chunked(input), out, pollMs = 10)
         val got = lines(out)
         assertEquals(listOf(1, 2, 3), got.map { it.getInt("id") })
         assertTrue(got.all { it.getBoolean("ok") })
@@ -239,10 +264,10 @@ class SetupChannelTest {
         val toApp = PipedOutputStream()
         val input = PipedInputStream(toApp)
         val out = ByteArrayOutputStream() // synchronized: written by serve, read here
-        val t = Thread { SetupChannel(fake).serve(input, out, pollMs = 10) }.apply { start() }
+        val t = Thread { fake.channel().serve(input, out, pollMs = 10) }.apply { start() }
         toApp.write(("""{"id":1,"op":"state"}""" + "\n").toByteArray()); toApp.flush()
         waitFor { lines(out).size == 1 }
-        fake.state = base.copy(radio = base.radio.copy(status = "ok Zigbee coordinator (TCP)"))
+        fake.radio = fake.radio.copy(status = "ok Zigbee coordinator (TCP)")
         waitFor { lines(out).size == 2 }
         toApp.close()
         t.join(TimeUnit.SECONDS.toMillis(5))
@@ -261,7 +286,32 @@ class SetupChannelTest {
         assertEquals(listOf("{\"id\":1}"), got)
     }
 
+    @Test
+    fun namespacedOpsAndTheOldNamesDoTheSame() {
+        val fake = Fake(base)
+        val c = fake.channel()
+        assertTrue(reply(c, """{"id":1,"op":"ha.set_url","url":"http://ha.local:8123"}""").getBoolean("ok"))
+        assertTrue(reply(c, """{"id":2,"op":"radio.set_mode","mode":"thread"}""").getBoolean("ok"))
+        assertTrue(reply(c, """{"id":3,"op":"set_radio","mode":"off"}""").getBoolean("ok"))
+        assertTrue(reply(c, """{"id":4,"op":"radio.set_allow","allow":"192.0.2.30"}""").getBoolean("ok"))
+        assertEquals(listOf("set_ha http://ha.local:8123", "set_radio thread", "set_radio off", "set_radio_allow 192.0.2.30"), fake.calls)
+        // Only `<step>.<op>` and the declared old names: a bare op name is not one.
+        assertFalse(reply(c, """{"id":5,"op":"set_mode","mode":"off"}""").getBoolean("ok"))
+    }
+
+    @Test
+    fun aStepCannotTakeACoreKey() {
+        val fake = Fake(base)
+        val ha = object : SetupStep by fake.step { override val id = "ha" }
+        assertTrue(runCatching { SetupChannel(fake, listOf(ha)) }.isFailure)
+        assertTrue(runCatching { SetupChannel(fake, listOf(fake.step, fake.step)) }.isFailure)
+    }
+
     private fun JSONObject.keyNames(): Set<String> = keys().asSequence().toSet()
+
+    private companion object {
+        val RADIO_MODES = RadioStep.OPTIONS.map { it.mode.id }
+    }
 
     private fun waitFor(cond: () -> Boolean) {
         val until = System.currentTimeMillis() + 5_000

@@ -5,11 +5,15 @@ import android.content.Intent
 import dev.glassworks.engine.Engine
 import dev.glassworks.engine.EngineSettings
 import dev.glassworks.engine.gecko.GeckoEngine
+import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.screen.ScreenPolicy
 import sh.edm.s1kiosk.discovery.HaDiscovery
 import sh.edm.s1kiosk.frame.AqaraS1Plus
 import sh.edm.s1kiosk.radio.RadioController
+import sh.edm.s1kiosk.radio.RadioDefinition
+import sh.edm.s1kiosk.sendspin.SendspinDefinition
 import sh.edm.s1kiosk.update.UpdateManager
+import sh.edm.s1kiosk.voice.AssistDefinition
 import sh.edm.s1kiosk.voice.VoiceUi
 
 /**
@@ -37,7 +41,24 @@ class GlassworksRuntime(
         generatedBy = "S1 Kiosk",
     )
 
-    /** Set while KioskService runs; the setup screen and the setup channel apply radio changes through it. */
+    private var definitions: List<PaneDefinition>? = null
+
+    /**
+     * Every pane's definition, made once: their setup steps, settings sections and adb extras. The
+     * core's panes in the order the settings list them (voice, music, radio), then the frame's.
+     * MainActivity and KioskService ask for them first thing, before discovery can save an HA URL in
+     * this process (the radio step's one-time check needs that).
+     */
+    fun paneDefinitions(context: Context): List<PaneDefinition> = synchronized(this) {
+        definitions ?: run {
+            val app = context.applicationContext
+            val prefs = KioskPrefs(app)
+            listOf(AssistDefinition(prefs.voice), SendspinDefinition(prefs.sendspin), RadioDefinition(app, this)) +
+                frame.paneDefinitions(app)
+        }.also { definitions = it }
+    }
+
+    /** Set while KioskService runs; the radio's setup step and settings section apply radio changes through it. */
     @Volatile var radio: RadioController? = null
 
     /** Set while KioskService runs; the sign-in screen uses it for manual HA URL entry. */
