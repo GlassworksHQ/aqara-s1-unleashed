@@ -938,20 +938,24 @@ def pane_on_alone(ref_idles, package, panes=None):
         on_pss = [_without_boot(m) for m in on_m]
         on_cpu = [app_cpu(i, package)["app_pct_of_core"] for i in runs]
         d = statistics.median(on_pss) - statistics.median(off_pss)
-        tol = round(max(P.noise_band(off_pss), P.noise_band(on_pss)))
+        # Under two samples on either side there is no spread to read: no tolerance, not measurable.
+        bands = [P.noise_band(off_pss), P.noise_band(on_pss)]
+        tol = None if None in bands else round(max(bands))
         roles = sorted({r for m in on_m + off_m for r in m["by_role"]} - {"boot"})
         boot = [m["by_role"]["boot"]["pss_kb"] for m in on_m + off_m if "boot" in m["by_role"]]
         d_cpu = statistics.median(on_cpu) - statistics.median(off_cpu)
-        cpu_tol = max(P.noise_band(off_cpu), P.noise_band(on_cpu))
+        cpu_bands = [P.noise_band(off_cpu), P.noise_band(on_cpu)]
+        cpu_tol = None if None in cpu_bands else max(cpu_bands)
         out.append({
             "id": label[len(REF_LABEL):-3], "method": "on-alone", "samples_on": len(runs), "samples_off": len(off),
-            "pss_kb": round(d), "pss_tolerance_kb": tol, "pss_measurable": abs(d) > tol,
+            "pss_kb": round(d), "pss_tolerance_kb": tol, "pss_measurable": tol is not None and abs(d) > tol,
             "boot_samples_on": sum(1 for m in on_m if "boot" in m["by_role"]),
             "boot_samples_off": sum(1 for m in off_m if "boot" in m["by_role"]),
             "boot_pss_kb": round(statistics.median(boot)) if boot else None,
             "by_role_pss_kb": {r: round(statistics.median([m["by_role"].get(r, {}).get("pss_kb", 0) for m in on_m])
                                         - statistics.median([m["by_role"].get(r, {}).get("pss_kb", 0) for m in off_m])) for r in roles},
-            "cpu_pct_of_core": round(d_cpu, 2), "cpu_tolerance_pct": round(cpu_tol, 2), "cpu_measurable": abs(d_cpu) > cpu_tol,
+            "cpu_pct_of_core": round(d_cpu, 2), "cpu_tolerance_pct": None if cpu_tol is None else round(cpu_tol, 2),
+            "cpu_measurable": cpu_tol is not None and abs(d_cpu) > cpu_tol,
             "verified": off_verified and all(ok for _, ok in pairs if ok is not False),
             "excluded": bad + off_bad,
             **({"off_by": "mute"} if muted_only and label == "ref-assist-on" else {}),
@@ -1432,6 +1436,10 @@ def markdown(rep):
     return "\n".join(out) + "\n"
 
 
+def tol_mb(kb):
+    return "none (one sample)" if kb is None else f"±{kb / 1024:.1f} MB"
+
+
 def budget_word(ok):
     return "ok" if ok else "over" if ok is False else "n/a"
 
@@ -1465,9 +1473,10 @@ def ram_markdown(ram):
             out.append(f"- {k}: {val} against {c['budget_kb'] / 1024:.0f} MB: {budget_word(c['ok'])}")
     if ram.get("panes"):
         out += ["", "Each pane on by itself against every pane off, on the typical reference dashboard (median of runs; "
-                    "the tolerance is twice the robust standard deviation of the noisier set, from its median absolute "
-                    "deviation; `:boot` left out). Only samples whose kiosk log shows what their label says count. A budget "
-                    f"is checked only when the tolerance is at most {G.PANE_TOLERANCE_MAX_OF_BUDGET:.0%} of it:", "",
+                    "the tolerance is twice the noisier set's estimated standard deviation; `:boot` left out). Only samples "
+                    "whose kiosk log shows what their label says count. A budget is checked only with at least "
+                    f"{G.PANE_BUDGET_MIN_SAMPLES} samples each side and a tolerance at most "
+                    f"{G.PANE_TOLERANCE_MAX_OF_BUDGET:.0%} of it:", "",
                 "| Pane | PSS | Tolerance | Budget | CPU |", "|---|---|---|---|---|"]
         notes = []
         for p in ram["panes"]:
@@ -1489,7 +1498,7 @@ def ram_markdown(ram):
             word = "not measurable" if pb.get("measurable") is False else budget_word(pb.get("ok"))
             cap = "none" if pb.get("budget_kb") is None else f"{pb['budget_kb'] / 1024:.0f} MB, {word}"
             out.append(f"| {p['id']} | {p['pss_kb'] / 1024:+.1f} MB{'' if p['pss_measurable'] else ' (within tolerance)'} "
-                       f"| ±{p['pss_tolerance_kb'] / 1024:.1f} MB (n={p['samples_on']} on, {p['samples_off']} off) | {cap} "
+                       f"| {tol_mb(p['pss_tolerance_kb'])} (n={p['samples_on']} on, {p['samples_off']} off) | {cap} "
                        f"| {p['cpu_pct_of_core']:+.1f} % of a core{'' if p['cpu_measurable'] else ' (within tolerance)'} |")
         out += [""] + [f"- {n}" for n in notes] if notes else []
     if ram.get("screen_off_samples"):

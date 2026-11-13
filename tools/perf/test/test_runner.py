@@ -949,8 +949,11 @@ class PaneRam(unittest.TestCase):
         """#186: s1p3's first sample had the GPU process 15 MB low. Cycle 0 runs every state and keeps
         its files in warmup/, which the report doesn't read."""
         self.assertEqual(sorted(os.listdir(os.path.join(self.out, "warmup"))),
-                         sorted(f"{k}-ref-{s}-0.json" for k in ("idle", "panes") for s in ("panes-off", "assist-on", "sendspin-on")))
+                         sorted([f"{k}-ref-{s}-0.json" for k in ("idle", "panes") for s in ("panes-off", "assist-on", "sendspin-on")]
+                                + ["thermal.tsv"]))
         self.assertFalse([f for f in os.listdir(self.out) if f.endswith("-0.json")])
+        with open(os.path.join(self.out, "thermal.tsv")) as f:
+            self.assertFalse([l for l in f if l.split("\t")[0].endswith("-0")])         # its heat rows stay in warmup/
         with open(os.path.join(self.out, "report.json")) as f:
             ram = json.load(f)["ram"]
         self.assertEqual({(p["samples_on"], p["samples_off"]) for p in ram["panes"]}, {(2, 2)})
@@ -970,8 +973,9 @@ class PaneRam(unittest.TestCase):
         self.assertNotIn("off_by", panes["assist"])
         with open(os.path.join(self.out, "panes-ref-assist-on-1.json")) as f:
             self.assertEqual(json.load(f)["state"], {"voice": True, "sendspin": False, "mic": True})
+        # Two runs: a share, but no budget verdict (that needs three samples a side).
         self.assertEqual(ram["pane_budget"]["assist"], {"value_kb": 30000, "budget_kb": 49152, "tolerance_kb": 0,
-                                                        "measurable": True, "ok": True})
+                                                        "measurable": False, "ok": None})
         self.assertEqual({p["id"] for p in ram["panes_waiting"]}, {"radio", "wall-base", "timers", "time-zone", "diagnostics"})
         self.assertIsNone(ram["reference_idle"])          # no graded runs here
 

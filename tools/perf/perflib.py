@@ -61,10 +61,20 @@ def spread(values):
     return {"median": _r2(statistics.median(xs)), "min": _r2(min(xs)), "max": _r2(max(xs)), "n": len(xs)}
 
 
+# d2(n): the expected range of n normal samples in standard deviations (the control-chart constant).
+D2 = {2: 1.128, 3: 1.693, 4: 2.059}
+
+
 def noise_band(xs):
-    """Twice the robust standard deviation of repeated samples: 2 × 1.4826 × their median absolute
-    deviation from the median. Unlike max − min it doesn't grow with more samples, and one odd sample
-    doesn't set it (#186). For three normal samples it is about the expected range (1.7 σ)."""
+    """Twice an estimate of one sample's standard deviation (#186), or None under two samples.
+    Up to four samples: the range / d2(n), since the median absolute deviation of three samples is the
+    smaller of two gaps and is 0 when two agree. From five: 1.4826 × the median absolute deviation, so
+    one odd sample doesn't set it. Both estimate σ, so the band doesn't grow with more samples.
+    test_report.NoiseBand checks it by simulation."""
+    if len(xs) < 2:
+        return None
+    if len(xs) in D2:
+        return 2 * (max(xs) - min(xs)) / D2[len(xs)]
     m = statistics.median(xs)
     return 2 * 1.4826 * statistics.median(abs(x - m) for x in xs)
 

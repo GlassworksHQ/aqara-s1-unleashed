@@ -136,8 +136,9 @@ class Export(unittest.TestCase):
         s = S.summarise(rep)
         self.assertEqual(s["ram"], {"idle_app_pss_kb": 500_000, "idle_by_process_pss_kb": {"gpu": 200_000, "main": 300_000},
                                     "peak_app_pss_kb": 540_000, "peak_by_process_pss_kb": {"gpu": 200_000, "main": 340_000},
-                                    "panes": [{"id": "assist", "pss_kb": 30_000, "tolerance_kb": 0, "measurable": True, "runs": 1,
-                                               "budget_kb": 49152, "budget_ok": True, "budget_measurable": True}],
+                                    # One sample a side: no tolerance, so no claim (s1p1 read ±0.0 MB and "ok").
+                                    "panes": [{"id": "assist", "pss_kb": 30_000, "tolerance_kb": None, "measurable": False, "runs": 1,
+                                               "budget_kb": 49152, "budget_ok": None, "budget_measurable": False}],
                                     "panes_waiting": ["radio"], "budget_ok": True})
         self.assertEqual(s["apk"], [{"file": "s1-kiosk.apk", "abis": ["armeabi-v7a"], "bytes": 90_000_000}])
         plain = S.summarise(self.reps["B"])
@@ -164,7 +165,7 @@ class Export(unittest.TestCase):
         ram = R.reference_ram({"ref-panes-off": [TR.ram_idle("ref-panes-off", 100_000)],
                                "ref-assist-on": [TR.ram_idle("ref-assist-on", 130_000)]},
                               [], "sh.edm.s1kiosk", budgets, 2_000_000)
-        self.assertEqual((ram["panes"][0]["verified"], ram["panes"][0]["pss_measurable"]), (False, True))
+        self.assertEqual(ram["panes"][0]["verified"], False)
         self.assertEqual(S.ram_summary(ram)["panes"], [])
         del ram["panes"][0]["verified"]                  # a report from before the field existed
         self.assertEqual(S.ram_summary(ram)["panes"], [])

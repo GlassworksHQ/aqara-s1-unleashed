@@ -296,7 +296,7 @@ if [ -n "$PANE_RAM" ]; then
   # the dashboard; the second sets voice_enabled, which restarts the app, so every sample starts
   # from a fresh process. perfrun.py panes reads the kiosk's log to check what it runs. A sample that
   # ran something else, or saw the screen go off, is left out of the report (docs/perf.md).
-  log "RAM per pane: every pane off, then each on by itself, $RUNS time(s) (they go back to $PANE_RAM after)"
+  log "RAM per pane: every pane off, then each on by itself, $((RUNS + 1)) cycles, the first a warm-up (they go back to $PANE_RAM after)"
   DASHBOARD_OK=0
   SWITCHED=1
   PANES_SWITCHED=1
@@ -321,7 +321,7 @@ if [ -n "$PANE_RAM" ]; then
       if grep -q '"voice_applied": false' "$dir/panes-$label-$k.json"; then
         log "panes: voice_enabled didn't take (this kiosk saves it asynchronously before it restarts); Assist is off by its microphone mute"
       fi
-      thermal "$label-$k"
+      OUT=$dir thermal "$label-$k"
       OUT=$dir run idle --label "$label" --run "$k" --settle "$IDLE_SETTLE" --window "$IDLE_WINDOW"
     done
   done

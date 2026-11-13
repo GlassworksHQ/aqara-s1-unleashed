@@ -281,19 +281,28 @@ class MemoryBudget(unittest.TestCase):
                          {"radio", "wall-base", "timers", "time-zone", "diagnostics"})
 
     def test_a_pane_over_its_budget(self):
-        r = G.pane_budgets([{"id": "assist", "pss_kb": 60_000}, {"id": "sendspin", "pss_kb": 20_000}, {"id": "x", "pss_kb": 1}],
+        n3 = {"pss_tolerance_kb": 4_000, "samples_on": 3, "samples_off": 3}
+        r = G.pane_budgets([dict(n3, id="assist", pss_kb=60_000), dict(n3, id="sendspin", pss_kb=20_000), dict(n3, id="x", pss_kb=1)],
                            {"assist": {"ram_pss_max_kb": 49152}, "sendspin": {"ram_pss_max_kb": 49152}})
         self.assertEqual((r["assist"]["ok"], r["sendspin"]["ok"], r["x"]["ok"]), (False, True, None))
 
     def test_a_tolerance_wider_than_a_quarter_of_the_budget_is_not_measurable(self):
         """#186: s1p3's ±31.6 MB against 48 MB said "ok" for a share it couldn't place."""
         b = {"assist": {"ram_pss_max_kb": 49152}}
-        wide = G.pane_budgets([{"id": "assist", "pss_kb": 5_300, "pss_tolerance_kb": 32_400}], b)["assist"]
-        self.assertEqual((wide["measurable"], wide["ok"]), (False, None))
-        at = G.pane_budgets([{"id": "assist", "pss_kb": 5_300, "pss_tolerance_kb": 12_288}], b)["assist"]
-        self.assertEqual((at["measurable"], at["ok"]), (True, True))
-        over = G.pane_budgets([{"id": "assist", "pss_kb": 60_000, "pss_tolerance_kb": 8_700}], b)["assist"]
-        self.assertEqual((over["measurable"], over["ok"]), (True, False))
+        def check(pss, tol, n=3):
+            r = G.pane_budgets([{"id": "assist", "pss_kb": pss, "pss_tolerance_kb": tol, "samples_on": n, "samples_off": n}], b)
+            return r["assist"]["measurable"], r["assist"]["ok"]
+        self.assertEqual(check(5_300, 32_400), (False, None))
+        self.assertEqual(check(5_300, 12_288), (True, True))
+        self.assertEqual(check(60_000, 8_700), (True, False))
+
+    def test_a_budget_verdict_needs_three_samples_a_side(self):
+        r = G.pane_budgets([{"id": "assist", "pss_kb": 5_300, "pss_tolerance_kb": 0, "samples_on": 3, "samples_off": 2}],
+                           {"assist": {"ram_pss_max_kb": 49152}})["assist"]
+        self.assertEqual((r["measurable"], r["ok"]), (False, None))
+        r = G.pane_budgets([{"id": "assist", "pss_kb": 5_300, "pss_tolerance_kb": None, "samples_on": 1, "samples_off": 1}],
+                           {"assist": {"ram_pss_max_kb": 49152}})["assist"]
+        self.assertEqual((r["measurable"], r["ok"]), (False, None))
 
 
 class SharedRules(unittest.TestCase):
