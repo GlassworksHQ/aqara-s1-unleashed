@@ -7,9 +7,8 @@ What it doesn't set comes from Clarity's dashboards.py. Everything is seeded and
 render.mjs also gives the browser's clock, so every run draws the same picture. Names are made up, the
 pictures are drawn here (no camera, no real place, no faces), and nothing comes from a real home.
 
-One dashboard, two views with the same sections: "home" (up to four columns, landscape screens) and
-"portrait" (two columns). Every section is SECTION_ROWS grid rows tall, so on any screen each row of
-sections ends level and no column stops early.
+One dashboard, one view, nine sections. Every section is SECTION_ROWS grid rows tall, so on any screen
+each row of sections ends level and no column stops early.
 """
 import datetime
 import math
@@ -83,6 +82,17 @@ ENTITIES = {
         "is_volume_muted": False, "media_content_type": "music", "media_title": "Slow Morning",
         "media_artist": "The Glass Tones", "media_album_name": "Low Light",
         "entity_picture": "/clarity/showcase-art.png", "supported_features": 152463}),
+    "media_player.tv": ("playing", {
+        "friendly_name": "TV", "device_class": "tv", "volume_level": 0.25, "is_volume_muted": False,
+        "media_content_type": "tvshow", "media_title": "Night Tides", "media_series_title": "Coastlines",
+        "entity_picture": "/clarity/showcase-tv.png", "supported_features": 152463}),
+    "media_player.kitchen_radio": ("playing", {
+        "friendly_name": "Kitchen radio", "device_class": "speaker", "volume_level": 0.2, "is_volume_muted": False,
+        "media_content_type": "music", "media_title": "Morning Show", "supported_features": 152463}),
+    "switch.soundbar": ("on", {"friendly_name": "Soundbar"}),
+    "switch.game_console": ("off", {"friendly_name": "Game console"}),
+    "light.tv_backlight": _light("TV backlight", 40),
+    "switch.record_player": ("off", {"friendly_name": "Record player"}),
     "camera.front_garden": ("idle", {
         "friendly_name": "Front garden", "access_token": "showcase",
         "entity_picture": "/api/camera_proxy/camera.front_garden?token=showcase", "supported_features": 0}),
@@ -237,14 +247,20 @@ SECTIONS = [
         _camera("camera.driveway", 5),
         _tile("alarm_control_panel.home", [("alarm-modes", {"modes": ["armed_home", "armed_away", "armed_night", "disarmed"]})]),
         _tile("vacuum.robot", [("vacuum-commands", {"commands": ["start_pause", "return_home"]})])]},
+    {"type": "grid", "cards": [
+        _heading("Media", "media_player.tv"),
+        _rows({"type": "media-control", "entity": "media_player.tv"}, 5),
+        _tile("media_player.kitchen_radio", [("media-player-volume-slider", {})]),
+        _tile("switch.soundbar"), _tile("light.tv_backlight"),
+        _tile("switch.game_console"), _tile("switch.record_player")]},
 ]
 
 
 def lovelace(url_path):
     if url_path != DASHBOARD:
         return {"views": [{"title": "Home", "cards": []}]}
-    return {"views": [{"title": title, "path": path, "type": "sections", "max_columns": cols, "badges": BADGES,
-                       "sections": SECTIONS} for title, path, cols in (("Home", "home", 4), ("Portrait", "portrait", 2))]}
+    return {"views": [{"title": "Home", "path": "home", "type": "sections", "max_columns": 4, "badges": BADGES,
+                       "sections": SECTIONS}]}
 
 
 def cards():
@@ -361,7 +377,8 @@ ICONS = {
                "temperature": {"default": "mdi:thermometer"}},
     "switch": {"_": {"default": "mdi:toggle-switch-variant", "state": {"off": "mdi:toggle-switch-variant-off"}}},
     "media_player": {"_": {"default": "mdi:cast", "state": {"playing": "mdi:cast-connected", "off": "mdi:cast-off"}},
-                     "speaker": {"default": "mdi:speaker", "state": {"playing": "mdi:speaker-play", "off": "mdi:speaker-off"}}},
+                     "speaker": {"default": "mdi:speaker", "state": {"playing": "mdi:speaker-play", "off": "mdi:speaker-off"}},
+                     "tv": {"default": "mdi:television", "state": {"playing": "mdi:television-play", "off": "mdi:television-off"}}},
     "cover": {"_": {"default": "mdi:window-open", "state": {"closed": "mdi:window-closed"}},
               "garage": {"default": "mdi:garage", "state": {"open": "mdi:garage-open"}},
               "blind": {"default": "mdi:blinds-horizontal", "state": {"closed": "mdi:blinds-horizontal-closed"}}},
@@ -489,6 +506,21 @@ def _driveway(u, v):
     return tuple(int(max(0, min(255, x * vig))) for x in c)
 
 
+def _poster(u, v):
+    """The TV show's still: a moonlit sea with a lighthouse beam."""
+    if v < 0.55:
+        c = _mix((12, 22, 54), (40, 70, 120), v / 0.55)
+    else:
+        c = _mix((18, 42, 70), (6, 16, 34), (v - 0.55) / 0.45)
+        c = _mix(c, (200, 210, 230), max(0.0, 0.5 - abs(u - 0.7) * 6) * (0.5 + 0.5 * math.sin(v * 90)))
+    if (u - 0.7) ** 2 + (v - 0.22) ** 2 < 0.004:
+        c = (236, 236, 222)
+    if 0.16 < u < 0.2 and 0.34 < v < 0.56:
+        c = (30, 32, 40)
+    beam = max(0.0, 1 - abs((v - 0.35) - (u - 0.18) * 0.25) * 18) * (u > 0.18)
+    return tuple(int(x) for x in _mix(c, (255, 236, 180), beam * 0.35))
+
+
 def _art(u, v):
     """Album art: a soft sky-to-violet field with a low sun."""
     c = _mix((40, 60, 130), (140, 80, 170), v * 0.8 + u * 0.2)
@@ -509,6 +541,8 @@ def asset(name):
             _assets[name] = ("image/png", _png(640, 360, _garden))
         elif name == "still-camera.driveway.png":
             _assets[name] = ("image/png", _png(640, 360, _driveway))
+        elif name == "showcase-tv.png":
+            _assets[name] = ("image/png", _png(320, 180, _poster))
         elif name == "showcase-art.png":
             _assets[name] = ("image/png", _png(300, 300, _art))
         else:

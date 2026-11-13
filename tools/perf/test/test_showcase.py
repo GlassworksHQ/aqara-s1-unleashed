@@ -1,8 +1,7 @@
 """python3 -m unittest discover -s tools/perf/test
 
 The showcase home (tools/showcase/home.py) served by the fake Home Assistant, as render.mjs serves it
-for the device renders: its own dashboard (two views, the same sections, each the same height) and
-made-up states, the forecast, the energy statistics, the shopping list, the camera stills and the album
+for the device renders: its own dashboard (nine sections, each the same height) and made-up states, the forecast, the energy statistics, the shopping list, the camera stills and the album
 art, HA's icons and state names, nothing that shows a date, the same data and pictures every time, and
 every command the frontend sends still answered.
 Runs on a stub frontend."""
@@ -76,11 +75,10 @@ class Showcase(unittest.TestCase):
             self.assertEqual(self.entities(view) - states, set(), "cards name only showcase entities")
             self.assertEqual(len(self.cards(view)), home.cards(), "what render.mjs waits for")
 
-    def test_landscape_and_portrait_show_the_same_sections(self):
-        home_view, portrait = self.views(self.connect())
-        self.assertEqual((home_view["path"], home_view["max_columns"], portrait["path"], portrait["max_columns"]),
-                         ("home", 4, "portrait", 2))
-        self.assertEqual(home_view["sections"], portrait["sections"])
+    def test_one_view_of_nine_sections(self):
+        """Nine fill three columns of three (the Mirror) and two rows of four (the tablet, the ninth below its fold)."""
+        (view,) = self.views(self.connect())
+        self.assertEqual((view["path"], view["max_columns"], len(view["sections"])), ("home", 4, 9))
 
     def test_every_section_is_as_tall_as_the_others(self):
         """In grid rows, so a row of sections ends level on any screen and no column stops early."""
@@ -103,6 +101,7 @@ class Showcase(unittest.TestCase):
                               "picture-entity", "todo-list", "tile", "heading"}, types)
         cameras = [c for c in self.cards(self.views(self.connect())[0]) if c["type"] == "picture-entity"]
         self.assertEqual(len(cameras), 2)
+        self.assertIn("media-control", types)
 
     def test_nothing_shows_a_date(self):
         evening = datetime.datetime.fromtimestamp(home.NOW, datetime.timezone.utc).hour
@@ -137,7 +136,7 @@ class Showcase(unittest.TestCase):
     def test_the_camera_stills_and_the_album_art(self):
         port = self.srv.server_address[1]
         for path in ("/api/camera_proxy/camera.front_garden?token=showcase", "/api/camera_proxy/camera.driveway?token=showcase",
-                     "/clarity/showcase-art.png"):
+                     "/clarity/showcase-art.png", "/clarity/showcase-tv.png"):
             with self.subTest(path):
                 conn = http.client.HTTPConnection("127.0.0.1", port)
                 conn.request("GET", path)

@@ -21,11 +21,17 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // just under a row of sections: as many whole rows as fit, none cut through.
 const MIN_DENSITY = 0.6;
 const MAX_DENSITY = 1.1;
+// Frames drawn at a density set by hand instead of fitted, and what the check then expects to see.
+// The Mirror shows three columns of three sections: the fit can't hold that, because the number of
+// columns changes with the density it tries (three at 0.94, two at 0.71), so it never settles.
+const PINNED = {
+  'lululemon-mirror': { density: 0.94, columns: 3, rows: 3 },
+};
 // The view's own padding under the last row, kept on screen.
 const BOTTOM_PAD = 12;
 // A frame without one screen size (generic-android) is drawn as a common 10" tablet.
 const DEFAULT_DISPLAY = { width: 1920, height: 1200 };
-const QUALITY = 82;
+const QUALITY = 76;
 
 // The kiosk's own look: no sidebar, no header (app/kiosk/src/main/assets/extension/content.js), and
 // HA's default theme in dark mode.
@@ -121,7 +127,23 @@ function rowsOf(boxes) {
     if (row) row.bottoms.push(b.bottom);
     else rows.push({ top: b.top, bottoms: [b.bottom] });
   }
-  return rows.map((r) => ({ top: r.top, bottom: Math.max(...r.bottoms), spread: Math.max(...r.bottoms) - Math.min(...r.bottoms) }));
+  return rows.map((r) => ({
+    top: r.top, bottom: Math.max(...r.bottoms), spread: Math.max(...r.bottoms) - Math.min(...r.bottoms), columns: r.bottoms.length,
+  }));
+}
+
+/**
+ * What the screen (height px at density d) shows of the rows: the whole rows above its bottom edge.
+ * Throws if a row runs through that edge (a card cut), or a shown row ends unevenly (a column stops early).
+ */
+function shownRows(rows, height, d, id) {
+  const edge = height / d;
+  const cut = rows.find((r) => r.top < edge && r.bottom > edge);
+  if (cut) throw new Error(`${id}: the screen's bottom edge cuts a row of sections: ${JSON.stringify(cut)} at ${edge.toFixed(0)}`);
+  const shown = rows.filter((r) => r.bottom <= edge);
+  const uneven = shown.find((r) => r.spread > MAX_SPREAD);
+  if (uneven) throw new Error(`${id}: a column ends ${uneven.spread.toFixed(0)} px before the others: ${JSON.stringify(shown)}`);
+  return shown;
 }
 
 /** The density at which the screen (height px) shows rows 1..k whole and nothing of row k+1: the most rows that fit. */
@@ -187,7 +209,6 @@ async function cdp(url) {
 
 async function render(c, base, home, frame) {
   const display = frame.display ?? DEFAULT_DISPLAY;
-  const view = display.height > display.width ? 'portrait' : 'home';
   const { browserContextId } = await c.send('Target.createBrowserContext');
   const { targetId } = await c.send('Target.createTarget', { url: 'about:blank', browserContextId });
   const { sessionId } = await c.send('Target.attachToTarget', { targetId, flatten: true });
@@ -213,7 +234,7 @@ async function render(c, base, home, frame) {
   await s('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
   await s('Emulation.setTimezoneOverride', { timezoneId: 'UTC' });
   await s('Page.addScriptToEvaluateOnNewDocument', { source: inject(home.now) });
-  await s('Page.navigate', { url: `${base}/showcase/${view}` });
+  await s('Page.navigate', { url: `${base}/showcase/home` });
 
   let state;
   const ready = () => state.styled && state.loaded && state.cards >= home.cards;
@@ -225,27 +246,38 @@ async function render(c, base, home, frame) {
   if (!ready()) throw new Error(`${frame.id}: the dashboard didn't finish drawing (${JSON.stringify(state)}, ${home.cards} cards)`);
   await settle();
 
-  // A wider page can lay the cards out a little differently: fold again until it holds.
-  let f = fold(await rows(), display.height);
-  let stable = false;
-  for (let t = 0; t < 4 && !stable; t++) {
+  const pinned = PINNED[frame.id];
+  let f;
+  if (pinned) {
+    f = { density: pinned.density, rows: pinned.rows };
     await metrics(f.density);
     await settle();
-    const again = fold(await rows(), display.height);
-    stable = Math.abs(again.density - f.density) < 0.002 && again.rows === f.rows;
-    f = again;
+  } else {
+    // A wider page can lay the cards out a little differently: fold again until it holds.
+    f = fold(await rows(), display.height);
+    let stable = false;
+    for (let t = 0; t < 4 && !stable; t++) {
+      await metrics(f.density);
+      await settle();
+      const again = fold(await rows(), display.height);
+      stable = Math.abs(again.density - f.density) < 0.002 && again.rows === f.rows;
+      f = again;
+    }
+    if (!stable) throw new Error(`${frame.id}: the fold didn't settle (last: density ${f.density}, ${f.rows} rows)`);
   }
-  if (!stable) throw new Error(`${frame.id}: the fold didn't settle (last: density ${f.density}, ${f.rows} rows)`);
-  const shown = (await rows()).slice(0, f.rows);
+  const shown = shownRows(await rows(), display.height, f.density, frame.id);
+  if (shown.length !== f.rows) throw new Error(`${frame.id}: ${shown.length} whole rows of sections on screen, not ${f.rows}`);
+  if (pinned && shown.some((r) => r.columns !== pinned.columns)) {
+    throw new Error(`${frame.id}: not ${pinned.columns} columns in every row: ${JSON.stringify(shown)}`);
+  }
   const spread = Math.max(...shown.map((r) => r.spread));
-  if (spread > MAX_SPREAD) throw new Error(`${frame.id}: a column ends ${spread.toFixed(0)} px before the others: ${JSON.stringify(shown)}`);
   const clock = (await s('Runtime.evaluate', { expression: CLOCK_TEXT, returnByValue: true })).result.value;
   // the clock card's digits, without the colon it draws apart: "1930"
   const hhmm = new Date(home.now).toISOString().slice(11, 16).replace(':', '');
   if (!clock.includes(hhmm)) throw new Error(`${frame.id}: the clock reads "${clock}", not ${hhmm}`);
   const { data } = await s('Page.captureScreenshot', { format: 'webp', quality: QUALITY });
   await c.send('Target.disposeBrowserContext', { browserContextId });
-  return { webp: Buffer.from(data, 'base64'), view, density: f.density, rows: f.rows, spread };
+  return { webp: Buffer.from(data, 'base64'), density: f.density, rows: f.rows, columns: shown[0].columns, spread, pinned: !!pinned };
 }
 
 async function main() {
@@ -285,8 +317,8 @@ srv.serve_forever()`;
       const out = outDir ? join(outDir, `${f.id}.webp`) : join(ROOT, 'frames', f.id, 'design', 'render.webp');
       writeFileSync(out, r.webp);
       const d = f.display ?? DEFAULT_DISPLAY;
-      console.log(`${f.id}: ${d.width}x${d.height}, ${(r.webp.length / 1024).toFixed(1)} KiB, view ${r.view}, density ${r.density.toFixed(3)}, ` +
-        `${r.rows} row(s) of sections, rows end within ${r.spread.toFixed(0)} px -> ${out}`);
+      console.log(`${f.id}: ${d.width}x${d.height}, ${(r.webp.length / 1024).toFixed(1)} KiB, density ${r.density.toFixed(3)}` +
+        `${r.pinned ? ' (pinned)' : ''}, ${r.rows} row(s) x ${r.columns} columns of sections, rows end within ${r.spread.toFixed(0)} px -> ${out}`);
     }
     console.log(`(${product})`);
     c.close();

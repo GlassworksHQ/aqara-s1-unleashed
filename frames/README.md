@@ -1,3 +1,9 @@
+| Frame | Size | Density | Shown | File |
+|---|---|---|---|---|
+| `aqara-s1-plus` | 1440×720 | 0.989 (fitted) | 1 row of 4 sections | 41.5 KiB |
+| `lululemon-mirror` | 1080×1920 | 0.94 (pinned) | 3 rows of 3 | 74.7 KiB |
+| `generic-android` | 1920×1200 | 0.867 (fitted) | 2 rows of 4 (the ninth section is below the edge) | 65.1 KiB |
+
 # Frames
 
 A **frame** is one device's definition: its installer recipe, and the design data that describes it to
@@ -96,18 +102,21 @@ Every frame's card shows the same dashboard (maintainer, #144), so the renders a
 `render.webp`, made by `node tools/showcase/render.mjs [frame-id ...]`.
 
 - **What it shows.** The showcase home ([`tools/showcase/home.py`](../tools/showcase/home.py)): a
-  made-up house in the evening, on HA's sections view. Eight sections: a clock, the weather with its
+  made-up house in the evening, on HA's sections view. Nine sections: a clock, the weather with its
   forecast and the day's temperature; the living room (thermostat, lights, speaker with album art);
   the front garden (camera, lock, lights, garage door, scenes); energy (the week's use, today's
   power); the kitchen (lights, appliances, a shopping list); the bedroom (thermostat, light, blinds);
-  air (humidity, CO₂, PM2.5, the purifier); security (a driveway camera, the alarm, the vacuum). The
-  camera stills and the album art are drawn by `home.py` itself: no camera, no real place, no faces.
+  air (humidity, CO₂, PM2.5, the purifier); security (a driveway camera, the alarm, the vacuum);
+  media (the TV with its show's still, the kitchen radio, the soundbar and more). The camera stills,
+  the TV still and the album art are drawn by `home.py` itself: no camera, no real place, no faces.
   The clock shows a time and no date; the graphs cover today only, so their axes name no day.
 - **Full screens.** Every section is 10 grid rows tall (`SECTION_ROWS`, tested), so each row of
-  sections ends level and no column stops early. Landscape screens get the `home` view (up to four
-  columns), portrait ones the `portrait` view (two columns, the same sections). The script then
-  picks each frame's zoom, from density 0.6 to 1.1, so the screen's bottom edge falls just under a
-  row of sections: as many whole rows as fit, and no card cut through.
+  sections ends level and no column stops early. For each landscape frame the script picks the zoom,
+  from density 0.6 to 1.1, so the screen's bottom edge falls just under a row of sections: as many
+  whole rows as fit. The Mirror's zoom is set by hand (`PINNED` in `render.mjs`) to three columns of
+  three sections: a fit can't hold three columns there, because the number of columns changes with
+  the density it tries. Every render fails if the bottom edge cuts a row, a shown row ends unevenly
+  (by its lowest card, more than 4 px), or the Mirror isn't three by three.
 - **How.** It serves that home from Clarity's fake Home Assistant with the frontend build Clarity
   pins ([`tools/perf/hafrontend.py`](../tools/perf/hafrontend.py)), and opens it in headless Chrome as
   the kiosk shows it: no header, no sidebar, HA's default theme in dark mode. The page's clock is held
