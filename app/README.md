@@ -162,7 +162,7 @@ $A --ei idle_off_sec 120 --ei night_idle_off_sec 20 --es night_window 22:00-07:0
 $A --ef presence_range_m 1.0   # VI5300 range (needs WRITE_SECURE_SETTINGS)
 $A --es screen off         # or on
 $A --ez restart true       # restart the app process
-$A --es wake_model alexa_v0.1.tflite --ef wake_threshold 0.6 --ef mic_gain 2.0 --ez mic_muted false
+$A --es wake_model okay_nabu --ef wake_threshold 0.9 --ef mic_gain 2.0 --ez mic_muted false  # wake word id (an old *.tflite name maps to its microWakeWord model); the threshold of that word
 $A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # manual ESPHome API key (HA normally provisions one)
 $A --ez sendspin_enabled false        # Music Assistant player (Sendspin) off/on (default on)
 $A --es sendspin_server 192.168.1.100 # Sendspin server: auto (default: mDNS, else <HA host>:8927) or host[:port][/path] / ws://
@@ -222,12 +222,12 @@ console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
 
 The app exposes the panel to Home Assistant as **one ESPHome device** over the ESPHome native API
 (TCP **6053**, advertised as `_esphomelib._tcp`): an Assist satellite with an **on-device wake word**
-(openWakeWord on TFLite, default "Hey Jarvis"), a media player, the screen as a light, presence and
+(microWakeWord on TFLite, default "Hey Jarvis"; the openWakeWord models stay selectable for one release), a media player, the screen as a light, presence and
 illuminance sensors, and the kiosk/screen settings. It runs in `KioskService`, so it keeps listening
 while the screen is off, and talking to it wakes the screen. See [docs/esphome.md](../docs/esphome.md).
 
 ```sh
-tools/voice/fetch-models.sh            # downloads the openWakeWord models on the host and adb-pushes them
+tools/voice/fetch-models.sh            # optional: downloads the microWakeWord models on the host and adb-pushes them
 # HA: the panel is auto-discovered (Settings -> Devices & services -> ESPHome "S1 Panel" -> Add), or
 #     Add integration -> ESPHome -> <panel IP>, port 6053
 ```
@@ -237,7 +237,7 @@ Entity ids look like `light.s1_panel_screen`, `select.s1_panel_screen_mode`,
 Encryption is automatic: a panel without a key lets HA 2026.11+ provision one when you add it
 (ESPHome dynamic encryption key). You can also set a key by hand with
 `--es api_key <base64 32 bytes> --ez api_encryption true`. Keys are never logged. Tune the mic with
-`--ef mic_gain 2.0` / `--ef wake_threshold 0.6`, or turn the voice assistant off with
+`--ef mic_gain 2.0` / `--ef wake_threshold 0.9`, or turn the voice assistant off with
 `--ez voice_enabled false` (the API and the other entities stay).
 
 Not yet tested on the panel. The previous Wyoming satellite was verified there (HA connected,

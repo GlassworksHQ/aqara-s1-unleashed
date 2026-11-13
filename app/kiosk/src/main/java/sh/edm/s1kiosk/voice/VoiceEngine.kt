@@ -10,35 +10,38 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * Microphone + on-device openWakeWord, feeding the ESPHome voice assistant ([controller]).
+ * Microphone + on-device wake word, feeding the ESPHome voice assistant ([controller]).
  *
  * The microphone has one consumer: this engine. Every 80 ms frame goes through the wake word model
  * (so its buffers never hold stale audio), and while a pipeline run is starting/streaming the same
  * frame is handed to the controller, which sends it to Home Assistant. Detections only count while
  * the controller is idle and after the refractory period.
  *
- * Also the [WakeWordCatalog] behind Home Assistant's wake word select: every `*.tflite` in the
- * models dir except the shared melspectrogram/embedding models. The active model is persisted by
- * the caller through [onActiveModelChanged].
+ * Also the [WakeWordCatalog] behind Home Assistant's wake word select: the microWakeWord models
+ * ([WakeWords.MICRO], fetched on first use into `micro/`), then, as a legacy fallback for one
+ * release, every openWakeWord `*.tflite` already in the models dir except the shared
+ * melspectrogram/embedding models. The active word id is persisted by the caller through
+ * [onActiveWordChanged].
  */
 class VoiceEngine(
     context: Context,
     private val config: VoiceConfig,
-    initialModel: String,
-    private val onActiveModelChanged: (String) -> Unit,
+    initialWord: String,
+    private val onActiveWordChanged: (String) -> Unit,
 ) : VoiceInput {
 
     @Volatile override var controller: VoiceAssistantController? = null
     @Volatile override var threshold: Float = config.threshold
 
     private val modelsDir: File = config.resolveModelsDir(context.applicationContext)
+    private val microDir = File(modelsDir, "micro")
     private val exec: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "voice-main").apply { isDaemon = true } }
 
     private val wwLock = Any()
-    private var wakeWord: TfliteWakeWord? = null // guarded by wwLock
-    @Volatile private var activeModel: String = initialModel
-    @Volatile private var phrase: String = friendlyName(initialModel)
+    private var wakeWord: WakeDetector? = null // guarded by wwLock
+    @Volatile private var activeWord: String = initialWord
+    @Volatile private var phrase: String = WakeWords.parse(initialWord)?.phrase ?: ""
     private var mic: Microphone? = null
     @Volatile private var gain = config.micGain
     // Mic thread only: level stats for the current pipeline run.
@@ -58,7 +61,7 @@ class VoiceEngine(
         running = true
         this.muted = muted
         exec.execute { loadModel() }
-        exec.scheduleWithFixedDelay({ if (wakeWord == null && activeModel.isNotEmpty()) loadModel() }, 30, 30, TimeUnit.SECONDS)
+        exec.scheduleWithFixedDelay({ if (wakeWord == null && activeWord.isNotEmpty()) loadModel() }, 30, 30, TimeUnit.SECONDS)
         if (!muted) exec.execute { startMic() }
     }
 
@@ -85,25 +88,27 @@ class VoiceEngine(
     // ------------------------------------------------------------------ WakeWordCatalog
 
     override fun available(): List<WakeWordInfo> =
-        modelFiles().map { WakeWordInfo(TfliteWakeWord.modelName(it.name), friendlyName(it.name)) }
+        WakeWords.MICRO.map { WakeWordInfo(it.id, it.phrase) } +
+            legacyFiles().map { WakeWord.Legacy(TfliteWakeWord.modelName(it.name)) }
+                .map { WakeWordInfo(it.id, "${it.phrase} (openWakeWord)") }
 
-    override fun activeIds(): List<String> =
-        if (activeModel.isEmpty()) emptyList() else listOf(TfliteWakeWord.modelName(activeModel))
+    override fun activeIds(): List<String> = if (activeWord.isEmpty()) emptyList() else listOf(activeWord)
 
     override fun setActive(ids: List<String>) {
-        val file = ids.firstOrNull()?.let { "$it.tflite" } ?: ""
-        if (file.isNotEmpty() && modelFiles().none { it.name == file }) {
-            VoiceLog.w("Unknown wake word '$file'; ignoring")
+        val id = ids.firstOrNull() ?: ""
+        if (id.isNotEmpty() && available().none { it.id == id }) {
+            VoiceLog.w("Unknown wake word '$id'; ignoring")
             return
         }
-        if (file == activeModel) return
-        activeModel = file
-        phrase = friendlyName(file)
-        onActiveModelChanged(file)
+        if (id == activeWord) return
+        activeWord = id
+        phrase = WakeWords.parse(id)?.phrase ?: ""
+        onActiveWordChanged(id)
         if (running) exec.execute { loadModel() }
     }
 
-    private fun modelFiles(): List<File> =
+    /** openWakeWord models already on the panel (0.4 and earlier fetched them). */
+    private fun legacyFiles(): List<File> =
         modelsDir.listFiles { f ->
             f.isFile && f.name.endsWith(".tflite") &&
                 f.name != TfliteWakeWord.MELSPEC_FILE && f.name != TfliteWakeWord.EMBEDDING_FILE
@@ -116,29 +121,25 @@ class VoiceEngine(
         try { onError?.invoke(msg) } catch (_: Exception) {}
     }
 
-    /** Executor thread. Loads [activeModel], replacing the current one. */
+    /** Executor thread. Loads [activeWord], replacing the current one. */
     private fun loadModel() {
-        val model = activeModel
-        if (model.isEmpty()) {
+        val id = activeWord
+        val word = WakeWords.parse(id)
+        if (word == null) {
             synchronized(wwLock) { wakeWord?.close(); wakeWord = null }
             VoiceLog.i("No wake word selected; wake word detection off")
             return
         }
         try {
-            val ww = try {
-                TfliteWakeWord.load(modelsDir, model)
-            } catch (e: ModelsMissingException) {
-                // A web install (or a wiped app) has no models yet: fetch them on the panel itself.
-                val fetched = try { ModelFetcher().ensure(modelsDir) } catch (io: java.io.IOException) {
-                    throw ModelsMissingException("${e.message}; downloading them failed: ${io.message}")
-                }
-                if (fetched.isEmpty()) throw e
-                TfliteWakeWord.load(modelsDir, model)
+            val ww = when (word) {
+                is WakeWord.Micro -> loadMicro(word.model)
+                is WakeWord.Legacy -> loadLegacy("${word.id}.tflite")
             }
-            if (model != activeModel) { ww.close(); return }
+            if (id != activeWord) { ww.close(); return }
             synchronized(wwLock) { wakeWord?.close(); wakeWord = ww }
             lastError = null
-            VoiceLog.i("Wake word '${ww.name}' ('$phrase') loaded; threshold $threshold")
+            val engine = if (word is WakeWord.Micro) "microWakeWord" else "openWakeWord"
+            VoiceLog.i("Wake word '$id' ('$phrase', $engine) loaded; threshold $threshold")
         } catch (e: ModelsMissingException) {
             val msg = e.message ?: "Wake word models missing"
             if (msg != lastError) error(msg) // don't spam on every retry
@@ -146,6 +147,33 @@ class VoiceEngine(
         } catch (e: Throwable) {
             error("Wake word init failed: ${e.message}")
         }
+    }
+
+    /**
+     * The panel fetches the models itself (a web install, or a wiped app, has none yet): all four
+     * at once when this one is missing or fails its hash, so switching words later works offline.
+     */
+    private fun loadMicro(model: MicroModel): WakeDetector {
+        val file = "${model.id}.tflite"
+        val fetcher = ModelFetcher.micro()
+        if (file in fetcher.missing(microDir)) {
+            try {
+                fetcher.ensure(microDir)
+            } catch (io: java.io.IOException) {
+                throw ModelsMissingException("Downloading the wake word model $file failed: ${io.message}")
+            }
+        }
+        return MicroWakeWord.load(File(microDir, file), model)
+    }
+
+    private fun loadLegacy(file: String): WakeDetector = try {
+        TfliteWakeWord.load(modelsDir, file)
+    } catch (e: ModelsMissingException) {
+        val fetched = try { ModelFetcher().ensure(modelsDir) } catch (io: java.io.IOException) {
+            throw ModelsMissingException("${e.message}; downloading them failed: ${io.message}")
+        }
+        if (fetched.isEmpty()) throw e
+        TfliteWakeWord.load(modelsDir, file)
     }
 
     private fun startMic() {
@@ -194,7 +222,7 @@ class VoiceEngine(
             }
         }
         val now = nowMs()
-        if (now - t0 > 60 && ++slowFrames % 50 == 1) VoiceLog.w("Wake word inference slow: ${now - t0} ms per 80 ms frame")
+        if (now - t0 > 60 && ++slowFrames % 50 == 1) VoiceLog.w("Wake word inference slow: ${now - t0} ms per ${frame.size / 16} ms frame")
         if (score >= threshold && now >= refractoryUntil && state == VoiceAssistantController.State.IDLE) {
             refractoryUntil = now + config.refractoryMs
             VoiceLog.i("Wake word '$phrase' detected (score %.3f)".format(score))
@@ -210,12 +238,5 @@ class VoiceEngine(
             out[2 * i + 1] = (s shr 8).toByte()
         }
         return out
-    }
-
-    companion object {
-        /** `hey_jarvis_v0.1.tflite` -> "Hey Jarvis". */
-        fun friendlyName(modelFile: String): String =
-            TfliteWakeWord.phraseFor(modelFile).split(' ').filter { it.isNotEmpty() }
-                .joinToString(" ") { w -> w.replaceFirstChar { it.uppercaseChar() } }
     }
 }

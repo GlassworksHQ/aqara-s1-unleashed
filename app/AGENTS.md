@@ -29,7 +29,7 @@ A new library in `libs/` or a new pane needs a branded README header: see
 - JDK 21 and the Android SDK platform `android-37.2`. GeckoView forces the toolchain (AGP 9, Kotlin
   2.4); don't downgrade it.
 - `./gradlew test` runs the JVM tests for every module. Some tests talk to Python reference
-  implementations in `src/test/resources/` (`aioesphomeapi`, a Sendspin server, openWakeWord). Keep
+  implementations in `src/test/resources/` (`aioesphomeapi`, a Sendspin server, openWakeWord, microWakeWord on LiteRT). Keep
   those passing rather than skipping them.
 - Put protocol logic (ESPHome, Improv, EZSP/ASH, the wall base, Sendspin, FLAC) in plain Kotlin
   that a JVM test can drive, and keep the Android glue thin. `app/libs/esphome-api` must stay free of
