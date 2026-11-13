@@ -446,7 +446,7 @@ export function Done({ s, session }: P) {
       <p className="lede">{d.body}</p>
       {d.backup && (
         <div className="well">
-          <span className="grow"><span>{d.backup.hint}</span><span className="small">{d.backup.name} · {d.backup.info}</span></span>
+          <span className="grow"><span>{d.backup.hint}</span><span className="small">{d.backup.name} · {d.backup.info}</span><span className="small">The latest backup made in this browser tab.</span></span>
           <button type="button" className="btn ember" onClick={() => void session.downloadBackup()}>Download</button>
         </div>
       )}

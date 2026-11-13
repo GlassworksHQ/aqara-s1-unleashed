@@ -26,6 +26,9 @@ describe('the simulated panel', () => {
     expect(st().wrote).toBe(true);
     await s.asks.click();
     await until(() => st().setup.phase === 'settings');
+    expect(st().setup).toMatchObject({ update: false });
+    await s.route('resume'); // Back, or the rail's App, before the app went in: still a first install
+    expect(st().setup).toMatchObject({ phase: 'settings', update: false });
     await s.installApp({ clock24: true, keyboard: false });
     await until(() => st().setup.phase === 'wifi' && !!(st().setup as { on?: unknown }).on);
     expect(st().setup).toMatchObject({ phase: 'wifi', on: { ssid: 'Home Net', ip: '192.0.2.50' } }); // on Wi-Fi already: said first

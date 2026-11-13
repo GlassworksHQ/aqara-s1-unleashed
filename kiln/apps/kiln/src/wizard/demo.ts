@@ -104,9 +104,10 @@ function improvStream(fail: boolean, net: Net): ByteStream {
 }
 
 /** `online`: on Wi-Fi already, as a panel set up with Aqara's app is. */
-export function simulatedPanel(wifiFails = false, online = true): PanelShell {
+export function simulatedPanel(wifiFails = false, online = true, app = true): PanelShell {
   const net: Net = { online };
   const out = (cmd: string) => cmd === 'getprop sys.boot_completed' || cmd.startsWith('grep -c') ? '1\n'
+    : cmd === 'pm path sh.edm.s1kiosk' && app ? 'package:/data/app/sh.edm.s1kiosk-1/base.apk\n'
     : cmd === 'dumpsys wifi' && net.online ? DUMPSYS_WIFI
     : cmd.startsWith('ip -4') && net.online ? `3: wlan0    inet ${IP}/24 brd 192.0.2.255 scope global wlan0\n` : '';
   return {
@@ -195,7 +196,7 @@ const demoRecipe: Recipe<AssetName, SetUpOptions, Provisioned> = {
 /** A session on the simulated panel. */
 export function demoSession(which: Demo): Session {
   const saved: { meta: BackupMeta; files: BackupFile[] }[] = [];
-  const panel = simulatedPanel(which === 'wifi-fail', which !== 'wifi-fail' && which !== 'wifi-new');
+  const panel = simulatedPanel(which === 'wifi-fail', which !== 'wifi-fail' && which !== 'wifi-new', which !== 'run');
   let adbAllowed = which !== 'run'; // the static states start on an installed panel
   const deps: SessionDeps = {
     recipe: demoRecipe,

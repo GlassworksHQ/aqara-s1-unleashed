@@ -47,8 +47,11 @@ function recall(base: string): Changed | undefined {
   if (seen.has(base)) return undefined;
   const store = storage();
   if (!store) return 'unknown';
-  const v = store.getItem(storageKey(base));
-  return v === 'written' || v === 'apps' ? v : undefined;
+  try {
+    const v = store.getItem(storageKey(base));
+    return v === 'written' || v === 'apps' ? v : undefined;
+  } catch { return 'unknown'; } // writable but not readable: still can't recall
+
 }
 
 function remember(base: string, c: Changed | undefined) {

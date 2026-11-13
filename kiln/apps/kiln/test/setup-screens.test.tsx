@@ -113,6 +113,7 @@ describe('the set-up forms', () => {
     await act(() => s.installApp({ locale: 'de-DE', timezone: 'Europe/Berlin', clock24: true, keyboard: false }));
     expect(s.store.state.setup.phase).toBe('wifi');
     await act(() => s.route('resume')); // Back, or the rail's App
+    expect(screen.getByRole('heading').textContent).toBe('Update S1 Kiosk.'); // the app is on the panel now
     const [language, zone] = screen.getAllByRole('combobox') as HTMLSelectElement[];
     expect([language!.value, zone!.value]).toEqual(['de-DE', 'Europe/Berlin']);
     expect(screen.getByRole('radio', { name: '24-hour' }).getAttribute('data-state')).toBe('checked');

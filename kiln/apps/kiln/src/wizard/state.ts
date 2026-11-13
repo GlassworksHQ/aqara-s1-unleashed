@@ -4,6 +4,7 @@
 import type { AskKind, BackupMeta, PartState, Phase, Progress } from '@glassworks/kiln-core';
 import type { AppPhase } from '@glassworks/aqara-s1-plus-installer';
 import type { SetupState } from '@glassworks/setup-channel';
+import { SET_UP } from './routes';
 
 export type Flow = 'install' | 'undo';
 /**
@@ -240,15 +241,15 @@ export function railIndex(s: WizardState): number {
   return at[s.flow][s.screen] ?? 0;
 }
 
-/** Set up's own steps, with the route of each (routes.ts SET_UP). */
-const SET_UP_STEPS = [['App', 'set-up'], ['Wi-Fi', 'wifi'], ['Home Assistant', 'home-assistant'], ['Radio', 'radio']] as const;
+/** Set up's own steps on the rail: routes.ts SET_UP, named. */
+const SET_UP_NAMES: Record<(typeof SET_UP)[number], string> = { 'set-up': 'App', wifi: 'Wi-Fi', 'home-assistant': 'Home Assistant', radio: 'Radio' };
 const SET_UP_AT: Record<Setup['phase'], number> = { waiting: 0, settings: 0, wifi: 1, ha: 2, radio: 3, 'radio-next': 3 };
 
 export interface RailStep {
   name: string;
   mark: RailMark;
   /** during set-up, its own steps; `route` is the step's (routes.ts), for going back to it */
-  sub?: { name: string; mark: RailMark; route: (typeof SET_UP_STEPS)[number][1] }[];
+  sub?: { name: string; mark: RailMark; route: (typeof SET_UP)[number] }[];
 }
 
 export function rail(s: WizardState): RailStep[] {
@@ -259,7 +260,7 @@ export function rail(s: WizardState): RailStep[] {
     name,
     mark: all || i < now ? 'done' : i > now ? 'todo' : s.screen === 'error' ? 'bad' : s.ask ? 'turn' : 'now',
     ...(s.flow === 'install' && s.screen === 'setup' && i === now
-      ? { sub: SET_UP_STEPS.map(([n, route], j) => ({ name: n, route, mark: j < at ? 'done' as const : j > at ? 'todo' as const : 'now' as const })) }
+      ? { sub: SET_UP.map((route, j) => ({ name: SET_UP_NAMES[route], route, mark: j < at ? 'done' as const : j > at ? 'todo' as const : 'now' as const })) }
       : {}),
   }));
 }

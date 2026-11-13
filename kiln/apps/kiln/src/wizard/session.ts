@@ -5,7 +5,7 @@ import type { AdbKey, PanelShell } from '@glassworks/adb';
 import type { Fastboot } from '@glassworks/fastboot';
 import type { FelDevice } from '@glassworks/fel';
 import {
-  IMPROV_SOCKET, ImprovSerialClient, State as ImprovState, describeSwitch, panelWifi, unprovision,
+  IMPROV_SOCKET, ImprovSerialClient, PKG, State as ImprovState, describeSwitch, panelWifi, unprovision,
   type AppPhase, type AssetName, type Provisioned, type SetUpOptions,
 } from '@glassworks/aqara-s1-plus-installer';
 import {
@@ -74,6 +74,8 @@ export class Session {
   private wifiHint?: string;
   /** what the person chose on the settings step, shown again if they go back to it */
   private chosen?: AppSettings;
+  /** the app is on the panel: provision put it there, or `pm path` found it */
+  private hasApp = false;
   private haTimer?: ReturnType<typeof setInterval>;
   private readonly sleep: (ms: number) => Promise<void>;
   private running?: string;
@@ -250,11 +252,17 @@ export class Session {
     switch (r) {
       case 'install': this.dispatch({ type: 'go', screen: 'connect', flow: 'install' }); return;
       case 'undo': return this.openUndo();
-      case 'resume': if (await this.connectPanel()) this.setupPhase({ phase: 'settings', update: true, chosen: this.chosen }); return;
+      case 'resume': if (await this.connectPanel()) this.setupPhase({ phase: 'settings', update: await this.appInstalled(), chosen: this.chosen }); return;
       case 'wifi': if (await this.connectPanel()) await this.wifi(); return;
       case 'home-assistant': if (await this.connectPanel()) await this.homeAssistant(); return;
       case 'radio': if (await this.connectPanel()) await this.radio(); return;
     }
+  }
+
+  /** Whether the app is on the panel (an update, not a first install): known once it went in, else asked (read-only). */
+  private async appInstalled(): Promise<boolean> {
+    this.hasApp ||= (await this.panel!.run(`pm path ${PKG}`).catch(() => ({ out: '' }))).out.includes('package:');
+    return this.hasApp;
   }
 
   /** Settings → install (or update) the app. */
@@ -270,6 +278,7 @@ export class Session {
         confirmSwitch: async (plan) => (this.d.confirm ?? window.confirm)(`${describeSwitch(plan)}\n\nSwitch now?`),
         onPhase: at,
       });
+      this.hasApp = true;
       const sw = res.switched;
       this.ip = res.ip;
       this.wifiHint = sw?.wifi === 'lost'
@@ -344,7 +353,9 @@ export class Session {
     const st = await this.withSetup((x) => x.getState()).catch(() => undefined);
     if (!st?.ip) return undefined;
     this.ip = st.ip;
-    const ssid = (await panelWifi(this.panel!).catch(() => undefined))?.ssid ?? this.wifiSsid;
+    // read-only and only for the name: a panel slow to answer doesn't hold up the step
+    const named = await Promise.race([panelWifi(this.panel!).catch(() => undefined), this.sleep(8000).then(() => undefined)]);
+    const ssid = named?.ssid ?? this.wifiSsid;
     if (ssid) this.wifiSsid = ssid;
     return { ip: st.ip, ssid };
   }

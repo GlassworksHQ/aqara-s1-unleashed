@@ -97,4 +97,15 @@ describe('with this tab\'s storage blocked', () => {
     expect(four.store.state.changed).toBeUndefined();
     again.registry.clear();
   });
+
+  it('storage that writes but throws on reads gives unknown, not a broken page', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('The operation is insecure.', 'SecurityError'); });
+    vi.resetModules();
+    const again = await import('../src/wizard/registry');
+    const demo = await import('../src/wizard/demo');
+    const two = fresh(demo.demoSession);
+    expect(() => again.registry.set(entry(two))).not.toThrow();
+    expect(two.store.state.changed).toBe('unknown');
+    again.registry.clear();
+  });
 });
