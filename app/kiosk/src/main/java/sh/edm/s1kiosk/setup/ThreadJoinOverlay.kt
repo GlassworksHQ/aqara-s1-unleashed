@@ -11,6 +11,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import sh.edm.s1kiosk.auth.ThreadJoin
+import sh.edm.s1kiosk.ui.QrCode
 
 /**
  * "Join Home Assistant's Thread network" on the panel's screen (auth/ThreadJoin): a QR code for
@@ -83,7 +84,7 @@ class ThreadJoinOverlay(context: Context) : FrameLayout(context) {
         val armed = s is ThreadJoin.State.NeedsAdmin && now < s.until
         if (armed || s is ThreadJoin.State.Working) {
             if (qrFor != url) {
-                qrImage.setImageBitmap(SetupOverlay.qrBitmap(url, px(186f)))
+                qrImage.setImageBitmap(QrCode.bitmap(url, px(186f)))
                 qrFor = url
             }
             qrTile.visibility = View.VISIBLE

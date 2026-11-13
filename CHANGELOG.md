@@ -20,9 +20,12 @@ below as the release notes.
 - **Kiln shows what the panel is doing while S1 Kiosk goes in.** On kiln.glassworks.dev the app's
   install now lists each step as the panel goes through it: S1 Kiosk and the on-screen keyboard
   going in, the home screen, your settings, and the first start. When it updates an app that's
-  already on the panel, it says the app restarting meanwhile is expected. The Wi-Fi step says *Connected to <network>* when the panel is on Wi-Fi already, with
-  another network as the other choice. Back and the step list on the left go back through the
+  already on the panel, it says the app restarting meanwhile is expected. The Wi-Fi step says
+  *Connected to <network>* when the panel is on Wi-Fi already, with another network as the other
+  choice. Back and the step list on the left go back through the
   set-up steps without losing what you entered.
+- **Kiln's picker lists Generic Android as planned.** Next to the S1 and the Mirror, a card for any
+  Android tablet or panel, which will install as a normal app without root. It can't be picked yet.
 - **The panel's health shows in Home Assistant.** The device page's *Diagnostic* section gets CPU
   usage, CPU temperature, Wi-Fi signal and uptime, so you can graph them and alert on them. More
   sensors are there but off until you turn them on: the app's own CPU and RAM, free RAM and storage,

@@ -71,7 +71,7 @@ class MainActivity : Activity() {
 
     /** The panes' definitions: their setup steps, settings sections and adb extras. */
     private val panes by lazy { glassworks.paneDefinitions(this) }
-    private val paneSteps by lazy { panes.flatMap { it.setupSteps } }
+    private val paneSteps by lazy { glassworks.setupSteps(this) }
 
     /** "Sign in on this panel instead" was chosen: don't cover HA's login page again (this process). */
     private var usePanelLogin = false
@@ -384,7 +384,9 @@ class MainActivity : Activity() {
 
     /** `--ez show_setup true [--es setup_step wifi|ha|radio|signin|done]`, `--ez show_signin true` (= signin). */
     private fun applySetupPreview(intent: Intent) {
-        val step = SetupFlow.parse(intent.getStringExtra("setup_step"), paneSteps.map { it.id })
+        val asked = intent.getStringExtra("setup_step")
+        val step = SetupFlow.parse(asked, paneSteps.map { it.id })
+        if (asked != null && step == null) Log.e(TAG, "setup_step '$asked' is not a step: ${SetupFlow.ids(paneSteps.map { it.id })}")
         when {
             intent.getBooleanExtra("show_signin", false) -> startSetupPreview(SetupFlow.SIGNIN)
             intent.hasExtra("show_setup") && !intent.getBooleanExtra("show_setup", false) -> closeSetupPreview()

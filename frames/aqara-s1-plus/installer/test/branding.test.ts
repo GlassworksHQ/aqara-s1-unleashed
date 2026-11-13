@@ -1,12 +1,15 @@
 // The boot animation the recipe ships (branding/glass-tile/bootanimation.zip, built by branding/boot/generate.py)
 // against what the S1 allows: it rides in the 32 MiB boot image, and Android 10's bootanimation keeps
 // every frame of a looping part (count != 1) as a GPU texture until boot completes.
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { zipEntries } from '@glassworks/bootpatch';
 
-const ZIP = readFileSync(join(__dirname, '../../../../branding/glass-tile/bootanimation.zip'));
+const REPO = join(__dirname, '../../../..');
+const OUT = join(REPO, 'branding/glass-tile');
+const ZIP = readFileSync(join(OUT, 'bootanimation.zip'));
 // With 9 MB the patched boot image keeps about 1.8 MB free (measured 2026-11-12, branding/glass-tile/README.md).
 const ZIP_BUDGET = 9_000_000;
 
@@ -39,5 +42,36 @@ describe('bootanimation.zip', () => {
   it('plays the intro to the end and stops the loop as soon as the panel is ready', () => {
     expect(parts[0]).toMatchObject({ type: 'c', count: 1, path: 'part0' });
     expect(parts.slice(1).every((p) => p.type === 'p')).toBe(true);
+  });
+});
+
+// branding/boot/generate.py writes outputs.json: the target it built for and the SHA-256 of the
+// generator, its font and each output. This fast check runs on every PR, so a generator change or
+// an output edited without a rebuild fails here. CI's branding job (.github/workflows/pr.yml) also
+// rebuilds the S1's files when the generator or the frame's data changes.
+describe('the S1 boot branding outputs', () => {
+  const manifest = JSON.parse(readFileSync(join(OUT, 'outputs.json'), 'utf8')) as {
+    target: { name: string; width: number; height: number; android_api: number; splash: string; zip_budget: number };
+    inputs: Record<string, string>; outputs: Record<string, string>;
+  };
+  const sha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
+  it('were built for this frame', () => {
+    const frame = JSON.parse(readFileSync(join(REPO, 'frames/aqara-s1-plus/design/frame.json'), 'utf8'));
+    expect(manifest.target).toEqual({
+      name: frame.name, width: frame.display.width, height: frame.display.height,
+      android_api: frame.boot.androidApi, splash: frame.boot.splash, zip_budget: frame.boot.zipBudget,
+    });
+  });
+  it('were built from the committed generator', () => {
+    for (const f of ['generate.py', 'stack.py', 'formats.py', 'target.py']) {
+      const p = `branding/boot/${f}`;
+      expect(sha(join(REPO, p)), `${p} changed without a rebuild: run generate.py --frame aqara-s1-plus --out branding/glass-tile and commit what it writes`).toBe(manifest.inputs[p]);
+    }
+  });
+  it('are the files that build wrote', () => {
+    expect(Object.keys(manifest.outputs).sort()).toEqual(['bootanimation.zip', 'bootlogo.bmp', 'preview.webp', 'splash-landscape.png']);
+    for (const [f, h] of Object.entries(manifest.outputs)) {
+      expect(sha(join(OUT, f)), `branding/glass-tile/${f} differs from what generate.py wrote: rebuild, don't edit it`).toBe(h);
+    }
   });
 });
