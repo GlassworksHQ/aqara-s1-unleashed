@@ -94,7 +94,7 @@ server.start()
 - **Threads.** Entity getters and setters run on connection threads, so make them thread-safe.
 - **Changing entities at runtime.** `server.setEntities(...)`.
 - **Categories and defaults.** The entity types take `category` (`CONFIG`, `DIAGNOSTIC`) and
-  `disabledByDefault`, all but the light and the media player. HA reads `disabledByDefault` only
+  `disabledByDefault`, all but the light and the media player (those two always send it as `false`). HA reads `disabledByDefault` only
   when it first sees an entity, so pick it when you add the entity. The category follows the
   device on every connection.
 - **A web page for the device.** Set `DeviceIdentity(webserverPort = 8080)` and Home Assistant links

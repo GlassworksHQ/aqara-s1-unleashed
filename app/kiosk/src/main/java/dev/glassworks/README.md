@@ -145,7 +145,7 @@ The ESPHome device is an API, not the settings screen. Keep the list a person se
 - A pane adds at most a handful of uncategorised entities.
 - **Enabled by default only if people reach for it day to day.** "Restart app" is on: people use
   it. "Radio mode" is off: you set it once. Everything else gets `disabledByDefault = true`. HA
-  creates it, leaves it off and doesn't record it. Anyone can turn it on from the device page, and
+  creates it and leaves it off, so it doesn't show on the device's cards. Anyone can turn it on from the device page, and
   the panel's settings menu and Manage page can always change it.
 - A pane that's off adds nothing to the list a person sees (#67).
 

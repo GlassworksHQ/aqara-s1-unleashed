@@ -53,7 +53,7 @@ below as the release notes.
   reload and restart, app updates, IP address, radio status and four health values (plus a wall
   base's relays, buttons, power, energy and protection). Settings you set once, the radio's controls
   and the troubleshooting sensors are created turned off. To use one, turn it on from the panel's
-  device page in Home Assistant; most settings are also in the panel's settings menu. A panel Home
+  device page in Home Assistant; many settings are also in the panel's settings menu. A panel Home
   Assistant already has keeps its entities as they were; only *Base protection* moves to the
   Diagnostic section.
 
