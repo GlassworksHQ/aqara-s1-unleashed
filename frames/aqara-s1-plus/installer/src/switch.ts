@@ -41,7 +41,9 @@ export function isKeyMismatch(pmOut: string): boolean {
  * The dump never contains passwords (WifiConfiguration prints the PSK as `*`).
  */
 export function parseWifiOwner(dump: string, pkg = PKG): PanelWifi {
-  const info = /mWifiInfo[^\n]*/.exec(dump)?.[0];
+  // a dump can print more than one mWifiInfo (an older, disconnected one first): the connected one counts
+  const infos = dump.match(/mWifiInfo[^\n]*/g) ?? [];
+  const info = infos.find((l) => /Supplicant state: COMPLETED\b/.test(l)) ?? infos[0];
   const id = info ? /Net ID: (-?\d+)/.exec(info)?.[1] : undefined;
   if (id === undefined) return { owner: 'unknown' };
   if (Number(id) < 0) return { owner: 'none' };
