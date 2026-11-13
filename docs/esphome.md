@@ -493,7 +493,8 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   code) on synthesised speech and a synthetic signal (fixtures made by `tools/voice/mww_reference.py`).
 - `MicroDetectorTest`: strides, quantization and the sliding window. `MicroWakeWordClipTest` runs
   the four real models (LiteRT) behind the Kotlin pipeline over the clip: each fires in its own word
-  only. Skipped without `MWW_PYTHON`.
+  only. Skipped without `MWW_PYTHON`; CI's `wake-word` job runs it with LiteRT from
+  `app/kiosk/mww-test-requirements.txt` and fails if it skipped.
 - `WakeWordCatalogTest`, `AssistPaneTest`: the words HA is offered, the 0.4 migration, the threshold.
 - `OwwFeaturesTest`: compares the Kotlin feature buffering with openWakeWord's own
   `AudioFeatures` code, run with deterministic fake models (fixture made by
