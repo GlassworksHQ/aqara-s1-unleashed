@@ -193,6 +193,12 @@ jobs:
         run: python3 -m unittest discover -s tools/size/test -v
       - name: Boot generator targets and layout
         run: python3 -m unittest discover -s branding/boot/test -v
+      # Draws every frame's banner from its frame.json: fails if a name or tagline doesn't fit.
+      - name: Frame banner generator
+        run: |
+          python3 -m venv /tmp/fbvenv
+          /tmp/fbvenv/bin/pip -q install uharfbuzz==0.57.0
+          /tmp/fbvenv/bin/python -m unittest discover -s branding/frame-banner/test -v
       - name: Docs links
         run: python3 tools/check-doc-links.py
 
