@@ -16,7 +16,7 @@ import { explain } from './explain';
 import { Session, type SessionDeps } from './session';
 
 export const DEMOS = ['run', 'selftest', 'connect', 'ask-fastboot', 'install', 'ask-adb', 'app', 'wifi', 'wifi-fail', 'home-assistant', 'radio', 'radio-next',
-  'done', 'undo', 'undo-refused', 'undo-connect', 'restore', 'undo-done', 'error', 'error-written'] as const;
+  'done', 'undo', 'undo-refused', 'undo-apps-back', 'undo-unreadable', 'undo-connect', 'restore', 'undo-done', 'error', 'error-written'] as const;
 export type Demo = (typeof DEMOS)[number];
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -179,7 +179,11 @@ export function demoSession(which: Demo): Session {
     frame: s1PlusUi,
     simulated: true,
     sleep: (ms) => wait(Math.min(ms, 800)),
-    requestFel: async () => ({ log: () => {} }) as unknown as FelDevice,
+    // error-written: "Try again", then Connect, is a picker closed with nothing picked
+    requestFel: async () => {
+      if (which === 'error-written') throw new DOMException('No device selected.', 'NotFoundError');
+      return { log: () => {} } as unknown as FelDevice;
+    },
     asset: async () => new Uint8Array(16),
     hasAsset: async () => false,
     backups: {
@@ -187,7 +191,10 @@ export function demoSession(which: Demo): Session {
       original: async () => saved[0]?.meta ?? (which.startsWith('undo')
         ? { id: 's1-backup-20261112-090000', created: '', bootWasPatched: false, files: s1Plus.backup.parts.map((part) => ({ part, size: 4096, sha256: '' })) }
         : undefined),
-      files: async () => saved[0]?.files ?? s1Plus.backup.parts.map((part) => ({ part, data: new Uint8Array(4096), sha256: '', crc: 0 })),
+      files: async () => {
+        if (which === 'undo-unreadable') throw new DOMException('The operation failed for reasons unrelated to the database itself.', 'UnknownError');
+        return saved[0]?.files ?? s1Plus.backup.parts.map((part) => ({ part, data: new Uint8Array(4096), sha256: '', crc: 0 }));
+      },
     },
     loadKey: async () => ({ publicKey: 'QAAAAdemo kiln@demo' }) as never,
     devices: {
@@ -267,6 +274,13 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
     case 'undo-refused': // what "Give back Aqara's apps" shows for a backup undo can't restore
       await session.openUndo();
       dispatch({ type: 'undo', patch: { depth: 'keep', note: { kind: 'err', title: 'This backup can\'t undo the install.', sub: 'This backup has no vbmeta or bootloader. Nothing on the panel was changed.', link: { href: s1PlusUi.help.undo, text: 'Undo by hand' } } } });
+      return;
+    case 'undo-apps-back': // "Keep its settings" after the apps are back: the backup is the one they were checked against
+      await session.openUndo();
+      dispatch({ type: 'undo', patch: { depth: 'keep', appsBack: true, note: { kind: 'ok', title: 'Aqara\'s apps are back.', sub: 'Next, put the original software back: Continue, then recovery mode.' } } });
+      return;
+    case 'undo-unreadable': // this browser has a backup, but IndexedDB fails to read it
+      await session.openUndo();
       return;
     case 'undo-connect':
       await session.openUndo();
