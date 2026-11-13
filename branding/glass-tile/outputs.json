@@ -11,7 +11,7 @@
   "inputs": {
     "branding/boot/generate.py": "ff3f349ced487af781d23d65e814a2151ae21945fcfb8d4a821d92b5c7c48907",
     "branding/boot/stack.py": "9fb0bc0c19541b111d1a00c3333819830e0ac10e40f19d6230dba918f1818e17",
-    "branding/boot/formats.py": "5bc72d682ce3a31830a3daed464af3415f14cc9830eee1c16d2873136dac79a0",
+    "branding/boot/formats.py": "2a857616d9e69cc17c748b172fba738e1d8ba740938c65863ab742d8b73d455d",
     "branding/boot/target.py": "5ad61d491c360b17a381508fd5a955b4513ef4e9c69d89065ceddc3450845734",
     "Inter": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031"
   },

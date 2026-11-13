@@ -8,7 +8,7 @@ sdkconfig.old
 .DS_Store
 __pycache__/
 # a failed boot branding build, kept for inspection (branding/boot/formats.py)
-branding/.boot-build-*/
+.boot-build-*/
 # never commit device-unique dumps or secrets
 dumps/
 *adb_key*

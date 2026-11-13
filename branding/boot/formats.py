@@ -246,12 +246,14 @@ def write_manifest(target, out):
 def build(target, out, render, n_intro, n_loop, splash_name):
     """render(T) -> screen-sized RGB array, T = global frame index. Frames [0, n_intro) are part0
     and the next n_loop part1, which must be periodic: render(n_intro + n_loop) == render(n_intro).
-    Builds and checks everything in a temporary folder, and only then moves the files into `out`
-    and lists the splash as `splash_name` (bootlogos.json): a failed build leaves `out` as it was.
+    Builds and checks everything in a temporary folder inside `out`, and only then moves the files
+    into place and lists the splash as `splash_name` (bootlogos.json). A failed build leaves the
+    published files as they were, and its folder (.boot-build-*) for inspection.
     Returns the list of problems (empty = all good)."""
     os.makedirs(out, exist_ok=True)
-    # next to `out`, on the same filesystem, so each file is published with an atomic os.replace
-    stage = tempfile.mkdtemp(prefix=".boot-build-", dir=os.path.dirname(os.path.abspath(out)))
+    # inside `out`, so on its filesystem even when `out` is a mount or a symlink: each file is
+    # published with an atomic os.replace, and only `out` needs to be writable
+    stage = tempfile.mkdtemp(prefix=".boot-build-", dir=out)
     print(f"{target.name}: {target.width}x{target.height}, "
           f"{'trimmed' if target.trim else 'full'} frames, splash {target.splash or 'none'}", flush=True)
     print(f"rendering {n_intro}+{n_loop} frames ...", flush=True)
@@ -293,7 +295,7 @@ def build(target, out, render, n_intro, n_loop, splash_name):
     if problems:
         for p in problems:
             print("  FAIL:", p)
-        print(f"done, PROBLEMS: {out} is unchanged; this build is in {stage}")
+        print(f"done, PROBLEMS: the files in {out} are unchanged; this build is in {stage}")
         return problems
     for f in OUTPUTS:
         if os.path.exists(os.path.join(stage, f)):
