@@ -1,7 +1,6 @@
 package sh.edm.esphome
 
 import java.security.MessageDigest
-import java.util.Base64
 
 /** Where the Noise PSK lives (KioskPrefs on the panel, memory in tests). Never log what passes through. */
 interface NoiseKeyStore {
@@ -105,11 +104,8 @@ class NoiseKeys(private val store: NoiseKeyStore) {
             if (a == null || b == null) a == null && b == null else a.contentEquals(b)
 
         /** Decodes the base64 text of a `NoiseEncryptionSetKeyRequest.key`; null unless 32 bytes. */
-        fun decodeKeyField(field: ByteArray): ByteArray? = try {
-            Base64.getDecoder().decode(String(field, Charsets.US_ASCII).trim()).takeIf { it.size == 32 }
-        } catch (_: IllegalArgumentException) {
-            null
-        }
+        fun decodeKeyField(field: ByteArray): ByteArray? =
+            decodeBase64(String(field, Charsets.US_ASCII).trim())?.takeIf { it.size == 32 }
 
         /** First 4 hex digits of SHA-256(key): enough to tell keys apart in logs, reveals nothing. */
         fun fingerprint(key: ByteArray): String =

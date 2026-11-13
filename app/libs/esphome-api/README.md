@@ -116,6 +116,9 @@ implementation(project(":esphome-api"))
 Dependency: BouncyCastle `bcprov-jdk18on` (X25519 and ChaCha20-Poly1305 through the lightweight
 API, not the JCA provider). JVM 17 bytecode.
 
+On Android it runs from API 23 (Android 6). `./gradlew :esphome-api:test` runs Expediter first, which
+checks the library's classes, and the BouncyCastle classes they reach, against API 23.
+
 ## Tests
 
 ```sh
