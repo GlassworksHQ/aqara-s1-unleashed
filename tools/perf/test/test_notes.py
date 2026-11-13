@@ -20,33 +20,23 @@ def run(name):
 
 
 S1CAM3 = (
-    "On light, taps, live updates and opening a view are good and scrolling is fluid; on typical, taps are good and "
-    "live updates are fluid. Typical and heavy dashboards are held back by taps (288 ms on heavy), scrolling (25.0 fps "
-    "on typical), live updates (739 ms to show on heavy), opening a view (6.6 s on typical) and the cameras (first "
-    "frame 4.2 s, 100% of frames shown on typical); a restart takes 12.0 s to a usable dashboard, 9.4 s of it after "
-    "the engine was ready. The page's main thread is the likely limit: on typical and heavy the page's own frames (rAF) "
-    "come slower than the screen's; on heavy a change takes 739 ms to show; on heavy the camera player gets video up "
-    "to 4.3 s apart though a fetch takes 162 ms (p95), while the hardware decoder drops 0 of 2460 frames; untouched on "
-    "typical (its camera playing), the app keeps 97% of a core busy. The CPU was at up to 56 °C as a graded run "
-    "started; clock speeds aren't recorded, so the run can't show whether it throttled. Memory is not the limit: the "
-    "app's peak is 889 MB of 988 MB.")
+    "Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger "
+    "dashboards slow down: typical scrolls at 25 fps and takes 6.6 s to open, and heavy takes 0.7 s to show a "
+    "change. The likely limit is the browser's main thread: it stays busy (97% of a core on typical with a camera "
+    "playing), so cameras get video late even though the hardware decoder keeps up. Memory isn't the limit (889 "
+    "of 988 MB).")
 S1V7 = (
-    "Taps are good and live updates are at least fluid on every dashboard; on light, opening a view is good and "
-    "scrolling is fluid. Typical and heavy dashboards are held back by scrolling (35.1 fps on typical) and opening a "
-    "view (4.8 s on typical); a restart takes 11.7 s to a usable dashboard, 8.9 s of it after the engine was ready; "
-    "the cameras weren't measured. The page's main thread is the likely limit: on typical and heavy the page's own "
-    "frames (rAF) come slower than the screen's; untouched on typical, the app keeps 46% of a core busy. The CPU was "
-    "at up to 62 °C as a graded run started; clock speeds aren't recorded, so the run can't show whether it "
-    "throttled. Memory is not the limit: the app's peak is 743 MB of 988 MB. Provisional: the pages ran protocol 4; "
-    "this rubric is for protocol 5.")
+    "Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger "
+    "dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 4.8 s to open. The likely "
+    "limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the "
+    "page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: the pages ran protocol 4; "
+    "this rubric is for protocol 5; the cameras weren't measured.")
 SMOKE11 = (
-    "Live updates are at least fluid on every dashboard; on light, taps and opening a view are good and scrolling is "
-    "fluid; on typical, taps are good. Typical and heavy dashboards are held back by taps (232 ms on heavy), scrolling "
-    "(33.8 fps on typical) and opening a view (5.2 s on typical); a restart takes 11.8 s to a usable dashboard, 9.0 s "
-    "of it after the engine was ready; the cameras weren't measured. The page's main thread is the likely limit: on "
-    "typical and heavy the page's own frames (rAF) come slower than the screen's; untouched on typical, the app keeps "
-    "46% of a core busy. Memory is not the limit: the app's peak is 748 MB of 988 MB. Provisional: the pages ran "
-    "protocol 4; this rubric is for protocol 5.")
+    "Light dashboards feel good: taps and opening a view are quick, and scrolling and live updates are fluid. "
+    "Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 5.2 s to open, and "
+    "heavy takes 230 ms to answer a tap. The likely limit is the browser's main thread: it stays busy (46% of a "
+    "core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (748 of 988 "
+    "MB). Provisional: the pages ran protocol 4; this rubric is for protocol 5; the cameras weren't measured.")
 
 
 def fast():
@@ -56,7 +46,8 @@ def fast():
         rep["grade"]["bands"][p] = {"tap": "good", "scroll": "premium", "updates": "good", "load": "good",
                                     "camera": "none" if p == "light" else "good"}
         rep["graded"]["reference"]["tiers"][p]["scroll_limited_by"] = ["main-thread"]
-    rep["grade"].update(start={"value": 2500.0, "band": "good"}, missing=[], provisional=False)
+    rep["grade"].update(start={"value": 2500.0, "band": "good"}, missing=[], provisional=False,
+                        levels={p: "premium" for p in G.TIERS})
     rep["thermal"] = [{"phase": "refstart-1", "zones": {"cpu_thermal_zone": 41.0}}]
     return rep
 
@@ -87,11 +78,41 @@ class RealRuns(unittest.TestCase):
 
 
 class Shapes(unittest.TestCase):
+    """The maintainer's rules (2026-11-13): at most 4 sentences and about 70 words (5 with the
+    provisional note), strengths in one sentence, at most 3 limits with one number each, one cause."""
+
+    def test_short(self):
+        for name in ("s1cam3", "s1v7", "smoke11"):
+            n = N.notes(run(name))
+            body = [x for x in [n["good"], n["limits"]] + n["causes"] if x]
+            with self.subTest(name):
+                self.assertLessEqual(len(body), 4)
+                self.assertLessEqual(len(" ".join(body).split()), 85)    # the maintainer's own example is 83
+
+    def test_the_worst_three_limits_each_with_one_number(self):
+        """s1cam3 fails five tasks; the three furthest past their fluid bar are open the view (heavy
+        35.7 s against 4 s), scroll (heavy 5.7 fps against 30) and live updates (0.7 s against 0.2).
+        Each is quoted once, on the lightest page it fails on."""
+        limits = N.notes(run("s1cam3"))["limits"]
+        self.assertEqual(limits, "Bigger dashboards slow down: typical scrolls at 25 fps and takes 6.6 s to open, "
+                                 "and heavy takes 0.7 s to show a change.")
+        self.assertNotIn("tap", limits)
+        self.assertNotIn("camera", limits)
+
+    def test_a_scroll_with_enough_frames_says_what_failed(self):
+        self.assertIn("typical scrolls unevenly (slowest frames 80 ms)", N.notes(run("s1v7"))["limits"])
+
     def test_a_fast_frame_has_strengths_and_no_limits(self):
         n = N.notes(fast())
-        self.assertEqual(n["good"], "Taps, scrolling, live updates, opening a view and the cameras are good on every dashboard.")
+        self.assertEqual(n["good"], "Heavy dashboards feel good: taps, live updates, opening a view and the cameras are quick, "
+                                    "and scrolling is smooth.")
         self.assertIsNone(n["limits"])
-        self.assertEqual(n["causes"], ["Memory is not the limit: the app's peak is 889 MB of 988 MB."])
+        self.assertEqual(n["causes"], ["Memory isn't the limit (889 of 988 MB)."])
+
+    def test_without_a_level_the_closest_page(self):
+        rep = run("s1cam3")
+        rep["grade"]["levels"] = {p: None for p in G.TIERS}
+        self.assertTrue(N.notes(rep)["good"].startswith("Light dashboards come closest:"))
 
     def test_a_refused_grade_says_why_and_nothing_else(self):
         rep = run("s1cam3")
@@ -101,92 +122,97 @@ class Shapes(unittest.TestCase):
 
     def test_nothing_good(self):
         rep = run("s1cam3")
+        rep["grade"]["levels"] = {p: None for p in G.TIERS}
         for p in G.TIERS:
             rep["grade"]["bands"][p] = {k: "slow" if k in ("scroll", "updates", "camera") else "poor" for k in G.TASKS}
-        self.assertIsNone(N.notes(rep)["good"])
+        n = N.notes(rep)
+        self.assertIsNone(n["good"])
+        self.assertTrue(n["limits"].startswith("It slows down:"))
 
 
 class CausesNeedEvidence(unittest.TestCase):
-    """Each cause sentence, and what makes it go away."""
+    """The one cause sentence, and what makes each go away."""
 
-    def causes(self, rep):
-        return " ".join(N.notes(rep)["causes"])
+    def cause(self, rep):
+        return N.cause_sentence(rep) or ""
 
-    def test_main_thread_only_where_a_slow_scroll_says_so(self):
-        rep = run("smoke11")
-        self.assertIn("main thread", self.causes(rep))
+    def no_main(self, rep):
         for p in G.TIERS:
             rep["graded"]["reference"]["tiers"][p]["scroll_limited_by"] = ["equal"]
-        self.assertNotIn("main thread", self.causes(rep))
-        self.assertNotIn("main thread", self.causes(fast()))          # main-thread, but scroll isn't a limit
-        self.assertNotIn("% of a core", self.causes(rep))             # idle CPU alone isn't a cause
+        return rep
+
+    def test_main_thread_only_where_a_slow_scroll_says_so(self):
+        self.assertIn("main thread", self.cause(run("smoke11")))
+        self.assertEqual(self.cause(self.no_main(run("smoke11"))), "")
+        self.assertEqual(self.cause(fast()), "")                        # main-thread, but scroll isn't a limit
+
+    def test_busy_only_from_the_idle_cpu(self):
+        rep = run("smoke11")
+        rep["ram"]["reference_idle"]["cpu_app_pct_of_core"]["median"] = 12.0
+        self.assertEqual(self.cause(rep), "The likely limit is the browser's main thread: the page draws too few frames.")
 
     def test_compositor_only_from_surfaceflinger(self):
-        rep = run("smoke11")
-        self.assertNotIn("compositor", self.causes(rep))
+        rep = self.no_main(run("smoke11"))
         rep["graded"]["reference"]["tiers"]["heavy"]["scroll_limited_by"] = ["compositor"]
-        self.assertIn("Scrolling on heavy is limited by the compositor", self.causes(rep))
+        self.assertEqual(self.cause(rep), "The likely limit is the GPU: the screen drops frames the page drew.")
 
-    def test_cameras_starve_only_with_long_gaps_fast_fetches_and_a_decoder_that_keeps_up(self):
+    def test_cameras_late_only_with_long_gaps_fast_fetches_and_a_decoder_that_keeps_up(self):
         def with_heavy(**seg):
             rep = run("s1cam3")
             for r in rep["graded"]["reference"]["tiers"]["heavy"]["camera_runs"]:
                 r["fetches"]["segment"].update(seg)
             return rep
-        self.assertIn("camera player gets video", self.causes(run("s1cam3")))
-        self.assertNotIn("camera player", self.causes(with_heavy(arrival_gap_max_ms=1200)))
-        self.assertNotIn("camera player", self.causes(with_heavy(total_ms={"median": 300, "p95": 600, "max": 700})))
+        self.assertIn("cameras get video late even though the hardware decoder keeps up", self.cause(run("s1cam3")))
+        self.assertNotIn("cameras", self.cause(with_heavy(arrival_gap_max_ms=1200)))
+        self.assertNotIn("cameras", self.cause(with_heavy(total_ms={"median": 300, "p95": 600, "max": 700})))
         rep = run("s1cam3")
         for r in rep["graded"]["reference"]["tiers"]["heavy"]["camera_runs"]:
             for s in r["detail"]:
                 s["dropped"] = s["decoded"] // 10
-        self.assertNotIn("camera player", self.causes(rep))
+        self.assertNotIn("cameras", self.cause(rep))
         rep = run("s1cam3")
         for r in rep["graded"]["reference"]["tiers"]["heavy"]["camera_runs"]:
             r["media"]["codecs"] = ["c2.android.avc.decoder"]
-        self.assertIn("while the decoder drops", self.causes(rep))      # not "hardware"
+        self.assertIn("even though the decoder keeps up", self.cause(rep))   # not "hardware"
 
     def test_slow_fetches_point_at_the_link(self):
-        self.assertNotIn("link or the fake", self.causes(run("s1cam3")))
-        rep = run("s1cam3")
+        rep = self.no_main(run("s1cam3"))
+        self.assertNotIn("link", self.cause(rep))
         for r in rep["graded"]["reference"]["tiers"]["heavy"]["camera_runs"]:
             r["fetches"]["segment"]["total_ms"] = {"median": 800, "p95": 1500, "max": 2000}
-        self.assertIn("Camera segments took up to 1.5 s to fetch on heavy", self.causes(rep))
-        self.assertNotIn("camera player", self.causes(rep))
+        self.assertEqual(self.cause(rep), "The likely limit is the link: camera video takes a second or more to fetch.")
 
     def test_fake_lateness_only_over_its_limit(self):
-        rep = run("s1cam3")
-        self.assertNotIn("fake Home Assistant", self.causes(rep))      # 192 ms, under 200
+        rep = self.no_main(run("smoke11"))
+        self.assertEqual(self.cause(rep), "")                          # 20 ms late, under 200
         rep["fake_ha"]["stream_late_max_ms"] = 250
-        self.assertIn("sent changes up to 250 ms late", self.causes(rep))
+        self.assertIn("sent changes late", self.cause(rep))
 
-    def test_heat_only_when_a_graded_run_started_hot(self):
-        self.assertIn("56 °C", self.causes(run("s1cam3")))
-        self.assertNotIn("°C", self.causes(run("smoke11")))            # its graded run started at 48 °C
+    def test_no_sentence_for_heat_without_throttling_evidence(self):
         rep = run("s1cam3")
-        rep["thermal"] = [ph for ph in rep["thermal"] if not ph["phase"].startswith("refstart-")]
-        self.assertNotIn("°C", self.causes(rep))                       # a hot end isn't a run starting hot
-        rep["thermal"] = []
-        self.assertNotIn("°C", self.causes(rep))
+        rep["thermal"] = [{"phase": "refstart-1", "zones": {"cpu_thermal_zone": 70.0}}]
+        self.assertNotIn("°C", N.notes(rep)["text"])
 
     def test_memory(self):
         rep = run("s1cam3")
         rep["ram"]["budget"]["checks"]["app_pss_peak"].update(value_kb=1_100_000, ok=False)
-        self.assertIn("Memory is a limit: the app's peak is 1074 MB, over its 988 MB budget.", self.causes(rep))
+        self.assertEqual(N.memory_sentence(rep), "Memory is a limit: the app peaks at 1074 MB, over its 988 MB budget.")
         rep = run("s1cam3")
         rep["ram"]["budget"]["checks"]["device_available_min"].update(value_kb=200_000, ok=False)
-        self.assertIn("available memory fell to 195 MB", self.causes(rep))
+        self.assertIn("free memory falls to 195 MB", N.memory_sentence(rep))
         rep["ram"] = None
-        self.assertNotIn("Memory", self.causes(rep))
+        self.assertIsNone(N.memory_sentence(rep))
+
+    def test_a_restart_only_when_it_caps_the_letter(self):
+        self.assertNotIn("restart", N.notes(run("s1cam3"))["text"])    # poor, but it doesn't cap a D
+        rep = run("s1cam3")
+        rep["grade"]["capped_by_start"] = True
+        self.assertTrue(N.notes(rep)["limits"].startswith("Bigger dashboards slow down: a restart takes 12 s, and typical"))
 
     def test_a_restart_that_wasnt_measured_says_so(self):
         rep = run("s1cam3")
-        rep["grade"].update(start={"value": None, "band": None}, missing=["start"])
-        self.assertTrue(N.notes(rep)["limits"].endswith("the restart wasn't measured."))
-
-    def test_restart_only_when_it_isnt_good(self):
-        self.assertIn("a restart takes 12.0 s", N.notes(run("s1cam3"))["limits"])
-        self.assertIsNone(N.notes(fast())["limits"])
+        rep["grade"].update(start={"value": None, "band": None}, missing=["start"], provisional=True)
+        self.assertTrue(N.notes(rep)["text"].endswith("the restart wasn't measured."))
 
 
 class InTheReport(unittest.TestCase):

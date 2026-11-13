@@ -723,16 +723,6 @@
   }
  },
  "measured_on": "2026-11-13",
- "notes": {
-  "causes": [
-   "The page's main thread is the likely limit: on typical and heavy the page's own frames (rAF) come slower than the screen's; untouched on typical, the app keeps 46% of a core busy.",
-   "Memory is not the limit: the app's peak is 748 MB of 988 MB."
-  ],
-  "good": "Live updates are at least fluid on every dashboard; on light, taps and opening a view are good and scrolling is fluid; on typical, taps are good.",
-  "limits": "Typical and heavy dashboards are held back by taps (232 ms on heavy), scrolling (33.8 fps on typical) and opening a view (5.2 s on typical); a restart takes 11.8 s to a usable dashboard, 9.0 s of it after the engine was ready; the cameras weren't measured.",
-  "rubric": 6,
-  "text": "Live updates are at least fluid on every dashboard; on light, taps and opening a view are good and scrolling is fluid; on typical, taps are good. Typical and heavy dashboards are held back by taps (232 ms on heavy), scrolling (33.8 fps on typical) and opening a view (5.2 s on typical); a restart takes 11.8 s to a usable dashboard, 9.0 s of it after the engine was ready; the cameras weren't measured. The page's main thread is the likely limit: on typical and heavy the page's own frames (rAF) come slower than the screen's; untouched on typical, the app keeps 46% of a core busy. Memory is not the limit: the app's peak is 748 MB of 988 MB. Provisional: the pages ran protocol 4; this rubric is for protocol 5."
- },
  "protocol_version": 4,
  "ram": {
   "budget": {

@@ -8,7 +8,7 @@ lists). The report holds no serials or addresses (docs/perf.md, "The summary").
 import json
 import sys
 
-DROP_TOP = ("detail", "real_use", "apk")
+DROP_TOP = ("detail", "real_use", "apk", "notes")   # notes are the output under test, not its input
 DROP_TIER = ("scroll_runs", "updates_runs", "arrivals", "state_ticks")
 
 

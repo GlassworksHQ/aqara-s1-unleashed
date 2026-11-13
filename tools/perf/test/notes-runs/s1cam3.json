@@ -1435,17 +1435,6 @@
   }
  },
  "measured_on": "2026-11-13",
- "notes": {
-  "causes": [
-   "The page's main thread is the likely limit: on typical and heavy the page's own frames (rAF) come slower than the screen's; on heavy a change takes 739 ms to show; on heavy the camera player gets video up to 4.3 s apart though a fetch takes 162 ms (p95), while the hardware decoder drops 0 of 2460 frames; untouched on typical (its camera playing), the app keeps 97% of a core busy.",
-   "The CPU was at up to 56 \u00b0C as a graded run started; clock speeds aren't recorded, so the run can't show whether it throttled.",
-   "Memory is not the limit: the app's peak is 889 MB of 988 MB."
-  ],
-  "good": "On light, taps, live updates and opening a view are good and scrolling is fluid; on typical, taps are good and live updates are fluid.",
-  "limits": "Typical and heavy dashboards are held back by taps (288 ms on heavy), scrolling (25.0 fps on typical), live updates (739 ms to show on heavy), opening a view (6.6 s on typical) and the cameras (first frame 4.2 s, 100% of frames shown on typical); a restart takes 12.0 s to a usable dashboard, 9.4 s of it after the engine was ready.",
-  "rubric": 6,
-  "text": "On light, taps, live updates and opening a view are good and scrolling is fluid; on typical, taps are good and live updates are fluid. Typical and heavy dashboards are held back by taps (288 ms on heavy), scrolling (25.0 fps on typical), live updates (739 ms to show on heavy), opening a view (6.6 s on typical) and the cameras (first frame 4.2 s, 100% of frames shown on typical); a restart takes 12.0 s to a usable dashboard, 9.4 s of it after the engine was ready. The page's main thread is the likely limit: on typical and heavy the page's own frames (rAF) come slower than the screen's; on heavy a change takes 739 ms to show; on heavy the camera player gets video up to 4.3 s apart though a fetch takes 162 ms (p95), while the hardware decoder drops 0 of 2460 frames; untouched on typical (its camera playing), the app keeps 97% of a core busy. The CPU was at up to 56 \u00b0C as a graded run started; clock speeds aren't recorded, so the run can't show whether it throttled. Memory is not the limit: the app's peak is 889 MB of 988 MB."
- },
  "protocol_version": 5,
  "ram": {
   "budget": {

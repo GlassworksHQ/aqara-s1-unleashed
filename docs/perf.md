@@ -702,34 +702,41 @@ back. Another table gives each page's results at each place in the run order.
 
 Under the headline, every report has a short paragraph in plain words (`notes`, #201). It is built
 by fixed rules in `tools/perf/notes.py` from the report alone, so the same report always gives the
-same text. It never gives the letter or its meaning. It has 3 to 5 sentences, plus one more when the
-grade is provisional:
+same text. It never gives the letter or its meaning. It is a summary: every number it leaves out
+is in the report body. At most four sentences and about 70 words (the maintainer's model, 2026-11-13,
+is 83), plus one when the grade is provisional:
 
-1. **What's good.** First the tasks that are good (or at least fluid) on every dashboard that
-   measured them. Then, per page, the other tasks that are good or fluid there.
-2. **What holds it back.** Each task below fluid, with the pages it fails on and its value on the
-   lightest of them. Then the restart when it isn't good (with how much of it came after the engine
-   was ready), and anything not measured.
-3. **Causes**, each only when its evidence is in the report. Indirect evidence says "likely".
+1. **What's good**, in one sentence: the heaviest page that reaches a level, and what is quick,
+   smooth or fluid there ("Light dashboards feel good: …"). Without a level, the page with the most
+   good or fluid tasks ("… come closest").
+2. **What holds it back**, in one sentence, at most three limits. They are the tasks furthest past
+   their fluid bar on any page (rubric.json: scroll 30 fps and 67 ms, a change 200 ms, a tap
+   200 ms, open the view 4 s, a camera's first frame 4 s and 85% of frames shown). Each gets one
+   rounded number, on the lightest page it fails on. A scroll with enough frames on average but
+   uneven ones says its slowest frames instead of its fps. The restart is named only when it caps
+   the letter.
+3. **The likely cause**, in one sentence, only when the report holds evidence for it. The first
+   that applies:
 
-   | Cause | Said when | Evidence |
+   | Likely limit | Said when | Its evidence, in words |
    |---|---|---|
-   | The page's main thread (likely) | A slow scroll is `limited_by: main-thread`, or a camera page starves (next row). Slow live updates and the idle CPU are added to it as evidence | rAF's frames worse than SurfaceFlinger's; change to screen; `reference_idle.cpu_app_pct_of_core` at 25% of a core or more |
-   | A camera player that asks for video late | A failing camera page whose segments arrive 2 s or more apart (1 s segments) while a fetch's p95 is under 500 ms, and the decoder dropped at most 1% of what it decoded. "Hardware" only when no software decoder (`c2.android.*`, `OMX.google.*`) was used | `fetches.segment`, `media.codecs`, each stream's `decoded` and `dropped` |
-   | The compositor (likely the GPU) | A slow scroll is `limited_by: compositor` | SurfaceFlinger's frames worse than rAF's |
-   | The link or the fake | A failing camera page's segment fetch p95 is 1 s or more | `fetches.segment.total_ms` |
-   | The fake's lateness | It sent a change more than 200 ms late (the same limit that makes the grade provisional) | `fake_ha.stream_late_max_ms` |
-   | Heat | A graded run started with a CPU zone above 50 °C (the runner waits for that only before its first part) | `thermal` (from `thermal.tsv`). The run records no clock speeds, so the sentence says throttling can't be shown either way |
-4. **Memory**, when RAM was measured: "a limit" when the app's peak or the device's available memory
-   misses the frame's budget, else "not the limit" with the peak against the budget.
+   | The browser's main thread | A slow scroll is `limited_by: main-thread` (the page's frames, rAF, worse than SurfaceFlinger's), or a camera page gets video late (below) | "it stays busy" when the app keeps 25% of a core or more on typical untouched (`reference_idle.cpu_app_pct_of_core`); "cameras get video late even though the (hardware) decoder keeps up" when a failing camera page's segments arrive 2 s or more apart (1 s segments), a fetch's p95 is under 500 ms and the decoder drops at most 1%; else "the page draws too few frames" |
+   | The GPU | A slow scroll is `limited_by: compositor` (SurfaceFlinger's frames worse than rAF's) | "the screen drops frames the page drew" |
+   | The link | A failing camera page's segment fetch p95 is 1 s or more | "camera video takes a second or more to fetch" |
+   | The test itself | The fake Home Assistant sent a change more than 200 ms late | "its fake Home Assistant sent changes late" |
 
-There is no rule for CPU clock speeds or long tasks: the run doesn't record them.
+4. **Memory**, when RAM was measured: "Memory isn't the limit (X of Y MB)", the app's peak against
+   its budget, or "Memory is a limit" with the budget it misses.
 
-The notes judge tasks by the report's rubric, so `notes.rubric` names its version. On the S1:
+Not said: heat, unless something shows throttling (the run records temperatures, in `thermal`, but
+no clock speeds), and nothing on long tasks, which the run doesn't record. The notes judge tasks by
+the report's rubric, so `notes.rubric` names its version. On the S1:
 
 | Run | Notes |
 |---|---|
-| s1cam3 (protocol 5, 3 runs) | On light, taps, live updates and opening a view are good and scrolling is fluid; on typical, taps are good and live updates are fluid. Typical and heavy dashboards are held back by taps (288 ms on heavy), scrolling (25.0 fps on typical), live updates (739 ms to show on heavy), opening a view (6.6 s on typical) and the cameras (first frame 4.2 s, 100% of frames shown on typical); a restart takes 12.0 s to a usable dashboard, 9.4 s of it after the engine was ready. The page's main thread is the likely limit: on typical and heavy the page's own frames (rAF) come slower than the screen's; on heavy a change takes 739 ms to show; on heavy the camera player gets video up to 4.3 s apart though a fetch takes 162 ms (p95), while the hardware decoder drops 0 of 2460 frames; untouched on typical (its camera playing), the app keeps 97% of a core busy. The CPU was at up to 56 °C as a graded run started; clock speeds aren't recorded, so the run can't show whether it throttled. Memory is not the limit: the app's peak is 889 MB of 988 MB. |
+| s1cam3 (protocol 5, 3 runs) | Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger dashboards slow down: typical scrolls at 25 fps and takes 6.6 s to open, and heavy takes 0.7 s to show a change. The likely limit is the browser's main thread: it stays busy (97% of a core on typical with a camera playing), so cameras get video late even though the hardware decoder keeps up. Memory isn't the limit (889 of 988 MB). |
+| s1v7 (protocol 4, provisional under the protocol 5 rubric) | Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 4.8 s to open. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: the pages ran protocol 4; this rubric is for protocol 5; the cameras weren't measured. |
+| smoke11 (protocol 4, 1 run, provisional) | Light dashboards feel good: taps and opening a view are quick, and scrolling and live updates are fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 5.2 s to open, and heavy takes 230 ms to answer a tap. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (748 of 988 MB). Provisional: the pages ran protocol 4; this rubric is for protocol 5; the cameras weren't measured. |
 
 The task levels (`scroll_levels`, `update_levels`), the page levels, the letters (A+ first) and the
 restart cap live in `tools/perf/page/rubric.json` (`grade`), next to the thresholds.
@@ -1048,7 +1055,7 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `runs_attempted` | Graded runs attempted (`plan.json`), the count each band is over |
 | `frame` | `id`, `name`, `device` (model, Android, API, ABI, SoC, CPU, RAM, display with density and refresh, temperatures), `app` (package, version, APK bytes on the device, GeckoView version) |
 | `apk` | One entry per APK given with `--apk`: `abis`, `bytes`, `parts_bytes` (dex, native, assets, resources, other) |
-| `notes` | What's good and what holds it back, in words ([The notes](#the-notes-whats-good-what-holds-it-back)): `good` and `limits` (a sentence each, or `null`), `causes` (sentences), `text` (the paragraph), `rubric` (the rubric version it judged by) |
+| `notes` | What's good and what holds it back, in words ([The notes](#the-notes-whats-good-what-holds-it-back)): `good` and `limits` (a sentence each, or `null`), `causes` (the likely cause and memory, each a sentence, either may be missing), `text` (the paragraph), `rubric` (the rubric version it judged by) |
 | `thermal` | Each stage's thermal zones from `thermal.tsv`, in order: `phase`, `zones` (°C) |
 | `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (over 200 ms, one update interval, is provisional). `null` without the log, which is provisional for protocol 4 |
 | `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`, `cpu_app_pct_of_core`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb` (`null` under two samples a side), `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`, `verified`, `excluded`, `boot_samples_on` and `boot_samples_off` (samples `:boot` ran in, left out of the share), `boot_pss_kb` (its median PSS, or `null`), and `off_by: "mute"` when Assist was off by its mute alone; or `id`, `method` and `error` when no sample ran as asked), `screen_off_samples` (idle samples the screen went off in, left out), `panes_waiting` (`id`, `waiting_on`, `note`), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `tolerance_kb`, `measurable` (three samples a side and a tolerance at most a quarter of the budget), `ok` (`null` when not measurable: read it as unknown, not as over)). See [RAM](#ram) |
