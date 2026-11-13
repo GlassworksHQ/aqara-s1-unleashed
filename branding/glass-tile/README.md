@@ -1,16 +1,18 @@
 # Boot branding
 
 The panel's power-on splash and Android boot animation: the Glassworks stack, as drawn in #63
-("Boot animation (final)"). `generate.py` ports the curves of the design's reference page
-(`kiosk-ui/boot/boot-reference.html` at `5df8f044`, the "Translucent" frame) and renders every frame
-at the panel's 1440x720. The folder keeps its old name because the installers read these files from
+("Boot animation (final)"). `generate.py` takes the curves and timings of the design's reference
+page (`kiosk-ui/boot/boot-reference.html` at `5df8f044`, the "Translucent" frame) as they are, draws
+the stack with the page's SVG filters emulated (the blur and grain are close, not exact), and renders
+every frame at the panel's 1440x720. The folder keeps its old name because the installers read these files from
 here.
 
 | File | What | Installed by |
 |---|---|---|
 | `bootlogo.bmp` | Splash shown by the bootloader at power-on: frame 0 of the animation. 720x1440, 24-bit, uncompressed, the landscape picture rotated 90° clockwise, 3,110,454 bytes (same format as stock) | `tools/install/fel-install.sh` (step 7) and Kiln's S1 recipe, both swapping it into the panel's own `bootloader` (boot-resource, FAT16) partition in place (`tools/branding/set-bootlogo.py`, `replaceBootlogo()`) |
 | `bootanimation.zip` | Android boot animation: 1440x720 @ 30 fps, STORED, each frame trimmed (`trim.txt`) | `tools/root/patch-boot-magisk.sh` and Kiln: shipped in the boot image and bind-mounted over `/system/media/bootanimation.zip` (`tools/root/s1kiosk_branding.rc`) |
-| `generate.py`, `common.py` | The generator: the design, and the output formats with their checks. Needs Pillow, numpy and uharfbuzz (pyoxipng makes the frames smaller). Inter (SIL OFL 1.1) is fetched from google/fonts at build time | - |
+| `generate.py`, `common.py` | The generator: the design, and the output formats with their checks. Needs the Python packages under [Rebuild](#rebuild). Inter (SIL OFL 1.1) is fetched from a pinned google/fonts commit and checked by SHA-256 | - |
+| `outputs.json` | What the last build used and wrote: the SHA-256 of `generate.py`, `common.py`, the font and the four outputs. CI compares the committed files with it | - |
 | `splash-landscape.png`, `preview.webp` | Previews only | - |
 
 ## The sequence
@@ -22,8 +24,8 @@ here.
 | 2.35–3.1 s | The top plate lights: frosted, a solid body, sky→violet tint, grain, sheen, rim |
 | 3.0–3.8 s | "Glassworks" fades up |
 | 3.5–4.2 s | "On Aqara S1 Plus" (the frame's name from `frames/<id>/design/frame.json`) |
-| 4.0–4.8 s | The loop's motion eases in |
-| then, 7.2 s loop | The stack rises and falls (±6 units), the upper plates open and close (8 and 4 units every 3.6 s), and the top plate breathes by brightness |
+| 4.0–4.8 s | The loop's motion eases in. `part0` is 0–4.8 s, 144 frames |
+| then, 7.2 s loop | `part1`, 216 frames: the stack rises and falls (±6 units), the upper plates open and close (8 and 4 units every 3.6 s), and the top plate breathes by brightness |
 
 ## What the panel allows
 
@@ -75,13 +77,23 @@ A splash passed with `BRANDING=<your.bmp>` isn't in the list, so undo treats it 
 ## Rebuild
 
 ```sh
-python3 -m venv /tmp/s1venv && /tmp/s1venv/bin/pip install pillow numpy uharfbuzz pyoxipng
+python3 -m venv /tmp/s1venv
+/tmp/s1venv/bin/pip install pillow==13.0.0 numpy==2.4.6 uharfbuzz==0.57.0 pyoxipng==9.1.1
 /tmp/s1venv/bin/python branding/glass-tile/generate.py                 # writes the files above
 /tmp/s1venv/bin/python branding/glass-tile/generate.py --frame <id>    # another frame's device name
 /tmp/s1venv/bin/python branding/glass-tile/generate.py --stills <dir>  # stills at fixed times, for comparisons
 ```
 
 The build checks the splash format, that frame 0 is the splash pixel for pixel, the trim of every
-frame, that the loop is seamless, and the size budget. Opt out at install: `BRANDING=none` (splash)
+frame, that the loop is seamless, and the size budget. Then it lists the splash in
+`branding/bootlogos.json` and writes `outputs.json`. With these versions a rebuild is
+byte-identical on macOS arm64 and on Linux amd64 (`python:3.11-slim`), checked 2026-11-12. Without
+pyoxipng the build stops.
+
+**Changed `generate.py` or `common.py`? Run the build and commit everything it writes**: the four
+outputs, `outputs.json`, and `bootlogos.json` if the splash changed.
+`frames/aqara-s1-plus/installer/test/branding.test.ts` fails in CI when the generator or an output
+doesn't match `outputs.json`, and CI's `branding` job (`.github/workflows/pr.yml`) rebuilds in that
+Linux image and fails if anything committed differs. A new splash also needs a real panel before merge (hard rule 5). Opt out at install: `BRANDING=none` (splash)
 and `BOOT_ANIMATION=none` (animation). Undo: `fel-install.sh --undo <first-install backup>` restores
 the stock splash partition and boot.

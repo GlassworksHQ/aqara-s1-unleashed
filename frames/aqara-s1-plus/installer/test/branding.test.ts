@@ -1,12 +1,14 @@
 // The boot animation the recipe ships (branding/glass-tile/bootanimation.zip, built by its generate.py)
 // against what the S1 allows: it rides in the 32 MiB boot image, and Android 10's bootanimation keeps
 // every frame of a looping part (count != 1) as a GPU texture until boot completes.
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { zipEntries } from '@glassworks/bootpatch';
 
-const ZIP = readFileSync(join(__dirname, '../../../../branding/glass-tile/bootanimation.zip'));
+const DIR = join(__dirname, '../../../../branding/glass-tile');
+const ZIP = readFileSync(join(DIR, 'bootanimation.zip'));
 // With 9 MB the patched boot image keeps about 1.8 MB free (measured 2026-11-12, branding/glass-tile/README.md).
 const ZIP_BUDGET = 9_000_000;
 
@@ -39,5 +41,26 @@ describe('bootanimation.zip', () => {
   it('plays the intro to the end and stops the loop as soon as the panel is ready', () => {
     expect(parts[0]).toMatchObject({ type: 'c', count: 1, path: 'part0' });
     expect(parts.slice(1).every((p) => p.type === 'p')).toBe(true);
+  });
+});
+
+// generate.py writes outputs.json with the hashes of the generator and its outputs. This fast check
+// runs on every PR: a generator change or an output edited without a rebuild fails here. The
+// branding job in .github/workflows/pr.yml also rebuilds everything when branding/ changes.
+describe('branding/glass-tile outputs', () => {
+  const manifest = JSON.parse(readFileSync(join(DIR, 'outputs.json'), 'utf8')) as {
+    inputs: Record<string, string>; outputs: Record<string, string>;
+  };
+  const sha = (f: string) => createHash('sha256').update(readFileSync(join(DIR, f))).digest('hex');
+  it('were built from the committed generator', () => {
+    for (const f of ['generate.py', 'common.py']) {
+      expect(sha(f), `${f} changed without a rebuild: run generate.py and commit what it writes`).toBe(manifest.inputs[f]);
+    }
+  });
+  it('are the files that build wrote', () => {
+    expect(Object.keys(manifest.outputs).sort()).toEqual(['bootanimation.zip', 'bootlogo.bmp', 'preview.webp', 'splash-landscape.png']);
+    for (const [f, h] of Object.entries(manifest.outputs)) {
+      expect(sha(f), `${f} differs from what generate.py wrote: rebuild, don't edit it`).toBe(h);
+    }
   });
 });

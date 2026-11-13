@@ -1,0 +1,20 @@
+{
+  "about": "SHA-256 of the generator, its font and the four outputs it wrote (generate.py). Rebuild and commit all of them together; branding.test.ts compares.",
+  "inputs": {
+    "generate.py": "5afd1e31e72e9b1e871894ed7a6523bb9d3932b73f04806ff8e7616adc0db632",
+    "common.py": "dae7482eb17f8b30612de6508f12a29e8aa544088d6ce338240bb67ff615169d",
+    "Inter": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031"
+  },
+  "outputs": {
+    "bootlogo.bmp": "ee564464d01cb8c06a018c1e0240e8a2367affb0d4e01f3133bb799427080c57",
+    "bootanimation.zip": "2efdfb8de7fe64de0954f30a7138c59983358cb8b6730b2e5b687f89e1251116",
+    "splash-landscape.png": "1ab0487a3112d22219e6f334d25007b2e085570b1d8ae15c2f7b99bc452a4680",
+    "preview.webp": "f2dbf56082706c9a80eedd4c9ff251b9be158af63e748917559542737ae3d61a"
+  },
+  "tools": {
+    "pillow": "13.0.0",
+    "numpy": "2.4.6",
+    "pyoxipng": "9.1.1",
+    "uharfbuzz": "0.57.0"
+  }
+}
