@@ -8,6 +8,7 @@ import android.util.Log
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
+import dev.glassworks.pane.SettingsStatus
 import dev.glassworks.pane.PaneChoice
 import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupOp
@@ -101,6 +102,12 @@ class RadioDefinition(
      * current until Continue there. In memory only: after a restart there is nothing left to show.
      */
     @Volatile var followUpOpen = false
+
+    /**
+     * Settings' switch turned on while the radio is off: the picker shows, and the radio stays off until a
+     * role is picked (#63 round 2). Cleared once a mode is on, or the switch goes off.
+     */
+    @Volatile var choosing = false
 
     /**
      * Setup's radio step is being answered: from its Continue (or "Change the mode") until its
@@ -285,7 +292,11 @@ class RadioDefinition(
 
     // ------------------------------------------------------------------ settings
 
-    /** The settings menu's Radio section: the role tiles and the panel, then who may connect. */
+    /**
+     * The settings menu's Radio section: on/off at the top right (asks before Off), the roles (design C)
+     * and the panel, then who may connect. Its dot follows the radio's status; without the root helper
+     * the radio can't run, and the nav says so.
+     */
     override fun settings(): List<SettingsSection> {
         val running = readout.running()
         val allow = SettingsItem.Text(
@@ -293,6 +304,7 @@ class RadioDefinition(
             // Same setting as HA's "Radio allowed clients" (docs/radio.md "Firewall"): empty = Home Assistant only.
             value = readout::allowedClients,
             enabled = { running },
+            shown = { it.ifBlank { "Home Assistant only" } },
             save = ::saveAllow,
         )
         val allowedNow = SettingsItem.Note { allowedNow(running, readout.allowedNow()) }
@@ -300,13 +312,48 @@ class RadioDefinition(
             SettingsItem.Native(NATIVE_KEY) { host -> RadioSettingsView(host, this) },
             SettingsItem.Group("Who may connect", listOf(allow, allowedNow)),
         ) else listOf(allow, allowedNow) // nothing to drive without the controller: no picker or card
-        return listOf(SettingsSection(id, "Radio", items))
+        return listOf(SettingsSection(
+            id, "Radio", items, heading = "Zigbee / Thread radio", master = master(),
+            status = ::settingsStatus,
+            // The radio thread's cached facts: this runs on the main thread whenever the menu draws, and
+            // helperInstalled() can spawn getprop. Unknown until the radio's first refresh: not "can't run".
+            unavailable = { if (readout.controller()?.helperShownIfKnown()?.installed == false) NO_HELPER else null },
+        ))
+    }
+
+    /** The section's on/off: on shows the roles; off asks first, then turns the radio off (settings' log source). */
+    private fun master() = SettingsItem.Switch(
+        "Zigbee / Thread radio", "", value = { readout.mode() != RadioMode.OFF || choosing },
+        confirm = { on ->
+            val now = readout.mode()
+            if (on || now == RadioMode.OFF) null
+            else SettingsItem.Confirm("Turn the radio off?", RadioFollowUp.switchConsequence(now, RadioMode.OFF), "Turn off")
+        },
+    ) { on, done ->
+        choosing = on && readout.mode() == RadioMode.OFF
+        // A role picked a moment ago may still be queued on the radio thread with the mode still Off:
+        // send Off anyway, so it runs after that request instead of the radio starting after "Off".
+        val pending = readout.controller()?.requestPending == true
+        if (on || (readout.mode() == RadioMode.OFF && !pending)) done(null)
+        else Thread({ done(setModeFrom(RadioMode.OFF.id, "settings menu")) }, "s1-radio-off").apply { isDaemon = true; start() }
     }
 
     /**
-     * "Save & restart" with a new allow-list: the old list stays on an error; otherwise the radio thread
-     * hands the new list to the helper before the app restarts.
+     * The nav's dot, the same health the radio's card shows (RadioFollowUp.health): green when the role
+     * runs or has joined, amber while it starts or waits, rose when it failed (also a Zigbee router whose
+     * router host failed under an `ok` helper); none when off.
      */
+    private fun settingsStatus(): SettingsStatus? {
+        val f = readout.facts() ?: return null
+        return when (RadioFollowUp.health(f)) {
+            RadioFollowUp.Health.OFF -> null
+            RadioFollowUp.Health.RUNNING, RadioFollowUp.Health.JOINED -> SettingsStatus.OK
+            RadioFollowUp.Health.STARTING, RadioFollowUp.Health.WAITING -> SettingsStatus.WORKING
+            RadioFollowUp.Health.ERROR -> SettingsStatus.PROBLEM
+        }
+    }
+
+    /** A new allow-list: the old list stays on an error; otherwise done once the radio thread handed it to the helper. */
     private fun saveAllow(text: String, done: (String?) -> Unit) {
         val r = readout.controller()
         val wanted = text.trim()
@@ -344,6 +391,8 @@ class RadioDefinition(
         private const val MAIN_TAG = "S1Kiosk"
         internal const val NATIVE_KEY = "radio"
         internal const val NOT_RUNNING = "The kiosk service isn't running yet; try again in a moment."
+        /** Why the radio can't run (the settings page; the nav says "Can't run"). */
+        internal const val NO_HELPER = "it needs the root helper, which the installer puts on the panel"
         private const val CHANNEL_NOT_RUNNING = "The radio controller isn't running yet; try again in a moment."
         /** Wait for RadioController to take the request, then for it to report how it went (client waits 30 s). */
         private const val RADIO_ACCEPT_MS = 15_000L

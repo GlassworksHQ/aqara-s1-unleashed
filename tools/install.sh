@@ -13,7 +13,7 @@
 #   --timezone TZ       e.g. America/Los_Angeles (default: leave unchanged)
 #   --locale TAG        e.g. en-US (default: leave unchanged; applies after reboot)
 #   --keyboard APK      install this IME APK, make it default and disable the stock Baidu IME
-#   --no-models         don't download/push the openWakeWord models
+#   --no-models         don't download/push the wake word models (the panel fetches them itself)
 #   --no-debloat        keep the Aqara apps enabled (the kiosk still becomes HOME)
 #   --keep-dnd          keep Aqara's 22:00-07:00 Do-Not-Disturb screen-off
 #   --switch            if S1 Kiosk on the panel has another signing key (a debug build) and Android

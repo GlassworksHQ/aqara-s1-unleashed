@@ -10,7 +10,9 @@ android {
     }
 
     defaultConfig {
-        minSdk = 26
+        minSdk = 23
+        // The androidTest checks run on an API 23 emulator in CI (pr.yml, libs-api23).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -23,4 +25,7 @@ dependencies {
     api(project(":esphome-api"))
 
     testImplementation("junit:junit:4.13.2")
+
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }

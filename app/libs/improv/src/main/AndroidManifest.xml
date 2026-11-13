@@ -3,11 +3,12 @@
      ImprovBleServer: BLUETOOTH/BLUETOOTH_ADMIN are install-time on API <= 30; ADVERTISE/CONNECT
      replace them on 31+ and are runtime permissions there (the app requests them).
      WifiProvisioner: Wi-Fi state; scan results and the current SSID also need ACCESS_FINE_LOCATION
-     (runtime; a device owner can grant it to itself) and location mode on. -->
+     (runtime; a device owner can grant it to itself; Android 12 wants COARSE beside it) and location mode on. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
