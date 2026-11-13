@@ -134,10 +134,10 @@ export interface SwitchOutcome {
 }
 
 /** Wi-Fi the panel is on, and who saved it. Falls back to wlan0's address when dumpsys is unreadable. */
-export async function panelWifi(p: PanelShell): Promise<PanelWifi> {
-  const w = parseWifiOwner((await p.run('dumpsys wifi')).out);
+export async function panelWifi(p: PanelShell, signal?: AbortSignal): Promise<PanelWifi> {
+  const w = parseWifiOwner((await p.run('dumpsys wifi', signal)).out);
   if (w.owner !== 'unknown') return w;
-  const ip = /inet \d+\.\d+\.\d+\.\d+/.test((await p.run('ip -4 -o addr show wlan0 2>/dev/null')).out);
+  const ip = /inet \d+\.\d+\.\d+\.\d+/.test((await p.run('ip -4 -o addr show wlan0 2>/dev/null', signal)).out);
   return ip ? w : { owner: 'none' };
 }
 

@@ -1,15 +1,18 @@
 // The panel over adb (Tango / ya-webadb on WebUSB), once Android is up.
 import { Adb, AdbDaemonTransport } from '@yume-chan/adb';
 import { AdbDaemonWebUsbDevice, AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb';
-import { ReadableStream } from '@yume-chan/stream-extra';
+import { ConcatStringStream, ReadableStream, TextDecoderStream } from '@yume-chan/stream-extra';
 import { openAdbStream } from 'improv-serial/adb';
 import type { ByteStream } from 'improv-serial';
 import type { AdbKey } from './key';
 
 /** What provisioning needs from a panel. Panel implements it over adb; the tests use a fake. */
 export interface PanelShell {
-  /** Runs a shell command; returns its output (stdout + stderr) and exit code. */
-  run(cmd: string): Promise<{ out: string; code: number }>;
+  /**
+   * Runs a shell command; returns its output (stdout + stderr) and exit code. `signal` cancels it: the
+   * command's stream is closed on the panel and the call rejects with the signal's reason.
+   */
+  run(cmd: string, signal?: AbortSignal): Promise<{ out: string; code: number }>;
   push(path: string, data: Uint8Array, mode?: number): Promise<void>;
   /** A raw stream to a service on the panel (e.g. 'localabstract:…'), if the transport has one. */
   openStream?(service: string): Promise<ByteStream>;
@@ -54,8 +57,11 @@ export class Panel implements PanelShell {
     return m ? (await m.getDevices()).map((d) => d.raw) : [];
   }
 
-  async run(cmd: string): Promise<{ out: string; code: number }> {
-    const text = await this.adb.subprocess.noneProtocol.spawnWaitText(`${cmd}; echo "${RC}$?"`);
+  async run(cmd: string, signal?: AbortSignal): Promise<{ out: string; code: number }> {
+    const proc = await this.adb.subprocess.noneProtocol.spawn(`${cmd}; echo "${RC}$?"`, signal);
+    // an abort closes the stream, which ends this read with what came so far
+    const text = await proc.output.pipeThrough(new TextDecoderStream()).pipeThrough(new ConcatStringStream());
+    signal?.throwIfAborted();
     const i = text.lastIndexOf(RC);
     if (i < 0) return { out: text, code: -1 };
     return { out: text.slice(0, i), code: Number.parseInt(text.slice(i + RC.length), 10) };

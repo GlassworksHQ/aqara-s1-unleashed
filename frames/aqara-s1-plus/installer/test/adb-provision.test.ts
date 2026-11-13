@@ -46,6 +46,7 @@ describe('provision (install.sh port)', () => {
     const shell = (out: string) => ({ run: async () => ({ out, code: 0 }), push: async () => {} });
     expect(await kioskVersion(shell('Packages:\n  Package [sh.edm.s1kiosk] (1a2b):\n    versionCode=403 minSdk=29 targetSdk=29\n    versionName=0.4.3\n'))).toEqual({ name: '0.4.3', code: 403 });
     expect(await kioskVersion(shell('Unable to find package: sh.edm.s1kiosk\n'))).toBeUndefined();
+    expect(await kioskVersion(shell('    versionCode=1 minSdk=26 targetSdk=34\n    versionName=null\n'))).toEqual({ name: undefined, code: 1 }); // a build without a version
   });
 
   it('without the keyboard, no keyboard phase', async () => {

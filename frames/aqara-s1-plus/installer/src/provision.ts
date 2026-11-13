@@ -175,11 +175,15 @@ class Runner {
   }
 }
 
-/** S1 Kiosk's version on the panel, from `dumpsys package` (read-only); undefined when it isn't installed. */
-export async function kioskVersion(p: PanelShell): Promise<{ name?: string; code: number } | undefined> {
-  const dump = (await p.run(`dumpsys package ${PKG}`)).out;
+/**
+ * S1 Kiosk's version on the panel, from `dumpsys package` (read-only); undefined when it isn't
+ * installed. `signal` cancels the read.
+ */
+export async function kioskVersion(p: PanelShell, signal?: AbortSignal): Promise<{ name?: string; code: number } | undefined> {
+  const dump = (await p.run(`dumpsys package ${PKG}`, signal)).out;
   const code = /versionCode=(\d+)/.exec(dump)?.[1];
-  return code ? { name: /versionName=(\S+)/.exec(dump)?.[1], code: Number(code) } : undefined;
+  const name = /versionName=(\S+)/.exec(dump)?.[1];
+  return code ? { name: name === 'null' ? undefined : name, code: Number(code) } : undefined;
 }
 
 export async function deviceInfo(p: PanelShell): Promise<{ model: string; sdk: string }> {
