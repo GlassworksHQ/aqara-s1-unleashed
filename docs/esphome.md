@@ -125,6 +125,36 @@ is FNV-1a of the `object_id` (stable).
 Plus `Block Aqara cloud` and `Aqara cloud daemon` ([below](#aqara-cloud)), the wall base entities, and the entities HA adds itself for a voice device: `assist_satellite.s1_panel_assist_satellite`,
 *Assist pipeline* and *Wake word* selects (two of each), *Finished speaking detection*.
 
+### Diagnostics
+
+The diagnostics pane (`dev.glassworks.diagnostics`) shows the panel's health. All of its entities
+are diagnostic, so they sit in the device page's *Diagnostic* section and stay off dashboards. Only
+the four marked *on* are enabled when HA adds the panel. Turn the others on from the device page.
+
+The pane samples once a minute. It sends a value only when it moved by at least its band since the
+last value it sent, so a quiet panel sends almost nothing. It reads files in `/proc` and `/sys` and
+asks Android. It runs no shell commands and needs no root.
+
+| Entity | object_id | Default | Band | Source |
+|---|---|---|---|---|
+| sensor `CPU usage` (%) | `cpu_usage` | on | 1 % | `/proc/stat`, all cores, busy share over the last minute |
+| sensor `App CPU usage` (%) | `app_cpu_usage` | off | 0.5 % | `/proc/<pid>/stat` of every app process (Gecko's too), as a share of all cores |
+| sensor `CPU temperature` (°C) | `cpu_temperature` | on | 0.5 °C | the frame's thermal zone; on the S1 `cpu_thermal_zone`. No entity on a frame without one |
+| sensor `RAM available` (MiB) | `memory_available` | off | 8 MiB | `ActivityManager.MemoryInfo.availMem` |
+| sensor `App RAM` (MiB) | `app_memory` | off | 4 MiB | PSS of every app process, from `/proc/<pid>/smaps_rollup` |
+| sensor `Storage free` (GiB) | `storage_free` | off | 0.05 GiB | `StatFs` on `/data` |
+| sensor `Wi-Fi signal` (dBm) | `wifi_signal` | on | 2 dB | `WifiManager`; unknown while Wi-Fi is down |
+| sensor `Wi-Fi link speed` (Mbit/s) | `wifi_link_speed` | off | 1 Mbit/s | `WifiManager` |
+| sensor `Uptime` (timestamp) | `uptime` | on | 120 s | when the panel booted; HA shows "3 hours ago" |
+| sensor `App uptime` (timestamp) | `app_uptime` | off | 120 s | when the app process started |
+| sensor `Web content processes` | `web_content_processes` | off | 1 | the engine's content processes (Gecko's tabs) |
+| text_sensor `Last restart reason` | `last_restart_reason` | off | | why the app's process last ended, e.g. `crash`, `low memory`, `app updated`; Android 11 and later. Always `unknown` on the S1 (Android 10) |
+
+- CPU usage and App CPU usage are unknown for the first minute after a start: they need two samples.
+- The timestamps are accurate to about a minute, because ESPHome sends sensor values as 32-bit floats.
+- The pane logs its own cost under `S1ESPHome` (`diagnostics: sample N took X ms CPU`) for the
+  first three samples and then once an hour.
+
 ### Wall base entities
 
 Built from the detected base, through the app's own UART driver (default) or the stock LocalService
