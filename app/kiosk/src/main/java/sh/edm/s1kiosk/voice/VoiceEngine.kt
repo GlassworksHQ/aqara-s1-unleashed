@@ -137,7 +137,10 @@ class VoiceEngine(
 
     private fun replace(next: Loaded?) {
         val old = synchronized(wwLock) { loaded.also { loaded = next } }
-        if (old != null && old !== next) old.detector.close()
+        if (old != null && old !== next) {
+            // A throw here would end the 30 s retry task for good, so it's logged and dropped.
+            try { old.detector.close() } catch (e: Exception) { VoiceLog.w("Closing wake word '${old.id}' failed: $e") }
+        }
     }
 
     /** Executor thread. Loads [activeWord], replacing the current one. */

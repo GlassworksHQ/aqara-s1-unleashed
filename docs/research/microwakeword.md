@@ -102,7 +102,7 @@ pymicro-wakeword get, and without native code of our own (#175)?
    dev, 2026-11-13). ESPHome stores `int(cutoff × 255)` and fires when the sum of the last 5 raw
    uint8 outputs is above 5 times that. We follow pymicro-wakeword: outputs × 1/256, mean ≥ cutoff.
    For the same cutoff we need a sum of 1242 instead of 1236 at 0.97, 1216 instead of 1211 at 0.95,
-   and 1152 instead of 1146 at 0.9: about 1.1 more per output, 0.45% stricter at 0.97.
+   and 1152 instead of 1146 at 0.9: about 1.1 more per output, 0.5% stricter at 0.97.
 
 8. **The noise floor can't be observed** (2026-11-12, verified). Removing the noise-reduction floor
    from the C changed no output on 8 loud-to-quiet signals. When the floor binds, the estimate is

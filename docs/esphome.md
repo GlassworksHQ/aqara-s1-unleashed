@@ -319,7 +319,7 @@ pymicro-wakeword and ESPHome's `micro_wake_word` do:
 | Model input | int8 `[1, 3, 40]`: three 10 ms feature rows, so one inference per 30 ms. `round(value × 0.0390625 / scale + zero_point)`, half to even, clamped to int8 (scale 0.10196, zero point −128 for all four) |
 | Model output | uint8 `[1, 1]`, × 1/256; the model keeps its own streaming state (resource variables) |
 | Score | mean of the last `sliding_window_size` outputs (5 for all four), 0 until there are 5; per 80 ms microphone frame, the best mean in that frame |
-| Detection | score ≥ the threshold entity (default: the manifest's `probability_cutoff`), then 3 s before the next one. This is pymicro-wakeword's comparison, not ESPHome's: ESPHome fires when the sum of the 5 raw outputs is above `int(cutoff × 255) × 5`, so at the same cutoff the panel needs about 1.1 more per output (sum 1242 instead of 1236 at 0.97, 1216/1211 at 0.95, 1152/1146 at 0.9), about 0.45% stricter than Voice PE |
+| Detection | score ≥ the threshold entity (default: the manifest's `probability_cutoff`), then 3 s before the next one. This is pymicro-wakeword's comparison, not ESPHome's: ESPHome fires when the sum of the 5 raw outputs is above `int(cutoff × 255) × 5`, so at the same cutoff the panel needs about 1.1 more per output (sum 1242 instead of 1236 at 0.97, 1216/1211 at 0.95, 1152/1146 at 0.9), about 0.5% stricter than Voice PE |
 | Models | `okay_nabu`, `hey_jarvis`, `alexa`, `hey_mycroft` from esphome/micro-wake-word-models `models/v2` at `40ff33f`, SHA-256 in `WakeWords.kt` |
 
 The research note is [research/microwakeword.md](research/microwakeword.md).

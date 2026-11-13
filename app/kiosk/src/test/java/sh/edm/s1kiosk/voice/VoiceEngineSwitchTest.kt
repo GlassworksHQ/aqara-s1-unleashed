@@ -96,7 +96,7 @@ class VoiceEngineSwitchTest {
         assertEquals("Hey Jarvis", phraseHeard())
         nabuGate.countDown()
         eventually("Okay Nabu loaded") { phraseHeard() == "Okay Nabu" }
-        assertTrue("the old model is closed", jarvis.closed)
+        eventually("the old model is closed") { jarvis.closed }
     }
 
     @Test
