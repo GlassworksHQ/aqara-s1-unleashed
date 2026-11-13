@@ -124,14 +124,18 @@ fun openAudioTrack(sampleRate: Int, channels: Int, gain: Float): PcmTrack {
 class AudioTrackSink(
     private val newTrack: (sampleRate: Int, channels: Int, gain: Float) -> PcmTrack = ::openAudioTrack,
 ) : AudioSink {
+    /** Guards publishing [track] and [gain] together, so no gain change is lost; never held while a track is created. */
+    private val lock = Any()
     @Volatile private var track: PcmTrack? = null
-    @Volatile private var gain = 1f
+    private var gain = 1f
     private var channels = 2
 
     override fun open(sampleRate: Int, channels: Int) {
         close()
         this.channels = channels
-        track = newTrack(sampleRate, channels, gain)
+        val t = newTrack(sampleRate, channels, synchronized(lock) { gain })
+        // A gain change while the track was being created found no track: apply the latest now.
+        synchronized(lock) { track = t; t.setVolume(gain) }
     }
 
     override fun write(buf: ShortArray, frames: Int): Int {
@@ -143,13 +147,14 @@ class AudioTrackSink(
     override fun timestamp(out: LongArray): Boolean = track?.timestamp(out) ?: false
 
     override fun setGain(gain: Float) {
-        this.gain = gain
-        track?.setVolume(gain)
+        synchronized(lock) {
+            this.gain = gain
+            track?.setVolume(gain)
+        }
     }
 
     override fun close() {
-        val t = track ?: return
-        track = null
+        val t = synchronized(lock) { track.also { track = null } } ?: return
         t.release()
     }
 }

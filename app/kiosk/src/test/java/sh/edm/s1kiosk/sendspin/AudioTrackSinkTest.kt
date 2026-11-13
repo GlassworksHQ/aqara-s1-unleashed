@@ -17,7 +17,12 @@ class AudioTrackSinkTest {
     }
 
     private val made = mutableListOf<Track>()
-    private val sink = AudioTrackSink { rate, ch, gain -> Track(rate, ch, gain).also { made += it } }
+    /** Runs inside the next track's creation, as another thread's call would while it blocks. */
+    private var duringCreation: () -> Unit = {}
+    private val sink: AudioTrackSink = AudioTrackSink { rate, ch, gain ->
+        duringCreation().also { duringCreation = {} }
+        Track(rate, ch, gain).also { made += it }
+    }
 
     @Test
     fun openReplacesAndReleasesTheTrackAndKeepsTheGain() {
@@ -36,5 +41,13 @@ class AudioTrackSinkTest {
         sink.close()
         assertTrue(made[1].released)
         assertFalse("no write after close", sink.write(ShortArray(2), 1) > 0)
+    }
+
+    @Test
+    fun aGainChangeWhileTheTrackIsBeingCreatedReachesIt() {
+        sink.setGain(0.6f)
+        duringCreation = { sink.setGain(0f) } // muted or ducked while AudioTrack.Builder.build() runs
+        sink.open(48_000, 2)
+        assertEquals(0f, made.single().gain)
     }
 }
