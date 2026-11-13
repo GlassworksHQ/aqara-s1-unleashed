@@ -9,9 +9,14 @@ You need the panel's root helper (installed by the [web installer](install.md)) 
 *Off*. The panel shows up in Home Assistant as an ESPHome device, and all of the controls below are on
 that device's page.
 
+Home Assistant adds every radio control except **Radio status** turned off, because you set them
+once. Turn on the ones you need on the device page first ([how](esphome.md#categories-and-defaults)),
+or use the panel's own settings menu ([below](#on-the-panel)), which needs nothing turned on. A panel
+that Home Assistant already had before this change keeps its controls as they were.
+
 ## Pick a mode
 
-Set **Radio mode** on the panel's device page:
+Set **Radio mode** on the panel's device page (turn it on first, as above), or on the panel:
 
 | Mode | What the panel becomes | Status |
 |---|---|---|

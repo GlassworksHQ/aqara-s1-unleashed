@@ -25,6 +25,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import grade as G  # noqa: E402
+import notes as N  # noqa: E402
 
 SCHEMA = "glassworks.perf-summary/2"
 
@@ -98,6 +99,13 @@ def ram_summary(ram):
     }
 
 
+def notes_summary(rep):
+    """What's good and what holds it back, in words (#201; notes.py). Judged by the report's rubric,
+    which `rubric` names: a site with another rubric shouldn't show it."""
+    n = rep.get("notes") or N.notes(rep)
+    return {k: n[k] for k in ("good", "limits", "causes", "text", "rubric")}
+
+
 def measurements(rep, report_url="report.json"):
     """report.json (glassworks.perf/4) -> the summary: measurements and facts, no grade."""
     if not str(rep.get("schema", "")).startswith("glassworks.perf/"):
@@ -133,6 +141,7 @@ def measurements(rep, report_url="report.json"):
         "report": report_url,
         "ram": ram_summary(rep.get("ram")),
         "apk": [{"file": x["file"], "abis": x["abis"], "bytes": x["bytes"]} for x in rep.get("apk") or []] or None,
+        "notes": notes_summary(rep),
     }
 
 

@@ -162,13 +162,14 @@ What works today, on v0.4.1. "Verified" means tested on a real panel in a real h
 | Radio firmware updates | 🧪 Experimental · re-flashing Aqara's original firmware verified; no other firmware offered yet |
 | Wall base relays | 🧪 Driver done and checked against Aqara's own tool, but not yet tried on a real base |
 | Wi-Fi setup over Bluetooth (Improv) | 🧪 Implemented; lightly tested |
+| A short entity list in HA: settings and troubleshooting entities start turned off ([list](docs/esphome.md#categories-and-defaults)) | 🧪 New · the check on a panel HA already has is pending |
 
 ## The radio
 
 The S1 Plus has a Silicon Labs Zigbee/Thread radio inside. S1 Unleashed can give it to Home
 Assistant in one role at a time. You pick the role with **Radio mode** on the panel's device page
-in Home Assistant, or in the panel's own settings menu (*Radio*), which also shows what to do next,
-with QR codes for your phone:
+in Home Assistant (turn it on there first: HA adds it turned off), or in the panel's own settings
+menu (*Radio*), which also shows what to do next, with QR codes for your phone:
 
 - **Zigbee coordinator** for ZHA: radio type EZSP, serial path `socket://<panel IP>:6638`.
 - **Zigbee coordinator** for Zigbee2MQTT (experimental): set **Zigbee stack** to *Silicon Labs
