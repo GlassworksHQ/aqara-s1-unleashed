@@ -237,6 +237,29 @@ class SettingsOverlayTest {
     }
 
     @Test
+    fun backClosesAPanesDialogBeforeTheMenu() {
+        // Verifier 6d0f2cd7: the radio's own dialog (NativeView.back) is a layer of its own.
+        val o = open(radioRunning = true)
+        o.previewSection("radio")
+        Mockup.idle()
+        val radio = o.previewNative("radio") as sh.edm.s1kiosk.radio.ui.RadioSettingsView
+        val ask = sh.edm.s1kiosk.radio.ui.RadioFollowUp.Ask(
+            sh.edm.s1kiosk.radio.ui.RadioFollowUp.Request.Mode(sh.edm.s1kiosk.radio.RadioMode.THREAD), "Switch to Thread border router?", "It restarts.", "Switch",
+        )
+        var answer: Boolean? = null
+        radio.previewDialog.show(ask) { answer = it }
+        Mockup.idle()
+        assertTrue(radio.previewDialog.isOpen)
+        o.back()
+        Mockup.idle()
+        assertFalse(radio.previewDialog.isOpen) // the dialog closed, as a no
+        assertEquals(false, answer)
+        assertTrue(o.isShowing) // the menu stays
+        o.back()
+        assertFalse(o.isShowing)
+    }
+
+    @Test
     fun theRailFitsWithThePanesOpen() {
         // Root's panel run: with Voice, Music and Radio open, About was clipped under Done.
         val o = open()
