@@ -44,8 +44,9 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
 - Full-screen immersive `GeckoView`, landscape, `FLAG_KEEP_SCREEN_ON`.
 - Loads a configurable URL. The default `auto` finds Home Assistant (mDNS `_home-assistant._tcp`,
   or the address of HA's ESPHome connection) and loads its default dashboard. A saved URL is kept.
-- **First-boot setup screen** (native, in the dashboard's style): Wi-Fi → Add to Home Assistant →
-  Sign in → Done, with checks; it moves on by itself. It only appears when the panel is really not
+- **First-boot setup screen** (native, in the Glassworks look): Wi-Fi → Home Assistant (add it, sign
+  in) → Panes (choose which, then each pane's own steps, such as the radio's role) → Done; it moves on
+  by itself, and a step that is done says so with Continue. It only appears when the panel is really not
   set up (offline for 30 s, HA unknown, HA never added the panel within 2 min of startup, or HA's
   login page with no refresh token), never on a working panel. See
   [docs/onboarding.md](../docs/onboarding.md#setup-screen-).
@@ -63,7 +64,7 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   Verified on the panel: `getUserMedia({audio:true})` returns a live 48 kHz track.
 - HOME + LAUNCHER intent filters (can be the default launcher), `BootReceiver`
   (`BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`).
-- Back button navigates inside the page and never leaves the kiosk.
+- Back closes a setup preview, else navigates inside the page, and never leaves the kiosk.
 - If the page fails to load (HA restarting, Wi-Fi not up yet), it retries every 10 s.
   Crashed or killed content processes are restarted.
 - Hidden settings: **tap the top-left corner 5 times within 3 s** (or `--ez settings true`) to set the
@@ -147,7 +148,7 @@ followed by `adb uninstall sh.edm.s1kiosk` (an active device admin can't be unin
 A="adb shell am start -n sh.edm.s1kiosk/.MainActivity"
 $A --es url http://homeassistant.local:8123/my-dashboard   # set + persist the URL ("auto" = discover HA)
 $A --ez show_setup true    # preview the setup screen at its live step (changes nothing)
-$A --ez show_setup true --es setup_step wifi   # ... or a given step: wifi|ha|signin|done
+$A --ez show_setup true --es setup_step wifi   # ... or a given step: wifi|ha|signin|panes|radio|done
 $A --ez show_setup false   # close the preview
 $A --ez show_signin true   # preview the QR sign-in step (doesn't touch the session)
 $A --es open http://192.168.1.100:8123/profile/general      # navigate once (not persisted)
@@ -214,6 +215,17 @@ player under `S1Sendspin` (with a `sync:` line every 10 s while playing). The Wi
 starts while the screen is off log under `S1Kiosk.Wifi`. None of them log tokens or keys. Page
 console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
 
+The connecting screen stays up until the page says it has drawn. `S1Kiosk` logs one line when it
+goes, with the reason: `Connecting screen hidden: ready, frontend/loaded` (Home Assistant's frontend
+removed its launch screen and a frame was painted after it), `ready, removed` (the same, for a
+frontend that doesn't send frontend/loaded), `ready, page` (a page without a launch screen), or the
+fallbacks `fallback 15 s, no word from the page` and `fallback 45 s, the frontend still loading`.
+`Home Assistant's launch screen is up` marks the page reporting that it's still loading. Whatever the
+timing, HA's launch screen never shows white: content.js styles it, and the page under it, with the
+night background from `document_start`, hides its logo and attribution, and keeps its info box readable
+(HA writes why a start failed there). The style is scoped with `:has` and removed once the launch screen
+goes; not with `?kiosk=0` or `?edit=1`.
+
 > If the screen is blank/white and `innerWidth` is 0, the **display is off**. Gecko drops its
 > surface while the screen sleeps. Check `adb shell dumpsys power | grep mWakefulness`.
 > See [docs/research/screen-policy.md](../docs/research/screen-policy.md) for why the panel turns itself off.
@@ -233,7 +245,8 @@ tools/voice/fetch-models.sh            # optional: downloads the microWakeWord m
 ```
 
 Entity ids look like `light.s1_panel_screen`, `select.s1_panel_screen_mode`,
-`media_player.s1_panel_speaker`; pick the wake word and the Assist pipeline on the device page.
+`media_player.s1_panel_speaker` on a panel added before #63; newer ones start with `glassworks_panel_`
+([Names](../docs/esphome.md#names)). Pick the wake word and the Assist pipeline on the device page.
 Encryption is automatic: a panel without a key lets HA 2026.11+ provision one when you add it
 (ESPHome dynamic encryption key). You can also set a key by hand with
 `--es api_key <base64 32 bytes> --ez api_encryption true`. Keys are never logged. Tune the mic with

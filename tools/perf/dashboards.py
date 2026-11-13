@@ -16,6 +16,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(HERE, "page", "tiers.json")) as _f:
     TIERS = json.load(_f)
 DASHBOARD = TIERS["DASHBOARD"]
+# The camera entities and the stream each serves (camera.py PROFILES): one main stream, sub-streams.
+CAMERA_PROFILES = {"camera.clarity_cam_0": "720p", "camera.clarity_cam_1": "360p", "camera.clarity_cam_2": "360p",
+                   "camera.clarity_cam_3": "360p"}
 VIEWS = ["start"] + TIERS["ORDER"]          # view index 0 is the start view
 SEED = 89
 START = 1_794_500_000.0          # a fixed epoch for every last_changed (2026-11-13)
@@ -90,6 +93,12 @@ def states():
     for d in ("light", "switch", "binary_sensor"):
         for i in range(N_ONOFF):
             add(*_onoff(d, i, rnd))
+    for cam, profile in CAMERA_PROFILES.items():
+        # HA's camera entity with the STREAM feature (CameraEntityFeature.STREAM = 2): the frontend
+        # then asks camera/capabilities and plays what it offers (HLS here, as HA's stream integration).
+        add(cam, "streaming", {"friendly_name": f"Camera {profile}", "access_token": f"clarity-{cam.split('.')[1]}",
+                               "entity_picture": f"/api/camera_proxy/{cam}?token=clarity-{cam.split('.')[1]}",
+                               "frontend_stream_type": "hls", "supported_features": 2})
     return out
 
 
@@ -112,7 +121,9 @@ def config():
             "unit_system": {"length": "km", "accumulated_precipitation": "mm", "area": "m²", "mass": "g",
                             "pressure": "Pa", "temperature": "°C", "volume": "L", "wind_speed": "m/s"},
             "location_name": "Clarity", "time_zone": "UTC", "components": ["frontend", "lovelace", "history",
-                                                                         "sensor", "light", "switch", "binary_sensor"],
+                                                                         "sensor", "light", "switch", "binary_sensor",
+                                                                         # ha-hls-player plays only when HA has `stream`
+                                                                         "camera", "stream"],
             "config_dir": "/config", "allowlist_external_dirs": [], "allowlist_external_urls": [],
             "version": "2026.11.0", "config_source": "storage", "recovery_mode": False, "safe_mode": False,
             "state": "RUNNING", "external_url": None, "internal_url": None, "currency": "EUR", "country": "NL",
@@ -172,6 +183,23 @@ def head_cards():
     return 2 + len(head()["tiles"]) + 1
 
 
+def camera_cards(view):
+    """The view's live camera cards (tiers.json CAMERAS), right after the head: a picture-entity card
+    per stream, and a list of streams is a grid of them."""
+    used = {"720p": iter(["camera.clarity_cam_0"]), "360p": iter(["camera.clarity_cam_1", "camera.clarity_cam_2", "camera.clarity_cam_3"])}
+
+    def card(profile):
+        return {"type": "picture-entity", "entity": next(used[profile]), "camera_view": "live",
+                "show_name": False, "show_state": False}
+    out = []
+    for item in TIERS["CAMERAS"][view]:
+        if isinstance(item, list):
+            out.append({"type": "grid", "columns": len(item), "square": False, "cards": [card(p) for p in item]})
+        else:
+            out.append(card(item))
+    return out
+
+
 def view_spec(view):
     """A view's counts: a reference tier's, or the start view's (the light view's, plus START's)."""
     if view == "start":
@@ -209,6 +237,7 @@ def view_cards(view):
              {"type": "tile", "entity": "light.living_room", "tap_action": {"action": "toggle"}}]
     first += [{"type": "tile", "entity": e} for e in hd["tiles"]]
     first.append({"type": "entities", "title": "Energy", "entities": hd["rows"]})
+    first += camera_cards(view)
     deck = []
     for e in take(["sensor", "light", "switch", "binary_sensor"], spec["tiles"] - 1 - len(hd["tiles"])):
         deck.append({"type": "tile", "entity": e})

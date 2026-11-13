@@ -12,6 +12,7 @@ rules every part follows.
 | [esphome.md](esphome.md) | The panel as an ESPHome device: every entity, the voice assistant, encryption, app updates |
 | [sendspin.md](sendspin.md) | The native Music Assistant player (Sendspin): setup, pairing, synced playback |
 | [perf.md](perf.md) | Clarity, the performance test and grade for any frame: how to run it, what it measures, the rubric and its sources, the report format |
+| [size.md](size.md) | APK size per frame and per pane in CI: the parts, the assets lint, the size budgets, the PR comment |
 | [sensors.md](sensors.md) | Presence (VI5300 time-of-flight), ambient light, and how the screen uses them |
 | [radio-guide.md](radio-guide.md) | Using the Zigbee/Thread radio: ZHA, Zigbee2MQTT, Thread, repeaters, who may connect |
 | [radio.md](radio.md) | The radio's technical reference: how each mode works, tests, firmware, the root helper |

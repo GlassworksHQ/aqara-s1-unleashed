@@ -481,7 +481,93 @@ def tier_entry(tier, inp, scroll_missed=0, updates_missed=0, load_ms=200, fcp_ms
             "measure": {"t": "measure", "stage": "updates", "moving": 12, "offscreen": 0, "targets": 10, "update_every_ms": 200},
             "step": updates_step(nav, updates_missed),
             "input": {"t": "input", "method": "event-timing", "taps": 10, "inp_ms": inp},
+            "camera": camera_line(tier),
             "swipes": [swipe(nav, i, late(60, scroll_missed)) for i in range(3)]}
+
+
+class CameraStreamsAll(unittest.TestCase):
+    """The camera task counts every stream the view shows: heavy with 3 of its 4 streams playing (one
+    never showed a frame, or wasn't found at all) fails it, though the 3 played well (#182's verifier)."""
+
+    def test_three_of_four_fail(self):
+        played = R.camera_run(camera_line("heavy"), "heavy")
+        self.assertEqual(G.camera_level(played), "good")
+        dead = camera_line("heavy")
+        dead["streams"][3].update(first_frame_ms=None, shown_pct=None, frames=0, decoded=0)
+        run = R.camera_run(dead, "heavy")
+        self.assertIsNone(run["first_frame_ms"])
+        self.assertEqual(G.camera_level(run), G.BELOW)
+        missing = camera_line("heavy")
+        missing["streams"] = missing["streams"][:3]
+        missing["found"] = 3
+        run = R.camera_run(missing, "heavy")
+        self.assertEqual((run["streams"], run["expected"]), (3, 4))
+        self.assertEqual(G.camera_level(run), G.BELOW)
+
+
+class CameraFailedRuns(unittest.TestCase):
+    """CodeRabbit on cbc2be6: the numbers are from the runs whose streams all played, and a run with a
+    stream that showed no frame was hidden whenever another run played. Both outputs say how many."""
+
+    def test_a_failed_run_is_said(self):
+        ok = R.camera_run(camera_line("typical"), "typical")
+        dead = camera_line("typical")
+        dead["streams"][0].update(first_frame_ms=None, shown_pct=None)
+        s_ = {"camera_runs": [ok, R.camera_run(dead, "typical"), ok]}
+        self.assertIn("1 of 3 run(s) had a stream that showed no frame", R.camera_cell(s_, {"camera": "slow"}))
+        self.assertIn("(1 of 3 run(s) had a stream that showed no frame)", R.task_phrase("camera", s_))
+        self.assertNotIn("showed no frame", R.camera_cell({"camera_runs": [ok, ok]}, {"camera": "good"}))
+
+
+class CameraDetail(unittest.TestCase):
+    """Detail for the camera task (smoke-cam1, 2026-11-13): which decoders a view got and where its
+    segments were late, so a slow camera can be told apart: the decoder, the link or the page."""
+
+    def test_the_decoders_and_fetches_reach_report_md(self):
+        fetches = {"segment": {"n": 120, "queued_ms": {"median": 2, "p95": 900, "max": 1500},
+                               "wait_ms": {"median": 10, "p95": 40, "max": 80},
+                               "total_ms": {"median": 30, "p95": 1100, "max": 2000}, "kb": 4000, "arrival_gap_max_ms": 5200},
+                   "playlist": {"n": 130, "queued_ms": None, "wait_ms": None, "total_ms": None}, "streams": 4}
+        line = dict(camera_line("heavy"), fetches=fetches)
+        c = {"proc_mono": 20.0, "tiers": {"heavy": dict(tier_entry("heavy", 100), camera=line)},
+             "media": {"heavy": {"codecs": ["OMX.allwinner.video.decoder.avc"] * 4, "flushes": 117, "eos": 43}}}
+        run = R.reference_run(c)["tiers"]["heavy"]["camera_run"]
+        self.assertEqual((run["fetches"]["segment"]["n"], run["media"]["flushes"]), (120, 117))
+        ref = {"tiers": {"heavy": {"camera_runs": [run]}}}
+        md = R.camera_detail(ref)
+        self.assertEqual(md, ["heavy cameras, run 1 (detail): decoders 4 (OMX.allwinner.video.decoder.avc), 117 flushes, "
+                              "43 drains; 120 segments, fetch p95 1100 ms (queued p95 900 ms), longest gap between a "
+                              "stream's segments 5200 ms."])
+        self.assertEqual(R.camera_detail({"tiers": {"heavy": {"camera_runs": [dict(run, media=None, fetches=None)]}}}), [])
+
+    def test_frames_presented_inside_the_stalls_are_said(self):
+        line = camera_line("heavy", stall=2500.0, max_gap=1200.0)
+        for k, st in enumerate(line["streams"]):
+            st["stall_presented"] = 30 if k == 0 else 0
+        run = R.camera_run(line, "heavy")
+        self.assertEqual(run["detail"][0]["stall_presented"], 30)
+        self.assertEqual(run["stall_total_ms"], 2500.0)               # graded as before
+        self.assertEqual(R.camera_detail({"tiers": {"heavy": {"camera_runs": [run]}}}),
+                         ["heavy cameras, run 1 (detail): 30 frames presented inside the stalls (the callbacks', not the stream's)."])
+
+    def test_the_headline_names_the_camera_not_the_view_again(self):
+        """smoke-cam1's headline read "the view takes 6.6 s to open" twice: camera had no phrase of its
+        own and fell through to the open-the-view one."""
+        s_ = {"load_ms": {"median": 6620}, "camera_runs": [{"first_frame_ms": 4405.1, "shown_pct": 100.0}]}
+        self.assertEqual(R.task_phrase("camera", s_), "a camera takes 4.4 s to show its first frame and shows 100% of its frames")
+        self.assertEqual(R.task_phrase("camera", {"camera_runs": [{"first_frame_ms": None, "shown_pct": None}]}),
+                         "a camera never showed a frame")
+
+
+def camera_line(tier, first_ms=600.0, shown=100.0, max_gap=70.0, stall=0.0):
+    """The harness's camera line (#174) for a view with streams: each plays at once and in full."""
+    n = {"typical": 1, "heavy": 4}.get(tier, 0)
+    if not n:
+        return None
+    return {"t": "camera", "stage": tier, "window_ms": 20000, "fps": 15, "expected": n, "found": n,
+            "streams": [{"found": True, "w": 1280 if i == 0 else 640, "h": 720 if i == 0 else 360, "first_frame_ms": first_ms,
+                         "shown_pct": shown, "max_gap_ms": max_gap, "stall_total_ms": stall, "frames": 300, "decoded": 300,
+                         "dropped": 0, "waiting": 0, "source": "quality+rvfc"} for i in range(n)]}
 
 
 def load_frames():
@@ -586,7 +672,11 @@ class Build(unittest.TestCase):
         g = self.rep["grade"]
         self.assertEqual(g["grade"], "B")
         self.assertEqual(g["levels"], {"light": "premium", "typical": "premium", "heavy": "fluid"})
-        self.assertEqual(g["bands"]["heavy"], {"tap": "good", "scroll": "fluid", "updates": "premium", "load": "good"})
+        self.assertEqual(g["bands"]["heavy"], {"tap": "good", "scroll": "fluid", "updates": "premium", "load": "good", "camera": "good"})
+        self.assertEqual(g["bands"]["light"]["camera"], "none")              # no streams on light (#174)
+        heavy = self.rep["graded"]["reference"]["tiers"]["heavy"]
+        self.assertEqual(heavy["camera_levels"], ["good", "good", "good"])
+        self.assertEqual(heavy["camera_runs"][0]["detail"][1]["w"], 640)
         self.assertEqual(g["start"], {"value": 800, "band": "good"})   # process 20.0 s -> engine 20.7 to 20.9 s
         self.assertEqual(g["viewport"], {"state": "ok", "reason": None})
         self.assertFalse(g["provisional"])

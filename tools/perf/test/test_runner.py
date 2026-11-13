@@ -12,6 +12,8 @@ import zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN = os.path.join(os.path.dirname(HERE), "run.sh")
 STUB_FRONTEND = os.path.join(HERE, "stub_frontend")       # the runner tests never fetch HA's frontend
+STUB_CAMERA = tempfile.mkdtemp(prefix="clarity-camera-")  # nor make camera segments (no ffmpeg needed)
+os.environ.setdefault("GW_PERF_CAMERA", STUB_CAMERA)
 RESTORE = "http://192.0.2.10:8123/lovelace/0"
 os.environ.setdefault("GW_PERF_FRONTEND", STUB_FRONTEND)
 sys.path.insert(0, os.path.dirname(HERE))
@@ -60,7 +62,7 @@ class Runner(unittest.TestCase):
         os.chmod(adb, 0o755)
         env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="2",
                    GW_PERF_COLD_SETTLE="0", GW_PERF_RUN_GAP="0", GW_PERF_BETWEEN_QUIET="0.5", GW_PERF_FRONTEND=STUB_FRONTEND,
-                   GW_PERF_SWITCH_SETTLE="0", FAKE_HA_URL="http://127.0.0.1:18089")
+                   GW_PERF_SWITCH_SETTLE="0", FAKE_HA_URL="http://127.0.0.1:18089", GW_PERF_CAMERA=STUB_CAMERA)
         env.pop("ANDROID_SERIAL", None)
         cls.out = os.path.join(cls.tmp, "out")
         cls.proc = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", cls.out, "--port", "18089", "--taps", "2",
@@ -201,7 +203,7 @@ def fake_env(tmp, **extra):
     os.chmod(adb, 0o755)
     extra.setdefault("FAKE_HA_URL", HA.url if HA else "")
     env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="1",
-               GW_PERF_FRONTEND=STUB_FRONTEND, GW_PERF_SWITCH_SETTLE="0", GW_PERF_PANES_SAVE_S="0", **extra)
+               GW_PERF_FRONTEND=STUB_FRONTEND, GW_PERF_CAMERA=STUB_CAMERA, GW_PERF_SWITCH_SETTLE="0", GW_PERF_PANES_SAVE_S="0", **extra)
     env.pop("ANDROID_SERIAL", None)
     return env, state
 
@@ -372,11 +374,15 @@ class LongLines(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertIsNone(c["error"])
         self.assertEqual(c["missing_steps"], ["light", "typical", "heavy"])
-        self.assertEqual(c["bad_page_lines"], 3)                         # each page's
+        # Each page's updates step, and heavy's camera line (four streams and the HLS fetches: also
+        # longer than a logcat line).
+        self.assertEqual(c["bad_page_lines"], 4)
+        self.assertNotIn("camera", c["tiers"]["heavy"])
+        self.assertIn("camera", c["tiers"]["typical"])                   # one stream: short enough
         with open(os.path.join(tmp, "device.json"), "w") as f:
             json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
         rep = report.build(tmp)
-        self.assertIn("3 page line(s) didn't parse (cut off in logcat?)", rep["grade"]["provisional_reasons"])
+        self.assertIn("4 page line(s) didn't parse (cut off in logcat?)", rep["grade"]["provisional_reasons"])
         t = rep["graded"]["reference"]["tiers"]["light"]
         self.assertIsNotNone(t["scroll"])
         self.assertEqual(t["updates_errors"], ["the page's updates step never arrived"])
@@ -639,6 +645,47 @@ class Restart(unittest.TestCase):
         self.assertIn("start", rep["grade"]["missing"])
 
 
+class Cameras(unittest.TestCase):
+    """#174: the views with streams carry a camera line; a stream that never plays fails the task
+    (it was measured: the panel didn't play it), it doesn't make the page "not measured"."""
+
+    def build(self, tmp):
+        with open(os.path.join(tmp, "device.json"), "w") as f:
+            json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
+        return report.build(tmp)
+
+    def test_streams_that_play(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["tiers"]["heavy"]["camera"]["expected"], 4)
+        self.assertNotIn("camera", c["tiers"]["light"])
+        tiers = self.build(tmp)["graded"]["reference"]["tiers"]
+        self.assertEqual((tiers["typical"]["camera_level"], tiers["heavy"]["camera_level"]), ("good", "good"))
+        self.assertIsNone(tiers["light"]["camera_level"])
+        # Heavy's camera line is longer than a logcat line: it went out in parts and came back whole.
+        with open(os.path.join(HERE, "page-lines.json")) as f:
+            line_max = json.load(f)["max_line_bytes"]
+        heavy = c["tiers"]["heavy"]["camera"]
+        self.assertGreater(len(json.dumps({k: v for k, v in heavy.items() if k != "mono"}, separators=(",", ":"))), line_max)
+        self.assertEqual((heavy["fetches"]["streams"], len(heavy["streams"])), (4, 4))
+        self.assertEqual(tiers["heavy"]["camera_runs"][0]["fetches"]["segment"]["n"], 20)
+        # Which decoders each view got, from logcat (detail): one hardware decoder per stream.
+        self.assertEqual(c["media"]["heavy"], {"codecs": ["OMX.allwinner.video.decoder.avc"] * 4, "flushes": 2, "eos": 1})
+        self.assertEqual(c["media"]["typical"]["codecs"], ["OMX.allwinner.video.decoder.avc"])
+        self.assertNotIn("light", c["media"])
+        self.assertEqual(tiers["heavy"]["camera_runs"][0]["media"]["flushes"], 2)
+
+    def test_a_stream_that_never_plays_fails_the_task(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, FAKE_NO_VIDEO="heavy")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        rep = self.build(tmp)
+        self.assertEqual(rep["graded"]["reference"]["tiers"]["heavy"]["camera_level"], "slow")
+        self.assertNotIn("heavy.camera", rep["grade"]["missing"])
+        self.assertEqual(rep["grade"]["bands"]["heavy"]["camera"], "slow")
+
+
 class NoisyLogcat(unittest.TestCase):
     """logcat follows the whole device, so its queue is almost never empty. No wait may depend on it."""
 
@@ -773,6 +820,31 @@ class PortInUse(unittest.TestCase):
         self.assertIn(f"port {port} is already in use", p.stderr)
         with open(os.path.join(state, "commands.log")) as f:
             self.assertNotIn("--es url", f.read())           # the kiosk was never pointed anywhere
+
+
+class CamerasOnlyWhenNeeded(unittest.TestCase):
+    """CodeRabbit on cbc2be6: the camera segments (ffmpeg with libx264) are made only when the
+    reference dashboards run; the animation test page alone doesn't need them."""
+
+    def test_without_libx264_only_the_reference_part_refuses(self):
+        tmp = tempfile.mkdtemp()
+        env, _ = fake_env(tmp)
+        env.pop("GW_PERF_CAMERA", None)
+        env["GW_PERF_CACHE"] = os.path.join(tmp, "cache")
+        bindir = os.path.join(tmp, "bin")
+        os.makedirs(bindir)
+        with open(os.path.join(bindir, "ffmpeg"), "w") as f:
+            f.write("#!/bin/sh\necho ' V..... mpeg4  MPEG-4 part 2'\n")   # an ffmpeg without libx264
+        os.chmod(os.path.join(bindir, "ffmpeg"), 0o755)
+        env["PATH"] = bindir + os.pathsep + env["PATH"]
+        p = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", os.path.join(tmp, "a"), "--port", "18081",
+                            "--skip-reference", "--skip-real-use"], env=env, capture_output=True, text=True, timeout=180)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        p = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", os.path.join(tmp, "b"), "--port", "18081",
+                            "--skip-synthetic", "--skip-real-use", "--restore-dashboard", RESTORE],
+                           env=env, capture_output=True, text=True, timeout=180)
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("need ffmpeg with libx264", p.stderr)
 
 
 class SyntheticScreenOff(unittest.TestCase):

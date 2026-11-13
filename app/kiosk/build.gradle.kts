@@ -135,6 +135,8 @@ tasks.withType<Test>().configureEach {
     // WakeWordsTest checks that the host fetch script pins the same models as the app.
     inputs.file(rootProject.file("../tools/voice/fetch-models.sh")).withPropertyName("fetchModels")
         .withPathSensitivity(PathSensitivity.NONE)
+    // ContentScriptReadyTest runs the web extension's content.js under node: a change to it re-runs the tests.
+    inputs.dir("src/main/assets/extension").withPropertyName("webExtension").withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 // Open source licences screen (hidden settings → "Open source licences"): the repo's

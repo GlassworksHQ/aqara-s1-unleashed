@@ -319,7 +319,7 @@ def refdash(nonce, url):
         "fcp_ms": None, "lcp_ms": None, "load_ms": None, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000,
         # Protocol 4: navigation at `nav`; the view's first screen rendered 200 ms later, the main thread
         # free 20 ms after that.
-        "nav_ms": round(nav, 1),
+        "nav_ms": round(nav, 1), "video_caps": {"mse_h264": True, "native_hls": "", "rvfc": True},
         "usable": {"rendered_tick_ms": round(nav + 200, 1), "first_screen_cards": 14, "head_cards": 10,
                    "interactive_ms": round(nav + 220, 1)}})
     time.sleep(1.0)
@@ -353,6 +353,35 @@ def refdash(nonce, url):
             time.sleep(0.1)
         gw({"t": "input", "stage": tier, "method": "event-timing", "taps": state("taps.json", 0) - before,
             "values": [16, 48], "inp_ms": 48})
+    n = {"typical": 1, "heavy": 4}.get(tier, 0)
+    if n:
+        # #174: the view's live cameras, from going live to the first swipe. FAKE_NO_VIDEO: none plays.
+        dead = os.environ.get("FAKE_NO_VIDEO") == tier
+        # As the S1 logs them (2026-11-13): a hardware decoder per stream from the media process, and on
+        # heavy the Allwinner decoder's flushes and drains when a stream runs out of data.
+        for _ in range(0 if dead else n):
+            line("MediaCodec", "[OMX.allwinner.video.decoder.avc] setting surface generation to 17119233", pid=16718)
+        if tier == "heavy" and not dead:
+            line("omx_vdec_aw", "<__anFlush:1043>: decoder flush", pid=1774)
+            line("omx_vdec_aw", "<__anFlush:1043>: decoder flush", pid=1774)
+            line("omx_vdec", "<doSubmit:2004>: found eos flag in input data", pid=1774)
+        gw({"t": "camera", "stage": tier, "window_ms": 5000, "fps": 15, "expected": n, "found": n,
+            "streams": [{"found": True, "w": 0 if dead else (1280 if i == 0 else 640), "h": 0 if dead else (720 if i == 0 else 360),
+                         "first_frame_ms": None if dead else 640.0, "shown_pct": None if dead else 100.0,
+                         "max_gap_ms": None if dead else 70.0, "stall_total_ms": None if dead else 0.0,
+                         "stall_presented": None if dead else 0,
+                         "frames": 0 if dead else 75, "decoded": 0 if dead else 75, "dropped": 0, "waiting": 0,
+                         "source": "quality+rvfc"} for i in range(n)],
+            # The segments' fetch times (stats.js hlsFetches). Heavy's whole line is longer than a
+            # logcat line (1023 bytes), so it goes out in parts, as the page's does.
+            "fetches": {"segment": {"n": 5 * n, "queued_ms": {"median": 1.2, "p95": 3.4, "max": 4.1},
+                                    "wait_ms": {"median": 6.5, "p95": 12.25, "max": 14.0},
+                                    "total_ms": {"median": 18.75, "p95": 40.5, "max": 52.0},
+                                    "kb": 180 * n, "arrival_gap_max_ms": 1012.5},
+                        "playlist": {"n": 5 * n, "queued_ms": {"median": 0.5, "p95": 1.0, "max": 1.0},
+                                     "wait_ms": {"median": 2.0, "p95": 3.0, "max": 3.0},
+                                     "total_ms": {"median": 3.0, "p95": 5.0, "max": 5.0}},
+                        "streams": n}})
     for i in range(swipes):
         before = state("swipes.json", 0)
         save("asked.json", {"swipe": 1})

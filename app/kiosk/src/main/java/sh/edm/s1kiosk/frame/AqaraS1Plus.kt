@@ -3,6 +3,7 @@ package sh.edm.s1kiosk.frame
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import dev.glassworks.frame.BootRest
 import dev.glassworks.frame.Frame
 import dev.glassworks.pane.PaneContext
 import sh.edm.s1kiosk.KioskPrefs
@@ -14,6 +15,8 @@ import java.util.concurrent.ScheduledExecutorService
 /** The Aqara Panel Hub S1 Plus, the frame this app is built for. */
 class AqaraS1Plus : Frame {
     override val board = "aqara-s1-plus"
+
+    override val bootRest = BOOT_REST
 
     override val presence = Vi5300Presence()
 
@@ -54,7 +57,13 @@ class AqaraS1Plus : Frame {
     /** No Android Settings app on its firmware: Aqara's own one has Network -> WLAN. */
     override fun wifiSettingsIntents() = super.wifiSettingsIntents() + LUMI_SETTINGS
 
-    private companion object {
-        val LUMI_SETTINGS: Intent get() = Intent("lumi.settings.SETTINGS").setPackage("com.lumi.settings")
+    companion object {
+        private val LUMI_SETTINGS: Intent get() = Intent("lumi.settings.SETTINGS").setPackage("com.lumi.settings")
+
+        /**
+         * branding/glass-tile/bootanimation.zip's last frame (part2) and its trim offset (BootRestTest
+         * checks both). The boot splash reads it before the user is unlocked, without the runtime.
+         */
+        val BOOT_REST = BootRest(sh.edm.s1kiosk.R.drawable.boot_rest, 554, 189, "On Aqara S1 Plus")
     }
 }

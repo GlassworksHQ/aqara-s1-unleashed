@@ -110,25 +110,37 @@ class FixedHome(unittest.TestCase):
     """dashboards.py: real Lovelace configs with HA's own card types, the counts of page/tiers.json."""
 
     def test_counts_and_card_types(self):
-        want = {"start": 22, "light": 20, "typical": 50, "heavy": 120}
+        want = {"start": 23, "light": 20, "typical": 50, "heavy": 120}
         views = {v["path"]: v["cards"] for v in D.lovelace(D.DASHBOARD)["views"]}
         self.assertEqual(list(views), ["start", "light", "typical", "heavy"])
         for tier, n in want.items():
             with self.subTest(tier):
                 self.assertEqual(len(views[tier]), n)
                 self.assertLessEqual({c["type"] for c in views[tier]},
-                                     {"clock", "tile", "entities", "glance", "sensor", "history-graph", "picture"})
+                                     {"clock", "tile", "entities", "glance", "sensor", "history-graph", "picture", "picture-entity", "grid"})
         heavy = collections.Counter(c["type"] for c in views["heavy"])
-        self.assertEqual(heavy, {"tile": 50, "entities": 26, "sensor": 16, "picture": 15, "history-graph": 8, "glance": 4, "clock": 1})
+        self.assertEqual(heavy, {"tile": 50, "entities": 26, "sensor": 16, "picture": 13, "history-graph": 8, "glance": 4, "clock": 1,
+                                 "picture-entity": 1, "grid": 1})
+        # #174: the cameras come right after the head, live; heavy's sub-streams in a grid of three.
+        self.assertEqual(views["typical"][D.head_cards()], {"type": "picture-entity", "entity": "camera.clarity_cam_0",
+                                                            "camera_view": "live", "show_name": False, "show_state": False})
+        grid = views["heavy"][D.head_cards() + 1]
+        self.assertEqual((grid["type"], grid["columns"], [c["entity"] for c in grid["cards"]]),
+                         ("grid", 3, ["camera.clarity_cam_1", "camera.clarity_cam_2", "camera.clarity_cam_3"]))
+        self.assertNotIn("picture-entity", {c["type"] for c in views["light"]})
 
     def test_the_start_view_loads_every_lazy_card_type(self):
         """HA loads history-graph, picture and clock lazily (create-card-element.ts L86, L94, L100).
         The start view has each type any reference view has, so the cold load (the restart) pays for
         their code and opening a view never does (smoke9's typical did, first to show a history graph)."""
+        # Always loaded (create-card-element.ts ALWAYS_LOADED_TYPES): the rest is fetched on first use.
+        always = {"entity", "entities", "button", "entity-button", "glance", "grid", "section", "light", "sensor",
+                  "thermostat", "weather-forecast", "tile", "heading"}
         views = {v["path"]: v["cards"] for v in D.lovelace(D.DASHBOARD)["views"]}
         start = {c["type"] for c in views["start"]}
         for tier in D.TIERS["ORDER"]:
-            self.assertLessEqual({c["type"] for c in views[tier]}, start, tier)
+            self.assertLessEqual({c["type"] for c in views[tier]} - always, start, tier)
+        self.assertIn("picture-entity", start)          # and the camera player's code with it (#174)
 
     def test_the_first_screen_is_the_same_on_every_view(self):
         heads = [v["cards"][:D.head_cards()] for v in D.lovelace(D.DASHBOARD)["views"]]

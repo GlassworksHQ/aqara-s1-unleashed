@@ -1,6 +1,6 @@
 {
  "_comment": "Clarity reference dashboards (MIT): the counts, the first screen, the update stream and the phases. The one source for the fake Home Assistant (dashboards.py), the in-page harness and the node tests. Project choices, fixed before any frame was graded under them; change one only on purpose, with the docs and the tests, never to move a frame's letter.",
- "PROTOCOL": 4,
+ "PROTOCOL": 5,
  "ORDER": [
   "light",
   "typical",
@@ -12,6 +12,30 @@
   "base": "light",
   "histories": 1,
   "pictures": 1
+ },
+ "_CAMERAS": "Live camera cards (#174), right after the head: HA's picture-entity card with camera_view live, played by the frontend's HLS player. Light has none; typical one 720p; heavy one 720p and a grid of three 360p (a main stream and sub-streams). They take the place of picture cards, so the card counts stay. The start view has one 360p camera, so the cold load brings in the camera player's code, as it does every other lazy card type.",
+ "CAMERAS": {
+  "start": [
+   "360p"
+  ],
+  "light": [],
+  "typical": [
+   "720p"
+  ],
+  "heavy": [
+   "720p",
+   [
+    "360p",
+    "360p",
+    "360p"
+   ]
+  ]
+ },
+ "CAMERA": {
+  "fps": 15,
+  "segmentS": 1,
+  "windowSegments": 4,
+  "preRollS": 4
  },
  "TIERS": {
   "light": {
@@ -33,7 +57,7 @@
    "longRows": 0,
    "sensors": 6,
    "histories": 2,
-   "pictures": 2,
+   "pictures": 1,
    "glances": 2
   },
   "heavy": {
@@ -44,7 +68,7 @@
    "longRows": 20,
    "sensors": 16,
    "histories": 8,
-   "pictures": 15,
+   "pictures": 13,
    "glances": 4
   }
  },

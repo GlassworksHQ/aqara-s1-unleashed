@@ -109,7 +109,7 @@ class RadioSectionView(private val context: Context) {
             l2.setTextColor(if (lit) SetupStyle.TX else SetupStyle.MU)
             val showDot = (active && mode != RadioMode.OFF) || starting
             dot.visibility = if (showDot) View.VISIBLE else View.GONE
-            dot.color = if (starting) SetupStyle.AMBER else RadioFollowUpView.healthColor(health); dot.invalidate()
+            dot.color = if (starting) SetupStyle.AMBER else healthColor(health); dot.invalidate()
             beta.visibility = if (!showDot && RadioStep.OPTIONS.any { it.mode == mode && it.experimental }) View.VISIBLE else View.GONE
             view.alpha = if (flow.running != null && !lit) 0.55f else 1f
         }
@@ -394,7 +394,7 @@ class RadioSectionView(private val context: Context) {
             Show.PREVIEW -> (if (RadioStep.OPTIONS.any { it.mode == role && it.experimental }) "Experimental" else "Off now") to SetupStyle.FA
             Show.STARTING -> "Starting" to SetupStyle.AMBER
             Show.REFUSED -> "Not started" to SetupStyle.ROSE
-            else -> health.label to RadioFollowUpView.healthColor(health)
+            else -> health.label to healthColor(health)
         }
         setPill(headerPill, pillText, pillColor)
         if (view == Show.PREVIEW && f.mode == role) setPill(headerPill, "On", SetupStyle.GREEN)
@@ -412,7 +412,7 @@ class RadioSectionView(private val context: Context) {
 
     private fun bindOff(f: RadioFollowUp.Facts) {
         val c = RadioFollowUp.card(f, RadioFollowUp.Place.SETTINGS)
-        val leave = Action.THREAD_LEAVE in c.actions
+        val leave = Action.THREAD_LEAVE in c.actions && onAsk != null // it asks first
         offNote.text = c.note.orEmpty()
         offNote.visibility = if (leave && c.note != null) VISIBLE else GONE
         offLeave.visibility = if (leave) VISIBLE else GONE
@@ -483,7 +483,8 @@ class RadioSectionView(private val context: Context) {
         stateRow.visibility = if (state == null && c.badge == null) GONE else VISIBLE
 
         val running = flow.running
-        stackRow.visibility = if (c.stackChoice) VISIBLE else GONE
+        // Controls that ask first need somewhere to ask (onAsk); setup has none, so they're left out there.
+        stackRow.visibility = if (c.stackChoice && onAsk != null) VISIBLE else GONE
         stackSegments.forEach { (z, b) ->
             val on = f.stack == z
             b.setTextColor(if (on) SetupStyle.BG else SetupStyle.MU)
@@ -491,15 +492,16 @@ class RadioSectionView(private val context: Context) {
             b.isEnabled = running == null
         }
 
-        if (actionRow.childCount != c.actions.size || c.actions.withIndex().any { (i, a) -> actionRow.getChildAt(i) !== actionButtons[a] }) {
+        val actions = c.actions.filter { a -> onAsk != null || RadioFollowUp.ask(Request.Act(a), f) == null }
+        if (actionRow.childCount != actions.size || actions.withIndex().any { (i, a) -> actionRow.getChildAt(i) !== actionButtons[a] }) {
             actionRow.removeAllViews()
-            c.actions.forEachIndexed { i, a ->
+            actions.forEachIndexed { i, a ->
                 (actionButtons.getValue(a).parent as? LinearLayout)?.removeView(actionButtons.getValue(a))
                 actionRow.addView(actionButtons.getValue(a), LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = s.px(10f) })
             }
         }
-        actionRow.visibility = if (c.actions.isEmpty()) GONE else VISIBLE
-        c.actions.forEach { busy(actionButtons.getValue(it), it) }
+        actionRow.visibility = if (actions.isEmpty()) GONE else VISIBLE
+        actions.forEach { busy(actionButtons.getValue(it), it) }
         val msg = if (running is Request.Stack) "Switching the Zigbee stack…" else flow.result
         result.text = msg.orEmpty()
         result.visibility = if (msg == null) GONE else VISIBLE

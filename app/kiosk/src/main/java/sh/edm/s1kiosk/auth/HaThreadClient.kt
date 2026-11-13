@@ -103,8 +103,10 @@ class HaThreadClient(private val connect: (url: String) -> HaSocket) {
             val code = err?.optString("code").orEmpty()
             return Res(null, when (code) {
                 "unauthorized" -> ThreadFetch.NotAdmin
-                // No Thread integration: HA doesn't know the command.
-                "unknown_command" -> ThreadFetch.NoPreferred(0)
+                // No Thread integration loaded, or a Home Assistant older than 2023.3 (when
+                // thread/list_datasets and get_dataset_tlv came): it doesn't know the command. No version
+                // check beyond this: the answer itself says it, and the words say what to do.
+                "unknown_command" -> ThreadFetch.Failed(NO_THREAD_API)
                 else -> ThreadFetch.Failed("Home Assistant answered ${code.ifEmpty { "an error" }}")
             })
         }
@@ -117,6 +119,9 @@ class HaThreadClient(private val connect: (url: String) -> HaSocket) {
 
     companion object {
         /** `http://h:8123/x` → `ws://h:8123/api/websocket`, `https://…` → `wss://…`; null if not http(s). */
+        /** Home Assistant doesn't know the Thread commands. */
+        const val NO_THREAD_API = "Home Assistant doesn't offer Thread networks here: add its Thread integration (Settings → Devices & services), on Home Assistant 2023.3 or later"
+
         fun websocketUrl(haBase: String): String? {
             val origin = OAuth.origin(haBase) ?: return null
             val u = URI(origin)

@@ -60,8 +60,12 @@ def page_summary(s):
         # draw), and frame pacing (detail).
         "updates": {"latency_p95_ms": _med(s.get("latency_p95_ms"), 1), "latency_median_ms": _med(s.get("latency_median_ms"), 1),
                     "pacing_p95_ms": _med(up.get("p95_ms"), 2), "runs": s.get("updates_runs") or []},
+        # Live cameras (#174), on the pages with streams: each run's worst stream (graded per run).
+        "camera": {"runs": [{k: r.get(k) for k in ("first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms")}
+                            for r in s.get("camera_runs") or []]},
         "runs": {"tap": _n(s.get("inp_ms")), "scroll": len(s.get("scroll_runs") or []),
-                 "updates": len(s.get("updates_runs") or []), "open": _n(s.get("load_ms"))},
+                 "updates": len(s.get("updates_runs") or []), "open": _n(s.get("load_ms")),
+                 "camera": len(s.get("camera_runs") or [])},
     }
 
 
