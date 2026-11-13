@@ -40,6 +40,8 @@ export interface FrameDesign {
   model: FrameModel;
   /** the recovery-mode drawing data, a path next to frame.json */
   recovery?: string;
+  /** the screen's render, a `.webp` next to frame.json (tools/showcase/render.mjs); DeviceModel's `screen` */
+  render?: string;
   /** the screen in px, as Android's boot animation sees it (branding/boot reads it) */
   display?: { width: number; height: number };
   /** the boot branding's format limits (branding/boot/target.py) */
