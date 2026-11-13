@@ -12,6 +12,7 @@ import sh.edm.s1kiosk.frame.AqaraS1Plus
 import sh.edm.s1kiosk.radio.RadioController
 import sh.edm.s1kiosk.radio.RadioDefinition
 import sh.edm.s1kiosk.sendspin.SendspinDefinition
+import sh.edm.s1kiosk.setup.SetupState
 import sh.edm.s1kiosk.update.UpdateManager
 import sh.edm.s1kiosk.voice.AssistDefinition
 import sh.edm.s1kiosk.voice.VoiceUi
@@ -53,7 +54,12 @@ class GlassworksRuntime(
         definitions ?: run {
             val app = context.applicationContext
             val prefs = KioskPrefs(app)
-            listOf(AssistDefinition(prefs.voice), SendspinDefinition(prefs.sendspin), RadioDefinition(app, this)) +
+            val radio = RadioDefinition(
+                prefs.radio,
+                setUpBefore = { SetupState.setUpBefore(prefs.haBase != null, prefs.haSeen, prefs.apiEncryption, prefs.haSetupSkipped) },
+                readout = RadioDefinition.AppReadout(this, prefs.radio) { prefs.haBase },
+            )
+            listOf(AssistDefinition(prefs.voice), SendspinDefinition(prefs.sendspin), radio) +
                 frame.paneDefinitions(app)
         }.also { definitions = it }
     }

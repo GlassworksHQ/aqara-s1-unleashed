@@ -3,6 +3,7 @@ package sh.edm.s1kiosk.radio
 import android.content.Context
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.setup.RadioFollowUp
+import sh.edm.s1kiosk.setup.SetupState
 
 /** A radio as the mock-ups and view tests show it: fixed facts, no controller behind it. */
 class FixedReadout(
@@ -25,5 +26,6 @@ class FixedReadout(
 
 /** The radio's definition over [readout], with the app's prefs (`kiosk.xml`). */
 fun radioDefinition(context: Context, readout: RadioReadout): RadioDefinition {
-    return RadioDefinition(KioskPrefs(context), readout)
+    val prefs = KioskPrefs(context)
+    return RadioDefinition(prefs.radio, { SetupState.setUpBefore(prefs.haBase != null, prefs.haSeen, prefs.apiEncryption, prefs.haSetupSkipped) }, readout)
 }

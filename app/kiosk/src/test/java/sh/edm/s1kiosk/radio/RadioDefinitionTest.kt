@@ -61,7 +61,7 @@ class RadioDefinitionTest {
         init, load = { prefs.radio.mode }, store = { prefs.radio.mode = it }, inline = true, log = {}, filesDir = tmp.root,
     )
 
-    private fun definition(c: RadioController? = null) = RadioDefinition(prefs, TestReadout(c, prefs))
+    private fun definition(c: RadioController? = null) = radioDefinition(app, TestReadout(c, prefs))
 
     @Test
     fun aFreshPanelGetsTheStep() {

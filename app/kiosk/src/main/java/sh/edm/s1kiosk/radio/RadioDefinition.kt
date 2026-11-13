@@ -15,12 +15,10 @@ import dev.glassworks.pane.SetupStep
 import org.json.JSONArray
 import org.json.JSONObject
 import sh.edm.s1kiosk.GlassworksRuntime
-import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.discovery.HaUrls
 import sh.edm.s1kiosk.setup.RadioFollowUp
 import sh.edm.s1kiosk.setup.RadioStep
-import sh.edm.s1kiosk.setup.SetupState
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -60,17 +58,13 @@ interface RadioReadout {
  * the settings menu's Radio section, and the requests both send to the [RadioController]. Built once
  * by [GlassworksRuntime.paneDefinitions].
  */
-class RadioDefinition internal constructor(
-    private val kiosk: KioskPrefs,
+class RadioDefinition(
+    /** The radio namespace's settings (`kiosk.xml`), the step's two flags included. */
+    private val prefs: RadioPrefs,
+    /** The panel shows any trace of an earlier setup (SetupState.setUpBefore): the core's facts. */
+    private val setUpBefore: () -> Boolean,
     internal val readout: RadioReadout,
 ) : PaneDefinition {
-
-    constructor(context: Context, runtime: GlassworksRuntime) : this(KioskPrefs(context), runtime)
-
-    private constructor(kiosk: KioskPrefs, runtime: GlassworksRuntime) : this(kiosk, AppReadout(kiosk, runtime))
-
-    /** The radio namespace's settings (`kiosk.xml`), the step's two flags included. */
-    private val prefs = kiosk.radio
 
     override val id = "radio"
 
@@ -94,9 +88,7 @@ class RadioDefinition internal constructor(
      */
     private fun migrate() {
         if (prefs.setupMigrated) return
-        val done = SetupState.setUpBefore(
-            haKnown = kiosk.haBase != null, haSeen = kiosk.haSeen, apiKeySet = kiosk.apiEncryption, haSkipped = kiosk.haSetupSkipped,
-        ) || prefs.mode != null
+        val done = setUpBefore() || prefs.mode != null
         prefs.setupMigrated = true
         if (done) prefs.setupDone = true
     }
@@ -284,9 +276,14 @@ class RadioDefinition internal constructor(
         else r.afterPending { done(null) }
     }
 
-    private class AppReadout(private val kiosk: KioskPrefs, private val runtime: GlassworksRuntime) : RadioReadout {
+    /** The app's: the controller [RadioPane] puts on the runtime while it runs. */
+    class AppReadout(
+        private val runtime: GlassworksRuntime,
+        private val prefs: RadioPrefs,
+        private val haBase: () -> String?,
+    ) : RadioReadout {
         override fun controller() = runtime.radio
-        override fun mode() = runtime.radio?.mode ?: RadioMode.parse(kiosk.radio.mode)
+        override fun mode() = runtime.radio?.mode ?: RadioMode.parse(prefs.mode)
 
         /** Cached values: no getprop here. */
         override fun facts(): RadioFollowUp.Facts? {
@@ -298,7 +295,7 @@ class RadioDefinition internal constructor(
             )
         }
 
-        override fun haBase() = kiosk.haBase
+        override fun haBase() = haBase.invoke()
         override fun panelIp() = HaUrls.localIpv4()
     }
 
