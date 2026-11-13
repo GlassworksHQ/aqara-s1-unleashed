@@ -1,6 +1,7 @@
-# The real aioesphomeapi client (the version Home Assistant 2026.11 pins) for EspHomeKeepaliveTest and
-# the kiosk's EspHomeApiTest, as CI installs it (pr.yml, app job). Locked with hashes for Python 3.12 on
-# Linux x86_64. To change it, regenerate below this comment from the one direct pin:
+# The real aioesphomeapi client (the version Home Assistant 2026.11 pins), as CI installs it for
+# EspHomeKeepaliveTest (pr.yml, app job). The kiosk's EspHomeApiTest uses the same client. Locked
+# with hashes for Python 3.12 on Linux x86_64. To change it, regenerate below this comment from the
+# one direct pin:
 #   echo aioesphomeapi==46.25.0 | uv pip compile - --generate-hashes --python-version 3.12 \
 #     --python-platform x86_64-manylinux_2_28 --no-header
 aioesphomeapi==46.25.0 \
