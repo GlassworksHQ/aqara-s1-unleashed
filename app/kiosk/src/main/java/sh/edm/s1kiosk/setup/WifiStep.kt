@@ -82,9 +82,8 @@ object WifiStep {
                     "The panel shows up in Home Assistant a few seconds after this.", Tone.AMBER, listOf(Action.NOT_NOW),
                 )
                 f.clients > 0 -> ImprovLine(
-                    Phase.ASKING, "$label · on · device connected", "Allow Wi-Fi setup over Bluetooth?",
-                    "A device connected to the panel and wants to send it Wi-Fi details. " +
-                        "Only allow this if you're setting it up now.",
+                    Phase.ASKING, "$label · on · device connected", "A device wants to send Wi-Fi",
+                    "Allow it only if you're setting up this panel now.",
                     Tone.AMBER, listOf(Action.ALLOW, Action.NOT_NOW),
                 )
                 else -> ImprovLine(

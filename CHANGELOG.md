@@ -12,6 +12,17 @@ below as the release notes.
   three glass plates drop into place, the top one lights up from sky to violet, and "Glassworks" and
   "On Aqara S1 Plus" fade in. While the panel finishes starting, the stack floats and the top plate
   breathes. It reaches a panel when you run the installer again.
+- **New connecting and setup screens.** They use the Glassworks look: the glass stack tells you what
+  is happening. Light rises through it while the panel connects, the plates dim when there is no
+  network, and the top one turns red and dashed when Home Assistant doesn't answer, with a countdown
+  to the next try. The connecting screen starts on the boot animation's last frame and the stack
+  settles from there, so power-on is one continuous picture. It stays until Home Assistant has drawn
+  the dashboard, so Home Assistant's white loading page no longer flashes in between. Setup goes
+  Wi-Fi, Home Assistant (add it, then sign in), Panes, Done. On Panes you choose what the panel
+  does: voice, music and the Zigbee / Thread radio. A pane you turn on then asks what it needs: the
+  radio asks Zigbee or Thread and the role, then shows what to do in Home Assistant, where a Thread
+  router can join Home Assistant's Thread network. A step that is already done says so with
+  Continue, and the list on the left opens a step you've done.
 - **The panel is called Glassworks Panel, in Home Assistant too.** A panel you already added keeps all
   its entity ids, so automations and dashboards keep working; Home Assistant shows the device under
   the new name after the update, unless you renamed it yourself. On Home Assistant 2025.12 or later,

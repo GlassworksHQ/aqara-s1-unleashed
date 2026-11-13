@@ -8,6 +8,7 @@ import android.util.Log
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
+import dev.glassworks.pane.PaneChoice
 import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupOp
 import dev.glassworks.pane.SetupScreen
@@ -95,15 +96,29 @@ class RadioDefinition(
         if (done) prefs.setupDone = true
     }
 
+    /**
+     * The radio's setup sub-step shows the follow-up card for the mode it just applied: the step stays
+     * current until Continue there. In memory only: after a restart there is nothing left to show.
+     */
+    @Volatile var followUpOpen = false
+
+    /**
+     * Setup's radio step is being answered: from its Continue (or "Change the mode") until its
+     * follow-up's Continue. The controller stores the mode before the helper answers, so without this the
+     * 2 s setup tick read the step as done mid-apply and showed Done over a failure (verifier 4bc205dc).
+     */
+    @Volatile var answering = false
+
     val step: SetupStep = object : SetupStep {
         override val id = "radio"
         override val title = "Radio"
         override val reason = "radio mode not chosen"
 
-        /** Answered here, or a mode was chosen with HA's `Radio mode` select. */
-        override fun done() = stepDone || prefs.mode != null
-
-        override fun detail(done: Boolean) = this@RadioDefinition.detail(done)
+        /**
+         * Answered in setup (the mode, then its follow-up) or over the setup channel, or a mode was
+         * chosen with HA's `Radio mode` select.
+         */
+        override fun done() = (stepDone || prefs.mode != null) && !followUpOpen && !answering
 
         override fun channelState() = channelJson()
 
@@ -120,10 +135,30 @@ class RadioDefinition(
 
     override val setupSteps = listOf(step)
 
-    /** The setup screen's line under "Radio". */
-    fun detail(done: Boolean): String =
-        if (done) RadioStep.OPTIONS.firstOrNull { it.mode == readout.mode() }?.title ?: readout.mode().label
-        else "Zigbee, Thread or off"
+    /**
+     * The Panes step's radio card: on means a mode other than Off. Off applies Off through [setMode] and
+     * answers the step; on leaves the mode to the radio's own sub-step under Panes.
+     */
+    override val setupChoice = PaneChoice(
+        title = "Zigbee / Thread radio",
+        detail = "For your devices",
+        on = { readout.mode() != RadioMode.OFF },
+        // Off on Panes also lets go of the radio's own step, half answered or not.
+        apply = { on -> if (on) null else { answering = false; followUpOpen = false; applyChoice(RadioMode.OFF.id) } },
+    )
+
+    /**
+     * The mode in effect already, and running or on its way: the step is answered without asking the
+     * radio again. A mode that failed or was refused (the controller stores it before applying) asks again.
+     */
+    private fun applyChoice(id: String): String? {
+        val r = readout.controller()
+        val mode = readout.mode()
+        if (r != null && mode.id == id &&
+            RadioStep.classify(mode, true, r.statusText()) in setOf(RadioStep.Result.OK, RadioStep.Result.APPLYING)
+        ) { stepDone = true; return null }
+        return setModeFrom(id, "setup screen")
+    }
 
     // ------------------------------------------------------------------ setup channel
 
@@ -157,13 +192,16 @@ class RadioDefinition(
      * request, then up to [RADIO_FOLLOW_MS] for it to report how it went (the client waits 30 s), and
      * marks the step answered on success.
      */
-    internal fun setMode(id: String): String? {
+    internal fun setMode(id: String): String? = setModeFrom(id, "the installer")
+
+    /** [setMode], saying in the log where the request came from ([source]). */
+    internal fun setModeFrom(id: String, source: String): String? {
         val mode = RadioMode.fromId(id)?.takeIf { m -> RadioStep.OPTIONS.any { it.mode == m } }
             ?: return "Unknown radio mode '$id'."
         val r = readout.controller() ?: return CHANNEL_NOT_RUNNING
         val accepted = AtomicBoolean(false)
         val handled = CountDownLatch(1)
-        Log.i(TAG, "radio mode ${mode.label} from the installer")
+        Log.i(TAG, "radio mode ${mode.label} from $source")
         r.request(mode.label, "installer") { ok -> accepted.set(ok); handled.countDown() }
         if (!handled.await(RADIO_ACCEPT_MS, TimeUnit.MILLISECONDS)) return "The radio didn't answer in time."
         if (!accepted.get()) return r.statusText()

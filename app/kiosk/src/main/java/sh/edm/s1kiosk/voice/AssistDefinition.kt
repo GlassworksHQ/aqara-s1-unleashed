@@ -1,11 +1,18 @@
 package sh.edm.s1kiosk.voice
 
 import dev.glassworks.pane.IntentExtra
+import dev.glassworks.pane.PaneChoice
 import dev.glassworks.pane.PaneDefinition
 
-/** The voice assistant ([AssistPane]) for the whole process: its adb extras (app/README.md). */
+/** The voice assistant ([AssistPane]) for the whole process: its Panes card and adb extras (app/README.md). */
 class AssistDefinition(prefs: VoicePrefs) : PaneDefinition {
     override val id = "assist"
+
+    // PanelDevice reads `enabled` once per start, so a change restarts the app (as `voice_enabled` does).
+    override val setupChoice = PaneChoice(
+        title = "Voice", detail = "Assist and timers", on = { prefs.enabled }, restartsApp = true,
+        apply = { on -> prefs.enabled = on; null },
+    )
 
     override val extras = listOf(
         // PanelDevice reads it once per start: voice adds or drops the microphone and its entities.

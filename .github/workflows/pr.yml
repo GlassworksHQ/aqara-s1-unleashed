@@ -55,6 +55,11 @@ jobs:
       - name: Android SDK platform
         run: sdkmanager --install "platforms;android-37.2"
 
+      # ContentScriptReadyTest runs the web extension's content.js under node; on CI it fails without it.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
       - name: Unit tests
         working-directory: app
         run: ./gradlew --no-daemon test

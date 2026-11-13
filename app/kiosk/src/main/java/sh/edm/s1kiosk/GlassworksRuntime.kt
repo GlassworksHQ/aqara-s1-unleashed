@@ -16,6 +16,7 @@ import sh.edm.s1kiosk.radio.RadioController
 import sh.edm.s1kiosk.radio.RadioDefinition
 import sh.edm.s1kiosk.sendspin.SendspinDefinition
 import sh.edm.s1kiosk.setup.SetupFlow
+import sh.edm.s1kiosk.setup.SetupPane
 import sh.edm.s1kiosk.setup.SetupState
 import sh.edm.s1kiosk.update.UpdateManager
 import sh.edm.s1kiosk.voice.AssistDefinition
@@ -76,8 +77,26 @@ class GlassworksRuntime(
      * (SetupFlow.usable: a clashing id or request name) is left out with an error in the log, so a bad
      * pane never stops the app from starting.
      */
-    fun setupSteps(context: Context): List<SetupStep> =
-        SetupFlow.usable(paneDefinitions(context).flatMap { it.setupSteps }) { Log.e(TAG, it) }
+    fun setupSteps(context: Context): List<SetupStep> = setupPanes(context).flatMap { it.steps }
+
+    /**
+     * The panes on setup's Panes step, in definition order: each card with its pane's usable steps
+     * (SetupFlow.usable). A pane whose steps have no card (PaneDefinition.setupChoice) is left out with an
+     * error in the log: its steps sit under Panes only while its card is on, so without a card they could
+     * never be answered on the panel.
+     */
+    fun setupPanes(context: Context): List<SetupPane> {
+        val definitions = paneDefinitions(context)
+        val kept = SetupFlow.usable(definitions.flatMap { it.setupSteps }) { Log.e(TAG, it) }.toSet()
+        return definitions.mapNotNull { d ->
+            val steps = d.setupSteps.filter { it in kept }
+            val card = d.setupChoice
+            if (card == null) {
+                if (steps.isNotEmpty()) Log.e(TAG, "Setup steps of pane '${d.id}' left out: it has no card on the Panes step (setupChoice)")
+                null
+            } else SetupPane(card, steps)
+        }
+    }
 
     /** Set while KioskService runs; the radio's setup step and settings section apply radio changes through it. */
     @Volatile var radio: RadioController? = null

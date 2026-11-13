@@ -1,25 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Shown by the window from the instant the app launches until its first frame (GeckoView takes a
-     few seconds to start on this panel), so there is never a black screen: the same dark base and
-     sky/violet glows as the setup and loading screens (setup/Backdrop.kt), drawn by the system. -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android" android:dither="true">
+     few seconds to start on this panel), so there is never a black screen. It is the boot
+     animation's last frame (#63 round 2): flat night and the stack and wordmark exactly where the boot
+     left them, so nothing moves or bands when the app takes over. boot_rest.png is the boot zip's
+     part2 frame (branding/glass-tile/bootanimation.zip), drawn at its trim offset, 554,189 px on the
+     S1's 1440x720 (369.34 dp, 126 dp at density 1.5). BootRestTest keeps both in step with the zip. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
             <solid android:color="#0A0B0F" />
         </shape>
     </item>
-    <item>
-        <shape android:shape="rectangle" android:dither="true">
-            <gradient android:type="radial" android:centerX="0.0" android:centerY="0.0"
-                android:gradientRadius="85%p" android:startColor="#2238BDF8" android:centerColor="#0C38BDF8"
-                android:endColor="#0038BDF8" />
-        </shape>
-    </item>
-    <item>
-        <shape android:shape="rectangle" android:dither="true">
-            <gradient android:type="radial" android:centerX="1.0" android:centerY="1.0"
-                android:gradientRadius="70%p" android:startColor="#24A78BFA" android:centerColor="#0DA78BFA"
-                android:endColor="#00A78BFA" />
-        </shape>
+    <item android:left="369.34dp" android:top="126dp">
+        <bitmap android:src="@drawable/boot_rest" android:gravity="top|left" android:filter="false" />
     </item>
 </layer-list>

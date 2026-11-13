@@ -48,7 +48,7 @@ The kiosk settings menu (tap the top-left corner five times) has a **Radio** sec
   network asks first. *How does this work?* has the longer explanation;
 - who may connect ([below](#who-may-connect)).
 
-The setup screen's radio step shows a short version, with the same QR codes, after you apply a mode. The
+During setup you pick the mode on the Panes step; this section is where you find what to do next. The
 buttons do exactly what the Home Assistant controls of the same name do. In Home Assistant they only
 work over the panel's encrypted connection; on the panel, being there is what allows them, as for the
 "who may connect" field.
@@ -104,7 +104,7 @@ be a second border router in your existing network, but for now that takes joini
 
 1. Set **Radio mode** to *Thread border router*.
 2. In Home Assistant, add the **OpenThread Border Router** integration with the URL
-   `http://<panel IP>:8081`. On the panel, the setup screen and the settings menu show this URL and a
+   `http://<panel IP>:8081`. On the panel, the settings menu's Radio section shows this URL and a
    QR code that opens the integration's setup in Home Assistant on your phone.
 
 Tested so far, both after Wi-Fi dropped and after a restart:

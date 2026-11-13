@@ -131,6 +131,8 @@ tasks.withType<Test>().configureEach {
     inputs.dir(rootProject.file("../.github/workflows")).withPropertyName("workflows")
         .withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file("build.gradle.kts").withPropertyName("kioskBuildScript").withPathSensitivity(PathSensitivity.NONE)
+    // ContentScriptReadyTest runs the web extension's content.js under node: a change to it re-runs the tests.
+    inputs.dir("src/main/assets/extension").withPropertyName("webExtension").withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 // Open source licences screen (hidden settings → "Open source licences"): the repo's

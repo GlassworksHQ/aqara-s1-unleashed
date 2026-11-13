@@ -31,6 +31,16 @@ class SetupStateTest {
     )
 
     @Test
+    fun aHeldPanesStepGivesWayToALostWifi() {
+        // CodeRabbit on #160: after a refusal Panes held the screen, also with Wi-Fi gone, and Panes can't fix Wi-Fi.
+        val online = SetupState.decide(fresh.copy(haKnown = true, haSeen = true, signedIn = true))
+        assertEquals(SetupFlow.PANES, online.holdingPanes(true).step)
+        val offline = SetupState.decide(fresh.copy(online = false, offlineForMs = 60_000, neverSetUp = true))
+        assertEquals(SetupFlow.WIFI, offline.holdingPanes(true).step)
+        assertEquals(online, online.holdingPanes(false))
+    }
+
+    @Test
     fun freshOfflinePanelShowsSetupAtOnce() {
         // First boot after the installer: nothing set up, no Wi-Fi yet. No 30 s "waiting" screen.
         val first = fresh.copy(online = false, offlineForMs = 0, uptimeMs = 1_000, neverSetUp = true)
@@ -160,22 +170,27 @@ class SetupStateTest {
         assertEquals(SetupFlow.HA, d.step)
         assertFalse(d.haDone)
 
-        // HA added the panel (subscribed): on to the radio step.
+        // HA added the panel (subscribed): on to signing in, the other half of Home Assistant.
         i = i.copy(haSeen = true)
         d = SetupState.decide(i)
-        assertEquals("radio", d.step)
+        assertEquals(SetupFlow.SIGNIN, d.step)
         assertTrue(d.haDone)
-        assertFalse("radio" in d.paneDone)
         assertTrue(d.show)
 
-        // A radio mode applied (or skipped): on to sign-in.
-        i = i.copy(paneSteps = radio(true))
-        d = SetupState.decide(i)
-        assertEquals(SetupFlow.SIGNIN, d.step)
-        assertTrue("radio" in d.paneDone)
-
-        // Signed in with the QR code: done, the screen goes.
+        // Signed in with the QR code: on to Panes, which panes are on.
         i = i.copy(signedIn = true, onAuthPage = false)
+        d = SetupState.decide(i)
+        assertEquals(SetupFlow.PANES, d.step)
+        assertFalse(SetupFlow.PANES in d.done)
+
+        // Continue with the radio on: its own step under Panes.
+        i = i.copy(panesChosen = true)
+        d = SetupState.decide(i)
+        assertEquals("radio", d.step)
+        assertTrue(SetupFlow.PANES in d.done)
+
+        // The radio's mode applied and its follow-up seen: done, the screen goes.
+        i = i.copy(paneSteps = radio(true))
         d = SetupState.decide(i)
         assertEquals(SetupFlow.DONE, d.step)
         assertFalse(d.show)
@@ -194,8 +209,8 @@ class SetupStateTest {
         assertFalse(SetupState.decide(r.copy(uptimeMs = 121_000, apiKeySet = true)).show)
         assertFalse(SetupState.decide(r.copy(uptimeMs = 121_000, haSeen = true)).show)
         assertFalse(SetupState.decide(r.copy(uptimeMs = 121_000, haHelloThisProcess = true)).show)
-        // Without it, the HA step being done moves on to the radio question instead.
-        assertEquals("radio", SetupState.decide(i.copy(uptimeMs = 121_000, haSeen = true)).step)
+        // Without it, the HA step being done moves on to signing in (a pane's step still waits).
+        assertEquals(SetupFlow.SIGNIN, SetupState.decide(i.copy(uptimeMs = 121_000, haSeen = true)).step)
     }
 
     @Test
@@ -203,7 +218,8 @@ class SetupStateTest {
         val i = fresh.copy(haKnown = true, uptimeMs = 5 * min, showing = true, haSkipped = true)
         val d = SetupState.decide(i)
         assertTrue(d.haDone)
-        assertEquals("radio", d.step)
+        assertEquals(SetupFlow.SIGNIN, d.step) // a pane's step waits: sign-in must be known first
+        assertEquals(SetupFlow.PANES, SetupState.decide(i.copy(dashboardLoaded = true)).step)
         assertTrue(d.show)
         val r = i.copy(paneSteps = radio(true))
         assertFalse(SetupState.decide(r).show)
@@ -212,35 +228,47 @@ class SetupStateTest {
 
     @Test
     fun stepParsing() {
-        val panes = listOf("radio")
-        assertEquals(SetupFlow.WIFI, SetupFlow.parse("wifi", panes))
-        assertEquals(SetupFlow.HA, SetupFlow.parse(" HA ", panes))
-        assertEquals(SetupFlow.SIGNIN, SetupFlow.parse("signin", panes))
-        assertEquals("radio", SetupFlow.parse("radio", panes))
-        // Step order: the rail and the preview rely on it. The panes' steps go before Sign in.
-        assertEquals(listOf("wifi", "ha", "radio", "signin", "done"), SetupFlow.ids(panes))
-        assertEquals(SetupFlow.DONE, SetupFlow.parse("done", panes))
-        assertEquals(null, SetupFlow.parse("radio", emptyList()))
-        assertEquals(null, SetupFlow.parse("nope", panes))
-        assertEquals(null, SetupFlow.parse(null, panes))
+        val steps = listOf("radio")
+        assertEquals(SetupFlow.WIFI, SetupFlow.parse("wifi", true, steps))
+        assertEquals(SetupFlow.HA, SetupFlow.parse(" HA ", true, steps))
+        assertEquals(SetupFlow.SIGNIN, SetupFlow.parse("signin", true, steps))
+        assertEquals(SetupFlow.PANES, SetupFlow.parse("panes", true, steps))
+        assertEquals("radio", SetupFlow.parse("radio", true, steps)) // a pane's own step
+        // Step order: the rail and the preview rely on it. Home Assistant (add, sign in), then Panes
+        // (choose, then the panes' steps).
+        assertEquals(listOf("wifi", "ha", "signin", "panes", "radio", "done"), SetupFlow.ids(true, steps))
+        assertEquals(listOf("wifi", "ha", "signin", "panes", "done"), SetupFlow.ids(true))
+        assertEquals(listOf("wifi", "ha", "signin", "done"), SetupFlow.ids(false))
+        assertEquals(SetupFlow.DONE, SetupFlow.parse("done", true, steps))
+        assertEquals(null, SetupFlow.parse("radio", false, steps))
+        assertEquals(null, SetupFlow.parse("panes", false))
+        assertEquals(null, SetupFlow.parse("nope", true, steps))
+        assertEquals(null, SetupFlow.parse(null, true, steps))
+        // The rail's groups.
+        assertEquals(listOf(null, "ha", "ha", "panes", "panes", null), SetupFlow.ids(true, steps).map(SetupFlow::group))
     }
 
     @Test
-    fun paneStepsComeInOrderBetweenHaAndSignin() {
+    fun paneStepsComeUnderPanesAfterSignin() {
         val two = listOf(PaneStepFacts("radio", false, "radio mode not chosen"), PaneStepFacts("camera", false, "camera not set up"))
         val i = fresh.copy(haKnown = true, haSeen = true, paneSteps = two, onAuthPage = true)
         var d = SetupState.decide(i)
-        assertEquals("radio", d.step)
-        assertEquals(listOf("sign-in needed", "radio mode not chosen"), d.reasons)
-        d = SetupState.decide(i.copy(paneSteps = listOf(two[0].copy(done = true), two[1])))
-        assertEquals("camera", d.step)
-        assertEquals(setOf("radio"), d.paneDone)
-        assertEquals(listOf("sign-in needed", "camera not set up"), d.reasons)
-        d = SetupState.decide(i.copy(paneSteps = two.map { it.copy(done = true) }))
         assertEquals(SetupFlow.SIGNIN, d.step)
-        assertEquals(setOf("wifi", "ha", "radio", "camera"), d.done)
-        // A frame with no pane steps: Wi-Fi, Home Assistant, Sign in.
-        assertEquals(SetupFlow.SIGNIN, SetupState.decide(i.copy(paneSteps = emptyList())).step)
+        assertEquals(listOf("sign-in needed", "radio mode not chosen"), d.reasons)
+        val signed = i.copy(signedIn = true, onAuthPage = false)
+        assertEquals(SetupFlow.PANES, SetupState.decide(signed).step) // which panes are on, first
+        val chosen = signed.copy(panesChosen = true)
+        assertEquals("radio", SetupState.decide(chosen).step)
+        d = SetupState.decide(chosen.copy(paneSteps = listOf(two[0].copy(done = true), two[1])))
+        assertEquals("camera", d.step)
+        assertEquals(setOf("wifi", "ha", "signin", "panes", "radio"), d.done)
+        assertEquals(listOf("camera not set up"), d.reasons)
+        // A pane turned off on Panes: its steps don't ask any more.
+        d = SetupState.decide(chosen.copy(paneSteps = listOf(two[0].copy(done = true), two[1].copy(wanted = false)), showing = true))
+        assertEquals(SetupFlow.DONE, d.step)
+        assertFalse(d.show)
+        // A frame with no pane steps: Wi-Fi, Home Assistant, done.
+        assertEquals(SetupFlow.DONE, SetupState.decide(signed.copy(paneSteps = emptyList())).step)
     }
 
     // ---- radio step
@@ -269,16 +297,16 @@ class SetupStateTest {
         assertEquals(SetupFlow.DONE, back.step)
         val signout = SetupState.decide(desk.copy(signedOut = true, showing = true))
         assertEquals(SetupFlow.SIGNIN, signout.step)
-        assertTrue("radio" in signout.paneDone)
+        assertTrue(SetupFlow.PANES in signout.done)
     }
 
     @Test
     fun unansweredRadioStepComesBackAfterAReboot() {
         // Fresh panel rebooted on the radio step: HA added it, nothing chosen yet, screen not up.
-        val i = fresh.copy(haKnown = true, haSeen = true, uptimeMs = 3_000)
+        val i = fresh.copy(haKnown = true, haSeen = true, uptimeMs = 3_000, dashboardLoaded = true)
         val d = SetupState.decide(i)
         assertTrue(d.show)
-        assertEquals("radio", d.step)
+        assertEquals(SetupFlow.PANES, d.step)
         assertEquals(listOf("radio mode not chosen"), d.reasons)
         // Answered (persisted, or a mode chosen with HA's select: RadioDefinitionTest): gone for good.
         assertFalse(SetupState.decide(i.copy(paneSteps = radio(true))).show)

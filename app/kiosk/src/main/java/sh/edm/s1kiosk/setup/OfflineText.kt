@@ -30,7 +30,9 @@ object OfflineText {
     const val CONNECTING_DETAIL = "Home Assistant loads as soon as it's connected"
     const val NO_NETWORK_TITLE = "No network yet"
     const val WIFI_OFF_TITLE = "Wi-Fi is off"
-    const val SETUP_HINT = "Connect Wi-Fi from the setup screen, or over Bluetooth (Improv)"
+    const val SETUP_HINT = "Set it up from the setup screen, or from Home Assistant."
+    /** The button under [SETUP_HINT]: Android's Wi-Fi settings, where Wi-Fi can be turned on and a network chosen. */
+    const val SETUP_ACTION = "Set up Wi-Fi"
 
     /**
      * Wi-Fi is joining a network right now, from WifiManager's SupplicantState and ConnectivityManager's
