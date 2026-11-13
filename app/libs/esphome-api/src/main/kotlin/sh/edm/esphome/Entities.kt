@@ -8,9 +8,9 @@ enum class EntityCategory(val value: Int) { NONE(0), CONFIG(1), DIAGNOSTIC(2) }
  * `*StateResponse` and `*CommandRequest` come from aioesphomeapi `api.proto`.
  *
  * Home Assistant names entities `<device friendly name> <entity name>` (has_entity_name). It makes an
- * entity id once, when it first sees the entity: from the friendly name on HA 2026.1 and later
- * ("Glassworks Panel" + "Screen" → `light.glassworks_panel_screen`), from the node name before
- * (`light.s1_panel_screen`); renaming the device later never changes it. The unique id is
+ * entity id once, when it first sees the entity, from the device's name as HA shows it then
+ * ("Glassworks Panel" + "Screen" → `light.glassworks_panel_screen`; HA 2026.9+ may put the area
+ * first); renaming the device later never changes it. The unique id is
  * `<mac>/<device_id>/<domain>/<name>` (aioesphomeapi `build_unique_id` v3); `object_id` is the
  * ESPHome-style snake_case name, and the key is FNV-1a of `object_id` so it never changes.
  *

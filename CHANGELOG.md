@@ -16,8 +16,8 @@ below as the release notes.
   its entity ids, so automations and dashboards keep working. Home Assistant shows the device and every
   entity's name with the new name after the update, unless you renamed the device yourself. Entities
   Home Assistant first sees after the update, on a panel you add from now on or a new entity on one you
-  have, get ids that start with `glassworks_panel_` on Home Assistant 2026.1 or later (`s1_panel_` on
-  older versions).
+  have, get ids that start with the device's name as Home Assistant shows it: `glassworks_panel_`, or
+  your own name for it.
 - **New pages on your phone when you scan the panel's code.** Signing in and sharing your Thread
   network open a short page first that says what happens, then *Continue to Home Assistant*. They
   follow your phone's light or dark mode.

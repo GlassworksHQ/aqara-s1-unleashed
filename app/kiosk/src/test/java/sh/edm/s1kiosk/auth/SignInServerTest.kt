@@ -259,11 +259,11 @@ class SignInServerTest {
     fun handlerRejectsBadHost() {
         val r = server.handle(SignInServer.Request("GET", SignInServer.CONTINUE, emptyMap(), mapOf("host" to "a@b")))
         assertEquals(400, r.status)
-        val ok = server.handle(SignInServer.Request("GET", SignInServer.CONTINUE, emptyMap(), mapOf("host" to "192.168.3.39:8099")))
+        val ok = server.handle(SignInServer.Request("GET", SignInServer.CONTINUE, emptyMap(), mapOf("host" to "192.0.2.39:8099")))
         assertEquals(302, ok.status)
         val q = OAuth.parseQuery(URI(ok.headers["Location"]).rawQuery)
-        assertEquals("http://192.168.3.39:8099/", q["client_id"])
-        assertEquals("http://192.168.3.39:8099/callback", q["redirect_uri"])
+        assertEquals("http://192.0.2.39:8099/", q["client_id"])
+        assertEquals("http://192.0.2.39:8099/callback", q["redirect_uri"])
     }
 
     @Test
@@ -364,5 +364,9 @@ class SignInServerTest {
         assertEquals("default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'", r.headers["Content-Security-Policy"])
         assertEquals("nosniff", r.headers["X-Content-Type-Options"])
         assertEquals("no-referrer", r.headers["Referrer-Policy"])
+        // The same on a page that answers: the landing.
+        val landing = server.handle(SignInServer.Request("GET", "/", emptyMap(), emptyMap()))
+        assertEquals(200, landing.status)
+        for (h in listOf("Content-Security-Policy", "X-Content-Type-Options", "Referrer-Policy")) assertEquals(h, r.headers[h], landing.headers[h])
     }
 }
