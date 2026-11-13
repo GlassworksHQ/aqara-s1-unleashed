@@ -704,7 +704,26 @@ Assistant:
   mutes the microphone (`mic_muted`) for "off" states, which the kiosk applies live, and stops after
   two tries at `voice_enabled`. When voice stayed on, Assist's share is its running cost only (the
   wake word, recorder and inference; [idle-cpu.md](research/idle-cpu.md) step 7), not the code and
-  model it loads. The report says so (`off_by: "mute"`). s1v7's pane numbers are not valid.
+  model it loads. The report says so (`off_by: "mute"`). s1v7's pane numbers are not valid; the S1's
+  are s1p1 and s1p3 ([Example](#example-aqara-s1-plus)).
+- **The tolerance is too wide for the pane budgets yet.** On the S1 (s1p3, 2026-11-13) it was
+  ±31.6 MB, two thirds of the 48 MB budget: a pane near 0 and a pane well over budget would both
+  read "within tolerance", and the budget check (`pane_budget`), which compares the share alone,
+  says "ok" either way. Two things made it wide, neither of them a pane:
+  1. **The first sample is low.** In both s1p1 and s1p3 the first sample (`ref-panes-off-1`) had
+     the GPU process at 141 to 142 MB, against 155 to 157 MB in every later one, and the app 21 to
+     33 MB under the other samples of its run. It sets the panes-off spread (564.7 to 596.4 MB).
+  2. **`:boot` comes and goes.** The direct-boot home activity's process (29.2 MB) was in 2 of 12
+     samples (s1p1's `ref-sendspin-on-1` and s1p3's `ref-sendspin-on-3`), not in the other two
+     Sendspin samples. That is what s1p1's Sendspin +50 MB was. Why it runs then is untested; it is a
+     HOME activity, so a restart may start it.
+
+  Leaving out s1p3's first sample and counting the app without `:boot` gives a tolerance of about
+  ±9 MB, from the same samples (computed, not a new run). So the fix, not made yet: an unrecorded
+  warm-up cycle before the first run, and `:boot` reported apart from the pane's share (or a RAM
+  read that waits for it to exit). More runs alone won't do it: the tolerance is the spread
+  (max − min), which only grows with more samples. With more runs it would have to be another
+  statistic, such as the median absolute deviation.
 - **Waiting on #67**: `radio`, `wall-base`, `timers`, `time-zone` and `diagnostics` have no on/off switch until
   [#67](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/67), so they aren't measured on
   their own. The report lists them. The radio's processes are measured where they run.
@@ -931,6 +950,21 @@ Frame statistics are defined once, in `tools/perf/page/stats.js` and `tools/perf
 ## Example: Aqara S1 Plus
 
 **Protocol 4: not measured yet.** Its result goes here whatever letter it is.
+
+**RAM per pane** (s1p1 and s1p3, 248ce09, 2026-11-13, S1 Kiosk 0.4.3, the radio in
+`thread_router`; verified: every sample's kiosk log showed what its label says, none left out, and
+the panel was put back each time). In both runs the kiosk kept `voice_enabled` (the 0.4.3 bug
+above), so Assist is off by its microphone mute: its running cost, not the model it loads.
+
+| | Assist CPU | Assist PSS | Sendspin CPU | Sendspin PSS |
+|---|---|---|---|---|
+| s1p3, 3 runs (9 samples) | **+36.3% of a core** (±1.2) | +5.2 MB, within ±31.6 | +1.9%, within ±2.9 | +0.3 MB, within ±31.6 |
+| s1p1, 1 run (smoke) | +36.5% | +21.3 MB | +3.5% | +50.1 MB (`:boot`, see [RAM](#ram)) |
+
+Assist's CPU matches [#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)'s 37%
+(the wake word's model). Neither pane's PSS is measurable at this tolerance, so these runs can't say
+whether either fits its 48 MB budget ([why, and the fix](#ram)). The app at idle on the typical
+reference dashboard, all panes off: 565 to 596 MB.
 
 **smoke9** (8c0027b, one run, 2026-11-13, protocol 4 as first written: each reference dashboard a
 full page load) read **E, provisional**: open the view 4.9, 8.2 and 5.0 s (light, typical, heavy);
