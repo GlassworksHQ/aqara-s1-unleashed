@@ -42,7 +42,7 @@ class KioskService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        KioskPrefs(this).migrateRadioStep() // before discovery can save an HA URL in this process
+        glassworks.paneDefinitions(this) // first: a step's one-time check runs before discovery can save an HA URL
         val notification = buildNotification()
         foreground = KioskForeground(
             Platform,

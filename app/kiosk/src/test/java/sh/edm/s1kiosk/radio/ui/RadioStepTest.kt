@@ -1,4 +1,4 @@
-package sh.edm.s1kiosk.setup
+package sh.edm.s1kiosk.radio.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -8,7 +8,7 @@ import sh.edm.s1kiosk.radio.RadioController
 import sh.edm.s1kiosk.radio.RadioHelper
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.SysProps
-import sh.edm.s1kiosk.setup.RadioStep.Result
+import sh.edm.s1kiosk.radio.ui.RadioStep.Result
 
 class RadioStepTest {
 

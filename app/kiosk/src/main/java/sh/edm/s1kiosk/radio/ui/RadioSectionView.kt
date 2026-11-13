@@ -1,4 +1,4 @@
-package sh.edm.s1kiosk.settings
+package sh.edm.s1kiosk.radio.ui
 
 import sh.edm.s1kiosk.ui.Inter
 import android.content.Context
@@ -20,17 +20,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.ZigbeeStack
-import sh.edm.s1kiosk.setup.RadioFollowUp
-import sh.edm.s1kiosk.setup.RadioFollowUp.Action
-import sh.edm.s1kiosk.setup.RadioFollowUp.Health
-import sh.edm.s1kiosk.setup.RadioFollowUp.Request
-import sh.edm.s1kiosk.setup.RadioFollowUpView
-import sh.edm.s1kiosk.setup.RadioStep
-import sh.edm.s1kiosk.setup.RoleIcon
-import sh.edm.s1kiosk.setup.RoleStyle
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Action
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Health
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Request
 import sh.edm.s1kiosk.setup.SetupOverlay
-import sh.edm.s1kiosk.setup.SetupStyle
-import sh.edm.s1kiosk.setup.StatusDot
 
 /**
  * The settings menu's Radio section (the owner's design "B"): a row of role tiles ([tiles]: icon in the

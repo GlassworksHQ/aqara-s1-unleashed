@@ -6,8 +6,11 @@ package dev.glassworks.frame
 
 import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
+import dev.glassworks.pane.PaneDefinition
+import dev.glassworks.platform.Platform
 import dev.glassworks.screen.LightSource
 import dev.glassworks.screen.PresenceSource
 import java.util.concurrent.ScheduledExecutorService
@@ -35,6 +38,18 @@ interface Frame {
 
     /** The device's own settings screens, best first. [systemSettings] picks the first that opens. */
     fun systemSettingsIntents(): List<Intent>
+
+    /** Where to choose a Wi-Fi network, best first (the setup screen's "Choose network"). */
+    fun wifiSettingsIntents(): List<Intent> = listOfNotNull(
+        if (Platform.hasSettingsPanel) Intent(Settings.Panel.ACTION_WIFI) else null,
+        Intent(Settings.ACTION_WIFI_SETTINGS),
+    )
+
+    /**
+     * The definitions of the panes in [panes]: their setup steps, settings sections and adb extras,
+     * for the whole process. The core puts them after its own, in this order.
+     */
+    fun paneDefinitions(context: Context): List<PaneDefinition> = emptyList()
 
     /**
      * The panes only this device has, for its own hardware and settings. The shell builds them once per

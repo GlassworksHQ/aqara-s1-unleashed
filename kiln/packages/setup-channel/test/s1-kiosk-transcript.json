@@ -1,0 +1,231 @@
+[
+  {
+    "request": {
+      "id": 1,
+      "op": "state"
+    },
+    "reply": {
+      "id": 1,
+      "ok": true,
+      "state": {
+        "ip": "192.0.2.10",
+        "ha": {
+          "url": "",
+          "signedIn": false
+        },
+        "radio": {
+          "mode": "off",
+          "status": "Off: Aqara's radio services stopped, radio idle. Other modes need the root helper (s1kiosk_radio, not installed).",
+          "options": [
+            {
+              "id": "off",
+              "label": "Off",
+              "detail": "The radio stays idle. Choose this if unsure."
+            },
+            {
+              "id": "zigbee_tcp",
+              "label": "Zigbee coordinator",
+              "detail": "For ZHA or Zigbee2MQTT, as a network radio."
+            },
+            {
+              "id": "thread",
+              "label": "Thread border router",
+              "detail": "Runs a Thread network for Home Assistant (OTBR)."
+            },
+            {
+              "id": "zigbee_router",
+              "label": "Zigbee router (repeater)",
+              "detail": "Joins the Zigbee network you already have.",
+              "experimental": true,
+              "repeater": true
+            },
+            {
+              "id": "thread_router",
+              "label": "Thread router (repeater)",
+              "detail": "Joins the Thread network you already have.",
+              "experimental": true,
+              "repeater": true
+            }
+          ],
+          "helper": false
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "id": 2,
+      "op": "set_ha",
+      "url": "http://homeassistant.local:8123"
+    },
+    "reply": {
+      "id": 2,
+      "ok": true,
+      "state": {
+        "ip": "192.0.2.10",
+        "ha": {
+          "url": "http://homeassistant.local:8123",
+          "signedIn": false,
+          "signinUrl": "http://192.0.2.10:8099/signin"
+        },
+        "radio": {
+          "mode": "off",
+          "status": "Off: Aqara's radio services stopped, radio idle. Other modes need the root helper (s1kiosk_radio, not installed).",
+          "options": [
+            {
+              "id": "off",
+              "label": "Off",
+              "detail": "The radio stays idle. Choose this if unsure."
+            },
+            {
+              "id": "zigbee_tcp",
+              "label": "Zigbee coordinator",
+              "detail": "For ZHA or Zigbee2MQTT, as a network radio."
+            },
+            {
+              "id": "thread",
+              "label": "Thread border router",
+              "detail": "Runs a Thread network for Home Assistant (OTBR)."
+            },
+            {
+              "id": "zigbee_router",
+              "label": "Zigbee router (repeater)",
+              "detail": "Joins the Zigbee network you already have.",
+              "experimental": true,
+              "repeater": true
+            },
+            {
+              "id": "thread_router",
+              "label": "Thread router (repeater)",
+              "detail": "Joins the Thread network you already have.",
+              "experimental": true,
+              "repeater": true
+            }
+          ],
+          "helper": false
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "id": 3,
+      "op": "state"
+    },
+    "reply": {
+      "id": 3,
+      "ok": true,
+      "state": {
+        "ip": "192.0.2.10",
+        "ha": {
+          "url": "http://homeassistant.local:8123",
+          "signedIn": false,
+          "signinUrl": "http://192.0.2.10:8099/signin"
+        },
+        "radio": {
+          "mode": "off",
+          "status": "Off: Aqara's radio services stopped, radio idle. Other modes need the root helper (s1kiosk_radio, not installed).",
+          "options": [
+            {
+              "id": "off",
+              "label": "Off",
+              "detail": "The radio stays idle. Choose this if unsure."
+            },
+            {
+              "id": "zigbee_tcp",
+              "label": "Zigbee coordinator",
+              "detail": "For ZHA or Zigbee2MQTT, as a network radio."
+            },
+            {
+              "id": "thread",
+              "label": "Thread border router",
+              "detail": "Runs a Thread network for Home Assistant (OTBR)."
+            },
+            {
+              "id": "zigbee_router",
+              "label": "Zigbee router (repeater)",
+              "detail": "Joins the Zigbee network you already have.",
+              "experimental": true,
+              "repeater": true
+            },
+            {
+              "id": "thread_router",
+              "label": "Thread router (repeater)",
+              "detail": "Joins the Thread network you already have.",
+              "experimental": true,
+              "repeater": true
+            }
+          ],
+          "helper": false
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "id": 4,
+      "op": "set_radio",
+      "mode": "zigbee_tcp"
+    },
+    "reply": {
+      "id": 4,
+      "ok": false,
+      "error": "Zigbee coordinator (TCP) needs the root helper (init service s1kiosk_radio is not installed; see docs/radio.md). Still in Off."
+    }
+  },
+  {
+    "request": {
+      "id": 5,
+      "op": "set_radio",
+      "mode": "off"
+    },
+    "reply": {
+      "id": 5,
+      "ok": true,
+      "state": {
+        "ip": "192.0.2.10",
+        "ha": {
+          "url": "http://homeassistant.local:8123",
+          "signedIn": false,
+          "signinUrl": "http://192.0.2.10:8099/signin"
+        },
+        "radio": {
+          "mode": "off",
+          "status": "Off: Aqara's radio services stopped, radio idle. Other modes need the root helper (s1kiosk_radio, not installed).",
+          "options": [
+            {
+              "id": "off",
+              "label": "Off",
+              "detail": "The radio stays idle. Choose this if unsure."
+            },
+            {
+              "id": "zigbee_tcp",
+              "label": "Zigbee coordinator",
+              "detail": "For ZHA or Zigbee2MQTT, as a network radio."
+            },
+            {
+              "id": "thread",
+              "label": "Thread border router",
+              "detail": "Runs a Thread network for Home Assistant (OTBR)."
+            },
+            {
+              "id": "zigbee_router",
+              "label": "Zigbee router (repeater)",
+              "detail": "Joins the Zigbee network you already have.",
+              "experimental": true,
+              "repeater": true
+            },
+            {
+              "id": "thread_router",
+              "label": "Thread router (repeater)",
+              "detail": "Joins the Thread network you already have.",
+              "experimental": true,
+              "repeater": true
+            }
+          ],
+          "helper": false
+        }
+      }
+    }
+  }
+]

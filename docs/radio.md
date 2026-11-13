@@ -669,7 +669,7 @@ Assistant entities and the Thread join from Home Assistant, as a Glassworks pane
 - Setup screen radio step: Off, Zigbee coordinator, Thread border router in the first
   row, the two repeater roles (experimental) in a compact second row; a one-line "what next" note.
   After a mode other than Off is applied, it shows a short version of that mode's follow-up card
-  (`setup/RadioFollowUp`, sized to fit the step card without scrolling): coordinator: the ZHA serial
+  (`radio/ui/RadioFollowUp`, sized to fit the step card without scrolling): coordinator: the ZHA serial
   path (and the Zigbee2MQTT line with Silicon Labs' stack) and a QR code to `<HA>/config/zha/add`;
   Zigbee router: the same QR code (open joining), the router status and Join; Thread border router:
   the OTBR URL, a QR code to `<HA>/config/integrations/dashboard/add?domain=otbr` and one line on
@@ -677,7 +677,7 @@ Assistant entities and the Thread join from Home Assistant, as a Glassworks pane
   the Thread role. No QR code without Home Assistant's address. The full card (stack choice, Leave
   buttons, notes, the dataset field) is in the settings menu. The setup channel (web installer) offers the same five options; options carry optional
   `experimental` and `repeater` flags.
-- Kiosk settings menu, Radio section (0.4.3, `settings/RadioSectionView`): a row of role tiles (icon in
+- Kiosk settings menu, Radio section (0.4.3, `radio/ui/RadioSectionView`): a row of role tiles (icon in
   the technology's colour, Zigbee sky blue / Thread violet; the active one tinted with a status dot:
   green running or joined, amber starting or waiting, rose error; β for experimental), then a panel with
   a header strip in the role's colour and a status pill (`RadioFollowUp.health`): Off as an empty state

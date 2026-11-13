@@ -12,6 +12,9 @@ below as the release notes.
   three glass plates drop into place, the top one lights up from sky to violet, and "Glassworks" and
   "On Aqara S1 Plus" fade in. While the panel finishes starting, the stack floats and the top plate
   breathes. It reaches a panel when you run the installer again.
+- **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
+  page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
+  Nothing in the sections changed.
 
 ### Added
 - **The panel's health shows in Home Assistant.** The device page's *Diagnostic* section gets CPU
@@ -37,6 +40,10 @@ below as the release notes.
   power-on splash, and undo restored our splash while saying the stock one was back. Both installers
   now refuse such a backup before writing anything, and point you to the first install's backup or
   the by-hand undo in docs/install.md.
+- **A Thread dataset typed in the settings menu no longer shows an error.** After you pasted the
+  dataset under the radio's *Advanced* and the radio took it, the menu said "The kiosk service isn't
+  running yet" instead of "Dataset handed to the radio". The dataset was stored either way; now the
+  menu says so.
 - **Kiln: Undo and Try again say the right thing in rare cases.** On kiln.glassworks.dev, once a
   try has written to the panel, or given it back to Aqara's apps, a later try that fails before
   writing says so and keeps *Undo with your backup*, instead of "Nothing was written." This holds in

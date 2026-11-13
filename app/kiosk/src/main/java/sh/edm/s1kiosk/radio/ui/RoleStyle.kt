@@ -1,4 +1,4 @@
-package sh.edm.s1kiosk.setup
+package sh.edm.s1kiosk.radio.ui
 
 import android.content.Context
 import android.graphics.Canvas
