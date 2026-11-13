@@ -1156,5 +1156,104 @@ class PaneOnAlone(unittest.TestCase):
         self.assertEqual((ram["graded_peak"]["samples"], ram["graded_peak"]["app_pss_kb"]), (1, 520_000))
 
 
+S1_PANES = {"assist": {"switch": "voice_enabled", "mute": "mic_muted", "state": "mic"},
+            "sendspin": {"switch": "sendspin_enabled", "state": "sendspin"}, "radio": {"waiting_on": "#67"}}
+
+
+def ran(sample, voice, sendspin, mic, screen_off=None):
+    return dict(sample, panes_state={"voice": voice, "sendspin": sendspin, "mic": mic}, screen_off=screen_off)
+
+
+class PanesAsAsked(unittest.TestCase):
+    """s1v7: S1 Kiosk 0.4.3 lost the voice and Sendspin switches, so the "panes off" samples ran
+    both, and Assist read -0.4 % of a core. Only samples whose kiosk log shows what their label says
+    count, and the report says when Assist was off by its microphone mute alone."""
+
+    LOG = ("11-13 00:00:01.000  100  100 I S1ESPHome: ESPHome device 'panel' mac 00:00:00:00:00:00, voice=true\n"
+           "11-13 00:00:02.000  100  100 I S1Sendspin: Sendspin player starting\n"
+           "11-13 00:00:03.000  100  100 I S1Voice: Microphone open: source=VOICE_RECOGNITION\n")
+
+    def test_the_kiosk_log_gives_what_ran(self):
+        self.assertEqual(P.pane_state(self.LOG), {"voice": True, "sendspin": True, "mic": True})
+        muted = self.LOG + "11-13 00:00:04.000  100  100 I S1Voice: Microphone muted (released)\n"
+        self.assertEqual(P.pane_state(muted), {"voice": True, "sendspin": True, "mic": False})
+        # A later start (the app restarted) is the one that counts: nothing after it ran yet.
+        restarted = self.LOG + "11-13 00:00:09.000  200  200 I S1ESPHome: ESPHome device 'panel' mac 00:00:00:00:00:00, voice=false\n"
+        self.assertEqual(P.pane_state(restarted), {"voice": False, "sendspin": False, "mic": False})
+        self.assertIsNone(P.pane_state("nothing from the kiosk")["voice"])
+
+    def test_a_sample_counts_when_it_ran_its_label(self):
+        x = ram_idle("ref-assist-on", 1)
+        self.assertTrue(R.sample_matches(ran(x, True, False, True), "ref-assist-on", S1_PANES))
+        self.assertFalse(R.sample_matches(ran(x, True, True, True), "ref-assist-on", S1_PANES))      # Sendspin too
+        self.assertTrue(R.sample_matches(ran(x, True, False, False), "ref-panes-off", S1_PANES))     # off by its mute
+        self.assertFalse(R.sample_matches(ran(x, True, False, True), "ref-panes-off", S1_PANES))
+        self.assertFalse(R.sample_matches(ran(x, False, False, False, screen_off=[12.5]), "ref-panes-off", S1_PANES))
+        self.assertIsNone(R.sample_matches(x, "ref-panes-off", S1_PANES))                            # not recorded
+
+    def test_samples_that_ran_something_else_are_left_out(self):
+        idles = {"ref-panes-off": [ran(ram_idle("ref-panes-off", 100_000), False, False, False),
+                                   ran(ram_idle("ref-panes-off", 150_000), True, True, True)],   # s1v7's off
+                 "ref-assist-on": [ran(ram_idle("ref-assist-on", 130_000), True, False, True)],
+                 "ref-sendspin-on": [ran(ram_idle("ref-sendspin-on", 110_000), True, True, True)]}
+        panes = {p["id"]: p for p in R.pane_on_alone(idles, PKG, S1_PANES)}
+        self.assertEqual((panes["assist"]["pss_kb"], panes["assist"]["excluded"]), (30_000, 1))
+        self.assertTrue(panes["assist"]["verified"])
+        self.assertNotIn("off_by", panes["assist"])
+        self.assertIn("didn't run sendspin on by itself", panes["sendspin"]["error"])
+        self.assertNotIn("pss_kb", panes["sendspin"])
+
+    def test_every_off_sample_wrong_is_an_error_not_a_number(self):
+        idles = {"ref-panes-off": [ran(ram_idle("ref-panes-off", 150_000), True, True, True)] * 2,
+                 "ref-assist-on": [ran(ram_idle("ref-assist-on", 150_000), True, False, True)]}
+        panes = R.pane_on_alone(idles, PKG, S1_PANES)
+        self.assertEqual([p["id"] for p in panes], ["assist", "sendspin"])
+        self.assertTrue(all("panes-off" in p["error"] for p in panes))
+        md = "\n".join(R.ram_markdown({"panes": panes, "pane_budget": {}}))
+        self.assertIn("| assist | not measured:", md)
+        # The export leaves it out instead of failing on it.
+        self.assertEqual(S.ram_summary({"panes": panes})["panes"], [])
+
+    def test_assist_off_by_its_mute_is_labelled(self):
+        idles = {"ref-panes-off": [ran(ram_idle("ref-panes-off", 100_000), True, False, False)],
+                 "ref-assist-on": [ran(ram_idle("ref-assist-on", 101_000), True, False, True)]}
+        panes = R.pane_on_alone(idles, PKG, S1_PANES)
+        self.assertEqual(panes[0]["off_by"], "mute")
+        self.assertIn("off by its microphone mute only", "\n".join(R.ram_markdown({"panes": panes, "pane_budget": {}})))
+        self.assertEqual(S.ram_summary({"panes": panes})["panes"][0]["off_by"], "mute")
+
+    def test_samples_from_before_the_log_was_read_say_so(self):
+        idles = {"ref-panes-off": [ram_idle("ref-panes-off", 100_000)], "ref-assist-on": [ram_idle("ref-assist-on", 130_000)]}
+        panes = R.pane_on_alone(idles, PKG, S1_PANES)
+        self.assertFalse(panes[0]["verified"])
+        self.assertIn("not checked", "\n".join(R.ram_markdown({"panes": panes, "pane_budget": {}})))
+
+
+class ScreenOff(unittest.TestCase):
+    """s1v7: the screen went off for 0.14 s at the end of a reference idle window. A sample, or a
+    synthetic run, the screen went off in isn't the panel at work: it is listed and left out."""
+
+    def test_an_idle_sample_with_the_screen_off_is_left_out(self):
+        budgets = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15}, "panes": {}}
+        off = dict(ram_idle("ref-idle", 900_000), run=3, screen_off=[14.86])
+        ram = R.reference_ram({"ref-idle": [dict(ram_idle("ref-idle", 300_000), run=1), off]}, [], PKG, budgets, 2_000_000)
+        self.assertEqual(ram["reference_idle"]["samples"], 1)
+        self.assertEqual(ram["screen_off_samples"], ["ref-idle-3"])
+        self.assertIn("The screen went off in ref-idle-3", "\n".join(R.ram_markdown(ram)))
+
+    def test_a_real_use_sample_with_the_screen_off_is_left_out(self):
+        on = dict(ram_idle("all-on", 300_000), run=1)
+        r = R.real_use_summary([], {"all-on": [on, dict(on, run=2, screen_off=[3.0])]}, PKG)
+        self.assertEqual((r["idle"]["samples"], r["screen_off_samples"]), (1, ["all-on-2"]))
+
+    def test_a_synthetic_run_with_the_screen_off_is_left_out(self):
+        good, bad = synthetic_lines(1, 9.0), synthetic_lines(2, 90.0) + [{"t": "screen_off", "mono": 12.0}]
+        runs = [R.synthetic_run(good), R.synthetic_run(bad)]
+        self.assertEqual([r["screen_off"] for r in runs], [False, True])
+        s = R.synthetic_summary(runs)
+        self.assertEqual((s["runs"], s["screen_off_runs"]), (1, 1))
+        self.assertEqual(s["js_burst_ms"]["median"], 9.0)
+
+
 if __name__ == "__main__":
     unittest.main()

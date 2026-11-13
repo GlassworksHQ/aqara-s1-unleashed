@@ -143,6 +143,10 @@ def cmd_synthetic(dev, a):
         lines_in = P.PageLines()
         for line in lc.stdout:
             rec = P.parse_logcat_line(line)
+            if rec and seen.is_set() and SLEEP_RE.search(rec["msg"]):
+                # The screen went off while the test page ran: its frames aren't the panel's then.
+                f.write(json.dumps({"t": "screen_off", "mono": rec["mono"]}) + "\n")
+                f.flush()
             pl = lines_in.feed(rec["msg"]) if rec else None
             if not pl or pl.get("nonce") != a.nonce:
                 continue
@@ -178,6 +182,67 @@ def cmd_synthetic(dev, a):
     if status != "done":
         sys.exit(f"synthetic run {a.run}: {status}")
 
+
+def parse_set(spec):
+    """"voice_enabled=false,mic_muted=true,..." -> {extra: bool}."""
+    out = {}
+    for part in (spec or "").split(","):
+        if part:
+            k, _, v = part.partition("=")
+            if not re.fullmatch(r"[a-z_]{1,40}", k) or v not in ("true", "false"):
+                raise SystemExit(f"--set {part!r}: give extra=true|false")
+            out[k] = v == "true"
+    return out
+
+
+def expected_state(want, voice_now):
+    """What pane_state should read for `want`. The microphone is open only with voice on and not
+    muted; when the kiosk didn't apply voice_enabled (S1 Kiosk 0.4.3 saves it asynchronously, then
+    exits to restart, so the write is lost), that is judged with the voice it really runs."""
+    voice = want.get("voice_enabled", voice_now)
+    out = {}
+    if "sendspin_enabled" in want:
+        out["sendspin"] = want["sendspin_enabled"]
+    if "mic_muted" in want or "voice_enabled" in want:
+        out["mic"] = bool(voice_now if voice_now is not None else voice) and not want.get("mic_muted", False)
+    return out
+
+
+def cmd_panes(dev, a):
+    """Set the panes the kiosk runs, then check from its log that it runs them (#158's s1v7: every
+    switch was lost). The settings applied live (Sendspin, the microphone mute, the dashboard URL)
+    go first, in an intent that doesn't restart the app, and are saved while the runner waits; then
+    voice_enabled, which restarts the app. Up to --tries times. Prints the result as JSON; exit 0 when
+    everything but voice_enabled took (voice_applied says whether that did too), else 1."""
+    want = parse_set(a.set)
+    live = " ".join(f"--ez {k} {'true' if v else 'false'}" for k, v in want.items() if k != "voice_enabled")
+    url = f"--es url '{a.url}'" if a.url else ""
+    res = {"want": want, "attempts": 0, "state": None, "ok": False, "voice_applied": None}
+    for attempt in range(1, a.tries + 1):
+        res["attempts"] = attempt
+        if live or url:
+            dev.sh(f"am start -W -n {dev.component} {url} {live}".strip(), timeout=60)
+            time.sleep(PANES_SAVE_S)
+        if "voice_enabled" in want:
+            dev.sh(f"am start -W -n {dev.component} --ez voice_enabled {'true' if want['voice_enabled'] else 'false'}", timeout=60)
+        else:
+            dev.sh(f"am start -W -n {dev.component} --ez restart true", timeout=60)
+        time.sleep(a.settle)
+        st = P.pane_state(dev.sh("logcat -d -v monotonic", timeout=60))
+        res["state"] = st
+        exp = expected_state(want, st["voice"])
+        res["ok"] = st["voice"] is not None and all(st[k] == v for k, v in exp.items())
+        res["voice_applied"] = None if "voice_enabled" not in want else st["voice"] == want["voice_enabled"]
+        if res["ok"] and res["voice_applied"] is not False:
+            break
+        if res["ok"] and attempt >= 2:
+            break                     # voice_enabled doesn't take on this kiosk; the rest did
+    print(json.dumps(res))
+    sys.exit(0 if res["ok"] else 1)
+
+
+# The live settings are saved with apply(): give the write this long before the app restarts.
+PANES_SAVE_S = float(os.environ.get("GW_PERF_PANES_SAVE_S", "3"))
 
 GESTURE_MS = (50, 2000)   # a swipe's duration the page may ask for
 MAX_TAPS = 50
@@ -635,30 +700,59 @@ def cmd_idle(dev, a):
     end = time.time() + a.settle
     while time.time() < end:
         dev.wake()
-        time.sleep(min(10, max(0, end - time.time())))
+        time.sleep(min(KEEP_AWAKE_S, max(0, end - time.time())))
     dev.wake()
     time.sleep(3)
     pids = dev.pids(radio)
     ncpu = int(dev.sh("nproc").strip() or 1)
+    # Where the log is now, so a screen that goes off in the window can be found in it afterwards.
+    mark = last_mono(dev.sh("logcat -d -v monotonic -t 1", timeout=60))
     before = cpu_snapshot(dev, pids)
     # Frames from before the window are still in SurfaceFlinger's history; keep only newer ones.
     period, history = dev.sf()
     newest_before = max(history, default=0)
     presents = set()
-    t_end = time.time() + a.window
+    t_end, woke = time.time() + a.window, time.time()
     while time.time() < t_end:
         time.sleep(1.5)
+        if time.time() - woke >= KEEP_AWAKE_S:
+            # The kiosk's idle timeout (20 s at night) is shorter than the settle and the window:
+            # keep the screen on through the window too (s1v7: off 0.14 s before its end).
+            dev.wake()
+            woke = time.time()
         p, ts = dev.sf()
         period = p or period
         presents.update(t for t in ts if t > newest_before)
     after = cpu_snapshot(dev, pids)
+    log = dev.sh("logcat -d -v monotonic", timeout=120)
     dev.wake()
     mem = memory_sample(dev, radio)
     write_json(os.path.join(a.out, f"idle-{a.label}-{a.run}.json"), dict({
         "label": a.label, "run": a.run, "window_s": a.window, "ncpu": ncpu,
         "cpu": P.cpu_percent(before, after, ncpu),
         "frames": {"period_ms": period, "presents_mono_ms": sorted(t / 1e6 for t in presents)},
+        # The screen going off in the window: its CPU and frames aren't the panel's at work.
+        "screen_off": screen_offs(log, mark),
+        # What the kiosk ran (voice, Sendspin, the wake word's microphone), from its log.
+        "panes_state": P.pane_state(log),
     }, **mem))
+
+
+def last_mono(logcat_text):
+    """The monotonic time of the last line of a `logcat -v monotonic` dump (None if it has none)."""
+    recs = [P.parse_logcat_line(l) for l in logcat_text.splitlines()]
+    monos = [r["mono"] for r in recs if r]
+    return monos[-1] if monos else None
+
+
+def screen_offs(logcat_text, since):
+    """When the screen went off after `since` (monotonic s), from Android's PowerManagerService."""
+    out = []
+    for line in logcat_text.splitlines():
+        rec = P.parse_logcat_line(line)
+        if rec and (since is None or rec["mono"] > since) and SLEEP_RE.search(rec["msg"]):
+            out.append(round(rec["mono"], 3))
+    return out
 
 
 def memory_sample(dev, radio, summaries=True):
@@ -678,7 +772,9 @@ def memory_sample(dev, radio, summaries=True):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["device", "synthetic", "refstart", "coldstart", "idle"])
+    ap.add_argument("cmd", choices=["device", "synthetic", "refstart", "coldstart", "idle", "panes"])
+    ap.add_argument("--set", help="panes: the kiosk's pane extras, extra=true|false,...")
+    ap.add_argument("--tries", type=int, default=3, help="panes: attempts")
     ap.add_argument("--serial", default=os.environ.get("ANDROID_SERIAL"))
     ap.add_argument("--package", default="sh.edm.s1kiosk")
     ap.add_argument("--activity", default=".MainActivity")
@@ -706,7 +802,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     dev = Device(a.serial, a.package, a.activity)
     {"device": cmd_device, "synthetic": cmd_synthetic, "refstart": cmd_coldstart, "coldstart": cmd_coldstart,
-     "idle": cmd_idle}[a.cmd](dev, a)
+     "idle": cmd_idle, "panes": cmd_panes}[a.cmd](dev, a)
 
 
 if __name__ == "__main__":

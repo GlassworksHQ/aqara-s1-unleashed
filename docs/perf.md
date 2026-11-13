@@ -68,7 +68,7 @@ tools/perf/run.sh --frame aqara-s1-plus --name "Aqara S1 Plus" --runs 3 \
 | `--serial` | `$ANDROID_SERIAL` | Which device |
 | `--runs` | 3 | Repeats of each part. The report gives the median and range |
 | `--restore-dashboard` | (required for the grade) | The kiosk's dashboard setting now: a URL, or `auto`. The graded part puts it back when it ends and on any exit. The runner can't read it (it never reads app data), so you give it. It can't be the fake Home Assistant's address |
-| `--pane-ram` | | Also measure each switchable pane's RAM, with the panes' settings now, which it puts back: `assist=on,sendspin=on`. See [RAM](#ram) |
+| `--pane-ram` | | Also measure each switchable pane's RAM, with the panes' settings now, which it puts back: `assist=on,sendspin=on,mic=on` (`mic` is Assist's microphone: on unless muted). See [RAM](#ram) |
 | `--taps` | 10 | Taps on each reference dashboard's toggle. 0 skips them: tap isn't measured, which fails every level, so the grade is E, provisional |
 | `--skip-synthetic`, `--skip-reference`, `--skip-real-use` | | Skip the animation test page (detail), the reference dashboards (the grade), or the real-use part. Skipping the reference dashboards gives no grade (refused, not an E) |
 | `--quick` | | Short ladder on the animation test page (1, 16 and 128 elements), to check the setup works |
@@ -119,10 +119,11 @@ tools/perf/report.py <dir>` rebuilds the report from the raw files at any time, 
   so a panel that cached an older harness (8c0027b served it at a fixed URL for a year) never runs
   it again. HA's frontend registers its service worker only on https or `localhost`
   (`register-service-worker.ts`), so on `http://127.0.0.1` there is none, as on an http HA.
-- **The panes, with `--pane-ram` only.** The kiosk's own extras (`--ez voice_enabled`,
-  `--ez sendspin_enabled`) turn the switchable panes off and on in turn; turning Assist off or on
-  restarts the app. On exit they are put back to the settings you gave. While a pane is off, the
-  panel doesn't play music or hear its wake word.
+- **The panes, with `--pane-ram` only.** The kiosk's own extras turn the switchable panes off and
+  on in turn, in two intents: first the settings it applies live (`--ez sendspin_enabled`,
+  `--ez mic_muted`), then `--ez voice_enabled`, which restarts the app. The runner then reads the
+  kiosk's log to check what it runs (see [RAM](#ram)). On exit they are put back to the settings you
+  gave. While a pane is off, the panel doesn't play music or hear its wake word.
 - **The screen stays on** because the runner sends the kiosk's own wake intent (`--es screen on`):
   just before each view opens, every 8 s while it opens and between views, and when it goes live.
   Not while a view is live (its taps and swipes are touches, which keep the screen on) and not
@@ -132,6 +133,13 @@ tools/perf/report.py <dir>` rebuilds the report from the raw files at any time, 
   panel's. In smoke10 (9d986c9, 22:06, the kiosk's 20 s night timeout) the screen went off three
   times: light's view switch waited 22 s for it to wake, typical's main thread looked busy for
   112 s, and heavy never ran.
+- **Idle samples and the animation test page** keep the screen on the same way: an idle sample
+  sends the wake intent every 8 s through its settle and its window, and the test page on every
+  line it logs. If the screen goes off anyway, the sample (`screen_off`) or the run (a `screen_off`
+  line in `synthetic-<n>.jsonl`) records it, and the report lists it and leaves it out. In s1v7
+  (131f6da, 2026-11-13) the screen went off at the end of the third `ref-idle` window, 0.14 s before
+  the runner's wake, after the graded run had ended: no graded window overlapped it, and the RAM
+  was read after the wake. Before this, that sample would have counted.
 - **Taps and swipes**, only on the reference pages and only when the page asks: each page logs
   where its "Living room" toggle is (`input tap`) and where to swipe (`input swipe`), tagged with
   that page load's nonce. A request with another page's nonce is ignored. Before anything reaches
@@ -668,17 +676,35 @@ Assistant:
   timed, the runner samples RAM. The largest of those samples is the peak. It is taken between tasks,
   not inside them (a `dumpsys` during a task would disturb what it measures), so a short peak inside
   a task can be missed; `VmHWM` catches it, and the report gives it beside the PSS peak.
-- **Per pane**, with `--pane-ram assist=on,sendspin=on` (the settings now, put back afterwards). The
-  kiosk is pointed at the typical reference dashboard. In each run the runner turns every switchable
+- **Per pane**, with `--pane-ram assist=on,sendspin=on,mic=on` (the settings now, put back
+  afterwards). The kiosk is pointed at the typical reference dashboard. In each run the runner turns every switchable
   pane off and takes an idle sample (`ref-panes-off`), then turns each pane on by itself and takes one
   (`ref-<pane>-on`). A pane's share is the median of its "on" samples less the median of the "off"
   samples. The **tolerance** is the larger spread (max − min) of the two sets; a share inside it is
   reported as "within tolerance", not as a number to act on. With `--runs 3`, each median is of
   three samples. The switches are the kiosk's own extras, named in the frame's `budgets.json`
-  (`switch`): `voice_enabled` for `assist` and `sendspin_enabled` for `sendspin`. Turning Assist off
+  (`switch`): `voice_enabled` for `assist` and `sendspin_enabled` for `sendspin`. `mute` names
+  Assist's microphone mute (`mic_muted`) and `state` what the kiosk's log shows while the pane runs
+  (below). Turning Assist off
   this way stops the whole pane, unlike the mute switch (below), which leaves its model loaded. It
   also leaves out the timers pane, which only comes from the voice assistant, so `assist`'s share
   includes the timers'.
+- **Each sample is checked** against the kiosk's log (`perflib.pane_state`): the ESPHome line the
+  app logs at start (`voice=true|false`), then `Sendspin player starting`, and `Microphone open`,
+  `Microphone muted (released)` or `Microphone unmuted`. The runner tries a state up to three times
+  (`panes-<label>-<n>.json` has what it asked and what ran), and the idle sample records what ran
+  (`panes_state`). The report counts only samples that ran what their label says, gives how many it
+  left out (`excluded`), and has no number for a pane with none left (`error`). Samples from before
+  this check say `verified: false`.
+- **Assist off by its mute.** S1 Kiosk 0.4.3 and earlier save `voice_enabled` asynchronously and
+  then exit at once to restart, so the write is lost and voice stays on. In s1v7 (131f6da,
+  2026-11-13) every switch was lost: the "panes off" samples ran Assist and Sendspin, and Assist read
+  −0.4% of a core against
+  [#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)'s 37%. So the runner also
+  mutes the microphone (`mic_muted`) for "off" states, which the kiosk applies live, and stops after
+  two tries at `voice_enabled`. When voice stayed on, Assist's share is its running cost only (the
+  wake word, recorder and inference; [idle-cpu.md](research/idle-cpu.md) step 7), not the code and
+  model it loads. The report says so (`off_by: "mute"`). s1v7's pane numbers are not valid.
 - **Waiting on #67**: `radio`, `wall-base`, `timers`, `time-zone` and `diagnostics` have no on/off switch until
   [#67](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/67), so they aren't measured on
   their own. The report lists them. The radio's processes are measured where they run.
@@ -743,11 +769,11 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `frame` | `id`, `name`, `device` (model, Android, API, ABI, SoC, CPU, RAM, display with density and refresh, temperatures), `app` (package, version, APK bytes on the device, GeckoView version) |
 | `apk` | One entry per APK given with `--apk`: `abis`, `bytes`, `parts_bytes` (dex, native, assets, resources, other) |
 | `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (over 50 ms is provisional). `null` without the log, which is provisional for protocol 4 |
-| `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb`, `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`), `panes_waiting` (`id`, `waiting_on`, `note`), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `ok`). See [RAM](#ram) |
+| `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb`, `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`, `verified`, `excluded`, and `off_by: "mute"` when Assist was off by its mute alone; or `id`, `method` and `error` when no sample ran as asked), `screen_off_samples` (idle samples the screen went off in, left out), `panes_waiting` (`id`, `waiting_on`, `note`), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `ok`). See [RAM](#ram) |
 | `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts (a run failed, a task was measured in fewer runs, scrolling rests on rAF only, the pages ran another protocol) |
 | `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
-| `detail` | `synthetic`, the animation test page: `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `steps_without_sf`, `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `page_lcp_ms`, `page_lcp_from`, `per_run` |
-| `real_use` | Not graded. Your dashboard: `app_start_to_dashboard_ms`, `android_ttid_ms`, `launch`, `stop_to_dashboard_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `errors`, `per_run`. Then `idle`, `peak`, `memory` (`idle`, `peak`, `budget`) and `panes` |
+| `detail` | `synthetic`, the animation test page: `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `steps_without_sf`, `screen_off_runs` (left out of the rest), `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `page_lcp_ms`, `page_lcp_from`, `per_run` |
+| `real_use` | Not graded. Your dashboard: `app_start_to_dashboard_ms`, `android_ttid_ms`, `launch`, `stop_to_dashboard_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `errors`, `screen_off_samples`, `per_run`. Then `idle`, `peak`, `memory` (`idle`, `peak`, `budget`) and `panes` |
 
 `own_page_states` says, per run, how the kiosk's own page ended before the reference dashboards
 opened: `reference` (protocol 4: it came back to the reference dashboard and said it was usable),
@@ -780,7 +806,7 @@ from real use, and nothing device-unique.
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |
 | `report` | A relative path or URL of the full report (`--report-url`) |
 | `complete` | `false` when it was exported with `--allow-provisional` and has gaps, missing measurements or isn't comparable |
-| `ram` | Not graded; `null` if not measured. In kB: `idle_app_pss_kb` and `idle_by_process_pss_kb` (medians at idle on the typical reference dashboard), `peak_app_pss_kb` and `peak_by_process_pss_kb` (the peak during the graded tasks), `panes` (each: `id`, `pss_kb`, `tolerance_kb`, `measurable`, `runs`), `panes_waiting` (pane ids), `budget_ok` (`true`, `false` or `null`) |
+| `ram` | Not graded; `null` if not measured. In kB: `idle_app_pss_kb` and `idle_by_process_pss_kb` (medians at idle on the typical reference dashboard), `peak_app_pss_kb` and `peak_by_process_pss_kb` (the peak during the graded tasks), `panes` (each: `id`, `pss_kb`, `tolerance_kb`, `measurable`, `runs`, and `off_by` when the report has it; a pane with no number isn't listed), `panes_waiting` (pane ids), `budget_ok` (`true`, `false` or `null`) |
 | `apk` | Not graded; `null` if no APK was given. Per APK: `file`, `abis`, `bytes` |
 
 The levels need each run's measurements (each run gets a level, then the median level is taken), which

@@ -1,5 +1,5 @@
 {
-  "_comment": "The Aqara S1 Plus's budgets (#68). Project choices, not published standards; docs/perf.md, \"RAM\", and docs/size.md say why and how each is measured. Clarity's report (tools/perf/report.py) reads ram and panes.*.ram_pss_max_kb; CI's size check (tools/size/apksize.py) reads size and panes.*.size_max_bytes, and fails a PR that goes over unless the same PR raises the budget. The pane RAM budgets were set before the first per-pane measurement (2026-11-13); revisit them once one exists. The size budgets are the 2026-11-13 release build (97.84 MB armeabi-v7a, 100.78 MB arm64-v8a) plus about 2.5%, and each pane's size about twice its own today (at least 100 kB), so growth is a decision, not a drift.",
+  "_comment": "The Aqara S1 Plus's budgets (#68). Project choices, not published standards; docs/perf.md, \"RAM\", and docs/size.md say why and how each is measured. Clarity's report (tools/perf/report.py) reads ram and panes.*.ram_pss_max_kb; CI's size check (tools/size/apksize.py) reads size and panes.*.size_max_bytes, and fails a PR that goes over unless the same PR raises the budget. The pane RAM budgets were set before the first per-pane measurement (2026-11-13); revisit them once one exists. The size budgets are the 2026-11-13 release build (97.84 MB armeabi-v7a, 100.78 MB arm64-v8a) plus about 2.5%, and each pane's size about twice its own today (at least 100 kB), so growth is a decision, not a drift. A switchable pane's `state` is how its log shows it running (tools/perf/perflib.py pane_state): Assist by the wake word's microphone, Sendspin by its player. Assist is turned off with voice_enabled and its microphone mute (`mute`), because S1 Kiosk 0.4.3 loses a voice_enabled change across its restart (#158, s1v7).",
   "ram": {
     "app_pss_max_pct_of_ram": 50,
     "device_available_min_pct": 15
@@ -13,11 +13,14 @@
   "panes": {
     "assist": {
       "switch": "voice_enabled",
+      "mute": "mic_muted",
+      "state": "mic",
       "ram_pss_max_kb": 49152,
       "size_max_bytes": 3000000
     },
     "sendspin": {
       "switch": "sendspin_enabled",
+      "state": "sendspin",
       "ram_pss_max_kb": 49152,
       "size_max_bytes": 150000
     },
