@@ -670,7 +670,10 @@ Frame statistics are defined once, in `tools/perf/page/stats.js` and `tools/perf
 | heavy | 54.4 fps (54.3 to 54.7), good in all 3 | 70.4 ms (69.2 to 87.9), good | 120 ms | 1985 ms |
 
 Restart (process start to engine ready) took 2929 ms: needs improvement, under the 5 s cap. Every
-swipe moved freely (none reached an edge) and all 18 ran while the live updates did. It is an A, not
+swipe moved freely (none reached an edge) and all 18 ran while the live updates did. Android's
+framework didn't crash during the run: its dropbox count was the same before and after (checked by
+the root on the panel). The run's `summary.json` (`summary.py`) grades A in both `grade.py` and
+`grade.ts`. It is an A, not
 an A+: on heavy, scrolling averages 54 fps with p95 33 ms, under the 60 fps rule, and the frames of the
 live changes don't hold 60 fps either. s1v6 ran with the pages' old colours; the palette change after
 it changes no work (see [Protocol and rubric versions](#protocol-and-rubric-versions)).
