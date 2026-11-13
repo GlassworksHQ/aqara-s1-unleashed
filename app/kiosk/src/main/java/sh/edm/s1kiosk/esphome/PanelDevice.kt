@@ -291,7 +291,7 @@ class PanelDevice internal constructor(
 
     /** Fixed object_id (so the key never changes); only the options change between rebuilds. */
     private fun dashboardSelect(options: List<String>) = SelectEntity(
-        "dashboard", "Dashboard", "mdi:view-dashboard", options = options,
+        "dashboard", "Dashboard", "mdi:view-dashboard", disabledByDefault = true, options = options,
         get = { currentDashboardOption(appliedDashboards) },
         set = { option ->
             val url = DashboardOptions.urlFor(option, prefs.urlSetting, prefs.haBase, prefs.haUrl, appliedDashboards)
@@ -454,7 +454,7 @@ class PanelDevice internal constructor(
         ),
         SwitchEntity(
             "auto_brightness", "Auto brightness", "mdi:brightness-auto", EntityCategory.CONFIG,
-            get = { prefs.autoBrightness },
+            disabledByDefault = true, get = { prefs.autoBrightness },
             set = { prefs.autoBrightness = it; ui { screen.refreshBrightness() } },
         ),
         BinarySensorEntity("presence", "Presence", deviceClass = "occupancy", get = { screen.near }),
@@ -467,49 +467,49 @@ class PanelDevice internal constructor(
             get = { prefs.screenMode }, set = { prefs.screenMode = it },
         ),
         NumberEntity(
-            "idle_timeout", "Idle timeout", "mdi:timer-outline", min = 0f, max = 3600f, step = 5f,
+            "idle_timeout", "Idle timeout", "mdi:timer-outline", disabledByDefault = true, min = 0f, max = 3600f, step = 5f,
             unit = "s", mode = 1, deviceClass = "duration",
             get = { prefs.idleOffSec.toFloat() }, set = { prefs.idleOffSec = it.toInt() },
         ),
         NumberEntity(
-            "night_idle_timeout", "Night idle timeout", "mdi:timer-sand", min = 0f, max = 3600f, step = 5f,
+            "night_idle_timeout", "Night idle timeout", "mdi:timer-sand", disabledByDefault = true, min = 0f, max = 3600f, step = 5f,
             unit = "s", mode = 1, deviceClass = "duration",
             get = { prefs.nightIdleOffSec.toFloat() }, set = { prefs.nightIdleOffSec = it.toInt() },
         ),
         TextEntity(
-            "night_window", "Night window", "mdi:weather-night", maxLength = 11,
+            "night_window", "Night window", "mdi:weather-night", disabledByDefault = true, maxLength = 11,
             pattern = "^$|^[0-9]{1,2}:[0-9]{2}-[0-9]{1,2}:[0-9]{2}$",
             get = { prefs.nightWindow }, set = { prefs.nightWindow = it },
         ),
         NumberEntity(
-            "presence_range", "Presence range", "mdi:signal-distance-variant", min = 0f, max = 2.5f, step = 0.1f,
+            "presence_range", "Presence range", "mdi:signal-distance-variant", disabledByDefault = true, min = 0f, max = 2.5f, step = 0.1f,
             unit = "m", mode = 2, deviceClass = "distance",
             get = { prefs.presenceRangeM }, set = { prefs.presenceRangeM = it; ui { screen.applyPresenceRange() } },
         ),
         // --- kiosk
         TextEntity(
-            "dashboard_url", "Dashboard URL", "mdi:web", minLength = 1, maxLength = 255,
+            "dashboard_url", "Dashboard URL", "mdi:web", disabledByDefault = true, minLength = 1, maxLength = 255,
             get = { prefs.urlSetting }, set = { url -> toActivity { putExtra("url", url) } },
         ),
         NumberEntity(
-            "zoom", "Zoom", "mdi:magnify-plus-outline", min = 0f, max = 3f, step = 0.05f, mode = 1,
+            "zoom", "Zoom", "mdi:magnify-plus-outline", disabledByDefault = true, min = 0f, max = 3f, step = 0.05f, mode = 1,
             get = { prefs.zoom },
             set = { z -> if (kotlin.math.abs(z - prefs.zoom) > 0.001f) toActivity { putExtra("zoom", z) } },
         ),
         ButtonEntity("reload_dashboard", "Reload dashboard", "mdi:refresh", press = { toActivity { putExtra("reload", true) } }),
         ButtonEntity("open_settings", "Open device settings", "mdi:cog", EntityCategory.CONFIG,
-            press = { toActivity { putExtra("open_settings", true) } }),
+            disabledByDefault = true, press = { toActivity { putExtra("open_settings", true) } }),
         ButtonEntity(
             "restart_app", "Restart app", "mdi:restart", EntityCategory.CONFIG, deviceClass = "restart",
             press = { toActivity { putExtra("restart", true) } },
         ),
         ButtonEntity(
             "improv_ble", "Start Wi-Fi setup (Bluetooth)", "mdi:bluetooth-settings", EntityCategory.CONFIG,
-            press = { ui { sh.edm.s1kiosk.improv.ImprovController.startOnDemand("Home Assistant button") } },
+            disabledByDefault = true, press = { ui { sh.edm.s1kiosk.improv.ImprovController.startOnDemand("Home Assistant button") } },
         ),
         SwitchEntity(
             "hide_ha_header", "Hide HA header", "mdi:page-layout-header", EntityCategory.CONFIG,
-            get = { prefs.hideHeader },
+            disabledByDefault = true, get = { prefs.hideHeader },
             set = { v -> toActivity { putExtra("hide_header", v); putExtra("hide_sidebar", v) } },
         ),
         // --- audio
@@ -540,7 +540,7 @@ class PanelDevice internal constructor(
         TextSensorEntity("ip_address", "IP address", "mdi:ip-network", EntityCategory.DIAGNOSTIC, get = ::ipAddress),
         TextSensorEntity(
             "app_version", "App version", "mdi:new-box", EntityCategory.DIAGNOSTIC,
-            get = { BuildConfig.VERSION_NAME },
+            disabledByDefault = true, get = { BuildConfig.VERSION_NAME },
         ),
         // --- app updates (GitHub Releases; update/UpdateManager.kt)
         UpdateEntity(
@@ -549,20 +549,20 @@ class PanelDevice internal constructor(
         ),
         TextSensorEntity(
             "update_status", "Update status", "mdi:update", EntityCategory.DIAGNOSTIC,
-            get = { updates.statusText() },
+            disabledByDefault = true, get = { updates.statusText() },
         ),
         // --- Home Assistant sign-in (docs/onboarding.md)
         TextSensorEntity(
             "home_assistant_url", "Home Assistant URL", "mdi:home-assistant", EntityCategory.DIAGNOSTIC,
-            get = { prefs.haBase ?: "" },
+            disabledByDefault = true, get = { prefs.haBase ?: "" },
         ),
         TextSensorEntity(
             "signed_in", "Signed in", "mdi:account-key", EntityCategory.DIAGNOSTIC,
-            get = { if (HaAuth.signedIn) "yes" else "no" },
+            disabledByDefault = true, get = { if (HaAuth.signedIn) "yes" else "no" },
         ),
         ButtonEntity(
             "sign_out", "Sign out", "mdi:logout", EntityCategory.CONFIG,
-            press = {
+            disabledByDefault = true, press = {
                 // The activity shows the sign-in screen through its HaAuth listener.
                 HaAuth.signOut("Home Assistant button") { exec.execute { server?.publishStates() } }
             },

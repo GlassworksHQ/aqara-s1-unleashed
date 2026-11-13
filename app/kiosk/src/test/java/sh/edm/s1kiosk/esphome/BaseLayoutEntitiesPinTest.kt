@@ -76,7 +76,7 @@ class BaseLayoutEntitiesPinTest {
             e.objectId, e.key.toString(), e.javaClass.simpleName, e.name, e.icon, field(e, "deviceClass") ?: "",
             e.category.name, "authOnly=${e.authOnly}", "options=" + (field(e, "options") ?: ""),
             "eventTypes=" + (field(e, "eventTypes") ?: ""),
-        )
+        ) + listOfNotNull("disabledByDefault".takeIf { e.disabledByDefault })
         fields.joinToString("|") + "\n"
     }
 

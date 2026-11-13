@@ -59,8 +59,9 @@ abstract class ApiEntity(
 class BinarySensorEntity(
     objectId: String, name: String, icon: String = "", private val deviceClass: String = "",
     category: EntityCategory = EntityCategory.NONE,
+    disabledByDefault: Boolean = false,
     private val get: () -> Boolean?,
-) : ApiEntity(objectId, name, icon, category) {
+) : ApiEntity(objectId, name, icon, category, disabledByDefault) {
     override val listType = Msg.LIST_ENTITIES_BINARY_SENSOR
     override val stateType = Msg.BINARY_SENSOR_STATE
     override fun info() = base().string(5, deviceClass).bool(7, disabledByDefault).string(8, icon)
@@ -106,10 +107,11 @@ class TextSensorEntity(
 
 class SwitchEntity(
     objectId: String, name: String, icon: String = "", category: EntityCategory = EntityCategory.NONE,
+    disabledByDefault: Boolean = false,
     private val deviceClass: String = "",
     private val get: () -> Boolean,
     private val set: (Boolean) -> Unit,
-) : ApiEntity(objectId, name, icon, category) {
+) : ApiEntity(objectId, name, icon, category, disabledByDefault) {
     override val listType = Msg.LIST_ENTITIES_SWITCH
     override val stateType = Msg.SWITCH_STATE
     override val commandType = Msg.SWITCH_COMMAND
@@ -121,6 +123,7 @@ class SwitchEntity(
 
 class NumberEntity(
     objectId: String, name: String, icon: String = "", category: EntityCategory = EntityCategory.CONFIG,
+    disabledByDefault: Boolean = false,
     private val min: Float, private val max: Float, private val step: Float,
     private val unit: String = "",
     /** `NumberMode`: 0 auto, 1 box, 2 slider. */
@@ -128,7 +131,7 @@ class NumberEntity(
     private val deviceClass: String = "",
     private val get: () -> Float?,
     private val set: (Float) -> Unit,
-) : ApiEntity(objectId, name, icon, category) {
+) : ApiEntity(objectId, name, icon, category, disabledByDefault) {
     override val listType = Msg.LIST_ENTITIES_NUMBER
     override val stateType = Msg.NUMBER_STATE
     override val commandType = Msg.NUMBER_COMMAND
@@ -144,10 +147,11 @@ class NumberEntity(
 
 class SelectEntity(
     objectId: String, name: String, icon: String = "", category: EntityCategory = EntityCategory.CONFIG,
+    disabledByDefault: Boolean = false,
     private val options: List<String>,
     private val get: () -> String?,
     private val set: (String) -> Unit,
-) : ApiEntity(objectId, name, icon, category) {
+) : ApiEntity(objectId, name, icon, category, disabledByDefault) {
     override val listType = Msg.LIST_ENTITIES_SELECT
     override val stateType = Msg.SELECT_STATE
     override val commandType = Msg.SELECT_COMMAND
@@ -166,11 +170,12 @@ class SelectEntity(
 /** [mode]: ESPHome TextMode, 0 = text, 1 = password (HA masks the field). */
 class TextEntity(
     objectId: String, name: String, icon: String = "", category: EntityCategory = EntityCategory.CONFIG,
+    disabledByDefault: Boolean = false,
     private val minLength: Int = 0, private val maxLength: Int = 255, private val pattern: String = "",
     private val mode: Int = 0,
     private val get: () -> String?,
     private val set: (String) -> Unit,
-) : ApiEntity(objectId, name, icon, category) {
+) : ApiEntity(objectId, name, icon, category, disabledByDefault) {
     override val listType = Msg.LIST_ENTITIES_TEXT
     override val stateType = Msg.TEXT_STATE
     override val commandType = Msg.TEXT_COMMAND
@@ -188,9 +193,10 @@ class TextEntity(
 
 class ButtonEntity(
     objectId: String, name: String, icon: String = "", category: EntityCategory = EntityCategory.NONE,
+    disabledByDefault: Boolean = false,
     private val deviceClass: String = "",
     private val press: () -> Unit,
-) : ApiEntity(objectId, name, icon, category) {
+) : ApiEntity(objectId, name, icon, category, disabledByDefault) {
     override val listType = Msg.LIST_ENTITIES_BUTTON
     override val commandType = Msg.BUTTON_COMMAND
     override fun info() = base().string(5, icon).bool(6, disabledByDefault).uint32(7, category.value)
@@ -205,9 +211,10 @@ class ButtonEntity(
  */
 class EventEntity(
     objectId: String, name: String, icon: String = "", category: EntityCategory = EntityCategory.NONE,
+    disabledByDefault: Boolean = false,
     private val deviceClass: String = "",
     val eventTypes: List<String>,
-) : ApiEntity(objectId, name, icon, category) {
+) : ApiEntity(objectId, name, icon, category, disabledByDefault) {
     override val listType = Msg.LIST_ENTITIES_EVENT
     override val stateType = Msg.EVENT_RESPONSE
     override fun info() = base().string(5, icon).bool(6, disabledByDefault).uint32(7, category.value)
@@ -235,10 +242,11 @@ data class UpdateStateData(
  */
 class UpdateEntity(
     objectId: String, name: String, icon: String = "", category: EntityCategory = EntityCategory.CONFIG,
+    disabledByDefault: Boolean = false,
     private val deviceClass: String = "firmware",
     private val get: () -> UpdateStateData,
     private val onCommand: (Int) -> Unit,
-) : ApiEntity(objectId, name, icon, category) {
+) : ApiEntity(objectId, name, icon, category, disabledByDefault) {
     override val listType = Msg.LIST_ENTITIES_UPDATE
     override val stateType = Msg.UPDATE_STATE
     override val commandType = Msg.UPDATE_COMMAND

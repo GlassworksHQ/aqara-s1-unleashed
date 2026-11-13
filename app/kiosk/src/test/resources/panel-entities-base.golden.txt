@@ -1,346 +1,346 @@
 ## SWITCH:1:0
-app_cpu_usage|-323630847|SensorEntity|App CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-app_memory|-1252406334|SensorEntity|App RAM|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
+app_cpu_usage|-323630847|SensorEntity|App CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+app_memory|-1252406334|SensorEntity|App RAM|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 app_update|1516384904|UpdateEntity|App update|mdi:cellphone-arrow-down|firmware|CONFIG|authOnly=false|options=|eventTypes=
-app_uptime|651136557|SensorEntity|App uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-app_version|1945808083|TextSensorEntity|App version|mdi:new-box||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-aqara_cloud|1186447373|TextSensorEntity|Aqara cloud daemon|mdi:cloud-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONFIG|authOnly=false|options=|eventTypes=
-base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+app_uptime|651136557|SensorEntity|App uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+app_version|1945808083|TextSensorEntity|App version|mdi:new-box||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+aqara_cloud|1186447373|TextSensorEntity|Aqara cloud daemon|mdi:cloud-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 base_button_1|914984321|EventEntity|Base button 1|mdi:gesture-tap-button|button|NONE|authOnly=false|options=|eventTypes=single,double,triple,long,release,unknown
 base_energy|-902653099|SensorEntity|Base energy|mdi:counter||NONE|authOnly=false|options=|eventTypes=
-base_firmware|-1684920788|TextSensorEntity|Base firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+base_firmware|-1684920788|TextSensorEntity|Base firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 base_power|-1903019258|SensorEntity|Base power|mdi:flash|power|NONE|authOnly=false|options=|eventTypes=
-base_protection|349729978|TextSensorEntity|Base protection|mdi:shield-alert-outline||NONE|authOnly=false|options=|eventTypes=
+base_protection|349729978|TextSensorEntity|Base protection|mdi:shield-alert-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 base_relay_1|1844124898|SwitchEntity|Base relay 1|mdi:light-switch|switch|NONE|authOnly=false|options=|eventTypes=
-block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=
+block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=|eventTypes=
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=
-dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=
-hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=
-home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=
+dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
+dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 illuminance|-1763685258|SensorEntity|Illuminance||illuminance|NONE|authOnly=false|options=|eventTypes=
-improv_ble|874008966|ButtonEntity|Start Wi-Fi setup (Bluetooth)|mdi:bluetooth-settings||CONFIG|authOnly=false|options=|eventTypes=
+improv_ble|874008966|ButtonEntity|Start Wi-Fi setup (Bluetooth)|mdi:bluetooth-settings||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 ip_address|339278791|TextSensorEntity|IP address|mdi:ip-network||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-last_restart_reason|8212602|TextSensorEntity|Last restart reason|mdi:restart-alert||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-memory_available|-647501798|SensorEntity|RAM available|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=false|options=|eventTypes=
+last_restart_reason|8212602|TextSensorEntity|Last restart reason|mdi:restart-alert||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+memory_available|-647501798|SensorEntity|RAM available|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 mute_microphone|-858890227|SwitchEntity|Mute microphone|mdi:microphone-off||CONFIG|authOnly=false|options=|eventTypes=
-night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=
-night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=
-open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=
+night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 presence|-1932308604|BinarySensorEntity|Presence||occupancy|NONE|authOnly=false|options=|eventTypes=
-presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=
-radio_allowed_clients|-1653949940|TextEntity|Radio allowed clients|mdi:shield-lock-outline||CONFIG|authOnly=false|options=|eventTypes=
-radio_firmware|69207112|TextSensorEntity|Radio firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-radio_firmware_flash|1548623705|ButtonEntity|Flash radio firmware|mdi:flash-alert||CONFIG|authOnly=true|options=|eventTypes=
-radio_firmware_image|2025619466|SelectEntity|Radio firmware image|mdi:chip||CONFIG|authOnly=true|options=Keep current,Aqara stock image,Image from the radio bundle|eventTypes=
-radio_helper|-2025519167|TextSensorEntity|Radio helper|mdi:shield-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-radio_mode|1412608654|SelectEntity|Radio mode|mdi:zigbee||CONFIG|authOnly=false|options=Off,Zigbee coordinator (TCP),Zigbee router (repeater),Thread border router,Thread router (repeater)|eventTypes=
+presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_allowed_clients|-1653949940|TextEntity|Radio allowed clients|mdi:shield-lock-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_firmware|69207112|TextSensorEntity|Radio firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_firmware_flash|1548623705|ButtonEntity|Flash radio firmware|mdi:flash-alert||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+radio_firmware_image|2025619466|SelectEntity|Radio firmware image|mdi:chip||CONFIG|authOnly=true|options=Keep current,Aqara stock image,Image from the radio bundle|eventTypes=|disabledByDefault
+radio_helper|-2025519167|TextSensorEntity|Radio helper|mdi:shield-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_mode|1412608654|SelectEntity|Radio mode|mdi:zigbee||CONFIG|authOnly=false|options=Off,Zigbee coordinator (TCP),Zigbee router (repeater),Thread border router,Thread router (repeater)|eventTypes=|disabledByDefault
 radio_status|-1722532205|TextSensorEntity|Radio status|mdi:radio-tower||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 reload_dashboard|-266218945|ButtonEntity|Reload dashboard|mdi:refresh||NONE|authOnly=false|options=|eventTypes=
 restart_app|-559280840|ButtonEntity|Restart app|mdi:restart|restart|CONFIG|authOnly=false|options=|eventTypes=
 screen|1438993425|BrightnessLightEntity|Screen|mdi:tablet-dashboard||NONE|authOnly=false|options=|eventTypes=
 screen_mode|462157713|SelectEntity|Screen mode|mdi:monitor-eye||CONFIG|authOnly=false|options=presence,always|eventTypes=
-sendspin|733565411|SwitchEntity|Music Assistant player (Sendspin)|mdi:speaker-wireless||CONFIG|authOnly=false|options=|eventTypes=
-sendspin_status|-669526114|TextSensorEntity|Music Assistant player status|mdi:speaker-wireless||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-sign_out|1452185499|ButtonEntity|Sign out|mdi:logout||CONFIG|authOnly=false|options=|eventTypes=
-signed_in|188034881|TextSensorEntity|Signed in|mdi:account-key||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+sendspin|733565411|SwitchEntity|Music Assistant player (Sendspin)|mdi:speaker-wireless||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+sendspin_status|-669526114|TextSensorEntity|Music Assistant player status|mdi:speaker-wireless||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+sign_out|1452185499|ButtonEntity|Sign out|mdi:logout||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+signed_in|188034881|TextSensorEntity|Signed in|mdi:account-key||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 speaker|1749657154|MediaPlayerEntity|Speaker|mdi:speaker||NONE|authOnly=false|options=|eventTypes=
-storage_free|-1624996127|SensorEntity|Storage free|mdi:harddisk|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-thread_dataset|-1406115782|TextEntity|Thread dataset|mdi:key-chain||CONFIG|authOnly=false|options=|eventTypes=
-thread_join|-501524074|TextSensorEntity|Thread join|mdi:transit-connection-variant||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-thread_join_ha|1683967752|ButtonEntity|Join Home Assistant's Thread network|mdi:qrcode-scan||CONFIG|authOnly=true|options=|eventTypes=
-thread_leave|1345396097|ButtonEntity|Leave Thread network|mdi:link-variant-off||CONFIG|authOnly=true|options=|eventTypes=
-time_zone|-1564830261|TextEntity|Time zone|mdi:map-clock||CONFIG|authOnly=true|options=|eventTypes=
-time_zone_status|-1288740378|TextSensorEntity|Time zone status|mdi:clock-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-update_status|971991635|TextSensorEntity|Update status|mdi:update||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+storage_free|-1624996127|SensorEntity|Storage free|mdi:harddisk|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_dataset|-1406115782|TextEntity|Thread dataset|mdi:key-chain||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_join|-501524074|TextSensorEntity|Thread join|mdi:transit-connection-variant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_join_ha|1683967752|ButtonEntity|Join Home Assistant's Thread network|mdi:qrcode-scan||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+thread_leave|1345396097|ButtonEntity|Leave Thread network|mdi:link-variant-off||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+time_zone|-1564830261|TextEntity|Time zone|mdi:map-clock||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+time_zone_status|-1288740378|TextSensorEntity|Time zone status|mdi:clock-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+update_status|971991635|TextSensorEntity|Update status|mdi:update||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 uptime|-54133543|SensorEntity|Uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-voice_overlay|1110557810|SwitchEntity|Voice overlay|mdi:message-badge-outline||CONFIG|authOnly=false|options=|eventTypes=
-wake_sound|-735348603|SwitchEntity|Wake sound|mdi:bell-ring-outline||CONFIG|authOnly=false|options=|eventTypes=
-wake_word_threshold|949390898|NumberEntity|Wake word threshold|mdi:account-voice||CONFIG|authOnly=false|options=|eventTypes=
-web_content_processes|-1448158443|SensorEntity|Web content processes|mdi:tab||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-wifi_link_speed|-1394914523|SensorEntity|Wi-Fi link speed|mdi:speedometer|data_rate|DIAGNOSTIC|authOnly=false|options=|eventTypes=
+voice_overlay|1110557810|SwitchEntity|Voice overlay|mdi:message-badge-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+wake_sound|-735348603|SwitchEntity|Wake sound|mdi:bell-ring-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+wake_word_threshold|949390898|NumberEntity|Wake word threshold|mdi:account-voice||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+web_content_processes|-1448158443|SensorEntity|Web content processes|mdi:tab||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+wifi_link_speed|-1394914523|SensorEntity|Wi-Fi link speed|mdi:speedometer|data_rate|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 wifi_signal|-548641703|SensorEntity|Wi-Fi signal||signal_strength|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-zigbee_router_join|51692678|ButtonEntity|Join Zigbee network|mdi:zigbee||CONFIG|authOnly=false|options=|eventTypes=
-zigbee_router_leave|1055594353|ButtonEntity|Leave Zigbee network|mdi:link-variant-off||CONFIG|authOnly=false|options=|eventTypes=
-zigbee_stack|1396009708|SelectEntity|Zigbee stack|mdi:layers-outline||CONFIG|authOnly=true|options=Aqara 7.3.3 (EZSP 12, ZHA),Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)|eventTypes=
-zoom|-544021966|NumberEntity|Zoom|mdi:magnify-plus-outline||CONFIG|authOnly=false|options=|eventTypes=
+zigbee_router_join|51692678|ButtonEntity|Join Zigbee network|mdi:zigbee||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+zigbee_router_leave|1055594353|ButtonEntity|Leave Zigbee network|mdi:link-variant-off||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+zigbee_stack|1396009708|SelectEntity|Zigbee stack|mdi:layers-outline||CONFIG|authOnly=true|options=Aqara 7.3.3 (EZSP 12, ZHA),Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)|eventTypes=|disabledByDefault
+zoom|-544021966|NumberEntity|Zoom|mdi:magnify-plus-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 ## SWITCH:1,2:0
-app_cpu_usage|-323630847|SensorEntity|App CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-app_memory|-1252406334|SensorEntity|App RAM|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
+app_cpu_usage|-323630847|SensorEntity|App CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+app_memory|-1252406334|SensorEntity|App RAM|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 app_update|1516384904|UpdateEntity|App update|mdi:cellphone-arrow-down|firmware|CONFIG|authOnly=false|options=|eventTypes=
-app_uptime|651136557|SensorEntity|App uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-app_version|1945808083|TextSensorEntity|App version|mdi:new-box||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-aqara_cloud|1186447373|TextSensorEntity|Aqara cloud daemon|mdi:cloud-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONFIG|authOnly=false|options=|eventTypes=
-base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+app_uptime|651136557|SensorEntity|App uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+app_version|1945808083|TextSensorEntity|App version|mdi:new-box||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+aqara_cloud|1186447373|TextSensorEntity|Aqara cloud daemon|mdi:cloud-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 base_button_1|914984321|EventEntity|Base button 1|mdi:gesture-tap-button|button|NONE|authOnly=false|options=|eventTypes=single,double,triple,long,release,unknown
 base_button_2|864651464|EventEntity|Base button 2|mdi:gesture-tap-button|button|NONE|authOnly=false|options=|eventTypes=single,double,triple,long,release,unknown
 base_energy|-902653099|SensorEntity|Base energy|mdi:counter||NONE|authOnly=false|options=|eventTypes=
-base_firmware|-1684920788|TextSensorEntity|Base firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+base_firmware|-1684920788|TextSensorEntity|Base firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 base_power|-1903019258|SensorEntity|Base power|mdi:flash|power|NONE|authOnly=false|options=|eventTypes=
-base_protection|349729978|TextSensorEntity|Base protection|mdi:shield-alert-outline||NONE|authOnly=false|options=|eventTypes=
+base_protection|349729978|TextSensorEntity|Base protection|mdi:shield-alert-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 base_relay_1|1844124898|SwitchEntity|Base relay 1|mdi:light-switch|switch|NONE|authOnly=false|options=|eventTypes=
 base_relay_2|1827347279|SwitchEntity|Base relay 2|mdi:light-switch|switch|NONE|authOnly=false|options=|eventTypes=
-block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=
+block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=|eventTypes=
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=
-dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=
-hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=
-home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=
+dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
+dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 illuminance|-1763685258|SensorEntity|Illuminance||illuminance|NONE|authOnly=false|options=|eventTypes=
-improv_ble|874008966|ButtonEntity|Start Wi-Fi setup (Bluetooth)|mdi:bluetooth-settings||CONFIG|authOnly=false|options=|eventTypes=
+improv_ble|874008966|ButtonEntity|Start Wi-Fi setup (Bluetooth)|mdi:bluetooth-settings||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 ip_address|339278791|TextSensorEntity|IP address|mdi:ip-network||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-last_restart_reason|8212602|TextSensorEntity|Last restart reason|mdi:restart-alert||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-memory_available|-647501798|SensorEntity|RAM available|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=false|options=|eventTypes=
+last_restart_reason|8212602|TextSensorEntity|Last restart reason|mdi:restart-alert||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+memory_available|-647501798|SensorEntity|RAM available|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 mute_microphone|-858890227|SwitchEntity|Mute microphone|mdi:microphone-off||CONFIG|authOnly=false|options=|eventTypes=
-night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=
-night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=
-open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=
+night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 presence|-1932308604|BinarySensorEntity|Presence||occupancy|NONE|authOnly=false|options=|eventTypes=
-presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=
-radio_allowed_clients|-1653949940|TextEntity|Radio allowed clients|mdi:shield-lock-outline||CONFIG|authOnly=false|options=|eventTypes=
-radio_firmware|69207112|TextSensorEntity|Radio firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-radio_firmware_flash|1548623705|ButtonEntity|Flash radio firmware|mdi:flash-alert||CONFIG|authOnly=true|options=|eventTypes=
-radio_firmware_image|2025619466|SelectEntity|Radio firmware image|mdi:chip||CONFIG|authOnly=true|options=Keep current,Aqara stock image,Image from the radio bundle|eventTypes=
-radio_helper|-2025519167|TextSensorEntity|Radio helper|mdi:shield-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-radio_mode|1412608654|SelectEntity|Radio mode|mdi:zigbee||CONFIG|authOnly=false|options=Off,Zigbee coordinator (TCP),Zigbee router (repeater),Thread border router,Thread router (repeater)|eventTypes=
+presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_allowed_clients|-1653949940|TextEntity|Radio allowed clients|mdi:shield-lock-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_firmware|69207112|TextSensorEntity|Radio firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_firmware_flash|1548623705|ButtonEntity|Flash radio firmware|mdi:flash-alert||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+radio_firmware_image|2025619466|SelectEntity|Radio firmware image|mdi:chip||CONFIG|authOnly=true|options=Keep current,Aqara stock image,Image from the radio bundle|eventTypes=|disabledByDefault
+radio_helper|-2025519167|TextSensorEntity|Radio helper|mdi:shield-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_mode|1412608654|SelectEntity|Radio mode|mdi:zigbee||CONFIG|authOnly=false|options=Off,Zigbee coordinator (TCP),Zigbee router (repeater),Thread border router,Thread router (repeater)|eventTypes=|disabledByDefault
 radio_status|-1722532205|TextSensorEntity|Radio status|mdi:radio-tower||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 reload_dashboard|-266218945|ButtonEntity|Reload dashboard|mdi:refresh||NONE|authOnly=false|options=|eventTypes=
 restart_app|-559280840|ButtonEntity|Restart app|mdi:restart|restart|CONFIG|authOnly=false|options=|eventTypes=
 screen|1438993425|BrightnessLightEntity|Screen|mdi:tablet-dashboard||NONE|authOnly=false|options=|eventTypes=
 screen_mode|462157713|SelectEntity|Screen mode|mdi:monitor-eye||CONFIG|authOnly=false|options=presence,always|eventTypes=
-sendspin|733565411|SwitchEntity|Music Assistant player (Sendspin)|mdi:speaker-wireless||CONFIG|authOnly=false|options=|eventTypes=
-sendspin_status|-669526114|TextSensorEntity|Music Assistant player status|mdi:speaker-wireless||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-sign_out|1452185499|ButtonEntity|Sign out|mdi:logout||CONFIG|authOnly=false|options=|eventTypes=
-signed_in|188034881|TextSensorEntity|Signed in|mdi:account-key||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+sendspin|733565411|SwitchEntity|Music Assistant player (Sendspin)|mdi:speaker-wireless||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+sendspin_status|-669526114|TextSensorEntity|Music Assistant player status|mdi:speaker-wireless||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+sign_out|1452185499|ButtonEntity|Sign out|mdi:logout||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+signed_in|188034881|TextSensorEntity|Signed in|mdi:account-key||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 speaker|1749657154|MediaPlayerEntity|Speaker|mdi:speaker||NONE|authOnly=false|options=|eventTypes=
-storage_free|-1624996127|SensorEntity|Storage free|mdi:harddisk|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-thread_dataset|-1406115782|TextEntity|Thread dataset|mdi:key-chain||CONFIG|authOnly=false|options=|eventTypes=
-thread_join|-501524074|TextSensorEntity|Thread join|mdi:transit-connection-variant||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-thread_join_ha|1683967752|ButtonEntity|Join Home Assistant's Thread network|mdi:qrcode-scan||CONFIG|authOnly=true|options=|eventTypes=
-thread_leave|1345396097|ButtonEntity|Leave Thread network|mdi:link-variant-off||CONFIG|authOnly=true|options=|eventTypes=
-time_zone|-1564830261|TextEntity|Time zone|mdi:map-clock||CONFIG|authOnly=true|options=|eventTypes=
-time_zone_status|-1288740378|TextSensorEntity|Time zone status|mdi:clock-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-update_status|971991635|TextSensorEntity|Update status|mdi:update||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+storage_free|-1624996127|SensorEntity|Storage free|mdi:harddisk|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_dataset|-1406115782|TextEntity|Thread dataset|mdi:key-chain||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_join|-501524074|TextSensorEntity|Thread join|mdi:transit-connection-variant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_join_ha|1683967752|ButtonEntity|Join Home Assistant's Thread network|mdi:qrcode-scan||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+thread_leave|1345396097|ButtonEntity|Leave Thread network|mdi:link-variant-off||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+time_zone|-1564830261|TextEntity|Time zone|mdi:map-clock||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+time_zone_status|-1288740378|TextSensorEntity|Time zone status|mdi:clock-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+update_status|971991635|TextSensorEntity|Update status|mdi:update||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 uptime|-54133543|SensorEntity|Uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-voice_overlay|1110557810|SwitchEntity|Voice overlay|mdi:message-badge-outline||CONFIG|authOnly=false|options=|eventTypes=
-wake_sound|-735348603|SwitchEntity|Wake sound|mdi:bell-ring-outline||CONFIG|authOnly=false|options=|eventTypes=
-wake_word_threshold|949390898|NumberEntity|Wake word threshold|mdi:account-voice||CONFIG|authOnly=false|options=|eventTypes=
-web_content_processes|-1448158443|SensorEntity|Web content processes|mdi:tab||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-wifi_link_speed|-1394914523|SensorEntity|Wi-Fi link speed|mdi:speedometer|data_rate|DIAGNOSTIC|authOnly=false|options=|eventTypes=
+voice_overlay|1110557810|SwitchEntity|Voice overlay|mdi:message-badge-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+wake_sound|-735348603|SwitchEntity|Wake sound|mdi:bell-ring-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+wake_word_threshold|949390898|NumberEntity|Wake word threshold|mdi:account-voice||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+web_content_processes|-1448158443|SensorEntity|Web content processes|mdi:tab||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+wifi_link_speed|-1394914523|SensorEntity|Wi-Fi link speed|mdi:speedometer|data_rate|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 wifi_signal|-548641703|SensorEntity|Wi-Fi signal||signal_strength|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-zigbee_router_join|51692678|ButtonEntity|Join Zigbee network|mdi:zigbee||CONFIG|authOnly=false|options=|eventTypes=
-zigbee_router_leave|1055594353|ButtonEntity|Leave Zigbee network|mdi:link-variant-off||CONFIG|authOnly=false|options=|eventTypes=
-zigbee_stack|1396009708|SelectEntity|Zigbee stack|mdi:layers-outline||CONFIG|authOnly=true|options=Aqara 7.3.3 (EZSP 12, ZHA),Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)|eventTypes=
-zoom|-544021966|NumberEntity|Zoom|mdi:magnify-plus-outline||CONFIG|authOnly=false|options=|eventTypes=
+zigbee_router_join|51692678|ButtonEntity|Join Zigbee network|mdi:zigbee||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+zigbee_router_leave|1055594353|ButtonEntity|Leave Zigbee network|mdi:link-variant-off||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+zigbee_stack|1396009708|SelectEntity|Zigbee stack|mdi:layers-outline||CONFIG|authOnly=true|options=Aqara 7.3.3 (EZSP 12, ZHA),Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)|eventTypes=|disabledByDefault
+zoom|-544021966|NumberEntity|Zoom|mdi:magnify-plus-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 ## SWITCH:1,2,3:0
-app_cpu_usage|-323630847|SensorEntity|App CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-app_memory|-1252406334|SensorEntity|App RAM|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
+app_cpu_usage|-323630847|SensorEntity|App CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+app_memory|-1252406334|SensorEntity|App RAM|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 app_update|1516384904|UpdateEntity|App update|mdi:cellphone-arrow-down|firmware|CONFIG|authOnly=false|options=|eventTypes=
-app_uptime|651136557|SensorEntity|App uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-app_version|1945808083|TextSensorEntity|App version|mdi:new-box||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-aqara_cloud|1186447373|TextSensorEntity|Aqara cloud daemon|mdi:cloud-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONFIG|authOnly=false|options=|eventTypes=
-base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+app_uptime|651136557|SensorEntity|App uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+app_version|1945808083|TextSensorEntity|App version|mdi:new-box||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+aqara_cloud|1186447373|TextSensorEntity|Aqara cloud daemon|mdi:cloud-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 base_button_1|914984321|EventEntity|Base button 1|mdi:gesture-tap-button|button|NONE|authOnly=false|options=|eventTypes=single,double,triple,long,release,unknown
 base_button_2|864651464|EventEntity|Base button 2|mdi:gesture-tap-button|button|NONE|authOnly=false|options=|eventTypes=single,double,triple,long,release,unknown
 base_button_3|881429083|EventEntity|Base button 3|mdi:gesture-tap-button|button|NONE|authOnly=false|options=|eventTypes=single,double,triple,long,release,unknown
 base_energy|-902653099|SensorEntity|Base energy|mdi:counter||NONE|authOnly=false|options=|eventTypes=
-base_firmware|-1684920788|TextSensorEntity|Base firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+base_firmware|-1684920788|TextSensorEntity|Base firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 base_power|-1903019258|SensorEntity|Base power|mdi:flash|power|NONE|authOnly=false|options=|eventTypes=
-base_protection|349729978|TextSensorEntity|Base protection|mdi:shield-alert-outline||NONE|authOnly=false|options=|eventTypes=
+base_protection|349729978|TextSensorEntity|Base protection|mdi:shield-alert-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 base_relay_1|1844124898|SwitchEntity|Base relay 1|mdi:light-switch|switch|NONE|authOnly=false|options=|eventTypes=
 base_relay_2|1827347279|SwitchEntity|Base relay 2|mdi:light-switch|switch|NONE|authOnly=false|options=|eventTypes=
 base_relay_3|1810569660|SwitchEntity|Base relay 3|mdi:light-switch|switch|NONE|authOnly=false|options=|eventTypes=
-block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=
+block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=|eventTypes=
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=
-dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=
-hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=
-home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=
+dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
+dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 illuminance|-1763685258|SensorEntity|Illuminance||illuminance|NONE|authOnly=false|options=|eventTypes=
-improv_ble|874008966|ButtonEntity|Start Wi-Fi setup (Bluetooth)|mdi:bluetooth-settings||CONFIG|authOnly=false|options=|eventTypes=
+improv_ble|874008966|ButtonEntity|Start Wi-Fi setup (Bluetooth)|mdi:bluetooth-settings||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 ip_address|339278791|TextSensorEntity|IP address|mdi:ip-network||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-last_restart_reason|8212602|TextSensorEntity|Last restart reason|mdi:restart-alert||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-memory_available|-647501798|SensorEntity|RAM available|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=false|options=|eventTypes=
+last_restart_reason|8212602|TextSensorEntity|Last restart reason|mdi:restart-alert||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+memory_available|-647501798|SensorEntity|RAM available|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 mute_microphone|-858890227|SwitchEntity|Mute microphone|mdi:microphone-off||CONFIG|authOnly=false|options=|eventTypes=
-night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=
-night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=
-open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=
+night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 presence|-1932308604|BinarySensorEntity|Presence||occupancy|NONE|authOnly=false|options=|eventTypes=
-presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=
-radio_allowed_clients|-1653949940|TextEntity|Radio allowed clients|mdi:shield-lock-outline||CONFIG|authOnly=false|options=|eventTypes=
-radio_firmware|69207112|TextSensorEntity|Radio firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-radio_firmware_flash|1548623705|ButtonEntity|Flash radio firmware|mdi:flash-alert||CONFIG|authOnly=true|options=|eventTypes=
-radio_firmware_image|2025619466|SelectEntity|Radio firmware image|mdi:chip||CONFIG|authOnly=true|options=Keep current,Aqara stock image,Image from the radio bundle|eventTypes=
-radio_helper|-2025519167|TextSensorEntity|Radio helper|mdi:shield-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-radio_mode|1412608654|SelectEntity|Radio mode|mdi:zigbee||CONFIG|authOnly=false|options=Off,Zigbee coordinator (TCP),Zigbee router (repeater),Thread border router,Thread router (repeater)|eventTypes=
+presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_allowed_clients|-1653949940|TextEntity|Radio allowed clients|mdi:shield-lock-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_firmware|69207112|TextSensorEntity|Radio firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_firmware_flash|1548623705|ButtonEntity|Flash radio firmware|mdi:flash-alert||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+radio_firmware_image|2025619466|SelectEntity|Radio firmware image|mdi:chip||CONFIG|authOnly=true|options=Keep current,Aqara stock image,Image from the radio bundle|eventTypes=|disabledByDefault
+radio_helper|-2025519167|TextSensorEntity|Radio helper|mdi:shield-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_mode|1412608654|SelectEntity|Radio mode|mdi:zigbee||CONFIG|authOnly=false|options=Off,Zigbee coordinator (TCP),Zigbee router (repeater),Thread border router,Thread router (repeater)|eventTypes=|disabledByDefault
 radio_status|-1722532205|TextSensorEntity|Radio status|mdi:radio-tower||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 reload_dashboard|-266218945|ButtonEntity|Reload dashboard|mdi:refresh||NONE|authOnly=false|options=|eventTypes=
 restart_app|-559280840|ButtonEntity|Restart app|mdi:restart|restart|CONFIG|authOnly=false|options=|eventTypes=
 screen|1438993425|BrightnessLightEntity|Screen|mdi:tablet-dashboard||NONE|authOnly=false|options=|eventTypes=
 screen_mode|462157713|SelectEntity|Screen mode|mdi:monitor-eye||CONFIG|authOnly=false|options=presence,always|eventTypes=
-sendspin|733565411|SwitchEntity|Music Assistant player (Sendspin)|mdi:speaker-wireless||CONFIG|authOnly=false|options=|eventTypes=
-sendspin_status|-669526114|TextSensorEntity|Music Assistant player status|mdi:speaker-wireless||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-sign_out|1452185499|ButtonEntity|Sign out|mdi:logout||CONFIG|authOnly=false|options=|eventTypes=
-signed_in|188034881|TextSensorEntity|Signed in|mdi:account-key||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+sendspin|733565411|SwitchEntity|Music Assistant player (Sendspin)|mdi:speaker-wireless||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+sendspin_status|-669526114|TextSensorEntity|Music Assistant player status|mdi:speaker-wireless||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+sign_out|1452185499|ButtonEntity|Sign out|mdi:logout||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+signed_in|188034881|TextSensorEntity|Signed in|mdi:account-key||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 speaker|1749657154|MediaPlayerEntity|Speaker|mdi:speaker||NONE|authOnly=false|options=|eventTypes=
-storage_free|-1624996127|SensorEntity|Storage free|mdi:harddisk|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-thread_dataset|-1406115782|TextEntity|Thread dataset|mdi:key-chain||CONFIG|authOnly=false|options=|eventTypes=
-thread_join|-501524074|TextSensorEntity|Thread join|mdi:transit-connection-variant||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-thread_join_ha|1683967752|ButtonEntity|Join Home Assistant's Thread network|mdi:qrcode-scan||CONFIG|authOnly=true|options=|eventTypes=
-thread_leave|1345396097|ButtonEntity|Leave Thread network|mdi:link-variant-off||CONFIG|authOnly=true|options=|eventTypes=
-time_zone|-1564830261|TextEntity|Time zone|mdi:map-clock||CONFIG|authOnly=true|options=|eventTypes=
-time_zone_status|-1288740378|TextSensorEntity|Time zone status|mdi:clock-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-update_status|971991635|TextSensorEntity|Update status|mdi:update||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+storage_free|-1624996127|SensorEntity|Storage free|mdi:harddisk|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_dataset|-1406115782|TextEntity|Thread dataset|mdi:key-chain||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_join|-501524074|TextSensorEntity|Thread join|mdi:transit-connection-variant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_join_ha|1683967752|ButtonEntity|Join Home Assistant's Thread network|mdi:qrcode-scan||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+thread_leave|1345396097|ButtonEntity|Leave Thread network|mdi:link-variant-off||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+time_zone|-1564830261|TextEntity|Time zone|mdi:map-clock||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+time_zone_status|-1288740378|TextSensorEntity|Time zone status|mdi:clock-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+update_status|971991635|TextSensorEntity|Update status|mdi:update||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 uptime|-54133543|SensorEntity|Uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-voice_overlay|1110557810|SwitchEntity|Voice overlay|mdi:message-badge-outline||CONFIG|authOnly=false|options=|eventTypes=
-wake_sound|-735348603|SwitchEntity|Wake sound|mdi:bell-ring-outline||CONFIG|authOnly=false|options=|eventTypes=
-wake_word_threshold|949390898|NumberEntity|Wake word threshold|mdi:account-voice||CONFIG|authOnly=false|options=|eventTypes=
-web_content_processes|-1448158443|SensorEntity|Web content processes|mdi:tab||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-wifi_link_speed|-1394914523|SensorEntity|Wi-Fi link speed|mdi:speedometer|data_rate|DIAGNOSTIC|authOnly=false|options=|eventTypes=
+voice_overlay|1110557810|SwitchEntity|Voice overlay|mdi:message-badge-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+wake_sound|-735348603|SwitchEntity|Wake sound|mdi:bell-ring-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+wake_word_threshold|949390898|NumberEntity|Wake word threshold|mdi:account-voice||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+web_content_processes|-1448158443|SensorEntity|Web content processes|mdi:tab||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+wifi_link_speed|-1394914523|SensorEntity|Wi-Fi link speed|mdi:speedometer|data_rate|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 wifi_signal|-548641703|SensorEntity|Wi-Fi signal||signal_strength|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-zigbee_router_join|51692678|ButtonEntity|Join Zigbee network|mdi:zigbee||CONFIG|authOnly=false|options=|eventTypes=
-zigbee_router_leave|1055594353|ButtonEntity|Leave Zigbee network|mdi:link-variant-off||CONFIG|authOnly=false|options=|eventTypes=
-zigbee_stack|1396009708|SelectEntity|Zigbee stack|mdi:layers-outline||CONFIG|authOnly=true|options=Aqara 7.3.3 (EZSP 12, ZHA),Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)|eventTypes=
-zoom|-544021966|NumberEntity|Zoom|mdi:magnify-plus-outline||CONFIG|authOnly=false|options=|eventTypes=
+zigbee_router_join|51692678|ButtonEntity|Join Zigbee network|mdi:zigbee||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+zigbee_router_leave|1055594353|ButtonEntity|Leave Zigbee network|mdi:link-variant-off||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+zigbee_stack|1396009708|SelectEntity|Zigbee stack|mdi:layers-outline||CONFIG|authOnly=true|options=Aqara 7.3.3 (EZSP 12, ZHA),Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)|eventTypes=|disabledByDefault
+zoom|-544021966|NumberEntity|Zoom|mdi:magnify-plus-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 ## ETHERNET::0
-app_cpu_usage|-323630847|SensorEntity|App CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-app_memory|-1252406334|SensorEntity|App RAM|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
+app_cpu_usage|-323630847|SensorEntity|App CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+app_memory|-1252406334|SensorEntity|App RAM|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 app_update|1516384904|UpdateEntity|App update|mdi:cellphone-arrow-down|firmware|CONFIG|authOnly=false|options=|eventTypes=
-app_uptime|651136557|SensorEntity|App uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-app_version|1945808083|TextSensorEntity|App version|mdi:new-box||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-aqara_cloud|1186447373|TextSensorEntity|Aqara cloud daemon|mdi:cloud-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONFIG|authOnly=false|options=|eventTypes=
-base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-base_firmware|-1684920788|TextSensorEntity|Base firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=
+app_uptime|651136557|SensorEntity|App uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+app_version|1945808083|TextSensorEntity|App version|mdi:new-box||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+aqara_cloud|1186447373|TextSensorEntity|Aqara cloud daemon|mdi:cloud-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+base_firmware|-1684920788|TextSensorEntity|Base firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=|eventTypes=
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=
-dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=
-hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=
-home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=
+dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
+dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 illuminance|-1763685258|SensorEntity|Illuminance||illuminance|NONE|authOnly=false|options=|eventTypes=
-improv_ble|874008966|ButtonEntity|Start Wi-Fi setup (Bluetooth)|mdi:bluetooth-settings||CONFIG|authOnly=false|options=|eventTypes=
+improv_ble|874008966|ButtonEntity|Start Wi-Fi setup (Bluetooth)|mdi:bluetooth-settings||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 ip_address|339278791|TextSensorEntity|IP address|mdi:ip-network||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-last_restart_reason|8212602|TextSensorEntity|Last restart reason|mdi:restart-alert||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-memory_available|-647501798|SensorEntity|RAM available|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=false|options=|eventTypes=
+last_restart_reason|8212602|TextSensorEntity|Last restart reason|mdi:restart-alert||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+memory_available|-647501798|SensorEntity|RAM available|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 mute_microphone|-858890227|SwitchEntity|Mute microphone|mdi:microphone-off||CONFIG|authOnly=false|options=|eventTypes=
-night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=
-night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=
-open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=
+night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 presence|-1932308604|BinarySensorEntity|Presence||occupancy|NONE|authOnly=false|options=|eventTypes=
-presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=
-radio_allowed_clients|-1653949940|TextEntity|Radio allowed clients|mdi:shield-lock-outline||CONFIG|authOnly=false|options=|eventTypes=
-radio_firmware|69207112|TextSensorEntity|Radio firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-radio_firmware_flash|1548623705|ButtonEntity|Flash radio firmware|mdi:flash-alert||CONFIG|authOnly=true|options=|eventTypes=
-radio_firmware_image|2025619466|SelectEntity|Radio firmware image|mdi:chip||CONFIG|authOnly=true|options=Keep current,Aqara stock image,Image from the radio bundle|eventTypes=
-radio_helper|-2025519167|TextSensorEntity|Radio helper|mdi:shield-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-radio_mode|1412608654|SelectEntity|Radio mode|mdi:zigbee||CONFIG|authOnly=false|options=Off,Zigbee coordinator (TCP),Zigbee router (repeater),Thread border router,Thread router (repeater)|eventTypes=
+presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_allowed_clients|-1653949940|TextEntity|Radio allowed clients|mdi:shield-lock-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_firmware|69207112|TextSensorEntity|Radio firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_firmware_flash|1548623705|ButtonEntity|Flash radio firmware|mdi:flash-alert||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+radio_firmware_image|2025619466|SelectEntity|Radio firmware image|mdi:chip||CONFIG|authOnly=true|options=Keep current,Aqara stock image,Image from the radio bundle|eventTypes=|disabledByDefault
+radio_helper|-2025519167|TextSensorEntity|Radio helper|mdi:shield-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_mode|1412608654|SelectEntity|Radio mode|mdi:zigbee||CONFIG|authOnly=false|options=Off,Zigbee coordinator (TCP),Zigbee router (repeater),Thread border router,Thread router (repeater)|eventTypes=|disabledByDefault
 radio_status|-1722532205|TextSensorEntity|Radio status|mdi:radio-tower||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 reload_dashboard|-266218945|ButtonEntity|Reload dashboard|mdi:refresh||NONE|authOnly=false|options=|eventTypes=
 restart_app|-559280840|ButtonEntity|Restart app|mdi:restart|restart|CONFIG|authOnly=false|options=|eventTypes=
 screen|1438993425|BrightnessLightEntity|Screen|mdi:tablet-dashboard||NONE|authOnly=false|options=|eventTypes=
 screen_mode|462157713|SelectEntity|Screen mode|mdi:monitor-eye||CONFIG|authOnly=false|options=presence,always|eventTypes=
-sendspin|733565411|SwitchEntity|Music Assistant player (Sendspin)|mdi:speaker-wireless||CONFIG|authOnly=false|options=|eventTypes=
-sendspin_status|-669526114|TextSensorEntity|Music Assistant player status|mdi:speaker-wireless||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-sign_out|1452185499|ButtonEntity|Sign out|mdi:logout||CONFIG|authOnly=false|options=|eventTypes=
-signed_in|188034881|TextSensorEntity|Signed in|mdi:account-key||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+sendspin|733565411|SwitchEntity|Music Assistant player (Sendspin)|mdi:speaker-wireless||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+sendspin_status|-669526114|TextSensorEntity|Music Assistant player status|mdi:speaker-wireless||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+sign_out|1452185499|ButtonEntity|Sign out|mdi:logout||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+signed_in|188034881|TextSensorEntity|Signed in|mdi:account-key||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 speaker|1749657154|MediaPlayerEntity|Speaker|mdi:speaker||NONE|authOnly=false|options=|eventTypes=
-storage_free|-1624996127|SensorEntity|Storage free|mdi:harddisk|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-thread_dataset|-1406115782|TextEntity|Thread dataset|mdi:key-chain||CONFIG|authOnly=false|options=|eventTypes=
-thread_join|-501524074|TextSensorEntity|Thread join|mdi:transit-connection-variant||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-thread_join_ha|1683967752|ButtonEntity|Join Home Assistant's Thread network|mdi:qrcode-scan||CONFIG|authOnly=true|options=|eventTypes=
-thread_leave|1345396097|ButtonEntity|Leave Thread network|mdi:link-variant-off||CONFIG|authOnly=true|options=|eventTypes=
-time_zone|-1564830261|TextEntity|Time zone|mdi:map-clock||CONFIG|authOnly=true|options=|eventTypes=
-time_zone_status|-1288740378|TextSensorEntity|Time zone status|mdi:clock-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-update_status|971991635|TextSensorEntity|Update status|mdi:update||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+storage_free|-1624996127|SensorEntity|Storage free|mdi:harddisk|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_dataset|-1406115782|TextEntity|Thread dataset|mdi:key-chain||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_join|-501524074|TextSensorEntity|Thread join|mdi:transit-connection-variant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_join_ha|1683967752|ButtonEntity|Join Home Assistant's Thread network|mdi:qrcode-scan||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+thread_leave|1345396097|ButtonEntity|Leave Thread network|mdi:link-variant-off||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+time_zone|-1564830261|TextEntity|Time zone|mdi:map-clock||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+time_zone_status|-1288740378|TextSensorEntity|Time zone status|mdi:clock-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+update_status|971991635|TextSensorEntity|Update status|mdi:update||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 uptime|-54133543|SensorEntity|Uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-voice_overlay|1110557810|SwitchEntity|Voice overlay|mdi:message-badge-outline||CONFIG|authOnly=false|options=|eventTypes=
-wake_sound|-735348603|SwitchEntity|Wake sound|mdi:bell-ring-outline||CONFIG|authOnly=false|options=|eventTypes=
-wake_word_threshold|949390898|NumberEntity|Wake word threshold|mdi:account-voice||CONFIG|authOnly=false|options=|eventTypes=
-web_content_processes|-1448158443|SensorEntity|Web content processes|mdi:tab||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-wifi_link_speed|-1394914523|SensorEntity|Wi-Fi link speed|mdi:speedometer|data_rate|DIAGNOSTIC|authOnly=false|options=|eventTypes=
+voice_overlay|1110557810|SwitchEntity|Voice overlay|mdi:message-badge-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+wake_sound|-735348603|SwitchEntity|Wake sound|mdi:bell-ring-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+wake_word_threshold|949390898|NumberEntity|Wake word threshold|mdi:account-voice||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+web_content_processes|-1448158443|SensorEntity|Web content processes|mdi:tab||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+wifi_link_speed|-1394914523|SensorEntity|Wi-Fi link speed|mdi:speedometer|data_rate|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 wifi_signal|-548641703|SensorEntity|Wi-Fi signal||signal_strength|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-zigbee_router_join|51692678|ButtonEntity|Join Zigbee network|mdi:zigbee||CONFIG|authOnly=false|options=|eventTypes=
-zigbee_router_leave|1055594353|ButtonEntity|Leave Zigbee network|mdi:link-variant-off||CONFIG|authOnly=false|options=|eventTypes=
-zigbee_stack|1396009708|SelectEntity|Zigbee stack|mdi:layers-outline||CONFIG|authOnly=true|options=Aqara 7.3.3 (EZSP 12, ZHA),Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)|eventTypes=
-zoom|-544021966|NumberEntity|Zoom|mdi:magnify-plus-outline||CONFIG|authOnly=false|options=|eventTypes=
+zigbee_router_join|51692678|ButtonEntity|Join Zigbee network|mdi:zigbee||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+zigbee_router_leave|1055594353|ButtonEntity|Leave Zigbee network|mdi:link-variant-off||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+zigbee_stack|1396009708|SelectEntity|Zigbee stack|mdi:layers-outline||CONFIG|authOnly=true|options=Aqara 7.3.3 (EZSP 12, ZHA),Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)|eventTypes=|disabledByDefault
+zoom|-544021966|NumberEntity|Zoom|mdi:magnify-plus-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 ## UNKNOWN::34
-app_cpu_usage|-323630847|SensorEntity|App CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-app_memory|-1252406334|SensorEntity|App RAM|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
+app_cpu_usage|-323630847|SensorEntity|App CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+app_memory|-1252406334|SensorEntity|App RAM|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 app_update|1516384904|UpdateEntity|App update|mdi:cellphone-arrow-down|firmware|CONFIG|authOnly=false|options=|eventTypes=
-app_uptime|651136557|SensorEntity|App uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-app_version|1945808083|TextSensorEntity|App version|mdi:new-box||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-aqara_cloud|1186447373|TextSensorEntity|Aqara cloud daemon|mdi:cloud-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONFIG|authOnly=false|options=|eventTypes=
-base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-base_firmware|-1684920788|TextSensorEntity|Base firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=
+app_uptime|651136557|SensorEntity|App uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+app_version|1945808083|TextSensorEntity|App version|mdi:new-box||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+aqara_cloud|1186447373|TextSensorEntity|Aqara cloud daemon|mdi:cloud-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+base_firmware|-1684920788|TextSensorEntity|Base firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=|eventTypes=
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=
-dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=
-hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=
-home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=
+dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
+dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 illuminance|-1763685258|SensorEntity|Illuminance||illuminance|NONE|authOnly=false|options=|eventTypes=
-improv_ble|874008966|ButtonEntity|Start Wi-Fi setup (Bluetooth)|mdi:bluetooth-settings||CONFIG|authOnly=false|options=|eventTypes=
+improv_ble|874008966|ButtonEntity|Start Wi-Fi setup (Bluetooth)|mdi:bluetooth-settings||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 ip_address|339278791|TextSensorEntity|IP address|mdi:ip-network||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-last_restart_reason|8212602|TextSensorEntity|Last restart reason|mdi:restart-alert||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-memory_available|-647501798|SensorEntity|RAM available|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=false|options=|eventTypes=
+last_restart_reason|8212602|TextSensorEntity|Last restart reason|mdi:restart-alert||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+memory_available|-647501798|SensorEntity|RAM available|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 mute_microphone|-858890227|SwitchEntity|Mute microphone|mdi:microphone-off||CONFIG|authOnly=false|options=|eventTypes=
-night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=
-night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=
-open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=
+night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 presence|-1932308604|BinarySensorEntity|Presence||occupancy|NONE|authOnly=false|options=|eventTypes=
-presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=
-radio_allowed_clients|-1653949940|TextEntity|Radio allowed clients|mdi:shield-lock-outline||CONFIG|authOnly=false|options=|eventTypes=
-radio_firmware|69207112|TextSensorEntity|Radio firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-radio_firmware_flash|1548623705|ButtonEntity|Flash radio firmware|mdi:flash-alert||CONFIG|authOnly=true|options=|eventTypes=
-radio_firmware_image|2025619466|SelectEntity|Radio firmware image|mdi:chip||CONFIG|authOnly=true|options=Keep current,Aqara stock image,Image from the radio bundle|eventTypes=
-radio_helper|-2025519167|TextSensorEntity|Radio helper|mdi:shield-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-radio_mode|1412608654|SelectEntity|Radio mode|mdi:zigbee||CONFIG|authOnly=false|options=Off,Zigbee coordinator (TCP),Zigbee router (repeater),Thread border router,Thread router (repeater)|eventTypes=
+presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_allowed_clients|-1653949940|TextEntity|Radio allowed clients|mdi:shield-lock-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_firmware|69207112|TextSensorEntity|Radio firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_firmware_flash|1548623705|ButtonEntity|Flash radio firmware|mdi:flash-alert||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+radio_firmware_image|2025619466|SelectEntity|Radio firmware image|mdi:chip||CONFIG|authOnly=true|options=Keep current,Aqara stock image,Image from the radio bundle|eventTypes=|disabledByDefault
+radio_helper|-2025519167|TextSensorEntity|Radio helper|mdi:shield-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+radio_mode|1412608654|SelectEntity|Radio mode|mdi:zigbee||CONFIG|authOnly=false|options=Off,Zigbee coordinator (TCP),Zigbee router (repeater),Thread border router,Thread router (repeater)|eventTypes=|disabledByDefault
 radio_status|-1722532205|TextSensorEntity|Radio status|mdi:radio-tower||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 reload_dashboard|-266218945|ButtonEntity|Reload dashboard|mdi:refresh||NONE|authOnly=false|options=|eventTypes=
 restart_app|-559280840|ButtonEntity|Restart app|mdi:restart|restart|CONFIG|authOnly=false|options=|eventTypes=
 screen|1438993425|BrightnessLightEntity|Screen|mdi:tablet-dashboard||NONE|authOnly=false|options=|eventTypes=
 screen_mode|462157713|SelectEntity|Screen mode|mdi:monitor-eye||CONFIG|authOnly=false|options=presence,always|eventTypes=
-sendspin|733565411|SwitchEntity|Music Assistant player (Sendspin)|mdi:speaker-wireless||CONFIG|authOnly=false|options=|eventTypes=
-sendspin_status|-669526114|TextSensorEntity|Music Assistant player status|mdi:speaker-wireless||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-sign_out|1452185499|ButtonEntity|Sign out|mdi:logout||CONFIG|authOnly=false|options=|eventTypes=
-signed_in|188034881|TextSensorEntity|Signed in|mdi:account-key||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+sendspin|733565411|SwitchEntity|Music Assistant player (Sendspin)|mdi:speaker-wireless||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+sendspin_status|-669526114|TextSensorEntity|Music Assistant player status|mdi:speaker-wireless||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+sign_out|1452185499|ButtonEntity|Sign out|mdi:logout||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+signed_in|188034881|TextSensorEntity|Signed in|mdi:account-key||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 speaker|1749657154|MediaPlayerEntity|Speaker|mdi:speaker||NONE|authOnly=false|options=|eventTypes=
-storage_free|-1624996127|SensorEntity|Storage free|mdi:harddisk|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-thread_dataset|-1406115782|TextEntity|Thread dataset|mdi:key-chain||CONFIG|authOnly=false|options=|eventTypes=
-thread_join|-501524074|TextSensorEntity|Thread join|mdi:transit-connection-variant||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-thread_join_ha|1683967752|ButtonEntity|Join Home Assistant's Thread network|mdi:qrcode-scan||CONFIG|authOnly=true|options=|eventTypes=
-thread_leave|1345396097|ButtonEntity|Leave Thread network|mdi:link-variant-off||CONFIG|authOnly=true|options=|eventTypes=
-time_zone|-1564830261|TextEntity|Time zone|mdi:map-clock||CONFIG|authOnly=true|options=|eventTypes=
-time_zone_status|-1288740378|TextSensorEntity|Time zone status|mdi:clock-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-update_status|971991635|TextSensorEntity|Update status|mdi:update||DIAGNOSTIC|authOnly=false|options=|eventTypes=
+storage_free|-1624996127|SensorEntity|Storage free|mdi:harddisk|data_size|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_dataset|-1406115782|TextEntity|Thread dataset|mdi:key-chain||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_join|-501524074|TextSensorEntity|Thread join|mdi:transit-connection-variant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+thread_join_ha|1683967752|ButtonEntity|Join Home Assistant's Thread network|mdi:qrcode-scan||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+thread_leave|1345396097|ButtonEntity|Leave Thread network|mdi:link-variant-off||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+time_zone|-1564830261|TextEntity|Time zone|mdi:map-clock||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+time_zone_status|-1288740378|TextSensorEntity|Time zone status|mdi:clock-check-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+update_status|971991635|TextSensorEntity|Update status|mdi:update||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 uptime|-54133543|SensorEntity|Uptime||timestamp|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-voice_overlay|1110557810|SwitchEntity|Voice overlay|mdi:message-badge-outline||CONFIG|authOnly=false|options=|eventTypes=
-wake_sound|-735348603|SwitchEntity|Wake sound|mdi:bell-ring-outline||CONFIG|authOnly=false|options=|eventTypes=
-wake_word_threshold|949390898|NumberEntity|Wake word threshold|mdi:account-voice||CONFIG|authOnly=false|options=|eventTypes=
-web_content_processes|-1448158443|SensorEntity|Web content processes|mdi:tab||DIAGNOSTIC|authOnly=false|options=|eventTypes=
-wifi_link_speed|-1394914523|SensorEntity|Wi-Fi link speed|mdi:speedometer|data_rate|DIAGNOSTIC|authOnly=false|options=|eventTypes=
+voice_overlay|1110557810|SwitchEntity|Voice overlay|mdi:message-badge-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+wake_sound|-735348603|SwitchEntity|Wake sound|mdi:bell-ring-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+wake_word_threshold|949390898|NumberEntity|Wake word threshold|mdi:account-voice||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+web_content_processes|-1448158443|SensorEntity|Web content processes|mdi:tab||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+wifi_link_speed|-1394914523|SensorEntity|Wi-Fi link speed|mdi:speedometer|data_rate|DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 wifi_signal|-548641703|SensorEntity|Wi-Fi signal||signal_strength|DIAGNOSTIC|authOnly=false|options=|eventTypes=
-zigbee_router_join|51692678|ButtonEntity|Join Zigbee network|mdi:zigbee||CONFIG|authOnly=false|options=|eventTypes=
-zigbee_router_leave|1055594353|ButtonEntity|Leave Zigbee network|mdi:link-variant-off||CONFIG|authOnly=false|options=|eventTypes=
-zigbee_stack|1396009708|SelectEntity|Zigbee stack|mdi:layers-outline||CONFIG|authOnly=true|options=Aqara 7.3.3 (EZSP 12, ZHA),Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)|eventTypes=
-zoom|-544021966|NumberEntity|Zoom|mdi:magnify-plus-outline||CONFIG|authOnly=false|options=|eventTypes=
+zigbee_router_join|51692678|ButtonEntity|Join Zigbee network|mdi:zigbee||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+zigbee_router_leave|1055594353|ButtonEntity|Leave Zigbee network|mdi:link-variant-off||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+zigbee_stack|1396009708|SelectEntity|Zigbee stack|mdi:layers-outline||CONFIG|authOnly=true|options=Aqara 7.3.3 (EZSP 12, ZHA),Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)|eventTypes=|disabledByDefault
+zoom|-544021966|NumberEntity|Zoom|mdi:magnify-plus-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault

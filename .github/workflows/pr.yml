@@ -7,7 +7,10 @@
 #            changes, also the ESPHome keepalive test against the real aioesphomeapi client
 #   libs-api23  the libraries' lint (NewApi) and their androidTest checks on an API 23 emulator:
 #            esphome-api, esphome-api-android and improv run on Android 6 (#151)
-#   web      the npm workspaces from the repo root (job id kept, as branch protection names it):
+#   wake-word  MicroWakeWordClipTest: the four real microWakeWord models (LiteRT in a hash-locked
+#            Python venv) behind the Kotlin pipeline, over a synthesised clip (#184). Only when app/
+#            or this file changes
+#   web     the npm workspaces from the repo root (job id kept, as branch protection names it):
 #            Kiln, its packages, the frame recipes and packages/*: typecheck, tests, both builds
 #   scripts  tools/install.sh's off-device tests, the perf test's rubric, report and grade
 #            (tools/perf), and the docs' relative links
@@ -152,6 +155,88 @@ jobs:
           disable-animations: true
           working-directory: app
           script: ./gradlew --no-daemon :esphome-api-android:connectedDebugAndroidTest :improv:connectedDebugAndroidTest
+
+  # MicroWakeWordClipTest (#181, #184): each official microWakeWord model, run by LiteRT over a pipe to
+  # Python, must fire in its own word only and score within 0.01 of pymicro-wakeword. It skips without
+  # MWW_PYTHON, so this job fails if it skipped. The models come from raw.githubusercontent.com at
+  # the commit WakeWords.kt pins, checked against its SHA-256s, and are cached by that commit.
+  wake-word:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Changed?
+        id: changed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        # Fails closed: without a base commit to compare with, or when git fails, the test runs.
+        run: |
+          if [ -n "$BASE" ] && git fetch -q --depth=1 origin "$BASE" 2>/dev/null \
+             && changed=$(git diff --name-only "$BASE" HEAD -- app .github/workflows/pr.yml) && [ -z "$changed" ]; then
+            echo "Nothing under app/ changed; skipping the wake word test."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Same toolchain as the app job.
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        if: steps.changed.outputs.run == 'true'
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        if: steps.changed.outputs.run == 'true'
+        with:
+          packages: platform-tools
+
+      - name: Android SDK platform
+        if: steps.changed.outputs.run == 'true'
+        run: sdkmanager --install "platforms;android-37.2"
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: steps.changed.outputs.run == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: LiteRT venv (hashed wheels)
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          python -m venv "$RUNNER_TEMP/mww-venv"
+          "$RUNNER_TEMP/mww-venv/bin/pip" install --quiet --require-hashes --only-binary :all: \
+            -r app/kiosk/mww-test-requirements.txt
+
+      - name: Models commit
+        id: models
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          commit=$(sed -n 's/.*const val MODELS_COMMIT = "\([0-9a-f]\{40\}\)".*/\1/p' \
+            app/kiosk/src/main/java/sh/edm/s1kiosk/voice/WakeWords.kt)
+          [ -n "$commit" ] || { echo "::error::no MODELS_COMMIT in WakeWords.kt"; exit 1; }
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      # The test checks every file's SHA-256 (ModelFetcher) and fetches again on a mismatch.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: steps.changed.outputs.run == 'true'
+        with:
+          path: ~/.cache/s1kiosk/microwakeword-${{ steps.models.outputs.commit }}
+          key: microwakeword-${{ steps.models.outputs.commit }}
+
+      - name: MicroWakeWordClipTest (real models)
+        if: steps.changed.outputs.run == 'true'
+        working-directory: app
+        run: |
+          report=kiosk/build/test-results/testDebugUnitTest/TEST-sh.edm.s1kiosk.voice.MicroWakeWordClipTest.xml
+          # --rerun: Gradle doesn't see MWW_PYTHON, so a cached result must not stand in for a run.
+          MWW_PYTHON="$RUNNER_TEMP/mww-venv/bin/python" ./gradlew --no-daemon \
+            :kiosk:testDebugUnitTest --tests sh.edm.s1kiosk.voice.MicroWakeWordClipTest --rerun \
+            || { cat "$report"; exit 1; }
+          grep -q '<testsuite [^>]* skipped="0"' "$report" || { echo "::error::$report: the test skipped"; exit 1; }
 
   web:
     runs-on: ubuntu-24.04
