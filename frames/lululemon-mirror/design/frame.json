@@ -232,6 +232,7 @@
   "boot": {
     "androidApi": 23
   },
+  "abis": ["arm64-v8a", "armeabi-v7a"],
   "specs": [
     {
       "label": "Size",

@@ -175,21 +175,34 @@ class AssistPaneTest {
         p.onEvent(PanelEvent.SettingChanged("mic_muted"))
         prefs.micGain = 2.5f
         p.onEvent(PanelEvent.SettingChanged("mic_gain"))
-        prefs.wakeThreshold = 0.7f
-        p.onEvent(PanelEvent.SettingChanged("wake_threshold"))
-        prefs.wakeModel = "hey_jarvis.tflite"
-        p.onEvent(PanelEvent.SettingChanged("wake_model"))
+        prefs.wakeCutoff = 0.8f
+        p.onEvent(PanelEvent.SettingChanged("wake_cutoff"))
+        assertEquals(0.8f, input.threshold)
+        prefs.wakeWord = "alexa"
+        p.onEvent(PanelEvent.SettingChanged("wake_word"))
         assertEquals(listOf(true), input.muted)
         assertEquals(listOf(2.5f), input.gains)
-        assertEquals(0.7f, input.threshold)
-        assertEquals(listOf(listOf("hey_jarvis")), input.active)
+        assertEquals(listOf(listOf("alexa")), input.active)
+        assertEquals("a new word starts at its own cutoff", 0.9f, input.threshold)
     }
 
     @Test
-    fun clearingTheWakeModelDeactivatesEveryWakeWord() {
+    fun aLegacyWordUsesOpenWakeWordsThreshold() {
         val p = started()
-        prefs.wakeModel = ""
-        p.onEvent(PanelEvent.SettingChanged("wake_model"))
+        prefs.wakeThreshold = 0.6f
+        prefs.wakeWord = "hey_jarvis_v0.1"
+        p.onEvent(PanelEvent.SettingChanged("wake_word"))
+        assertEquals(0.6f, input.threshold)
+        prefs.wakeThreshold = 0.7f
+        p.onEvent(PanelEvent.SettingChanged("wake_threshold"))
+        assertEquals(0.7f, input.threshold)
+    }
+
+    @Test
+    fun clearingTheWakeWordDeactivatesEveryWakeWord() {
+        val p = started()
+        prefs.wakeWord = ""
+        p.onEvent(PanelEvent.SettingChanged("wake_word"))
         assertEquals(listOf(emptyList<String>()), input.active)
     }
 
@@ -207,23 +220,71 @@ class AssistPaneTest {
     @Test
     fun startBuildsTheEngineFromTheStoredSettingsAndStartsItMutedOrNot() {
         prefs.micGain = 1.5f
-        prefs.wakeThreshold = 0.6f
-        prefs.wakeModel = "alexa.tflite"
+        prefs.wakeWord = "alexa"
+        prefs.wakeCutoff = 0.85f
         prefs.micMuted = true
         started()
-        val (cfg, model, _) = created!!
+        val (cfg, word, _) = created!!
         assertEquals(1.5f, cfg.micGain)
-        assertEquals(0.6f, cfg.threshold)
-        assertEquals("alexa.tflite", model)
+        assertEquals(0.85f, cfg.threshold)
+        assertEquals("alexa", word)
         assertEquals(listOf(true), input.starts)
         assertNotNull(input.controller)
     }
 
     @Test
-    fun thePickedWakeModelIsStored() {
+    fun thePickedWakeWordIsStored() {
         started()
-        created!!.third("hey_jarvis.tflite")
-        assertEquals("hey_jarvis.tflite", prefs.wakeModel)
+        created!!.third("okay_nabu")
+        assertEquals("okay_nabu", prefs.wakeWord)
+    }
+
+    // ---- update from openWakeWord (0.4)
+
+    private fun savedBy04(model: String?, threshold: Float?) {
+        val sp = app.getSharedPreferences("kiosk", 0).edit()
+        if (model != null) sp.putString("wake_model", model)
+        if (threshold != null) sp.putFloat("wake_threshold", threshold)
+        sp.apply()
+    }
+
+    @Test
+    fun theWordSavedBy04MovesToItsMicroWakeWordModelAtItsOwnCutoff() {
+        for ((saved, id, cutoff) in listOf(
+            Triple("hey_jarvis_v0.1.tflite", "hey_jarvis", 0.97f),
+            Triple("alexa_v0.1.tflite", "alexa", 0.9f),
+            Triple("hey_mycroft_v0.1.tflite", "hey_mycroft", 0.95f),
+        )) {
+            app.getSharedPreferences("kiosk", 0).edit().clear().commit()
+            savedBy04(saved, 0.6f)
+            created = null
+            started()
+            assertEquals(saved, id, created!!.second)
+            assertEquals("the 0.4 threshold was on openWakeWord's scale", cutoff, created!!.first.threshold)
+            assertEquals(saved, saved, app.getSharedPreferences("kiosk", 0).getString("wake_model", null))
+        }
+    }
+
+    @Test
+    fun aNewPanelListensForHeyJarvis() {
+        started()
+        assertEquals("hey_jarvis", created!!.second)
+        assertEquals(0.97f, created!!.first.threshold)
+    }
+
+    @Test
+    fun aCustomOpenWakeWordModelSavedBy04StaysOnOpenWakeWord() {
+        savedBy04("my_word_v2.tflite", 0.6f)
+        started()
+        assertEquals("my_word_v2", created!!.second)
+        assertEquals(0.6f, created!!.first.threshold)
+    }
+
+    @Test
+    fun noWakeWordSavedBy04StaysOff() {
+        savedBy04("", null)
+        started()
+        assertEquals("", created!!.second)
     }
 
     @Test
@@ -266,7 +327,8 @@ class AssistPaneTest {
         e.getValue("mic_gain").command(ProtoMessage(ProtoWriter().float(2, 3f).toByteArray()))
         assertEquals(3f, prefs.micGain)
         e.getValue("wake_word_threshold").command(ProtoMessage(ProtoWriter().float(2, 0.8f).toByteArray()))
-        assertEquals(0.8f, prefs.wakeThreshold)
+        assertEquals(0.8f, prefs.threshold)
+        assertEquals("a microWakeWord word's cutoff, not openWakeWord's threshold", 0.5f, prefs.wakeThreshold)
     }
 
     @Test

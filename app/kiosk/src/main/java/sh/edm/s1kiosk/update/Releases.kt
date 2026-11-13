@@ -33,8 +33,8 @@ data class UpdateOffer(
 )
 
 /**
- * The ABIs this app is built for (`s1Abi` in app/kiosk/build.gradle.kts), each with its release
- * APK's name stem. Every ABI's APK has the same version and versionCode (docs/releasing.md "ABIs").
+ * The ABIs this app is built for, each with its release APK's name stem: every ABI a frame runs
+ * (`abis` in frames/<id>/design/frame.json; ApkAbiListsTest checks the two agree). Every ABI's APK has the same version and versionCode (docs/releasing.md "ABIs").
  */
 enum class ApkAbi(val id: String, private val stem: String) {
     /** The S1's ABI. Its name has been `s1-kiosk-<version>.apk` since the first release, and panels up to 0.4.3 look only for that name. */

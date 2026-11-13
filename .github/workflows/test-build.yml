@@ -47,12 +47,15 @@ jobs:
     runs-on: ubuntu-24.04
     environment: release-signing   # the APK key; this environment allows only main and test-build/**
     timeout-minutes: 60
-    env:
-      ABIS: armeabi-v7a arm64-v8a   # the same list as app/kiosk/build.gradle.kts s1Abis and Releases.kt ApkAbi
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
+
+      - name: ABIs, one APK each (every frame's abis, tools/release/frame-abis.sh)
+        run: |
+          abis="$(tools/release/frame-abis.sh)"
+          echo "ABIS=$abis" >> "$GITHUB_ENV"
 
       - name: Version (input, then branch name, then latest release)
         id: version
