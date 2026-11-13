@@ -371,6 +371,61 @@ fastboot flash bootloader $T/undo/bootloader.img"
 check "each one read back the same" bash -c 'for p in boot vbmeta bootloader; do cmp -s "$1/undo/$p.img" "$1/emmc/$p" || exit 1; done' _ "$T"
 check "says all three are back" has "$out" "stock boot, vbmeta and splash are back"
 
+echo "== fel-install.sh --undo: refuses a backup whose splash is ours (#106)"
+# A FAT16 boot-resource like the panel's bootloader partition, with <bmp> as BOOTLOGO.BMP in clusters
+# laid out backwards (so the FAT chain is followed); "other" changes one pixel: a splash not ours.
+boot_resource() { # <bmp> <out.img> [other]
+  python3 - "$@" <<'PY'
+import struct, sys
+bmp = bytearray(open(sys.argv[1], 'rb').read())
+if len(sys.argv) > 3: bmp[1054] ^= 0xff
+bps, spc, reserved, nfats, nroot = 512, 4, 4, 2, 512
+cs = bps * spc; n = -(-len(bmp) // cs); total = n + 1; spf = -(-(total + 2) * 2 // bps)
+root = (reserved + nfats * spf) * bps; data = root + nroot * 32; fat = reserved * bps
+img = bytearray(data + total * cs)
+struct.pack_into('<HBHBH', img, 11, bps, spc, reserved, nfats, nroot); img[21] = 0xf8
+struct.pack_into('<H', img, 22, spf); img[54:62] = b'FAT16   '
+def entry(i, name, first, size):
+    e = root + i * 32; img[e:e + 11] = name; img[e + 11] = 0x20; struct.pack_into('<HI', img, e + 26, first, size)
+entry(0, b'BAT     BMP', 2, 16); struct.pack_into('<H', img, fat + 4, 0xffff)
+cl = [total + 1 - i for i in range(n)]
+for i, c in enumerate(cl):
+    struct.pack_into('<H', img, fat + 2 * c, cl[i + 1] if i + 1 < n else 0xffff)
+    img[data + (c - 2) * cs: data + (c - 2) * cs + len(bmp[i * cs:(i + 1) * cs])] = bmp[i * cs:(i + 1) * cs]
+entry(1, b'BOOTLOGOBMP', cl[0], len(bmp))
+open(sys.argv[2], 'wb').write(img)
+PY
+}
+LOGO="$REPO/branding/glass-tile/bootlogo.bmp"
+boot_resource "$LOGO" "$T/undo/bootloader.img"
+(cd "$T/undo" && shasum -a 256 boot.img vbmeta.img bootloader.img > SHA256SUMS)
+rm -f "$T/emmc/bootloader"
+out=$(fel_undo); rc=$?
+check "our splash: refused" test "$rc" -ne 0
+check "and says why" has "$out" "bootloader.img holds our splash (Glass Tile), not Aqara's: this backup was taken after an install. Nothing was changed."
+check "and the way forward" has "$out" "put back only boot and vbmeta by hand"
+check "before any tool runs" test ! -s "$T/tools.log"
+check "nothing written" test ! -e "$T/emmc/bootloader"
+boot_resource "$LOGO" "$T/undo/bootloader.img" other
+(cd "$T/undo" && shasum -a 256 boot.img vbmeta.img bootloader.img > SHA256SUMS)
+out=$(fel_undo); rc=$?
+check "a splash that isn't ours: exit 0" test "$rc" -eq 0
+check "and it is restored" cmp -s "$T/undo/bootloader.img" "$T/emmc/bootloader"
+# The splash check itself fails (a broken list, a crash): undo stops rather than guess.
+REAL_PY=$(command -v python3)
+w "$T/fbin/python3" <<STUB
+#!/bin/sh
+case " \$* " in *" --ours "*) echo "Traceback: the list is broken" >&2; exit 1 ;; esac
+exec "$REAL_PY" "\$@"
+STUB
+rm -f "$T/emmc/bootloader"
+out=$(fel_undo); rc=$?
+rm -f "$T/fbin/python3"
+check "splash check fails: refused" test "$rc" -ne 0
+check "and says why" has "$out" "could not check the splash in $T/undo/bootloader.img. Nothing was changed."
+check "before any tool runs" test ! -s "$T/tools.log"
+check "nothing written" test ! -e "$T/emmc/bootloader"
+
 echo "== docs/install.md#undo: the by-hand check passes boot and vbmeta, and stops on either"
 CHK=$(awk '/install-tests.sh runs this block/ {f = 1; next} f && /^```sh$/ {g = 1; next} g && /^```$/ {exit} g' "$REPO/docs/install.md")
 check "the doc has the check" test -n "$CHK"

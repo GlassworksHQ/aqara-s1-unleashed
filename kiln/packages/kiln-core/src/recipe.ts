@@ -42,6 +42,12 @@ export interface BackupPlan {
    * original software: undo refuses it, and a patch may give the same boot back.
    */
   isPatched(boot: Uint8Array): Promise<boolean>;
+  /**
+   * Restore parts besides boot that an install rewrites, each with a test for this installer's own
+   * copy (`what` names the part for people, e.g. "splash"). Undo refuses a backup where one is ours:
+   * that part isn't the original, and undo would put ours back as if it were.
+   */
+  ours?: Readonly<Record<string, { what: string; is(data: Uint8Array): Promise<boolean> }>>;
 }
 
 export interface PatchContext<A extends string> {

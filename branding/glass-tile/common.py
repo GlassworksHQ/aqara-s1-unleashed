@@ -21,7 +21,10 @@ flat BG at the stage edges. The splash is the first animation frame pasted
 at (320,160) on a flat BG 1440x720 canvas. That makes the splash -> animation
 handoff pixel-identical, with no visible window edge.
 """
+import datetime
+import hashlib
 import io
+import json
 import math
 import os
 import re
@@ -409,6 +412,23 @@ def write_preview(path, splash_stage, intro, loop, loops=3, hold=36, scale=0.5, 
                    loop=0, quality=quality, method=5)
 
 
+BOOTLOGOS = os.path.join(BRANDING, "bootlogos.json")
+
+
+def list_bootlogo(bmp, name):
+    """Adds bmp's SHA-256 to branding/bootlogos.json, the splashes undo knows as ours. Only appends."""
+    sha = hashlib.sha256(open(bmp, "rb").read()).hexdigest()
+    with open(BOOTLOGOS, encoding="utf-8") as f:
+        doc = json.load(f)
+    if any(b["sha256"] == sha for b in doc["bootlogos"]):
+        return
+    doc["bootlogos"].append({"sha256": sha, "name": name, "since": datetime.date.today().isoformat()})
+    lines = ",\n".join("    " + json.dumps(b) for b in doc["bootlogos"])
+    with open(BOOTLOGOS, "w", encoding="utf-8") as f:
+        f.write('{\n  "about": ' + json.dumps(doc["about"]) + ',\n  "bootlogos": [\n' + lines + "\n  ]\n}\n")
+    print(f"  listed {sha[:12]}… in {os.path.relpath(BOOTLOGOS)} (commit it with the new bootlogo.bmp)")
+
+
 def build(here, meta, render, n_intro, n_loop, preview_loops=3):
     """render(T) -> 800x400 RGB, T = global frame index. Frames [0,n_intro)
     are the intro and [n_intro, n_intro+n_loop) the loop. render must be
@@ -422,6 +442,7 @@ def build(here, meta, render, n_intro, n_loop, preview_loops=3):
     splash = to_screen(intro[0])
     splash.save(os.path.join(here, "splash-landscape.png"), optimize=True)
     write_bmp(landscape_to_bmp_orientation(splash), os.path.join(here, "bootlogo.bmp"))
+    list_bootlogo(os.path.join(here, "bootlogo.bmp"), meta["name"])
     write_bootanimation(os.path.join(here, "bootanimation.zip"), intro, loop)
     write_preview(os.path.join(here, "preview.webp"), intro[0], intro, loop, loops=preview_loops)
     problems = validate(here)

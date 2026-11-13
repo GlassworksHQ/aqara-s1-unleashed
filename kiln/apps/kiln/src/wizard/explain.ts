@@ -1,5 +1,6 @@
 // What a failure means for the person at the panel: what happened, whether anything was written, and
 // the one most likely fix. Matched on the engine's messages, first match wins.
+import { BackupRefused } from '@glassworks/kiln-core';
 import type { Failure } from './state';
 
 interface Rule {
@@ -12,6 +13,10 @@ interface Rule {
 const named = (name: string) => (e: unknown) => e instanceof DOMException && e.name === name;
 
 const RULES: Rule[] = [
+  // undo's checkRestorable, before any write; the reason is in `raw`, under More help. First, because
+  // its words ("install") match the disconnect rule's /stall/.
+  { test: (e) => e instanceof BackupRefused, title: 'This backup can\'t undo the install.',
+    fix: 'Use the backup from your first install, or undo by hand.' },
   { test: named('NotFoundError'), title: 'No panel in recovery mode.',
     fix: 'Unplug it, hold the board button first, then plug in and keep holding for 10 seconds.' },
   { test: (_, m) => /secure boot is enabled/.test(m), title: 'This panel only runs signed software.',

@@ -27,6 +27,29 @@ function chain(dv: DataView, bps: number, reserved: number, first: number): numb
   return out;
 }
 
+/**
+ * BOOTLOGO.BMP's bytes, read through its FAT chain, or undefined when the image holds no readable
+ * one. == the file `set-bootlogo.py --ours` hashes.
+ */
+export function readBootlogo(img: Uint8Array): Uint8Array | undefined {
+  try {
+    const dv = new DataView(img.buffer, img.byteOffset, img.byteLength);
+    const { bps, spc, reserved, data, first, size } = find(img, dv);
+    const csize = bps * spc, out = new Uint8Array(size);
+    let n = 0;
+    for (const c of chain(dv, bps, reserved, first)) {
+      if (n >= size) break;
+      const off = data + (c - 2) * csize, len = Math.min(csize, size - n);
+      if (off + len > img.length) return undefined;
+      out.set(img.subarray(off, off + len), n);
+      n += len;
+    }
+    return n === size ? out : undefined;
+  } catch {
+    return undefined; // not a FAT16 boot-resource with a BOOTLOGO.BMP (or too short to hold one)
+  }
+}
+
 /** == `python3 tools/branding/set-bootlogo.py <bootloader.img> <bmp> <out>`, byte for byte. */
 export function replaceBootlogo(bootloaderImg: Uint8Array, bmp: Uint8Array): Uint8Array {
   const img = bootloaderImg.slice();

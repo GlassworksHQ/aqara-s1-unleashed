@@ -15,3 +15,20 @@ The first animation frame is pixel-identical to the centre of the splash, so the
 seamless. There are no third-party marks; the only font is Inter (OFL).
 Opt out: `BRANDING=none` (splash) and `BOOT_ANIMATION=none` (animation).
 Undo: `fel-install.sh --undo <first-install backup>` restores the stock splash partition and boot.
+
+## Splashes undo knows as ours
+
+Undo must not put our splash back as if it were Aqara's (#106). So both installers refuse a backup
+whose `bootloader.img` holds a splash we shipped. They know ours by the SHA-256 of `BOOTLOGO.BMP`,
+listed in [`branding/bootlogos.json`](../bootlogos.json). The splash's header is the same as stock,
+so the hash is the only mark.
+
+| Who | What |
+|---|---|
+| The branding build (`common.build`, so every `generate.py`) | Appends the hash of each `bootlogo.bmp` it writes, with the concept's name and the date. Commit the list with the new `bootlogo.bmp` |
+| Whoever adds a splash some other way | Adds its hash to the list by hand, in the same PR |
+| Nobody | Removes an entry. Panels in the field still carry old splashes |
+| `frames/aqara-s1-plus/installer/test/splash.test.ts` | Fails if any `bootlogo.bmp` under `branding/` is missing from the list |
+| Readers | Kiln's S1 recipe (`src/splash.ts`, `backup.ours`) and `fel-install.sh --undo` (`tools/branding/set-bootlogo.py --ours`) |
+
+A splash passed with `BRANDING=<your.bmp>` isn't in the list, so undo treats it as not ours.
