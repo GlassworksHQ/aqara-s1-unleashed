@@ -45,7 +45,7 @@ class SettingsMockups {
         val panes = listOf(
             MenuFixture.cardOnly("voice", "Voice", "Assist and timers"),
             MenuFixture.cardOnly("sendspin", "Music", "A Sendspin speaker"), radio,
-        ) + extra
+        ) + MenuFixture.switchOnly(app) + extra
         o.show(MenuFixture.model(app, radio, deviceSettings, status = "screen on · presence near · voice=idle", panes = panes))
         Mockup.idle()
         return o
@@ -90,6 +90,10 @@ class SettingsMockups {
         shot("settings-14-radio-off-asks", menu(radioRunning = true, facts = coordinator), "radio") { it.previewConfirm("radio") }
         shot("settings-15-pane-cant-run", menu(radioRunning = true, extra = listOf(cantRun)), "example")
         shot("settings-17-rail-panes-open", menu(radioRunning = true), "voice") // the whole rail, About above Done
+        // #67: the panes that had no on/off: the switch at the top right, and #163's "no settings yet" page.
+        shot("settings-18-wall-base", menu(radioRunning = true), "wall-base")
+        shot("settings-19-time-zone", menu(radioRunning = true), "time-zone")
+        shot("settings-20-diagnostics", menu(radioRunning = true), "diagnostics")
         shot("settings-16-screen-scrolled", menu(radioRunning = true), "screen") { o ->
             Mockup.layout(o)
             o.previewScrollTo(Mockup.label(o, "Brightness"), alignBottom = true)
