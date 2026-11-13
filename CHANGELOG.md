@@ -388,11 +388,11 @@ below as the release notes.
 - Panels running a development build need a one-time reinstall to switch to release builds (Android
   won't update an app across signing keys). That resets the app's settings.
 
-[Unreleased]: https://github.com/aguilaair/aqara-s1-unleashed/compare/v0.4.3...HEAD
-[0.4.3]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.3
-[0.4.2]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.2
-[0.4.1]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.1
-[0.4.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.0
-[0.3.1]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.1
-[0.3.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.0
-[0.2.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.2.0
+[Unreleased]: https://github.com/GlassworksHQ/aqara-s1-unleashed/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.3
+[0.4.2]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.2
+[0.4.1]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.1
+[0.4.0]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.0
+[0.3.1]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.3.1
+[0.3.0]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.3.0
+[0.2.0]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.2.0
