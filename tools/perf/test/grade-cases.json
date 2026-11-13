@@ -1,6 +1,6 @@
 {
  "_comment": "Shared grade cases (MIT): every scroll level, live-update level, page level and letter boundary from test_grade.py, with the answer. grade.py (test_grade.py) and grade.ts (grade.test.mjs) must both give it. Regenerate only on purpose, with the rubric and the docs.",
- "rubric_version": 5,
+ "rubric_version": 6,
  "bands": [
   {
    "metric": "frame_p95_ms",
@@ -502,13 +502,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -525,19 +527,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -563,13 +568,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 3000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -586,19 +593,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "needs-improvement"
+      "load": "needs-improvement",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -624,13 +634,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 5000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -647,19 +659,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "poor"
+      "load": "poor",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -693,13 +708,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -716,19 +733,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -762,13 +782,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 3000,
      "scroll_level": "good",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -785,19 +807,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
-      "load": "needs-improvement"
+      "load": "needs-improvement",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -831,13 +856,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -854,19 +881,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -900,13 +930,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -923,19 +955,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -969,13 +1004,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "good"
+     "updates_level": "good",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -992,19 +1029,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "good",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1038,13 +1078,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "fluid"
+     "updates_level": "fluid",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1061,19 +1103,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "fluid",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1107,13 +1152,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
-     "updates_level": "fluid"
+     "updates_level": "fluid",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1130,19 +1177,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "fluid",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1176,13 +1226,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "slow"
+     "updates_level": "slow",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1199,19 +1251,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "slow",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1245,13 +1300,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": null
+     "updates_level": null,
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1268,19 +1325,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": null,
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1316,13 +1376,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 300,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1339,19 +1401,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "needs-improvement",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1385,13 +1450,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 600,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1408,19 +1475,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "poor",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1454,13 +1524,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": null,
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1477,19 +1549,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": null,
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1525,13 +1600,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1548,19 +1625,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1586,13 +1666,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1609,19 +1691,22 @@
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1647,13 +1732,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1670,19 +1757,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1716,13 +1806,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "good"
+     "updates_level": "good",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1739,19 +1831,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "good",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1785,13 +1880,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 300,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1808,19 +1905,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "needs-improvement",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1854,13 +1954,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1877,19 +1979,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1923,13 +2028,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -1946,19 +2053,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -1992,13 +2102,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -2015,19 +2127,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -2061,13 +2176,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -2084,19 +2201,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -2137,13 +2257,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -2160,19 +2282,22 @@
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -2206,13 +2331,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -2229,19 +2356,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -2275,13 +2405,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -2298,19 +2430,22 @@
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -2344,13 +2479,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -2367,19 +2504,22 @@
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -2413,13 +2553,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "fluid"
+     "updates_level": "fluid",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -2436,19 +2578,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "fluid",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -2482,13 +2627,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
-     "updates_level": "good"
+     "updates_level": "good",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -2505,19 +2652,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "good",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -2552,13 +2702,15 @@
      "inp_ms": 300,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -2575,19 +2727,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "needs-improvement",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -2621,13 +2776,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -2644,19 +2801,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "poor"
+      "load": "poor",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -2690,13 +2850,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 4999,
@@ -2713,19 +2875,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -2751,13 +2916,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 5000,
@@ -2774,19 +2941,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": true,
@@ -2812,13 +2982,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 5000,
@@ -2835,19 +3007,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": true,
@@ -2873,13 +3048,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 6000,
@@ -2896,19 +3073,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -2942,13 +3122,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 5000,
@@ -2965,19 +3147,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": false,
@@ -3018,13 +3203,15 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 5000,
@@ -3041,19 +3228,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      }
     },
     "capped_by_start": true,
@@ -3079,7 +3269,8 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "camera_level": "good"
     }
    },
    "start_ms": 1000,
@@ -3096,19 +3287,22 @@
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "none"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
-      "load": "good"
+      "load": "good",
+      "camera": "good"
      },
      "heavy": {
       "tap": null,
       "scroll": null,
       "updates": null,
-      "load": null
+      "load": null,
+      "camera": null
      }
     },
     "capped_by_start": false,
@@ -3116,7 +3310,8 @@
      "heavy.tap",
      "heavy.scroll",
      "heavy.updates",
-     "heavy.load"
+     "heavy.load",
+     "heavy.camera"
     ],
     "provisional": true,
     "start": {
@@ -3131,7 +3326,8 @@
        "tap",
        "scroll",
        "updates",
-       "load"
+       "load",
+       "camera"
       ]
      }
     ]
@@ -3154,19 +3350,22 @@
       "tap": null,
       "scroll": null,
       "updates": null,
-      "load": null
+      "load": null,
+      "camera": "none"
      },
      "typical": {
       "tap": null,
       "scroll": null,
       "updates": null,
-      "load": null
+      "load": null,
+      "camera": null
      },
      "heavy": {
       "tap": null,
       "scroll": null,
       "updates": null,
-      "load": null
+      "load": null,
+      "camera": null
      }
     },
     "capped_by_start": false,
@@ -3179,10 +3378,12 @@
      "typical.scroll",
      "typical.updates",
      "typical.load",
+     "typical.camera",
      "heavy.tap",
      "heavy.scroll",
      "heavy.updates",
      "heavy.load",
+     "heavy.camera",
      "start"
     ],
     "provisional": true,
@@ -3203,6 +3404,364 @@
      }
     ]
    }
+  },
+  {
+   "name": "camera: heavy's streams fluid, every other task at 60 fps: heavy fluid, so B",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "fluid"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "B",
+    "levels": {
+     "light": "premium",
+     "typical": "premium",
+     "heavy": "fluid"
+    },
+    "missing": [],
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "good",
+      "tasks": [
+       "camera"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "camera: heavy's streams below fluid: heavy fails, typical decides (C)",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "slow"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "levels": {
+     "light": "premium",
+     "typical": "premium",
+     "heavy": null
+    },
+    "missing": [],
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "fluid",
+      "tasks": [
+       "camera"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "camera: heavy's streams not measured: missing, C",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": null
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "levels": {
+     "light": "premium",
+     "typical": "premium",
+     "heavy": null
+    },
+    "missing": [
+     "heavy.camera"
+    ],
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "fluid",
+      "tasks": [
+       "camera"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "camera: light has no streams, so its camera never counts",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "slow"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "A+",
+    "levels": {
+     "light": "premium",
+     "typical": "premium",
+     "heavy": "premium"
+    },
+    "missing": [],
+    "limits": []
+   }
+  },
+  {
+   "name": "camera: typical and heavy fluid: C",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "fluid"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "fluid"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "levels": {
+     "light": "premium",
+     "typical": "fluid",
+     "heavy": "fluid"
+    },
+    "missing": [],
+    "limits": [
+     {
+      "page": "typical",
+      "needs": "good",
+      "tasks": [
+       "camera"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "camera: good streams are enough for A+ (no premium bar)",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "camera_level": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "A+",
+    "levels": {
+     "light": "premium",
+     "typical": "premium",
+     "heavy": "premium"
+    },
+    "missing": [],
+    "limits": []
+   }
+  }
+ ],
+ "camera_levels": [
+  {
+   "name": "everything within the good bars",
+   "run": {
+    "first_frame_ms": 1200,
+    "shown_pct": 99.0,
+    "max_gap_ms": 120,
+    "stall_total_ms": 0
+   },
+   "level": "good"
+  },
+  {
+   "name": "first frame at exactly 2 s, 95% shown, a 500 ms gap: good",
+   "run": {
+    "first_frame_ms": 2000,
+    "shown_pct": 95.0,
+    "max_gap_ms": 500,
+    "stall_total_ms": 0
+   },
+   "level": "good"
+  },
+  {
+   "name": "first frame after 2 s: fluid",
+   "run": {
+    "first_frame_ms": 2001,
+    "shown_pct": 99.0,
+    "max_gap_ms": 120,
+    "stall_total_ms": 0
+   },
+   "level": "fluid"
+  },
+  {
+   "name": "94.9% shown: fluid",
+   "run": {
+    "first_frame_ms": 1200,
+    "shown_pct": 94.9,
+    "max_gap_ms": 120,
+    "stall_total_ms": 0
+   },
+   "level": "fluid"
+  },
+  {
+   "name": "a 501 ms stall: fluid",
+   "run": {
+    "first_frame_ms": 1200,
+    "shown_pct": 99.0,
+    "max_gap_ms": 501,
+    "stall_total_ms": 501
+   },
+   "level": "fluid"
+  },
+  {
+   "name": "first frame at 4 s, 85% shown, 999 ms of stalls: fluid",
+   "run": {
+    "first_frame_ms": 4000,
+    "shown_pct": 85.0,
+    "max_gap_ms": 999,
+    "stall_total_ms": 999
+   },
+   "level": "fluid"
+  },
+  {
+   "name": "stalls of 1 s in all: slow",
+   "run": {
+    "first_frame_ms": 1200,
+    "shown_pct": 99.0,
+    "max_gap_ms": 600,
+    "stall_total_ms": 1000
+   },
+   "level": "slow"
+  },
+  {
+   "name": "first frame after 4 s: slow",
+   "run": {
+    "first_frame_ms": 4001,
+    "shown_pct": 99.0,
+    "max_gap_ms": 120,
+    "stall_total_ms": 0
+   },
+   "level": "slow"
+  },
+  {
+   "name": "84.9% shown: slow",
+   "run": {
+    "first_frame_ms": 1200,
+    "shown_pct": 84.9,
+    "max_gap_ms": 120,
+    "stall_total_ms": 0
+   },
+   "level": "slow"
+  },
+  {
+   "name": "a stream that showed no frame: slow",
+   "run": {
+    "first_frame_ms": null,
+    "shown_pct": null,
+    "max_gap_ms": 120,
+    "stall_total_ms": 0
+   },
+   "level": "slow"
   }
  ]
 }

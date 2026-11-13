@@ -380,6 +380,11 @@ here, and `semver` (ISC) needs `LICENSES/ISC.txt`.
   from that computer. Its files are served as they are, except its `index.html` template, which is
   filled in with the test's harness script added first (`tools/perf/fakeha.py`). The project neither
   ships nor hosts it.
+- **FFmpeg with libx264** (GPL-2.0-or-later as built with libx264). Clarity's camera streams
+  (`tools/perf/camera.py`) run the ffmpeg already on the computer that runs the test, to encode its
+  built-in test pattern into the test's HLS segments. Those segments are test data, served to the panel
+  under test from that computer. Nothing from ffmpeg or libx264, and none of the segments, ships in
+  the app, the bundle or the repo.
 - **Aqara/Lumi firmware.** None is included. The installer's partition backup stays with the owner. On
   the panel, the radio helper uses Aqara's own `cpcd` and stock radio firmware where they already are.
 

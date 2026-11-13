@@ -22,7 +22,7 @@ import test_report as T  # noqa: E402
 
 SUMMARY_KEYS = {"schema", "test", "protocol_version", "report_schema", "measured_on", "frame", "app_version", "viewport",
                 "runs", "pages", "restart_ms", "gaps", "not_comparable", "report", "complete", "ram", "apk"}
-PAGE_KEYS = {"inp_ms", "open_ms", "scroll", "updates", "runs"}
+PAGE_KEYS = {"inp_ms", "open_ms", "scroll", "updates", "camera", "runs"}
 GRADE_KEYS = ("grade", "meaning", "levels", "bands", "capped_by_start", "missing", "provisional", "start")
 
 
@@ -113,11 +113,14 @@ class Export(unittest.TestCase):
         heavy = s["pages"]["heavy"]
         self.assertEqual(set(heavy), PAGE_KEYS)
         self.assertEqual((heavy["inp_ms"], heavy["open_ms"]), (150, 400))
+        self.assertEqual(heavy["camera"]["runs"][0], {"first_frame_ms": 600.0, "shown_pct": 100.0, "max_gap_ms": 70.0, "stall_total_ms": 0.0})
+        self.assertEqual(heavy["runs"]["camera"], 3)
+        self.assertEqual(s["pages"]["light"]["camera"], {"runs": []})
         self.assertEqual((heavy["scroll"]["fps"], heavy["scroll"]["p95_ms"], heavy["scroll"]["scrolled_px"]), (45.0, 33.33, 2100))
         self.assertEqual(heavy["scroll"]["sf_valid"], [True, True, True])
         self.assertEqual((heavy["scroll"]["swipes_moved"], heavy["scroll"]["swipes_at_edge"]), (9, 0))
         self.assertEqual(len(heavy["scroll"]["runs"]), 3)
-        self.assertEqual(heavy["runs"], {"tap": 3, "scroll": 3, "updates": 3, "open": 3})
+        self.assertEqual(heavy["runs"], {"tap": 3, "scroll": 3, "updates": 3, "open": 3, "camera": 3})
 
     def test_ram_and_apk_are_carried_and_dont_change_the_grade(self):
         """#68: the summary may carry RAM (reference dashboards) and APK sizes; neither is graded."""

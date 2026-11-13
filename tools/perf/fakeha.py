@@ -28,6 +28,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import camera  # noqa: E402
 import dashboards as D  # noqa: E402
 import hafrontend  # noqa: E402
 
@@ -104,6 +105,17 @@ class Hub:
         # stream stops (/clarity/still): a page asks for one other than the last it ran, so a request
         # left behind by a page that died (a force-stopped frontend's long poll) can't use it up.
         self.cmd, self.cmd_cv = None, threading.Condition()
+
+    def new_stream(self, cam):
+        """A new HLS stream for a camera: its token, and when its segment 0 began (monotonic)."""
+        with self.lock:
+            self.stream_n = getattr(self, "stream_n", 0) + 1
+            token = f"clarity{self.stream_n:06d}"
+            self.cam_streams = getattr(self, "cam_streams", {})
+            self.cam_streams[token] = {"camera": cam, "profile": D.CAMERA_PROFILES[cam],
+                                       "t0": time.monotonic() - D.TIERS["CAMERA"]["preRollS"]}
+        self.record({"t": time.time(), "camera_stream": cam, "token": token})
+        return token
 
     def reset(self):
         """Put the home back as it starts (dashboards.states): every entity the stream or a tap
@@ -299,6 +311,17 @@ def _history_stream(c, m):
                       "start_time": m.get("start_time"), "end_time": m.get("end_time")})
 
 
+def _camera_stream(c, m):
+    """camera/stream: a fresh HLS stream for the camera (homeassistant/components/camera, the stream
+    integration's URL shape). Each request is its own stream, started as if it had been running
+    preRollS already (a camera that has been on), so a view's first frame doesn't wait on segments."""
+    cam = m.get("entity_id")
+    if cam not in D.CAMERA_PROFILES:
+        return c.result(m["id"], None, success=False, error={"code": "not_found", "message": "Camera not found"})
+    token = c.hub.new_stream(cam)
+    c.result(m["id"], {"url": f"/api/hls/{token}/master_playlist.m3u8"})
+
+
 def _const(value):
     return lambda c, m: c.result(m["id"], value() if callable(value) else value)
 
@@ -332,6 +355,11 @@ HANDLERS = {
     "recorder/statistics_during_period": lambda c, m: c.result(m["id"], D.statistics(
         m.get("statistic_ids"), m.get("start_time"), m.get("end_time"), m.get("period"))),
     "ping": lambda c, m: c.send({"id": m["id"], "type": "pong"}),
+    # Cameras (src/data/camera.ts at the pinned tag): HLS only, as HA's stream integration offers.
+    "camera/capabilities": _const({"frontend_stream_types": ["hls"], "two_way_audio": False}),
+    "camera/stream": _camera_stream,
+    "camera/get_prefs": _const({"preload_stream": True, "orientation": 1}),
+    "auth/sign_path": lambda c, m: c.result(m["id"], {"path": f"{m.get('path', '')}{'&' if '?' in m.get('path', '') else '?'}authSig=clarity"}),
     # Read from the frontend's source at the pinned tag (src/data/*.ts): what each one answers.
     "repairs/list_issues": _const({"issues": []}),
     "recorder/info": _const({"backlog": 0, "db_in_default_location": True, "max_backlog": 40000,
@@ -414,6 +442,11 @@ class Handler(BaseHTTPRequestHandler):
             Handler.hub.reset()          # a no-op unless something changed after the last view
             Handler.hub.open_view(q)
             return self.send_bytes(204, b"", "text/plain")
+        if path.startswith("/api/hls/"):
+            return self.hls(path)
+        if path.startswith("/api/camera_proxy/"):
+            # The camera's still (the card's poster): a generated picture.
+            return self.send_bytes(200, D.asset("picture-0.png")[1], "image/png")
         if path == "/clarity/cancel":
             # The runner, before each restart: a view that was cut short leaves no command, no stream
             # and no changed state behind, as /clarity/still would have.
@@ -456,6 +489,44 @@ class Handler(BaseHTTPRequestHandler):
             return self.static(path)
         # Every other path is a frontend route (a dashboard, a view): the app shell, as HA serves it.
         return self.send_bytes(200, Handler.index, "text/html; charset=utf-8")
+
+    def hls(self, path):
+        """The stream integration's HLS, live: a master playlist, then a sliding window of the last
+        windowSegments whole segments of a loop made by camera.py (EXT-X-DISCONTINUITY where it wraps)."""
+        m = re.fullmatch(r"/api/hls/(clarity\d{6})/(master_playlist\.m3u8|playlist\.m3u8|init\.mp4|segment/(\d{1,7})\.m4s)", path)
+        st = m and getattr(Handler.hub, "cam_streams", {}).get(m.group(1))
+        if not st:
+            return self.send_bytes(404, b"", "text/plain")
+        cfg, prof = D.TIERS["CAMERA"], camera.PROFILES[st["profile"]]
+        loop = camera.segments(st["profile"])
+        name = m.group(2)
+        if name == "master_playlist.m3u8":
+            w, h = prof["size"].split("x")
+            body = (f"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH={int(prof['bitrate'][:-1]) * 1000},CODECS=\"avc1.4d401f\","
+                    f"RESOLUTION={w}x{h},FRAME-RATE={cfg['fps']}\nplaylist.m3u8\n")
+            return self.send_bytes(200, body.encode(), "application/vnd.apple.mpegurl")
+        if name == "playlist.m3u8":
+            done = int((time.monotonic() - st["t0"]) // cfg["segmentS"])          # whole segments so far
+            first = max(0, done - cfg["windowSegments"])
+            lines = ["#EXTM3U", "#EXT-X-VERSION:7", f"#EXT-X-TARGETDURATION:{cfg['segmentS']}",
+                     f"#EXT-X-MEDIA-SEQUENCE:{first}", f"#EXT-X-DISCONTINUITY-SEQUENCE:{first // loop}",
+                     '#EXT-X-MAP:URI="init.mp4"']
+            for n in range(first, done):
+                if n % loop == 0 and n > first:
+                    lines += ["#EXT-X-DISCONTINUITY", '#EXT-X-MAP:URI="init.mp4"']
+                lines += [f"#EXTINF:{cfg['segmentS']:.6f},", f"segment/{n}.m4s"]
+            return self.send_bytes(200, ("\n".join(lines) + "\n").encode(), "application/vnd.apple.mpegurl")
+        try:
+            d = os.path.join(camera.root(), st["profile"])
+        except camera.Unavailable as e:
+            # No ffmpeg (only the fake runs; run.sh checks first): say why, don't end the request thread.
+            Handler.hub.record({"t": time.time(), "camera_error": str(e)})
+            return self.send_bytes(500, str(e).encode(), "text/plain")
+        f = "init.mp4" if name == "init.mp4" else f"seg{int(m.group(3)) % loop:03d}.m4s"
+        if name != "init.mp4" and int(m.group(3)) >= int((time.monotonic() - st["t0"]) // cfg["segmentS"]):
+            return self.send_bytes(404, b"", "text/plain")                        # not made yet
+        with open(os.path.join(d, f), "rb") as fh:
+            return self.send_bytes(200, fh.read(), "video/mp4" if f.endswith(".mp4") else "video/iso.segment")
 
     def static(self, path):
         full = os.path.normpath(os.path.join(Handler.front, path.lstrip("/")))

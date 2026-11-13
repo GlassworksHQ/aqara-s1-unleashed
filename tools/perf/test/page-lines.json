@@ -1,10 +1,11 @@
 {
- "_comment": "The reference pages' log lines (keys only, no values). Most are as the S1 Plus logged them in smoke7 (d60ec95, S1 Kiosk 0.4.3, the panel's logcat, 2026-11-12); refdash and step/updates are protocol 4's harness on HA's real frontend (headless Chromium, 2026-11-13, opened by navigation in the loaded frontend), because smoke7's step/updates were cut off and protocol 4 adds to refdash. test_runner.FakeMatchesThePanel holds the fake adb to these shapes.",
+ "_comment": "The reference pages' log lines (keys only, no values). Most are as the S1 Plus logged them in smoke7 (d60ec95, S1 Kiosk 0.4.3, the panel's logcat, 2026-11-12); refdash and step/updates are protocol 4's harness on HA's real frontend (headless Chromium, 2026-11-13, opened by navigation in the loaded frontend), because smoke7's step/updates were cut off and protocol 4 adds to refdash. test_runner.FakeMatchesThePanel holds the fake adb to these shapes. camera is #174's harness line (keys from harness.js camerasEnd, 2026-11-13), with fetches (stats.js hlsFetches) since #182's smoke-cam1 round; heavy's is longer than a logcat line, so the fake splits it.",
  "tag": "Isolated Web Content",
  "max_line_bytes": 1023,
  "from_page_code": [
   "step/updates",
-  "refdash"
+  "refdash",
+  "camera"
  ],
  "shapes": {
   "done": [
@@ -70,7 +71,8 @@
    "scroll_height",
    "t",
    "tier",
-   "usable"
+   "usable",
+   "video_caps"
   ],
   "step/scroll": [
    "changes_during",
@@ -118,6 +120,18 @@
    "stream_at_ms",
    "t",
    "t0",
+   "window_ms"
+  ],
+  "camera": [
+   "expected",
+   "fetches",
+   "found",
+   "fps",
+   "nonce",
+   "run",
+   "stage",
+   "streams",
+   "t",
    "window_ms"
   ]
  }
