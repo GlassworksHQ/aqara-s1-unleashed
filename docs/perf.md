@@ -53,7 +53,7 @@ own GeckoView, loaded the way the kiosk loads your dashboard.
 
 You need adb, Python 3.11 or later, ffmpeg with libx264 (for the camera streams; it runs only on your
 computer) and the kiosk installed on the device. The first run makes a Python venv for the fake's
-WebRTC camera (aiortc, about 60 MB, from `tools/perf/webrtc-requirements.txt`, every wheel's hash
+WebRTC camera (aiortc, about 93 MB, from `tools/perf/webrtc-requirements.txt`, every wheel's hash
 checked) in `~/.cache/glassworks-perf`. The computer needs an IPv4 address that isn't loopback (any
 network interface that is up; the camera's packets never leave the computer). Let the device idle for 10 minutes
 first, with the screen on, at normal room temperature, and the kiosk's zoom at its default ("auto").
@@ -364,8 +364,13 @@ hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
 - **First frame**: from the navigation to the stream's first presented frame
   (`requestVideoFrameCallback`, or `loadeddata` without it).
 - **Frames shown**: over the view's live phase up to its first swipe (the updates window and the
-  taps, with the cameras on screen), the frames the decoder presented (`getVideoPlaybackQuality`:
-  total less dropped) against 15 fps × the time. The swipes scroll the cameras away, and an engine
+  taps, with the cameras on screen), the frames the decoder presented against 15 fps × the time:
+  over WebRTC the receiver's own counts (`getStats`: `framesDecoded` less `framesDropped`), over HLS
+  `getVideoPlaybackQuality` (total less dropped). Gecko fills `getVideoPlaybackQuality` only for an
+  element with a media decoder, so for a WebRTC video it reads 0 (#202's verifier; seen in Firefox
+  through the harness, 2026-11-13: 0 there, 75 from the receiver). A 0 while frames arrived counts as
+  not reported, and `requestVideoFrameCallback`'s callbacks count instead (`stats.js` `shownFrames`;
+  each stream's `source` says which). The swipes scroll the cameras away, and an engine
   may rightly stop decoding a video no one can see, so they aren't in this window; scrolling is still
   measured with the streams playing. (`requestVideoFrameCallback` can fire once for two frames that
   land in one rendering update: in Chrome, 60 callbacks for 77 decoded frames. So it is used for the
@@ -520,7 +525,8 @@ So protocol 6 grades the camera task on WebRTC, and keeps HLS as a measured fall
 `camera/capabilities` offers `web_rtc` and `hls`, as HA core does for a camera with a WebRTC provider
 (`camera_capabilities`, HA 2026.11.0). With both, HA's frontend starts both players: HLS shows until
 WebRTC has video, then only WebRTC stays (`ha-camera-stream.ts` `_streams`, frontend 20261028.5). The
-fake answers the commands `ha-web-rtc-player.ts` sends, in HA's own shapes (`camera/webrtc.py`):
+fake answers the commands `ha-web-rtc-player.ts` sends, in HA's own shapes (HA core's `homeassistant/components/camera/webrtc.py`; the fake's peer and relay
+are `tools/perf/webrtc.py`):
 
 | Command | The fake's answer |
 |---|---|
@@ -553,27 +559,41 @@ connection. The relay relays to the peer only.
 **Why `localhost` and not loopback for the media** (found on the S1's first WebRTC smoke, 2026-11-13,
 and reproduced in Firefox 152 on a Mac the same day, verified). The first version used `127.0.0.1`
 for all of it. Chrome played it. GeckoView, the kiosk's engine, never connected: 14 offers, no ICE
-candidate from the panel, ICE checking then closed. Gecko (nICEr) has two rules Chrome doesn't:
+candidate from the panel, ICE checking then closed. Gecko (nICEr) has three rules Chrome doesn't:
 
 | TURN server | Relayed address | Firefox connects to the relay? | Relay candidate? |
 |---|---|---|---|
 | `127.0.0.1` | `127.0.0.1` | no (`icecandidateerror` 701) | no |
 | `127.0.0.1`, with Gecko's `media.peerconnection.ice.loopback` on | `127.0.0.1` | yes | yes |
 | `localhost` | `127.0.0.1` | yes, allocates | no (701) |
-| `localhost` | the computer's own address | yes | **yes; ICE connects and the video plays** |
+| `localhost` | the computer's own address | yes | yes; ICE connects and the video plays (a browser on the computer) |
+| `localhost`, through adb reverse (the relay sees the browser as `127.0.0.1`) | the computer's own address | yes, allocates | no (the S1's second smoke, and Firefox through a stand-in) |
+| the same, the allocation's mapped address reported as the computer's own address | the computer's own address | yes | **yes; ICE connects and the video plays** |
 
-So Gecko won't use a TURN server given as a loopback IP, and drops a relayed candidate on loopback.
-The kiosk's Gecko prefs aren't the test's to change, so the fake avoids both. The tries and the
+So Gecko won't use a TURN server given as a loopback IP, drops a relayed candidate on loopback, and
+drops one whose allocation says the browser itself is on loopback (XOR-MAPPED-ADDRESS). Through adb
+reverse the relay only ever sees `127.0.0.1` (adb's own connection), and the browser's real address is
+unknown to it, so it reports the media address there: with relay-only ICE that only labels the
+candidate. A relayed address the browser has no route to is fine (Firefox, `192.0.2.55`). The kiosk's
+Gecko prefs aren't the test's to change, so the fake avoids all three. The tries and the
 commands are in [research/gecko-turn.md](research/gecko-turn.md). `test/webrtc.gecko.test.mjs`
 holds this: it runs the fake's WebRTC in Firefox. HA sends only `iceServers`; the
 fake adds `iceTransportPolicy: "relay"`, which the frontend passes to `RTCPeerConnection` unchanged,
 so a browser on the computer's network can't pair its own address and skip the relay. What differs
 from a real setup is the transport (TCP through adb, not UDP on the LAN); the video and the
-browser's media stack are the same.
+browser's media stack are the same. So the receiver's loss and jitter numbers (detail) aren't
+comparable with a camera on a LAN; the graded bars (first frame, shown, stalls) are what count.
+
+While a run lasts, the relay's UDP side and the peer listen on the media address, which other hosts
+on that network can reach. The relay passes on only datagrams from the peer's address, so injecting
+into a session would take a spoofed source address on that network: a low risk for a test that runs
+minutes. On macOS the first run may show the firewall's "accept incoming connections" prompt for
+Python; either answer works, since nothing comes from outside the computer.
 
 **The video has no B-frames** (protocol 6, both paths). Protocol 5's segments had them (x264's
 default, I B B B P). Browsers' WebRTC receivers don't reorder B-frames, and IP cameras send I and P
-frames only, so `camera.py` encodes with `-bf 0`.
+frames only, so `camera.py` encodes with `-bf 0`. So the HLS numbers aren't comparable with protocol 5's
+(s1cam3) either: the same streams, re-encoded without B-frames.
 
 **What is graded.** The camera task, with the same bars and the same rules: first frame, frames
 shown, stalls ("a stall is a stall"; the maintainer, #174). On a graded view each camera's stream is

@@ -1,8 +1,10 @@
 # Gecko and a TURN relay on loopback: why the S1 never connected to Clarity's WebRTC camera
 
-**Status (2026-11-13): working.** Gecko (Firefox, GeckoView) won't use a TURN server given as a
-loopback IP, and drops a relayed candidate whose address is loopback. Chrome does neither. With the
-server as `localhost` and the relay on the computer's own address, Firefox connects and plays.
+**Status (2026-11-13): working in Firefox; the S1 run is pending.** Gecko (Firefox, GeckoView) won't use
+a TURN server given as a loopback IP, drops a relayed candidate whose address is loopback, and drops
+one whose allocation says the browser is on loopback (XOR-MAPPED-ADDRESS). Chrome does none of these.
+With the server as `localhost`, the relay on the computer's own address, and that address as the
+mapped one when the browser comes through adb reverse, Firefox connects and plays.
 
 Browsers: Firefox 152.0.6 (macOS, headless), Chrome (macOS, headless), GeckoView 159 on the S1 (S1
 Kiosk 0.4.3). Peer: aiortc 1.16.0 behind Clarity's TURN relay (`tools/perf/webrtc.py`).
@@ -47,18 +49,40 @@ didn't. Why, and what works for Gecko?
 4. **Chrome with the same changes** (2026-11-13, verified, `tools/perf/test/webrtc.e2e.test.mjs`):
    HA's real frontend still plays (first frame 326 ms before the change; the test passes after it).
 
+5. **The S1's second smoke** (2026-11-13, about 20:49 UTC, verified; the root, at a718f9c). The panel
+   now reached the relay through adb reverse (28 `turn_connected`, client `127.0.0.1`) and allocated
+   (18 `turn_allocated` on the Mac's address), but still sent no candidate: 0 `camera/webrtc/candidate`,
+   and its 7 offers carried none (`a=candidate` lines: 0; the offers are in `fakeha.jsonl`).
+   - What differed from the Mac's Firefox: through adb reverse the relay sees the browser as
+     `127.0.0.1`, and its Allocate answer says so (XOR-MAPPED-ADDRESS). Firefox's own connection came
+     from the Mac's address.
+6. **The mapped address in Firefox** (2026-11-13, verified, the same probe):
+
+   | Allocate answer | Relay candidate |
+   |---|---|
+   | mapped = the browser's real address (as on the Mac) | yes |
+   | mapped = `127.0.0.1` (what adb reverse makes the relay see) | **no**: the S1's symptom |
+   | relayed = `192.0.2.55`, an address the browser can't route to | yes |
+
+   So the third rule. Also: Gecko doesn't drop a relayed candidate for being on another subnet. The
+   fix: the relay reports the media address as the mapped one when it sees loopback. The Gecko test
+   now reaches the relay through a stand-in for adb reverse (a TCP forwarder that connects from
+   `127.0.0.1`); with the fix reverted it times out waiting for a relay candidate, as the S1 did.
+
 ## Result
 
 | | Gecko | Chrome |
 |---|---|---|
 | TURN server given as `127.0.0.1` | not used (701) | used |
 | Relayed candidate on `127.0.0.1` | dropped | used |
-| `turn:localhost`, relay on the computer's address | works | works |
+| Allocation's mapped address `127.0.0.1` | relay candidate dropped | used |
+| `turn:localhost`, relay on the computer's address, mapped not loopback | works | works |
 
 Clarity now uses `turn:localhost:<port>?transport=tcp`, and puts the relay's UDP side and the peer's
 only candidate on one IPv4 address of the computer that isn't loopback or link-local (`media_address`
-in `tools/perf/webrtc.py`; `GW_PERF_WEBRTC_ADDR` overrides it). The panel still only talks to the
-relay over the TCP connection; the media between the relay and the peer stays inside the computer.
+in `tools/perf/webrtc.py`; `GW_PERF_WEBRTC_ADDR` overrides it), and reports that address as the mapped one for a browser that
+comes from loopback (`TurnConn.mapped`). The panel still only talks to the relay over the TCP
+connection; the media between the relay and the peer stays inside the computer.
 
 ## How to reproduce
 
@@ -68,13 +92,15 @@ touches no device.
 ```
 GW_PERF_FAKE_PYTHON=$(python3 tools/perf/webrtcenv.py) node --test tools/perf/test/webrtc.gecko.test.mjs
 ```
-To see the first row again, set the TURN URL back to `127.0.0.1` in `client_config`, or run with
-`GW_PERF_WEBRTC_ADDR=127.0.0.1` for a loopback relayed address: the test times out waiting for a relay
-candidate (both checked 2026-11-13).
+To see the rules again (each checked 2026-11-13):
+- `GW_PERF_WEBRTC_ADDR=127.0.0.1` (a loopback relayed address): the test times out waiting for a relay
+  candidate.
+- `mapped()` returning the address as seen: the same timeout (the S1's second smoke).
+- The TURN URL back to `127.0.0.1` in `client_config`: the test fails at once on its check of the URL;
+  with that check removed, it times out waiting for a relay candidate.
 
 ## Open questions
 
-- That GeckoView on Android behaves as Firefox desktop is inferred (same nICEr code, same symptom on
-  the S1), and the next panel run checks it.
-- Whether the kiosk's `localhost` resolves to 127.0.0.1 only on Android 10 (adb reverse listens there).
-  Untested; the next panel run's relay log (`turn_connected` in `fakeha.jsonl`) shows it.
+- That GeckoView on Android behaves as Firefox desktop is inferred (same nICEr code; both S1 symptoms
+  reproduced in Firefox), and the next panel run checks it.
+- `localhost` on the kiosk does reach adb reverse: the second smoke's 28 `turn_connected` (verified).

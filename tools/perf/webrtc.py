@@ -114,6 +114,16 @@ class TurnConn(asyncio.Protocol):
 
     def __init__(self, server):
         self.server, self.buf, self.relay, self.perms, self.chan, self.peer_chan = server, b"", None, set(), {}, {}
+        self.to_peer = self.from_peer_n = 0        # datagrams relayed each way (logged when it closes)
+
+    def mapped(self):
+        """XOR-MAPPED-ADDRESS: the browser as this relay sees it. Through adb reverse that is always
+        127.0.0.1 (adb's own connection), and Gecko drops the relay candidate of an allocation whose
+        mapped address is loopback (Firefox 152, 2026-11-13; the S1's second smoke). The browser's
+        real address is unknown here, so a loopback one is reported as the media address, which the
+        browser never sends to: with relay-only ICE it only labels the relay candidate."""
+        host, port = self.client
+        return (self.server.addr, port) if host.startswith("127.") or host == "::1" else self.client
 
     def connection_made(self, transport):
         self.tr = transport
@@ -125,6 +135,9 @@ class TurnConn(asyncio.Protocol):
         self.server.conns.discard(self)
         if self.relay:
             self.relay.close()
+        self.server.record({"t": time.time(), "turn_closed": list(self.client), "to_peer": self.to_peer,
+                            "from_peer": self.from_peer_n, "permissions": sorted(self.perms),
+                            "channels": len(self.chan)})
 
     def data_received(self, data):
         self.buf += data
@@ -138,6 +151,7 @@ class TurnConn(asyncio.Protocol):
                 peer = self.chan.get(num)
                 if peer and self.relay:
                     self.relay.sendto(payload, peer)
+                    self.to_peer += 1
                 continue
             size = 20 + struct.unpack("!H", self.buf[2:4])[0]
             if len(self.buf) < size:
@@ -159,10 +173,11 @@ class TurnConn(asyncio.Protocol):
     def stun(self, m):
         M = stun.Method
         if m.message_method == M.BINDING and m.message_class == stun.Class.REQUEST:
-            return self.reply(m, auth=False, XOR_MAPPED_ADDRESS=self.client)
+            return self.reply(m, auth=False, XOR_MAPPED_ADDRESS=self.mapped())
         if m.message_class == stun.Class.INDICATION:
             if m.message_method == M.SEND and self.relay and m.attributes.get("XOR-PEER-ADDRESS", ("",))[0] in self.perms:
                 self.relay.sendto(m.attributes.get("DATA", b""), m.attributes["XOR-PEER-ADDRESS"])
+                self.to_peer += 1
             return
         if m.message_class != stun.Class.REQUEST:
             return
@@ -184,10 +199,15 @@ class TurnConn(asyncio.Protocol):
             self.server.record({"t": time.time(), "turn_refused": m.attributes.get("XOR-PEER-ADDRESS")})
             self.reply(m, stun.Class.ERROR, ERROR_CODE=(403, "Forbidden"))
         elif m.message_method == M.CREATE_PERMISSION:
+            if m.attributes["XOR-PEER-ADDRESS"][0] not in self.perms:
+                self.server.record({"t": time.time(), "turn_permission": list(m.attributes["XOR-PEER-ADDRESS"]),
+                                    "client": list(self.client)})
             self.perms.add(m.attributes["XOR-PEER-ADDRESS"][0])
             self.reply(m)
         elif m.message_method == M.CHANNEL_BIND:
             num, peer = m.attributes["CHANNEL-NUMBER"], m.attributes["XOR-PEER-ADDRESS"]
+            if num not in self.chan:
+                self.server.record({"t": time.time(), "turn_channel": list(peer), "number": num, "client": list(self.client)})
             self.chan[num], self.peer_chan[peer] = peer, num
             self.perms.add(peer[0])
             self.reply(m)
@@ -199,12 +219,14 @@ class TurnConn(asyncio.Protocol):
             self.relay.close()
             return
         relayed = self.relay.get_extra_info("sockname")[:2]
-        self.server.record({"t": time.time(), "turn_allocated": list(relayed), "client": list(self.client)})
-        self.reply(m, XOR_RELAYED_ADDRESS=relayed, XOR_MAPPED_ADDRESS=self.client, LIFETIME=TURN_LIFETIME)
+        self.server.record({"t": time.time(), "turn_allocated": list(relayed), "client": list(self.client),
+                            "mapped": list(self.mapped())})
+        self.reply(m, XOR_RELAYED_ADDRESS=relayed, XOR_MAPPED_ADDRESS=self.mapped(), LIFETIME=TURN_LIFETIME)
 
     def from_peer(self, data, addr):
         if addr[0] not in self.perms:
             return
+        self.from_peer_n += 1
         num = self.peer_chan.get(addr)
         if num is not None:
             self.tr.write(struct.pack("!HH", num, len(data)) + data + bytes(-len(data) % 4))
@@ -313,6 +335,8 @@ class WebRTC:
             if c.sdpMid is None and c.sdpMLineIndex is None:
                 c.sdpMid = "0"
             await s["pc"].addIceCandidate(c)
+            self.record({"t": time.time(), "webrtc_candidate": s["entity_id"], "session": sid, "type": c.type,
+                         "protocol": c.protocol})
         except Exception as e:      # HA logs and ignores a candidate it can't use; so does the fake
             self.record({"t": time.time(), "webrtc_candidate_error": s["entity_id"], "session": sid, "error": repr(e)})
 

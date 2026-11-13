@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -870,6 +871,23 @@ class PortInUse(unittest.TestCase):
         self.assertIn(f"port {port} is already in use", p.stderr)
         with open(os.path.join(state, "commands.log")) as f:
             self.assertNotIn("--es url", f.read())           # the kiosk was never pointed anywhere
+
+
+    def test_the_relays_port_held_is_refused(self):
+        """#202: the WebRTC relay listens on --port + 1; a fake left there would answer the panel's TURN."""
+        tmp = tempfile.mkdtemp()
+        env, state = fake_env(tmp)
+        held = socket.socket()
+        held.bind(("127.0.0.1", 0))
+        held.listen(1)
+        self.addCleanup(held.close)
+        port = str(held.getsockname()[1] - 1)
+        p = subprocess.run([RUN, "--frame", "test-frame", "--out", os.path.join(tmp, "out"), "--port", port, "--skip-synthetic",
+                            "--skip-real-use", "--restore-dashboard", RESTORE], env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 2, p.stderr[-800:])
+        self.assertIn(f"port {held.getsockname()[1]} (the WebRTC relay's, --port + 1) is already in use", p.stderr)
+        with open(os.path.join(state, "commands.log")) as f:
+            self.assertNotIn("--es url", f.read())
 
 
 class CamerasOnlyWhenNeeded(unittest.TestCase):

@@ -106,7 +106,7 @@ test("HA's frontend plays the fake's cameras over WebRTC through the TURN relay,
     fake.kill();
     if (!t.passed && fakeErr) t.diagnostic(`the fake's stderr:\n${fakeErr.slice(-4000)}`);
     if (process.env.GW_PERF_E2E_KEEP) spawnSync("cp", [join(dir, "fakeha.jsonl"), process.env.GW_PERF_E2E_KEEP]);
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
   });
 
   let banner = "";

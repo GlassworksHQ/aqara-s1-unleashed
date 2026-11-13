@@ -242,8 +242,25 @@
     };
   }
 
+  // A stream's frames shown over the window, from the best count the engine gives, and which:
+  // - "webrtc": the WebRTC receiver's own counts (getStats framesDecoded less framesDropped);
+  // - "quality": getVideoPlaybackQuality (totalVideoFrames less dropped), the decoder's count. Gecko
+  //   fills it only for an element with a media decoder, not for a MediaStream (HTMLVideoElement.cpp,
+  //   GetVideoPlaybackQuality), where it reads 0: so 0 while rVFC saw frames is "not reported";
+  // - "rvfc": requestVideoFrameCallback's callbacks, which can undercount (one callback for two frames
+  //   in one rendering update: Chrome, 2026-11-13, 60 callbacks for 77 frames).
+  function shownFrames({ quality, webrtc, callbacks, rvfc }) {
+    if (webrtc && typeof webrtc.frames_decoded === "number") {
+      return { frames: webrtc.frames_decoded - (webrtc.frames_dropped || 0), source: "webrtc" };
+    }
+    if (quality && typeof quality.decoded === "number" && !(quality.decoded === 0 && callbacks > 0)) {
+      return { frames: quality.decoded - (quality.dropped || 0), source: "quality" };
+    }
+    return rvfc ? { frames: callbacks, source: "rvfc" } : { frames: null, source: "none" };
+  }
+
   const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines,
-                skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps, webrtcStats };
+                skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps, webrtcStats, shownFrames };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWStats = api;
 })(this);

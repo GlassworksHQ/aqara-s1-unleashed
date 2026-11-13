@@ -307,3 +307,21 @@ test("webrtcStats: the inbound video's counts over the window, its decoder, code
   assert.equal(S.webrtcStats(before, null), null);
   assert.deepEqual(S.webrtcStats(null, [{ id: "A", type: "inbound-rtp", kind: "audio" }]), { inbound: false });
 });
+
+// ---- frames shown (#202's verifier): Gecko's getVideoPlaybackQuality reads 0 for a MediaStream video
+
+test("shownFrames: WebRTC's own counts first; a quality that reads 0 while frames came is not reported", () => {
+  const gecko = { quality: { decoded: 0, dropped: 0 }, callbacks: 70, rvfc: true };
+  // GeckoView with the receiver's counts: those, never the zeroed quality.
+  assert.deepEqual(S.shownFrames({ ...gecko, webrtc: { frames_decoded: 75, frames_dropped: 2 } }), { frames: 73, source: "webrtc" });
+  // Without them: the 0 is "not reported", and rVFC's callbacks count instead.
+  assert.deepEqual(S.shownFrames({ ...gecko, webrtc: null }), { frames: 70, source: "rvfc" });
+  assert.deepEqual(S.shownFrames({ ...gecko, webrtc: { inbound: false } }), { frames: 70, source: "rvfc" });
+  // An unreported dropped count is 0 dropped.
+  assert.deepEqual(S.shownFrames({ quality: null, webrtc: { frames_decoded: 40, frames_dropped: null }, callbacks: 0, rvfc: true }),
+                   { frames: 40, source: "webrtc" });
+  // HLS: the decoder's count, as before; a real 0 (nothing came either) stays 0, never rVFC's.
+  assert.deepEqual(S.shownFrames({ quality: { decoded: 77, dropped: 1 }, webrtc: null, callbacks: 60, rvfc: true }), { frames: 76, source: "quality" });
+  assert.deepEqual(S.shownFrames({ quality: { decoded: 0, dropped: 0 }, webrtc: null, callbacks: 0, rvfc: true }), { frames: 0, source: "quality" });
+  assert.deepEqual(S.shownFrames({ quality: null, webrtc: null, callbacks: 0, rvfc: false }), { frames: null, source: "none" });
+});

@@ -430,26 +430,23 @@
   async function camerasEnd() {
     if (!cams.expected) return;
     const t1 = performance.now(), dur = t1 - cams.t0, fps = C.CAMERA.fps;
+    // Everything at t1 that can be read at once; the receiver's getStats is asked for now too, and
+    // read after the loop (an await here would let the other players count on).
     const stream = (r) => {
       r.counting = false;
       const times = r.el.requestVideoFrameCallback ? r.frames : r.ticks;
       const q1 = r.el.getVideoPlaybackQuality ? r.el.getVideoPlaybackQuality() : null;
       const decoded = q1 && r.q0 ? q1.totalVideoFrames - r.q0.totalVideoFrames : null;
       const dropped = q1 && r.q0 ? q1.droppedVideoFrames - r.q0.droppedVideoFrames : null;
-      // Shown: the decoder's own count of frames it presented (totalVideoFrames less dropped).
-      // requestVideoFrameCallback is for the first frame and the gaps: it may fire once for two
-      // frames that land in one rendering update (Chrome, 2026-11-13: 60 callbacks for 77 frames).
-      const shown = decoded !== null ? decoded - dropped : (r.el.requestVideoFrameCallback ? r.frames.length : null);
+      if (cams.path === "web_rtc") r.s1 = peerStats(r);
       const g = S.videoGaps(times, r.el.requestVideoFrameCallback ? r.pfs : null, cams.t0, t1);
       return {
         found: true, w: r.el.videoWidth, h: r.el.videoHeight,
         first_frame_ms: r.first === null ? null : r1(r.first - cams.nav),
-        shown_pct: shown === null || r.first === null ? null : r1(Math.min(100, (100 * shown) / ((fps * dur) / 1000))),
         max_gap_ms: r.first === null ? null : r1(g.max_gap_ms),
         stall_total_ms: r.first === null ? null : r1(g.stall_total_ms),
         stall_presented: r.first === null ? null : g.stall_presented,
-        frames: shown, callbacks: r.frames.length, decoded, dropped, waiting: r.waiting,
-        source: (decoded !== null ? "quality" : "rvfc") + (r.el.requestVideoFrameCallback ? "+rvfc" : "+timeupdate"),
+        callbacks: r.frames.length, decoded, dropped, waiting: r.waiting,
       };
     };
     const missing = { found: false, first_frame_ms: null, shown_pct: null, max_gap_ms: null, stall_total_ms: null };
@@ -469,10 +466,18 @@
       streams.push(out);
       peersOf.push(r && cams.path === "web_rtc" ? r : null);
     }
-    // The WebRTC receiver's own counts over the window (getStats), detail: frames decoded, dropped
-    // and frozen, the decoder it used, the codec, and the candidate pair (relay over TCP).
+    // The WebRTC receiver's own counts over the window (getStats): frames decoded, dropped and
+    // frozen, the decoder it used, the codec, and the candidate pair (relay over TCP). Then each
+    // stream's frames shown, from the best count the engine gives (stats.js shownFrames).
     for (let i = 0; i < streams.length; i++) {
-      if (peersOf[i]) streams[i].webrtc = S.webrtcStats(await peersOf[i].s0, await peerStats(peersOf[i]));
+      const out = streams[i], r = cams.list[i] && cams.list[i].recs[cams.path];
+      if (!r) continue;
+      if (peersOf[i]) out.webrtc = S.webrtcStats(await r.s0, await r.s1);
+      const s = S.shownFrames({ quality: out.decoded === null ? null : { decoded: out.decoded, dropped: out.dropped },
+                                webrtc: out.webrtc || null, callbacks: out.callbacks, rvfc: !!r.el.requestVideoFrameCallback });
+      out.frames = s.frames;
+      out.shown_pct = s.frames === null || r.first === null ? null : r1(Math.min(100, (100 * s.frames) / ((fps * dur) / 1000)));
+      out.source = s.source + (r.el.requestVideoFrameCallback ? "+rvfc" : "+timeupdate");
     }
     if (cams.obs) {
       for (const e of cams.obs.takeRecords()) if (e.name.includes("/api/hls/")) cams.fetches.push(e.toJSON());

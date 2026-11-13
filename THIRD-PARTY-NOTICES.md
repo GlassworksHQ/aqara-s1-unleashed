@@ -415,9 +415,10 @@ here, and `semver` (ISC) needs `LICENSES/ISC.txt`.
   metadata, 2026-11-13): aiortc 1.16.0, aioice 0.13.0, PyAV (`av`) 18.1.0, pylibsrtp 1.0.0 and
   pycparser 3.12 (BSD-3-Clause); cryptography 50.0.2 (Apache-2.0 OR BSD-3-Clause); pyOpenSSL 26.4.0
   and google-crc32c 1.9.0 (Apache-2.0); pyee 13.0.1 and ifaddr 0.2.0 (MIT); cffi 2.1.1 (MIT-0);
-  dnspython 2.9.2 (ISC); typing-extensions 4.16.0 (PSF-2.0). PyAV's wheel bundles FFmpeg (LGPL-3.0-or-later
-  by its own build metadata) built with libx264 and libx265 (GPL-2.0-or-later); the peer only packs the
-  H.264 that ffmpeg made, and decodes nothing. None of these ships in the app, the bundle or the repo,
+  dnspython 2.9.2 (ISC); typing-extensions 4.16.0 (PSF-2.0). PyAV's wheel bundles FFmpeg built with libx264 and libx265
+  (GPL-2.0-or-later), so that FFmpeg is effectively GPL-2.0-or-later, though its build metadata says
+  LGPL-3.0-or-later. It is downloaded to the tester's computer only, into a venv of about 93 MB; the
+  peer only packs the H.264 that ffmpeg made, and decodes nothing. None of these ships in the app, the bundle or the repo,
   and the project doesn't host them.
 - **Aqara/Lumi firmware.** None is included. The installer's partition backup stays with the owner. On
   the panel, the radio helper uses Aqara's own `cpcd` and stock radio firmware where they already are.

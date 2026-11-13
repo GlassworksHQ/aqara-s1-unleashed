@@ -377,7 +377,9 @@ def _webrtc_offer(c, m):
     sid = c.hub.new_webrtc_session()
     c.webrtc[mid] = sid
     c.event(mid, {"type": "session", "session_id": sid})
-    c.hub.record({"t": time.time(), "webrtc_offer": cam, "session": sid})
+    # How many candidates the browser put in its offer (it trickles the rest: camera/webrtc/candidate).
+    c.hub.record({"t": time.time(), "webrtc_offer": cam, "session": sid,
+                  "offer_candidates": sum(line.startswith("a=candidate:") for line in m["offer"].splitlines())})
 
     def send(ev):
         if c.webrtc.get(mid) == sid:        # not after the frontend has unsubscribed

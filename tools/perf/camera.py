@@ -94,7 +94,10 @@ def _made():
             os.makedirs(d)
             subprocess.run(ffmpeg_args(prof), cwd=d, check=True)
             parts = ["init.mp4"] + sorted(f for f in os.listdir(d) if f.endswith(".m4s"))
-            joined = b"".join(open(os.path.join(d, f), "rb").read() for f in parts)
+            joined = b""
+            for f in parts:
+                with open(os.path.join(d, f), "rb") as fh:
+                    joined += fh.read()
             subprocess.run(ANNEXB_ARGS, cwd=d, input=joined, check=True)
             files[prof] = {f: sha256(os.path.join(d, f)) for f in sorted(os.listdir(d)) if f != "index.m3u8"}
         with open(os.path.join(out, "manifest.json"), "w") as f:

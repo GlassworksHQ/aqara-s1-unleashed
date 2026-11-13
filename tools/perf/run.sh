@@ -242,13 +242,19 @@ if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
   fi
   # Protocol 6 (#202): the fake answers HA's WebRTC offers with aiortc, from a venv of
   # webrtc-requirements.txt (hashes checked, wheels only; made once, about 60 MB).
+  # The animation test page alone plays no camera: plain python3 then.
   FAKE_PY="${GW_PERF_FAKE_PYTHON:-}"
-  if [ -z "$FAKE_PY" ]; then
+  if [ -z "$FAKE_PY" ] && { [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; }; then
     FAKE_PY=$(python3 "$HERE/webrtcenv.py") || { echo "the fake's WebRTC peer needs Python 3.11+ and its venv (webrtcenv.py)" >&2; exit 2; }
   fi
+  FAKE_PY="${FAKE_PY:-python3}"
   # Something else on the ports (an earlier run's fake left behind) would answer for ours.
   if curl -s -o /dev/null --connect-timeout 1 --max-time 3 "http://127.0.0.1:$PORT/manifest.json"; then
     echo "port $PORT is already in use (an earlier run's fake Home Assistant?); stop it or use --port" >&2
+    exit 2
+  fi
+  if (exec 3<>"/dev/tcp/127.0.0.1/$TURN_PORT") 2>/dev/null; then
+    echo "port $TURN_PORT (the WebRTC relay's, --port + 1) is already in use (an earlier run's fake?); stop it or use --port" >&2
     exit 2
   fi
   # fakeha.jsonl: every command the frontend sent, and the stream's sends (report.py checks them).

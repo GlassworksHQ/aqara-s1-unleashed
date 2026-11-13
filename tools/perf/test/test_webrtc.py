@@ -37,6 +37,11 @@ def need():
         raise unittest.SkipTest(why)
 
 
+def read(path):
+    with open(path, "rb") as f:
+        return f.read()
+
+
 def make_stream(folder, size, seconds=3):
     """A short stream as camera.py makes it (its own flags), remuxed to Annex B the same way."""
     os.makedirs(folder, exist_ok=True)
@@ -45,7 +50,7 @@ def make_stream(folder, size, seconds=3):
     subprocess.run(args, cwd=folder, check=True)
     parts = ["init.mp4"] + sorted(f for f in os.listdir(folder) if f.endswith(".m4s"))
     subprocess.run(camera.ANNEXB_ARGS, cwd=folder, check=True,
-                   input=b"".join(open(os.path.join(folder, f), "rb").read() for f in parts))
+                   input=b"".join(read(os.path.join(folder, f)) for f in parts))
 
 
 class Turn(unittest.TestCase):
@@ -86,6 +91,9 @@ class Turn(unittest.TestCase):
         self.assertTrue(r.check_message_integrity(webrtc.TURN_KEY))
         self.assertEqual(r.attributes["XOR-RELAYED-ADDRESS"][0], self.svc.addr)
         self.assertFalse(self.svc.addr.startswith(("127.", "169.254.")))
+        # This test connects from 127.0.0.1, as adb reverse does: the mapped address mustn't say so,
+        # or Gecko drops the relay candidate (the S1's second smoke).
+        self.assertEqual(r.attributes["XOR-MAPPED-ADDRESS"][0], self.svc.addr)
         self.assertEqual(r.attributes["LIFETIME"], webrtc.TURN_LIFETIME)
 
     def test_the_relay_reaches_only_the_peer(self):
@@ -155,11 +163,15 @@ class Session(unittest.TestCase):
             @pc.on("track")
             def on_track(track):
                 async def pull():
-                    while True:
-                        f = await track.recv()
-                        frames.append((f.width, f.height))
-                        if not first.done():
-                            first.set_result(time.monotonic())
+                    from aiortc.mediastreams import MediaStreamError
+                    try:
+                        while True:
+                            f = await track.recv()
+                            frames.append((f.width, f.height))
+                            if not first.done():
+                                first.set_result(time.monotonic())
+                    except MediaStreamError:
+                        pass                                  # the track ended: the test closed it
                 if track.kind == "video":
                     asyncio.ensure_future(pull())
             await pc.setLocalDescription(await pc.createOffer())
