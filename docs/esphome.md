@@ -84,6 +84,8 @@ HA):
 | Device name | Becomes "Glassworks Panel" on the next connection (HA's device registry follows the friendly name), unless you renamed the device in HA | "Glassworks Panel" |
 | Config entry title | Stays "S1 Panel" (HA doesn't retitle an entry) | "Glassworks Panel" |
 | Entity ids | Unchanged (`light.s1_panel_screen`, …): an entity id is made once, and the unique id is the MAC plus the entity, never the device name | HA 2026.1 and later: `light.glassworks_panel_screen`, … (from the device name). HA up to 2025.x: `light.s1_panel_screen`, … (from the node name) |
+| Entities that appear after the update (a new feature's entities, or one re-added) | HA 2026.1 and later: `glassworks_panel_*`, next to the old `s1_panel_*` ones (mixed prefixes). HA up to 2025.x: `s1_panel_*` | As above |
+| Entity names shown in HA | "Glassworks Panel Screen", … (they follow the device name) | The same |
 | Node name (`device_name`, mDNS) | `s1-panel` | `s1-panel` |
 
 The node name `s1-panel` never changes (`PanelDevice.NAME`, `PanelNameTest`): HA's config entry keeps

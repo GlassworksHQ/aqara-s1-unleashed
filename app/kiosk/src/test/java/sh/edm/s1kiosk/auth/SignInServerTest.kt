@@ -360,5 +360,9 @@ class SignInServerTest {
         assertTrue(html.contains("<svg")) // the mark is inline
         assertTrue(html.contains("Glassworks Panel"))
         for (external in listOf("<script", "<link", "src=", "@import", "url(http")) assertTrue(external, !html.contains(external))
+        // ... and the browser enforces it: only the page's own inline style, no sniffing, no referrer.
+        assertEquals("default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'", r.headers["Content-Security-Policy"])
+        assertEquals("nosniff", r.headers["X-Content-Type-Options"])
+        assertEquals("no-referrer", r.headers["Referrer-Policy"])
     }
 }
