@@ -1,7 +1,9 @@
 # Idle CPU: why the kiosk uses ~40% of a core with nothing on screen
 
-**Status (2026-11-12): working (cause confirmed on the panel), fix not chosen.** The load is the wake word: the
-`voice-mic` thread runs openWakeWord's embedding model on every 80 ms of audio. That costs 30 to
+**Status (2026-11-12): working (the microphone path confirmed on the panel), fix not chosen.** Muting
+the microphone takes the main process from 39.1% to 2.2% of a core. The `voice-mic` thread runs
+openWakeWord's embedding model on every 80 ms of audio, and that model is nearly all of the
+thread's work (inferred from its cost; see Result). That costs 30 to
 36 ms of CPU per frame on the S1 (37 to 45% of a core, by CPU clock), with the screen on or off.
 The model needs that work; no bug wastes it. The options are below,
 and the choice is the maintainer's ([#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)).
@@ -141,8 +143,9 @@ on screen. Which thread is it, is that work needed, and what would make it small
    | Unmuted again, 15 s later | 38.5% | 36.7% | | |
 
    Muting removes the `voice-mic` thread and 36.9 of the main process's 39.1 points. Unmuting brings
-   them back. This is the causal check: **the wake word path is about 36 to 37 points of the
-   process's 39**, and the rest of the app is about 2%. The tab rose from 3.8 to 5.7% while muted,
+   them back. This is the causal check for the whole microphone path (capture and inference stop
+   together): **it is about 36 to 37 points of the process's 39**, and the rest of the app is about
+   2%. The tab rose from 3.8 to 5.7% while muted,
    which is the page, not the mic. On unmute, the `Microphone open` log line was not in the last 400
    lines of logcat, but the thread and its load were back. The switch was turned back off, and
    nothing else changed.
@@ -159,11 +162,21 @@ on screen. Which thread is it, is that work needed, and what would make it small
 | Gecko content and GPU processes | 0.1 to 8 | the page; the 8% was a dashboard with an audio stream open |
 | `otbr-agent` (radio) | 0.0 | |
 
-**Confirmed (step 7): the idle load is the wake word.** Muting the microphone takes the main
+**Confirmed (step 7): the idle load is the microphone path.** Muting the microphone takes the main
 process from 39.1% to 2.2% of a core, and unmuting brings it back to 38.5%. The load is the same
-with the screen on and off. It's inherent to openWakeWord on this CPU, not a busy loop or a poll.
-The mute switch stops it because `setMuted(true)` stops the recorder, and inference with it
-(`VoiceEngine.kt:73`).
+with the screen on and off. The mute switch stops the recorder and inference together
+(`setMuted(true)`, `VoiceEngine.kt:73`), so the check alone can't split them.
+
+**Inferred, not measured on the panel: inference is nearly all of it.** Capture wasn't measured on its
+own (see Open questions). The evidence for inference:
+
+- The thread blocks in `AudioRecord.read` and wakes 4.6 times per frame (step 2), with no spinning.
+- Inference is 44.3 MMAC per frame (step 5), and the thread uses 42 to 45 M cycles per frame. That
+  is about one multiply-add per cycle, half the A53's fp32 NEON peak, which XNNPACK normally reaches.
+  If capture took a sizeable share, the models would have to run faster than that.
+- Reading 16 kHz mono and applying the gain is about 1280 samples per frame of simple work.
+
+So the load is openWakeWord's compute on this CPU, not a busy loop or a poll.
 
 One side effect worth fixing whatever the choice: inference runs on the capture thread at
 `THREAD_PRIORITY_URGENT_AUDIO` (`Microphone.kt:79`). That is 36 ms of model work every 80 ms at
@@ -213,6 +226,10 @@ installed.
 - microWakeWord on the S1: the front end's cost in Kotlin, and whether TFLite Java 2.16 runs the
   stateful streaming models (`VAR_HANDLE`, `READ_VARIABLE`, `ASSIGN_VARIABLE`, `CALL_ONCE`). They
   run in LiteRT on the host.
+- How much of the 37 points is capture alone? The app can already run capture without inference:
+  an empty wake word list closes the model while the recorder keeps running (`VoiceEngine.kt:93`,
+  `:122`). Whether HA's wake word select can send an empty list is untested. Otherwise it needs a
+  test build. Either way, measure it with `threadcpu.py` as in step 7.
 - Does inference at audio priority cost dashboard frames? Compare the perf test's main-thread fps
   with the mic muted and unmuted (step 6 of the panel plan; not run yet).
 - The Mirror (Android 6, slower CPU) will be worse with openWakeWord. Not measured.
