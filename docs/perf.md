@@ -234,7 +234,8 @@ change (`fakeha.jsonl`); the report is provisional if it was ever more than 50 m
 **The order.** Each graded run starts with a restart: the kiosk comes back to the start view, which
 is the restart's measurement and also takes the cold caches, the first JIT and every card type's
 code. So protocol 4 has no separate warm-up page (protocols 1 to 3 opened one; `--warmup-tier` can
-still add a view). Then the three views open in an order that turns by one each run: run 1 light,
+still add a view, but not one that is also graded: hui-root keeps a view it has shown, so its graded
+open would skip building it, and the runner refuses that). Then the three views open in an order that turns by one each run: run 1 light,
 typical, heavy; run 2 typical, heavy, light; run 3 heavy, light, typical. So no view always comes
 first, and the report gives each view's results at each place in the order. Each view opens only
 once the screen has been still for 2 s (at most 10 s). It opens from the view before it (the start
@@ -353,7 +354,7 @@ gets an error, which the frontend handles as it would from HA, and the fake logs
 
 Each graded run is one restart back to the start view, then the three reference views in the run's
 order. The first view opens once the restart page has said it was usable and the screen has been
-still for 2 s. If its `done` line is lost, the runner goes on 10 s after its usable line. If the
+still for 2 s, never on HA's load event, which comes seconds earlier. If its `done` line is lost, the runner goes on 10 s after its usable line. If the
 kiosk doesn't come back to a reference dashboard (another page loads, or none says it was usable),
 the restart is "not measured" ("the kiosk didn't come back to a reference dashboard") and that
 run's views still open after the old wait for the kiosk's own page: up to 30 s after engine ready,
@@ -883,7 +884,7 @@ The runner and the harness talk through the fake Home Assistant, never through a
 | `/clarity/open?view=&nonce=&run=&vsync=&taps=[&swipes=&warmup=]` | the runner | Open this view next. Checked: a known view, a hex nonce, numbers only; else 400 |
 | `/clarity/next?after=<nonce>` | the harness | Waits up to 20 s for a command other than `after` (the last one this page ran); 200 with it, or 204. The command stays until its view's stream stops, so a long poll left behind by a page that died (a force-stopped frontend's) can't use it up |
 | `/clarity/live`, `/clarity/still` | the harness | Start the stream (200 `{"gen": n}`, its generation), or stop it, end the view's command and reset the home |
-| `/clarity/cancel` | the runner | Before each restart: no command is left from a view that was cut short |
+| `/clarity/cancel` | the runner | Before each restart: no command, no stream and no changed state is left from a view that was cut short |
 
 Frame statistics are defined once, in `tools/perf/page/stats.js` and `tools/perf/perflib.py`.
 `tools/perf/test/stats-cases.json` pins both to the same answers.
