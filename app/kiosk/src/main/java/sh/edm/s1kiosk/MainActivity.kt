@@ -328,7 +328,8 @@ class MainActivity : Activity() {
             val m = if (forced == null) setupModel(d, d.step, d.done, preview = true)
             else setupModel(d, forced, SetupFlow.ids(paneChoices.isNotEmpty()).takeWhile { it != forced }.toSet(), preview = true)
             if (m.step == SetupFlow.DONE) {
-                if (setupOverlay.model?.step != SetupFlow.DONE) setupOverlay.finish(m) { setupPreview = false; setupPreviewStep = null }
+                // A preview holds Done until it is closed (closeSetupPreview); nothing loads behind it.
+                if (setupOverlay.model?.step != SetupFlow.DONE) setupOverlay.finish(m) {}
             } else {
                 setupOverlay.render(m)
             }

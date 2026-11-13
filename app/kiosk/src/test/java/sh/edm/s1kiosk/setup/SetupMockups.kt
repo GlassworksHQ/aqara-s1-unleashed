@@ -93,5 +93,6 @@ class SetupMockups {
         shot("setup-08-signin", model(SetupFlow.SIGNIN))
         shot("setup-09-preview", model(SetupFlow.WIFI, preview = true))
         shot("setup-10-done", model(SetupFlow.SIGNIN)) { it.finish(holdMs = 60_000) {} }
+        shot("setup-11-done-preview", model(SetupFlow.SIGNIN, preview = true)) { it.finish {} }
     }
 }
