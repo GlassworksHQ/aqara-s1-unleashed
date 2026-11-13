@@ -1,4 +1,4 @@
-// Fastboot over WebUSB, for every frame. A fork of fastboot.js (kdrag0n, MIT, see UPSTREAM.md):
+// Fastboot over WebUSB, for every frame. A fork of fastboot.js (kdrag0n, MIT, see README.md):
 // its flashBlob, sparse splitting and bootBlob, on our transport (the one FEL uses, so the tests
 // can run against simulated devices), plus what our FEL-booted U-Boot (tools/fel/uboot) adds:
 // 'oem run' and the 'upload' of patch 0002, which reads partitions back

@@ -56,7 +56,9 @@ partitions back, such as the Mirror's Qualcomm LK (#41).
 | Taken | `src/fastboot.ts`, `src/sparse.ts`, `src/common.ts`, `LICENSE` |
 | Left out | `src/factory.ts` (factory zip flashing) and its `@zip.js/zip.js` 2.2.27 dependency. No frame flashes factory zips |
 
-The first commit of PR #111 imports these files byte for byte. The commits after it are our changes.
+The second commit of PR #135 (`24b7c38` on its branch) imports these files byte for byte. The commits
+after it are our changes. That commit does not build on its own, so skip it when bisecting
+(`git bisect skip`).
 `sparse.ts` and `common.ts` keep upstream's formatting, so their upstream changes apply with few
 conflicts. `fastboot.ts` is mostly ours: it keeps upstream's `flashBlob` and `bootBlob`, on our
 transport.
@@ -87,6 +89,9 @@ On the S1 the fork sends exactly what `@glassworks/fastboot` sent before it (che
 | A sparse piece that fills the limit | Up to 24 bytes over `max-download-size` | Within it | Bug fix: LK refuses the download ("data too large") |
 | `max-download-size` not a multiple of the block size | Raw chunks cut mid-block | Cut at a block boundary | Bug fix: LK rejects the chunk |
 | Raw image that is not whole blocks, larger than the limit | Fractional block count | Refused | Bug fix |
+| A sparse magic with a bad header (version, header sizes, block size) | Flashed as a raw image | Refused | Bug fix: the bootloader would write the sparse file's bytes as they are |
+| `max-download-size` smaller than one block after the 7/8 margin (under 4681 bytes) | Broken pieces | Refused | Bug fix. Without the check, the block alignment above loops forever |
+| `bootBlob` of an image over `max-download-size` | Reads the whole image, then the bootloader refuses it | Refused before it is read | Saves reading a large file for nothing |
 | Reading a Blob | `FileReader` | `blob.arrayBuffer()` | Works in Node, so the tests run |
 | `download` and `flash` before the image is sent | Not checked | Checked against the buffer size and the partition size | Unchanged from our client |
 
@@ -96,11 +101,12 @@ On the S1 the fork sends exactly what `@glassworks/fastboot` sent before it (che
   timeout and order. It runs in CI.
 - `kiln/test/wire-trace.test.ts` records every USB call of a full S1 install and undo on the simulated
   U-Boot with the real 4.5.80 partitions. It needs the partition goldens, so it runs only on a machine
-  that has them. Run it before and after a change, then compare:
+  that has them. Run it before and after a change, then compare. To get the "before" trace of a
+  commit older than the test, copy the test file onto it first (it was added in `3d0ba0f`):
 
   ```sh
   cd kiln
-  S1_WIRE_TRACE=/tmp/before.txt npx vitest run test/wire-trace.test.ts   # on main
+  S1_WIRE_TRACE=/tmp/before.txt npx vitest run test/wire-trace.test.ts   # before the change
   S1_WIRE_TRACE=/tmp/after.txt npx vitest run test/wire-trace.test.ts    # on the branch
   cmp /tmp/before.txt /tmp/after.txt
   ```
@@ -121,4 +127,5 @@ and sparse images through it. Nothing here has run on a real Mirror. What #41 st
 5. Large images from disk: `flashBlob` takes a `File`, but Kiln's asset path passes `Uint8Array`s, and
    the release download would need OPFS and a streaming SHA-256.
 6. LK's exact replies for a refused partition and for the `has-slot`, `is-logical` and `current-slot`
-   variables `flashBlob` asks for.
+   variables `flashBlob` asks for. `FakeLk` answers every variable except `max-download-size` with
+   `FAIL`, which is a guess. Make it match the Mirror's `getvar all` once it is read.
