@@ -50,6 +50,11 @@ object RadioStep {
         ),
     )
 
+    /** A mode's chip on setup's Panes step: its title, repeaters shortened, with β when experimental. */
+    fun chip(o: Option): String =
+        o.title.replace(" (repeater)", " repeater").replace("Zigbee router", "Zigbee").replace("Thread router", "Thread") +
+            if (o.experimental) " β" else ""
+
     /** A role that isn't ready yet: shown, tagged "Coming soon", not selectable. */
     data class Soon(val mode: RadioMode, val title: String, val line: String)
 

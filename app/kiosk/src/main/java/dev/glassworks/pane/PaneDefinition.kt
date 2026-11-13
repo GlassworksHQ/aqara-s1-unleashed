@@ -16,8 +16,14 @@ interface PaneDefinition {
     /** The [Pane.id] of the pane this describes. */
     val id: String
 
-    /** Steps for first-boot setup, in order. They come after Home Assistant and before Sign in. */
+    /**
+     * What first-boot setup waits for, in order. The person answers them on the Panes step, with the
+     * pane's [setupChoice]; the installer answers them over the setup channel ([SetupStep.ops]).
+     */
     val setupSteps: List<SetupStep> get() = emptyList()
+
+    /** The pane's card on setup's Panes step, or null to leave it off. */
+    val setupChoice: PaneChoice? get() = null
 
     /**
      * The pane's sections in the settings menu, as they are now. Called each time the menu opens, so a

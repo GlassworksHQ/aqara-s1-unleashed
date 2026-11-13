@@ -59,7 +59,8 @@ change until Glassworks v1.
 | `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished, Home Assistant subscribed. A pane raises one with `PaneContext.emit`. |
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
 | `PaneDefinition` | What the core knows about a pane for the whole process, also while it isn't running: its setup steps, settings sections and adb extras. |
-| `SetupStep` | One step of first-boot setup: state plus setup channel requests, and how the setup screen draws it (`SetupScreen`, `SetupCard`). |
+| `SetupStep` | Something first-boot setup waits for from a pane: state plus setup channel requests. |
+| `PaneChoice` | A pane's card on setup's Panes step: a switch, and the ways it can run as chips. |
 | `SettingsSection` | A section of the settings: typed items (`SettingsItem`) the panel's menu draws, and the Manage page (#33) will. `settingsOrder` places them. |
 | `ScreenPolicy` | (`dev.glassworks.screen`) Wake on approach, idle off, the night window and its timeout, the brightness curve and the screen mode. It reads the frame's `PresenceSource` and `LightSource` and the app's `ScreenSettings`. One per process, on `GlassworksRuntime.screen`. |
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
@@ -245,7 +246,8 @@ process. The app makes the core's (`GlassworksRuntime.paneDefinitions`), and the
 
 | Member | What it is |
 |---|---|
-| `setupSteps` | Steps for first-boot setup. They come after Wi-Fi and Home Assistant and before Sign in, in definition order. |
+| `setupSteps` | What first-boot setup waits for from the pane. The person answers them on the Panes step, after Wi-Fi and Home Assistant and before Sign in. |
+| `setupChoice` | The pane's card on the Panes step ("What should it do?"), or null. |
 | `settings()` | The pane's settings sections, as they are now. Called each time the menu opens. |
 | `extras` | adb intent extras for its settings (`IntentExtra.bool`, `float`, `string`). `restartsApp` for a setting read only at start. |
 
@@ -253,10 +255,16 @@ process. The app makes the core's (`GlassworksRuntime.paneDefinitions`), and the
 is its part of the setup channel's state, under the step's id; `ops` are the requests that answer
 it, on the wire as `<step id>.<op>`. That way the installer can finish every step without the
 screen, and the setup screen is one more client. `SetupChannelStepsTest` fails if a step has no
-requests that finish it. `screen()` draws the step: the setup screen gives the step's `SetupScreen`
-a `SetupCard` (title, body, a status line, a QR code, the step's own view, two buttons) and a
-`SetupHost` (`preview`, `redraw()`, `next()`). The radio's step is
+requests that finish it. The radio's step is
 [`RadioDefinition`](../../sh/edm/s1kiosk/radio/RadioDefinition.kt).
+
+**On the panel, panes are one step.** The setup screen asks "What should it do?" once, with one card
+per `setupChoice` in definition order: a title, a line under it and a switch. A choice with
+`options` (the radio's modes) shows them as chips under the cards. Continue calls every card's
+`apply(on, option)` off the main thread; it returns null or why not, in words. A pane with a setup
+step answers it there (the radio's `apply` goes through the same request as `radio.set_mode`). A
+card with `restartsApp` (voice) restarts the app after Continue when it changed. The step is done
+when every pane's `setupSteps` are.
 
 **A settings section is data.** Items are `Text`, `Switch`, `Link`, `Note`, `Info` and `Group`, each
 with its value and a `save(value, done)`. "Save & restart" saves every item in order and waits for

@@ -60,7 +60,7 @@ Every UI change needs screenshots in the PR, before and after (see [`../AGENTS.m
 
 - **On the panel:** `adb shell input keyevent KEYCODE_WAKEUP`, put the screen in the state, then
   `adb exec-out screencap -p > after.png`. The intent extras help you get there:
-  `--ez show_setup true --es setup_step wifi|ha|signin|done`, `--ez show_signin true`,
+  `--ez show_setup true --es setup_step wifi|ha|panes|signin|done`, `--ez show_signin true`,
   `--ez settings true`.
 - **Without a panel:** the Robolectric mockups render the real views at the panel's size with the
   Inter font: `./gradlew :kiosk:testDebugUnitTest --tests '*Mockups*' -Ps1MockupDir=/tmp/shots`.

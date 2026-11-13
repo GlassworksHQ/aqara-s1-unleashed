@@ -1,6 +1,5 @@
 package sh.edm.s1kiosk.radio
 
-import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -8,9 +7,8 @@ import android.util.Log
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
-import dev.glassworks.pane.SetupHost
+import dev.glassworks.pane.PaneChoice
 import dev.glassworks.pane.SetupOp
-import dev.glassworks.pane.SetupScreen
 import dev.glassworks.pane.SetupStep
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -22,7 +20,6 @@ import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.discovery.HaUrls
 import sh.edm.s1kiosk.radio.ui.RadioFollowUp
 import sh.edm.s1kiosk.radio.ui.RadioSettingsView
-import sh.edm.s1kiosk.radio.ui.RadioSetupScreen
 import sh.edm.s1kiosk.radio.ui.RadioStep
 
 /**
@@ -97,13 +94,10 @@ class RadioDefinition(
 
     val step: SetupStep = object : SetupStep {
         override val id = "radio"
-        override val title = "Radio"
         override val reason = "radio mode not chosen"
 
-        /** Answered here, or a mode was chosen with HA's `Radio mode` select. */
+        /** Answered on the Panes step or over the setup channel, or a mode was chosen with HA's `Radio mode` select. */
         override fun done() = stepDone || prefs.mode != null
-
-        override fun detail(done: Boolean) = this@RadioDefinition.detail(done)
 
         override fun channelState() = channelJson()
 
@@ -114,16 +108,29 @@ class RadioDefinition(
 
         /** What the S1's Kiln (kiln/packages/setup-channel) sends. */
         override val legacyOps = mapOf("set_radio" to "set_mode", "set_radio_allow" to "set_allow")
-
-        override fun screen(context: Context, host: SetupHost): SetupScreen = RadioSetupScreen(context, host, this@RadioDefinition)
     }
 
     override val setupSteps = listOf(step)
 
-    /** The setup screen's line under "Radio". */
-    fun detail(done: Boolean): String =
-        if (done) RadioStep.OPTIONS.firstOrNull { it.mode == readout.mode() }?.title ?: readout.mode().label
-        else "Zigbee, Thread or off"
+    /**
+     * The Panes step's radio card: on means a mode other than Off, the modes are the chips. Continue
+     * applies it through [setMode], the installer's path, which marks the step answered.
+     */
+    override val setupChoice = PaneChoice(
+        title = "Zigbee / Thread radio",
+        detail = "For your devices",
+        on = { readout.mode() != RadioMode.OFF },
+        options = RadioStep.OPTIONS.filter { it.mode != RadioMode.OFF }.map { PaneChoice.Option(it.mode.id, RadioStep.chip(it)) },
+        option = { readout.mode().takeIf { it != RadioMode.OFF }?.id ?: RadioMode.ZIGBEE_TCP.id },
+        optionsLabel = "Radio",
+        apply = { on, option -> applyChoice(if (on) option ?: RadioMode.ZIGBEE_TCP.id else RadioMode.OFF.id) },
+    )
+
+    /** The mode in effect already: the step is answered without asking the radio again. */
+    private fun applyChoice(id: String): String? {
+        if (readout.mode().id == id && readout.controller() != null) { stepDone = true; return null }
+        return setMode(id)
+    }
 
     // ------------------------------------------------------------------ setup channel
 

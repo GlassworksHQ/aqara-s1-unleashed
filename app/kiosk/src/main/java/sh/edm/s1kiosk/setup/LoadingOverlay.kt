@@ -1,121 +1,153 @@
 package sh.edm.s1kiosk.setup
 
-import sh.edm.s1kiosk.ui.Inter
-import android.animation.ObjectAnimator
-import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import sh.edm.s1kiosk.ui.Glass
+import sh.edm.s1kiosk.ui.StackView
+import sh.edm.s1kiosk.ui.StackView.Look
 
 /**
- * Full-screen "connecting" state shown while the dashboard loads, so the panel never sits on a blank
- * white page. Same look as the onboarding screen: #0a0b0f with the sky/violet glows, thin type, an
- * amber pulse. MainActivity shows it on page start and hides it on first contentful paint.
+ * The connecting screen (#63): shown while the dashboard loads, so the panel never sits on a blank
+ * white page, and when it can't load. The stack tells the state: light rising through the plates while
+ * it connects, dimmed plates when there is no network to use, the top plate rose and dashed when Home
+ * Assistant doesn't answer. MainActivity shows it on page start and hides it on first contentful paint.
  */
 class LoadingOverlay(context: Context) : FrameLayout(context) {
-    private val dp = resources.displayMetrics.density
 
-    private val dot = View(context).apply {
-        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(AMBER) }
+    /** What the screen says. */
+    sealed interface State {
+        /** Light rising: on the way. [detail] is the host, or a line of text when [host] is false. */
+        data class Connecting(val title: String, val detail: String, val host: Boolean = true) : State
+
+        /** Nothing to wait for (Wi-Fi off, no network): dimmed plates and, when given, one way to fix it. */
+        data class Offline(val title: String, val detail: String, val action: String? = null) : State
+
+        /** Home Assistant doesn't answer: the top plate rose and dashed, and when it tries again. */
+        data class Unreachable(val host: String, val retryAt: Long) : State
     }
-    private val label = text(11.5f, FA, MEDIUM).apply { letterSpacing = 0.14f; isAllCaps = true; text = "S1 Unleashed" }
-    private val title = text(34f, TX, LIGHT).apply { letterSpacing = -0.02f; text = "Connecting to Home Assistant" }
-    private val detail = text(16f, MU, REGULAR).apply { setLineSpacing(0f, 1.25f) }
-    private val pulse = ObjectAnimator.ofFloat(dot, View.ALPHA, 1f, 0.25f).apply {
-        duration = 900
-        repeatMode = ValueAnimator.REVERSE
-        repeatCount = ValueAnimator.INFINITE
-        interpolator = AccelerateDecelerateInterpolator()
-    }
+
+    /** The [State.Offline] button. */
+    var onAction: (() -> Unit)? = null
+
     var isShowing = false
         private set
+
+    var state: State? = null
+        private set
+
+    private val g = Glass(context)
+    private val stack = StackView(context)
+    private val title = g.heading(34f).apply { gravity = Gravity.CENTER }
+    private val detail = TextView(context)
+    private val action = g.ghost("").apply { setOnClickListener { onAction?.invoke() } }
+    private val column = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        addView(stack, LinearLayout.LayoutParams(g.px(92f), g.px(88f)))
+        addView(title, LinearLayout.LayoutParams(-2, -2).apply { topMargin = g.px(40f) })
+        addView(detail, LinearLayout.LayoutParams(-2, -2).apply { topMargin = g.px(16f) })
+        addView(action, LinearLayout.LayoutParams(-2, -2).apply { topMargin = g.px(26f) })
+    }
+    private val tick = object : Runnable {
+        override fun run() {
+            val s = state as? State.Unreachable ?: return
+            detail.text = unreachableLine(s, SystemClock.elapsedRealtime())
+            postDelayed(this, 1000)
+        }
+    }
 
     init {
         background = Backdrop()
         isClickable = true // swallow touches while the page underneath is blank
-        val column = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            val row = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(dot, LinearLayout.LayoutParams(px(10f), px(10f)).apply { marginEnd = px(10f) })
-                addView(label)
-            }
-            addView(row)
-            addView(title, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(18f) })
-            addView(detail, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(10f) })
-        }
-        title.gravity = Gravity.CENTER
-        detail.gravity = Gravity.CENTER
         addView(column, LayoutParams(-2, -2, Gravity.CENTER))
         visibility = View.GONE
     }
 
-    /** Shows (or updates) the loading state; state changes cross-fade instead of snapping. */
-    fun show(heading: String, sub: String) {
+    /** Shows (or updates) the screen; a change of text cross-fades instead of snapping. */
+    fun show(s: State) {
         if (!isShowing) {
             isShowing = true
-            setTexts(heading, sub)
+            bind(s)
             animate().cancel()
             if (visibility != View.VISIBLE) alpha = 0f
             visibility = View.VISIBLE
             animate().alpha(1f).setDuration(250).setInterpolator(AccelerateDecelerateInterpolator()).start()
-            pulse.start()
             return
         }
-        if (title.text.toString() == heading && detail.text.toString() == sub) return
-        // Old text fades and drifts up a touch, then the new text fades in from slightly below.
-        val texts = listOf(title, detail)
-        texts.forEach { it.animate().cancel() }
-        title.animate().alpha(0f).translationY(-px(6f).toFloat()).setDuration(150)
-            .setInterpolator(AccelerateDecelerateInterpolator())
-            .withEndAction {
-                setTexts(heading, sub)
-                texts.forEach { v ->
-                    v.translationY = px(6f).toFloat()
-                    v.animate().alpha(1f).translationY(0f).setDuration(220)
-                        .setInterpolator(AccelerateDecelerateInterpolator()).start()
-                }
-            }.start()
-        detail.animate().alpha(0f).translationY(-px(6f).toFloat()).setDuration(150).start()
+        if (s == state) return
+        column.animate().cancel()
+        column.animate().alpha(0f).setDuration(150).withEndAction {
+            bind(s)
+            column.animate().alpha(1f).setDuration(220).start()
+        }.start()
     }
 
-    private fun setTexts(heading: String, sub: String) {
-        title.text = heading
-        detail.text = sub
-        detail.visibility = if (sub.isEmpty()) View.GONE else View.VISIBLE
+    private fun bind(s: State) {
+        state = s
+        removeCallbacks(tick)
+        action.visibility = View.GONE
+        when (s) {
+            is State.Connecting -> {
+                stack.looks = listOf(Look.LIT, Look.OUTLINE, Look.OUTLINE)
+                stack.rising = true
+                title.text = s.title
+                detail(s.detail, s.host)
+            }
+            is State.Offline -> {
+                stack.looks = listOf(Look.DIM, Look.DIM, Look.DIM)
+                stack.rising = false
+                title.text = s.title
+                detail(s.detail, host = false)
+                s.action?.let { action.text = it; action.visibility = View.VISIBLE }
+            }
+            is State.Unreachable -> {
+                stack.looks = listOf(Look.PROBLEM, Look.OUTLINE, Look.OUTLINE)
+                stack.rising = false
+                title.text = UNREACHABLE
+                detail(unreachableLine(s, SystemClock.elapsedRealtime()), host = false)
+                post(tick)
+            }
+        }
+    }
+
+    private fun detail(text: String, host: Boolean) {
+        val t = if (host) g.mono(15f) else g.text(17f, Glass.MU)
+        detail.typeface = t.typeface
+        detail.textSize = if (host) 15f else 17f
+        detail.setTextColor(Glass.MU)
+        detail.gravity = Gravity.CENTER
+        detail.text = text
+        detail.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
     }
 
     /** Fades out once the dashboard has painted. */
     fun hide() {
         if (!isShowing) return
         isShowing = false
+        removeCallbacks(tick)
         animate().alpha(0f).setDuration(300).withEndAction {
-            if (!isShowing) { visibility = View.GONE; pulse.cancel() }
+            if (!isShowing) { visibility = View.GONE; stack.rising = false; state = null }
         }.start()
     }
 
-    private fun px(v: Float) = (v * dp).toInt()
+    /** For the mock-ups: hold the rising light at one frame. */
+    internal fun previewPhase(p: Float) { stack.held = p }
 
-    private fun text(sp: Float, color: Int, weight: Int) = TextView(context).apply {
-        textSize = sp; setTextColor(color); typeface = Inter.typeface(context, weight, sp)
-    }
+    companion object {
+        const val CONNECTING = "Connecting to Home Assistant"
+        const val UNREACHABLE = "Can't reach Home Assistant"
 
-    private companion object {
-        // Same tokens as SetupOverlay / tablet-home-card.
-        val TX = Color.parseColor("#f4f4f5")
-        val MU = Color.parseColor("#a1a1aa")
-        val FA = Color.parseColor("#63636b")
-        val AMBER = Color.parseColor("#fbbf24")
-        val LIGHT = Inter.LIGHT
-        val REGULAR = Inter.REGULAR
-        val MEDIUM = Inter.MEDIUM
+        /** "Trying again in 4 s · homeassistant.local"; "Trying again…" once the time has come. */
+        fun unreachableLine(s: State.Unreachable, now: Long): String {
+            val left = ((s.retryAt - now + 999) / 1000).coerceAtLeast(0)
+            val when_ = if (left > 0) "Trying again in $left s" else "Trying again…"
+            return if (s.host.isEmpty()) when_ else "$when_ · ${s.host}"
+        }
     }
 }

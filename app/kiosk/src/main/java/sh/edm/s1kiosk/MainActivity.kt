@@ -72,6 +72,7 @@ class MainActivity : Activity() {
     /** The panes' definitions: their setup steps, settings sections and adb extras. */
     private val panes by lazy { glassworks.paneDefinitions(this) }
     private val paneSteps by lazy { panes.flatMap { it.setupSteps } }
+    private val paneChoices by lazy { panes.mapNotNull { it.setupChoice } }
 
     /** "Sign in on this panel instead" was chosen: don't cover HA's login page again (this process). */
     private var usePanelLogin = false
@@ -141,7 +142,6 @@ class MainActivity : Activity() {
     private val setupTick = object : Runnable {
         override fun run() {
             refreshSetup()
-            setupOverlay.tick() // the panes' steps follow their state
             refreshOffline()
             handler.postDelayed(this, SETUP_TICK_MS)
         }
@@ -176,20 +176,26 @@ class MainActivity : Activity() {
         // full-screen window); until it is ready the loading screen draws 8-bit gradients.
         val real = android.graphics.Point().also { @Suppress("DEPRECATION") windowManager.defaultDisplay.getRealSize(it) }
         Backdrop.prewarm(maxOf(real.x, real.y), minOf(real.x, real.y))
-        loadingOverlay = LoadingOverlay(this)
+        loadingOverlay = LoadingOverlay(this).apply { onAction = ::openWifiSettings }
         voiceOverlay = VoiceOverlay(this).apply {
             onCancel = { glassworks.voiceCancel?.invoke() }
             onShowingChanged = { timerOverlay.voiceShowing(it) } // a timer set by voice flies out of the orb
         }
         timerOverlay = TimerOverlay(this)
-        setupOverlay = SetupOverlay(this, paneSteps).apply {
+        setupOverlay = SetupOverlay(this, paneChoices).apply {
             onUsePanel = ::onUsePanelLogin
             onManualUrl = ::onManualHaUrl
             onChooseNetwork = ::openWifiSettings
             onSkipHa = ::onSkipHaSetup
             onClosePreview = ::closeSetupPreview
             onImprovAction = ::onImprovAction
-            onStepDone = { if (setupPreview) closeSetupPreview() else refreshSetup() }
+            onPanesDone = { restart ->
+                when {
+                    setupPreview -> closeSetupPreview()
+                    restart -> restartProcess() // voice on or off: PanelDevice reads it at start
+                    else -> refreshSetup()
+                }
+            }
         }
         threadJoinOverlay = sh.edm.s1kiosk.setup.ThreadJoinOverlay(this).apply {
             onClose = { HaAuth.threadJoin.disarm(); hide() }
@@ -215,7 +221,10 @@ class MainActivity : Activity() {
         // views have drawn, a plain colour behind them costs the GPU nothing on every later frame.
         window.decorView.post { window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0xFF0A0B0F.toInt())) }
         // Visible from the first frame: the dashboard's first paint or the setup screen replaces it.
-        loadingOverlay.show("Starting up", if (hasNetwork()) "Connecting to Home Assistant…" else "Reconnecting to Wi-Fi…")
+        loadingOverlay.show(
+            if (hasNetwork()) LoadingOverlay.State.Connecting(LoadingOverlay.CONNECTING, dashboardHost())
+            else LoadingOverlay.State.Connecting(OfflineText.CONNECTING_TITLE, OfflineText.CONNECTING_DETAIL, host = false),
+        )
         HaAuth.addListener(authListener)
         HaAuth.threadJoin.addListener(threadJoinListener)
         // Recreated while the QR code was up: show it again (posted, so a newer update still wins).
@@ -320,7 +329,7 @@ class MainActivity : Activity() {
             val forced = setupPreviewStep
             // A forced step: every step before it shows as done.
             val m = if (forced == null) setupModel(d, d.step, d.done, preview = true)
-            else setupModel(d, forced, SetupFlow.ids(paneSteps.map { it.id }).takeWhile { it != forced }.toSet(), preview = true)
+            else setupModel(d, forced, SetupFlow.ids(paneChoices.isNotEmpty()).takeWhile { it != forced }.toSet(), preview = true)
             if (m.step == SetupFlow.DONE) {
                 if (setupOverlay.model?.step != SetupFlow.DONE) setupOverlay.finish(m) { setupPreview = false; setupPreviewStep = null }
             } else {
@@ -382,9 +391,9 @@ class MainActivity : Activity() {
         if (!onDashboard && !justLoaded) loadDashboard()
     }
 
-    /** `--ez show_setup true [--es setup_step wifi|ha|radio|signin|done]`, `--ez show_signin true` (= signin). */
+    /** `--ez show_setup true [--es setup_step wifi|ha|panes|signin|done]`, `--ez show_signin true` (= signin). */
     private fun applySetupPreview(intent: Intent) {
-        val step = SetupFlow.parse(intent.getStringExtra("setup_step"), paneSteps.map { it.id })
+        val step = SetupFlow.parse(intent.getStringExtra("setup_step"), paneChoices.isNotEmpty(), paneSteps.map { it.id })
         when {
             intent.getBooleanExtra("show_signin", false) -> startSetupPreview(SetupFlow.SIGNIN)
             intent.hasExtra("show_setup") && !intent.getBooleanExtra("show_setup", false) -> closeSetupPreview()
@@ -409,6 +418,9 @@ class MainActivity : Activity() {
 
     private val hideLoading = Runnable { loadingOverlay.hide() }
 
+    /** The host the dashboard loads from, for the connecting screen ("" before one is known). */
+    private fun dashboardHost(): String = (currentUrl ?: prefs.url).takeIf { it.startsWith("http") }?.let { Uri.parse(it).host }.orEmpty()
+
     private fun hasNetwork(): Boolean {
         val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return true
         return cm.activeNetwork != null
@@ -421,7 +433,10 @@ class MainActivity : Activity() {
     private fun showOffline() {
         val t = OfflineText.decide(offlineFacts(), ImprovController.BOOT_GRACE_MS)
         offlineShown = true
-        loadingOverlay.show(t.title, t.detail)
+        loadingOverlay.show(
+            if (t.connecting) LoadingOverlay.State.Connecting(t.title, t.detail, host = false)
+            else LoadingOverlay.State.Offline(t.title, t.detail, OfflineText.SETUP_ACTION),
+        )
     }
 
     /** Every setup tick while the no-network text is up: network back -> load now; else keep the text current. */
@@ -838,7 +853,7 @@ class MainActivity : Activity() {
             handler.removeCallbacks(retryLoad)
             handler.removeCallbacks(hideLoading)
             offlineShown = false
-            if (url.startsWith("http")) loadingOverlay.show("Connecting to Home Assistant", Uri.parse(url).host ?: "")
+            if (url.startsWith("http")) loadingOverlay.show(LoadingOverlay.State.Connecting(LoadingOverlay.CONNECTING, Uri.parse(url).host ?: ""))
         }
 
         override fun onPageStop(success: Boolean) {
@@ -847,7 +862,7 @@ class MainActivity : Activity() {
             } else {
                 if (hasNetwork()) {
                     offlineShown = false
-                    loadingOverlay.show("Can't reach Home Assistant", "Retrying every few seconds…")
+                    loadingOverlay.show(LoadingOverlay.State.Unreachable(dashboardHost(), SystemClock.elapsedRealtime() + RETRY_MS))
                 } else {
                     showOffline() // "Connecting to Wi-Fi…" after a reboot, the setup hint when there's nothing to wait for
                 }

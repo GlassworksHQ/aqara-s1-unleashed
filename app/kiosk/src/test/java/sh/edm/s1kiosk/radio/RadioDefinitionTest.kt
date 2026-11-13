@@ -67,8 +67,20 @@ class RadioDefinitionTest {
     fun aFreshPanelGetsTheStep() {
         val d = definition()
         assertFalse(d.step.done())
-        assertEquals("Zigbee, Thread or off", d.step.detail(false))
         assertEquals("radio mode not chosen", d.step.reason)
+        // Its card on the Panes step: off, the modes as chips, the coordinator offered first.
+        val c = d.setupChoice
+        assertFalse(c.on())
+        assertEquals(listOf("Zigbee coordinator", "Thread border router", "Zigbee repeater β", "Thread repeater β"), c.options.map { it.label })
+        assertEquals(RadioMode.ZIGBEE_TCP.id, c.option())
+    }
+
+    @Test
+    fun continueWithTheModeInEffectAnswersTheStep() {
+        val d = definition(controller())
+        assertFalse(d.step.done())
+        assertNull(d.setupChoice.apply(false, null)) // Off, as it is: nothing to ask the radio
+        assertTrue(d.step.done())
     }
 
     @Test
@@ -89,7 +101,8 @@ class RadioDefinitionTest {
         val d = definition()
         prefs.radio.mode = RadioMode.THREAD.id
         assertTrue(d.step.done())
-        assertEquals("Thread border router", d.step.detail(true))
+        assertTrue(d.setupChoice.on())
+        assertEquals(RadioMode.THREAD.id, d.setupChoice.option())
     }
 
     @Test

@@ -15,39 +15,40 @@ package sh.edm.s1kiosk.setup
  *      not skipped by the user);
  *   4. no HA session: no refresh token *and* the page actually landed on HA's login page (or the
  *      user signed out on this panel), unless "Sign in on this panel instead" was chosen;
- *   5. a pane's step isn't done (online, HA step done), e.g. the radio mode was never chosen;
+ *   5. a pane's step isn't done (online, HA step done), e.g. the radio mode was never chosen; the
+ *      person answers it on the Panes step;
  *   and, without the grace period, (1) while Improv (Wi-Fi over Bluetooth) is running or Wi-Fi
  *   details came from the computer: Improv's Allow prompt and the join's progress live in the
  *   Wi-Fi step.
  *   Once shown, it stays until every step is done (no flicker between steps).
  * - **Which step is current while it's shown?** The first one that isn't done, in order Wi-Fi →
- *   Add to HA → the panes' steps → Sign in. Done means: online; HA has subscribed to the panel's
- *   states (it added the panel) or the user skipped it; the pane's step says so; signed in or not
- *   needed.
+ *   Add to HA → Panes → Sign in. Done means: online; HA has subscribed to the panel's states (it
+ *   added the panel) or the user skipped it; every pane's step says so; signed in or not needed.
  *
- * The panes' steps come before Sign in: they belong with adding the panel (Zigbee coordinator means
+ * Panes comes before Sign in: the panes' steps belong with adding the panel (Zigbee coordinator means
  * adding ZHA in the same Devices & services page), and signing in is what loads the dashboard, so it
  * stays the hand-off at the end instead of being interrupted by one more question.
  */
 object SetupFlow {
     const val WIFI = "wifi"
     const val HA = "ha"
+    /** What the panel should do: one card per pane that offers one (PaneDefinition.setupChoice). */
+    const val PANES = "panes"
     const val SIGNIN = "signin"
     const val DONE = "done"
 
-    /** Every step in order: the core's, with the panes' steps ([paneSteps], their ids) before Sign in. */
-    fun ids(paneSteps: List<String>): List<String> {
-        require(paneSteps.none { it in CORE } && paneSteps.size == paneSteps.toSet().size) {
-            "Pane step ids must be unique and not the core's ($CORE): $paneSteps"
-        }
-        return listOf(WIFI, HA) + paneSteps + listOf(SIGNIN, DONE)
+    /** Every step in order. [panes]: some pane has a card, so the Panes step is there. */
+    fun ids(panes: Boolean): List<String> = listOfNotNull(WIFI, HA, PANES.takeIf { panes }, SIGNIN, DONE)
+
+    /**
+     * A step id from `--es setup_step <id>`, or null. A pane step's id ([paneSteps], e.g. the older
+     * `radio`) means the Panes step.
+     */
+    fun parse(s: String?, panes: Boolean, paneSteps: List<String> = emptyList()): String? {
+        val t = s?.trim() ?: return null
+        if (panes && paneSteps.any { it.equals(t, ignoreCase = true) }) return PANES
+        return ids(panes).firstOrNull { it.equals(t, ignoreCase = true) }
     }
-
-    private val CORE = setOf(WIFI, HA, SIGNIN, DONE)
-
-    /** A step id from `--es setup_step <id>` ([paneSteps] are the panes' ids), or null. */
-    fun parse(s: String?, paneSteps: List<String>): String? =
-        ids(paneSteps).firstOrNull { it.equals(s?.trim(), ignoreCase = true) }
 }
 
 /** A pane's setup step as [SetupState] sees it. */
@@ -109,16 +110,17 @@ data class SetupDecision(
     val signinDone: Boolean,
     /** Why it is shown (for the log), empty when hidden. */
     val reasons: List<String>,
-    /** The ids of the panes' steps that are done. */
-    val paneDone: Set<String> = emptySet(),
     /** Improv's status block for the Wi-Fi step. */
     val improv: WifiStep.ImprovLine = WifiStep.improv(ImprovFacts()),
+    /** Every pane's step is done. */
+    val panesDone: Boolean = true,
 ) {
     /** Every step that is done, by id ([SetupFlow.DONE] never is: it's where the screen ends). */
     val done: Set<String>
-        get() = paneDone + listOfNotNull(
-            SetupFlow.WIFI.takeIf { wifiDone }, SetupFlow.HA.takeIf { haDone }, SetupFlow.SIGNIN.takeIf { signinDone },
-        )
+        get() = listOfNotNull(
+            SetupFlow.WIFI.takeIf { wifiDone }, SetupFlow.HA.takeIf { haDone },
+            SetupFlow.PANES.takeIf { panesDone }, SetupFlow.SIGNIN.takeIf { signinDone },
+        ).toSet()
 }
 
 object SetupState {
@@ -149,15 +151,14 @@ object SetupState {
         val step = when {
             !wifiDone -> SetupFlow.WIFI
             !haDone -> SetupFlow.HA
-            pending != null -> pending.id
+            pending != null -> SetupFlow.PANES
             !signinDone -> SetupFlow.SIGNIN
             else -> SetupFlow.DONE
         }
         // Once up, the screen stays until everything is done, so it doesn't flicker away between
         // steps (e.g. Wi-Fi joined, HA not discovered yet). It can't start on its own though.
         val show = reasons.isNotEmpty() || (i.showing && step != SetupFlow.DONE)
-        val paneDone = i.paneSteps.filter { it.done }.map { it.id }.toSet()
-        return SetupDecision(show, step, wifiDone, haDone, signinDone, reasons, paneDone, WifiStep.improv(i.improv))
+        return SetupDecision(show, step, wifiDone, haDone, signinDone, reasons, WifiStep.improv(i.improv), panesDone = pending == null)
     }
 
     /**

@@ -1,6 +1,7 @@
 package sh.edm.s1kiosk.setup
 
 import android.app.Application
+import dev.glassworks.pane.PaneChoice
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
@@ -12,14 +13,11 @@ import sh.edm.improv.ImprovState
 import sh.edm.s1kiosk.radio.FixedReadout
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.radioDefinition
-import sh.edm.s1kiosk.radio.ui.RadioSetupScreen
-import sh.edm.s1kiosk.radio.ui.RadioStep
-import sh.edm.s1kiosk.radio.radioDefinition
 import sh.edm.s1kiosk.ui.Mockup
 
 /**
- * Mock-ups of every step of the setup screen (the radio step's follow-up cards are in RadioMockups),
- * rendered at the panel's 1440x720 px. Illustrative values only. Skipped unless asked:
+ * Mock-ups of every step of the setup screen and of the connecting screen (#63), rendered at the
+ * panel's 1440x720 px. Illustrative values only. Skipped unless asked:
  *   ./gradlew :kiosk:testDebugUnitTest --tests '*SetupMockups*' -Ps1MockupDir=<dir>
  */
 @RunWith(RobolectricTestRunner::class)
@@ -34,10 +32,7 @@ class SetupMockups {
     private val offline = WifiSetupStatus.Snapshot(WifiSetupStatus.State.NOT_CONNECTED)
     private val online = WifiSetupStatus.Snapshot(WifiSetupStatus.State.CONNECTED, "Example-WiFi")
 
-    private val flow = SetupFlow.ids(listOf("radio"))
-
-    /** The radio step's state: the mode in effect, and the screen's last "Apply". */
-    private data class Radio(val current: RadioMode = RadioMode.OFF, val applied: RadioStep.Applied? = null, val busy: Boolean = false)
+    private val flow = SetupFlow.ids(true)
 
     private fun model(
         step: String, wifi: WifiSetupStatus.Snapshot = online, haUrl: String? = ha,
@@ -47,50 +42,56 @@ class SetupMockups {
         signedIn = false, improv = WifiStep.improv(improv), installer = installer, preview = preview,
     )
 
-    private fun overlay(radio: Radio = Radio()): SetupOverlay {
-        val a = Mockup.activity()
-        val def = radioDefinition(a, FixedReadout(null, mode = radio.current, haBase = ha, panelIp = ip))
-        val s = SetupOverlay(a, def.setupSteps)
-        a.setContentView(s, android.view.ViewGroup.LayoutParams(-1, -1))
-        (s.previewScreen("radio") as RadioSetupScreen).previewApplied(radio.applied, radio.busy)
-        return s
-    }
+    /** The app's cards: voice and music on, the radio in [radio]. */
+    private fun choices(a: android.content.Context, radio: RadioMode): List<PaneChoice> = listOf(
+        PaneChoice("Voice", "Assist and timers", on = { true }, apply = { _, _ -> null }),
+        PaneChoice("Music", "A Sendspin speaker", on = { true }, apply = { _, _ -> null }),
+        radioDefinition(a, FixedReadout(null, mode = radio, haBase = ha, panelIp = ip)).setupChoice,
+    )
 
-    private fun shot(name: String, m: SetupOverlay.Model, radio: Radio = Radio()) {
-        val s = overlay(radio)
+    private fun shot(name: String, m: SetupOverlay.Model, radio: RadioMode = RadioMode.ZIGBEE_TCP, then: (SetupOverlay) -> Unit = {}) {
+        val a = Mockup.activity()
+        val s = SetupOverlay(a, choices(a, radio))
+        a.setContentView(s, android.view.ViewGroup.LayoutParams(-1, -1))
         s.render(m)
+        then(s)
         Mockup.idle()
         Mockup.save(name, s)
+    }
+
+    private fun connecting(name: String, state: LoadingOverlay.State, phase: Float? = null) {
+        val a = Mockup.activity()
+        val o = LoadingOverlay(a)
+        a.setContentView(o, android.view.ViewGroup.LayoutParams(-1, -1))
+        o.show(state)
+        phase?.let(o::previewPhase)
+        Mockup.idle()
+        Mockup.save(name, o)
     }
 
     @Test
     fun mockups() {
         assumeTrue("set -Ps1MockupDir=<dir> to write the mock-ups", Mockup.dir != null)
 
-        shot("setup-01-wifi-bluetooth-off", model(SetupFlow.WIFI, wifi = offline))
-        shot("setup-02-wifi-allow", model(
+        connecting("connecting-01", LoadingOverlay.State.Connecting(LoadingOverlay.CONNECTING, "homeassistant.local"), phase = 0.62f)
+        connecting("connecting-02-wifi-off", LoadingOverlay.State.Offline(OfflineText.WIFI_OFF_TITLE, OfflineText.SETUP_HINT, OfflineText.SETUP_ACTION))
+        connecting("connecting-03-unreachable", LoadingOverlay.State.Unreachable("homeassistant.local", retryAt = android.os.SystemClock.elapsedRealtime() + 4_000))
+        connecting("connecting-04-joining-wifi", LoadingOverlay.State.Connecting(OfflineText.CONNECTING_TITLE, OfflineText.CONNECTING_DETAIL, host = false), phase = 0.3f)
+
+        shot("setup-01-wifi-allow", model(
             SetupFlow.WIFI, wifi = offline,
             improv = ImprovFacts(running = true, advertising = true, clients = 1, state = ImprovState.AUTHORIZATION_REQUIRED),
         ))
+        shot("setup-02-wifi-bluetooth-off", model(SetupFlow.WIFI, wifi = offline))
         shot("setup-03-wifi-from-computer", model(
             SetupFlow.WIFI, wifi = offline, installer = InstallerWifi("Example-WiFi", InstallerWifi.Phase.CONNECTING),
         ))
-        shot("setup-04-ha-looking", model(SetupFlow.HA, haUrl = null))
-        shot("setup-05-ha-add", model(SetupFlow.HA))
-        shot("setup-06-radio-choose", model("radio"))
-        shot("setup-07-radio-applying", model("radio"), Radio(RadioMode.OFF, busy = true))
-        shot("setup-08-radio-off-applied", model("radio"),
-            Radio(RadioMode.OFF, RadioStep.Applied(RadioMode.OFF, true, "Off: Aqara's radio services stopped, radio idle")))
-        shot("setup-09-radio-refused", model("radio"), Radio(
-            RadioMode.ZIGBEE_TCP,
-            RadioStep.Applied(RadioMode.ZIGBEE_TCP, false, "Zigbee coordinator (TCP) needs the root helper (init service s1kiosk_radio is not installed)."),
-        ))
-        shot("setup-10-signin", model(SetupFlow.SIGNIN))
-        shot("setup-11-preview", model(SetupFlow.WIFI, preview = true))
-        val s = overlay()
-        s.render(model(SetupFlow.SIGNIN))
-        s.finish(holdMs = 60_000) {}
-        Mockup.idle()
-        Mockup.save("setup-12-done", s)
+        shot("setup-04-ha-add", model(SetupFlow.HA))
+        shot("setup-05-ha-looking", model(SetupFlow.HA, haUrl = null))
+        shot("setup-06-panes", model(SetupFlow.PANES))
+        shot("setup-07-panes-radio-off", model(SetupFlow.PANES), RadioMode.OFF)
+        shot("setup-08-signin", model(SetupFlow.SIGNIN))
+        shot("setup-09-preview", model(SetupFlow.WIFI, preview = true))
+        shot("setup-10-done", model(SetupFlow.SIGNIN)) { it.finish(holdMs = 60_000) {} }
     }
 }

@@ -1,11 +1,18 @@
 package sh.edm.s1kiosk.sendspin
 
 import dev.glassworks.pane.IntentExtra
+import dev.glassworks.pane.PaneChoice
 import dev.glassworks.pane.PaneDefinition
 
-/** The Sendspin player ([SendspinPane]) for the whole process: its adb extras (app/README.md). */
+/** The Sendspin player ([SendspinPane]) for the whole process: its Panes card and adb extras (app/README.md). */
 class SendspinDefinition(prefs: SendspinPrefs) : PaneDefinition {
     override val id = "sendspin"
+
+    // SendspinPane follows the setting live.
+    override val setupChoice = PaneChoice(
+        title = "Music", detail = "A Sendspin speaker", on = { prefs.enabled },
+        apply = { on, _ -> prefs.enabled = on; null },
+    )
 
     override val extras = listOf(
         IntentExtra.bool("sendspin_enabled", default = true) { prefs.enabled = it },

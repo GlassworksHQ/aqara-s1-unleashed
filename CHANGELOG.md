@@ -12,6 +12,12 @@ below as the release notes.
   three glass plates drop into place, the top one lights up from sky to violet, and "Glassworks" and
   "On Aqara S1 Plus" fade in. While the panel finishes starting, the stack floats and the top plate
   breathes. It reaches a panel when you run the installer again.
+- **New connecting and setup screens.** They use the Glassworks look: the glass stack tells you what
+  is happening. Light rises through it while the panel connects, the plates dim when there is no
+  network, and the top one turns red and dashed when Home Assistant doesn't answer, with a countdown
+  to the next try. Setup has four steps: Wi-Fi, Home Assistant, Panes and Sign in. On Panes you choose
+  what the panel does: voice, music and the Zigbee / Thread radio, with the radio's mode as a row of
+  choices. What to do next for the radio's mode is in the settings menu's Radio section.
 - **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
   page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
   Nothing in the sections changed.

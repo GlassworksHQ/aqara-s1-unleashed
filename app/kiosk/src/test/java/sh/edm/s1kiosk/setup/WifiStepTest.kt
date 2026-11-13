@@ -49,7 +49,7 @@ class WifiStepTest {
     fun connectedClientAsksForPermission() {
         val l = WifiStep.improv(on.copy(clients = 1))
         assertEquals(Phase.ASKING, l.phase)
-        assertEquals("Allow Wi-Fi setup over Bluetooth?", l.title)
+        assertEquals("Home Assistant wants to send Wi-Fi", l.title)
         assertEquals(listOf(Action.ALLOW, Action.NOT_NOW), l.actions)
     }
 

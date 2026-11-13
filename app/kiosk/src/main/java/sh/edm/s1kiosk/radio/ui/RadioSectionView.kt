@@ -109,7 +109,7 @@ class RadioSectionView(private val context: Context) {
             l2.setTextColor(if (lit) SetupStyle.TX else SetupStyle.MU)
             val showDot = (active && mode != RadioMode.OFF) || starting
             dot.visibility = if (showDot) View.VISIBLE else View.GONE
-            dot.color = if (starting) SetupStyle.AMBER else RadioFollowUpView.healthColor(health); dot.invalidate()
+            dot.color = if (starting) SetupStyle.AMBER else healthColor(health); dot.invalidate()
             beta.visibility = if (!showDot && RadioStep.OPTIONS.any { it.mode == mode && it.experimental }) View.VISIBLE else View.GONE
             view.alpha = if (flow.running != null && !lit) 0.55f else 1f
         }
@@ -394,7 +394,7 @@ class RadioSectionView(private val context: Context) {
             Show.PREVIEW -> (if (RadioStep.OPTIONS.any { it.mode == role && it.experimental }) "Experimental" else "Off now") to SetupStyle.FA
             Show.STARTING -> "Starting" to SetupStyle.AMBER
             Show.REFUSED -> "Not started" to SetupStyle.ROSE
-            else -> health.label to RadioFollowUpView.healthColor(health)
+            else -> health.label to healthColor(health)
         }
         setPill(headerPill, pillText, pillColor)
         if (view == Show.PREVIEW && f.mode == role) setPill(headerPill, "On", SetupStyle.GREEN)

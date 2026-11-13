@@ -53,7 +53,7 @@ class BootSplashActivity : Activity() {
         window.setFormat(PixelFormat.RGBA_8888) // 8 bits per channel for the dithered backdrop
         val real = Point().also { @Suppress("DEPRECATION") windowManager.defaultDisplay.getRealSize(it) }
         Backdrop.prewarm(maxOf(real.x, real.y), minOf(real.x, real.y))
-        setContentView(LoadingOverlay(this).apply { show("Starting up", "") })
+        setContentView(LoadingOverlay(this).apply { show(LoadingOverlay.State.Connecting("Starting up", "", host = false)) })
         hideSystemUi()
         receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context, i: Intent) { advance() }
