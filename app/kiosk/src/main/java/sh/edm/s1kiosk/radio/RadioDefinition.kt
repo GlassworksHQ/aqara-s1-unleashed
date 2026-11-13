@@ -160,11 +160,15 @@ class RadioDefinition(
      */
     private fun applyChoice(id: String): String? = keepOrSet(id, "setup screen")
 
-    /** [applyChoice]'s rule for any [source]: a request for the mode in effect would restart the helper for nothing. */
+    /**
+     * [applyChoice]'s rule for any [source]: a request for the mode in effect would restart the helper for
+     * nothing. Not while another request is queued: the mode read here isn't the one that will run, so
+     * this one goes after it (as the settings switch's Off does).
+     */
     private fun keepOrSet(id: String, source: String): String? {
         val r = readout.controller()
         val mode = readout.mode()
-        if (r != null && mode.id == id &&
+        if (r != null && !r.requestPending && mode.id == id &&
             RadioStep.classify(mode, true, r.statusText()) in setOf(RadioStep.Result.OK, RadioStep.Result.APPLYING)
         ) { stepDone = true; return null }
         return setModeFrom(id, source)

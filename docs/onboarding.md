@@ -235,8 +235,8 @@ line, both ways:
   `ha.signedIn`, `ha.signinUrl` (`http://<ip>:8099/signin` once there is an ip and an HA address),
   `radio.mode` (RadioMode id), `radio.status` (RadioController's status text), `radio.options` (the
   radio's modes: id, label, detail, `experimental` only when true), `radio.helper`
-  (root helper installed) and `radio.answered` (the panel's radio step is answered; apps before #155
-  leave it out). Unknown optional fields are left out.
+  (root helper installed) and `radio.answered` (the panel's radio step is answered; an app that doesn't
+  send `answered` restarts the radio on a same-mode request). Unknown optional fields are left out.
 - `ha.set_url` (first name `set_ha`, which still works) with `url` (http/https only): applied on the main thread exactly as the `url` intent extra
   (dashboard URL setting saved, then the dashboard reloads, or the process restarts when the
   secure-context hosts change, after the reply). The panel's setup screen moves on by itself.
