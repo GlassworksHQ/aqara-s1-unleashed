@@ -87,4 +87,17 @@ describe('wizard state', () => {
     expect(s.wrote).toBe(false);
     expect(reduce(s, { type: 'start', flow: 'install', now: 1 }).touched).toBe(false);
   });
+
+  it('keeps the panel\'s history across attempts, from a progress or a verified write alike, until Done', () => {
+    const start = (s: WizardState) => run(s, { type: 'go', screen: 'connect' }, { type: 'start', flow: 'install', now: 1 });
+    const flashed = run(initial(), { type: 'start', flow: 'install', now: 0 }, progress(0.6, 'flash'));
+    expect(start(flashed)).toMatchObject({ touched: false, changed: 'written' });
+    const logged = run(initial(), { type: 'start', flow: 'undo', now: 0 }, { type: 'log', line: '10:00:00 boot restored and verified' });
+    expect(start(logged)).toMatchObject({ wrote: false, changed: 'written' });
+    expect(reduce(start(logged), { type: 'done', done: { title: 'Done.', body: '' } }).changed).toBeUndefined();
+    const apps = reduce(initial('undo'), { type: 'changed', by: 'apps' });
+    expect(apps.changed).toBe('apps');
+    expect(reduce(apps, progress(0.4, 'flash')).changed).toBe('written'); // a write outranks the apps
+    expect(reduce(start(logged), { type: 'changed', by: 'apps' }).changed).toBe('written');
+  });
 });

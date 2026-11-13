@@ -14,6 +14,18 @@ and glassworks.dev read them from here.
 |---|---|---|---|
 | [`aqara-s1-plus`](aqara-s1-plus) | Beta | yes | `frame.json`, `recovery.json` |
 | [`lululemon-mirror`](lululemon-mirror) | Planned | not yet | `frame.json` only (no recovery drawing yet) |
+| [`generic-android`](generic-android) | Planned | not yet | `frame.json` only. Any Android device as an app, no root. It has no `display`: there is no one screen size |
+
+Every device glassworks.dev lists has a frame here, planned ones included. The site's slugs are
+these ids, except one:
+
+| glassworks.dev slug | Frame id here |
+|---|---|
+| `aqara-s1` | `aqara-s1-plus` |
+
+When the site switches to these files, it should redirect its old `/frames/aqara-s1` to
+`/frames/aqara-s1-plus`. The ids here don't change: Kiln's routes, the boot generator and the release
+tags (`aqara-s1-plus-v<version>`) use them.
 
 ## `design/frame.json`
 
@@ -31,9 +43,11 @@ describes the device's look in millimetres"). Kiln's picker reads it, and glassw
 | `kiln` | Optional. Kiln's route, once the frame installs from Kiln |
 | `model` | The device's look in mm, for the 3D mockup (below) |
 | `recovery` | Optional. The recovery drawing data's file, next to this one |
+| `display` | `{ width, height }`: the screen in pixels, as Android's boot animation sees it. With `name`, it is all the [boot generator](../branding/boot/README.md) needs |
+| `boot` | Optional. The boot branding's limits: `androidApi` (the API level; 25+ gets trimmed frames), `splash` (the bootloader splash format, `allwinner-boot-resource`), `zipBudget` (the largest `bootanimation.zip`, bytes) |
 | `specs` | Hardware rows: `{ label, value }`. Labels: `Size`, `SoC`, `Android`, `Screen`, `Radio`, `Presence`, `Audio`, `Extras`, `Mount`, `Root` |
 | `panes` | For each pane (`assist`, `timers`, `sendspin`, `radio`, `sensors`, `base`): `{ support, note? }`. Support is a status or `depends`, `unknown`, `no` |
-| `install` | `{ how }`: one sentence on how it installs |
+| `install` | `{ how, href? }`: one sentence on how it installs, and where, while that isn't Kiln (the S1's is still s1.edm.sh) |
 | `ratings` | The nine install ratings, each `{ value, detail? }`: `difficulty`, `reversible`, `modifiesAndroid`, `root`, `opensDevice`, `vendorApps`, `wipes`, `backup`, `updates` |
 | `ratingsNote`, `notice` | Optional. A sentence of context; something a buyer must know |
 | `unverified` | Optional. `true` when any of it comes from writeups rather than a real device |
@@ -74,7 +88,8 @@ All read from [GlassworksHQ/glassworks.dev](https://github.com/GlassworksHQ/glas
 | Site file | Here | How |
 |---|---|---|
 | `src/lib/devices.ts`: the `aqara-s1` and `lululemon-mirror` entries | `aqara-s1-plus/design/frame.json`, `lululemon-mirror/design/frame.json` | Data copied; the S1's id is this repo's `aqara-s1-plus` (the site's slug is `aqara-s1`) and its project link is GlassworksHQ's |
-| `src/components/deviceGeometry.ts`: `MODELS.s1`, `MODELS.mirror` | The `model` sections of those files | Data copied; the Mirror's stand, computed in code there, written out as 13 tubes |
+| `src/lib/devices.ts`: the `generic-android` entry, read at `main` = `8abae2d` (2026-11-12) | `generic-android/design/frame.json` | Data copied field for field. The S1's `install.href` came from the same read. Nothing else differed, apart from the S1's project link |
+| `src/components/deviceGeometry.ts`: `MODELS.s1`, `MODELS.mirror`, `MODELS.tablet` | The `model` sections of those files (`tablet` is generic-android's) | Data copied; the Mirror's stand, computed in code there, written out as 13 tubes. The tablet is a generic shape, not a measured device |
 | `src/components/deviceGeometry.ts`: `geometry()` | `packages/frame-card/src/geometry.ts` | Ported; takes the model as an argument. Same output to 0.001 |
 | `src/components/DeviceModel.tsx`, `DeviceModel.module.css` | `packages/frame-card/src/DeviceModel.*` | Ported; colours mapped to the brand tokens and the device paint (`paint.ts`) |
 | `src/components/DeviceCard.tsx`, `DeviceCard.module.css`, `TiltCard.tsx`; from `DeviceBits.tsx`/`.module.css`: `StatusPill`, `StageMark`, `RatingTags`; from `src/lib/devices.ts`: the types, `cardTags`, `statusText`; four glyphs from `Glyphs.tsx` | `packages/frame-card/src/FrameCard.*`, `frame.ts` | Ported as the card's body, pill and tilt; the outer element is the caller's (Kiln's radio item is `kiln/apps/kiln/src/components/FrameCard.tsx`) |

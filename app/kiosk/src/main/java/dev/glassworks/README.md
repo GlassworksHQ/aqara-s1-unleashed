@@ -58,8 +58,12 @@ change until Glassworks v1.
 | `PaneContext` | What the core gives a pane: the app context, `prefs(namespace)` for its settings, the device identity, `publishStates()`, `emit()`, `entitiesChanged()` and `sendEvent()`. |
 | `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished, Home Assistant subscribed. A pane raises one with `PaneContext.emit`. |
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
+| `PaneDefinition` | What the core knows about a pane for the whole process, also while it isn't running: its setup steps, settings sections and adb extras. |
+| `SetupStep` | One step of first-boot setup: state plus setup channel requests, and how the setup screen draws it (`SetupScreen`, `SetupCard`). |
+| `SettingsSection` | A section of the settings: typed items (`SettingsItem`) the panel's menu draws, and the Manage page (#33) will. `settingsOrder` places them. |
 | `ScreenPolicy` | (`dev.glassworks.screen`) Wake on approach, idle off, the night window and its timeout, the brightness curve and the screen mode. It reads the frame's `PresenceSource` and `LightSource` and the app's `ScreenSettings`. One per process, on `GlassworksRuntime.screen`. |
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
+| `DiagnosticsPane` | (`dev.glassworks.diagnostics`) The panel's health as diagnostic entities: CPU, temperature, RAM, storage, Wi-Fi, uptime, the last restart reason. A core pane, so every frame has it. The entities are in [docs/esphome.md](../../../../../../../docs/esphome.md#diagnostics). |
 | `Engine` | (`dev.glassworks.engine`) The web engine that shows the dashboard: open a page, load, reload, go back, restart after a crash, and talk to the page's scripts. `GeckoEngine` (`dev.glassworks.engine.gecko`) is the only code that uses GeckoView. One per process, on `GlassworksRuntime.engine`. |
 
 ## What makes a pane
@@ -229,9 +233,49 @@ When a key in a pane's file changes, the core raises `PanelEvent.SettingChanged(
 A pane matches its own key constants and ignores the rest.
 
 A pane may also keep a file of its own that no other code reads, such as Sendspin's pairing secrets
-in `sendspin.xml`. Until the settings menu moves into the panes
-([migration step 5](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/20)), the S1's
-settings menu, setup screen and intent extras edit pane settings through the same typed classes.
+in `sendspin.xml`. The settings menu, the setup screen and the adb extras reach a pane's settings
+through its definition (below), which uses the same typed class.
+
+## Setup steps, settings sections and extras
+
+A running `Pane` exists only while the device runs, but the setup screen decides on its first frame
+and the settings menu opens at any time. So a pane also has a `PaneDefinition`, made once per
+process. The app makes the core's (`GlassworksRuntime.paneDefinitions`), and the frame adds its own
+(`Frame.paneDefinitions`). The definition's `id` is the pane's.
+
+| Member | What it is |
+|---|---|
+| `setupSteps` | Steps for first-boot setup. They come after Wi-Fi and Home Assistant and before Sign in, in definition order. |
+| `settings()` | The pane's settings sections, as they are now. Called each time the menu opens. |
+| `extras` | adb intent extras for its settings (`IntentExtra.bool`, `float`, `string`). `restartsApp` for a setting read only at start. |
+
+**A setup step is state plus requests.** `done()` says whether the step is answered; `channelState()`
+is its part of the setup channel's state, under the step's id; `ops` are the requests that answer
+it, on the wire as `<step id>.<op>`. That way the installer can finish every step without the
+screen, and the setup screen is one more client. `SetupChannelStepsTest` fails if a step has no
+requests that finish it. `screen()` draws the step: the setup screen gives the step's `SetupScreen`
+a `SetupCard` (title, body, a status line, a QR code, the step's own view, two buttons) and a
+`SetupHost` (`preview`, `redraw()`, `next()`). The radio's step is
+[`RadioDefinition`](../../sh/edm/s1kiosk/radio/RadioDefinition.kt). Its `radio.set_mode` accepts
+only the ids the step offers (`RadioStep.OPTIONS`, the state's `radio.options`). Any other mode is
+refused, so a mode only appears to the installer once the step offers it.
+
+**A step id is the step's own.** `GlassworksRuntime.setupSteps` gathers the steps through
+`SetupFlow.usable`. It leaves out, with an error in the `S1Kiosk` log, a step whose id is a core
+step (`wifi`, `ha`, `signin`, `done`) or a setup-channel state key (`ip`, `ha`), or an earlier step's,
+and a step whose request names are already taken. A bad step costs only itself: the app still
+starts and the channel still answers. `FramePanesTest` checks a frame's step and section with a
+fake frame.
+
+**A settings section is data.** Items are `Text`, `Switch`, `Link`, `Note`, `Info` and `Group`, each
+with its value and a `save(value, done)`. "Save & restart" saves every item in order and waits for
+each `done`, so a save can finish on another thread (the radio's allow-list) or report a problem in
+words. `Native` is the one panel-only item: a view for what has no typed item yet (the radio's role
+tiles). A browser can't draw it, so new sections should not need it.
+
+**Order.** `settingsOrder` puts the core's Dashboard, Screen and Network first, then the panes'
+sections in definition order (Voice, Music, Radio, Wall base, Time zone), then Log, Security and
+About: the Manage page's nav (#33). A section without items is left out.
 
 ## Android versions
 
@@ -249,7 +293,10 @@ A frame (`dev.glassworks.frame.Frame`) is what the core asks the device:
 |---|---|
 | `board` | The `board` TXT record in the mDNS advert. |
 | `presence`, `light` | The sensors `ScreenPolicy` reads. Null when the device has none. A `PresenceSource` reports near or not with the raw value, and may support `setRange(metres)`. |
+| `cpuThermalZone` | The `type` of the thermal zone that measures the CPU, for the diagnostics pane. Null (the default) means no temperature entity. The S1's is `cpu_thermal_zone`. |
 | `systemSettingsIntents()` | The device's own settings screens, best first. `Frame.systemSettings(context)` picks the first that resolves. |
+| `wifiSettingsIntents()` | Where to choose a Wi-Fi network, best first. The default is Android's Wi-Fi panel and settings. |
+| `paneDefinitions(context)` | The definitions of the frame's panes: their setup steps, settings sections and adb extras. |
 | `panes(ctx, device)` | The panes only this device has. The shell builds them with its own, once per device run, and runs them like any other. |
 
 The app makes one frame at start, and `GlassworksRuntime` holds it. The device shell
@@ -275,6 +322,9 @@ and calls `load`, `reload`, `goBack`, `restart` and `post`. The page reports to 
 | `onContentGone(killed)` | The content process crashed or was killed. The shell calls `page.restart()` and loads again. |
 | `onAndroidPermissions(permissions, answer)` | The page needs Android runtime permissions, which only an activity can ask for. |
 | `onConnect(port)`, `onPortMessage(port, message)` | A page script opened a native port, or sent a JSON object on one. `PagePort` has the page's `url` and `topLevel`. |
+
+`engine.isContentProcess(name)` says whether one of the app's processes is a web content process.
+The diagnostics pane counts them. For GeckoView these are the `:sandboxed_tab…` processes.
 
 It is a kiosk engine. It allows every page permission without a prompt and grants the microphone and
 the camera. It reads `EngineSettings` (secure-context hosts, zoom, remote debugging) once, at the

@@ -43,6 +43,7 @@ describe('the picker', () => {
     render(<Picker />);
     expect(screen.getByRole('radio', { name: /Aqara S1 Plus, Beta/ })).toHaveProperty('dataset.state', 'checked');
     expect(screen.getByRole('radio', { name: /lululemon Studio Mirror, Planned, not installable/ })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('radio', { name: /Generic Android, Planned, not installable/ })).toHaveProperty('disabled', true);
     expect(screen.queryByText(/still working/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(router.push).toHaveBeenCalledWith('/aqara-s1-plus');

@@ -21,8 +21,9 @@
 # Needs: sunxi-fel, fastboot, adb, docker, and a U-Boot build (tools/fel/build-uboot.sh).
 # Undo: --undo <backup-dir> (FEL again, then boot, vbmeta and the splash partition from the backup,
 #       each verified by read-back).
-#       It refuses a backup whose boot is already Magisk-patched (a re-run's backup): use the one
-#       from the first install. /data is left alone (the kiosk app keeps working without root).
+#       It refuses a backup whose boot is already Magisk-patched (a re-run's backup), or whose splash
+#       is already ours (branding/bootlogos.json): use the one from the first install. /data is left
+#       alone (the kiosk app keeps working without root).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FEL=${SUNXI_FEL:-sunxi-fel}; FB=${FASTBOOT:-fastboot}; ADB=${ADB:-adb}
@@ -64,6 +65,13 @@ if [ "$MODE" = undo ]; then
     (cd "$UNDO" && grep " $f\$" SHA256SUMS | shasum -a 256 -c -) || die "$UNDO/$f does not match its SHA256SUMS"
   done
   ! is_magisk "$UNDO/boot.img" || die "$UNDO/boot.img is Magisk-patched (a re-run backup); use the first install's backup"
+  # A stock boot alone doesn't make it the original: boot put back without its splash, then installed
+  # again, gives a backup whose splash is ours, and undo would write ours back as Aqara's (#106).
+  splash=$(python3 "$HERE/../branding/set-bootlogo.py" --ours "$UNDO/bootloader.img" "$HERE/../../branding/bootlogos.json") ||
+    die "could not check the splash in $UNDO/bootloader.img. Nothing was changed."
+  case "$splash" in ours*) die "$UNDO/bootloader.img holds our splash (${splash#ours }), not Aqara's: this backup was taken after an install. Nothing was changed.
+       Use the backup from your first install. Without one, put back only boot and vbmeta by hand (the
+       splash stays ours): docs/install.md#undo." ;; esac
 else
   mkdir -p "$OUT"; chmod 700 "$OUT"
 fi

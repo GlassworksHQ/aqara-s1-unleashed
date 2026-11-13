@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BackupRefused } from '@glassworks/kiln-core';
 import { explain } from '../src/wizard/explain';
 
 describe('a failure, in words', () => {
@@ -17,6 +18,20 @@ describe('a failure, in words', () => {
     expect(f.wrote).toBe(false);
   });
 
+  it('a backup undo refuses (As it came from Aqara): the refusal, not "something went wrong"', () => {
+    const why = 'this backup\'s splash is already ours, not the original: use the one from your first install';
+    const f = explain(new BackupRefused(why), 2, 'none');
+    expect(f.title).toBe('This backup can\'t undo the install.');
+    expect(f.body).toBe('Nothing was written. Use the backup from your first install, or undo by hand.');
+    expect(f.raw).toBe(why);
+    expect(f.wrote).toBe(false);
+    // after an earlier try changed the panel: still the refusal's way on, not "use Undo" with this backup again
+    const after = explain(new BackupRefused(why), 2, 'none', false, 'written');
+    expect(after.title).toBe('This backup can\'t undo the install.');
+    expect(after.body).toBe('This attempt wrote nothing; an earlier try did. Use the backup from your first install, or undo by hand.');
+    expect(after.wrote).toBe(true); // the Undo screen is where another backup is picked
+  });
+
   it('after a verified write, says so and points to Undo, whatever the error', () => {
     const f = explain(new Error('transferIn: the device was disconnected'), 2, 'verified');
     expect(f.title).toBe('It disconnected.');
@@ -29,6 +44,37 @@ describe('a failure, in words', () => {
     const f = explain(new Error('the panel did not finish starting up'), 3, 'verified', true);
     expect(f.body).toBe('The new software is in place. Unplug it and plug it back in, then use Finish setting up.');
     expect(f.wrote).toBe(false);
+  });
+
+  it('a closed device list, with no earlier write: nothing was written', () => {
+    const f = explain(new DOMException('No device selected.', 'NotFoundError'), 1, 'none');
+    expect(f.body).toBe('Nothing was written. Unplug it, hold the board button first, then plug in and keep holding for 10 seconds.');
+    expect(f.wrote).toBe(false);
+  });
+
+  it('after an earlier try wrote, an attempt that wrote nothing says so, and keeps Undo', () => {
+    const closed = explain(new DOMException('No device selected.', 'NotFoundError'), 1, 'none', false, 'written');
+    expect(closed.title).toBe('No panel in recovery mode.');
+    expect(closed.body).toBe('This attempt wrote nothing; an earlier try did. Unplug it, hold the board button first, then plug in and keep holding for 10 seconds. Then use Undo with your backup.');
+    expect(closed.wrote).toBe(true);
+    expect(closed.tips[0]![0]).toMatch(/Don't unplug/);
+    const step2 = explain(new Error('transferIn: the device was disconnected'), 2, 'none', false, 'written');
+    expect(step2.body).toBe('This attempt wrote nothing; an earlier try did. Don\'t unplug it yet: put it in recovery mode again and use Undo with your backup.');
+    expect(step2.wrote).toBe(true);
+    expect(explain(new Error('x'), 2, 'verified', false, 'written').body).toMatch(/^Part of the new software was written\./); // this attempt's write comes first
+  });
+
+  it('after the apps were given back (or partly), says so, not that software was written, and keeps Undo', () => {
+    const f = explain(new DOMException('No device selected.', 'NotFoundError'), 1, 'none', false, 'apps');
+    expect(f.body).toBe('This attempt wrote nothing; the panel\'s apps were changed earlier. Unplug it, hold the board button first, then plug in and keep holding for 10 seconds. Then use Undo with your backup.');
+    expect(f.wrote).toBe(true);
+  });
+
+  it('on an installed panel (the setup step), an earlier write changes nothing: the new software is in place', () => {
+    const f = explain(new Error('the panel did not finish starting up'), 3, 'none', true, 'written');
+    expect(f.body).toBe('The new software is in place. Unplug it and plug it back in, then use Finish setting up.');
+    expect(f.wrote).toBe(false);
+    expect(f.tips[0]![0]).toBe('Try another cable or port.');
   });
 
   it('keeps the raw message for More help, but not for a cancelled picker', () => {
@@ -61,5 +107,20 @@ describe('a failure during a write, through the session', () => {
     expect(s.store.state.wrote).toBe(false);
     expect(s.store.state.failure?.body).toMatch(/^Part of the new software may have been written\./);
     s.close();
+  });
+});
+
+describe('the panel\'s history in a failure', () => {
+  it('on an installed panel (set-up), an earlier write changes neither the words nor the way on', () => {
+    const closed = new DOMException('No device selected.', 'NotFoundError');
+    for (const at of [1, 3]) expect(explain(closed, at, 'none', true, 'written')).toEqual(explain(closed, at, 'none', true));
+    const refused = new BackupRefused('this backup has no boot');
+    expect(explain(refused, 3, 'none', true, 'written').body).toBe(explain(refused, 3, 'none', true).body);
+  });
+
+  it('when the tab can\'t remember earlier tries, it neither claims nothing was written nor sends to Undo', () => {
+    const f = explain(new Error('transferIn: the device was disconnected'), 2, 'none', false, 'unknown');
+    expect(f.body).toBe('This attempt wrote nothing. Kiln can\'t tell if an earlier try in this browser tab did. Try a cable straight into this computer.');
+    expect(f.wrote).toBe(false);
   });
 });

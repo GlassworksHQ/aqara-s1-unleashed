@@ -1,4 +1,4 @@
-package sh.edm.s1kiosk.setup
+package sh.edm.s1kiosk.radio.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,10 +10,10 @@ import sh.edm.s1kiosk.radio.HelperFacts
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.ThreadRouterState
 import sh.edm.s1kiosk.radio.ZigbeeStack
-import sh.edm.s1kiosk.setup.RadioFollowUp.Action
-import sh.edm.s1kiosk.setup.RadioFollowUp.Health
-import sh.edm.s1kiosk.setup.RadioFollowUp.Place
-import sh.edm.s1kiosk.setup.RadioFollowUp.Request
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Action
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Health
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Place
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Request
 
 class RadioFollowUpTest {
 

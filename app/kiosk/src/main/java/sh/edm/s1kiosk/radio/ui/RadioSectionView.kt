@@ -1,6 +1,7 @@
-package sh.edm.s1kiosk.settings
+package sh.edm.s1kiosk.radio.ui
 
 import sh.edm.s1kiosk.ui.Inter
+import sh.edm.s1kiosk.ui.QrCode
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -20,17 +21,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.ZigbeeStack
-import sh.edm.s1kiosk.setup.RadioFollowUp
-import sh.edm.s1kiosk.setup.RadioFollowUp.Action
-import sh.edm.s1kiosk.setup.RadioFollowUp.Health
-import sh.edm.s1kiosk.setup.RadioFollowUp.Request
-import sh.edm.s1kiosk.setup.RadioFollowUpView
-import sh.edm.s1kiosk.setup.RadioStep
-import sh.edm.s1kiosk.setup.RoleIcon
-import sh.edm.s1kiosk.setup.RoleStyle
-import sh.edm.s1kiosk.setup.SetupOverlay
-import sh.edm.s1kiosk.setup.SetupStyle
-import sh.edm.s1kiosk.setup.StatusDot
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Action
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Health
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Request
 
 /**
  * The settings menu's Radio section (the owner's design "B"): a row of role tiles ([tiles]: icon in the
@@ -475,7 +468,7 @@ class RadioSectionView(private val context: Context) {
         }
         val q = c.qr
         if (q != null) {
-            if (qrFor != q.url) { qrImage.setImageBitmap(SetupOverlay.qrBitmap(q.url, s.px(QR_DP))); qrFor = q.url }
+            if (qrFor != q.url) { qrImage.setImageBitmap(QrCode.bitmap(q.url, s.px(QR_DP))); qrFor = q.url }
             qrBox.visibility = VISIBLE
             qrBox.contentDescription = q.caption
         } else qrBox.visibility = GONE

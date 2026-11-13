@@ -1,7 +1,7 @@
 package sh.edm.s1kiosk.setup
 
-import sh.edm.improv.AdbPeer
-import org.json.JSONArray
+import dev.glassworks.pane.SetupOp
+import dev.glassworks.pane.SetupStep
 import org.json.JSONObject
 import sh.edm.s1kiosk.auth.OAuth
 import sh.edm.s1kiosk.discovery.HaDiscovery
@@ -19,27 +19,20 @@ import java.util.concurrent.TimeUnit
  *
  * One JSON object per line, UTF-8, both ways. Requests carry an `id`; the reply echoes it:
  * ```
- * → {"id":1,"op":"state"}                      ← {"id":1,"ok":true,"state":{…}}
- * → {"id":2,"op":"set_ha","url":"http://…"}    ← {"id":2,"ok":true,"state":{…}} | {"id":2,"ok":false,"error":"…"}
- * → {"id":3,"op":"set_radio","mode":"off"}     ← {"id":3,"ok":true,"state":{…}} | {"id":3,"ok":false,"error":"…"}
- * → {"id":4,"op":"set_radio_allow","allow":""} ← {"id":4,"ok":true,"state":{…}} | {"id":4,"ok":false,"error":"…"}
+ * → {"id":1,"op":"state"}                         ← {"id":1,"ok":true,"state":{…}}
+ * → {"id":2,"op":"ha.set_url","url":"http://…"}   ← {"id":2,"ok":true,"state":{…}} | {"id":2,"ok":false,"error":"…"}
+ * → {"id":3,"op":"radio.set_mode","mode":"off"}   ← the same, for each setup step's ops (`<step id>.<op>`)
  * ```
+ * The state is the core's (`ip`, `ha`) plus each pane step's own part under its id (`radio`). The S1's
+ * first names (`set_ha`, `set_radio`, `set_radio_allow`) still work: Kiln sends them.
  * While a client is connected, `{"event":"state","state":{…}}` is pushed whenever the serialized
  * state changes (checked every [SetupChannel.POLL_MS]). No secrets ever cross it: no tokens, no API
- * key, no passwords.
+ * key, no passwords. Wi-Fi goes over Improv Serial instead, the installer's other adb socket.
  */
-data class ChannelState(val ip: String?, val ha: Ha, val radio: Radio) {
+data class ChannelState(val ip: String?, val ha: Ha) {
     data class Ha(val discovered: String?, val url: String, val signedIn: Boolean, val signinUrl: String?)
-    /**
-     * [allowed]: who the helper's firewall lets reach the radio's TCP services (EZSP :6638, OTBR REST
-     * :8081): "any", "" (nobody but the panel yet: Home Assistant hasn't connected), or space-separated
-     * addresses/CIDRs. Null (left out) when unknown: Off, no helper, or a helper without the firewall.
-     */
-    data class Radio(val mode: String, val status: String, val options: List<Option>, val helper: Boolean, val allowed: String? = null)
-    /** [repeater]: a role inside someone else's network (Zigbee/Thread router); optional, only sent when true. */
-    data class Option(val id: String, val label: String, val detail: String, val experimental: Boolean = false, val repeater: Boolean = false)
 
-    /** The `SetupState` shape of channel.ts; optional fields are left out when unknown. */
+    /** The core's part of the `SetupState` shape of channel.ts; optional fields are left out when unknown. */
     fun toJson(): JSONObject {
         val o = JSONObject()
         ip?.let { o.put("ip", it) }
@@ -49,30 +42,10 @@ data class ChannelState(val ip: String?, val ha: Ha, val radio: Radio) {
             put("signedIn", ha.signedIn)
             ha.signinUrl?.let { put("signinUrl", it) }
         })
-        o.put("radio", JSONObject().apply {
-            put("mode", radio.mode)
-            put("status", radio.status)
-            put("options", JSONArray().apply {
-                radio.options.forEach { opt ->
-                    put(JSONObject().apply {
-                        put("id", opt.id)
-                        put("label", opt.label)
-                        put("detail", opt.detail)
-                        if (opt.experimental) put("experimental", true)
-                        if (opt.repeater) put("repeater", true)
-                    })
-                }
-            })
-            put("helper", radio.helper)
-            radio.allowed?.let { put("allowed", it) }
-        })
         return o
     }
 
     companion object {
-        /** The modes onboarding offers: the panel's radio step ([RadioStep.OPTIONS]), same texts. */
-        val OPTIONS: List<Option> = RadioStep.OPTIONS.map { Option(it.mode.id, it.title, it.line, it.experimental, it.repeater) }
-
         /** The panel's sign-in page (its QR code link), once it has an address and knows HA. */
         fun signinUrl(ip: String?, haUrl: String?): String? =
             if (ip.isNullOrEmpty() || haUrl.isNullOrEmpty()) null else "http://$ip:${OAuth.SIGNIN_PORT}/signin"
@@ -93,74 +66,79 @@ data class ChannelState(val ip: String?, val ha: Ha, val radio: Radio) {
     }
 }
 
-class SetupChannel(private val backend: Backend, private val log: (String) -> Unit = {}) {
+class SetupChannel(
+    private val backend: Backend,
+    /** The panes' setup steps (through SetupFlow.usable): their state and ops ([SetupStep.ops]). */
+    steps: List<SetupStep> = emptyList(),
+    private val log: (String) -> Unit = {},
+) {
 
     interface Backend {
+        /** The core's part of the state. */
         fun state(): ChannelState
         /**
          * Use [url] (already validated) as Home Assistant's address, as the `url` intent extra does.
          * Blocking. [HaChange.afterReply] runs once the reply is written (e.g. a process restart).
          */
         fun setHa(url: String): HaChange
-        /** Apply radio mode [id] (a RadioMode id); blocking until it succeeded or failed. Null = ok, else why not. */
-        fun setRadio(id: String): String?
-        /**
-         * Who may reach the radio's TCP services, as the `Radio allowed clients` entity: addresses or
-         * CIDRs, `any`, or "" = Home Assistant only (automatic). Null = stored, else why not.
-         */
-        fun setRadioAllow(text: String): String? = "Not supported by this panel."
     }
 
     data class HaChange(val error: String? = null, val afterReply: (() -> Unit)? = null)
+
+    private val steps = steps.toList()
+
+    /** Every step op by its wire name, `<step id>.<op>`. */
+    private val ops: Map<String, SetupOp> = steps.flatMap { s -> s.ops.map { (name, op) -> "${s.id}.$name" to op } }.toMap()
+
+    /** Older wire names: the core's, then each step's. */
+    private val aliases: Map<String, String> = mapOf("set_ha" to HA_SET_URL) +
+        steps.flatMap { s -> s.legacyOps.map { (old, name) -> old to "${s.id}.$name" } }
+
+    /** The whole state: the core's, and each step's part under its id. */
+    private fun state(): JSONObject = backend.state().toJson().apply {
+        steps.forEach { s -> s.channelState()?.let { put(s.id, it) } }
+    }
 
     /** One request line → the reply line (without "\n") and what to run after writing it. */
     fun handle(line: String): Pair<String, (() -> Unit)?> {
         val req = runCatching { JSONObject(line) }.getOrNull()
             ?: return reply(null, error = "not a JSON object") to null
         val id: Any? = req.opt("id")?.takeIf { it != JSONObject.NULL }
-        val op = req.optString("op", "")
-        log("request ${id ?: "-"} $op")
+        val asked = req.optString("op", "")
+        val op = aliases[asked] ?: asked
+        log("request ${id ?: "-"} $asked")
         return when (op) {
-            "state" -> reply(id, state = backend.state()) to null
-            "set_ha" -> {
+            "state" -> reply(id, state = state()) to null
+            HA_SET_URL -> {
                 val url = req.optString("url", "").trim()
                 if (!ChannelState.validHaUrl(url)) {
                     reply(id, error = "That doesn't look like a web address (http://… or https://…).") to null
                 } else {
                     val change = backend.setHa(url)
                     if (change.error != null) reply(id, error = change.error) to null
-                    else reply(id, state = backend.state()) to change.afterReply
+                    else reply(id, state = state()) to change.afterReply
                 }
             }
-            "set_radio" -> {
-                val mode = req.optString("mode", "")
-                when {
-                    ChannelState.OPTIONS.none { it.id == mode } -> reply(id, error = "Unknown radio mode '$mode'.") to null
-                    else -> when (val err = backend.setRadio(mode)) {
-                        null -> reply(id, state = backend.state()) to null
-                        else -> reply(id, error = err) to null
-                    }
+            else -> when (val step = ops[op]) {
+                null -> reply(id, error = "Unknown request '$asked'.") to null
+                else -> when (val err = step.run(req)) {
+                    null -> reply(id, state = state()) to null
+                    else -> reply(id, error = err) to null
                 }
             }
-            "set_radio_allow" -> when (val err = backend.setRadioAllow(req.optString("allow", ""))) {
-                null -> reply(id, state = backend.state()) to null
-                else -> reply(id, error = err) to null
-            }
-            else -> reply(id, error = "Unknown request '$op'.") to null
         }
     }
 
     /** The state the client last got (reply or event), to push only changes. */
     private var lastSent: String? = null
 
-    private fun reply(id: Any?, state: ChannelState? = null, error: String? = null): String {
+    private fun reply(id: Any?, state: JSONObject? = null, error: String? = null): String {
         val o = JSONObject()
         id?.let { o.put("id", it) }
         o.put("ok", error == null)
         if (state != null) {
-            val s = state.toJson()
-            lastSent = s.toString()
-            o.put("state", s)
+            lastSent = state.toString()
+            o.put("state", state)
         }
         error?.let { o.put("error", it) }
         return o.toString()
@@ -169,7 +147,7 @@ class SetupChannel(private val backend: Backend, private val log: (String) -> Un
     /** A state event if the state changed since the client last saw it (nothing before it asked once). */
     fun pushIfChanged(): String? {
         val prev = lastSent ?: return null
-        val s = backend.state().toJson()
+        val s = state()
         val now = s.toString()
         if (now == prev) return null
         lastSent = now
@@ -206,6 +184,11 @@ class SetupChannel(private val backend: Backend, private val log: (String) -> Un
 
     companion object {
         const val SOCKET = "s1kiosk_setup"
+        const val HA_SET_URL = "ha.set_url"
+        /** The core's keys in the state; no step may take them. */
+        val CORE_KEYS = setOf("ip", "ha")
+        /** The core's requests, by every name they have. */
+        val CORE_OPS = setOf("state", HA_SET_URL, "set_ha")
         const val POLL_MS = 1_500L
         /** Longer lines are dropped (requests are tiny). */
         const val MAX_LINE = 16 * 1024

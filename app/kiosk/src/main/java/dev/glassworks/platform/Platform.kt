@@ -4,6 +4,7 @@
 
 package dev.glassworks.platform
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
@@ -65,6 +66,9 @@ open class PlatformApi internal constructor(
     /** `WindowInsetsController` and `setDecorFitsSystemWindows` exist (Android 11). */
     val hasWindowInsetsController: Boolean get() = apiLevel >= 30
 
+    /** `ActivityManager.getHistoricalProcessExitReasons` exists (Android 11). Below it, the reason a process ended is not kept. */
+    val hasApplicationExitInfo: Boolean get() = apiLevel >= 30
+
     /**
      * The flag to add to a `PendingIntent` that the system must be able to fill in (the package
      * installer adds the session result). From Android 12 the mutability must be stated; below it
@@ -89,6 +93,17 @@ open class PlatformApi internal constructor(
     fun startForeground(service: Service, id: Int, notification: Notification, types: Int) {
         if (hasForegroundServiceTypes) service.startForeground(id, notification, types)
         else service.startForeground(id, notification)
+    }
+
+    /**
+     * Why this app's process [processName] last ended: an `ApplicationExitInfo.REASON_*` value. Null
+     * when the platform keeps no reasons ([hasApplicationExitInfo]) or has none for that process yet.
+     */
+    fun lastExitReason(context: Context, processName: String): Int? {
+        if (!hasApplicationExitInfo) return null
+        val am = context.getSystemService(ActivityManager::class.java) ?: return null
+        return am.getHistoricalProcessExitReasons(context.packageName, 0, 0)
+            .firstOrNull { it.processName == processName }?.reason
     }
 
     /** An [Intent] extra, read with the typed getter from Android 13 and the deprecated one below. */

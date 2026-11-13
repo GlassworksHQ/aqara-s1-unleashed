@@ -40,9 +40,14 @@ export interface FrameDesign {
   model: FrameModel;
   /** the recovery-mode drawing data, a path next to frame.json */
   recovery?: string;
+  /** the screen in px, as Android's boot animation sees it (branding/boot reads it) */
+  display?: { width: number; height: number };
+  /** the boot branding's format limits (branding/boot/target.py) */
+  boot?: { androidApi?: number; splash?: 'allwinner-boot-resource'; zipBudget?: number };
   specs: { label: string; value: string }[];
   panes: Record<(typeof PANE_IDS)[number], { support: Support; note?: string }>;
-  install: { how: string };
+  /** href: where it installs from, while that is somewhere other than Kiln */
+  install: { how: string; href?: string };
   ratings: Record<RatingKey, { value: string; detail?: string }>;
   ratingsNote?: string;
   notice?: string;

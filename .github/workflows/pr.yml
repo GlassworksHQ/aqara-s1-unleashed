@@ -10,6 +10,10 @@
 #            (tools/perf), and the docs' relative links
 #   root     the root side (radio helper, bundle checks, s1kiosk_verify) in a 32-bit ARM container
 #            under QEMU. Slow, so it runs only when tools/root, tools/radio or this file changes
+#   branding rebuilds the S1's boot animation and splash (branding/boot/generate.py) in a pinned
+#            Python image and fails if the committed files differ. A few minutes, so it runs only
+#            when branding/boot, branding/glass-tile, branding/bootlogos.json, the S1's frame.json
+#            or this file changes
 name: PR checks
 
 on:
@@ -94,6 +98,8 @@ jobs:
         run: |
           python3 -m unittest discover -s tools/perf/test -v
           node --test tools/perf/test/page.test.mjs tools/perf/test/grade.test.mjs
+      - name: Boot generator targets and layout
+        run: python3 -m unittest discover -s branding/boot/test -v
       - name: Docs links
         run: python3 tools/check-doc-links.py
 
@@ -131,3 +137,52 @@ jobs:
       - name: Root-side tests
         if: steps.changed.outputs.run == 'true'
         run: tools/radio/test/run.sh
+
+  branding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Changed?
+        id: changed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        # Fails closed: without a base commit to compare with (none, a force-pushed or garbage-
+        # collected one) or when git diff fails, it rebuilds.
+        run: |
+          paths="branding/boot branding/glass-tile branding/bootlogos.json frames/aqara-s1-plus/design/frame.json .github/workflows/pr.yml"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "No base commit to compare with ($BASE); rebuilding."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif ! changed=$(git diff --name-only "$BASE" HEAD -- $paths); then
+            echo "git diff failed; rebuilding."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$changed" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing the S1's boot branding is built from changed; skipping the rebuild."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The versions are the ones in branding/boot/README.md; the outputs are byte-identical on
+      # macOS arm64 and in this image (checked 2026-11-13).
+      - name: Rebuild the S1's boot branding
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          docker run --rm -v "$PWD":/w -w /w \
+            python:3.11-slim@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535 sh -euc '
+              apt-get -qq update && apt-get -qq install -y --no-install-recommends curl ca-certificates >/dev/null
+              pip -q install --root-user-action=ignore pillow==13.0.0 numpy==2.4.6 uharfbuzz==0.57.0 pyoxipng==9.1.1
+              python branding/boot/generate.py --frame aqara-s1-plus --out branding/glass-tile'
+
+      - name: The committed files are what the generator writes
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" branding
+          git status --short -- branding
+          git diff --exit-code --stat -- branding
+          test -z "$(git status --porcelain -- branding)"

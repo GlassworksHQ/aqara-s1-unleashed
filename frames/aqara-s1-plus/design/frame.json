@@ -28,6 +28,15 @@
     "mount": "wall"
   },
   "recovery": "recovery.json",
+  "display": {
+    "width": 1440,
+    "height": 720
+  },
+  "boot": {
+    "androidApi": 29,
+    "splash": "allwinner-boot-resource",
+    "zipBudget": 9000000
+  },
   "specs": [
     {
       "label": "SoC",
@@ -85,7 +94,8 @@
     }
   },
   "install": {
-    "how": "In the browser, over USB. It backs the panel up first, then roots and flashes it."
+    "how": "In the browser, over USB. It backs the panel up first, then roots and flashes it.",
+    "href": "https://s1.edm.sh"
   },
   "ratings": {
     "difficulty": {

@@ -289,12 +289,18 @@ screen; `adb shell pm enable sh.edm.s1kiosk` brings it back. To remove it comple
 `adb uninstall sh.edm.s1kiosk`, then join the Wi-Fi again in Aqara's own settings.
 
 Use the backup from your **first** install. A backup taken on an already-installed panel holds the
-patched `boot`, and both installers refuse to restore it.
+patched `boot`, and both installers refuse to restore it. They also refuse a backup whose splash is
+already ours, not Aqara's. That happens when `boot` was put back without its splash (by hand, as
+below), and the panel was then installed again: that second backup has a stock `boot` but our splash.
+Use the older backup, from the first install. If you no longer have it, put back only `boot` and
+`vbmeta` by hand, as below. The splash then stays ours. It is only the power-on image, so the panel
+works the same.
 
 Keep the whole backup: the `.zip` the web installer offers, or the CLI's folder. Undo needs `boot.img`,
 `vbmeta.img`, `bootloader.img` (the splash) and `SHA256SUMS`, and refuses a backup that lacks one of
 them, before it writes anything. If you only have `boot.img` and `vbmeta.img`, you can still put those
-two back by hand. The splash then stays ours. First check those two, in the backup's folder. It needs
+two back by hand. The splash then stays ours. The same goes for a backup refused because its splash
+is ours. First check those two, in the backup's folder. It needs
 both entries in `SHA256SUMS` and both files to match. Go on only if it ends with
 `boot and vbmeta OK: go on`:
 

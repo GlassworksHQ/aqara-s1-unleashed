@@ -73,6 +73,6 @@ matter most when you build UI here:
 
 ## S1's own branding
 
-The Glass Tile boot splash, boot animation and the social preview belong to S1 Unleashed, not to
-Glassworks. They live in [`branding/`](../branding/glass-tile/README.md) and use the same colours and
-type (Inter).
+The boot splash and boot animation show the Glassworks stack and wordmark, drawn in #63, with the
+frame's name under them. The social preview still shows S1's older Glass Tile mark. Both live in
+[`branding/`](../branding/glass-tile/README.md) and use the same colours and type (Inter).

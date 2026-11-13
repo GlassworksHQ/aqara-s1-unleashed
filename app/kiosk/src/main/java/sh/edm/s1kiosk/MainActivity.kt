@@ -11,7 +11,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.provider.Settings
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
@@ -23,6 +22,10 @@ import android.widget.Toast
 import dev.glassworks.engine.Page
 import dev.glassworks.engine.PageHost
 import dev.glassworks.engine.PagePort
+import dev.glassworks.pane.SettingsItem
+import dev.glassworks.pane.applyFrom
+import dev.glassworks.pane.saveAll
+import dev.glassworks.pane.settingsOrder
 import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.auth.FrontendUrls
 import sh.edm.s1kiosk.auth.HaAuth
@@ -31,23 +34,22 @@ import dev.glassworks.frame.systemSettings
 import sh.edm.s1kiosk.dashboard.DashboardOptions
 import sh.edm.s1kiosk.dashboard.Dashboards
 import sh.edm.s1kiosk.discovery.HaUrls
+import sh.edm.s1kiosk.settings.CoreSettings
 import sh.edm.s1kiosk.settings.KioskSettingsOverlay
 import sh.edm.s1kiosk.settings.SettingsMenu
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.setup.LoadingOverlay
 import sh.edm.s1kiosk.setup.OfflineText
+import sh.edm.s1kiosk.setup.PaneStepFacts
+import sh.edm.s1kiosk.setup.SetupFlow
 import sh.edm.s1kiosk.setup.SetupInputs
 import sh.edm.s1kiosk.setup.SetupOverlay
 import sh.edm.s1kiosk.setup.SetupSignals
 import sh.edm.s1kiosk.setup.SetupState
-import sh.edm.s1kiosk.setup.SetupStep
 import sh.edm.s1kiosk.setup.WifiSetupStatus
 import sh.edm.s1kiosk.setup.WifiStep
-import sh.edm.s1kiosk.setup.RadioStep
-import sh.edm.s1kiosk.setup.RadioFollowUp
 import sh.edm.s1kiosk.improv.ImprovController
 import sh.edm.s1kiosk.improv.ImprovWifiStatus
-import sh.edm.s1kiosk.radio.RadioMode
 import org.json.JSONObject
 import kotlin.system.exitProcess
 
@@ -67,6 +69,10 @@ class MainActivity : Activity() {
     private var pendingAndroidPermission: ((Boolean) -> Unit)? = null
     private var currentUrl: String? = null
 
+    /** The panes' definitions: their setup steps, settings sections and adb extras. */
+    private val panes by lazy { glassworks.paneDefinitions(this) }
+    private val paneSteps by lazy { glassworks.setupSteps(this) }
+
     /** "Sign in on this panel instead" was chosen: don't cover HA's login page again (this process). */
     private var usePanelLogin = false
 
@@ -75,13 +81,9 @@ class MainActivity : Activity() {
 
     /** Setup screen preview (`--ez show_setup true`, `--es setup_step …`): never changes state. */
     private var setupPreview = false
-    private var setupPreviewStep: SetupStep? = null
+    private var setupPreviewStep: String? = null
     private var offlineSince = 0L
     private var lastSetupReasons: List<String> = emptyList()
-
-    /** The radio step's last "Apply" (this activity) and whether a request is running. */
-    private var radioApplied: RadioStep.Applied? = null
-    private var radioBusy = false
 
     private var lastImprovInline = false
 
@@ -136,17 +138,10 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun startThreadJoin(from: String) {
-        Log.i(TAG, "Join Home Assistant's Thread network ($from)")
-        HaAuth.threadJoin.start()
-    }
-
     private val setupTick = object : Runnable {
         override fun run() {
             refreshSetup()
-            pollRadioStatus()
-            // the radio step's follow-up card follows the router / Thread state
-            if (improvInline() && setupOverlay.model?.step == SetupStep.RADIO) glassworks.radio?.refreshSoon()
+            setupOverlay.tick() // the panes' steps follow their state
             refreshOffline()
             handler.postDelayed(this, SETUP_TICK_MS)
         }
@@ -164,7 +159,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = KioskPrefs(this)
-        prefs.migrateRadioStep() // an already set-up panel never sees the radio step
+        glassworks.paneDefinitions(this) // first: a step's one-time check runs before discovery can save an HA URL
         HaAuth.init(this)
         applyIntent(intent, fromNewIntent = false)
 
@@ -187,17 +182,14 @@ class MainActivity : Activity() {
             onShowingChanged = { timerOverlay.voiceShowing(it) } // a timer set by voice flies out of the orb
         }
         timerOverlay = TimerOverlay(this)
-        setupOverlay = SetupOverlay(this).apply {
+        setupOverlay = SetupOverlay(this, paneSteps).apply {
             onUsePanel = ::onUsePanelLogin
             onManualUrl = ::onManualHaUrl
             onChooseNetwork = ::openWifiSettings
             onSkipHa = ::onSkipHaSetup
             onClosePreview = ::closeSetupPreview
             onImprovAction = ::onImprovAction
-            onRadioApply = { m -> applyRadio(m, skip = false) }
-            onRadioSkip = { applyRadio(RadioMode.OFF, skip = true) }
-            onRadioContinue = ::finishRadioStep
-            onRadioRun = { r, done -> runRadio(r, "setup screen", done) }
+            onStepDone = { if (setupPreview) closeSetupPreview() else refreshSetup() }
         }
         threadJoinOverlay = sh.edm.s1kiosk.setup.ThreadJoinOverlay(this).apply {
             onClose = { HaAuth.threadJoin.disarm(); hide() }
@@ -205,11 +197,6 @@ class MainActivity : Activity() {
         settingsOverlay = KioskSettingsOverlay(this).apply {
             onSave = ::saveSettings
             onReload = { hide(); loadDashboard() }
-            onAqaraSettings = { if (!glassworks.frame.openSystemSettings(this@MainActivity)) Toast.makeText(this@MainActivity, "No settings app on this panel", Toast.LENGTH_LONG).show() }
-            onLicences = { Licences.show(this@MainActivity) }
-            onRadioRun = { r, done -> runRadio(r, "settings menu", done) }
-            // Same path as HA's `Thread dataset` text entity; never logged.
-            onThreadDataset = { v -> glassworks.radio?.setThreadDataset(v) ?: "The kiosk service isn't running yet; try again in a moment." }
         }
         // Improv-aware from the start: KioskService (which registers the provider) starts after this.
         wifiStatus = ImprovWifiStatus(this)
@@ -299,6 +286,7 @@ class MainActivity : Activity() {
         val now = SystemClock.elapsedRealtime()
         if (w.online) offlineSince = 0L else if (offlineSince == 0L) offlineSince = now
         if (w.online && !w.ethernet && !prefs.wifiSeen) prefs.wifiSeen = true
+        val steps = paneSteps.map { PaneStepFacts(it.id, it.done(), it.reason) }
         return SetupInputs(
             online = w.online,
             offlineForMs = if (w.online) 0L else now - offlineSince,
@@ -313,14 +301,13 @@ class MainActivity : Activity() {
             signedOut = signedOutHere,
             usePanelLogin = usePanelLogin,
             showing = setupOverlay.isShowing && !setupPreview,
-            radioStepDone = prefs.radioStepDone,
-            radioModeStored = prefs.radio.mode != null,
+            paneSteps = steps,
             improv = ImprovController.setupFacts,
             installer = ImprovController.installerWifi,
             neverSetUp = SetupState.neverSetUp(
                 haKnown = prefs.haBase != null, haSeen = prefs.haSeen || SetupSignals.haSubscribed,
-                apiKeySet = prefs.apiEncryption, haSkipped = prefs.haSetupSkipped, radioStepDone = prefs.radioStepDone,
-                radioModeStored = prefs.radio.mode != null, signedIn = HaAuth.signedIn,
+                apiKeySet = prefs.apiEncryption, haSkipped = prefs.haSetupSkipped, paneStepDone = steps.any { it.done },
+                signedIn = HaAuth.signedIn,
             ),
         )
     }
@@ -331,10 +318,11 @@ class MainActivity : Activity() {
         val d = SetupState.decide(setupInputs())
         if (setupPreview) {
             val forced = setupPreviewStep
-            val m = if (forced == null) setupModel(d, d.step, d.wifiDone, d.haDone, d.radioDone, d.signinDone, preview = true)
-            else setupModel(d, forced, forced > SetupStep.WIFI, forced > SetupStep.HA, forced > SetupStep.RADIO, forced > SetupStep.SIGNIN, preview = true)
-            if (m.step == SetupStep.DONE) {
-                if (setupOverlay.model?.step != SetupStep.DONE) setupOverlay.finish(m) { setupPreview = false; setupPreviewStep = null }
+            // A forced step: every step before it shows as done.
+            val m = if (forced == null) setupModel(d, d.step, d.done, preview = true)
+            else setupModel(d, forced, SetupFlow.ids(paneSteps.map { it.id }).takeWhile { it != forced }.toSet(), preview = true)
+            if (m.step == SetupFlow.DONE) {
+                if (setupOverlay.model?.step != SetupFlow.DONE) setupOverlay.finish(m) { setupPreview = false; setupPreviewStep = null }
             } else {
                 setupOverlay.render(m)
             }
@@ -342,12 +330,12 @@ class MainActivity : Activity() {
             return
         }
         if (d.reasons != lastSetupReasons) {
-            if (d.reasons.isNotEmpty()) Log.i(TAG, "Setup screen: ${d.reasons.joinToString()} (step ${d.step.id})")
+            if (d.reasons.isNotEmpty()) Log.i(TAG, "Setup screen: ${d.reasons.joinToString()} (step ${d.step})")
             lastSetupReasons = d.reasons
         }
         if (d.show) {
-            setupOverlay.render(setupModel(d, d.step, d.wifiDone, d.haDone, d.radioDone, d.signinDone, preview = false))
-        } else if (setupOverlay.isShowing && setupOverlay.model?.step != SetupStep.DONE) {
+            setupOverlay.render(setupModel(d, d.step, d.done, preview = false))
+        } else if (setupOverlay.isShowing && setupOverlay.model?.step != SetupFlow.DONE) {
             Log.i(TAG, "Setup complete; loading the dashboard")
             setupOverlay.finish { loadDashboardIfNeeded() }
         }
@@ -370,24 +358,12 @@ class MainActivity : Activity() {
         ImprovController.refreshUi()
     }
 
-    private fun setupModel(
-        d: sh.edm.s1kiosk.setup.SetupDecision,
-        step: SetupStep, wifiDone: Boolean, haDone: Boolean, radioDone: Boolean, signinDone: Boolean, preview: Boolean,
-    ) =
+    private fun setupModel(d: sh.edm.s1kiosk.setup.SetupDecision, step: String, done: Set<String>, preview: Boolean) =
         SetupOverlay.Model(
             step = step,
-            wifiDone = wifiDone,
-            haDone = haDone,
-            radioDone = radioDone,
+            done = done,
             improv = d.improv,
             installer = ImprovController.installerWifi,
-            radio = SetupOverlay.Radio(
-                current = glassworks.radio?.mode ?: RadioMode.parse(prefs.radio.mode),
-                applied = radioApplied,
-                busy = radioBusy,
-                facts = radioFacts(),
-            ),
-            signinDone = signinDone,
             wifi = wifiStatus.snapshot(),
             haUrl = prefs.haBase,
             haSource = if (prefs.isAutoUrl) prefs.haUrlSource else "",
@@ -408,16 +384,18 @@ class MainActivity : Activity() {
 
     /** `--ez show_setup true [--es setup_step wifi|ha|radio|signin|done]`, `--ez show_signin true` (= signin). */
     private fun applySetupPreview(intent: Intent) {
-        val step = SetupStep.parse(intent.getStringExtra("setup_step"))
+        val asked = intent.getStringExtra("setup_step")
+        val step = SetupFlow.parse(asked, paneSteps.map { it.id })
+        if (asked != null && step == null) Log.e(TAG, "setup_step '$asked' is not a step: ${SetupFlow.ids(paneSteps.map { it.id })}")
         when {
-            intent.getBooleanExtra("show_signin", false) -> startSetupPreview(SetupStep.SIGNIN)
+            intent.getBooleanExtra("show_signin", false) -> startSetupPreview(SetupFlow.SIGNIN)
             intent.hasExtra("show_setup") && !intent.getBooleanExtra("show_setup", false) -> closeSetupPreview()
             intent.getBooleanExtra("show_setup", false) || step != null -> startSetupPreview(step)
         }
     }
 
-    private fun startSetupPreview(step: SetupStep?) {
-        Log.i(TAG, "Setup screen preview (step ${step?.id ?: "live"})")
+    private fun startSetupPreview(step: String?) {
+        Log.i(TAG, "Setup screen preview (step ${step ?: "live"})")
         setupPreview = true
         setupPreviewStep = step
         refreshSetup()
@@ -490,13 +468,7 @@ class MainActivity : Activity() {
     }.getOrDefault(false)
 
     private fun openWifiSettings() {
-        val intents = listOfNotNull(
-            if (Platform.hasSettingsPanel) Intent(Settings.Panel.ACTION_WIFI) else null,
-            Intent(Settings.ACTION_WIFI_SETTINGS),
-            // The S1's firmware has no Android Settings app; its own settings app has Network -> WLAN.
-            Intent("lumi.settings.SETTINGS").setPackage("com.lumi.settings"),
-        )
-        for (i in intents) {
+        for (i in glassworks.frame.wifiSettingsIntents()) {
             try {
                 startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 return
@@ -507,7 +479,7 @@ class MainActivity : Activity() {
         Toast.makeText(this, "No Wi-Fi settings on this device", Toast.LENGTH_LONG).show()
     }
 
-    // ---- setup: Improv inline (Wi-Fi step) and the radio step
+    // ---- setup: Improv inline (Wi-Fi step)
 
     private fun onImprovAction(a: WifiStep.Action) {
         if (setupPreview) return // the preview never changes state
@@ -518,66 +490,6 @@ class MainActivity : Activity() {
             WifiStep.Action.START, WifiStep.Action.RETRY -> ImprovController.startOnDemand("setup screen")
         }
         refreshSetup()
-    }
-
-    /**
-     * "Apply" (or "Skip", which means Off) on the radio step: the same RadioController path as HA's
-     * `Radio mode` select. The result is shown as RadioController reports it (a missing root helper
-     * included); only Skip and Continue mark the step done.
-     */
-    private fun applyRadio(mode: RadioMode, skip: Boolean) {
-        if (setupPreview && skip) { closeSetupPreview(); return }
-        if (setupPreview) {
-            // Shows what a successful apply looks like (e.g. the coordinator's pairing QR); nothing is applied.
-            radioApplied = RadioStep.Applied(mode, true, "ok ${mode.label}: preview, nothing was applied")
-            refreshSetup()
-            return
-        }
-        val r = glassworks.radio
-        if (skip) {
-            Log.i(TAG, "Setup: radio step skipped (Off)")
-            if (r != null && r.mode != RadioMode.OFF) r.request(RadioMode.OFF.label, "setup screen (skip)")
-            finishRadioStep()
-            return
-        }
-        if (r == null) {
-            radioApplied = RadioStep.Applied(mode, false, "The kiosk service isn't running yet; try again in a moment.")
-            refreshSetup()
-            return
-        }
-        Log.i(TAG, "Setup: radio mode ${mode.label}")
-        radioBusy = true
-        radioApplied = null
-        refreshSetup()
-        r.request(mode.label, "setup screen") { accepted ->
-            val status = r.statusText()
-            handler.post {
-                radioBusy = false
-                radioApplied = RadioStep.Applied(mode, accepted, status)
-                Log.i(TAG, "Setup: radio ${mode.label} -> ${radioApplied?.result}: $status")
-                refreshSetup()
-            }
-        }
-    }
-
-    private fun finishRadioStep() {
-        if (setupPreview) { closeSetupPreview(); return }
-        prefs.radioStepDone = true
-        radioApplied = null
-        refreshSetup()
-    }
-
-    /** While an applied mode is still "applying" (root helper), follow RadioController's status. */
-    private fun pollRadioStatus() {
-        val a = radioApplied ?: return
-        if (!a.accepted || a.result != RadioStep.Result.APPLYING || prefs.radioStepDone) return
-        val r = glassworks.radio ?: return
-        r.refreshSoon()
-        val now = r.statusText()
-        if (now != a.status) {
-            radioApplied = a.copy(status = now)
-            refreshSetup()
-        }
     }
 
     private fun onSkipHaSetup() {
@@ -693,19 +605,8 @@ class MainActivity : Activity() {
             prefs.presenceRangeM = intent.getFloatExtra("presence_range_m", 0f)
             glassworks.screen.applyPresenceRange()
         }
-        if (intent.hasExtra("voice_enabled")) { prefs.voice.enabled = intent.getBooleanExtra("voice_enabled", true); needsRestart = true }
-        // Applied live by PanelDevice (it listens to the prefs).
-        intent.getStringExtra("wake_model")?.let { prefs.voice.wakeModel = it }
-        if (intent.hasExtra("wake_threshold")) prefs.voice.wakeThreshold = intent.getFloatExtra("wake_threshold", 0.5f)
-        if (intent.hasExtra("mic_gain")) prefs.voice.micGain = intent.getFloatExtra("mic_gain", 1f)
-        if (intent.hasExtra("mic_muted")) prefs.voice.micMuted = intent.getBooleanExtra("mic_muted", false)
-        if (intent.hasExtra("sendspin_enabled")) prefs.sendspin.enabled = intent.getBooleanExtra("sendspin_enabled", true)
-        intent.getStringExtra("sendspin_server")?.let { prefs.sendspin.server = it }
-        if (intent.hasExtra("sendspin_unpaired_access")) prefs.sendspin.unpairedAccess = intent.getBooleanExtra("sendspin_unpaired_access", false)
-        if (intent.hasExtra("sendspin_flac")) prefs.sendspin.flac = intent.getBooleanExtra("sendspin_flac", true)
-        // Wall base (docs/research/bases.md): auto|uart|localservice, and "" (/dev/ttyS3) or tcp:host:port (emulator).
-        intent.getStringExtra("base_backend")?.let { prefs.wallBase.backend = it }
-        intent.getStringExtra("base_transport")?.let { prefs.wallBase.transport = it }
+        // The panes' own extras (voice, Sendspin, the wall base, ...): their definitions.
+        if (panes.flatMap { it.extras }.applyFrom(intent)) needsRestart = true
         intent.getStringExtra("api_key")?.let { key ->
             if (KioskPrefs.decodeApiKey(key) != null) prefs.apiKey = key
             else Log.w(TAG, "api_key must be base64 of exactly 32 bytes; ignored")
@@ -788,117 +689,50 @@ class MainActivity : Activity() {
         return super.dispatchTouchEvent(ev)
     }
 
-    /** The radio as the follow-up cards and the settings picker show it (cached values: no getprop here). */
-    private fun radioFacts(): RadioFollowUp.Facts? {
-        val r = glassworks.radio ?: return null
-        return RadioFollowUp.Facts(
-            mode = r.mode, status = r.statusText(), helper = r.helperShown(), stack = r.zigbeeStack,
-            threadStored = r.threadStored(), thread = r.threadRouterState(),
-            haBase = prefs.haBase, panelIp = HaUrls.localIpv4(),
-        )
+    /** While the settings menu is open: its live views follow what they show (the radio's status, ...). */
+    private val settingsTick = object : Runnable {
+        override fun run() {
+            if (!::settingsOverlay.isInitialized || !settingsOverlay.isShowing) return
+            settingsOverlay.refresh()
+            handler.postDelayed(this, SETTINGS_TICK_MS)
+        }
     }
 
     /**
-     * A request from a follow-up card or the settings menu's picker, on the same RadioController calls as
-     * the HA entities (`Radio mode`, `Zigbee stack`, `Join/Leave Zigbee network`, `Leave Thread network`).
-     * [done] runs on the main thread: null = accepted (the status line tells the rest), else why not.
-     * Join/Leave have no answer of their own: their card follows the status.
+     * The kiosk settings menu (settings/KioskSettingsOverlay): 5 taps top-left, or the notification. The
+     * core's sections and the panes', in the order every settings surface uses.
      */
-    private fun runRadio(req: RadioFollowUp.Request, source: String, done: (String?) -> Unit) {
-        if (setupPreview && source == "setup screen") { done("Preview: nothing was changed."); return }
-        val r = glassworks.radio ?: run { done("The kiosk service isn't running yet; try again in a moment."); return }
-        Log.i(TAG, "$source: radio request $req")
-        when (req) {
-            is RadioFollowUp.Request.Mode -> r.request(req.mode.label, source) { ok ->
-                val st = r.statusText(); handler.post { done(if (ok) null else st); refreshRadioViews() }
-            }
-            is RadioFollowUp.Request.Stack -> r.setZigbeeStack(req.stack.label) { ok ->
-                val why = r.helperStatusText().substringBefore(". v"); handler.post { done(if (ok) null else why); refreshRadioViews() }
-            }
-            is RadioFollowUp.Request.Act -> when (req.action) {
-                RadioFollowUp.Action.ROUTER_JOIN -> r.routerJoin()
-                RadioFollowUp.Action.ROUTER_LEAVE -> r.routerLeave()
-                RadioFollowUp.Action.THREAD_LEAVE -> r.threadLeave()
-                RadioFollowUp.Action.THREAD_JOIN_HA -> startThreadJoin(source)
-            }
-        }
-        handler.postDelayed({ refreshRadioViews() }, 400)
-    }
-
-    /** Re-reads the radio for the open settings menu and the setup screen's follow-up card. */
-    private fun refreshRadioViews() {
-        if (::settingsOverlay.isInitialized && settingsOverlay.isShowing) settingsOverlay.updateRadio(radioFacts())
-        if (::setupOverlay.isInitialized && setupOverlay.isShowing) refreshSetup()
-    }
-
-    /** While the settings menu is open: follow the radio (status, router state, Thread role). */
-    private val settingsRadioTick = object : Runnable {
-        override fun run() {
-            if (!::settingsOverlay.isInitialized || !settingsOverlay.isShowing) return
-            glassworks.radio?.refreshSoon()
-            settingsOverlay.updateRadio(radioFacts())
-            handler.postDelayed(this, SETTINGS_RADIO_TICK_MS)
-        }
-    }
-
-    /** The kiosk settings menu (settings/KioskSettingsOverlay): 5 taps top-left, or the notification. */
     private fun showSettings() {
-        val radio = glassworks.radio
-        settingsOverlay.show(
-            KioskSettingsOverlay.Model(
-                values = KioskSettingsOverlay.Values(
-                    url = prefs.urlSetting,
-                    zoom = if (prefs.zoom > 0f) prefs.zoom.toString() else "",
-                    secureHosts = prefs.extraSecureHosts,
-                    hideHeader = prefs.hideHeader,
-                    // Same setting as HA's "Radio allowed clients" (docs/radio.md "Firewall"): empty = Home Assistant only.
-                    radioAllow = radio?.allowedClients().orEmpty(),
-                    presence = prefs.screenMode == "presence",
-                    idleOff = prefs.idleOffSec.toString(),
-                    nightIdleOff = prefs.nightIdleOffSec.toString(),
-                    nightWindow = prefs.nightWindow,
-                    presenceRange = if (prefs.presenceRangeM > 0f) prefs.presenceRangeM.toString() else "",
-                    autoBrightness = prefs.autoBrightness,
-                ),
-                facts = SettingsMenu.Facts(deviceSettings = glassworks.frame.systemSettings(this) != null, radio = radio != null),
-                radioRunning = radio != null,
-                allowedNow = SettingsMenu.allowedNow(radio != null, radio?.allowedNow()),
-                version = BuildConfig.VERSION_NAME,
-                status = glassworks.screen.statusLine() + " · voice=" + glassworks.voiceState,
-                radio = radioFacts(),
-            ),
+        val frame = glassworks.frame
+        val core = CoreSettings(
+            prefs, BuildConfig.VERSION_NAME,
+            status = { glassworks.screen.statusLine() + " · voice=" + glassworks.voiceState },
+            deviceSettings = if (frame.systemSettings(this) == null) null else SettingsItem.Link(SettingsMenu.AQARA_TITLE, SettingsMenu.AQARA_DETAIL) { c ->
+                if (!frame.openSystemSettings(c)) Toast.makeText(c, "No settings app on this panel", Toast.LENGTH_LONG).show()
+            },
+            licences = SettingsItem.Link(CoreSettings.LICENCES_TITLE, CoreSettings.LICENCES_DETAIL) { Licences.show(this) },
         )
-        radio?.refreshSoon()
-        handler.removeCallbacks(settingsRadioTick)
-        handler.postDelayed(settingsRadioTick, 500)
+        settingsOverlay.show(
+            KioskSettingsOverlay.Model(settingsOrder(core.sections(), panes.flatMap { it.settings() }), BuildConfig.VERSION_NAME),
+        )
+        handler.removeCallbacks(settingsTick)
+        handler.postDelayed(settingsTick, 500)
     }
 
-    /** "Save & restart": the same saves as the earlier dialog, then the process restart that applies them. */
-    private fun saveSettings(v: KioskSettingsOverlay.Values) {
-        prefs.urlSetting = v.url.ifBlank { KioskPrefs.AUTO }
-        prefs.zoom = v.zoom.toFloatOrNull() ?: 0f
-        prefs.extraSecureHosts = v.secureHosts
-        prefs.hideHeader = v.hideHeader
-        prefs.hideSidebar = v.hideHeader
-        prefs.screenMode = if (v.presence) "presence" else "always"
-        prefs.idleOffSec = v.idleOff.toIntOrNull() ?: 120
-        prefs.nightWindow = v.nightWindow
-        prefs.nightIdleOffSec = v.nightIdleOff.toIntOrNull() ?: 20
-        prefs.autoBrightness = v.autoBrightness
-        prefs.presenceRangeM = v.presenceRange.toFloatOrNull() ?: 0f
-        val radio = glassworks.radio
-        val allowText = v.radioAllow.trim()
-        if (radio != null && allowText != radio.allowedClients()) {
-            val err = radio.setAllowedClients(allowText)
-            if (err != null) {
-                // the old list stays; give the message time to be read before the restart
-                Toast.makeText(this, "Radio allow-list not changed: $err", Toast.LENGTH_LONG).show()
-                handler.postDelayed({ restartProcess() }, 3500)
-            } else {
-                // let the radio thread hand the new list to the helper before the process restarts
-                radio.afterPending { handler.post { restartProcess() } }
+    /**
+     * "Save & restart": every field's save, in order, then the process restart that applies them. A save
+     * that went wrong (the radio's allow-list) keeps its old value: its message gets time to be read first.
+     */
+    private fun saveSettings(changes: List<(done: (String?) -> Unit) -> Unit>) {
+        saveAll(changes) { problems ->
+            handler.post {
+                if (problems.isEmpty()) restartProcess()
+                else {
+                    Toast.makeText(this, problems.joinToString("\n"), Toast.LENGTH_LONG).show()
+                    handler.postDelayed({ restartProcess() }, 3500)
+                }
             }
-        } else restartProcess()
+        }
     }
 
     private var restartWaitingSince = 0L
@@ -1152,6 +986,6 @@ class MainActivity : Activity() {
         private const val REQ_GECKO = 2
         private const val RETRY_MS = 10_000L
         private const val SETUP_TICK_MS = 2_000L
-        private const val SETTINGS_RADIO_TICK_MS = 2_000L
+        private const val SETTINGS_TICK_MS = 2_000L
     }
 }

@@ -220,7 +220,12 @@ from the computer (`ImprovController.installerWifi`: connecting to <SSID> with W
 progress, e.g. "Turning Wi-Fi on…", then connected or failed with the reason).
 
 **Home Assistant and radio: the setup channel on `@s1kiosk_setup`** (`setup/SetupChannel.kt`, pure,
-`SetupChannelTest`; glue `setup/SetupChannelServer.kt`). One JSON object per line, both ways:
+`SetupChannelTest`; glue `setup/SetupChannelServer.kt`). The core answers `state` and the Home
+Assistant address; every pane's setup step (`PaneDefinition.setupSteps`, the radio's is in
+`radio/RadioDefinition.kt`) adds its part of the state under its id and its own requests as
+`<step id>.<op>`. `SetupChannelStepsTest` finishes every step with requests alone and pins the
+replies Kiln gets (`kiln/packages/setup-channel/test/s1-kiosk-transcript.json`). One JSON object per
+line, both ways:
 - `{"id":1,"op":"state"}` → `{"id":1,"ok":true,"state":…}`. The state is channel.ts's `SetupState`:
   `ip` (wlan0 IPv4), `ha.discovered` (the HA address the app found itself: `ha_url_source` `mdns` or
   `esphome`, not `manual`), `ha.url` (the address in use, `KioskPrefs.haBase`, "" until known),
@@ -228,13 +233,17 @@ progress, e.g. "Turning Wi-Fi on…", then connected or failed with the reason).
   `radio.mode` (RadioMode id), `radio.status` (RadioController's status text), `radio.options` (the
   panel's radio step options: id, label, detail, `experimental` only when true) and `radio.helper`
   (root helper installed). Unknown optional fields are left out.
-- `set_ha` with `url` (http/https only): applied on the main thread exactly as the `url` intent extra
+- `ha.set_url` (first name `set_ha`, which still works) with `url` (http/https only): applied on the main thread exactly as the `url` intent extra
   (dashboard URL setting saved, then the dashboard reloads, or the process restarts when the
   secure-context hosts change, after the reply). The panel's setup screen moves on by itself.
-- `set_radio` with `mode` (one of the offered ids): through `RadioController.request`, like the
-  panel's radio step. The reply waits for its outcome: success (or still applying after 10 s) marks
+- `radio.set_mode` (first name `set_radio`) with `mode`: through `RadioController.request`, like the
+  panel's radio step. Only the ids in `radio.options` (the radio step's options, `RadioStep.OPTIONS`)
+  are accepted. Any other id, also a `RadioMode` id the step doesn't offer, is `ok:false` with
+  "Unknown radio mode '<id>'." and changes nothing. The reply waits for its outcome: success (or still applying after 10 s) marks
   the panel's radio step answered (`setup_radio_done`); a refusal or error is `ok:false` with
   RadioController's reason (e.g. the missing root helper).
+- `radio.set_allow` (first name `set_radio_allow`) with `allow`: who may reach the radio's TCP
+  services, as the `Radio allowed clients` entity ([radio.md](radio.md)).
 - While connected, `{"event":"state","state":…}` is pushed whenever the serialized state changes
   (checked every 1.5 s, once the client has asked for the state).
 - No secrets ever: no tokens, no API key, no passwords.
@@ -467,7 +476,7 @@ Laid out for 960×480 dp.
    services → S1 Panel discovered → Add", the panel's IP + port 6053 for a manual ESPHome add, and
    the HA URL (or the manual URL field from step 3 when HA wasn't found). **Skip for now** persists
    `setup_ha_skipped` (for kiosk-only use without the ESPHome device).
-3. **Radio** (`setup/RadioStep.kt`, `RadioStepTest`): Off (default), Zigbee coordinator (ZHA or
+3. **Radio** (`radio/ui/RadioStep.kt`, `RadioStepTest`): Off (default), Zigbee coordinator (ZHA or
    Zigbee2MQTT, network radio over TCP, `socket://<panel-ip>:6638`), Thread border router
    (experimental). Zigbee router (repeater) and Thread router (repeater) (both experimental) are listed under them in a
    compact second row. `RadioStep.COMING_SOON` (shown, tagged "Coming soon", not selectable) is empty
@@ -479,7 +488,7 @@ Laid out for 960×480 dp.
    the panel isn't signed in yet, so it shows the administrator QR code over the setup screen
    (`setup/ThreadJoinOverlay`). Answering persists `setup_radio_done` (so does a mode set from the web
    installer over the setup channel). A panel set up before this step
-   existed has it marked done once at the first start of the new build (`migrateRadioStep`: a known
+   existed has it marked done once at the first start of the new build (`RadioDefinition`'s one-time check: a known
    HA, `ha_seen`, an API key, a skipped HA step or a stored radio mode), so it never sees it. It
    comes before Sign in because it belongs with adding the panel (ZHA is added on the same Devices &
    services page) and signing in is what loads the dashboard.

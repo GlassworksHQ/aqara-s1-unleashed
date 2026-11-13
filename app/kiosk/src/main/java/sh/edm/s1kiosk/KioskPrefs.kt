@@ -14,9 +14,8 @@ import sh.edm.s1kiosk.sendspin.SendspinPrefs
 import sh.edm.s1kiosk.voice.VoicePrefs
 
 /**
- * The panel's core settings (SharedPreferences, private to the app), and each pane's settings for
- * the code outside the panes (settings menu, intent extras, setup) until those move into the panes
- * (#20). Secrets: the ESPHome API encryption key (`kiosk.xml`, which Home Assistant provisions) and
+ * The panel's core settings (SharedPreferences, private to the app), and each pane's typed settings
+ * for the code that builds the panes and their definitions (GlassworksRuntime.paneDefinitions). Secrets: the ESPHome API encryption key (`kiosk.xml`, which Home Assistant provisions) and
  * the HA refresh token (`auth.xml`, see [auth]). Neither is ever logged.
  */
 class KioskPrefs(private val context: Context) : ScreenSettings {
@@ -89,27 +88,6 @@ class KioskPrefs(private val context: Context) : ScreenSettings {
     var haSetupSkipped: Boolean
         get() = sp.getBoolean("setup_ha_skipped", false)
         set(v) = sp.edit().putBoolean("setup_ha_skipped", v).apply()
-
-    /** The setup screen's radio step was answered (a mode applied, or skipped = Off). */
-    var radioStepDone: Boolean
-        get() = sp.getBoolean("setup_radio_done", false)
-        set(v) = sp.edit().putBoolean("setup_radio_done", v).apply()
-
-    /**
-     * Once per install of a build with the radio step: a panel that was already set up before it
-     * (SetupState.radioStepDoneOnUpgrade) never sees the step. Call before discovery can save an HA
-     * URL in this process (KioskService.onCreate, MainActivity.onCreate); later calls do nothing.
-     */
-    fun migrateRadioStep() {
-        if (sp.getBoolean("setup_radio_migrated", false)) return
-        val done = sh.edm.s1kiosk.setup.SetupState.radioStepDoneOnUpgrade(
-            haKnown = haBase != null, haSeen = haSeen, apiKeySet = apiEncryption,
-            haSkipped = haSetupSkipped, radioModeStored = radio.mode != null,
-        )
-        val e = sp.edit().putBoolean("setup_radio_migrated", true)
-        if (done) e.putBoolean("setup_radio_done", true)
-        e.apply()
-    }
 
     /** Lovelace dashboards the "Dashboard" select was last built from (`[{url_path,title}]`). */
     var dashboardsJson: String

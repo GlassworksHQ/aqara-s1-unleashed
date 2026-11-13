@@ -7,7 +7,30 @@ below as the release notes.
 
 ## [Unreleased]
 
+### Changed
+- **A new boot screen.** The power-on logo and the boot animation now show the Glassworks mark:
+  three glass plates drop into place, the top one lights up from sky to violet, and "Glassworks" and
+  "On Aqara S1 Plus" fade in. While the panel finishes starting, the stack floats and the top plate
+  breathes. It reaches a panel when you run the installer again.
+- **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
+  page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
+  Nothing in the sections changed.
+
 ### Added
+- **Kiln shows what the panel is doing while S1 Kiosk goes in.** On kiln.glassworks.dev the app's
+  install now lists each step as the panel goes through it: S1 Kiosk and the on-screen keyboard
+  going in, the home screen, your settings, and the first start. When it updates an app that's
+  already on the panel, it says the app restarting meanwhile is expected. The Wi-Fi step says
+  *Connected to <network>* when the panel is on Wi-Fi already, with another network as the other
+  choice. Back and the step list on the left go back through the
+  set-up steps without losing what you entered.
+- **Kiln's picker lists Generic Android as planned.** Next to the S1 and the Mirror, a card for any
+  Android tablet or panel, which will install as a normal app without root. It can't be picked yet.
+- **The panel's health shows in Home Assistant.** The device page's *Diagnostic* section gets CPU
+  usage, CPU temperature, Wi-Fi signal and uptime, so you can graph them and alert on them. More
+  sensors are there but off until you turn them on: the app's own CPU and RAM, free RAM and storage,
+  Wi-Fi link speed, the app's uptime, its web content processes and why it last restarted. The panel
+  reads them once a minute and sends a value only when it changed.
 - **Releases now include an APK for 64-bit Android devices.** Each release carries
   `s1-kiosk-arm64-v8a-<version>.apk` beside the S1's APK, for arm64-v8a tablets and similar devices.
   It is experimental and has only run on an emulator. S1 panels keep updating from
@@ -21,6 +44,32 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Kiln's Done always offers your backup.** After an install, Done shows the backup's download even
+  when set-up ran after leaving and coming back to the wizard, or after a reload. Before, it could
+  show no download, and the backup was only in that browser. When a browser blocks site storage,
+  Kiln no longer says "nothing was written" after a reload: it says it can't tell. Every screen now
+  has one main button, the recovery steps no longer look like buttons ("Remove the back cover"), and
+  the ends of the main buttons are no longer cut off. For a Thread router, Kiln points you to the
+  panel's *Join Home Assistant's Thread network* when its S1 Kiosk has it, instead of copying the
+  dataset; with an older S1 Kiosk, copying stays, under *More help*.
+- **Undo no longer puts our splash back as Aqara's.** If a panel's `boot` was put back without its
+  splash and the panel was then installed again, that install's backup held a stock `boot` with our
+  power-on splash, and undo restored our splash while saying the stock one was back. Both installers
+  now refuse such a backup before writing anything, and point you to the first install's backup or
+  the by-hand undo in docs/install.md.
+- **A Thread dataset typed in the settings menu no longer shows an error.** After you pasted the
+  dataset under the radio's *Advanced* and the radio took it, the menu said "The kiosk service isn't
+  running yet" instead of "Dataset handed to the radio". The dataset was stored either way; now the
+  menu says so.
+- **Kiln: Undo and Try again say the right thing in rare cases.** On kiln.glassworks.dev, once a
+  try has written to the panel, or given it back to Aqara's apps, a later try that fails before
+  writing says so and keeps *Undo with your backup*, instead of "Nothing was written." This holds in
+  the same browser tab after going back to Kiln's first page or reloading, until a run finishes.
+  Closing the browser's device list on such a retry asks for recovery mode, then Undo. On Undo, a
+  backup this browser can't read now says so on the screen. Once *Keep its settings* has given
+  Aqara's apps back, that backup is the one Undo restores: another can't be picked, even after
+  changing how far back to go. A rescan that changes the picked Wi-Fi network clears the password
+  typed for the old one. Links that are off now look off.
 - **The screen starts at your saved brightness.** With *Auto brightness* off, the app used the
   system brightness after a restart until the light sensor reported a change, while Home Assistant
   already showed your saved brightness. In a dark, still room that could last a long time. The app

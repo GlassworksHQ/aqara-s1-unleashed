@@ -225,6 +225,13 @@
       }
     ]
   },
+  "display": {
+    "width": 1080,
+    "height": 1920
+  },
+  "boot": {
+    "androidApi": 23
+  },
   "specs": [
     {
       "label": "Size",

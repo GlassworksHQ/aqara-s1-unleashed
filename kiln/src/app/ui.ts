@@ -587,6 +587,17 @@ class Installer {
       this.show('app');
       if (which === 'ask-adb') void this.ask('adb', () => new Promise(() => {}), never);
     }
+    if (which === 'undo-refused' || which === 'undo-refused-splash') {
+      // "Give back Aqara's apps" with a backup undo refuses: no splash, or a splash already ours (#106)
+      const splash = which === 'undo-refused-splash';
+      const plan = splash ? { ...s1Plus.backup, isPatched: async () => false, ours: { bootloader: { ...s1Plus.backup.ours!.bootloader!, is: async () => true } } } : s1Plus.backup;
+      const files = new Map(plan.restore.filter((p) => splash || p !== 'bootloader').map((p) => [p, new Uint8Array(16)]));
+      void this.openUndo().then(() => {
+        document.querySelector<HTMLInputElement>('input[name=how][value=keep]')!.checked = true;
+        this.renderUndoOrder();
+        return giveBackApps(plan, files, async () => {});
+      }).catch((e: Error) => this.undoNote('err', 'This backup can\'t undo the install', `${e.message}. Nothing on the panel was changed.`));
+    }
   }
 
   private clock24 = false;

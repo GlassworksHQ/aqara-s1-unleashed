@@ -1,8 +1,8 @@
 package sh.edm.s1kiosk.setup
 
 import sh.edm.s1kiosk.ui.Inter
+import sh.edm.s1kiosk.ui.QrCode
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -20,14 +20,11 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.qrcode.QRCodeWriter
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import dev.glassworks.pane.SetupCard
+import dev.glassworks.pane.SetupHost
+import dev.glassworks.pane.SetupScreen
+import dev.glassworks.pane.SetupStep
 import sh.edm.s1kiosk.auth.OAuth
-import sh.edm.s1kiosk.radio.HelperFacts
-import sh.edm.s1kiosk.radio.RadioMode
-import sh.edm.s1kiosk.radio.ZigbeeStack
 
 /**
  * The first-boot setup screen (docs/onboarding.md, step 4): a native, full-screen overlay over the
@@ -35,19 +32,26 @@ import sh.edm.s1kiosk.radio.ZigbeeStack
  * sky/violet radial glows, glass cards rgba(255,255,255,.045) + .07 border, 22-26 px radii,
  * uppercase letter-spaced labels in #63636b, big light headings, amber / green accents).
  *
- * Left: the steps (Wi-Fi, Add to Home Assistant, Radio, Sign in, Done) with checks. Right: a glass
- * card for the current step. It replaces the earlier SignInOverlay (its QR code and texts are the
+ * Left: the steps (Wi-Fi, Add to Home Assistant, the panes' steps such as Radio, Sign in, Done) with
+ * checks. Right: a glass card for the current step; a pane's step fills it through [SetupCard]. It replaces the earlier SignInOverlay (its QR code and texts are the
  * Sign-in step). The Wi-Fi step shows Improv (Wi-Fi over Bluetooth) inline, Allow included, so no
  * separate ImprovOverlay window covers this screen. Laid out for 960×480 dp (1440×720 px at
  * density 1.5). Main thread only.
  */
-class SetupOverlay(context: Context) : FrameLayout(context) {
+class SetupOverlay(
+    context: Context,
+    /**
+     * The panes' steps, in order. They go between Home Assistant and Sign in. Callers pass
+     * GlassworksRuntime.setupSteps, never PaneDefinition.setupSteps: only that list has the clashing steps left out.
+     */
+    paneSteps: List<SetupStep> = emptyList(),
+) : FrameLayout(context) {
 
     data class Model(
-        val step: SetupStep,
-        val wifiDone: Boolean,
-        val haDone: Boolean,
-        val signinDone: Boolean,
+        /** The current step's id (SetupFlow). */
+        val step: String,
+        /** The ids of the steps that are done. */
+        val done: Set<String>,
         val wifi: WifiSetupStatus.Snapshot,
         /** Home Assistant's URL, null while it hasn't been found. */
         val haUrl: String?,
@@ -56,22 +60,10 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         val panelIp: String?,
         val signedIn: Boolean,
         val preview: Boolean = false,
-        val radioDone: Boolean = true,
         /** Improv's status block for the Wi-Fi step (SetupDecision.improv). */
         val improv: WifiStep.ImprovLine = WifiStep.improv(ImprovFacts()),
         /** A Wi-Fi join sent from the computer (web installer), if any. */
         val installer: InstallerWifi? = null,
-        val radio: Radio = Radio(),
-    )
-
-    /** The radio step: the mode now in effect, and what the last "Apply" did (null = not yet). */
-    data class Radio(
-        val current: RadioMode = RadioMode.DEFAULT,
-        val applied: RadioStep.Applied? = null,
-        /** A request is running on the radio thread. */
-        val busy: Boolean = false,
-        /** What the follow-up card is drawn from (RadioController's view); null when the service isn't running. */
-        val facts: RadioFollowUp.Facts? = null,
     )
 
     var onChooseNetwork: (() -> Unit)? = null
@@ -83,16 +75,8 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     var onClosePreview: (() -> Unit)? = null
     /** An inline Improv button (Allow / Not now / Stop / Use Bluetooth / Try again). */
     var onImprovAction: ((WifiStep.Action) -> Unit)? = null
-    /** Radio step: apply this mode (RadioController path); re-render with [Model.radio] to show the result. */
-    var onRadioApply: ((RadioMode) -> Unit)? = null
-    /** Radio step: skip (= Off). */
-    var onRadioSkip: (() -> Unit)? = null
-    /** Radio step: the applied mode is fine, go on. */
-    var onRadioContinue: (() -> Unit)? = null
-    /** Radio step's follow-up card: a role button or the Zigbee stack (same RadioController calls as HA). */
-    var onRadioRun: ((RadioFollowUp.Request, (String?) -> Unit) -> Unit)?
-        get() = followUp.onRun
-        set(v) { followUp.onRun = v }
+    /** A pane's step was answered on the screen ([SetupHost.next]). */
+    var onStepDone: (() -> Unit)? = null
 
     /** True while visible (including the Done fade-out). */
     var isShowing = false
@@ -105,17 +89,24 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     private fun px(v: Float) = (v * dp).toInt()
     private var finishing: Runnable? = null
     private var qrFor: String? = null
-    private var radioSelected: RadioMode = RadioMode.DEFAULT
-    /** The coordinator's pairing view (QR) was left with "Back" for this apply. */
-    private var pairingDismissed: RadioStep.Applied? = null
+
+    private val paneSteps = paneSteps.associateBy { it.id }
+    /** Every step's id in order (SetupFlow.ids). */
+    private val flow = SetupFlow.ids(paneSteps.map { it.id })
 
     // ---- left: the steps
     private val brand = label("S1 Panel · Setup")
     private val railTitle = text(30f, TX, LIGHT).apply { letterSpacing = -0.02f; text = "Let's set up\nyour panel"; setLineSpacing(0f, 1.0f) }
-    /** One row per [SetupStep], in its order (index = ordinal). */
-    private val rows = listOf(
-        StepRow("Wi-Fi"), StepRow("Add to Home Assistant"), StepRow("Radio"), StepRow("Sign in"), StepRow("Done"),
-    )
+    /** One row per step, in [flow] order. */
+    private val rows = flow.map { id ->
+        StepRow(when (id) {
+            SetupFlow.WIFI -> "Wi-Fi"
+            SetupFlow.HA -> "Add to Home Assistant"
+            SetupFlow.SIGNIN -> "Sign in"
+            SetupFlow.DONE -> "Done"
+            else -> this.paneSteps.getValue(id).title
+        })
+    }
     private val previewChip = button("Preview · Close", Kind.GHOST).apply { setOnClickListener { onClosePreview?.invoke() } }
 
     private val rail = LinearLayout(context).apply {
@@ -173,36 +164,9 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         addView(qrImage, LayoutParams(-1, -1))
     }
     private val bigCheck = CheckDot(filled = true).apply { visibility = View.GONE }
-    /** The radio step's follow-up card, scrolling when it is taller than the card has room for. */
-    private val followUp = RadioFollowUpView(context)
-    // 200 dp: label + title + this + the buttons fit the 480 dp screen's card (RadioMockups 13/14).
-    private val followScroll = BoundedScroll(context, px(200f)).apply {
-        isVerticalScrollBarEnabled = true
-        setPadding(0, 0, px(10f), 0) // a scrollbar (if it ever needs one) never sits on the text
-        overScrollMode = View.OVER_SCROLL_NEVER
-        addView(followUp, LayoutParams(-1, -2))
-        visibility = View.GONE
-    }
     private val improvTile = ImprovTile()
-    private val radioTiles = RadioStep.OPTIONS.map { RadioTile(it) }
-    private val radioRow = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        addView(LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            radioTiles.filter { !it.option.repeater }.forEachIndexed { i, t ->
-                addView(t.view, LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = px(10f) })
-            }
-        }, LinearLayout.LayoutParams(-1, -2))
-        // Repeater roles (someone else's network) in a compact row under the main options, then
-        // roles that aren't ready yet (dimmed, not selectable).
-        addView(LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            val compact = radioTiles.filter { it.option.repeater }.map { it.view } + RadioStep.COMING_SOON.map { soonTile(it) }
-            compact.forEachIndexed { i, v ->
-                addView(v, LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = px(10f) })
-            }
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
-    }
+    /** A pane's step's own view ([SetupCard.content]). */
+    private val slot = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
 
     private val cardColumn = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
@@ -213,8 +177,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         addView(cardNote, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
         addView(tiles, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(18f) })
         addView(improvTile.view, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(16f) })
-        addView(radioRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12f) })
-        addView(followScroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14f) })
+        addView(slot, LinearLayout.LayoutParams(-1, -2))
         addView(urlField, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(18f) })
         addView(status, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
         addView(buttons, buttonsLp)
@@ -227,6 +190,16 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         addView(qrTile, LinearLayout.LayoutParams(px(210f), px(210f)).apply { marginEnd = px(30f) })
         addView(cardColumn, LinearLayout.LayoutParams(0, -2, 1f))
     }
+
+    /** What the screen offers a pane's step. */
+    private val stepHost = object : SetupHost {
+        override val preview: Boolean get() = model?.preview == true
+        override fun redraw() { model?.let { bindCard(it, stepChanged = false) } }
+        override fun next() { onStepDone?.invoke() }
+    }
+
+    /** Each pane step's part of this screen. */
+    private val screens: Map<String, SetupScreen> = paneSteps.associate { it.id to it.screen(context, stepHost) }
 
     init {
         background = Backdrop()
@@ -257,7 +230,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
      * Shows the Done step, calls [loaded] (load the dashboard behind it), then fades out.
      */
     fun finish(from: Model? = model, holdMs: Long = 1_800, loaded: () -> Unit) {
-        val m = (from ?: return).copy(step = SetupStep.DONE, wifiDone = true, haDone = true, radioDone = true, signinDone = true)
+        val m = (from ?: return).copy(step = SetupFlow.DONE, done = flow.toSet())
         cancelFinish()
         model = m
         bindRail(m)
@@ -274,6 +247,14 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         status.visibility = View.VISIBLE
         status.setTextColor(if (ok) GREEN else ROSE)
         status.text = message
+    }
+
+    /** For the mock-ups: a pane step's part of this screen. */
+    internal fun previewScreen(id: String): SetupScreen? = screens[id]
+
+    /** Every couple of seconds while the app runs: the panes' steps follow their state. */
+    fun tick() {
+        screens.forEach { (id, screen) -> screen.tick(current = isShowing && model?.step == id) }
     }
 
     /** Improv identify: pulse the Bluetooth block a few times. */
@@ -307,33 +288,33 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
 
     private fun bindRail(m: Model) {
         val w = m.wifi
-        val wifiDetail = when {
-            m.wifiDone && w.ethernet -> "Ethernet"
-            m.wifiDone -> w.ssid ?: "Connected"
-            w.state == WifiSetupStatus.State.CONNECTING -> w.ssid?.let { "Joining $it…" } ?: "Connecting…"
-            m.improv.phase == WifiStep.Phase.ASKING -> "Allow Bluetooth setup"
-            m.improv.phase in setOf(WifiStep.Phase.READY, WifiStep.Phase.AUTHORIZED) -> "Bluetooth setup is on"
-            else -> "Not connected"
-        }
-        val radioDetail = when {
-            m.radioDone -> RadioStep.OPTIONS.firstOrNull { it.mode == m.radio.current }?.title ?: m.radio.current.label
-            else -> "Zigbee, Thread or off"
-        }
-        val haDetail = when {
-            m.haDone -> "Added"
-            m.haUrl == null -> "Looking for Home Assistant…"
-            else -> "Waiting to be added"
-        }
-        val signinDetail = when {
-            m.signedIn -> "Signed in"
-            m.signinDone -> "Session active"
-            else -> "Scan the QR code"
-        }
-        val done = listOf(m.wifiDone, m.haDone, m.radioDone, m.signinDone, m.step == SetupStep.DONE)
-        val details = listOf(wifiDetail, haDetail, radioDetail, signinDetail, if (m.step == SetupStep.DONE) "Loading your dashboard" else "")
+        val finished = m.step == SetupFlow.DONE
         rows.forEachIndexed { i, r ->
-            val current = m.step.ordinal == i
-            r.bind(i + 1, if (done[i]) Dot.DONE else if (current) Dot.CURRENT else Dot.PENDING, details[i])
+            val id = flow[i]
+            val done = id in m.done || (id == SetupFlow.DONE && finished)
+            val detail = when (id) {
+                SetupFlow.WIFI -> when {
+                    done && w.ethernet -> "Ethernet"
+                    done -> w.ssid ?: "Connected"
+                    w.state == WifiSetupStatus.State.CONNECTING -> w.ssid?.let { "Joining $it…" } ?: "Connecting…"
+                    m.improv.phase == WifiStep.Phase.ASKING -> "Allow Bluetooth setup"
+                    m.improv.phase in setOf(WifiStep.Phase.READY, WifiStep.Phase.AUTHORIZED) -> "Bluetooth setup is on"
+                    else -> "Not connected"
+                }
+                SetupFlow.HA -> when {
+                    done -> "Added"
+                    m.haUrl == null -> "Looking for Home Assistant…"
+                    else -> "Waiting to be added"
+                }
+                SetupFlow.SIGNIN -> when {
+                    m.signedIn -> "Signed in"
+                    done -> "Session active"
+                    else -> "Scan the QR code"
+                }
+                SetupFlow.DONE -> if (finished) "Loading your dashboard" else ""
+                else -> paneSteps.getValue(id).detail(done)
+            }
+            r.bind(i + 1, if (done) Dot.DONE else if (m.step == id) Dot.CURRENT else Dot.PENDING, detail)
         }
         previewChip.visibility = if (m.preview) View.VISIBLE else View.GONE
     }
@@ -348,8 +329,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         tiles.visibility = View.GONE
         tileB.view.visibility = View.VISIBLE
         improvTile.view.visibility = View.GONE
-        radioRow.visibility = View.GONE
-        followScroll.visibility = View.GONE
+        slot.visibility = View.GONE
         primary.isEnabled = true
         primary.alpha = 1f
         // The URL field is never reset to GONE and back: a view that goes GONE (even for one frame)
@@ -363,16 +343,15 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         secondary.setOnClickListener(null)
         if (stepChanged) status.visibility = View.GONE
         cardTitle.textSize = when (m.step) {
-            SetupStep.SIGNIN -> 26f // the QR takes ~240 dp of the card
-            SetupStep.WIFI, SetupStep.RADIO -> 26f // room for the Bluetooth block / the three options
-            else -> 30f
+            SetupFlow.HA, SetupFlow.DONE -> 30f
+            // The QR takes ~240 dp of the card; room for the Bluetooth block / a pane's own view.
+            else -> 26f
         }
 
         when (m.step) {
-            SetupStep.WIFI -> bindWifi(m)
-            SetupStep.RADIO -> bindRadio(m, stepChanged)
-            SetupStep.HA -> {
-                cardLabel.text = "Step 2 · Home Assistant"
+            SetupFlow.WIFI -> bindWifi(m)
+            SetupFlow.HA -> {
+                cardLabel.text = "Step ${number(SetupFlow.HA)} · Home Assistant"
                 if (m.haUrl == null) {
                     cardTitle.text = "Where is Home Assistant?"
                     cardBody.text = "The panel is looking for it on the network. If it doesn't show up, enter its address; " +
@@ -400,15 +379,15 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
                     secondary.setOnClickListener { onSkipHa?.invoke() }
                 }
             }
-            SetupStep.SIGNIN -> {
+            SetupFlow.SIGNIN -> {
                 val ip = m.panelIp ?: "<panel-ip>"
                 val url = "http://$ip:${OAuth.SIGNIN_PORT}/signin"
                 if (qrFor != url) {
-                    qrImage.setImageBitmap(qrBitmap(url, px(186f)))
+                    qrImage.setImageBitmap(QrCode.bitmap(url, px(186f)))
                     qrFor = url
                 }
                 qrTile.visibility = View.VISIBLE
-                cardLabel.text = "Step 4 · Sign in"
+                cardLabel.text = "Step ${number(SetupFlow.SIGNIN)} · Sign in"
                 cardTitle.text = "Scan with your phone to sign in to Home Assistant"
                 cardBody.text = "Or open $url on a phone or computer on the same network."
                 tiles.visibility = View.VISIBLE
@@ -418,13 +397,14 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
                 secondary.visibility = View.VISIBLE
                 secondary.setOnClickListener { onUsePanel?.invoke() }
             }
-            SetupStep.DONE -> {
+            SetupFlow.DONE -> {
                 bigCheck.visibility = View.VISIBLE
                 cardLabel.text = "Done"
                 cardTitle.text = "You're all set"
                 cardBody.text = "Loading your dashboard…"
                 buttons.visibility = View.GONE
             }
+            else -> paneSteps[m.step]?.let { bindPaneStep(it, stepChanged) }
         }
         val urlVis = if (showUrl) View.VISIBLE else View.GONE
         if (urlField.visibility != urlVis) urlField.visibility = urlVis
@@ -432,7 +412,7 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
     }
 
     private fun bindWifi(m: Model) {
-        cardLabel.text = "Step 1 · Wi-Fi"
+        cardLabel.text = "Step ${number(SetupFlow.WIFI)} · Wi-Fi"
         val w = m.wifi
         val inst = m.installer
         if (w.online) {
@@ -462,99 +442,65 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         secondary.setOnClickListener { onChooseNetwork?.invoke() }
     }
 
-    private fun bindRadio(m: Model, stepChanged: Boolean) {
-        val r = m.radio
-        if (stepChanged) {
-            radioSelected = RadioStep.OPTIONS.firstOrNull { it.mode == r.current }?.mode ?: RadioMode.DEFAULT
-        }
-        val ok = r.applied?.takeIf { it.mode == radioSelected && it.result == RadioStep.Result.OK && !r.busy }
-        if (ok != null && ok.mode != RadioMode.OFF && pairingDismissed != ok) {
-            bindFollowUp(m, ok)
-            return
-        }
-        cardLabel.text = "Step 3 · Radio"
-        cardTitle.text = "What should the panel's radio do?"
-        // No body line here: five options + the note + buttons fill the card (960x480 dp panel).
-        // "Change it later" is the note while Off is selected.
-        cardBody.visibility = View.GONE
-        radioRow.visibility = View.VISIBLE
-        buttonsLp.topMargin = px(12f)
-        status.visibility = View.GONE
-        radioTiles.forEach { t -> t.bind(t.option.mode == radioSelected) }
+    private fun number(id: String) = flow.indexOf(id) + 1
 
-        val applied = r.applied?.takeIf { it.mode == radioSelected }
-        when {
-            r.busy -> showRadioNote("Applying ${titleOf(radioSelected)}…", AMBER)
-            applied != null -> when (applied.result) {
-                RadioStep.Result.OK -> showRadioNote(applied.status, GREEN)
-                RadioStep.Result.APPLYING -> showRadioNote("Applying: ${applied.status}", AMBER)
-                RadioStep.Result.REFUSED, RadioStep.Result.ERROR -> showRadioNote(applied.status, ROSE)
-            }
-            else -> showRadioNote(RadioStep.nextStep(radioSelected, m.panelIp) ?: RadioStep.LATER, FA)
-        }
-        if (RadioStep.canContinue(applied) && !r.busy) {
-            primary.text = "Continue"
-            primary.setOnClickListener { onRadioContinue?.invoke() }
-        } else {
-            primary.text = if (r.busy) "Applying…" else "Apply"
-            primary.isEnabled = !r.busy
-            primary.alpha = if (r.busy) 0.5f else 1f
-            primary.setOnClickListener { if (!r.busy) onRadioApply?.invoke(radioSelected) }
-        }
-        primary.visibility = View.VISIBLE
-        secondary.text = "Skip (Off)"
-        secondary.visibility = if (r.busy) View.GONE else View.VISIBLE
-        secondary.setOnClickListener { onRadioSkip?.invoke() }
+    /** A pane's step: the screen sets the label, the step fills the rest ([paneCard]). */
+    private fun bindPaneStep(step: SetupStep, stepChanged: Boolean) {
+        cardLabel.text = "Step ${number(step.id)} · ${step.title}"
+        status.visibility = View.GONE
+        screens.getValue(step.id).bind(paneCard, stepChanged)
     }
 
-    /**
-     * A mode other than Off applied: its follow-up card (setup/RadioFollowUp, the same card as the
-     * settings menu's Radio section): what to do in Home Assistant, the QR code in this screen's tile,
-     * and the role's buttons. "Back" returns to the options for this apply.
-     */
-    private fun bindFollowUp(m: Model, applied: RadioStep.Applied) {
-        val f = (m.radio.facts ?: RadioFollowUp.Facts(
-            mode = applied.mode, status = applied.status, helper = HelperFacts(false, 0), stack = ZigbeeStack.DEFAULT,
-            threadStored = null, thread = null, haBase = null, panelIp = null,
-        )).copy(mode = applied.mode, haBase = m.haUrl, panelIp = m.panelIp)
-        followUp.bind(f)
-        val card = RadioFollowUp.card(f, RadioFollowUp.Place.SETUP)
-        cardLabel.text = "Step 3 · Radio" // one line: the card needs the height (the title names the role)
-        cardTitle.text = card.title
-        cardBody.visibility = View.GONE
-        followScroll.visibility = View.VISIBLE
-        card.qr?.let { q ->
-            if (qrFor != q.url) {
-                qrImage.setImageBitmap(qrBitmap(q.url, px(186f)))
-                qrFor = q.url
+    private val paneCard = object : SetupCard {
+        override fun title(text: String) { cardTitle.text = text }
+
+        override fun body(text: String?) {
+            if (text == null) cardBody.visibility = View.GONE
+            else { cardBody.text = text; cardBody.visibility = View.VISIBLE }
+        }
+
+        override fun status(text: String?, tone: SetupCard.Tone) {
+            if (text == null) { status.visibility = View.GONE; return }
+            status.text = text
+            status.setTextColor(when (tone) { SetupCard.Tone.MUTED -> FA; SetupCard.Tone.AMBER -> AMBER; SetupCard.Tone.GREEN -> GREEN; SetupCard.Tone.ROSE -> ROSE })
+            status.visibility = View.VISIBLE
+        }
+
+        override fun qr(url: String?) {
+            if (url == null) { qrTile.visibility = View.GONE; return }
+            if (qrFor != url) {
+                qrImage.setImageBitmap(QrCode.bitmap(url, px(186f)))
+                qrFor = url
             }
             qrTile.visibility = View.VISIBLE
         }
-        status.visibility = View.GONE // the selection view's note
-        primary.text = "Continue"
-        primary.visibility = View.VISIBLE
-        primary.setOnClickListener { onRadioContinue?.invoke() }
-        secondary.text = "Back"
-        secondary.visibility = View.VISIBLE
-        secondary.setOnClickListener {
-            pairingDismissed = applied
-            model?.let { bindCard(it, stepChanged = false) }
+
+        override fun content(view: View?) {
+            if (view == null) { slot.visibility = View.GONE; return }
+            if (view.parent !== slot) {
+                slot.removeAllViews()
+                (view.parent as? android.view.ViewGroup)?.removeView(view)
+                slot.addView(view, LinearLayout.LayoutParams(-1, -2))
+            }
+            slot.visibility = View.VISIBLE
         }
-    }
 
-    /** The line under the options (the `status` view, which only the HA step uses otherwise). */
-    private fun showRadioNote(text: String, color: Int) {
-        status.text = text
-        status.setTextColor(color)
-        status.visibility = View.VISIBLE
-    }
+        override fun primary(text: String, enabled: Boolean, onClick: () -> Unit) {
+            primary.text = text
+            primary.isEnabled = enabled
+            primary.alpha = if (enabled) 1f else 0.5f
+            primary.visibility = View.VISIBLE
+            primary.setOnClickListener { onClick() }
+        }
 
-    private fun titleOf(mode: RadioMode) = RadioStep.OPTIONS.firstOrNull { it.mode == mode }?.title ?: mode.label
+        override fun secondary(text: String?, onClick: () -> Unit) {
+            if (text == null) { secondary.visibility = View.GONE; return }
+            secondary.text = text
+            secondary.visibility = View.VISIBLE
+            secondary.setOnClickListener { onClick() }
+        }
 
-    private fun selectRadio(mode: RadioMode) {
-        if (radioSelected == mode) return
-        radioSelected = mode
-        model?.let { bindCard(it, stepChanged = false) }
+        override fun tightButtons() { buttonsLp.topMargin = px(12f) }
     }
 
     private fun reveal() {
@@ -644,92 +590,6 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
             restyle(b1, accent = line.actions.firstOrNull() != WifiStep.Action.NOT_NOW && line.actions.firstOrNull() != WifiStep.Action.STOP)
             actions.visibility = if (line.actions.isEmpty()) View.GONE else View.VISIBLE
             view.visibility = View.VISIBLE
-        }
-    }
-
-    /**
-     * One radio option: title (+ "experimental"), one line, amber outline when selected. Repeater
-     * roles are compact: title and tag on one line, a single-line description.
-     */
-    private inner class RadioTile(val option: RadioStep.Option) {
-        private val compact = option.repeater
-        // 14 sp: "Thread border router" in Inter needs 141 of the large tile's 143 dp.
-        private val title = text(14f, TX, MEDIUM).apply { text = option.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
-        // neutral: amber is for the one primary action (the settings menu marks these with a small β)
-        private val expTag = label("Experimental").apply { setTextColor(FA); visibility = if (option.experimental) View.VISIBLE else View.GONE }
-        // The role's icon in its technology's colour (Zigbee sky blue, Thread violet), as in the settings
-        // menu. Never on the title's line, which needs the whole width: on the tag's line in the large
-        // tiles, at the start of the description in the compact ones.
-        private val icon = RoleIcon(context, RoleStyle.glyph(option.mode), RoleStyle.hue(option.mode), if (compact) 14f else 18f)
-        private val line = text(if (compact) 12f else 13f, MU, REGULAR).apply {
-            text = option.line
-            if (compact) { setSingleLine(); ellipsize = TextUtils.TruncateAt.END } else setLineSpacing(0f, 1.2f)
-        }
-        val view = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            if (compact) {
-                // The role's name gets the whole width; the tag ends the (ellipsised) description line.
-                setPadding(px(14f), px(7f), px(14f), px(7f))
-                addView(title)
-                addView(LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    addView(icon, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(6f) })
-                    addView(line, LinearLayout.LayoutParams(0, -2, 1f))
-                    addView(expTag, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(8f) })
-                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(2f) })
-            } else {
-                setPadding(px(12f), px(10f), px(12f), px(10f))
-                addView(title)
-                addView(LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    addView(icon, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(8f) })
-                    addView(expTag)
-                }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(4f) })
-                addView(line, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(4f) })
-            }
-            isClickable = true
-            isFocusable = true
-            contentDescription = option.title + if (option.experimental) ", experimental" else ""
-            setOnClickListener { selectRadio(option.mode) }
-        }
-
-        fun bind(selected: Boolean) {
-            view.background = GradientDrawable().apply {
-                cornerRadius = 18 * dp
-                setColor(if (selected) S2 else S1)
-                setStroke(px(if (selected) 2f else 1f).coerceAtLeast(1), if (selected) AMBER else BD)
-            }
-            title.setTextColor(if (selected) TX else MU)
-        }
-    }
-
-    /** A "Coming soon" radio role: title + tag on one line, its one line under it; no click. */
-    private fun soonTile(o: RadioStep.Soon): View {
-        val title = text(14f, MU, MEDIUM).apply { text = o.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
-        val tag = label("Coming soon").apply { setTextColor(FA) }
-        val head = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(title, LinearLayout.LayoutParams(0, -2, 1f))
-            addView(tag, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(8f) })
-        }
-        val line = text(12f, FA, REGULAR).apply { text = o.line; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
-        return LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(px(14f), px(8f), px(14f), px(8f))
-            addView(head)
-            addView(line, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(2f) })
-            isClickable = false
-            isFocusable = false
-            contentDescription = "${o.title}, coming soon"
-            background = GradientDrawable().apply {
-                cornerRadius = 14 * dp
-                setColor(S1)
-                setStroke(px(1f).coerceAtLeast(1), BD)
-            }
-            alpha = 0.8f
         }
     }
 
@@ -870,15 +730,5 @@ class SetupOverlay(context: Context) : FrameLayout(context) {
         private val LIGHT = Inter.LIGHT
         private val REGULAR = Inter.REGULAR
         private val MEDIUM = Inter.MEDIUM
-
-        fun qrBitmap(text: String, size: Int): Bitmap {
-            val hints = mapOf(EncodeHintType.MARGIN to 0, EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M)
-            val m = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size, hints)
-            val px = IntArray(m.width * m.height)
-            for (y in 0 until m.height) for (x in 0 until m.width) {
-                px[y * m.width + x] = if (m[x, y]) BG else Color.WHITE
-            }
-            return Bitmap.createBitmap(px, m.width, m.height, Bitmap.Config.ARGB_8888)
-        }
     }
 }

@@ -70,6 +70,7 @@ describe('InstallFlow keeps its rules whatever the recipe does', () => {
     ['boot left out of restore', { ...plan, restore: [] }, 'it doesn\'t restore boot'],
     // a recipe written in plain JS can leave it out
     ['no isPatched', { ...plan, isPatched: undefined } as unknown as BackupPlan, 'it has no isPatched'],
+    ['an ours check on a part undo doesn\'t write', { ...plan, ours: { spare: { what: 'spare', is: async () => true } } }, 'it tells whether spare is ours, but undo doesn\'t restore spare'],
   ])('refuses a backup plan with %s before reading anything', async (_, backup, why) => {
     const t = run(recipe({ backup }));
     await expect(t.install()).rejects.toThrow(`this recipe's backup plan is broken: ${why}. Nothing was read.`);
@@ -108,5 +109,30 @@ describe('InstallFlow keeps its rules whatever the recipe does', () => {
     await expect(restoreFromBackup(plan, new Fastboot(u), new Map([['boot', patched], ['vbmeta', new Uint8Array(4096)]]), () => {}))
       .rejects.toThrow('this backup\'s boot is already patched (a re-run backup): use the one from your first install');
     expect(u.flashed).toEqual([]);
+  });
+
+  describe('a part the plan can tell is ours', () => {
+    /** The made-up frame's vbmeta is ours when its first byte is 0xee. */
+    const withOurs: BackupPlan = { ...plan, ours: { vbmeta: { what: 'verified-boot data', is: async (v) => v[0] === MARK } } };
+    const ours = new Uint8Array(4096); ours[0] = MARK;
+
+    it('undo refuses a backup whose part is ours, and writes nothing', async () => {
+      const u = new FakeUboot();
+      await expect(restoreFromBackup(withOurs, new Fastboot(u), new Map([['boot', new Uint8Array(4096)], ['vbmeta', ours]]), () => {}))
+        .rejects.toThrow('this backup\'s verified-boot data is already ours, not the original: use the one from your first install');
+      expect(u.flashed).toEqual([]);
+      expect(u.rebooted).toBe(false);
+    });
+
+    it('a patched boot is still the refusal undo gives first', async () => {
+      await expect(restoreFromBackup(withOurs, new Fastboot(new FakeUboot()), new Map([['boot', ours], ['vbmeta', ours]]), () => {}))
+        .rejects.toThrow('this backup\'s boot is already patched');
+    });
+
+    it('undo restores the backup when the part is not ours', async () => {
+      const u = new FakeUboot();
+      await restoreFromBackup(withOurs, new Fastboot(u), new Map([['boot', new Uint8Array(4096)], ['vbmeta', new Uint8Array(4096)]]), () => {});
+      expect(u.flashed).toEqual(['boot', 'vbmeta']);
+    });
   });
 });

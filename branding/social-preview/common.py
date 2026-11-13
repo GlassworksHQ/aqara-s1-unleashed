@@ -1,4 +1,7 @@
-"""Shared helpers for the S1 Unleashed boot-branding concepts.
+"""Drawing helpers for the Glass Tile mark in branding/social-preview.py.
+
+This was branding/glass-tile/common.py until the boot branding became the Glassworks stack
+(#63); the BMP and bootanimation writers stayed there.
 
 Visual language: the kiosk's onboarding screen (app/kiosk/.../setup/SetupOverlay.kt)
 and dashboard card. That means a #0a0b0f backdrop with soft sky and violet glows,
@@ -21,13 +24,9 @@ flat BG at the stage edges. The splash is the first animation frame pasted
 at (320,160) on a flat BG 1440x720 canvas. That makes the splash -> animation
 handoff pixel-identical, with no visible window edge.
 """
-import io
 import math
 import os
-import re
-import struct
 import subprocess
-import zipfile
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -38,9 +37,6 @@ OFF = ((SCREEN[0] - STAGE[0]) // 2, (SCREEN[1] - STAGE[1]) // 2)  # (320,160)
 FPS = 30
 SS = 3                        # supersampling factor for antialiasing
 
-BRANDING = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STOCK_BMP = os.path.join(BRANDING, "stock-bootlogo.bmp")
-BMP_SIZE = 3110454
 
 
 def hexc(h):
@@ -325,187 +321,3 @@ class Stage:
             b = np.asarray(m.filter(ImageFilter.GaussianBlur(radius)), dtype=np.float32) / 255.0
             acc += b[..., None] * np.array(color, dtype=np.float32)[None, None, :] * strength
         return Image.fromarray(np.clip(acc + 0.5, 0, 255).astype(np.uint8), "RGB")
-
-
-# ---------------------------------------------------------------- outputs
-def to_screen(stage_img):
-    scr = Image.new("RGB", SCREEN, BG)
-    scr.paste(stage_img, OFF)
-    return scr
-
-
-def landscape_to_bmp_orientation(img):
-    # stored = landscape rotated 90 deg clockwise (stock: rotate CCW to read)
-    return img.transpose(Image.Transpose.ROTATE_270)
-
-
-def bmp_header(w=720, h=1440):
-    row = w * 3
-    pad = (4 - row % 4) % 4
-    size_img = (row + pad) * h
-    return (b"BM" + struct.pack("<IHHI", 54 + size_img, 0, 0, 54)
-            + struct.pack("<IiiHHIIiiII", 40, w, h, 1, 24, 0, size_img, 2834, 2834, 0, 0)), pad
-
-
-def write_bmp(img, path):
-    assert img.size == (720, 1440), img.size
-    hdr, pad = bmp_header(*img.size)
-    assert pad == 0
-    arr = np.asarray(img.convert("RGB"))[::-1, :, ::-1]  # bottom-up rows, BGR
-    with open(path, "wb") as f:
-        f.write(hdr)
-        f.write(np.ascontiguousarray(arr).tobytes())
-
-
-try:  # optional: ~20% smaller frames (pip install pyoxipng)
-    import oxipng
-except ImportError:  # pragma: no cover
-    oxipng = None
-
-
-def png_bytes(img):
-    b = io.BytesIO()
-    img.save(b, "PNG", optimize=True)
-    data = b.getvalue()
-    if oxipng is not None:
-        data = oxipng.optimize_from_memory(data, level=2)
-    return data
-
-
-def desc_txt():
-    bg = "#%02x%02x%02x" % BG
-    return f"{STAGE[0]} {STAGE[1]} {FPS}\nc 1 0 part0 {bg}\nc 0 0 part1 {bg}\n"
-
-
-def write_bootanimation(path, intro, loop):
-    dt = (2026, 1, 1, 0, 0, 0)
-
-    def add(z, name, data, is_dir=False):
-        zi = zipfile.ZipInfo(name, dt)
-        zi.compress_type = zipfile.ZIP_STORED
-        zi.create_system = 3
-        zi.external_attr = ((0o40755 << 16) | 0x10) if is_dir else (0o100644 << 16)
-        z.writestr(zi, data)
-
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as z:
-        add(z, "desc.txt", desc_txt().encode())
-        n = 0
-        for part, frames in (("part0", intro), ("part1", loop)):
-            add(z, part + "/", b"", is_dir=True)
-            for fr in frames:
-                add(z, f"{part}/frame_{n:03d}.png", png_bytes(fr))
-                n += 1
-
-
-def write_preview(path, splash_stage, intro, loop, loops=3, hold=36, scale=0.5, quality=100):
-    # quality 100: libwebp's animation encoder treats per-pixel changes below a
-    # quality-derived threshold as 'unchanged' (about 2.5 levels at q90), which
-    # would turn the slow glow breathing into steps.
-    size = (round(SCREEN[0] * scale), round(SCREEN[1] * scale))
-    seq = [splash_stage] * hold + list(intro) + list(loop) * loops
-    frames = [to_screen(f).resize(size, Image.LANCZOS) for f in seq]
-    durs = [34 if i % 3 == 0 else 33 for i in range(len(frames))]   # ~30 fps
-    frames[0].save(path, "WEBP", save_all=True, append_images=frames[1:], duration=durs,
-                   loop=0, quality=quality, method=5)
-
-
-def build(here, meta, render, n_intro, n_loop, preview_loops=3):
-    """render(T) -> 800x400 RGB, T = global frame index. Frames [0,n_intro)
-    are the intro and [n_intro, n_intro+n_loop) the loop. render must be
-    periodic with period n_loop for T >= n_intro."""
-    print(f"[{meta['name']}] rendering {n_intro}+{n_loop} frames ...", flush=True)
-    intro = [render(T) for T in range(n_intro)]
-    loop = [render(n_intro + i) for i in range(n_loop)]
-    wrap = np.asarray(render(n_intro + n_loop), dtype=np.int16)
-    assert np.abs(wrap - np.asarray(loop[0], dtype=np.int16)).max() <= 1, "loop not periodic"
-
-    splash = to_screen(intro[0])
-    splash.save(os.path.join(here, "splash-landscape.png"), optimize=True)
-    write_bmp(landscape_to_bmp_orientation(splash), os.path.join(here, "bootlogo.bmp"))
-    write_bootanimation(os.path.join(here, "bootanimation.zip"), intro, loop)
-    write_preview(os.path.join(here, "preview.webp"), intro[0], intro, loop, loops=preview_loops)
-    problems = validate(here)
-    for p in problems:
-        print("  FAIL:", p)
-    # smoothness report: the largest jump between consecutive frames, and at
-    # the two seams (intro -> loop, loop end -> loop start)
-    def dif(a, b):
-        return float(np.abs(np.asarray(a, np.int16) - np.asarray(b, np.int16)).mean())
-    steps = [dif(a, b) for a, b in zip(intro + loop, (intro + loop)[1:])]
-    print(f"  mean |dframe| max={max(steps):.3f}  intro->loop={dif(intro[-1], loop[0]):.3f}  "
-          f"loop wrap={dif(loop[-1], loop[0]):.3f}")
-    print(f"[{meta['name']}] done, {'OK' if not problems else 'PROBLEMS'}")
-    return problems
-
-
-# ---------------------------------------------------------------- validation
-DESC_RE = re.compile(r"^(\d+) (\d+) (\d+)\n((?:[cp] \d+ \d+ \S+(?: #[0-9a-fA-F]{6})?\n)+)$")
-
-
-def validate(here):
-    """Programmatic checks. Returns a list of problems (empty = all good)."""
-    P = []
-    bmp = os.path.join(here, "bootlogo.bmp")
-    d = open(bmp, "rb").read()
-    if len(d) != BMP_SIZE:
-        P.append(f"bmp size {len(d)} != {BMP_SIZE}")
-    fsize, r1, r2, off = struct.unpack("<IHHI", d[2:14])
-    (hsz, w, h, planes, bpp, comp, simg, xppm, yppm, cu, ci) = struct.unpack("<IiiHHIIiiII", d[14:54])
-    exp = dict(sig=b"BM", fsize=BMP_SIZE, off=54, hsz=40, w=720, h=1440, planes=1, bpp=24,
-               comp=0, simg=720 * 3 * 1440)
-    got = dict(sig=d[:2], fsize=fsize, off=off, hsz=hsz, w=w, h=h, planes=planes, bpp=bpp,
-               comp=comp, simg=simg)
-    for k in exp:
-        if exp[k] != got[k]:
-            P.append(f"bmp {k}={got[k]!r} expected {exp[k]!r}")
-    if h <= 0:
-        P.append("bmp is not bottom-up")
-    if os.path.exists(STOCK_BMP) and open(STOCK_BMP, "rb").read(54) != d[:54]:
-        P.append("bmp header bytes differ from stock header")
-    # orientation round-trip: rotating CCW must give the landscape preview
-    land = Image.open(bmp).transpose(Image.Transpose.ROTATE_90)
-    prev = Image.open(os.path.join(here, "splash-landscape.png")).convert("RGB")
-    if land.size != SCREEN or not np.array_equal(np.asarray(land), np.asarray(prev)):
-        P.append("bmp rotated CCW != splash-landscape.png")
-
-    zp = os.path.join(here, "bootanimation.zip")
-    with zipfile.ZipFile(zp) as z:
-        for i in z.infolist():
-            if i.compress_type != zipfile.ZIP_STORED:
-                P.append(f"zip entry {i.filename} not stored")
-        if z.testzip() is not None:
-            P.append("zip CRC error")
-        desc = z.read("desc.txt").decode()
-        m = DESC_RE.match(desc)
-        if not m:
-            P.append(f"desc.txt malformed: {desc!r}")
-            return P
-        if (int(m.group(1)), int(m.group(2)), int(m.group(3))) != (800, 400, 30):
-            P.append("desc.txt header is not '800 400 30'")
-        lines = m.group(4).strip().split("\n")
-        if [ln.split()[:4] for ln in lines] != [["c", "1", "0", "part0"], ["c", "0", "0", "part1"]]:
-            P.append(f"desc.txt parts differ from stock structure: {lines}")
-        for ln in lines:
-            part = ln.split()[3]
-            frames = sorted(n for n in z.namelist() if n.startswith(part + "/") and n.endswith(".png"))
-            if not frames:
-                P.append(f"{part} has no frames")
-            for n in frames:
-                im = Image.open(io.BytesIO(z.read(n)))
-                if im.size != STAGE:
-                    P.append(f"{n} size {im.size}")
-                a = np.asarray(im.convert("RGB"), np.int16)
-                ring = np.concatenate([a[:2].reshape(-1, 3), a[-2:].reshape(-1, 3),
-                                       a[:, :2].reshape(-1, 3), a[:, -2:].reshape(-1, 3)])
-                if np.abs(ring - np.array(BG)).max() > 2:
-                    P.append(f"{n}: frame edge differs from BG (window seam)")
-        first = sorted(n for n in z.namelist() if n.startswith("part0/") and n.endswith(".png"))[0]
-        f0 = np.asarray(Image.open(io.BytesIO(z.read(first))).convert("RGB"))
-        crop = np.asarray(prev)[OFF[1]:OFF[1] + STAGE[1], OFF[0]:OFF[0] + STAGE[0]]
-        if not np.array_equal(f0, crop):
-            P.append("first animation frame != centre of splash")
-        full = np.asarray(prev).astype(np.int16).copy()
-        full[OFF[1]:OFF[1] + STAGE[1], OFF[0]:OFF[0] + STAGE[0]] = BG
-        if np.abs(full - np.array(BG)).max() != 0:
-            P.append("splash outside the animation window is not flat BG")
-    return P

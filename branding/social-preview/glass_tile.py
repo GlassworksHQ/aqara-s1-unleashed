@@ -1,5 +1,7 @@
-#!/usr/bin/env python3
-"""Concept 2 - "Glass Tile".
+"""The Glass Tile mark, as the panel's boot animation drew it until #63. branding/social-preview.py
+renders its resting loop frame (render(N_INTRO)).
+
+Concept 2 - "Glass Tile".
 
 A single glass card shaped like the panel (2:1, radius 26). It carries the
 dashboard card's anatomy: a small letter-spaced label, a big thin "S1" like the
@@ -10,20 +12,18 @@ Intro: light sweeps in diagonally across the glass. Sky and violet glow fill
 the card behind a soft sheen, the border catches the light, "S1" brightens to
 full white, and an amber STARTING status appears top-right.
 Loop (2 s): the glows inside the card drift slowly and the amber dot breathes.
-
-Run: python3 generate.py   (Inter, SIL OFL 1.1, fetched at build time)
 """
 import math
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(HERE))
+sys.path.insert(0, HERE)
 import numpy as np  # noqa: E402
 from PIL import Image, ImageChops  # noqa: E402
 
 from common import (AMBER, FA, MU, SKY, SS, STAGE, TX, VIOLET, BORDER_A, GLASS_A,  # noqa: E402
-                    Mask, Stage, _XS, _YS, ambient, backdrop, build, cap_height, ease, font,
+                    Mask, Stage, _XS, _YS, ambient, backdrop, cap_height, ease, font,
                     lerp, mix, seg, text_width, wave)
 
 META = {
@@ -117,6 +117,3 @@ def render(T):
         st.glow(AMBER, dot, 7, status * (0.5 + 0.5 * breath))
     return st.finish()
 
-
-if __name__ == "__main__":
-    sys.exit(1 if build(HERE, META, render, N_INTRO, N_LOOP) else 0)
