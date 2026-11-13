@@ -28,6 +28,15 @@
     "mount": "wall"
   },
   "recovery": "recovery.json",
+  "display": {
+    "width": 1440,
+    "height": 720
+  },
+  "boot": {
+    "androidApi": 29,
+    "splash": "allwinner-boot-resource",
+    "zipBudget": 9000000
+  },
   "specs": [
     {
       "label": "SoC",

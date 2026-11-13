@@ -1,19 +1,21 @@
-"""Output formats for the boot branding: the bootloader splash (BMP) and Android's bootanimation.zip.
+"""Output formats for the boot branding: Android's bootanimation.zip and the bootloader splash.
 
 Facts this file relies on:
-  * Bootloader splash: 720x1440 24-bit BMP, bottom-up, 54-byte header, 3110454 bytes. The panel is
-    landscape; the stored image is the landscape picture rotated 90 degrees clockwise
-    (PIL: landscape.transpose(ROTATE_270)). tools/branding/set-bootlogo.py and Kiln's
-    replaceBootlogo() swap it in place, so the size must stay exactly the same.
-  * Android 10's bootanimation (frameworks/base cmds/bootanimation/BootAnimation.cpp,
-    android-10.0.0_r41), read 2026-11-12:
-      - Frames are drawn 1:1, centred, at their trim.txt rect ("WxH+X+Y" per frame, in the part's
-        folder). Everything outside that rect is cleared to the part's colour every frame, and
-        blending is off. So a trimmed frame must be flat BG outside its rect.
+  * Android's bootanimation (frameworks/base cmds/bootanimation/BootAnimation.cpp), read 2026-11-12
+    at android-10.0.0_r41 and at android-6.0.1_r81, 7.0.0_r1 and 7.1.1_r1:
+      - The surface is RGB_565 with dithering off on all of them.
       - A part with count != 1 keeps every frame as a GL texture until the animation ends; a part
         with count 1 decodes each frame, uploads it and moves on. Several desc.txt lines may name
-        the same folder (each gets its own frame list).
-      - 'c' parts play to the end even after boot completes; 'p' parts stop at once.
+        the same folder (each gets its own frame list). Same on 6.0.1 and 10.
+      - 'c' parts play to the end even after boot completes; 'p' parts stop at once (6.0.1 on).
+      - trim.txt ("WxH+X+Y" per frame, in the part's folder) is read from 7.1 on (not in 7.0.0_r1).
+        Frames are then drawn 1:1 at that rect, and everything outside it is cleared to the part's
+        colour every frame, blending off. So a trimmed frame must be flat BG outside its rect.
+        Older players draw every frame at the animation's full size, so those get full frames.
+  * Allwinner boot-resource splash (the S1's BOOTLOGO.BMP): a 24-bit BMP, bottom-up, 54-byte
+    header, of the panel's portrait framebuffer: the landscape picture rotated 90 degrees clockwise
+    (PIL: landscape.transpose(ROTATE_270)). tools/branding/set-bootlogo.py and Kiln's
+    replaceBootlogo() swap it in place, so its size must stay exactly the stock file's.
 """
 import datetime
 import hashlib
@@ -28,17 +30,8 @@ import zipfile
 import numpy as np
 from PIL import Image
 
-SCREEN = (1440, 720)          # landscape, as the user sees it; the animation is the full screen
 FPS = 30
-BMP_SIZE = 3110454
-
-# The zip ships inside the boot image's gzip ramdisk (tools/root/patch-boot-magisk.sh), in a
-# 32 MiB boot partition: kernel, dtb and the rest of the ramdisk end at 23.2 MB.
-# Measured 2026-11-12 with Kiln's patchBoot on the stock 4.5.80 boot and today's overlay: 10.31 MB
-# free without an animation, and gzip takes about 6% off the zip. 9 MB leaves about 1.8 MB for the
-# rest of the ramdisk to grow. The zip also stays in RAM (Magisk's tmpfs) while the panel runs.
-ZIP_BUDGET = 9_000_000
-LOOP_REPEATS = 25             # p-part repeats of the loop (3 min) before it holds its first frame
+LOOP_REPEATS = 25             # p-part repeats of the loop (3 min at 7.2 s) before it holds its first frame
 
 
 def hexc(h):
@@ -78,15 +71,21 @@ def font_file(key):
 
 
 # ---------------------------------------------------------------- splash
-def bmp_header(w=720, h=1440):
+def bmp_header(w, h):
     size_img = w * 3 * h
     return (b"BM" + struct.pack("<IHHI", 54 + size_img, 0, 0, 54)
             + struct.pack("<IiiHHIIiiII", 40, w, h, 1, 24, 0, size_img, 2834, 2834, 0, 0))
 
 
-def write_bmp(landscape, path):
+def bmp_size(target):
+    """The boot-resource splash's file size: the screen, 24-bit, no row padding. Rotated, the
+    screen's height is the stored row width, so it must be a multiple of 4 (Target checks)."""
+    return 54 + target.width * target.height * 3
+
+
+def write_bmp(target, landscape, path):
     img = landscape.transpose(Image.Transpose.ROTATE_270)   # stored rotated 90 deg clockwise
-    assert img.size == (720, 1440), img.size
+    assert img.size == (target.height, target.width), img.size
     arr = np.asarray(img.convert("RGB"))[::-1, :, ::-1]      # bottom-up rows, BGR
     with open(path, "wb") as f:
         f.write(bmp_header(*img.size))
@@ -121,19 +120,19 @@ def trim(frame):
     return frame.crop((x0, y0, x1, y1)), f"{x1 - x0}x{y1 - y0}+{x0}+{y0}"
 
 
-def desc_txt():
+def desc_txt(target):
     """part0 plays once and finishes even if boot completes. The loop is a count-1 'p' part named
     LOOP_REPEATS times, so its frames are decoded as they play and never held as textures (a
     count-0 part would keep all 216 frames as GPU textures). part2, the loop's first
     frame, holds after that."""
     bg = "#%02x%02x%02x" % BG
-    lines = [f"{SCREEN[0]} {SCREEN[1]} {FPS}", f"c 1 0 part0 {bg}"]
+    lines = [f"{target.width} {target.height} {FPS}", f"c 1 0 part0 {bg}"]
     lines += [f"p 1 0 part1 {bg}"] * LOOP_REPEATS
     lines += [f"p 0 0 part2 {bg}"]
     return "\n".join(lines) + "\n"
 
 
-def write_bootanimation(path, intro, loop):
+def write_bootanimation(target, path, intro, loop):
     dt = (2026, 1, 1, 0, 0, 0)
 
     def add(z, name, data, is_dir=False):
@@ -144,21 +143,23 @@ def write_bootanimation(path, intro, loop):
         z.writestr(zi, data)
 
     with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as z:
-        add(z, "desc.txt", desc_txt().encode())
+        add(z, "desc.txt", desc_txt(target).encode())
         n = 0
         for part, frames in (("part0", intro), ("part1", loop), ("part2", loop[:1])):
             add(z, part + "/", b"", is_dir=True)
             rects = []
             for fr in frames:
-                crop, rect = trim(fr)
-                add(z, f"{part}/frame_{n:03d}.png", png_bytes(crop))
-                rects.append(rect)
+                if target.trim:
+                    fr, rect = trim(fr)
+                    rects.append(rect)
+                add(z, f"{part}/frame_{n:03d}.png", png_bytes(fr))
                 n += 1
-            add(z, f"{part}/trim.txt", ("\n".join(rects) + "\n").encode())
+            if target.trim:
+                add(z, f"{part}/trim.txt", ("\n".join(rects) + "\n").encode())
 
 
-def write_preview(path, frames, scale=0.5):
-    size = (round(SCREEN[0] * scale), round(SCREEN[1] * scale))
+def write_preview(target, path, frames, scale=0.5):
+    size = (round(target.width * scale), round(target.height * scale))
     small = [f.resize(size, Image.LANCZOS) for f in frames]
     durs = [34 if i % 3 == 0 else 33 for i in range(len(small))]   # ~30 fps
     # quality 100: below it, libwebp treats small per-pixel changes as unchanged and the slow
@@ -168,7 +169,6 @@ def write_preview(path, frames, scale=0.5):
 
 # The splashes undo knows as ours (#106, branding/bootlogos.json). Every build lists its splash.
 BOOTLOGOS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bootlogos.json")
-SPLASH_NAME = "Glassworks stack"
 
 
 def list_bootlogo(bmp, name):
@@ -185,9 +185,14 @@ def list_bootlogo(bmp, name):
     print(f"  listed {sha[:12]}… in {os.path.relpath(BOOTLOGOS)} (commit it with the new bootlogo.bmp)")
 
 
-def build(here, render, n_intro, n_loop):
-    """render(T) -> SCREEN-sized RGB array, T = global frame index. Frames [0, n_intro) are part0
-    and the next n_loop part1, which must be periodic: render(n_intro + n_loop) == render(n_intro)."""
+def build(target, out, render, n_intro, n_loop, splash_name):
+    """render(T) -> screen-sized RGB array, T = global frame index. Frames [0, n_intro) are part0
+    and the next n_loop part1, which must be periodic: render(n_intro + n_loop) == render(n_intro).
+    Writes into `out` and lists a splash it writes as `splash_name` (bootlogos.json);
+    returns the list of problems (empty = all good)."""
+    os.makedirs(out, exist_ok=True)
+    print(f"{target.name}: {target.width}x{target.height}, "
+          f"{'trimmed' if target.trim else 'full'} frames, splash {target.splash or 'none'}", flush=True)
     print(f"rendering {n_intro}+{n_loop} frames ...", flush=True)
     frames = [Image.fromarray(render(T)) for T in range(n_intro + n_loop + 1)]
     wrap = frames.pop()
@@ -196,16 +201,18 @@ def build(here, render, n_intro, n_loop):
     assert seam <= 1, f"loop not periodic: frame {n_intro + n_loop} differs from {n_intro} by {seam}"
 
     splash = intro[0]
-    splash.save(os.path.join(here, "splash-landscape.png"), optimize=True)
-    write_bmp(splash, os.path.join(here, "bootlogo.bmp"))
-    list_bootlogo(os.path.join(here, "bootlogo.bmp"), SPLASH_NAME)
-    write_bootanimation(os.path.join(here, "bootanimation.zip"), intro, loop)
-    write_preview(os.path.join(here, "preview.webp"), [splash] * 30 + intro + loop)
-    problems = validate(here)
+    splash.save(os.path.join(out, "splash-landscape.png"), optimize=True)
+    if target.splash:
+        write_bmp(target, splash, os.path.join(out, "bootlogo.bmp"))
+        list_bootlogo(os.path.join(out, "bootlogo.bmp"), splash_name)
+    write_bootanimation(target, os.path.join(out, "bootanimation.zip"), intro, loop)
+    write_preview(target, os.path.join(out, "preview.webp"), [splash] * 30 + intro + loop)
+    problems = validate(target, out)
     for p in problems:
         print("  FAIL:", p)
-    print(f"  bootanimation.zip {os.path.getsize(os.path.join(here, 'bootanimation.zip')) / 1e6:.2f} MB"
-          f" (budget {ZIP_BUDGET / 1e6:.2f} MB)")
+    size = os.path.getsize(os.path.join(out, "bootanimation.zip"))
+    budget = f" (budget {target.zip_budget / 1e6:.2f} MB)" if target.zip_budget else ""
+    print(f"  bootanimation.zip {size / 1e6:.2f} MB{budget}")
     print("done, " + ("OK" if not problems else "PROBLEMS"))
     return problems
 
@@ -214,51 +221,58 @@ def build(here, render, n_intro, n_loop):
 TRIM_RE = re.compile(r"^(\d+)x(\d+)\+(\d+)\+(\d+)$")
 
 
-def frames_on_screen(z, part):
-    """A part's frames as Android draws them: each trimmed PNG placed at its rect, BG around it."""
+def frames_on_screen(target, z, part):
+    """A part's frames as Android draws them: each trimmed PNG placed at its rect, BG around it;
+    without trim.txt, each frame at full size."""
     names = sorted(n for n in z.namelist() if n.startswith(part + "/") and n.endswith(".png"))
-    rects = z.read(part + "/trim.txt").decode().split()
-    if len(rects) != len(names):
-        raise ValueError(f"{part}: {len(names)} frames but {len(rects)} trim.txt lines")
+    if target.trim:
+        rects = z.read(part + "/trim.txt").decode().split()
+        if len(rects) != len(names):
+            raise ValueError(f"{part}: {len(names)} frames but {len(rects)} trim.txt lines")
+    else:
+        if part + "/trim.txt" in z.namelist():
+            raise ValueError(f"{part}/trim.txt in a zip for a player that doesn't read it")
+        rects = [f"{target.width}x{target.height}+0+0"] * len(names)
     for n, r in zip(names, rects):
         m = TRIM_RE.match(r)
         if not m:
             raise ValueError(f"{part}/trim.txt: bad line {r!r}")
         w, h, x, y = map(int, m.groups())
         im = Image.open(io.BytesIO(z.read(n))).convert("RGB")
-        if im.size != (w, h) or x + w > SCREEN[0] or y + h > SCREEN[1]:
+        if im.size != (w, h) or x + w > target.width or y + h > target.height:
             raise ValueError(f"{n}: {im.size} doesn't match trim {r}")
-        full = Image.new("RGB", SCREEN, BG)
+        full = Image.new("RGB", target.screen, BG)
         full.paste(im, (x, y))
         yield n, full
 
 
-def validate(here):
+def validate(target, out):
     """Programmatic checks. Returns a list of problems (empty = all good)."""
     P = []
-    d = open(os.path.join(here, "bootlogo.bmp"), "rb").read()
-    if len(d) != BMP_SIZE:
-        P.append(f"bmp size {len(d)} != {BMP_SIZE}")
-    if d[:54] != bmp_header():
-        P.append("bmp header differs from the stock layout (720x1440, 24-bit, bottom-up)")
-    land = Image.open(os.path.join(here, "bootlogo.bmp")).transpose(Image.Transpose.ROTATE_90)
-    prev = Image.open(os.path.join(here, "splash-landscape.png")).convert("RGB")
-    if land.size != SCREEN or not np.array_equal(np.asarray(land), np.asarray(prev)):
-        P.append("bmp rotated CCW != splash-landscape.png")
+    prev = Image.open(os.path.join(out, "splash-landscape.png")).convert("RGB")
+    if target.splash == "allwinner-boot-resource":
+        d = open(os.path.join(out, "bootlogo.bmp"), "rb").read()
+        if len(d) != bmp_size(target):
+            P.append(f"bmp size {len(d)} != {bmp_size(target)}")
+        if d[:54] != bmp_header(target.height, target.width):
+            P.append(f"bmp header differs from the stock layout ({target.height}x{target.width}, 24-bit, bottom-up)")
+        land = Image.open(os.path.join(out, "bootlogo.bmp")).transpose(Image.Transpose.ROTATE_90)
+        if land.size != target.screen or not np.array_equal(np.asarray(land), np.asarray(prev)):
+            P.append("bmp rotated CCW != splash-landscape.png")
 
-    zp = os.path.join(here, "bootanimation.zip")
-    if os.path.getsize(zp) > ZIP_BUDGET:
-        P.append(f"bootanimation.zip is {os.path.getsize(zp)} bytes, over the {ZIP_BUDGET} budget")
+    zp = os.path.join(out, "bootanimation.zip")
+    if target.zip_budget and os.path.getsize(zp) > target.zip_budget:
+        P.append(f"bootanimation.zip is {os.path.getsize(zp)} bytes, over the {target.zip_budget} budget")
     with zipfile.ZipFile(zp) as z:
         for i in z.infolist():
             if i.compress_type != zipfile.ZIP_STORED:
                 P.append(f"zip entry {i.filename} not stored")
         if z.testzip() is not None:
             P.append("zip CRC error")
-        if z.read("desc.txt").decode() != desc_txt():
+        if z.read("desc.txt").decode() != desc_txt(target):
             P.append("desc.txt differs from desc_txt()")
         try:
-            shown = {part: list(frames_on_screen(z, part)) for part in ("part0", "part1", "part2")}
+            shown = {part: list(frames_on_screen(target, z, part)) for part in ("part0", "part1", "part2")}
         except ValueError as e:
             return P + [str(e)]
         if not np.array_equal(np.asarray(shown["part0"][0][1]), np.asarray(prev)):

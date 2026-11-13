@@ -130,7 +130,7 @@ The zip also lives in RAM (Magisk's tmpfs) for as long as the panel runs: 8.7 MB
 
 ## How to reproduce
 
-1. `branding/glass-tile/generate.py` (host only) builds the zip and prints its size; its checks
+1. `branding/boot/generate.py --frame aqara-s1-plus` (host only) builds the zip and prints its size; its checks
    refuse a zip over 9 MB.
 2. The fit numbers need a stock `boot.img` (never in the repo) and Kiln's `patchBoot`: call it as
    `kiln/packages/bootpatch/test/bootpatch.test.ts` does for `stock-4.5.80`, with

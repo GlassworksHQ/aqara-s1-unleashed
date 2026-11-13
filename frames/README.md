@@ -31,6 +31,8 @@ describes the device's look in millimetres"). Kiln's picker reads it, and glassw
 | `kiln` | Optional. Kiln's route, once the frame installs from Kiln |
 | `model` | The device's look in mm, for the 3D mockup (below) |
 | `recovery` | Optional. The recovery drawing data's file, next to this one |
+| `display` | `{ width, height }`: the screen in pixels, as Android's boot animation sees it. With `name`, it is all the [boot generator](../branding/boot/README.md) needs |
+| `boot` | Optional. The boot branding's limits: `androidApi` (the API level; 25+ gets trimmed frames), `splash` (the bootloader splash format, `allwinner-boot-resource`), `zipBudget` (the largest `bootanimation.zip`, bytes) |
 | `specs` | Hardware rows: `{ label, value }`. Labels: `Size`, `SoC`, `Android`, `Screen`, `Radio`, `Presence`, `Audio`, `Extras`, `Mount`, `Root` |
 | `panes` | For each pane (`assist`, `timers`, `sendspin`, `radio`, `sensors`, `base`): `{ support, note? }`. Support is a status or `depends`, `unknown`, `no` |
 | `install` | `{ how }`: one sentence on how it installs |

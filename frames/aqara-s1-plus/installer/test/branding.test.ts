@@ -1,4 +1,4 @@
-// The boot animation the recipe ships (branding/glass-tile/bootanimation.zip, built by its generate.py)
+// The boot animation the recipe ships (branding/glass-tile/bootanimation.zip, built by branding/boot/generate.py)
 // against what the S1 allows: it rides in the 32 MiB boot image, and Android 10's bootanimation keeps
 // every frame of a looping part (count != 1) as a GPU texture until boot completes.
 import { readFileSync } from 'node:fs';

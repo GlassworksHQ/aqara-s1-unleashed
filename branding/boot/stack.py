@@ -1,43 +1,27 @@
-#!/usr/bin/env python3
-"""The Glassworks boot animation and bootloader splash (issue #63, "Boot animation (final)").
+"""The Glassworks boot animation's design: the stack, the wordmark and the device line.
 
 The design is the "Translucent" frame of kiosk-ui/boot/boot-reference.html (commit 5df8f044).
 `motion` is its `model(spring(.74, .7), 2.4)` and `paint` its `stack()` plus the page around it,
-ported line for line. The page lays the screen out at 960x480 CSS px; the panel is 1440x720, so
-one CSS px is SCALE screen px and one unit of the stack's 120-unit viewBox is UNIT screen px.
+ported line for line. The page lays the screen out in CSS px; target.Layout maps that onto any
+screen (one CSS px is L.scale screen px, one unit of the stack's 120-unit viewBox is L.unit).
 
 Frame 0 is the stack in dashed outline. It is also the bootloader splash, so nothing jumps when
-Android takes over. The device line ("On Aqara S1 Plus") comes from the frame's design data:
-
-    python3 generate.py                          # frames/aqara-s1-plus
-    python3 generate.py --frame <id>             # another frame's name from frames/<id>/design/frame.json
-    python3 generate.py --stills <dir>           # also write the comparison stills (no zip/bmp)
-
-Needs Pillow, numpy and uharfbuzz (text is shaped with kerning, as the browser does).
-Inter (SIL OFL 1.1) is fetched from google/fonts at build time.
+Android takes over. Run it through generate.py.
 """
-import argparse
-import json
 import math
 import os
 import sys
 from dataclasses import dataclass
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(HERE))
-sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np  # noqa: E402
 import uharfbuzz as hb  # noqa: E402
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
-from common import BG, FPS, SCREEN, build, font_file, hexc  # noqa: E402
+from formats import BG, FPS, font_file, hexc  # noqa: E402
+from target import DEVICE_CSS, WORD_CSS, WORD_LINE, Layout  # noqa: E402
 
-SCALE = SCREEN[0] / 960                 # screen px per CSS px of the reference page
-UNIT = 150 / 120 * SCALE                # screen px per stack unit (svg 150 px, viewBox 120)
-# .lock centres a 150 px svg, a 22 px gap and the 46 px wordmark's 69 px line box
-LOCK_TOP = (480 - (150 + 22 + 46 * 1.5)) / 2
-ORIGIN = (SCREEN[0] / 2 - 75 * SCALE, LOCK_TOP * SCALE)
-
+NAME = "Glassworks stack"                # how branding/bootlogos.json names its splash
 FG = hexc("#f4f4f5")
 FA = hexc("#63636b")
 BODY = hexc("#0b0c11")
@@ -131,7 +115,7 @@ def motion(t):
 C, S = math.cos(math.pi / 6), 0.5
 
 
-def plate_points(top, cx=60, side=60, r=9):
+def plate_points(L, top, cx=60, side=60, r=9):
     """The reference's plate(): an isometric rounded square, 36 points, in units."""
     pts = []
     for ox, oy, a0 in ((side - r, r, -math.pi / 2), (side - r, side - r, 0), (r, side - r, math.pi / 2), (r, r, math.pi)):
@@ -139,7 +123,8 @@ def plate_points(top, cx=60, side=60, r=9):
             a = a0 + i * math.pi / 16
             x, y = ox + r * math.cos(a), oy + r * math.sin(a)
             pts.append((cx + C * (x - y), top + S * (x + y)))
-    return np.array([(ORIGIN[0] + x * UNIT, ORIGIN[1] + y * UNIT) for x, y in pts], np.float64)
+    ox, oy = L.origin
+    return np.array([(ox + x * L.unit, oy + y * L.unit) for x, y in pts], np.float64)
 
 
 def plate_top(i, lift=0.0):
@@ -150,11 +135,12 @@ class Field:
     """Distance from each pixel of a window to a closed polygon, the arc length (in units) of the
     nearest point, and inside/outside. Coverage from it is antialiased analytically at 1x."""
 
-    def __init__(self, pts, pad):
+    def __init__(self, L, pts, pad):
+        self.unit = UNIT = L.unit
         x0, y0 = np.floor(pts.min(0) - pad).astype(int)
         x1, y1 = np.ceil(pts.max(0) + pad).astype(int)
         self.x0, self.y0 = max(x0, 0), max(y0, 0)
-        x1, y1 = min(x1, SCREEN[0]), min(y1, SCREEN[1])
+        x1, y1 = min(x1, L.screen[0]), min(y1, L.screen[1])
         self.empty = x1 <= self.x0 or y1 <= self.y0
         if self.empty:
             return
@@ -166,13 +152,13 @@ class Field:
         d = np.full(xs.shape, np.inf)
         s = np.zeros(xs.shape)
         wind = np.zeros(xs.shape, np.int32)
-        for (ax, ay), (bx, by), L, c0 in zip(a, b, seglen, cum):
+        for (ax, ay), (bx, by), sl, c0 in zip(a, b, seglen, cum):
             dx, dy = bx - ax, by - ay
-            u = np.clip(((xs - ax) * dx + (ys - ay) * dy) / (L * L), 0, 1)
+            u = np.clip(((xs - ax) * dx + (ys - ay) * dy) / (sl * sl), 0, 1)
             dd = np.hypot(xs - (ax + u * dx), ys - (ay + u * dy))
             closer = dd < d
             d = np.where(closer, dd, d)
-            s = np.where(closer, (c0 + u * L) / UNIT, s)
+            s = np.where(closer, (c0 + u * sl) / UNIT, s)
             up = (ay <= ys) & (by > ys)
             down = (ay > ys) & (by <= ys)
             side = dx * (ys - ay) - (xs - ax) * dy
@@ -186,6 +172,7 @@ class Field:
         return np.clip(sd + 0.5, 0, 1)
 
     def stroke(self, width_units, dash=None):
+        UNIT = self.unit
         cov = np.clip(width_units * UNIT / 2 - self.d + 0.5, 0, 1)
         if dash:
             on, off = dash
@@ -253,7 +240,6 @@ def gradient(t, stops):
 
 TRANS = [(0, hexc("#38bdf8"), 0.78), (0.55, hexc("#818cf8"), 0.66), (1, hexc("#a78bfa"), 0.76)]
 RIM = [(0, hexc("#ffffff"), 0.95), (0.5, hexc("#e0f2fe"), 0.35), (1, hexc("#c4b5fd"), 0.55)]
-GRAIN = np.clip(np.random.default_rng(4).normal(0.5, 0.11, SCREEN[::-1]), 0, 1) * 0.09  # feTurbulence -> alpha
 
 
 def gaussian_blur(a, sigma):
@@ -269,28 +255,30 @@ def gaussian_blur(a, sigma):
     return band(a.shape[0]) @ a @ band(a.shape[1]).T
 
 
-def paint_stack(cv, st):
+def paint_stack(cv, st, scene):
+    L = scene.layout
+    UNIT = L.unit
     P = st.plates
     pad = 6 * UNIT
     under = []   # the lower plates' outlines, which the top plate's frost blurs
     for i in (2, 1):
         q = P[i]
         if q.ghost > 0:
-            f = Field(plate_points(plate_top(i)), pad)
+            f = Field(L, plate_points(L, plate_top(i)), pad)
             cv.over(f, FG, f.stroke(4, (7, 6)) * 0.22 * q.ghost)
         if q.op <= 0:
             continue
-        pts = plate_points(plate_top(i, q.lift))
-        f = Field(pts, pad)
+        pts = plate_points(L, plate_top(i, q.lift))
+        f = Field(L, pts, pad)
         cv.over(f, FG, f.stroke(5) * round(W[i] * q.op, 3))
         under.append((pts, min(1.0, round(W[i] * q.op, 3) * 2.6)))
     q = P[0]
     if q.ghost > 0:
-        f = Field(plate_points(plate_top(0)), pad)
+        f = Field(L, plate_points(L, plate_top(0)), pad)
         cv.over(f, FG, f.stroke(4, (7, 6)) * 0.22 * q.ghost)
     if q.op <= 0:
         return
-    f = Field(plate_points(plate_top(0, q.lift)), pad)
+    f = Field(L, plate_points(L, plate_top(0, q.lift)), pad)
     if f.empty:
         return
     body = f.fill()
@@ -298,10 +286,10 @@ def paint_stack(cv, st):
     if under:
         # frost: the plates below, stroked at 9, blurred (stdDeviation 5.5), nudged 2.5 down, clipped
         m = 6 * 5.5 * UNIT
-        g = Field(plate_points(plate_top(0, q.lift)), pad + m)
+        g = Field(L, plate_points(L, plate_top(0, q.lift)), pad + m)
         lay = Group(g)
         for pts, a in under:
-            sub = Field(pts, 6 * UNIT)
+            sub = Field(L, pts, 6 * UNIT)
             cov = np.zeros(g.d.shape)
             ys, xs = sub.y0 - g.y0, sub.x0 - g.x0
             if not sub.empty:
@@ -333,7 +321,7 @@ def paint_stack(cv, st):
         rgb, a = gradient((u + v) / 2, TRANS)
         lit.over(rgb, a * body)
         h, w = f.d.shape
-        lit.over((255, 255, 255), GRAIN[f.y0:f.y0 + h, f.x0:f.x0 + w] * body)
+        lit.over((255, 255, 255), scene.grain[f.y0:f.y0 + h, f.x0:f.x0 + w] * body)
         lit.over((255, 255, 255), (1 - np.clip(np.hypot(u - 0.3, v - 0.15) / 0.7, 0, 1)) * 0.3 * body)
         lit.over(BG, (1 - st.glow) * body)
         rgb, a = gradient(v, RIM)
@@ -347,11 +335,11 @@ def paint_stack(cv, st):
 _fonts = {}
 
 
-def shaped(text, css_px, wght, tracking_em):
+def shaped(scale, text, css_px, wght, tracking_em):
     """Glyphs as (char, x) in screen px from the run's left edge, and the run's advance, shaped by
     HarfBuzz with kerning and CSS letter-spacing (added after every letter, the last one too)."""
     path = font_file("inter")
-    size = css_px * SCALE
+    size = css_px * scale
     opsz = 14   # the page loads Inter from Google Fonts by wght only, which serves the default opsz
     k = (size, wght)
     if k not in _fonts:
@@ -373,78 +361,58 @@ def shaped(text, css_px, wght, tracking_em):
     return _fonts[k], out, x
 
 
-def text_alpha(text, css_px, wght, tracking_em, baseline_css):
+def text_alpha(L, text, css_px, wght, tracking_em, baseline_css):
     """Coverage of a centred line of text, as an 'L' image the size of the screen."""
-    fnt, glyphs, adv = shaped(text, css_px, wght, tracking_em)
-    im = Image.new("L", SCREEN, 0)
+    fnt, glyphs, adv = shaped(L.scale, text, css_px, wght, tracking_em)
+    if adv > L.screen[0] - 2 * 16 * L.scale:
+        raise ValueError(f"{text!r} is wider than the screen ({adv:.0f} of {L.screen[0]} px); shorten the name")
+    im = Image.new("L", L.screen, 0)
     d = ImageDraw.Draw(im)
-    x0 = SCREEN[0] / 2 - adv / 2
+    x0 = L.screen[0] / 2 - adv / 2
     for ch, x in glyphs:
-        d.text((x0 + x, baseline_css * SCALE), ch, font=fnt, fill=255, anchor="ls")
+        d.text((x0 + x, baseline_css * L.scale), ch, font=fnt, fill=255, anchor="ls")
     return np.asarray(im, np.float64) / 255
 
 
-def baseline(box_top_css, line_css, css_px):
+def baseline(scale, box_top_css, line_css, css_px):
     """Baseline of a single line in a CSS line box, from Inter's ascent and descent."""
-    fnt, _, _ = shaped("H", css_px, 400, 0)
-    asc, desc = (v / SCALE for v in fnt.getmetrics())
+    fnt, _, _ = shaped(scale, "H", css_px, 400, 0)
+    asc, desc = (v / scale for v in fnt.getmetrics())
     return box_top_css + (line_css - (asc + desc)) / 2 + asc
-
-
-WORD_TOP = LOCK_TOP + 150 + 22
 
 
 # ---------------------------------------------------------------- the screen
 class Scene:
-    """Everything that doesn't depend on t, computed once per device name.
+    """Everything that doesn't depend on t, computed once per target (screen and device name).
 
     The background is flat BG. The reference page also has two corner glows, but they cost about
     24 KB in every frame: with them the zip is 19.9 MB and the boot image doesn't fit (README)."""
 
-    def __init__(self, device_name):
-        self.base = np.empty(SCREEN[::-1] + (3,))
+    def __init__(self, target):
+        L = self.layout = Layout.for_screen(target.width, target.height)
+        h, w = L.screen[::-1]
+        self.base = np.empty((h, w, 3))
         self.base[:] = BG
-        self.word_css = baseline(WORD_TOP, 46 * 1.5, 46)
-        self.device = text_alpha(f"On {device_name}".upper(), 11, 500, 0.14, baseline(480 - 30 - 11, 11, 11))
+        self.grain = np.clip(np.random.default_rng(4).normal(0.5, 0.11, (h, w)), 0, 1) * 0.09  # feTurbulence -> alpha
+        self.word_css = baseline(L.scale, L.word_top, WORD_CSS * WORD_LINE, WORD_CSS)
+        self.device = text_alpha(L, f"On {target.name}".upper(), DEVICE_CSS, 500, 0.14,
+                                 baseline(L.scale, L.device_top, DEVICE_CSS, DEVICE_CSS))
         self._word = {}
 
     def word(self, dy_css):
-        k = round(dy_css * SCALE * 8) / 8   # eighth-pixel steps are plenty for a 12 px slide
+        k = round(dy_css * self.layout.scale * 8) / 8   # eighth-pixel steps are plenty for a 12 px slide
         if k not in self._word:
-            self._word[k] = text_alpha("Glassworks", 46, 200, -0.03, self.word_css + k / SCALE)
+            self._word[k] = text_alpha(self.layout, "Glassworks", WORD_CSS, 200, -0.03, self.word_css + k / self.layout.scale)
         return self._word[k]
 
 
 def render(t, scene):
     st = motion(t)
     cv = Canvas(scene.base)
-    paint_stack(cv, st)
+    paint_stack(cv, st, scene)
     for alpha, cov in ((st.word, scene.word(8 * (1 - st.word)) if st.word > 0 else None),
                        (st.device, scene.device if st.device > 0 else None)):
         if cov is not None:
             rgb = FG if cov is not scene.device else FA
             cv.px += (np.asarray(rgb, np.float64) - cv.px) * (cov * alpha)[..., None]
     return np.clip(cv.px + 0.5, 0, 255).astype(np.uint8)
-
-
-def frame_name(frame_id):
-    with open(os.path.join(REPO, "frames", frame_id, "design", "frame.json"), encoding="utf-8") as f:
-        return json.load(f)["name"]
-
-
-def main():
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--frame", default="aqara-s1-plus", help="frames/<id>: its design/frame.json names the device")
-    ap.add_argument("--stills", metavar="DIR", help="write the comparison stills here instead of building")
-    a = ap.parse_args()
-    scene = Scene(frame_name(a.frame))
-    if a.stills:
-        os.makedirs(a.stills, exist_ok=True)
-        for t in (0.0, 0.5, 0.8, 1.0, 1.6, 2.0, 2.6, 3.2, 4.0, 4.8, 6.6, 8.4):
-            Image.fromarray(render(t, scene)).save(os.path.join(a.stills, f"t{t:04.1f}.png"))
-        return 0
-    return 1 if build(HERE, lambda T: render(T / FPS, scene), N_INTRO, N_LOOP) else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
