@@ -53,6 +53,8 @@ workspace's dependencies resolve, to the one copy at the root.
   run the whole flow on simulated hardware (`packages/fel/test/fakes.ts`, imported as
   `@glassworks/fel/fakes`). New USB behaviour needs a fake for it.
 - `oem run:` commands must fit fastboot's 64-byte command limit, prefix included.
+- `packages/fastboot` is a fork of fastboot.js. Its [README](packages/fastboot/README.md) lists what
+  differs from upstream and how to check that the S1's USB calls did not change.
 - The installer is becoming **Kiln**, generic across frames. S1 specifics (partition sizes and
   names, the A133 check, `s1Overlay`, the debloat list, `PKG`) go in the S1 recipe, never in
   kiln-core.

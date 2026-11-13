@@ -31,12 +31,14 @@ export function bootUboot(fel: FelDevice, splWithUboot: Uint8Array, ubootBin: Ui
 export const A133: { socId: 0x1855; sidSecureBootReg: 0x030060a0; ubootAddr: 0x4a000000; /* ... */ };
 ```
 
-## `fastboot` (`packages/fastboot`) — our U-Boot's fastboot (owner: main session)
+## `fastboot` (`packages/fastboot`) — fastboot for every frame, a fork of fastboot.js ([README](../packages/fastboot/README.md))
 ```ts
 export const FASTBOOT_FILTER: USBDeviceFilter;             // U-Boot gadget VID:PID
 export class Fastboot {
-  static request(): Promise<Fastboot>;
-  getvar(name: string): Promise<string>;
+  static request(filters?: USBDeviceFilter[]): Promise<Fastboot>; // default: [FASTBOOT_FILTER]
+  getvar(name: string): Promise<string>;                   // trimmed; FAIL throws
+  flashBlob(part: string, blob: Blob, onProgress?: (p: number) => void): Promise<void>; // raw or sparse, split at max-download-size; no read-back
+  bootBlob(blob: Blob, onProgress?: (p: number) => void): Promise<void>; // fastboot boot
   oemRun(cmd: string): Promise<void>;                      // 'oem run:<cmd>' (<= 64 bytes incl. prefix)
   readPartition(name: string, onProgress?: (done: number, total: number) => void): Promise<Uint8Array>; // oem run + upload
   flash(name: string, data: Uint8Array, onProgress?: (done: number, total: number) => void): Promise<void>;
