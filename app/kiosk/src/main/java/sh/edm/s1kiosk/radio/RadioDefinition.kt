@@ -158,13 +158,20 @@ class RadioDefinition(
      * The mode in effect already, and running or on its way: the step is answered without asking the
      * radio again. A mode that failed or was refused (the controller stores it before applying) asks again.
      */
-    private fun applyChoice(id: String): String? {
+    private fun applyChoice(id: String): String? = keepOrSet(id, "setup screen")
+
+    /**
+     * [applyChoice]'s rule for any [source]: a request for the mode in effect would restart the helper for
+     * nothing. Not while another request is queued: the mode read here isn't the one that will run, so
+     * this one goes after it (as the settings switch's Off does).
+     */
+    private fun keepOrSet(id: String, source: String): String? {
         val r = readout.controller()
         val mode = readout.mode()
-        if (r != null && mode.id == id &&
+        if (r != null && !r.requestPending && mode.id == id &&
             RadioStep.classify(mode, true, r.statusText()) in setOf(RadioStep.Result.OK, RadioStep.Result.APPLYING)
         ) { stepDone = true; return null }
-        return setModeFrom(id, "setup screen")
+        return setModeFrom(id, source)
     }
 
     // ------------------------------------------------------------------ setup channel
@@ -191,15 +198,17 @@ class RadioDefinition(
             status = r?.statusText() ?: "The radio controller isn't running yet",
             helper = helperInstalled(),
             allowed = r?.allowedNow(),
+            answered = step.done(),
         )
     }
 
     /**
      * Through RadioController.request, like the panel's radio step: waits for the controller to take the
      * request, then up to [RADIO_FOLLOW_MS] for it to report how it went (the client waits 30 s), and
-     * marks the step answered on success.
+     * marks the step answered on success. The mode in effect already only answers the step ([keepOrSet]):
+     * Kiln sends it for a fresh panel kept on Off.
      */
-    internal fun setMode(id: String): String? = setModeFrom(id, "the installer")
+    internal fun setMode(id: String): String? = keepOrSet(id, "the installer")
 
     /** [setMode], saying in the log where the request came from ([source]). */
     internal fun setModeFrom(id: String, source: String): String? {
@@ -425,14 +434,16 @@ class RadioDefinition(
          * channel.ts `SetupState.radio`. [allowed]: who the helper's firewall lets reach the radio's TCP
          * services (EZSP :6638, OTBR REST :8081): "any", "" (nobody but the panel yet: Home Assistant
          * hasn't connected), or space-separated addresses/CIDRs. Left out when unknown: Off, no helper,
-         * or a helper without the firewall.
+         * or a helper without the firewall. [answered]: the panel's radio step is answered (Kiln then
+         * leaves a kept mode alone).
          */
-        fun channelJson(mode: String, status: String, helper: Boolean, allowed: String? = null): JSONObject = JSONObject().apply {
+        fun channelJson(mode: String, status: String, helper: Boolean, allowed: String? = null, answered: Boolean? = null): JSONObject = JSONObject().apply {
             put("mode", mode)
             put("status", status)
             put("options", channelOptions())
             put("helper", helper)
             allowed?.let { put("allowed", it) }
+            answered?.let { put("answered", it) }
         }
     }
 }
