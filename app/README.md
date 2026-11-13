@@ -218,6 +218,13 @@ player under `S1Sendspin` (with a `sync:` line every 10 s while playing). The Wi
 starts while the screen is off log under `S1Kiosk.Wifi`. None of them log tokens or keys. Page
 console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
 
+The connecting screen stays up until the page says it has drawn. `S1Kiosk` logs one line when it
+goes, with the reason: `Connecting screen hidden: ready, frontend/loaded` (Home Assistant's frontend
+removed its launch screen and a frame was painted after it), `ready, removed` (the same, for a
+frontend that doesn't send frontend/loaded), `ready, page` (a page without a launch screen), or the
+fallbacks `fallback 15 s, no word from the page` and `fallback 45 s, the frontend still loading`.
+`Home Assistant's launch screen is up` marks the page reporting that it's still loading.
+
 > If the screen is blank/white and `innerWidth` is 0, the **display is off**. Gecko drops its
 > surface while the screen sleeps. Check `adb shell dumpsys power | grep mWakefulness`.
 > See [docs/research/screen-policy.md](../docs/research/screen-policy.md) for why the panel turns itself off.

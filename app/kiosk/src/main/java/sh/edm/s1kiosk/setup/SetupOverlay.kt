@@ -358,9 +358,10 @@ class SetupOverlay(
         cancelFinish()
         panes.forgetPreview()
         viewing = null // opened again, it starts on its own step, not the one last looked at
+        model = null // so the next render counts as a step change (Add it by hand folds), also when not shown
+        manualShown = false
         if (!isShowing) return
         isShowing = false
-        model = null
         hideKeyboard()
         animate().cancel()
         animate().alpha(0f).setDuration(300).withEndAction { if (!isShowing) visibility = View.GONE }.start()

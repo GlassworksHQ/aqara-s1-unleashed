@@ -445,8 +445,19 @@ class MainActivity : Activity() {
         override fun run() {
             val waited = SystemClock.uptimeMillis() - pageStoppedAt
             if (frontendLoading && waited < LAUNCH_FALLBACK_MS) handler.postDelayed(this, LAUNCH_FALLBACK_MS - waited)
-            else loadingOverlay.hide()
+            else hideConnecting(if (frontendLoading) "fallback 45 s, the frontend still loading" else "fallback 15 s, no word from the page")
         }
+    }
+
+    /** When the current page started loading, for the log. */
+    private var pageStartedAt = 0L
+
+    /** Hides the connecting screen, and says why in the log (one line per reason, for panel runs). */
+    private fun hideConnecting(reason: String) {
+        if (!loadingOverlay.isShowing) return
+        val since = if (pageStartedAt > 0) " (${SystemClock.uptimeMillis() - pageStartedAt} ms after the page started)" else ""
+        Log.i(TAG, "Connecting screen hidden: $reason$since")
+        loadingOverlay.hide()
     }
     /** Home Assistant's launch screen is up on this page (content.js "launch"), and no "ready" yet. */
     private var frontendLoading = false
@@ -892,6 +903,7 @@ class MainActivity : Activity() {
             handler.removeCallbacks(retryLoad)
             handler.removeCallbacks(hideLoading)
             frontendLoading = false
+            pageStartedAt = SystemClock.uptimeMillis()
             offlineShown = false
             if (url.startsWith("http")) loadingOverlay.show(LoadingOverlay.State.Connecting(LoadingOverlay.CONNECTING, Uri.parse(url).host ?: ""))
         }
@@ -951,8 +963,11 @@ class MainActivity : Activity() {
      */
     private fun onPortRequest(m: JSONObject, port: PagePort) {
         if (m.optString("type") == "dashboards") { onDashboards(m, port); return }
-        if (m.optString("type") == "ready") { onPageReady(port); return }
-        if (m.optString("type") == "launch") { if (port.topLevel) handler.post { frontendLoading = true }; return }
+        if (m.optString("type") == "ready") { onPageReady(port, m.optString("why")); return }
+        if (m.optString("type") == "launch") {
+            if (port.topLevel) handler.post { frontendLoading = true; Log.i(TAG, "Home Assistant's launch screen is up: waiting for it to go") }
+            return
+        }
         val id = m.optInt("id", -1)
         if (id < 0) return
         fun reply(o: JSONObject?) {
@@ -974,12 +989,12 @@ class MainActivity : Activity() {
      * launch screen), so the connecting screen cross-fades into it and the frontend's white splash never
      * shows (#63 round 2). A frame's word doesn't count.
      */
-    private fun onPageReady(sender: PagePort) {
-        if (!sender.topLevel) return
+    private fun onPageReady(sender: PagePort, why: String) {
+        if (!sender.topLevel) { Log.i(TAG, "A frame said ready ($why): ignored"); return }
         handler.post {
             frontendLoading = false
             handler.removeCallbacks(hideLoading)
-            loadingOverlay.hide()
+            hideConnecting("ready, ${why.ifEmpty { "page" }}")
         }
     }
 

@@ -294,9 +294,12 @@ class GeckoBehaviourPinTest {
         h.send(h.connect("$dash/frame", topLevel = false), org.json.JSONObject("""{"type":"ready","why":"page"}"""), replies = 0)
         h.advance(500)
         assertTrue(h.loading.isShowing)
-        h.send(h.connect(dash), org.json.JSONObject("""{"type":"ready","why":"frontend"}"""), replies = 0)
+        h.send(h.connect(dash), org.json.JSONObject("""{"type":"ready","why":"frontend/loaded"}"""), replies = 0)
         h.advance(500)
         assertFalse(h.loading.isShowing)
+        // Round 4 panel run: the log says why the screen went, one line per reason.
+        assertTrue(h.logs("S1Kiosk").toString(), h.logs("S1Kiosk").any { it.startsWith("Connecting screen hidden: ready, frontend/loaded") })
+        assertTrue(h.logs("S1Kiosk").any { it.startsWith("A frame said ready (page): ignored") })
     }
 
     @Test
@@ -309,6 +312,8 @@ class GeckoBehaviourPinTest {
         assertTrue(h.loading.isShowing)
         h.advance(sh.edm.s1kiosk.MainActivity.LAUNCH_FALLBACK_MS - sh.edm.s1kiosk.MainActivity.READY_FALLBACK_MS - 1_000)
         assertFalse(h.loading.isShowing)
+        assertTrue(h.logs("S1Kiosk").any { it.startsWith("Home Assistant's launch screen is up") })
+        assertTrue(h.logs("S1Kiosk").any { it.startsWith("Connecting screen hidden: fallback 45 s, the frontend still loading") })
     }
 
     @Test
@@ -328,6 +333,7 @@ class GeckoBehaviourPinTest {
         assertTrue(h.loading.isShowing)
         h.advance(1)
         assertFalse(h.loading.isShowing)
+        assertTrue(h.logs("S1Kiosk").any { it.startsWith("Connecting screen hidden: fallback 15 s, no word from the page") })
     }
 
     @Test
