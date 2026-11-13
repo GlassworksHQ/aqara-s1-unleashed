@@ -40,26 +40,29 @@ it), **read** (from a source, cited) or **untested**.
    compatibility build", taken from `running-kernel-build.config`. It is the config that project
    builds its `wlan.ko` against, not a dump we took from a unit, so treat each line as **read, not
    verified** until probe 2 below confirms it. We grepped it for the options that decide the paths
-   below:
+   below. This is the exact command, run on 2026-11-13 against the file at `efddcbd`, and its whole
+   output in file order:
    ```
-   $ grep -E '^(# )?CONFIG_(LOCALVERSION|IKCONFIG_PROC|MODULES|MODULE_SIG|KALLSYMS_ALL|ANDROID_BINDER_IPC|ANDROID_BINDER_IPC_32BIT|SECCOMP_FILTER|PID_NS|USER_NS|HOTPLUG_CPU|MSM_SCM|MSM_KGSL|FB_MSM_MDSS|SECURITY_SELINUX_DEVELOP)=?' kernel.config
+   $ grep -E '^(# )?CONFIG_(LOCALVERSION|IKCONFIG_PROC|MODULES|MODULE_SIG|KALLSYMS_ALL|ANDROID_BINDER_IPC|ANDROID_BINDER_IPC_32BIT|SECCOMP_FILTER|PID_NS|USER_NS|HOTPLUG_CPU|MSM_SCM|MSM_KGSL|FB_MSM_MDSS|SECURITY_SELINUX_DEVELOP)(=| is not set)' kernel.config
    CONFIG_LOCALVERSION="-perf-gf46dad5260f"
    CONFIG_IKCONFIG_PROC=y
+   # CONFIG_USER_NS is not set
+   # CONFIG_PID_NS is not set
+   CONFIG_KALLSYMS_ALL=y
+   CONFIG_SECCOMP_FILTER=y
    CONFIG_MODULES=y
    # CONFIG_MODULE_SIG is not set
-   CONFIG_KALLSYMS_ALL=y
-   CONFIG_ANDROID_BINDER_IPC=y
-   # CONFIG_ANDROID_BINDER_IPC_32BIT is not set
-   CONFIG_SECCOMP_FILTER=y
-   # CONFIG_PID_NS is not set
-   # CONFIG_USER_NS is not set
    CONFIG_HOTPLUG_CPU=y
-   CONFIG_MSM_SCM=y
    CONFIG_MSM_KGSL=y
    CONFIG_FB_MSM_MDSS=y
+   CONFIG_ANDROID_BINDER_IPC=y
+   # CONFIG_ANDROID_BINDER_IPC_32BIT is not set
+   CONFIG_MSM_SCM=y
    CONFIG_SECURITY_SELINUX_DEVELOP=y
+   $ grep -c -E 'CONFIG_(KEXEC|ANDROID_BINDER_DEVICES|ARM_PSCI)' kernel.config
+   0
    ```
-   The file has no `CONFIG_KEXEC`, `CONFIG_ANDROID_BINDER_DEVICES` or `CONFIG_ARM_PSCI` line at
+   So the file has no `CONFIG_KEXEC`, `CONFIG_ANDROID_BINDER_DEVICES` or `CONFIG_ARM_PSCI` line at
    all. arm64 kexec only reached Linux in 4.8 ("arm64/kexec: Add core kexec support",
    2016-06-27), so a 3.10 arm64 kernel has no such option. The only LVDS panel driver enabled is
    `CONFIG_FB_MSM_LVDS_CHIMEI_WXGA_PANEL`, a 1280×800 panel, not the Mirror's 1920×1080 one. So
@@ -146,9 +149,12 @@ means an `insmod` that the stock `init.rc` already runs from `/system`, or a `/s
 script that stock `init` starts as root. There are two candidates, both **untested** on this
 ramdisk:
 
-- Qualcomm (CAF) `init.qcom.rc` files define `qcom-post-boot`, which runs
-  `/system/etc/init.qcom.post_boot.sh` as `user root`. We read this in older CAF trees, not in the
-  Mirror's own `init.qcom.rc`. The community build ships and edits that script (`build/prepare.py`).
+- Qualcomm `init.qcom.rc`-style files define `qcom-post-boot`, which runs
+  `/system/etc/init.qcom.post_boot.sh` as `user root`. AOSP's Nexus 4 (`mako`) file has the whole
+  block: `class late_start`, `user root`, `disabled`, `oneshot`, started `on
+  property:sys.boot_completed=1`. That is after boot completes, so the stock system would boot
+  fully before any kexec. We read this in other devices' files, not in the Mirror's own
+  `init.qcom.rc`. The community build ships and edits that script (`build/prepare.py`).
 - The Wi-Fi HAL loads `wlan.ko` from `/system/lib/modules/pronto/` (`build/container-build.sh`).
   That load comes late, from the framework, under its SELinux domain.
 
@@ -197,7 +203,7 @@ for one experienced developer, after kexec works.
 
 | Kind | Examples | Can we ship it? | Source, how sure |
 |---|---|---|---|
-| Remote-processor firmware | `wcnss`, `venus`, `mba`, modem | Not needed. The unit's own `modem` partition (`/firmware`) holds it and is never overwritten. linux-firmware also carries `qcom/apq8016/{mba,modem,wcnss}.mbn` as "Redistributable" under `LICENSE.qcom`, but those are DragonBoard builds. TZ checks firmware signatures against the fused key, so **untested** whether DragonBoard firmware loads on a Mirror | `WHENCE`; #40. Read |
+| Remote-processor firmware | `wcnss`, `venus`, `mba`, modem | Probably not needed, **untested**. On Qualcomm boards the `modem` partition (`/firmware`) usually holds it, and flashing never overwrites that partition. But #40 still lists reading `/firmware/image` as a pending check, and the community image ships its own `venus` and `wlan` copies in `/system/etc/firmware`. So which firmware an image must carry is not settled. linux-firmware also carries `qcom/apq8016/{mba,modem,wcnss}.mbn` as "Redistributable" under `LICENSE.qcom`, but those are DragonBoard builds. TZ checks firmware signatures against the fused key, so **untested** whether DragonBoard firmware loads on a Mirror | `WHENCE`; #40. Read |
 | Adreno microcode | `a300_pm4.fw`, `a300_pfp.fw` | **Yes**: linux-firmware, "Redistributable", `LICENSE.qcom` | `WHENCE`. Read |
 | GPL kernel code | `wlan.ko`, a kexec module, our kernel | Our own builds from source. Rule 4 says we don't ship GPL payloads, so this needs a decision, as #40 already asks for `wlan.ko` | #40. Read |
 | Android vendor userspace | Adreno GLES, `mm-camera`, ACDB, QSEECom/keymaster, `thermal-engine` | **No known licence.** The community set is the DragonBoard LA.BR.1.2.7 BSP re-hosted without a licence; Quectel unknown. Must come from the user, and #40 found no stock source for it | #40. Read |
@@ -213,7 +219,7 @@ costs the most work.
 
 | | Frozen engine (GeckoView 143 on Android 6) | Modern image (path a, after kexec) |
 |---|---|---|
-| Works today | Yes, Android 6 runs on the unit now | Only if an untested kexec module works on 3.10 arm64 |
+| Works today | Android 6 runs on the unit now. GeckoView 143 with the HA frontend has **not** run on the Mirror yet (#39 asks for that test first) | Only if an untested kexec module works on 3.10 arm64 |
 | Engine fixes | None after 2025-10-14 | Current GeckoView |
 | Effort | Low: one Gradle module (#39) | A spike of uncertain outcome, then 1–3 months |
 | Blobs to ship | None beyond what the community image already needs | The same userspace blobs, plus shims |
@@ -251,9 +257,9 @@ written). The S1 is plugged in too, so address the Mirror by transport: `adb dev
 | 4 | `adb -t <n> shell cat /proc/modules` | `wlan` listed: a module from our `system` runs in the signed kernel |
 | 5 | `adb -t <n> shell getenforce` | Whether SELinux is enforcing on the community image |
 | 6 | `adb -t <n> shell 'head -2 /proc/meminfo; cat /proc/device-tree/model; echo'` | RAM as the kernel sees it, and the board's DT model |
-| 7 | `adb -t <n> shell 'find /proc/device-tree -iname "*lvds*" -o -iname "*panel*" -o -iname "*bridge*" \| head -40'` | Which LVDS bridge the board uses. Don't dump `chosen/bootargs`: it holds the serial |
+| 7 | `adb -t <n> shell 'for d in $(find /proc/device-tree -iname "*lvds*" -o -iname "*panel*" -o -iname "*bridge*" \| grep -v /chosen \| head -40); do echo "== $d"; for f in compatible qcom,mdss-dsi-panel-name; do [ -f "$d/$f" ] && echo "$f: $(cat "$d/$f")"; done; done'` | Which LVDS bridge and panel the board uses: each matching node's path, its `compatible` and the panel name if set. Uses only `find`, `grep` and `cat`, which Android 6's toybox and mksh have. Skips `chosen`, whose `bootargs` holds the serial |
 | 8 | In fastboot (`frame.json`: open the back, press the button): `fastboot getvar all` | Already #41 step 2. Note `secure`, `unlocked`, `version-bootloader`. Redact `serialno` |
-| 9 | `adb -t <n> shell 'getprop \| grep -e init.svc.qcom-post-boot -e wlan.driver; grep -n -e post_boot -e insmod /init*.rc'` | Whether stock `init` runs `init.qcom.post_boot.sh` (and as which user), and any `insmod` it does from `/system`. The `grep` of `/init*.rc` may be denied to `shell`; note it if so |
+| 9 | `adb -t <n> shell 'getprop \| grep -e init.svc.qcom-post-boot -e wlan.driver; grep -n -A8 -e "service qcom-post-boot" -e "start qcom-post-boot" -e insmod /init*.rc; grep -n -B3 "start qcom-post-boot" /init*.rc'` | Whether stock `init` runs `init.qcom.post_boot.sh`: the whole service block (`class`, `user`, `disabled`, `oneshot`), the `on …` trigger that starts it, and any `insmod` from `/system`. The `grep` of `/init*.rc` may be denied to `shell`; note it if so |
 
 Then, only if probes 2, 4 and 9 confirm unsigned modules, no kexec and a root load path at boot, decide whether to fund a
 time-boxed kexec spike. It would write `system` (a test image with the module) and nothing else. The
@@ -301,8 +307,9 @@ All opened 2026-11-13.
 - Binder: LineageOS [`android_kernel_cyanogen_msm8916`](https://github.com/LineageOS/android_kernel_cyanogen_msm8916)
   `drivers/staging/android/uapi/binder.h` on `cm-13.0` and `lineage-17.1`, and upstream
   [`7980240b6d63` "binder: Add support for scatter-gather"](https://github.com/torvalds/linux/commit/7980240b6d63).
-- `qcom-post-boot` in CAF `init.qcom.rc`, e.g. [CodeAurora `qrd-gb-ssss-7225`](https://source.codeaurora.org/external/gigabyte/qrd-gb-ssss-7225/plain/android/system/core/rootdir/etc/init.qcom.rc)
-  (through search results); `lulu-mirror-software-only` `build/prepare.py` and `build/container-build.sh`.
+- `qcom-post-boot`: AOSP [`device/lge/mako` `init.mako.rc` at `fefe23cb`](https://android.googlesource.com/device/lge/mako/+/fefe23cb22e507810482bf685c7af343879274c6/init.mako.rc)
+  (service block and `sys.boot_completed` trigger); `lulu-mirror-software-only` `build/prepare.py`
+  and `build/container-build.sh`.
 - Upstream Linux: [`arch/arm64/boot/dts/qcom/msm8916.dtsi`](https://github.com/torvalds/linux/blob/master/arch/arm64/boot/dts/qcom/msm8916.dtsi),
   `drivers/media/i2c/ov5640.c`, history of `arch/arm64/kernel/machine_kexec.c`.
 - [`msm8916-mainline/linux`](https://github.com/msm8916-mainline/linux) and [`msm8916-mainline/lk2nd`](https://github.com/msm8916-mainline/lk2nd).
