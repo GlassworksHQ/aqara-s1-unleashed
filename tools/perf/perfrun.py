@@ -217,11 +217,15 @@ def cmd_panes(dev, a):
     want = parse_set(a.set)
     live = " ".join(f"--ez {k} {'true' if v else 'false'}" for k, v in want.items() if k != "voice_enabled")
     url = f"--es url '{a.url}'" if a.url else ""
-    res = {"want": want, "attempts": 0, "state": None, "ok": False, "voice_applied": None}
+    res = {"want": want, "attempts": 0, "state": None, "ok": False, "voice_applied": None,
+           "url_taken": None if not a.url else False}
     for attempt in range(1, a.tries + 1):
         res["attempts"] = attempt
         if live or url:
-            dev.sh(f"am start -W -n {dev.component} {url} {live}".strip(), timeout=60)
+            out = dev.sh(f"am start -W -n {dev.component} {url} {live}".strip(), timeout=60)
+            if a.url:
+                # am exits 0 even when the kiosk didn't take the intent: read its answer (as run.sh does).
+                res["url_taken"] = any(l.strip() == "Status: ok" for l in out.splitlines())
             time.sleep(PANES_SAVE_S)
         if "voice_enabled" in want:
             dev.sh(f"am start -W -n {dev.component} --ez voice_enabled {'true' if want['voice_enabled'] else 'false'}", timeout=60)
@@ -231,7 +235,7 @@ def cmd_panes(dev, a):
         st = P.pane_state(dev.sh("logcat -d -v monotonic", timeout=60))
         res["state"] = st
         exp = expected_state(want, st["voice"])
-        res["ok"] = st["voice"] is not None and all(st[k] == v for k, v in exp.items())
+        res["ok"] = st["voice"] is not None and all(st[k] == v for k, v in exp.items()) and res["url_taken"] is not False
         res["voice_applied"] = None if "voice_enabled" not in want else st["voice"] == want["voice_enabled"]
         if res["ok"] and res["voice_applied"] is not False:
             break

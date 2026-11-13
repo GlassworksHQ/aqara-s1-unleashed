@@ -132,7 +132,8 @@ class Export(unittest.TestCase):
         s = S.summarise(rep)
         self.assertEqual(s["ram"], {"idle_app_pss_kb": 500_000, "idle_by_process_pss_kb": {"gpu": 200_000, "main": 300_000},
                                     "peak_app_pss_kb": 540_000, "peak_by_process_pss_kb": {"gpu": 200_000, "main": 340_000},
-                                    "panes": [{"id": "assist", "pss_kb": 30_000, "tolerance_kb": 0, "measurable": True, "runs": 1}],
+                                    "panes": [{"id": "assist", "pss_kb": 30_000, "tolerance_kb": 0, "measurable": True, "runs": 1,
+                                               "budget_kb": 49152, "budget_ok": True}],
                                     "panes_waiting": ["radio"], "budget_ok": True})
         self.assertEqual(s["apk"], [{"file": "s1-kiosk.apk", "abis": ["armeabi-v7a"], "bytes": 90_000_000}])
         plain = S.summarise(self.reps["B"])

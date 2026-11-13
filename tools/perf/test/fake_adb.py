@@ -418,7 +418,8 @@ def dashboard():
                   "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000, "run": 1, "nonce": ""}, record=False)
         line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
         time.sleep(0.2)
-        page_log({"t": "done", "stage": "restart", "run": 1, "nonce": ""}, record=False)
+        if not os.environ.get("FAKE_NO_RESTART_DONE"):     # F8: the done line lost (logcat dropped it)
+            page_log({"t": "done", "stage": "restart", "run": 1, "nonce": ""}, record=False)
         return
     line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     time.sleep(0.8)

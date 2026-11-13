@@ -255,9 +255,13 @@ code. So protocol 4 has no separate warm-up page (protocols 1 to 3 opened one; `
 still add a view, but not one that is also graded: hui-root keeps a view it has shown, so its graded
 open would skip building it, and the runner refuses that). Then the three views open in an order that turns by one each run: run 1 light,
 typical, heavy; run 2 typical, heavy, light; run 3 heavy, light, typical. So no view always comes
-first, and the report gives each view's results at each place in the order. Each view opens only
-once the screen has been still for 2 s (at most 10 s). It opens from the view before it (the start
-view for the first), as you would tap from one tab to the next.
+first, and the report gives each view's results at each place in the order. Each view opens from
+the view before it (the start view for the first), as you would tap from one tab to the next. The
+runner waits for the screen to be still for 2 s first, at most 10 s. On HA's dashboards that wait
+never ends early: the head's clock card shows seconds, so a frame is drawn every second. So each view
+opens 10 s after the view before it ended, and every run's `between` reads `moving` (s1v7, all
+three runs). The 10 s stays, as s1v7 was measured with it: by then the view before has stopped its
+updates and its last work.
 
 Each view runs in phases, one log line per event:
 1. **Open the view.** The harness navigates to it and reports when it was usable.
@@ -356,8 +360,8 @@ same GeckoView, with its loading cover, zoom and hidden header. The differences:
 | Opening a view | Your tap on a view tab or a navigate action | The same `navigate()`, called by the harness: no touch, so the tap's own cost isn't in it (tap is graded on its own) |
 
 The fake answers every command the frontend sent while it was recorded. A command it doesn't know
-gets an error, which the frontend handles as it would from HA, and the fake logs it
-(`server.log`).
+gets an error, which the frontend handles as it would from HA, and the fake logs it in
+`fakeha.jsonl` (`"unknown"`), which makes the grade provisional.
 
 ## What it measures
 
@@ -553,8 +557,8 @@ the panel feels slower than that, and the reference pages were an imitation of H
 than HA's frontend (heavy had 4463 elements against about 8000) and without its work (loading the
 app, the websocket, Lit's rendering, HA's state handling). So the reference dashboards became HA's
 real frontend, and restart now ends at a usable dashboard. No threshold, level or letter rule moved:
-rubric v5 stands. The protocol-3 A is superseded, and the S1 has no protocol 4 result yet. Its
-protocol 4 letter goes here whatever it is.
+rubric v5 stands. The protocol-3 A is superseded. The S1's protocol 4 result is a D (s1v7,
+2026-11-13; [Example](#example-aqara-s1-plus)).
 
 ### Restart: back to a usable dashboard
 
@@ -704,7 +708,26 @@ Assistant:
   mutes the microphone (`mic_muted`) for "off" states, which the kiosk applies live, and stops after
   two tries at `voice_enabled`. When voice stayed on, Assist's share is its running cost only (the
   wake word, recorder and inference; [idle-cpu.md](research/idle-cpu.md) step 7), not the code and
-  model it loads. The report says so (`off_by: "mute"`). s1v7's pane numbers are not valid.
+  model it loads. The report says so (`off_by: "mute"`). s1v7's pane numbers are not valid; the S1's
+  are s1p1 and s1p3 ([Example](#example-aqara-s1-plus)).
+- **The tolerance is too wide for the pane budgets yet.** On the S1 (s1p3, 2026-11-13) it was
+  ±31.6 MB, two thirds of the 48 MB budget: a pane near 0 and a pane well over budget would both
+  read "within tolerance", and the budget check (`pane_budget`), which compares the share alone,
+  says "ok" either way. Two things made it wide, neither of them a pane:
+  1. **The first sample is low.** In both s1p1 and s1p3 the first sample (`ref-panes-off-1`) had
+     the GPU process at 141 to 142 MB, against 155 to 157 MB in every later one, and the app 21 to
+     33 MB under the other samples of its run. It sets the panes-off spread (564.7 to 596.4 MB).
+  2. **`:boot` comes and goes.** The direct-boot home activity's process (29.2 MB) was in 2 of 12
+     samples (s1p1's `ref-sendspin-on-1` and s1p3's `ref-sendspin-on-3`), not in the other two
+     Sendspin samples. That is what s1p1's Sendspin +50 MB was. Why it runs then is untested; it is a
+     HOME activity, so a restart may start it.
+
+  Leaving out s1p3's first sample and counting the app without `:boot` gives a tolerance of about
+  ±9 MB, from the same samples (computed, not a new run). So the fix, not made yet: an unrecorded
+  warm-up cycle before the first run, and `:boot` reported apart from the pane's share (or a RAM
+  read that waits for it to exit). More runs alone won't do it: the tolerance is the spread
+  (max − min), which only grows with more samples. With more runs it would have to be another
+  statistic, such as the median absolute deviation.
 - **Waiting on #67**: `radio`, `wall-base`, `timers`, `time-zone` and `diagnostics` have no on/off switch until
   [#67](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/67), so they aren't measured on
   their own. The report lists them. The radio's processes are measured where they run.
@@ -768,7 +791,7 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `runs_attempted` | Graded runs attempted (`plan.json`), the count each band is over |
 | `frame` | `id`, `name`, `device` (model, Android, API, ABI, SoC, CPU, RAM, display with density and refresh, temperatures), `app` (package, version, APK bytes on the device, GeckoView version) |
 | `apk` | One entry per APK given with `--apk`: `abis`, `bytes`, `parts_bytes` (dex, native, assets, resources, other) |
-| `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (over 50 ms is provisional). `null` without the log, which is provisional for protocol 4 |
+| `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (over 200 ms, one update interval, is provisional). `null` without the log, which is provisional for protocol 4 |
 | `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb`, `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`, `verified`, `excluded`, and `off_by: "mute"` when Assist was off by its mute alone; or `id`, `method` and `error` when no sample ran as asked), `screen_off_samples` (idle samples the screen went off in, left out), `panes_waiting` (`id`, `waiting_on`, `note`), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `ok`). See [RAM](#ram) |
 | `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts (a run failed, a task was measured in fewer runs, scrolling rests on rAF only, the pages ran another protocol) |
 | `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
@@ -806,7 +829,7 @@ from real use, and nothing device-unique.
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |
 | `report` | A relative path or URL of the full report (`--report-url`) |
 | `complete` | `false` when it was exported with `--allow-provisional` and has gaps, missing measurements or isn't comparable |
-| `ram` | Not graded; `null` if not measured. In kB: `idle_app_pss_kb` and `idle_by_process_pss_kb` (medians at idle on the typical reference dashboard), `peak_app_pss_kb` and `peak_by_process_pss_kb` (the peak during the graded tasks), `panes` (each: `id`, `pss_kb`, `tolerance_kb`, `measurable`, `runs`, and `off_by` when the report has it; a pane with no number isn't listed), `panes_waiting` (pane ids), `budget_ok` (`true`, `false` or `null`) |
+| `ram` | Not graded; `null` if not measured. In kB: `idle_app_pss_kb` and `idle_by_process_pss_kb` (medians at idle on the typical reference dashboard), `peak_app_pss_kb` and `peak_by_process_pss_kb` (the peak during the graded tasks), `panes` (each: `id`, `pss_kb`, `tolerance_kb`, `measurable`, `runs`, `budget_kb` and `budget_ok` (the frame's pane budget and whether the share is within it; `null` without a budget; read it with `measurable`, since a share inside the tolerance can't show that the pane fits), and `off_by` when the report has it; a pane with no number isn't listed), `panes_waiting` (pane ids), `budget_ok` (`true`, `false` or `null`) |
 | `apk` | Not graded; `null` if no APK was given. Per APK: `file`, `abis`, `bytes` |
 
 The levels need each run's measurements (each run gets a level, then the median level is taken), which
@@ -876,7 +899,8 @@ per frame and pane, with budgets. Its two halves come from different places:
 
 - **RAM comes from this test, on the device** (see [RAM](#ram) for why not an emulator). The
   report's `ram` holds the reference dashboard's numbers per process and per pane, and checks them
-  against the frame's budgets in `frames/<id>/budgets.json`. The summary carries them (`ram`).
+  against the frame's budgets in `frames/<id>/budgets.json`. The summary carries them (`ram`),
+  with each pane's budget and whether it is within it (`budget_kb`, `budget_ok`).
 - **APK size comes from CI** on every pull request, which needs no device: the size per ABI split
   into the engine, the core, each pane, assets and native libraries, the change from the base branch,
   and the frame's size budget in the same `frames/<id>/budgets.json`. See [APK size](size.md).
@@ -930,7 +954,39 @@ Frame statistics are defined once, in `tools/perf/page/stats.js` and `tools/perf
 
 ## Example: Aqara S1 Plus
 
-**Protocol 4: not measured yet.** Its result goes here whatever letter it is.
+**Protocol 4: D** (s1v7, 131f6da, 3 of 3 runs, rubric v5, S1 Kiosk 0.4.3, the radio in
+`thread_router`, 2026-11-13; not provisional). "A good wall panel for light dashboards. Held back by
+typical dashboards: scrolling averages 35.1 fps (p95 83 ms); the view takes 4.8 s to open." The
+verifier recomputed the D by hand, with `grade.py` and with `grade.ts`.
+
+| View | Level | Tap | Scroll | Change to screen (p95) | Open the view |
+|---|---|---|---|---|---|
+| light (20 cards) | fluid | 96 ms | 40.9 fps, p95 66.7 ms | 84 ms | 1.45 s |
+| typical (50 cards) | neither | 96 ms | 35.1 fps, p95 83.3 ms | 96 ms | 4.82 s |
+| heavy (120 cards) | neither | 88 ms | 23.3 fps, p95 133 ms | 156 ms | 14.5 s |
+
+Restart, process start to the start view usable: **11.7 s** (11.6 to 13.0 s), poor; engine ready
+2.9 s (detail). Medians of 3 runs. Scrolling holds back every view and open the view holds back
+typical and heavy. Taps and the live changes are good everywhere except heavy's changes (fluid).
+The panel ran with the wake word using about 37% of a core
+([#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)); the move to microWakeWord
+(#181) needs a re-measure. s1v7's pane numbers are not valid (see [RAM](#ram)); s1p1 and s1p3 below
+are.
+
+**RAM per pane** (s1p1 and s1p3, 248ce09, 2026-11-13, S1 Kiosk 0.4.3, the radio in
+`thread_router`; verified: every sample's kiosk log showed what its label says, none left out, and
+the panel was put back each time). In both runs the kiosk kept `voice_enabled` (the 0.4.3 bug
+above), so Assist is off by its microphone mute: its running cost, not the model it loads.
+
+| | Assist CPU | Assist PSS | Sendspin CPU | Sendspin PSS |
+|---|---|---|---|---|
+| s1p3, 3 runs (9 samples) | **+36.3% of a core** (±1.2) | +5.2 MB, within ±31.6 | +1.9%, within ±2.9 | +0.3 MB, within ±31.6 |
+| s1p1, 1 run (smoke) | +36.5% | +21.3 MB | +3.5% | +50.1 MB (`:boot`, see [RAM](#ram)) |
+
+Assist's CPU matches [#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)'s 37%
+(the wake word's model). Neither pane's PSS is measurable at this tolerance, so these runs can't say
+whether either fits its 48 MB budget ([why, and the fix](#ram)). The app at idle on the typical
+reference dashboard, all panes off: 565 to 596 MB.
 
 **smoke9** (8c0027b, one run, 2026-11-13, protocol 4 as first written: each reference dashboard a
 full page load) read **E, provisional**: open the view 4.9, 8.2 and 5.0 s (light, typical, heavy);

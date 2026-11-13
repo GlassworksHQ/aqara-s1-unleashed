@@ -564,6 +564,16 @@ class Restart(unittest.TestCase):
         self.assertEqual(c["own_page_state"], "reference")
         self.assertIsNone(self.build(tmp)["graded"]["reference"]["per_run"][0]["start_error"])
 
+    def test_a_lost_restart_done_line_doesnt_stall_the_run(self):
+        """F8: only the restart page's `done` line is lost. The usable line is there, so the views
+        open after RESTART_DONE_WAIT_S instead of waiting out the run, and the restart still counts."""
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, FAKE_NO_RESTART_DONE="1")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertTrue(c["restart_done_missing"])
+        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
+        self.assertIsNone(self.build(tmp)["graded"]["reference"]["per_run"][0]["start_error"])
+
     def run_short(self, timeout, **env):
         with FakeHA() as ha:
             tmp = tempfile.mkdtemp()
@@ -928,6 +938,21 @@ class PaneRam(unittest.TestCase):
         self.assertEqual(panes["assist"]["off_by"], "mute")
         self.assertEqual(panes["assist"]["pss_kb"], 30000)
         self.assertIn("voice_enabled didn't take", p.stderr)
+
+    def test_a_refused_restore_url_fails_even_when_the_panes_match(self):
+        """The last sample (Sendspin on by itself) already has the panes to put back, so only the
+        URL intent's answer can tell that the kiosk is still on the fake: am exits 0 either way."""
+        tmp = tempfile.mkdtemp()
+        env, state = fake_env(tmp, FAKE_RESTORE_FAILS="1")
+        p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--runs", "1", "--out", os.path.join(tmp, "out"), "--port", "18085",
+                            "--skip-synthetic", "--skip-reference", "--skip-real-use",
+                            "--pane-ram", "assist=off,sendspin=on,mic=off", "--restore-dashboard", RESTORE],
+                           env=env, capture_output=True, text=True, timeout=300)
+        self.assertEqual(p.returncode, 3, p.stderr[-2000:])
+        self.assertIn("COULD NOT put the panes back", p.stderr)
+        self.assertIn('"url_taken": false', p.stderr)
+        with open(os.path.join(state, "saved_url.json")) as f:
+            self.assertIn("127.0.0.1", json.load(f))          # still the fake's: what the check caught
 
     def test_it_needs_the_dashboard_to_put_back(self):
         tmp = tempfile.mkdtemp()

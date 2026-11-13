@@ -26,7 +26,7 @@
     "load_ms": {
       "good_max": 2500,
       "poor_above": 4000,
-      "source": "Core Web Vitals LCP bounds (good <= 2.5 s, poor > 4 s), applied to each reference dashboard from navigation start to settled (the first frame followed by 750 ms of quiet, after the load event). Settled is at or after the largest paint, so this is stricter than LCP"
+      "source": "Core Web Vitals LCP bounds (good <= 2.5 s, poor > 4 s), applied to opening each reference view (protocol 4): from HA's navigate() in the loaded frontend to usable (every head card and every card on the screen drawn, stable for 2 frames, then the main thread free for 500 ms). Usable is at or after the largest paint, so this is stricter than LCP. Lenient for a view switch (docs/perf.md, Open the view)"
     },
     "inp_ms": {
       "good_max": 200,
@@ -36,7 +36,7 @@
     "start_ms": {
       "good_max": 2500,
       "poor_at": 5000,
-      "source": "app process start to engine ready (GeckoView's own first PageStart). poor: Android vitals' excessive cold start bound (>= 5 s), which vitals apply to TTID. good <= 2.5 s: project choice (LCP's bound)"
+      "source": "the restart (protocol 4): app process start to the reference dashboard's start view being usable, the kiosk having been pointed at it (before protocol 4: to engine ready, GeckoView's own first PageStart). poor: Android vitals' excessive cold start bound (>= 5 s), which vitals apply to TTID. good <= 2.5 s: project choice (LCP's bound)"
     }
   },
   "js_burst_ms": {
