@@ -698,6 +698,39 @@ says if the restart capped it. An A says what keeps it from A+ ("Short of A+ on 
 The report's table gives every task's value and band per page, and the task that holds each page
 back. Another table gives each page's results at each place in the run order.
 
+### The notes: what's good, what holds it back
+
+Under the headline, every report has a short paragraph in plain words (`notes`, #201). It is built
+by fixed rules in `tools/perf/notes.py` from the report alone, so the same report always gives the
+same text. It never gives the letter or its meaning. It has 3 to 5 sentences, plus one more when the
+grade is provisional:
+
+1. **What's good.** First the tasks that are good (or at least fluid) on every dashboard that
+   measured them. Then, per page, the other tasks that are good or fluid there.
+2. **What holds it back.** Each task below fluid, with the pages it fails on and its value on the
+   lightest of them. Then the restart when it isn't good (with how much of it came after the engine
+   was ready), and anything not measured.
+3. **Causes**, each only when its evidence is in the report. Indirect evidence says "likely".
+
+   | Cause | Said when | Evidence |
+   |---|---|---|
+   | The page's main thread (likely) | A slow scroll is `limited_by: main-thread`, or a camera page starves (next row). Slow live updates and the idle CPU are added to it as evidence | rAF's frames worse than SurfaceFlinger's; change to screen; `reference_idle.cpu_app_pct_of_core` at 25% of a core or more |
+   | A camera player that asks for video late | A failing camera page whose segments arrive 2 s or more apart (1 s segments) while a fetch's p95 is under 500 ms, and the decoder dropped at most 1% of what it decoded. "Hardware" only when no software decoder (`c2.android.*`, `OMX.google.*`) was used | `fetches.segment`, `media.codecs`, each stream's `decoded` and `dropped` |
+   | The compositor (likely the GPU) | A slow scroll is `limited_by: compositor` | SurfaceFlinger's frames worse than rAF's |
+   | The link or the fake | A failing camera page's segment fetch p95 is 1 s or more | `fetches.segment.total_ms` |
+   | The fake's lateness | It sent a change more than 200 ms late (the same limit that makes the grade provisional) | `fake_ha.stream_late_max_ms` |
+   | Heat | A graded run started with a CPU zone above 50 °C (the runner waits for that only before its first part) | `thermal` (from `thermal.tsv`). The run records no clock speeds, so the sentence says throttling can't be shown either way |
+4. **Memory**, when RAM was measured: "a limit" when the app's peak or the device's available memory
+   misses the frame's budget, else "not the limit" with the peak against the budget.
+
+There is no rule for CPU clock speeds or long tasks: the run doesn't record them.
+
+The notes judge tasks by the report's rubric, so `notes.rubric` names its version. On the S1:
+
+| Run | Notes |
+|---|---|
+| s1cam3 (protocol 5, 3 runs) | On light, taps, live updates and opening a view are good and scrolling is fluid; on typical, taps are good and live updates are fluid. Typical and heavy dashboards are held back by taps (288 ms on heavy), scrolling (25.0 fps on typical), live updates (739 ms to show on heavy), opening a view (6.6 s on typical) and the cameras (first frame 4.2 s, 100% of frames shown on typical); a restart takes 12.0 s to a usable dashboard, 9.4 s of it after the engine was ready. The page's main thread is the likely limit: on typical and heavy the page's own frames (rAF) come slower than the screen's; on heavy a change takes 739 ms to show; on heavy the camera player gets video up to 4.3 s apart though a fetch takes 162 ms (p95), while the hardware decoder drops 0 of 2460 frames; untouched on typical (its camera playing), the app keeps 97% of a core busy. The CPU was at up to 56 °C as a graded run started; clock speeds aren't recorded, so the run can't show whether it throttled. Memory is not the limit: the app's peak is 889 MB of 988 MB. |
+
 The task levels (`scroll_levels`, `update_levels`), the page levels, the letters (A+ first) and the
 restart cap live in `tools/perf/page/rubric.json` (`grade`), next to the thresholds.
 `tools/perf/grade.py` and `tools/perf/grade.ts` both read them,
@@ -1015,8 +1048,10 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `runs_attempted` | Graded runs attempted (`plan.json`), the count each band is over |
 | `frame` | `id`, `name`, `device` (model, Android, API, ABI, SoC, CPU, RAM, display with density and refresh, temperatures), `app` (package, version, APK bytes on the device, GeckoView version) |
 | `apk` | One entry per APK given with `--apk`: `abis`, `bytes`, `parts_bytes` (dex, native, assets, resources, other) |
+| `notes` | What's good and what holds it back, in words ([The notes](#the-notes-whats-good-what-holds-it-back)): `good` and `limits` (a sentence each, or `null`), `causes` (sentences), `text` (the paragraph), `rubric` (the rubric version it judged by) |
+| `thermal` | Each stage's thermal zones from `thermal.tsv`, in order: `phase`, `zones` (°C) |
 | `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (over 200 ms, one update interval, is provisional). `null` without the log, which is provisional for protocol 4 |
-| `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb` (`null` under two samples a side), `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`, `verified`, `excluded`, `boot_samples_on` and `boot_samples_off` (samples `:boot` ran in, left out of the share), `boot_pss_kb` (its median PSS, or `null`), and `off_by: "mute"` when Assist was off by its mute alone; or `id`, `method` and `error` when no sample ran as asked), `screen_off_samples` (idle samples the screen went off in, left out), `panes_waiting` (`id`, `waiting_on`, `note`), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `tolerance_kb`, `measurable` (three samples a side and a tolerance at most a quarter of the budget), `ok` (`null` when not measurable: read it as unknown, not as over)). See [RAM](#ram) |
+| `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`, `cpu_app_pct_of_core`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb` (`null` under two samples a side), `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`, `verified`, `excluded`, `boot_samples_on` and `boot_samples_off` (samples `:boot` ran in, left out of the share), `boot_pss_kb` (its median PSS, or `null`), and `off_by: "mute"` when Assist was off by its mute alone; or `id`, `method` and `error` when no sample ran as asked), `screen_off_samples` (idle samples the screen went off in, left out), `panes_waiting` (`id`, `waiting_on`, `note`), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `tolerance_kb`, `measurable` (three samples a side and a tolerance at most a quarter of the budget), `ok` (`null` when not measurable: read it as unknown, not as over)). See [RAM](#ram) |
 | `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts: the kiosk's own page never finished loading in a graded run; graded runs failed or are missing; the restart or a task was measured in fewer runs than attempted; a page's live changes rest on a loose clock tie; no swipe ran during the live updates; scrolling rests on rAF only; the fake Home Assistant's log is missing, or it didn't know or failed a command, or sent a change late; page lines didn't parse or never arrived whole (`bad_page_lines`); swipes were answered with no scroll step back (`lost_scroll_steps`); the pages ran another protocol; the viewport couldn't be checked |
 | `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `camera_runs` (each run's worst stream, with each stream as `detail`, and as detail `fetches` (the HLS fetch times) and `media` (the decoders the view got, from logcat)), `camera_levels` (per run) and `camera_level` (graded), `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
 | `detail` | `synthetic`, the animation test page: `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `steps_without_sf`, `screen_off_runs` (left out of the rest), `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `page_lcp_ms`, `page_lcp_from`, `per_run` |
@@ -1055,11 +1090,12 @@ from real use, and nothing device-unique.
 | `complete` | `false` when it was exported with `--allow-provisional` and has gaps, missing measurements or isn't comparable |
 | `ram` | Not graded; `null` if not measured. In kB: `idle_app_pss_kb` and `idle_by_process_pss_kb` (medians at idle on the typical reference dashboard), `peak_app_pss_kb` and `peak_by_process_pss_kb` (the peak during the graded tasks), `panes` (each: `id`, `pss_kb`, `tolerance_kb` (`null` under two samples a side), `measurable`, `runs`, `budget_kb` and `budget_ok` (the frame's pane budget and whether the share is within it; `null` without a budget, or when the tolerance is too wide to tell), `budget_measurable` (`false` under three samples a side or with a tolerance over a quarter of the budget; `null` without one; read a null `budget_ok` as unknown, not as over), and `off_by` when the report has it. Only panes whose every sample was checked against the kiosk's log (`verified`) are listed: one with no number, or from a run before that check (such as s1v7), isn't), `panes_waiting` (pane ids), `budget_ok` (`true`, `false` or `null`) |
 | `apk` | Not graded; `null` if no APK was given. Per APK: `file`, `abis`, `bytes` |
+| `notes` | The report's `notes` (`good`, `limits`, `causes`, `text`, `rubric`). Show them only when `rubric` is the site's rubric version: they judge tasks by that rubric |
 
 The levels need each run's measurements (each run gets a level, then the median level is taken), which
 is why the summary carries `runs` and not only medians. Medians are kept for display. Fields are only
 added within a version; a change of meaning is a new one (`ram` and `apk` were added within `/2`,
-2026-11-13, and `grade.ts` ignores them). `/2` (2026-11-12, rubric v5): `updates`
+2026-11-13, and `notes` with #201; `grade.ts` ignores them). `/2` (2026-11-12, rubric v5): `updates`
 carries change to screen and its runs are latency records, where `/1` had frame pacing.
 
 ### Protocol and rubric versions

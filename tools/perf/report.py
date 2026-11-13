@@ -16,6 +16,7 @@ import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import grade as G  # noqa: E402
+import notes as N  # noqa: E402
 import perflib as P  # noqa: E402
 
 SCHEMA = "glassworks.perf/4"
@@ -985,6 +986,7 @@ def reference_ram(ref_idles, refstarts, package, budgets, mem_total_kb):
             "main_kb": {k: P.spread([m["main"].get(k) for m in im]) for k in sorted({k for m in im for k in m["main"]})},
             "device_used_pct": P.spread([100 - 100 * m["mem_available_kb"] / m["mem_total_kb"] for m in im
                                          if m["mem_total_kb"] and m["mem_available_kb"] is not None]),
+            "cpu_app_pct_of_core": P.spread([app_cpu(i, package)["app_pct_of_core"] for i in idle if i.get("cpu")]),
         } if im else None,
         "graded_peak": {
             "samples": len(bm),
@@ -1207,7 +1209,7 @@ def build(run_dir, apks=(), budgets=None):
         real_use = dict(r, per_run=cold, memory=memory, panes=pane_diffs(idles, package) + radio_pane(r))
 
     gv = next((geckoview_version(x["ua"]) for x in syn if x["ua"]), None)
-    return {
+    rep = {
         "schema": SCHEMA,
         "protocol_version": (ref["protocols"][0] if ref and len(ref["protocols"]) == 1 else None),
         "measured_on": device.get("measured_on"),
@@ -1222,7 +1224,22 @@ def build(run_dir, apks=(), budgets=None):
         "graded": graded,
         "detail": detail,
         "real_use": real_use,
+        "thermal": read_thermal(os.path.join(run_dir, "thermal.tsv")),
     }
+    rep["notes"] = N.notes(rep)
+    return rep
+
+
+def read_thermal(path):
+    """thermal.tsv (run.sh): each stage's thermal zones in °C, in the order they were logged."""
+    if not os.path.exists(path):
+        return []
+    out = []
+    with open(path) as f:
+        for line in f:
+            phase, _, zones = line.rstrip("\n").partition("\t")
+            out.append({"phase": phase, "zones": {k: float(v) for k, _, v in (z.partition("=") for z in zones.split()) if v}})
+    return out
 
 
 def radio_pane(r):
@@ -1315,7 +1332,7 @@ def markdown(rep):
     dev = rep["frame"]["device"]
     app = rep["frame"]["app"]
     out = [f"# {G.NAME} report: {rep['frame']['name']}", "", device_line(dev, app), "",
-           f"**{g['headline']}**", "",
+           f"**{g['headline']}**", "", (rep.get("notes") or N.notes(rep))["text"], "",
            "The grade comes only from the three reference dashboards this test ships (light, typical, heavy), "
            "so it doesn't depend on your Home Assistant. Background load (panes, the radio, heat) still reaches it.", ""]
     ref = rep["graded"]["reference"]

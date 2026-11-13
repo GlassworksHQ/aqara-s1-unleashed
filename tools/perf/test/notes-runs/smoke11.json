@@ -1,0 +1,1008 @@
+{
+ "fake_ha": {
+  "commands": 414,
+  "failed": {},
+  "stream_late_max_ms": 20.3,
+  "stream_sent": 654,
+  "unknown": {}
+ },
+ "frame": {
+  "app": {
+   "apk_bytes": 101075082,
+   "geckoview": null,
+   "package": "sh.edm.s1kiosk",
+   "version_code": "403",
+   "version_name": "0.4.3"
+  },
+  "device": {
+   "abi": "armeabi-v7a",
+   "abilist": [
+    "armeabi-v7a",
+    "armeabi"
+   ],
+   "android": "10",
+   "api": 29,
+   "cpu": {
+    "cores": 4,
+    "max_mhz": [
+     1608
+    ],
+    "parts": [
+     "0xd03"
+    ]
+   },
+   "display": {
+    "density": "240",
+    "px": [
+     1440,
+     720
+    ],
+    "vsync_ms": null
+   },
+   "loadavg": [
+    "4.26",
+    "2.12",
+    "1.89"
+   ],
+   "manufacturer": "Allwinner",
+   "mem_total_kb": 2023196,
+   "model": "QUAD-CORE R818 EVB2",
+   "soc": "peony",
+   "thermal_c": {
+    "cpu_thermal_zone": 57.044,
+    "ddr_thermal_zone": 54.23,
+    "gpu_thermal_zone": 50.746
+   }
+  },
+  "id": "aqara-s1-plus",
+  "name": "Aqara S1 Plus"
+ },
+ "grade": {
+  "bands": {
+   "heavy": {
+    "camera": null,
+    "load": "poor",
+    "scroll": "slow",
+    "tap": "needs-improvement",
+    "updates": "fluid"
+   },
+   "light": {
+    "camera": "none",
+    "load": "good",
+    "scroll": "fluid",
+    "tap": "good",
+    "updates": "fluid"
+   },
+   "typical": {
+    "camera": null,
+    "load": "poor",
+    "scroll": "slow",
+    "tap": "good",
+    "updates": "fluid"
+   }
+  },
+  "capped_by_start": false,
+  "grade": "D",
+  "headline": "Aqara S1 Plus: Clarity D, a good wall panel for light dashboards. Held back by typical dashboards: scrolling averages 33.8 fps (p95 83 ms); the view takes 5.2 s to open; the cameras weren't measured. Provisional: the pages ran protocol 4; this rubric is for protocol 5; not everything was measured. Re-measure to publish: the site shows no letter for these pages.",
+  "levels": {
+   "heavy": null,
+   "light": "fluid",
+   "typical": null
+  },
+  "meaning": "a good wall panel for light dashboards",
+  "missing": [
+   "typical.camera",
+   "heavy.camera"
+  ],
+  "provisional": true,
+  "provisional_reasons": [
+   "the pages ran protocol 4; this rubric is for protocol 5"
+  ],
+  "rubric_version": 6,
+  "start": {
+   "band": "poor",
+   "value": 11829.0
+  },
+  "viewport": {
+   "reason": null,
+   "state": "ok"
+  }
+ },
+ "graded": {
+  "reference": {
+   "android_ttid_ms": {
+    "max": 1115.0,
+    "median": 1115.0,
+    "min": 1115.0,
+    "n": 1
+   },
+   "bad_page_lines": 0,
+   "engine_ready_ms": {
+    "max": 2810.0,
+    "median": 2810.0,
+    "min": 2810.0,
+    "n": 1
+   },
+   "engine_uris": [
+    "about:blank"
+   ],
+   "errors": [],
+   "graded_runs": 1,
+   "launch": [
+    "relaunched-by-system"
+   ],
+   "lost_scroll_steps": 0,
+   "orders": [
+    [
+     "light",
+     "typical",
+     "heavy"
+    ]
+   ],
+   "own_page_states": [
+    "reference"
+   ],
+   "protocols": [
+    4
+   ],
+   "restart_to": "usable",
+   "runs": 1,
+   "start_errors": [],
+   "start_ms": {
+    "max": 11829.0,
+    "median": 11829.0,
+    "min": 11829.0,
+    "n": 1
+   },
+   "tiers": {
+    "heavy": {
+     "by_position": {
+      "3": [
+       {
+        "inp_ms": 232,
+        "latency_p95_ms": 125.9,
+        "load_ms": 13471,
+        "scroll_fps": 23.56,
+        "scroll_level": "slow",
+        "scroll_p95_ms": 133.33,
+        "updates_level": "fluid"
+       }
+      ]
+     },
+     "camera_level": null,
+     "camera_levels": [],
+     "camera_runs": [],
+     "cards": [
+      120
+     ],
+     "clock_rtt_ms": [
+      7
+     ],
+     "fcp_ms": null,
+     "first_scroll_ms": {
+      "max": 50.0,
+      "median": 50.0,
+      "min": 50.0,
+      "n": 1
+     },
+     "inp_ms": {
+      "max": 232.0,
+      "median": 232.0,
+      "min": 232.0,
+      "n": 1
+     },
+     "input_method": [
+      "event-timing"
+     ],
+     "latency_median_ms": {
+      "max": 94.5,
+      "median": 94.5,
+      "min": 94.5,
+      "n": 1
+     },
+     "latency_p95_ms": {
+      "max": 125.9,
+      "median": 125.9,
+      "min": 125.9,
+      "n": 1
+     },
+     "load_errors": [],
+     "load_ms": {
+      "max": 13471.0,
+      "median": 13471.0,
+      "min": 13471.0,
+      "n": 1
+     },
+     "nodes": [
+      8361
+     ],
+     "paint_to_screen_ms": null,
+     "positions": [
+      3
+     ],
+     "scroll": {
+      "fps": {
+       "max": 23.56,
+       "median": 23.56,
+       "min": 23.56,
+       "n": 1
+      },
+      "frozen_pct": {
+       "max": 0.0,
+       "median": 0.0,
+       "min": 0.0,
+       "n": 1
+      },
+      "jank_pct": {
+       "max": 45.83,
+       "median": 45.83,
+       "min": 45.83,
+       "n": 1
+      },
+      "n": {
+       "max": 120.0,
+       "median": 120.0,
+       "min": 120.0,
+       "n": 1
+      },
+      "p95_ms": {
+       "max": 133.33,
+       "median": 133.33,
+       "min": 133.33,
+       "n": 1
+      }
+     },
+     "scroll_band": "poor",
+     "scroll_bands": [
+      "poor"
+     ],
+     "scroll_errors": [],
+     "scroll_level": "slow",
+     "scroll_levels": [
+      "slow"
+     ],
+     "scroll_limited_by": [
+      "main-thread"
+     ],
+     "scroll_raf_only": [
+      false
+     ],
+     "scroll_sources": [
+      "raf"
+     ],
+     "scrolled_px": {
+      "max": 3339.0,
+      "median": 3339.0,
+      "min": 3339.0,
+      "n": 1
+     },
+     "sf_swipes": 6,
+     "sf_valid": [
+      true
+     ],
+     "swipes_at_edge": 0,
+     "swipes_during_updates": [
+      6
+     ],
+     "swipes_moved": 6,
+     "updates": {
+      "fps": {
+       "max": 30.03,
+       "median": 30.03,
+       "min": 30.03,
+       "n": 1
+      },
+      "frozen_pct": {
+       "max": 0.0,
+       "median": 0.0,
+       "min": 0.0,
+       "n": 1
+      },
+      "jank_pct": {
+       "max": 60.0,
+       "median": 60.0,
+       "min": 60.0,
+       "n": 1
+      },
+      "n": {
+       "max": 15.0,
+       "median": 15.0,
+       "min": 15.0,
+       "n": 1
+      },
+      "p95_ms": {
+       "max": 100.0,
+       "median": 100.0,
+       "min": 100.0,
+       "n": 1
+      }
+     },
+     "updates_all_p95_ms": {
+      "max": 33.33,
+      "median": 33.33,
+      "min": 33.33,
+      "n": 1
+     },
+     "updates_band": "poor",
+     "updates_bands": [
+      "poor"
+     ],
+     "updates_errors": [],
+     "updates_level": "fluid",
+     "updates_levels": [
+      "fluid"
+     ],
+     "viewport": [
+      [
+       [
+        960,
+        480
+       ],
+       1.5
+      ]
+     ]
+    },
+    "light": {
+     "by_position": {
+      "1": [
+       {
+        "inp_ms": 176,
+        "latency_p95_ms": 112.1,
+        "load_ms": 1300,
+        "scroll_fps": 42.68,
+        "scroll_level": "fluid",
+        "scroll_p95_ms": 50.0,
+        "updates_level": "fluid"
+       }
+      ]
+     },
+     "camera_level": null,
+     "camera_levels": [],
+     "camera_runs": [],
+     "cards": [
+      20
+     ],
+     "clock_rtt_ms": [
+      9
+     ],
+     "fcp_ms": null,
+     "first_scroll_ms": {
+      "max": 39.0,
+      "median": 39.0,
+      "min": 39.0,
+      "n": 1
+     },
+     "inp_ms": {
+      "max": 176.0,
+      "median": 176.0,
+      "min": 176.0,
+      "n": 1
+     },
+     "input_method": [
+      "event-timing"
+     ],
+     "latency_median_ms": {
+      "max": 71.0,
+      "median": 71.0,
+      "min": 71.0,
+      "n": 1
+     },
+     "latency_p95_ms": {
+      "max": 112.1,
+      "median": 112.1,
+      "min": 112.1,
+      "n": 1
+     },
+     "load_errors": [],
+     "load_ms": {
+      "max": 1300.0,
+      "median": 1300.0,
+      "min": 1300.0,
+      "n": 1
+     },
+     "nodes": [
+      1100
+     ],
+     "paint_to_screen_ms": null,
+     "positions": [
+      1
+     ],
+     "scroll": {
+      "fps": {
+       "max": 42.68,
+       "median": 42.68,
+       "min": 42.68,
+       "n": 1
+      },
+      "frozen_pct": {
+       "max": 0.0,
+       "median": 0.0,
+       "min": 0.0,
+       "n": 1
+      },
+      "jank_pct": {
+       "max": 22.87,
+       "median": 22.87,
+       "min": 22.87,
+       "n": 1
+      },
+      "n": {
+       "max": 223.0,
+       "median": 223.0,
+       "min": 223.0,
+       "n": 1
+      },
+      "p95_ms": {
+       "max": 50.0,
+       "median": 50.0,
+       "min": 50.0,
+       "n": 1
+      }
+     },
+     "scroll_band": "poor",
+     "scroll_bands": [
+      "poor"
+     ],
+     "scroll_errors": [],
+     "scroll_level": "fluid",
+     "scroll_levels": [
+      "fluid"
+     ],
+     "scroll_limited_by": [
+      "main-thread"
+     ],
+     "scroll_raf_only": [
+      false
+     ],
+     "scroll_sources": [
+      "raf"
+     ],
+     "scrolled_px": {
+      "max": 3354.0,
+      "median": 3354.0,
+      "min": 3354.0,
+      "n": 1
+     },
+     "sf_swipes": 6,
+     "sf_valid": [
+      true
+     ],
+     "swipes_at_edge": 0,
+     "swipes_during_updates": [
+      6
+     ],
+     "swipes_moved": 6,
+     "updates": {
+      "fps": {
+       "max": 33.95,
+       "median": 33.95,
+       "min": 33.95,
+       "n": 1
+      },
+      "frozen_pct": {
+       "max": 0.0,
+       "median": 0.0,
+       "min": 0.0,
+       "n": 1
+      },
+      "jank_pct": {
+       "max": 38.46,
+       "median": 38.46,
+       "min": 38.46,
+       "n": 1
+      },
+      "n": {
+       "max": 13.0,
+       "median": 13.0,
+       "min": 13.0,
+       "n": 1
+      },
+      "p95_ms": {
+       "max": 83.33,
+       "median": 83.33,
+       "min": 83.33,
+       "n": 1
+      }
+     },
+     "updates_all_p95_ms": {
+      "max": 33.33,
+      "median": 33.33,
+      "min": 33.33,
+      "n": 1
+     },
+     "updates_band": "poor",
+     "updates_bands": [
+      "poor"
+     ],
+     "updates_errors": [],
+     "updates_level": "fluid",
+     "updates_levels": [
+      "fluid"
+     ],
+     "viewport": [
+      [
+       [
+        960,
+        480
+       ],
+       1.5
+      ]
+     ]
+    },
+    "typical": {
+     "by_position": {
+      "2": [
+       {
+        "inp_ms": 72,
+        "latency_p95_ms": 101.9,
+        "load_ms": 5158,
+        "scroll_fps": 33.82,
+        "scroll_level": "slow",
+        "scroll_p95_ms": 83.33,
+        "updates_level": "fluid"
+       }
+      ]
+     },
+     "camera_level": null,
+     "camera_levels": [],
+     "camera_runs": [],
+     "cards": [
+      50
+     ],
+     "clock_rtt_ms": [
+      7
+     ],
+     "fcp_ms": null,
+     "first_scroll_ms": {
+      "max": 29.0,
+      "median": 29.0,
+      "min": 29.0,
+      "n": 1
+     },
+     "inp_ms": {
+      "max": 72.0,
+      "median": 72.0,
+      "min": 72.0,
+      "n": 1
+     },
+     "input_method": [
+      "event-timing"
+     ],
+     "latency_median_ms": {
+      "max": 78.5,
+      "median": 78.5,
+      "min": 78.5,
+      "n": 1
+     },
+     "latency_p95_ms": {
+      "max": 101.9,
+      "median": 101.9,
+      "min": 101.9,
+      "n": 1
+     },
+     "load_errors": [],
+     "load_ms": {
+      "max": 5158.0,
+      "median": 5158.0,
+      "min": 5158.0,
+      "n": 1
+     },
+     "nodes": [
+      2839
+     ],
+     "paint_to_screen_ms": null,
+     "positions": [
+      2
+     ],
+     "scroll": {
+      "fps": {
+       "max": 33.82,
+       "median": 33.82,
+       "min": 33.82,
+       "n": 1
+      },
+      "frozen_pct": {
+       "max": 0.0,
+       "median": 0.0,
+       "min": 0.0,
+       "n": 1
+      },
+      "jank_pct": {
+       "max": 35.75,
+       "median": 35.75,
+       "min": 35.75,
+       "n": 1
+      },
+      "n": {
+       "max": 179.0,
+       "median": 179.0,
+       "min": 179.0,
+       "n": 1
+      },
+      "p95_ms": {
+       "max": 83.33,
+       "median": 83.33,
+       "min": 83.33,
+       "n": 1
+      }
+     },
+     "scroll_band": "poor",
+     "scroll_bands": [
+      "poor"
+     ],
+     "scroll_errors": [],
+     "scroll_level": "slow",
+     "scroll_levels": [
+      "slow"
+     ],
+     "scroll_limited_by": [
+      "main-thread"
+     ],
+     "scroll_raf_only": [
+      false
+     ],
+     "scroll_sources": [
+      "raf"
+     ],
+     "scrolled_px": {
+      "max": 3374.0,
+      "median": 3374.0,
+      "min": 3374.0,
+      "n": 1
+     },
+     "sf_swipes": 6,
+     "sf_valid": [
+      true
+     ],
+     "swipes_at_edge": 0,
+     "swipes_during_updates": [
+      6
+     ],
+     "swipes_moved": 6,
+     "updates": {
+      "fps": {
+       "max": 29.07,
+       "median": 29.07,
+       "min": 29.07,
+       "n": 1
+      },
+      "frozen_pct": {
+       "max": 0.0,
+       "median": 0.0,
+       "min": 0.0,
+       "n": 1
+      },
+      "jank_pct": {
+       "max": 60.0,
+       "median": 60.0,
+       "min": 60.0,
+       "n": 1
+      },
+      "n": {
+       "max": 15.0,
+       "median": 15.0,
+       "min": 15.0,
+       "n": 1
+      },
+      "p95_ms": {
+       "max": 116.67,
+       "median": 116.67,
+       "min": 116.67,
+       "n": 1
+      }
+     },
+     "updates_all_p95_ms": {
+      "max": 33.33,
+      "median": 33.33,
+      "min": 33.33,
+      "n": 1
+     },
+     "updates_band": "poor",
+     "updates_bands": [
+      "poor"
+     ],
+     "updates_errors": [],
+     "updates_level": "fluid",
+     "updates_levels": [
+      "fluid"
+     ],
+     "viewport": [
+      [
+       [
+        960,
+        480
+       ],
+       1.5
+      ]
+     ]
+    }
+   },
+   "warmups": [
+    null
+   ]
+  }
+ },
+ "measured_on": "2026-11-13",
+ "notes": {
+  "causes": [
+   "The page's main thread is the likely limit: on typical and heavy the page's own frames (rAF) come slower than the screen's; untouched on typical, the app keeps 46% of a core busy.",
+   "Memory is not the limit: the app's peak is 748 MB of 988 MB."
+  ],
+  "good": "Live updates are at least fluid on every dashboard; on light, taps and opening a view are good and scrolling is fluid; on typical, taps are good.",
+  "limits": "Typical and heavy dashboards are held back by taps (232 ms on heavy), scrolling (33.8 fps on typical) and opening a view (5.2 s on typical); a restart takes 11.8 s to a usable dashboard, 9.0 s of it after the engine was ready; the cameras weren't measured.",
+  "rubric": 6,
+  "text": "Live updates are at least fluid on every dashboard; on light, taps and opening a view are good and scrolling is fluid; on typical, taps are good. Typical and heavy dashboards are held back by taps (232 ms on heavy), scrolling (33.8 fps on typical) and opening a view (5.2 s on typical); a restart takes 11.8 s to a usable dashboard, 9.0 s of it after the engine was ready; the cameras weren't measured. The page's main thread is the likely limit: on typical and heavy the page's own frames (rAF) come slower than the screen's; untouched on typical, the app keeps 46% of a core busy. Memory is not the limit: the app's peak is 748 MB of 988 MB. Provisional: the pages ran protocol 4; this rubric is for protocol 5."
+ },
+ "protocol_version": 4,
+ "ram": {
+  "budget": {
+   "budget": {
+    "app_pss_max_pct_of_ram": 50,
+    "device_available_min_pct": 15
+   },
+   "checks": {
+    "app_pss_peak": {
+     "budget_kb": 1011598,
+     "ok": true,
+     "value_kb": 765697
+    },
+    "device_available_min": {
+     "budget_kb": 303479,
+     "ok": true,
+     "value_kb": 838704
+    }
+   },
+   "ok": true
+  },
+  "graded_peak": {
+   "app_pss_kb": 765697,
+   "app_rss_hwm_kb": 1122628,
+   "by_role_pss_kb": {
+    "crashhelper": 9142,
+    "gpu": 244383,
+    "main": 203134,
+    "tab": 309510
+   },
+   "mem_available_min_kb": 839644,
+   "samples": 3
+  },
+  "pane_budget": {
+   "assist": {
+    "budget_kb": 49152,
+    "measurable": false,
+    "ok": null,
+    "tolerance_kb": null,
+    "value_kb": 1369
+   },
+   "sendspin": {
+    "budget_kb": 49152,
+    "measurable": false,
+    "ok": null,
+    "tolerance_kb": null,
+    "value_kb": 539
+   }
+  },
+  "panes": [
+   {
+    "boot_pss_kb": null,
+    "boot_samples_off": 0,
+    "boot_samples_on": 0,
+    "by_role_pss_kb": {
+     "crashhelper": -2,
+     "gpu": -1674,
+     "main": -227,
+     "tab": 3272
+    },
+    "cpu_measurable": false,
+    "cpu_pct_of_core": -0.08,
+    "cpu_tolerance_pct": null,
+    "excluded": 0,
+    "id": "assist",
+    "method": "on-alone",
+    "pss_kb": 1369,
+    "pss_measurable": false,
+    "pss_tolerance_kb": null,
+    "samples_off": 1,
+    "samples_on": 1,
+    "verified": false
+   },
+   {
+    "boot_pss_kb": null,
+    "boot_samples_off": 0,
+    "boot_samples_on": 0,
+    "by_role_pss_kb": {
+     "crashhelper": 37,
+     "gpu": -766,
+     "main": 779,
+     "tab": 489
+    },
+    "cpu_measurable": false,
+    "cpu_pct_of_core": 0.64,
+    "cpu_tolerance_pct": null,
+    "excluded": 0,
+    "id": "sendspin",
+    "method": "on-alone",
+    "pss_kb": 539,
+    "pss_measurable": false,
+    "pss_tolerance_kb": null,
+    "samples_off": 1,
+    "samples_on": 1,
+    "verified": false
+   }
+  ],
+  "panes_waiting": [
+   {
+    "id": "diagnostics",
+    "waiting_on": "#67"
+   },
+   {
+    "id": "radio",
+    "note": "its processes run outside the app and are measured in place",
+    "waiting_on": "#67"
+   },
+   {
+    "id": "time-zone",
+    "waiting_on": "#67"
+   },
+   {
+    "id": "timers",
+    "note": "comes only with the voice assistant, so it is inside assist's share",
+    "waiting_on": "#67"
+   },
+   {
+    "id": "wall-base",
+    "waiting_on": "#67"
+   }
+  ],
+  "reference_idle": {
+   "app_pss_kb": {
+    "max": 765083.0,
+    "median": 765083.0,
+    "min": 765083.0,
+    "n": 1
+   },
+   "by_role_pss_kb": {
+    "crashhelper": {
+     "max": 9142.0,
+     "median": 9142.0,
+     "min": 9142.0,
+     "n": 1
+    },
+    "gpu": {
+     "max": 220893.0,
+     "median": 220893.0,
+     "min": 220893.0,
+     "n": 1
+    },
+    "main": {
+     "max": 198119.0,
+     "median": 198119.0,
+     "min": 198119.0,
+     "n": 1
+    },
+    "tab": {
+     "max": 336929.0,
+     "median": 336929.0,
+     "min": 336929.0,
+     "n": 1
+    }
+   },
+   "cpu_app_pct_of_core": {
+    "max": 45.99,
+    "median": 45.99,
+    "min": 45.99,
+    "n": 1
+   },
+   "device_used_pct": {
+    "max": 58.55,
+    "median": 58.55,
+    "min": 58.55,
+    "n": 1
+   },
+   "main_kb": {
+    "code_kb": {
+     "max": 19596.0,
+     "median": 19596.0,
+     "min": 19596.0,
+     "n": 1
+    },
+    "graphics_kb": {
+     "max": 29932.0,
+     "median": 29932.0,
+     "min": 29932.0,
+     "n": 1
+    },
+    "java_heap_kb": {
+     "max": 9512.0,
+     "median": 9512.0,
+     "min": 9512.0,
+     "n": 1
+    },
+    "native_heap_kb": {
+     "max": 24596.0,
+     "median": 24596.0,
+     "min": 24596.0,
+     "n": 1
+    },
+    "private_other_kb": {
+     "max": 87120.0,
+     "median": 87120.0,
+     "min": 87120.0,
+     "n": 1
+    },
+    "stack_kb": {
+     "max": 28.0,
+     "median": 28.0,
+     "min": 28.0,
+     "n": 1
+    },
+    "system_kb": {
+     "max": 28252.0,
+     "median": 28252.0,
+     "min": 28252.0,
+     "n": 1
+    },
+    "total_pss_kb": {
+     "max": 199036.0,
+     "median": 199036.0,
+     "min": 199036.0,
+     "n": 1
+    }
+   },
+   "samples": 1
+  },
+  "screen_off_samples": []
+ },
+ "runs_attempted": 1,
+ "schema": "glassworks.perf/4",
+ "thermal": [
+  {
+   "phase": "start",
+   "zones": {
+    "cpu_thermal_zone": 56.7,
+    "ddr_thermal_zone": 53.6,
+    "gpu_thermal_zone": 51.6
+   }
+  },
+  {
+   "phase": "refstart-1",
+   "zones": {
+    "cpu_thermal_zone": 48.2,
+    "ddr_thermal_zone": 46.7,
+    "gpu_thermal_zone": 46.1
+   }
+  },
+  {
+   "phase": "ref-panes-off-1",
+   "zones": {
+    "cpu_thermal_zone": 57.6,
+    "ddr_thermal_zone": 55.7,
+    "gpu_thermal_zone": 53.8
+   }
+  },
+  {
+   "phase": "ref-assist-on-1",
+   "zones": {
+    "cpu_thermal_zone": 59.6,
+    "ddr_thermal_zone": 57.1,
+    "gpu_thermal_zone": 54.1
+   }
+  },
+  {
+   "phase": "ref-sendspin-on-1",
+   "zones": {
+    "cpu_thermal_zone": 59.5,
+    "ddr_thermal_zone": 56.4,
+    "gpu_thermal_zone": 54.4
+   }
+  },
+  {
+   "phase": "end",
+   "zones": {
+    "cpu_thermal_zone": 57.0,
+    "ddr_thermal_zone": 56.3,
+    "gpu_thermal_zone": 52.2
+   }
+  }
+ ]
+}
