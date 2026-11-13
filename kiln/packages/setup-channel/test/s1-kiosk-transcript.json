@@ -47,7 +47,8 @@
               "repeater": true
             }
           ],
-          "helper": false
+          "helper": false,
+          "answered": false
         }
       }
     }
@@ -102,7 +103,8 @@
               "repeater": true
             }
           ],
-          "helper": false
+          "helper": false,
+          "answered": false
         }
       }
     }
@@ -156,7 +158,8 @@
               "repeater": true
             }
           ],
-          "helper": false
+          "helper": false,
+          "answered": false
         }
       }
     }
@@ -223,7 +226,8 @@
               "repeater": true
             }
           ],
-          "helper": false
+          "helper": false,
+          "answered": true
         }
       }
     }

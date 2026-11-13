@@ -41,7 +41,7 @@ function setupStream(net: Net): ByteStream {
     ip: net.online ? IP : undefined,
     ha: { discovered: 'http://homeassistant.local:8123', url: '', signedIn: false, signinUrl: `http://${IP}:8099/signin` },
     radio: {
-      mode: 'off', status: 'Off: radio idle', helper: true,
+      mode: 'off', status: 'Off: radio idle', helper: true, answered: false,
       options: [
         { id: 'off', label: 'Off', detail: 'The radio stays idle. Choose this if you don\'t use Zigbee or Thread here.' },
         { id: 'zigbee_tcp', label: 'Zigbee coordinator', detail: 'Home Assistant runs a Zigbee network (ZHA) on this panel\'s radio, over the network.' },
@@ -61,6 +61,7 @@ function setupStream(net: Net): ByteStream {
         if (m.op === 'set_ha') { state.ha.url = m.url; setTimeout(() => { state.ha.signedIn = true; send({ event: 'state', state }); }, 6000); }
         if (m.op === 'set_radio') {
           state.radio.mode = m.mode!;
+          state.radio.answered = true;
           state.radio.status = m.mode === 'off' ? 'Off: radio idle' : 'ok Zigbee coordinator (TCP): listening on :6638 (waiting for Home Assistant to connect over ESPHome)';
           state.radio.allowed = m.mode === 'off' ? undefined : '';
         }

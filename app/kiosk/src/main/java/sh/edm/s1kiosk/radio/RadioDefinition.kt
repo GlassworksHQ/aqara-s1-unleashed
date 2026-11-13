@@ -184,6 +184,7 @@ class RadioDefinition(
             status = r?.statusText() ?: "The radio controller isn't running yet",
             helper = helperInstalled(),
             allowed = r?.allowedNow(),
+            answered = step.done(),
         )
     }
 
@@ -199,6 +200,12 @@ class RadioDefinition(
         val mode = RadioMode.fromId(id)?.takeIf { m -> RadioStep.OPTIONS.any { it.mode == m } }
             ?: return "Unknown radio mode '$id'."
         val r = readout.controller() ?: return CHANNEL_NOT_RUNNING
+        // Kiln's "keep Off" on a fresh panel: a request would restart the helper for nothing.
+        if (mode == r.mode && RadioStep.classify(mode, true, r.statusText()) == RadioStep.Result.OK) {
+            Log.i(TAG, "radio mode ${mode.label} kept by the installer")
+            stepDone = true
+            return null
+        }
         val accepted = AtomicBoolean(false)
         val handled = CountDownLatch(1)
         Log.i(TAG, "radio mode ${mode.label} from $source")
@@ -376,14 +383,16 @@ class RadioDefinition(
          * channel.ts `SetupState.radio`. [allowed]: who the helper's firewall lets reach the radio's TCP
          * services (EZSP :6638, OTBR REST :8081): "any", "" (nobody but the panel yet: Home Assistant
          * hasn't connected), or space-separated addresses/CIDRs. Left out when unknown: Off, no helper,
-         * or a helper without the firewall.
+         * or a helper without the firewall. [answered]: the panel's radio step is answered (Kiln then
+         * leaves a kept mode alone).
          */
-        fun channelJson(mode: String, status: String, helper: Boolean, allowed: String? = null): JSONObject = JSONObject().apply {
+        fun channelJson(mode: String, status: String, helper: Boolean, allowed: String? = null, answered: Boolean? = null): JSONObject = JSONObject().apply {
             put("mode", mode)
             put("status", status)
             put("options", channelOptions())
             put("helper", helper)
             allowed?.let { put("allowed", it) }
+            answered?.let { put("answered", it) }
         }
     }
 }
