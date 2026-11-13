@@ -677,7 +677,8 @@ Assistant:
    the app and of GeckoView; an ARM APK on an x86_64 image runs through translation, whose memory
    isn't the panel's.
 2. Gecko's GPU process holds a large part of the app's PSS (about 210 MB of 700 MB on the S1, s1v6),
-   and that depends on the graphics driver: the emulator's is not the A133's Mali.
+   and that depends on the graphics driver: the emulator's is not the S1's PowerVR Rogue GE8300
+   (read on the panel 2026-11-12, [boot-animation.md](research/boot-animation.md)).
 3. The panes need what an emulator fakes or lacks: Assist a microphone and a voice pipeline,
    Sendspin a Music Assistant server and audio output, the radio its serial port and the root side.
    Their memory without those isn't their memory on a panel.
