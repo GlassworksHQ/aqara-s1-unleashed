@@ -21,3 +21,11 @@ it('a disabled link looks off, as a disabled button does', () => {
   expect(link[0]).toMatchObject({ opacity: rules('.btn:disabled')[0]!.opacity, cursor: 'default', 'text-decoration': 'none' });
   expect(css.indexOf('.link:disabled')).toBeGreaterThan(css.indexOf('.link:hover')); // after hover, so hovering doesn't underline it
 });
+
+it('the ember fill is for buttons only, and covers the button to its border', () => {
+  const filled = [...css.matchAll(/(?<=^|\})\s*([^{}]+?)\s*\{([^}]*--ember-gradient[^}]*)\}/g)];
+  expect(filled.map((m) => m[1])).toEqual(['.btn.ember']); // not the recovery player's current step
+  // the default padding-box origin repeats the gradient under the 1px transparent border: a sliver of
+  // the far colour at each end of the pill
+  expect(rules('.btn.ember')[0]!.background).toMatch(/border-box/);
+});

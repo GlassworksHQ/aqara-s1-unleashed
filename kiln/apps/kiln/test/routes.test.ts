@@ -79,7 +79,17 @@ describe('routes', () => {
     expect(fits(S.waiting, 'wifi')).toBe(true);
     expect(onState(S.waiting, 'radio')).toEqual({ kind: 'stay' });
     expect(onState(S.waiting, 'resume')).toEqual({ kind: 'replace', step: 'set-up' });
-    expect(onState(S.wifi, 'set-up')).toEqual({ kind: 'replace', step: 'wifi' });
+    expect(onState(S.wifi, 'set-up')).toEqual({ kind: 'push', step: 'wifi' }); // forward in set-up: Back returns to it
+  });
+
+  it('goes back through set-up on the same session, and adds history only going forward', () => {
+    const ha = run(initial(), { type: 'setup', setup: { phase: 'ha', ha: { signedIn: false } } });
+    expect(onNavigate(ha, true, 'wifi')).toEqual({ kind: 'enter', step: 'wifi', fresh: false });
+    expect(onNavigate(ha, true, 'set-up')).toEqual({ kind: 'enter', step: 'set-up', fresh: false });
+    expect(onState(ha, 'wifi')).toEqual({ kind: 'push', step: 'home-assistant' });
+    expect(onState(S.wifi, 'home-assistant')).toEqual({ kind: 'replace', step: 'wifi' }); // back: no new entry
+    expect(onNavigate(S.joining, true, 'set-up')).toEqual({ kind: 'replace', step: 'wifi' }); // a join in flight stays
+    expect(onNavigate(S.done, true, 'wifi')).toEqual({ kind: 'enter', step: 'wifi', fresh: true }); // after Done: a new session
   });
 
   it('follows the state when it moves on by itself', () => {

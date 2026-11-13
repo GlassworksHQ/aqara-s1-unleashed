@@ -7,6 +7,7 @@ import { Shell, useBrowserChip } from '../components/Shell';
 import type { FrameUi } from '../frames/aqara-s1-plus';
 import { Browser, Connect, Done, Failure, Firing, SetUp, Undo, YourTurn } from './screens';
 import type { Session } from './session';
+import { ROUTES, status } from './routes';
 import { milestones, rail, stackLevel, type WizardState } from './state';
 
 function announce(s: WizardState, frame: FrameUi): string {
@@ -17,7 +18,7 @@ function announce(s: WizardState, frame: FrameUi): string {
   return '';
 }
 
-export function Wizard({ session, frame }: { session: Session; frame: FrameUi }) {
+export function Wizard({ session, frame, base }: { session: Session; frame: FrameUi; base: string }) {
   const s = useSyncExternalStore(session.store.subscribe, session.store.get, session.store.get);
   const chip = useBrowserChip();
 
@@ -28,7 +29,8 @@ export function Wizard({ session, frame }: { session: Session; frame: FrameUi })
   const p = { s, session, frame };
   const unsupported = chip?.kind === 'bad';
   return (
-    <Shell steps={rail(s)} level={stackLevel(s)} error={s.screen === 'error'} chip={s.ask ? { kind: 'work', text: 'Your turn' } : chip}>
+    <Shell steps={rail(s)} level={stackLevel(s)} error={s.screen === 'error'} chip={s.ask ? { kind: 'work', text: 'Your turn' } : chip}
+      href={status(s) === 'idle' ? (r) => base + ROUTES[r] : undefined}>
       {unsupported ? <Browser />
         : s.screen === 'connect' ? <Connect {...p} />
         : s.screen === 'firing' ? <Firing {...p} />

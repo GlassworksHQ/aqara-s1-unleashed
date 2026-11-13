@@ -84,7 +84,7 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   `/dev/ttyS3` itself (relays, power, energy, protection), so `ha_master` and Aqara's cloud stay stopped.
   The LocalService path through `ha_master` remains as a fallback (`base_backend`). See
   [docs/research/bases.md](../docs/research/bases.md) and [docs/research/base-protocol.md](../docs/research/base-protocol.md).
-- **Native Music Assistant player (Sendspin)**: MA sees the panel as its own player "S1 Panel" and plays
+- **Native Music Assistant player (Sendspin)**: MA sees the panel as its own player "Glassworks Panel" and plays
   to it in sync with your other Sendspin speakers (groupable). It pairs automatically: HA hands MA the
   panel's pairing token over the ESPHome API. See below and [docs/sendspin.md](../docs/sendspin.md).
 - **Wi-Fi setup over Bluetooth (Improv via BLE)**: a panel with no network (30 s after boot), or one
@@ -238,7 +238,7 @@ while the screen is off, and talking to it wakes the screen. See [docs/esphome.m
 
 ```sh
 tools/voice/fetch-models.sh            # downloads the openWakeWord models on the host and adb-pushes them
-# HA: the panel is auto-discovered (Settings -> Devices & services -> ESPHome "S1 Panel" -> Add), or
+# HA: the panel is auto-discovered (Settings -> Devices & services -> ESPHome "Glassworks Panel" -> Add), or
 #     Add integration -> ESPHome -> <panel IP>, port 6053
 ```
 

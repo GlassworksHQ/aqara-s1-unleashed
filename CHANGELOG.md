@@ -23,11 +23,27 @@ below as the release notes.
   radio asks Zigbee or Thread and the role, then shows what to do in Home Assistant, where a Thread
   router can join Home Assistant's Thread network. A step that is already done says so with
   Continue, and the list on the left opens a step you've done.
+- **The panel is called Glassworks Panel, in Home Assistant too.** A panel you already added keeps all
+  its entity ids, so automations and dashboards keep working; Home Assistant shows the device under
+  the new name after the update, unless you renamed it yourself. On Home Assistant 2025.12 or later,
+  new entities take the device's name as Home Assistant shows it (`glassworks_panel`, or your own
+  name), and from 2026.8 the area's name can come first. On older versions they still start with
+  `s1_panel`.
+- **New pages on your phone when you scan the panel's code.** Signing in and sharing your Thread
+  network open a short page first that says what happens, then *Continue to Home Assistant*. They
+  follow your phone's light or dark mode.
 - **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
   page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
   Nothing in the sections changed.
 
 ### Added
+- **Kiln shows what the panel is doing while S1 Kiosk goes in.** On kiln.glassworks.dev the app's
+  install now lists each step as the panel goes through it: S1 Kiosk and the on-screen keyboard
+  going in, the home screen, your settings, and the first start. When it updates an app that's
+  already on the panel, it says the app restarting meanwhile is expected. The Wi-Fi step says
+  *Connected to <network>* when the panel is on Wi-Fi already, with another network as the other
+  choice. Back and the step list on the left go back through the
+  set-up steps without losing what you entered.
 - **Kiln's picker lists Generic Android as planned.** Next to the S1 and the Mirror, a card for any
   Android tablet or panel, which will install as a normal app without root. It can't be picked yet.
 - **The panel's health shows in Home Assistant.** The device page's *Diagnostic* section gets CPU
@@ -48,6 +64,14 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Kiln's Done always offers your backup.** After an install, Done shows the backup's download even
+  when set-up ran after leaving and coming back to the wizard, or after a reload. Before, it could
+  show no download, and the backup was only in that browser. When a browser blocks site storage,
+  Kiln no longer says "nothing was written" after a reload: it says it can't tell. Every screen now
+  has one main button, the recovery steps no longer look like buttons ("Remove the back cover"), and
+  the ends of the main buttons are no longer cut off. For a Thread router, Kiln points you to the
+  panel's *Join Home Assistant's Thread network* when its S1 Kiosk has it, instead of copying the
+  dataset; with an older S1 Kiosk, copying stays, under *More help*.
 - **Undo no longer puts our splash back as Aqara's.** If a panel's `boot` was put back without its
   splash and the panel was then installed again, that install's backup held a stock `boot` with our
   power-on splash, and undo restored our splash while saying the stock one was back. Both installers

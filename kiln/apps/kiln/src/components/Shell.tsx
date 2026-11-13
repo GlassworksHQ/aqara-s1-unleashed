@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Mark } from './Mark';
 import { Stack } from './Stack';
-import type { RailMark } from '../wizard/state';
+import type { RailStep } from '../wizard/state';
 
 export type Chip = { kind: 'ok' | 'work' | 'bad'; text: string };
 
@@ -19,8 +19,10 @@ export function useBrowserChip(): Chip | undefined {
   return chip;
 }
 
-export function Shell({ steps, level, error, chip, children }: {
-  steps: { name: string; mark: RailMark }[];
+export function Shell({ steps, level, error, chip, href, children }: {
+  steps: RailStep[];
+  /** where a set-up step on the rail goes back to; undefined while it can't (something runs) */
+  href?: (route: NonNullable<RailStep['sub']>[number]['route']) => string;
   level: number;
   error?: boolean;
   chip?: Chip;
@@ -46,9 +48,18 @@ export function Shell({ steps, level, error, chip, children }: {
         <nav className="rail" aria-label="Steps">
           <ol className="steps">
             {steps.map((s) => (
-              <li key={s.name} className={s.mark} aria-current={s.mark === 'now' || s.mark === 'turn' || s.mark === 'bad' ? 'step' : undefined}>
+              <li key={s.name} className={`${s.mark}${s.sub ? ' has-sub' : ''}`} aria-current={!s.sub && (s.mark === 'now' || s.mark === 'turn' || s.mark === 'bad') ? 'step' : undefined}>
                 <span className="mk" />
                 <span>{s.name}</span>
+                {s.sub && (
+                  <ol className="sub">
+                    {s.sub.map((x) => (
+                      <li key={x.name} className={x.mark} aria-current={x.mark === 'now' ? 'step' : undefined}>
+                        {x.mark === 'done' && href ? <Link href={href(x.route)}>{x.name}</Link> : <span>{x.name}</span>}
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </li>
             ))}
           </ol>

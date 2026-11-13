@@ -121,9 +121,17 @@ jobs:
         id: changed
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        # Fails closed like the branding job's: without a base commit to compare with (none, a
+        # force-pushed or garbage-collected one) or when git diff fails, the tests run.
         run: |
-          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ] \
-             || git diff --name-only "$BASE" HEAD -- tools/root tools/radio .github/workflows/pr.yml | grep -q .; then
+          paths="tools/root tools/radio .github/workflows/pr.yml"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "No base commit to compare with ($BASE); running the root-side tests."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif ! changed=$(git diff --name-only "$BASE" HEAD -- $paths); then
+            echo "git diff failed; running the root-side tests."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$changed" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "Nothing under tools/root or tools/radio changed; skipping the root-side tests."

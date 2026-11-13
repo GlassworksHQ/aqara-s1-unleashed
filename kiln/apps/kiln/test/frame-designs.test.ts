@@ -33,6 +33,7 @@ describe('frame designs', () => {
     expect(Object.keys(f.panes).sort()).toEqual([...PANE_IDS].sort());
     if (f.recovery) expect(existsSync(join(frames, id, 'design', f.recovery)), f.recovery).toBe(true);
     if (f.kiln) expect(f.kiln).toBe(`/${id}`);
+    if (f.kiln) expect(f.install.href, 'install.href on a frame Kiln installs').toBeUndefined();
     expect([f.model.sides.dark, f.model.sides.light, ...(f.model.parts ?? []).map((p) => p.color)].filter((c) => !COLOUR.test(c)), 'colours').toEqual([]);
     for (const aspect of [2, 0.8]) {
       const g = geometry(f.model, aspect);
