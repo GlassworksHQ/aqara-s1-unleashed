@@ -29,8 +29,6 @@ class PaneSwitch(
     /** The Home Assistant switch's name. */
     val entityName: String = title,
     val icon: String = "",
-    /** Home Assistant leaves the switch off until someone turns it on: a switch people set once (#132). */
-    val disabledByDefault: Boolean = true,
     /** The pane has a card on setup's Panes step. */
     val inSetup: Boolean = false,
 ) {
@@ -46,9 +44,12 @@ class PaneSwitch(
 
     fun extra() = IntentExtra.bool(key, default) { on = it }
 
-    /** A config switch. Every connection may use it, as every other pane setting. */
+    /**
+     * A config switch, off in Home Assistant until someone turns it on there: people set it once (#132,
+     * #208). Every connection may use it, as every other pane setting.
+     */
     fun entity() = SwitchEntity(
-        objectId, entityName, icon, EntityCategory.CONFIG, disabledByDefault = disabledByDefault,
+        objectId, entityName, icon, EntityCategory.CONFIG, disabledByDefault = true,
         get = { on }, set = { on = it },
     )
 }

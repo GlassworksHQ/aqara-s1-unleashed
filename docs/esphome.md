@@ -103,6 +103,107 @@ Where a new entity's id comes from depends on Home Assistant's version:
 The node name `s1-panel` never changes (`PanelDevice.NAME`, `PanelNameTest`): HA's config entry keeps
 it (`device_name`), the mDNS service is named after it, and HA up to 2025.11 makes new entity ids from it.
 
+### Categories and defaults
+
+Each entity has a category and a default, following the rule in
+[the pane rules](../app/kiosk/src/main/java/dev/glassworks/README.md#entities). An entity is enabled
+when HA first adds it only if people reach for it day to day. When HA adds a panel, 15 entities
+are on (22 with a two-channel switch base). The rest are created turned off. To turn one on, open
+**Settings → Devices & services → ESPHome → Glassworks Panel**, select *+N entities not shown*,
+open the entity, and turn on *Enabled*.
+
+| Entity | object_id | Pane | Category | Default | Why |
+|---|---|---|---|---|---|
+| Presence | `presence` | core | none | on | Automations |
+| Illuminance | `illuminance` | core | none | on | Automations |
+| Screen | `screen` | core | none | on | Dashboards and automations |
+| Speaker | `speaker` | core | none | on | Dashboards, Music Assistant, announcements |
+| Reload dashboard | `reload_dashboard` | core | none | on | Used often |
+| Restart app | `restart_app` | core | config | on | Used often |
+| Screen mode | `screen_mode` | core | config | on | Automations (night, away) |
+| App update | `app_update` | core | config | on | HA shows updates only while it is on |
+| IP address | `ip_address` | core | diagnostic | on | People check it |
+| Auto brightness | `auto_brightness` | core | config | off | Set once |
+| Idle timeout | `idle_timeout` | core | config | off | Set once |
+| Night idle timeout | `night_idle_timeout` | core | config | off | Set once |
+| Night window | `night_window` | core | config | off | Set once |
+| Presence range | `presence_range` | core | config | off | Set once, for the room |
+| Zoom | `zoom` | core | config | off | Set once |
+| Dashboard | `dashboard` | core | config | off | Set once. Turn it on to pick a dashboard; the panel has no picker of its own yet |
+| Dashboard URL | `dashboard_url` | core | config | off | Set once |
+| Hide HA header | `hide_ha_header` | core | config | off | Set once |
+| Open device settings | `open_settings` | core | config | off | Rare; you can open the menu on the panel |
+| Start Wi-Fi setup (Bluetooth) | `improv_ble` | core | config | off | Only when the panel changes network |
+| Sign out | `sign_out` | core | config | off | Rare |
+| App version | `app_version` | core | diagnostic | off | *App update* shows the version |
+| Update status | `update_status` | core | diagnostic | off | *App update* shows progress; for troubleshooting |
+| Home Assistant URL | `home_assistant_url` | core | diagnostic | off | Troubleshooting |
+| Signed in | `signed_in` | core | diagnostic | off | Troubleshooting |
+| CPU usage, CPU temperature, Wi-Fi signal, Uptime | `cpu_usage`, `cpu_temperature`, `wifi_signal`, `uptime` | diagnostics | diagnostic | on | The few health values people check ([Diagnostics](#diagnostics)) |
+| Diagnostics | `diagnostics` | diagnostics | config | off | Set once: the pane's on/off |
+| App CPU usage, RAM available, App RAM, Storage free, Wi-Fi link speed, App uptime, Web content processes, Last restart reason | `app_cpu_usage`, `memory_available`, `app_memory`, `storage_free`, `wifi_link_speed`, `app_uptime`, `web_content_processes`, `last_restart_reason` | diagnostics | diagnostic | off | Troubleshooting (unchanged since #142) |
+| Voice | `voice` | voice | config | off | Set once: the pane's on/off ([Panes on and off](#panes-on-and-off)) |
+| Mute microphone | `mute_microphone` | voice | config | on | Privacy, toggled day to day |
+| Wake sound | `wake_sound` | voice | config | off | Set once |
+| Voice overlay | `voice_overlay` | voice | config | off | Set once |
+| Mic gain | `mic_gain` | voice | config | off | Set once |
+| Wake word threshold | `wake_word_threshold` | voice | config | off | Set once |
+| Music Assistant player (Sendspin) | `sendspin` | music | config | off | Set once |
+| Music Assistant player status | `sendspin_status` | music | diagnostic | off | Troubleshooting |
+| Radio status | `radio_status` | radio | diagnostic | on | People check it when they use the radio |
+| Radio mode | `radio_mode` | radio | config | off | Set once |
+| Zigbee stack | `zigbee_stack` | radio | config | off | Set once |
+| Radio allowed clients | `radio_allowed_clients` | radio | config | off | Set once |
+| Radio firmware image, Flash radio firmware | `radio_firmware_image`, `radio_firmware_flash` | radio | config | off | Rare, and risky |
+| Join / Leave Zigbee network | `zigbee_router_join`, `zigbee_router_leave` | radio | config | off | Once per network |
+| Join Home Assistant's Thread network, Leave Thread network | `thread_join_ha`, `thread_leave` | radio | config | off | Once per network |
+| Thread dataset | `thread_dataset` | radio | config | off | Once per network |
+| Thread join | `thread_join` | radio | diagnostic | off | Only during a join |
+| Radio helper, Radio firmware | `radio_helper`, `radio_firmware` | radio | diagnostic | off | Troubleshooting |
+| Keep time zone | `keep_time_zone` | time zone | config | off | Set once: the pane's on/off |
+| Time zone | `time_zone` | time zone | config | off | Set once |
+| Time zone status | `time_zone_status` | time zone | diagnostic | off | Troubleshooting |
+| Wall base | `wall_base` | wall base | config | off | Set once: the pane's on/off |
+| Block Aqara cloud | `block_aqara_cloud` | wall base | config | off | Set once |
+| Aqara cloud daemon | `aqara_cloud` | wall base | diagnostic | off | Troubleshooting |
+| Base | `base` | wall base | diagnostic | off | Troubleshooting; the base's own entities show what is mounted |
+| Base firmware | `base_firmware` | wall base | diagnostic | off | Troubleshooting |
+| Base relay N, Base button N, Base power, Base energy | `base_relay_N`, `base_button_N`, `base_power`, `base_energy` | wall base | none | on | The reason to mount a base |
+| Base protection | `base_protection` | wall base | diagnostic | on | Overheat and overload; people automate on it. It had no category before #132 |
+
+HA adds its own voice entities (*Assist satellite*, *Assist pipeline*, *Wake word*, *Finished speaking
+detection*). The panel doesn't send those, so their defaults are HA's.
+
+The pin goldens (`panel-entities*.golden.txt`) end a line with `disabledByDefault` when the entity is
+off by default, so a review shows every new entity's default.
+
+#### A panel that HA already has
+
+HA reads `disabled_by_default` only when it first registers an entity. Read 2026-11-13 from
+home-assistant/core 2026.11.1:
+
+- `esphome/entity.py`:616 turns `disabled_by_default` into `entity_registry_enabled_default`, and
+  :623-626 maps `entity_category`. Both are read again on every listing.
+- `helpers/entity_platform.py`:1108-1109 makes that `disabled_by=INTEGRATION`, and passes it with the
+  category to `async_get_or_create`.
+- `helpers/entity_registry.py`:1650-1666: for an entity already in the registry, `async_get_or_create`
+  updates the category, the name and the icon but not `disabled_by`. Its docstring (:1634) says
+  `disabled_by` "does not affect an existing entity".
+- An entity HA deleted and later sees again gets back the enabled state it had before
+  (`entity_registry.py`:1694, :1836).
+
+So on a panel HA already has:
+
+| What | After the update |
+|---|---|
+| Entities that were on | Stay on, with the same entity id, area and name |
+| Entities you turned off | Stay off |
+| Category | Follows the panel: *Base protection* moves to the device page's *Diagnostic* section. No other category changes |
+| Entities that appear later (a new pane, a wall base mounted after the update) | Get the new default when HA first sees them |
+| Removing the panel from HA and adding it back | Each entity gets back the state it had, while HA still remembers the deleted entities |
+
+### What each entity does
+
 | Entity | object_id | What it does |
 |---|---|---|
 | light `Screen` | `screen` | on → wake the screen, off → screen off (`ScreenPolicy.wake/sleep`); brightness sets a fixed brightness and turns *Auto brightness* off |
@@ -161,13 +262,13 @@ Plus `Block Aqara cloud` and `Aqara cloud daemon` ([below](#aqara-cloud)), the w
 Each pane has a config switch that turns it on or off while the panel runs (#67). The settings menu
 (the switch at the top of the pane's page), setup's Panes step and the adb extras set the same
 setting. A pane that is off keeps its entities, with no state where it has none to give, so the
-entity list doesn't change. The new switches are off in Home Assistant until you turn them on on
-the device page (#132): people set them once.
+entity list doesn't change. Each switch is a config entity, off in Home Assistant until you turn it
+on on the device page ([Categories and defaults](#categories-and-defaults)): people set them once.
 
 | Entity | object_id | Pane | adb extra | Enabled in HA by default |
 |---|---|---|---|---|
 | switch `Voice` | `voice` | the voice assistant and timers | `voice_enabled` | no |
-| switch `Music Assistant player (Sendspin)` | `sendspin` | Sendspin (the same entity as before) | `sendspin_enabled` | yes, as before |
+| switch `Music Assistant player (Sendspin)` | `sendspin` | Sendspin (the same entity as before) | `sendspin_enabled` | no |
 | switch `Wall base` | `wall_base` | the wall base driver; off closes the port, and Aqara's daemon may run again unless `Block Aqara cloud` is on | `wall_base_enabled` | no |
 | switch `Keep time zone` | `keep_time_zone` | the time zone; off lets the root helper stop keeping the zone, and on keeps it again | `time_zone_enabled` | no |
 | switch `Diagnostics` | `diagnostics` | the diagnostic sensors; off stops the sampling | `diagnostics_enabled` | no |
@@ -219,7 +320,7 @@ Only *Base* is always present; the rest exist only while a matching base is dete
 | switch `Base relay N` | `base_relay_1`..`3` | switch base, per channel | writes `4.N.85` = 0/1. UART: the ack (else a re-read) confirms it; LocalService: re-reads |
 | sensor `Base power` (W, power, measurement) | `base_power` | switch base | `0.12.85` |
 | sensor `Base energy` (total_increasing, no unit) | `base_energy` | switch base | `0.13.85`. UART: integrated in the app from power, Wh (as libha_bracket does); LocalService: ha_master's value |
-| text_sensor `Base protection` | `base_protection` | switch base | `8.0.2014`: `normal`, `over_temperature`, `over_load`, `over_temperature_error`, `over_load_error`, `over_temperature_removed`, `over_load_removed` |
+| text_sensor `Base protection` (diagnostic) | `base_protection` | switch base | `8.0.2014`: `normal`, `over_temperature`, `over_load`, `over_temperature_error`, `over_load_error`, `over_temperature_removed`, `over_load_removed` |
 | event `Base button N` (button) | `base_button_1`..`3` | switch base, per channel | `13.N.85` clicks (LocalService only; the UART protocol has no click frames); event types `single`, `double`, `triple`, `long`, `release`, `unknown` (mapping unverified, raw value logged) |
 
 On a panel added before #63 the entity ids are `switch.s1_panel_base_relay_1`,

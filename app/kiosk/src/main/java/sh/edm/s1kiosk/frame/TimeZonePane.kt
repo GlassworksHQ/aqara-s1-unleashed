@@ -23,14 +23,14 @@ class TimeZonePane(
     private val entities = listOf(
         // Authenticated only: the zone is written to a property the root helper applies.
         TextEntity(
-            "time_zone", "Time zone", "mdi:map-clock", maxLength = 64, pattern = "^[A-Za-z0-9_+/-]*$",
+            "time_zone", "Time zone", "mdi:map-clock", disabledByDefault = true, maxLength = 64, pattern = "^[A-Za-z0-9_+/-]*$",
             get = { keeper.text() },
             set = { v ->
                 keeper.set(v)?.let { Log.w(TimeZoneKeeper.TAG, "Time zone: $it") }
                 ctx.publishStates()
             },
         ).apply { authOnly = true },
-        TextSensorEntity("time_zone_status", "Time zone status", "mdi:clock-check-outline", EntityCategory.DIAGNOSTIC, get = { keeper.statusText() }),
+        TextSensorEntity("time_zone_status", "Time zone status", "mdi:clock-check-outline", EntityCategory.DIAGNOSTIC, disabledByDefault = true, get = { keeper.statusText() }),
     )
 
     override fun entities(): List<ApiEntity> = entities

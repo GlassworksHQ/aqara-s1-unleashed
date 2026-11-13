@@ -146,11 +146,34 @@ The ESPHome device is an API, not the settings screen. Keep the list a person se
 - A pane adds at most a handful of uncategorised entities.
 - **Enabled by default only if people reach for it day to day.** "Restart app" is on: people use
   it. "Radio mode" is off: you set it once. Everything else gets `disabledByDefault = true`. HA
-  creates it, leaves it off and doesn't record it. Anyone can turn it on from the device page, and
+  creates it and leaves it off, so it doesn't show on the device's cards. Anyone can turn it on from the device page, and
   the panel's settings menu and Manage page can always change it.
 - A pane that's off keeps its entities for now, with no state where it has none to give (#67), so
   the list doesn't change. Whether an off pane should remove them waits on a panel test of what Home
   Assistant then does with them (#67, #132).
+
+How to apply it in code:
+
+1. Pick the category from the table: what people look at or automate on gets none, settings get
+   `EntityCategory.CONFIG`, health and versions get `EntityCategory.DIAGNOSTIC`.
+2. Pass `disabledByDefault = true` to the entity's constructor unless people use it day to day. A
+   setting you change once, a one-off action (join, flash, sign out) and a value only troubleshooting
+   needs are off. An update entity stays on: HA shows updates only while it is on.
+3. Regenerate the pin goldens. A line ends with `disabledByDefault` when the entity is off, so the
+   review shows the choice.
+
+HA uses `disabledByDefault` only when it first registers the entity. Changing it later doesn't
+change a panel HA already has; changing the category does
+([esphome.md](../../../../../../../docs/esphome.md#a-panel-that-ha-already-has)). Decide it when you
+add the entity.
+
+**A pane's own on/off switch (#67)** is a `SwitchEntity` with `EntityCategory.CONFIG` and
+`disabledByDefault = true`: you set it once, from the panel's settings or the device page. It stays
+in the list while the pane is off, so turning the pane back on doesn't need HA to list the panel's
+entities again.
+
+Every S1 entity, with its category, default and reason:
+[esphome.md](../../../../../../../docs/esphome.md#categories-and-defaults).
 
 ### Example: the camera pane
 
@@ -322,15 +345,15 @@ The default is on for the S1's panes, as before the switch.
   let `stop` free them. `stop` also runs when the app stops, so a pane that must undo something only
   when it is turned off does it on its own `SettingChanged`.
 - **From one switch the core makes:** the switch at the top of the pane's settings page, its card on
-  setup's Panes step (`inSetup`), a Home Assistant config switch (`objectId`, off by default in HA
-  unless people use it every day, #132), and the adb extra `--ez <key> true|false`.
+  setup's Panes step (`inSetup`), a Home Assistant config switch (`objectId`, always off by default
+  in HA: people set it once, #132, #208), and the adb extra `--ez <key> true|false`.
 - **Voice** is the one pane the device info names: its switch sets the voice features Home Assistant
   reads, so turning it on or off asks Home Assistant to reconnect.
 
 | Pane | Key | HA switch | Setup card |
 |---|---|---|---|
 | Voice (`assist`) | `voice_enabled` | `voice` | yes |
-| Music (`sendspin`) | `sendspin_enabled` | `sendspin` (as before, on in HA) | yes |
+| Music (`sendspin`) | `sendspin_enabled` | `sendspin` (the entity it always had) | yes |
 | Wall base (`wall-base`) | `wall_base_enabled` | `wall_base` | yes |
 | Time zone (`time-zone`) | `time_zone_enabled` | `keep_time_zone` | no |
 | Diagnostics (`diagnostics`) | `diagnostics_enabled` | `diagnostics` | no |

@@ -88,19 +88,19 @@ class AssistPane(
         ),
         SwitchEntity(
             "wake_sound", "Wake sound", "mdi:bell-ring-outline", EntityCategory.CONFIG,
-            get = { prefs.wakeSound }, set = { prefs.wakeSound = it },
+            disabledByDefault = true, get = { prefs.wakeSound }, set = { prefs.wakeSound = it },
         ),
         SwitchEntity(
             "voice_overlay", "Voice overlay", "mdi:message-badge-outline", EntityCategory.CONFIG,
-            get = { prefs.overlay }, set = { prefs.overlay = it },
+            disabledByDefault = true, get = { prefs.overlay }, set = { prefs.overlay = it },
         ),
         NumberEntity(
-            "mic_gain", "Mic gain", "mdi:microphone-plus", min = 0.5f, max = 4f, step = 0.1f, unit = "x",
+            "mic_gain", "Mic gain", "mdi:microphone-plus", disabledByDefault = true, min = 0.5f, max = 4f, step = 0.1f, unit = "x",
             get = { prefs.micGain }, set = { prefs.micGain = it },
         ),
         // microWakeWord's cutoffs go up to 0.97 (WakeWords.MICRO), openWakeWord's default is 0.5.
         NumberEntity(
-            "wake_word_threshold", "Wake word threshold", "mdi:account-voice", min = 0.1f, max = 0.99f, step = 0.01f,
+            "wake_word_threshold", "Wake word threshold", "mdi:account-voice", disabledByDefault = true, min = 0.1f, max = 0.99f, step = 0.01f,
             get = { prefs.threshold }, set = { prefs.threshold = it },
         ),
     )

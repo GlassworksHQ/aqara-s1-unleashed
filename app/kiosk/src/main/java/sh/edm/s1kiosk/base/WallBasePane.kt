@@ -45,11 +45,11 @@ class WallBasePane(
     private val cloudEntities = listOf(
         SwitchEntity(
             "block_aqara_cloud", "Block Aqara cloud", "mdi:cloud-off-outline", EntityCategory.CONFIG,
-            get = { prefs.blockAqaraCloud }, set = { prefs.blockAqaraCloud = it },
+            disabledByDefault = true, get = { prefs.blockAqaraCloud }, set = { prefs.blockAqaraCloud = it },
         ),
         TextSensorEntity(
             "aqara_cloud", "Aqara cloud daemon", "mdi:cloud-outline", EntityCategory.DIAGNOSTIC,
-            get = { aqaraCloudStatus },
+            disabledByDefault = true, get = { aqaraCloudStatus },
         ),
     )
 

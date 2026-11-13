@@ -11,11 +11,11 @@ class SendspinDefinition(file: SharedPreferences) : PaneDefinition {
 
     private val prefs = SendspinPrefs(file)
 
-    // The Home Assistant switch the panel has always had: its id, name and icon stay, and it stays on by default.
+    // The Home Assistant switch the panel has always had: its id, name and icon stay.
     override val switch = PaneSwitch(
         file, SendspinPrefs.KEY_ENABLED, default = true, title = "Music", detail = "A Sendspin speaker",
         objectId = "sendspin", entityName = "Music Assistant player (Sendspin)", icon = "mdi:speaker-wireless",
-        disabledByDefault = false, inSetup = true,
+        inSetup = true,
     )
 
     override val extras = listOf(

@@ -35,12 +35,12 @@ class PaneSwitchesTest {
         )
     }
 
-    /** Ids are permanent in Home Assistant. Only `sendspin` existed, and keeps its name and stays on (#132 for the new ones). */
+    /** Ids are permanent in Home Assistant. Only `sendspin` existed, and keeps its name. Each is off in HA until turned on there (#132, #208). */
     @Test fun eachSwitchIsAConfigEntityHomeAssistantKeeps() {
         val s = definitions.mapNotNull { it.switch }.map { it.entity() }
         assertEquals(listOf("voice", "sendspin", "wall_base", "keep_time_zone", "diagnostics"), s.map { it.objectId })
         assertEquals("Music Assistant player (Sendspin)", s[1].name)
-        assertEquals(listOf(true, false, true, true, true), s.map { it.disabledByDefault })
+        assertEquals(List(5) { true }, s.map { it.disabledByDefault })
         assertEquals(setOf(sh.edm.esphome.EntityCategory.CONFIG), s.map { it.category }.toSet())
     }
 
