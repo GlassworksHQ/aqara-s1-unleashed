@@ -31,8 +31,9 @@ because go2rtc has been built into HA since 2024.11 (#202). Before grading WebRT
      WebRTC started, not that it drew the frames: with go2rtc, HA's frontend shows HLS until WebRTC has
      video, and keeps HLS if WebRTC never gets any (`ha-camera-stream.ts`).
    - **It played live.** Across 10 s, about 226,000 pixels changed by more than 3 levels (compression
-     noise on a still room), so frames were updating. From which player is not recorded. No `/api/hls/`
-     requests in the period, or the video element's `srcObject`, would settle it (next time).
+     noise on a still room), so frames were updating. From which player is not recorded. Next time, settle
+     it from the visible video element: a `MediaStream` in its `srcObject` is WebRTC; HLS plays from a
+     `blob:` source. (No `/api/hls/` requests wouldn't settle it: HLS can play from its buffer for a while.)
    - The commands for the pixel count and the CPU numbers below weren't recorded with the results;
      only the results were reported. Redo them with the commands written down before relying on them.
 2. **Which decoder** (same session, read-only, verified)
