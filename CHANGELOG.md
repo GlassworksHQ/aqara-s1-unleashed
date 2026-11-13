@@ -20,12 +20,21 @@ below as the release notes.
   scan it and sign in as an administrator on your phone. The panel uses that sign-in once and deletes
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
+### Changed
+- **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
+  page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
+  Nothing in the sections changed.
+
 ### Fixed
 - **Undo no longer puts our splash back as Aqara's.** If a panel's `boot` was put back without its
   splash and the panel was then installed again, that install's backup held a stock `boot` with our
   power-on splash, and undo restored our splash while saying the stock one was back. Both installers
   now refuse such a backup before writing anything, and point you to the first install's backup or
   the by-hand undo in docs/install.md.
+- **A Thread dataset typed in the settings menu no longer shows an error.** After you pasted the
+  dataset under the radio's *Advanced* and the radio took it, the menu said "The kiosk service isn't
+  running yet" instead of "Dataset handed to the radio". The dataset was stored either way; now the
+  menu says so.
 - **The screen starts at your saved brightness.** With *Auto brightness* off, the app used the
   system brightness after a restart until the light sensor reported a change, while Home Assistant
   already showed your saved brightness. In a dark, still room that could last a long time. The app
