@@ -99,6 +99,21 @@ class RadioDefinitionTest {
     }
 
     @Test
+    fun offOnARadioInAnErrorAsksTheRadioAgain() {
+        // F10: the mode is already Off, but Aqara's services wouldn't stop. Off on the Panes step must
+        // not take the shortcut ("already Off") but ask the radio again, and say what it answered.
+        val stuck = object : SysProps by TestInit() {
+            override fun set(name: String, value: String) {} // ctl.stop does nothing: the services keep running
+        }
+        prefs.radio.mode = RadioMode.OFF.id
+        val c = controller(stuck).also { it.start() }
+        assertTrue(c.statusText(), c.statusText().startsWith("error"))
+        val d = definition(c)
+        val answer = d.setupChoice.apply(false)
+        assertTrue("$answer", answer != null && answer.startsWith("error")) // the shortcut would say null
+    }
+
+    @Test
     fun aPanelSetUpBeforeTheStepNeverSeesIt() {
         prefs.urlSetting = "http://homeassistant.local:8123/" // a saved dashboard URL is a trace of setup
         assertTrue(definition().step.done())

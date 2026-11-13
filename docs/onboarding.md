@@ -22,7 +22,9 @@ lightly tested end to end. Nothing below is implemented unless marked ✅.
    and pushes the encryption key itself.
 3. **Sign in with your phone.** The panel shows a QR code. Scan it, sign in to HA on the phone (normal
    HA login, password manager works), done. The panel never shows a login form.
-4. **Pick a dashboard** from a dropdown on the panel's device page in HA (defaults to your default
+4. **Choose the panes**: voice, music and the Zigbee / Thread radio. A pane that is on then asks what
+   it needs (the radio: its mode, then what to do in HA).
+5. **Pick a dashboard** from a dropdown on the panel's device page in HA (defaults to your default
    dashboard).
 
 A first-boot **setup screen** (same visual style as the dashboard) walks through these and moves on
@@ -447,8 +449,17 @@ on the way:
 (`ui/Glass.kt`: night `#0a0b0f` with sky/violet glows, glass cards, one white button per screen, sky
 to violet for "on", green/amber/rose for status only). Left: the Glassworks mark, the four steps (a
 green dot when done, sky to violet for the current one, a dashed ring for the rest) and the stack,
-whose plates set one per step (`ui/StackView.kt`). Right: a card for the current step, "Step n of 4".
+whose plates set one per step (`ui/StackView.kt`). Right: a card for the current step.
 Laid out for 960×480 dp.
+
+The rail (`ui/GroupedRail.kt`, #63 round 2) groups the steps: Wi-Fi, **Home Assistant** (Add it, Sign
+in), **Panes** (Choose, then each pane's own steps while that pane is on), Done. A group shows its rows
+while one of them is current and folds to one row otherwise. The order is Wi-Fi → Home Assistant →
+Panes → Done (`SetupFlow.ids`): nothing a pane asks needs to come before signing in, and the radio's
+Thread router can then join Home Assistant's Thread network from its own step. Tapping a row opens
+it: in a live setup only a step that is done or current, in a preview any step. A step that is done
+says so and leads with **Continue** ("Connected to <SSID>.", "Added to Home Assistant.", "Signed
+in."), with the way to change it second ("Use another network", "Add it by hand").
 
 1. **Wi-Fi**: "Connected to <SSID>" (Ethernet too), or "Not connected: set up Wi-Fi over Bluetooth
    from Home Assistant, or [Choose network]". The button opens `Settings.Panel.ACTION_WIFI` (falls
@@ -477,22 +488,28 @@ Laid out for 960×480 dp.
    services → <the panel's name> → Add", "Waiting for Home Assistant…", and the panel's IP + port
    6053 for a manual ESPHome add (or "Find Home Assistant." with a URL field when HA wasn't found).
    **Skip** persists `setup_ha_skipped` (for kiosk-only use without the ESPHome device).
-3. **Panes**: "What should it do?", one card per pane that offers one (`PaneDefinition.setupChoice`):
-   Voice (Assist and timers), Music (a Sendspin speaker) and the Zigbee / Thread radio, each with a
-   switch. The radio's modes are chips under the cards (`RadioStep.chip`): Zigbee coordinator, Thread
-   border router, Zigbee repeater β, Thread repeater β; its switch off means Off. **Continue** applies
-   every card: voice and music set their setting (voice restarts the app when it changed, as
-   `voice_enabled` does), the radio goes through `RadioController` (the same path as HA's
-   `Radio mode` select and the installer's `radio.set_mode`) and a refusal, e.g. the missing root
-   helper, shows in rose and keeps the step. Answering persists `setup_radio_done` (so does a mode set
-   from the web installer over the setup channel). What to do next in Home Assistant for the chosen
-   mode (the ZHA serial path, the QR codes, Join) is in Settings → Radio
-   ([radio-guide.md](radio-guide.md)). A panel set up before the radio step existed has it marked done
-   once at the first start of the new build (`RadioDefinition`'s one-time check: a known HA,
-   `ha_seen`, an API key, a skipped HA step or a stored radio mode), so it never sees Panes. It comes
-   before Sign in because it belongs with adding the panel and signing in is what loads the dashboard.
-   The wall base has no on/off setting yet, so it has no card.
-4. **Sign in**: "Scan to sign in.", the QR code, and "Sign in on this panel instead".
+3. **Sign in** (under Home Assistant): "Scan to sign in.", the QR code, and "Sign in on this panel
+   instead". It is answered by a refresh token, or once the dashboard loads with the panes still to
+   choose (a panel signed in with a cookie session).
+4. **Panes**: "Choose", one card per pane that offers one (`PaneDefinition.setupChoice`): Voice
+   (Assist and timers), Music (a Sendspin speaker) and the Zigbee / Thread radio, each with a switch.
+   It only chooses. **Continue** applies every card off the main thread, each within 30 s: voice and
+   music set their setting (a voice change restarts the app once setup is over, as `voice_enabled`
+   does), the radio's switch off sets the mode Off through `RadioController`. A refusal, or a card
+   that doesn't answer ("The Music didn't answer."), shows in rose with every problem listed and keeps
+   the step; the cards are locked while it applies. Then each pane that is on has its own steps under
+   Panes (`PaneDefinition.setupSteps`, each with a `title` for its row and a `screen` for the card).
+   A pane with steps but no card is left out, with an error in the `S1Kiosk` log.
+   **Radio**: "What should the radio do?", technology first (`radio/ui/RadioTechPicker.kt`): Zigbee
+   (Coordinator, Repeater β) or Thread (Border router, Repeater β), no Off (that is the Panes card).
+   Continue applies it through the same request as the installer's `radio.set_mode`, within 30 s
+   ("The radio didn't answer. Try again, or turn it off on Panes."). Then the mode's follow-up card,
+   the one Settings → Radio shows: the ZHA serial path, the QR codes, or Join for a Thread router. The
+   step stays until its Continue. Answering persists `setup_radio_done` (so does a mode set from the
+   web installer over the setup channel). A panel set up before the radio step existed has it marked
+   done once at the first start of the new build (`RadioDefinition`'s one-time check: a known HA,
+   `ha_seen`, an API key, a skipped HA step or a stored radio mode), so it never sees it. The wall
+   base has no on/off setting yet, so it has no card.
 5. **Done**: the lit stack on its own, "You're all set." and "Opening your dashboard…". The dashboard
    loads (unless it's already showing), then the screen fades out.
 
@@ -506,15 +523,16 @@ session without a refresh token):
   API key, not skipped;
 - no refresh token *and* the GeckoView actually reached HA's `/auth/authorize` (or the user signed
   out on the panel), unless "Sign in on this panel instead" was chosen;
-- online, HA step done, radio step not answered (so it comes back after a reboot).
+- online, HA step done, the panes not chosen yet or a chosen pane's step not answered (so it comes back
+  after a reboot).
 
-The current step is the first one not done (Wi-Fi → HA → Panes → Sign in). Once shown, the screen stays
+The current step is the first one not done (Wi-Fi → HA → Sign in → Panes → each pane's steps). Once shown, the screen stays
 until all steps are done, so it doesn't flicker between steps. It is re-evaluated on connectivity,
 sign-in, HA connection and page changes, and every 2 s. The trigger is logged (`S1Kiosk`:
 "Setup screen: <reasons> (step …)").
 
 Preview without changing state: `--ez show_setup true` (live step), `--es setup_step
-wifi|ha|panes|signin|done` (a given step; `radio` still means Panes), `--ez show_setup false` to close.
+wifi|ha|signin|panes|radio|done` (a given step; a pane's step id opens that step), `--ez show_setup false` to close.
 In preview, Skip, the manual URL and Continue save nothing, and "Preview · Close" is shown. `--ez show_signin true` = the Sign-in step.
 
 ## Build order

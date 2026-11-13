@@ -147,7 +147,7 @@ followed by `adb uninstall sh.edm.s1kiosk` (an active device admin can't be unin
 A="adb shell am start -n sh.edm.s1kiosk/.MainActivity"
 $A --es url http://homeassistant.local:8123/my-dashboard   # set + persist the URL ("auto" = discover HA)
 $A --ez show_setup true    # preview the setup screen at its live step (changes nothing)
-$A --ez show_setup true --es setup_step wifi   # ... or a given step: wifi|ha|panes|signin|done
+$A --ez show_setup true --es setup_step wifi   # ... or a given step: wifi|ha|signin|panes|radio|done
 $A --ez show_setup false   # close the preview
 $A --ez show_signin true   # preview the QR sign-in step (doesn't touch the session)
 $A --es open http://192.168.1.100:8123/profile/general      # navigate once (not persisted)
