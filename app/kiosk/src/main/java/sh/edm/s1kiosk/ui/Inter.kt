@@ -38,8 +38,9 @@ object Inter {
     private var data: ByteBuffer? = null
     private var failed = false
 
-    fun typeface(context: Context, weight: Int, sizeSp: Float): Typeface {
-        val key = variation(weight, sizeSp)
+    /** [weight] at [sizeSp]; [opticalSize] overrides the optical size (the boot's text uses 14 at every size). */
+    fun typeface(context: Context, weight: Int, sizeSp: Float, opticalSize: Int? = null): Typeface {
+        val key = opticalSize?.let { String.format(Locale.ROOT, "'wght' %d, 'opsz' %d", weight, it) } ?: variation(weight, sizeSp)
         cache[key]?.let { return it }
         val tf = build(context, weight, key) ?: fallback(weight)
         cache[key] = tf

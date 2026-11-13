@@ -181,7 +181,7 @@ class MainActivity : Activity() {
         // full-screen window); until it is ready the loading screen draws 8-bit gradients.
         val real = android.graphics.Point().also { @Suppress("DEPRECATION") windowManager.defaultDisplay.getRealSize(it) }
         Backdrop.prewarm(maxOf(real.x, real.y), minOf(real.x, real.y))
-        loadingOverlay = LoadingOverlay(this).apply { onAction = ::openWifiSettings }
+        loadingOverlay = LoadingOverlay(this, glassworks.frame.bootRest).apply { onAction = ::openWifiSettings }
         voiceOverlay = VoiceOverlay(this).apply {
             onCancel = { glassworks.voiceCancel?.invoke() }
             onShowingChanged = { timerOverlay.voiceShowing(it) } // a timer set by voice flies out of the orb
