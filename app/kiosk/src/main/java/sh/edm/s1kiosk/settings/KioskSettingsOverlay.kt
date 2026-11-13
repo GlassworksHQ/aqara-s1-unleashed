@@ -278,7 +278,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             setOnFocusChangeListener { f, has -> if (has) f.post { reveal(f) } }
             isEnabled = i.enabled()
         }
-        edits += { val v = edit.text?.toString().orEmpty(); { done -> i.save(v, done) } }
+        // A disabled field shows no value to keep (the radio's allow-list without its service): never saved.
+        if (edit.isEnabled) edits += { val v = edit.text?.toString().orEmpty(); { done -> i.save(v, done) } }
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(text(13.5f, MU, REGULAR).apply { text = i.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END })

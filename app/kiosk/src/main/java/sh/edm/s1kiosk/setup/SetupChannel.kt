@@ -97,6 +97,8 @@ class SetupChannel(
     init {
         val ids = steps.map { it.id }
         require(ids.none { it in CORE_KEYS } && ids.size == ids.toSet().size) { "Setup step ids must be unique and not ${CORE_KEYS}: $ids" }
+        val old = steps.flatMap { it.legacyOps.keys }
+        require(old.none { it in CORE_OPS || it in ops } && old.size == old.toSet().size) { "Old op names must be unique and not the core's: $old" }
     }
 
     /** The whole state: the core's, and each step's part under its id. */
@@ -192,6 +194,8 @@ class SetupChannel(
         const val HA_SET_URL = "ha.set_url"
         /** The core's keys in the state; no step may take them. */
         val CORE_KEYS = setOf("ip", "ha")
+        /** The core's requests, by every name they have. */
+        val CORE_OPS = setOf("state", HA_SET_URL, "set_ha")
         const val POLL_MS = 1_500L
         /** Longer lines are dropped (requests are tiny). */
         const val MAX_LINE = 16 * 1024

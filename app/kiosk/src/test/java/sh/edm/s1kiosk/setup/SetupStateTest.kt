@@ -223,6 +223,10 @@ class SetupStateTest {
         assertEquals(null, SetupFlow.parse("radio", emptyList()))
         assertEquals(null, SetupFlow.parse("nope", panes))
         assertEquals(null, SetupFlow.parse(null, panes))
+        // A pane step can't take a core step's id (its card would never show), nor two the same id.
+        for (bad in listOf(listOf("signin"), listOf("wifi"), listOf("done"), listOf("radio", "radio"))) {
+            assertTrue(bad.toString(), runCatching { SetupFlow.ids(bad) }.isFailure)
+        }
     }
 
     @Test

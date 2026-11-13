@@ -307,6 +307,24 @@ class SetupChannelTest {
         assertTrue(runCatching { SetupChannel(fake, listOf(fake.step, fake.step)) }.isFailure)
     }
 
+    @Test
+    fun anOldNameCannotTakeACoreRequest() {
+        val fake = Fake(base)
+        for (core in listOf("set_ha", "ha.set_url", "state")) {
+            val greedy = object : SetupStep by fake.step { override val legacyOps = mapOf(core to "set_mode") }
+            assertTrue(core, runCatching { SetupChannel(fake, listOf(greedy)) }.isFailure)
+        }
+        val other = object : SetupStep by fake.step {
+            override val id = "camera"
+            override val legacyOps = mapOf("set_radio" to "set_mode") // the radio's old name, taken twice
+        }
+        assertTrue(runCatching { SetupChannel(fake, listOf(fake.step, other)) }.isFailure)
+        // The radio's own old names are fine, and set_ha still reaches the core.
+        val c = fake.channel()
+        assertTrue(reply(c, """{"id":1,"op":"set_ha","url":"http://ha.local:8123"}""").getBoolean("ok"))
+        assertEquals(listOf("set_ha http://ha.local:8123"), fake.calls)
+    }
+
     private fun JSONObject.keyNames(): Set<String> = keys().asSequence().toSet()
 
     private companion object {

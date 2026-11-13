@@ -36,7 +36,14 @@ object SetupFlow {
     const val DONE = "done"
 
     /** Every step in order: the core's, with the panes' steps ([paneSteps], their ids) before Sign in. */
-    fun ids(paneSteps: List<String>): List<String> = listOf(WIFI, HA) + paneSteps + listOf(SIGNIN, DONE)
+    fun ids(paneSteps: List<String>): List<String> {
+        require(paneSteps.none { it in CORE } && paneSteps.size == paneSteps.toSet().size) {
+            "Pane step ids must be unique and not the core's ($CORE): $paneSteps"
+        }
+        return listOf(WIFI, HA) + paneSteps + listOf(SIGNIN, DONE)
+    }
+
+    private val CORE = setOf(WIFI, HA, SIGNIN, DONE)
 
     /** A step id from `--es setup_step <id>` ([paneSteps] are the panes' ids), or null. */
     fun parse(s: String?, paneSteps: List<String>): String? =

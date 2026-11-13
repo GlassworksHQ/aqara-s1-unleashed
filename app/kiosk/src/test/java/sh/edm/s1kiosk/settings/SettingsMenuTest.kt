@@ -22,6 +22,7 @@ import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.ZigbeeStack
 import sh.edm.s1kiosk.radio.radioDefinition
 import sh.edm.s1kiosk.setup.RadioFollowUp
+import sh.edm.s1kiosk.ui.Mockup
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
@@ -127,10 +128,10 @@ class SettingsMenuTest {
 
     @Test
     fun allowedNowLine() {
-        assertEquals("Kiosk service not running", RadioDefinition.allowedNow(false, "10.0.0.2"))
+        assertEquals("Kiosk service not running", RadioDefinition.allowedNow(false, "192.0.2.20"))
         assertTrue(RadioDefinition.allowedNow(true, null).startsWith("Allowed now: no firewall"))
         assertTrue(RadioDefinition.allowedNow(true, "").contains("only the panel itself"))
-        assertEquals("Allowed now: 10.0.0.2, fd00::2", RadioDefinition.allowedNow(true, "10.0.0.2 fd00::2"))
+        assertEquals("Allowed now: 192.0.2.20, 2001:db8::20", RadioDefinition.allowedNow(true, "192.0.2.20 2001:db8::20"))
     }
 
     @Test
@@ -151,6 +152,20 @@ class SettingsMenuTest {
         // not adjacent: no pair
         val d = m.getValue("dashboard")
         assertEquals(listOf(1, 1, 1), SettingsMenu.rows(listOf(d[1], d[0], d[2])).map { it.size })
+    }
+
+    @Test
+    fun aDisabledFieldIsNotSaved() {
+        // The radio's allow-list shows "" and is disabled without its service: saving it could wipe the list
+        // if the service started while the menu was open.
+        Mockup.interFromSources()
+        fun saves(running: Boolean): Int {
+            val o = Mockup.show(KioskSettingsOverlay(Mockup.activity()))
+            o.show(MenuFixture.model(app, radioDefinition(app, FixedReadout(if (running) off else null, running = running))))
+            return o.current().size
+        }
+        assertEquals(11, saves(running = true)) // 4 dashboard + 6 screen + the allow-list
+        assertEquals(10, saves(running = false))
     }
 
     @Test
