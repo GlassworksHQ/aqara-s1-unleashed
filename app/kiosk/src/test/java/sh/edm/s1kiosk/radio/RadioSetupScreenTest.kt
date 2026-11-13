@@ -98,6 +98,31 @@ class RadioSetupScreenTest {
     }
 
     @Test
+    fun aPreviewDoesntPollTheHelper() {
+        // Verifier 6d0f2cd7 / 72dfae7d: the follow-up's 2 s tick asked the controller to refresh, also in a preview.
+        val c = RadioController(init, load = { prefs.radio.mode }, store = { prefs.radio.mode = it }, inline = true, log = {}, filesDir = tmp.root)
+        var asked = 0
+        val readout = object : RadioReadout by TestReadout(c, prefs) {
+            override fun controller(): RadioController? { asked++; return c }
+        }
+        val d = radioDefinition(app, readout)
+        prefs.radio.mode = RadioMode.ZIGBEE_TCP.id
+        val preview = RadioSetupScreen(Mockup.activity(), host(true), d)
+        val card = Card()
+        preview.bind(card, entered = true)
+        card.primary!!() // Continue in the preview: on to the follow-up, nothing applied
+        asked = 0
+        repeat(3) { preview.tick(current = true) }
+        assertEquals(0, asked)
+        // The live screen does refresh it.
+        d.followUpOpen = true
+        val live = RadioSetupScreen(Mockup.activity(), host(false), d)
+        live.bind(card, entered = true)
+        live.tick(current = true)
+        assertTrue(asked > 0)
+    }
+
+    @Test
     fun continueHoldsTheStepWhileTheRadioApplies() {
         val d = definition()
         val screen = RadioSetupScreen(Mockup.activity(), host(false), d)
