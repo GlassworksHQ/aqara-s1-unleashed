@@ -4,7 +4,8 @@
  "max_line_bytes": 1023,
  "from_page_code": [
   "step/updates",
-  "refdash"
+  "refdash",
+  "camera"
  ],
  "shapes": {
   "done": [
@@ -70,7 +71,8 @@
    "scroll_height",
    "t",
    "tier",
-   "usable"
+   "usable",
+   "video_caps"
   ],
   "step/scroll": [
    "changes_during",
@@ -118,6 +120,17 @@
    "stream_at_ms",
    "t",
    "t0",
+   "window_ms"
+  ],
+  "camera": [
+   "expected",
+   "found",
+   "fps",
+   "nonce",
+   "run",
+   "stage",
+   "streams",
+   "t",
    "window_ms"
   ]
  }

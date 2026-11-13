@@ -18,6 +18,17 @@ import urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 os.environ.setdefault("GW_PERF_FRONTEND", os.path.join(HERE, "stub_frontend"))
+# Camera segments: a stub folder of numbered files (the fake only serves bytes; no ffmpeg here).
+import tempfile  # noqa: E402
+STUB_CAMERA = tempfile.mkdtemp(prefix="clarity-camera-")
+for _prof in ("720p", "360p"):
+    os.makedirs(os.path.join(STUB_CAMERA, _prof))
+    with open(os.path.join(STUB_CAMERA, _prof, "init.mp4"), "wb") as _f:
+        _f.write(b"init-" + _prof.encode())
+    for _n in range(120):
+        with open(os.path.join(STUB_CAMERA, _prof, f"seg{_n:03d}.m4s"), "wb") as _f:
+            _f.write(f"seg{_n:03d}-{_prof}".encode())
+os.environ["GW_PERF_CAMERA"] = STUB_CAMERA
 sys.path.insert(0, os.path.dirname(HERE))
 import dashboards as D  # noqa: E402
 import fakeha  # noqa: E402
@@ -135,7 +146,7 @@ class FakeHA(unittest.TestCase):
         cfg, _ = ws.call({"type": "lovelace/config", "url_path": "clarity-ref", "force": False})
         # One dashboard: the start view (where a restart lands), then the three reference views.
         self.assertEqual([(v["path"], len(v["cards"])) for v in cfg["result"]["views"]],
-                         [("start", 22), ("light", 20), ("typical", 50), ("heavy", 120)])
+                         [("start", 23), ("light", 20), ("typical", 50), ("heavy", 120)])
         res, ev = ws.call({"type": "subscribe_entities"})
         self.assertIn("light.living_room", ev[0]["event"]["a"])
         self.assertEqual(set(ev[0]["event"]["a"]["sensor.clarity_0"]), {"s", "a", "c", "lc", "lu"})
@@ -231,6 +242,39 @@ class FakeHA(unittest.TestCase):
         self.assertIsNone(live._stream)
         self.assertEqual({e: v["state"] for e, v in live.states.items()}, {e: v["state"] for e, v in D.states().items()})
 
+    def test_a_live_camera_stream_as_ha_serves_it(self):
+        """#174: HLS only (as HA's stream integration), a fresh stream per camera/stream, a live window of
+        the last four whole segments, the loop's files, and a discontinuity where the loop wraps."""
+        ws = self.connect()
+        cap, _ = ws.call({"type": "camera/capabilities", "entity_id": "camera.clarity_cam_0"})
+        self.assertEqual(cap["result"], {"frontend_stream_types": ["hls"], "two_way_audio": False})
+        cfg, _ = ws.call({"type": "get_config"})
+        self.assertTrue({"camera", "stream"} <= set(cfg["result"]["components"]))     # ha-hls-player needs `stream`
+        st, _ = ws.call({"type": "camera/stream", "entity_id": "camera.clarity_cam_0"})
+        url = st["result"]["url"]
+        self.assertRegex(url, r"^/api/hls/clarity\d{6}/master_playlist\.m3u8$")
+        base = url.rsplit("/", 1)[0]
+        master = self.http("GET", url)[2].decode()
+        self.assertIn("RESOLUTION=1280x720", master)
+        self.assertIn('CODECS="avc1.4d401f"', master)
+        live = self.http("GET", base + "/playlist.m3u8")[2].decode()
+        self.assertIn("#EXT-X-MEDIA-SEQUENCE:0", live)                        # 4 s already made (preRollS)
+        self.assertEqual(re.findall(r"segment/(\d+)\.m4s", live), ["0", "1", "2", "3"])
+        self.assertEqual(self.http("GET", base + "/segment/2.m4s")[2], b"seg002-720p")
+        self.assertEqual(self.http("GET", base + "/init.mp4")[2], b"init-720p")
+        self.assertEqual(self.http("GET", base + "/segment/9.m4s")[0], 404)   # not made yet
+        self.assertEqual(self.http("GET", "/api/hls/clarity999999/playlist.m3u8")[0], 404)
+        bad, _ = ws.call({"type": "camera/stream", "entity_id": "camera.nope"})
+        self.assertFalse(bad["success"])
+        # A stream that has run past its 120 s loop: the files wrap, with a discontinuity there.
+        token = base.rsplit("/", 1)[1]
+        fakeha.Handler.hub.cam_streams[token]["t0"] -= 118
+        live = self.http("GET", base + "/playlist.m3u8")[2].decode()
+        self.assertIn("#EXT-X-DISCONTINUITY\n", live)
+        n = int(re.findall(r"segment/(\d+)\.m4s", live)[-1])
+        self.assertGreaterEqual(n, 120)
+        self.assertEqual(self.http("GET", f"{base}/segment/{n}.m4s")[2], f"seg{n % 120:03d}-720p".encode())
+
     def test_the_runner_opens_views_through_it(self):
         self.assertEqual(self.http("GET", "/clarity/open?view=typical&nonce=ab12&run=1&taps=10&vsync=16.667")[0], 204)
         status, _, body, _ = self.http("GET", "/clarity/next")
@@ -272,7 +316,7 @@ class FakeHA(unittest.TestCase):
         self.assertNotIn("{{", html)
         status, _, js, cache = self.http("GET", m.group(1))
         self.assertIn("window.GW_CLARITY = ", js.decode())
-        self.assertIn('"PROTOCOL": 4', js.decode())
+        self.assertIn('"PROTOCOL": 5', js.decode())
         self.assertIn('"HEAD_CARDS": 10', js.decode())
 
     def test_the_harness_is_never_cached_at_a_fixed_url(self):

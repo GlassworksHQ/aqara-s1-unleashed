@@ -12,6 +12,8 @@ import zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN = os.path.join(os.path.dirname(HERE), "run.sh")
 STUB_FRONTEND = os.path.join(HERE, "stub_frontend")       # the runner tests never fetch HA's frontend
+STUB_CAMERA = tempfile.mkdtemp(prefix="clarity-camera-")  # nor make camera segments (no ffmpeg needed)
+os.environ.setdefault("GW_PERF_CAMERA", STUB_CAMERA)
 RESTORE = "http://192.0.2.10:8123/lovelace/0"
 os.environ.setdefault("GW_PERF_FRONTEND", STUB_FRONTEND)
 sys.path.insert(0, os.path.dirname(HERE))
@@ -60,7 +62,7 @@ class Runner(unittest.TestCase):
         os.chmod(adb, 0o755)
         env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="2",
                    GW_PERF_COLD_SETTLE="0", GW_PERF_RUN_GAP="0", GW_PERF_BETWEEN_QUIET="0.5", GW_PERF_FRONTEND=STUB_FRONTEND,
-                   GW_PERF_SWITCH_SETTLE="0", FAKE_HA_URL="http://127.0.0.1:18089")
+                   GW_PERF_SWITCH_SETTLE="0", FAKE_HA_URL="http://127.0.0.1:18089", GW_PERF_CAMERA=STUB_CAMERA)
         env.pop("ANDROID_SERIAL", None)
         cls.out = os.path.join(cls.tmp, "out")
         cls.proc = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", cls.out, "--port", "18089", "--taps", "2",
@@ -201,7 +203,7 @@ def fake_env(tmp, **extra):
     os.chmod(adb, 0o755)
     extra.setdefault("FAKE_HA_URL", HA.url if HA else "")
     env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="1",
-               GW_PERF_FRONTEND=STUB_FRONTEND, GW_PERF_SWITCH_SETTLE="0", **extra)
+               GW_PERF_FRONTEND=STUB_FRONTEND, GW_PERF_CAMERA=STUB_CAMERA, GW_PERF_SWITCH_SETTLE="0", **extra)
     env.pop("ANDROID_SERIAL", None)
     return env, state
 
@@ -627,6 +629,35 @@ class Restart(unittest.TestCase):
         self.assertIsNone(run["start_ms"])
         self.assertEqual(run["start_error"], "the kiosk didn't come back to a reference dashboard")
         self.assertIn("start", rep["grade"]["missing"])
+
+
+class Cameras(unittest.TestCase):
+    """#174: the views with streams carry a camera line; a stream that never plays fails the task
+    (it was measured: the panel didn't play it), it doesn't make the page "not measured"."""
+
+    def build(self, tmp):
+        with open(os.path.join(tmp, "device.json"), "w") as f:
+            json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
+        return report.build(tmp)
+
+    def test_streams_that_play(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["tiers"]["heavy"]["camera"]["expected"], 4)
+        self.assertNotIn("camera", c["tiers"]["light"])
+        tiers = self.build(tmp)["graded"]["reference"]["tiers"]
+        self.assertEqual((tiers["typical"]["camera_level"], tiers["heavy"]["camera_level"]), ("good", "good"))
+        self.assertIsNone(tiers["light"]["camera_level"])
+
+    def test_a_stream_that_never_plays_fails_the_task(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, FAKE_NO_VIDEO="heavy")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        rep = self.build(tmp)
+        self.assertEqual(rep["graded"]["reference"]["tiers"]["heavy"]["camera_level"], "slow")
+        self.assertNotIn("heavy.camera", rep["grade"]["missing"])
+        self.assertEqual(rep["grade"]["bands"]["heavy"]["camera"], "slow")
 
 
 class NoisyLogcat(unittest.TestCase):

@@ -278,6 +278,28 @@ def change_to_screen(step, page, period=None):
             "max_ms": xs[-1], "skipped": skipped}, None
 
 
+def camera_run(line, tier):
+    """One run's live cameras (#174), from the harness's camera line: the worst stream's first frame
+    (after the view opened), share of frames shown, longest gap and stalls (gaps over 500 ms) added
+    up, and each stream as detail. A stream that never showed a frame makes the run's first frame
+    and shown None, which fails the task (it was measured: the panel didn't play it). None on a view
+    without streams, or when the line never came (then the task isn't measured)."""
+    if tier not in G.CAMERA_PAGES or not line:
+        return None
+    streams = line.get("streams") or []
+    played = [s for s in streams if s.get("first_frame_ms") is not None and s.get("shown_pct") is not None]
+    whole = len(played) == len(streams) and len(streams) >= (line.get("expected") or 0)
+    return {
+        "first_frame_ms": max(s["first_frame_ms"] for s in played) if whole and played else None,
+        "shown_pct": min(s["shown_pct"] for s in played) if whole and played else None,
+        "max_gap_ms": max((s.get("max_gap_ms") or 0) for s in played) if whole and played else None,
+        "stall_total_ms": max((s.get("stall_total_ms") or 0) for s in played) if whole and played else None,
+        "streams": len(streams), "expected": line.get("expected"), "window_ms": line.get("window_ms"),
+        "detail": [{k: s.get(k) for k in ("w", "h", "first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms", "frames",
+                                            "decoded", "dropped", "waiting", "source")} for s in streams],
+    }
+
+
 def arrivals(step):
     """Protocol 4 detail: of the changes the fake sent in the window, how many reached the page's main
     thread before the window was logged, and how long they waited to (from sent to read). A long wait
@@ -439,6 +461,7 @@ def tier_run(tier, entry, presents_ms):
         why = "the page's updates step never arrived"
     if why:
         out.update(updates=None, latency=None, updates_run=None, updates_error=why)
+    out["camera_run"] = camera_run(entry.get("camera"), tier)
     inp = entry.get("input") or {}
     out.update(inp_ms=None if voids_taps or not inp.get("taps") else inp.get("inp_ms"), input_method=inp.get("method"),
                fcp_ms=page.get("fcp_ms"), nodes=page.get("nodes"), cards=page.get("cards"))
@@ -563,6 +586,9 @@ def reference_summary(all_runs):
             # The grade's updates: change to screen, each run's level, then the median level.
             "latency_p95_ms": P.spread([(x.get("latency") or {}).get("p95_ms") for x in rs]),
             "latency_median_ms": P.spread([(x.get("latency") or {}).get("median_ms") for x in rs]),
+            "camera_runs": [x["camera_run"] for x in rs if x.get("camera_run")],
+            "camera_levels": [G.camera_level(x["camera_run"]) for x in rs if x.get("camera_run")],
+            "camera_level": G.median_level(G.camera_level(x["camera_run"]) for x in rs if x.get("camera_run")),
             "updates_levels": [G.update_level(x["updates_run"]) for x in rs if x.get("updates_run")],
             "updates_level": G.median_level(G.update_level(x["updates_run"]) for x in rs if x.get("updates_run")),
             "swipes_during_updates": [x.get("swipes_during_updates") for x in rs if x.get("scroll")],
@@ -609,7 +635,8 @@ def grade_inputs(graded):
     ref = graded.get("reference") or {}
     med = lambda x: x and x["median"]  # noqa: E731
     tiers = {t: {"inp_ms": med(s["inp_ms"]), "load_ms": med(s["load_ms"]),
-                 "scroll_level": s["scroll_level"], "updates_level": s["updates_level"]}
+                 "scroll_level": s["scroll_level"], "updates_level": s["updates_level"],
+                 "camera_level": s.get("camera_level")}
              for t, s in (ref.get("tiers") or {}).items()}
     return tiers, med(ref.get("start_ms"))
 
@@ -999,6 +1026,8 @@ def coverage_reasons(ref, attempted):
                "scroll": s_ and len(s_["scroll_bands"]) or 0,
                "updates": s_ and len(s_["updates_runs"]) or 0,
                "load": s_ and (s_["load_ms"] or {}).get("n", 0) or 0}
+        if t in G.CAMERA_PAGES:
+            got["camera"] = s_ and len(s_.get("camera_runs") or []) or 0
         short = [f"{task} {n} of {attempted}" for task, n in got.items() if 0 < n < attempted]
         if short:
             out.append(f"{t}: measured in fewer runs than attempted ({', '.join(short)})")
@@ -1142,6 +1171,22 @@ def device_line(dev, app):
     return ", ".join(p for p in parts if p) + "."
 
 
+def camera_cell(s_, b):
+    """The page's live cameras in report.md: the worst stream's first frame, frames shown and stalls
+    (median of runs), and the level; `none` on a page without streams."""
+    if b.get("camera") == G.NO_CAMERA:
+        return "none"
+    runs = s_.get("camera_runs") or []
+    if not runs:
+        return "not measured"
+    med = lambda k: P.spread([r.get(k) for r in runs])  # noqa: E731
+    ff = med("first_frame_ms")
+    if ff is None:
+        return f"a stream showed no frame, {b.get('camera') or 'n/a'}"
+    return (f"first frame {fmt(ff, ' ms')}, {fmt(med('shown_pct'), ' %')} shown, stalls {fmt(med('stall_total_ms'), ' ms')}, "
+            f"{b.get('camera') or 'n/a'}")
+
+
 def band_cell(b):
     return b or "n/a"
 
@@ -1161,12 +1206,12 @@ def markdown(rep):
                 "show within 100 ms, taps within 200 ms and the view opens within 4 s; fluid at 30 fps (scroll p95 at "
                 "most 67 ms) and changes within 200 ms; premium when scrolling and the live changes also hold 60 fps (A+ on heavy). "
                 "Live-update pacing is detail, not graded.", "",
-                "| Page | Level | Tap (INP) | Scroll | Live updates | Open the view | Holds it back |",
-                "|---|---|---|---|---|---|---|"]
+                "| Page | Level | Tap (INP) | Scroll | Live updates | Open the view | Cameras | Holds it back |",
+                "|---|---|---|---|---|---|---|---|"]
         for t in G.TIERS:
             s_, b = ref["tiers"].get(t), g["bands"][t]
             if not s_:
-                out.append(f"| {t} | not measured | | | | | |")
+                out.append(f"| {t} | not measured | | | | | | |")
                 continue
             lvl = g["levels"][t]
             up = {None: "fluid", "fluid": "good", "good": "premium"}
@@ -1177,7 +1222,7 @@ def markdown(rep):
                 f"| {fmt(s_['inp_ms'], ' ms')}, {band_cell(b['tap'])} "
                 f"| {fmt(s_['scroll']['fps'], ' fps')}, p95 {fmt(s_['scroll']['p95_ms'], ' ms')}, {b['scroll'] or 'n/a'} "
                 f"| {fmt(s_['latency_p95_ms'], ' ms')} to show (p95), {b['updates'] or 'n/a'}; pacing p95 {fmt(s_['updates']['p95_ms'], ' ms')} "
-                f"| {fmt(s_['load_ms'], ' ms')}, {band_cell(b['load'])} | {held} |")
+                f"| {fmt(s_['load_ms'], ' ms')}, {band_cell(b['load'])} | {camera_cell(s_, b)} | {held} |")
         vp = g.get("viewport") or {}
         seen = sorted({str(v) for s_ in ref["tiers"].values() for v in s_["viewport"]})
         to = "a usable reference dashboard" if ref.get("restart_to") == "usable" else "engine ready"

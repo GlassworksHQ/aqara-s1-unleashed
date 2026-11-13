@@ -120,9 +120,16 @@
     return layout && sr(layout) ? Array.from(sr(layout).querySelectorAll("hui-card")) : [];
   }
 
+  // A card is drawn when its ha-card is laid out. A card made of cards (HA's grid, the heavy view's
+  // camera sub-streams) has no ha-card of its own: it is drawn when it is laid out and every card
+  // in it is.
   function rendered(card) {
     const inner = card.firstElementChild;
-    const ha = inner && sr(inner) && sr(inner).querySelector("ha-card");
+    const root = inner && sr(inner);
+    if (!root) return false;
+    const nested = Array.from(root.querySelectorAll("hui-card"));
+    if (nested.length) return inner.offsetHeight > 0 && nested.every(rendered);
+    const ha = root.querySelector("ha-card");
     return !!(ha && ha.offsetHeight > 0);
   }
 
@@ -257,7 +264,7 @@
       // The frontend's own load: only meaningful for the first view (the restart's).
       fcp_ms: first && fcp ? Math.round(fcp.startTime) : null, lcp_ms: first && lcp !== null ? Math.round(lcp) : null,
       load_ms: first && navEntry.loadEventEnd ? Math.round(navEntry.loadEventEnd) : null,
-      nav_ms: r1(nav), usable: u,
+      nav_ms: r1(nav), usable: u, video_caps: videoCaps(),
       origin_epoch_ms: Math.round(performance.timeOrigin), epoch_ms: Date.now(),
     });
     return u;
@@ -272,6 +279,111 @@
     s.id = "clarity-room";
     s.textContent = `#view { min-height: ${Math.ceil(innerHeight * (1 + C.PHASES.scrollRoomScreens))}px !important; }`;
     sr(root).appendChild(s);
+  }
+
+  // ---- live cameras (#174): the view's video elements, their first frame and their playback
+
+  // What this engine offers HA's camera player (ha-hls-player.ts: hls.js on MSE when H.264 is
+  // supported there, else native HLS). Logged with every refdash, so a panel run says which path ran.
+  function videoCaps() {
+    const v = document.createElement("video");
+    return {
+      mse_h264: !!(window.MediaSource && MediaSource.isTypeSupported('video/mp4; codecs="avc1.4d401f"')),
+      native_hls: v.canPlayType("application/vnd.apple.mpegurl"),
+      rvfc: "requestVideoFrameCallback" in HTMLVideoElement.prototype,
+    };
+  }
+
+  const cams = { recs: [], expected: 0, nav: 0, until: 0, t0: null };
+  const camCount = (tier) => (C.CAMERAS[tier] || []).reduce((n, x) => n + (Array.isArray(x) ? x.length : 1), 0);
+
+  function watchVideo(el) {
+    const rec = { el, first: null, frames: [], ticks: [], counting: false, waiting: 0, q0: null };
+    const frame = (t) => {
+      if (rec.first === null) rec.first = t;
+      if (rec.counting) rec.frames.push(t);
+    };
+    if (el.requestVideoFrameCallback) {
+      const cb = (now, md) => {
+        frame((md && md.presentationTime) || now);
+        if (cams.recs.includes(rec)) el.requestVideoFrameCallback(cb);
+      };
+      el.requestVideoFrameCallback(cb);
+    } else {
+      // Without requestVideoFrameCallback: the first frame at loadeddata, gaps from timeupdate.
+      el.addEventListener("loadeddata", () => { if (rec.first === null) rec.first = performance.now(); });
+      let last = -1;
+      el.addEventListener("timeupdate", () => { if (el.currentTime !== last) { last = el.currentTime; if (rec.counting) rec.ticks.push(performance.now()); } });
+    }
+    el.addEventListener("waiting", () => { if (rec.counting) rec.waiting++; });
+    return rec;
+  }
+
+  // Finds the view's videos as HA builds them (inside the camera cards' shadow roots), for up to 20 s.
+  async function trackCameras(nav) {
+    cams.recs = [];
+    cams.expected = camCount(V.tier);
+    cams.nav = nav;
+    if (!cams.expected) return;
+    const seen = new Set(), end = nav + 20000, index = C.VIEWS.indexOf(V.tier);
+    while (performance.now() < end) {
+      const view = currentView();
+      // Until hui-root has switched, the view on screen is the one before (its cameras included).
+      if (!view || view.index !== index) { await sleep(50); continue; }
+      for (const card of cards(view)) {
+        for (const r of shadowRoots(card, [])) {
+          for (const v of r.querySelectorAll("video")) {
+            if (!seen.has(v)) { seen.add(v); cams.recs.push(watchVideo(v)); }
+          }
+        }
+      }
+      if (cams.recs.length >= cams.expected && cams.recs.every((r) => r.first !== null)) return;
+      await sleep(100);
+    }
+  }
+
+  function camerasStart() {
+    cams.t0 = performance.now();
+    for (const r of cams.recs) {
+      r.counting = true;
+      r.frames = [];
+      r.ticks = [];
+      r.q0 = r.el.getVideoPlaybackQuality ? r.el.getVideoPlaybackQuality() : null;
+    }
+  }
+
+  // Playback from the view going live to its first swipe: the cameras on screen, the updates and the
+  // taps running (the swipes scroll them away, and an engine may rightly stop decoding a video no
+  // one can see). Shown: frames presented against fps x the time; stalls: gaps over 500 ms.
+  function camerasEnd() {
+    if (!cams.expected) return;
+    const t1 = performance.now(), dur = t1 - cams.t0, fps = C.CAMERA.fps;
+    const streams = [];
+    for (let i = 0; i < Math.max(cams.expected, cams.recs.length); i++) {
+      const r = cams.recs[i];
+      if (!r) { streams.push({ found: false, first_frame_ms: null, shown_pct: null, max_gap_ms: null, stall_total_ms: null }); continue; }
+      r.counting = false;
+      const times = r.el.requestVideoFrameCallback ? r.frames : r.ticks;
+      const q1 = r.el.getVideoPlaybackQuality ? r.el.getVideoPlaybackQuality() : null;
+      const decoded = q1 && r.q0 ? q1.totalVideoFrames - r.q0.totalVideoFrames : null;
+      const dropped = q1 && r.q0 ? q1.droppedVideoFrames - r.q0.droppedVideoFrames : null;
+      // Shown: the decoder's own count of frames it presented (totalVideoFrames less dropped).
+      // requestVideoFrameCallback is for the first frame and the gaps: it may fire once for two
+      // frames that land in one rendering update (Chrome, 2026-11-13: 60 callbacks for 77 frames).
+      const shown = decoded !== null ? decoded - dropped : (r.el.requestVideoFrameCallback ? r.frames.length : null);
+      const pts = [cams.t0].concat(times.filter((t) => t >= cams.t0 && t <= t1), [t1]);
+      const gaps = pts.slice(1).map((t, k) => t - pts[k]);
+      streams.push({
+        found: true, w: r.el.videoWidth, h: r.el.videoHeight,
+        first_frame_ms: r.first === null ? null : r1(r.first - cams.nav),
+        shown_pct: shown === null || r.first === null ? null : r1(Math.min(100, (100 * shown) / ((fps * dur) / 1000))),
+        max_gap_ms: r.first === null ? null : r1(Math.max(...gaps)),
+        stall_total_ms: r.first === null ? null : r1(gaps.filter((g) => g > 500).reduce((a, b) => a + b, 0)),
+        frames: shown, callbacks: r.frames.length, decoded, dropped, waiting: r.waiting,
+        source: (decoded !== null ? "quality" : "rvfc") + (r.el.requestVideoFrameCallback ? "+rvfc" : "+timeupdate"),
+      });
+    }
+    log({ t: "camera", stage: V.tier, window_ms: Math.round(dur), fps, expected: cams.expected, found: cams.recs.length, streams });
   }
 
   // ---- opening a view: HA's own navigate()
@@ -453,6 +565,7 @@
     startTicks();
     const nav = performance.now();
     navigate(`/${C.DASHBOARD}/${V.tier}`);
+    const camerasFound = trackCameras(nav);
     const u = await reportUsable(nav, false);
     // Still for a moment after it is usable, as a person looks before they touch it.
     await sleep(Math.max(0, u.interactive_ms + C.PHASES.stillAfterUsableMs - performance.now()));
@@ -460,8 +573,11 @@
     await syncClock();
     const H = C.HEAD_ENTITIES;
     const head = watch(H.sensors.concat(H.rows, H.switches));
+    await camerasFound;
+    camerasStart();
     await updatesWindow(head);
     if (V.taps) await input();
+    camerasEnd();
     for (let i = 0; i < V.swipes; i++) await swipe(i);
     await stream(false);
     unwatch();

@@ -468,6 +468,8 @@ def cmd_coldstart(dev, a):
                 st["gestures"].append(th)
         elif t == "input":
             entry["input"] = pl
+        elif t == "camera":
+            entry["camera"] = pl
         elif t in ("done", "error"):
             st["live"] = False
             if t == "error":

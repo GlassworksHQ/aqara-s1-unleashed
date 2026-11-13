@@ -47,10 +47,11 @@ INP = {"good": 100, "ni": 300, "poor": 600}
 LOAD = {"good": 1000, "ni": 3000, "poor": 5000}
 
 
-def page(tap="good", scroll="premium", updates="premium", load="good"):
-    """One page's grade inputs: tap and load as values, scroll and live updates as median run levels."""
+def page(tap="good", scroll="premium", updates="premium", load="good", camera="good"):
+    """One page's grade inputs: tap and load as values, scroll, live updates and camera as median run
+    levels (camera counts only on the pages with streams)."""
     return {"inp_ms": INP[tap] if tap else None, "load_ms": LOAD[load] if load else None,
-            "scroll_level": scroll, "updates_level": updates}
+            "scroll_level": scroll, "updates_level": updates, "camera_level": camera}
 
 
 def pages(light=None, typical=None, heavy=None):
@@ -146,6 +147,14 @@ class PageLevel(unittest.TestCase):
             with self.subTest(name):
                 self.assertEqual(G.page_level(G.tier_bands(p)), want)
 
+    def test_the_camera_task_counts_on_the_pages_with_streams(self):
+        self.assertEqual(G.CAMERA_PAGES, ["typical", "heavy"])
+        self.assertEqual(G.page_level(G.tier_bands(page(camera="fluid"), "typical")), "fluid")
+        self.assertEqual(G.page_level(G.tier_bands(page(camera="slow"), "heavy")), None)
+        self.assertEqual(G.page_level(G.tier_bands(page(camera="slow"), "light")), "premium")    # no streams there
+        self.assertEqual(G.tier_bands(page(), "light")["camera"], "none")
+        self.assertEqual(G.page_level(G.tier_bands(page(camera=None), "heavy")), None)
+
     def test_limits_names_the_task(self):
         self.assertEqual(G.limits(G.tier_bands(page(scroll="fluid", load="poor")), "good"), ["scroll", "load"])
 
@@ -201,7 +210,7 @@ class Letter(unittest.TestCase):
         g = G.grade(pages(heavy="drop"), 1000)
         self.assertEqual(g["grade"], "C")
         self.assertTrue(g["provisional"])
-        self.assertEqual(g["missing"], ["heavy.tap", "heavy.scroll", "heavy.updates", "heavy.load"])
+        self.assertEqual(g["missing"], ["heavy.tap", "heavy.scroll", "heavy.updates", "heavy.load", "heavy.camera"])
 
     def test_nothing_measured_is_e_and_provisional(self):
         g = G.grade({}, None)
@@ -336,6 +345,8 @@ class SharedCases(unittest.TestCase):
             self.assertEqual(G.update_level(c["run"]), c["level"], c["name"])
         for c in self.data["median_levels"]:
             self.assertEqual(G.median_level(c["levels"]), c["level"], c)
+        for c in self.data["camera_levels"]:
+            self.assertEqual(G.camera_level(c["run"]), c["level"], c["name"])
 
     def test_frames_and_median_bands(self):
         for c in self.data["frames"]:

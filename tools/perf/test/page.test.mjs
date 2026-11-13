@@ -63,13 +63,18 @@ test("the measured window leaves SurfaceFlinger's history room for the read afte
 
 // page/tiers.json: the one source for the fake HA (dashboards.py) and the harness.
 const T = JSON.parse(readFileSync(new URL("../page/tiers.json", import.meta.url)));
-T.cardCount = (t) => { const s = T.TIERS[t]; return s.tiles + s.entities + s.glances + s.longLists + s.sensors + s.histories + s.pictures + 1; };
+// A camera card, or a grid of them, is one card (#174).
+T.cardCount = (t) => { const s = T.TIERS[t]; return s.tiles + s.entities + s.glances + s.longLists + s.sensors + s.histories + s.pictures + 1 + T.CAMERAS[t].length; };
 
 test("the three reference dashboards are fixed: light, typical, heavy", () => {
   assert.deepEqual(T.ORDER, ["light", "typical", "heavy"]);
   assert.deepEqual(T.TIERS.light, { tiles: 12, entities: 4, glances: 1, rows: 5, longLists: 0, longRows: 0, sensors: 2, histories: 0, pictures: 0 });
-  assert.deepEqual(T.TIERS.typical, { tiles: 26, entities: 11, glances: 2, rows: 6, longLists: 0, longRows: 0, sensors: 6, histories: 2, pictures: 2 });
-  assert.deepEqual(T.TIERS.heavy, { tiles: 50, entities: 22, glances: 4, rows: 8, longLists: 4, longRows: 20, sensors: 16, histories: 8, pictures: 15 });
+  assert.deepEqual(T.TIERS.typical, { tiles: 26, entities: 11, glances: 2, rows: 6, longLists: 0, longRows: 0, sensors: 6, histories: 2, pictures: 1 });
+  assert.deepEqual(T.TIERS.heavy, { tiles: 50, entities: 22, glances: 4, rows: 8, longLists: 4, longRows: 20, sensors: 16, histories: 8, pictures: 13 });
+  // #174: the camera cards take pictures' places. Light none; typical one 720p; heavy one 720p and a
+  // grid of three 360p (a main stream and sub-streams), at 15 fps.
+  assert.deepEqual(T.CAMERAS, { start: ["360p"], light: [], typical: ["720p"], heavy: ["720p", ["360p", "360p", "360p"]] });
+  assert.equal(T.CAMERA.fps, 15);
   assert.equal(T.GLANCE_ENTITIES, 5);
   assert.deepEqual(T.LIVE, { updatesPerS: 5, flipEveryMs: 2000, clockEveryMs: 1000, tileTransitionMs: 180 });
 });

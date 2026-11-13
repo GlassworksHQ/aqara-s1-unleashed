@@ -481,7 +481,19 @@ def tier_entry(tier, inp, scroll_missed=0, updates_missed=0, load_ms=200, fcp_ms
             "measure": {"t": "measure", "stage": "updates", "moving": 12, "offscreen": 0, "targets": 10, "update_every_ms": 200},
             "step": updates_step(nav, updates_missed),
             "input": {"t": "input", "method": "event-timing", "taps": 10, "inp_ms": inp},
+            "camera": camera_line(tier),
             "swipes": [swipe(nav, i, late(60, scroll_missed)) for i in range(3)]}
+
+
+def camera_line(tier, first_ms=600.0, shown=100.0, max_gap=70.0, stall=0.0):
+    """The harness's camera line (#174) for a view with streams: each plays at once and in full."""
+    n = {"typical": 1, "heavy": 4}.get(tier, 0)
+    if not n:
+        return None
+    return {"t": "camera", "stage": tier, "window_ms": 20000, "fps": 15, "expected": n, "found": n,
+            "streams": [{"found": True, "w": 1280 if i == 0 else 640, "h": 720 if i == 0 else 360, "first_frame_ms": first_ms,
+                         "shown_pct": shown, "max_gap_ms": max_gap, "stall_total_ms": stall, "frames": 300, "decoded": 300,
+                         "dropped": 0, "waiting": 0, "source": "quality+rvfc"} for i in range(n)]}
 
 
 def load_frames():
@@ -586,7 +598,11 @@ class Build(unittest.TestCase):
         g = self.rep["grade"]
         self.assertEqual(g["grade"], "B")
         self.assertEqual(g["levels"], {"light": "premium", "typical": "premium", "heavy": "fluid"})
-        self.assertEqual(g["bands"]["heavy"], {"tap": "good", "scroll": "fluid", "updates": "premium", "load": "good"})
+        self.assertEqual(g["bands"]["heavy"], {"tap": "good", "scroll": "fluid", "updates": "premium", "load": "good", "camera": "good"})
+        self.assertEqual(g["bands"]["light"]["camera"], "none")              # no streams on light (#174)
+        heavy = self.rep["graded"]["reference"]["tiers"]["heavy"]
+        self.assertEqual(heavy["camera_levels"], ["good", "good", "good"])
+        self.assertEqual(heavy["camera_runs"][0]["detail"][1]["w"], 640)
         self.assertEqual(g["start"], {"value": 800, "band": "good"})   # process 20.0 s -> engine 20.7 to 20.9 s
         self.assertEqual(g["viewport"], {"state": "ok", "reason": None})
         self.assertFalse(g["provisional"])
