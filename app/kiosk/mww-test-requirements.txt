@@ -1,8 +1,10 @@
 # LiteRT for MicroWakeWordClipTest (pr.yml, wake-word job): it runs the four microWakeWord models
 # through app/kiosk/src/test/resources/mww_model.py. Locked with hashes for Python 3.12 on Linux
-# x86_64. To change it, regenerate below this comment from the two direct pins:
-#   printf 'ai-edge-litert==2.3.0\nnumpy==2.5.4\n' | uv pip compile - --generate-hashes \
-#     --python-version 3.12 --python-platform x86_64-manylinux_2_28 --no-header
+# x86_64. backports-strenum is pinned by hand: uv ignores the "<3.11" in 1.3.1's requires-python,
+# pip does not, so 1.2.8 is the newest pip installs on 3.12. To change it, regenerate below this
+# comment from the direct pins, then check it with pip (not uv):
+#   printf 'ai-edge-litert==2.3.0\nnumpy==2.5.4\nbackports-strenum==1.2.8\n' | uv pip compile - \
+#     --generate-hashes --python-version 3.12 --python-platform x86_64-manylinux_2_28 --no-header
 ai-edge-litert==2.3.0 \
     --hash=sha256:08cec0910d071345743379c9bac1b1d76f5050d9dd2d525e2300826ba132e89c \
     --hash=sha256:1f15078a6725d2357d9de9221664c29afa0545d807559c5f7199ce5e40b96b23 \
@@ -24,9 +26,9 @@ ai-edge-litert==2.3.0 \
     --hash=sha256:dc9f56c23e0dcf182b6c35f23fbb102ed048296588882b806d5eff7654c04c88 \
     --hash=sha256:e104683ee0dead1243002a218637cc435c36fdb01103799335027252314e727b \
     --hash=sha256:ffee5993b859580650e844fce322e93b7abf50dfa36fd0fcbde41e079d1eebe3
-backports-strenum==1.3.1 \
-    --hash=sha256:77c52407342898497714f0596e86188bb7084f89063226f4ba66863482f42414 \
-    --hash=sha256:cdcfe36dc897e2615dc793b7d3097f54d359918fc448754a517e6f23044ccf83
+backports-strenum==1.2.8 \
+    --hash=sha256:4dd47365fd427ac8028aeb1ad3628ea38e67c4d0336ceebd5c0f113e0c487ce9 \
+    --hash=sha256:fc297cb26971f7d5e15a478a06a78575197f81daea47975771b1aae996dcccf4
     # via ai-edge-litert
 flatbuffers==25.12.19 \
     --hash=sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4
