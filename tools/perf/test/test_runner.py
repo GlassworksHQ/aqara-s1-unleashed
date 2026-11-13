@@ -990,6 +990,22 @@ class PaneRam(unittest.TestCase):
         with open(os.path.join(state, "saved_url.json")) as f:
             self.assertIn("127.0.0.1", json.load(f))          # still the fake's: what the check caught
 
+    def test_a_refused_sample_dashboard_takes_no_sample(self):
+        """The verifier's note 15: when the kiosk refuses the reference dashboard's intent, the panes
+        may still match, but the idle sample wouldn't be on that dashboard. No sample is taken."""
+        tmp = tempfile.mkdtemp()
+        env, state = fake_env(tmp, FAKE_REF_URL_FAILS="1")
+        out = os.path.join(tmp, "out")
+        p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--runs", "1", "--out", out, "--port", "18083",
+                            "--skip-synthetic", "--skip-reference", "--skip-real-use",
+                            "--pane-ram", "assist=on,sendspin=on,mic=on", "--restore-dashboard", RESTORE],
+                           env=env, capture_output=True, text=True, timeout=300)
+        self.assertEqual(p.returncode, 0, p.stderr[-2000:])                 # the restore isn't refused
+        self.assertIn("no sample taken", p.stderr)
+        self.assertEqual([f for f in os.listdir(out) if f.startswith("idle-ref-")], [])
+        with open(os.path.join(out, "panes-ref-panes-off-1.json")) as f:
+            self.assertFalse(json.load(f)["url_taken"])
+
     def test_it_needs_the_dashboard_to_put_back(self):
         tmp = tempfile.mkdtemp()
         env, _ = fake_env(tmp)

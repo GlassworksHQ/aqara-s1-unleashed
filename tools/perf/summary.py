@@ -81,7 +81,9 @@ def ram_summary(ram):
         "idle_by_process_pss_kb": {r: _med(v) for r, v in sorted((idle.get("by_role_pss_kb") or {}).items())},
         "peak_app_pss_kb": peak.get("app_pss_kb"),
         "peak_by_process_pss_kb": dict(sorted((peak.get("by_role_pss_kb") or {}).items())),
-        # A pane the kiosk didn't run as asked has no number (report: `error`) and isn't exported.
+        # Only panes whose every sample was checked against the kiosk's log (report: `verified`). A
+        # pane with no number (`error`) or unchecked samples (runs before 2026-11-13, such as s1v7,
+        # whose switches the kiosk lost) isn't exported, so the site can't show it as a measurement.
         "panes": [{"id": p["id"], "pss_kb": p["pss_kb"], "tolerance_kb": p["pss_tolerance_kb"],
                    "measurable": p["pss_measurable"], "runs": min(p["samples_on"], p["samples_off"]),
                    # The frame's budget for the pane and whether its share is within it. Read with
@@ -89,7 +91,7 @@ def ram_summary(ram):
                    "budget_kb": (budget.get(p["id"]) or {}).get("budget_kb"),
                    "budget_ok": (budget.get(p["id"]) or {}).get("ok"),
                    **({"off_by": p["off_by"]} if p.get("off_by") else {})}
-                  for p in ram.get("panes") or [] if not p.get("error")],
+                  for p in ram.get("panes") or [] if not p.get("error") and p.get("verified") is True],
         "panes_waiting": [p["id"] for p in ram.get("panes_waiting") or []],
         "budget_ok": (ram.get("budget") or {}).get("ok"),
     }

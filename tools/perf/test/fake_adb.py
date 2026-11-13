@@ -47,7 +47,8 @@ def shell(cmd):
         return props.get(cmd.split()[1], "")
     if cmd.startswith("am start"):
         u = re.search(r"--es url '([^']+)'", cmd)
-        if u and os.environ.get("FAKE_RESTORE_FAILS") and "127.0.0.1" not in u.group(1):
+        if u and (os.environ.get("FAKE_RESTORE_FAILS") and "127.0.0.1" not in u.group(1)
+                  or os.environ.get("FAKE_REF_URL_FAILS") and "127.0.0.1" in u.group(1)):
             # The kiosk didn't take the restore (am exits 0 all the same): nothing is saved.
             save("restore_refused.json", state("restore_refused.json", 0) + 1)
             return "Starting: Intent { cmp=sh.edm.s1kiosk/.MainActivity }\nError: Activity not started, unable to resolve Intent\n"

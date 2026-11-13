@@ -302,9 +302,13 @@ if [ -n "$PANE_RAM" ]; then
       log "panes: $label $k/$RUNS"
       # Set and check what the kiosk runs (perfrun.py panes); each sample starts from a fresh app
       # process, since voice_enabled restarts it. The idle sample records what it ran too.
-      run panes --set "$(pane_set "$state")" --url "http://127.0.0.1:$PORT/clarity-ref/typical" \
-        --settle "$SWITCH_SETTLE" --tries 3 > "$OUT/panes-$label-$k.json" \
-        || log "panes: the kiosk didn't run $label (see panes-$label-$k.json); the report leaves the sample out"
+      # A state that didn't take (a pane, or the dashboard intent refused: url_taken false) gets no
+      # sample: it wouldn't be this label on the reference dashboard.
+      if ! run panes --set "$(pane_set "$state")" --url "http://127.0.0.1:$PORT/clarity-ref/typical" \
+          --settle "$SWITCH_SETTLE" --tries 3 > "$OUT/panes-$label-$k.json"; then
+        log "panes: the kiosk didn't run $label (see panes-$label-$k.json); no sample taken"
+        continue
+      fi
       if grep -q '"voice_applied": false' "$OUT/panes-$label-$k.json"; then
         log "panes: voice_enabled didn't take (this kiosk saves it asynchronously before it restarts); Assist is off by its microphone mute"
       fi

@@ -835,12 +835,13 @@ Assistant:
   model it loads. The report says so (`off_by: "mute"`). s1v7's pane numbers are not valid; the S1's
   are s1p1 and s1p3 ([Example](#example-aqara-s1-plus)).
 - **The tolerance is too wide for the pane budgets yet.** On the S1 (s1p3, 2026-11-13) it was
-  ±31.6 MB, two thirds of the 48 MB budget: a pane near 0 and a pane well over budget would both
-  read "within tolerance", and the budget check (`pane_budget`), which compares the share alone,
-  says "ok" either way. Two things made it wide, neither of them a pane:
+  ±31.6 MB, two thirds of the 48 MB budget. A share with that uncertainty can't establish whether
+  the pane fits its budget. The budget check (`pane_budget`, and the summary's `budget_ok`) compares
+  the share alone, so its "ok" says nothing about fit while the share isn't measurable. Two things
+  made it wide, neither of them a pane:
   1. **The first sample is low.** In both s1p1 and s1p3 the first sample (`ref-panes-off-1`) had
-     the GPU process at 141 to 142 MB, against 155 to 157 MB in every later one, and the app 21 to
-     33 MB under the other samples of its run. It sets the panes-off spread (564.7 to 596.4 MB).
+     the GPU process at 141 to 142 MB, against 155 to 157 MB in every later one. In s1p3 the app was
+     17.4 to 33.3 MB under the other samples (with `:boot` left out). It sets the panes-off spread (564.7 to 596.4 MB).
   2. **`:boot` comes and goes.** The direct-boot home activity's process (29.2 MB) was in 2 of 12
      samples (s1p1's `ref-sendspin-on-1` and s1p3's `ref-sendspin-on-3`), not in the other two
      Sendspin samples. That is what s1p1's Sendspin +50 MB was. Why it runs then is untested; it is a
@@ -953,7 +954,7 @@ from real use, and nothing device-unique.
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |
 | `report` | A relative path or URL of the full report (`--report-url`) |
 | `complete` | `false` when it was exported with `--allow-provisional` and has gaps, missing measurements or isn't comparable |
-| `ram` | Not graded; `null` if not measured. In kB: `idle_app_pss_kb` and `idle_by_process_pss_kb` (medians at idle on the typical reference dashboard), `peak_app_pss_kb` and `peak_by_process_pss_kb` (the peak during the graded tasks), `panes` (each: `id`, `pss_kb`, `tolerance_kb`, `measurable`, `runs`, `budget_kb` and `budget_ok` (the frame's pane budget and whether the share is within it; `null` without a budget; read it with `measurable`, since a share inside the tolerance can't show that the pane fits), and `off_by` when the report has it; a pane with no number isn't listed), `panes_waiting` (pane ids), `budget_ok` (`true`, `false` or `null`) |
+| `ram` | Not graded; `null` if not measured. In kB: `idle_app_pss_kb` and `idle_by_process_pss_kb` (medians at idle on the typical reference dashboard), `peak_app_pss_kb` and `peak_by_process_pss_kb` (the peak during the graded tasks), `panes` (each: `id`, `pss_kb`, `tolerance_kb`, `measurable`, `runs`, `budget_kb` and `budget_ok` (the frame's pane budget and whether the share is within it; `null` without a budget; read it with `measurable`, since a share inside the tolerance can't show that the pane fits), and `off_by` when the report has it. Only panes whose every sample was checked against the kiosk's log (`verified`) are listed: one with no number, or from a run before that check (such as s1v7), isn't), `panes_waiting` (pane ids), `budget_ok` (`true`, `false` or `null`) |
 | `apk` | Not graded; `null` if no APK was given. Per APK: `file`, `abis`, `bytes` |
 
 The levels need each run's measurements (each run gets a level, then the median level is taken), which
