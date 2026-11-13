@@ -187,6 +187,17 @@ export class Fastboot {
     const isSparse = sparseHeader !== null;
     const totalBytes = isSparse ? sparseHeader.blocks * sparseHeader.blockSize : blob.size;
 
+    // Convert image to sparse (for splitting) if it exceeds the size limit
+    if (blob.size > maxDlSize && !isSparse) {
+      this.log(`${partition} image is raw, converting to sparse`);
+      blob = await Sparse.fromRaw(blob);
+    }
+
+    // Build the first piece before anything changes on the device: it checks the sparse header and
+    // the download limit, so a refused image leaves a logical partition at its old size.
+    const pieces = Sparse.splitBlob(blob, maxDlSize);
+    let piece = await pieces.next();
+
     // Logical partitions need to be resized before flashing because they're sized perfectly to the payload.
     if ((await this.getVariable(`is-logical:${partition}`)) === 'yes') {
       // As per AOSP fastboot, we reset the partition to 0 bytes first to optimize extent allocation.
@@ -194,16 +205,11 @@ export class Fastboot {
       await this.command(`resize-logical-partition:${partition}:${totalBytes}`);
     }
 
-    // Convert image to sparse (for splitting) if it exceeds the size limit
-    if (blob.size > maxDlSize && !isSparse) {
-      this.log(`${partition} image is raw, converting to sparse`);
-      blob = await Sparse.fromRaw(blob);
-    }
-
     this.log(`Flashing ${blob.size} bytes to ${partition}, ${maxDlSize} bytes per split`);
     let splits = 0;
     let sentBytes = 0;
-    for await (const split of Sparse.splitBlob(blob, maxDlSize)) {
+    for (; !piece.done; piece = await pieces.next()) {
+      const split = piece.value;
       const data = new Uint8Array(split.data);
       await this.download(data, (done, total) => onProgress((sentBytes + (done / total) * split.bytes) / totalBytes), maxDlSize);
       await this.command(`flash:${partition}`, flashTimeout(data.length));

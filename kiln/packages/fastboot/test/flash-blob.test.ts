@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Fastboot } from '../src';
+import { fromRaw } from '../src/sparse';
 import { FakeLk } from './fake-lk';
 
 const BLOCK = 4096;
@@ -159,5 +160,47 @@ describe('flashBlob against a Qualcomm LK fake', () => {
     await flash(lk, 'system', new Uint8Array([1, 2]));
     expect(lk.downloads).toEqual([2]);
     expect(lk.parts.get('system')!.subarray(0, 3)).toEqual(new Uint8Array([1, 2, 0xee]));
+  });
+
+  it('resizes a logical partition only after the image is known to be good', async () => {
+    const lk = new FakeLk(0x8000, [['system', 64 * BLOCK]]);
+    lk.logical.add('system');
+    await expect(flash(lk, 'system', new Uint8Array(16 * BLOCK + 100))).rejects.toThrow(/whole 4096-byte blocks/);
+    const tiny = new FakeLk(4000, [['system', 64 * BLOCK]]);
+    tiny.logical.add('system');
+    await expect(flash(tiny, 'system', rawImage(4))).rejects.toThrow(/too small/);
+    for (const f of [lk, tiny]) expect(f.commands.filter((c) => c.startsWith('resize-logical-partition:'))).toEqual([]);
+
+    const ok = new FakeLk(0x8000, [['system', 64 * BLOCK]]);
+    ok.logical.add('system');
+    const img = rawImage(16);
+    await flash(ok, 'system', img);
+    const resize = ok.commands.indexOf('resize-logical-partition:system:0');
+    expect(ok.commands.slice(resize, resize + 3)).toEqual([
+      'resize-logical-partition:system:0', `resize-logical-partition:system:${img.length}`, expect.stringMatching(/^download:/),
+    ]);
+    expect(ok.parts.get('system')!.subarray(0, img.length)).toEqual(img);
+  });
+
+  it('fromRaw reads none of the image, and its bytes are the raw data behind a header', async () => {
+    const img = rawImage(20);
+    const read = vi.spyOn(Blob.prototype, 'arrayBuffer');
+    const sparse = await fromRaw(new Blob([img as Uint8Array<ArrayBuffer>]));
+    expect(read).not.toHaveBeenCalled();
+    read.mockRestore();
+    const bytes = new Uint8Array(await sparse.arrayBuffer());
+    expect(sparse.size).toBe(28 + 12 + img.length);
+    expect(bytes.subarray(40)).toEqual(img);
+  });
+
+  it('progress reaches 1 for a sparse image in one piece, and for pieces that start with a fill', async () => {
+    const one = sparseImage([{ raw: rawImage(2) }, { fill: 7, blocks: 50 }], 0xee);
+    const p1 = await flash(new FakeLk(0x100000, [['userdata', 64 * BLOCK]]), 'userdata', one.image);
+    expect(p1.at(-1)).toBe(1);
+
+    const fills: Chunk[] = Array.from({ length: 510 }, (_, i) => ({ fill: i, blocks: 1 }));
+    const many = sparseImage([{ raw: rawImage(14) }, ...fills], 0xee);
+    const p2 = await flash(new FakeLk(64 * 1024, [['userdata', 1024 * BLOCK]]), 'userdata', many.image);
+    expect(p2.at(-1)).toBe(1);
   });
 });

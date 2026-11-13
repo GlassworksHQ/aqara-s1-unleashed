@@ -9,6 +9,8 @@ export class FakeLk implements BulkTransport {
   replies: Uint8Array[] = [];
   commands: string[] = [];
   downloads: number[] = [];
+  /** Partitions that answer is-logical with yes, as on a device with a super partition. LK has none. */
+  logical = new Set<string>();
   parts = new Map<string, Uint8Array>();
   private buf: Uint8Array = new Uint8Array(0);
   private download: { buf: Uint8Array; got: number } | null = null;
@@ -33,6 +35,10 @@ export class FakeLk implements BulkTransport {
     this.commands.push(cmd);
     if (cmd === 'getvar:max-download-size') {
       this.reply(`OKAY${this.maxDownloadReply}`);
+    } else if (cmd.startsWith('getvar:is-logical:') && this.logical.has(cmd.slice(18))) {
+      this.reply('OKAYyes');
+    } else if (cmd.startsWith('resize-logical-partition:')) {
+      this.reply('OKAY');
     } else if (cmd.startsWith('getvar:')) {
       this.reply('FAILGetVar Variable Not found');
     } else if (cmd.startsWith('download:')) {
