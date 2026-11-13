@@ -1,9 +1,14 @@
 """The Glassworks boot animation's design: the stack, the wordmark and the device line.
 
 The design is the "Translucent" frame of kiosk-ui/boot/boot-reference.html (commit 5df8f044).
-`motion` is its `model(spring(.74, .7), 2.4)` and `paint` its `stack()` plus the page around it,
-ported line for line. The page lays the screen out in CSS px; target.Layout maps that onto any
-screen (one CSS px is L.scale screen px, one unit of the stack's 120-unit viewBox is L.unit).
+`motion` is its `model(spring(.74, .7), 2.4)`, with the same curves and timings. `paint` draws its
+`stack()` and the page around it with the page's SVG filters emulated: the blur is a true Gaussian
+and the grain is seeded noise in place of feTurbulence, so those two are close, not exact. The page
+lays the screen out in CSS px; target.Layout maps that onto any screen (one CSS px is L.scale
+screen px, one unit of the stack's 120-unit viewBox is L.unit).
+
+part0 is 0 to 4.8 s (144 frames): the reference's loop motion only repeats from 4.8 s. part1 is the
+7.2 s loop after it (216 frames).
 
 Frame 0 is the stack in dashed outline. It is also the bootloader splash, so nothing jumps when
 Android takes over. Run it through generate.py.
@@ -11,6 +16,7 @@ Android takes over. Run it through generate.py.
 import math
 import os
 import sys
+import unicodedata
 from dataclasses import dataclass
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -336,8 +342,9 @@ _fonts = {}
 
 
 def shaped(scale, text, css_px, wght, tracking_em):
-    """Glyphs as (char, x) in screen px from the run's left edge, and the run's advance, shaped by
-    HarfBuzz with kerning and CSS letter-spacing (added after every letter, the last one too)."""
+    """The run as (characters, x) per cluster, in screen px from its left edge, and its advance,
+    shaped by HarfBuzz with kerning and CSS letter-spacing (after every cluster, the last one too).
+    A cluster is drawn whole, so accents and joined emoji keep all their characters."""
     path = font_file("inter")
     size = css_px * scale
     opsz = 14   # the page loads Inter from Google Fonts by wght only, which serves the default opsz
@@ -354,10 +361,14 @@ def shaped(scale, text, css_px, wght, tracking_em):
     buf.guess_segment_properties()
     hb.shape(hf, buf, {"kern": True, "liga": False})
     upem = hf.face.upem
+    glyphs = list(zip(buf.glyph_infos, buf.glyph_positions))
+    starts = sorted({info.cluster for info, _ in glyphs})
+    end = dict(zip(starts, starts[1:] + [len(text)]))
     x, out = 0.0, []
-    for info, pos in zip(buf.glyph_infos, buf.glyph_positions):
-        out.append((text[info.cluster], x + pos.x_offset * size / upem))
-        x += pos.x_advance * size / upem + tracking_em * size
+    for c in starts:
+        run = [pos for info, pos in glyphs if info.cluster == c]
+        out.append((text[c:end[c]], x + run[0].x_offset * size / upem))
+        x += sum(pos.x_advance for pos in run) * size / upem + tracking_em * size
     return _fonts[k], out, x
 
 
@@ -395,7 +406,8 @@ class Scene:
         self.base[:] = BG
         self.grain = np.clip(np.random.default_rng(4).normal(0.5, 0.11, (h, w)), 0, 1) * 0.09  # feTurbulence -> alpha
         self.word_css = baseline(L.scale, L.word_top, WORD_CSS * WORD_LINE, WORD_CSS)
-        self.device = text_alpha(L, f"On {target.name}".upper(), DEVICE_CSS, 500, 0.14,
+        line = unicodedata.normalize("NFC", f"On {target.name}".upper())
+        self.device = text_alpha(L, line, DEVICE_CSS, 500, 0.14,
                                  baseline(L.scale, L.device_top, DEVICE_CSS, DEVICE_CSS))
         self._word = {}
 

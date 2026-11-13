@@ -17,6 +17,7 @@ Facts this file relies on:
     (PIL: landscape.transpose(ROTATE_270)). tools/branding/set-bootlogo.py and Kiln's
     replaceBootlogo() swap it in place, so its size must stay exactly the stock file's.
 """
+import dataclasses
 import datetime
 import hashlib
 import io
@@ -29,6 +30,12 @@ import zipfile
 
 import numpy as np
 from PIL import Image
+
+try:
+    import oxipng
+except ImportError:
+    raise SystemExit("pyoxipng is required: the committed frames are compressed with it, and without it\n"
+                     "the zip comes out different and bigger. pip install pyoxipng==9.1.1 (README, Rebuild)")
 
 FPS = 30
 LOOP_REPEATS = 25             # p-part repeats of the loop (3 min at 7.2 s) before it holds its first frame
@@ -44,30 +51,41 @@ def hexc(h):
 BG = hexc("#0a0b0f")
 
 # ---------------------------------------------------------------- fonts (OFL)
+# Pinned: google/fonts at a fixed commit, each file checked by SHA-256, so a rebuild uses the same
+# Inter the committed outputs were made with. To move to a newer Inter, change both and rebuild.
 FONT_CACHE = "/tmp/s1-unleashed-fonts"
-GF_RAW = "https://github.com/google/fonts/raw/main/"
-FONTS = {"inter": "ofl/inter/Inter%5Bopsz,wght%5D.ttf"}
+GF_RAW = "https://raw.githubusercontent.com/google/fonts/0fb1bdc740dd9d495e639a160778db34c28807b7/"
+FONTS = {"inter": ("ofl/inter/Inter%5Bopsz,wght%5D.ttf",
+                   "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+                   "5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57")}   # font, OFL.txt
 
 
-def _fetch(url, dest):
-    if not os.path.exists(dest):
+def sha256_file(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def _fetch(url, dest, sha):
+    if not os.path.exists(dest) or sha256_file(dest) != sha:
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         # curl uses the system trust store (python.org builds often lack one)
         subprocess.run(["curl", "-sSfL", "--max-time", "120", "-o", dest + ".part", url], check=True)
+        got = sha256_file(dest + ".part")
+        if got != sha:
+            raise SystemExit(f"{url}: SHA-256 {got}, expected {sha}")
         os.replace(dest + ".part", dest)
     return dest
 
 
 def font_file(key):
-    """Download the font and its OFL.txt from google/fonts (ofl/ tree). Refuse
-    to use the font unless the licence file really is the SIL OFL."""
-    rel = FONTS[key]
+    """The pinned font, after its OFL.txt: refuse it unless the licence really is the SIL OFL."""
+    rel, font_sha, lic_sha = FONTS[key]
     folder = rel.rsplit("/", 1)[0]
-    lic = _fetch(GF_RAW + folder + "/OFL.txt", os.path.join(FONT_CACHE, key, "OFL.txt"))
+    lic = _fetch(GF_RAW + folder + "/OFL.txt", os.path.join(FONT_CACHE, key, "OFL.txt"), lic_sha)
     with open(lic, encoding="utf-8", errors="replace") as f:
         if "SIL Open Font License" not in f.read():
             raise RuntimeError(f"{key}: licence is not OFL")
-    return _fetch(GF_RAW + rel, os.path.join(FONT_CACHE, key, key + ".ttf"))
+    return _fetch(GF_RAW + rel, os.path.join(FONT_CACHE, key, key + ".ttf"), font_sha)
 
 
 # ---------------------------------------------------------------- splash
@@ -93,19 +111,11 @@ def write_bmp(target, landscape, path):
 
 
 # ---------------------------------------------------------------- animation
-try:  # optional: ~20% smaller frames (pip install pyoxipng)
-    import oxipng
-except ImportError:  # pragma: no cover
-    oxipng = None
-
-
 def png_bytes(img):
+    """PNG through oxipng: smaller, and the same bytes on every platform (Pillow's zlib isn't)."""
     b = io.BytesIO()
     img.save(b, "PNG", optimize=True)
-    data = b.getvalue()
-    if oxipng is not None:
-        data = oxipng.optimize_from_memory(data, level=4)
-    return data
+    return oxipng.optimize_from_memory(b.getvalue(), level=4)
 
 
 def trim(frame):
@@ -156,7 +166,7 @@ class AnimationZip:
 
     def start(self, part):
         self._end_part()
-        self.part = part
+        self.part, self.n = part, 0
         self._add(part + "/", b"", is_dir=True)
 
     def frame(self, img):
@@ -204,6 +214,31 @@ def list_bootlogo(bmp, name):
     print(f"  listed {sha[:12]}… in {os.path.relpath(BOOTLOGOS)} (commit it with the new bootlogo.bmp)")
 
 
+# The committed outputs and what made them: frames/aqara-s1-plus/installer/test/branding.test.ts
+# checks the S1's files against it, so a generator change without a rebuild fails CI.
+MANIFEST = "outputs.json"
+HERE = os.path.dirname(os.path.abspath(__file__))
+INPUTS = ("generate.py", "stack.py", "formats.py", "target.py")
+OUTPUTS = ("bootlogo.bmp", "bootanimation.zip", "splash-landscape.png", "preview.webp")
+
+
+def write_manifest(target, out):
+    import importlib.metadata as md
+    import PIL
+    doc = {
+        "about": "What branding/boot/generate.py last wrote here: the target, the SHA-256 of the generator, "
+                 "its font and each output. Rebuild and commit them together; branding.test.ts compares.",
+        "target": dataclasses.asdict(target),
+        "inputs": {**{f"branding/boot/{f}": sha256_file(os.path.join(HERE, f)) for f in INPUTS},
+                   "Inter": FONTS["inter"][1]},
+        "outputs": {f: sha256_file(os.path.join(out, f)) for f in OUTPUTS if os.path.exists(os.path.join(out, f))},
+        "tools": {"pillow": PIL.__version__, "numpy": np.__version__,
+                  "pyoxipng": md.version("pyoxipng"), "uharfbuzz": md.version("uharfbuzz")},
+    }
+    with open(os.path.join(out, MANIFEST), "w", encoding="utf-8") as f:
+        f.write(json.dumps(doc, indent=2) + "\n")
+
+
 def build(target, out, render, n_intro, n_loop, splash_name):
     """render(T) -> screen-sized RGB array, T = global frame index. Frames [0, n_intro) are part0
     and the next n_loop part1, which must be periodic: render(n_intro + n_loop) == render(n_intro).
@@ -241,7 +276,8 @@ def build(target, out, render, n_intro, n_loop, splash_name):
         az.close()
     os.replace(zp + ".part", zp)   # only a finished, seamless zip replaces the old one
 
-    splash.save(os.path.join(out, "splash-landscape.png"), optimize=True)
+    with open(os.path.join(out, "splash-landscape.png"), "wb") as f:
+        f.write(png_bytes(splash))
     bmp = os.path.join(out, "bootlogo.bmp")
     if target.splash:
         write_bmp(target, splash, bmp)
@@ -250,6 +286,8 @@ def build(target, out, render, n_intro, n_loop, splash_name):
         os.remove(bmp)   # an earlier build's splash, for another target
     write_preview(os.path.join(out, "preview.webp"), small)
     problems = validate(target, out)
+    if not problems:
+        write_manifest(target, out)
     for p in problems:
         print("  FAIL:", p)
     size = os.path.getsize(os.path.join(out, "bootanimation.zip"))
