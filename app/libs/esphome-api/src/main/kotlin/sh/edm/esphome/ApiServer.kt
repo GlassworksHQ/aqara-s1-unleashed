@@ -291,7 +291,9 @@ class ApiServer(
                         c.close()
                     }
                 } else if (idle > keepaliveMs) {
-                    c.pingSent = c.send(listOf(Frame(Msg.PING_REQUEST, ByteArray(0))))
+                    // Set first: an answer read before send() returns must still clear it.
+                    c.pingSent = true
+                    if (!c.send(listOf(Frame(Msg.PING_REQUEST, ByteArray(0))))) c.pingSent = false
                 }
             } catch (t: Throwable) { EspHomeLog.w("keepalive failed", t) }
         }
