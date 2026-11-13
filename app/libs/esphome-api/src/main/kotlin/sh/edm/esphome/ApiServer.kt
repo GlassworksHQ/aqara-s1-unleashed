@@ -144,6 +144,8 @@ class ApiServer(
         const val UNRESPONSIVE_MS = 150_000L // ESPHome: KEEPALIVE_TIMEOUT_MS * 5 / 2
         /** ESPHome activates a newly saved PSK 100 ms after answering (api_server.cpp update_noise_psk_). */
         const val KEY_ACTIVATION_DELAY_MS = 100L
+        /** Action calls waiting for the action thread; more are refused, so a client can't fill the memory. */
+        const val MAX_PENDING_ACTIONS = 32
         /** A camera stream runs this long after the last stream request (ESPHome api_connection.cpp `CAMERA_STOP_STREAM`). */
         const val CAMERA_STREAM_MS = 5_000L
     }
@@ -251,9 +253,10 @@ class ApiServer(
         keepaliveTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
             Thread(r, "esphome-keepalive").apply { isDaemon = true }
         }.also { it.scheduleWithFixedDelay({ keepaliveTick() }, tick, tick, java.util.concurrent.TimeUnit.MILLISECONDS) }
-        actionThread = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
-            Thread(r, "esphome-actions").apply { isDaemon = true }
-        }
+        actionThread = java.util.concurrent.ThreadPoolExecutor(
+            1, 1, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
+            java.util.concurrent.ArrayBlockingQueue(MAX_PENDING_ACTIONS),
+        ) { r -> Thread(r, "esphome-actions").apply { isDaemon = true } }
         EspHomeLog.i("API server listening on ${ss.localPort} (${modeName()})")
     }
 
@@ -598,7 +601,7 @@ class ApiServer(
                 try { onCommand?.invoke() } catch (t: Throwable) { EspHomeLog.w("onCommand failed", t) }
             }
             try { actionThread?.execute(run) ?: fail("server stopped") } catch (e: java.util.concurrent.RejectedExecutionException) {
-                fail("server stopped")
+                fail("busy: $MAX_PENDING_ACTIONS calls already waiting")
             }
         }
 

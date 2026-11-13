@@ -14,7 +14,8 @@ import kotlin.concurrent.withLock
  * [frame] returns a JPEG, or null when there is none (Home Assistant then gets an empty image and
  * reports "Unable to get image" at once instead of timing out). It runs on a camera thread of the
  * connection that asked, only while a client wants frames, so a pane can use it to show that frames
- * are leaving the device. A stream calls it at most [maxFps] times a second per connection.
+ * are leaving the device. A stream calls it at most [maxFps] times a second per connection. Return
+ * promptly: a connection's camera thread ends only after [frame] returns.
  * With [authOnly] set, only an authenticated connection (Noise with the provisioned key) gets images.
  */
 class CameraEntity(

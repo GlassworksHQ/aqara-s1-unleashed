@@ -155,6 +155,29 @@ class ActionsCameraServerTest {
     }
 
     @Test
+    fun callsBeyondTheQueueAreRefusedNotHeld() {
+        val running = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val slow = ApiAction("slow", supportsResponse = ActionResponse.STATUS) {
+            running.countDown(); release.await(10, TimeUnit.SECONDS); null
+        }
+        val s = server(slow)
+        Client(s.localPort).use { c ->
+            c.send(Msg.EXECUTE_SERVICE_REQUEST, call(slow, 1, false))
+            assertTrue(running.await(10, TimeUnit.SECONDS))
+            for (id in 2..ApiServer.MAX_PENDING_ACTIONS + 2) c.send(Msg.EXECUTE_SERVICE_REQUEST, call(slow, id, false))
+            val refused = c.await(Msg.EXECUTE_SERVICE_RESPONSE)
+            assertEquals(ApiServer.MAX_PENDING_ACTIONS + 2, refused.uint32(1))
+            assertFalse(refused.bool(2))
+            assertTrue(refused.string(3), refused.string(3).startsWith("busy"))
+            release.countDown()
+            val done = (1..ApiServer.MAX_PENDING_ACTIONS + 1).map { c.await(Msg.EXECUTE_SERVICE_RESPONSE) }
+            assertEquals((1..ApiServer.MAX_PENDING_ACTIONS + 1).toList(), done.map { it.uint32(1) })
+            assertTrue(done.all { it.bool(2) })
+        }
+    }
+
+    @Test
     fun authOnlyActionsAreRefusedOverPlaintext() {
         val calls = AtomicInteger()
         val wipe = ApiAction("wipe", supportsResponse = ActionResponse.STATUS) { calls.incrementAndGet(); null }

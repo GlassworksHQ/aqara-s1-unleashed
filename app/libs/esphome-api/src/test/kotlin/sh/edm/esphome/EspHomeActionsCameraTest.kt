@@ -62,10 +62,13 @@ class EspHomeActionsCameraTest {
         s.start()
         try {
             val script = File(javaClass.classLoader!!.getResource("esphome_actions_camera.py")!!.toURI())
+            val log = File.createTempFile("esphome_actions_camera", ".log").apply { deleteOnExit() }
             val proc = ProcessBuilder(python, "-I", script.absolutePath, s.localPort.toString())
-                .redirectErrorStream(true).start()
-            val out = proc.inputStream.bufferedReader().readText()
-            assertTrue("client timed out:\n$out", proc.waitFor(60, TimeUnit.SECONDS))
+                .redirectErrorStream(true).redirectOutput(log).start()
+            val finished = proc.waitFor(60, TimeUnit.SECONDS)
+            if (!finished) proc.destroyForcibly()
+            val out = log.readText()
+            assertTrue("client timed out:\n$out", finished)
             assertEquals("client failed:\n$out", 0, proc.exitValue())
             val r = JSONObject(out.lines().first { it.startsWith("RESULT ") }.removePrefix("RESULT "))
 
