@@ -12,7 +12,6 @@ import android.bluetooth.BluetoothGattServerCallback
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
-import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
@@ -28,8 +27,6 @@ import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.ParcelUuid
 import android.util.Log
-import androidx.annotation.RequiresApi
-import java.util.Collections
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -97,8 +94,8 @@ class ImprovBleServer(
         val a = adapter ?: return "no BluetoothAdapter"
         val adv = runCatching { a.bluetoothLeAdvertiser != null }.getOrDefault(false)
         val multi = runCatching { a.isMultipleAdvertisementSupported }.getOrDefault(false)
-        val ext = Compat.hasAdvertisingSets && runCatching { a.isLeExtendedAdvertisingSupported }.getOrDefault(false)
-        val maxLen = if (Compat.hasAdvertisingSets) runCatching { a.leMaximumAdvertisingDataLength }.getOrDefault(-1) else -1
+        val ext = runCatching { a.isLeExtendedAdvertisingSupported }.getOrDefault(false)
+        val maxLen = runCatching { a.leMaximumAdvertisingDataLength }.getOrDefault(-1)
         return "enabled=${a.isEnabled} isMultipleAdvertisementSupported=$multi bluetoothLeAdvertiser=${if (adv) "present" else "null"} " +
             "leExtendedAdvertising=$ext leMaxAdvDataLength=$maxLen permissions=${permissionsOk()}"
     }
@@ -230,7 +227,7 @@ class ImprovBleServer(
         val c = chars[p.uuid] ?: return
         inFlight = true
         val ok = if (Compat.hasValueNotify) {
-            s.notifyCharacteristicChanged(p.device, c, false, p.value) == BluetoothStatusCodes.SUCCESS
+            s.notifyCharacteristicChanged(p.device, c, false, p.value) == BluetoothGatt.GATT_SUCCESS
         } else {
             @Suppress("DEPRECATION")
             c.value = p.value
@@ -254,8 +251,7 @@ class ImprovBleServer(
 
     private fun startAdvertising() {
         val adv = advertiser ?: return
-        val cb = setCallback
-        if (Compat.hasAdvertisingSets && cb != null && !useLegacyAdvertise) {
+        if (!useLegacyAdvertise) {
             val params = AdvertisingSetParameters.Builder()
                 .setLegacyMode(true)
                 .setConnectable(true)
@@ -264,7 +260,7 @@ class ImprovBleServer(
                 .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_MEDIUM)
                 .build()
             try {
-                adv.startAdvertisingSet(params, advData(), scanResponse(), null, null, cb)
+                adv.startAdvertisingSet(params, advData(), scanResponse(), null, null, setCallback)
                 return
             } catch (e: Exception) {
                 Log.w(logTag, "startAdvertisingSet threw; using startAdvertising", e)
@@ -283,8 +279,7 @@ class ImprovBleServer(
 
     private fun stopAdvertising() {
         val adv = advertiser ?: return
-        val cb = setCallback
-        if (Compat.hasAdvertisingSets && cb != null) runCatching { adv.stopAdvertisingSet(cb) }
+        runCatching { adv.stopAdvertisingSet(setCallback) }
         runCatching { adv.stopAdvertising(legacyCallback) }
         advSet = null
         advertising = false
@@ -293,7 +288,7 @@ class ImprovBleServer(
     private fun updateAdvertisement() {
         if (!running) return
         val set = advSet
-        if (Compat.hasAdvertisingSets && set != null) {
+        if (set != null) {
             set.setAdvertisingData(advData())
         } else if (useLegacyAdvertise && advertising) {
             // Legacy API can't update in place: restart with the new service data.
@@ -303,11 +298,7 @@ class ImprovBleServer(
         }
     }
 
-    // Null below Android 8: creating an AdvertisingSetCallback there throws NoClassDefFoundError.
-    private val setCallback: AdvertisingSetCallback? = if (Compat.hasAdvertisingSets) advertisingSetCallback() else null
-
-    @RequiresApi(26)
-    private fun advertisingSetCallback() = object : AdvertisingSetCallback() {
+    private val setCallback = object : AdvertisingSetCallback() {
         override fun onAdvertisingSetStarted(set: AdvertisingSet?, txPower: Int, status: Int) {
             main.post {
                 if (status == ADVERTISE_SUCCESS && set != null) {
@@ -369,7 +360,7 @@ class ImprovBleServer(
                 main.post {
                     listener.onClientDisconnected(addr)
                     // Some stacks stop legacy advertising once a central connected; make sure it runs.
-                    if (Compat.hasAdvertisingSets && running) runCatching { advSet?.enableAdvertising(true, 0, 0) }
+                    if (running && advSet != null) runCatching { advSet?.enableAdvertising(true, 0, 0) }
                 }
             }
         }
@@ -429,7 +420,7 @@ class ImprovBleServer(
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?,
         ) {
             if (d.uuid == CCCD) {
-                val subs = subscribed.getOrPut(device.address) { Collections.newSetFromMap(ConcurrentHashMap<UUID, Boolean>()) }
+                val subs = subscribed.getOrPut(device.address) { ConcurrentHashMap.newKeySet() }
                 val enable = value != null && value.isNotEmpty() && (value[0].toInt() and 0x03) != 0
                 if (enable) subs += d.characteristic.uuid else subs -= d.characteristic.uuid
                 Log.i(logTag, "${device.address} ${if (enable) "subscribed to" else "unsubscribed from"} ${short(d.characteristic.uuid)}")

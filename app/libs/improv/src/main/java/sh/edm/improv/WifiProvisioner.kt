@@ -71,15 +71,7 @@ class WifiProvisioner(
         get() = ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
     val locationEnabled: Boolean
-        get() = runCatching {
-            if (Compat.hasIsLocationEnabled) {
-                ctx.getSystemService(LocationManager::class.java).isLocationEnabled
-            } else {
-                @Suppress("DEPRECATION")
-                Settings.Secure.getInt(ctx.contentResolver, Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF) !=
-                    Settings.Secure.LOCATION_MODE_OFF
-            }
-        }.getOrDefault(false)
+        get() = runCatching { ctx.getSystemService(LocationManager::class.java).isLocationEnabled }.getOrDefault(false)
 
     /** Needed to read scan results and the current SSID/networkId on API 29. */
     val hasLocationAccess: Boolean get() = hasLocationPermission && locationEnabled
@@ -409,7 +401,7 @@ class WifiProvisioner(
         private fun failAndRestore(reason: String): Outcome.Failed {
             var restored: String? = null
             if (netId != -1 && addedNew) Log.i(TAG, "removeNetwork($netId) -> ${wm.removeNetwork(netId)}")
-            if (Compat.hasNetworkSuggestions) suggestion?.let { Log.i(TAG, "removeNetworkSuggestions -> ${wm.removeNetworkSuggestions(listOf(it))}") }
+            suggestion?.let { Log.i(TAG, "removeNetworkSuggestions -> ${wm.removeNetworkSuggestions(listOf(it))}") }
             if (netId != -1) {
                 if (prevNetId != -1) {
                     Log.i(TAG, "re-select previous network $prevNetId -> ${wm.enableNetwork(prevNetId, true)}")
