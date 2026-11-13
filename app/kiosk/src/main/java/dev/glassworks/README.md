@@ -277,15 +277,30 @@ status, primary and secondary buttons) and calls `host.next()` when it is answer
 no pane. `GlassworksRuntime.setupPanes` pairs each choice with its steps and leaves out a pane with
 steps but no card, with an error in the log: the person could never turn it on or off.
 
-**A settings section is data.** Items are `Text`, `Switch`, `Link`, `Note`, `Info` and `Group`, each
-with its value and a `save(value, done)`. "Save & restart" saves every item in order and waits for
-each `done`, so a save can finish on another thread (the radio's allow-list) or report a problem in
-words. `Native` is the one panel-only item: a view for what has no typed item yet (the radio's role
-tiles). A browser can't draw it, so new sections should not need it.
+**A settings section is data.** Items are `Text`, `Switch`, `Slider`, `Duration`, `TimeRange`, `Link`,
+`Note`, `Info` and `Group`, each with its value and a `save(value, done)`. A slider, a duration (picked
+from its choices, with units) and a daily window are never typed (#63 round 2), so a browser can draw
+the same controls. A `Switch` can ask first (`confirm` gives a `Confirm`: the question, what it costs,
+the button's word). Each change applies on its own, as the person makes it
+(#63): there is no "Save & restart". `done` can come from another thread (the radio's allow-list) and
+reports a problem in words. An item that only takes effect when the app starts again sets
+`restartsApp`; the menu then says so and offers *Restart now*. A `Text` says its value in words with
+`shown` ("After 2 minutes"). A section's `heading` is its page's title when it says more than its
+name in the list. `Native` is the one panel-only item: a view for what has no typed item yet (the
+radio's modes and card). A browser can't draw it, so new sections should not need it.
 
 **Order.** `settingsOrder` puts the core's Dashboard, Screen and Network first, then the panes'
 sections in definition order (Voice, Music, Radio, Wall base, Time zone), then Log, Security and
-About: the Manage page's nav (#33). A section without items is left out.
+About: the Manage page's nav (#33). A section without items is left out. The panel's menu draws them
+in the same rail as setup (`ui/GroupedRail`): the panes' sections under a Panes group that opens while
+one of them is picked.
+
+**A pane's section has its on/off.** `paneSections` gives each pane's section a `master`, the
+switch at the top right of its page, made from the pane's setup card (`setupChoice`) unless the pane
+gives its own (the radio's asks before turning off). A pane with a card and no section of its own
+gets a section that says so (Voice, Music). A section's `status` is its dot in the nav (green, amber,
+rose: status only), and `unavailable` says, in a few words, why the pane can't run on this panel: the
+nav greys it with "Can't run" and its page says why, without a switch.
 
 ## Android versions
 

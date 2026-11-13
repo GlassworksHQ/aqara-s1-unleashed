@@ -205,7 +205,7 @@ class RadioFollowUpTest {
         assertTrue(RadioFollowUp.ask(Request.Act(Action.ROUTER_LEAVE), f)!!.destructive) // red Leave
         assertTrue(RadioFollowUp.ask(Request.Act(Action.THREAD_LEAVE), f)!!.destructive)
         val sw = RadioFollowUp.ask(Request.Mode(RadioMode.THREAD_ROUTER), facts(RadioMode.ZIGBEE_TCP))!!
-        assertEquals("Switch to Thread router (repeater)?", sw.title)
+        assertEquals("Switch to Thread repeater?", sw.title) // the picker's words (#63 D3)
         assertTrue(sw.body.startsWith("The radio restarts. ZHA loses its Zigbee radio"))
         assertEquals("Switch", sw.button)
         assertEquals(RadioMode.ZIGBEE_TCP, sw.from); assertEquals(RadioMode.THREAD_ROUTER, sw.to)

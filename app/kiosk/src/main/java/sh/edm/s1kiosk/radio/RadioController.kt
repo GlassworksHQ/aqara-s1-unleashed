@@ -230,6 +230,7 @@ class RadioController(
         allowedShown = allowed?.takeIf { RadioHelper.parseStatus(raw)?.mode != RadioMode.OFF }
             ?.let { if (it.any) RadioAllow.ANY else it.addresses.joinToString(" ") }
         helperFactsShown = HelperFacts(helper, if (helper) helperVersion() else 0)
+        helperFactsKnown = true
         threadStoredShown = if (!helper) null else when (props.get(RadioHelper.PROP_THREAD_STORED).trim()) {
             "yes" -> true
             "no" -> false
@@ -267,6 +268,10 @@ class RadioController(
 
     /** Helper installed and its contract version, as of the last [refresh] (for the UI thread: no getprop). */
     fun helperShown(): HelperFacts = helperFactsShown
+
+    /** [helperShown] once the radio thread has refreshed at least once, else null (not known yet). */
+    fun helperShownIfKnown(): HelperFacts? = if (helperFactsKnown) helperFactsShown else null
+    @Volatile private var helperFactsKnown = false
 
     @Volatile private var helperFactsShown = HelperFacts(installed = false, version = 0)
     @Volatile private var threadStoredShown: Boolean? = null
@@ -429,17 +434,35 @@ class RadioController(
      * true = accepted and applied (see [statusText] for how it went), false = refused/unknown, with
      * the reason in [statusText].
      */
-    fun request(label: String, why: String = "select", done: ((Boolean) -> Unit)? = null) = post {
+    fun request(label: String, why: String = "select", done: ((Boolean) -> Unit)? = null) {
+        pendingRequests.incrementAndGet()
+        try {
+            post { try { requestNow(label, why, done) } finally { pendingRequests.decrementAndGet() } }
+        } catch (t: Throwable) {
+            pendingRequests.decrementAndGet() // never queued (the radio thread was stopped): nothing pending
+            throw t
+        }
+    }
+
+    /**
+     * A mode request is queued or running on the radio thread and hasn't set [mode] yet: a caller that
+     * reads [mode] to decide whether to send Off must send it anyway (the queued request would otherwise
+     * start the radio after an Off that was never sent).
+     */
+    val requestPending: Boolean get() = pendingRequests.get() > 0
+    private val pendingRequests = java.util.concurrent.atomic.AtomicInteger()
+
+    private fun requestNow(label: String, why: String, done: ((Boolean) -> Unit)?) {
         val m = RadioMode.fromLabel(label) ?: run {
             log("unknown radio mode '$label'")
             done?.invoke(false)
-            return@post
+            return
         }
         if (firmware.flashing()) {
             status = "a radio firmware update is running; ${m.label} can be chosen when it's done. Still in ${mode.label}."
             log("refused '${m.label}': firmware flash in progress")
             refresh(); onChange(); done?.invoke(false)
-            return@post
+            return
         }
         if (!available(m)) {
             status = if (!helperInstalled()) {
@@ -453,7 +476,7 @@ class RadioController(
             refresh()
             onChange() // the select snaps back to the current mode
             done?.invoke(false)
-            return@post
+            return
         }
         mode = m
         if (load() != m.id) store(m.id) // also normalizes labels/retired values stored by older builds
