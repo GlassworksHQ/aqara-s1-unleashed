@@ -94,6 +94,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+      # Clarity's camera streams are made with ffmpeg; a test checks it makes the same bytes twice.
+      - name: ffmpeg
+        run: sudo apt-get -qq update && sudo apt-get -qq install -y --no-install-recommends ffmpeg > /dev/null
       - name: Perf test rubric, report, grade and page statistics
         run: |
           python3 -m unittest discover -s tools/perf/test -v

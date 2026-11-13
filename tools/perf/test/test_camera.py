@@ -30,9 +30,12 @@ class Settings(unittest.TestCase):
         self.assertEqual(D.TIERS["CAMERA"]["fps"], camera.FPS)
 
 
-@unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg isn't on this computer")
 class SameBytes(unittest.TestCase):
     def test_twice_the_same(self):
+        if not shutil.which("ffmpeg"):
+            if os.environ.get("CI"):
+                raise AssertionError("ffmpeg is needed for this test (CI installs it)")
+            raise unittest.SkipTest("ffmpeg isn't on this computer")
         out = []
         for _ in range(2):
             d = tempfile.mkdtemp()
