@@ -117,38 +117,90 @@ class SendspinRunsTest {
     private val firstOpenEntered = CountDownLatch(1)
     private val openGate = CountDownLatch(1)
 
-    private val player = SendspinPlayer(
-        app, prefs, { null }, "02:00:00:00:00:01",
-        connect = { _, _, hooks ->
-            val first = conns.isEmpty() && firstConnectThread == null
-            if (first && holdFirstConnect) {
-                firstConnectThread = Thread.currentThread()
-                firstConnectEntered.countDown()
-                connectGate.awaitIgnoringInterrupts()
+    /**
+     * An AudioTrack as [AudioTrackSink] sees it (#109). [made] is the thread whose open created it.
+     * It records who wrote into it, and a write after [release] (an exception on the panel).
+     */
+    private inner class FakeTrack(val made: Thread) : PcmTrack {
+        val writers = CopyOnWriteArrayList<Thread>()
+        @Volatile var released = false
+        @Volatile var writesAfterRelease = 0
+        @Volatile private var timestamps = 0
+        override fun write(buf: ShortArray, samples: Int): Int {
+            if (released) { writesAfterRelease++; return -1 }
+            writers += Thread.currentThread()
+            Thread.sleep(5)
+            return samples
+        }
+        override fun timestamp(out: LongArray): Boolean {
+            // Holds the first audio thread between its loop's ownership check and its write.
+            if (holdFirstTimestamp && timestamps++ == 0 && tracks.firstOrNull() === this) {
+                firstTimestampEntered.countDown()
+                timestampGate.awaitIgnoringInterrupts()
             }
-            // No scenario needs a third connection: one that shows up stays silent, so it can't hide what the first two did.
-            val silent = conns.size >= 2
-            Fake(hooks) { f ->
-                if (!silent) {
-                    f.hooks.onStatus(READY)
-                    f.hooks.onStreamStart(SsFormat.PCM_48K_STEREO_16, null)
+            return false
+        }
+        override fun setVolume(gain: Float) {}
+        override fun release() { released = true }
+    }
+
+    /** Each track in the order its creation returned. With [holdFirstTrack], the first creation blocks until [trackGate]. */
+    private val tracks = CopyOnWriteArrayList<FakeTrack>()
+    @Volatile private var realSinks = false
+    @Volatile private var holdFirstTrack = false
+    @Volatile private var firstTrackThread: Thread? = null
+    private val firstTrackEntered = CountDownLatch(1)
+    private val trackGate = CountDownLatch(1)
+    @Volatile private var holdFirstTimestamp = false
+    private val firstTimestampEntered = CountDownLatch(1)
+    private val timestampGate = CountDownLatch(1)
+
+    private fun newTrack(): FakeTrack {
+        if (holdFirstTrack && firstTrackThread == null) {
+            firstTrackThread = Thread.currentThread()
+            firstTrackEntered.countDown()
+            trackGate.awaitIgnoringInterrupts() // AudioTrack.Builder.build() that takes longer than stop()'s wait
+        }
+        return FakeTrack(Thread.currentThread()).also { tracks += it }
+    }
+
+    /** Lazy, so a test can choose its sinks ([realSinks]) before the player makes one. */
+    private val player by lazy {
+        SendspinPlayer(
+            app, prefs, { null }, "02:00:00:00:00:01",
+            connect = { _, _, hooks ->
+                val first = conns.isEmpty() && firstConnectThread == null
+                if (first && holdFirstConnect) {
+                    firstConnectThread = Thread.currentThread()
+                    firstConnectEntered.countDown()
+                    connectGate.awaitIgnoringInterrupts()
                 }
-                f.running.countDown()
-                f.release.awaitIgnoringInterrupts()
-                if (!silent) {
-                    f.hooks.onStreamEnd()
-                    f.hooks.onStatus(f.status())
-                }
-            }.also { conns += it }
-        },
-        newPipeline = { out, onFlacFailed ->
-            val rec = Rec(out, firstEndGate.takeIf { pipelines.isEmpty() && holdFirstEnd })
-            AudioPipeline(rec, { error("no FLAC in this test") }, onFlacFailed).also { pipelines += Made(it, rec, onFlacFailed) }
-        },
-        sink = FakeSink(),
-    )
+                // No scenario needs a third connection: one that shows up stays silent, so it can't hide what the first two did.
+                val silent = conns.size >= 2
+                Fake(hooks) { f ->
+                    if (!silent) {
+                        f.hooks.onStatus(READY)
+                        f.hooks.onStreamStart(SsFormat.PCM_48K_STEREO_16, null)
+                    }
+                    f.running.countDown()
+                    f.release.awaitIgnoringInterrupts()
+                    if (!silent) {
+                        f.hooks.onStreamEnd()
+                        f.hooks.onStatus(f.status())
+                    }
+                }.also { conns += it }
+            },
+            newPipeline = { out, onFlacFailed ->
+                val rec = Rec(out, firstEndGate.takeIf { pipelines.isEmpty() && holdFirstEnd })
+                AudioPipeline(rec, { error("no FLAC in this test") }, onFlacFailed).also { pipelines += Made(it, rec, onFlacFailed) }
+            },
+            newSink = { if (realSinks) AudioTrackSink { _, _, _ -> newTrack() } else FakeSink() },
+        )
+    }
 
     @After fun tearDown() {
+        trackGate.countDown()
+        timestampGate.countDown()
         openGate.countDown()
         writeGate.countDown()
         firstEndGate.countDown()
@@ -337,6 +389,68 @@ class SendspinRunsTest {
         assertFalse("the old audio thread ended", firstWriteThread!!.isAlive)
         assertFalse("the old audio thread wrote after its run stopped", writes.contains(firstWriteThread!! to true))
         assertTrue("the new stream plays", player.outputActive)
+    }
+
+    @Test
+    fun anOldAudioThreadStuckCreatingItsTrackNeitherKeepsNorLeaksTheNewRunsTrack() {
+        realSinks = true
+        holdFirstTrack = true
+        player.start()
+        conns.awaitAt(0)
+        assertTrue("old audio thread stuck creating its AudioTrack", firstTrackEntered.await(5, TimeUnit.SECONDS))
+        val oldThread = firstTrackThread!!
+        player.stop() // gives up on the old audio thread after 1 s
+        player.start()
+        conns.awaitAt(1)
+        val newTrack = awaitTrack { it.made !== oldThread && it.writers.isNotEmpty() }
+
+        trackGate.countDown() // the old creation returns after the new run's
+        oldThread.join(3_000)
+        assertFalse("the old audio thread ended", oldThread.isAlive)
+        val oldTrack = tracks.single { it.made === oldThread }
+        assertTrue("the stale run's track was released", oldTrack.released)
+        assertTrue("nothing was written into the stale run's track", oldTrack.writers.isEmpty())
+        assertFalse("the new run's track is still open", newTrack.released)
+        val before = newTrack.writers.size
+        awaitTrack { it === newTrack && it.writers.size > before + 3 }
+        assertEquals("one live track", listOf(newTrack), tracks.filter { !it.released })
+        assertEquals("no write into a released track", 0, tracks.sumOf { it.writesAfterRelease })
+        assertTrue("the new stream plays", player.outputActive)
+    }
+
+    @Test
+    fun anOldAudioThreadPastItsLoopCheckDoesNotWriteIntoTheNewRunsTrack() {
+        realSinks = true
+        holdFirstTimestamp = true
+        player.start()
+        conns.awaitAt(0)
+        assertTrue("old audio thread held before its first write", firstTimestampEntered.await(5, TimeUnit.SECONDS))
+        val oldTrack = tracks.single()
+        val oldThread = oldTrack.made
+        player.stop() // gives up on the old audio thread after 1 s
+        player.start()
+        conns.awaitAt(1)
+        val newTrack = awaitTrack { it !== oldTrack && it.writers.isNotEmpty() }
+
+        timestampGate.countDown() // the old step goes on to its write
+        oldThread.join(3_000)
+        assertFalse("the old audio thread ended", oldThread.isAlive)
+        assertTrue("only the new run's thread wrote into its track", newTrack.writers.all { it === newTrack.made })
+        assertFalse("the new run's track is still open", newTrack.released)
+        assertTrue("the old run's track was released", oldTrack.released)
+        assertEquals("no write into a released track", 0, tracks.sumOf { it.writesAfterRelease })
+        val before = newTrack.writers.size
+        awaitTrack { it === newTrack && it.writers.size > before + 3 }
+        assertTrue("the new stream plays", player.outputActive)
+    }
+
+    private fun awaitTrack(p: (FakeTrack) -> Boolean): FakeTrack {
+        val deadline = System.nanoTime() + 5_000_000_000L
+        while (true) {
+            tracks.firstOrNull(p)?.let { return it }
+            assertTrue("no such track: $tracks", System.nanoTime() < deadline)
+            Thread.sleep(5)
+        }
     }
 
     /** Waits until the new run's audio thread writes, so the old thread wakes into a running output. */

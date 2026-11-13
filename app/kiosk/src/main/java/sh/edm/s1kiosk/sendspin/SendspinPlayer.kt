@@ -63,46 +63,80 @@ class PrefsSsStore(context: Context) : SsStore {
         set(v) = sp.edit().putString("last_playback_server", v).apply()
 }
 
-/** [AudioSink] on an [AudioTrack] (USAGE_MEDIA, PCM 16-bit, streaming, ~100 ms buffer). */
-class AudioTrackSink : AudioSink {
-    @Volatile private var track: AudioTrack? = null
+/**
+ * The output under an [AudioTrackSink]: an [AudioTrack] on the panel ([openAudioTrack]), a fake in
+ * tests. Interleaved 16-bit samples.
+ */
+interface PcmTrack {
+    /** Blocking write of [samples] samples; returns how many were written, or ≤ 0 on an error. */
+    fun write(buf: ShortArray, samples: Int): Int
+
+    /** Like [AudioSink.timestamp]. */
+    fun timestamp(out: LongArray): Boolean
+
+    fun setVolume(gain: Float)
+
+    /** Stops the output, drops what it still holds and frees it. */
+    fun release()
+}
+
+/**
+ * A playing [AudioTrack] (USAGE_MEDIA, PCM 16-bit, streaming, ~100 ms buffer) at [gain]. Creating
+ * one is the call that can block (`AudioTrack.Builder.build()`).
+ */
+fun openAudioTrack(sampleRate: Int, channels: Int, gain: Float): PcmTrack {
+    val mask = if (channels == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
+    val enc = AudioFormat.ENCODING_PCM_16BIT
+    val frame = 2 * channels
+    val minBuf = AudioTrack.getMinBufferSize(sampleRate, mask, enc)
+    val bytes = (maxOf(minBuf, sampleRate * frame / 10) + frame - 1) / frame * frame
+    val t = AudioTrack.Builder()
+        .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+        .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(enc).setChannelMask(mask).build())
+        .setTransferMode(AudioTrack.MODE_STREAM)
+        .setBufferSizeInBytes(bytes)
+        .build()
+    t.setVolume(gain)
+    t.play()
+    SsLog.i("AudioTrack open: $sampleRate Hz, $channels ch, buffer ${bytes / frame} frames (min ${minBuf / frame}), latency hint ${bytes * 1000 / (frame * sampleRate)} ms")
+    return object : PcmTrack {
+        private val at = AudioTimestamp()
+        override fun write(buf: ShortArray, samples: Int) = t.write(buf, 0, samples, AudioTrack.WRITE_BLOCKING)
+        override fun timestamp(out: LongArray): Boolean {
+            if (!t.getTimestamp(at)) return false
+            out[0] = at.framePosition
+            out[1] = at.nanoTime
+            return true
+        }
+        override fun setVolume(gain: Float) { t.setVolume(gain) }
+        override fun release() {
+            try { t.pause(); t.flush() } catch (_: IllegalStateException) {}
+            t.release()
+        }
+    }
+}
+
+/** [AudioSink] on one [PcmTrack] at a time, from [newTrack] (an [AudioTrack] on the panel). */
+class AudioTrackSink(
+    private val newTrack: (sampleRate: Int, channels: Int, gain: Float) -> PcmTrack = ::openAudioTrack,
+) : AudioSink {
+    @Volatile private var track: PcmTrack? = null
     @Volatile private var gain = 1f
     private var channels = 2
-    private val at = AudioTimestamp()
 
     override fun open(sampleRate: Int, channels: Int) {
         close()
         this.channels = channels
-        val mask = if (channels == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
-        val enc = AudioFormat.ENCODING_PCM_16BIT
-        val frame = 2 * channels
-        val minBuf = AudioTrack.getMinBufferSize(sampleRate, mask, enc)
-        val bytes = (maxOf(minBuf, sampleRate * frame / 10) + frame - 1) / frame * frame
-        val t = AudioTrack.Builder()
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-            .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(enc).setChannelMask(mask).build())
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .setBufferSizeInBytes(bytes)
-            .build()
-        t.setVolume(gain)
-        t.play()
-        track = t
-        SsLog.i("AudioTrack open: $sampleRate Hz, $channels ch, buffer ${bytes / frame} frames (min ${minBuf / frame}), latency hint ${bytes * 1000 / (frame * sampleRate)} ms")
+        track = newTrack(sampleRate, channels, gain)
     }
 
     override fun write(buf: ShortArray, frames: Int): Int {
         val t = track ?: return 0
-        val n = t.write(buf, 0, frames * channels, AudioTrack.WRITE_BLOCKING)
+        val n = t.write(buf, frames * channels)
         return if (n <= 0) 0 else n / channels
     }
 
-    override fun timestamp(out: LongArray): Boolean {
-        val t = track ?: return false
-        if (!t.getTimestamp(at)) return false
-        out[0] = at.framePosition
-        out[1] = at.nanoTime
-        return true
-    }
+    override fun timestamp(out: LongArray): Boolean = track?.timestamp(out) ?: false
 
     override fun setGain(gain: Float) {
         this.gain = gain
@@ -112,7 +146,6 @@ class AudioTrackSink : AudioSink {
     override fun close() {
         val t = track ?: return
         track = null
-        try { t.pause(); t.flush() } catch (_: IllegalStateException) {}
         t.release()
     }
 }
@@ -141,8 +174,9 @@ class SendspinPlayer(
         { url, hello, hooks -> SendspinSession(url, store, hello, { prefs.unpairedAccess }, hooks) },
     private val newPipeline: (out: PcmOutput, onFlacFailed: (String) -> Unit) -> AudioPipeline =
         { out, onFlacFailed -> AudioPipeline(out, { MediaCodecFlacDecoder() }, onFlacFailed) },
-    private val sink: AudioSink = AudioTrackSink(),
+    private val newSink: () -> AudioSink = { AudioTrackSink() },
 ) {
+    private val sink = newSink()
     private val ctx = context.applicationContext
     @Volatile private var session: SsConnection? = null
     private val scheduler = PlaybackScheduler(sink, { session?.timeFilter?.snapshot ?: EMPTY })
