@@ -124,9 +124,10 @@ class Export(unittest.TestCase):
         import test_report as TR
         budgets = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15},
                    "panes": {"assist": {"switch": "voice_enabled", "ram_pss_max_kb": 49152}, "radio": {"waiting_on": "#67"}}}
+        # Samples checked against the kiosk's log (panes_state), as since 2026-11-13.
         ram = R.reference_ram({"ref-idle": [TR.ram_idle("ref-idle", 300_000)] * 2,
-                               "ref-panes-off": [TR.ram_idle("ref-panes-off", 100_000)],
-                               "ref-assist-on": [TR.ram_idle("ref-assist-on", 130_000)]},
+                               "ref-panes-off": [TR.ran(TR.ram_idle("ref-panes-off", 100_000), False, False, False)],
+                               "ref-assist-on": [TR.ran(TR.ram_idle("ref-assist-on", 130_000), True, False, True)]},
                               [{"memory": [TR.ram_idle("x", 340_000)]}], "sh.edm.s1kiosk", budgets, 2_000_000)
         rep = dict(self.reps["B"], ram=ram, apk=[{"file": "s1-kiosk.apk", "abis": ["armeabi-v7a"], "bytes": 90_000_000, "parts_bytes": {}}])
         s = S.summarise(rep)
@@ -140,6 +141,20 @@ class Export(unittest.TestCase):
         self.assertEqual((plain["ram"], plain["apk"]), (None, None))
         self.assertEqual(G.grade_summary(s), G.grade_summary(plain))
         self.assertEqual(ts_grades([s]), ts_grades([plain]))
+
+    def test_unverified_panes_arent_exported(self):
+        """The verifier's note 14: s1v7's panes (no log check; the kiosk lost the switches) read
+        measurable and within budget in the report. The summary leaves them out."""
+        import test_report as TR
+        budgets = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15},
+                   "panes": {"assist": {"switch": "voice_enabled", "ram_pss_max_kb": 49152}}}
+        ram = R.reference_ram({"ref-panes-off": [TR.ram_idle("ref-panes-off", 100_000)],
+                               "ref-assist-on": [TR.ram_idle("ref-assist-on", 130_000)]},
+                              [], "sh.edm.s1kiosk", budgets, 2_000_000)
+        self.assertEqual((ram["panes"][0]["verified"], ram["panes"][0]["pss_measurable"]), (False, True))
+        self.assertEqual(S.ram_summary(ram)["panes"], [])
+        del ram["panes"][0]["verified"]                  # a report from before the field existed
+        self.assertEqual(S.ram_summary(ram)["panes"], [])
 
     def test_measurements_only_never_the_letter(self):
         text = json.dumps(S.summarise(self.reps["B"]))
