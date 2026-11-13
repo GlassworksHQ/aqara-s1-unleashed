@@ -43,6 +43,7 @@ describes the device's look in millimetres"). Kiln's picker reads it, and glassw
 | `kiln` | Optional. Kiln's route, once the frame installs from Kiln |
 | `model` | The device's look in mm, for the 3D mockup (below) |
 | `recovery` | Optional. The recovery drawing data's file, next to this one |
+| `render` | The screen's render, a `.webp` next to this one: Home Assistant's real frontend drawing the shared showcase dashboard at the frame's screen size ([below](#the-render)) |
 | `display` | `{ width, height }`: the screen in pixels, as Android's boot animation sees it. With `name`, it is all the [boot generator](../branding/boot/README.md) needs |
 | `boot` | Optional. The boot branding's limits: `androidApi` (the API level; 25+ gets trimmed frames), `splash` (the bootloader splash format, `allwinner-boot-resource`), `zipBudget` (the largest `bootanimation.zip`, bytes) |
 | `specs` | Hardware rows: `{ label, value }`. Labels: `Size`, `SoC`, `Android`, `Screen`, `Radio`, `Presence`, `Audio`, `Extras`, `Mount`, `Root` |
@@ -77,8 +78,27 @@ writes `frame.json` takes its catalog and `model` fields from this file, and add
 renderer needs side colours (`sides`) where the sketch has `color.body`, and the screen is placed with
 `top` where the sketch has `offset`.
 
+### The render
+
+Every frame's card shows the same dashboard (maintainer, #144), so the renders are comparable:
+`render.webp`, made by `node tools/showcase/render.mjs [frame-id ...]`. It serves the showcase home
+([`tools/showcase/home.py`](../tools/showcase/home.py): made-up rooms and states, no clock and no
+dates) from Clarity's fake Home Assistant with the frontend build Clarity pins
+([`tools/perf/hafrontend.py`](../tools/perf/hafrontend.py)), opens it in headless Chrome as the kiosk
+shows it (no header, no sidebar, HA's default theme in dark mode), and captures it at the frame's
+`display` at density 1.5. A frame without one screen size (`generic-android`) is drawn at
+1920×1200, a common 10" tablet. Two runs give the same bytes (checked 2026-11-13, Chrome 157).
+Redo the renders when HA's look changes, i.e. when Clarity's pinned frontend moves.
+
+| Frame | Size | File |
+|---|---|---|
+| `aqara-s1-plus` | 1440×720 | 26.8 KiB |
+| `lululemon-mirror` | 1080×1920 | 29.0 KiB |
+| `generic-android` | 1920×1200 | 29.4 KiB |
+
 `kiln/apps/kiln/test/frame-designs.test.ts` checks every `design/frame.json`: Kiln lists it, every
-rating and pane is there, `recovery` exists, and the mockup draws without NaN.
+rating and pane is there, `recovery` exists, the render is a WebP at the screen's size, and the mockup
+draws without NaN.
 
 ## What came from glassworks.dev
 

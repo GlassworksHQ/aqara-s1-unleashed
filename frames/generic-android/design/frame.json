@@ -23,6 +23,7 @@
     "finish": "glass",
     "mount": "wall"
   },
+  "render": "render.webp",
   "specs": [
     {
       "label": "Radio",
