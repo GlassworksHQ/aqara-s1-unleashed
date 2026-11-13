@@ -37,14 +37,14 @@ class PaneExtrasTest {
     fun eachWritesItsSetting() {
         val restart = extras.applyFrom(
             Intent()
-                .putExtra("wake_model", "hey_jarvis").putExtra("wake_threshold", 0.7f).putExtra("mic_gain", 2f).putExtra("mic_muted", true)
+                .putExtra("wake_model", "alexa_v0.1.tflite").putExtra("wake_threshold", 0.7f).putExtra("mic_gain", 2f).putExtra("mic_muted", true)
                 .putExtra("sendspin_enabled", false).putExtra("sendspin_server", "ws://192.0.2.30:8927").putExtra("sendspin_unpaired_access", true)
                 .putExtra("sendspin_flac", false).putExtra("base_backend", "uart").putExtra("base_transport", "tcp:127.0.0.1:9999"),
         )
         assertFalse("applied live: no restart", restart)
         val p = KioskPrefs(app)
-        assertEquals("hey_jarvis", p.voice.wakeModel)
-        assertEquals(0.7f, p.voice.wakeThreshold)
+        assertEquals("an old model name is migrated", "alexa", p.voice.wakeWord)
+        assertEquals("alexa's cutoff", 0.7f, p.voice.wakeCutoff)
         assertEquals(2f, p.voice.micGain)
         assertTrue(p.voice.micMuted)
         assertFalse(p.sendspin.enabled)
@@ -64,11 +64,15 @@ class PaneExtrasTest {
     @Test
     fun absentExtrasChangeNothingAndAWrongTypeGetsTheDefault() {
         val p = KioskPrefs(app)
-        p.voice.wakeThreshold = 0.9f
+        p.voice.threshold = 0.9f
         assertFalse(extras.applyFrom(Intent().putExtra("unrelated", true)))
-        assertEquals(0.9f, p.voice.wakeThreshold)
-        extras.applyFrom(Intent().putExtra("wake_threshold", "0.3")) // --es instead of --ef: as before, the default
-        assertEquals(0.5f, p.voice.wakeThreshold)
+        assertEquals(0.9f, p.voice.threshold)
+        extras.applyFrom(Intent().putExtra("wake_threshold", "0.3")) // --es instead of --ef: the word's default
+        assertEquals("Hey Jarvis's own cutoff", 0.97f, p.voice.threshold)
+        p.voice.wakeWord = "hey_jarvis_v0.1"
+        p.voice.threshold = 0.9f
+        extras.applyFrom(Intent().putExtra("wake_threshold", "0.3"))
+        assertEquals("openWakeWord's default, as before", 0.5f, p.voice.threshold)
         extras.applyFrom(Intent().putExtra("base_backend", 3)) // not a string: ignored
         assertEquals("auto", p.wallBase.backend)
     }

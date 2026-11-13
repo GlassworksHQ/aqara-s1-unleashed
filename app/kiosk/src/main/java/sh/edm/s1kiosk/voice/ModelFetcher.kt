@@ -8,17 +8,30 @@ import java.net.URL
 import java.security.MessageDigest
 
 /**
- * Downloads the openWakeWord models the panel is missing, straight from the official v0.5.1 GitHub
- * release, and checks each against a pinned SHA-256. They can't ship in the APK or be hosted by the
- * web installer: the models are CC BY-NC-SA 4.0 (the code is Apache-2.0), so the panel fetches them
- * itself, like tools/voice/fetch-models.sh does on a computer.
+ * Downloads the wake word models the panel is missing from where their authors publish them, and
+ * checks each against a pinned SHA-256, like tools/voice/fetch-models.sh does on a computer. No
+ * model ships in the APK.
+ *
+ * - [micro]: the microWakeWord models (Apache-2.0) from esphome/micro-wake-word-models at a pinned
+ *   commit, into the `micro/` subdirectory.
+ * - [FILES] (the default): the legacy openWakeWord models from the official v0.5.1 GitHub release.
+ *   They are CC BY-NC-SA 4.0, so they can't ship in the APK or be hosted by the web installer.
  */
 class ModelFetcher(
+    private val base: String = BASE,
+    private val files: Map<String, String> = FILES,
     private val open: (URL) -> InputStream = ::httpGet,
 ) {
     companion object {
         const val VERSION = "v0.5.1"
         private const val BASE = "https://github.com/dscripka/openWakeWord/releases/download/$VERSION"
+
+        const val MICRO_BASE =
+            "https://raw.githubusercontent.com/esphome/micro-wake-word-models/${WakeWords.MODELS_COMMIT}/models/v2"
+        val MICRO_FILES: Map<String, String> = WakeWords.MICRO.associate { "${it.id}.tflite" to it.sha256 }
+
+        /** The microWakeWord models, into `<models dir>/micro`. */
+        fun micro(open: (URL) -> InputStream = ::httpGet) = ModelFetcher(MICRO_BASE, MICRO_FILES, open)
 
         /** File -> SHA-256 of the v0.5.1 release asset (the copies tools/voice/fetch-models.sh verified). */
         val FILES: Map<String, String> = linkedMapOf(
@@ -47,8 +60,8 @@ class ModelFetcher(
         }
     }
 
-    /** Files of [FILES] that are absent or don't match their hash. */
-    fun missing(dir: File): List<String> = FILES.filter { (name, sha) ->
+    /** Files of this fetcher's set that are absent or don't match their hash. */
+    fun missing(dir: File): List<String> = files.filter { (name, sha) ->
         val f = File(dir, name)
         !f.isFile || f.length() < 8 || sha256(f) != sha
     }.keys.toList()
@@ -65,7 +78,7 @@ class ModelFetcher(
         for (name in need) {
             val part = File(dir, "$name.part")
             try {
-                open(URL("$BASE/$name")).use { input ->
+                open(URL("$base/$name")).use { input ->
                     part.outputStream().use { out ->
                         val buf = ByteArray(64 * 1024)
                         var total = 0L
@@ -79,7 +92,7 @@ class ModelFetcher(
                     }
                 }
                 val got = sha256(part)
-                if (got != FILES.getValue(name)) throw IOException("$name failed its SHA-256 check (got ${got.take(16)}…)")
+                if (got != files.getValue(name)) throw IOException("$name failed its SHA-256 check (got ${got.take(16)}…)")
                 if (!part.renameTo(File(dir, name))) throw IOException("cannot rename $part")
                 VoiceLog.i("Downloaded wake word model $name")
             } finally {

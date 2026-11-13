@@ -3,8 +3,8 @@
 The kiosk app makes the panel look like **one ESPHome device** to Home Assistant. HA's built-in
 **ESPHome** integration connects to it over the ESPHome native API (TCP port **6053**) and gets:
 
-- an **Assist satellite** with an on-device wake word (openWakeWord on TFLite), like Home Assistant
-  Voice PE: wake word select, pipeline select, VAD sensitivity, announcements, timers;
+- an **Assist satellite** with an on-device wake word (microWakeWord on TFLite, as Home Assistant
+  Voice PE runs it), like Voice PE: wake word select, pipeline select, VAD sensitivity, announcements, timers;
 - a **media player** (`media_player.s1_panel_speaker`) for TTS, announcements and audio;
 - the **screen** as a light, the presence and light sensors, and the kiosk/screen settings;
 - the switch for the panel's native **Music Assistant player** (Sendspin, [sendspin.md](sendspin.md)),
@@ -22,12 +22,14 @@ keeps working while the screen is off. Logs: `adb logcat -s S1ESPHome S1Voice`.
 
 ## Add it to Home Assistant
 
-1. Install the app ([install.md](install.md)). The panel downloads the wake word models itself
-   (`voice/ModelFetcher.kt`): `melspectrogram.tflite`, `embedding_model.tflite`, `hey_jarvis_v0.1`,
-   `alexa_v0.1` and `hey_mycroft_v0.1` from the openWakeWord **v0.5.1** GitHub release, each checked
-   against a pinned SHA-256, into `/sdcard/Android/data/sh.edm.s1kiosk/files/models/`. `tools/install.sh`
-   also pushes them over adb (`tools/voice/fetch-models.sh`, which downloads and checks the same files;
-   `--no-models` skips it). Without models the API still works; the engine retries loading every 30 s.
+1. Install the app ([install.md](install.md)). The panel downloads the wake word models itself the
+   first time it needs one (`voice/ModelFetcher.kt`): the four official microWakeWord models
+   (`okay_nabu`, `hey_jarvis`, `alexa`, `hey_mycroft`) from
+   [esphome/micro-wake-word-models](https://github.com/esphome/micro-wake-word-models) at a pinned
+   commit, each checked against a pinned SHA-256, into
+   `/sdcard/Android/data/sh.edm.s1kiosk/files/models/micro/`. `tools/install.sh` also pushes them
+   over adb (`tools/voice/fetch-models.sh`, which downloads and checks the same files; `--no-models`
+   skips it). Without models the API still works; the engine retries loading every 30 s.
 2. **Discovery**: the panel advertises `s1-panel._esphomelib._tcp` over mDNS. If mDNS reaches HA,
    **Settings → Devices & services** shows a discovered **ESPHome** device "Glassworks Panel". Click
    **Add**.
@@ -127,7 +129,7 @@ it (`device_name`), the mDNS service is named after it, and HA up to 2025.11 mak
 | switch `Wake sound` | `wake_sound` | short two-tone chime when the wake word is detected (default on) |
 | switch `Voice overlay` | `voice_overlay` | Full-screen overlay during voice runs: an orb that follows the voice, what was heard and the reply; tap anywhere to cancel the run (default on) |
 | number `Mic gain` | `mic_gain` | 0.5–4× |
-| number `Wake word threshold` | `wake_word_threshold` | 0.1–0.95 (default 0.5) |
+| number `Wake word threshold` | `wake_word_threshold` | 0.10–0.99. For a microWakeWord word, the probability cutoff for the mean of the model's last 5 outputs; it starts at the model's own (Okay Nabu and Hey Jarvis 0.97, Mycroft 0.95, Alexa 0.9) and goes back to it when you pick another word. Lower is more sensitive. For a legacy openWakeWord word, openWakeWord's score threshold (default 0.5), as before |
 | select `Radio mode` | `radio_mode` | `Off` (default), `Zigbee coordinator (TCP)`, `Zigbee router (repeater)`, `Thread border router`, `Thread router (repeater)` ([radio.md](radio.md); before 0.4.3 the repeaters were `Zigbee router` / `Thread router`, still accepted when sent); without the root helper only `Off` applies, other choices are refused and snap back |
 | text_sensor `Radio status` | `radio_status` | diagnostic; e.g. `Off: Aqara's radio services stopped, radio idle. …`, or the root helper's `ok zigbee_tcp: EZSP on tcp:6638`, plus who may connect and the ZHA / Zigbee2MQTT settings |
 | text `Radio allowed clients` | `radio_allowed_clients` | who may reach the radio's ports besides Home Assistant: addresses or CIDRs, `any`, or empty = Home Assistant only ([radio-guide.md](radio-guide.md#who-may-connect)) |
@@ -285,8 +287,8 @@ connection, TTS is played from a URL. Checked against esphome `voice_assistant.c
 | Direction | Message | What we do |
 |---|---|---|
 | HA → panel | `SubscribeVoiceAssistantRequest` | This connection receives voice messages. |
-| HA → panel | `VoiceAssistantConfigurationRequest` | Reply with every `*.tflite` wake model on the panel (not mel/embedding), e.g. `hey_jarvis_v0.1` → "Hey Jarvis", the active one, max 1. |
-| HA → panel | `VoiceAssistantSetConfiguration` | Switch the wake model live, persist it (`wake_model`); empty list = no wake word. |
+| HA → panel | `VoiceAssistantConfigurationRequest` | Reply with the four microWakeWord words (`okay_nabu` → "Okay Nabu", …), then any legacy openWakeWord model already on the panel (`hey_jarvis_v0.1` → "Hey Jarvis (openWakeWord)"), the active one, max 1. |
+| HA → panel | `VoiceAssistantSetConfiguration` | Switch the wake word live, persist its id (`wake_word`); empty list = no wake word. |
 | panel → HA | `VoiceAssistantRequest{start, flags=USE_VAD, wake_word_phrase, conversation_id}` | On a local detection. `USE_WAKE_WORD` is not set, so HA starts at STT. |
 | HA → panel | `VoiceAssistantResponse{port=0}` | Start streaming; audio captured since the wake word (≤ 2 s) is sent first. |
 | panel → HA | `VoiceAssistantAudio{data}` | 16 kHz s16le mono, 2560-byte (80 ms) chunks. |
@@ -316,6 +318,41 @@ The microphone has one consumer, `VoiceEngine`: every 80 ms frame goes through t
 Detections only count while idle and 3 s after the previous one. Safety caps: 15 s maximum stream,
 10 s for HA to answer a start request, 60 s waiting for a response.
 
+A detection reports the word of the model that fired: while a newly picked word loads, the old one
+keeps listening as itself. If the new word can't load (no network for its model), the old model
+stops, the panel shows the error, and it retries every 30 s.
+
+**What HA does with the wake word select.** HA's select (`homeassistant/components/esphome/select.py`,
+2026.11.1) restores its last state, but on every connection it only reads the panel's configuration
+and shows the active word; it never sends its restored value back. Only picking a word (a person, an
+automation, a scene or a script calling `select.select_option`) sends one. Options are matched by
+name, so a restored "Hey Jarvis" from 0.4 now means the microWakeWord `hey_jarvis`; the legacy ones
+are named "… (openWakeWord)" so the two never share a name.
+
+**Updating from 0.4 (openWakeWord).** The word 0.4 saved (`wake_model`, e.g. `hey_jarvis_v0.1.tflite`)
+moves to the microWakeWord model of the same word (`wake_word` = `hey_jarvis`) with no user action. Its
+openWakeWord threshold doesn't carry over, because the scales differ: the word starts at its model's
+cutoff. `wake_model` and `wake_threshold` are only read, so a downgrade to 0.4 finds its own settings.
+A custom openWakeWord model stays on openWakeWord. The openWakeWord models already on the panel stay
+selectable for this release as "<word> (openWakeWord)"; a later release removes them and their
+CC BY-NC-SA models.
+
+### microWakeWord parameters
+
+The engine runs ESPHome's microWakeWord v2 streaming models (`MicroWakeWord.kt`), as
+pymicro-wakeword and ESPHome's `micro_wake_word` do:
+
+| Parameter | Value |
+|---|---|
+| Front end | `MicroFrontend.kt`, a port of TFLite Micro's audio microfrontend: 30 ms Hann window every 10 ms, 512-point 16-bit fixed-point FFT (kissfft), 40 mel channels 125–7500 Hz, noise reduction (smoothing bits 10, even 0.025, odd 0.06, min 0.05), PCAN (strength 0.95, offset 80, gain bits 21), log scale (shift 6) |
+| Model input | int8 `[1, 3, 40]`: three 10 ms feature rows, so one inference per 30 ms. `round(value × 0.0390625 / scale + zero_point)`, half to even, clamped to int8 (scale 0.10196, zero point −128 for all four) |
+| Model output | uint8 `[1, 1]`, × 1/256; the model keeps its own streaming state (resource variables) |
+| Score | mean of the last `sliding_window_size` outputs (5 for all four), 0 until there are 5; per 80 ms microphone frame, the best mean in that frame |
+| Detection | score ≥ the threshold entity (default: the manifest's `probability_cutoff`), then 3 s before the next one. This is pymicro-wakeword's comparison, not ESPHome's: ESPHome fires when the sum of the 5 raw outputs is above `int(cutoff × 255) × 5`, so at the same cutoff the panel needs about 1.1 more per output (sum 1242 instead of 1236 at 0.97, 1216/1211 at 0.95, 1152/1146 at 0.9), about 0.5% stricter than Voice PE |
+| Models | `okay_nabu`, `hey_jarvis`, `alexa`, `hey_mycroft` from esphome/micro-wake-word-models `models/v2` at `40ff33f`, SHA-256 in `WakeWords.kt` |
+
+The research note is [research/microwakeword.md](research/microwakeword.md).
+
 ### Timers on screen
 
 Timers live in Home Assistant; the panel only shows what HA's timer events say, so pausing,
@@ -340,9 +377,9 @@ cancelling or adding time is done by voice ("pause the pasta timer"). Code: `Tim
   running. A tap anywhere dismisses it and stops the remaining chimes; otherwise it closes 60 s after
   the last timer finished. It shows even when the timers were hidden.
 
-### openWakeWord parameters
+### openWakeWord parameters (legacy)
 
-The code is a port of `AudioFeatures` (`openwakeword/utils.py`) and `Model.predict`
+Kept for one release as the fallback. The code is a port of `AudioFeatures` (`openwakeword/utils.py`) and `Model.predict`
 (`openwakeword/model.py`), fed exact 1280-sample frames:
 
 | Parameter | Value |
@@ -452,6 +489,12 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   entity's state machine.
 - `VoiceAssistantControllerTest`: pre-roll, "never mind" runs, pipeline errors, the max-stream
   cap, continue-conversation.
+- `MicroFrontendTest`: compares `MicroFrontend` with pymicro-features (the TFLite Micro frontend's C
+  code) on synthesised speech and a synthetic signal (fixtures made by `tools/voice/mww_reference.py`).
+- `MicroDetectorTest`: strides, quantization and the sliding window. `MicroWakeWordClipTest` runs
+  the four real models (LiteRT) behind the Kotlin pipeline over the clip: each fires in its own word
+  only. Skipped without `MWW_PYTHON`.
+- `WakeWordCatalogTest`, `AssistPaneTest`: the words HA is offered, the 0.4 migration, the threshold.
 - `OwwFeaturesTest`: compares the Kotlin feature buffering with openWakeWord's own
   `AudioFeatures` code, run with deterministic fake models (fixture made by
   `tools/voice/oww_reference.py`).
@@ -461,11 +504,14 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 ## Licensing
 
 - The ESPHome API and voice code is MIT, like the rest of the app. The openWakeWord feature pipeline is
-  re-implemented from the Apache-2.0 upstream.
+  re-implemented from the Apache-2.0 upstream. `MicroFrontend.kt` is a port of TFLite Micro's audio
+  microfrontend (Apache-2.0) and kissfft (BSD-3-Clause), and keeps those licences.
+- **The microWakeWord models are Apache-2.0** (esphome/micro-wake-word-models). They are downloaded
+  by the panel, not shipped.
 - TensorFlow Lite (`org.tensorflow:tensorflow-lite:2.16.1`) is Apache-2.0.
 - **The openWakeWord pre-trained models are CC BY-NC-SA 4.0** (non-commercial, share-alike).
-  That's why they are **not bundled** in the APK or the repo. Each user downloads them with
-  `fetch-models.sh`. Don't ship them in a commercial product. Custom-trained models carry
+  That's why they are **not bundled** in the APK or the repo. They are only used as the legacy
+  fallback; `fetch-models.sh --openwakeword` downloads them. Don't ship them in a commercial product. Custom-trained models carry
   whatever license you give them.
 - BouncyCastle (`org.bouncycastle:bcprov-jdk18on`) is MIT-style (Bouncy Castle licence).
 
@@ -479,8 +525,8 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 - The mDNS SRV target is the Android hostname, not `s1-panel.local`; HA uses the IP it discovered and
   replaces the name with `DeviceInfoResponse.name` once connected.
 - No `SPEAKER` flag: TTS is fetched by URL, not streamed as PCM over the API.
-- One wake word at a time (`max_active_wake_words = 1`); HA's custom (microWakeWord) wake words
-  are ignored.
+- One wake word at a time (`max_active_wake_words = 1`); wake word models HA offers for download
+  are ignored (the panel has the four official ones).
 - No acoustic echo cancellation / barge-in: detections are ignored while listening or speaking.
 - Shared microphone with GeckoView: if the dashboard's in-browser Assist uses the mic at the same
   time, one of the two captures may get silence. *Mute microphone* releases it.

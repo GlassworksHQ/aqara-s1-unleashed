@@ -12,7 +12,7 @@ interface UrlPlayer {
     fun stop()
 }
 
-/** The wake words the panel can detect locally (openWakeWord models). */
+/** The wake words the panel can detect locally (VoiceEngine: microWakeWord, legacy openWakeWord). */
 interface WakeWordCatalog {
     fun available(): List<WakeWordInfo>
     fun activeIds(): List<String>
