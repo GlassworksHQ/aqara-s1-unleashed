@@ -25,11 +25,11 @@ class SendspinPane(ctx: PaneContext, haBase: () -> String?) : Pane {
     override fun entities(): List<ApiEntity> = listOf(
         SwitchEntity(
             "sendspin", "Music Assistant player (Sendspin)", "mdi:speaker-wireless", EntityCategory.CONFIG,
-            get = { prefs.enabled }, set = { prefs.enabled = it },
+            disabledByDefault = true, get = { prefs.enabled }, set = { prefs.enabled = it },
         ),
         TextSensorEntity(
             "sendspin_status", "Music Assistant player status", "mdi:speaker-wireless", EntityCategory.DIAGNOSTIC,
-            get = { player.statusText() },
+            disabledByDefault = true, get = { player.statusText() },
         ),
     )
 

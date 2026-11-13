@@ -25,7 +25,8 @@ lightly tested end to end. Nothing below is implemented unless marked ✅.
 4. **Choose the panes**: voice, music and the Zigbee / Thread radio. A pane that is on then asks what
    it needs (the radio: its mode, then what to do in HA).
 5. **Pick a dashboard** from a dropdown on the panel's device page in HA (defaults to your default
-   dashboard).
+   dashboard). HA adds that dropdown turned off: turn on **Dashboard** first
+   ([how](esphome.md#categories-and-defaults)).
 
 A first-boot **setup screen** (same visual style as the dashboard) walks through these and moves on
 by itself as each step completes ✅ (see [Setup screen](#setup-screen-)).
