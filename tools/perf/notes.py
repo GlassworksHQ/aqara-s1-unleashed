@@ -69,13 +69,16 @@ def _tiers(rep):
 
 
 def _camera_options(r):
-    """One run's camera numbers as (how far past the fluid bar, phrase)."""
+    """One run's camera numbers that fail the fluid bar, as (how far past it, phrase), with
+    grade.camera_level's own tests: a stall at exactly its bar fails (>=), the others past it."""
     if r.get("first_frame_ms") is None:
         return [(10.0, "shows no frame from its camera")]
-    out = [(r["first_frame_ms"] / CAM_FIRST_MS, f"takes {_time(r['first_frame_ms'])} to show its camera")]
-    if r.get("shown_pct") is not None:
+    out = []
+    if r["first_frame_ms"] > CAM_FIRST_MS:
+        out.append((r["first_frame_ms"] / CAM_FIRST_MS, f"takes {_time(r['first_frame_ms'])} to show its camera"))
+    if r.get("shown_pct") is not None and r["shown_pct"] < CAM_SHOWN_PCT:
         out.append((CAM_SHOWN_PCT / max(r["shown_pct"], 1), f"shows {r['shown_pct']:.0f}% of its camera's frames"))
-    if r.get("stall_total_ms") is not None:
+    if r.get("stall_total_ms") is not None and r["stall_total_ms"] >= CAM_STALL_MS:
         out.append((r["stall_total_ms"] / CAM_STALL_MS, f"stalls its camera for {_time(r['stall_total_ms'])}"))
     return out
 
@@ -93,9 +96,9 @@ def _camera_limit(t):
         meds = {k: statistics.median(r[k] for r in failing) for k in ("first_frame_ms", "shown_pct", "stall_total_ms")
                 if all(r.get(k) is not None for r in failing)}
         best = max(_camera_options(meds), default=None)
-        if best and best[0] > 1:
+        if best:
             return best
-    return max(o for r in failing for o in _camera_options(r))
+    return max((o for r in failing for o in _camera_options(r)), default=None)
 
 
 def _limit(task, t):

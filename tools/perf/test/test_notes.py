@@ -124,6 +124,12 @@ class Shapes(unittest.TestCase):
         self.assertGreater(how_far, 1)
         self.assertEqual(phrase, "takes 4.5 s to show its camera")      # the worst failing number of one run
 
+    def test_a_camera_at_its_stall_bar_quotes_the_stall(self):
+        """CodeRabbit on #206: at 4 s, 85% and 1 s every ratio is 1.0, but only the stall fails (>=)."""
+        t = {"camera_runs": [{"first_frame_ms": 4000, "shown_pct": 85, "stall_total_ms": 1000}] * 3,
+             "camera_levels": ["slow"] * 3}
+        self.assertEqual(N._limit("camera", t)[1], "stalls its camera for 1.0 s")
+
     def test_cameras_late_needs_all_the_evidence_in_one_run(self):
         """CodeRabbit on #206: slow arrivals from one run and decoder counts from another aren't evidence."""
         rep = run("s1cam3")
