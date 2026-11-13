@@ -201,7 +201,7 @@ def fake_env(tmp, **extra):
     os.chmod(adb, 0o755)
     extra.setdefault("FAKE_HA_URL", HA.url if HA else "")
     env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="1",
-               GW_PERF_FRONTEND=STUB_FRONTEND, GW_PERF_SWITCH_SETTLE="0", **extra)
+               GW_PERF_FRONTEND=STUB_FRONTEND, GW_PERF_SWITCH_SETTLE="0", GW_PERF_PANES_SAVE_S="0", **extra)
     env.pop("ANDROID_SERIAL", None)
     return env, state
 
@@ -765,6 +765,25 @@ class PortInUse(unittest.TestCase):
             self.assertNotIn("--es url", f.read())           # the kiosk was never pointed anywhere
 
 
+class SyntheticScreenOff(unittest.TestCase):
+    def test_a_run_the_screen_went_off_in_is_recorded_and_left_out(self):
+        """The test page isn't graded, but a run with the screen off isn't the panel's frames: the
+        runner writes the screen-off into the run's log and the report leaves the run out."""
+        tmp = tempfile.mkdtemp()
+        env, _ = fake_env(tmp, FAKE_SYNTH_SCREEN_OFF="1")
+        out = os.path.join(tmp, "out")
+        p = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", out, "--port", "18087",
+                            "--skip-reference", "--skip-real-use"], env=env, capture_output=True, text=True, timeout=180)
+        self.assertEqual(p.returncode, 0, p.stderr[-2000:])
+        with open(os.path.join(out, "synthetic-1.jsonl")) as f:
+            self.assertIn("screen_off", [json.loads(l)["t"] for l in f if l.strip()])
+        with open(os.path.join(out, "report.json")) as f:
+            s = json.load(f)["detail"]["synthetic"]
+        self.assertEqual((s["runs"], s["screen_off_runs"]), (0, 1))
+        with open(os.path.join(out, "report.md")) as f:
+            self.assertIn("The screen went off in 1 run(s)", f.read())
+
+
 class IdleOnly(unittest.TestCase):
     """The pane-diff steps in docs/perf.md, starting from an empty directory."""
 
@@ -787,6 +806,24 @@ class IdleOnly(unittest.TestCase):
         self.assertEqual(panes["sendspin"]["samples_on"], 2)
         self.assertEqual(rep["apk"][0]["abis"], ["armeabi-v7a"])   # kept from the first call
 
+    def test_a_sample_the_screen_went_off_in_is_recorded_and_left_out(self):
+        """s1v7: the screen went off at the end of an idle window. The sample says so (from logcat,
+        only lines after the window began), and the report leaves it out."""
+        tmp = tempfile.mkdtemp()
+        out = os.path.join(tmp, "panes")
+        for label, extra in (("all-on", {}), ("all-on", {"FAKE_IDLE_SCREEN_OFF": "1"})):
+            env, _ = fake_env(tmp, **extra)
+            p = subprocess.run([RUN, "--frame", "test-frame", "--out", out, "--idle-only", label],
+                               env=env, capture_output=True, text=True, timeout=120)
+            self.assertEqual(p.returncode, 0, p.stderr[-2000:])
+        with open(os.path.join(out, "idle-all-on-0.json")) as f:
+            self.assertEqual(json.load(f)["screen_off"], [])
+        with open(os.path.join(out, "idle-all-on-1.json")) as f:
+            self.assertEqual(len(json.load(f)["screen_off"]), 1)
+        with open(os.path.join(out, "report.json")) as f:
+            r = json.load(f)["real_use"]
+        self.assertEqual((r["idle"]["samples"], r["screen_off_samples"]), (1, ["all-on-1"]))
+
 
 
 class PaneRam(unittest.TestCase):
@@ -801,7 +838,7 @@ class PaneRam(unittest.TestCase):
         cls.out = os.path.join(cls.tmp, "out")
         cls.proc = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--runs", "2", "--out", cls.out, "--port", "18091",
                                    "--skip-synthetic", "--skip-reference", "--skip-real-use",
-                                   "--pane-ram", "assist=on,sendspin=off", "--restore-dashboard", RESTORE],
+                                   "--pane-ram", "assist=on,sendspin=off,mic=on", "--restore-dashboard", RESTORE],
                                   env=env, capture_output=True, text=True, timeout=300)
 
     def read(self, name):
@@ -812,11 +849,13 @@ class PaneRam(unittest.TestCase):
         self.assertEqual(self.proc.returncode, 0, self.proc.stderr[-3000:])
 
     def test_each_pane_on_by_itself_then_all_back(self):
-        off = {"voice_enabled": "false", "sendspin_enabled": "false", "restart": "true"}
-        assist = dict(off, voice_enabled="true")
-        sendspin = dict(off, sendspin_enabled="true")
-        self.assertEqual(self.read("intents.json"), [off, assist, sendspin] * 2 + [{"voice_enabled": "true", "sendspin_enabled": "false"}])
-        self.assertEqual(self.read("settings.json"), {"voice_enabled": "true", "sendspin_enabled": "false"})   # as given
+        """Per state: the live settings (Sendspin, the microphone mute) in an intent that doesn't
+        restart the app, then voice_enabled, which does (s1v7: in one intent, the writes were lost)."""
+        def st(voice, mic_muted, sendspin):
+            return [{"mic_muted": mic_muted, "sendspin_enabled": sendspin}, {"voice_enabled": voice}]
+        off, assist, sendspin = st("false", "true", "false"), st("true", "false", "false"), st("false", "true", "true")
+        self.assertEqual(self.read("intents.json"), (off + assist + sendspin) * 2 + st("true", "false", "false"))
+        self.assertEqual(self.read("settings.json"), {"voice_enabled": "true", "sendspin_enabled": "false", "mic_muted": "false"})   # as given
         self.assertEqual(self.read("saved_url.json"), RESTORE)
         self.assertEqual(self.read("urls_set.json"), ["http://127.0.0.1:18091/clarity-ref/typical"] * 6 + [RESTORE])
 
@@ -831,6 +870,10 @@ class PaneRam(unittest.TestCase):
         self.assertEqual(panes["assist"]["pss_tolerance_kb"], 0)
         self.assertTrue(panes["assist"]["pss_measurable"])
         self.assertEqual(panes["assist"]["method"], "on-alone")
+        self.assertTrue(panes["assist"]["verified"])                      # every sample ran what its label says
+        self.assertNotIn("off_by", panes["assist"])
+        with open(os.path.join(self.out, "panes-ref-assist-on-1.json")) as f:
+            self.assertEqual(json.load(f)["state"], {"voice": True, "sendspin": False, "mic": True})
         self.assertEqual(ram["pane_budget"]["assist"], {"value_kb": 30000, "budget_kb": 49152, "ok": True})
         self.assertEqual({p["id"] for p in ram["panes_waiting"]}, {"radio", "wall-base", "timers", "time-zone", "diagnostics"})
         self.assertIsNone(ram["reference_idle"])          # no graded runs here
@@ -838,7 +881,7 @@ class PaneRam(unittest.TestCase):
     def test_a_pane_setting_it_cant_put_back_is_refused_before_the_device_is_touched(self):
         tmp = tempfile.mkdtemp()
         env, state = fake_env(tmp)
-        for spec in ("assist=on", "assist=yes,sendspin=on", "radio=on,assist=on,sendspin=on"):
+        for spec in ("assist=on", "assist=yes,sendspin=on,mic=on", "radio=on,assist=on,sendspin=on,mic=on", "assist=on,sendspin=on"):
             with self.subTest(spec):
                 p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--out", os.path.join(tmp, "out"), "--skip-synthetic",
                                     "--skip-reference", "--skip-real-use", "--pane-ram", spec, "--restore-dashboard", RESTORE],
@@ -852,21 +895,45 @@ class PaneRam(unittest.TestCase):
         env, state = fake_env(tmp, FAKE_IDLE_FAILS="1")
         p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--runs", "1", "--out", os.path.join(tmp, "out"), "--port", "18093",
                             "--skip-synthetic", "--skip-reference", "--skip-real-use",
-                            "--pane-ram", "assist=off,sendspin=on", "--restore-dashboard", RESTORE],
+                            "--pane-ram", "assist=off,sendspin=on,mic=on", "--restore-dashboard", RESTORE],
                            env=env, capture_output=True, text=True, timeout=120)
         self.assertNotEqual(p.returncode, 0)                       # the first idle sample failed
         with open(os.path.join(state, "intents.json")) as f:
             intents = json.load(f)
-        self.assertEqual(len(intents), 2)                          # all off, then the exit trap
-        self.assertEqual(intents[-1], {"voice_enabled": "false", "sendspin_enabled": "true"})
+        self.assertEqual(len(intents), 4)                          # all off (two intents), then the exit trap's two
+        self.assertEqual(intents[-2:], [{"mic_muted": "false", "sendspin_enabled": "true"}, {"voice_enabled": "false"}])
         with open(os.path.join(state, "saved_url.json")) as f:
             self.assertEqual(json.load(f), RESTORE)
+
+    def test_a_kiosk_that_loses_voice_enabled_is_measured_by_its_mute_and_says_so(self):
+        """S1 Kiosk 0.4.3 saves voice_enabled asynchronously and exits to restart: the write is lost
+        (s1v7). Assist is then off by its microphone mute, which stops the wake word: its running
+        cost, labelled as such; the runner tries voice_enabled twice and goes on."""
+        tmp = tempfile.mkdtemp()
+        env, state = fake_env(tmp, FAKE_VOICE_LOST="1")
+        with open(os.path.join(state, "settings.json"), "w") as f:
+            json.dump({"voice_enabled": "true"}, f)                # on, as on the panel in s1v7
+        out = os.path.join(tmp, "out")
+        p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--runs", "1", "--out", out, "--port", "18099",
+                            "--skip-synthetic", "--skip-reference", "--skip-real-use",
+                            "--pane-ram", "assist=on,sendspin=on,mic=on", "--restore-dashboard", RESTORE],
+                           env=env, capture_output=True, text=True, timeout=300)
+        self.assertEqual(p.returncode, 0, p.stderr[-2000:])
+        with open(os.path.join(out, "panes-ref-panes-off-1.json")) as f:
+            off = json.load(f)
+        self.assertEqual((off["ok"], off["voice_applied"], off["attempts"]), (True, False, 2))
+        self.assertEqual(off["state"], {"voice": True, "sendspin": False, "mic": False})
+        with open(os.path.join(out, "report.json")) as f:
+            panes = {x["id"]: x for x in json.load(f)["ram"]["panes"]}
+        self.assertEqual(panes["assist"]["off_by"], "mute")
+        self.assertEqual(panes["assist"]["pss_kb"], 30000)
+        self.assertIn("voice_enabled didn't take", p.stderr)
 
     def test_it_needs_the_dashboard_to_put_back(self):
         tmp = tempfile.mkdtemp()
         env, _ = fake_env(tmp)
         p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--out", os.path.join(tmp, "out"), "--skip-synthetic",
-                            "--skip-reference", "--skip-real-use", "--pane-ram", "assist=on,sendspin=on"],
+                            "--skip-reference", "--skip-real-use", "--pane-ram", "assist=on,sendspin=on,mic=on"],
                            env=env, capture_output=True, text=True, timeout=60)
         self.assertEqual(p.returncode, 2)
         self.assertIn("--restore-dashboard", p.stderr)

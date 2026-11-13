@@ -19,7 +19,7 @@
 #   Read-only otherwise: getprop, /proc, dumpsys meminfo and SurfaceFlinger, logcat.
 #
 # Usage: tools/perf/run.sh --frame aqara-s1-plus [--name "Aqara S1 Plus"] [--serial S] [--runs 3] [--out DIR]
-#          --restore-dashboard URL|auto [--pane-ram assist=on,sendspin=on]
+#          --restore-dashboard URL|auto [--pane-ram assist=on,sendspin=on,mic=on]
 #          [--skip-synthetic] [--skip-reference] [--skip-real-use] [--taps 10] [--quick] [--apk FILE]...
 #        tools/perf/run.sh --frame ID --out DIR --idle-only LABEL   # one idle sample (pane diffs)
 set -euo pipefail
@@ -116,34 +116,41 @@ done
 SERVER_PID="" DASHBOARD_OK=1 SWITCHED=0 PANES_SWITCHED=0 PANES=""
 # Protocol 4: the graded part points the kiosk at the reference dashboard's start view on the fake
 # Home Assistant (its saved dashboard, `--es url`), so a restart comes back to it; it points it back
-# at RESTORE after, and here on any exit (exit status 3 if that failed). --pane-ram also turns the panes off and on; the same intent puts them back.
+# at RESTORE after, and here on any exit (exit status 3 if that failed). --pane-ram also turns the panes off
+# and on; perfrun.py panes puts them back with the dashboard and checks the kiosk's log that they took.
 # The runner can't read either setting itself (it never reads app data).
-pane_extras() { # the --ez extras for: one pane on by itself (its id), "none" on, or "restore"
-  local id extra cur v out=""
-  while read -r id extra cur; do
-    [ -n "$id" ] || continue
-    case "$1" in restore) v=$cur ;; "$id") v=true ;; *) v=false ;; esac
-    out="$out --ez $extra $v"
-  done <<< "$PANES"
-  echo "$out"
+pane_set() { # the pane extras (extra=true|false,...) for: one pane on by itself (its id), "none", or "restore"
+  awk -v s="$1" '$1 == "STATE" && $2 == s { print $3 }' <<< "$PANES"
 }
 point_back() {
-  local extras="" out
-  [ "$PANES_SWITCHED" = 1 ] && extras=$(pane_extras restore)
+  local out set=""
+  [ "$PANES_SWITCHED" = 1 ] && set=$(pane_set restore)
   if [ "$SWITCHED" = 1 ] || [ "$PANES_SWITCHED" = 1 ]; then
-    log "pointing the kiosk back at its dashboard ($RESTORE)${extras:+ and its panes ($PANE_RAM)}"
-    # -W: wait until the kiosk has the intent. am exits 0 even when it fails, so read its answer.
-    # shellcheck disable=SC2086 # $extras is a list of extras
-    out=$(sh_dev am start -W -n "$PACKAGE/.MainActivity" --es url "'$RESTORE'" $extras 2>&1) || out="$out (adb failed)"
+    log "pointing the kiosk back at its dashboard ($RESTORE)${set:+ and its panes ($PANE_RAM)}"
     DASHBOARD_OK=0
+    if [ -n "$set" ]; then
+      # The panes and the dashboard together, checked in the kiosk's log (perfrun.py panes): the
+      # live settings first, then voice_enabled, which restarts the app. Retried if one didn't take.
+      if out=$(run panes --set "$set" --url "$RESTORE" --settle "$SWITCH_SETTLE" --tries 3 2>&1); then
+        SWITCHED=0 PANES_SWITCHED=0
+        if printf '%s\n' "$out" | tail -n 1 | grep -q '"voice_applied": false'; then
+          log "voice_enabled didn't take (this kiosk saves it asynchronously before it restarts); it is as it was"
+        fi
+      else
+        log "COULD NOT put the panes back: $(printf '%s' "$out" | tail -n 1)"
+        log "send it yourself: adb shell am start -n $PACKAGE/.MainActivity --es url '$RESTORE' $(printf '%s' "$set" | sed 's/\([a-z_]*\)=\([a-z]*\)/--ez \1 \2/g; s/,/ /g')"
+      fi
+      return 0
+    fi
+    # -W: wait until the kiosk has the intent. am exits 0 even when it fails, so read its answer.
+    out=$(sh_dev am start -W -n "$PACKAGE/.MainActivity" --es url "'$RESTORE'" 2>&1) || out="$out (adb failed)"
     if printf '%s\n' "$out" | grep -q '^Status: ok'; then
-      SWITCHED=0 PANES_SWITCHED=0
-      # Let the kiosk save the settings and load the dashboard (or restart, for Assist) before
-      # anything else restarts it.
+      SWITCHED=0
+      # Let the kiosk save the setting and load the dashboard before anything else restarts it.
       sleep "$SWITCH_SETTLE"
     else
       log "COULD NOT point the kiosk back: $(printf '%s' "$out" | tr '\n' ' ')"
-      log "send it yourself: adb shell am start -n $PACKAGE/.MainActivity --es url '$RESTORE'$extras"
+      log "send it yourself: adb shell am start -n $PACKAGE/.MainActivity --es url '$RESTORE'"
     fi
   fi
 }
@@ -167,25 +174,37 @@ cleanup() {
 trap cleanup EXIT
 
 if [ -n "$PANE_RAM" ]; then
-  # "<id>=on|off,…" for every pane the frame can switch (frames/<id>/budgets.json, `switch`): what
-  # to put back. Out: one "<id> <extra> <true|false>" line per pane.
+  # "<id>=on|off,…" for every pane the frame can switch (frames/<id>/budgets.json, `switch`), and
+  # mic=on|off when one has a microphone mute (`mute`): what to put back. Out: one
+  # "STATE <none|id|restore> extra=true|false,..." line per state the runner sets.
   PANES=$(python3 - "$HERE/../../frames/$FRAME/budgets.json" "$PANE_RAM" <<'PY'
 import json, os, re, sys
 path, spec = sys.argv[1:]
 panes = json.load(open(path))["panes"] if os.path.exists(path) else {}
-switch = {k: v["switch"] for k, v in panes.items() if v.get("switch")}
+switch = {k: v for k, v in panes.items() if v.get("switch")}
 if not switch:
     sys.exit(f"--pane-ram: {path} names no pane with a switch")
+keys = set(switch) | ({"mic"} if any(v.get("mute") for v in switch.values()) else set())
 got = {}
 for part in spec.split(","):
     m = re.fullmatch(r"([a-z0-9-]+)=(on|off)", part)
-    if not m or m.group(1) not in switch:
-        sys.exit(f"--pane-ram: {part!r} isn't <pane>=on|off for one of {', '.join(sorted(switch))}")
+    if not m or m.group(1) not in keys:
+        sys.exit(f"--pane-ram: {part!r} isn't <name>=on|off for one of {', '.join(sorted(keys))}")
     got[m.group(1)] = m.group(2) == "on"
-if set(got) != set(switch):
-    sys.exit(f"--pane-ram needs every switchable pane's setting now: {', '.join(sorted(switch))}")
-for k in sorted(switch):
-    print(k, switch[k], "true" if got[k] else "false")
+if set(got) != keys:
+    sys.exit(f"--pane-ram needs the setting now of: {', '.join(sorted(keys))} (mic: the microphone, on unless muted)")
+def state(on):
+    out = []
+    for pid in sorted(switch):
+        p = switch[pid]
+        v = got[pid] if on == "restore" else pid == on
+        out.append(f"{p['switch']}={'true' if v else 'false'}")
+        if p.get("mute"):
+            muted = (not got["mic"]) if on == "restore" else not v
+            out.append(f"{p['mute']}={'true' if muted else 'false'}")
+    return ",".join(out)
+for name in ["none"] + sorted(switch) + ["restore"]:
+    print("STATE", name, state(name))
 PY
 ) || exit 2
 fi
@@ -267,20 +286,26 @@ fi
 
 if [ -n "$PANE_RAM" ]; then
   # Each switchable pane on by itself against every pane off, on the typical reference dashboard.
-  # Every sample starts from a fresh app process (`restart`), so none has been up longer than the
-  # others. The intent also points the kiosk at the dashboard (it persists across the restarts).
+  # The first intent sets the live settings (Sendspin, the microphone mute) and points the kiosk at
+  # the dashboard; the second sets voice_enabled, which restarts the app, so every sample starts
+  # from a fresh process. perfrun.py panes reads the kiosk's log to check what it runs. A sample that
+  # ran something else, or saw the screen go off, is left out of the report (docs/perf.md).
   log "RAM per pane: every pane off, then each on by itself, $RUNS time(s) (they go back to $PANE_RAM after)"
   DASHBOARD_OK=0
   SWITCHED=1
   PANES_SWITCHED=1
   for k in $(seq 1 "$RUNS"); do
-    for state in none $(echo "$PANES" | awk '{ print $1 }'); do
+    for state in $(awk '$1 == "STATE" && $2 != "restore" { print $2 }' <<< "$PANES"); do
       label=$([ "$state" = none ] && echo ref-panes-off || echo "ref-$state-on")
       log "panes: $label $k/$RUNS"
-      # shellcheck disable=SC2046 # the extras are a list
-      sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'http://127.0.0.1:$PORT/clarity-ref/typical'" \
-        $(pane_extras "$state") --ez restart true >/dev/null
-      sleep "$SWITCH_SETTLE"
+      # Set and check what the kiosk runs (perfrun.py panes); each sample starts from a fresh app
+      # process, since voice_enabled restarts it. The idle sample records what it ran too.
+      run panes --set "$(pane_set "$state")" --url "http://127.0.0.1:$PORT/clarity-ref/typical" \
+        --settle "$SWITCH_SETTLE" --tries 3 > "$OUT/panes-$label-$k.json" \
+        || log "panes: the kiosk didn't run $label (see panes-$label-$k.json); the report leaves the sample out"
+      if grep -q '"voice_applied": false' "$OUT/panes-$label-$k.json"; then
+        log "panes: voice_enabled didn't take (this kiosk saves it asynchronously before it restarts); Assist is off by its microphone mute"
+      fi
       thermal "$label-$k"
       run idle --label "$label" --run "$k" --settle "$IDLE_SETTLE" --window "$IDLE_WINDOW"
     done
