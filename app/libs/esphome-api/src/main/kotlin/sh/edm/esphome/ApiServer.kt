@@ -183,6 +183,8 @@ class ApiServer(
     @Volatile var unresponsiveMs = UNRESPONSIVE_MS
     /** The keepalive's time source, in ms; tests drive it by hand. */
     @Volatile internal var clock: () -> Long = System::currentTimeMillis
+    /** Makes the listening socket; a test passes one whose sockets it can hold mid-write. Set before [start]. */
+    @Volatile internal var newServerSocket: () -> ServerSocket = { ServerSocket() }
     private var keepaliveTimer: java.util.concurrent.ScheduledExecutorService? = null
     @Volatile private var voiceConn: Connection? = null
 
@@ -232,7 +234,7 @@ class ApiServer(
 
     @Throws(IOException::class)
     fun start() {
-        val ss = ServerSocket()
+        val ss = newServerSocket()
         ss.reuseAddress = true
         ss.bind(InetSocketAddress(bindAddress, port))
         serverSocket = ss
