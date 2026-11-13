@@ -1,5 +1,7 @@
 package sh.edm.s1kiosk.auth
 
+import dev.glassworks.web.PageShell
+import dev.glassworks.web.PageShell.Look
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -175,7 +177,7 @@ class SignInServer(
                 }
                 AuthLog.i("Signed in to ${pending.haBase} (refresh token stored)")
                 page(200, "OK", "Panel signed in", "It's loading your dashboard now. You can close this page.", Look.DONE,
-                    tile = haTile(pending.haBase, dot = true))
+                    tile = haTile(pending.haBase, dot = true), footHtml = MANAGE_FOOT)
             }
             is TokenResult.Error -> {
                 AuthLog.w("code exchange failed: ${r.code} (${r.httpStatus})")
@@ -244,7 +246,8 @@ class SignInServer(
                 val rt = r.refreshToken
                     ?: return page(502, "Bad Gateway", "Can't sign in", "Home Assistant didn't return a refresh token.")
                 val o = join.onGrant(StoredAuth(pending.haBase, pending.clientId, rt), r)
-                if (o.ok) page(200, "OK", o.title, esc(o.text), Look.DONE, tile = o.network?.let { networkTile(it, o.channel) }.orEmpty())
+                if (o.ok) page(200, "OK", o.title, esc(o.text), Look.DONE, tile = o.network?.let { networkTile(it, o.channel) }.orEmpty(),
+                    footHtml = MANAGE_FOOT)
                 else page(502, "Bad Gateway", o.title, esc(o.text))
             }
             is TokenResult.Error -> {
@@ -296,22 +299,7 @@ class SignInServer(
         const val CONTINUE = "/signin/continue"
         const val THREAD_CONTINUE = "/thread/continue"
 
-        /**
-         * Every page's headers: no caching, and nothing but its own inline style may run or load (the
-         * pages have no script, image or font, and any injected markup stays inert).
-         */
-        val PAGE_HEADERS = mapOf(
-            "Content-Type" to "text/html; charset=utf-8",
-            "Cache-Control" to "no-store",
-            "Content-Security-Policy" to "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
-            "X-Content-Type-Options" to "nosniff",
-            "Referrer-Policy" to "no-referrer",
-        )
-
-        fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
-
-        /** The stack tells the state, as on the panel: outlined to start, lit when done, rose and dashed for a problem. */
-        enum class Look { START, DONE, PROBLEM }
+        fun esc(s: String) = PageShell.esc(s)
 
         private fun host(base: String) = base.substringAfter("://").substringBefore("/").substringBefore(":")
 
@@ -324,60 +312,22 @@ class SignInServer(
 
         fun button(label: String, href: String) = """<a class="btn" href="$href">${esc(label)} <span aria-hidden="true">↗</span></a>"""
 
-        /** The stack as inline SVG: plates are isometric rounded squares (branding/boot/stack.py), top plate last. */
-        private fun mark(look: Look, cls: String): String {
-            fun plate(i: Int, attrs: String) =
-                """<rect width="60" height="60" rx="9" transform="matrix(.866 .5 -.866 .5 60 ${11 + i * 19})" vector-effect="non-scaling-stroke" $attrs/>"""
-            val top = when (look) {
-                Look.START -> plate(0, """fill="none" class="p0"""")
-                Look.DONE -> plate(0, """fill="url(#lit)" class="lit"""")
-                Look.PROBLEM -> plate(0, """fill="none" class="bad"""")
-            }
-            return """<svg class="$cls" viewBox="2 6 116 108" aria-hidden="true"><defs><linearGradient id="lit" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset=".55" stop-color="#818cf8"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>""" +
-                plate(2, """fill="none" class="p2"""") + plate(1, """fill="none" class="p1"""") + top + "</svg>"
-        }
-
         /**
-         * One small self-contained page (#63): the system font, an inline mark, dark or light as the
-         * device is, the same tokens as glassworks.dev. [text] is HTML (escape what comes from outside).
-         * Done pages have no button; errors say the one fix on the panel.
+         * One QR-code page (#63), drawn by the shell every page on the panel shares ([PageShell]). [text]
+         * is HTML (escape what comes from outside). Done pages have no button; errors say the one fix on the
+         * panel. [footHtml] is HTML under the button (a done page's way on to the Manage page).
          */
         fun page(
             status: Int, reason: String, title: String, text: String, look: Look = Look.PROBLEM,
-            tile: String = "", button: String = "", foot: String = "",
+            tile: String = "", button: String = "", foot: String = "", footHtml: String = "",
         ): Response {
-            val name = esc(sh.edm.s1kiosk.esphome.PanelDevice.FRIENDLY_NAME)
-            val heading = esc(title).let { if (it.endsWith(".")) it else "$it." }
-            val html = """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light">
-<title>$name</title><style>
-:root{--bg:#0a0b0f;--tx:#f4f4f5;--mu:#a1a1aa;--fa:#63636b;--tile:rgba(255,255,255,.045);--bd:rgba(255,255,255,.07);--btn:#f4f4f5;--btx:#0a0b0f;--pl:#f4f4f5;--g1:rgba(56,189,248,.13);--g2:rgba(167,139,250,.14)}
-@media (prefers-color-scheme:light){:root{--bg:#eceef2;--tx:#0a0b0f;--mu:#52525b;--fa:#8a8a93;--tile:rgba(255,255,255,.75);--bd:rgba(10,11,15,.08);--btn:#0a0b0f;--btx:#f4f4f5;--pl:#0a0b0f;--g1:rgba(56,189,248,.22);--g2:rgba(167,139,250,.22)}}
-*{box-sizing:border-box}html,body{margin:0;min-height:100%}
-body{min-height:100vh;display:flex;flex-direction:column;padding:28px 24px;color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-background:radial-gradient(900px 600px at -10% -20%,var(--g1),transparent 60%),radial-gradient(800px 600px at 110% 120%,var(--g2),transparent 60%),var(--bg)}
-header{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600}header .m{width:20px;height:20px}
-main{flex:1;display:flex;flex-direction:column;max-width:960px;width:100%;margin:0 auto}
-.big{width:52px;height:52px;margin:auto 0 18px}
-h1{font-size:30px;font-weight:300;letter-spacing:-.02em;line-height:1.15;margin:0 0 10px}
-p{color:var(--mu);margin:0}p b,.txt b{color:var(--tx);font-weight:500}
-.tile{display:flex;align-items:center;gap:14px;margin-top:22px;padding:14px 16px;border-radius:16px;background:var(--tile);border:1px solid var(--bd);font-size:15px}
-.tile>div{flex:1}.tile small{display:block;font-size:12px;color:var(--fa);margin-bottom:2px}
-.ic{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;color:#38bdf8;background:rgba(56,189,248,.14)}
-.info{align-items:flex-start;color:var(--mu);font-size:14px}.ii{display:grid;place-items:center;width:18px;height:18px;border:1.5px solid var(--mu);border-radius:50%;font-size:11px;font-weight:700;flex:none;margin-top:2px}
-i.ok{width:8px;height:8px;border-radius:50%;background:#34d399;flex:none}
-.act{margin-top:auto;padding-top:28px;min-height:1px}.btn{display:block;text-align:center;padding:15px 20px;border-radius:999px;background:var(--btn);color:var(--btx);text-decoration:none;font-weight:500}
-.foot{text-align:center;font-size:12.5px;color:var(--fa);margin-top:12px}
-svg rect{stroke:var(--pl);stroke-width:2.4}.p0{stroke-opacity:.7}.p1{stroke-opacity:.45}.p2{stroke-opacity:.2}
-.bad{stroke:#fb7185!important;stroke-dasharray:5 4}svg rect.lit{stroke:none}header .m rect{stroke-width:1.4}
-@media (min-width:720px){body{padding:28px 40px}main{display:grid;grid-template-columns:1fr 1.1fr;grid-template-rows:1fr auto auto 1fr;column-gap:56px}
-.big{grid-column:1;grid-row:2/4;width:200px;height:190px;justify-self:end;align-self:center;margin:0}.copy,.act{grid-column:2;max-width:380px}.copy{grid-row:2}.act{grid-row:3;margin:0;padding-top:20px}
-.btn{display:inline-block}.foot{text-align:left}}
-</style></head><body><header>${mark(if (look == Look.DONE) Look.DONE else Look.START, "m")}<span>$name</span></header>
-<main>${mark(look, "big")}<div class="copy"><h1>$heading</h1><p>$text</p>$tile</div>""" +
-                """<div class="act">$button${if (foot.isNotEmpty()) "<div class=\"foot\">${esc(foot)}</div>" else ""}</div></main></body></html>"""
-            return Response(status, reason, PAGE_HEADERS,
-                html.toByteArray(Charsets.UTF_8))
+            val html = PageShell.qrPage(sh.edm.s1kiosk.esphome.PanelDevice.FRIENDLY_NAME, title, text, look, tile, button, foot, footHtml,
+                headerRight = PageShell.HEADER_SLOT)
+            return Response(status, reason, mapOf("Content-Type" to "text/html; charset=utf-8", "Cache-Control" to "no-store") +
+                PageShell.securityHeaders(formAction = "'none'"), html.toByteArray(Charsets.UTF_8))
         }
+
+        /** Under a done page: the Manage page is the next place to go. */
+        const val MANAGE_FOOT = """<a href="/">Manage this panel</a>"""
     }
 }

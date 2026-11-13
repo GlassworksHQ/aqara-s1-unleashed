@@ -2,7 +2,7 @@ package sh.edm.s1kiosk.auth
 
 import org.junit.Assume.assumeTrue
 import org.junit.Test
-import sh.edm.s1kiosk.auth.SignInServer.Companion.Look
+import dev.glassworks.web.PageShell.Look
 import java.io.File
 
 /**
