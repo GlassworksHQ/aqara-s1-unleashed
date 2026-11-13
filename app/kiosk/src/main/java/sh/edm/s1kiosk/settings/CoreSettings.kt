@@ -56,12 +56,17 @@ class CoreSettings(
             ) { prefs.extraSecureHosts = it },
         )),
         SettingsPlace.SCREEN to SettingsSection("screen", "Screen", listOfNotNull(
-            switch("Wake when someone's near", "Uses the presence sensor · up to ${range()}", { prefs.screenMode == "presence" }) {
+            // 0.4.3's "Screen follows presence" (#63's design names it this): on, the screen wakes when
+            // someone comes close and goes off when idle; off, it stays on. On means both: the screen mode
+            // (HA's `Screen mode` select) and waking on approach (`wake_on_approach`, no other control).
+            switch("Wake when someone's near", "Uses the presence sensor${range()}", { prefs.screenMode == "presence" && prefs.wakeOnApproach }) {
                 prefs.screenMode = if (it) "presence" else "always"
+                if (it) prefs.wakeOnApproach = true
             },
             SettingsItem.Slider(
                 "Presence range", value = { prefs.presenceRangeM }, min = 0f, max = RANGE_MAX_M, step = 0.1f,
-                shown = { v -> if (v <= 0f) "The sensor's own (1.5 m)" else "Up to ${number(v)} m" },
+                // 0 leaves the sensor's threshold as it is (Vi5300Presence.setRange): no distance to promise.
+                shown = { v -> if (v <= 0f) "The sensor's own setting" else "Up to ${number(v)} m" },
             ) { v, done ->
                 val old = prefs.presenceRangeM
                 prefs.presenceRangeM = v
@@ -75,7 +80,7 @@ class CoreSettings(
             SettingsItem.TimeRange(
                 "At night", value = { prefs.nightWindow },
                 shown = { w -> if (w.isBlank()) "Off" else w.replace("-", " – ") },
-            ) { v, done -> prefs.nightWindow = v; done(null) },
+            ) { v, done -> prefs.nightWindow = v; live.brightness(); done(null) }, // the night cap follows the window
             SettingsItem.Duration(
                 "At night, turn off after", value = { prefs.nightIdleOffSec }, choices = NIGHT_CHOICES, shown = ::afterIdle,
             ) { v, done -> prefs.nightIdleOffSec = v; done(null) },
@@ -96,7 +101,8 @@ class CoreSettings(
         "${b.substringAfter("://").substringBefore("/").substringBefore(":")} · found automatically"
     } ?: "Found automatically"
 
-    private fun range(): String = if (prefs.presenceRangeM > 0f) "${number(prefs.presenceRangeM)} m" else "1.5 m"
+    /** " · up to 1.8 m", or nothing while the sensor keeps its own setting. */
+    private fun range(): String = if (prefs.presenceRangeM > 0f) " · up to ${number(prefs.presenceRangeM)} m" else ""
 
     private fun text(
         title: String, hint: String, kind: TextKind, value: () -> String,

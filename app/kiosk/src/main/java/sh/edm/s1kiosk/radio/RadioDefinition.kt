@@ -315,7 +315,9 @@ class RadioDefinition(
         return listOf(SettingsSection(
             id, "Radio", items, heading = "Zigbee / Thread radio", master = master(),
             status = ::settingsStatus,
-            unavailable = { if (readout.controller() != null && !helperInstalled()) NO_HELPER else null },
+            // The radio thread's cached facts: this runs on the main thread whenever the menu draws, and
+            // helperInstalled() can spawn getprop. Unknown until the radio's first refresh: not "can't run".
+            unavailable = { if (readout.controller()?.helperShownIfKnown()?.installed == false) NO_HELPER else null },
         ))
     }
 
@@ -329,7 +331,10 @@ class RadioDefinition(
         },
     ) { on, done ->
         choosing = on && readout.mode() == RadioMode.OFF
-        if (on || readout.mode() == RadioMode.OFF) done(null)
+        // A role picked a moment ago may still be queued on the radio thread with the mode still Off:
+        // send Off anyway, so it runs after that request instead of the radio starting after "Off".
+        val pending = readout.controller()?.requestPending == true
+        if (on || (readout.mode() == RadioMode.OFF && !pending)) done(null)
         else Thread({ done(setModeFrom(RadioMode.OFF.id, "settings menu")) }, "s1-radio-off").apply { isDaemon = true; start() }
     }
 

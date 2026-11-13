@@ -195,10 +195,49 @@ class SettingsMenuTest {
         assertTrue(screen.none { it is SettingsItem.Text })
         val range = screen.filterIsInstance<SettingsItem.Slider>().single()
         assertEquals(0f, range.min); assertEquals(CoreSettings.RANGE_MAX_M, range.max); assertEquals(0.1f, range.step)
-        assertEquals("The sensor's own (1.5 m)", range.shown(0f))
+        assertEquals("The sensor's own setting", range.shown(0f))
         assertEquals("Up to 2.1 m", range.shown(2.1f))
         val idle = screen.filterIsInstance<SettingsItem.Duration>().first()
         assertEquals(listOf("After 30 s", "After 1 minute", "After 2 minutes", "After 5 minutes", "After 10 minutes", "After 30 minutes", "Never"), idle.choices.map(idle.shown))
+    }
+
+    private fun screen(live: CoreSettings.Live = CoreSettings.Live()) =
+        MenuFixture.model(app, radioDefinition(app, FixedReadout(off)), live = live).sections.first { it.id == "screen" }.items
+
+    @Test
+    fun wakeWhenSomeonesNearIsTheWholePresencePolicy() {
+        // CodeRabbit on #163: with wake_on_approach off, the switch read on and couldn't wake the screen.
+        // On means 0.4.3's "Screen follows presence": the presence screen mode and waking on approach.
+        val prefs = KioskPrefs(app)
+        prefs.screenMode = "presence"; prefs.wakeOnApproach = false
+        val wake = screen().filterIsInstance<SettingsItem.Switch>().first { it.title == "Wake when someone's near" }
+        assertFalse(wake.value())
+        wake.save(true) {}
+        assertEquals("presence", prefs.screenMode); assertTrue(prefs.wakeOnApproach)
+        assertTrue(wake.value())
+        wake.save(false) {}
+        assertEquals("always", prefs.screenMode) // stays on, as 0.4.3's switch did
+        assertFalse(wake.value())
+    }
+
+    @Test
+    fun rangeZeroPromisesNoDistance() {
+        // CodeRabbit on #163: 0 leaves the sensor's threshold alone, which may not be 1.5 m.
+        val prefs = KioskPrefs(app)
+        prefs.presenceRangeM = 0f
+        val items = screen()
+        assertEquals("The sensor's own setting", items.filterIsInstance<SettingsItem.Slider>().single().shown(0f))
+        assertEquals("Uses the presence sensor", items.filterIsInstance<SettingsItem.Switch>().first().detail)
+        prefs.presenceRangeM = 2.1f
+        assertEquals("Uses the presence sensor · up to 2.1 m", screen().filterIsInstance<SettingsItem.Switch>().first().detail)
+    }
+
+    @Test
+    fun aNewNightWindowAppliesToTheBrightnessAtOnce() {
+        // CodeRabbit on #163: the night cap only changed with the next light reading.
+        var refreshed = 0
+        screen(CoreSettings.Live(brightness = { refreshed++ })).filterIsInstance<SettingsItem.TimeRange>().single().save("23:00-06:00") {}
+        assertEquals(1, refreshed)
     }
 
     @Test
