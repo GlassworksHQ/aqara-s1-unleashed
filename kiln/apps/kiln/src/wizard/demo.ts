@@ -15,7 +15,7 @@ import { s1PlusUi } from '../frames/aqara-s1-plus';
 import { explain } from './explain';
 import { Session, type SessionDeps } from './session';
 
-export const DEMOS = ['run', 'selftest', 'connect', 'ask-fastboot', 'install', 'ask-adb', 'app', 'wifi', 'wifi-new', 'wifi-fail', 'home-assistant', 'radio', 'radio-next',
+export const DEMOS = ['run', 'selftest', 'connect', 'ask-fastboot', 'install', 'ask-adb', 'app', 'app-installing', 'wifi', 'wifi-new', 'wifi-fail', 'home-assistant', 'radio', 'radio-next',
   'done', 'undo', 'undo-refused', 'undo-refused-splash', 'undo-apps-back', 'undo-unreadable', 'undo-connect', 'restore', 'undo-done', 'error', 'error-written'] as const;
 export type Demo = (typeof DEMOS)[number];
 
@@ -181,8 +181,13 @@ const demoRecipe: Recipe<AssetName, SetUpOptions, Provisioned> = {
     return image;
   },
   writesBeforeBoot: async ({ backup, log }) => { log('vbmeta flags: 0'); return [{ part: 'vbmeta', data: backup.get('vbmeta')!, what: 'Turning off verified boot' }]; },
-  setUp: async (_panel, _opts, { step }) => {
-    for (const s of ['Installing S1 Kiosk', 'Setting it as the home screen', 'Applying your settings']) { step(s); await wait(500); }
+  setUp: async (_panel, opts, { step }) => {
+    // provision's phases, in its order, without the panel's real durations
+    for (const [phase, s, ms] of [['copy', 'Install kiosk app', 600], ['install', '', 2500], ['settings', 'Permissions', 800], ['start', 'Start the kiosk', 400]] as const) {
+      opts.onPhase?.(phase);
+      if (s) step(s);
+      await wait(ms);
+    }
     return { ip: IP };
   },
 };
@@ -265,6 +270,10 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
     case 'app':
       await session.route('resume');
       dispatch({ type: 'setup', setup: { phase: 'settings', update: false } });
+      return;
+    case 'app-installing': // Android installing and optimising the app
+      await session.route('resume');
+      dispatch({ type: 'setup', setup: { phase: 'settings', update: false, installing: 'install' } });
       return;
     case 'wifi': // the panel is on Wi-Fi already
     case 'wifi-new': // it isn't: the networks it can see

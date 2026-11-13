@@ -21,10 +21,21 @@ class FakePanel implements PanelShell {
     if (cmd.startsWith('ip -4')) return { out: '', code: 1 }; // no wlan0 on a fresh panel
     return { out: '', code: 0 };
   }
-  async push(path: string, data: Uint8Array) { this.pushed.set(path, data); }
+  async push(path: string, data: Uint8Array) { this.pushed.set(path, data); this.cmds.push(`push ${path}`); }
 }
 
 describe('provision (install.sh port)', () => {
+  it('reports the app\'s phases at the commands that start them', async () => {
+    const p = new FakePanel();
+    const phases: string[] = [];
+    await provision(p, { kioskApk: new Uint8Array(1), timezone: 'Europe/Berlin', onPhase: (ph) => { phases.push(ph); p.cmds.push(`# ${ph}`); } });
+    expect(phases).toEqual(['copy', 'install', 'settings', 'start']);
+    const at = (c: string) => { const i = p.cmds.findIndex((x) => x.startsWith(c)); expect(i, c).toBeGreaterThanOrEqual(0); return i; };
+    const order = ['# copy', 'push /data/local/tmp/s1kiosk.apk', '# install', 'pm install -r -g /data/local/tmp/s1kiosk.apk',
+      '# settings', 'pm grant', 'cmd package set-home-activity', 'service call alarm', '# start', 'am start -n sh.edm.s1kiosk/.MainActivity'].map(at);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
   it('runs install.sh steps in order and skips already-disabled packages', async () => {
     const p = new FakePanel();
     const steps: string[] = [];

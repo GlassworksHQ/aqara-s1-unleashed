@@ -6,7 +6,7 @@ import type { Fastboot } from '@glassworks/fastboot';
 import type { FelDevice } from '@glassworks/fel';
 import {
   IMPROV_SOCKET, ImprovSerialClient, State as ImprovState, describeSwitch, panelWifi, unprovision,
-  type AssetName, type Provisioned, type SetUpOptions,
+  type AppPhase, type AssetName, type Provisioned, type SetUpOptions,
 } from '@glassworks/aqara-s1-plus-installer';
 import {
   BackupRefused, InstallFlow, backupZip, checkRestorable, fmtSize, readBackupZip, restoreFromBackup,
@@ -261,18 +261,26 @@ export class Session {
   async installApp(opts: AppSettings): Promise<void> {
     const update = this.s.setup.phase === 'settings' && this.s.setup.update;
     this.chosen = opts;
-    this.setupPhase({ phase: 'settings', update, chosen: opts, busy: `Installing ${this.d.frame.app}. About a minute.` });
+    const at = (installing: AppPhase) => this.setupPhase({ phase: 'settings', update, chosen: opts, installing });
+    at('copy');
     try {
       const res = await this.getFlow(await this.keyReady).setUpApp(this.panel!, {
         timezone: opts.timezone, locale: opts.locale, clock24: opts.clock24, keyboard: opts.keyboard,
         // A development build on the panel: Android needs it removed first. Ask, saying what is kept.
         confirmSwitch: async (plan) => (this.d.confirm ?? window.confirm)(`${describeSwitch(plan)}\n\nSwitch now?`),
+        onPhase: at,
       });
       const sw = res.switched;
       this.ip = res.ip;
       this.wifiHint = sw?.wifi === 'lost'
         ? `Switching versions made the panel forget ${sw.ssid ? `"${sw.ssid}"` : 'its Wi-Fi'}. Pick it again and type its password.`
         : undefined;
+      // the first start: done when the app listens again (the Wi-Fi step would wait for it too)
+      at('start');
+      if (!(await this.waitForSocket(IMPROV_SOCKET))) {
+        this.setupPhase({ phase: 'wifi', networks: [], unreachable: true, status: `Couldn't reach ${this.d.frame.app} on the panel.` });
+        return;
+      }
       await this.wifi();
     } catch (e) {
       this.setupPhase({ phase: 'settings', update, chosen: opts, error: (e as Error).message });

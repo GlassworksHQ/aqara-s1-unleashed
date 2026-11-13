@@ -2,6 +2,7 @@
 // data. Every change goes through `reduce`; the rail, the stack, the plain log and the chip are
 // derived from it by the selectors below, so a screen never keeps its own copy.
 import type { AskKind, BackupMeta, PartState, Phase, Progress } from '@glassworks/kiln-core';
+import type { AppPhase } from '@glassworks/aqara-s1-plus-installer';
 import type { SetupState } from '@glassworks/setup-channel';
 
 export type Flow = 'install' | 'undo';
@@ -22,7 +23,8 @@ export interface AppSettings { locale?: string; timezone?: string; clock24: bool
 /** What the setup step shows, one phase at a time (S1 Kiosk over adb). */
 export type Setup =
   | { phase: 'waiting'; note: string }
-  | { phase: 'settings'; busy?: string; error?: string; update: boolean; chosen?: AppSettings }
+  /** `installing`: the app is going in, at this phase (provision's AppPhase, then the first start) */
+  | { phase: 'settings'; installing?: AppPhase; error?: string; update: boolean; chosen?: AppSettings }
   | {
       phase: 'wifi';
       /** the panel is on Wi-Fi already (the app's setup state has an address); `ssid` when Android says which */

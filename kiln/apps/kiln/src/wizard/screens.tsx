@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FrameUi } from '../frames/aqara-s1-plus';
 import { LABELS, mount } from '../recovery/player';
 import type { Session } from './session';
+import type { AppPhase } from '@glassworks/aqara-s1-plus-installer';
 import { eta, milestones, type Network, type Setup, type WizardState } from './state';
 
 type P = { s: WizardState; session: Session; frame: FrameUi };
@@ -149,6 +150,34 @@ const zones = () => (Intl as { supportedValuesOf?: (k: string) => string[] }).su
 const LOCALES = ['en-US', 'en-GB', 'en-AU', 'en-CA', 'de-DE', 'fr-FR', 'fr-CA', 'es-ES', 'es-US', 'es-MX', 'it-IT', 'nl-NL', 'pt-PT', 'pt-BR',
   'pl-PL', 'cs-CZ', 'sv-SE', 'da-DK', 'nb-NO', 'fi-FI', 'ru-RU', 'uk-UA', 'tr-TR', 'el-GR', 'hu-HU', 'ro-RO', 'ja-JP', 'ko-KR', 'zh-CN', 'zh-TW', 'zh-HK'];
 
+/**
+ * The app going in, phase by phase as the panel reports them (provision's AppPhase). Android stops and
+ * restarts the app while it installs and optimises it, and again on its first start: say so, so a
+ * restarting panel reads as progress.
+ */
+const APP_PHASES: { id: AppPhase; text: (app: string) => string; note?: string }[] = [
+  { id: 'copy', text: (app) => `Copy ${app} to the panel` },
+  { id: 'install', text: () => 'Android installs it and optimises it for this panel', note: 'The app on the panel closes and restarts during this. That\'s expected.' },
+  { id: 'settings', text: () => 'Apply your settings' },
+  { id: 'start', text: () => 'First start', note: 'It starts again with your settings.' },
+];
+
+function Installing({ frame, setup }: { frame: FrameUi; setup: Extract<Setup, { phase: 'settings' }> }) {
+  const at = APP_PHASES.findIndex((p) => p.id === setup.installing);
+  const note = APP_PHASES[at]?.note;
+  return (
+    <section className="card" aria-labelledby="h">
+      <h2 id="h">{setup.update ? `Updating ${frame.app}.` : `Installing ${frame.app}.`}</h2>
+      <p className="lede">Keep it plugged in. The panel&apos;s screen may go dark or restart a few times.</p>
+      <ol className="join" aria-live="polite">
+        {APP_PHASES.map((p, i) => <li key={p.id} className={i < at ? 'done' : i === at ? 'cur' : ''}>{p.text(frame.app)}</li>)}
+      </ol>
+      {note && <p className="small" role="status">{note}</p>}
+      <div className="bar wait"><i /></div>
+    </section>
+  );
+}
+
 /** Language, time zone and clock, defaulting to this computer's; then the app goes in. */
 function Settings({ s, session, frame, setup }: P & { setup: Extract<Setup, { phase: 'settings' }> }) {
   const here = typeof navigator === 'undefined' ? 'en-US' : navigator.language || 'en-US';
@@ -165,7 +194,8 @@ function Settings({ s, session, frame, setup }: P & { setup: Extract<Setup, { ph
   const [tz, setTz] = useState(was ? was.timezone ?? '' : tzs.includes(tzHere) ? tzHere : '');
   const [clock, setClock] = useState(was ? (was.clock24 ? '24' : '12') : new Intl.DateTimeFormat(here, { hour: 'numeric' }).resolvedOptions().hour12 ? '12' : '24');
   const [keyboard, setKeyboard] = useState(was?.keyboard ?? true);
-  const busy = !!setup.busy;
+  const busy = !!setup.installing;
+  if (setup.installing) return <Installing frame={frame} setup={setup} />;
   return (
     <section className="card" aria-labelledby="h">
       <h2 id="h">{setup.update ? `Update ${frame.app}.` : 'A few settings.'}</h2>
@@ -191,7 +221,6 @@ function Settings({ s, session, frame, setup }: P & { setup: Extract<Setup, { ph
         </RadioGroup.Root>
         <label className="check"><input type="checkbox" checked={keyboard} onChange={(e) => setKeyboard(e.target.checked)} disabled={busy} /> On-screen keyboard</label>
       </div>
-      {setup.busy && <p className="status work" role="status">{setup.busy}</p>}
       {setup.error && <p className="status err" role="alert">{setup.error}</p>}
       <div className="foot">
         <span className="small">About a minute.</span>

@@ -144,4 +144,29 @@ describe('the set-up forms', () => {
     expect(screen.getByRole('button', { name: 'Skip, do it on the panel' })).toBeTruthy();
     s.close();
   }, 20_000);
+
+  it('Installing the app: each phase the panel reports, in order, then Wi-Fi; restarts called expected', async () => {
+    const s = demoSession('app');
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
+    await act(() => s.route('resume'));
+    act(() => s.store.dispatch({ type: 'setup', setup: { phase: 'settings', update: false } })); // a first install
+    const seen: string[] = [];
+    const off = s.store.subscribe(() => {
+      const st = s.store.state.setup;
+      const at = st.phase === 'settings' ? st.installing : undefined;
+      if (at && seen.at(-1) !== at) seen.push(at);
+    });
+    const going = s.installApp({ clock24: true, keyboard: true });
+    await act(() => new Promise((r) => setTimeout(r, 1200)));
+    expect(s.store.state.setup).toMatchObject({ phase: 'settings', installing: 'install' });
+    expect(screen.getByRole('heading').textContent).toBe('Installing S1 Kiosk.');
+    expect(document.querySelector('.join li.cur')?.textContent).toBe('Android installs it and optimises it for this panel');
+    expect(document.querySelectorAll('.join li.done')).toHaveLength(1);
+    expect(screen.getByRole('status').textContent).toMatch(/restarts during this\. That's expected\./);
+    await act(() => going);
+    off();
+    expect(seen).toEqual(['copy', 'install', 'settings', 'start']);
+    expect(s.store.state.setup.phase).toBe('wifi');
+    s.close();
+  }, 20_000);
 });
