@@ -1007,6 +1007,27 @@ class Build(unittest.TestCase):
 
 
 
+class Usable(unittest.TestCase):
+    """Protocol 4: open the view and restart end at the first frame on screen that can carry the
+    render in which every first-screen card was drawn, and never before the main thread was free."""
+    # The page's clock: navigation start is at 98 000 ms on logcat's.
+    page = {"mono": 100.0, "epoch_ms": 1_000_000.0, "origin_epoch_ms": 998_000.0,
+            "usable": {"rendered_tick_ms": 1500.0, "first_screen_cards": 13, "interactive_ms": 1510.0}}
+
+    def test_the_first_frame_that_can_carry_the_render(self):
+        # Rendered at 99 500: a frame presented sooner than a refresh later (less 3 ms) was already on its way.
+        when, why = R.usable_on_screen(self.page, [99_505, 99_510, 99_520, 99_540])
+        self.assertEqual((when, why), (99_520, None))
+
+    def test_never_before_the_main_thread_is_free(self):
+        page = dict(self.page, usable=dict(self.page["usable"], interactive_ms=1600.0))
+        self.assertEqual(R.usable_on_screen(page, [99_520]), (99_600, None))
+
+    def test_not_measured_without_a_frame_or_a_usable_line(self):
+        self.assertEqual(R.usable_on_screen(self.page, [99_505])[1], "no frame on screen after the dashboard rendered")
+        self.assertEqual(R.usable_on_screen(dict(self.page, usable=None), [99_520])[1], "the page didn't report when it was usable")
+
+
 def ram_idle(label, main_kb, cpu=1.0):
     pkg = "sh.edm.s1kiosk"
     return {"label": label, "window_s": 15,
