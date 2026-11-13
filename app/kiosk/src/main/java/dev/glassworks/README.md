@@ -63,6 +63,7 @@ change until Glassworks v1.
 | `SettingsSection` | A section of the settings: typed items (`SettingsItem`) the panel's menu draws, and the Manage page (#33) will. `settingsOrder` places them. |
 | `ScreenPolicy` | (`dev.glassworks.screen`) Wake on approach, idle off, the night window and its timeout, the brightness curve and the screen mode. It reads the frame's `PresenceSource` and `LightSource` and the app's `ScreenSettings`. One per process, on `GlassworksRuntime.screen`. |
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
+| `DiagnosticsPane` | (`dev.glassworks.diagnostics`) The panel's health as diagnostic entities: CPU, temperature, RAM, storage, Wi-Fi, uptime, the last restart reason. A core pane, so every frame has it. The entities are in [docs/esphome.md](../../../../../../../docs/esphome.md#diagnostics). |
 | `Engine` | (`dev.glassworks.engine`) The web engine that shows the dashboard: open a page, load, reload, go back, restart after a crash, and talk to the page's scripts. `GeckoEngine` (`dev.glassworks.engine.gecko`) is the only code that uses GeckoView. One per process, on `GlassworksRuntime.engine`. |
 
 ## What makes a pane
@@ -283,6 +284,7 @@ A frame (`dev.glassworks.frame.Frame`) is what the core asks the device:
 |---|---|
 | `board` | The `board` TXT record in the mDNS advert. |
 | `presence`, `light` | The sensors `ScreenPolicy` reads. Null when the device has none. A `PresenceSource` reports near or not with the raw value, and may support `setRange(metres)`. |
+| `cpuThermalZone` | The `type` of the thermal zone that measures the CPU, for the diagnostics pane. Null (the default) means no temperature entity. The S1's is `cpu_thermal_zone`. |
 | `systemSettingsIntents()` | The device's own settings screens, best first. `Frame.systemSettings(context)` picks the first that resolves. |
 | `wifiSettingsIntents()` | Where to choose a Wi-Fi network, best first. The default is Android's Wi-Fi panel and settings. |
 | `paneDefinitions(context)` | The definitions of the frame's panes: their setup steps, settings sections and adb extras. |
@@ -311,6 +313,9 @@ and calls `load`, `reload`, `goBack`, `restart` and `post`. The page reports to 
 | `onContentGone(killed)` | The content process crashed or was killed. The shell calls `page.restart()` and loads again. |
 | `onAndroidPermissions(permissions, answer)` | The page needs Android runtime permissions, which only an activity can ask for. |
 | `onConnect(port)`, `onPortMessage(port, message)` | A page script opened a native port, or sent a JSON object on one. `PagePort` has the page's `url` and `topLevel`. |
+
+`engine.isContentProcess(name)` says whether one of the app's processes is a web content process.
+The diagnostics pane counts them. For GeckoView these are the `:sandboxed_tab…` processes.
 
 It is a kiosk engine. It allows every page permission without a prompt and grants the microphone and
 the camera. It reads `EngineSettings` (secure-context hosts, zoom, remote debugging) once, at the

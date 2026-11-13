@@ -25,6 +25,9 @@ interface Engine {
      * The view shows [background] until the page first paints. [host] hears from the page.
      */
     fun open(activity: Activity, host: PageHost, background: Int): Page
+
+    /** Whether [processName], one of this app's processes, is one the engine renders web content in. */
+    fun isContentProcess(processName: String): Boolean
 }
 
 /** What an engine starts with. */

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-// The set-up forms follow what the panel reports: a Wi-Fi pick a rescan dropped goes, and the Home
-// Assistant address follows discovery until the person types one.
+// The set-up forms follow what the panel reports: a Wi-Fi pick a rescan dropped goes, with its
+// password, and the Home Assistant address follows discovery until the person types one. The radio
+// step's Skip waits for a radio change to finish.
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -31,6 +32,37 @@ describe('the set-up forms', () => {
     expect(checked()).toMatch(/Home Net 5G/);
     act(() => s.store.dispatch({ type: 'setup', setup: { phase: 'wifi', status: '', networks: nets('Home Net') } }));
     expect(checked()).toMatch(/^Home Net(?! 5G)/);
+    s.close();
+  });
+
+  it('Wi-Fi: the replaced pick\'s password goes with it', () => {
+    const s = demoSession('connect');
+    render(<Wizard session={s} frame={s1PlusUi} />);
+    act(() => s.store.dispatch({ type: 'setup', setup: { phase: 'wifi', status: '', networks: nets('Home Net', 'Home Net 5G') } }));
+    fireEvent.click(screen.getByRole('radio', { name: /Home Net 5G/ }));
+    const password = () => document.querySelector<HTMLInputElement>('input[type=password]')!;
+    fireEvent.change(password(), { target: { value: 'example-pass' } });
+    act(() => s.store.dispatch({ type: 'setup', setup: { phase: 'wifi', status: '', networks: nets('Home Net') } }));
+    expect(checked()).toMatch(/^Home Net(?! 5G)/);
+    expect(password().value).toBe('');
+    fireEvent.change(password(), { target: { value: 'example-pass' } });
+    act(() => s.store.dispatch({ type: 'setup', setup: { phase: 'wifi', status: '', networks: nets('Home Net', 'Neighbours') } }));
+    expect(password().value).toBe('example-pass'); // a rescan that keeps the pick keeps what was typed
+    s.close();
+  });
+
+  it('Radio: Skip and Finish are off while a radio change runs', async () => {
+    const s = demoSession('radio');
+    render(<Wizard session={s} frame={s1PlusUi} />);
+    await act(() => s.route('radio'));
+    const skip = () => screen.getByRole('button', { name: 'Skip, leave it as it is' }) as HTMLButtonElement;
+    const finish = () => screen.getByRole('button', { name: 'Finish' }) as HTMLButtonElement;
+    expect(skip().disabled).toBe(false);
+    const setup = s.store.state.setup;
+    act(() => s.store.dispatch({ type: 'setup', setup: { ...setup, busy: true } as typeof setup })); // what applyRadio shows while the panel switches
+    expect(s.store.state.busy).toBeUndefined(); // the step's own busy, not a click in flight
+    expect(skip().disabled).toBe(true);
+    expect(finish().disabled).toBe(true);
     s.close();
   });
 

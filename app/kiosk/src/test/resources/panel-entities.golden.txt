@@ -1,9 +1,14 @@
+app_cpu_usage|-323630847|SensorEntity|App CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=
+app_memory|-1252406334|SensorEntity|App RAM|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=
 app_update|1516384904|UpdateEntity|App update|mdi:cellphone-arrow-down|firmware|CONFIG|authOnly=false|options=
+app_uptime|651136557|SensorEntity|App uptime||timestamp|DIAGNOSTIC|authOnly=false|options=
 app_version|1945808083|TextSensorEntity|App version|mdi:new-box||DIAGNOSTIC|authOnly=false|options=
 aqara_cloud|1186447373|TextSensorEntity|Aqara cloud daemon|mdi:cloud-outline||DIAGNOSTIC|authOnly=false|options=
 auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONFIG|authOnly=false|options=
 base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=
 block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=
+cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=
+cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom
 dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=
 hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=
@@ -12,6 +17,8 @@ idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONF
 illuminance|-1763685258|SensorEntity|Illuminance||illuminance|NONE|authOnly=false|options=
 improv_ble|874008966|ButtonEntity|Start Wi-Fi setup (Bluetooth)|mdi:bluetooth-settings||CONFIG|authOnly=false|options=
 ip_address|339278791|TextSensorEntity|IP address|mdi:ip-network||DIAGNOSTIC|authOnly=false|options=
+last_restart_reason|8212602|TextSensorEntity|Last restart reason|mdi:restart-alert||DIAGNOSTIC|authOnly=false|options=
+memory_available|-647501798|SensorEntity|RAM available|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=
 mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=false|options=
 mute_microphone|-858890227|SwitchEntity|Mute microphone|mdi:microphone-off||CONFIG|authOnly=false|options=
 night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=
@@ -35,6 +42,7 @@ sendspin_status|-669526114|TextSensorEntity|Music Assistant player status|mdi:sp
 sign_out|1452185499|ButtonEntity|Sign out|mdi:logout||CONFIG|authOnly=false|options=
 signed_in|188034881|TextSensorEntity|Signed in|mdi:account-key||DIAGNOSTIC|authOnly=false|options=
 speaker|1749657154|MediaPlayerEntity|Speaker|mdi:speaker||NONE|authOnly=false|options=
+storage_free|-1624996127|SensorEntity|Storage free|mdi:harddisk|data_size|DIAGNOSTIC|authOnly=false|options=
 thread_dataset|-1406115782|TextEntity|Thread dataset|mdi:key-chain||CONFIG|authOnly=false|options=
 thread_join|-501524074|TextSensorEntity|Thread join|mdi:transit-connection-variant||DIAGNOSTIC|authOnly=false|options=
 thread_join_ha|1683967752|ButtonEntity|Join Home Assistant's Thread network|mdi:qrcode-scan||CONFIG|authOnly=true|options=
@@ -42,9 +50,13 @@ thread_leave|1345396097|ButtonEntity|Leave Thread network|mdi:link-variant-off||
 time_zone|-1564830261|TextEntity|Time zone|mdi:map-clock||CONFIG|authOnly=true|options=
 time_zone_status|-1288740378|TextSensorEntity|Time zone status|mdi:clock-check-outline||DIAGNOSTIC|authOnly=false|options=
 update_status|971991635|TextSensorEntity|Update status|mdi:update||DIAGNOSTIC|authOnly=false|options=
+uptime|-54133543|SensorEntity|Uptime||timestamp|DIAGNOSTIC|authOnly=false|options=
 voice_overlay|1110557810|SwitchEntity|Voice overlay|mdi:message-badge-outline||CONFIG|authOnly=false|options=
 wake_sound|-735348603|SwitchEntity|Wake sound|mdi:bell-ring-outline||CONFIG|authOnly=false|options=
 wake_word_threshold|949390898|NumberEntity|Wake word threshold|mdi:account-voice||CONFIG|authOnly=false|options=
+web_content_processes|-1448158443|SensorEntity|Web content processes|mdi:tab||DIAGNOSTIC|authOnly=false|options=
+wifi_link_speed|-1394914523|SensorEntity|Wi-Fi link speed|mdi:speedometer|data_rate|DIAGNOSTIC|authOnly=false|options=
+wifi_signal|-548641703|SensorEntity|Wi-Fi signal||signal_strength|DIAGNOSTIC|authOnly=false|options=
 zigbee_router_join|51692678|ButtonEntity|Join Zigbee network|mdi:zigbee||CONFIG|authOnly=false|options=
 zigbee_router_leave|1055594353|ButtonEntity|Leave Zigbee network|mdi:link-variant-off||CONFIG|authOnly=false|options=
 zigbee_stack|1396009708|SelectEntity|Zigbee stack|mdi:layers-outline||CONFIG|authOnly=true|options=Aqara 7.3.3 (EZSP 12, ZHA),Silicon Labs 8.2.2 (EZSP 18, Zigbee2MQTT, experimental)

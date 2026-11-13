@@ -119,7 +119,7 @@ class PanelDeviceRacesTest {
         assertEquals(screenListeners + 1, listenerCount(runtime.screen))
         assertEquals(authListeners + 1, listenerCount(HaAuth))
         assertEquals(dashboardListeners + 1, listenerCount(Dashboards))
-        assertEquals("the dashboard check and the state refresh are scheduled", 2, exec.periodic)
+        assertEquals("the dashboard check, the state refresh and the diagnostics sample are scheduled", 3, exec.periodic)
 
         device.stop()
 

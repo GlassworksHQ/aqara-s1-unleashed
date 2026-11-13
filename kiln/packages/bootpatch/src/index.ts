@@ -19,6 +19,7 @@ export { vbmetaFlags, withVbmetaFlags } from './vbmeta';
 export { readBootlogo, replaceBootlogo } from './bootlogo';
 export { s1Overlay, type S1OverlayInputs } from './overlay';
 export { loadCompressor } from './compress';
+export { zipEntries, type ZipEntry } from './magisk';
 
 function unpackRamdisk(boot: ReturnType<typeof parseBootImage>, gunzip: (d: Uint8Array) => Uint8Array, unxz: (d: Uint8Array) => Uint8Array | null): Uint8Array {
   switch (boot.ramdiskFormat) {
