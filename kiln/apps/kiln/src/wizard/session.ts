@@ -501,7 +501,7 @@ export class Session {
     this.undoFiles = undefined;
     this.undoBackup = undefined;
     this.dispatch({ type: 'go', screen: 'undo', flow: 'undo' });
-    this.dispatch({ type: 'undo', patch: { source: undefined, inBrowser: undefined, file: undefined, ready: false, appsBack: false, note: undefined } });
+    this.dispatch({ type: 'undo', patch: { source: undefined, inBrowser: undefined, file: undefined, ready: false, checking: false, appsBack: false, note: undefined } });
     let orig: BackupMeta | undefined;
     try { orig = await this.d.backups.original(); } catch { /* no IndexedDB */ }
     if (!orig || mine !== this.choice) return;
@@ -511,7 +511,15 @@ export class Session {
 
   /** `mine`: the choice this load is for. A file picked while it reads is newer, so this load then lands nowhere. */
   private async useBrowserBackup(meta: BackupMeta, mine: number) {
-    const files = await this.d.backups.files(meta);
+    let files: BackupFile[];
+    try {
+      files = await this.d.backups.files(meta);
+    } catch (e) {
+      if (mine !== this.choice) return;
+      const msg = String((e as Error)?.message ?? e);
+      this.dispatch({ type: 'undo', patch: { note: { kind: 'err', title: 'Couldn\'t read the backup in this browser.', sub: `${msg}${/[.!?]$/.test(msg) ? '' : '.'} Use a backup file instead.` } } });
+      return;
+    }
     if (mine !== this.choice) return;
     this.undoBackup = { meta, files };
     this.undoFiles = new Map(files.map((f) => [f.part, f.data]));
@@ -529,6 +537,8 @@ export class Session {
   private choice = 0;
 
   async undoFromFile(f: File): Promise<void> {
+    // Once "keep its settings" gave the apps back, the backup is the one that give-back was checked against.
+    if (this.s.undo.appsBack) return;
     const mine = ++this.choice;
     this.undoFiles = undefined;
     this.dispatch({ type: 'undo', patch: { source: 'file', ready: false, checking: true, file: `Checking ${f.name}…` } });
@@ -545,6 +555,7 @@ export class Session {
   }
 
   async undoFromBrowser(): Promise<void> {
+    if (this.s.undo.appsBack) return;
     const mine = ++this.choice;
     const orig = await this.d.backups.original().catch(() => undefined);
     if (orig && mine === this.choice) await this.useBrowserBackup(orig, mine);

@@ -58,6 +58,40 @@ describe('LeaveGuard', () => {
     expect(request).toHaveBeenCalledTimes(2);
   });
 
+  it('holds one wake lock, however fast the tab comes back', async () => {
+    const locks: { released: boolean; release: () => Promise<void> }[] = [];
+    const answers: (() => void)[] = [];
+    const request = vi.fn(() => new Promise((r) => {
+      const l = { released: false, release: async () => { l.released = true; } };
+      locks.push(l);
+      answers.push(() => r(l));
+    }));
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } });
+    const store = new Store(initial());
+    registry.set({ base: '/aqara-s1-plus', name: 'Aqara S1 Plus', session: { store, close: () => {} } as never });
+    render(<LeaveGuard />);
+    act(() => {
+      store.dispatch({ type: 'start', flow: 'install', now: 0 });
+      store.dispatch({ type: 'progress', p: { overall: 0.7, phase: 'flash', phasePct: 0.3, title: 'Writing the new software', sub: '' } });
+    });
+    const visibility = (v: string) => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: v }); document.dispatchEvent(new Event('visibilitychange')); };
+    visibility('hidden');
+    visibility('visible'); // back before the first request answered
+    visibility('hidden');
+    visibility('visible');
+    expect(request).toHaveBeenCalledTimes(1);
+    await act(async () => { answers.shift()!(); });
+    locks[0]!.released = true; // hidden again: the browser drops it
+    visibility('hidden');
+    visibility('visible');
+    visibility('hidden');
+    visibility('visible');
+    expect(request).toHaveBeenCalledTimes(2);
+    await act(async () => { answers.shift()!(); });
+    act(() => store.dispatch({ type: 'done', done: { title: 'Done.', body: '' } }));
+    expect(locks.every((l) => l.released)).toBe(true); // none left holding the screen on
+  });
+
   it('follows a new session', () => {
     render(<LeaveGuard />);
     const store = new Store(initial());

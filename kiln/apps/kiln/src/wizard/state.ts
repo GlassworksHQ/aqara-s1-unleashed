@@ -119,8 +119,12 @@ export function initial(flow: Flow = 'install'): WizardState {
 
 export function reduce(s: WizardState, a: Action): WizardState {
   switch (a.type) {
-    case 'go':
-      return { ...s, screen: a.screen, flow: a.flow ?? s.flow, ask: undefined };
+    case 'go': {
+      // What a run wrote is that run's failure. Leaving its Error screen (Try again, Undo) starts the
+      // next attempt clean, so a picker closed on the retry says "recovery mode", not "use Undo".
+      const left = s.screen === 'error' ? { wrote: false, touched: false } : {};
+      return { ...s, ...left, screen: a.screen, flow: a.flow ?? s.flow, ask: undefined };
+    }
     case 'start':
       return {
         ...s, flow: a.flow, screen: 'firing', ask: undefined, wrote: false, touched: false, log: [], parts: [], failure: undefined,
