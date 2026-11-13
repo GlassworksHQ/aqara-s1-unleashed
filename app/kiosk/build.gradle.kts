@@ -21,13 +21,16 @@ val s1VersionCode: Int? = s1Version?.let { v ->
 val frameAbis: Map<String, List<String>> = layout.projectDirectory.dir("../../frames").asFile.listFiles().orEmpty()
     .map { File(it, "design/frame.json") }.filter { it.isFile }.sortedBy { it.parentFile.parentFile.name }
     .associate { f ->
-        val abis = (groovy.json.JsonSlurper().parse(f) as Map<*, *>)["abis"] as? List<*>
-        f.parentFile.parentFile.name to (abis?.map { it as String }?.takeIf { it.isNotEmpty() }
-            ?: throw GradleException("$f has no abis"))
+        val abis = ((groovy.json.JsonSlurper().parse(f) as? Map<*, *>)?.get("abis") as? List<*>)
+            ?.takeIf { it.isNotEmpty() && it.all { a -> a is String } }
+            ?: throw GradleException("$f: abis must be a non-empty list of ABI names, e.g. [\"armeabi-v7a\"]")
+        f.parentFile.parentFile.name to abis.map { it as String }
     }
 val releaseAbis = frameAbis.values.flatten().distinct()
+    .ifEmpty { throw GradleException("no frame declares abis (frames/*/design/frame.json)") }
 val s1Abi: String = ((findProperty("s1Abi") as String?) ?: System.getenv("S1_ABI"))
-    ?.trim()?.takeIf { it.isNotEmpty() } ?: frameAbis.getValue("aqara-s1-plus").first()
+    ?.trim()?.takeIf { it.isNotEmpty() }
+    ?: frameAbis["aqara-s1-plus"]?.first() ?: throw GradleException("frames/aqara-s1-plus/design/frame.json is missing")
 if (s1Abi !in releaseAbis) throw GradleException("s1Abi '$s1Abi' must be one of ${releaseAbis.joinToString()}")
 
 // Release signing comes only from the environment (CI secrets or a local shell; docs/releasing.md).

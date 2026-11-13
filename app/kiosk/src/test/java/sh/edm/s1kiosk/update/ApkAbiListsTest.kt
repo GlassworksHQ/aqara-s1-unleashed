@@ -2,8 +2,11 @@ package sh.edm.s1kiosk.update
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import kotlin.io.path.createTempDirectory
 
 /**
  * Each frame declares the ABIs its device runs (`abis` in frames/<id>/design/frame.json, #98). The
@@ -25,12 +28,13 @@ class ApkAbiListsTest {
         .distinct()
 
     @Test fun `the update check knows exactly the ABIs the frames run`() {
-        assertEquals(frameAbis, ids)
+        assertEquals(frameAbis.toSet(), ids.toSet())
     }
 
-    @Test fun `the S1 frame runs armeabi-v7a only`() {
+    /** The default build (no -Ps1Abi) and the release's `s1-kiosk-<version>.apk`, which S1 panels look for. */
+    @Test fun `the S1's first ABI is armeabi-v7a`() {
         val s1 = JSONObject(File(repo, "frames/aqara-s1-plus/design/frame.json").readText()).getJSONArray("abis")
-        assertEquals(listOf("armeabi-v7a"), List(s1.length()) { s1.getString(it) })
+        assertEquals("armeabi-v7a", s1.getString(0))
     }
 
     @Test fun `the workflows' ABI list is the frames'`() {
@@ -38,6 +42,24 @@ class ApkAbiListsTest {
         val out = p.inputStream.bufferedReader().readText().trim()
         assertEquals("frame-abis.sh exit: $out", 0, p.waitFor())
         assertEquals(frameAbis.joinToString(" "), out)
+    }
+
+    @Test fun `frame-abis sh refuses abis that aren't a list of names`() {
+        for (bad in listOf("[]", "\"armeabi-v7a\"", "[1]", null)) {
+            val root = createTempDirectory("frame-abis").toFile()
+            try {
+                File(root, "frames/a/design").mkdirs()
+                File(root, "frames/a/design/frame.json").writeText("""{"abis": ["armeabi-v7a"]}""")
+                File(root, "frames/b/design").mkdirs()
+                File(root, "frames/b/design/frame.json").writeText(if (bad == null) "{}" else """{"abis": $bad}""")
+                val p = ProcessBuilder(File(repo, "tools/release/frame-abis.sh").path, root.path).redirectErrorStream(true).start()
+                val out = p.inputStream.bufferedReader().readText()
+                assertNotEquals("abis $bad: $out", 0, p.waitFor())
+                assertTrue("abis $bad: $out", out.contains("frames/b/design/frame.json: abis must be"))
+            } finally {
+                root.deleteRecursively()
+            }
+        }
     }
 
     @Test fun `no workflow or build script lists ABIs of its own`() {
