@@ -40,7 +40,8 @@ class TargetTest(unittest.TestCase):
 
     def test_refuses_bad_values(self):
         for kw in ({"width": 0}, {"width": 1440.0}, {"height": 99999}, {"splash": "png"},
-                   {"android_api": 9}, {"zip_budget": 0}, {"name": " "},
+                   {"android_api": 9}, {"zip_budget": 0},
+                   {"zip_budget": True}, {"android_api": True}, {"width": True}, {"name": " "},
                    {"splash": "allwinner-boot-resource", "height": 722}):
             with self.subTest(**kw), self.assertRaises(ValueError):
                 Target(**{"name": "X", "width": 1440, "height": 720, **kw})

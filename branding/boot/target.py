@@ -50,16 +50,16 @@ class Target:
         if not self.name.strip():
             raise ValueError("the device name is empty")
         for v, what in ((self.width, "width"), (self.height, "height")):
-            if not isinstance(v, int) or not 240 <= v <= 8192:
+            if type(v) is not int or not 240 <= v <= 8192:   # not isinstance: True is an int
                 raise ValueError(f"display {what} must be a whole number of pixels from 240 to 8192, not {v!r}")
         if self.splash is not None and self.splash not in SPLASHES:
             raise ValueError(f"unknown splash format {self.splash!r} (known: {', '.join(SPLASHES)})")
         if self.splash == "allwinner-boot-resource" and self.height % 4:
             # rotated, the height is the BMP's row width; the in-place swap has no room for padding
             raise ValueError(f"an allwinner-boot-resource splash needs a height that is a multiple of 4, not {self.height}")
-        if self.android_api is not None and (not isinstance(self.android_api, int) or self.android_api < 21):
+        if self.android_api is not None and (type(self.android_api) is not int or self.android_api < 21):
             raise ValueError(f"androidApi must be an API level of 21 or more, not {self.android_api!r}")
-        if self.zip_budget is not None and (not isinstance(self.zip_budget, int) or self.zip_budget <= 0):
+        if self.zip_budget is not None and (type(self.zip_budget) is not int or self.zip_budget <= 0):
             raise ValueError(f"zipBudget must be a positive number of bytes, not {self.zip_budget!r}")
 
     @property
