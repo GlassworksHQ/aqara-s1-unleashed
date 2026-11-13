@@ -43,7 +43,16 @@ export type Setup =
   | { phase: 'radio'; radio: SetupState['radio']; note: string; error?: string; busy?: boolean }
   | { phase: 'radio-next'; plan: RadioPlan };
 
-export interface RadioStep { title: string; body: string; kv?: [string, string, boolean?][]; link?: string }
+export interface RadioStep {
+  title: string;
+  body: string;
+  kv?: [string, string, boolean?][];
+  link?: string;
+  /** the screen's one ember action: `link` as a button with this label (Finish is quieter then) */
+  primary?: string;
+  /** how to get what the step needs, under it */
+  how?: { title: string; body: string; link: string; linkText: string };
+}
 export interface RadioPlan { title: string; lead: string; steps: RadioStep[] }
 
 export interface Failure {

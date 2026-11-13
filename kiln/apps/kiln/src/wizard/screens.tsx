@@ -384,6 +384,7 @@ function Copy({ value }: { value: string }) {
 
 function RadioNext({ session, setup }: P & { setup: Extract<Setup, { phase: 'radio-next' }> }) {
   const { plan } = setup;
+  const led = plan.steps.some((st) => st.primary);
   return (
     <section className="card" aria-labelledby="h">
       <h2 id="h">{plan.title}</h2>
@@ -394,11 +395,20 @@ function RadioNext({ session, setup }: P & { setup: Extract<Setup, { phase: 'rad
             <b style={{ fontWeight: 500 }}>{st.title}</b>
             <span className="small" style={{ color: 'var(--muted)' }}>{st.body}</span>
             {st.kv && <dl className="kv">{st.kv.map(([k, v, copy]) => <span key={k} style={{ display: 'contents' }}><dt>{k}</dt><dd>{copy ? <><code>{v}</code><Copy value={v} /></> : v}</dd></span>)}</dl>}
-            {st.link && <a className="link" href={st.link} target="_blank" rel="noopener">Open in Home Assistant</a>}
+            {st.link && (st.primary
+              ? <a className="btn ember" style={{ justifySelf: 'start' }} href={st.link} target="_blank" rel="noopener">{st.primary}</a>
+              : <a className="link" href={st.link} target="_blank" rel="noopener">Open in Home Assistant</a>)}
+            {st.how && (
+              <div className="how">
+                <b>{st.how.title}</b>
+                <span className="small">{st.how.body}</span>
+                <a className="link" href={st.how.link} target="_blank" rel="noopener">{st.how.linkText}</a>
+              </div>
+            )}
           </li>
         ))}
       </ol>
-      <div className="foot"><span /><button type="button" className="btn ember" onClick={() => session.finish()}>Finish</button></div>
+      <div className="foot"><span /><button type="button" className={`btn ${led ? 'ghost' : 'ember'}`} onClick={() => session.finish()}>Finish</button></div>
     </section>
   );
 }
@@ -426,7 +436,7 @@ export function SetUp(p: P) {
   }
 }
 
-/** 7 · Done: in one line. The backup is one row with a download; undo is a link. */
+/** 7 · Done: in one line. The backup is one row whose download is the ember action; undo is a link. */
 export function Done({ s, session }: P) {
   const d = s.done!;
   return (
@@ -437,13 +447,13 @@ export function Done({ s, session }: P) {
       {d.backup && (
         <div className="well">
           <span className="grow"><span>{d.backup.hint}</span><span className="small">{d.backup.name} · {d.backup.info}</span></span>
-          <button type="button" className="btn ghost" onClick={() => void session.downloadBackup()}>Download</button>
+          <button type="button" className="btn ember" onClick={() => void session.downloadBackup()}>Download</button>
         </div>
       )}
       {d.backup?.error && <p className="status err" role="alert">{d.backup.error}</p>}
       <div className="foot">
         {s.flow === 'install' ? <button type="button" className="link" onClick={() => void session.click('undo', () => session.openUndo())}>Undo</button> : <span />}
-        <Link className="btn ghost" href="/">Back to Kiln</Link>
+        <Link className={`btn ${d.backup ? 'ghost' : 'ember'}`} href="/">Back to Kiln</Link>
       </div>
     </section>
   );

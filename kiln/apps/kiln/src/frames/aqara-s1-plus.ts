@@ -86,8 +86,10 @@ export function radioPlan(mode: string, ip: string, haUrl: string, allowed: stri
     thread_router: {
       title: 'Join your Thread network.', lead: 'The panel is now a Thread router (repeater, experimental). It joins your existing Thread network and extends it.',
       steps: [
-        { title: 'Copy your Thread network\'s dataset', body: 'Opens Home Assistant\'s Thread page. Under Preferred network, open ⓘ Network information and copy Active dataset TLVs. Home Assistant shows it to admin users, for a network from an OpenThread Border Router it manages.', link: threadPage },
-        { title: 'Give it to the panel', body: 'Opens ESPHome in Home Assistant. Open the panel\'s device (S1 Panel) → Configuration and paste it into Thread dataset; spaces or line breaks in the copy are fine. The dataset contains the network key: paste it only there. It is never shown again.', link: esphome },
+        // the easy path first: one button to the panel's page; where the dataset comes from is the how-to under it
+        { title: 'Give it your Thread network\'s dataset', body: 'In ESPHome, open the panel\'s device (S1 Panel) → Configuration and paste the dataset into Thread dataset. Spaces or line breaks in the copy are fine. The dataset contains the network key: paste it only there. It is never shown again.',
+          link: esphome, primary: 'Open the panel in Home Assistant',
+          how: { title: 'Where to copy the dataset', body: 'On Home Assistant\'s Thread page, under Preferred network, open ⓘ Network information and copy Active dataset TLVs. Home Assistant shows it to admin users, for a network from an OpenThread Border Router it manages.', link: threadPage, linkText: 'Open the Thread page' } },
         { title: 'Watch it join', body: 'The panel\'s Radio status says “joined … as a child”, then “as a router” once the network promotes it, which takes a few minutes.' },
       ],
     },

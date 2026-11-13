@@ -242,6 +242,8 @@ h2.huge { font-size: 44px; font-weight: 200; }
 .join li.fail { color: var(--problem-ink); }
 .join li.fail::before { content: "!"; color: var(--problem); }
 .next { display: grid; gap: 12px; }
+.how { display: grid; gap: 4px; margin-top: 6px; padding: 10px 12px; border-radius: 10px; background: var(--well); }
+.how b { font-weight: 500; font-size: 13.5px; }
 .next > div { display: grid; gap: 6px; border: 1px solid var(--edge); border-radius: 14px; padding: 12px 14px; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 4px 0 0; font-size: 13.5px; }
 .kv dt { color: var(--faint); }
