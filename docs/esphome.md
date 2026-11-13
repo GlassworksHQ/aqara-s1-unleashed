@@ -286,7 +286,19 @@ assistant listens or talks.
 
 The microphone has one consumer, `VoiceEngine`: every 80 ms frame goes through the wake word model
 (always, so its buffers stay fresh), and during a run the same frame is handed to the API stream.
-Detections only count while idle and 3 s after the previous one.
+Detections only count while idle and 3 s after the previous one. Safety caps: 15 s maximum stream,
+10 s for HA to answer a start request, 60 s waiting for a response.
+
+A detection reports the word of the model that fired: while a newly picked word loads, the old one
+keeps listening as itself. If the new word can't load (no network for its model), the old model
+stops, the panel shows the error, and it retries every 30 s.
+
+**What HA does with the wake word select.** HA's select (`homeassistant/components/esphome/select.py`,
+2026.11.1) restores its last state, but on every connection it only reads the panel's configuration
+and shows the active word; it never sends its restored value back. Only picking a word (a person, an
+automation, a scene or a script calling `select.select_option`) sends one. Options are matched by
+name, so a restored "Hey Jarvis" from 0.4 now means the microWakeWord `hey_jarvis`; the legacy ones
+are named "… (openWakeWord)" so the two never share a name.
 
 **Updating from 0.4 (openWakeWord).** The word 0.4 saved (`wake_model`, e.g. `hey_jarvis_v0.1.tflite`)
 moves to the microWakeWord model of the same word (`wake_word` = `hey_jarvis`) with no user action. Its
@@ -307,11 +319,10 @@ pymicro-wakeword and ESPHome's `micro_wake_word` do:
 | Model input | int8 `[1, 3, 40]`: three 10 ms feature rows, so one inference per 30 ms. `round(value × 0.0390625 / scale + zero_point)`, half to even, clamped to int8 (scale 0.10196, zero point −128 for all four) |
 | Model output | uint8 `[1, 1]`, × 1/256; the model keeps its own streaming state (resource variables) |
 | Score | mean of the last `sliding_window_size` outputs (5 for all four), 0 until there are 5; per 80 ms microphone frame, the best mean in that frame |
-| Detection | score ≥ the threshold entity (default: the manifest's `probability_cutoff`), then 3 s before the next one |
+| Detection | score ≥ the threshold entity (default: the manifest's `probability_cutoff`), then 3 s before the next one. This is pymicro-wakeword's comparison, not ESPHome's: ESPHome fires when the sum of the 5 raw outputs is above `int(cutoff × 255) × 5`, so at the same cutoff the panel needs about 1.1 more per output (sum 1242 instead of 1236 at 0.97, 1216/1211 at 0.95, 1152/1146 at 0.9), about 0.45% stricter than Voice PE |
 | Models | `okay_nabu`, `hey_jarvis`, `alexa`, `hey_mycroft` from esphome/micro-wake-word-models `models/v2` at `40ff33f`, SHA-256 in `WakeWords.kt` |
 
-The research note is [research/microwakeword.md](research/microwakeword.md). Safety caps: 15 s maximum stream,
-10 s for HA to answer a start request, 60 s waiting for a response.
+The research note is [research/microwakeword.md](research/microwakeword.md).
 
 ### Timers on screen
 

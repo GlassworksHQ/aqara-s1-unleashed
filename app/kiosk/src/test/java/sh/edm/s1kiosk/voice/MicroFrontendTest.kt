@@ -53,8 +53,9 @@ object MwwFixtures {
  *
  * The speech must match exactly. The synthetic signal may differ in at most 1 value in 1000, by at
  * most 8: the reference was made with the macOS arm64 wheel, whose clang fuses
- * `mel_low + mel_spacing * (i + 1)` (filterbank_util.c) into one FMA, which moves one filterbank
- * weight of 1218 by 1/4096. The same C built with `-ffp-contract=off` equals [MicroFrontend] bit for
+ * `mel_low + mel_spacing * (i + 1)` (filterbank_util.c) into one FMA, which moves filterbank weight
+ * 293 of 316 by 1/4096 (1400/2696 here, 1401/2695 there). The same C built with `-ffp-contract=off`
+ * equals [MicroFrontend] bit for
  * bit (checked 2026-11-12, docs/research/microwakeword.md).
  */
 class MicroFrontendTest {
