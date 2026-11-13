@@ -103,7 +103,7 @@
    "typical",
    "heavy"
   ],
-  "_camera": "Live camera streams (#174), on the pages in camera_pages; a page without streams is `none`, which every level accepts. Per run, the worst stream counts: its first frame after the view opened, the share of its frames shown over the view's live phase (frames presented / 15 fps x the time), its longest gap between frames and the gaps over 500 ms added up. A stream that never showed a frame fails. Bars from #174's proposal, to be calibrated on the S1 before they're final.",
+  "_camera": "Live camera streams (#174), on the pages in camera_pages; a page without streams is `none`, which every level accepts. Per run, the worst stream counts: its first frame, timed from the navigation, so it includes building the view; the share of its frames shown over the view's live phase (frames presented / 15 fps x the time), its longest gap between frames and the gaps over 500 ms added up. A stream that never showed a frame fails. Bars from #174's proposal, to be calibrated on the S1 before they're final.",
   "camera_levels": [
    {
     "level": "good",

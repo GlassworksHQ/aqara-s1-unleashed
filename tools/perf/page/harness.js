@@ -120,18 +120,9 @@
     return layout && sr(layout) ? Array.from(sr(layout).querySelectorAll("hui-card")) : [];
   }
 
-  // A card is drawn when its ha-card is laid out. A card made of cards (HA's grid, the heavy view's
-  // camera sub-streams) has no ha-card of its own: it is drawn when it is laid out and every card
-  // in it is.
-  function rendered(card) {
-    const inner = card.firstElementChild;
-    const root = inner && sr(inner);
-    if (!root) return false;
-    const nested = Array.from(root.querySelectorAll("hui-card"));
-    if (nested.length) return inner.offsetHeight > 0 && nested.every(rendered);
-    const ha = root.querySelector("ha-card");
-    return !!(ha && ha.offsetHeight > 0);
-  }
+  // A card is drawn when its ha-card is laid out; a card made of cards when it and every card in it
+  // is (stats.js cardRendered, tested there).
+  const rendered = (card) => S.cardRendered(card);
 
   function inView(el) {
     const r = el.getBoundingClientRect();
@@ -298,14 +289,17 @@
   const camCount = (tier) => (C.CAMERAS[tier] || []).reduce((n, x) => n + (Array.isArray(x) ? x.length : 1), 0);
 
   function watchVideo(el) {
-    const rec = { el, first: null, frames: [], ticks: [], counting: false, waiting: 0, q0: null };
-    const frame = (t) => {
+    const rec = { el, first: null, frames: [], pfs: [], ticks: [], counting: false, waiting: 0, q0: null };
+    const frame = (t, pf) => {
       if (rec.first === null) rec.first = t;
-      if (rec.counting) rec.frames.push(t);
+      if (rec.counting) {
+        rec.frames.push(t);
+        rec.pfs.push(pf === undefined ? null : pf);
+      }
     };
     if (el.requestVideoFrameCallback) {
       const cb = (now, md) => {
-        frame((md && md.presentationTime) || now);
+        frame((md && md.presentationTime) || now, md && md.presentedFrames);
         if (cams.recs.includes(rec)) el.requestVideoFrameCallback(cb);
       };
       el.requestVideoFrameCallback(cb);
@@ -358,6 +352,7 @@
     for (const r of cams.recs) {
       r.counting = true;
       r.frames = [];
+      r.pfs = [];
       r.ticks = [];
       r.q0 = r.el.getVideoPlaybackQuality ? r.el.getVideoPlaybackQuality() : null;
     }
@@ -382,14 +377,14 @@
       // requestVideoFrameCallback is for the first frame and the gaps: it may fire once for two
       // frames that land in one rendering update (Chrome, 2026-11-13: 60 callbacks for 77 frames).
       const shown = decoded !== null ? decoded - dropped : (r.el.requestVideoFrameCallback ? r.frames.length : null);
-      const pts = [cams.t0].concat(times.filter((t) => t >= cams.t0 && t <= t1), [t1]);
-      const gaps = pts.slice(1).map((t, k) => t - pts[k]);
+      const g = S.videoGaps(times, r.el.requestVideoFrameCallback ? r.pfs : null, cams.t0, t1);
       streams.push({
         found: true, w: r.el.videoWidth, h: r.el.videoHeight,
         first_frame_ms: r.first === null ? null : r1(r.first - cams.nav),
         shown_pct: shown === null || r.first === null ? null : r1(Math.min(100, (100 * shown) / ((fps * dur) / 1000))),
-        max_gap_ms: r.first === null ? null : r1(Math.max(...gaps)),
-        stall_total_ms: r.first === null ? null : r1(gaps.filter((g) => g > 500).reduce((a, b) => a + b, 0)),
+        max_gap_ms: r.first === null ? null : r1(g.max_gap_ms),
+        stall_total_ms: r.first === null ? null : r1(g.stall_total_ms),
+        stall_presented: r.first === null ? null : g.stall_presented,
         frames: shown, callbacks: r.frames.length, decoded, dropped, waiting: r.waiting,
         source: (decoded !== null ? "quality" : "rvfc") + (r.el.requestVideoFrameCallback ? "+rvfc" : "+timeupdate"),
       });

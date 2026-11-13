@@ -286,7 +286,7 @@ def change_to_screen(step, page, period=None):
 
 def camera_run(line, tier):
     """One run's live cameras (#174), from the harness's camera line: the worst stream's first frame
-    (after the view opened), share of frames shown, longest gap and stalls (gaps over 500 ms) added
+    (from the navigation, so it includes building the view), share of frames shown, longest gap and stalls (gaps over 500 ms) added
     up, and each stream as detail. A stream that never showed a frame makes the run's first frame
     and shown None, which fails the task (it was measured: the panel didn't play it). None on a view
     without streams, or when the line never came (then the task isn't measured)."""
@@ -301,8 +301,8 @@ def camera_run(line, tier):
         "max_gap_ms": max((s.get("max_gap_ms") or 0) for s in played) if whole and played else None,
         "stall_total_ms": max((s.get("stall_total_ms") or 0) for s in played) if whole and played else None,
         "streams": len(streams), "expected": line.get("expected"), "window_ms": line.get("window_ms"),
-        "detail": [{k: s.get(k) for k in ("w", "h", "first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms", "frames",
-                                            "decoded", "dropped", "waiting", "source")} for s in streams],
+        "detail": [{k: s.get(k) for k in ("w", "h", "first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms", "stall_presented",
+                                            "frames", "decoded", "dropped", "waiting", "source")} for s in streams],
         # Detail, not graded: the streams' HLS fetches in the window (stats.js hlsFetches), and the
         # decoders the view got (reference_run adds `media`, from logcat).
         "fetches": line.get("fetches"),
@@ -1250,13 +1250,17 @@ def camera_detail(ref):
     for t, s_ in ref["tiers"].items():
         for k, c in enumerate(s_.get("camera_runs") or [], 1):
             m, f = c.get("media"), c.get("fetches")
-            if not m and not f:
+            pres = sum(s.get("stall_presented") or 0 for s in c.get("detail") or [])
+            if not m and not f and not pres:
                 continue
             parts = []
             if m:
                 names = sorted(set(m["codecs"]))
                 parts.append(f"decoders {len(m['codecs'])} ({', '.join(names) or 'none logged'}), "
                              f"{m['flushes']} flushes, {m['eos']} drains")
+            if pres:
+                # rVFC's presentedFrames moved during the stalls: the callbacks stalled, the compositor didn't.
+                parts.append(f"{pres} frames presented inside the stalls (the callbacks', not the stream's)")
             if f:
                 sg = f.get("segment") or {}
                 p95 = lambda x: "n/a" if not x else f"{x['p95']:.0f} ms"  # noqa: E731

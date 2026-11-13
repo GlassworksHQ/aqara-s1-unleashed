@@ -485,6 +485,26 @@ def tier_entry(tier, inp, scroll_missed=0, updates_missed=0, load_ms=200, fcp_ms
             "swipes": [swipe(nav, i, late(60, scroll_missed)) for i in range(3)]}
 
 
+class CameraStreamsAll(unittest.TestCase):
+    """The camera task counts every stream the view shows: heavy with 3 of its 4 streams playing (one
+    never showed a frame, or wasn't found at all) fails it, though the 3 played well (#182's verifier)."""
+
+    def test_three_of_four_fail(self):
+        played = R.camera_run(camera_line("heavy"), "heavy")
+        self.assertEqual(G.camera_level(played), "good")
+        dead = camera_line("heavy")
+        dead["streams"][3].update(first_frame_ms=None, shown_pct=None, frames=0, decoded=0)
+        run = R.camera_run(dead, "heavy")
+        self.assertIsNone(run["first_frame_ms"])
+        self.assertEqual(G.camera_level(run), G.BELOW)
+        missing = camera_line("heavy")
+        missing["streams"] = missing["streams"][:3]
+        missing["found"] = 3
+        run = R.camera_run(missing, "heavy")
+        self.assertEqual((run["streams"], run["expected"]), (3, 4))
+        self.assertEqual(G.camera_level(run), G.BELOW)
+
+
 class CameraDetail(unittest.TestCase):
     """Detail for the camera task (smoke-cam1, 2026-11-13): which decoders a view got and where its
     segments were late, so a slow camera can be told apart: the decoder, the link or the page."""
@@ -505,6 +525,16 @@ class CameraDetail(unittest.TestCase):
                               "43 drains; 120 segments, fetch p95 1100 ms (queued p95 900 ms), longest gap between a "
                               "stream's segments 5200 ms."])
         self.assertEqual(R.camera_detail({"tiers": {"heavy": {"camera_runs": [dict(run, media=None, fetches=None)]}}}), [])
+
+    def test_frames_presented_inside_the_stalls_are_said(self):
+        line = camera_line("heavy", stall=2500.0, max_gap=1200.0)
+        for k, st in enumerate(line["streams"]):
+            st["stall_presented"] = 30 if k == 0 else 0
+        run = R.camera_run(line, "heavy")
+        self.assertEqual(run["detail"][0]["stall_presented"], 30)
+        self.assertEqual(run["stall_total_ms"], 2500.0)               # graded as before
+        self.assertEqual(R.camera_detail({"tiers": {"heavy": {"camera_runs": [run]}}}),
+                         ["heavy cameras, run 1 (detail): 30 frames presented inside the stalls (the callbacks', not the stream's)."])
 
     def test_the_headline_names_the_camera_not_the_view_again(self):
         """smoke-cam1's headline read "the view takes 6.6 s to open" twice: camera had no phrase of its

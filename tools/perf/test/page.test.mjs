@@ -218,3 +218,54 @@ test("hlsFetches: segments and playlists apart, queueing, the longest gap per st
   // requestStart 0 (no detailed timing): not counted as 0 ms of queueing.
   assert.equal(S.hlsFetches([e("/api/hls/a/segment/1.m4s", 0, 0, 0, 10)]).segment.queued_ms, null);
 });
+
+// ---- a card made of cards (#174's grid of camera sub-streams): drawn when it and every card in it is
+
+function el({ height = 0, shadow = null } = {}) {
+  return { offsetHeight: height, shadowRoot: shadow, firstElementChild: null };
+}
+function root(children) {   // a shadow root holding these elements
+  return {
+    querySelectorAll: (sel) => children.filter((c) => c.tag === sel),
+    querySelector: (sel) => children.find((c) => c.tag === sel) || null,
+  };
+}
+function card(inner) { return { tag: "hui-card", firstElementChild: inner }; }
+function plain(drawn) { return card(el({ height: 50, shadow: root([{ tag: "ha-card", offsetHeight: drawn ? 40 : 0 }]) })); }
+function grid(height, kids) { return card(el({ height, shadow: root(kids) })); }
+
+test("cardRendered: a card is drawn when its ha-card is laid out", () => {
+  assert.equal(S.cardRendered(plain(true)), true);
+  assert.equal(S.cardRendered(plain(false)), false);
+  assert.equal(S.cardRendered(card(el({ height: 50 }))), false);           // no shadow root yet
+  assert.equal(S.cardRendered(card(null)), false);
+});
+
+test("cardRendered: a card of cards needs itself laid out and every card in it drawn", () => {
+  assert.equal(S.cardRendered(grid(120, [plain(true), plain(true), plain(true)])), true);
+  assert.equal(S.cardRendered(grid(120, [plain(true), plain(false), plain(true)])), false);   // one not drawn
+  assert.equal(S.cardRendered(grid(0, [plain(true), plain(true)])), false);                   // the grid not laid out
+  assert.equal(S.cardRendered(grid(120, [grid(60, [plain(true)]), plain(true)])), true);       // nested grids
+  assert.equal(S.cardRendered(grid(120, [grid(60, [plain(false)])])), false);
+});
+
+// ---- a stream's gaps (#174), and presentedFrames as a cross-check on the stalls (#182's verifier)
+
+test("videoGaps: the longest gap and the stalls, the window's edges included", () => {
+  const times = [100, 166, 233, 1300, 1366];                 // a 1067 ms gap between 233 and 1300
+  const g = S.videoGaps(times, null, 0, 1500);
+  assert.equal(g.max_gap_ms, 1067);
+  assert.equal(g.stall_total_ms, 1067);
+  assert.equal(g.stall_presented, null);                       // without rVFC's counts, no cross-check
+  assert.equal(S.videoGaps([50, 900], null, 0, 1000).stall_total_ms, 850);   // the gap from 50 to 900
+});
+
+test("videoGaps: frames presented inside a stall say the callbacks stalled, not the stream", () => {
+  const times = [100, 166, 233, 1300, 1366];
+  // The compositor went on: 16 frames presented between the callbacks at 233 and 1300.
+  assert.equal(S.videoGaps(times, [10, 11, 12, 28, 29], 0, 1500).stall_presented, 15);
+  // The stream really stopped: presentedFrames moved by one.
+  assert.equal(S.videoGaps(times, [10, 11, 12, 13, 14], 0, 1500).stall_presented, 0);
+  // The graded numbers don't change with the cross-check.
+  assert.equal(S.videoGaps(times, [10, 11, 12, 28, 29], 0, 1500).stall_total_ms, 1067);
+});

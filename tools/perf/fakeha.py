@@ -516,7 +516,12 @@ class Handler(BaseHTTPRequestHandler):
                     lines += ["#EXT-X-DISCONTINUITY", '#EXT-X-MAP:URI="init.mp4"']
                 lines += [f"#EXTINF:{cfg['segmentS']:.6f},", f"segment/{n}.m4s"]
             return self.send_bytes(200, ("\n".join(lines) + "\n").encode(), "application/vnd.apple.mpegurl")
-        d = os.path.join(camera.root(), st["profile"])
+        try:
+            d = os.path.join(camera.root(), st["profile"])
+        except camera.Unavailable as e:
+            # No ffmpeg (only the fake runs; run.sh checks first): say why, don't end the request thread.
+            Handler.hub.record({"t": time.time(), "camera_error": str(e)})
+            return self.send_bytes(500, str(e).encode(), "text/plain")
         f = "init.mp4" if name == "init.mp4" else f"seg{int(m.group(3)) % loop:03d}.m4s"
         if name != "init.mp4" and int(m.group(3)) >= int((time.monotonic() - st["t0"]) // cfg["segmentS"]):
             return self.send_bytes(404, b"", "text/plain")                        # not made yet

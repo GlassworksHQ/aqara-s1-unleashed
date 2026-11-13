@@ -126,6 +126,45 @@
     return { start: s, done: ran - s >= windowMs };
   }
 
+  // A card (hui-card) is drawn when its ha-card is laid out. A card made of cards (HA's grid, the heavy
+  // view's camera sub-streams) has no ha-card of its own: it is drawn when it is laid out and every
+  // card in it is. Works on any DOM-like object (firstElementChild, shadowRoot, querySelector(All),
+  // offsetHeight), so node can test it.
+  function cardRendered(card) {
+    const inner = card && card.firstElementChild;
+    const root = inner && inner.shadowRoot;
+    if (!root) return false;
+    const nested = Array.from(root.querySelectorAll("hui-card"));
+    if (nested.length) return inner.offsetHeight > 0 && nested.every(cardRendered);
+    const ha = root.querySelector("ha-card");
+    return !!(ha && ha.offsetHeight > 0);
+  }
+
+  // A camera stream's gaps over a window [t0, t1]: the presented frames' times (requestVideoFrameCallback,
+  // or timeupdate without it) with the window's edges, the longest gap and the gaps over 500 ms added
+  // up (stalls). `pfs`, parallel to `times`, are rVFC's presentedFrames: a cross-check, since a busy
+  // main thread delays the callbacks while the compositor goes on showing frames. `stall_presented`
+  // is how many frames were presented inside those stalls (between two callbacks; the edges can't
+  // say): many means the stall was the callbacks', not the stream's. Detail only; null without pfs.
+  function videoGaps(times, pfs, t0, t1) {
+    const inWin = [];
+    times.forEach((t, i) => { if (t >= t0 && t <= t1) inWin.push({ t, pf: pfs ? pfs[i] : null }); });
+    const pts = [t0].concat(inWin.map((x) => x.t), [t1]);
+    const gaps = pts.slice(1).map((t, k) => t - pts[k]);
+    let presented = pfs ? 0 : null;
+    if (pfs) {
+      for (let k = 1; k < inWin.length; k++) {
+        const a = inWin[k - 1], b = inWin[k];
+        if (b.t - a.t > 500 && a.pf != null && b.pf != null) presented += Math.max(0, b.pf - a.pf - 1);
+      }
+    }
+    return {
+      max_gap_ms: Math.max(...gaps),
+      stall_total_ms: gaps.filter((g) => g > 500).reduce((x, y) => x + y, 0),
+      stall_presented: presented,
+    };
+  }
+
   // The camera streams' HLS fetches in a window, from Resource Timing entries (hls.js's fetches of
   // /api/hls/<token>/...). Where a late segment comes from: `queued` is fetch start to request start
   // (waiting for a connection: HTTP/1.1 allows a few per host), `wait` request start to the first
@@ -168,7 +207,7 @@
   }
 
   const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines,
-                skyToViolet, usableStep, freeStep, hlsFetches };
+                skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWStats = api;
 })(this);

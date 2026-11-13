@@ -395,7 +395,7 @@ which frees its decoders.
 
 **First panel run: smoke-cam1** (#182 at 59ffd21, S1 Kiosk 0.4.3, `thread_router`, 2026-11-13,
 03:44 to 03:49 by the panel's clock; **1 run, not calibrated**). The run exited 0, the restore
-worked, and the fake knew every camera command (7 `camera/*` calls, none unknown or failed; its
+worked, and the fake knew every camera command (7 `camera/capabilities` and 7 `camera/stream` calls, none unknown or failed; its
 live changes at most 23 ms late).
 
 | View | Streams | First frame | Shown | Stalls | The view's other tasks, with the streams |
@@ -589,7 +589,11 @@ the two middles for an even count):
 | Open the view | ≤ 2.5 s, or up to 4 s | the same | the same |
 | Cameras (typical and heavy only) | as good | first frame within 2 s, at least 95% of frames shown, no gap over 500 ms | first frame within 4 s, at least 85% shown, stalls under 1 s in all |
 
-Below fluid, a measured scroll, live-update or camera level is `slow`. The camera bars are #174's
+Below fluid, a measured scroll, live-update or camera level is `slow`. A camera's gaps and stalls
+come from `requestVideoFrameCallback`, which a busy main thread delays while the compositor goes on
+showing frames, so on a page whose main thread is blocked a stall can be the page's, not the stream's.
+Each stream's `stall_presented` (detail) is the cross-check: the frames rVFC's `presentedFrames` says
+were shown inside the stalls. Many means the callbacks stalled, not the video. The camera bars are #174's
 proposal, to be calibrated on the S1 before they're final (a decision for the maintainer, in its own
 PR, never to move a letter); there is no separate premium bar for cameras. A page without streams
 (light) has camera `none`, which every level accepts. The p95 caps are whole frames at
@@ -981,15 +985,15 @@ turning order, the shared first screen, change frames and the first-paint settle
 left out, the HA-faithful update stream, change-to-screen timing over a 4 s window, and the changes
 counted during each swipe. Protocol 3 (2026-11-12) fades only what HA fades on a tile (the icon's
 shape and colour, not a background behind it) and counts only state changes, not the clock, during a
-swipe. Protocol 5 (#174, 2026-11-13) adds live camera streams to typical and heavy (and the start
-view), and the camera task (rubric v6). Protocol 4 (2026-11-13) runs HA's real frontend (release 20261028.5) behind a fake Home
+swipe. Protocol 4 (2026-11-13) runs HA's real frontend (release 20261028.5) behind a fake Home
 Assistant, times the restart to a usable dashboard, points the kiosk's dashboard setting at the
 reference dashboard for the restart, and drops the warm-up page. Within protocol 4, before any
 frame had a protocol 4 result (2026-11-13, after smoke9): the reference dashboards became views of
 one dashboard, opened by navigation in the loaded frontend; usable waits for the head and a 500 ms
 free stretch; change to screen runs from when the fake sent a change; and the fake resets the home
 between views. smoke9's numbers came before that and aren't protocol 4's. Every summary from
-protocol 3, the S1's A included, is now "re-measure".
+protocol 3, the S1's A included, is now "re-measure". Protocol 5 (#174, 2026-11-13) adds live camera
+streams to typical and heavy (and the start view), and the camera task (rubric v6).
 
 ### Showing the grade
 
@@ -1058,7 +1062,7 @@ load) and `t`:
 | `input-ready` | `x`, `y` (device pixels), `taps`. The runner taps |
 | `swipe-ready` | `n`, `x`, `y1`, `y2` (device pixels), `ms`. The runner swipes once |
 | `input` | `stage`, `method`, `taps`, `values`, `inp_ms` |
-| `camera` | Views with streams (#174), logged before the swipes: `stage`, `window_ms`, `fps`, `expected`, `found`, and per stream `w`, `h`, `first_frame_ms` (after the navigation), `shown_pct`, `max_gap_ms`, `stall_total_ms`, `frames` (presented, from the decoder), `callbacks` (`requestVideoFrameCallback`), `decoded`, `dropped`, `waiting`, `source`; then `fetches` (`segment` and `playlist`: `n`, `queued_ms`, `wait_ms`, `total_ms`, each `median`, `p95`, `max`; `segment.kb`, `segment.arrival_gap_max_ms`; `streams`) |
+| `camera` | Views with streams (#174), logged before the swipes: `stage`, `window_ms`, `fps`, `expected`, `found`, and per stream `w`, `h`, `first_frame_ms` (after the navigation), `shown_pct`, `max_gap_ms`, `stall_total_ms`, `frames` (presented, from the decoder), `callbacks` (`requestVideoFrameCallback`), `decoded`, `dropped`, `waiting`, `source`, `stall_presented` (frames presented inside the stalls, from rVFC's `presentedFrames`; `null` without rVFC); then `fetches` (`segment` and `playlist`: `n`, `queued_ms`, `wait_ms`, `total_ms`, each `median`, `p95`, `max`; `segment.kb`, `segment.arrival_gap_max_ms`; `streams`) |
 | `hello`, `js` | Animation test page: `ua`, `dpr`, `css`, `cores`, `load`; the JS workload's `runs`, `median_ms`, `p95_ms`, `checksum`, `expected` |
 | `done`, `error` | `message` on error. At `done` the page has stopped its updates |
 

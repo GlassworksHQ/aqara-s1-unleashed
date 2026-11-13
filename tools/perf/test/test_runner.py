@@ -374,11 +374,15 @@ class LongLines(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertIsNone(c["error"])
         self.assertEqual(c["missing_steps"], ["light", "typical", "heavy"])
-        self.assertEqual(c["bad_page_lines"], 3)                         # each page's
+        # Each page's updates step, and heavy's camera line (four streams and the HLS fetches: also
+        # longer than a logcat line).
+        self.assertEqual(c["bad_page_lines"], 4)
+        self.assertNotIn("camera", c["tiers"]["heavy"])
+        self.assertIn("camera", c["tiers"]["typical"])                   # one stream: short enough
         with open(os.path.join(tmp, "device.json"), "w") as f:
             json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
         rep = report.build(tmp)
-        self.assertIn("3 page line(s) didn't parse (cut off in logcat?)", rep["grade"]["provisional_reasons"])
+        self.assertIn("4 page line(s) didn't parse (cut off in logcat?)", rep["grade"]["provisional_reasons"])
         t = rep["graded"]["reference"]["tiers"]["light"]
         self.assertIsNotNone(t["scroll"])
         self.assertEqual(t["updates_errors"], ["the page's updates step never arrived"])
@@ -659,6 +663,13 @@ class Cameras(unittest.TestCase):
         tiers = self.build(tmp)["graded"]["reference"]["tiers"]
         self.assertEqual((tiers["typical"]["camera_level"], tiers["heavy"]["camera_level"]), ("good", "good"))
         self.assertIsNone(tiers["light"]["camera_level"])
+        # Heavy's camera line is longer than a logcat line: it went out in parts and came back whole.
+        with open(os.path.join(HERE, "page-lines.json")) as f:
+            line_max = json.load(f)["max_line_bytes"]
+        heavy = c["tiers"]["heavy"]["camera"]
+        self.assertGreater(len(json.dumps({k: v for k, v in heavy.items() if k != "mono"}, separators=(",", ":"))), line_max)
+        self.assertEqual((heavy["fetches"]["streams"], len(heavy["streams"])), (4, 4))
+        self.assertEqual(tiers["heavy"]["camera_runs"][0]["fetches"]["segment"]["n"], 20)
         # Which decoders each view got, from logcat (detail): one hardware decoder per stream.
         self.assertEqual(c["media"]["heavy"], {"codecs": ["OMX.allwinner.video.decoder.avc"] * 4, "flushes": 2, "eos": 1})
         self.assertEqual(c["media"]["typical"]["codecs"], ["OMX.allwinner.video.decoder.avc"])

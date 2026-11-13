@@ -11,9 +11,11 @@ version and every file's SHA-256.
 
 Read-only for the device; it writes only into the cache.
 """
+import functools
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -49,13 +51,29 @@ def sha256(path):
     return h.hexdigest()
 
 
+class Unavailable(RuntimeError):
+    """No ffmpeg with libx264 here: the streams can't be made. The fake answers a segment request with
+    a 500 and this message rather than ending its request thread."""
+
+
 def root():
     """The directory with one folder per profile (init.mp4, seg000.m4s ...). GW_PERF_CAMERA points at
     another one instead (the off-device tests use a stub: no ffmpeg there)."""
     if os.environ.get("GW_PERF_CAMERA"):
         return os.environ["GW_PERF_CAMERA"]
+    return _made()
+
+
+@functools.lru_cache(maxsize=None)
+def _made():
+    """Made once per process: the fake asks on every segment request, and running ffmpeg to find its
+    version took 50 to 100 ms each time, inside the segments' fetch times (#182's verifier). A failure
+    isn't cached, so installing ffmpeg mid-run works on the next request."""
     if not shutil.which("ffmpeg"):
-        raise SystemExit("Clarity's camera streams need ffmpeg (with libx264) on this computer")
+        raise Unavailable("Clarity's camera streams need ffmpeg (with libx264) on this computer")
+    encoders = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True).stdout
+    if not re.search(r"\blibx264\b", encoders):
+        raise Unavailable("this computer's ffmpeg has no libx264 encoder, which Clarity's camera streams need")
     version = subprocess.run(["ffmpeg", "-hide_banner", "-version"], capture_output=True, text=True).stdout.splitlines()[0]
     key = hashlib.sha256((version + json.dumps([ffmpeg_args(p) for p in sorted(PROFILES)])).encode()).hexdigest()[:12]
     out = os.path.join(CACHE, f"camera-{key}")
@@ -78,5 +96,7 @@ def segments(profile):
 
 
 if __name__ == "__main__":
-    print(root())
-    sys.exit(0)
+    try:
+        print(root())
+    except Unavailable as e:
+        sys.exit(str(e))

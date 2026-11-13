@@ -242,6 +242,22 @@ class FakeHA(unittest.TestCase):
         self.assertIsNone(live._stream)
         self.assertEqual({e: v["state"] for e, v in live.states.items()}, {e: v["state"] for e, v in D.states().items()})
 
+    def test_no_ffmpeg_is_a_500_with_why(self):
+        """Only the fake running, without ffmpeg (run.sh checks first): a segment request gets a 500
+        that says why, and the request thread goes on (it used to end in SystemExit)."""
+        from unittest import mock
+        ws = self.connect()
+        st, _ = ws.call({"type": "camera/stream", "entity_id": "camera.clarity_cam_0"})
+        base = st["result"]["url"].rsplit("/", 1)[0]
+
+        def missing():
+            raise fakeha.camera.Unavailable("Clarity's camera streams need ffmpeg (with libx264) on this computer")
+        with mock.patch.object(fakeha.camera, "root", missing):
+            status, _, body, _ = self.http("GET", base + "/segment/1.m4s")
+        self.assertEqual(status, 500)
+        self.assertIn(b"need ffmpeg", body)
+        self.assertEqual(self.http("GET", base + "/segment/1.m4s")[2], b"seg001-720p")   # the server still answers
+
     def test_a_live_camera_stream_as_ha_serves_it(self):
         """#174: HLS only (as HA's stream integration), a fresh stream per camera/stream, a live window of
         the last four whole segments, the loop's files, and a discontinuity where the loop wraps."""

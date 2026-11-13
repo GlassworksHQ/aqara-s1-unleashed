@@ -369,8 +369,19 @@ def refdash(nonce, url):
             "streams": [{"found": True, "w": 0 if dead else (1280 if i == 0 else 640), "h": 0 if dead else (720 if i == 0 else 360),
                          "first_frame_ms": None if dead else 640.0, "shown_pct": None if dead else 100.0,
                          "max_gap_ms": None if dead else 70.0, "stall_total_ms": None if dead else 0.0,
+                         "stall_presented": None if dead else 0,
                          "frames": 0 if dead else 75, "decoded": 0 if dead else 75, "dropped": 0, "waiting": 0,
-                         "source": "quality+rvfc"} for i in range(n)]})
+                         "source": "quality+rvfc"} for i in range(n)],
+            # The segments' fetch times (stats.js hlsFetches). Heavy's whole line is longer than a
+            # logcat line (1023 bytes), so it goes out in parts, as the page's does.
+            "fetches": {"segment": {"n": 5 * n, "queued_ms": {"median": 1.2, "p95": 3.4, "max": 4.1},
+                                    "wait_ms": {"median": 6.5, "p95": 12.25, "max": 14.0},
+                                    "total_ms": {"median": 18.75, "p95": 40.5, "max": 52.0},
+                                    "kb": 180 * n, "arrival_gap_max_ms": 1012.5},
+                        "playlist": {"n": 5 * n, "queued_ms": {"median": 0.5, "p95": 1.0, "max": 1.0},
+                                     "wait_ms": {"median": 2.0, "p95": 3.0, "max": 3.0},
+                                     "total_ms": {"median": 3.0, "p95": 5.0, "max": 5.0}},
+                        "streams": n}})
     for i in range(swipes):
         before = state("swipes.json", 0)
         save("asked.json", {"swipe": 1})
