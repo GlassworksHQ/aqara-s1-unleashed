@@ -512,6 +512,14 @@ def idle(label, run, app_pss, cpu_app):
             "device_mem": {"mem_total_kb": 2_000_000, "mem_available_kb": 900_000}}
 
 
+def write_fake_log(d, extra=()):
+    """fakeha.jsonl as run.sh leaves it: the frontend's commands, the stream sent on time."""
+    with open(os.path.join(d, "fakeha.jsonl"), "w") as f:
+        for e in [{"t": 1.0, "type": "auth/current_user", "keys": ["id", "type"], "msg": {"id": 1, "type": "auth/current_user"}},
+                  {"t": 1.1, "stream": "S", "k": 1, "late_ms": 0.4}, *extra]:
+            f.write(json.dumps(e) + "\n")
+
+
 class Build(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -532,6 +540,7 @@ class Build(unittest.TestCase):
             self.write(f"idle-all-on-{k}.json", idle("all-on", k, on, 10.0 + k * 0.1))
             self.write(f"idle-sendspin-off-{k}.json", idle("sendspin-off", k, off, 8.0))
         self.write("idle-assist-off-1.json", idle("assist-off", 1, 600_500, 10.1))
+        write_fake_log(self.dir)
         self.rep = R.build(self.dir)
 
     def write(self, name, obj):
@@ -1028,6 +1037,75 @@ class Usable(unittest.TestCase):
         self.assertEqual(R.usable_on_screen(dict(self.page, usable=None), [99_520])[1], "the page didn't report when it was usable")
 
 
+class SentToScreen(unittest.TestCase):
+    """Protocol 4: change to screen runs from when the fake sent the change, so a main thread too busy
+    to read it counts; one it never read in the window counts as not shown by the window's end."""
+    page = {"mono": 100.0, "epoch_ms": 1_000_000.0, "origin_epoch_ms": 998_000.0}     # page t -> 98 000 + t
+
+    def step(self, changes):
+        # Window t0 = 1000 on the page's clock: 99 000 to 103 000 on logcat's; a frame every 16.7 ms.
+        pres = [99_000 + 16.7 * i for i in range(240)]
+        return {"t0": 1000.0, "window_ms": 4000, "from": "sent", "changes": changes, "raf_times": [16.7 * i for i in range(240)],
+                "sf": {"presents_ms": pres, "period_ms": 16.7, "window_ms": [99_000, 103_000], "oldest_ms": 98_000}}
+
+    def test_waiting_for_the_main_thread_counts(self):
+        # Sent at 100, read at 900 (the main thread was busy), drawn in the frame at 910.
+        lat, why = R.change_to_screen(self.step([[100.0, 900.0, 0, 0, 910.0]]), self.page)
+        self.assertIsNone(why)
+        self.assertGreaterEqual(lat["max_ms"], 800 + 16.7 - 3)
+
+    def test_one_never_read_counts_to_the_windows_end(self):
+        lat, _ = R.change_to_screen(self.step([[100.0, 110.0, 0, 0, 120.0], [1000.0, None, 0, 0, None]]), self.page)
+        self.assertEqual(lat["n"], 2)
+        self.assertEqual(lat["max_ms"], 3000.0)                         # 103 000 - 100 000
+        a = R.arrivals(self.step([[100.0, 110.0, 0, 0, 120.0], [1000.0, None, 0, 0, None]]))
+        self.assertEqual((a["sent"], a["arrived"], a["wait_max_ms"]), (2, 1, 10.0))
+
+    def test_it_is_never_skipped_for_updates_that_didnt_arrive(self):
+        """smoke9's heavy: "only 17 of 20 state updates ran" made the page n/a. In protocol 4 the
+        schedule says what was sent; the rest is the panel's to answer for."""
+        why, _ = R.live_check_failed({"offscreen": 0, "moving": 8, "targets": 12, "update_every_ms": 200},
+                                     self.step([[100.0 * k, None, 0, 0, None] for k in range(1, 20)]))
+        self.assertIsNone(why)
+
+
+class FakeLog(unittest.TestCase):
+    """F5: the report reads the fake Home Assistant's log and is provisional on anything wrong."""
+
+    def log(self, *entries):
+        d = tempfile.mkdtemp()
+        write_fake_log(d, entries)
+        return R.fake_ha_log(os.path.join(d, "fakeha.jsonl"))
+
+    def test_a_clean_log(self):
+        log = self.log()
+        self.assertEqual((log["commands"], log["unknown"], log["failed"]), (1, {}, {}))
+        self.assertEqual(R.fake_ha_reasons(log, True), [])
+
+    def test_unknown_failed_or_late(self):
+        log = self.log({"t": 2, "unknown": "energy/get_prefs", "msg": {}}, {"t": 3, "failed": "history/stream", "error": "x"},
+                       {"t": 4, "stream": "S", "k": 2, "late_ms": 80.0})
+        reasons = R.fake_ha_reasons(log, True)
+        self.assertEqual(len(reasons), 3)
+        self.assertIn("energy/get_prefs (1)", reasons[0])
+        self.assertIn("history/stream (1)", reasons[1])
+        self.assertIn("80 ms late", reasons[2])
+
+    def test_protocol_4_without_the_log_is_provisional(self):
+        self.assertEqual(R.fake_ha_reasons(None, True), ["the fake Home Assistant's log (fakeha.jsonl) is missing"])
+        self.assertEqual(R.fake_ha_reasons(None, False), [])
+
+    def test_a_budgets_file_that_isnt_there_is_an_error(self):
+        """F9: --budgets naming a missing file must not fall back to the defaults silently."""
+        with self.assertRaises(SystemExit):
+            R.load_budgets("aqara-s1-plus", "/nonexistent/budgets.json")
+        self.assertIn("assist", R.load_budgets("aqara-s1-plus")["panes"])       # the frame's own file
+
+    def test_the_head_must_be_on_the_first_screen(self):
+        page = dict(Usable.page, usable=dict(Usable.page["usable"], first_screen_cards=8, head_cards=10))
+        self.assertIn("fewer than the 10 head cards", R.usable_on_screen(page, [99_520])[1])
+
+
 def ram_idle(label, main_kb, cpu=1.0):
     pkg = "sh.edm.s1kiosk"
     return {"label": label, "window_s": 15,
@@ -1070,6 +1148,10 @@ class PaneOnAlone(unittest.TestCase):
         self.assertEqual(ram["panes_waiting"], [{"id": "radio", "waiting_on": "#67"}])
         self.assertTrue(ram["budget"]["ok"])
         self.assertIsNone(R.reference_ram({}, [], "sh.edm.s1kiosk", budgets, 2_000_000))
+        # F6: a run that failed may have stopped mid-page; its samples aren't the peak.
+        ram = R.reference_ram({}, [{"memory": [ram_idle("x", 320_000)]}, {"error": "x", "memory": [ram_idle("x", 900_000)]}],
+                              "sh.edm.s1kiosk", budgets, 2_000_000)
+        self.assertEqual((ram["graded_peak"]["samples"], ram["graded_peak"]["app_pss_kb"]), (1, 520_000))
 
 
 if __name__ == "__main__":

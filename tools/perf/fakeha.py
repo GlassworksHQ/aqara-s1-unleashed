@@ -96,15 +96,62 @@ class Hub:
         self.log = log
         self.unknown = set()
         self._stream = None
+        self.gen = 0
+        # The runner's current command for the harness (open a view). It stays until that view's
+        # stream stops (/clarity/still): a page asks for one other than the last it ran, so a request
+        # left behind by a page that died (a force-stopped frontend's long poll) can't use it up.
+        self.cmd, self.cmd_cv = None, threading.Condition()
+
+    def reset(self):
+        """Put the home back as it starts (dashboards.states): every entity the stream or a tap
+        changed goes back, told to the frontend as HA tells any change. Called when a view's stream
+        stops and before the next view opens, while nothing is measured, so every view starts from
+        the same states and its stream sends the same values. Returns how many changed back."""
+        first = D.states()
+        with self.lock:
+            back = [e for e, st in first.items() if self.states[e]["state"] != st["state"]]
+        for e in back:
+            self.set_state(e, first[e]["state"])
+        self.record({"t": time.time(), "reset": len(back)})
+        return len(back)
+
+    def open_view(self, cmd):
+        with self.cmd_cv:
+            self.cmd = cmd
+            self.cmd_cv.notify_all()
+        self.record({"t": time.time(), "open": cmd})
+
+    def done_view(self):
+        with self.cmd_cv:
+            self.cmd = None
+
+    def next_cmd(self, after, timeout):
+        """The current command, if it isn't `after` (the nonce the asking page ran last); waits up to
+        `timeout` s for one. None if there is none."""
+        end = time.monotonic() + timeout
+        with self.cmd_cv:
+            while self.cmd is None or self.cmd.get("nonce") == after:
+                left = end - time.monotonic()
+                if left <= 0:
+                    return None
+                self.cmd_cv.wait(left)
+            return dict(self.cmd)
 
     def stream(self, on):
+        """Start (a new generation of) the live stream, or stop it. Returns the generation and, for a
+        start, the schedule's zero on the fake's monotonic clock (ms)."""
         with self.lock:
             if self._stream:
                 self._stream.stop.set()
                 self._stream = None
             if on:
-                self._stream = D.Stream(self.set_state, self.states)
+                self.gen += 1
+                gen = self.gen
+                self._stream = D.Stream(self.set_state, self.states, gen=gen,
+                                        record=lambda e: self.record(dict(e, t=time.time(), gen=gen)))
                 threading.Thread(target=self._stream.run, daemon=True).start()
+                return {"gen": gen, "start_ms": round(self._stream.start * 1000, 3)}
+            return {"gen": self.gen}
 
     def record(self, entry):
         if self.log:
@@ -112,7 +159,7 @@ class Hub:
                 self.log.write(json.dumps(entry) + "\n")
                 self.log.flush()
 
-    def set_state(self, entity_id, state, attributes=None):
+    def set_state(self, entity_id, state, attributes=None, context=None):
         """Change one entity, as HA does, and tell every subscriber (subscribe_entities' diff)."""
         now = time.time()
         with self.lock:
@@ -121,7 +168,7 @@ class Hub:
             if attributes:
                 s["attributes"].update(attributes)
             s["last_changed"] = s["last_updated"] = now
-            diff = {"+": {"s": state, "lc": now, "c": D.context(), "lu": now}}
+            diff = {"+": {"s": state, "lc": now, "c": context or D.context(), "lu": now}}
             if attributes:
                 diff["+"]["a"] = attributes
             conns = list(self.conns)
@@ -336,8 +383,38 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_bytes(200, json.dumps(D.MANIFEST).encode(), "application/manifest+json")
         if path in ("/clarity/live", "/clarity/still"):
             # The harness asks for the live updates while it measures them, and stops them when done.
-            Handler.hub.stream(path.endswith("live"))
+            out = Handler.hub.stream(path.endswith("live"))
+            if path.endswith("still"):
+                Handler.hub.done_view()
+                Handler.hub.reset()
+            return self.send_bytes(200, json.dumps(out).encode(), "application/json")
+        if path == "/clarity/time":
+            # The fake's monotonic clock, for the harness to tie its own clock to (round trips).
+            return self.send_bytes(200, json.dumps({"ms": round(time.monotonic() * 1000, 3)}).encode(), "application/json")
+        if path == "/clarity/open":
+            # The runner (perfrun.py) opens the next reference view: the harness, already running in
+            # the loaded frontend, picks it up from /clarity/next and navigates there.
+            q = {k: v[0] for k, v in urllib.parse.parse_qs(url.query).items()}
+            ok = (q.get("view") in D.VIEWS and re.fullmatch(r"[0-9a-f]{4,32}", q.get("nonce", ""))
+                  and all(re.fullmatch(r"[0-9.]{1,12}", q.get(k, "0")) for k in ("run", "taps", "swipes", "vsync", "warmup")))
+            if not ok:
+                return self.send_bytes(400, b"bad command", "text/plain")
+            Handler.hub.reset()          # a no-op unless something changed after the last view
+            Handler.hub.open_view(q)
             return self.send_bytes(204, b"", "text/plain")
+        if path == "/clarity/cancel":
+            # The runner, before each restart: a view that was cut short leaves no command behind.
+            Handler.hub.done_view()
+            return self.send_bytes(204, b"", "text/plain")
+        if path == "/clarity/next":
+            after = urllib.parse.parse_qs(url.query).get("after", [""])[0]
+            cmd = Handler.hub.next_cmd(after, 20)
+            try:
+                if cmd is None:
+                    return self.send_bytes(204, b"", "text/plain")
+                return self.send_bytes(200, json.dumps(cmd).encode(), "application/json")
+            except (BrokenPipeError, ConnectionResetError):
+                return None                  # that page is gone; the command stays for the live one
         if path.startswith("/clarity/page/"):
             # The animation test page (detail), from tools/perf/page.
             base = os.path.realpath(os.path.join(HERE, "page"))
@@ -349,10 +426,17 @@ class Handler(BaseHTTPRequestHandler):
             ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
             return self.send_bytes(200, body, "application/javascript" if full.endswith(".js") else ctype)
         if path.startswith("/clarity/"):
-            body = D.asset(path[len("/clarity/"):])
+            name = path[len("/clarity/"):]
+            if name.startswith("harness"):
+                # Only the current harness, at its hashed URL; the old fixed URL is gone.
+                name = "harness.js" if path == Handler.harness else ""
+            body = D.asset(name)
             if body is None:
                 return self.send_bytes(404, b"", "text/plain")
-            return self.send_bytes(200, body[1], body[0], cache="public, max-age=31536000")
+            # The pictures are cached as a dashboard's images are; the harness never is, so a changed
+            # test never meets an old copy on the panel.
+            cache = "public, max-age=31536000" if path.endswith(".png") else "no-store"
+            return self.send_bytes(200, body[1], body[0], cache=cache)
         if path.startswith(("/frontend_latest/", "/frontend_es5/", "/static/")) or path in ("/service_worker.js", "/sw-modern.js", "/sw-legacy.js"):
             return self.static(path)
         # Every other path is a frontend route (a dashboard, a view): the app shell, as HA serves it.
@@ -419,10 +503,18 @@ def render_index(front, harness_url):
     return html.encode()
 
 
-def serve(port, log_path=None, harness_url="/clarity/harness.js"):
+def harness_url():
+    """The harness's URL names a hash of its content. A panel that cached an older harness (before
+    2026-11-13 it was served at a fixed URL with a year's max-age) never asks for that URL again, so
+    it can't run an old harness with a new runner."""
+    return f"/clarity/harness-{hashlib.sha256(D.asset('harness.js')[1]).hexdigest()[:16]}.js"
+
+
+def serve(port, log_path=None, harness=True):
     front = hafrontend.root()
     Handler.front = os.path.realpath(front)
-    Handler.index = render_index(front, harness_url)
+    Handler.harness = harness_url()
+    Handler.index = render_index(front, Handler.harness if harness else None)
     Handler.hub = Hub(open(log_path, "a") if log_path else None)
     # The frontend fetches dozens of modules at once; the default backlog (5) resets connections.
     ThreadingHTTPServer.request_queue_size = 256
@@ -437,7 +529,7 @@ def main():
     ap.add_argument("--log", help="append every websocket command to this file (JSON lines)")
     ap.add_argument("--no-harness", action="store_true", help="serve HA's index.html without Clarity's harness")
     a = ap.parse_args()
-    srv = serve(a.port, a.log, None if a.no_harness else "/clarity/harness.js")
+    srv = serve(a.port, a.log, not a.no_harness)
     print(f"fake Home Assistant {HA_VERSION}, frontend {hafrontend.VERSION}, on http://127.0.0.1:{a.port}", flush=True)
     srv.serve_forever()
 

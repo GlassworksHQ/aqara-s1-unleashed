@@ -180,6 +180,9 @@ def usable_on_screen(page, presents_ms, period=None):
     u = (page or {}).get("usable")
     if not u or u.get("rendered_tick_ms") is None:
         return None, "the page didn't report when it was usable"
+    if u.get("head_cards") is not None and (u.get("first_screen_cards") or 0) < u["head_cards"]:
+        # F1: every view's head (10 cards) is on its first screen; fewer means it wasn't all drawn.
+        return None, f"usable with {u.get('first_screen_cards')} cards on the first screen, fewer than the {u['head_cards']} head cards"
     period = period or P.BUDGET_MS
     earliest = P.page_to_mono_ms(page, u["rendered_tick_ms"]) + period - PRESENT_SLACK_MS
     shown = next((t for t in sorted(presents_ms) if t >= earliest), None)
@@ -203,7 +206,9 @@ def change_frames(step, period=None):
     if not chg:
         return None, "nothing changed during the window"
     ts = sorted(times)
-    spans = [(c[0], c[1] + c[2]) for c in chg]
+    # A change that never arrived (protocol 4: the main thread didn't get to it) spans to the end.
+    end = ts[-1] if ts else 0
+    spans = [(c[0], (c[1] if c[1] is not None else end) + c[2]) for c in chg]
     xs = [b - a for a, b in zip(ts, ts[1:]) if any(due < b and end >= a for due, end in spans)]
     return P.frame_stats(xs, period), None
 
@@ -218,8 +223,11 @@ PRESENT_SLACK_MS = 3
 
 
 def change_to_screen(step, page, period=None):
-    """The graded live-updates measure (rubric v5): per change, from when the page applied it (ran)
-    to the first frame on screen that can show it. The change is drawn in the next animation frame
+    """The graded live-updates measure (rubric v5): per change, from when it started (protocol 4,
+    `from: sent`: when the fake Home Assistant sent it, from the stream's schedule; before, when the
+    page applied it) to the first frame on screen that can show it. On HA's frontend the page reads a
+    change on its main thread, so a busy main thread holds it back before anything is drawn: that
+    wait counts. A change that hadn't arrived when the window was logged has no frame either. The change is drawn in the next animation frame
     (tick), which reaches the screen one refresh later at the earliest; presents before that are
     frames already on their way. A change with no frame by the window's end, at least NO_FRAME_MS
     after it, counts as the time to the window's end (conservative).
@@ -236,21 +244,29 @@ def change_to_screen(step, page, period=None):
     end = (sf.get("window_ms") or [None, None])[1]
     raf = sorted(step.get("raf_times") or [])
     out, skipped = [], 0
+    sent_mode = step.get("from") == "sent"
     for c in step["changes"]:
-        ran = c[1]
-        if ran < 0:
-            continue                      # applied before the window; its transition ran into it
-        tick = c[4] if len(c) > 4 and c[4] is not None else next((r for r in raf if r > ran), None)
-        m_ran = P.page_to_mono_ms(page, step["t0"] + ran)
-        if tick is None or (oldest is not None and m_ran < oldest):
+        start, ran = (c[0] if sent_mode else c[1]), c[1]
+        if start < 0:
+            continue                      # before the window; its transition ran into it
+        m_start = P.page_to_mono_ms(page, step["t0"] + start)
+        if oldest is not None and m_start < oldest:
             skipped += 1
             continue
-        earliest = max(P.page_to_mono_ms(page, step["t0"] + tick) + period - PRESENT_SLACK_MS, m_ran)
-        nxt = next((t for t in pres if t >= earliest), None)
+        if ran is None:
+            nxt = None                    # it never reached the page in the window: no frame shows it
+        else:
+            tick = c[4] if len(c) > 4 and c[4] is not None else next((r for r in raf if r > ran), None)
+            if tick is None and not sent_mode:
+                skipped += 1
+                continue
+            m_ran = P.page_to_mono_ms(page, step["t0"] + ran)
+            nxt = None if tick is None else next(
+                (t for t in pres if t >= max(P.page_to_mono_ms(page, step["t0"] + tick) + period - PRESENT_SLACK_MS, m_ran)), None)
         if nxt is not None:
-            out.append(round(nxt - m_ran, 1))
-        elif end is not None and end - m_ran >= NO_FRAME_MS:
-            out.append(round(end - m_ran, 1))
+            out.append(round(nxt - m_start, 1))
+        elif end is not None and end - m_start >= NO_FRAME_MS:
+            out.append(round(end - m_start, 1))
         else:
             skipped += 1                  # too close to the window's end to tell
     if not out:
@@ -260,6 +276,23 @@ def change_to_screen(step, page, period=None):
     xs = sorted(out)
     return {"n": len(xs), "median_ms": P.nearest_rank(xs, 0.5), "p95_ms": P.nearest_rank(xs, 0.95),
             "max_ms": xs[-1], "skipped": skipped}, None
+
+
+def arrivals(step):
+    """Protocol 4 detail: of the changes the fake sent in the window, how many reached the page's main
+    thread before the window was logged, and how long they waited to (from sent to read). A long wait
+    is HA's main thread busy; the change-to-screen latency includes it. None before protocol 4."""
+    if step.get("from") != "sent":
+        return None
+    win = step.get("window_ms") or 0
+    sent = [c for c in step.get("changes") or [] if 0 <= c[0] <= win]
+    waits = sorted(c[1] - c[0] for c in sent if c[1] is not None)
+    return {"sent": len(sent), "arrived": len(waits),
+            "wait_p95_ms": round(P.nearest_rank(waits, 0.95), 1) if waits else None,
+            "wait_max_ms": round(waits[-1], 1) if waits else None,
+            # The page's clock tied to the fake's to within half this; None: not tied (the send times
+            # are then when the harness asked for the stream, so too early: against the panel).
+            "clock_rtt_ms": step.get("clock_rtt_ms")}
 
 
 def state_ticks(step):
@@ -280,6 +313,10 @@ def live_check_failed(check, step=None):
     if not check.get("targets"):
         return "nothing on the page to update (0 targets)", False
     every = check.get("update_every_ms")
+    if step is not None and step.get("from") == "sent":
+        # Protocol 4: every change the fake sent is in the log, from its schedule, whether or not the
+        # page got to it; one it never got to counts as not shown. Nothing here is a reason to skip.
+        return None, False
     if step is not None and every:
         expected = int((step.get("window_ms") or 0) // every)
         ran = state_ticks(step)
@@ -357,7 +394,7 @@ def tier_run(tier, entry, presents_ms):
         if why:
             out["load_error"] = why
         else:
-            out["load_ms"] = round(when - P.page_to_mono_ms(page, 0))
+            out["load_ms"] = round(when - P.page_to_mono_ms(page, page.get("nav_ms") or 0))
             out["first_screen_cards"] = page["usable"].get("first_screen_cards")
     elif not page.get("load_ms") or not page.get("fcp_ms"):
         out["load_error"] = "no load event or first paint reported"
@@ -389,9 +426,11 @@ def tier_run(tier, entry, presents_ms):
     out["updates"] = pacing
     lat, why = change_to_screen(step, page, period)
     out["latency"] = lat
+    out["arrivals"] = arrivals(step)
     out["updates_run"] = None if lat is None else {
         "latency_n": lat["n"], "latency_median_ms": lat["median_ms"], "latency_p95_ms": lat["p95_ms"],
-        "frames": frame_facts(pacing) if pacing else None}
+        "frames": frame_facts(pacing) if pacing else None,
+        **({"sent": out["arrivals"]["sent"], "arrived": out["arrivals"]["arrived"]} if out["arrivals"] else {})}
     if why:
         out["updates_error"] = why
     why, voids_taps = live_check_failed(entry.get("measure") or {}, step)
@@ -532,6 +571,8 @@ def reference_summary(all_runs):
             # The same page at each place in the order (the runs rotate it), so an order effect shows.
             "by_position": by_position(rs),
             "fcp_ms": P.spread([x["fcp_ms"] for x in rs]),
+            "clock_rtt_ms": [(x.get("arrivals") or {}).get("clock_rtt_ms") for x in rs if x.get("arrivals")],
+            "arrivals": [x.get("arrivals") for x in rs if x.get("arrivals")],
             "nodes": sorted({x["nodes"] for x in rs if x.get("nodes")}),
             "cards": sorted({x["cards"] for x in rs if x.get("cards")}),
             "viewport": sorted({(tuple(x["css"]) if x.get("css") else None, x.get("dpr")) for x in rs}, key=str),
@@ -817,7 +858,8 @@ def reference_ram(ref_idles, refstarts, package, budgets, mem_total_kb):
     graded run (`ref-idle`), and the largest sample taken between the graded pages (the peak during
     the graded tasks). Then each switchable pane's share, and the frame's budgets. Not graded."""
     idle = _valid(ref_idles.get("ref-idle", []))
-    between = [s for r in refstarts for s in r.get("memory") or []]
+    # Only graded runs that finished: a run that failed may have stopped mid-page (F6).
+    between = [s for r in refstarts if not r.get("error") for s in r.get("memory") or []]
     between = [s for s in between if app_memory(s)["app_pss_kb"] is not None]
     if not idle and not between and not ref_idles:
         return None
@@ -856,6 +898,8 @@ def reference_ram(ref_idles, refstarts, package, budgets, mem_total_kb):
 def load_budgets(frame_id, path=None):
     """The frame's budgets (frames/<id>/budgets.json, or `path`) over the default (tools/perf/budgets.json)."""
     default = read_json(os.path.join(HERE, "budgets.json"))
+    if path and not os.path.exists(path):
+        raise SystemExit(f"--budgets {path}: no such file")       # F9: never fall back silently
     own = path or os.path.join(HERE, "..", "..", "frames", frame_id, "budgets.json")
     return G.frame_budget(default, read_json(own) if os.path.exists(own) else None)
 
@@ -891,6 +935,54 @@ def apk_sizes(paths):
 
 # ---- assemble
 
+# The page's clock is tied to the fake's by the shortest of 12 round trips; one longer than this
+# leaves the send times uncertain by more than half of it (20 ms: a fifth of the 100 ms bar).
+CLOCK_RTT_MS = 40
+# The fake keeps its own schedule to within a few ms; more than this late and the stream itself, not
+# the panel, could have held a change back.
+STREAM_LATE_MS = 50
+
+
+def fake_ha_log(path):
+    """What fakeha.jsonl (run.sh --log) says about the fake Home Assistant: the commands the frontend
+    sent, any it didn't know or that failed (the frontend then got an error HA wouldn't send), and how
+    late the fake itself sent the stream's changes. None without the file (runs before 2026-11-13)."""
+    if not os.path.exists(path):
+        return None
+    commands, unknown, failed, late = 0, {}, {}, []
+    with open(path) as f:
+        for line in f:
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            if "type" in e and "msg" in e:
+                commands += 1
+            if "unknown" in e:
+                unknown[e["unknown"]] = unknown.get(e["unknown"], 0) + 1
+            if "failed" in e:
+                failed[e["failed"]] = failed.get(e["failed"], 0) + 1
+            if "stream" in e:
+                late.append(e.get("late_ms") or 0)
+    return {"commands": commands, "unknown": unknown, "failed": failed, "stream_sent": len(late),
+            "stream_late_max_ms": max(late) if late else None}
+
+
+def fake_ha_reasons(log, protocol4):
+    """Provisional reasons from the fake's log. Protocol 4 needs it: without it nobody can tell."""
+    if log is None:
+        return ["the fake Home Assistant's log (fakeha.jsonl) is missing"] if protocol4 else []
+    out = []
+    if log["unknown"]:
+        out.append("the fake Home Assistant didn't know command(s) the frontend sent: "
+                   + ", ".join(f"{k} ({n})" for k, n in sorted(log["unknown"].items())))
+    if log["failed"]:
+        out.append("command(s) failed in the fake Home Assistant: " + ", ".join(f"{k} ({n})" for k, n in sorted(log["failed"].items())))
+    if (log["stream_late_max_ms"] or 0) > STREAM_LATE_MS:
+        out.append(f"the fake Home Assistant sent a live change {log['stream_late_max_ms']:.0f} ms late (more than {STREAM_LATE_MS} ms)")
+    return out
+
+
 def coverage_reasons(ref, attempted):
     """Why the grade is short of data: each band is over the runs attempted, not only those that
     finished. A run that failed, a page that didn't finish, a task not measured, or a scroll that rests
@@ -909,6 +1001,9 @@ def coverage_reasons(ref, attempted):
         short = [f"{task} {n} of {attempted}" for task, n in got.items() if 0 < n < attempted]
         if short:
             out.append(f"{t}: measured in fewer runs than attempted ({', '.join(short)})")
+        rtts = (s_ or {}).get("clock_rtt_ms") or []
+        if any(r is None or r > CLOCK_RTT_MS for r in rtts):
+            out.append(f"{t}: the live changes' send times rest on a clock tie looser than ±{CLOCK_RTT_MS // 2} ms in some run")
         during = [d for d in (s_ or {}).get("swipes_during_updates") or [] if d is not None]
         if during and not any(during):
             out.append(f"{t}: no swipe ran while the live updates did, so scroll wasn't measured during updates")
@@ -948,6 +1043,8 @@ def build(run_dir, apks=(), budgets=None):
         # painting (a clock card) is normal and changes nothing.
         reasons.append("the kiosk's own page never finished loading in a graded run (Home Assistant down?)")
     reasons += coverage_reasons(ref, attempted)
+    fake_log = fake_ha_log(os.path.join(run_dir, "fakeha.jsonl"))
+    reasons += fake_ha_reasons(fake_log, bool(ref) and G.PROTOCOL_VERSION in (ref.get("protocols") or []))
     if ref and ref.get("bad_page_lines"):
         reasons.append(f"{ref['bad_page_lines']} page line(s) didn't parse (cut off in logcat?)")
     if ref and ref.get("lost_scroll_steps"):
@@ -1002,6 +1099,7 @@ def build(run_dir, apks=(), budgets=None):
                   "app": dict(device["app"], geckoview=gv)},
         "apk": apk_sizes(apks),
         "ram": reference_ram(ref_idles, raw_refs, package, budgets, device.get("mem_total_kb")),
+        "fake_ha": fake_log,
         "grade": grade,
         "graded": graded,
         "detail": detail,

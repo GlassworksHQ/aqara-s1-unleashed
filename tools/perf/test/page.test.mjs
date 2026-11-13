@@ -123,3 +123,71 @@ test("non-ASCII lines split on bytes, never inside a character, and still fit 10
   for (const c of chunks) assert.ok(!c.includes("�"), "a character was cut");
   assert.equal(chunks.join(""), text);
 });
+
+// ---- "usable" (F1): each clause has a test that fails without it
+
+function usableAfter(frames, headCards = 2) {
+  let st = { last: "", stable: 0, done: false };
+  for (const f of frames) {
+    st = S.usableStep(f, st, headCards);
+    if (st.done) return true;
+  }
+  return false;
+}
+const drawn = (top) => ({ rendered: true, top });
+const ok = { launch: false, viewIndex: 2, wantIndex: 2, head: [{ rendered: true }, { rendered: true }], onScreen: [drawn(0), drawn(120)] };
+
+test("usable: two frames in a row with everything drawn and nothing moving", () => {
+  assert.equal(usableAfter([ok]), false);                 // one frame isn't enough
+  assert.equal(usableAfter([ok, ok]), true);
+});
+
+test("usable: not while HA's launch screen is up", () => {
+  const f = { ...ok, launch: true };
+  assert.equal(usableAfter([f, f, f]), false);
+});
+
+test("usable: not before hui-root shows the view that was asked for", () => {
+  const f = { ...ok, viewIndex: 1 };
+  assert.equal(usableAfter([f, f, f]), false);
+});
+
+test("usable: not while a head card is missing or not drawn, even if every card on screen is", () => {
+  const missing = { ...ok, head: [{ rendered: true }] };
+  assert.equal(usableAfter([missing, missing, missing]), false);
+  const blank = { ...ok, head: [{ rendered: true }, { rendered: false }] };
+  assert.equal(usableAfter([blank, blank, blank]), false);
+});
+
+test("usable: not while a card on the screen isn't drawn, or there are none", () => {
+  const blank = { ...ok, onScreen: [drawn(0), { rendered: false, top: 120 }] };
+  assert.equal(usableAfter([blank, blank, blank]), false);
+  const none = { ...ok, onScreen: [] };
+  assert.equal(usableAfter([none, none, none]), false);
+});
+
+test("usable: not while the layout moves", () => {
+  const moved = { ...ok, onScreen: [drawn(0), drawn(160)] };
+  assert.equal(usableAfter([ok, moved, ok, moved]), false);
+  const more = { ...ok, onScreen: [drawn(0), drawn(120), drawn(240)] };
+  assert.equal(usableAfter([ok, more, more]), true);      // stable again from the second `more`
+});
+
+test("free: every probe within 50 ms for the whole window, from when the stretch began", () => {
+  // A long probe (80 ms), a short one that starts a stretch, a long one that ends it, then short
+  // probes of 40 ms from 305 on: free from 305, done once 500 ms of them have run.
+  const probes = [[0, 80], [80, 85], [85, 300], [300, 305]];
+  for (let t = 305; t < 900; t += 40) probes.push([t, t + 40]);
+  let st = { start: null, done: false };
+  const seen = [];
+  for (const [p, r] of probes) {
+    st = S.freeStep(p, r, st.start, 500);
+    seen.push(st.start);
+    if (st.done) break;
+  }
+  assert.deepEqual(seen.slice(0, 5), [null, 85, null, 305, 305]);
+  assert.equal(st.done, true);
+  assert.equal(st.start, 305);
+  assert.ok(probes.findIndex(([, r]) => r - 305 >= 500) === seen.length - 1);   // done at the first probe 500 ms on
+  assert.equal(S.freeStep(0, 51, 0, 1).done, false);       // a probe over 50 ms is never free
+});

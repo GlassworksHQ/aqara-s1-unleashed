@@ -4,6 +4,7 @@ The fake Home Assistant (fakeha.py) against the traffic HA's real frontend sent 
 (test/fakeha-traffic.json): every recorded command gets an answer, and the answers the frontend
 depends on have the shape it reads. Runs on a stub frontend: no download."""
 import base64
+import re
 import http.client
 import json
 import os
@@ -97,12 +98,12 @@ class FakeHA(unittest.TestCase):
         cls.srv.server_close()
 
     def http(self, method, path, body=None, headers=None):
-        """One request on its own connection: (status, Location, body)."""
+        """One request on its own connection: (status, Location, body, Cache-Control)."""
         conn = http.client.HTTPConnection("127.0.0.1", self.port)
         try:
             conn.request(method, path, body, headers or {})
             r = conn.getresponse()
-            return r.status, r.getheader("Location"), r.read()
+            return r.status, r.getheader("Location"), r.read(), r.getheader("Cache-Control")
         finally:
             conn.close()
 
@@ -129,9 +130,11 @@ class FakeHA(unittest.TestCase):
         panels, _ = ws.call({"type": "get_panels"})
         # The router falls back to "home" (this release's default panel) before the panels arrive.
         self.assertIn("home", panels["result"])
-        self.assertTrue({"clarity-light", "clarity-typical", "clarity-heavy"} <= set(panels["result"]))
-        cfg, _ = ws.call({"type": "lovelace/config", "url_path": "clarity-heavy", "force": False})
-        self.assertEqual(len(cfg["result"]["views"][0]["cards"]), 120)
+        self.assertIn("clarity-ref", panels["result"])
+        cfg, _ = ws.call({"type": "lovelace/config", "url_path": "clarity-ref", "force": False})
+        # One dashboard: the start view (where a restart lands), then the three reference views.
+        self.assertEqual([(v["path"], len(v["cards"])) for v in cfg["result"]["views"]],
+                         [("start", 22), ("light", 20), ("typical", 50), ("heavy", 120)])
         res, ev = ws.call({"type": "subscribe_entities"})
         self.assertIn("light.living_room", ev[0]["event"]["a"])
         self.assertEqual(set(ev[0]["event"]["a"]["sensor.clarity_0"]), {"s", "a", "c", "lc", "lu"})
@@ -149,10 +152,12 @@ class FakeHA(unittest.TestCase):
                 return
         self.fail("no state change after the toggle")
 
-    def test_the_live_stream_reaches_subscribers_with_a_context_each(self):
+    def test_the_live_stream_reaches_subscribers_with_its_slot_in_each_context(self):
         ws = self.connect()
         ws.call({"type": "subscribe_entities"})
-        self.assertEqual(self.http("GET", "/clarity/live?nonce=t")[0], 204)
+        status, _, body, _ = self.http("GET", "/clarity/live?nonce=t")
+        self.assertEqual(status, 200)
+        gen = json.loads(body)["gen"]
         got, deadline = [], time.time() + 3
         while time.time() < deadline and len(got) < 4:
             m = ws.recv()
@@ -161,10 +166,51 @@ class FakeHA(unittest.TestCase):
         self.http("GET", "/clarity/still?nonce=t")
         self.assertGreaterEqual(len(got), 4)
         self.assertEqual(len({c for _, c in got}), len(got))          # every change its own context
+        # The harness's SLOT pattern: kind, this stream's generation, the change's number in order.
+        slots = [re.fullmatch(r"01JC1ARITY([SF])(\d{5})(\d{10})", c).groups() for _, c in got]
+        self.assertEqual({int(g) for _, g, _ in slots}, {gen})
+        sensors = [int(k) for kind, _, k in slots if kind == "S"]
+        self.assertEqual(sensors, list(range(1, len(sensors) + 1)))
+
+    def test_the_home_goes_back_after_each_view(self):
+        """F7: whatever the stream or a tap changed goes back when the view's stream stops, so every
+        view starts from the same states."""
+        ws = self.connect()
+        _, ev = ws.call({"type": "subscribe_entities"})
+        first = {e: v["s"] for e, v in ev[0]["event"]["a"].items()}
+        ws.call({"type": "call_service", "domain": "light", "service": "toggle", "service_data": {"entity_id": "light.living_room"}})
+        self.http("GET", "/clarity/live?nonce=t")
+        time.sleep(0.7)
+        self.http("GET", "/clarity/still?nonce=t")
+        hub = fakeha.Handler.hub
+        self.assertEqual({e: v["state"] for e, v in hub.states.items()}, first)
+
+    def test_the_runner_opens_views_through_it(self):
+        self.assertEqual(self.http("GET", "/clarity/open?view=typical&nonce=ab12&run=1&taps=10&vsync=16.667")[0], 204)
+        status, _, body, _ = self.http("GET", "/clarity/next")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {"view": "typical", "nonce": "ab12", "run": "1", "taps": "10", "vsync": "16.667"})
+        for bad in ("view=kitchen&nonce=ab12", "view=light&nonce=ZZ", "view=light&nonce=ab12&taps=1;rm"):
+            self.assertEqual(self.http("GET", "/clarity/open?" + bad)[0], 400, bad)
+
+    def test_a_page_that_died_mid_poll_cant_use_up_a_command(self):
+        """A force-stopped frontend leaves its long poll behind. The command stays until its view's
+        stream stops, and a page asks for one other than the last it ran."""
+        hub = fakeha.Hub()
+        got = []
+        dead = threading.Thread(target=lambda: got.append(hub.next_cmd("", 2)))
+        dead.start()
+        hub.open_view({"view": "light", "nonce": "aa11"})
+        dead.join()
+        self.assertEqual(got[0]["nonce"], "aa11")                       # the dead page "took" it...
+        self.assertEqual(hub.next_cmd("", 0.1)["nonce"], "aa11")        # ...and the live one still gets it
+        self.assertIsNone(hub.next_cmd("aa11", 0.1))                    # not twice for the same page
+        hub.done_view()
+        self.assertIsNone(hub.next_cmd("", 0.1))                        # gone once the view is done
 
     def test_sign_in_goes_straight_back_with_a_code(self):
         back = f"http://127.0.0.1:{self.port}/clarity-light/0?auth_callback=1"
-        status, location, _ = self.http("GET", "/auth/authorize?" + urllib.parse.urlencode(
+        status, location, _, _ = self.http("GET", "/auth/authorize?" + urllib.parse.urlencode(
             {"response_type": "code", "redirect_uri": back, "client_id": "x", "state": "s"}))
         self.assertEqual(status, 302)
         self.assertTrue(location.startswith(back + "&code=clarity&state=s&storeToken=true"))
@@ -174,12 +220,26 @@ class FakeHA(unittest.TestCase):
         self.assertIn("refresh_token", tok)
 
     def test_the_app_shell_puts_the_harness_first(self):
-        html = self.http("GET", "/clarity-typical/0?nonce=x")[2].decode()
-        self.assertTrue(html.split("<head>", 1)[1].startswith('<script src="/clarity/harness.js"></script>'))
+        html = self.http("GET", "/clarity-ref/typical")[2].decode()
+        m = re.match(r'<script src="(/clarity/harness-[0-9a-f]{16}\.js)"></script>', html.split("<head>", 1)[1])
+        self.assertIsNotNone(m, html[:300])
         self.assertNotIn("{{", html)
-        js = self.http("GET", "/clarity/harness.js")[2].decode()
-        self.assertIn("window.GW_CLARITY = ", js)
-        self.assertIn('"PROTOCOL": 4', js)
+        status, _, js, cache = self.http("GET", m.group(1))
+        self.assertIn("window.GW_CLARITY = ", js.decode())
+        self.assertIn('"PROTOCOL": 4', js.decode())
+        self.assertIn('"HEAD_CARDS": 10', js.decode())
+
+    def test_the_harness_is_never_cached_at_a_fixed_url(self):
+        """F2: 8c0027b served it at /clarity/harness.js for a year; a panel that cached that must
+        never be handed it again, and the current one is never cached."""
+        url = re.search(r'src="(/clarity/harness-[0-9a-f]{16}\.js)"', self.http("GET", "/clarity-ref/start")[2].decode()).group(1)
+        self.assertEqual(self.http("GET", url)[3], "no-store")
+        self.assertEqual(self.http("GET", "/clarity/harness.js")[0], 404)
+        self.assertEqual(self.http("GET", "/clarity/harness-0000000000000000.js")[0], 404)
+        self.assertEqual(self.http("GET", "/")[3], "no-store")                     # the app shell
+        self.assertIn("max-age", self.http("GET", "/clarity/picture-0.png")[3])     # pictures, as a dashboard's
+        # The hash follows the content: another harness, another URL.
+        self.assertEqual(url, fakeha.harness_url())
 
     def test_paths_never_leave_the_frontend(self):
         for path in ("/static/../../etc/passwd", "/frontend_latest/%2e%2e/%2e%2e/x", "/clarity/page/../fakeha.py"):

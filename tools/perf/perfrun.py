@@ -20,6 +20,8 @@ import argparse
 import json
 import os
 import queue
+import urllib.parse
+import urllib.request
 import re
 import secrets
 import subprocess
@@ -237,15 +239,16 @@ def cmd_coldstart(dev, a):
     Both record when the engine is ready: GeckoView's first PageStart (its own about:blank), which
     comes before the kiosk does anything for Home Assistant.
     coldstart (real use, not graded) then follows the kiosk's own dashboard to its PageStop.
-    refstart (graded) waits until the kiosk's own page has finished (or --own-page-wait seconds if
-    it never does), then opens a warm-up page (--warmup-tier, not graded: it takes the kiosk's
-    teardown, the first JIT and the cold caches), then each reference dashboard (--url, --tiers) and
-    follows its lines: taps and swipes where the page asks. The order turns by one page each run
-    (run 1: light, typical, heavy; run 2: typical, heavy, light; run 3: heavy, light, typical), so no
-    page always comes first. Each page opens only once the screen has been still for --between-quiet
-    seconds (the page before it stops its updates when it is done). `open` can't be sent sooner: until
-    the session is up the kiosk drops it (#103's pins). After the first open, any other page is an
-    error.
+    refstart (graded, protocol 4) waits until the kiosk is back on the reference dashboard's start
+    view (run.sh pointed it there) and the harness says it is usable: the restart's end. Then it opens
+    each reference view (--tiers; --warmup-tier adds one, not graded) through the fake Home
+    Assistant (--url): the harness, in the frontend that is already loaded, navigates to it as HA's
+    view tabs do. It follows each view's lines: taps and swipes where the view asks. The order turns
+    by one view each run (run 1: light, typical, heavy; run 2: typical, heavy, light; run 3: heavy,
+    light, typical), so no view always comes first. Each opens only once the screen has been still
+    for --between-quiet seconds (the view before stops its updates when it is done). After the first
+    open, any page load is an error: a view switch loads no page. Without a restart page (the kiosk
+    came back to its own dashboard), it waits for that page as protocols 1 to 3 did.
 
     logcat follows the whole device, so its queue is rarely empty: no decision here waits for an
     empty queue. Before deciding, the loop reads everything queued so far (drain)."""
@@ -314,14 +317,19 @@ def cmd_coldstart(dev, a):
         st["current"], st["measure_mono"], st["next_at"] = (slot, nonce), None, None
         paused.clear()
         if slot == "warmup":
-            tier, extra = a.warmup_tier, "&taps=0&swipes=0&warmup=1"
+            tier, extra = a.warmup_tier, {"taps": 0, "swipes": 0, "warmup": 1}
             res["warmup"] = {"tier": tier, "nonce": nonce, "swipes": []}
         else:
-            tier, extra = slot, f"&taps={a.taps}"
+            tier, extra = slot, {"taps": a.taps}
             res["tiers"][tier] = {"nonce": nonce, "swipes": []}
-        # Protocol 4: a reference dashboard of the fake Home Assistant (fakeha.py), at its own path.
-        url = f"{a.url.rstrip('/')}/clarity-{tier}/0?nonce={nonce}&run={a.run}&vsync={a.vsync}{extra}"
-        dev.sh(f"am start -n {dev.component} --es open '{url}'")
+        # Protocol 4: the frontend is already loaded on the start view. The fake Home Assistant hands
+        # this command to the harness, which opens the view with HA's own navigation (no page load).
+        q = urllib.parse.urlencode(dict({"view": tier, "nonce": nonce, "run": a.run, "vsync": a.vsync}, **extra))
+        try:
+            with urllib.request.urlopen(f"{a.url.rstrip('/')}/clarity/open?{q}", timeout=10) as r:
+                r.read()
+        except OSError as e:
+            res["error"] = f"the fake Home Assistant didn't take the command to open {tier}: {e}"
 
     def read_sf(pl, rec):
         """SurfaceFlinger's history just after a window, cut to the window the page logged."""
@@ -387,6 +395,7 @@ def cmd_coldstart(dev, a):
         pl["mono"] = rec["mono"]
         if t == "refdash":
             res["restart_page"] = pl
+            st["restart_usable_at"] = time.time()
         elif t == "done":
             st["restart_done_at"] = time.time()
         elif t == "error":
@@ -459,10 +468,19 @@ def cmd_coldstart(dev, a):
             if rec and handle(rec):
                 return True
 
+    if ref:
+        # No command left from a view that was cut short: the frontend after the restart must not run it.
+        try:
+            with urllib.request.urlopen(f"{a.url.rstrip('/')}/clarity/cancel", timeout=10) as r:
+                r.read()
+        except OSError:
+            pass                          # the open below says so if the fake is gone
     dev.sh("input keyevent KEYCODE_WAKEUP")
     dev.sh(f"am force-stop {dev.package}")
     t0 = time.time()
     while time.time() - t0 < a.timeout:
+        if res["error"]:
+            break                         # e.g. a view couldn't be opened
         if st["break_after"] and time.time() > st["break_after"]:
             break
         if res["launch"] is None and time.time() - t0 > a.settle:
@@ -472,6 +490,12 @@ def cmd_coldstart(dev, a):
                 res["launch"] = "am-start"
                 am = dev.sh(f"am start -W -n {dev.component}", timeout=120)
                 res["am_total_ms"] = int((re.findall(r"TotalTime: (\d+)", am) or [0])[0]) or None
+        if ref and st.get("restart_usable_at") and not st.get("restart_done_at") \
+                and time.time() - st["restart_usable_at"] > RESTART_DONE_WAIT_S:
+            # Its usable line came, its done line didn't (lost in logcat): the restart is measured
+            # from the usable line alone; go on rather than wait out the whole run (F8).
+            res["restart_done_missing"] = True
+            st["restart_done_at"] = time.time()
         if ref and st["current"] is None and st.get("restart_done_at") and st["next_at"] is None and not st["opened"]:
             # Protocol 4: the kiosk came back to the reference dashboard and it is usable: open the
             # graded pages once the screen is still (the next_at branch below).
@@ -543,6 +567,10 @@ def cmd_coldstart(dev, a):
     write_json(os.path.join(a.out, f"{a.cmd}-{a.run}.json"), res)
     if res["error"]:
         sys.exit(f"{a.cmd} {a.run}: {res['error']}")
+
+
+# The restart page logs done right after its usable line; this long without it, the line was lost.
+RESTART_DONE_WAIT_S = 10
 
 
 # ---- idle: CPU, frames and memory on the dashboard

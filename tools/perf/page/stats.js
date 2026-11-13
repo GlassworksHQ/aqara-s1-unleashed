@@ -101,7 +101,33 @@
     return out;
   }
 
-  const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines, skyToViolet };
+  // Clarity's "usable" (docs/perf.md, "How Clarity measures HA's frontend"), one animation frame at a
+  // time. f: launch (HA's launch screen is still up), viewIndex and wantIndex (the view hui-root shows,
+  // the one asked for), head (the view's first headCards configured cards: { rendered }), onScreen
+  // (every card on the screen: { rendered, top }). prev: { last, stable }. Done when, for two frames
+  // in a row, the launch screen is gone, it is the asked view, every head card and every card on the
+  // screen is drawn, and the layout hasn't moved.
+  function usableStep(f, prev, headCards) {
+    const no = { last: "", stable: 0, done: false };
+    if (f.launch || f.viewIndex !== f.wantIndex) return no;
+    const head = f.head || [];
+    if (head.length < headCards || !head.slice(0, headCards).every((c) => c.rendered)) return no;
+    if (!f.onScreen.length || !f.onScreen.every((c) => c.rendered)) return no;
+    const key = f.onScreen.length + ":" + f.onScreen.map((c) => Math.round(c.top)).join(",");
+    const stable = key === prev.last ? prev.stable + 1 : 0;
+    return { last: key, stable, done: stable >= 1 };
+  }
+
+  // The main thread free: every task posted back to back ran within 50 ms (RAIL's input budget) for
+  // windowMs. One probe: posted and ran (ms); start is when the current free stretch began, or null.
+  function freeStep(posted, ran, start, windowMs) {
+    if (ran - posted > 50) return { start: null, done: false };
+    const s = start === null ? ran : start;
+    return { start: s, done: ran - s >= windowMs };
+  }
+
+  const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines,
+                skyToViolet, usableStep, freeStep };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWStats = api;
 })(this);

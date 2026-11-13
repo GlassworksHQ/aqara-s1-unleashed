@@ -13,9 +13,39 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RUN = os.path.join(os.path.dirname(HERE), "run.sh")
 STUB_FRONTEND = os.path.join(HERE, "stub_frontend")       # the runner tests never fetch HA's frontend
 RESTORE = "http://192.0.2.10:8123/lovelace/0"
+os.environ.setdefault("GW_PERF_FRONTEND", STUB_FRONTEND)
 sys.path.insert(0, os.path.dirname(HERE))
+import fakeha  # noqa: E402
 import perfrun  # noqa: E402
 import report  # noqa: E402
+import threading  # noqa: E402
+
+
+class FakeHA:
+    """A fake Home Assistant on its own port, for perfrun runs without run.sh: perfrun sends it the
+    views to open, and fake_adb takes them from it, as the harness does."""
+
+    def __enter__(self):
+        self.srv = fakeha.serve(0)
+        self.url = f"http://127.0.0.1:{self.srv.server_address[1]}"
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        return self
+
+    def __exit__(self, *exc):
+        self.srv.shutdown()
+        self.srv.server_close()
+
+
+HA = None          # one fake Home Assistant for the perfrun runs that don't bring their own
+
+
+def setUpModule():
+    global HA
+    HA = FakeHA().__enter__()
+
+
+def tearDownModule():
+    HA.__exit__()
 
 
 class Runner(unittest.TestCase):
@@ -30,7 +60,7 @@ class Runner(unittest.TestCase):
         os.chmod(adb, 0o755)
         env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="2",
                    GW_PERF_COLD_SETTLE="0", GW_PERF_RUN_GAP="0", GW_PERF_BETWEEN_QUIET="0.5", GW_PERF_FRONTEND=STUB_FRONTEND,
-                   GW_PERF_SWITCH_SETTLE="0")
+                   GW_PERF_SWITCH_SETTLE="0", FAKE_HA_URL="http://127.0.0.1:18089")
         env.pop("ANDROID_SERIAL", None)
         cls.out = os.path.join(cls.tmp, "out")
         cls.proc = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", cls.out, "--port", "18089", "--taps", "2",
@@ -100,17 +130,18 @@ class Runner(unittest.TestCase):
         with open(os.path.join(self.out, "report.md")) as f:
             self.assertIn("## RAM on the reference dashboards", f.read())
         with open(os.path.join(self.tmp, "state", "opened_still.json")) as f:
-            self.assertEqual(json.load(f), ["http://127.0.0.1:18089/clarity-typical/0"])
+            self.assertEqual(json.load(f), ["http://127.0.0.1:18089/clarity-ref/typical"])
 
     def test_it_changes_one_setting_and_puts_it_back(self):
-        """Protocol 4: the kiosk's saved dashboard points at the fake HA for the graded part, then back
-        at --restore-dashboard. Nothing else changes."""
+        """Protocol 4: the kiosk's saved dashboard points at the fake HA's start view for the graded
+        part, then back at --restore-dashboard (with -W, checked). Nothing else changes."""
         shell = [c[len("shell "):] for c in self.commands if c.startswith("shell ")]
         urls = [re.search(r"--es url '([^']+)'", c).group(1) for c in shell if "--es url" in c]
-        self.assertEqual(urls, ["http://127.0.0.1:18089/clarity-light/0", RESTORE])
+        self.assertEqual(urls, ["http://127.0.0.1:18089/clarity-ref/start", RESTORE])
+        self.assertIn("am start -W -n sh.edm.s1kiosk/.MainActivity --es url '" + RESTORE + "'", shell)
         i_set = next(i for i, c in enumerate(self.commands) if "--es url" in c)
         i_back = max(i for i, c in enumerate(self.commands) if "--es url" in c)
-        graded = [i for i, c in enumerate(self.commands) if "/clarity-" in c and "--es open" in c]
+        graded = [i for i, c in enumerate(self.commands) if c.startswith("view ")]
         self.assertLess(i_set, graded[0])
         self.assertGreater(i_back, graded[-1])
 
@@ -126,11 +157,13 @@ class Runner(unittest.TestCase):
         extras = {m for c in shell for m in re.findall(r"--e\w \w+", c)}
         self.assertEqual(extras, {"--es open", "--es screen", "--es url"})
         opens = [re.search(r"--es open '([^']+)'", c).group(1) for c in shell if "--es open" in c]
-        self.assertEqual(len(opens), 5)
+        # The animation test page and the idle sample's page load; the graded views don't: they open
+        # inside the loaded frontend, by navigation, on the runner's command to the fake HA.
+        self.assertEqual(len(opens), 2)
         self.assertTrue(opens[0].startswith("http://127.0.0.1:18089/clarity/page/index.html?"), opens[0])
-        for url, tier in zip(opens[1:4], ("light", "typical", "heavy")):
-            self.assertTrue(url.startswith(f"http://127.0.0.1:18089/clarity-{tier}/0?nonce=") and "&taps=2" in url, url)
-        self.assertEqual(opens[4], "http://127.0.0.1:18089/clarity-typical/0")       # the idle sample's page, no nonce
+        self.assertEqual(opens[1], "http://127.0.0.1:18089/clarity-ref/typical")       # the idle sample's page, no nonce
+        views = [c.split()[1:4:2] for c in self.commands if c.startswith("view ")]
+        self.assertEqual(views, [["light", "taps=2"], ["typical", "taps=2"], ["heavy", "taps=2"]])
 
     def test_no_gesture_without_the_current_pages_request(self):
         """The fake rejects any tap or swipe that no current *-ready line asked for."""
@@ -141,13 +174,13 @@ class Runner(unittest.TestCase):
     def test_swipes_come_only_after_the_pages_own_request(self):
         """Each swipe follows a swipe-ready from the page being measured: the commands log has no swipe
         before the first reference page opened."""
-        first_open = next(i for i, c in enumerate(self.commands) if "/clarity-" in c and "--es open" in c)
+        first_open = next(i for i, c in enumerate(self.commands) if c.startswith("view "))
         first_swipe = next(i for i, c in enumerate(self.commands) if c.startswith("shell input swipe"))
         self.assertGreater(first_swipe, first_open)
 
     def test_the_reference_dashboards_open_only_once_the_session_is_up(self):
-        """On the S1, `open` before GeckoView's first page is dropped (#103's pins); the fake does the same."""
-        i_blank = next(i for i, c in enumerate(self.commands) if "/clarity-" in c and "--es open" in c)
+        """The first view opens only after the restart (the restart page said it was usable)."""
+        i_blank = next(i for i, c in enumerate(self.commands) if c.startswith("view "))
         stops = [i for i, c in enumerate(self.commands) if c.startswith("shell am force-stop")]
         self.assertGreater(i_blank, stops[0])
 
@@ -166,6 +199,7 @@ def fake_env(tmp, **extra):
     with open(adb, "w") as f:
         f.write(f'#!/bin/sh\nexec "{sys.executable}" "{os.path.join(HERE, "fake_adb.py")}" "$@"\n')
     os.chmod(adb, 0o755)
+    extra.setdefault("FAKE_HA_URL", HA.url if HA else "")
     env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="1",
                GW_PERF_FRONTEND=STUB_FRONTEND, GW_PERF_SWITCH_SETTLE="0", **extra)
     env.pop("ANDROID_SERIAL", None)
@@ -176,10 +210,28 @@ class StopsPartway(unittest.TestCase):
     """The graded part changes the kiosk's dashboard; a run that stops partway still puts it back
     (run.sh's exit trap), so the panel is left as it was found."""
 
+    def test_a_restore_the_kiosk_refuses_fails_the_run_and_says_how_to_fix_it(self):
+        """F3: am exits 0 even when the intent wasn't taken. The runner reads its answer, tries again
+        on exit, and exits 3 with the command to send, instead of assuming the panel is back."""
+        tmp = tempfile.mkdtemp()
+        env, state = fake_env(tmp, FAKE_RESTORE_FAILS="1", GW_PERF_COLD_SETTLE="0", GW_PERF_RUN_GAP="0",
+                              GW_PERF_BETWEEN_QUIET="0.3", FAKE_HA_URL="http://127.0.0.1:18097")
+        p = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", os.path.join(tmp, "out"), "--port", "18097",
+                            "--taps", "0", "--skip-synthetic", "--skip-real-use", "--restore-dashboard", RESTORE],
+                           env=env, capture_output=True, text=True, timeout=300)
+        self.assertEqual(p.returncode, 3, p.stderr[-2000:])
+        self.assertIn("COULD NOT point the kiosk back", p.stderr)
+        self.assertIn(f"send it yourself: adb shell am start -n sh.edm.s1kiosk/.MainActivity --es url '{RESTORE}'", p.stderr)
+        with open(os.path.join(state, "restore_refused.json")) as f:
+            self.assertEqual(json.load(f), 3)            # after the graded part, then twice on exit
+        with open(os.path.join(state, "commands.log")) as f:
+            after = f.read().split(RESTORE, 1)[1]
+        self.assertNotIn("am force-stop", after)          # no restart onto the fake, which is going away
+
     def test_the_dashboard_goes_back(self):
         tmp = tempfile.mkdtemp()
         env, state = fake_env(tmp, FAKE_IDLE_FAILS="1", GW_PERF_COLD_SETTLE="0", GW_PERF_RUN_GAP="0",
-                              GW_PERF_BETWEEN_QUIET="0.3")
+                              GW_PERF_BETWEEN_QUIET="0.3", FAKE_HA_URL="http://127.0.0.1:18095")
         p = subprocess.run([RUN, "--frame", "test-frame", "--runs", "2", "--out", os.path.join(tmp, "out"), "--port", "18095",
                             "--taps", "0", "--skip-synthetic", "--skip-real-use", "--restore-dashboard", RESTORE],
                            env=env, capture_output=True, text=True, timeout=300)
@@ -187,7 +239,7 @@ class StopsPartway(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(tmp, "out", "refstart-1.json")))
         self.assertFalse(os.path.exists(os.path.join(tmp, "out", "refstart-2.json")))
         with open(os.path.join(state, "urls_set.json")) as f:
-            self.assertEqual(json.load(f), ["http://127.0.0.1:18095/clarity-light/0", RESTORE])
+            self.assertEqual(json.load(f), ["http://127.0.0.1:18095/clarity-ref/start", RESTORE])
         self.assertIn("pointing the kiosk back at its dashboard", p.stderr)
 
 
@@ -212,7 +264,7 @@ class HomeRelaunch(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         env, state = fake_env(tmp, FAKE_HOME_RELAUNCH="1")
         p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
-                            "--out", tmp, "--run", "1", "--settle", "3", "--url", "http://127.0.0.1:1",
+                            "--out", tmp, "--run", "1", "--settle", "3", "--url", HA.url,
                             "--taps", "0"], env=env, capture_output=True, text=True, timeout=120)
         self.assertEqual(p.returncode, 0, p.stderr[-2000:])
         with open(os.path.join(tmp, "refstart-1.json")) as f:
@@ -225,12 +277,13 @@ class HomeRelaunch(unittest.TestCase):
 
 
 def refstart(tmp, run=1, taps=0, **env_extra):
-    # As run.sh leaves it for the graded part: the kiosk points at the light reference dashboard.
-    env_extra.setdefault("FAKE_SAVED_URL", "http://127.0.0.1:1/clarity-light/0")
-    env, state = fake_env(tmp, GW_PERF_COLD_SETTLE="0", **env_extra)
-    p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
-                        "--out", tmp, "--run", str(run), "--settle", "0", "--url", "http://127.0.0.1:1",
-                        "--taps", str(taps), "--timeout", "90", "--between-quiet", "0.3"], env=env, capture_output=True, text=True, timeout=150)
+    with FakeHA() as ha:
+        # As run.sh leaves it for the graded part: the kiosk points at the reference dashboard's start view.
+        env_extra.setdefault("FAKE_SAVED_URL", ha.url + "/clarity-ref/start")
+        env, state = fake_env(tmp, GW_PERF_COLD_SETTLE="0", FAKE_HA_URL=ha.url, **env_extra)
+        p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
+                            "--out", tmp, "--run", str(run), "--settle", "0", "--url", ha.url,
+                            "--taps", str(taps), "--timeout", "90", "--between-quiet", "0.3"], env=env, capture_output=True, text=True, timeout=150)
     with open(os.path.join(tmp, f"refstart-{run}.json")) as f:
         return p, json.load(f)
 
@@ -539,7 +592,9 @@ class NoisyLogcat(unittest.TestCase):
         self.assertIsNone(c["error"])
         # The recorded stop is the second load's, and the first reference page opened 2 s after it.
         self.assertGreater(c["own_page_stop_mono"], c["own_page_start_mono"])
-        self.assertGreaterEqual(c["tiers"]["light"]["page_start_mono"] - c["own_page_stop_mono"], 2.0)
+        # The first view opens 2 s after the kiosk's own page stopped (it says so in its refdash line:
+        # a view opened by navigation loads no page).
+        self.assertGreaterEqual(c["tiers"]["light"]["page"]["mono"] - c["own_page_stop_mono"], 2.0)
 
 
 class ForeignPage(unittest.TestCase):
@@ -550,7 +605,7 @@ class ForeignPage(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         env, _ = fake_env(tmp, FAKE_FOREIGN_PAGE=where, GW_PERF_COLD_SETTLE="0")
         p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
-                            "--out", tmp, "--run", "1", "--settle", "0", "--url", "http://127.0.0.1:1",
+                            "--out", tmp, "--run", "1", "--settle", "0", "--url", HA.url,
                             "--taps", "0"], env=env, capture_output=True, text=True, timeout=120)
         with open(os.path.join(tmp, "refstart-1.json")) as f:
             return p.returncode, json.load(f)
@@ -569,7 +624,7 @@ class ForeignPage(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         env, _ = fake_env(tmp, FAKE_OWN_RELOAD="1", GW_PERF_COLD_SETTLE="0")
         p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
-                            "--out", tmp, "--run", "1", "--settle", "0", "--url", "http://127.0.0.1:1",
+                            "--out", tmp, "--run", "1", "--settle", "0", "--url", HA.url,
                             "--taps", "0"], env=env, capture_output=True, text=True, timeout=120)
         self.assertEqual(p.returncode, 0, p.stderr[-2000:])
         with open(os.path.join(tmp, "refstart-1.json")) as f:
@@ -632,6 +687,20 @@ class ReusedOut(unittest.TestCase):
         self.assertIn("use a new --out", p.stderr)
 
 
+class PortInUse(unittest.TestCase):
+    def test_a_port_another_fake_holds_is_refused(self):
+        """An earlier run's fake left on the port would answer for this run's, with its own code."""
+        tmp = tempfile.mkdtemp()
+        env, state = fake_env(tmp)
+        port = HA.url.rsplit(":", 1)[1]
+        p = subprocess.run([RUN, "--frame", "test-frame", "--out", os.path.join(tmp, "out"), "--port", port, "--skip-synthetic",
+                            "--skip-real-use", "--restore-dashboard", RESTORE], env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 2)
+        self.assertIn(f"port {port} is already in use", p.stderr)
+        with open(os.path.join(state, "commands.log")) as f:
+            self.assertNotIn("--es url", f.read())           # the kiosk was never pointed anywhere
+
+
 class IdleOnly(unittest.TestCase):
     """The pane-diff steps in docs/perf.md, starting from an empty directory."""
 
@@ -685,7 +754,7 @@ class PaneRam(unittest.TestCase):
         self.assertEqual(self.read("intents.json"), [off, assist, sendspin] * 2 + [{"voice_enabled": "true", "sendspin_enabled": "false"}])
         self.assertEqual(self.read("settings.json"), {"voice_enabled": "true", "sendspin_enabled": "false"})   # as given
         self.assertEqual(self.read("saved_url.json"), RESTORE)
-        self.assertEqual(self.read("urls_set.json"), ["http://127.0.0.1:18091/clarity-typical/0"] * 6 + [RESTORE])
+        self.assertEqual(self.read("urls_set.json"), ["http://127.0.0.1:18091/clarity-ref/typical"] * 6 + [RESTORE])
 
     def test_the_report_gives_each_panes_share(self):
         with open(os.path.join(self.out, "report.json")) as f:

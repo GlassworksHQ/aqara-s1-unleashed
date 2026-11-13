@@ -1,5 +1,5 @@
 {
- "_comment": "The reference pages' log lines (keys only, no values). Most are as the S1 Plus logged them in smoke7 (d60ec95, S1 Kiosk 0.4.3, the panel's logcat, 2026-11-12); refdash and step/updates are protocol 4's harness on HA's real frontend (headless Chromium, 2026-11-13), because smoke7's step/updates were cut off and protocol 4 adds to refdash. test_runner.FakeMatchesThePanel holds the fake adb to these shapes.",
+ "_comment": "The reference pages' log lines (keys only, no values). Most are as the S1 Plus logged them in smoke7 (d60ec95, S1 Kiosk 0.4.3, the panel's logcat, 2026-11-12); refdash and step/updates are protocol 4's harness on HA's real frontend (headless Chromium, 2026-11-13, opened by navigation in the loaded frontend), because smoke7's step/updates were cut off and protocol 4 adds to refdash. test_runner.FakeMatchesThePanel holds the fake adb to these shapes.",
  "tag": "Isolated Web Content",
  "max_line_bytes": 1023,
  "from_page_code": [
@@ -61,6 +61,7 @@
    "frontend",
    "lcp_ms",
    "load_ms",
+   "nav_ms",
    "nodes",
    "nonce",
    "origin_epoch_ms",
@@ -104,6 +105,8 @@
   ],
   "step/updates": [
    "changes",
+   "clock_rtt_ms",
+   "from",
    "n",
    "nonce",
    "pacing_ms",
@@ -111,6 +114,8 @@
    "raf_times",
    "run",
    "stage",
+   "stream_asked_ms",
+   "stream_at_ms",
    "t",
    "t0",
    "window_ms"

@@ -114,9 +114,9 @@ done
 # dashboard sets it again. On exit, the app is restarted unless it is set; that is harmless if the
 # dashboard was up after all.
 SERVER_PID="" DASHBOARD_OK=1 SWITCHED=0 PANES_SWITCHED=0 PANES=""
-# Protocol 4: the graded part points the kiosk at the fake Home Assistant's light dashboard (its
-# saved dashboard, `--es url`), so a restart comes back to it; it points it back at RESTORE after,
-# and here on any exit. --pane-ram also turns the panes off and on; the same intent puts them back.
+# Protocol 4: the graded part points the kiosk at the reference dashboard's start view on the fake
+# Home Assistant (its saved dashboard, `--es url`), so a restart comes back to it; it points it back
+# at RESTORE after, and here on any exit (exit status 3 if that failed). --pane-ram also turns the panes off and on; the same intent puts them back.
 # The runner can't read either setting itself (it never reads app data).
 pane_extras() { # the --ez extras for: one pane on by itself (its id), "none" on, or "restore"
   local id extra cur v out=""
@@ -128,25 +128,41 @@ pane_extras() { # the --ez extras for: one pane on by itself (its id), "none" on
   echo "$out"
 }
 point_back() {
-  local extras=""
+  local extras="" out
   [ "$PANES_SWITCHED" = 1 ] && extras=$(pane_extras restore)
   if [ "$SWITCHED" = 1 ] || [ "$PANES_SWITCHED" = 1 ]; then
     log "pointing the kiosk back at its dashboard ($RESTORE)${extras:+ and its panes ($PANE_RAM)}"
+    # -W: wait until the kiosk has the intent. am exits 0 even when it fails, so read its answer.
     # shellcheck disable=SC2086 # $extras is a list of extras
-    sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'$RESTORE'" $extras >/dev/null || true
-    SWITCHED=0 PANES_SWITCHED=0
+    out=$(sh_dev am start -W -n "$PACKAGE/.MainActivity" --es url "'$RESTORE'" $extras 2>&1) || out="$out (adb failed)"
     DASHBOARD_OK=0
+    if printf '%s\n' "$out" | grep -q '^Status: ok'; then
+      SWITCHED=0 PANES_SWITCHED=0
+      # Let the kiosk save the settings and load the dashboard (or restart, for Assist) before
+      # anything else restarts it.
+      sleep "$SWITCH_SETTLE"
+    else
+      log "COULD NOT point the kiosk back: $(printf '%s' "$out" | tr '\n' ' ')"
+      log "send it yourself: adb shell am start -n $PACKAGE/.MainActivity --es url '$RESTORE'$extras"
+    fi
   fi
 }
+restored() { [ "$SWITCHED" = 0 ] && [ "$PANES_SWITCHED" = 0 ]; }
 cleanup() {
+  local status=$?
   point_back
-  if [ "$DASHBOARD_OK" != 1 ]; then
+  if ! restored; then
+    point_back                     # once more; then say so in the exit status
+  fi
+  if [ "$DASHBOARD_OK" != 1 ] && restored; then
     log "restoring the dashboard (restart the app)"
     sh_dev am force-stop "$PACKAGE" || true
     sh_dev am start -n "$PACKAGE/.MainActivity" >/dev/null || true
   fi
   [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true
   "$ADB" reverse --remove "tcp:$PORT" 2>/dev/null || true
+  restored || exit 3
+  exit "$status"
 }
 trap cleanup EXIT
 
@@ -194,9 +210,16 @@ if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
   # The fake Home Assistant (fakeha.py) serves HA's pinned frontend, the reference dashboards and
   # the animation test page (under /clarity/page/). The first use fetches the frontend (117 MB).
   python3 "$HERE/hafrontend.py" >/dev/null
-  python3 "$HERE/fakeha.py" --port "$PORT" >"$OUT/server.log" 2>&1 &
+  # Something else on the port (an earlier run's fake left behind) would answer for ours.
+  if curl -s -o /dev/null "http://127.0.0.1:$PORT/manifest.json"; then
+    echo "port $PORT is already in use (an earlier run's fake Home Assistant?); stop it or use --port" >&2
+    exit 2
+  fi
+  # fakeha.jsonl: every command the frontend sent, and the stream's sends (report.py checks them).
+  python3 "$HERE/fakeha.py" --port "$PORT" --log "$OUT/fakeha.jsonl" >"$OUT/server.log" 2>&1 &
   SERVER_PID=$!
   for _ in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$PORT/manifest.json" && break; sleep 0.5; done
+  kill -0 "$SERVER_PID" 2>/dev/null || { echo "the fake Home Assistant didn't start; see $OUT/server.log" >&2; exit 2; }
   "$ADB" reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
 fi
 
@@ -217,13 +240,13 @@ fi
 if [ "$REF" = 1 ]; then
   # How many graded runs were attempted, so a run that left no file still counts against the grade.
   printf '{"runs": %d}\n' "$RUNS" > "$OUT/plan.json"
-  # The graded part. The kiosk is pointed at the fake HA's light dashboard; each run force-stops it,
-  # times the restart to that dashboard being usable, then opens the three reference dashboards in
-  # turn (the order turns each run).
+  # The graded part. The kiosk is pointed at the reference dashboard's start view; each run
+  # force-stops it, times the restart to that view being usable, then opens the three reference
+  # views in turn within the loaded frontend (the order turns each run).
   log "pointing the kiosk at the reference dashboard for the graded runs (it goes back to $RESTORE after)"
   DASHBOARD_OK=0
   SWITCHED=1
-  sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'http://127.0.0.1:$PORT/clarity-light/0'" >/dev/null
+  sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'http://127.0.0.1:$PORT/clarity-ref/start'" >/dev/null
   sleep "$SWITCH_SETTLE"
   for k in $(seq 1 "$RUNS"); do
     log "graded run $k/$RUNS: restart to the reference dashboard, then the three reference dashboards"
@@ -233,7 +256,7 @@ if [ "$REF" = 1 ]; then
       # RAM at idle on the typical reference dashboard, opened with no nonce: nothing is timed and
       # the live updates stay off (docs/perf.md, "RAM").
       log "idle on the typical reference dashboard $k/$RUNS"
-      run idle --label ref-idle --run "$k" --url "http://127.0.0.1:$PORT/clarity-typical/0" \
+      run idle --label ref-idle --run "$k" --url "http://127.0.0.1:$PORT/clarity-ref/typical" \
         --settle "$IDLE_SETTLE" --window "$IDLE_WINDOW"
     else
       log "graded run $k failed; see refstart-$k.json"
@@ -255,7 +278,7 @@ if [ -n "$PANE_RAM" ]; then
       label=$([ "$state" = none ] && echo ref-panes-off || echo "ref-$state-on")
       log "panes: $label $k/$RUNS"
       # shellcheck disable=SC2046 # the extras are a list
-      sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'http://127.0.0.1:$PORT/clarity-typical/0'" \
+      sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'http://127.0.0.1:$PORT/clarity-ref/typical'" \
         $(pane_extras "$state") --ez restart true >/dev/null
       sleep "$SWITCH_SETTLE"
       thermal "$label-$k"
@@ -264,6 +287,7 @@ if [ -n "$PANE_RAM" ]; then
   done
 fi
 point_back
+restored || { log "the kiosk's dashboard or panes weren't put back"; exit 3; }
 
 if [ "$REAL" = 1 ]; then
   for k in $(seq 1 "$RUNS"); do

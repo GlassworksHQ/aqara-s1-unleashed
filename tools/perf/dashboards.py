@@ -1,6 +1,7 @@
 """Clarity's fixed home (MIT): the entities, their states and history, HA's config, panels and
-services, and the three reference dashboards as real Lovelace configs, for the fake Home Assistant
-(fakeha.py). Everything is seeded, so every run serves the same home.
+services, and the reference dashboard as a real Lovelace config, for the fake Home Assistant
+(fakeha.py): one dashboard whose views are the start view (where the kiosk comes back to after a
+restart) and the three reference tiers. Everything is seeded, so every run serves the same home.
 
 The counts are in page/tiers.json, the one source the harness reads too.
 """
@@ -8,11 +9,14 @@ import json
 import os
 import random
 import struct
+import time
 import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(HERE, "page", "tiers.json")) as _f:
     TIERS = json.load(_f)
+DASHBOARD = TIERS["DASHBOARD"]
+VIEWS = ["start"] + TIERS["ORDER"]          # view index 0 is the start view
 SEED = 89
 START = 1_794_500_000.0          # a fixed epoch for every last_changed (2026-11-13)
 # The fixed home's size: enough for the heavy dashboard's ~370 entities with room to spare, and a
@@ -32,6 +36,14 @@ def context():
     """A context id, as HA's ULIDs look, but counted, so runs don't differ."""
     _ctx[0] += 1
     return f"01JC1ARITY{_ctx[0]:016d}"
+
+
+def stream_context(kind, gen, k):
+    """The context id of a live stream's k-th change: S for a sensor value, F for an on/off flip, and
+    the stream's generation (one per /clarity/live). 26 characters, as HA's ULIDs; HA's frontend
+    treats a context id as opaque. The harness reads the slot from it, so it knows when the fake sent
+    the change (the stream runs at fixed times from its start), and that it is this stream's."""
+    return f"01JC1ARITY{kind}{gen:05d}{k:010d}"
 
 
 # ---- the entities
@@ -117,16 +129,15 @@ def panels():
                     "url_path": "home", "require_admin": False, "config_panel_domain": None},
            "lovelace": {"component_name": "lovelace", "icon": None, "title": None, "config": {"mode": "storage"},
                         "url_path": "lovelace", "require_admin": False, "config_panel_domain": None}}
-    for t in TIERS["ORDER"]:
-        out[f"clarity-{t}"] = {"component_name": "lovelace", "icon": "mdi:view-dashboard", "title": f"Clarity {t}",
-                               "config": {"mode": "storage"}, "url_path": f"clarity-{t}", "require_admin": False,
-                               "show_in_sidebar": False, "config_panel_domain": None}
+    out[DASHBOARD] = {"component_name": "lovelace", "icon": "mdi:view-dashboard", "title": "Clarity",
+                      "config": {"mode": "storage"}, "url_path": DASHBOARD, "require_admin": False,
+                      "show_in_sidebar": False, "config_panel_domain": None}
     return out
 
 
 def dashboards_list():
-    return [{"id": f"clarity_{t}", "url_path": f"clarity-{t}", "title": f"Clarity {t}", "icon": "mdi:view-dashboard",
-             "show_in_sidebar": False, "require_admin": False, "mode": "storage"} for t in TIERS["ORDER"]]
+    return [{"id": "clarity_ref", "url_path": DASHBOARD, "title": "Clarity", "icon": "mdi:view-dashboard",
+             "show_in_sidebar": False, "require_admin": False, "mode": "storage"}]
 
 
 def icons(category, integration=None):
@@ -153,11 +164,30 @@ def head():
     return {"sensors": sensors, "switches": switches, "rows": rows, "tiles": tiles}
 
 
+def head_cards():
+    """How many cards the head is: the clock, the toggle, the head's tiles and the Energy card, first
+    in every view's config and all on its first screen. "Usable" waits for all of them (F1)."""
+    return 2 + len(head()["tiles"]) + 1
+
+
+def view_spec(view):
+    """A view's counts: a reference tier's, or the start view's (the light view's, plus START's)."""
+    if view == "start":
+        st = TIERS["START"]
+        return dict(TIERS["TIERS"][st["base"]], **{k: v for k, v in st.items() if k != "base"})
+    return TIERS["TIERS"][view]
+
+
 def lovelace(url_path):
-    tier = (url_path or "").replace("clarity-", "")
-    if tier not in TIERS["TIERS"]:
+    """The one reference dashboard: its views are the start view and the three reference tiers, each
+    at its own path (/clarity-ref/<view>). Opening a view is HA's own navigation within it."""
+    if url_path != DASHBOARD:
         return {"views": [{"title": "Home", "cards": []}]}
-    spec, rnd, hd = TIERS["TIERS"][tier], random.Random(SEED), head()
+    return {"views": [{"title": f"Clarity {v}", "path": v, "cards": view_cards(v)} for v in VIEWS]}
+
+
+def view_cards(view):
+    spec, rnd, hd = view_spec(view), random.Random(SEED), head()
     taken = set(hd["sensors"] + hd["switches"] + hd["rows"] + ["light.living_room"])
     pool = {d: [f"{d}.clarity_{i}" for i in range(N_SENSORS if d == "sensor" else N_ONOFF)]
             for d in ("sensor", "light", "switch", "binary_sensor")}
@@ -196,42 +226,62 @@ def lovelace(url_path):
     for i in range(spec["pictures"]):
         deck.append({"type": "picture", "image": f"/clarity/picture-{i}.png"})
     rnd.shuffle(deck)
-    return {"views": [{"title": f"Clarity {tier}", "path": "0", "cards": first + deck}]}
+    return first + deck
 
 
-def history(entity_ids, start, end):
-    """24 h of seeded history for the sensor and history-graph cards (history/stream, compressed:
-    s = state, lu = last updated)."""
+def window(start, end, now=None):
+    """The time window a card asked for, in epoch seconds. The frontend sends its start (now less the
+    card's hours_to_show, on the panel's clock) and often no end; every reference card shows 24 h,
+    so the end is then 24 h after the start, which needs no clock of ours. With neither, the last
+    24 h. History and statistics are anchored to it, so a graph shows the same shape on any date (F4:
+    anchored to a fixed date, heavy's graphs went empty a day after it)."""
+    import datetime
+    parse = lambda x: datetime.datetime.fromisoformat(x.replace("Z", "+00:00")).timestamp()  # noqa: E731
+    if start:
+        t0 = parse(start)
+        t1 = parse(end) if end else t0 + 86400
+    else:
+        t1 = parse(end) if end else (now if now is not None else time.time())
+        t0 = t1 - 86400
+    return t0, max(t1, t0)
+
+
+def history(entity_ids, start, end, now=None):
+    """96 seeded points across the asked window, for the sensor and history-graph cards
+    (history/stream, compressed: s = state, lu = last updated). The values depend only on the entity,
+    the times only on the window."""
+    t0, t1 = window(start, end, now)
+    n = 96
+    at = lambda k: round(t0 + (t1 - t0) * k / n, 3)  # noqa: E731
     out = {}
     for e in entity_ids:
         rnd = random.Random(f"{SEED}:{e}")
-        n = 96
         if e.startswith("sensor."):
             base = 50 + 400 * rnd.random()
-            out[e] = [{"s": str(round(base * (0.7 + 0.6 * rnd.random()), 1)), "lu": START - (n - k) * 900,
+            out[e] = [{"s": str(round(base * (0.7 + 0.6 * rnd.random()), 1)), "lu": at(k),
                        **({"a": {}} if k == 0 else {})} for k in range(n)]
         else:
-            out[e] = [{"s": "on" if k % 2 else "off", "lu": START - (n - k) * 900, **({"a": {}} if k == 0 else {})}
+            out[e] = [{"s": "on" if k % 2 else "off", "lu": at(k), **({"a": {}} if k == 0 else {})}
                       for k in range(n)]
     return out
 
 
-def statistics(statistic_ids, start_time, end_time, period):
+def statistics(statistic_ids, start_time, end_time, period, now=None):
     """recorder/statistics_during_period (the sensor card's graph for sensors with a state class):
-    seeded hourly points, {id: [{start, end, mean, min, max, state}]}, times in ms."""
-    import datetime
-    t0 = datetime.datetime.fromisoformat(start_time.replace("Z", "+00:00")).timestamp() if start_time else START - 86400
-    t1 = datetime.datetime.fromisoformat(end_time.replace("Z", "+00:00")).timestamp() if end_time else START
+    seeded points ending at the asked window's end, {id: [{start, end, mean, min, max, state}]}, times
+    in ms. The same count and values on any date."""
+    t0, t1 = window(start_time, end_time, now)
     step = {"5minute": 300, "hour": 3600, "day": 86400}.get(period or "hour", 3600)
+    n = min(500, max(1, round((t1 - t0) / step)))
     out = {}
     for sid in statistic_ids or []:
         rnd = random.Random(f"{SEED}:stat:{sid}")
-        base, pts, t = 50 + 400 * rnd.random(), [], t0 - t0 % step
-        while t < t1 and len(pts) < 500:
+        base, pts = 50 + 400 * rnd.random(), []
+        for i in range(n):
+            t = t1 - (n - i) * step
             mean = round(base * (0.7 + 0.6 * rnd.random()), 2)
             pts.append({"start": int(t * 1000), "end": int((t + step) * 1000), "mean": mean,
                         "min": round(mean * 0.9, 2), "max": round(mean * 1.1, 2), "state": mean})
-            t += step
         out[sid] = pts
     return out
 
@@ -280,7 +330,8 @@ def asset(name):
             with open(os.path.join(HERE, "page", n), "rb") as f:
                 return f.read()
         import hafrontend
-        cfg = dict(TIERS, FRONTEND=hafrontend.VERSION, HEAD_ENTITIES=head())
+        cfg = dict(TIERS, FRONTEND=hafrontend.VERSION, HEAD_ENTITIES=head(), VIEWS=VIEWS, HEAD_CARDS=head_cards(),
+                   CARDS={v: len(view_cards(v)) for v in VIEWS})
         body = read("stats.js") + b"\nwindow.GW_CLARITY = " + json.dumps(cfg).encode() + b";\n" + read("harness.js")
         return ("application/javascript", body)
     return None
@@ -291,9 +342,12 @@ class Stream:
     changes a second over the head's sensor tiles and rows, and an on/off change every
     `flipEveryMs` over its on/off tiles. Fixed times and fixed values, so every run is the same."""
 
-    def __init__(self, set_state, states):
+    def __init__(self, set_state, states, record=None, gen=0):
         import threading
-        self.set_state, self.states, self.stop = set_state, states, threading.Event()
+        self.set_state, self.states, self.stop, self.gen = set_state, states, threading.Event(), gen
+        # The schedule's zero, on the fake's monotonic clock: change k goes out at start + k / rate.
+        self.start = time.monotonic()
+        self.record = record or (lambda entry: None)
         h = head()
         self.targets, self.switches = h["sensors"] + h["rows"], h["switches"]
 
@@ -306,7 +360,7 @@ class Stream:
 
     def run(self):
         import time
-        start, every, flip = time.monotonic(), 1 / TIERS["LIVE"]["updatesPerS"], TIERS["LIVE"]["flipEveryMs"] / 1000
+        start, every, flip = self.start, 1 / TIERS["LIVE"]["updatesPerS"], TIERS["LIVE"]["flipEveryMs"] / 1000
         k = f = 0
         while not self.stop.is_set():
             nxt_k, nxt_f = start + (k + 1) * every, start + (f + 1) * flip
@@ -315,8 +369,12 @@ class Stream:
                 return
             if time.monotonic() >= nxt_k:
                 k += 1
-                self.set_state(*self.sensor_change(k))
+                e, v = self.sensor_change(k)
+                self.set_state(e, v, context=stream_context("S", self.gen, k))
+                # How late the fake itself sent it: the report shows the fake kept its schedule.
+                self.record({"stream": "S", "k": k, "late_ms": round((time.monotonic() - nxt_k) * 1000, 1)})
             if time.monotonic() >= nxt_f:
                 f += 1
                 e = self.switches[f % len(self.switches)]
-                self.set_state(e, "off" if self.states[e]["state"] == "on" else "on")
+                self.set_state(e, "off" if self.states[e]["state"] == "on" else "on", context=stream_context("F", self.gen, f))
+                self.record({"stream": "F", "k": f, "late_ms": round((time.monotonic() - nxt_f) * 1000, 1)})

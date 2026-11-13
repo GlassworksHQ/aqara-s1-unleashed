@@ -6,6 +6,13 @@
   "typical",
   "heavy"
  ],
+ "DASHBOARD": "clarity-ref",
+ "_START": "The view the kiosk is pointed at and comes back to after a restart: the light view's cards plus one history graph and one picture, so the cold load brings in the code of every card type HA loads lazily (create-card-element.ts) and opening a view later measures the view, not a first download.",
+ "START": {
+  "base": "light",
+  "histories": 1,
+  "pictures": 1
+ },
  "TIERS": {
   "light": {
    "tiles": 12,
@@ -53,7 +60,8 @@
   "tileTransitionMs": 180
  },
  "PHASES": {
-  "stillAfterLoadEventMs": 2500,
+  "stillAfterUsableMs": 2500,
+  "freeWindowMs": 500,
   "warmupMs": 1000,
   "tapWaitMinMs": 30000,
   "swipes": 6,

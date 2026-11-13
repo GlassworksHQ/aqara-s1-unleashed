@@ -47,6 +47,10 @@ def shell(cmd):
         return props.get(cmd.split()[1], "")
     if cmd.startswith("am start"):
         u = re.search(r"--es url '([^']+)'", cmd)
+        if u and os.environ.get("FAKE_RESTORE_FAILS") and "127.0.0.1" not in u.group(1):
+            # The kiosk didn't take the restore (am exits 0 all the same): nothing is saved.
+            save("restore_refused.json", state("restore_refused.json", 0) + 1)
+            return "Starting: Intent { cmp=sh.edm.s1kiosk/.MainActivity }\nError: Activity not started, unable to resolve Intent\n"
         if u:
             # Like the kiosk: `url` saves the dashboard (a URL or "auto") and loads it.
             save("saved_url.json", u.group(1))
@@ -65,7 +69,8 @@ def shell(cmd):
             else:
                 save("opened_still.json", state("opened_still.json", []) + [m.group(1)])   # an idle sample's page
         if " -W " in cmd:
-            if not os.environ.get("FAKE_NO_DASHBOARD"):
+            # A launch (the cold start); an intent with a setting goes to the running kiosk instead.
+            if not os.environ.get("FAKE_NO_DASHBOARD") and not u and not ez:
                 save("cold.json", True)
             return "Starting: Intent\nStatus: ok\nActivity: sh.edm.s1kiosk/.MainActivity\nTotalTime: 1700\nWaitTime: 1710\nComplete\n"
         return "Starting: Intent\n"
@@ -247,7 +252,7 @@ def page(nonce):
 def refdash(nonce, url):
     """A reference dashboard: it loads (first paint 150 ms, load event 120 ms), stays still, goes live
     (state updates), one window of frames, the taps, then swipes where it asks, done."""
-    tier = re.search(r"/clarity-(\w+)/", url).group(1)
+    tier = re.search(r"/clarity-ref/(\w+)", url).group(1)
     taps = int(re.search(r"taps=(\d+)", url).group(1))
     m = re.search(r"swipes=(\d+)", url)
     swipes = int(m.group(1)) if m else int(os.environ.get("FAKE_SWIPES", "2"))
@@ -261,10 +266,11 @@ def refdash(nonce, url):
 
     if foreign == "before":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
-    origin = time.time() * 1000
+    # Protocol 4: the frontend stays loaded; the view opens by navigation, so no page load is logged.
+    origin = time.time() * 1000 - 5000
+    nav = time.time() * 1000 - origin
     a = now()
     paint(a + 0.15, a + 0.5)
-    line("GeckoSession", f"handleMessage GeckoView:PageStart uri={url}")
     save("asked.json", {})
     stale = state("last_nonce.json")
     if os.environ.get("FAKE_STALE_READY") and stale:
@@ -279,9 +285,12 @@ def refdash(nonce, url):
     time.sleep(0.7)
     gw({"t": "refdash", "tier": tier, "protocol": PROTOCOL, "frontend": "20261028.5", "nodes": 1458, "cards": 50,
         "cards_rendered": 47, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
-        "fcp_ms": 150, "lcp_ms": 150, "load_ms": 120, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000,
-        # Protocol 4: the first screen's cards rendered at 300 ms on the page's clock, the main thread free at 320.
-        "usable": {"rendered_tick_ms": 300.0, "first_screen_cards": 14, "interactive_ms": 320.0}})
+        "fcp_ms": None, "lcp_ms": None, "load_ms": None, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000,
+        # Protocol 4: navigation at `nav`; the view's first screen rendered 200 ms later, the main thread
+        # free 20 ms after that.
+        "nav_ms": round(nav, 1),
+        "usable": {"rendered_tick_ms": round(nav + 200, 1), "first_screen_cards": 14, "head_cards": 10,
+                   "interactive_ms": round(nav + 220, 1)}})
     time.sleep(1.0)
     gw({"t": "warmup", "stage": "updates", "n": 1})
     time.sleep(0.3)
@@ -292,9 +301,13 @@ def refdash(nonce, url):
     time.sleep(0.5)
     # As long as the real page's (smoke7's were cut at 1023 bytes; this one is about 1.8 KB, so it is
     # split): a change every 10 ms over the 500 ms window, and 31 rAF times.
-    changes = [[round(10.0 * k, 1), round(10.0 * k + 0.4, 1), 180 if k % 9 == 4 else 0, 2 if k % 9 == 4 else 0,
-                round(10.0 * k + 0.6, 1)] for k in range(1, 49)]
-    gw({"t": "step", "stage": "updates", "n": 1, "window_ms": 500, "t0": round(t0, 1), "pacing_ms": 500,
+    # [sent, arrived, transition, kind, tick]: the fake HA's schedule, the page reads each 0.4 ms later.
+    # FAKE_BUSY_MAIN: from 200 ms on, nothing reaches the page in the window (a busy main thread).
+    busy = os.environ.get("FAKE_BUSY_MAIN")
+    changes = [[round(10.0 * k, 1), None if busy and 10 * k >= 200 else round(10.0 * k + 0.4, 1), 180 if k % 9 == 4 else 0,
+                2 if k % 9 == 4 else 0, None if busy and 10 * k >= 200 else round(10.0 * k + 0.6, 1)] for k in range(1, 49)]
+    gw({"t": "step", "stage": "updates", "n": 1, "window_ms": 500, "t0": round(t0, 1), "pacing_ms": 500, "from": "sent",
+        "clock_rtt_ms": float(os.environ.get("FAKE_CLOCK_RTT", "3.0")), "stream_at_ms": -1000.0, "stream_asked_ms": -1001.5,
         "raf": {"n": 30, "median_ms": 16.67, "p95_ms": 16.67, "jank_pct": 0, "frozen_pct": 0, "fps": 60},
         "raf_times": [round(i * 16.7, 1) for i in range(31)], "changes": changes})
     if taps:
@@ -329,11 +342,17 @@ def refdash(nonce, url):
             "raf_intervals": [16.7] * 30})
         time.sleep(0.2)
     save("asked.json", {})
+    if os.environ.get("FAKE_HA_URL"):
+        # As the harness does at the end of a view: stop the stream, which also ends the command.
+        import urllib.request
+        try:
+            urllib.request.urlopen(os.environ["FAKE_HA_URL"].rstrip("/") + f"/clarity/still?nonce={nonce}", timeout=10).read()
+        except OSError:
+            pass
     gw({"t": "done", "stage": tier})
     if foreign == "end":
         time.sleep(0.3)
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
-
 
 def dashboard():
     """A cold start as on the S1: Displayed, then 0.6 s later GeckoView's own about:blank (the session
@@ -353,10 +372,11 @@ def dashboard():
         line("GeckoSession", f"handleMessage GeckoView:PageStart uri={saved}")
         origin = time.time() * 1000 - 200
         time.sleep(0.5)
-        page_log({"t": "refdash", "tier": "light", "protocol": PROTOCOL, "frontend": "20261028.5", "nodes": 1082, "cards": 20,
+        page_log({"t": "refdash", "tier": "start", "protocol": PROTOCOL, "frontend": "20261028.5", "nodes": 1082, "cards": 22,
                   "cards_rendered": 20, "css": [960, 480],
                   "dpr": float(os.environ.get("FAKE_DPR", "1.5")), "scroll_height": 1936, "fcp_ms": 120, "lcp_ms": 120,
-                  "load_ms": 100, "usable": {"rendered_tick_ms": 400.0, "first_screen_cards": 13, "interactive_ms": 410.0},
+                  "load_ms": 100, "nav_ms": 0,
+                  "usable": {"rendered_tick_ms": 400.0, "first_screen_cards": 13, "head_cards": 10, "interactive_ms": 410.0},
                   "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000, "run": 1, "nonce": ""}, record=False)
         line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
         time.sleep(0.2)
@@ -373,8 +393,33 @@ def dashboard():
         line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
 
 
+def take_commands(base):
+    """As the harness does in the loaded frontend: wait for the runner's next view at the fake Home
+    Assistant (/clarity/next), then play it (refdash, below)."""
+    import urllib.parse
+    import urllib.request
+    last = ""
+    while True:
+        try:
+            with urllib.request.urlopen(base.rstrip("/") + "/clarity/next?after=" + last, timeout=30) as r:
+                if r.status != 200:
+                    continue
+                cmd = json.loads(r.read())
+        except OSError:
+            time.sleep(0.2)
+            continue
+        last = cmd["nonce"]
+        q = {k: v for k, v in cmd.items() if k != "view"}
+        save("views.json", state("views.json", []) + [cmd])
+        with open(os.path.join(STATE, "commands.log"), "a") as f:     # in order with the adb commands
+            f.write(f"view {cmd['view']} {cmd['nonce']} taps={cmd.get('taps')}\n")
+        save("refnonce.json", [cmd["nonce"], f"/clarity-ref/{cmd['view']}?{urllib.parse.urlencode(q)}"])
+
+
 def logcat():
     print("    1.000  1  1 I old: line from before", flush=True)
+    if os.environ.get("FAKE_HA_URL"):
+        threading.Thread(target=take_commands, args=(os.environ["FAKE_HA_URL"],), daemon=True).start()
     if os.environ.get("FAKE_LOGCAT_NOISE"):
         threading.Thread(target=noise, args=(float(os.environ["FAKE_LOGCAT_NOISE"]),), daemon=True).start()
     end = now() + 60
