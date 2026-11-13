@@ -86,7 +86,7 @@ way), so today: `armeabi-v7a` and `arm64-v8a`. `ApkAbiListsTest` checks that the
 | Frame | `abis` | From |
 |---|---|---|
 | `aqara-s1-plus` | `armeabi-v7a` | The panel's 32-bit userspace (`ro.product.cpu.abilist` = `armeabi-v7a,armeabi`, read on a panel 2026-11-12) |
-| `lululemon-mirror` | `arm64-v8a`, `armeabi-v7a` | The community image's `ro.product.cpu.abilist` (`arm64-v8a,armeabi-v7a,armeabi`, read from its `system.img` 2026-11-12). Not read on a stock unit ([mirror-abis.md](../docs/research/mirror-abis.md)) |
+| `lululemon-mirror` | `arm64-v8a`, `armeabi-v7a` | The community image's `ro.product.cpu.abilist` (`arm64-v8a,armeabi-v7a,armeabi`, read from its `system.img` 2026-11-12). Not read on a stock unit ([mirror-abis.md](lululemon-mirror/research/mirror-abis.md)) |
 | `generic-android` | `arm64-v8a`, `armeabi-v7a` | The ARM tablets and phones it targets. No x86 APK is built |
 
 `kiln/apps/kiln/test/frame-designs.test.ts` checks every `design/frame.json`: Kiln lists it, every

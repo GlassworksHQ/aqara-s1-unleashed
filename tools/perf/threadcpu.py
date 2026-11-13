@@ -2,7 +2,7 @@
 """Per-thread CPU of the kiosk's processes over a window (MIT).
 
 Read-only: it runs `cat /proc/<pid>/task/*/stat` over adb twice and diffs the jiffies. It writes
-nothing on the device and needs no root. Used for #105 (docs/research/idle-cpu.md).
+nothing on the device and needs no root. Used for #105 (frames/aqara-s1-plus/research/idle-cpu.md).
 
   tools/perf/threadcpu.py [-s SERIAL] [--seconds 60] [--package sh.edm.s1kiosk] [--extra otbr-agent]
 

@@ -2,7 +2,7 @@
 """
 Fake Aqara S1 Plus wall base ("bracket") speaking the UART protocol of /dev/ttyS3, over TCP.
 
-The protocol is documented in docs/research/base-protocol.md (reverse-engineered from Aqara's
+The protocol is documented in frames/aqara-s1-plus/research/base-protocol.md (reverse-engineered from Aqara's
 /vendor/bin/bracket_cli and /vendor/lib/libha_bracket.so). This emulator plays the *base* side:
 
   * answers reads (type 1 -> type 4 read response, same sequence number),

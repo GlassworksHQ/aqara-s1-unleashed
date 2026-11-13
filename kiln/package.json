@@ -2,7 +2,7 @@
   "name": "s1-unleashed-web-installer",
   "private": true,
   "version": "0.0.0",
-  "description": "Browser (WebUSB) installer for the Aqara Panel Hub S1 Plus. See docs/research/web-installer.md.",
+  "description": "Browser (WebUSB) installer for the Aqara Panel Hub S1 Plus. See frames/aqara-s1-plus/research/web-installer.md.",
   "license": "MIT",
   "type": "module",
   "scripts": {

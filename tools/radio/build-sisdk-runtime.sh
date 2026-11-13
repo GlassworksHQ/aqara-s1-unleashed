@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # build-sisdk-runtime.sh: the parts of the Silicon Labs Zigbee stack (zigbeed 8.2.2, EZSP 18) that
 # this project may ship, for the radio bundle's sisdk/ directory (docs/radio.md "Zigbee stack",
-# docs/research/zigbee2mqtt.md). The zigbeed binary itself is NOT here and must never be: it is Silicon
+# frames/aqara-s1-plus/research/zigbee2mqtt.md). The zigbeed binary itself is NOT here and must never be: it is Silicon
 # Labs MSLA object code, downloaded by the panel from Silicon Labs' release (pinned SHA-256).
 #
 #   tools/radio/build-sisdk-runtime.sh            # -> tools/radio/out/sisdk (SISDK_OUT=<dir> to change)

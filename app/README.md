@@ -80,13 +80,13 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   [docs/sensors.md](../docs/sensors.md)): wake on approach (VI5300 ToF), off after idle, a night window
   with a shorter timeout and lower brightness cap, auto-brightness from the MK6212 light sensor. Runs in
   a foreground `KioskService`, so it works while the screen is off. It replaces Aqara's DND
-  screen-off ([docs/research/screen-policy.md](../docs/research/screen-policy.md)).
+  screen-off ([frames/aqara-s1-plus/research/screen-policy.md](../frames/aqara-s1-plus/research/screen-policy.md)).
 - **Home Assistant integration as an ESPHome device** (native API, voice assistant, screen and kiosk
   controls), see below and [docs/esphome.md](../docs/esphome.md).
 - **Wall base (relay base) without Aqara's daemon**: the app speaks the base's UART protocol on
   `/dev/ttyS3` itself (relays, power, energy, protection), so `ha_master` and Aqara's cloud stay stopped.
   The LocalService path through `ha_master` remains as a fallback (`base_backend`). See
-  [docs/research/bases.md](../docs/research/bases.md) and [docs/research/base-protocol.md](../docs/research/base-protocol.md).
+  [frames/aqara-s1-plus/research/bases.md](../frames/aqara-s1-plus/research/bases.md) and [frames/aqara-s1-plus/research/base-protocol.md](../frames/aqara-s1-plus/research/base-protocol.md).
 - **Native Music Assistant player (Sendspin)**: MA sees the panel as its own player "Glassworks Panel" and plays
   to it in sync with your other Sendspin speakers (groupable). It pairs automatically: HA hands MA the
   panel's pairing token over the ESPHome API. See below and [docs/sendspin.md](../docs/sendspin.md).
@@ -231,7 +231,7 @@ goes; not with `?kiosk=0` or `?edit=1`.
 
 > If the screen is blank/white and `innerWidth` is 0, the **display is off**. Gecko drops its
 > surface while the screen sleeps. Check `adb shell dumpsys power | grep mWakefulness`.
-> See [docs/research/screen-policy.md](../docs/research/screen-policy.md) for why the panel turns itself off.
+> See [frames/aqara-s1-plus/research/screen-policy.md](../frames/aqara-s1-plus/research/screen-policy.md) for why the panel turns itself off.
 
 ## Home Assistant: ESPHome device + voice assistant
 

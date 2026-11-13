@@ -20,7 +20,7 @@ Each step makes the next one safer. Don't skip ahead to flashing.
    An ESP32-S3 works as the bridge ([`tools/esp32-uart-bridge`](../../tools/esp32-uart-bridge)).
    Opening the serial port can toggle DTR/RTS and reset the bridge, so scripts should clear both.
 3. **Capture and annotate the stock boot log**, from power-on to the Android shell
-   ([boot-log.md](boot-log.md)). It answers most of the early questions:
+   ([boot-log.md](../../frames/aqara-s1-plus/research/boot-log.md)). It answers most of the early questions:
    - Is secure boot on, and is a root-of-trust key fused? (`secure enable bit`, `rotpk`)
    - Is AVB present, and is it enforced? (`magic = AVB0`, vbmeta flags)
    - Which bootloader and version? Is autoboot interruptible?
@@ -29,7 +29,7 @@ Each step makes the next one safer. Don't skip ahead to flashing.
    - The PMIC, the eMMC controller and the partition table.
 4. **Read the running system.** From the console shell: `id`, whether `su` exists and its syntax,
    `getenforce`, `ro.build.type`/`ro.secure`/`ro.debuggable`, `ls -l /dev/block/by-name`, the USB and
-   adb properties, `ps -A`, `getprop`. Record what each one rules in or out ([findings.md](findings.md)).
+   adb properties, `ps -A`, `getprop`. Record what each one rules in or out ([findings.md](../../frames/aqara-s1-plus/research/findings.md)).
 5. **Back up everything, read-only, before you write anything.** Every partition you might ever
    touch, plus the bootloader package and `env`. Hash them, keep them outside the repo, and keep two
    copies. On the S1, boot0 was first read over the UART with `dd` and `od`, before any USB path
@@ -39,7 +39,7 @@ Each step makes the next one safer. Don't skip ahead to flashing.
    Qualcomm EDL (usually locked to signed programmers). Then **rule out every easier path and write
    down why**: vendor burn modes, `misc` boot commands, RTC flags, button-free USB. On the S1 that
    took a day and saved every later contributor from repeating it
-   ([findings.md: USB entry points](findings.md#bootloader-usb-entry-points-stock-u-boot-201805-read-from-the-binary)).
+   ([findings.md: USB entry points](../../frames/aqara-s1-plus/research/findings.md#bootloader-usb-entry-points-stock-u-boot-201805-read-from-the-binary)).
 7. **Run your own bootloader from RAM.** Nothing is written, so a mistake costs a power cycle. Get
    it to a prompt, then to `mmc info`, then to a USB gadget (fastboot).
 8. **Add a read path before the write path.** Read partitions back over USB and compare them with
@@ -65,13 +65,13 @@ Each step makes the next one safer. Don't skip ahead to flashing.
 - **Get a signal out early.** When nothing prints, put raw UART writes at each stage. The TF-A debug
   patch in [`tools/fel/tfa`](../../tools/fel/tfa/README.md) does this.
 - **Prove a protocol against the vendor's own tool.** For the wall base, we wrote an emulator from the
-  disassembly and ran Aqara's `bracket_cli` against it on the panel ([base-protocol.md](base-protocol.md)).
+  disassembly and ran Aqara's `bracket_cli` against it on the panel ([base-protocol.md](../../frames/aqara-s1-plus/research/base-protocol.md)).
   For the radio, we proved the flash path by reflashing the identical stock image first.
 - **Vendor binaries:** these are mostly 32-bit ARM and stripped. `strings`, `llvm-objdump -d` and
   radare2 go a long way. Record the binary's name, version and the offsets you read, never the bytes.
 - **Name the vendor behaviour that fights you.** "The screen turns off at night" turned out to be a
-  hidden DND rule in Aqara's system manager ([screen-policy.md](screen-policy.md)). "Wi-Fi drops"
-  turned out to be a watchdog tied to the cloud daemon ([debloat.md](debloat.md)). Find the
+  hidden DND rule in Aqara's system manager ([screen-policy.md](../../frames/aqara-s1-plus/research/screen-policy.md)). "Wi-Fi drops"
+  turned out to be a watchdog tied to the cloud daemon ([debloat.md](../../frames/aqara-s1-plus/research/debloat.md)). Find the
   component before you work around the symptom.
 
 ## What the S1 Plus taught us
@@ -93,11 +93,11 @@ Each step makes the next one safer. Don't skip ahead to flashing.
 ### DRAM (DDR4)
 
 - The parameters come from the stock BOOT0 log and header: DDR4, 792 MHz, 1200 mV, `tpr11`–`tpr13`
-  ([boot-log.md](boot-log.md)).
+  ([boot-log.md](../../frames/aqara-s1-plus/research/boot-log.md)).
 - Mainline's A133 DDR4 code programs **MR0 = `0x840`, but boot0 programs `0x520`**. The RAM then
   runs a different CAS latency from the one the controller's timings assume. Read→write turnarounds
   corrupt data, while simple tests still pass. Patch 0001 fixes it, and the MR0 change was sent
-  upstream on 2026-11-11 ([fel.md](fel.md#what-had-to-be-fixed)).
+  upstream on 2026-11-11 ([fel.md](../../frames/aqara-s1-plus/research/fel.md#what-had-to-be-fixed)).
 - The sunxi-fel SRAM burst test does not catch this. You need U-Boot running from DRAM, copying with
   `cp.q` and checking with `cmp.q`.
 
@@ -124,7 +124,7 @@ Each step makes the next one safer. Don't skip ahead to flashing.
   (`ro.adb.secure=1`). The installer bakes the host's public key into the boot image, and a
   one-shot service authorises it on first boot, so the user never has to tap the screen.
 - SELinux is permissive. That makes root easier, and it also means any app can start init services.
-  Design every root service for that ([root.md](root.md)).
+  Design every root service for that ([root.md](../../frames/aqara-s1-plus/research/root.md)).
 - The system WebView is Chromium 74, so the kiosk ships GeckoView. Never change `wm density`.
 - Panels can ship in the wrong time zone (`Africa/Algiers`) and with a hidden 22:00–07:00
   screen-off rule. Check both on any Aqara device.

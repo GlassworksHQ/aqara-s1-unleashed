@@ -77,6 +77,9 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Keeping the radio Off in Kiln finishes the panel's radio step.** A fresh panel installed with
+  Kiln no longer asks *Radio* again on its own screen when you left the radio Off. Choosing the mode
+  the radio already runs doesn't restart it. Needs the S1 Kiosk release with this fix.
 - **Kiln's Done always offers your backup.** After an install, Done shows the backup's download even
   when set-up ran after leaving and coming back to the wizard, or after a reload. Before, it could
   show no download, and the backup was only in that browser. When a browser blocks site storage,

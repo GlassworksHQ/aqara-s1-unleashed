@@ -18,10 +18,10 @@ A new library in `libs/` or a new pane needs a branded README header: see
   (`setprop persist.s1kiosk.radio_mode …`, `setprop ctl.start s1kiosk_update`), and must keep working
   on a panel without the patched boot image. Check the `sys.s1kiosk.*` capability properties before
   you use a service. The contracts are in [`../docs/radio.md`](../docs/radio.md#root-helper-contract-v4)
-  and [`../docs/research/root.md`](../docs/research/root.md).
+  and [`../frames/aqara-s1-plus/research/root.md`](../frames/aqara-s1-plus/research/root.md).
 - Aqara's own services (`ha_master`, the system manager's DND rule) fight the kiosk. See
-  [`../docs/research/debloat.md`](../docs/research/debloat.md) and
-  [`screen-policy.md`](../docs/research/screen-policy.md) before you debug a screen that turns off,
+  [`../frames/aqara-s1-plus/research/debloat.md`](../frames/aqara-s1-plus/research/debloat.md) and
+  [`screen-policy.md`](../frames/aqara-s1-plus/research/screen-policy.md) before you debug a screen that turns off,
   Wi-Fi drops or radio conflicts.
 
 ## Build and test

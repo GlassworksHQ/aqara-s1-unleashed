@@ -234,8 +234,9 @@ line, both ways:
   `esphome`, not `manual`), `ha.url` (the address in use, `KioskPrefs.haBase`, "" until known),
   `ha.signedIn`, `ha.signinUrl` (`http://<ip>:8099/signin` once there is an ip and an HA address),
   `radio.mode` (RadioMode id), `radio.status` (RadioController's status text), `radio.options` (the
-  radio's modes: id, label, detail, `experimental` only when true) and `radio.helper`
-  (root helper installed). Unknown optional fields are left out.
+  radio's modes: id, label, detail, `experimental` only when true), `radio.helper`
+  (root helper installed) and `radio.answered` (the panel's radio step is answered; an app that doesn't
+  send `answered` restarts the radio on a same-mode request). Unknown optional fields are left out.
 - `ha.set_url` (first name `set_ha`, which still works) with `url` (http/https only): applied on the main thread exactly as the `url` intent extra
   (dashboard URL setting saved, then the dashboard reloads, or the process restarts when the
   secure-context hosts change, after the reply). The panel's setup screen moves on by itself.
@@ -244,7 +245,10 @@ line, both ways:
   are accepted. Any other id, also a `RadioMode` id the step doesn't offer, is `ok:false` with
   "Unknown radio mode '<id>'." and changes nothing. The reply waits for its outcome: success (or still applying after 10 s) marks
   the panel's radio step answered (`setup_radio_done`); a refusal or error is `ok:false` with
-  RadioController's reason (e.g. the missing root helper).
+  RadioController's reason (e.g. the missing root helper). The mode in effect already, running or on its
+  way (`RadioStep.classify` OK or applying), only marks the step answered: no request, no helper
+  restart, the same rule as the Panes card. Kiln sends it for a fresh panel kept on Off, when
+  `radio.answered` is false.
 - `radio.set_allow` (first name `set_radio_allow`) with `allow`: who may reach the radio's TCP
   services, as the `Radio allowed clients` entity ([radio.md](radio.md)).
 - While connected, `{"event":"state","state":…}` is pushed whenever the serialized state changes

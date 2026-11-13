@@ -6,7 +6,7 @@ import java.nio.ByteOrder
 /**
  * The wall base ("bracket") UART protocol on `/dev/ttyS3` (115200 8N1, no flow control), pure JVM.
  * Reverse-engineered from Aqara's `/vendor/bin/bracket_cli` and `/vendor/lib/libha_bracket.so`;
- * the full reference with addresses is docs/research/base-protocol.md.
+ * the full reference with addresses is frames/aqara-s1-plus/research/base-protocol.md.
  *
  * Frame (all multi-byte fields big-endian except the CRC):
  * ```
