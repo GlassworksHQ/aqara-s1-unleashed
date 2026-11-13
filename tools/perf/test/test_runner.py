@@ -600,7 +600,10 @@ class Restart(unittest.TestCase):
             if line.startswith("page warmup"):
                 live, during = True, 0
             elif line.startswith("page done"):
-                self.assertLessEqual(during, 1, "a wake while the view was live, besides the one at its warm-up")
+                # The runner's own wake at the warm-up, and at most one that came in the moment before
+                # it read the warm-up line (that moment is in the warm-up second, before any window).
+                # Waking while live would be about five a view here (every 0.7 s for 3.5 s).
+                self.assertLessEqual(during, 2, "wakes while the view was live, besides the one at its warm-up")
                 live = False
             elif live and "--es screen on" in line:
                 during += 1
