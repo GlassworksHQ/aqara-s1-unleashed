@@ -38,6 +38,19 @@ describe('Fastboot against a simulated U-Boot', () => {
     expect(lines).toContain('writing');
   });
 
+  it('flashVerified rejects when one byte reads back different', async () => {
+    class FlipsOneByte extends FakeUboot {
+      private flipped = false;
+      override async out(d: Uint8Array) {
+        await super.out(d);
+        if (this.flashed.length && !this.flipped) { this.data('vbmeta')[100]! ^= 1; this.flipped = true; }
+      }
+    }
+    const u = new FlipsOneByte();
+    await expect(new Fastboot(u).flashVerified('vbmeta', new Uint8Array(0x10000).fill(0xa5)))
+      .rejects.toThrow(/vbmeta: read-back mismatch at byte 100/);
+  });
+
   it('refuses an image larger than the partition, and an unknown one', async () => {
     const fb = new Fastboot(new FakeUboot());
     await expect(fb.flash('vbmeta', new Uint8Array(0x10001))).rejects.toThrow(/larger than partition/);
