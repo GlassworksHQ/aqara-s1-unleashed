@@ -21,6 +21,11 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Undo no longer puts our splash back as Aqara's.** If a panel's `boot` was put back without its
+  splash and the panel was then installed again, that install's backup held a stock `boot` with our
+  power-on splash, and undo restored our splash while saying the stock one was back. Both installers
+  now refuse such a backup before writing anything, and point you to the first install's backup or
+  the by-hand undo in docs/install.md.
 - **Kiln: Undo and Try again say the right thing in rare cases.** On kiln.glassworks.dev, once a
   try has written to the panel, or given it back to Aqara's apps, a later try that fails before
   writing says so and keeps *Undo with your backup*, instead of "Nothing was written." This holds in

@@ -31,12 +31,14 @@ export function bootUboot(fel: FelDevice, splWithUboot: Uint8Array, ubootBin: Ui
 export const A133: { socId: 0x1855; sidSecureBootReg: 0x030060a0; ubootAddr: 0x4a000000; /* ... */ };
 ```
 
-## `fastboot` (`packages/fastboot`) — our U-Boot's fastboot (owner: main session)
+## `fastboot` (`packages/fastboot`) — fastboot for every frame, a fork of fastboot.js ([README](../packages/fastboot/README.md))
 ```ts
 export const FASTBOOT_FILTER: USBDeviceFilter;             // U-Boot gadget VID:PID
 export class Fastboot {
-  static request(): Promise<Fastboot>;
-  getvar(name: string): Promise<string>;
+  static request(filters?: USBDeviceFilter[]): Promise<Fastboot>; // default: [FASTBOOT_FILTER]
+  getvar(name: string): Promise<string>;                   // trimmed; FAIL throws
+  flashBlob(part: string, blob: Blob, onProgress?: (p: number) => void): Promise<void>; // raw or sparse, split at max-download-size; no read-back
+  bootBlob(blob: Blob, onProgress?: (p: number) => void): Promise<void>; // fastboot boot
   oemRun(cmd: string): Promise<void>;                      // 'oem run:<cmd>' (<= 64 bytes incl. prefix)
   readPartition(name: string, onProgress?: (done: number, total: number) => void): Promise<Uint8Array>; // oem run + upload
   flash(name: string, data: Uint8Array, onProgress?: (done: number, total: number) => void): Promise<void>;
@@ -98,7 +100,7 @@ export interface FlowUi { log; progress(p: Progress); partition(part, state, inf
 export interface Recipe<A, O, R> {
   fel: { checkChip(fel): Promise<string>; loader: A[]; boot(fel, loader, onProgress): Promise<void> };
   checkLayout(fb: Fastboot): Promise<string>;           // throws on the wrong device, returns the log line
-  backup: BackupPlan;                                    // parts, restore, idPrefix, db, isPatched(boot)
+  backup: BackupPlan;                                    // parts, restore, idPrefix, db, isPatched(boot), ours?
   patching: string;
   patchBoot(ctx: PatchContext<A>): Promise<Uint8Array>;
   writesBeforeBoot(ctx: PatchContext<A>): Promise<FlashStep[]>;  // InstallFlow writes boot after these
@@ -109,12 +111,13 @@ InstallFlow owns the order, the progress, the backup before any write (boot read
 of every write, and boot last. Whatever the recipe says, it refuses:
 
 - before touching the device, a backup plan that doesn't read and restore `boot`, doesn't read every
-  `restore` part, or has no `isPatched`;
+  `restore` part, has no `isPatched`, or checks a part in `ours` that undo doesn't restore;
 - before writing, a recipe step that writes boot or a part the plan doesn't both back up and restore,
   and a patch that gives a stock boot back unchanged (the same boot back is fine on a re-run, when
   `backup.isPatched` says it was patched already);
-- on undo, a backup that lacks any `restore` part, or whose boot `isPatched` (`checkRestorable`, which
-  throws `BackupRefused`). The page's "keep the panel's settings" undo calls it before it gives the
+- on undo, a backup that lacks any `restore` part, whose boot `isPatched`, or where a part the plan
+  can tell (`backup.ours`, the S1: its splash) is already ours (`checkRestorable`, which throws
+  `BackupRefused`). The page's "keep the panel's settings" undo calls it before it gives the
   apps back (`src/app/undo.ts`), since that removes S1 Kiosk.
 
 kiln-core doesn't depend on bootpatch: what "patched" means is the recipe's. USB comes in through

@@ -3,6 +3,9 @@
 The repo-wide rules are in [`../AGENTS.md`](../AGENTS.md). The module contracts are in
 [`src/README.md`](src/README.md), and the design with its verified sources is in
 [`../docs/research/web-installer.md`](../docs/research/web-installer.md).
+A new package with a README needs a branded header: a library banner if anyone could use it on its
+own (like `improv-serial`), or the Kiln badge if it's part of Kiln. See
+[Branding](../AGENTS.md#branding).
 
 ## What it is
 
@@ -45,14 +48,16 @@ workspace's dependencies resolve, to the one copy at the root.
   you change the overlay, change the shell script too and regenerate the goldens
   (`S1_WEB_GOLDEN=<dir> npm test`; without it the golden tests are skipped).
 - **Backups come before writes, and writes are verified by read-back.** Keep the refusal points
-  from the CLI: wrong SoC id, unexpected partition layout, a backup `boot` that is already patched
-  (`test/refusals.test.ts`).
+  from the CLI: wrong SoC id, unexpected partition layout, a backup `boot` that is already patched,
+  and on undo a backup whose splash is already ours (`test/refusals.test.ts`).
 - Assets (U-Boot, Magisk, the APK) are pinned by SHA-256 in `assets.lock.json` and checked on download.
   Bump the hash and the source together.
 - Only `app/` touches the DOM. Other modules talk through their exports, so `test/flow.test.ts` can
   run the whole flow on simulated hardware (`packages/fel/test/fakes.ts`, imported as
   `@glassworks/fel/fakes`). New USB behaviour needs a fake for it.
 - `oem run:` commands must fit fastboot's 64-byte command limit, prefix included.
+- `packages/fastboot` is a fork of fastboot.js. Its [README](packages/fastboot/README.md) lists what
+  differs from upstream and how to check that the S1's USB calls did not change.
 - The installer is becoming **Kiln**, generic across frames. S1 specifics (partition sizes and
   names, the A133 check, `s1Overlay`, the debloat list, `PKG`) go in the S1 recipe, never in
   kiln-core.

@@ -2,7 +2,7 @@
   "name": "@glassworks/fastboot",
   "version": "0.0.0",
   "private": true,
-  "description": "Fastboot over WebUSB, with our U-Boot's oem run and partition read-back.",
+  "description": "Fastboot over WebUSB for every frame: a fork of fastboot.js, with our U-Boot's oem run and partition read-back.",
   "license": "MIT",
   "type": "module",
   "exports": { ".": "./src/index.ts" },

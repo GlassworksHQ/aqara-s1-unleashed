@@ -5,6 +5,7 @@ import { isMagiskPatched, patchBoot, replaceBootlogo, s1Overlay, vbmetaFlags, wi
 import { bootUboot, checkChip } from '@glassworks/fel';
 import type { FlashStep, Recipe } from '@glassworks/kiln-core';
 import { provision, type Provisioned, type ProvisionOptions } from './provision';
+import { isOurSplash } from './splash';
 
 /** The blobs in kiln/assets.lock.json (staged by kiln/scripts/stage-assets.mjs). */
 export type AssetName =
@@ -45,6 +46,8 @@ export const s1Plus: Recipe<AssetName, SetUpOptions, Provisioned> = {
     idPrefix: 's1-backup',
     db: 's1-unleashed-backups',
     isPatched: isMagiskPatched,
+    // A backup taken after our splash went on (boot put back without it, then installed again)
+    ours: { bootloader: { what: 'splash', is: isOurSplash } },
   },
 
   patching: 'Adding root, the radio helper and this browser\'s key',

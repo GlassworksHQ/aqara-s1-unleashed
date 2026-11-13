@@ -1,0 +1,5 @@
+{
+  "_comment": "Memory budgets per frame, read by tools/perf/report.py. Project choices, not published standards; docs/perf.md says why. #68 moves these into each frame's Gradle config.",
+  "default": { "app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15 },
+  "frames": {}
+}

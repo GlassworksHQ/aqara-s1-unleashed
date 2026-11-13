@@ -242,13 +242,17 @@ export class BackupRefused extends Error {}
 
 /**
  * Throws BackupRefused unless undo can put this backup back: it has every restore part (boot among
- * them) and its boot isn't already patched. Call it before anything on the panel changes.
+ * them), its boot isn't already patched, and no part the plan can tell is already ours. Call it
+ * before anything on the panel changes.
  */
 export async function checkRestorable(plan: BackupPlan, files: ReadonlyMap<string, Uint8Array>): Promise<void> {
   checkBackupPlan(plan);
   const missing = plan.restore.filter((p) => !files.get(p));
   if (missing.length) throw new BackupRefused(`this backup has no ${missing.join(' or ')}`);
   if (await plan.isPatched(files.get('boot')!)) throw new BackupRefused('this backup\'s boot is already patched (a re-run backup): use the one from your first install');
+  for (const [part, { what, is }] of Object.entries(plan.ours ?? {})) {
+    if (await is(files.get(part)!)) throw new BackupRefused(`this backup's ${what} is already ours, not the original: use the one from your first install`);
+  }
 }
 
 /** fel-install.sh --undo: the plan's restore partitions back from a backup, each verified. */
@@ -262,11 +266,13 @@ export async function restoreFromBackup(plan: BackupPlan, fb: Fastboot, files: M
   await fb.reboot();
 }
 
-/** Throws unless the plan reads and restores boot, reads every part undo writes, and can tell a patched boot. */
+/** Throws unless the plan reads and restores boot, reads every part undo writes, can tell a patched boot, and checks only parts undo writes. */
 function checkBackupPlan(plan: BackupPlan): void {
   const broken = (why: string) => new Error(`this recipe's backup plan is broken: ${why}. Nothing was read.`);
   const missing = ['boot', ...plan.restore].find((p) => !plan.parts.includes(p));
   if (missing) throw broken(`it doesn't read ${missing}`);
   if (!plan.restore.includes('boot')) throw broken('it doesn\'t restore boot');
   if (typeof plan.isPatched !== 'function') throw broken('it has no isPatched');
+  const stray = Object.keys(plan.ours ?? {}).find((p) => !plan.restore.includes(p));
+  if (stray) throw broken(`it tells whether ${stray} is ours, but undo doesn't restore ${stray}`);
 }

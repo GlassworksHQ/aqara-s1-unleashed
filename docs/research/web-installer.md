@@ -283,6 +283,10 @@ permission across VID/PID). **[verified config; re-enumeration timing [assumed]]
 
 ## 3. Fastboot over WebUSB
 
+> 2026-11-12 (#111): `kiln/packages/fastboot` is now a fork of fastboot.js for every frame. What it
+> changed from upstream, and how the S1's wire stayed the same, is in
+> [its README](../../kiln/packages/fastboot/README.md). The notes below are from the first design.
+
 Reuse **fastboot.js** (MIT, `fastboot.ts`) essentially unmodified for `connect`, `getVariable`,
 `runCommand`, `upload` (download+send), `flashBlob`, `reboot`. It already:
 - filters the fastboot interface `0xff/0x42/0x03` and claims interface 0 (`fastboot.ts:160-161,

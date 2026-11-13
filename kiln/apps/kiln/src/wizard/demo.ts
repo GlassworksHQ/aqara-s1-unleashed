@@ -9,14 +9,14 @@ import {
 import type { Fastboot } from '@glassworks/fastboot';
 import type { FelDevice } from '@glassworks/fel';
 import { isMagiskPatched, loadCompressor } from '@glassworks/bootpatch';
-import { Assets, fmtSize, type BackupFile, type BackupMeta, type Recipe } from '@glassworks/kiln-core';
+import { Assets, checkRestorable, fmtSize, type BackupFile, type BackupMeta, type Recipe } from '@glassworks/kiln-core';
 import { SETUP_SOCKET, type SetupState } from '@glassworks/setup-channel';
 import { s1PlusUi } from '../frames/aqara-s1-plus';
 import { explain } from './explain';
 import { Session, type SessionDeps } from './session';
 
 export const DEMOS = ['run', 'selftest', 'connect', 'ask-fastboot', 'install', 'ask-adb', 'app', 'wifi', 'wifi-fail', 'home-assistant', 'radio', 'radio-next',
-  'done', 'undo', 'undo-refused', 'undo-apps-back', 'undo-unreadable', 'undo-connect', 'restore', 'undo-done', 'error', 'error-written'] as const;
+  'done', 'undo', 'undo-refused', 'undo-refused-splash', 'undo-apps-back', 'undo-unreadable', 'undo-connect', 'restore', 'undo-done', 'error', 'error-written'] as const;
 export type Demo = (typeof DEMOS)[number];
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -282,6 +282,13 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
     case 'undo-unreadable': // this browser has a backup, but IndexedDB fails to read it
       await session.openUndo();
       return;
+    case 'undo-refused-splash': { // the same for a backup whose splash is already ours (issue 106), worded by the real check
+      await session.openUndo();
+      const plan = { ...s1Plus.backup, isPatched: async () => false, ours: { bootloader: { ...s1Plus.backup.ours!.bootloader!, is: async () => true } } };
+      const why = await checkRestorable(plan, new Map(plan.restore.map((p) => [p, new Uint8Array(16)]))).then(() => '', (e: Error) => e.message);
+      dispatch({ type: 'undo', patch: { depth: 'keep', note: { kind: 'err', title: 'This backup can\'t undo the install.', sub: `${why.charAt(0).toUpperCase()}${why.slice(1)}. This step changed nothing on the panel.`, link: { href: s1PlusUi.help.undo, text: 'Undo by hand' } } } });
+      return;
+    }
     case 'undo-connect':
       await session.openUndo();
       dispatch({ type: 'go', screen: 'connect', flow: 'undo' });

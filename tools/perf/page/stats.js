@@ -1,0 +1,107 @@
+/* Frame-time statistics for the Glassworks perf test (MIT).
+ * The same definitions are in tools/perf/perflib.py (frame_stats); both are tested against
+ * tools/perf/test/stats-cases.json, so the page and the runner agree to the millisecond.
+ */
+(function (root) {
+  "use strict";
+
+  const BUDGET_MS = 1000 / 60;
+  const FROZEN_MS = 700;
+
+  function nearestRank(sorted, p) {
+    if (!sorted.length) return null;
+    const i = Math.max(0, Math.ceil(p * sorted.length) - 1);
+    return sorted[Math.min(i, sorted.length - 1)];
+  }
+
+  function round2(x) {
+    return x === null ? null : Math.round(x * 100) / 100;
+  }
+
+  // Frame intervals are snapped to whole vsync periods before the percentile, so timer jitter on
+  // a frame that made its vsync (16.9 ms on a 60 Hz display) does not count as over budget.
+  function frameStats(intervalsMs, vsyncMs) {
+    const period = vsyncMs > 0 ? vsyncMs : BUDGET_MS;
+    const xs = intervalsMs.filter((x) => Number.isFinite(x) && x > 0);
+    const n = xs.length;
+    if (!n) return { n: 0 };
+    const snapped = xs.map((x) => Math.max(1, Math.round(x / period)) * period);
+    const raw = xs.slice().sort((a, b) => a - b);
+    const q = snapped.slice().sort((a, b) => a - b);
+    const sum = xs.reduce((a, b) => a + b, 0);
+    const over = snapped.filter((x) => x > BUDGET_MS + 0.5).length;
+    const frozen = xs.filter((x) => x > FROZEN_MS).length;
+    return {
+      n,
+      median_ms: round2(nearestRank(raw, 0.5)),
+      p95_ms: round2(nearestRank(q, 0.95)),
+      p95_raw_ms: round2(nearestRank(raw, 0.95)),
+      max_ms: round2(raw[n - 1]),
+      fps: round2(1000 * n / sum),
+      jank_pct: round2(100 * over / n),
+      frozen_pct: round2(100 * frozen / n),
+    };
+  }
+
+  function band(value, rule) {
+    if (value === null || value === undefined) return null;
+    if ("poor_at" in rule && value >= rule.poor_at) return "poor";
+    if ("poor_above" in rule && value > rule.poor_above) return "poor";
+    return value <= rule.good_max ? "good" : "needs-improvement";
+  }
+
+  const ORDER = { good: 0, "needs-improvement": 1, poor: 2 };
+
+  // The same rule as grade.frame_band: the worst band of p95, jank and frozen frames.
+  function frameBand(stats, rubric) {
+    if (!stats || !stats.n) return null;
+    const m = rubric.metrics;
+    const bands = [band(stats.p95_ms, m.frame_p95_ms), band(stats.jank_pct, m.frame_jank_pct), band(stats.frozen_pct, m.frame_frozen_pct)];
+    return bands.reduce((a, b) => (ORDER[b] > ORDER[a] ? b : a));
+  }
+
+  // SurfaceFlinger keeps the last 127 presented frames, and the runner reads them after the window
+  // ends. 100 refreshes leave 27 slots (450 ms at 60 Hz) for that read: 1.67 s at 60 Hz, 0.83 s at 120 Hz.
+  function measureMs(vsyncMs) {
+    return Math.floor(100 * (vsyncMs > 0 ? vsyncMs : BUDGET_MS));
+  }
+
+  // A page's console line reaches logcat through the content process, which keeps 1023 bytes of it
+  // (the S1, 2026-11-12: smoke7's 4 s updates steps were cut at 1023 bytes and didn't parse). Lines
+  // over LINE_MAX bytes of UTF-8 are split into numbered parts the runner joins (perflib.PageLines):
+  // "TAG+ key k/n chunk". The split counts bytes, as logcat does, and never cuts a character; no part
+  // starts or ends with whitespace, which logcat may trim.
+  const LINE_MAX = 900;
+  const utf8 = (s) => new TextEncoder().encode(s).length;
+  function consoleLines(tag, key, text) {
+    if (utf8(text) <= LINE_MAX) return [tag + " " + text];
+    const chars = Array.from(text);             // whole code points
+    const sizes = chars.map(utf8);
+    const parts = [];
+    let i = 0;
+    while (i < chars.length) {
+      let j = i, bytes = 0;
+      while (j < chars.length && bytes + sizes[j] <= LINE_MAX) bytes += sizes[j++];
+      while (j < chars.length && j > i + 1 && (/\s/.test(chars[j - 1]) || /\s/.test(chars[j]))) j--;
+      parts.push(chars.slice(i, j).join(""));
+      i = j;
+    }
+    return parts.map((p, k) => `${tag}+ ${key} ${k}/${parts.length} ${p}`);
+  }
+
+  // A hue between the brand's sky (199) and violet (258) for a random number in [0, 1): generated
+  // colours never land on ember (Kiln's) or on green, amber or rose, which mean status only.
+  function skyToViolet(r) {
+    return 199 + Math.floor(r * 60);
+  }
+
+  function intervals(timestamps) {
+    const out = [];
+    for (let i = 1; i < timestamps.length; i++) out.push(timestamps[i] - timestamps[i - 1]);
+    return out;
+  }
+
+  const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines, skyToViolet };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else root.GWStats = api;
+})(this);

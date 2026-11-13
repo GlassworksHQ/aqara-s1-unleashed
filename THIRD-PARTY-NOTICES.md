@@ -291,6 +291,11 @@ The page's JavaScript and WebAssembly ([`kiln/`](kiln)):
 - **Tango / ya-webadb**: MIT, Copyright (c) 2020-2025 Simon Chan. https://github.com/yume-chan/ya-webadb.
   `@yume-chan/adb` 2.6.4, `@yume-chan/adb-daemon-webusb` 2.3.2, `@yume-chan/stream-extra` 2.6.1, and
   their `@yume-chan/*` dependencies.
+- **fastboot.js**: MIT, "Copyright (c) 2021 Danny Lin <danny@kdrag0n.dev>".
+  https://github.com/kdrag0n/fastboot.js, commit `5b613332aa9d66cca5bebb49f147cd084a76c464`.
+  [`kiln/packages/fastboot`](kiln/packages/fastboot) is a fork of its `fastboot.ts`, `sparse.ts` and
+  `common.ts`, changed by this project. Its licence is in `kiln/packages/fastboot/LICENSE`, and what we
+  changed is in that package's README.
 - **`bootpatch.wasm`**: this project's `kiln/packages/bootpatch/src/wasm` (MIT), statically linked with these
   crates:
   - flate2 1.1.10 (MIT OR Apache-2.0)

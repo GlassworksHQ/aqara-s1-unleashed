@@ -1,0 +1,79 @@
+[
+ {
+  "name": "verifier: one frozen frame in a 2 s window",
+  "stats": {
+   "n": 120,
+   "p95_ms": 16.67,
+   "jank_pct": 2.0,
+   "frozen_pct": 0.83
+  },
+  "band": "poor"
+ },
+ {
+  "name": "on budget",
+  "stats": {
+   "n": 120,
+   "p95_ms": 16.67,
+   "jank_pct": 0,
+   "frozen_pct": 0
+  },
+  "band": "good"
+ },
+ {
+  "name": "p95 one vsync plus slack",
+  "stats": {
+   "n": 120,
+   "p95_ms": 17.16,
+   "jank_pct": 4.9,
+   "frozen_pct": 0
+  },
+  "band": "good"
+ },
+ {
+  "name": "jank just over 5%",
+  "stats": {
+   "n": 120,
+   "p95_ms": 16.67,
+   "jank_pct": 5.01,
+   "frozen_pct": 0
+  },
+  "band": "needs-improvement"
+ },
+ {
+  "name": "two frames p95",
+  "stats": {
+   "n": 120,
+   "p95_ms": 33.33,
+   "jank_pct": 20,
+   "frozen_pct": 0
+  },
+  "band": "needs-improvement"
+ },
+ {
+  "name": "over half the frames late",
+  "stats": {
+   "n": 120,
+   "p95_ms": 33.33,
+   "jank_pct": 50.5,
+   "frozen_pct": 0
+  },
+  "band": "poor"
+ },
+ {
+  "name": "three frames p95",
+  "stats": {
+   "n": 120,
+   "p95_ms": 50,
+   "jank_pct": 30,
+   "frozen_pct": 0
+  },
+  "band": "poor"
+ },
+ {
+  "name": "nothing measured",
+  "stats": {
+   "n": 0
+  },
+  "band": null
+ }
+]

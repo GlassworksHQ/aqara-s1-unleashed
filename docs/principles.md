@@ -18,7 +18,7 @@
   <a href="https://www.glassworks.dev/brand#parts">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-core-on-dark.svg">
-      <img alt="Glassworks core" src="https://www.glassworks.dev/brand/badge-core-on-light.svg" height="30">
+      <img alt="Glassworks Core" src="https://www.glassworks.dev/brand/badge-core-on-light.svg" height="30">
     </picture>
   </a>
   <picture>

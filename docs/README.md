@@ -11,6 +11,7 @@ rules every part follows.
 | [onboarding.md](onboarding.md) | Design notes for the first boot: Wi-Fi (Improv), adding it to Home Assistant, QR sign-in, dashboard picker (the steps themselves are in install.md) |
 | [esphome.md](esphome.md) | The panel as an ESPHome device: every entity, the voice assistant, encryption, app updates |
 | [sendspin.md](sendspin.md) | The native Music Assistant player (Sendspin): setup, pairing, synced playback |
+| [perf.md](perf.md) | The performance test and grade for any frame: how to run it, what it measures, the rubric and its sources, the report format |
 | [sensors.md](sensors.md) | Presence (VI5300 time-of-flight), ambient light, and how the screen uses them |
 | [radio-guide.md](radio-guide.md) | Using the Zigbee/Thread radio: ZHA, Zigbee2MQTT, Thread, repeaters, who may connect |
 | [radio.md](radio.md) | The radio's technical reference: how each mode works, tests, firmware, the root helper |

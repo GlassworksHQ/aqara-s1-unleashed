@@ -1,13 +1,45 @@
-<p>
+<p align="center">
+  <a href="https://www.glassworks.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/banner-kiln-on-dark.svg">
+      <img alt="Glassworks Kiln" src="https://www.glassworks.dev/brand/banner-kiln-on-light.svg" width="640">
+    </picture>
+  </a>
+</p>
+
+<h1 align="center">Kiln</h1>
+
+<p align="center">
+  <b>Install Glassworks on a wall panel from the browser.</b><br>
+  Over WebUSB, with a backup first and a way back.
+</p>
+
+<p align="center">
   <a href="https://www.glassworks.dev/brand#parts">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-kiln-on-dark.svg">
       <img alt="Glassworks Kiln" src="https://www.glassworks.dev/brand/badge-kiln-on-light.svg" height="30">
     </picture>
   </a>
+  <a href="../../../LICENSE">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-license-mit-on-dark.svg">
+      <img alt="License: MIT" src="https://www.glassworks.dev/brand/badge-license-mit-on-light.svg" height="30">
+    </picture>
+  </a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-status-under-development-on-dark.svg">
+    <img alt="Status: under development" src="https://www.glassworks.dev/brand/badge-status-under-development-on-light.svg" height="30">
+  </picture>
+  <a href="https://github.com/orgs/GlassworksHQ/projects/1">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-roadmap-on-dark.svg">
+      <img alt="Roadmap" src="https://www.glassworks.dev/brand/badge-roadmap-on-light.svg" height="30">
+    </picture>
+  </a>
 </p>
 
-# Kiln
+---
 
 Kiln installs Glassworks on a wall panel from the browser, over WebUSB. It backs the panel up
 first, and can put it back. This is Kiln on Next.js (App Router), built on the design in

@@ -1,3 +1,12 @@
+<p>
+  <a href="https://www.glassworks.dev/brand#parts">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-kiln-on-dark.svg">
+      <img alt="Glassworks Kiln" src="https://www.glassworks.dev/brand/badge-kiln-on-light.svg" height="30">
+    </picture>
+  </a>
+</p>
+
 # Kiln: design prototypes
 
 Design work for Kiln, the Glassworks installer (#32). Nothing here is part of the shipped installer

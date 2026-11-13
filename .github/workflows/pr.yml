@@ -6,7 +6,8 @@
 #            tools/release/check-update-compat.sh (the APK still updates panels in place)
 #   web      the npm workspaces from the repo root (job id kept, as branch protection names it):
 #            Kiln, its packages, the frame recipes and packages/*: typecheck, tests, both builds
-#   scripts  tools/install.sh's off-device tests and the docs' relative links
+#   scripts  tools/install.sh's off-device tests, the perf test's rubric, report and grade
+#            (tools/perf), and the docs' relative links
 #   root     the root side (radio helper, bundle checks, s1kiosk_verify) in a 32-bit ARM container
 #            under QEMU. Slow, so it runs only when tools/root, tools/radio or this file changes
 name: PR checks
@@ -79,13 +80,20 @@ jobs:
 
   scripts:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
       - name: tools/install.sh off-device tests
         run: tools/install/test/install-tests.sh
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Perf test rubric, report, grade and page statistics
+        run: |
+          python3 -m unittest discover -s tools/perf/test -v
+          node --test tools/perf/test/page.test.mjs tools/perf/test/grade.test.mjs
       - name: Docs links
         run: python3 tools/check-doc-links.py
 
