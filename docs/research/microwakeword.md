@@ -5,8 +5,8 @@ wakes pending.** S1 Kiosk runs
 microWakeWord's four official models behind a Kotlin port of the TFLite Micro audio frontend. The
 port matches the frontend's C code bit for bit, and all four models fire on their own word in a
 synthesised clip and nowhere else. On the S1 the wake word's thread went from 37.9% to 3.7% of a
-core, and macOS text-to-speech from about 1 m woke it 36 times in 40 tries. Real people's voices and
-false wakes are not measured yet.
+core, and macOS text-to-speech from about 1 m woke it 36 times in 40 tries, with no false wake in
+30 minutes of other speech. Real people's voices and room or TV sound are not measured yet.
 
 Device: Aqara S1 Plus (Allwinner A133, Android 10, armeabi-v7a), S1 Kiosk 0.4.3 before the change.
 Tools: pymicro-features 2.0.2, pymicro-wakeword 2.5.0, ai-edge-litert 2.3.0, TensorFlow 2.16.1,
@@ -125,7 +125,7 @@ pymicro-wakeword get, and without native code of our own (#175)?
 | Inference | every 80 ms | every 30 ms, int8 |
 | Panel CPU, unmuted (main process / `voice-mic`) | 40.8% / 37.9% of a core | **8.1% and 6.5% / 3.7%** (target under 10%) |
 | Detections, 10 synthetic voices at about 1 m | not measured | **36/40**: Okay Nabu 10, Alexa 9, Hey Mycroft 9, Hey Jarvis 8 |
-| False wakes, 30 min (Hey Jarvis) | not measured | **pending** (run in progress) |
+| False wakes, 30 min (Hey Jarvis) | not measured | **0** in 218 sentences, 10 voices (verified 2026-11-13) |
 
 ## How to reproduce
 
@@ -175,8 +175,9 @@ sit just above the cutoff (Alexa 0.906, Mycroft 0.950), so a quieter or farther 
 more often.
 
 **False wakes:** a 30-minute run on Hey Jarvis with `tools/voice/false-wake.sh` (macOS voices reading
-sentences without a wake word, some with near-misses such as "Jarvis Street") is in progress. The
-count goes here.
+sentences without a wake word, some with near-misses such as "Jarvis Street"), 2026-11-13 from about
+1 m with test build 5427a67: **0 false wakes** in 30 minutes (218 sentences across 10 voices). Verified,
+synthetic speech only; room and TV sound are still open.
 
 ## Open questions
 
