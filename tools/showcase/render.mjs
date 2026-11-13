@@ -76,6 +76,7 @@ function start(cmd, args, re, opts = {}) {
     };
     child.stdout.on('data', on);
     child.stderr.on('data', on);
+    child.on('error', reject);
     child.on('exit', (code) => reject(new Error(`${cmd} exited (${code}):\n${out}`)));
   });
 }
