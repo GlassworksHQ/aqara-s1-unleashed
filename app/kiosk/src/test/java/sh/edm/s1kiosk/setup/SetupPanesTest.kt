@@ -219,6 +219,38 @@ class SetupPanesTest {
     }
 
     @Test
+    fun aNewPreviewStartsFromThePanesAsTheyRun() {
+        // forgetPreview: what a closed preview answered doesn't carry into the next one.
+        radioOn = false
+        val s = overlay(m = model(SetupFlow.PANES, preview = true))
+        all(s, Glass.Toggle::class.java)[1].performClick()
+        shown(s, "Continue")!!.performClick()
+        Mockup.idle()
+        s.hide()
+        s.render(model(SetupFlow.PANES, preview = true))
+        Mockup.idle()
+        assertFalse(all(s, Glass.Toggle::class.java)[1].checked) // the radio as it runs: off
+    }
+
+    @Test
+    fun addItByHandFoldsAgainOnAnotherStep() {
+        val s = overlay(m = model(SetupFlow.HA, done = setOf(SetupFlow.WIFI, SetupFlow.HA), preview = true))
+        shown(s, "Add it by hand")!!.performClick()
+        Mockup.idle()
+        assertTrue(shown(s, "192.0.2.10 · port 6053") != null)
+        all(s, View::class.java).first { it.contentDescription == "Wi-Fi" && it.isClickable }.performClick()
+        Mockup.idle()
+        all(s, View::class.java).first { it.contentDescription == "Home Assistant" && it.isClickable }.performClick()
+        Mockup.idle()
+        assertTrue(shown(s, "Add it by hand") != null) // folded again
+        shown(s, "Add it by hand")!!.performClick()
+        s.hide()
+        s.render(model(SetupFlow.HA, done = setOf(SetupFlow.WIFI, SetupFlow.HA), preview = true))
+        Mockup.idle()
+        assertTrue(shown(s, "Add it by hand") != null) // and after the screen was closed
+    }
+
+    @Test
     fun aWifiStepThatIsDoneLeadsWithContinue() {
         // Reopened on a connected panel (a preview here): Continue moves on, another network is second.
         val s = overlay(m = model(SetupFlow.WIFI, done = setOf(SetupFlow.WIFI), preview = true))

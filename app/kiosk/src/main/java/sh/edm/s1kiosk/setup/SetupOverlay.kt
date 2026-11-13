@@ -357,7 +357,7 @@ class SetupOverlay(
     fun hide() {
         cancelFinish()
         panes.forgetPreview()
-        manualShown = false
+        viewing = null // opened again, it starts on its own step, not the one last looked at
         if (!isShowing) return
         isShowing = false
         model = null
@@ -374,7 +374,7 @@ class SetupOverlay(
     // ------------------------------------------------------------------ binding
 
     private fun bind(m: Model, stepChanged: Boolean) {
-        if (stepChanged) manualShown = false // "Add it by hand" folds again on another step
+        if (stepChanged) manualShown = false // "Add it by hand" folds again on another step, or when opened again
         val done = shown() == SetupFlow.DONE
         doneView.visibility = if (done) View.VISIBLE else View.GONE
         donePreviewChip.visibility = if (m.preview) View.VISIBLE else View.GONE

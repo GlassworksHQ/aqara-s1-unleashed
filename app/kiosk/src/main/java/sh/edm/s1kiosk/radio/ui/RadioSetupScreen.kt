@@ -78,8 +78,9 @@ internal class RadioSetupScreen(
                 card.primary("Continue") { finish() }
                 card.secondary("Change the mode") {
                     phase = Phase.CHOOSE
-                    if (!host.preview) def.answering = true // the step stays until a mode is applied and its card closed
-                    def.followUpOpen = false
+                    // Live only: the step stays until a mode is applied and its card closed. A preview's
+                    // tap must not end the live step (verifier 6d0f2cd7).
+                    if (!host.preview) { def.answering = true; def.followUpOpen = false }
                     host.redraw()
                 }
             }
@@ -87,7 +88,10 @@ internal class RadioSetupScreen(
     }
 
     override fun tick(current: Boolean) {
-        if (current && phase == Phase.FOLLOW_UP) { def.readout.controller()?.refreshSoon(); host.redraw() }
+        if (current && phase == Phase.FOLLOW_UP) {
+            if (!host.preview) def.readout.controller()?.refreshSoon() // a preview doesn't poll the helper
+            host.redraw()
+        }
     }
 
     /** Continue on the mode: off the main thread, within [BUDGET_MS] (the helper can take a while). */
