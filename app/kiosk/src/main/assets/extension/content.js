@@ -255,6 +255,9 @@
   function watchLaunchScreen() {
     const ls = document.getElementById("ha-launch-screen");
     if (!ls || !ls.parentNode) { sendReady("page"); return; }
+    // Home Assistant's frontend is loading: the app waits longer for it before giving up (a cold load
+    // on the S1 can take well over 15 s).
+    try { if (port) port.postMessage({ type: "launch" }); } catch (e) { /* port gone */ }
     const obs = new MutationObserver(() => {
       if (!document.getElementById("ha-launch-screen")) { obs.disconnect(); sendReady("frontend"); }
     });

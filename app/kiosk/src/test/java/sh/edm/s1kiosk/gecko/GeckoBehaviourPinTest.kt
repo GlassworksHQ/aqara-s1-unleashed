@@ -300,6 +300,27 @@ class GeckoBehaviourPinTest {
     }
 
     @Test
+    fun `while Home Assistant's frontend is still loading the connecting screen waits up to 45 s`() = harness().use { h ->
+        // Verifier 6d0f2cd7: a cold load on the S1 can outlast 15 s; showing the page then flashes HA's white launch screen.
+        h.progress.onPageStart(h.session, dash)
+        h.send(h.connect(dash), org.json.JSONObject("""{"type":"launch"}"""), replies = 0)
+        h.progress.onPageStop(h.session, true)
+        h.advance(sh.edm.s1kiosk.MainActivity.READY_FALLBACK_MS + 1_000)
+        assertTrue(h.loading.isShowing)
+        h.advance(sh.edm.s1kiosk.MainActivity.LAUNCH_FALLBACK_MS - sh.edm.s1kiosk.MainActivity.READY_FALLBACK_MS - 1_000)
+        assertFalse(h.loading.isShowing)
+    }
+
+    @Test
+    fun `a frame's launch word doesn't hold the connecting screen`() = harness().use { h ->
+        h.progress.onPageStart(h.session, dash)
+        h.send(h.connect("$dash/frame", topLevel = false), org.json.JSONObject("""{"type":"launch"}"""), replies = 0)
+        h.progress.onPageStop(h.session, true)
+        h.advance(sh.edm.s1kiosk.MainActivity.READY_FALLBACK_MS)
+        assertFalse(h.loading.isShowing)
+    }
+
+    @Test
     fun `a page that never says it's drawn hides the connecting screen after 15 s`() = harness().use { h ->
         h.progress.onPageStart(h.session, dash)
         h.progress.onPageStop(h.session, true)

@@ -17,12 +17,12 @@ below as the release notes.
   network, and the top one turns red and dashed when Home Assistant doesn't answer, with a countdown
   to the next try. The connecting screen starts on the boot animation's last frame and the stack
   settles from there, so power-on is one continuous picture. It stays until Home Assistant has drawn
-  the dashboard, so Home Assistant's white loading page no longer flashes in between. Setup goes Wi-Fi, Home Assistant (add
-  it, then sign in), Panes, Done. On Panes you choose what the panel does: voice, music and the
-  Zigbee / Thread radio. A pane you turn on then asks what it needs: the radio asks Zigbee or Thread
-  and the role, then shows what to do in Home Assistant, where a Thread router can join Home
-  Assistant's Thread network. A step that is already done says so with Continue, and the list on
-  the left opens a step you've done.
+  the dashboard, so Home Assistant's white loading page no longer flashes in between. Setup goes
+  Wi-Fi, Home Assistant (add it, then sign in), Panes, Done. On Panes you choose what the panel
+  does: voice, music and the Zigbee / Thread radio. A pane you turn on then asks what it needs: the
+  radio asks Zigbee or Thread and the role, then shows what to do in Home Assistant, where a Thread
+  router can join Home Assistant's Thread network. A step that is already done says so with
+  Continue, and the list on the left opens a step you've done.
 - **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
   page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
   Nothing in the sections changed.

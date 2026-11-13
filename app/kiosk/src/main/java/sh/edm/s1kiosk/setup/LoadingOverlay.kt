@@ -191,10 +191,13 @@ class LoadingOverlay(context: Context, private val bootRest: BootRest? = null) :
         if (wait > 0 || handoff > 0) { postDelayed(settle, maxOf(wait, handoff, 16L)); return }
         // The line fades to the new words; the stack takes the new state's look.
         line.animate().cancel()
-        line.animate().alpha(0f).setStartDelay(0).setDuration(160).withEndAction {
-            bind(target ?: t, SystemClock.uptimeMillis()) // the newest asked for, if it changed meanwhile
-            line.animate().alpha(1f).setDuration(260).start()
-        }.start()
+        line.animate().alpha(0f).setStartDelay(0).setDuration(160).withEndAction { fadedOut(t) }.start()
+    }
+
+    /** The line has faded out for [asked]: show the newest state asked for, if it changed meanwhile. */
+    internal fun fadedOut(asked: State) {
+        bind(target ?: asked, SystemClock.uptimeMillis())
+        line.animate().alpha(1f).setDuration(260).start()
     }
 
     private fun bind(s: State, now: Long) {

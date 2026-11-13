@@ -672,8 +672,9 @@ Assistant entities and the Thread join from Home Assistant, as a Glassworks pane
   applied with Continue through the same request as the setup channel's `radio.set_mode`, then the
   role's follow-up card (QR codes, Join, the dataset field), as in the settings menu. The step holds
   from its Continue until the card's own Continue, also while the radio applies. The controls that ask
-  first (the Zigbee stack, Leave) are in the settings menu only. In a preview nothing reaches the radio. The setup channel (web installer) offers the same five options;
-  options carry optional `experimental` and `repeater` flags. `radio.set_mode` accepts only those options' ids
+  first (the Zigbee stack, Leave) are in the settings menu only. In a preview nothing reaches the radio.
+  The setup channel (web installer) offers the same five options; options carry optional
+  `experimental` and `repeater` flags. `radio.set_mode` accepts only those options' ids
   (`RadioStep.OPTIONS`): a mode the step doesn't offer is refused with "Unknown radio mode", even when
   `RadioMode` has it ([onboarding.md](onboarding.md#from-the-web-installer-improv-serial--setup-channel-over-adb-)).
 - Kiosk settings menu, Radio section (0.4.3, `radio/ui/RadioSectionView`): a row of role tiles (icon in

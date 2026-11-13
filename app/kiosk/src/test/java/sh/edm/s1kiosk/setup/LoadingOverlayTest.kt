@@ -92,6 +92,27 @@ class LoadingOverlayTest {
     }
 
     @Test
+    fun aStateReplacedMidFadeNeverShows() {
+        // Verifier 4bc205dc / 6d0f2cd7: a fade's end action bound the state it started with, even after a
+        // newer one was asked for. Wi-Fi went off and its fade started; HA's retry is asked for before it
+        // ends. Robolectric runs view animations to their end at once, so the end action is called as the
+        // fade would call it.
+        val o = overlay()
+        o.show(loading)
+        after(3_000) // the boot's handoff is over
+        val off = LoadingOverlay.State.Offline(OfflineText.WIFI_OFF_TITLE, OfflineText.SETUP_HINT, OfflineText.SETUP_ACTION)
+        val unreachable = LoadingOverlay.State.Unreachable("homeassistant.local", SystemClock.elapsedRealtime() + 10_000)
+        o.show(off)
+        o.show(unreachable) // asked for while the fade to the Wi-Fi words would run
+        o.fadedOut(off) // the fade that started for the Wi-Fi words ends
+        assertEquals(unreachable, o.state)
+        assertFalse(o.lineText == LoadingOverlay.lineOf(off))
+        val seen = HashSet<String>()
+        repeat(100) { after(16); seen += o.lineText }
+        assertFalse(seen.toString(), LoadingOverlay.lineOf(off) in seen)
+    }
+
+    @Test
     fun theLastStateAskedForWinsAQuickBackAndForth() {
         val o = overlay()
         o.show(loading)
