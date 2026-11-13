@@ -39,7 +39,7 @@ The output, in `<dir>`:
 | `bootanimation.zip` | Android's boot animation: the screen's size, 30 fps, every entry STORED |
 | `splash-landscape.png` | Frame 0, which is also the splash |
 | `bootlogo.bmp` | Only with a `splash` format (below). The build adds its SHA-256 to [`branding/bootlogos.json`](../bootlogos.json), so undo knows it as ours (#106): commit the list with the BMP |
-| `preview.webp` | Half size, for docs |
+| `preview.webp` | For docs: half size, at most 720 px on the longest side |
 
 `--stills <dir>` writes stills at fixed times instead, which takes seconds instead of minutes.
 
@@ -101,6 +101,8 @@ each new frame's first boot.
 - The loop is seamless: the frame after its last one equals its first.
 - Frame 0 of the zip is the splash, pixel for pixel, and the held part equals the loop's first frame.
 - With `trim.txt`: every rect matches its frame and stays on screen. Without it: no `trim.txt` at all.
+- The zip is built one frame at a time and only replaces the old one once the loop is seamless. A
+  build without a splash removes an earlier build's `bootlogo.bmp` from the output.
 - Every zip entry is STORED, the CRCs check out, `desc.txt` is as built, and the zip is within `zipBudget`.
 - The splash BMP: its size, its header, and that it rotates back to `splash-landscape.png`.
 

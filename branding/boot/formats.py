@@ -132,35 +132,54 @@ def desc_txt(target):
     return "\n".join(lines) + "\n"
 
 
-def write_bootanimation(target, path, intro, loop):
-    dt = (2026, 1, 1, 0, 0, 0)
+class AnimationZip:
+    """bootanimation.zip, written as the frames come: desc.txt, then each part's folder, its frames
+    and (trimmed) its trim.txt. Only the PNG bytes of the frame being added are held."""
+    DT = (2026, 1, 1, 0, 0, 0)
 
-    def add(z, name, data, is_dir=False):
-        zi = zipfile.ZipInfo(name, dt)
+    def __init__(self, target, path):
+        self.target, self.n, self.part, self.rects = target, 0, None, []
+        self.z = zipfile.ZipFile(path, "w", zipfile.ZIP_STORED)
+        self._add("desc.txt", desc_txt(target).encode())
+
+    def _add(self, name, data, is_dir=False):
+        zi = zipfile.ZipInfo(name, self.DT)
         zi.compress_type = zipfile.ZIP_STORED
         zi.create_system = 3
         zi.external_attr = ((0o40755 << 16) | 0x10) if is_dir else (0o100644 << 16)
-        z.writestr(zi, data)
+        self.z.writestr(zi, data)
 
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as z:
-        add(z, "desc.txt", desc_txt(target).encode())
-        n = 0
-        for part, frames in (("part0", intro), ("part1", loop), ("part2", loop[:1])):
-            add(z, part + "/", b"", is_dir=True)
-            rects = []
-            for fr in frames:
-                if target.trim:
-                    fr, rect = trim(fr)
-                    rects.append(rect)
-                add(z, f"{part}/frame_{n:03d}.png", png_bytes(fr))
-                n += 1
-            if target.trim:
-                add(z, f"{part}/trim.txt", ("\n".join(rects) + "\n").encode())
+    def _end_part(self):
+        if self.part and self.target.trim:
+            self._add(f"{self.part}/trim.txt", ("\n".join(self.rects) + "\n").encode())
+        self.part, self.rects = None, []
+
+    def start(self, part):
+        self._end_part()
+        self.part = part
+        self._add(part + "/", b"", is_dir=True)
+
+    def frame(self, img):
+        if self.target.trim:
+            img, rect = trim(img)
+            self.rects.append(rect)
+        self._add(f"{self.part}/frame_{self.n:03d}.png", png_bytes(img))
+        self.n += 1
+
+    def close(self):
+        self._end_part()
+        self.z.close()
 
 
-def write_preview(target, path, frames, scale=0.5):
-    size = (round(target.width * scale), round(target.height * scale))
-    small = [f.resize(size, Image.LANCZOS) for f in frames]
+PREVIEW_MAX = 720   # px on the longest side: half the S1's 1440, and small enough to hold every frame
+
+
+def preview_size(target):
+    scale = min(0.5, PREVIEW_MAX / max(target.width, target.height))
+    return (round(target.width * scale), round(target.height * scale))
+
+
+def write_preview(path, small):
     durs = [34 if i % 3 == 0 else 33 for i in range(len(small))]   # ~30 fps
     # quality 100: below it, libwebp treats small per-pixel changes as unchanged and the slow
     # breathing turns into steps
@@ -194,19 +213,42 @@ def build(target, out, render, n_intro, n_loop, splash_name):
     print(f"{target.name}: {target.width}x{target.height}, "
           f"{'trimmed' if target.trim else 'full'} frames, splash {target.splash or 'none'}", flush=True)
     print(f"rendering {n_intro}+{n_loop} frames ...", flush=True)
-    frames = [Image.fromarray(render(T)) for T in range(n_intro + n_loop + 1)]
-    wrap = frames.pop()
-    intro, loop = frames[:n_intro], frames[n_intro:]
-    seam = np.abs(np.asarray(wrap, np.int16) - np.asarray(loop[0], np.int16)).max()
-    assert seam <= 1, f"loop not periodic: frame {n_intro + n_loop} differs from {n_intro} by {seam}"
+    # One frame at a time: a frame is rendered, compressed into the zip and shrunk for the preview,
+    # then dropped. Only the splash, the loop's first frame and the small preview frames are kept.
+    zp = os.path.join(out, "bootanimation.zip")
+    az = AnimationZip(target, zp + ".part")
+    size = preview_size(target)
+    small = []
+    splash = first = None
+    try:
+        for T in range(n_intro + n_loop):
+            if T in (0, n_intro):
+                az.start("part0" if T == 0 else "part1")
+            img = Image.fromarray(render(T))
+            if T == 0:
+                splash = img
+                small += [img.resize(size, Image.LANCZOS)] * 30
+            if T == n_intro:
+                first = img
+            az.frame(img)
+            small.append(img.resize(size, Image.LANCZOS))
+        wrap = render(n_intro + n_loop)
+        seam = np.abs(np.asarray(wrap, np.int16) - np.asarray(first, np.int16)).max()
+        assert seam <= 1, f"loop not periodic: frame {n_intro + n_loop} differs from {n_intro} by {seam}"
+        az.start("part2")
+        az.frame(first)
+    finally:
+        az.close()
+    os.replace(zp + ".part", zp)   # only a finished, seamless zip replaces the old one
 
-    splash = intro[0]
     splash.save(os.path.join(out, "splash-landscape.png"), optimize=True)
+    bmp = os.path.join(out, "bootlogo.bmp")
     if target.splash:
-        write_bmp(target, splash, os.path.join(out, "bootlogo.bmp"))
-        list_bootlogo(os.path.join(out, "bootlogo.bmp"), splash_name)
-    write_bootanimation(target, os.path.join(out, "bootanimation.zip"), intro, loop)
-    write_preview(target, os.path.join(out, "preview.webp"), [splash] * 30 + intro + loop)
+        write_bmp(target, splash, bmp)
+        list_bootlogo(bmp, splash_name)
+    elif os.path.exists(bmp):
+        os.remove(bmp)   # an earlier build's splash, for another target
+    write_preview(os.path.join(out, "preview.webp"), small)
     problems = validate(target, out)
     for p in problems:
         print("  FAIL:", p)
@@ -271,12 +313,15 @@ def validate(target, out):
             P.append("zip CRC error")
         if z.read("desc.txt").decode() != desc_txt(target):
             P.append("desc.txt differs from desc_txt()")
+        first = {}
         try:
-            shown = {part: list(frames_on_screen(target, z, part)) for part in ("part0", "part1", "part2")}
+            for part in ("part0", "part1", "part2"):
+                for _, full in frames_on_screen(target, z, part):   # checks every frame, keeps one
+                    first.setdefault(part, np.asarray(full))
         except ValueError as e:
             return P + [str(e)]
-        if not np.array_equal(np.asarray(shown["part0"][0][1]), np.asarray(prev)):
+        if not np.array_equal(first["part0"], np.asarray(prev)):
             P.append("first animation frame != splash")
-        if not np.array_equal(np.asarray(shown["part2"][0][1]), np.asarray(shown["part1"][0][1])):
+        if not np.array_equal(first["part2"], first["part1"]):
             P.append("part2 != the loop's first frame")
     return P
