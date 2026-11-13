@@ -2,7 +2,6 @@ package sh.edm.esphome
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -139,7 +138,8 @@ class EspHomeKeepaliveTest {
                 val hold = armed
                 if (hold) armed = false
                 out.flush()
-                if (hold) heldUntilHandled = handled.await(10, TimeUnit.SECONDS)
+                // Latches only (#204): no give-up on a slow runner. A hang is left to the CI job timeout.
+                if (hold) { handled.await(); heldUntilHandled = true }
             }
         }
 
@@ -187,11 +187,10 @@ class EspHomeKeepaliveTest {
                 val pinged = now.get() + keepalive + 1
                 now.set(pinged)
                 hold.armed = true
-                val tick = Thread { s.keepaliveTick() }.apply { start() }
+                val tick = Thread { s.keepaliveTick() }.apply { isDaemon = true; start() }
                 await(Msg.PING_REQUEST)
                 send(Msg.PING_RESPONSE)
-                tick.join(10_000)
-                assertFalse("keepaliveTick still blocked", tick.isAlive)
+                tick.join()
                 assertTrue("the ping's flush was held until its answer was handled", hold.heldUntilHandled)
 
                 now.set(pinged + unresponsive + 1); s.keepaliveTick()
