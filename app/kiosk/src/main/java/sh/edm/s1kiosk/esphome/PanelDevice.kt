@@ -430,8 +430,11 @@ class PanelDevice internal constructor(
         }
     }
 
+    /** Before the screen starts, the manual value it will apply; never while auto brightness is on (#129). */
     private fun currentBrightness(): Float =
-        screen.brightness.takeIf { it >= 0f } ?: prefs.manualBrightness.takeIf { it > 0f } ?: 1f
+        screen.brightness.takeIf { it >= 0f }
+            ?: prefs.manualBrightness.takeIf { !prefs.autoBrightness && it > 0f }
+            ?: 1f
 
     private fun buildEntities(): List<ApiEntity> = listOf(
         // --- screen & sensors

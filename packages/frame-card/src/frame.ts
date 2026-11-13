@@ -46,7 +46,7 @@ export interface FrameDesign {
   boot?: { androidApi?: number; splash?: 'allwinner-boot-resource'; zipBudget?: number };
   specs: { label: string; value: string }[];
   panes: Record<(typeof PANE_IDS)[number], { support: Support; note?: string }>;
-  /** href: where it installs from, while that is somewhere other than Kiln */
+  /** href: where it installs from, only for a frame without `kiln` */
   install: { how: string; href?: string };
   ratings: Record<RatingKey, { value: string; detail?: string }>;
   ratingsNote?: string;
@@ -72,5 +72,5 @@ export function cardTags(r: FrameDesign['ratings']) {
 
 export const STAGE_TEXT: Record<Stage, string> = { planned: 'Planned', development: 'Under development', alpha: 'Alpha', beta: 'Beta', stable: 'Stable' };
 
-/** Kiln can install it now. */
-export const ships = (s: Stage) => s === 'alpha' || s === 'beta' || s === 'stable';
+/** Kiln can install it now, or the pane runs on the frame now. `depends`, `unknown` and `no` don't. */
+export const ships = (s: Support) => s === 'alpha' || s === 'beta' || s === 'stable';
