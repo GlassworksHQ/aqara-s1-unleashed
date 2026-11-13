@@ -35,7 +35,7 @@ export type AppApk = 'kiosk' | 'keyboard';
 /**
  * What the panel is doing while the app goes in, at the commands that start each part:
  * `apk` `copy`, an APK is pushed, then `install`, its `pm install` runs (for S1 Kiosk on Android 10 it
- * returns only after dex2oat has optimised it, about 22 s on an S1, docs/research/web-installer.md
+ * returns only after dex2oat has optimised it, about 22 s on an S1, frames/aqara-s1-plus/research/web-installer.md
  * §7.1, while Android stops and restarts the app twice); `home`, permissions, home app, DND and the
  * debloat; `prefs`, time zone, language and clock; `start`, the app starts with them (once more).
  */

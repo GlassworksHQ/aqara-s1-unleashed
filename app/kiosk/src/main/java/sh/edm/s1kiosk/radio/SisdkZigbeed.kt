@@ -12,7 +12,7 @@ import java.util.zip.ZipFile
 
 /**
  * Silicon Labs' zigbeed 8.2.2 (EmberZNet 8.2.2, EZSP 18) for the coordinator mode's Silicon Labs stack
- * (docs/radio.md "Zigbee stack", docs/research/zigbee2mqtt.md).
+ * (docs/radio.md "Zigbee stack", frames/aqara-s1-plus/research/zigbee2mqtt.md).
  *
  * The binary is Silicon Labs MSLA object code: this project never ships or hosts it. The panel fetches
  * it from Silicon Labs' own GitHub release when the stack is chosen, extracts `usr/local/bin/zigbeed`

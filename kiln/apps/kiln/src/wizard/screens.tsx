@@ -168,7 +168,7 @@ const rowOf = (p: AppPhase): Row => (p.step === 'apk' ? p.apk : p.step);
 
 /**
  * `update`: the app was on the panel already. Then `pm install -r` stops it while it runs, it comes
- * back, and the end of dex2oat restarts it again (docs/research/web-installer.md §7.1). A first
+ * back, and the end of dex2oat restarts it again (frames/aqara-s1-plus/research/web-installer.md §7.1). A first
  * install has no app running, so nothing there is said to restart.
  */
 function nowSays(p: AppPhase, update: boolean): { sub?: string; note?: string } {

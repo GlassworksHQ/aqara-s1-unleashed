@@ -204,7 +204,7 @@ the recorder safe without that.
 | E. Do nothing | about 40% | unchanged | Mute is the per-panel off switch |
 
 **Recommendation: A, microWakeWord.** It is the engine ESPHome itself uses, so it fits "ESPHome is
-the wire" in [principles](../principles.md). It cuts the load the most at every noise level, and
+the wire" in [principles](../../../docs/principles.md). It cuts the load the most at every noise level, and
 the wake words stay the same as HA's own satellites. Its models are Apache-2.0 instead of
 non-commercial. B is the cheapest change, but it saves nothing in a room with a TV on, and it adds
 a tuning knob. C and D change detection without a way to check it on real speech yet. Whatever is

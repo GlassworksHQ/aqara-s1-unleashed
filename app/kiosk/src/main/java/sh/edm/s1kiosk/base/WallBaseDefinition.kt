@@ -3,7 +3,7 @@ package sh.edm.s1kiosk.base
 import dev.glassworks.pane.IntentExtra
 import dev.glassworks.pane.PaneDefinition
 
-/** The wall base ([WallBasePane]) for the whole process: its adb extras (docs/research/bases.md). */
+/** The wall base ([WallBasePane]) for the whole process: its adb extras (frames/aqara-s1-plus/research/bases.md). */
 class WallBaseDefinition(prefs: WallBasePrefs) : PaneDefinition {
     override val id = "wall-base"
 

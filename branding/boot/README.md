@@ -88,7 +88,7 @@ times, then a part that holds its first frame.
 The background is the brand's night, `#0a0b0f`. The S1's player composites in 32-bit, so it shows
 exactly there (measured 2026-11-12). A frame whose player really draws on AOSP's RGB 565 surface
 would show it a step off from the splash; the
-[research note](../../docs/research/boot-animation.md) has what such a frame needs. Check it on
+[research note](../../frames/aqara-s1-plus/research/boot-animation.md) has what such a frame needs. Check it on
 each new frame's first boot.
 
 ## Frames

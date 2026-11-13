@@ -190,7 +190,7 @@ asks Android. It runs no shell commands and needs no root.
 ### Wall base entities
 
 Built from the detected base, through the app's own UART driver (default) or the stock LocalService
-([research/bases.md](research/bases.md#implementation-s1-kiosk)); both backends produce the same entities.
+([frames/aqara-s1-plus/research/bases.md](../frames/aqara-s1-plus/research/bases.md#implementation-s1-kiosk)); both backends produce the same entities.
 Only *Base* is always present; the rest exist only while a matching base is detected.
 
 | Entity | object_id | When | What it does |
@@ -268,7 +268,7 @@ poll as a safety net.
      in the installed version, panels on 0.4.0 or older update once by hand
      ([install.md](install.md#updating)).
   4. The verified file becomes `files/update/pending.apk`, and the root update service installs it
-     ([research/root.md](research/root.md)). On success the app is replaced and restarted, and the
+     ([frames/aqara-s1-plus/research/root.md](../frames/aqara-s1-plus/research/root.md)). On success the app is replaced and restarted, and the
      new version reports the result in *Update status*.
   5. Boot images from before the service (`sys.s1kiosk.update.version` unset) use a
      PackageInstaller session instead. Android then asks for confirmation on the panel's screen,
@@ -543,7 +543,7 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 
 - switch `Block Aqara cloud` (`block_aqara_cloud`, default on): stops Aqara's cloud daemon `ha_master`.
   With the UART wall-base backend (default) it is always stopped; with the LocalService backend it is
-  kept while a base is attached. See [research/debloat.md](research/debloat.md).
+  kept while a base is attached. See [frames/aqara-s1-plus/research/debloat.md](../frames/aqara-s1-plus/research/debloat.md).
 - text_sensor `Aqara cloud daemon` (`aqara_cloud`): `blocked`, `running`,
   `stopped (UART wall base backend owns /dev/ttyS3)`, `running (needed by the wall base, LocalService
   backend)`, or `error (…)`.

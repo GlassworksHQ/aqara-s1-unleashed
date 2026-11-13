@@ -8,7 +8,7 @@ import sh.edm.s1kiosk.base.BracketProtocol.Res
  * (clock-injected, single-threaded) state machine. The caller feeds received bytes ([onBytes]),
  * calls [tick] often (every ~100 ms) and writes whatever [Out.send] hands it to the port.
  *
- * What it does, with the libha_bracket function it mirrors (docs/research/base-protocol.md):
+ * What it does, with the libha_bracket function it mirrors (frames/aqara-s1-plus/research/base-protocol.md):
  * - **Handshake**: read `200.1.159` (bracket_ready / bracket_restore). Model `0xF110` = online:
  *   synthesize `14.160.85` (dock class), `13.8.85` (channels), `14.21.85` (relay mask); write the
  *   config resources with their defaults (dev_config: 200.4.1=3, 4.103.85=1, 200.4.2=85,

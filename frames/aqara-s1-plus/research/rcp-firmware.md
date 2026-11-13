@@ -1,7 +1,7 @@
 # A newer radio (RCP) firmware for the S1's EFR32MG21? (research, 2026-11-10)
 
 Question: can a newer Silicon Labs multiprotocol RCP be built for this board, now that the panel has
-a root path to flash one ([../radio.md](../radio.md#radio-firmware-updates-helper-v4))? Short answer:
+a root path to flash one ([../radio.md](../../../docs/radio.md#radio-firmware-updates-helper-v4))? Short answer:
 **it can probably be built, but nothing needs it today, and any newer SDK's image also needs a newer
 host cpcd on the panel.** No image is in this repository, and none was built or flashed.
 
@@ -10,7 +10,7 @@ host cpcd on the panel.** No image is in this repository, and none was built or 
 - Stock RCP `0017/2.3.3.0_GitHub-e6df00dd6` (Gecko SDK 4.3.3), multi-PAN 802.15.4 over CPC/SPI,
   **CPC protocol v4**; Gecko bootloader v2.3 (EZSP-SPI), unsigned and uncompressed GBLs accepted
   (dry run 2026-11-09; the stock GBL is HEADER, APPLICATION, ERASEPROG 120308 B at `0x4000`, END).
-- Host side: Aqara's cpcd 4.3.3.0 (inverted reset-pin driver; [../radio.md](../radio.md#flash-path-verified-2026-11-09)).
+- Host side: Aqara's cpcd 4.3.3.0 (inverted reset-pin driver; [../radio.md](../../../docs/radio.md#flash-path-verified-2026-11-09)).
 - Zigbee2MQTT's need (EZSP ≥ 13) is already met **without** a new RCP: Silicon Labs' zigbeed 8.2.2 runs
   on this RCP ([zigbee2mqtt.md](zigbee2mqtt.md)). Thread works on it too. So a new RCP would be about
   bug fixes or newer radio features, not about making Zigbee2MQTT possible.
