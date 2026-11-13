@@ -77,6 +77,21 @@ class LoadingOverlayTest {
     }
 
     @Test
+    fun newWordsDuringTheBootsLineWaitForIt() {
+        // Home Assistant is already unreachable at power-on: the countdown's next words come while the
+        // boot's device line still shows. That line stays; the newest words come after it.
+        val o = overlay()
+        val first = LoadingOverlay.State.Unreachable("homeassistant.local", SystemClock.elapsedRealtime() + 10_000)
+        o.show(first)
+        o.previewBoot(0)
+        val next = first.copy(retryAt = first.retryAt + 10_000)
+        o.show(next)
+        assertEquals("ON AQARA S1 PLUS", o.lineText)
+        o.previewBoot(LoadingOverlay.BOOT_END_MS)
+        assertEquals(LoadingOverlay.lineOf(next), o.lineText)
+    }
+
+    @Test
     fun theLastStateAskedForWinsAQuickBackAndForth() {
         val o = overlay()
         o.show(loading)
