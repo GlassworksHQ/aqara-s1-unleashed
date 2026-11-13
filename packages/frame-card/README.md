@@ -1,4 +1,39 @@
-# @glassworks/frame-card
+<p align="center">
+  <a href="https://www.glassworks.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/banner-library-frame-card-on-dark.svg">
+      <img alt="frame-card, a Glassworks library" src="https://www.glassworks.dev/brand/banner-library-frame-card-on-light.svg" width="640">
+    </picture>
+  </a>
+</p>
+
+<h1 align="center">frame-card</h1>
+
+<p align="center">
+  <b>The frame card and 3D renderer, for Kiln and the site.</b><br>
+  <code>@glassworks/frame-card</code>: one copy of the device card, shared by Kiln and glassworks.dev.
+</p>
+
+<p align="center">
+  <a href="../../LICENSE">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-license-mit-on-dark.svg">
+      <img alt="License: MIT" src="https://www.glassworks.dev/brand/badge-license-mit-on-light.svg" height="30">
+    </picture>
+  </a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-status-alpha-on-dark.svg">
+    <img alt="Status: alpha" src="https://www.glassworks.dev/brand/badge-status-alpha-on-light.svg" height="30">
+  </picture>
+  <a href="https://github.com/orgs/GlassworksHQ/projects/1">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-roadmap-on-dark.svg">
+      <img alt="Roadmap" src="https://www.glassworks.dev/brand/badge-roadmap-on-light.svg" height="30">
+    </picture>
+  </a>
+</p>
+
+---
 
 A frame's card and its 3D device mockup, drawn from the frame's own data
 ([`frames/<id>/design/frame.json`](../../frames/README.md)). Kiln's picker uses it, and glassworks.dev is
