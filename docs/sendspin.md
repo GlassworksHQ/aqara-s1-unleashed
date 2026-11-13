@@ -1,7 +1,7 @@
 # Music Assistant player (Sendspin)
 
 The kiosk app is a **native Sendspin player**. Music Assistant (MA) sees the panel as one of its
-own players, called **S1 Panel**, plays to it in sync with your other Sendspin speakers and can
+own players, called **Glassworks Panel** (**S1 Panel** before #63), plays to it in sync with your other Sendspin speakers and can
 group it with them. You no longer need MA's "Home Assistant MediaPlayers" bridge for the panel.
 That bridge goes MA → HA → `media_player.s1_panel_speaker` and has no sync.
 
@@ -18,8 +18,9 @@ key, which HA provisions automatically):
 1. The panel finds MA's Sendspin server and connects to it (see [Discovery](#discovery-and-connection)).
 2. Home Assistant reads the panel's Sendspin **pairing token** over the ESPHome API and gives it
    to MA. MA pairs with the panel on the open connection.
-3. MA creates the player **S1 Panel**. Its HA entity is `media_player.s1_panel` (from the
-   `music_assistant` integration). It is separate from the ESPHome `media_player.s1_panel_speaker`,
+3. MA creates the player **Glassworks Panel**. Its HA entity is `media_player.glassworks_panel` on a
+   new panel, `media_player.s1_panel` on one MA met before #63 (from the `music_assistant`
+   integration; an entity id never changes once made). It is separate from the ESPHome `media_player.s1_panel_speaker`,
    which keeps working for TTS, announcements and HA media.
 
 Verified on the panel on 2026-11-09 (MA 2.10.9, HA 2026.11.0):
@@ -63,7 +64,7 @@ MA's Home Assistant provider is running (it is when MA runs as the HA app). If i
 the status sensor stays at `waiting for pairing or approval by …` and MA lists the panel as a
 device that is neither paired nor approved. Then do one of these:
 
-- In MA: **Settings → Players → S1 Panel**, and pair with the token. You can read the token in HA's
+- In MA: **Settings → Players → Glassworks Panel**, and pair with the token. You can read the token in HA's
   developer tools with the WebSocket command
   `{"type": "sendspin/get_pairing_token", "client_id": "<panel client id>"}` (admin only). The
   token is a credential: anyone who has it can pair a server with the panel.
@@ -129,7 +130,7 @@ Read and cross-checked: the spec's `README.md` (at `c281aeb`); in aiosendspin 10
 
 ### Hello, activation, pairing
 
-- `client/hello`: `name` "S1 Panel", `device_info` (Aqara / Panel Hub S1 Plus (S1 Kiosk) / app
+- `client/hello`: `name` "Glassworks Panel", `device_info` (Aqara / Panel Hub S1 Plus (S1 Kiosk) / app
   version / MAC), `supported_roles` `["player@v1", "metadata@v1"]`, and
   `player@v1_support {supported_formats: [{codec: flac, channels: 2, sample_rate: 48000,
   bit_depth: 16}, {codec: pcm, channels: 2, sample_rate: 48000, bit_depth: 16}],

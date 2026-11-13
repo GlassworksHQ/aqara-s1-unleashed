@@ -22,7 +22,7 @@ object ImprovSerialServer {
     private const val TAG = "S1Kiosk.ImprovSerial"
     private const val FIRMWARE = "S1 Kiosk"
     private const val CHIP = "Allwinner A133"
-    private const val DEVICE_NAME = "S1 Panel"
+    private const val DEVICE_NAME = "Glassworks Panel"
     /** The client waits 20 s for a scan; Wi-Fi may have to be turned on first. */
     private const val SCAN_WAIT_MS = 15_000L
 
