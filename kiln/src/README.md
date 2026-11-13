@@ -1,6 +1,6 @@
 # Web installer: module contracts
 
-The design is in `docs/research/web-installer.md`, and the reference flow in `tools/install/fel-install.sh` +
+The design is in `frames/aqara-s1-plus/research/web-installer.md`, and the reference flow in `tools/install/fel-install.sh` +
 `tools/install.sh`. Every module is plain TypeScript (ES2022, no framework). Modules talk to each
 other only through the exports below. `app/` is the only module that knows about the UI.
 

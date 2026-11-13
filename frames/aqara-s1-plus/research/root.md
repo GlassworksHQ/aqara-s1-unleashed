@@ -120,7 +120,7 @@ panel's adb serial. The scripts keep `ANDROID_SERIAL` for adb only.
 
 ## App update service
 
-`s1kiosk_update` installs app updates that the app downloaded and verified ([esphome.md](../esphome.md#app-updates)).
+`s1kiosk_update` installs app updates that the app downloaded and verified ([esphome.md](../../../docs/esphome.md#app-updates)).
 
 - **App side:**
   1. write `/data/data/sh.edm.s1kiosk/files/update/pending.apk`;
@@ -149,7 +149,7 @@ panel's adb serial. The scripts keep `ANDROID_SERIAL` for adb only.
 
 ## Radio bundle service
 
-`s1kiosk_bundle` installs the signed radio bundle the app ships ([radio.md](../radio.md#radio-bundles-helper-v4)).
+`s1kiosk_bundle` installs the signed radio bundle the app ships ([radio.md](../../../docs/radio.md#radio-bundles-helper-v4)).
 Same shape and threat model as `s1kiosk_update`:
 
 - **App side:** stage `/data/data/sh.edm.s1kiosk/files/radio/bundle-in/` (manifest, `manifest.sig`, the
@@ -170,6 +170,6 @@ Same shape and threat model as `s1kiosk_update`:
   back to the boot image's helper if it fails or the bundle's helper keeps exiting.
 
 ## Next
-- Browser installer (WebUSB): built, in [`kiln/`](../../kiln/src/README.md); design in
-  [web-installer.md](web-installer.md), user guide in [docs/install.md](../install.md).
+- Browser installer (WebUSB): built, in [`kiln/`](../../../kiln/src/README.md); design in
+  [web-installer.md](web-installer.md), user guide in [docs/install.md](../../../docs/install.md).
 - After `fel-install.sh`, `tools/install.sh` installs and configures the kiosk app over adb.

@@ -19,6 +19,6 @@ echo "== Stage 1: SPL only (DRAM init), returns to FEL"
 sleep 1
 "$FEL" ver   # still in FEL after SPL -> SPL returned cleanly
 
-echo "== Stage 2: U-Boot proper from RAM (direct at EL3, no TF-A; see docs/research/fel.md)"
+echo "== Stage 2: U-Boot proper from RAM (direct at EL3, no TF-A; see frames/aqara-s1-plus/research/fel.md)"
 SUNXI_FEL="$FEL" NO_BL31=1 "$(dirname "$0")/fel-boot.sh" "$(dirname "$BIN")"
 echo "U-Boot started. Use the UART console; power-cycle to return to Android."

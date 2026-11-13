@@ -2,7 +2,7 @@
 
 The repo-wide rules are in [`../AGENTS.md`](../AGENTS.md). The module contracts are in
 [`src/README.md`](src/README.md), and the design with its verified sources is in
-[`../docs/research/web-installer.md`](../docs/research/web-installer.md).
+[`../frames/aqara-s1-plus/research/web-installer.md`](../frames/aqara-s1-plus/research/web-installer.md).
 A new package with a README needs a branded header: a library banner if anyone could use it on its
 own (like `improv-serial`), or the Kiln badge if it's part of Kiln. See
 [Branding](../AGENTS.md#branding).

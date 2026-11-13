@@ -3,7 +3,7 @@
 # tools/radio/build-sisdk-runtime.sh plus the panel's own download of zigbeed; docs/radio.md): package Silicon Labs' prebuilt zigbeed (EmberZNet 8.2.2, EZSP v18,
 # Simplicity SDK 2025.6.3) so it runs on the Aqara S1 panel (Android 10, 32-bit ARM userspace)
 # next to Aqara's own cpcd 4.3.3 and the stock multi-PAN RCP. Goal: Zigbee2MQTT's `ember` adapter
-# (needs EZSP 13-19) without reflashing the radio. See docs/research/zigbee2mqtt.md.
+# (needs EZSP 13-19) without reflashing the radio. See frames/aqara-s1-plus/research/zigbee2mqtt.md.
 #
 # BUILD ONLY. This script never talks to the device (no adb). Nothing is vendored in the repo.
 #

@@ -17,7 +17,7 @@ cp "$HERE/uboot/aqara-s1-plus_defconfig" "$UBOOT_SRC/configs/"
 cp "$HERE/uboot/sun50i-a133-aqara-s1-plus.dts" "$UBOOT_SRC/dts/upstream/src/arm64/allwinner/"
 cp "$BL31" "$UBOOT_SRC/bl31-s1.bin"
 
-# Board-specific fixes to mainline (see docs/research/fel.md). Applied once; skipped if already present.
+# Board-specific fixes to mainline (see frames/aqara-s1-plus/research/fel.md). Applied once; skipped if already present.
 for p in "$HERE"/uboot/patches/*.patch; do
   [ -e "$p" ] || continue
   if git -C "$UBOOT_SRC" apply --reverse --check "$p" 2>/dev/null; then

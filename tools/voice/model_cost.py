@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Work and host time per wake word model (MIT). Host only: no adb, nothing touches a panel.
 
-For docs/research/idle-cpu.md (#105). For each .tflite: its input, the multiply-accumulates of its
+For frames/aqara-s1-plus/research/idle-cpu.md (#105). For each .tflite: its input, the multiply-accumulates of its
 conv, fully-connected and batch-matmul ops, and the mean time of one call (LiteRT, one thread,
 XNNPACK). The host time is elapsed time (perf_counter), only good for ratios between models;
 the panel is far slower.

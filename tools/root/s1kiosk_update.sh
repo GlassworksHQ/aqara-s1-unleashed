@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# s1kiosk_update: root install service for S1 Kiosk app updates (docs/research/root.md), contract v1.
+# s1kiosk_update: root install service for S1 Kiosk app updates (frames/aqara-s1-plus/research/root.md), contract v1.
 # Runs as a disabled one-shot init service (s1kiosk_update.rc: root, u:r:su:s0). The app downloads a
 # release, checks its SHA-256, package name and signing certificate, writes it to $SRC and starts
 # this service with `setprop ctl.start s1kiosk_update`.

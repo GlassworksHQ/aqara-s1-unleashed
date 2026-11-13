@@ -16,11 +16,11 @@ Breaking into hardware has its own playbook: [`docs/research/bringup.md`](docs/r
 | `app/kiosk` | S1 Kiosk, the GeckoView kiosk app (`sh.edm.s1kiosk`, never rename it) | Kotlin, Android |
 | `app/libs/*` | Libraries split out of the app: `esphome-api` (JVM), `esphome-api-android`, `improv` | Kotlin |
 | `kiln/` | Kiln, the WebUSB installer (FEL → fastboot → boot patch → adb), served at s1.edm.sh. The page in `src/`, protocol modules in `packages/`, the Next.js app in `apps/kiln` | TypeScript, Vite, Next.js, Rust→WASM |
-| `frames/<id>/` | Everything about one frame: its Kiln recipe (`installer/`) and its design data (`design/frame.json`, `recovery.json`) | TypeScript, JSON |
+| `frames/<id>/` | Everything about one frame: its README, its Kiln recipe (`installer/`), its design data (`design/frame.json`, `recovery.json`) and its research notes (`research/`) | TypeScript, JSON, Markdown |
 | `packages/` | Packages Kiln and glassworks.dev share: `frame-card`, the frame card and 3D device mockup | TypeScript, React |
 | `tools/fel`, `tools/install` | FEL boot, U-Boot board files and patches, the CLI installer | bash |
 | `tools/root`, `tools/radio` | Init services in the patched boot image: root helper, update and bundle services | `/system/bin/sh` (mksh), C |
-| `docs/` | User guides; `docs/research/` holds the engineering notes and evidence | Markdown |
+| `docs/` | User guides; `docs/research/` holds the general engineering notes and the index of every note | Markdown |
 | `branding/` | Boot logo, boot animation, splash | Python |
 
 ## Commands
@@ -109,18 +109,20 @@ in HA. If a request goes against it, say so and point at the page instead of bui
 
 Reverse-engineering and bring-up work is the most expensive knowledge in this project, and the
 easiest to lose. Whenever you probe hardware, firmware, a protocol or a vendor binary, **write it
-down in `docs/research/` in the same PR**, even if the attempt failed:
+down in the same PR**, even if the attempt failed. Frame-specific notes go in
+`frames/<id>/research/`, general ones in `docs/research/`:
 
 - What you tried, the exact commands, and what came back (redacted logs).
-- What it rules out. Dead ends save the next person days; `findings.md` on the stock USB burn mode
+- What it rules out. Dead ends save the next person days; the S1's `findings.md` on the stock USB burn mode
   is the model for this.
 - How sure you are: **verified** (ran it, with the date), **read** (from source or a binary, with
   the file and offset), or **untested**.
 - Scripts you used to find it. Put reusable ones under `tools/` with a header comment that says
   what they touch (RAM only? read-only?). Don't leave them only on your machine.
 
-Use [`docs/research/TEMPLATE.md`](docs/research/TEMPLATE.md) for a new note, and add it to the table
-in [`docs/research/README.md`](docs/research/README.md). The general approach and the S1's lessons
+Use [`docs/research/TEMPLATE.md`](docs/research/TEMPLATE.md) for a new note, add it to the table
+in [`docs/research/README.md`](docs/research/README.md) (the index of every note), and, for a
+frame's note, to that frame's README. The general approach and the S1's lessons
 are in [`docs/research/bringup.md`](docs/research/bringup.md).
 
 ## Writing style

@@ -44,7 +44,7 @@ A root shell confirmed the rest: SELinux was permissive, an AOSP `su` shipped in
 `/system/xbin`, and the build was `test-keys`. The chip would boot unsigned code. The
 remaining question was how to reach it without a serial cable.
 
-→ [hardware.md](hardware.md) · [boot-log.md](boot-log.md) · [findings.md](findings.md)
+→ [hardware.md](../../frames/aqara-s1-plus/research/hardware.md) · [boot-log.md](../../frames/aqara-s1-plus/research/boot-log.md) · [findings.md](../../frames/aqara-s1-plus/research/findings.md)
 
 ## 2. Finding the way in: FEL
 
@@ -59,7 +59,7 @@ and no way to flash partitions. Every other route (`efex` via `misc`, the RTC FE
 `auto_fel`) needs root on the panel first. So the PCB button became the one physical step:
 open the back cover, hold the button, plug in USB-C.
 
-→ [findings.md: Bootloader USB entry points](findings.md#bootloader-usb-entry-points-stock-u-boot-201805-read-from-the-binary)
+→ [findings.md: Bootloader USB entry points](../../frames/aqara-s1-plus/research/findings.md#bootloader-usb-entry-points-stock-u-boot-201805-read-from-the-binary)
 
 ## 3. Mainline U-Boot, and the DRAM bug
 
@@ -98,7 +98,7 @@ followed:
 Then came fastboot over USB-C, plus a small `upload` extension to **read** partitions back
 at about 20 MB/s.
 
-→ [fel.md](fel.md) · patches in [`tools/fel/uboot/patches`](../../tools/fel/uboot/patches)
+→ [fel.md](../../frames/aqara-s1-plus/research/fel.md) · patches in [`tools/fel/uboot/patches`](../../tools/fel/uboot/patches)
 
 ## 4. Persistent root with Magisk
 
@@ -121,7 +121,7 @@ properties, and the init service does the root work.
   and adb was back 21 s after reboot. Re-running on a patched panel produces the identical
   image.
 
-→ [root.md](root.md)
+→ [root.md](../../frames/aqara-s1-plus/research/root.md)
 
 ## 5. The installer, moved into the browser
 
@@ -155,7 +155,7 @@ The UI went through five mockups before *option E*, the one that shipped.
   <img src="../img/installer/welcome.webp" alt="The web installer's first screen: the step rail on the left and the browser checks on the right." width="80%">
 </p>
 
-→ [web-installer.md](web-installer.md) (the design spec, written before the build) · [`kiln/`](../../kiln/src/README.md)
+→ [web-installer.md](../../frames/aqara-s1-plus/research/web-installer.md) (the design spec, written before the build) · [`kiln/`](../../kiln/src/README.md)
 
 ## 6. Making it a good wall panel
 
@@ -166,11 +166,11 @@ The UI went through five mockups before *option E*, the one that shipped.
   forces the screen off 15 s after every wake. The panel had also shipped in the
   `Africa/Algiers` time zone. The installer now turns that rule off through Aqara's own binder API,
   and the kiosk runs its own night mode, using the panel's time-of-flight and light sensors.
-  → [screen-policy.md](screen-policy.md) · [../sensors.md](../sensors.md)
+  → [screen-policy.md](../../frames/aqara-s1-plus/research/screen-policy.md) · [../sensors.md](../sensors.md)
 - **Aqara's cloud.** Disabling Aqara's apps didn't stop it phoning home. A native daemon,
   `ha_master`, kept the cloud link up. A watchdog in Aqara's system manager also forced a Wi-Fi
   reassociation whenever that link dropped. The kiosk stops the daemon at start, and the panel
-  then holds no internet connections. → [debloat.md](debloat.md)
+  then holds no internet connections. → [debloat.md](../../frames/aqara-s1-plus/research/debloat.md)
 - **Voice.** openWakeWord runs on the panel with TFLite. The ESPHome native API makes the panel an
   Assist satellite, and the *Ambient Stage* overlay shows the conversation.
 
@@ -206,32 +206,50 @@ To check the result, we wrote an emulator from that reading and ran **Aqara's ow
 against it on the panel**. Aqara's tool accepted it. The kiosk's native driver passes the same
 test, but it has **not yet met a real base**.
 
-→ [bases.md](bases.md) · [base-protocol.md](base-protocol.md)
+→ [bases.md](../../frames/aqara-s1-plus/research/bases.md) · [base-protocol.md](../../frames/aqara-s1-plus/research/base-protocol.md)
 
 ---
 
 ## The research notes
 
+This page is the index of every note. Notes about one device live with its frame, in
+`frames/<id>/research/`; notes that apply to every frame live here, in `docs/research/`.
+
+### General (`docs/research/`)
+
 | File | What's in it |
 |---|---|
 | [bringup.md](bringup.md) | The method: how to break into a device step by step, and what the S1 taught us about FEL, U-Boot, fastboot and Android 10 |
 | [TEMPLATE.md](TEMPLATE.md) | Start a new note from this |
-| [hardware.md](hardware.md) | Board, SoC, FEL button, the 3-pin UART console and an ESP32-S3 as the adapter |
-| [boot-log.md](boot-log.md) | Annotated stock boot log: BOOT0 DRAM bring-up, secure-boot state, partitions |
-| [findings.md](findings.md) | Root, SELinux, AVB, partitions, USB/adb defaults; why there is no button-free USB entry |
-| [fel.md](fel.md) | Mainline U-Boot from FEL: the A133 DDR4 fix, CPU clock, chunked uploads, fastboot |
-| [root.md](root.md) | Persistent root with Magisk, the root helper, first-boot adb provisioning, `fel-install.sh` |
-| [web-installer.md](web-installer.md) | The WebUSB installer's design spec: FEL port, fastboot, byte-exact boot patch, per-OS setup |
-| [screen-policy.md](screen-policy.md) | Why the panel turned its screen off (Aqara's DND night rule) and what replaced it |
-| [debloat.md](debloat.md) | Aqara's packages, the reversible de-bloat, and the cloud daemon and its Wi-Fi watchdog |
-| [bases.md](bases.md) | Which wall bases exist, how the panel talks to them, the kiosk's driver |
-| [base-protocol.md](base-protocol.md) | The wall base UART protocol, with the emulator proof against Aqara's own tool |
-| [zigbee2mqtt.md](zigbee2mqtt.md) | Zigbee2MQTT on the stock radio: Silicon Labs' zigbeed 8.2.2 on Aqara's RCP, panel tests, licences |
-| [rcp-firmware.md](rcp-firmware.md) | Could a newer multiprotocol RCP be built for this MG21? CPC protocol, tooling, board config |
-| [framework-restart.md](framework-restart.md) | Android 10's ActivityManager breaking during fast kiosk restarts, and `system_server` restarting; the likely (untested) cause of the panel "dropping off USB" |
-| [boot-animation.md](boot-animation.md) | What Android 10's boot animation and the 32 MiB boot image allow: texture caching, trim, the size budget, and what was cut from the #63 design |
-| [idle-cpu.md](idle-cpu.md) | Why the kiosk uses ~40% of a core at idle: the wake word's embedding model, per-thread numbers, and the options (#105) |
 | [microwakeword.md](microwakeword.md) | Replacing openWakeWord with microWakeWord: the Kotlin port of TFLite Micro's audio frontend, the models, test speech, and what is left for the panel |
+
+### Aqara S1 Plus ([`frames/aqara-s1-plus/research/`](../../frames/aqara-s1-plus/README.md#research-notes))
+
+| File | What's in it |
+|---|---|
+| [hardware.md](../../frames/aqara-s1-plus/research/hardware.md) | Board, SoC, FEL button, the 3-pin UART console and an ESP32-S3 as the adapter |
+| [boot-log.md](../../frames/aqara-s1-plus/research/boot-log.md) | Annotated stock boot log: BOOT0 DRAM bring-up, secure-boot state, partitions |
+| [findings.md](../../frames/aqara-s1-plus/research/findings.md) | Root, SELinux, AVB, partitions, USB/adb defaults; why there is no button-free USB entry |
+| [fel.md](../../frames/aqara-s1-plus/research/fel.md) | Mainline U-Boot from FEL: the A133 DDR4 fix, CPU clock, chunked uploads, fastboot |
+| [root.md](../../frames/aqara-s1-plus/research/root.md) | Persistent root with Magisk, the root helper, first-boot adb provisioning, `fel-install.sh` |
+| [web-installer.md](../../frames/aqara-s1-plus/research/web-installer.md) | The WebUSB installer's design spec: FEL port, fastboot, byte-exact boot patch, per-OS setup |
+| [screen-policy.md](../../frames/aqara-s1-plus/research/screen-policy.md) | Why the panel turned its screen off (Aqara's DND night rule) and what replaced it |
+| [debloat.md](../../frames/aqara-s1-plus/research/debloat.md) | Aqara's packages, the reversible de-bloat, and the cloud daemon and its Wi-Fi watchdog |
+| [bases.md](../../frames/aqara-s1-plus/research/bases.md) | Which wall bases exist, how the panel talks to them, the kiosk's driver |
+| [base-protocol.md](../../frames/aqara-s1-plus/research/base-protocol.md) | The wall base UART protocol, with the emulator proof against Aqara's own tool |
+| [zigbee2mqtt.md](../../frames/aqara-s1-plus/research/zigbee2mqtt.md) | Zigbee2MQTT on the stock radio: Silicon Labs' zigbeed 8.2.2 on Aqara's RCP, panel tests, licences |
+| [rcp-firmware.md](../../frames/aqara-s1-plus/research/rcp-firmware.md) | Could a newer multiprotocol RCP be built for this MG21? CPC protocol, tooling, board config |
+| [framework-restart.md](../../frames/aqara-s1-plus/research/framework-restart.md) | Android 10's ActivityManager breaking during fast kiosk restarts, and `system_server` restarting; the likely (untested) cause of the panel "dropping off USB" |
+| [boot-animation.md](../../frames/aqara-s1-plus/research/boot-animation.md) | What Android 10's boot animation and the 32 MiB boot image allow: texture caching, trim, the size budget, and what was cut from the #63 design |
+| [idle-cpu.md](../../frames/aqara-s1-plus/research/idle-cpu.md) | Why the kiosk uses ~40% of a core at idle: the wake word's embedding model, per-thread numbers, and the options (#105) |
+
+### lululemon Studio Mirror ([`frames/lululemon-mirror/`](../../frames/lululemon-mirror/README.md))
+
+No notes yet.
+
+### Generic Android ([`frames/generic-android/`](../../frames/generic-android/README.md))
+
+No notes yet.
 
 User-facing guides stay one level up, in [docs/](../README.md).
 
