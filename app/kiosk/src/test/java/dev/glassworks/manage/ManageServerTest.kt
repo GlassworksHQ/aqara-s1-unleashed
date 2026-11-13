@@ -66,11 +66,17 @@ class ManageServerTest {
     }
 
     @Test fun onlyThePanelsOwnNamesAreServed() {
-        assertEquals(400, f.Browser(host = "attacker.example:8099").get("/").status)
-        assertTrue(ManageServer.hostAllowed("192.0.2.40:8099"))
-        assertTrue(ManageServer.hostAllowed("glassworks-panel.local:8099"))
-        assertTrue(ManageServer.hostAllowed("[fd00::1]:8099"))
-        assertFalse(ManageServer.hostAllowed("panel.example.com"))
+        // DNS rebinding: a name that resolves here but isn't the panel's, a spoofed .local, another address.
+        for (h in listOf("attacker.example:8099", "evil.local:8099", "panel:8099", "192.0.2.41:8099", "[fd00::41]:8099")) {
+            assertEquals(h, 400, f.Browser(host = h).get("/").status)
+        }
+        for (h in listOf("192.0.2.40:8099", "glassworks-panel.local:8099", "[fd00::40]:8099", "192.0.2.40")) {
+            assertEquals(h, 200, f.Browser(host = h).get("/").status)
+        }
+        val own = setOf("192.0.2.40")
+        assertFalse(ManageServer.hostAllowed("192.0.2.40:80x", own))
+        assertFalse(ManageServer.hostAllowed("192.0.2.40:8099:1", own))
+        assertFalse(ManageServer.hostAllowed(null, own))
     }
 
     @Test fun afterSignInOnlyPathsOnThisPanel() {
@@ -244,6 +250,57 @@ class ManageServerTest {
         assertTrue(f.ran.isEmpty())
         assertEquals(303, b.post("/confirm/reboot", mapOf("csrf" to csrf, "code" to shown.code)).status)
         assertEquals(listOf("reboot"), f.ran)
+    }
+
+    @Test fun whenThePanelCantShowACodeThePageSaysSo() {
+        f.code.canDisplay = { false }
+        val b = f.Browser()
+        b.get("/")
+        val r = b.post("/manage/code", mapOf("next" to "/"))
+        assertEquals(503, r.status)
+        assertTrue(r.text().contains("The panel can't show a code right now."))
+        assertTrue(f.shown.isEmpty())
+        // Signed in, Reboot can't ask for one either: it says so and doesn't reboot.
+        f.code.canDisplay = { true }
+        b.signInWithHa()
+        f.code.canDisplay = { false }
+        assertEquals("/?done=nocode", b.post("/action/reboot", mapOf("csrf" to b.csrf())).headers["Location"])
+        assertTrue(b.get("/?done=nocode").text().contains("Rebooting needs it."))
+        assertTrue(f.ran.isEmpty())
+    }
+
+    @Test fun anotherBrowserCantReplaceACodeThatJustWentUp() {
+        val a = f.Browser()
+        a.get("/")
+        a.post("/manage/code", mapOf("next" to "/"))
+        val code = f.shown.last()!!.code
+        val b = f.Browser()
+        b.get("/")
+        val busy = b.post("/manage/code", mapOf("next" to "/"))
+        assertEquals(429, busy.status)
+        assertTrue(busy.text().contains("showing a code for another browser"))
+        // a asking again keeps its code on the screen, and it still works.
+        a.post("/manage/code", mapOf("next" to "/"))
+        assertEquals(1, f.shown.size)
+        assertEquals("/", a.post("/manage/code", mapOf("next" to "/", "code" to code)).headers["Location"])
+    }
+
+    @Test fun withoutRebootTheButtonAndTheActionAreGone() {
+        f.canReboot = false
+        val b = f.Browser()
+        b.signInWithHa()
+        assertFalse(b.get("/").text().contains("/action/reboot"))
+        assertEquals("/", b.post("/action/reboot", mapOf("csrf" to b.csrf())).headers["Location"])
+        assertTrue("no code shown", f.shown.isEmpty())
+        assertTrue(f.ran.isEmpty())
+    }
+
+    @Test fun aRevokeHaDidntTakeIsTriedAgainThenLogged() {
+        f.revokeWorks = false
+        f.Browser().signInWithHa()
+        assertEquals(listOf("REFRESH", "REFRESH"), f.revoked)
+        assertEquals(1, f.warnings.size)
+        assertFalse("the warning never holds the token", f.warnings.single().contains("REFRESH"))
     }
 
     @Test fun aSignInCodeDoesntConfirmAReboot() {

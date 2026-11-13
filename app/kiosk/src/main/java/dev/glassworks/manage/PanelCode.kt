@@ -15,7 +15,10 @@ import java.security.SecureRandom
  * Guessing is limited twice: a code dies after [perCode] wrong tries (5), and [windowFailures] wrong
  * tries in [windowMs] (10 in 15 min, from any browser) lock code entry until the oldest of them is
  * [windowMs] old. At most 40 guesses an hour against 10^6 codes, each new code shown on the screen.
- * Thread-safe.
+ *
+ * Asking is limited too: a code on the screen stays for at least [minGapMs] (30 s). The same browser
+ * asking again for the same thing gets the same code; anyone else waits, so nobody can keep replacing
+ * another person's code. Thread-safe.
  */
 class PanelCode(
     private val clock: () -> Long = System::currentTimeMillis,
@@ -24,6 +27,7 @@ class PanelCode(
     private val perCode: Int = 5,
     private val windowMs: Long = 15 * 60_000L,
     private val windowFailures: Int = 10,
+    private val minGapMs: Long = 30_000L,
 ) {
     /** What the panel shows: [code], and in words what it is for ([label], "Sign in to manage this panel"). */
     data class Shown(val code: String, val purpose: String, val label: String, val untilMs: Long) {
@@ -38,7 +42,18 @@ class PanelCode(
         class Locked(val untilMs: Long) : Check()
     }
 
-    private class Pending(val shown: Shown, val requester: String, var wrong: Int = 0)
+    /** What [show] did. */
+    sealed class Show {
+        class Ok(val shown: Shown) : Show()
+        /** Too many wrong codes: no new code until [untilMs]. */
+        class Locked(val untilMs: Long) : Show()
+        /** Another browser's code went up less than 30 s ago: try again at [untilMs]. */
+        class Busy(val untilMs: Long) : Show()
+        /** The panel can't draw a code now ([canDisplay] is false). */
+        object Unavailable : Show()
+    }
+
+    private class Pending(val shown: Shown, val requester: String, val shownAtMs: Long, var wrong: Int = 0)
 
     private var pending: Pending? = null
     private val failures = ArrayDeque<Long>()
@@ -46,15 +61,24 @@ class PanelCode(
     /** Called with the code to show, or null to hide it. The panel's screen sets it. Any thread. */
     @Volatile var display: (Shown?) -> Unit = {}
 
-    /** Shows a new code for [purpose], for the browser [requester]. Null when code entry is locked. */
-    fun show(purpose: String, label: String, requester: String): Shown? {
+    /** Whether the panel can draw a code now. False until the panel's screen says it can. */
+    @Volatile var canDisplay: () -> Boolean = { false }
+
+    /** Shows a code for [purpose], for the browser [requester]: a new one, or the one already up for it. */
+    fun show(purpose: String, label: String, requester: String): Show {
         val shown = synchronized(this) {
-            if (lockedUntil() != null) return null
+            if (!canDisplay()) return Show.Unavailable
+            lockedUntil()?.let { return Show.Locked(it) }
+            val now = clock()
+            val p = pending
+            if (p != null && now < p.shown.untilMs && now - p.shownAtMs < minGapMs) {
+                return if (p.requester == requester && p.shown.purpose == purpose) Show.Ok(p.shown) else Show.Busy(p.shownAtMs + minGapMs)
+            }
             val code = (random.nextInt(1_000_000)).toString().padStart(6, '0')
-            Shown(code, purpose, label, clock() + ttlMs).also { pending = Pending(it, requester) }
+            Shown(code, purpose, label, now + ttlMs).also { pending = Pending(it, requester, now) }
         }
         display(shown)
-        return shown
+        return Show.Ok(shown)
     }
 
     /** Checks [input] against the code shown for [purpose] and [requester]. A right code is used up. */

@@ -40,7 +40,7 @@ data class Session(
 /**
  * The Manage page's signed-in browsers. Sessions live [rememberMs] (30 days) when remembered, else
  * [shortMs] (12 h, and the cookie dies with the browser). Every session ends when the panel's HA address
- * changes ([lookup]'s haBase) or on [revokeAll]. Persisted to [file] so a remembered browser survives an
+ * changes ([lookup]'s haBase). Persisted to [file] so a remembered browser survives an
  * app restart or a reboot. Thread-safe.
  */
 class SessionStore(
@@ -101,12 +101,6 @@ class SessionStore(
         sessions.remove(k)
         save()
         return true
-    }
-
-    @Synchronized
-    fun revokeAll() {
-        sessions.clear()
-        save()
     }
 
     private fun load() {

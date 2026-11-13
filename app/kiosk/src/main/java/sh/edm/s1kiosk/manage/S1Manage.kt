@@ -51,6 +51,7 @@ import sh.edm.s1kiosk.settings.CoreSettings
 import sh.edm.s1kiosk.update.UpdateManager
 import java.io.File
 import java.io.IOException
+import java.net.NetworkInterface
 import java.util.Locale
 
 /**
@@ -62,7 +63,7 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
     private val app = context.applicationContext
     private val dir = File(app.filesDir, "manage")
     val log = ManageLog(File(dir, "log"))
-    private val tail = LogcatTail(log, ::source) { Log.w(TAG, it) }
+    private val tail = LogcatTail(log, ::logSource) { Log.w(TAG, it) }
 
     val server = ManageServer(
         host = Host(),
@@ -70,10 +71,11 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
         setUp = { HaAuth.signedIn },
         sessions = SessionStore(File(dir, "sessions.json")),
         code = runtime.panelCode,
-        signIn = HaSignIn(Gateway(tokens) { url -> WsHaSocket.connect(url) }),
+        signIn = HaSignIn(Gateway(tokens) { url -> WsHaSocket.connect(url) }, warn = { Log.w(TAG, it) }),
         log = log,
         qrPaths = setOf("/signin", SignInServer.CONTINUE, "/callback", ThreadJoin.PATH, SignInServer.THREAD_CONTINUE, ThreadJoin.CALLBACK),
         qr = { req -> qr(signIn, req) },
+        ownHosts = ::ownHosts,
         event = { msg -> Log.i(TAG, msg); runCatching { log.append(LogEntry(System.currentTimeMillis(), LogEntry.Level.INFO, "Manage", msg)) } },
     )
 
@@ -247,23 +249,16 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
         }
     }
 
-    /** The S1's log tags, in words. The rest (Gecko, Android) stays out of the Manage log. */
-    private fun source(tag: String): String? = when {
-        tag.startsWith("S1Kiosk.Radio") || tag.startsWith("S1Radio") -> "Radio"
-        tag.startsWith("S1Kiosk.Screen") -> "Screen"
-        tag.startsWith("S1Kiosk.Wifi") -> "Wi-Fi"
-        tag.startsWith("S1Kiosk.Update") -> "Updates"
-        tag.startsWith("S1Kiosk.Improv") -> "Setup"
-        tag.startsWith("S1Kiosk.SetupChannel") -> "Setup"
-        tag.startsWith("S1Kiosk.TimeZone") -> "Time zone"
-        tag.startsWith("S1Kiosk.Voice") || tag == "S1Voice" -> "Voice"
-        tag == "S1Sendspin" -> "Music"
-        tag == "S1Base" -> "Wall base"
-        tag == "S1Auth" -> "Sign-in"
-        tag == "S1Discovery" -> "Home Assistant"
-        tag == "S1EspHome" || tag.startsWith("S1EspHome") -> "Home Assistant"
-        tag == "S1Kiosk" || tag.startsWith("S1Kiosk.") -> "App"
-        else -> null
+    /** The panel's IP addresses now, `localhost`, its ESPHome name and its Android host name, as `.local`. */
+    private fun ownHosts(): Set<String> {
+        val out = hashSetOf("localhost", "${PanelDevice.NAME}.local")
+        runCatching {
+            for (i in NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()) for (a in i.inetAddresses.toList()) {
+                a.hostAddress?.let { out += it.substringBefore('%').lowercase() }
+            }
+        }.onFailure { Log.w(TAG, "can't list the panel's addresses", it) }
+        prop("net.hostname").lowercase().takeIf { it.isNotEmpty() }?.let { out += it; out += "$it.local" }
+        return out
     }
 
     private fun prop(key: String): String = runCatching {
@@ -314,6 +309,24 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
 
     companion object {
         const val TAG = "S1Manage"
+
+        /** The S1's log tags, in words, for the Manage log. The rest (Gecko, Android) stays out. */
+        fun logSource(tag: String): String? = when {
+            tag.startsWith("S1Kiosk.Radio") || tag.startsWith("S1Radio") -> "Radio"
+            tag.startsWith("S1Kiosk.Screen") -> "Screen"
+            tag.startsWith("S1Kiosk.Wifi") -> "Wi-Fi"
+            tag.startsWith("S1Kiosk.Update") -> "Updates"
+            tag.startsWith("S1Kiosk.Improv") || tag.startsWith("S1Kiosk.SetupChannel") -> "Setup"
+            tag.startsWith("S1Kiosk.TimeZone") -> "Time zone"
+            tag.startsWith("S1Kiosk.Voice") || tag == "S1Voice" -> "Voice"
+            tag == "S1Sendspin" -> "Music"
+            tag == "S1Base" -> "Wall base"
+            tag == "S1Auth" -> "Sign-in"
+            tag == "S1Discovery" -> "Home Assistant"
+            tag == PanelDevice.ESPHOME_LOG_TAG -> "Home Assistant"
+            tag == "S1Kiosk" || tag.startsWith("S1Kiosk.") -> "App"
+            else -> null
+        }
         private val TITLES = mapOf("assist" to "Voice", "sendspin" to "Music", "radio" to "Radio", "wall-base" to "Wall base")
     }
 }

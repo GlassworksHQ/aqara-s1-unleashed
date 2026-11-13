@@ -15,7 +15,10 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URI
 import java.net.URLDecoder
-import java.util.concurrent.Executors
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /** One HTTP request. Header names are lowercase. */
@@ -70,10 +73,15 @@ class HttpServer(
     private val bindAddress: InetAddress? = null,
     private val log: (String) -> Unit = {},
     private val maxBody: Int = 16 * 1024,
+    workers: Int = 4,
+    /** Connections that may wait for a worker. Beyond that, a connection gets 503 at once and is closed. */
+    queued: Int = 32,
 ) {
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
-    private val pool = Executors.newFixedThreadPool(4) { r -> Thread(r, "glassworks-http").apply { isDaemon = true } }
+    private val pool = ThreadPoolExecutor(workers, workers, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue(queued)) { r ->
+        Thread(r, "glassworks-http").apply { isDaemon = true }
+    }
     private val ids = AtomicInteger()
 
     val localPort: Int get() = serverSocket?.localPort ?: -1
@@ -88,7 +96,11 @@ class HttpServer(
         Thread({
             while (running) {
                 val s = try { ss.accept() } catch (e: IOException) { if (running) log("accept failed: ${e.message}"); break }
-                pool.execute { serve(s) }
+                try {
+                    pool.execute { serve(s) }
+                } catch (_: RejectedExecutionException) {
+                    busy(s)
+                }
             }
         }, "glassworks-http-accept").apply { isDaemon = true; start() }
         log("listening on ${ss.localPort}")
@@ -119,6 +131,17 @@ class HttpServer(
                 log("[$id] ${e.message}")
             }
         }
+    }
+
+    /** Every worker is busy and the queue is full: say so and close, without reading the request. */
+    private fun busy(s: Socket) {
+        s.use { sock ->
+            try {
+                sock.soTimeout = 1_000
+                write(sock.getOutputStream(), HttpResponse.text(503, "The panel is busy. Try again in a moment."))
+            } catch (_: IOException) {}
+        }
+        log("busy: refused a connection")
     }
 
     private class TooLarge : IOException("request too large")

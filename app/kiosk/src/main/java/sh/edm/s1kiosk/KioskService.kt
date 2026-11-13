@@ -59,6 +59,8 @@ class KioskService : Service() {
         glassworks.voiceCancel = { device?.cancelVoice() }
         HaAuth.startServer(this)
         codeOverlay = CodeOverlay(this) { glassworks.panelCode.dismiss() }
+        // Without "draw over other apps" the code can't show: the Manage page says so instead of waiting for it.
+        glassworks.panelCode.canDisplay = { android.provider.Settings.canDrawOverlays(this) }
         glassworks.panelCode.display = { shown ->
             main.post {
                 if (shown != null) glassworks.screen.wake("panel code")
@@ -107,6 +109,7 @@ class KioskService : Service() {
         glassworks.discovery = null
         HaAuth.stopServer()
         glassworks.panelCode.display = {}
+        glassworks.panelCode.canDisplay = { false }
         codeOverlay?.show(null)
         codeOverlay = null
         wifiScanner?.stop()

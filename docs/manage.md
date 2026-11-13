@@ -37,12 +37,18 @@ browser and signs any of them out. All of them are signed out when the panel's H
 address changes.
 
 **Rebooting asks for the code on the panel** too, because a reboot takes the radio's network down
-for everyone for about a minute.
+for everyone for about a minute. The Reboot button only shows where the app can reboot the panel
+(when it's the device owner).
+
+**Administrators only, for now.** Like Home Assistant's own device pages, only an administrator can
+manage a panel. Whether other users get a say is open (#124).
 
 ## How it keeps you safe
 
 - The panel asks Home Assistant who you are, checks you're an administrator, and **revokes Home
-  Assistant's token straight away**. It keeps no Home Assistant token from your sign-in. Its own
+  Assistant's token straight away**. It keeps no Home Assistant token from your sign-in. If Home
+  Assistant doesn't take the revoke, the panel tries once more and then logs a warning; that token
+  then stays under your profile in Home Assistant (*Security → Refresh tokens*) until you delete it. Its own
   long-lived sign-in (the one the dashboard uses) is separate, and the Manage page never shows or
   sends it.
 - Your browser gets the panel's own sign-in cookie: `HttpOnly` (scripts can't read it) and
@@ -51,8 +57,13 @@ for everyone for about a minute.
   your signed-in page has. A link or form on another site can't make the panel do anything.
 - The code on the panel works once, for one browser and one purpose, for 5 minutes. Five wrong tries
   end a code; ten wrong tries in 15 minutes lock code entry for everyone until they're 15 minutes old.
-- The page answers only to the panel's own names (its IP address, a `.local` name or a bare host
-  name), so a public name pointed at your network (DNS rebinding) gets nothing.
+  A code stays up for at least 30 seconds: asking again from the same browser keeps it, and another
+  browser has to wait, so nobody can keep replacing your code.
+- If the panel can't draw the code (the app may not draw over other apps), the page says so instead
+  of waiting for a code that never shows.
+- The page answers only to the panel's own addresses and names (its IP addresses, `s1-panel.local`,
+  its Android host name), so another name pointed at it (DNS rebinding, or a spoofed `.local` answer)
+  gets nothing.
 - No scripts, no outside files, and a strict Content-Security-Policy.
 - The log and the diagnostics file have tokens, keys, passwords, Thread datasets and MAC addresses
   removed, so you can attach them to an issue.

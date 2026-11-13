@@ -40,6 +40,11 @@ class ManageServer(
     private val log: ManageLog,
     private val qrPaths: Set<String>,
     private val qr: (HttpRequest) -> HttpResponse,
+    /**
+     * The panel's own addresses and names, lowercase, without a port or brackets: its IP addresses, its
+     * mDNS name. The page answers only to these (DNS rebinding, including a spoofed `.local` answer).
+     */
+    private val ownHosts: () -> Set<String>,
     private val pages: ManagePages = ManagePages(),
     private val event: (String) -> Unit = {},
 ) {
@@ -47,7 +52,7 @@ class ManageServer(
 
     fun handle(req: HttpRequest): HttpResponse {
         if (req.path in qrPaths || (req.path == "/" && !setUp())) return qrPage(req)
-        if (!hostAllowed(req.headers["host"])) return HttpResponse.text(400, "Open this page with the panel's address.")
+        if (!hostAllowed(req.headers["host"], ownHosts())) return HttpResponse.text(400, "Open this page with the panel's address.")
         if (req.method != "GET" && req.method != "HEAD" && req.method != "POST") return HttpResponse.text(405, "Not allowed.")
         if (req.method == "POST" && !sameOrigin(req)) return HttpResponse.text(403, "This form didn't come from the panel's own page.")
         val session = sessions.lookup(req.cookies[SESSION], haBase())
@@ -123,8 +128,15 @@ class ManageServer(
         val (pre, cookie) = pre(req)
         val typed = req.form["code"]
         if (typed == null) {
-            if (code.show(PURPOSE_SIGN_IN, "Sign in to manage this panel", pre) == null) return codeLocked(req, next, remember)
-            return HttpResponse.seeOther("/manage/code?next=" + enc(next) + if (remember) "&remember=1" else "", cookie)
+            return when (val shown = code.show(PURPOSE_SIGN_IN, "Sign in to manage this panel", pre)) {
+                is PanelCode.Show.Ok -> HttpResponse.seeOther("/manage/code?next=" + enc(next) + if (remember) "&remember=1" else "", cookie)
+                is PanelCode.Show.Locked -> codeLocked(req, next, remember)
+                is PanelCode.Show.Busy -> codeDialog(req, busyText(shown.untilMs), next, remember, 429)
+                PanelCode.Show.Unavailable -> {
+                    event("The panel can't show a code (it may not draw over other apps)")
+                    signInPage(req, next, NO_CODE + if (haBase() != null) " Sign in with Home Assistant instead." else "", 503)
+                }
+            }
         }
         return when (val c = code.check(PURPOSE_SIGN_IN, pre, typed)) {
             PanelCode.Check.Ok -> {
@@ -211,8 +223,15 @@ class ManageServer(
             "/action/reboot" -> {
                 if (!a.canReboot) return HttpResponse.seeOther("/")
                 // Rebooting takes the radio's network down for everyone: someone must be at the panel.
-                if (code.show(PURPOSE_REBOOT, "Reboot the panel", s.id) == null) return html(429, rebootDialog(host.status(), viewer, lockedText()))
-                HttpResponse.seeOther("/confirm/reboot")
+                when (val shown = code.show(PURPOSE_REBOOT, "Reboot the panel", s.id)) {
+                    is PanelCode.Show.Ok -> HttpResponse.seeOther("/confirm/reboot")
+                    is PanelCode.Show.Locked -> html(429, rebootDialog(host.status(), viewer, lockedText()))
+                    is PanelCode.Show.Busy -> html(429, rebootDialog(host.status(), viewer, busyText(shown.untilMs)))
+                    PanelCode.Show.Unavailable -> {
+                        event("${who(s)}: reboot refused, the panel can't show a code")
+                        HttpResponse.seeOther("/?done=nocode")
+                    }
+                }
             }
             "/confirm/reboot" -> when (val c = code.check(PURPOSE_REBOOT, s.id, req.form["code"].orEmpty())) {
                 PanelCode.Check.Ok -> run("reboot", "reboot the panel", a::reboot)
@@ -239,6 +258,11 @@ class ManageServer(
             // The overview the reboot was asked from, dimmed behind the dialog.
             behindHtml = pages.overview(status, viewer, host.actions, null).substringAfter("<body>").substringBeforeLast("</body>"))
 
+    private fun busyText(untilMs: Long): String {
+        val s = ((untilMs - System.currentTimeMillis() + 999) / 1000).coerceIn(1, 30)
+        return "The panel is showing a code for another browser. Try again in $s seconds."
+    }
+
     private fun lockedText() = "Too many wrong codes. Try again after ${hhmm(code.lockedUntil() ?: 0)}."
 
     private fun diagnostics(): HttpResponse {
@@ -262,6 +286,7 @@ class ManageServer(
         "reboot" -> "The panel is rebooting. This page comes back in about a minute."
         "signedout" -> "That browser is signed out."
         "failed" -> "That didn't work. The Log says why."
+        "nocode" -> "$NO_CODE Rebooting needs it."
         else -> null
     }
 
@@ -318,13 +343,22 @@ class ManageServer(
         const val PURPOSE_SIGN_IN = "signin"
         const val PURPOSE_REBOOT = "reboot"
 
-        private val HOST_OK = Regex("^(\\d{1,3}(\\.\\d{1,3}){3}|\\[[0-9a-f:.]+]|[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.local)?)(:\\d{1,5})?$")
+        private const val NO_CODE = "The panel can't show a code right now."
 
         /**
-         * The page answers only to the panel's own names: an IP address, a `.local` name or a bare host name.
-         * A public name pointing here (DNS rebinding) is refused.
+         * True when the `Host` header names the panel itself: one of [own], with or without a port. Any other
+         * name is refused, even one that resolves here (DNS rebinding) or a `.local` name someone else answers.
          */
-        fun hostAllowed(host: String?): Boolean = host != null && HOST_OK.matches(host.trim().lowercase())
+        fun hostAllowed(host: String?, own: Set<String>): Boolean {
+            val h = host?.trim()?.lowercase()?.takeIf { it.isNotEmpty() && it.length <= 255 } ?: return false
+            val name = when {
+                h.startsWith("[") -> h.substringAfter('[').substringBefore(']').takeIf { h.indexOf(']') > 0 } ?: return false
+                h.count { it == ':' } == 1 -> h.substringBefore(':').takeIf { h.substringAfter(':').all(Char::isDigit) } ?: return false
+                h.contains(':') -> return false
+                else -> h
+            }
+            return name in own
+        }
 
         /** Where to go after signing in: a path on this panel, never another site. */
         fun safeNext(next: String?): String {

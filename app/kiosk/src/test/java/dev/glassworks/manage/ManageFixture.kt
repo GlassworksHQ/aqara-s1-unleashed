@@ -41,15 +41,18 @@ class ManageFixture(
             return tokens
         }
         override fun currentUser(haBase: String, accessToken: String) = user
-        override fun revoke(haBase: String, clientId: String, refreshToken: String): Boolean { revoked += refreshToken; return true }
+        override fun revoke(haBase: String, clientId: String, refreshToken: String): Boolean { revoked += refreshToken; return revokeWorks }
     }
     val signIn = HaSignIn(gateway, resolve = { listOf(InetAddress.getByName(it)) }, clock = { now },
-        local = { HaSignIn.isLocalAddress(it) || it.hostAddress.startsWith("192.0.2.") })
+        local = { HaSignIn.isLocalAddress(it) || it.hostAddress.startsWith("192.0.2.") }, warn = { warnings += it })
 
+    val warnings = Collections.synchronizedList(ArrayList<String>())
+    var revokeWorks = true
+    var canReboot = true
     val actions = object : PanelActions {
         override fun reloadDashboard(): String? { ran += "reload"; return null }
         override fun restartApp(): String? { ran += "restart"; return null }
-        override val canReboot = true
+        override val canReboot get() = this@ManageFixture.canReboot
         override fun reboot(): String? { ran += "reboot"; return null }
         override fun checkForUpdates(): String? { ran += "update"; return null }
     }
@@ -99,9 +102,13 @@ class ManageFixture(
         qrPaths = setOf("/signin", "/signin/continue", "/callback", "/thread", "/thread/continue", "/thread/callback"),
         qr = { req -> qrSeen += req.path; qrPages?.invoke(req) ?: HttpResponse.html(200, "<header>QR ${req.path}<!--gw-header-right--></header>") },
         pages = ManagePages(clock = { now }),
+        ownHosts = { setOf("192.0.2.40", "glassworks-panel.local", "fd00::40", "127.0.0.1") },
     )
 
-    init { code.display = { shown += it } }
+    init {
+        code.display = { shown += it }
+        code.canDisplay = { true }
+    }
 
     // ------------------------------------------------------------------ a browser
 

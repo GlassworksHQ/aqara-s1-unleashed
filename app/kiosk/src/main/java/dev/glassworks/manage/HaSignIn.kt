@@ -55,6 +55,8 @@ class HaSignIn(
     private val local: (InetAddress) -> Boolean = ::isLocalAddress,
     private val clock: () -> Long = System::currentTimeMillis,
     private val ttlMs: Long = 10 * 60_000L,
+    /** A problem worth a line in the log (a revoke HA didn't take). Never gets a token. */
+    private val warn: (String) -> Unit = {},
 ) {
     class Pending(val state: String, val verifier: String, val browser: String, val haBase: String, val clientId: String,
                   val redirectUri: String, val remember: Boolean, val next: String, val createdMs: Long)
@@ -77,7 +79,7 @@ class HaSignIn(
         synchronized(pending) {
             prune()
             pending[p.state] = p
-            while (pending.size > 20) pending.remove(pending.keys.first())
+            while (pending.size > 100) pending.remove(pending.keys.first())
         }
         val url = base + "/auth/authorize?response_type=code&client_id=" + enc(clientId) + "&redirect_uri=" + enc(redirect) +
             "&state=" + enc(p.state) + "&code_challenge=" + enc(challenge(p.verifier)) + "&code_challenge_method=S256"
@@ -104,8 +106,13 @@ class HaSignIn(
         val user = try {
             gateway.currentUser(p.haBase, tokens.accessToken)
         } finally {
-            // Revoked whatever happens next: the panel keeps no HA token from this sign-in.
-            tokens.refreshToken?.let { gateway.revoke(p.haBase, p.clientId, it) }
+            // Revoked whatever happens next: the panel keeps no HA token from this sign-in. Once more if HA
+            // didn't take it; if it still didn't, the token stays in HA (the person's profile) until removed.
+            tokens.refreshToken?.let {
+                if (!gateway.revoke(p.haBase, p.clientId, it) && !gateway.revoke(p.haBase, p.clientId, it)) {
+                    warn("Home Assistant didn't take the revoke of the Manage sign-in's token; it stays under the user's profile until removed there")
+                }
+            }
         }
         return when {
             user == null -> Result.Failed("Can't sign in", "Home Assistant didn't say who signed in.")

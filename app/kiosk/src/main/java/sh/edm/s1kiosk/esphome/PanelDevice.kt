@@ -91,8 +91,10 @@ class PanelDevice internal constructor(
     )
 
     companion object {
-        // Keep the library's logs under the tag the docs use (`adb logcat -s S1ESPHome`).
-        init { EspHomeLog.tag = "S1ESPHome" }
+        /** The library's logs go under the tag the docs use (`adb logcat -s S1ESPHome`). */
+        const val ESPHOME_LOG_TAG = "S1ESPHome"
+
+        init { EspHomeLog.tag = ESPHOME_LOG_TAG }
 
         /**
          * The ESPHome node name. Home Assistant's config entry keeps it (`device_name`) and the mDNS
@@ -403,10 +405,10 @@ class PanelDevice internal constructor(
     /** The chime player, made on first use (from the ESPHome, voice or main thread). */
     private fun chimes(): TtsPlayer = synchronized(this) { chimePlayer ?: TtsPlayer().also { chimePlayer = it } }
 
-    /** The user cancelled the current voice run (tap on the overlay). */
     /** Home Assistant is connected and listening to the panel's states now. */
     fun homeAssistantConnected(): Boolean = server?.hasSubscriber == true
 
+    /** The user cancelled the current voice run (tap on the overlay). */
     fun cancelVoice() {
         exec.execute { assist?.cancel() }
     }

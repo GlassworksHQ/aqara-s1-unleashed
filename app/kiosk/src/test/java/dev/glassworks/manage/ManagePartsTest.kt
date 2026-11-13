@@ -48,8 +48,6 @@ class ManagePartsTest {
         assertTrue(store.revoke(s1.id))
         assertNull(store.lookup(t1, null))
         assertNotNull(store.lookup(t2, null))
-        store.revokeAll()
-        assertNull(store.lookup(t2, null))
     }
 
     @Test fun browserNames() {
@@ -60,11 +58,13 @@ class ManagePartsTest {
 
     // ------------------------------------------------------------------ the panel's code
 
-    private fun code() = PanelCode(clock = { now })
+    private fun code() = PanelCode(clock = { now }).apply { canDisplay = { true } }
+
+    private fun PanelCode.ok(purpose: String, requester: String) = (show(purpose, purpose, requester) as PanelCode.Show.Ok).shown
 
     @Test fun aCodeWorksOnceForItsPurposeAndBrowser() {
         val c = code()
-        val s = c.show("signin", "Sign in", "browser-a")!!
+        val s = c.ok("signin", "browser-a")
         assertEquals(PanelCode.Check.NoCode, c.check("reboot", "browser-a", s.code))
         assertEquals(PanelCode.Check.NoCode, c.check("signin", "browser-b", s.code))
         assertEquals(PanelCode.Check.Ok, c.check("signin", "browser-a", s.code))
@@ -73,29 +73,49 @@ class ManagePartsTest {
 
     @Test fun aCodeRunsOutAfterFiveMinutes() {
         val c = code()
-        val s = c.show("signin", "Sign in", "a")!!
+        val s = c.ok("signin", "a")
         now += 5 * 60_000L
         assertEquals(PanelCode.Check.NoCode, c.check("signin", "a", s.code))
     }
 
     @Test fun fiveWrongTriesBurnACodeAndTenInAQuarterHourLockEntry() {
         val c = code()
-        var s = c.show("signin", "Sign in", "a")!!
+        var s = c.ok("signin", "a")
         fun wrong(x: PanelCode.Shown) = if (x.code == "000000") "111111" else "000000"
         for (left in 4 downTo 0) assertEquals(left, (c.check("signin", "a", wrong(s)) as PanelCode.Check.Wrong).triesLeft)
         assertEquals(PanelCode.Check.NoCode, c.check("signin", "a", s.code))
-        s = c.show("signin", "Sign in", "a")!!
+        s = c.ok("signin", "a")
         repeat(4) { c.check("signin", "a", wrong(s)) }
         val locked = c.check("signin", "a", wrong(s))
         assertTrue(locked is PanelCode.Check.Locked)
-        assertNull("no new code while locked", c.show("signin", "Sign in", "b"))
+        assertTrue("no new code while locked", c.show("signin", "Sign in", "b") is PanelCode.Show.Locked)
         now += 15 * 60_000L
-        assertNotNull("open again once the failures are old", c.show("signin", "Sign in", "b"))
+        assertTrue("open again once the failures are old", c.show("signin", "Sign in", "b") is PanelCode.Show.Ok)
+    }
+
+    @Test fun askingForCodesIsLimitedSoNobodyCanReplaceAnothersCode() {
+        val c = code()
+        val a = c.ok("signin", "a")
+        assertEquals("the same browser asking again keeps its code", a.code, c.ok("signin", "a").code)
+        val busy = c.show("signin", "x", "b")
+        assertTrue(busy is PanelCode.Show.Busy)
+        assertEquals(PanelCode.Check.Ok, c.check("signin", "a", a.code))
+        val b = c.ok("signin", "b") // a's code was used: b may ask now
+        now += 29_000
+        assertTrue(c.show("reboot", "x", "a") is PanelCode.Show.Busy)
+        now += 1_000
+        assertTrue("after 30 s another browser may ask", c.show("reboot", "x", "a") is PanelCode.Show.Ok)
+        assertEquals(PanelCode.Check.NoCode, c.check("signin", "b", b.code))
+    }
+
+    @Test fun noCodeWhenThePanelCantShowOne() {
+        val c = PanelCode(clock = { now })
+        assertTrue(c.show("signin", "x", "a") is PanelCode.Show.Unavailable)
     }
 
     @Test fun codesAreSixDigits() {
         val c = code()
-        repeat(50) { assertTrue(Regex("\\d{6}").matches(c.show("signin", "x", "a")!!.code)) }
+        repeat(50) { now += 31_000; assertTrue(Regex("\\d{6}").matches(c.ok("signin", "a").code)) }
     }
 
     // ------------------------------------------------------------------ redaction
@@ -107,6 +127,7 @@ class ManagePartsTest {
             "refresh_token=RT-12345&x=1" to "refresh_token=<removed>&x=1",
             "{\"password\": \"hunter2\"}" to "{\"password\": \"<removed>\"}",
             "psk=MyWifiPassword" to "psk=<removed>",
+            "wifi passphrase: hunter22" to "wifi passphrase: <removed>",
             "noise key AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" to "noise key <key>",
             "mac 02:11:22:33:44:55 ok" to "mac <mac> ok",
             "eui64 00:11:22:33:44:55:66:77" to "eui64 <eui64>",
