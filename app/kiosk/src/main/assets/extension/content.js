@@ -20,23 +20,34 @@
   let cfg = { hideHeader: true, hideSidebar: true };
 
   // ---- Home Assistant's launch screen, at night (#63 round 5) ----------------------------------------
-  // HA's index.html starts with its own white launch screen (#ha-launch-screen: the logo and "Loading…"
-  // on #fafafa). However the app times the end of its connecting screen, on the S1 that splash could
-  // still be what Gecko last painted (round 5 panel run: one white frame in two cold starts). So it
-  // never draws white: the launch screen is the night background with nothing on it, and so is the
-  // page under it. Every rule is scoped to the launch screen being there (:has), so it touches nothing
-  // once the frontend has removed it, and HA's own theme applies as before.
+  // HA's index.html starts with its own launch screen on #fafafa: the logo (.ha-lockup), an info box
+  // (#ha-launch-screen-info-box, empty during a normal load; the frontend writes why it couldn't start
+  // there) and the Open Home Foundation attribution (.ohf-logo). However the app times the end of its
+  // connecting screen, on the S1 that splash could still be what Gecko last painted (round 5 panel run:
+  // one white frame in two cold starts). So it draws at night: the background is the night colour, the
+  // logo and the attribution are hidden, and the info box stays readable in a light colour, so a failed
+  // start still says why. Every rule is scoped to the launch screen being there (:has), and the style is
+  // removed once the frontend has removed it. Not on a page the person opened with ?kiosk=0 or ?edit=1.
   const LAUNCH_CSS = `
     html:has(#ha-launch-screen), html:has(#ha-launch-screen) body { background: #0a0b0f !important; }
     #ha-launch-screen { background: #0a0b0f !important; }
-    #ha-launch-screen * { visibility: hidden !important; }
+    #ha-launch-screen .ha-lockup, #ha-launch-screen .ohf-logo { visibility: hidden !important; }
+    #ha-launch-screen #ha-launch-screen-info-box { color: #f4f4f5 !important; }
   `;
-  try {
-    const s = document.createElement("style");
-    s.id = "s1kiosk-launch";
-    s.textContent = LAUNCH_CSS;
-    (document.head || document.documentElement).appendChild(s);
-  } catch (e) { /* not fatal: the connecting screen still covers it */ }
+  let launchStyle = null;
+  if (!disabledByUrl) {
+    try {
+      launchStyle = document.createElement("style");
+      launchStyle.id = "s1kiosk-launch";
+      launchStyle.textContent = LAUNCH_CSS;
+      (document.head || document.documentElement).appendChild(launchStyle);
+    } catch (e) { launchStyle = null; /* not fatal: the connecting screen still covers it */ }
+  }
+  function dropLaunchStyle() {
+    if (!launchStyle) return;
+    try { launchStyle.remove(); } catch (e) { /* gone with the page */ }
+    launchStyle = null;
+  }
 
   // With the header hidden, its height is 0 for everything under hui-root too: cards that size
   // themselves as `calc(100vh - var(--header-height))` otherwise end 56 CSS px short and leave a
@@ -265,9 +276,9 @@
   setTimeout(scheduleDashboards, DASH_RETRY_MS);
 
   // ---- ready: the page is drawn (#63 round 2) ----------------------------------------------------
-  // Home Assistant's index.html starts with its own launch screen (#ha-launch-screen: the logo and
-  // "Loading…" on white) and the frontend removes it once it has drawn. The app keeps its connecting
-  // screen up until then and cross-fades into the dashboard, so that white splash never shows. A page
+  // Home Assistant's index.html starts with its own launch screen (#ha-launch-screen: the logo, an info
+  // box and the attribution) and the frontend removes it once it has drawn. The app keeps its connecting
+  // screen up until then and cross-fades into the dashboard. A page
   // without that launch screen (the sign-in page, any other page) is ready once its document is.
   // The app fades its screen out over what Gecko last painted, and on the S1 the paint without the
   // launch screen can come well after the DOM change (round 4 panel run: the white splash showed
@@ -289,12 +300,12 @@
   }
   function watchLaunchScreen() {
     const ls = document.getElementById("ha-launch-screen");
-    if (!ls || !ls.parentNode) { readyAfterPaint("page"); return; }
+    if (!ls || !ls.parentNode) { dropLaunchStyle(); readyAfterPaint("page"); return; }
     // Home Assistant's frontend is loading: the app waits longer for it before giving up (a cold load
     // on the S1 can take well over 15 s).
     try { if (port) port.postMessage({ type: "launch" }); } catch (e) { /* port gone */ }
     const obs = new MutationObserver(() => {
-      if (!document.getElementById("ha-launch-screen")) { obs.disconnect(); readyAfterPaint("removed"); }
+      if (!document.getElementById("ha-launch-screen")) { obs.disconnect(); dropLaunchStyle(); readyAfterPaint("removed"); }
     });
     obs.observe(ls.parentNode, { childList: true });
   }
