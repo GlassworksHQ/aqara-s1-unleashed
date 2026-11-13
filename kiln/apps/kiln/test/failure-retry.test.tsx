@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // "Try again" after a failed write starts the next attempt clean: a picker closed on the retry asks
-// for recovery mode again, it doesn't repeat the last run's "use Undo".
+// for recovery mode again, it doesn't repeat the last run's "use Undo", nor claim nothing was written.
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -32,7 +32,8 @@ describe('Try again after a failed write', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Connect' }));
 
     expect(await screen.findByRole('heading', { name: 'No panel in recovery mode.' })).toBeTruthy();
-    expect(screen.getByText(/hold the board button first/, { selector: '.lede' })).toBeTruthy();
+    // the earlier try did write: no "Nothing was written." here
+    expect(screen.getByText(/hold the board button first/, { selector: '.lede' }).textContent).toMatch(/^Unplug it, hold the board button first/);
     expect(screen.getByRole('button', { name: 'Try again' }).className).toMatch(/ember/);
     expect(s.store.state.failure).toMatchObject({ at: 1, wrote: false });
     s.close();

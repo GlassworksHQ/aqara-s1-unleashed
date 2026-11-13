@@ -31,6 +31,12 @@ describe('a failure, in words', () => {
     expect(f.wrote).toBe(false);
   });
 
+  it('before a run starts (the device list), says nothing about what was written', () => {
+    const f = explain(new DOMException('No device selected.', 'NotFoundError'), 1, 'none');
+    expect(f.body).toBe('Unplug it, hold the board button first, then plug in and keep holding for 10 seconds.');
+    expect(f.wrote).toBe(false);
+  });
+
   it('keeps the raw message for More help, but not for a cancelled picker', () => {
     expect(explain(new Error('boom'), 2, 'none').raw).toBe('boom');
     expect(explain(new DOMException('No device selected.', 'NotFoundError'), 1, 'none').raw).toBe('');

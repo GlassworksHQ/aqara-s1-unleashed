@@ -55,7 +55,10 @@ export function explain(e: unknown, at: number, written: Written, installed = fa
     ? { title: 'Nothing was picked.', fix: 'Try again, and pick the panel in the browser\'s list.' }
     : RULES.find((r) => r.test(e, raw));
   const changed = !installed && written !== 'none';
+  // Step 1 fails before a run starts (the device list): this attempt wrote nothing, but after Try
+  // again an earlier one may have, so it says nothing either way.
   const said = installed ? 'The new software is in place.'
+    : at === 1 ? ''
     : written === 'verified' ? 'Part of the new software was written.'
     : written === 'maybe' ? 'Part of the new software may have been written.'
     : 'Nothing was written.';
@@ -64,7 +67,7 @@ export function explain(e: unknown, at: number, written: Written, installed = fa
     : rule?.fix ?? (installed ? 'Unplug it, plug it back in, and use Finish setting up.' : 'Unplug it and start again from recovery mode.');
   return {
     title: rule?.title ?? (changed ? 'Something went wrong while writing.' : 'Something went wrong.'),
-    body: `${said} ${fix}`,
+    body: said ? `${said} ${fix}` : fix,
     wrote: changed,
     tips: changed ? WRITTEN_TIPS : CLEAN_TIPS,
     raw: rule && named('NotFoundError')(e) ? '' : raw,
