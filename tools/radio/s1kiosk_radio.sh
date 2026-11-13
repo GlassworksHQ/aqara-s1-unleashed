@@ -592,7 +592,7 @@ zigbeed_ready() {
 # A fresh zigbeed writes an RSTACK (ASH "reset done") to the pty as it starts. Nobody reads it, so it
 # waits in $EZSP_PTY for the first client: Zigbee2MQTT's ember adapter takes it for the answer to its
 # own RST, sees zigbeed's real RSTACK ~4.3 s later as an NCP crash and fails to start (found on the
-# panel, frames/aqara-s1-plus/research/zigbee2mqtt.md). bellows and herdsman's ezsp adapter only log CRC errors. So,
+# panel, docs/research/zigbee2mqtt.md). bellows and herdsman's ezsp adapter only log CRC errors. So,
 # before the bridge serves anyone after a zigbeed (re)start: read the pty until it has been quiet for
 # a second after the first bytes (at most ~8 s when nothing comes).
 drain_pty() {
