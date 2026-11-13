@@ -1,0 +1,63 @@
+# The APK size comment on a pull request (docs/size.md).
+#
+# PR checks' `size` job builds the PR's code without any write access (a fork's PR included) and
+# leaves its numbers as the `apk-size` artifact. This workflow runs afterwards from the default
+# branch, with permission to comment, and never runs the PR's code: it reads only the numbers,
+# renders them with the default branch's own tools/size/apksize.py (which accepts ids and numbers
+# only), and comments only on the PR whose head is the commit that run built. One comment per PR,
+# updated in place. (pull_request_target would give the PR's code a write token; a job summary alone
+# isn't on the PR's page.)
+name: APK size comment
+
+on:
+  workflow_run:
+    workflows: ["PR checks"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: The size report of that run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n apk-size -D "$RUNNER_TEMP/in" \
+            || echo "No apk-size artifact in run $RUN_ID (the size job didn't get that far)."
+
+      - name: Comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -eu
+          in="$RUNNER_TEMP/in"
+          [ -f "$in/size.json" ] && [ -f "$in/pr.json" ] || { echo "Nothing to post."; exit 0; }
+          pr=$(python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["pr"]; assert type(v) is int and 0 < v < 10**7; print(v)' "$in/pr.json")
+          # Only on the PR that commit is the head of: an artifact can't steer the comment elsewhere.
+          head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" -q .head.sha)
+          if [ "$head" != "$HEAD_SHA" ]; then
+            echo "PR #$pr is at $head now, not $HEAD_SHA; a newer run will comment."
+            exit 0
+          fi
+          python3 tools/size/apksize.py render "$in/size.json" > "$RUNNER_TEMP/body.md"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" --paginate \
+            -q '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- glassworks-apk-size -->"))) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$pr/comments" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
+          fi
+          echo "Posted to PR #$pr."
