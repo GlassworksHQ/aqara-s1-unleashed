@@ -51,6 +51,11 @@ export interface UndoState {
   checking?: boolean;
   depth: 'factory' | 'keep';
   appsBack: boolean;
+  /**
+   * The apps were given back against this backup, so it is the one to restore: no other may be
+   * picked in this session. Unlike `appsBack`, a depth change or a new Undo keeps it.
+   */
+  locked?: boolean;
   /** `link`: a way forward when undo here can't go on, e.g. undoing by hand */
   note?: { kind: 'busy' | 'ok' | 'err'; title: string; sub: string; link?: { href: string; text: string } };
 }
@@ -75,6 +80,12 @@ export interface WizardState {
    * changed the panel, even before any write is verified (explain.ts says so).
    */
   touched: boolean;
+  /**
+   * a run in this session may have changed the panel's storage, and none has reached Done since.
+   * Unlike `wrote` and `touched`, which are this attempt's, a new attempt (go, start) keeps it: a
+   * later failure must not say nothing was written.
+   */
+  changed: boolean;
   log: string[];
   parts: [string, Part][];
   setup: Setup;
@@ -110,6 +121,7 @@ export function initial(flow: Flow = 'install'): WizardState {
     progress: { overall: 0, phase: 'boot', title: 'Starting', sub: '', started: 0 },
     wrote: false,
     touched: false,
+    changed: false,
     log: [],
     parts: [],
     setup: { phase: 'waiting', note: '' },
@@ -120,8 +132,8 @@ export function initial(flow: Flow = 'install'): WizardState {
 export function reduce(s: WizardState, a: Action): WizardState {
   switch (a.type) {
     case 'go': {
-      // What a run wrote is that run's failure. Leaving its Error screen (Try again, Undo) starts the
-      // next attempt clean, so a picker closed on the retry says "recovery mode", not "use Undo".
+      // `wrote` and `touched` are this attempt's. Leaving the Error screen (Try again, Undo) starts the
+      // next attempt clean; `changed` keeps the panel's history.
       const left = s.screen === 'error' ? { wrote: false, touched: false } : {};
       return { ...s, ...left, screen: a.screen, flow: a.flow ?? s.flow, ask: undefined };
     }
@@ -135,11 +147,12 @@ export function reduce(s: WizardState, a: Action): WizardState {
       const overall = Math.max(s.progress.overall, Math.min(1, a.p.overall));
       // kiln-core reports flash and verify only from inside a write (flashVerified)
       const touched = s.touched || a.p.phase === 'flash' || a.p.phase === 'verify';
-      return { ...s, touched, progress: { ...s.progress, overall, phase: a.p.phase, title: a.p.title, sub: a.p.sub } };
+      return { ...s, touched, changed: s.changed || touched, progress: { ...s.progress, overall, phase: a.p.phase, title: a.p.title, sub: a.p.sub } };
     }
     case 'log': {
       const log = [...s.log, a.line].slice(-LOG_LIMIT);
-      return { ...s, log, wrote: s.wrote || /(flashed|restored) and verified/.test(a.line) };
+      const wrote = s.wrote || /(flashed|restored) and verified/.test(a.line);
+      return { ...s, log, wrote, changed: s.changed || wrote };
     }
     case 'partition': {
       const was = s.parts.find(([p]) => p === a.part)?.[1];
@@ -162,7 +175,7 @@ export function reduce(s: WizardState, a: Action): WizardState {
     case 'fail':
       return { ...s, screen: 'error', ask: undefined, failure: a.failure };
     case 'done':
-      return { ...s, screen: 'done', ask: undefined, done: a.done };
+      return { ...s, screen: 'done', ask: undefined, done: a.done, changed: false };
     case 'busy':
       return { ...s, busy: a.busy };
   }

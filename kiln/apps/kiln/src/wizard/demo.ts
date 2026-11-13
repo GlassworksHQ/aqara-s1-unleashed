@@ -273,11 +273,11 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
       return;
     case 'undo-refused': // what "Give back Aqara's apps" shows for a backup undo can't restore
       await session.openUndo();
-      dispatch({ type: 'undo', patch: { depth: 'keep', note: { kind: 'err', title: 'This backup can\'t undo the install.', sub: 'This backup has no vbmeta or bootloader. Nothing on the panel was changed.', link: { href: s1PlusUi.help.undo, text: 'Undo by hand' } } } });
+      dispatch({ type: 'undo', patch: { depth: 'keep', note: { kind: 'err', title: 'This backup can\'t undo the install.', sub: 'This backup has no vbmeta or bootloader. This step changed nothing on the panel.', link: { href: s1PlusUi.help.undo, text: 'Undo by hand' } } } });
       return;
     case 'undo-apps-back': // "Keep its settings" after the apps are back: the backup is the one they were checked against
       await session.openUndo();
-      dispatch({ type: 'undo', patch: { depth: 'keep', appsBack: true, note: { kind: 'ok', title: 'Aqara\'s apps are back.', sub: 'Next, put the original software back: Continue, then recovery mode.' } } });
+      dispatch({ type: 'undo', patch: { depth: 'keep', appsBack: true, locked: true, note: { kind: 'ok', title: 'Aqara\'s apps are back.', sub: 'Next, put the original software back: Continue, then recovery mode.' } } });
       return;
     case 'undo-unreadable': // this browser has a backup, but IndexedDB fails to read it
       await session.openUndo();

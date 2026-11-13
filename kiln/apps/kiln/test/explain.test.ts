@@ -31,10 +31,23 @@ describe('a failure, in words', () => {
     expect(f.wrote).toBe(false);
   });
 
-  it('before a run starts (the device list), says nothing about what was written', () => {
+  it('a closed device list, with no earlier write: nothing was written', () => {
     const f = explain(new DOMException('No device selected.', 'NotFoundError'), 1, 'none');
-    expect(f.body).toBe('Unplug it, hold the board button first, then plug in and keep holding for 10 seconds.');
+    expect(f.body).toBe('Nothing was written. Unplug it, hold the board button first, then plug in and keep holding for 10 seconds.');
     expect(f.wrote).toBe(false);
+  });
+
+  it('after an earlier try wrote, an attempt that wrote nothing says so, and keeps Undo', () => {
+    const closed = explain(new DOMException('No device selected.', 'NotFoundError'), 1, 'none', false, true);
+    expect(closed.title).toBe('No panel in recovery mode.');
+    expect(closed.body).toBe('This attempt wrote nothing; an earlier try did. Unplug it, hold the board button first, then plug in and keep holding for 10 seconds. Then use Undo with your backup.');
+    expect(closed.wrote).toBe(true);
+    expect(closed.tips[0]![0]).toMatch(/Don't unplug/);
+    const step2 = explain(new Error('transferIn: the device was disconnected'), 2, 'none', false, true);
+    expect(step2.body).toBe('This attempt wrote nothing; an earlier try did. Don\'t unplug it yet: put it in recovery mode again and use Undo with your backup.');
+    expect(step2.wrote).toBe(true);
+    expect(explain(new Error('x'), 2, 'verified', false, true).body).toMatch(/^Part of the new software was written\./); // this attempt's write comes first
+    expect(explain(new Error('x'), 3, 'none', true, true).wrote).toBe(false); // the setup step: the new software is in place
   });
 
   it('keeps the raw message for More help, but not for a cancelled picker', () => {

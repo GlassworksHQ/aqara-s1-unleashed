@@ -55,6 +55,17 @@ describe('the Undo screen', () => {
     expect(screen.getByText('Aqara\'s apps are back.')).toBeTruthy();
     expect(link(/Use a backup file/).disabled).toBe(true);
     expect(link(/^Continue$/).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('radio', { name: /As it came from Aqara/ })); // a depth change doesn't unlock it
+    expect(s.store.state.undo.appsBack).toBe(false);
+    expect(link(/Use a backup file/).disabled).toBe(true);
+    s.close();
+  });
+
+  it('turns the backup links off while an action runs (the give-back checks the backup in use)', async () => {
+    const s = await undo('undo');
+    expect(link(/Use a backup file/).disabled).toBe(false);
+    act(() => s.store.dispatch({ type: 'busy', busy: 'undo-continue' }));
+    expect(link(/Use a backup file/).disabled).toBe(true);
     s.close();
   });
 

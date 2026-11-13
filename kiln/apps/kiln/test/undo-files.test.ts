@@ -125,15 +125,17 @@ describe('Undo with backup files', () => {
     expect(boot(s)).toEqual(new Uint8Array([2]));
   });
 
-  it('keeps the backup once "keep its settings" gave the apps back', async () => {
+  it('keeps a locked backup: no other file, and not this browser\'s', async () => {
     const s = session(async () => browserFiles);
     await s.openUndo();
-    s.store.dispatch({ type: 'undo', patch: { depth: 'keep', appsBack: true } }); // what giveBack ends with
-    void s.undoFromFile(new File(['b'], 'b.zip'));
-    expect(gates.waiting.has('b.zip')).toBe(false); // not even read
-    expect(s.store.state.undo).toMatchObject({ source: 'browser', ready: true, appsBack: true });
-    expect(boot(s)).toEqual(new Uint8Array([9]));
+    const file = s.undoFromFile(new File(['b'], 'b.zip'));
+    gates.open('b.zip');
+    await file;
+    s.store.dispatch({ type: 'undo', patch: { depth: 'keep', appsBack: true, locked: true } }); // what giveBack ends with
+    void s.undoFromFile(new File(['a'], 'a.zip'));
+    expect(gates.waiting.has('a.zip')).toBe(false); // not even read
     await s.undoFromBrowser();
-    expect(boot(s)).toEqual(new Uint8Array([9]));
+    expect(s.store.state.undo).toMatchObject({ source: 'file', ready: true, file: 'b · 1 partitions · checked' });
+    expect(boot(s)).toEqual(new Uint8Array([2]));
   });
 });

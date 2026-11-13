@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-// "Try again" after a failed write starts the next attempt clean: a picker closed on the retry asks
-// for recovery mode again, it doesn't repeat the last run's "use Undo", nor claim nothing was written.
+// "Try again" after a failed write starts the next attempt clean, but keeps the panel's history: a
+// device list closed on the retry asks for recovery mode, says this attempt wrote nothing and an
+// earlier one did, and keeps Undo.
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -21,21 +22,20 @@ beforeAll(() => {
 afterEach(() => cleanup());
 
 describe('Try again after a failed write', () => {
-  it('a picker closed on the retry says recovery mode, not Undo', async () => {
+  it('a device list closed on the retry asks for recovery mode, and keeps Undo', async () => {
     const s = demoSession('error-written'); // its Connect is a picker closed with nothing picked
     render(<Wizard session={s} frame={s1PlusUi} />);
     await act(() => enterDemo(s, 'error-written'));
     expect(screen.getByRole('heading', { name: 'Something went wrong while writing.' })).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'Undo with your backup' })[0]!.className).toMatch(/ember/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Connect' }));
 
     expect(await screen.findByRole('heading', { name: 'No panel in recovery mode.' })).toBeTruthy();
-    // the earlier try did write: no "Nothing was written." here
-    expect(screen.getByText(/hold the board button first/, { selector: '.lede' }).textContent).toMatch(/^Unplug it, hold the board button first/);
-    expect(screen.getByRole('button', { name: 'Try again' }).className).toMatch(/ember/);
-    expect(s.store.state.failure).toMatchObject({ at: 1, wrote: false });
+    expect(screen.getByText(/hold the board button first/, { selector: '.lede' }).textContent)
+      .toBe('This attempt wrote nothing; an earlier try did. Unplug it, hold the board button first, then plug in and keep holding for 10 seconds. Then use Undo with your backup.');
+    expect(screen.getAllByRole('button', { name: 'Undo with your backup' })[0]!.className).toMatch(/ember/);
+    expect(s.store.state.failure).toMatchObject({ at: 1, wrote: true });
     s.close();
   });
 });

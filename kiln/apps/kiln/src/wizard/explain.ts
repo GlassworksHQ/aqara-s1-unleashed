@@ -42,32 +42,35 @@ const CLEAN_TIPS: [string, string][] = [
 ];
 
 /**
- * What reached the panel before it stopped: `verified`, a write was flashed and read back; `maybe`, a
+ * What this attempt wrote before it stopped: `verified`, a write was flashed and read back; `maybe`, a
  * write started and didn't finish; `none`. `installed`: the new software was already in place (the
- * setup step), so nothing more could break.
+ * setup step), so nothing more could break. `earlier`: an earlier attempt in this session may have
+ * changed the panel, so `none` isn't "nothing was written".
  */
 export type Written = 'none' | 'maybe' | 'verified';
 
-export function explain(e: unknown, at: number, written: Written, installed = false): Failure {
+export function explain(e: unknown, at: number, written: Written, installed = false, earlier = false): Failure {
   const raw = e instanceof Error ? e.message : String(e);
   // On an installed panel a cancelled picker is the adb one: the recovery-mode advice doesn't apply.
   const rule = installed && named('NotFoundError')(e)
     ? { title: 'Nothing was picked.', fix: 'Try again, and pick the panel in the browser\'s list.' }
     : RULES.find((r) => r.test(e, raw));
-  const changed = !installed && written !== 'none';
-  // Step 1 fails before a run starts (the device list): this attempt wrote nothing, but after Try
-  // again an earlier one may have, so it says nothing either way.
+  const before = !installed && written === 'none' && earlier;
+  const changed = !installed && (written !== 'none' || earlier);
   const said = installed ? 'The new software is in place.'
-    : at === 1 ? ''
     : written === 'verified' ? 'Part of the new software was written.'
     : written === 'maybe' ? 'Part of the new software may have been written.'
+    : before ? 'This attempt wrote nothing; an earlier try did.'
     : 'Nothing was written.';
-  const fix = changed
-    ? 'Don\'t unplug it yet: put it in recovery mode again and use Undo with your backup.'
-    : rule?.fix ?? (installed ? 'Unplug it, plug it back in, and use Finish setting up.' : 'Unplug it and start again from recovery mode.');
+  // a closed device list: nothing runs, so the way back starts with recovery mode
+  const fix = before && named('NotFoundError')(e) && at === 1
+    ? `${rule!.fix} Then use Undo with your backup.`
+    : changed
+      ? 'Don\'t unplug it yet: put it in recovery mode again and use Undo with your backup.'
+      : rule?.fix ?? (installed ? 'Unplug it, plug it back in, and use Finish setting up.' : 'Unplug it and start again from recovery mode.');
   return {
     title: rule?.title ?? (changed ? 'Something went wrong while writing.' : 'Something went wrong.'),
-    body: said ? `${said} ${fix}` : fix,
+    body: `${said} ${fix}`,
     wrote: changed,
     tips: changed ? WRITTEN_TIPS : CLEAN_TIPS,
     raw: rule && named('NotFoundError')(e) ? '' : raw,

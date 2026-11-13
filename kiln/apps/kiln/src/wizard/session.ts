@@ -129,7 +129,7 @@ export class Session {
   private fail(at: number, e: unknown, installed = false) {
     console.error(e);
     const written = this.s.wrote ? 'verified' : this.s.touched ? 'maybe' : 'none';
-    this.dispatch({ type: 'fail', failure: explain(e, at, written, installed) });
+    this.dispatch({ type: 'fail', failure: explain(e, at, written, installed, this.s.changed) });
   }
 
   /**
@@ -497,6 +497,12 @@ export class Session {
   // ---- undo -----------------------------------------------------------------------------------
 
   async openUndo(): Promise<void> {
+    if (this.s.undo.locked) {
+      // the apps were given back against the backup in use: keep it, and keep its label
+      this.dispatch({ type: 'go', screen: 'undo', flow: 'undo' });
+      this.dispatch({ type: 'undo', patch: { checking: false } });
+      return;
+    }
     const mine = ++this.choice;
     this.undoFiles = undefined;
     this.undoBackup = undefined;
@@ -539,8 +545,8 @@ export class Session {
   private choice = 0;
 
   async undoFromFile(f: File): Promise<void> {
-    // Once "keep its settings" gave the apps back, the backup is the one that give-back was checked against.
-    if (this.s.undo.appsBack) return;
+    // locked: the apps were given back against the backup in use. running: a give-back may be checking it now.
+    if (this.s.undo.locked || this.running) return;
     const mine = ++this.choice;
     this.undoFiles = undefined;
     this.dispatch({ type: 'undo', patch: { source: 'file', ready: false, checking: true, file: `Checking ${f.name}…` } });
@@ -557,7 +563,7 @@ export class Session {
   }
 
   async undoFromBrowser(): Promise<void> {
-    if (this.s.undo.appsBack) return;
+    if (this.s.undo.locked || this.running) return;
     const mine = ++this.choice;
     const orig = await this.d.backups.original().catch(() => undefined);
     if (orig && mine === this.choice) await this.useBrowserBackup(orig, mine);
@@ -599,13 +605,13 @@ export class Session {
         this.dispatch({ type: 'undo', patch: { note: {
           kind: 'err',
           title: e instanceof BackupRefused ? 'This backup can\'t undo the install.' : 'Kiln can\'t check this backup.',
-          sub: `${msg.charAt(0).toUpperCase()}${msg.slice(1)}. Nothing on the panel was changed.`,
+          sub: `${msg.charAt(0).toUpperCase()}${msg.slice(1)}. This step changed nothing on the panel.`,
           link: { href: this.d.frame.help.undo, text: 'Undo by hand' },
         } } });
         return;
       }
       await unprovision(panel, (s, d) => busy(s || d || ''));
-      this.dispatch({ type: 'undo', patch: { appsBack: true, note: { kind: 'ok', title: 'Aqara\'s apps are back.', sub: 'Next, put the original software back: Continue, then recovery mode.' } } });
+      this.dispatch({ type: 'undo', patch: { appsBack: true, locked: true, note: { kind: 'ok', title: 'Aqara\'s apps are back.', sub: 'Next, put the original software back: Continue, then recovery mode.' } } });
     } catch (e) {
       const msg = notPicked(e) ? 'Nothing was picked.' : (e as Error).message;
       this.dispatch({ type: 'undo', patch: { note: { kind: 'err', title: 'Couldn\'t reach the panel over adb.', sub: `${msg} Is it running and plugged in?` } } });
