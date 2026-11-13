@@ -34,9 +34,10 @@ below as the release notes.
   shows the version; the screen and sensor line moved to Log.
 - **The panel is called Glassworks Panel, in Home Assistant too.** A panel you already added keeps all
   its entity ids, so automations and dashboards keep working; Home Assistant shows the device under
-  the new name after the update, unless you renamed it yourself. New entities take the device's name
-  as Home Assistant shows it (`glassworks_panel`, or your own name), and on Home Assistant 2026.9 or
-  later the area's name can come first.
+  the new name after the update, unless you renamed it yourself. On Home Assistant 2025.12 or later,
+  new entities take the device's name as Home Assistant shows it (`glassworks_panel`, or your own
+  name), and from 2026.9 the area's name can come first. On older versions they still start with
+  `s1_panel`.
 - **New pages on your phone when you scan the panel's code.** Signing in and sharing your Thread
   network open a short page first that says what happens, then *Continue to Home Assistant*. They
   follow your phone's light or dark mode.
