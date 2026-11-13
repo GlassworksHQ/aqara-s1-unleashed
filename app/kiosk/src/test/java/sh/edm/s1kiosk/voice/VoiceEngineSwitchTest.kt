@@ -34,16 +34,22 @@ class VoiceEngineSwitchTest {
     private val jarvis = Always()
     private val nabu = Always()
     private val nabuGate = CountDownLatch(1)
+    private val nabuLoading = CountDownLatch(1)
     private var nabuFails = false
     private lateinit var engine: VoiceEngine
 
-    private fun engine(): VoiceEngine {
+    private fun engine(word: String = "hey_jarvis"): VoiceEngine {
         val dir = Files.createTempDirectory("models").toFile()
-        return VoiceEngine(RuntimeEnvironment.getApplication(), VoiceConfig(modelsDir = dir, refractoryMs = 0), "hey_jarvis", onActiveWordChanged = {}) { word ->
+        return VoiceEngine(RuntimeEnvironment.getApplication(), VoiceConfig(modelsDir = dir, refractoryMs = 0), word, onActiveWordChanged = {}) { word ->
             when (word.id) {
                 "hey_jarvis" -> jarvis
                 "okay_nabu" -> {
-                    nabuGate.await(5, TimeUnit.SECONDS)
+                    nabuLoading.countDown()
+                    // Like a real TFLite load, an interrupt (stop() -> shutdownNow) doesn't end it.
+                    val until = System.currentTimeMillis() + 5_000
+                    while (nabuGate.count > 0 && System.currentTimeMillis() < until) {
+                        try { nabuGate.await(5, TimeUnit.SECONDS) } catch (_: InterruptedException) {}
+                    }
                     if (nabuFails) throw ModelsMissingException("Downloading the wake word model okay_nabu.tflite failed: offline")
                     nabu
                 }
@@ -111,5 +117,15 @@ class VoiceEngineSwitchTest {
         assertEquals("no word answers for Okay Nabu", null, phraseHeard())
         assertTrue(jarvis.closed)
         assertEquals("HA's choice stays", listOf("okay_nabu"), e.activeIds())
+    }
+
+    @Test
+    fun aModelThatFinishesLoadingAfterStopIsClosedNotInstalled() {
+        val e = engine("okay_nabu")
+        assertTrue("the load started", nabuLoading.await(5, TimeUnit.SECONDS))
+        e.stop()
+        nabuGate.countDown()
+        eventually("the late model is closed") { nabu.closed }
+        assertEquals("nothing answers after stop", null, phraseHeard())
     }
 }

@@ -85,7 +85,7 @@ class VoiceEngine(
         exec.shutdownNow()
         mic?.stop()
         mic = null
-        replace(null)
+        clear()
     }
 
     override fun setMuted(m: Boolean) {
@@ -135,12 +135,27 @@ class VoiceEngine(
         try { onError?.invoke(msg) } catch (_: Exception) {}
     }
 
-    private fun replace(next: Loaded?) {
-        val old = synchronized(wwLock) { loaded.also { loaded = next } }
-        if (old != null && old !== next) {
-            // A throw here would end the 30 s retry task for good, so it's logged and dropped.
-            try { old.detector.close() } catch (e: Exception) { VoiceLog.w("Closing wake word '${old.id}' failed: $e") }
+    private fun clear() {
+        synchronized(wwLock) { loaded.also { loaded = null } }?.let(::closeQuietly)
+    }
+
+    /**
+     * Makes [next] the detector, unless the engine stopped or HA picked another word while it
+     * loaded. Checked under [wwLock], which [stop] also takes, so a model that finishes loading
+     * after stop() is never left running.
+     */
+    private fun install(next: Loaded): Boolean {
+        val old = synchronized(wwLock) {
+            if (!running || next.id != activeWord) return false
+            loaded.also { loaded = next }
         }
+        if (old != null) closeQuietly(old)
+        return true
+    }
+
+    private fun closeQuietly(l: Loaded) {
+        // A throw here would end the 30 s retry task for good, so it's logged and dropped.
+        try { l.detector.close() } catch (e: Exception) { VoiceLog.w("Closing wake word '${l.id}' failed: $e") }
     }
 
     /** Executor thread. Loads [activeWord], replacing the current one. */
@@ -148,15 +163,14 @@ class VoiceEngine(
         val id = activeWord
         val word = WakeWords.parse(id)
         if (word == null) {
-            replace(null)
+            clear()
             VoiceLog.i("No wake word selected; wake word detection off")
             return
         }
         if (loaded?.id == id) return
         val failure = try {
-            val detector = load(word)
-            if (id != activeWord) { detector.close(); return }
-            replace(Loaded(id, word.phrase, detector))
+            val next = Loaded(id, word.phrase, load(word))
+            if (!install(next)) { closeQuietly(next); return }
             lastError = null
             val engine = if (word is WakeWord.Micro) "microWakeWord" else "openWakeWord"
             VoiceLog.i("Wake word '$id' ('${word.phrase}', $engine) loaded; threshold $threshold")
@@ -168,7 +182,7 @@ class VoiceEngine(
         }
         if (id != activeWord) return
         loaded?.let { VoiceLog.w("Wake word '${it.id}' stopped: '$id' could not load") }
-        replace(null)
+        clear()
         if (failure != lastError) error(failure) // don't spam on every retry
         lastError = failure
     }
