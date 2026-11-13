@@ -284,7 +284,7 @@ def cmd_coldstart(dev, a):
            "displayed_mono": None, "engine_mono": None, "engine_uri": None, "own_page_start_mono": None,
            "own_page_stop_mono": None, "own_page_loads": 0, "own_page_state": None,
            "page_start_mono": None, "page_stop_mono": None, "tiers": {}, "order": tiers, "warmup": None,
-           "between": [], "bad_page_lines": 0, "protocol_restart": ref, "error": None}
+           "between": [], "bad_page_lines": 0, "protocol_restart": ref, "memory": [], "error": None}
     page_lines = P.PageLines()
     st = {"engine_at": None, "own_stop_at": 0.0, "current": None, "measure_mono": None, "break_after": None,
           "opened": 0, "next_at": None, "gestures": []}
@@ -495,6 +495,11 @@ def cmd_coldstart(dev, a):
             # The page before has stopped its updates; open the next one on a still screen, so no
             # page is measured over the last one's work. (Its teardown on navigation is part of
             # opening a view, as in HA, and the warm-up makes it the same for every page.)
+            if a.memory and st["opened"]:
+                # RAM after each graded page, between pages: nothing is timed now. The largest of
+                # these is the peak during the graded tasks (report.py, ram).
+                res["memory"].append(dict(memory_sample(dev, [x for x in a.radio_procs.split(",") if x], summaries=False),
+                                          after=slots[st["opened"] - 1]))
             paused.clear()
             still = quiet_for(a.between_quiet, 10.0) if a.between_quiet > 0 else True
             if drain():
@@ -508,6 +513,9 @@ def cmd_coldstart(dev, a):
             continue
         if rec and handle(rec):
             break
+    if ref and a.memory and st["opened"] == len(slots) and not res["error"]:
+        res["memory"].append(dict(memory_sample(dev, [x for x in a.radio_procs.split(",") if x], summaries=False),
+                                  after=slots[-1]))
     lc.terminate()
     if res["error"]:
         pass
@@ -552,6 +560,10 @@ def cpu_snapshot(dev, pids):
 
 def cmd_idle(dev, a):
     radio = [x for x in a.radio_procs.split(",") if x]
+    if a.url:
+        # A reference dashboard (no nonce: the harness only says it is usable, and the live updates
+        # stay off), opened one-off as the graded pages are.
+        dev.sh(f"am start -n {dev.component} --es open '{a.url}'")
     end = time.time() + a.settle
     while time.time() < end:
         dev.wake()
@@ -573,23 +585,27 @@ def cmd_idle(dev, a):
         presents.update(t for t in ts if t > newest_before)
     after = cpu_snapshot(dev, pids)
     dev.wake()
-    by_proc = P.parse_meminfo_by_process(dev.sh("dumpsys meminfo", timeout=120))
+    mem = memory_sample(dev, radio)
+    write_json(os.path.join(a.out, f"idle-{a.label}-{a.run}.json"), dict({
+        "label": a.label, "run": a.run, "window_s": a.window, "ncpu": ncpu,
+        "cpu": P.cpu_percent(before, after, ncpu),
+        "frames": {"period_ms": period, "presents_mono_ms": sorted(t / 1e6 for t in presents)},
+    }, **mem))
+
+
+def memory_sample(dev, radio, summaries=True):
+    """PSS of every app process (main, :boot, Gecko's GPU, content and crash helper processes) and
+    the radio's, with each one's peak RSS, and the device's MemTotal/MemAvailable. Read-only."""
     procs = {}
-    for name, pid, pss in by_proc:
+    for name, pid, pss in P.parse_meminfo_by_process(dev.sh("dumpsys meminfo", timeout=120)):
         role = P.process_role(name, dev.package)
         if role or name in radio:
             hwm = re.search(r"VmHWM:\s+(\d+)", dev.sh(f"cat /proc/{pid}/status"))
             entry = {"pid": pid, "role": role or "radio", "pss_kb": pss, "rss_peak_kb": int(hwm.group(1)) if hwm else None}
-            if role:
+            if role and summaries:
                 entry["summary"] = P.parse_meminfo_app(dev.sh(f"dumpsys meminfo {pid}", timeout=60))
             procs[name] = entry
-    write_json(os.path.join(a.out, f"idle-{a.label}-{a.run}.json"), {
-        "label": a.label, "run": a.run, "window_s": a.window, "ncpu": ncpu,
-        "cpu": P.cpu_percent(before, after, ncpu),
-        "frames": {"period_ms": period, "presents_mono_ms": sorted(t / 1e6 for t in presents)},
-        "processes": procs,
-        "device_mem": P.parse_proc_meminfo(dev.sh("cat /proc/meminfo")),
-    })
+    return {"processes": procs, "device_mem": P.parse_proc_meminfo(dev.sh("cat /proc/meminfo"))}
 
 
 def main():
@@ -613,6 +629,7 @@ def main():
     ap.add_argument("--own-page-wait", type=float, default=30, help="refstart: seconds to wait for the kiosk's own page")
     ap.add_argument("--tiers", default="light,typical,heavy", help="refstart: reference dashboards; run k starts k-1 pages in")
     ap.add_argument("--warmup-tier", default="", help="refstart: a warm-up page opened first and not graded (protocol 4: none; the restart page is the warm-up)")
+    ap.add_argument("--memory", type=int, default=1, help="refstart: sample RAM between the graded pages (0: no)")
     ap.add_argument("--between-quiet", type=float, default=2.0, help="refstart: seconds of still screen before each page opens")
     ap.add_argument("--vsync", default="16.667", help="refstart: the display's refresh period in ms")
     a = ap.parse_args()

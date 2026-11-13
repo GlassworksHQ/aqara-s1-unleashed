@@ -2,11 +2,15 @@
 # Clarity, the Glassworks perf test: grade a frame (MIT). Docs: docs/perf.md.
 #
 # What it touches on the device:
-#   - Opens the test page and the three reference dashboards with the kiosk's one-off `--es open`
-#     extra. The saved dashboard URL is never changed. The pages are served from this machine over
-#     `adb reverse`, with caching off.
+#   - Points the kiosk's dashboard setting (`--es url`) at the fake Home Assistant's reference
+#     dashboard for the graded part (and --pane-ram), and back at --restore-dashboard after it and
+#     on any exit.
+#   - Opens the test page and the reference dashboards with the kiosk's one-off `--es open` extra.
+#     The pages are served by the fake Home Assistant on this machine over `adb reverse`.
+#   - With --pane-ram only: turns the switchable panes off and on with the kiosk's own extras
+#     (`--ez voice_enabled`, `--ez sendspin_enabled`), and back to the given settings on exit.
 #   - Sends `--es screen on` (the kiosk's own wake intent) during warm-ups, so the screen stays on
-#     without changing the idle timeout. It changes no setting.
+#     without changing the idle timeout.
 #   - Taps each reference dashboard's "Living room" toggle (`input tap`) and swipes it (`input swipe`),
 #     only where and when the page asks, to measure taps and scrolling.
 #   - Force-stops the app for each cold start (KEYCODE_WAKEUP first, so the screen is on); the app
@@ -15,6 +19,7 @@
 #   Read-only otherwise: getprop, /proc, dumpsys meminfo and SurfaceFlinger, logcat.
 #
 # Usage: tools/perf/run.sh --frame aqara-s1-plus [--name "Aqara S1 Plus"] [--serial S] [--runs 3] [--out DIR]
+#          --restore-dashboard URL|auto [--pane-ram assist=on,sendspin=on]
 #          [--skip-synthetic] [--skip-reference] [--skip-real-use] [--taps 10] [--quick] [--apk FILE]...
 #        tools/perf/run.sh --frame ID --out DIR --idle-only LABEL   # one idle sample (pane diffs)
 set -euo pipefail
@@ -22,7 +27,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ADB="${ADB:-adb}"
 FRAME="" NAME="" RUNS=3 OUT="" PORT=8089 PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
-SYNTH=1 REF=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=() RESTORE=""
+SYNTH=1 REF=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=() RESTORE="" PANE_RAM=""
 # Waits, in seconds. Only the off-device test (test/test_runner.py) shortens them.
 IDLE_SETTLE="${GW_PERF_IDLE_SETTLE:-30}" IDLE_WINDOW="${GW_PERF_IDLE_WINDOW:-15}"
 COLD_SETTLE="${GW_PERF_COLD_SETTLE:-3}" COLD_TIMEOUT="${GW_PERF_COLD_TIMEOUT:-120}" RUN_GAP="${GW_PERF_RUN_GAP:-10}"
@@ -46,7 +51,8 @@ while [ $# -gt 0 ]; do
     --max-start-temp) MAX_TEMP_C="$2"; shift 2 ;;
     --apk) APKS+=(--apk "$2"); shift 2 ;;
     --restore-dashboard) RESTORE="$2"; shift 2 ;;
-    -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --pane-ram) PANE_RAM="$2"; shift 2 ;;
+    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -107,15 +113,28 @@ done
 # anything that leaves it (the test page, a force-stop), and only a cold start that loaded the
 # dashboard sets it again. On exit, the app is restarted unless it is set; that is harmless if the
 # dashboard was up after all.
-SERVER_PID="" DASHBOARD_OK=1 SWITCHED=0
+SERVER_PID="" DASHBOARD_OK=1 SWITCHED=0 PANES_SWITCHED=0 PANES=""
 # Protocol 4: the graded part points the kiosk at the fake Home Assistant's light dashboard (its
 # saved dashboard, `--es url`), so a restart comes back to it; it points it back at RESTORE after,
-# and here on any exit. The runner can't read the setting itself (it never reads app data).
+# and here on any exit. --pane-ram also turns the panes off and on; the same intent puts them back.
+# The runner can't read either setting itself (it never reads app data).
+pane_extras() { # the --ez extras for: one pane on by itself (its id), "none" on, or "restore"
+  local id extra cur v out=""
+  while read -r id extra cur; do
+    [ -n "$id" ] || continue
+    case "$1" in restore) v=$cur ;; "$id") v=true ;; *) v=false ;; esac
+    out="$out --ez $extra $v"
+  done <<< "$PANES"
+  echo "$out"
+}
 point_back() {
-  if [ "$SWITCHED" = 1 ]; then
-    log "pointing the kiosk back at its dashboard ($RESTORE)"
-    sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'$RESTORE'" >/dev/null || true
-    SWITCHED=0
+  local extras=""
+  [ "$PANES_SWITCHED" = 1 ] && extras=$(pane_extras restore)
+  if [ "$SWITCHED" = 1 ] || [ "$PANES_SWITCHED" = 1 ]; then
+    log "pointing the kiosk back at its dashboard ($RESTORE)${extras:+ and its panes ($PANE_RAM)}"
+    # shellcheck disable=SC2086 # $extras is a list of extras
+    sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'$RESTORE'" $extras >/dev/null || true
+    SWITCHED=0 PANES_SWITCHED=0
     DASHBOARD_OK=0
   fi
 }
@@ -131,11 +150,35 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [ "$REF" = 1 ]; then
+if [ -n "$PANE_RAM" ]; then
+  # "<id>=on|off,…" for every pane the frame can switch (frames/<id>/budgets.json, `switch`): what
+  # to put back. Out: one "<id> <extra> <true|false>" line per pane.
+  PANES=$(python3 - "$HERE/../../frames/$FRAME/budgets.json" "$PANE_RAM" <<'PY'
+import json, os, re, sys
+path, spec = sys.argv[1:]
+panes = json.load(open(path))["panes"] if os.path.exists(path) else {}
+switch = {k: v["switch"] for k, v in panes.items() if v.get("switch")}
+if not switch:
+    sys.exit(f"--pane-ram: {path} names no pane with a switch")
+got = {}
+for part in spec.split(","):
+    m = re.fullmatch(r"([a-z0-9-]+)=(on|off)", part)
+    if not m or m.group(1) not in switch:
+        sys.exit(f"--pane-ram: {part!r} isn't <pane>=on|off for one of {', '.join(sorted(switch))}")
+    got[m.group(1)] = m.group(2) == "on"
+if set(got) != set(switch):
+    sys.exit(f"--pane-ram needs every switchable pane's setting now: {', '.join(sorted(switch))}")
+for k in sorted(switch):
+    print(k, switch[k], "true" if got[k] else "false")
+PY
+) || exit 2
+fi
+
+if [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
   # The graded part changes the kiosk's saved dashboard for its duration, so it must know what to put
   # back: the panel's dashboard URL, or "auto" if it finds HA itself. See docs/perf.md, "Run it".
   case "$RESTORE" in
-    "") echo "the graded part needs --restore-dashboard <url|auto>: the dashboard the kiosk shows now" >&2; exit 2 ;;
+    "") echo "the graded part and --pane-ram need --restore-dashboard <url|auto>: the dashboard the kiosk shows now" >&2; exit 2 ;;
     *127.0.0.1:"$PORT"*) echo "--restore-dashboard is the fake Home Assistant; give the panel's own dashboard" >&2; exit 2 ;;
     *"'"*|*'"'*|*' '*) echo "--restore-dashboard can't hold quotes or spaces" >&2; exit 2 ;;
   esac
@@ -147,7 +190,7 @@ VSYNC=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["display
 log "device recorded; vsync ${VSYNC} ms"
 wait_cool
 
-if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ]; then
+if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
   # The fake Home Assistant (fakeha.py) serves HA's pinned frontend, the reference dashboards and
   # the animation test page (under /clarity/page/). The first use fetches the frontend (117 MB).
   python3 "$HERE/hafrontend.py" >/dev/null
@@ -185,12 +228,42 @@ if [ "$REF" = 1 ]; then
   for k in $(seq 1 "$RUNS"); do
     log "graded run $k/$RUNS: restart to the reference dashboard, then the three reference dashboards"
     thermal "refstart-$k"
-    run refstart --run "$k" --settle "$COLD_SETTLE" --url "http://127.0.0.1:$PORT" \
-      --vsync "$VSYNC" --taps "$TAPS" --between-quiet "$BETWEEN_QUIET" || log "graded run $k failed; see refstart-$k.json"
+    if run refstart --run "$k" --settle "$COLD_SETTLE" --url "http://127.0.0.1:$PORT" \
+      --vsync "$VSYNC" --taps "$TAPS" --between-quiet "$BETWEEN_QUIET"; then
+      # RAM at idle on the typical reference dashboard, opened with no nonce: nothing is timed and
+      # the live updates stay off (docs/perf.md, "RAM").
+      log "idle on the typical reference dashboard $k/$RUNS"
+      run idle --label ref-idle --run "$k" --url "http://127.0.0.1:$PORT/clarity-typical/0" \
+        --settle "$IDLE_SETTLE" --window "$IDLE_WINDOW"
+    else
+      log "graded run $k failed; see refstart-$k.json"
+    fi
     sleep "$RUN_GAP"
   done
-  point_back
 fi
+
+if [ -n "$PANE_RAM" ]; then
+  # Each switchable pane on by itself against every pane off, on the typical reference dashboard.
+  # Every sample starts from a fresh app process (`restart`), so none has been up longer than the
+  # others. The intent also points the kiosk at the dashboard (it persists across the restarts).
+  log "RAM per pane: every pane off, then each on by itself, $RUNS time(s) (they go back to $PANE_RAM after)"
+  DASHBOARD_OK=0
+  SWITCHED=1
+  PANES_SWITCHED=1
+  for k in $(seq 1 "$RUNS"); do
+    for state in none $(echo "$PANES" | awk '{ print $1 }'); do
+      label=$([ "$state" = none ] && echo ref-panes-off || echo "ref-$state-on")
+      log "panes: $label $k/$RUNS"
+      # shellcheck disable=SC2046 # the extras are a list
+      sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'http://127.0.0.1:$PORT/clarity-typical/0'" \
+        $(pane_extras "$state") --ez restart true >/dev/null
+      sleep "$SWITCH_SETTLE"
+      thermal "$label-$k"
+      run idle --label "$label" --run "$k" --settle "$IDLE_SETTLE" --window "$IDLE_WINDOW"
+    done
+  done
+fi
+point_back
 
 if [ "$REAL" = 1 ]; then
   for k in $(seq 1 "$RUNS"); do

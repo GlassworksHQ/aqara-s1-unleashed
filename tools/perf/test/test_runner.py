@@ -63,6 +63,8 @@ class Runner(unittest.TestCase):
         self.assertEqual(ref["engine_uris"], ["about:blank"])
         self.assertEqual(ref["own_page_states"], ["reference"])        # the kiosk came back to the fake HA
         self.assertGreater(ref["start_ms"]["median"], 0)                  # restart: process start to usable
+        self.assertEqual(ref["restart_to"], "usable")
+        self.assertEqual(ref["engine_ready_ms"]["n"], 1)                  # kept as detail
         self.assertEqual(ref["orders"], [["light", "typical", "heavy"]])
         self.assertEqual(ref["per_run"][0]["between"], ["still", "still", "still"])   # after the restart page and each page
         for t in ("light", "typical", "heavy"):
@@ -78,7 +80,27 @@ class Runner(unittest.TestCase):
         self.assertEqual(r["real_use"]["android_ttid_ms"]["median"], 1714)
         self.assertEqual(r["real_use"]["settle_how"], ["quiet-gap"])
         self.assertEqual(r["real_use"]["memory"]["idle"]["app_pss_kb"]["median"], 570000)
+        self.assertEqual(r["real_use"]["idle"]["samples"], 1)        # the reference dashboard's samples aren't real use
         self.assertEqual({p["id"] for p in r["real_use"]["panes"]}, {"radio"})
+
+    def test_ram_on_the_reference_dashboards(self):
+        """#68: RAM per process at idle on the typical reference dashboard after the graded run, and the
+        peak from the samples between the graded pages (one after each)."""
+        ram = self.rep["ram"]
+        self.assertEqual(ram["reference_idle"]["samples"], 1)
+        self.assertEqual(ram["reference_idle"]["app_pss_kb"]["median"], 570000)
+        self.assertEqual(set(ram["reference_idle"]["by_role_pss_kb"]), {"main", "gpu", "tab"})
+        self.assertEqual(ram["graded_peak"]["samples"], 3)
+        self.assertEqual(ram["graded_peak"]["app_pss_kb"], 570000)
+        self.assertEqual(ram["graded_peak"]["app_rss_hwm_kb"], 900000)      # VmHWM of the three processes
+        with open(os.path.join(self.out, "refstart-1.json")) as f:
+            self.assertEqual([m["after"] for m in json.load(f)["memory"]], ["light", "typical", "heavy"])
+        self.assertTrue(ram["budget"]["ok"])
+        self.assertEqual((ram["panes"], ram["panes_waiting"]), ([], []))       # test-frame has no panes
+        with open(os.path.join(self.out, "report.md")) as f:
+            self.assertIn("## RAM on the reference dashboards", f.read())
+        with open(os.path.join(self.tmp, "state", "opened_still.json")) as f:
+            self.assertEqual(json.load(f), ["http://127.0.0.1:18089/clarity-typical/0"])
 
     def test_it_changes_one_setting_and_puts_it_back(self):
         """Protocol 4: the kiosk's saved dashboard points at the fake HA for the graded part, then back
@@ -99,15 +121,16 @@ class Runner(unittest.TestCase):
         self.assertEqual(inputs, ["input keyevent KEYCODE_WAKEUP", "input swipe 720 612 720 108 300", "input tap 720 360"])
         self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 6)                 # 2 on each page
         self.assertEqual(sum(1 for c in shell if c.startswith("input swipe ")), 6)            # 2 on each page
-        forbidden = re.compile(r"(^|[;&|]\s*)(settings|svc|cmd|setprop|am broadcast|pm (?!path\b))|--ez ")
+        forbidden = re.compile(r"(^|[;&|]\s*)(settings|svc|cmd|setprop|am broadcast|pm (?!path\b))|--ez ")   # no pane is switched without --pane-ram
         self.assertEqual([c for c in shell if forbidden.search(c)], [])
         extras = {m for c in shell for m in re.findall(r"--e\w \w+", c)}
         self.assertEqual(extras, {"--es open", "--es screen", "--es url"})
         opens = [re.search(r"--es open '([^']+)'", c).group(1) for c in shell if "--es open" in c]
-        self.assertEqual(len(opens), 4)
+        self.assertEqual(len(opens), 5)
         self.assertTrue(opens[0].startswith("http://127.0.0.1:18089/clarity/page/index.html?"), opens[0])
-        for url, tier in zip(opens[1:], ("light", "typical", "heavy")):
+        for url, tier in zip(opens[1:4], ("light", "typical", "heavy")):
             self.assertTrue(url.startswith(f"http://127.0.0.1:18089/clarity-{tier}/0?nonce=") and "&taps=2" in url, url)
+        self.assertEqual(opens[4], "http://127.0.0.1:18089/clarity-typical/0")       # the idle sample's page, no nonce
 
     def test_no_gesture_without_the_current_pages_request(self):
         """The fake rejects any tap or swipe that no current *-ready line asked for."""
@@ -611,6 +634,75 @@ class IdleOnly(unittest.TestCase):
         panes = {p["id"]: p for p in rep["real_use"]["panes"]}
         self.assertEqual(panes["sendspin"]["samples_on"], 2)
         self.assertEqual(rep["apk"][0]["abis"], ["armeabi-v7a"])   # kept from the first call
+
+
+
+class PaneRam(unittest.TestCase):
+    """#68, --pane-ram: each switchable pane on by itself against every pane off, on the typical
+    reference dashboard, with the kiosk's own extras; the panes and the dashboard go back after. The
+    fake's Assist adds 30 MB and Sendspin 10 MB."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        env, cls.state = fake_env(cls.tmp)
+        cls.out = os.path.join(cls.tmp, "out")
+        cls.proc = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--runs", "2", "--out", cls.out, "--port", "18091",
+                                   "--skip-synthetic", "--skip-reference", "--skip-real-use",
+                                   "--pane-ram", "assist=on,sendspin=off", "--restore-dashboard", RESTORE],
+                                  env=env, capture_output=True, text=True, timeout=300)
+
+    def read(self, name):
+        with open(os.path.join(self.state, name)) as f:
+            return json.load(f)
+
+    def test_run_succeeds(self):
+        self.assertEqual(self.proc.returncode, 0, self.proc.stderr[-3000:])
+
+    def test_each_pane_on_by_itself_then_all_back(self):
+        off = {"voice_enabled": "false", "sendspin_enabled": "false", "restart": "true"}
+        assist = dict(off, voice_enabled="true")
+        sendspin = dict(off, sendspin_enabled="true")
+        self.assertEqual(self.read("intents.json"), [off, assist, sendspin] * 2 + [{"voice_enabled": "true", "sendspin_enabled": "false"}])
+        self.assertEqual(self.read("settings.json"), {"voice_enabled": "true", "sendspin_enabled": "false"})   # as given
+        self.assertEqual(self.read("saved_url.json"), RESTORE)
+        self.assertEqual(self.read("urls_set.json"), ["http://127.0.0.1:18091/clarity-typical/0"] * 6 + [RESTORE])
+
+    def test_the_report_gives_each_panes_share(self):
+        with open(os.path.join(self.out, "report.json")) as f:
+            ram = json.load(f)["ram"]
+        panes = {p["id"]: p for p in ram["panes"]}
+        self.assertEqual(set(panes), {"assist", "sendspin"})
+        self.assertEqual((panes["assist"]["pss_kb"], panes["sendspin"]["pss_kb"]), (30000, 10000))
+        self.assertEqual(panes["assist"]["by_role_pss_kb"]["main"], 30000)
+        self.assertEqual((panes["assist"]["samples_on"], panes["assist"]["samples_off"]), (2, 2))
+        self.assertEqual(panes["assist"]["pss_tolerance_kb"], 0)
+        self.assertTrue(panes["assist"]["pss_measurable"])
+        self.assertEqual(panes["assist"]["method"], "on-alone")
+        self.assertEqual(ram["pane_budget"]["assist"], {"value_kb": 30000, "budget_kb": 49152, "ok": True})
+        self.assertEqual({p["id"] for p in ram["panes_waiting"]}, {"radio", "wall-base", "timers", "time-zone"})
+        self.assertIsNone(ram["reference_idle"])          # no graded runs here
+
+    def test_a_pane_setting_it_cant_put_back_is_refused_before_the_device_is_touched(self):
+        tmp = tempfile.mkdtemp()
+        env, state = fake_env(tmp)
+        for spec in ("assist=on", "assist=yes,sendspin=on", "radio=on,assist=on,sendspin=on"):
+            with self.subTest(spec):
+                p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--out", os.path.join(tmp, "out"), "--skip-synthetic",
+                                    "--skip-reference", "--skip-real-use", "--pane-ram", spec, "--restore-dashboard", RESTORE],
+                                   env=env, capture_output=True, text=True, timeout=60)
+                self.assertEqual(p.returncode, 2, p.stderr)
+                self.assertIn("--pane-ram", p.stderr)
+                self.assertFalse(os.path.exists(os.path.join(state, "intents.json")))
+
+    def test_it_needs_the_dashboard_to_put_back(self):
+        tmp = tempfile.mkdtemp()
+        env, _ = fake_env(tmp)
+        p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--out", os.path.join(tmp, "out"), "--skip-synthetic",
+                            "--skip-reference", "--skip-real-use", "--pane-ram", "assist=on,sendspin=on"],
+                           env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("--restore-dashboard", p.stderr)
 
 
 if __name__ == "__main__":

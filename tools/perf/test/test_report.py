@@ -1006,5 +1006,50 @@ class Build(unittest.TestCase):
         self.assertEqual(out[0]["parts_bytes"]["native"], 300)
 
 
+
+def ram_idle(label, main_kb, cpu=1.0):
+    pkg = "sh.edm.s1kiosk"
+    return {"label": label, "window_s": 15,
+            "processes": {pkg: {"pid": 1, "role": "main", "pss_kb": main_kb, "rss_peak_kb": main_kb},
+                          pkg + ":gpu_process": {"pid": 2, "role": "gpu", "pss_kb": 200_000, "rss_peak_kb": 250_000}},
+            "device_mem": {"mem_total_kb": 2_000_000, "mem_available_kb": 900_000},
+            "cpu": {"procs_pct_of_core": {pkg: cpu}, "device_busy_pct": 10}}
+
+
+class PaneOnAlone(unittest.TestCase):
+    """#68: a pane's share is the median of its on-alone samples less the median of the all-off ones;
+    the tolerance is the larger spread of the two sets."""
+
+    def test_share_and_tolerance(self):
+        idles = {"ref-panes-off": [ram_idle("ref-panes-off", v) for v in (100_000, 104_000, 101_000)],
+                 "ref-assist-on": [ram_idle("ref-assist-on", v) for v in (131_000, 130_000, 136_000)],
+                 "ref-sendspin-on": [ram_idle("ref-sendspin-on", v) for v in (102_000, 103_000, 101_000)]}
+        panes = {p["id"]: p for p in R.pane_on_alone(idles, "sh.edm.s1kiosk")}
+        self.assertEqual(panes["assist"]["pss_kb"], 30_000)                  # 331 000 - 301 000
+        self.assertEqual(panes["assist"]["pss_tolerance_kb"], 6_000)         # the on set's spread is the larger
+        self.assertTrue(panes["assist"]["pss_measurable"])
+        self.assertEqual(panes["sendspin"]["pss_kb"], 1_000)
+        self.assertFalse(panes["sendspin"]["pss_measurable"])                # inside the 4 000 tolerance
+        self.assertEqual(panes["assist"]["by_role_pss_kb"], {"gpu": 0, "main": 30_000})
+
+    def test_nothing_without_the_all_off_samples(self):
+        self.assertEqual(R.pane_on_alone({"ref-assist-on": [ram_idle("ref-assist-on", 1)]}, "sh.edm.s1kiosk"), [])
+
+    def test_the_reference_samples_arent_real_use_and_real_use_labels_arent_panes(self):
+        budgets = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15},
+                   "panes": {"assist": {"switch": "voice_enabled", "ram_pss_max_kb": 20_000}, "radio": {"waiting_on": "#67"}}}
+        ram = R.reference_ram({"ref-idle": [ram_idle("ref-idle", 300_000)],
+                               "ref-panes-off": [ram_idle("ref-panes-off", 100_000)],
+                               "ref-assist-on": [ram_idle("ref-assist-on", 130_000)]},
+                              [{"memory": [ram_idle("x", 320_000), ram_idle("x", 340_000)]}], "sh.edm.s1kiosk", budgets, 2_000_000)
+        self.assertEqual(ram["reference_idle"]["app_pss_kb"]["median"], 500_000)
+        self.assertEqual(ram["graded_peak"]["app_pss_kb"], 540_000)
+        self.assertEqual(ram["graded_peak"]["by_role_pss_kb"], {"gpu": 200_000, "main": 340_000})
+        self.assertEqual(ram["pane_budget"]["assist"]["ok"], False)          # 30 MB against 20 MB
+        self.assertEqual(ram["panes_waiting"], [{"id": "radio", "waiting_on": "#67"}])
+        self.assertTrue(ram["budget"]["ok"])
+        self.assertIsNone(R.reference_ram({}, [], "sh.edm.s1kiosk", budgets, 2_000_000))
+
+
 if __name__ == "__main__":
     unittest.main()

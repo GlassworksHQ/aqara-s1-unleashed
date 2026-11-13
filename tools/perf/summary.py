@@ -6,8 +6,10 @@ summary", documents every field.
 It holds measurements only, never the letter: the letter is derived, so the site computes it at
 render time from the summary and rubric.json (tools/perf/grade.ts; grade.py gives the same answer).
 Only graded, deterministic measurements go in: each reference dashboard's numbers and each run's
-frame stats, the restart, and what they were measured with. Nothing from real use (your own
-dashboard, memory, CPU, panes) and nothing device-unique (no serial, no addresses).
+frame stats, the restart, and what they were measured with. Two optional parts carry measurements
+that aren't graded: `ram` (on the reference dashboards, with each switchable pane's share) and
+`apk` (sizes per ABI). Nothing from real use (your own dashboard, memory, CPU, panes) and nothing
+device-unique (no serial, no addresses).
 
   tools/perf/summary.py perf-s1/report.json perf-s1/summary.json [--report-url report.json]
                         [--allow-provisional]
@@ -63,6 +65,25 @@ def page_summary(s):
     }
 
 
+def ram_summary(ram):
+    """The report's `ram` (reference dashboards, #68), in kB: medians at idle, the peak during the
+    graded tasks, and each pane's share with its tolerance. None if it wasn't measured."""
+    if not ram:
+        return None
+    idle, peak = ram.get("reference_idle") or {}, ram.get("graded_peak") or {}
+    return {
+        "idle_app_pss_kb": _med(idle.get("app_pss_kb")),
+        "idle_by_process_pss_kb": {r: _med(v) for r, v in sorted((idle.get("by_role_pss_kb") or {}).items())},
+        "peak_app_pss_kb": peak.get("app_pss_kb"),
+        "peak_by_process_pss_kb": dict(sorted((peak.get("by_role_pss_kb") or {}).items())),
+        "panes": [{"id": p["id"], "pss_kb": p["pss_kb"], "tolerance_kb": p["pss_tolerance_kb"],
+                   "measurable": p["pss_measurable"], "runs": min(p["samples_on"], p["samples_off"])}
+                  for p in ram.get("panes") or []],
+        "panes_waiting": [p["id"] for p in ram.get("panes_waiting") or []],
+        "budget_ok": (ram.get("budget") or {}).get("ok"),
+    }
+
+
 def measurements(rep, report_url="report.json"):
     """report.json (glassworks.perf/4) -> the summary: measurements and facts, no grade."""
     if not str(rep.get("schema", "")).startswith("glassworks.perf/"):
@@ -96,6 +117,8 @@ def measurements(rep, report_url="report.json"):
         "not_comparable": (vp.get("reason") if vp.get("state") == "refused"
                            else g.get("refused") if g.get("grade") is None else None),
         "report": report_url,
+        "ram": ram_summary(rep.get("ram")),
+        "apk": [{"file": x["file"], "abis": x["abis"], "bytes": x["bytes"]} for x in rep.get("apk") or []] or None,
     }
 
 

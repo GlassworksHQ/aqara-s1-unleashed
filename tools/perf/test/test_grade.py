@@ -243,10 +243,29 @@ class MemoryBudget(unittest.TestCase):
         self.assertFalse(r["ok"])
 
     def test_a_frame_override_may_name_one_key(self):
-        budgets = {"default": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15},
-                   "frames": {"mirror": {"app_pss_max_pct_of_ram": 60}}}
-        self.assertEqual(G.frame_budget(budgets, "mirror"), {"app_pss_max_pct_of_ram": 60, "device_available_min_pct": 15})
-        self.assertEqual(G.frame_budget(budgets, "other"), budgets["default"])
+        default = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15}, "panes": {}}
+        mirror = {"ram": {"app_pss_max_pct_of_ram": 60}, "panes": {"assist": {"ram_pss_max_kb": 1000}}}
+        self.assertEqual(G.frame_budget(default, mirror),
+                         {"ram": {"app_pss_max_pct_of_ram": 60, "device_available_min_pct": 15}, "panes": mirror["panes"]})
+        self.assertEqual(G.frame_budget(default), default)
+
+    def test_the_s1_owns_its_budgets(self):
+        """#68: the RAM budgets per frame and per pane are in the frame's own config."""
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
+        with open(os.path.join(root, "frames", "aqara-s1-plus", "budgets.json")) as f:
+            s1 = json.load(f)
+        self.assertEqual(set(s1["ram"]), {"app_pss_max_pct_of_ram", "device_available_min_pct"})
+        switchable = {k for k, v in s1["panes"].items() if v.get("switch")}
+        self.assertEqual(switchable, {"assist", "sendspin"})
+        for k in switchable:
+            self.assertIsInstance(s1["panes"][k]["ram_pss_max_kb"], int)
+        self.assertEqual({k for k, v in s1["panes"].items() if v.get("waiting_on") == "#67"},
+                         {"radio", "wall-base", "timers", "time-zone"})
+
+    def test_a_pane_over_its_budget(self):
+        r = G.pane_budgets([{"id": "assist", "pss_kb": 60_000}, {"id": "sendspin", "pss_kb": 20_000}, {"id": "x", "pss_kb": 1}],
+                           {"assist": {"ram_pss_max_kb": 49152}, "sendspin": {"ram_pss_max_kb": 49152}})
+        self.assertEqual((r["assist"]["ok"], r["sendspin"]["ok"], r["x"]["ok"]), (False, True, None))
 
 
 class SharedRules(unittest.TestCase):

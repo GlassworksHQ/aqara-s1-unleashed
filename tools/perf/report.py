@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build report.json and report.md from a tools/perf run directory (MIT). Offline; no adb.
 
-    python3 tools/perf/report.py <run-dir> [--apk app.apk ...] [--budgets tools/perf/budgets.json]
+    python3 tools/perf/report.py <run-dir> [--apk app.apk ...] [--budgets frames/<id>/budgets.json]
 
 The report schema (glassworks.perf/4) is documented in docs/perf.md.
 """
@@ -19,6 +19,10 @@ import grade as G  # noqa: E402
 import perflib as P  # noqa: E402
 
 SCHEMA = "glassworks.perf/4"
+HERE = os.path.dirname(os.path.abspath(__file__))
+# Idle samples on Clarity's reference dashboard carry this prefix (run.sh): `ref-idle` after each
+# graded run, `ref-panes-off` and `ref-<pane>-on` for the panes. They aren't real use.
+REF_LABEL = "ref-"
 SETTLE_GAP_MS = 750
 # The page's times reach logcat's clock through its log line, which logcat stamps a few ms late
 # (nav start mapped 11 to 23 ms before PageStart on the S1, 2026-11-12). The frame that shows the
@@ -412,15 +416,16 @@ def tier_run(tier, entry, presents_ms):
 
 
 def reference_run(c):
-    """One graded run: restart (process start to engine ready, both stamped on the device, so the
-    harness's adb round trips aren't in it), then each reference dashboard."""
+    """One graded run: restart (protocol 4: process start to the reference dashboard the kiosk comes
+    back to being usable; before it, to engine ready), then each reference dashboard."""
     base = {"ttid_ms": c.get("ttid_ms"), "launch": c.get("launch"), "own_page_state": c.get("own_page_state"),
             "own_page_loads": c.get("own_page_loads"), "engine_uri": c.get("engine_uri")}
     proc, engine = c.get("proc_mono"), c.get("engine_mono")
     start, start_error = None, None
     base["engine_ready_ms"] = round((engine - proc) * 1000) if proc is not None and engine is not None else None
     restart_page = c.get("restart_page")
-    if c.get("protocol_restart") or restart_page is not None:
+    base["restart_to"] = "usable" if c.get("protocol_restart") or restart_page is not None else "engine-ready"
+    if base["restart_to"] == "usable":
         # Protocol 4: restart = process start to the kiosk's own page (the reference dashboard it was
         # pointed at) being usable on screen. Engine ready stays as detail.
         if proc is None:
@@ -540,6 +545,9 @@ def reference_summary(all_runs):
         # Android's TTID: the first frame of the launched activity, which on a kiosk is its own
         # loading screen. Reported, not graded.
         "android_ttid_ms": P.spread([r["ttid_ms"] for r in runs]),
+        "engine_ready_ms": P.spread([r.get("engine_ready_ms") for r in runs]),
+        # Protocol 4: the restart ends at a usable reference dashboard (the kiosk was pointed at it).
+        "restart_to": "usable" if any(r.get("restart_to") == "usable" for r in all_runs) else "engine-ready",
         "launch": sorted({r["launch"] for r in runs if r.get("launch")}),
         "own_page_states": sorted({r["own_page_state"] for r in runs if r.get("own_page_state")}),
         "orders": [r.get("order") for r in runs],
@@ -765,6 +773,93 @@ def pane_diffs(idles, package):
     return out
 
 
+# ---- RAM on the reference dashboard (#68)
+
+def _valid(samples):
+    return [i for i in samples if app_memory(i)["app_pss_kb"] is not None]
+
+
+def pane_on_alone(ref_idles, package):
+    """Each switchable pane on by itself (`ref-<pane>-on`) against every pane off (`ref-panes-off`),
+    on the same reference dashboard: the difference of the medians. The tolerance is the larger of
+    the two sets' spreads (max - min); a difference inside it is noise."""
+    off = _valid(ref_idles.get("ref-panes-off", []))
+    if not off:
+        return []
+    off_m = [app_memory(i) for i in off]
+    off_pss = [m["app_pss_kb"] for m in off_m]
+    off_cpu = [app_cpu(i, package)["app_pct_of_core"] for i in off]
+    out = []
+    for label, runs in sorted(ref_idles.items()):
+        runs = _valid(runs)
+        if not (label.startswith(REF_LABEL) and label.endswith("-on")) or not runs:
+            continue
+        on_m = [app_memory(i) for i in runs]
+        on_pss = [m["app_pss_kb"] for m in on_m]
+        on_cpu = [app_cpu(i, package)["app_pct_of_core"] for i in runs]
+        d = statistics.median(on_pss) - statistics.median(off_pss)
+        tol = max(max(off_pss) - min(off_pss), max(on_pss) - min(on_pss))
+        roles = sorted({r for m in on_m + off_m for r in m["by_role"]})
+        d_cpu = statistics.median(on_cpu) - statistics.median(off_cpu)
+        cpu_tol = max(max(off_cpu) - min(off_cpu), max(on_cpu) - min(on_cpu))
+        out.append({
+            "id": label[len(REF_LABEL):-3], "method": "on-alone", "samples_on": len(runs), "samples_off": len(off),
+            "pss_kb": round(d), "pss_tolerance_kb": tol, "pss_measurable": abs(d) > tol,
+            "by_role_pss_kb": {r: round(statistics.median([m["by_role"].get(r, {}).get("pss_kb", 0) for m in on_m])
+                                        - statistics.median([m["by_role"].get(r, {}).get("pss_kb", 0) for m in off_m])) for r in roles},
+            "cpu_pct_of_core": round(d_cpu, 2), "cpu_tolerance_pct": round(cpu_tol, 2), "cpu_measurable": abs(d_cpu) > cpu_tol,
+        })
+    return out
+
+
+def reference_ram(ref_idles, refstarts, package, budgets, mem_total_kb):
+    """RAM on Clarity's reference dashboards, per process: at idle on the typical dashboard after each
+    graded run (`ref-idle`), and the largest sample taken between the graded pages (the peak during
+    the graded tasks). Then each switchable pane's share, and the frame's budgets. Not graded."""
+    idle = _valid(ref_idles.get("ref-idle", []))
+    between = [s for r in refstarts for s in r.get("memory") or []]
+    between = [s for s in between if app_memory(s)["app_pss_kb"] is not None]
+    if not idle and not between and not ref_idles:
+        return None
+    im = [app_memory(i) for i in idle]
+    bm = [app_memory(s) for s in between]
+    roles = sorted({r for m in im + bm for r in m["by_role"]})
+    out = {
+        "reference_idle": {
+            "samples": len(im),
+            "app_pss_kb": P.spread([m["app_pss_kb"] for m in im]),
+            "by_role_pss_kb": {r: P.spread([m["by_role"].get(r, {}).get("pss_kb") for m in im]) for r in roles},
+            "main_kb": {k: P.spread([m["main"].get(k) for m in im]) for k in sorted({k for m in im for k in m["main"]})},
+            "device_used_pct": P.spread([100 - 100 * m["mem_available_kb"] / m["mem_total_kb"] for m in im
+                                         if m["mem_total_kb"] and m["mem_available_kb"] is not None]),
+        } if im else None,
+        "graded_peak": {
+            "samples": len(bm),
+            "app_pss_kb": max(m["app_pss_kb"] for m in bm),
+            "by_role_pss_kb": {r: max(m["by_role"].get(r, {}).get("pss_kb", 0) for m in bm) for r in roles},
+            # Each process's peak RSS since it started (VmHWM), summed: catches a peak between two samples.
+            "app_rss_hwm_kb": max(sum(r["rss_peak_kb"] for r in m["by_role"].values()) for m in bm),
+            "mem_available_min_kb": min((m["mem_available_kb"] for m in bm if m["mem_available_kb"] is not None), default=None),
+        } if bm else None,
+        "panes": pane_on_alone(ref_idles, package),
+        "panes_waiting": [{"id": k, "waiting_on": v["waiting_on"], **({"note": v["note"]} if v.get("note") else {})}
+                          for k, v in sorted(budgets["panes"].items()) if v.get("waiting_on")],
+    }
+    peak = out["graded_peak"] or {}
+    avail = [m["mem_available_kb"] for m in im + bm if m["mem_available_kb"] is not None]
+    out["budget"] = G.memory_budget({"app_pss_peak_kb": peak.get("app_pss_kb"), "mem_total_kb": mem_total_kb,
+                                     "mem_available_min_kb": min(avail) if avail else None}, budgets["ram"])
+    out["pane_budget"] = G.pane_budgets(out["panes"], budgets["panes"])
+    return out
+
+
+def load_budgets(frame_id, path=None):
+    """The frame's budgets (frames/<id>/budgets.json, or `path`) over the default (tools/perf/budgets.json)."""
+    default = read_json(os.path.join(HERE, "budgets.json"))
+    own = path or os.path.join(HERE, "..", "..", "frames", frame_id, "budgets.json")
+    return G.frame_budget(default, read_json(own) if os.path.exists(own) else None)
+
+
 # ---- APK size
 
 def apk_sizes(paths):
@@ -828,14 +923,18 @@ def build(run_dir, apks=(), budgets=None):
     package = device["app"]["package"]
     files = lambda pat: sorted(glob.glob(os.path.join(run_dir, pat)))  # noqa: E731
     syn = [synthetic_run(read_jsonl(p)) for p in files("synthetic-*.jsonl")]
-    refs = [reference_run(read_json(p)) for p in files("refstart-*.json")]
+    raw_refs = [read_json(p) for p in files("refstart-*.json")]
+    refs = [reference_run(c) for c in raw_refs]
     plan = read_json(os.path.join(run_dir, "plan.json")) if os.path.exists(os.path.join(run_dir, "plan.json")) else {}
     attempted = max(len(refs), plan.get("runs") or 0) if refs or plan.get("runs") else 0
     cold = [coldstart_run(read_json(p)) for p in files("coldstart-*.json")]
-    idles = {}
+    idles, ref_idles = {}, {}
     for p in files("idle-*.json"):
         i = read_json(p)
-        idles.setdefault(i["label"], []).append(i)
+        (ref_idles if i["label"].startswith(REF_LABEL) else idles).setdefault(i["label"], []).append(i)
+    if not isinstance(budgets, dict):
+        # A path (--budgets) or nothing: the frame's own file over the default.
+        budgets = load_budgets(device["frame"], budgets)
 
     graded = {"reference": reference_summary(refs) if refs else None}
     tiers, start = grade_inputs(graded)
@@ -887,10 +986,9 @@ def build(run_dir, apks=(), budgets=None):
     r = real_use_summary(cold, idles, package) if (cold or idles) else None
     real_use = None
     if r:
-        budgets = budgets or {"default": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15}, "frames": {}}
         memory = {"idle": r["idle"], "peak": r["peak"], "budget": G.memory_budget(
             {"app_pss_peak_kb": r["peak"]["app_pss_kb"], "mem_total_kb": device["mem_total_kb"],
-             "mem_available_min_kb": r["peak"]["mem_available_min_kb"]}, G.frame_budget(budgets, device["frame"]))}
+             "mem_available_min_kb": r["peak"]["mem_available_min_kb"]}, budgets["ram"])}
         real_use = dict(r, per_run=cold, memory=memory, panes=pane_diffs(idles, package) + radio_pane(r))
 
     gv = next((geckoview_version(x["ua"]) for x in syn if x["ua"]), None)
@@ -903,6 +1001,7 @@ def build(run_dir, apks=(), budgets=None):
                   "device": {k: v for k, v in device.items() if k not in ("frame", "frame_name", "app", "measured_on")},
                   "app": dict(device["app"], geckoview=gv)},
         "apk": apk_sizes(apks),
+        "ram": reference_ram(ref_idles, raw_refs, package, budgets, device.get("mem_total_kb")),
         "grade": grade,
         "graded": graded,
         "detail": detail,
@@ -982,9 +1081,11 @@ def markdown(rep):
                 f"| {fmt(s_['load_ms'], ' ms')}, {band_cell(b['load'])} | {held} |")
         vp = g.get("viewport") or {}
         seen = sorted({str(v) for s_ in ref["tiers"].values() for v in s_["viewport"]})
-        out += ["", f"Restart, app process to engine ready: {fmt(ref['start_ms'], ' ms')} ({band_cell(g['start']['band'])}; "
+        to = "a usable reference dashboard" if ref.get("restart_to") == "usable" else "engine ready"
+        out += ["", f"Restart, app process to {to}: {fmt(ref['start_ms'], ' ms')} ({band_cell(g['start']['band'])}; "
                     f"{', '.join(ref['launch']) or 'n/a'}; first page {', '.join(ref['engine_uris']) or 'n/a'}). "
-                    f"Android's TTID {fmt(ref['android_ttid_ms'], ' ms')}: the first frame of the kiosk's loading screen; not graded.",
+                    + (f"Engine ready {fmt(ref.get('engine_ready_ms'), ' ms')}, not graded. " if to != "engine ready" else "")
+                    + f"Android's TTID {fmt(ref['android_ttid_ms'], ' ms')}: the first frame of the kiosk's loading screen; not graded.",
                 f"Viewport (CSS px, device pixel ratio): {', '.join(seen) or 'n/a'}; zoom check: {vp.get('state', 'n/a')}"
                 + (f" ({vp['reason']})" if vp.get("reason") else "") + "."]
         if ref["start_errors"]:
@@ -1025,6 +1126,7 @@ def markdown(rep):
                         f"{fmt_n(x['latency_p95_ms'], ' ms')} ({x['updates_level'] or 'n/a'}), opens in {fmt_n(x['load_ms'], ' ms')}"
                         for x in bp.get(pos, [])) or "")
                 out.append(f"| {t} | " + " | ".join(cells) + " |")
+    out += ram_markdown(rep.get("ram"))
     s = rep["detail"]["synthetic"]
     if s:
         out += ["", "## Detail: animations it can handle (test page, not graded)", "",
@@ -1067,14 +1169,61 @@ def markdown(rep):
     return "\n".join(out) + "\n"
 
 
+def budget_word(ok):
+    return "ok" if ok else "over" if ok is False else "n/a"
+
+
+def ram_markdown(ram):
+    """RAM on Clarity's reference dashboards (#68): per process at idle, the peak during the graded
+    tasks, each switchable pane's share, and the frame's budgets."""
+    if not ram:
+        return []
+    out = ["", "## RAM on the reference dashboards (not graded)", "",
+           "PSS per process, from `dumpsys meminfo`: at idle on the typical reference dashboard after each "
+           "graded run, and between the graded pages (the largest of those is the peak during the graded tasks).", ""]
+    idle, peak = ram.get("reference_idle"), ram.get("graded_peak")
+    roles = sorted(set((idle or {}).get("by_role_pss_kb", {})) | set((peak or {}).get("by_role_pss_kb", {})))
+    if idle or peak:
+        out += ["| Process | Idle (median of runs) | Peak during the graded tasks |", "|---|---|---|"]
+        for r in roles:
+            pk = (peak or {}).get("by_role_pss_kb", {}).get(r)
+            pk = "n/a" if pk is None else f"{pk / 1024:.0f} MB"
+            out.append(f"| {r} | {fmt((idle or {}).get('by_role_pss_kb', {}).get(r), ' MB', 1024)} | {pk} |")
+        peak_app = "n/a" if not peak else f"{peak['app_pss_kb'] / 1024:.0f} MB"
+        out.append(f"| app, all processes | {fmt((idle or {}).get('app_pss_kb'), ' MB', 1024)} | {peak_app} |")
+        if peak:
+            out += ["", f"Peak RSS of the app's processes since they started (VmHWM, summed): {peak['app_rss_hwm_kb'] / 1024:.0f} MB, "
+                        f"from {peak['samples']} sample(s) between pages."]
+    b = ram.get("budget")
+    if b:
+        out += ["", "Budgets (frames/<id>/budgets.json):"]
+        for k, c in b["checks"].items():
+            val = "n/a" if c["value_kb"] is None else f"{c['value_kb'] / 1024:.0f} MB"
+            out.append(f"- {k}: {val} against {c['budget_kb'] / 1024:.0f} MB: {budget_word(c['ok'])}")
+    if ram.get("panes"):
+        out += ["", "Each pane on by itself against every pane off, on the typical reference dashboard (median of runs; "
+                    "the tolerance is the larger spread of the two sets):", "",
+                "| Pane | PSS | Tolerance | Budget | CPU |", "|---|---|---|---|---|"]
+        for p in ram["panes"]:
+            pb = (ram.get("pane_budget") or {}).get(p["id"]) or {}
+            cap = "none" if pb.get("budget_kb") is None else f"{pb['budget_kb'] / 1024:.0f} MB, {budget_word(pb.get('ok'))}"
+            out.append(f"| {p['id']} | {p['pss_kb'] / 1024:+.1f} MB{'' if p['pss_measurable'] else ' (within tolerance)'} "
+                       f"| ±{p['pss_tolerance_kb'] / 1024:.1f} MB (n={p['samples_on']} on, {p['samples_off']} off) | {cap} "
+                       f"| {p['cpu_pct_of_core']:+.1f} % of a core{'' if p['cpu_measurable'] else ' (within tolerance)'} |")
+    if ram.get("panes_waiting"):
+        out += ["", "Not measured per pane yet (no on/off switch until " + ", ".join(sorted({p["waiting_on"] for p in ram["panes_waiting"]}))
+                + "): " + ", ".join(p["id"] for p in ram["panes_waiting"]) + "."]
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("run_dir")
     ap.add_argument("--apk", action="append", default=[])
-    ap.add_argument("--budgets", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "budgets.json"))
+    ap.add_argument("--budgets", default=None, help="a frame's budgets file; default frames/<id>/budgets.json, else tools/perf/budgets.json")
     ap.add_argument("--keep-apk", action="store_true", help="keep the apk sizes of the existing report.json (run.sh --idle-only)")
     a = ap.parse_args()
-    rep = build(a.run_dir, a.apk, read_json(a.budgets))
+    rep = build(a.run_dir, a.apk, a.budgets)
     old = os.path.join(a.run_dir, "report.json")
     if a.keep_apk and not a.apk and os.path.exists(old):
         rep["apk"] = read_json(old).get("apk", [])

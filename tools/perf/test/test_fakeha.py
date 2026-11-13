@@ -94,9 +94,21 @@ class FakeHA(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.srv.shutdown()
+        cls.srv.server_close()
+
+    def http(self, method, path, body=None, headers=None):
+        """One request on its own connection: (status, Location, body)."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.port)
+        try:
+            conn.request(method, path, body, headers or {})
+            r = conn.getresponse()
+            return r.status, r.getheader("Location"), r.read()
+        finally:
+            conn.close()
 
     def connect(self):
         ws = WS(self.port)
+        self.addCleanup(ws.sock.close)
         self.assertEqual(ws.recv()["type"], "auth_required")
         ws.send({"type": "auth", "access_token": "clarity-access"})
         self.assertEqual(ws.recv(), {"type": "auth_ok", "ha_version": fakeha.HA_VERSION})
@@ -140,52 +152,38 @@ class FakeHA(unittest.TestCase):
     def test_the_live_stream_reaches_subscribers_with_a_context_each(self):
         ws = self.connect()
         ws.call({"type": "subscribe_entities"})
-        conn = http.client.HTTPConnection("127.0.0.1", self.port)
-        conn.request("GET", "/clarity/live?nonce=t")
-        self.assertEqual(conn.getresponse().status, 204)
+        self.assertEqual(self.http("GET", "/clarity/live?nonce=t")[0], 204)
         got, deadline = [], time.time() + 3
         while time.time() < deadline and len(got) < 4:
             m = ws.recv()
             if m.get("type") == "event" and "c" in m["event"]:
                 got.extend((e, d["+"]["c"]) for e, d in m["event"]["c"].items())
-        conn = http.client.HTTPConnection("127.0.0.1", self.port)
-        conn.request("GET", "/clarity/still?nonce=t")
-        conn.getresponse()
+        self.http("GET", "/clarity/still?nonce=t")
         self.assertGreaterEqual(len(got), 4)
         self.assertEqual(len({c for _, c in got}), len(got))          # every change its own context
 
     def test_sign_in_goes_straight_back_with_a_code(self):
         back = f"http://127.0.0.1:{self.port}/clarity-light/0?auth_callback=1"
-        conn = http.client.HTTPConnection("127.0.0.1", self.port)
-        conn.request("GET", "/auth/authorize?" + urllib.parse.urlencode(
+        status, location, _ = self.http("GET", "/auth/authorize?" + urllib.parse.urlencode(
             {"response_type": "code", "redirect_uri": back, "client_id": "x", "state": "s"}))
-        r = conn.getresponse()
-        self.assertEqual(r.status, 302)
-        self.assertTrue(r.getheader("Location").startswith(back + "&code=clarity&state=s&storeToken=true"))
-        conn = http.client.HTTPConnection("127.0.0.1", self.port)
-        conn.request("POST", "/auth/token", "grant_type=authorization_code&code=clarity",
-                     {"Content-Type": "application/x-www-form-urlencoded"})
-        tok = json.loads(conn.getresponse().read())
+        self.assertEqual(status, 302)
+        self.assertTrue(location.startswith(back + "&code=clarity&state=s&storeToken=true"))
+        tok = json.loads(self.http("POST", "/auth/token", "grant_type=authorization_code&code=clarity",
+                                   {"Content-Type": "application/x-www-form-urlencoded"})[2])
         self.assertEqual(tok["token_type"], "Bearer")
         self.assertIn("refresh_token", tok)
 
     def test_the_app_shell_puts_the_harness_first(self):
-        conn = http.client.HTTPConnection("127.0.0.1", self.port)
-        conn.request("GET", "/clarity-typical/0?nonce=x")
-        html = conn.getresponse().read().decode()
+        html = self.http("GET", "/clarity-typical/0?nonce=x")[2].decode()
         self.assertTrue(html.split("<head>", 1)[1].startswith('<script src="/clarity/harness.js"></script>'))
         self.assertNotIn("{{", html)
-        conn = http.client.HTTPConnection("127.0.0.1", self.port)
-        conn.request("GET", "/clarity/harness.js")
-        js = conn.getresponse().read().decode()
+        js = self.http("GET", "/clarity/harness.js")[2].decode()
         self.assertIn("window.GW_CLARITY = ", js)
         self.assertIn('"PROTOCOL": 4', js)
 
     def test_paths_never_leave_the_frontend(self):
         for path in ("/static/../../etc/passwd", "/frontend_latest/%2e%2e/%2e%2e/x", "/clarity/page/../fakeha.py"):
-            conn = http.client.HTTPConnection("127.0.0.1", self.port)
-            conn.request("GET", path)
-            self.assertEqual(conn.getresponse().status, 404, path)
+            self.assertEqual(self.http("GET", path)[0], 404, path)
 
 
 if __name__ == "__main__":

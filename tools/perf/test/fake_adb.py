@@ -51,11 +51,19 @@ def shell(cmd):
             # Like the kiosk: `url` saves the dashboard (a URL or "auto") and loads it.
             save("saved_url.json", u.group(1))
             save("urls_set.json", state("urls_set.json", []) + [u.group(1)])
+        ez = re.findall(r"--ez (\w+) (true|false)", cmd)
+        if ez:
+            # Like the kiosk: each `--ez` saves a setting (voice_enabled, sendspin_enabled, restart).
+            save("intents.json", state("intents.json", []) + [dict(ez)])
+            save("settings.json", dict(state("settings.json", {}), **{k: v for k, v in ez if k != "restart"}))
         m = re.search(r"--es open '([^']+)'", cmd)
         # Like the S1 kiosk (#103's pins): `open` is dropped until GeckoView's session is up.
         if m and state("session_up.json", True):
-            nonce = re.search(r"nonce=(\w+)", m.group(1)).group(1)
-            save("refnonce.json" if "/clarity-" in m.group(1) else "nonce.json", [nonce, m.group(1)])
+            nonce = re.search(r"nonce=(\w+)", m.group(1))
+            if nonce:
+                save("refnonce.json" if "/clarity-" in m.group(1) else "nonce.json", [nonce.group(1), m.group(1)])
+            else:
+                save("opened_still.json", state("opened_still.json", []) + [m.group(1)])   # an idle sample's page
         if " -W " in cmd:
             if not os.environ.get("FAKE_NO_DASHBOARD"):
                 save("cold.json", True)
@@ -95,7 +103,10 @@ def shell(cmd):
     if cmd == "ps -A -o PID,NAME":
         return "  PID NAME\n" + "".join(f"{p} {n}\n" for n, p in PIDS.items()) + "  1 init\n"
     if cmd == "dumpsys meminfo":
-        rows = {PKG + ":gpu_disable_art_image_": 200_000, PKG: 190_000, PKG + ":sandboxed_tab_disable_art_image_24": 180_000, "otbr-agent": 2_500}
+        # A pane turned on with its extra adds to the app's PSS: Assist 30 MB, Sendspin 10 MB.
+        on = state("settings.json", {})
+        main = 190_000 + (30_000 if on.get("voice_enabled") == "true" else 0) + (10_000 if on.get("sendspin_enabled") == "true" else 0)
+        rows = {PKG + ":gpu_disable_art_image_": 200_000, PKG: main, PKG + ":sandboxed_tab_disable_art_image_24": 180_000, "otbr-agent": 2_500}
         body = "".join(f"    {v:,}K: {n} (pid {PIDS[n]}{' / activities' if n == PKG else ''})\n" for n, v in rows.items())
         return "Total PSS by process:\n" + body + "\nTotal PSS by OOM adjustment:\n"
     if cmd.startswith("dumpsys meminfo "):
