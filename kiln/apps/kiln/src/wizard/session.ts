@@ -74,6 +74,8 @@ export class Session {
   private wifiHint?: string;
   /** what the person chose on the settings step, shown again if they go back to it */
   private chosen?: AppSettings;
+  /** the Home Assistant address as the person typed it, shown again if they go back to the step */
+  haAddress?: string;
   /** the app is on the panel: provision put it there, or `pm path` found it */
   private hasApp = false;
   private haTimer?: ReturnType<typeof setInterval>;

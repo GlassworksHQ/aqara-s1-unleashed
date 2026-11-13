@@ -194,4 +194,15 @@ describe('the set-up forms', () => {
     expect((screen.getAllByRole('combobox')[0] as HTMLSelectElement).value).toBe('fr-FR');
     s.close();
   }, 20_000);
+
+  it('Home Assistant: a typed address survives going to another step and back', async () => {
+    const s = demoSession('home-assistant');
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
+    await act(() => s.route('home-assistant'));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'http://192.0.2.20:8123' } });
+    await act(() => s.route('wifi')); // Back (the rail), which unmounts the step
+    await act(() => s.route('home-assistant')); // Forward
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('http://192.0.2.20:8123');
+    s.close();
+  }, 20_000);
 });
