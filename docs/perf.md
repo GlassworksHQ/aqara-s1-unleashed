@@ -51,7 +51,8 @@ own GeckoView, loaded the way the kiosk loads your dashboard.
 
 ## Run it
 
-You need adb, Python 3 and the kiosk installed on the device. Let the device idle for 10 minutes
+You need adb, Python 3, ffmpeg with libx264 (for the camera streams; it runs only on your computer)
+and the kiosk installed on the device. Let the device idle for 10 minutes
 first, with the screen on, at normal room temperature, and the kiosk's zoom at its default ("auto").
 Note the dashboard the kiosk shows now (its URL setting, or `auto`): the graded part points the
 kiosk at the fake Home Assistant and needs to know what to put back.
@@ -171,10 +172,10 @@ measured on. A view opens inside the loaded frontend, as a view tab or a navigat
 
 | View | Cards | What |
 |---|---|---|
-| **Start** | 22 | The light view's cards, plus a history graph and a picture (`START` in `tiers.json`) |
+| **Start** | 23 | The light view's cards, plus a history graph, a picture and a 360p live camera (`START` in `tiers.json`) |
 | **Light** | 20 | 12 tiles, 4 entities cards of 5 rows, a glance, 2 sensor cards with a graph, a clock |
-| **Typical** | 50 | 26 tiles, 11 entities cards of 6 rows, 2 glances, 6 sensor cards, 2 history graphs, 2 pictures, a clock |
-| **Heavy** | 120 | 50 tiles, 22 entities cards of 8 rows, 4 long lists of 20 rows, 4 glances, 16 sensor cards, 8 history graphs, 15 pictures, a clock |
+| **Typical** | 50 | 26 tiles, 11 entities cards of 6 rows, 2 glances, 6 sensor cards, 2 history graphs, a picture, **a 720p live camera**, a clock |
+| **Heavy** | 120 | 50 tiles, 22 entities cards of 8 rows, 4 long lists of 20 rows, 4 glances, 16 sensor cards, 8 history graphs, 13 pictures, **a 720p live camera and a grid of three 360p**, a clock |
 
 Every card is one of HA's own types (`tile`, `entities`, `glance`, `sensor` with its graph,
 `history-graph`, `picture`, `clock`), in HA's masonry view, with HA's default theme. The pictures are
@@ -308,6 +309,57 @@ Usable is when HA has drawn the view and would answer a touch at once. Two parts
 
 On the screen, usable is the first frame SurfaceFlinger presented that can carry the drawn frame (one
 refresh after it, less 3 ms for the clock mapping), and never before the main thread was free.
+
+#### Live camera streams (#174, protocol 5)
+
+Camera streams are a normal part of a wall panel's dashboard (the maintainer, 2026-11-13), so the
+typical and heavy views have live camera cards, right after the head, on the first screen:
+
+| View | Streams |
+|---|---|
+| Light | none |
+| Typical | one `picture-entity` card with `camera_view: live`, 1280×720 at 15 fps |
+| Heavy | one 720p card, and a grid of three 640×360 cards (a main stream and sub-streams) |
+
+They take the place of picture cards, so the card counts stay 20, 50 and 120. The start view has one
+360p camera, so the cold load brings in the camera player's code, as it does every lazy card type.
+
+**What the fake serves.** HA's frontend asks `camera/capabilities` for a camera with the STREAM
+feature and plays what it offers: WebRTC first, then HLS, else MJPEG (`ha-camera-stream.ts` at the
+pinned tag). The fake offers HLS, as HA's `stream` integration does, and lists `stream` among HA's
+components (`ha-hls-player.ts` refuses to play without it). `camera/stream` starts a fresh stream
+(`/api/hls/<token>/master_playlist.m3u8`), whose live playlist is a window of the last four whole
+1 s segments, as if the camera had been streaming for 4 s already. The segments are H.264 Main, fMP4,
+made once by `tools/perf/camera.py` with ffmpeg from its moving test pattern (`testsrc`, with its
+burnt-in counter): no video is in the repo, and the same ffmpeg makes the same bytes every time
+(bitexact, one encoder thread; `manifest.json` records the version and every file's SHA-256). The loop
+is 120 s; past it the playlist wraps with `EXT-X-DISCONTINUITY`. WebRTC (go2rtc) is a later option.
+
+**Which player.** `ha-hls-player.ts` uses hls.js on MSE when the engine supports H.264 there
+(`Hls.isSupported()`), else the browser's own HLS, and ExoPlayer only in HA's companion app (not
+the kiosk). On a panel that is hls.js on MSE in GeckoView, ending in the device's hardware decoder.
+Checked in Chrome with H.264 (2026-11-13): the frontend took hls.js on MSE (`blob:` sources) and
+played every stream. GeckoView on the S1 isn't checked yet: every `refdash` line now carries the
+engine's `video_caps` (`mse_h264`, `native_hls`, `rvfc`), so the first panel run says which path
+it took.
+
+**What is measured.** For each stream, by the harness, on the views with streams:
+- **First frame**: from the navigation to the stream's first presented frame
+  (`requestVideoFrameCallback`, or `loadeddata` without it).
+- **Frames shown**: over the view's live phase up to its first swipe (the updates window and the
+  taps, with the cameras on screen), the frames the decoder presented (`getVideoPlaybackQuality`:
+  total less dropped) against 15 fps × the time. The swipes scroll the cameras away, and an engine
+  may rightly stop decoding a video no one can see, so they aren't in this window; scrolling is still
+  measured with the streams playing. (`requestVideoFrameCallback` can fire once for two frames that
+  land in one rendering update: in Chrome, 60 callbacks for 77 decoded frames. So it is used for the
+  first frame and the gaps only.)
+- **Stalls**: gaps over 500 ms between presented frames in that window, the longest and their sum,
+  and the `waiting` events.
+- Scroll, taps and live updates run with the streams playing, as on a panel showing a camera; RAM and
+  CPU per process too.
+
+Each run's camera numbers are its **worst** stream's. A stream that never showed a frame (or wasn't
+found) fails the task: it was measured, and the panel didn't play it.
 
 #### Change to screen
 
@@ -455,8 +507,12 @@ the two middles for an even count):
 | Live updates | good, and the frames that had a change to draw hold the 60 fps bar | 95% of changes on screen within 100 ms | within 200 ms |
 | Tap | INP good (≤ 200 ms) | INP good | INP good |
 | Open the view | ≤ 2.5 s, or up to 4 s | the same | the same |
+| Cameras (typical and heavy only) | as good | first frame within 2 s, at least 95% of frames shown, no gap over 500 ms | first frame within 4 s, at least 85% shown, stalls under 1 s in all |
 
-Below fluid, a measured scroll or live-update level is `slow`. The p95 caps are whole frames at
+Below fluid, a measured scroll, live-update or camera level is `slow`. The camera bars are #174's
+proposal, to be calibrated on the S1 before they're final (a decision for the maintainer, in its own
+PR, never to move a letter); there is no separate premium bar for cameras. A page without streams
+(light) has camera `none`, which every level accepts. The p95 caps are whole frames at
 60 Hz plus the rubric's 0.5 ms slack: 50.5 ms is three frames, 67.17 ms four, as the user's 50 and
 67 ms. Scroll is measured during the live updates (they keep running while the page scrolls), so
 updates that make scrolling stutter cost the page its scroll level.
@@ -745,7 +801,7 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (over 50 ms is provisional). `null` without the log, which is provisional for protocol 4 |
 | `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb`, `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`), `panes_waiting` (`id`, `waiting_on`, `note`), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `ok`). See [RAM](#ram) |
 | `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts (a run failed, a task was measured in fewer runs, scrolling rests on rAF only, the pages ran another protocol) |
-| `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
+| `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `camera_runs` (each run's worst stream, with each stream as `detail`), `camera_levels` (per run) and `camera_level` (graded), `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
 | `detail` | `synthetic`, the animation test page: `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `steps_without_sf`, `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `page_lcp_ms`, `page_lcp_from`, `per_run` |
 | `real_use` | Not graded. Your dashboard: `app_start_to_dashboard_ms`, `android_ttid_ms`, `launch`, `stop_to_dashboard_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `errors`, `per_run`. Then `idle`, `peak`, `memory` (`idle`, `peak`, `budget`) and `panes` |
 
@@ -774,7 +830,7 @@ from real use, and nothing device-unique.
 | `app_version` | The kiosk's version name |
 | `viewport` | `css` (CSS px), `dpr` (device pixel ratio), `default_dpr` (density / 160) |
 | `runs` | `attempted`, `graded` |
-| `pages` | Per page (`light`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
+| `pages` | Per page (`light`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
 | `restart_ms` | Process start to a usable reference dashboard (median; to engine ready before protocol 4) |
 | `gaps` | Measurement facts that leave it short: "1 of 3 graded runs failed or are missing", "heavy: scrolling rests on rAF only in 1 run(s)…". Empty when complete |
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |
@@ -807,7 +863,8 @@ turning order, the shared first screen, change frames and the first-paint settle
 left out, the HA-faithful update stream, change-to-screen timing over a 4 s window, and the changes
 counted during each swipe. Protocol 3 (2026-11-12) fades only what HA fades on a tile (the icon's
 shape and colour, not a background behind it) and counts only state changes, not the clock, during a
-swipe. Protocol 4 (2026-11-13) runs HA's real frontend (release 20261028.5) behind a fake Home
+swipe. Protocol 5 (#174, 2026-11-13) adds live camera streams to typical and heavy (and the start
+view), and the camera task (rubric v6). Protocol 4 (2026-11-13) runs HA's real frontend (release 20261028.5) behind a fake Home
 Assistant, times the restart to a usable dashboard, points the kiosk's dashboard setting at the
 reference dashboard for the restart, and drops the warm-up page. Within protocol 4, before any
 frame had a protocol 4 result (2026-11-13, after smoke9): the reference dashboards became views of
@@ -875,13 +932,14 @@ load) and `t`:
 
 | `t` | Fields |
 |---|---|
-| `refdash` | A reference view, usable: `tier` (the view: `start` for the restart page, or `light`, `typical`, `heavy`), `protocol`, `frontend` (HA's frontend release), `nodes`, `cards` (the view's cards), `cards_rendered` (how many HA had built when it was usable), `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (the frontend's own load: the restart page only, else `null`), `nav_ms` (the navigation to the view; 0 for the frontend's own load), `usable` (`rendered_tick_ms`, the frame in which it was drawn; `first_screen_cards`; `head_cards`, the 10 head cards it waited for; `interactive_ms`, when the main thread's free stretch began) (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
+| `refdash` | A reference view, usable: `tier` (the view: `start` for the restart page, or `light`, `typical`, `heavy`), `protocol`, `frontend` (HA's frontend release), `nodes`, `cards` (the view's cards), `cards_rendered` (how many HA had built when it was usable), `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (the frontend's own load: the restart page only, else `null`), `nav_ms` (the navigation to the view; 0 for the frontend's own load), `video_caps` (`mse_h264`, `native_hls`, `rvfc`: which camera player path the engine offers), `usable` (`rendered_tick_ms`, the frame in which it was drawn; `first_screen_cards`; `head_cards`, the 10 head cards it waited for; `interactive_ms`, when the main thread's free stretch began) (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
 | `warmup` | `stage`, `n`. The page goes live; the runner wakes the screen and stops polling SurfaceFlinger |
 | `measure` | `stage`, `n`. A window starts. For `updates`, the live check: `moving`, `offscreen`, `targets`, `update_every_ms` |
 | `step` | `stage` (`updates`, `scroll`, or a ladder family), `n`, `window_ms` (the window's length on the page's clock), `raf` (frame stats). For `updates`: `t0` (the window's start on the page's clock), `pacing_ms` (the stretch `raf_times` covers), `from` (`sent`: the changes start when the fake sent them), `stream_at_ms` (when the harness asked for the stream), `raf_times` and `changes` (`[sent, arrived, transition ms, kind, tick]`: every change the fake sent up to the window's end, from its schedule; `arrived` and `tick` are `null` for one that hadn't reached the page when the window was logged; kind 0 a sensor value, 2 an on/off change (1, the clock, was protocol 3's); tick, the animation frame it was drawn in), all ms after `t0`. For `scroll`: `scrolled_px`, `hit_edge`, `changes_during`, `first_scroll_ms`, `raf_intervals`. The runner reads SurfaceFlinger |
 | `input-ready` | `x`, `y` (device pixels), `taps`. The runner taps |
 | `swipe-ready` | `n`, `x`, `y1`, `y2` (device pixels), `ms`. The runner swipes once |
 | `input` | `stage`, `method`, `taps`, `values`, `inp_ms` |
+| `camera` | Views with streams (#174), logged before the swipes: `stage`, `window_ms`, `fps`, `expected`, `found`, and per stream `w`, `h`, `first_frame_ms` (after the navigation), `shown_pct`, `max_gap_ms`, `stall_total_ms`, `frames` (presented, from the decoder), `callbacks` (`requestVideoFrameCallback`), `decoded`, `dropped`, `waiting`, `source` |
 | `hello`, `js` | Animation test page: `ua`, `dpr`, `css`, `cores`, `load`; the JS workload's `runs`, `median_ms`, `p95_ms`, `checksum`, `expected` |
 | `done`, `error` | `message` on error. At `done` the page has stopped its updates |
 
