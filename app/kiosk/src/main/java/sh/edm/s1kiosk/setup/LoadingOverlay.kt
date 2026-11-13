@@ -176,6 +176,9 @@ class LoadingOverlay(context: Context, private val bootRest: BootRest? = null) :
         target = s
         targetSince = now
         removeCallbacks(settle)
+        // A fade already running ends on the words it started with, never this newer state's (verifier
+        // 4bc205dc): stop it; settle starts a new one. The boot's handoff drives the line itself.
+        if (boot?.isRunning != true) { line.animate().cancel(); line.alpha = 1f; state?.let { line.text = lineOf(it) } }
         postDelayed(settle, maxOf(SETTLE_MS, HOLD_MS - (now - shownSince)))
     }
 
@@ -189,7 +192,7 @@ class LoadingOverlay(context: Context, private val bootRest: BootRest? = null) :
         // The line fades to the new words; the stack takes the new state's look.
         line.animate().cancel()
         line.animate().alpha(0f).setStartDelay(0).setDuration(160).withEndAction {
-            bind(t, SystemClock.uptimeMillis())
+            bind(target ?: t, SystemClock.uptimeMillis()) // the newest asked for, if it changed meanwhile
             line.animate().alpha(1f).setDuration(260).start()
         }.start()
     }

@@ -220,6 +220,33 @@ class SettingsOverlayTest {
     }
 
     @Test
+    fun backClosesOnlyTheTopmostLayer() {
+        // Root's panel run: Back on the idle picker closed the picker and the whole menu.
+        val o = open()
+        o.previewSection("screen")
+        Mockup.idle()
+        row(o, "Turn off when idle").performClick()
+        Mockup.idle()
+        assertTrue(shown(o, "Cancel"))
+        o.back()
+        Mockup.idle()
+        assertFalse(shown(o, "Cancel")) // the picker closed
+        assertTrue(o.isShowing) // the menu stays
+        o.back()
+        assertFalse(o.isShowing)
+    }
+
+    @Test
+    fun theRailFitsWithThePanesOpen() {
+        // Root's panel run: with Voice, Music and Radio open, About was clipped under Done.
+        val o = open()
+        o.previewSection("radio")
+        Mockup.layout(o)
+        assertTrue(shown(o, "About"))
+        assertTrue(o.railFits)
+    }
+
+    @Test
     fun theRailGroupsThePanes() {
         val o = open()
         o.previewSection("dashboard")

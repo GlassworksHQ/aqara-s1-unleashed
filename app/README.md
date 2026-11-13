@@ -44,8 +44,9 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
 - Full-screen immersive `GeckoView`, landscape, `FLAG_KEEP_SCREEN_ON`.
 - Loads a configurable URL. The default `auto` finds Home Assistant (mDNS `_home-assistant._tcp`,
   or the address of HA's ESPHome connection) and loads its default dashboard. A saved URL is kept.
-- **First-boot setup screen** (native, in the dashboard's style): Wi-Fi → Add to Home Assistant →
-  Sign in → Done, with checks; it moves on by itself. It only appears when the panel is really not
+- **First-boot setup screen** (native, in the Glassworks look): Wi-Fi → Home Assistant (add it, sign
+  in) → Panes (choose which, then each pane's own steps, such as the radio's role) → Done; it moves on
+  by itself, and a step that is done says so with Continue. It only appears when the panel is really not
   set up (offline for 30 s, HA unknown, HA never added the panel within 2 min of startup, or HA's
   login page with no refresh token), never on a working panel. See
   [docs/onboarding.md](../docs/onboarding.md#setup-screen-).
@@ -63,12 +64,15 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   Verified on the panel: `getUserMedia({audio:true})` returns a live 48 kHz track.
 - HOME + LAUNCHER intent filters (can be the default launcher), `BootReceiver`
   (`BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`).
-- Back button navigates inside the page and never leaves the kiosk.
+- Back closes the topmost layer (a settings picker, the settings menu, a setup preview), else navigates
+  inside the page, and never leaves the kiosk.
 - If the page fails to load (HA restarting, Wi-Fi not up yet), it retries every 10 s.
   Crashed or killed content processes are restarted.
-- Hidden settings: **tap the top-left corner 5 times within 3 s** (or `--ez settings true`) to set the
-  URL, zoom, secure hosts, kiosk/screen options, open Android settings, or reload. The dialog also shows
-  live sensor status.
+- Hidden settings: **tap the top-left corner 5 times within 3 s** (or `--ez settings true`) for the
+  settings menu (#63): Dashboard (address, full screen, zoom, secure hosts), Screen (presence, idle and
+  night times, brightness, Aqara's own settings), each pane under Panes with its on/off, Log (the live
+  screen and sensor line) and About. Changes apply as you make them; the few that need a restart offer
+  one.
 - **Kiosk mode for HA**: a built-in Gecko web extension (`assets/extension/`) hides the HA dashboard
   header and the sidebar. Add `?kiosk=0` to the URL to show them for one page; while you're editing a
   dashboard they're left visible.

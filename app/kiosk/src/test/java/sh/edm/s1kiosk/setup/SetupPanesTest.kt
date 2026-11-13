@@ -203,6 +203,22 @@ class SetupPanesTest {
     }
 
     @Test
+    fun aPreviewLeavesTheLiveAnswerAlone() {
+        // Verifier 4bc205dc: a preview's Continue marked the live Panes step chosen.
+        radioOn = false
+        val s = overlay(m = model(SetupFlow.PANES, preview = true))
+        all(s, Glass.Toggle::class.java)[1].performClick() // the radio on, in the preview
+        shown(s, "Continue")!!.performClick()
+        Mockup.idle()
+        s.hide()
+        s.render(model(SetupFlow.PANES)) // the live setup
+        Mockup.idle()
+        assertFalse(s.panesChosen)
+        assertFalse(s.wanted("radio"))
+        assertEquals(emptyList<String>(), applied)
+    }
+
+    @Test
     fun aWifiStepThatIsDoneLeadsWithContinue() {
         // Reopened on a connected panel (a preview here): Continue moves on, another network is second.
         val s = overlay(m = model(SetupFlow.WIFI, done = setOf(SetupFlow.WIFI), preview = true))

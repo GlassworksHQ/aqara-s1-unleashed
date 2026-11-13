@@ -37,6 +37,8 @@ internal class RadioSettingsView(private val host: SettingsItem.NativeHost, priv
 
     override fun reset() = dialog.dismiss()
 
+    override fun back(): Boolean = dialog.isOpen.also { if (it) dialog.dismiss() }
+
     /** For the mock-ups. */
     internal val previewDialog: RadioDialog get() = dialog
 }

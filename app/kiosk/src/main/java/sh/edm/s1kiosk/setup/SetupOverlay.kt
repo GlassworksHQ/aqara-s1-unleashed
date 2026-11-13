@@ -356,6 +356,8 @@ class SetupOverlay(
 
     fun hide() {
         cancelFinish()
+        panes.forgetPreview()
+        manualShown = false
         if (!isShowing) return
         isShowing = false
         model = null
@@ -372,6 +374,7 @@ class SetupOverlay(
     // ------------------------------------------------------------------ binding
 
     private fun bind(m: Model, stepChanged: Boolean) {
+        if (stepChanged) manualShown = false // "Add it by hand" folds again on another step
         val done = shown() == SetupFlow.DONE
         doneView.visibility = if (done) View.VISIBLE else View.GONE
         donePreviewChip.visibility = if (m.preview) View.VISIBLE else View.GONE
@@ -694,6 +697,11 @@ class SetupOverlay(
         private val on = BooleanArray(choices.size)
         /** What Continue applied, by card: the panes that are on from then on. Null: not answered yet. */
         private var applied: BooleanArray? = null
+        /**
+         * A preview's Continue, kept apart: a preview never changes the live answer (verifier 4bc205dc:
+         * it marked the live Panes step chosen). Cleared when the screen hides.
+         */
+        private var previewApplied: BooleanArray? = null
         private val toggles = ArrayList<Glass.Toggle>()
         var applying = false
             private set
@@ -717,8 +725,10 @@ class SetupOverlay(
             }
         }
 
-        /** Card [i] is on: as Continue applied it, else as the pane runs. */
-        fun wanted(i: Int): Boolean = applied?.get(i) ?: choices[i].on()
+        /** Card [i] is on: as Continue applied it, else as the pane runs. A preview reads its own answer. */
+        fun wanted(i: Int): Boolean = (if (model?.preview == true) previewApplied?.get(i) else applied?.get(i)) ?: choices[i].on()
+
+        fun forgetPreview() { previewApplied = null }
 
         private fun card(i: Int, c: PaneChoice): View {
             val t = g.toggle(false) { v -> if (!applying) on[i] = v; sync() } // locked while Continue applies
@@ -752,7 +762,7 @@ class SetupOverlay(
         /** Continue: every card, each on its own thread, within [BUDGET_MS] in all; then on, or every problem. */
         fun apply(preview: Boolean) {
             if (applying) return
-            if (preview) { applied = on.copyOf(); onPanesDone?.invoke(false); advance(); return }
+            if (preview) { previewApplied = on.copyOf(); advance(); return } // nothing applied, nothing told
             applying = true
             problem = null
             val wanted = on.copyOf()

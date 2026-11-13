@@ -86,9 +86,9 @@ class HaThreadClientTest {
         val notPreferred = client(FakeHa(datasets = """[{"dataset_id":"A","network_name":"x","preferred":false}]"""))
             .fetchPreferred("http://ha:8123", "AT")
         assertEquals(1, (notPreferred as ThreadFetch.NoPreferred).known)
-        // No Thread integration loaded: the command is unknown.
+        // No Thread integration loaded, or HA before 2023.3: the command is unknown, and the words say what to do.
         val noThread = client(FakeHa(unknownCommand = true)).fetchPreferred("http://ha:8123", "AT")
-        assertEquals(0, (noThread as ThreadFetch.NoPreferred).known)
+        assertEquals(HaThreadClient.NO_THREAD_API, (noThread as ThreadFetch.Failed).reason)
     }
 
     @Test

@@ -32,9 +32,12 @@ internal class RadioSetupScreen(
     private var problem: String? = null
 
     private val picker = RadioTechPicker(context).apply { onPick = { host.redraw() } }
-    private val section = RadioSectionView(context).apply {
-        onRun = { r, done -> def.run(r, "setup screen", done) { host.redraw() } }
-        onDataset = def::setDataset
+    /** The follow-up card. In a preview every request is inert: nothing reaches the radio or Home Assistant. */
+    internal val section = RadioSectionView(context).apply {
+        onRun = { r, done -> if (host.preview) done(PREVIEW_INERT) else def.run(r, "setup screen", done) { host.redraw() } }
+        onDataset = { hex -> if (host.preview) PREVIEW_INERT else def.setDataset(hex) }
+        // No onAsk: setup has no dialog layer, so the controls that ask first (the Zigbee stack, Leave)
+        // are hidden here; they're in Settings → Radio.
     }
     private val followUp = SetupStyle(context).let { s ->
         // The card's room under the heading, with Continue below: it scrolls when the role says more.
@@ -73,7 +76,12 @@ internal class RadioSetupScreen(
                 card.content(followUp)
                 card.tightButtons()
                 card.primary("Continue") { finish() }
-                card.secondary("Change the mode") { phase = Phase.CHOOSE; def.followUpOpen = false; host.redraw() }
+                card.secondary("Change the mode") {
+                    phase = Phase.CHOOSE
+                    if (!host.preview) def.answering = true // the step stays until a mode is applied and its card closed
+                    def.followUpOpen = false
+                    host.redraw()
+                }
             }
         }
     }
@@ -86,6 +94,7 @@ internal class RadioSetupScreen(
     private fun apply() {
         val mode = picker.chosen ?: return
         if (host.preview) { phase = Phase.FOLLOW_UP; host.redraw(); return }
+        def.answering = true // held from here until the follow-up's Continue, also through a failure
         phase = Phase.APPLYING
         problem = null
         host.redraw()
@@ -105,7 +114,7 @@ internal class RadioSetupScreen(
 
     /** Continue on the follow-up: the step is answered. */
     private fun finish() {
-        def.followUpOpen = false
+        if (!host.preview) { def.answering = false; def.followUpOpen = false }
         phase = Phase.CHOOSE
         host.next()
     }
@@ -120,5 +129,6 @@ internal class RadioSetupScreen(
         /** RadioDefinition.setMode waits up to 25 s for the controller; past this, setup says so. */
         const val BUDGET_MS = 30_000L
         const val DIDNT_ANSWER = "The radio didn't answer. Try again, or turn it off on Panes."
+        const val PREVIEW_INERT = "Nothing changes in a preview."
     }
 }

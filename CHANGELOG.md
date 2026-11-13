@@ -16,7 +16,8 @@ below as the release notes.
   is happening. Light rises through it while the panel connects, the plates dim when there is no
   network, and the top one turns red and dashed when Home Assistant doesn't answer, with a countdown
   to the next try. The connecting screen starts on the boot animation's last frame and the stack
-  settles from there, so power-on is one continuous picture. Setup goes Wi-Fi, Home Assistant (add
+  settles from there, so power-on is one continuous picture. It stays until Home Assistant has drawn
+  the dashboard, so Home Assistant's white loading page no longer flashes in between. Setup goes Wi-Fi, Home Assistant (add
   it, then sign in), Panes, Done. On Panes you choose what the panel does: voice, music and the
   Zigbee / Thread radio. A pane you turn on then asks what it needs: the radio asks Zigbee or Thread
   and the role, then shows what to do in Home Assistant, where a Thread router can join Home
@@ -32,17 +33,13 @@ below as the release notes.
   presence range is a slider, and the idle times and the night window are picked, not typed. About
   shows the version; the screen and sensor line moved to Log.
 - **The panel is called Glassworks Panel, in Home Assistant too.** A panel you already added keeps all
-  its entity ids, so automations and dashboards keep working. Home Assistant shows the device and every
-  entity's name with the new name after the update, unless you renamed the device yourself. Entities
-  Home Assistant first sees after the update, on a panel you add from now on or a new entity on one you
-  have, get ids that start with the device's name as Home Assistant shows it: `glassworks_panel_`, or
-  your own name for it.
+  its entity ids, so automations and dashboards keep working; Home Assistant shows the device under
+  the new name after the update, unless you renamed it yourself. New entities take the device's name
+  as Home Assistant shows it (`glassworks_panel`, or your own name), and on Home Assistant 2026.9 or
+  later the area's name can come first.
 - **New pages on your phone when you scan the panel's code.** Signing in and sharing your Thread
   network open a short page first that says what happens, then *Continue to Home Assistant*. They
   follow your phone's light or dark mode.
-- **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
-  page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
-  Nothing in the sections changed.
 
 ### Added
 - **Kiln shows what the panel is doing while S1 Kiosk goes in.** On kiln.glassworks.dev the app's
