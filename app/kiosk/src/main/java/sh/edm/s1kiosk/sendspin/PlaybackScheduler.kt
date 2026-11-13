@@ -4,7 +4,13 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** PCM output (AudioTrack on the panel, a simulation in tests). Interleaved signed 16-bit frames. */
+/**
+ * PCM output (AudioTrack on the panel, a simulation in tests). Interleaved signed 16-bit frames.
+ *
+ * A sink belongs to one playback run and is driven by one thread (its scheduler's [PlaybackScheduler.step]);
+ * only [setGain] may come from another thread. A restart makes a new sink rather than reopening the
+ * old one, so a thread that outlives its run can only reach its own output (#109).
+ */
 interface AudioSink {
     /** (Re)creates the output for this format; any queued audio is dropped and frame counting restarts at 0. */
     fun open(sampleRate: Int, channels: Int)
@@ -240,7 +246,8 @@ class PlaybackScheduler(
      *
      * [owns] is read after each sink call that can block (open, write). Once it is false the step
      * returns false at once and leaves the audio-thread state alone: an audio thread that was
-     * stuck there past its run's stop can't write into, or reset, the next run's output.
+     * stuck there past its run's stop writes no more and resets nothing. (#96 shared one scheduler
+     * between runs; since #109 each run has its own, and this keeps a stopped run quiet.)
      */
     fun step(owns: () -> Boolean = { true }): Boolean {
         val f: SsFormat?

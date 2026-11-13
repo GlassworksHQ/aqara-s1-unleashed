@@ -121,7 +121,7 @@ class SendspinRunsTest {
      * An AudioTrack as [AudioTrackSink] sees it (#109). [made] is the thread whose open created it.
      * It records who wrote into it, and a write after [release] (an exception on the panel).
      */
-    private inner class FakeTrack(val made: Thread) : PcmTrack {
+    private inner class FakeTrack(val made: Thread, @Volatile var gain: Float) : PcmTrack {
         val writers = CopyOnWriteArrayList<Thread>()
         @Volatile var released = false
         @Volatile var writesAfterRelease = 0
@@ -140,7 +140,7 @@ class SendspinRunsTest {
             }
             return false
         }
-        override fun setVolume(gain: Float) {}
+        override fun setVolume(gain: Float) { this.gain = gain }
         override fun release() { released = true }
     }
 
@@ -155,13 +155,13 @@ class SendspinRunsTest {
     private val firstTimestampEntered = CountDownLatch(1)
     private val timestampGate = CountDownLatch(1)
 
-    private fun newTrack(): FakeTrack {
+    private fun newTrack(gain: Float): FakeTrack {
         if (holdFirstTrack && firstTrackThread == null) {
             firstTrackThread = Thread.currentThread()
             firstTrackEntered.countDown()
             trackGate.awaitIgnoringInterrupts() // AudioTrack.Builder.build() that takes longer than stop()'s wait
         }
-        return FakeTrack(Thread.currentThread()).also { tracks += it }
+        return FakeTrack(Thread.currentThread(), gain).also { tracks += it }
     }
 
     /** Lazy, so a test can choose its sinks ([realSinks]) before the player makes one. */
@@ -194,7 +194,7 @@ class SendspinRunsTest {
                 val rec = Rec(out, firstEndGate.takeIf { pipelines.isEmpty() && holdFirstEnd })
                 AudioPipeline(rec, { error("no FLAC in this test") }, onFlacFailed).also { pipelines += Made(it, rec, onFlacFailed) }
             },
-            newSink = { if (realSinks) AudioTrackSink { _, _, _ -> newTrack() } else FakeSink() },
+            newSink = { if (realSinks) AudioTrackSink { _, _, gain -> newTrack(gain) } else FakeSink() },
         )
     }
 
@@ -442,6 +442,25 @@ class SendspinRunsTest {
         val before = newTrack.writers.size
         awaitTrack { it === newTrack && it.writers.size > before + 3 }
         assertTrue("the new stream plays", player.outputActive)
+    }
+
+    @Test
+    fun eachRunsTrackOpensAtThePlayersVolume() {
+        realSinks = true
+        player.setMuted(false)
+        player.setVolume(40)
+        player.start()
+        conns.awaitAt(0)
+        val first = awaitTrack { true }
+        assertEquals("the first run's track", PlaybackScheduler.amplitude(40), first.gain)
+        player.setVolume(20)
+        assertEquals("a change reaches the playing track", PlaybackScheduler.amplitude(20), first.gain)
+        player.stop()
+        player.setMuted(true)
+        player.start()
+        conns.awaitAt(1)
+        val second = awaitTrack { it !== first }
+        assertEquals("the next run's track, muted while stopped", 0f, second.gain)
     }
 
     private fun awaitTrack(p: (FakeTrack) -> Boolean): FakeTrack {
