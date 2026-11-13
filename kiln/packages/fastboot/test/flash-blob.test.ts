@@ -149,4 +149,15 @@ describe('flashBlob against a Qualcomm LK fake', () => {
     await expect(new Fastboot(lk).bootBlob(big)).rejects.toThrow(/larger than the fastboot buffer/);
     expect(lk.downloads).toEqual([]);
   });
+
+  it('refuses a sparse magic with a header cut short, and still flashes a tiny raw image', async () => {
+    const lk = new FakeLk(0x100000, [['system', 64 * BLOCK]]);
+    const cut = sparseImage([{ raw: rawImage(1) }], 0xee).image.slice(0, 16);
+    await expect(flash(lk, 'system', cut)).rejects.toThrow(/truncated sparse image header/);
+    expect(lk.downloads).toEqual([]);
+
+    await flash(lk, 'system', new Uint8Array([1, 2]));
+    expect(lk.downloads).toEqual([2]);
+    expect(lk.parts.get('system')!.subarray(0, 3)).toEqual(new Uint8Array([1, 2, 0xee]));
+  });
 });
