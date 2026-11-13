@@ -436,7 +436,22 @@ class MainActivity : Activity() {
         refreshSetup() // shows the real screen again if the panel isn't set up
     }
 
-    private val hideLoading = Runnable { loadingOverlay.hide() }
+    /**
+     * The fallback when the page never says it's drawn: hide the connecting screen 15 s after the page
+     * loaded, or up to 45 s when Home Assistant's frontend said it is still loading (a cold load on the
+     * S1), so its white launch screen doesn't show early.
+     */
+    private val hideLoading: Runnable = object : Runnable {
+        override fun run() {
+            val waited = SystemClock.uptimeMillis() - pageStoppedAt
+            if (frontendLoading && waited < LAUNCH_FALLBACK_MS) handler.postDelayed(this, LAUNCH_FALLBACK_MS - waited)
+            else loadingOverlay.hide()
+        }
+    }
+    /** Home Assistant's launch screen is up on this page (content.js "launch"), and no "ready" yet. */
+    private var frontendLoading = false
+    /** When the fallback was last armed (first paint or page stop). */
+    private var pageStoppedAt = 0L
 
     /** The host the dashboard loads from, for the connecting screen ("" before one is known). */
     private fun dashboardHost(): String = (currentUrl ?: prefs.url).takeIf { it.startsWith("http") }?.let { Uri.parse(it).host }.orEmpty()
@@ -839,7 +854,11 @@ class MainActivity : Activity() {
         // Not the end of the connecting screen: Home Assistant's first paint is its own white launch
         // screen. The page says when it's drawn ("ready", content.js); this only arms the fallback.
         override fun onFirstPaint() {
-            handler.post { handler.removeCallbacks(hideLoading); handler.postDelayed(hideLoading, READY_FALLBACK_MS) }
+            handler.post {
+                handler.removeCallbacks(hideLoading)
+                pageStoppedAt = SystemClock.uptimeMillis()
+                handler.postDelayed(hideLoading, READY_FALLBACK_MS)
+            }
         }
 
         override fun onContentGone(killed: Boolean) {
@@ -872,6 +891,7 @@ class MainActivity : Activity() {
         override fun onPageStart(url: String) {
             handler.removeCallbacks(retryLoad)
             handler.removeCallbacks(hideLoading)
+            frontendLoading = false
             offlineShown = false
             if (url.startsWith("http")) loadingOverlay.show(LoadingOverlay.State.Connecting(LoadingOverlay.CONNECTING, Uri.parse(url).host ?: ""))
         }
@@ -880,6 +900,7 @@ class MainActivity : Activity() {
             if (success) {
                 // In case the page never says it's ready (no web extension, a frontend that fails).
                 handler.removeCallbacks(hideLoading)
+                pageStoppedAt = SystemClock.uptimeMillis()
                 handler.postDelayed(hideLoading, READY_FALLBACK_MS)
             } else {
                 if (hasNetwork()) {
@@ -931,6 +952,7 @@ class MainActivity : Activity() {
     private fun onPortRequest(m: JSONObject, port: PagePort) {
         if (m.optString("type") == "dashboards") { onDashboards(m, port); return }
         if (m.optString("type") == "ready") { onPageReady(port); return }
+        if (m.optString("type") == "launch") { if (port.topLevel) handler.post { frontendLoading = true }; return }
         val id = m.optInt("id", -1)
         if (id < 0) return
         fun reply(o: JSONObject?) {
@@ -955,6 +977,7 @@ class MainActivity : Activity() {
     private fun onPageReady(sender: PagePort) {
         if (!sender.topLevel) return
         handler.post {
+            frontendLoading = false
             handler.removeCallbacks(hideLoading)
             loadingOverlay.hide()
         }
@@ -1036,6 +1059,8 @@ class MainActivity : Activity() {
         private const val RETRY_MS = 10_000L
         /** The connecting screen waits this long after the page loaded for the page to say it's drawn. */
         internal const val READY_FALLBACK_MS = 15_000L
+        /** ... and this long while Home Assistant's frontend says it is still loading. */
+        internal const val LAUNCH_FALLBACK_MS = 45_000L
         private const val STATE_RESTART_AFTER_SETUP = "restart_after_setup"
         private const val SETUP_TICK_MS = 2_000L
         private const val SETTINGS_TICK_MS = 2_000L

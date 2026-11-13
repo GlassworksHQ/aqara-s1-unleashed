@@ -83,6 +83,21 @@ class RadioSetupScreenTest {
     }
 
     @Test
+    fun aPreviewsChangeTheModeLeavesTheLiveStepAlone() {
+        // Verifier 6d0f2cd7: a preview's tap closed the live follow-up, and setup went to Done.
+        val d = definition()
+        prefs.radio.mode = RadioMode.ZIGBEE_TCP.id
+        d.followUpOpen = true // the live setup shows the card
+        val screen = RadioSetupScreen(Mockup.activity(), host(true), d)
+        val card = Card()
+        screen.bind(card, entered = true)
+        card.secondary!!() // "Change the mode", in the preview
+        assertTrue(d.followUpOpen)
+        assertFalse(d.answering)
+        assertFalse(d.step.done())
+    }
+
+    @Test
     fun continueHoldsTheStepWhileTheRadioApplies() {
         val d = definition()
         val screen = RadioSetupScreen(Mockup.activity(), host(false), d)
