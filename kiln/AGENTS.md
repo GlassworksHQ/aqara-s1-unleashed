@@ -48,8 +48,8 @@ workspace's dependencies resolve, to the one copy at the root.
   you change the overlay, change the shell script too and regenerate the goldens
   (`S1_WEB_GOLDEN=<dir> npm test`; without it the golden tests are skipped).
 - **Backups come before writes, and writes are verified by read-back.** Keep the refusal points
-  from the CLI: wrong SoC id, unexpected partition layout, a backup `boot` that is already patched
-  (`test/refusals.test.ts`).
+  from the CLI: wrong SoC id, unexpected partition layout, a backup `boot` that is already patched,
+  and on undo a backup whose splash is already ours (`test/refusals.test.ts`).
 - Assets (U-Boot, Magisk, the APK) are pinned by SHA-256 in `assets.lock.json` and checked on download.
   Bump the hash and the source together.
 - Only `app/` touches the DOM. Other modules talk through their exports, so `test/flow.test.ts` can

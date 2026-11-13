@@ -3,10 +3,11 @@
 import { describe, expect, it } from 'vitest';
 import type { AdbKey } from '@glassworks/adb';
 import { s1Plus, type AssetName } from '@glassworks/aqara-s1-plus-installer';
+import { bootResource, ourBootlogo } from '@glassworks/aqara-s1-plus-installer/fakes';
 import { Fastboot } from '@glassworks/fastboot';
 import { A133, FelDevice } from '@glassworks/fel';
 import { FakeBrom, FakeUboot } from '@glassworks/fel/fakes';
-import { InstallFlow, restoreFromBackup, type FlowUi } from '@glassworks/kiln-core';
+import { InstallFlow, restoreFromBackup, type BackupPlan, type FlowUi } from '@glassworks/kiln-core';
 
 function flow() {
   const fetched: AssetName[] = [];
@@ -57,6 +58,16 @@ describe('refusals before any write', () => {
     const uboot = new FakeUboot();
     const files = new Map([['boot', new Uint8Array(4096)], ['vbmeta', new Uint8Array(4096)]]);
     await expect(restoreFromBackup(s1Plus.backup, new Fastboot(uboot), files, () => {})).rejects.toThrow('this backup has no bootloader');
+    expect(uboot.flashed).toEqual([]);
+    expect(uboot.rebooted).toBe(false);
+  });
+
+  it('undo refuses a backup whose splash is already ours, and writes nothing (#106)', async () => {
+    const uboot = new FakeUboot();
+    // boot counts as stock here (isPatched needs a real image); flow.test.ts has the real one
+    const plan: BackupPlan = { ...s1Plus.backup, isPatched: async () => false };
+    const files = new Map([['boot', new Uint8Array(4096)], ['vbmeta', new Uint8Array(4096)], ['bootloader', bootResource(ourBootlogo())]]);
+    await expect(restoreFromBackup(plan, new Fastboot(uboot), files, () => {})).rejects.toThrow('this backup\'s splash is already ours, not the original');
     expect(uboot.flashed).toEqual([]);
     expect(uboot.rebooted).toBe(false);
   });
