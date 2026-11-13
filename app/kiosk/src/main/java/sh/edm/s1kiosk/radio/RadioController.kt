@@ -436,7 +436,12 @@ class RadioController(
      */
     fun request(label: String, why: String = "select", done: ((Boolean) -> Unit)? = null) {
         pendingRequests.incrementAndGet()
-        post { try { requestNow(label, why, done) } finally { pendingRequests.decrementAndGet() } }
+        try {
+            post { try { requestNow(label, why, done) } finally { pendingRequests.decrementAndGet() } }
+        } catch (t: Throwable) {
+            pendingRequests.decrementAndGet() // never queued (the radio thread was stopped): nothing pending
+            throw t
+        }
     }
 
     /**

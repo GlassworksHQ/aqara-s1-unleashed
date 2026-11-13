@@ -18,11 +18,15 @@ private const val TAG = "S1Kiosk.Screen"
  * reports `1.0` when something is closer than the threshold in `settings secure proximity_threshold`,
  * otherwise a larger value. com.lumi.systemmanager observes that setting and programs the driver.
  */
-class Vi5300Presence : PresenceSource {
-    private companion object {
+class Vi5300Presence(
+    /** Settings.Secure.putInt; tests stand in for the provider. */
+    private val writeSecure: (Context, String, Int) -> Boolean = { c, name, v -> Settings.Secure.putInt(c.contentResolver, name, v) },
+) : PresenceSource {
+    internal companion object {
         /** Lumi's threshold table (index -> decimetres), from com.lumi.systemmanager Monitor.java. */
         val RANGE_DM = intArrayOf(0, 1, 2, 4, 6, 8, 10, 12, 15, 20, 25)
         const val NO_RANGE = "The sensor's range didn't change: the app needs the permission to write secure settings (docs/sensors.md)."
+        const val NOT_WRITTEN = "The sensor's range didn't change: Android didn't save the setting. Try again."
     }
 
     private var registered: SensorEventListener? = null
@@ -45,7 +49,11 @@ class Vi5300Presence : PresenceSource {
         val dm = (metres * 10).toInt()
         val idx = RANGE_DM.indices.minByOrNull { abs(RANGE_DM[it] - dm) } ?: return null
         return try {
-            Settings.Secure.putInt(context.contentResolver, "proximity_threshold", idx)
+            // putInt says false without throwing when the settings provider failed (a RemoteException).
+            if (!writeSecure(context, "proximity_threshold", idx)) {
+                Log.w(TAG, "presence range ${metres}m: the settings provider didn't take proximity_threshold=$idx")
+                return NOT_WRITTEN
+            }
             Log.i(TAG, "presence range ${metres}m -> proximity_threshold=$idx (${RANGE_DM[idx] / 10.0} m)")
             null
         } catch (e: SecurityException) {

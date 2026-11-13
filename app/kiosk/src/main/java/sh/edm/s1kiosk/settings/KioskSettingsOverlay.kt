@@ -547,10 +547,11 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             busy(true)
             val open = onSave
             save(run) { problem ->
+                // A change that saved needs its restart, also when the sheet was closed meanwhile.
+                if (problem == null && restarts) { restartPending = true; banner.bind() }
                 if (onSave !== open || view.visibility != View.VISIBLE) return@save
                 if (problem != null) { why.text = problem; why.visibility = View.VISIBLE; busy(false) }
                 else {
-                    if (restarts) restartPending = true
                     this@KioskSettingsOverlay.problem.visibility = View.GONE
                     close()
                     after()

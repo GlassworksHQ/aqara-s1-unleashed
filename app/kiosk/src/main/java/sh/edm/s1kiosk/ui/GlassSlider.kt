@@ -7,14 +7,20 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
+import android.os.Bundle
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.SeekBar
 import kotlin.math.roundToInt
 
 /**
  * A slider in the Glassworks look (#63 round 2: the presence range): a hairline track, lit sky to violet
  * up to the value, and a white thumb. [onMove] follows the finger; [onSet] runs once, when it lets go.
- * Snaps to [step]. Main thread.
+ * A cancelled drag goes back to where it started and sets nothing. Without touch: DPAD left/right (and
+ * minus/plus) step it, and accessibility services see a range with scroll forward/backward and set
+ * progress, each setting the value at once. Snaps to [step]. Main thread.
  */
 class GlassSlider(
     context: Context,
@@ -34,7 +40,20 @@ class GlassSlider(
     private val thumbR = 11 * dp
     private val trackH = 4 * dp
 
+    /** The value when the finger went down: a cancelled drag goes back to it. */
+    private var downValue = min
+
     init { isClickable = true; isFocusable = true; contentDescription = "Slider" }
+
+    /** Sets [v] the way a key or an accessibility action does: at once, through [onMove] and [onSet]. */
+    private fun setFromAction(v: Float): Boolean {
+        val n = snap(v)
+        if (n == value) return false
+        value = n
+        onMove?.invoke(n)
+        onSet?.invoke(n)
+        return true
+    }
 
     override fun onMeasure(w: Int, h: Int) = setMeasuredDimension(MeasureSpec.getSize(w), (36 * dp).toInt())
 
@@ -68,13 +87,46 @@ class GlassSlider(
         if (!isEnabled) return false
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                if (e.actionMasked == MotionEvent.ACTION_DOWN) downValue = value
                 parent?.requestDisallowInterceptTouchEvent(true)
                 val v = valueAt(e.x)
                 if (v != value) { value = v; onMove?.invoke(v) }
             }
             MotionEvent.ACTION_UP -> { value = valueAt(e.x); onMove?.invoke(value); onSet?.invoke(value) }
-            MotionEvent.ACTION_CANCEL -> onSet?.invoke(value)
+            // The gesture was taken away (a scroll, the system): nothing is set, the slider goes back.
+            MotionEvent.ACTION_CANCEL -> { value = downValue; onMove?.invoke(value) }
         }
         return true
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (!isEnabled) return super.onKeyDown(keyCode, event)
+        return when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MINUS -> { setFromAction(value - step); true }
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_PLUS, KeyEvent.KEYCODE_EQUALS -> { setFromAction(value + step); true }
+            else -> super.onKeyDown(keyCode, event)
+        }
+    }
+
+    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        info.className = SeekBar::class.java.name // read as a slider
+        info.rangeInfo = AccessibilityNodeInfo.RangeInfo.obtain(AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT, min, max, value)
+        if (isEnabled) {
+            if (value > min) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD)
+            if (value < max) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)
+            info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS)
+        }
+    }
+
+    override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
+        if (!isEnabled) return super.performAccessibilityAction(action, arguments)
+        return when (action) {
+            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD -> setFromAction(value + step)
+            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> setFromAction(value - step)
+            android.R.id.accessibilityActionSetProgress -> arguments?.takeIf { it.containsKey(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE) }
+                ?.let { setFromAction(it.getFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE)) } ?: false
+            else -> super.performAccessibilityAction(action, arguments)
+        }
     }
 }

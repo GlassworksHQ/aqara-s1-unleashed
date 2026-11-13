@@ -338,15 +338,18 @@ class RadioDefinition(
         else Thread({ done(setModeFrom(RadioMode.OFF.id, "settings menu")) }, "s1-radio-off").apply { isDaemon = true; start() }
     }
 
-    /** The nav's dot: green when the mode runs, amber while it starts, rose when it failed; none when off. */
+    /**
+     * The nav's dot, the same health the radio's card shows (RadioFollowUp.health): green when the role
+     * runs or has joined, amber while it starts or waits, rose when it failed (also a Zigbee router whose
+     * router host failed under an `ok` helper); none when off.
+     */
     private fun settingsStatus(): SettingsStatus? {
-        val mode = readout.mode()
-        if (mode == RadioMode.OFF) return null
-        val status = readout.controller()?.statusText() ?: return null
-        return when (RadioStep.classify(mode, true, status)) {
-            RadioStep.Result.OK -> SettingsStatus.OK
-            RadioStep.Result.APPLYING -> SettingsStatus.WORKING
-            RadioStep.Result.REFUSED, RadioStep.Result.ERROR -> SettingsStatus.PROBLEM
+        val f = readout.facts() ?: return null
+        return when (RadioFollowUp.health(f)) {
+            RadioFollowUp.Health.OFF -> null
+            RadioFollowUp.Health.RUNNING, RadioFollowUp.Health.JOINED -> SettingsStatus.OK
+            RadioFollowUp.Health.STARTING, RadioFollowUp.Health.WAITING -> SettingsStatus.WORKING
+            RadioFollowUp.Health.ERROR -> SettingsStatus.PROBLEM
         }
     }
 

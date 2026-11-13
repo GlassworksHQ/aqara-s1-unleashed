@@ -109,6 +109,22 @@ class SettingsOverlayTest {
     }
 
     @Test
+    fun aRestartIsStillOfferedWhenTheEditorClosedBeforeItSaved() {
+        // CodeRabbit on #163: the save's answer came after Cancel, and the restart it needs was dropped.
+        var finish: ((String?) -> Unit)? = null
+        val o = one(listOf(SettingsItem.Text("Zoom", "Auto", SettingsItem.TextKind.DECIMAL, { "" }, restartsApp = true) { _, done -> finish = done }))
+        row(o, "Zoom").performClick()
+        Mockup.idle()
+        editor(o)!!.setText("1.5")
+        Mockup.label(o, "Save").performClick()
+        Mockup.label(o, "Cancel").performClick() // closed while the save runs
+        Mockup.idle()
+        finish!!(null) // it saved
+        settle()
+        assertTrue(shown(o, KioskSettingsOverlay.RESTART_TEXT))
+    }
+
+    @Test
     fun aDurationAppliesWhenPicked() {
         val o = open()
         prefs.idleOffSec = 120

@@ -177,6 +177,27 @@ class RadioDefinitionTest {
     }
 
     @Test
+    fun aRouterHostThatFailedIsAProblemInTheNav() {
+        // CodeRabbit on #163: the helper says ok while its router host fails; the card said Error, the nav green.
+        fun status(mode: RadioMode, text: String) = radioDefinition(app, FixedReadout(
+            RadioFollowUp.Facts(mode, text, HelperFacts(true, 4), ZigbeeStack.AQARA, null, null, "http://homeassistant.local:8123", "192.0.2.10"),
+        )).settings().single().status()
+        assertEquals(dev.glassworks.pane.SettingsStatus.PROBLEM, status(RadioMode.ZIGBEE_ROUTER, "ok Zigbee router (repeater): router host error: no answer"))
+        assertEquals(dev.glassworks.pane.SettingsStatus.OK, status(RadioMode.ZIGBEE_TCP, "ok Zigbee coordinator (TCP): listening on :6638"))
+        assertEquals(dev.glassworks.pane.SettingsStatus.WORKING, status(RadioMode.ZIGBEE_TCP, "applying Zigbee coordinator (TCP)…"))
+        assertEquals(null, status(RadioMode.OFF, "ok Off: Aqara radio services stopped"))
+    }
+
+    @Test
+    fun aRequestThatNeverQueuedIsntPending() {
+        // Verifier bd94c950: after stop() the radio thread refuses work; the count must not leak.
+        val c = RadioController(TestInit(), load = { prefs.radio.mode }, store = { prefs.radio.mode = it }, inline = false, log = {}, filesDir = tmp.root)
+        c.stop()
+        runCatching { c.request(RadioMode.OFF.label, "test") }
+        assertFalse(c.requestPending)
+    }
+
+    @Test
     fun aPanelSetUpBeforeTheStepNeverSeesIt() {
         prefs.urlSetting = "http://homeassistant.local:8123/" // a saved dashboard URL is a trace of setup
         assertTrue(definition().step.done())
