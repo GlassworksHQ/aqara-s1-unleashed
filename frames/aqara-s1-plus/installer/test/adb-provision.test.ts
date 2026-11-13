@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PanelShell } from '@glassworks/adb';
-import { DEBLOAT, parseWifiScan, provision, q, unprovision } from '../src/provision';
+import { DEBLOAT, kioskVersion, parseWifiScan, provision, q, unprovision, type AppPhase } from '../src/provision';
 
 class FakePanel implements PanelShell {
   cmds: string[] = [];
@@ -25,15 +25,33 @@ class FakePanel implements PanelShell {
 }
 
 describe('provision (install.sh port)', () => {
-  it('reports the app\'s phases at the commands that start them', async () => {
+  it('reports each APK\'s copy and install, and the other phases, at the commands that start them', async () => {
     const p = new FakePanel();
     const phases: string[] = [];
-    await provision(p, { kioskApk: new Uint8Array(1), timezone: 'Europe/Berlin', onPhase: (ph) => { phases.push(ph); p.cmds.push(`# ${ph}`); } });
-    expect(phases).toEqual(['copy', 'install', 'settings', 'start']);
+    const name = (ph: AppPhase) => (ph.step === 'apk' ? `${ph.apk} ${ph.stage}` : ph.step);
+    await provision(p, { kioskApk: new Uint8Array(1), keyboardApk: new Uint8Array(1), timezone: 'Europe/Berlin',
+      onPhase: (ph) => { phases.push(name(ph)); p.cmds.push(`# ${name(ph)}`); } });
+    expect(phases).toEqual(['kiosk copy', 'kiosk install', 'home', 'keyboard copy', 'keyboard install', 'prefs', 'start']);
     const at = (c: string) => { const i = p.cmds.findIndex((x) => x.startsWith(c)); expect(i, c).toBeGreaterThanOrEqual(0); return i; };
-    const order = ['# copy', 'push /data/local/tmp/s1kiosk.apk', '# install', 'pm install -r -g /data/local/tmp/s1kiosk.apk',
-      '# settings', 'pm grant', 'cmd package set-home-activity', 'service call alarm', '# start', 'am start -n sh.edm.s1kiosk/.MainActivity'].map(at);
-    expect(order).toEqual([...order].sort((a, b) => a - b));
+    const order = ['# kiosk copy', 'push /data/local/tmp/s1kiosk.apk', '# kiosk install', 'pm install -r -g /data/local/tmp/s1kiosk.apk',
+      '# home', 'pm grant', 'cmd package set-home-activity', 'pm disable-user --user 0 com.lumi.ota',
+      '# keyboard copy', 'push /data/local/tmp/keyboard.apk', '# keyboard install', 'pm install -r /data/local/tmp/keyboard.apk',
+      '# prefs', 'service call alarm', '# start', 'am start -n sh.edm.s1kiosk/.MainActivity'].map(at);
+    expect(order).toEqual([...order].sort((x, y) => x - y));
+    // every pm install has its own phase, so none goes in silently
+    expect(p.cmds.filter((c) => c.startsWith('pm install')).length).toBe(phases.filter((x) => x.endsWith(' install')).length);
+  });
+
+  it('reads S1 Kiosk\'s version, or none when it isn\'t installed', async () => {
+    const shell = (out: string) => ({ run: async () => ({ out, code: 0 }), push: async () => {} });
+    expect(await kioskVersion(shell('Packages:\n  Package [sh.edm.s1kiosk] (1a2b):\n    versionCode=403 minSdk=29 targetSdk=29\n    versionName=0.4.3\n'))).toEqual({ name: '0.4.3', code: 403 });
+    expect(await kioskVersion(shell('Unable to find package: sh.edm.s1kiosk\n'))).toBeUndefined();
+  });
+
+  it('without the keyboard, no keyboard phase', async () => {
+    const phases: string[] = [];
+    await provision(new FakePanel(), { kioskApk: new Uint8Array(1), onPhase: (ph) => phases.push(ph.step === 'apk' ? ph.apk : ph.step) });
+    expect(phases).not.toContain('keyboard');
   });
 
   it('runs install.sh steps in order and skips already-disabled packages', async () => {
