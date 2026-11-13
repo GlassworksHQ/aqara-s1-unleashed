@@ -2,7 +2,6 @@ package sh.edm.s1kiosk.setup
 
 import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
@@ -28,10 +27,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.qrcode.QRCodeWriter
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import dev.glassworks.pane.PaneChoice
 import sh.edm.s1kiosk.auth.OAuth
 import sh.edm.s1kiosk.esphome.PanelDevice
@@ -43,6 +38,7 @@ import sh.edm.s1kiosk.ui.Glass.Companion.MU
 import sh.edm.s1kiosk.ui.Glass.Companion.ROSE
 import sh.edm.s1kiosk.ui.Glass.Companion.TX
 import sh.edm.s1kiosk.ui.Inter
+import sh.edm.s1kiosk.ui.QrCode
 import sh.edm.s1kiosk.ui.StackView
 import sh.edm.s1kiosk.ui.StackView.Look
 
@@ -443,7 +439,7 @@ class SetupOverlay(
         val ip = m.panelIp ?: "<panel-ip>"
         val url = "http://$ip:${OAuth.SIGNIN_PORT}/signin"
         if (qrFor != url) {
-            qrImage.setImageBitmap(qrBitmap(url, px(200f)))
+            qrImage.setImageBitmap(QrCode.bitmap(url, px(200f)))
             qrFor = url
         }
         qrGlow.visibility = View.VISIBLE
@@ -755,15 +751,5 @@ class SetupOverlay(
         private val TITLES = mapOf(
             SetupFlow.WIFI to "Wi-Fi", SetupFlow.HA to "Home Assistant", SetupFlow.PANES to "Panes", SetupFlow.SIGNIN to "Sign in",
         )
-
-        fun qrBitmap(text: String, size: Int): Bitmap {
-            val hints = mapOf(EncodeHintType.MARGIN to 0, EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M)
-            val m = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size, hints)
-            val px = IntArray(m.width * m.height)
-            for (y in 0 until m.height) for (x in 0 until m.width) {
-                px[y * m.width + x] = if (m[x, y]) Glass.BG else Color.WHITE
-            }
-            return Bitmap.createBitmap(px, m.width, m.height, Bitmap.Config.ARGB_8888)
-        }
     }
 }

@@ -11,10 +11,16 @@ from target import REPO, Layout, Target, from_frame  # noqa: E402
 
 
 class FramesTest(unittest.TestCase):
-    def test_every_frame_has_a_target(self):
-        ids = sorted(d for d in os.listdir(os.path.join(REPO, "frames"))
-                     if os.path.isfile(os.path.join(REPO, "frames", d, "design", "frame.json")))
-        self.assertIn("aqara-s1-plus", ids)
+    def test_every_frame_with_a_display_has_a_target(self):
+        # A frame for many devices (generic-android) has no one screen; generate.py takes --width.
+        def has_display(d):
+            path = os.path.join(REPO, "frames", d, "design", "frame.json")
+            if not os.path.isfile(path):
+                return False
+            with open(path, encoding="utf-8") as f:
+                return "display" in json.load(f)
+        ids = sorted(d for d in os.listdir(os.path.join(REPO, "frames")) if has_display(d))
+        self.assertEqual({"aqara-s1-plus", "lululemon-mirror"} - set(ids), set())
         for i in ids:
             with self.subTest(frame=i):
                 t = from_frame(i)

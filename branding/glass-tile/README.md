@@ -11,6 +11,7 @@ its old name because the installers read these files from here.
 | `bootlogo.bmp` | Splash shown by the bootloader at power-on: frame 0 of the animation. 720x1440, 24-bit, uncompressed, the landscape picture rotated 90° clockwise, 3,110,454 bytes (same format as stock) | `tools/install/fel-install.sh` (step 7) and Kiln's S1 recipe, both swapping it into the panel's own `bootloader` (boot-resource, FAT16) partition in place (`tools/branding/set-bootlogo.py`, `replaceBootlogo()`) |
 | `bootanimation.zip` | Android boot animation: 1440x720 @ 30 fps, STORED, each frame trimmed (`trim.txt`) | `tools/root/patch-boot-magisk.sh` and Kiln: shipped in the boot image and bind-mounted over `/system/media/bootanimation.zip` (`tools/root/s1kiosk_branding.rc`) |
 | `splash-landscape.png`, `preview.webp` | Previews only | - |
+| `outputs.json` | What the build used and wrote (below, Rebuild). CI checks the files against it | - |
 
 ## The sequence
 
@@ -74,12 +75,21 @@ A splash passed with `BRANDING=<your.bmp>` isn't in the list, so undo treats it 
 ## Rebuild
 
 ```sh
-python3 -m venv /tmp/s1venv && /tmp/s1venv/bin/pip install pillow numpy uharfbuzz pyoxipng
+python3 -m venv /tmp/s1venv
+/tmp/s1venv/bin/pip install pillow==13.0.0 numpy==2.4.6 uharfbuzz==0.57.0 pyoxipng==9.1.1
 /tmp/s1venv/bin/python branding/boot/generate.py --frame aqara-s1-plus --out branding/glass-tile
 /tmp/s1venv/bin/python branding/boot/generate.py --frame aqara-s1-plus --stills <dir>  # stills at fixed times, for comparisons
 ```
 
 The build checks the splash format, that frame 0 is the splash pixel for pixel, the trim of every
-frame, that the loop is seamless, and the size budget. Opt out at install: `BRANDING=none` (splash)
+frame, that the loop is seamless, and the size budget. Then it lists the splash in
+`branding/bootlogos.json` and writes `outputs.json`.
+
+**Changed anything in `branding/boot/` or the S1's `frame.json`? Rebuild and commit everything the
+build writes**: the four files, `outputs.json`, and `bootlogos.json` if the splash changed.
+`frames/aqara-s1-plus/installer/test/branding.test.ts` fails in CI when the generator, the target or
+a file doesn't match `outputs.json`, and CI's `branding` job (`.github/workflows/pr.yml`) rebuilds in
+a pinned Linux image and fails if anything committed differs. A new splash also needs a real panel
+before merge (hard rule 5). Opt out at install: `BRANDING=none` (splash)
 and `BOOT_ANIMATION=none` (animation). Undo: `fel-install.sh --undo <first-install backup>` restores
 the stock splash partition and boot.
