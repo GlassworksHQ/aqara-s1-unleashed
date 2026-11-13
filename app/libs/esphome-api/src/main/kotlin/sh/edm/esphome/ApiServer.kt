@@ -74,6 +74,11 @@ data class DeviceIdentity(
     val manufacturer: String,
     val model: String,
     val voiceFeatures: Int,
+    /**
+     * The port of the device's own web page, or 0 for none. Home Assistant then links the device page's
+     * "Visit" to `http://<host>:<port>` (`configuration_url`, components/esphome/manager.py).
+     */
+    val webserverPort: Int = 0,
 ) {
     /** Lowercase hex without separators, as in ESPHome's mDNS `mac` TXT and Noise ServerHello. */
     val macHex: String get() = macAddress.replace(":", "").lowercase()
@@ -176,6 +181,8 @@ class ApiServer(
     /** [KEEPALIVE_MS] / [UNRESPONSIVE_MS]; shorter in tests. Set before [start]. */
     @Volatile var keepaliveMs = KEEPALIVE_MS
     @Volatile var unresponsiveMs = UNRESPONSIVE_MS
+    /** The keepalive's time source, in ms; tests drive it by hand. */
+    @Volatile internal var clock: () -> Long = System::currentTimeMillis
     private var keepaliveTimer: java.util.concurrent.ScheduledExecutorService? = null
     @Volatile private var voiceConn: Connection? = null
 
@@ -278,9 +285,9 @@ class ApiServer(
         for (c in connections) c.retire()
     }
 
-    /** Pings quiet clients and drops the ones that stay silent (see [KEEPALIVE_MS]). */
-    private fun keepaliveTick() {
-        val now = System.currentTimeMillis()
+    /** Pings quiet clients and drops the ones that stay silent (see [KEEPALIVE_MS]). Tests call it too. */
+    internal fun keepaliveTick() {
+        val now = clock()
         for (c in connections) {
             try {
                 if (!c.ready || !c.isOpen) continue
@@ -291,7 +298,9 @@ class ApiServer(
                         c.close()
                     }
                 } else if (idle > keepaliveMs) {
-                    c.pingSent = c.send(listOf(Frame(Msg.PING_REQUEST, ByteArray(0))))
+                    // Set first: an answer read before send() returns must still clear it.
+                    c.pingSent = true
+                    if (!c.send(listOf(Frame(Msg.PING_REQUEST, ByteArray(0))))) c.pingSent = false
                 }
             } catch (t: Throwable) { EspHomeLog.w("keepalive failed", t) }
         }
@@ -401,11 +410,11 @@ class ApiServer(
                     return
                 }
                 authenticated = k != null && active != null && transport is NoiseTransport
-                lastRead = System.currentTimeMillis(); ready = true
+                lastRead = clock(); ready = true
                 while (isOpen) {
                     val f = transport.read() ?: break
                     // any traffic counts, as in ESPHome (last_traffic_); a pending ping is answered by it
-                    lastRead = System.currentTimeMillis(); pingSent = false
+                    lastRead = clock(); pingSent = false
                     handle(f)
                 }
             } catch (e: SocketTimeoutException) {
@@ -641,6 +650,7 @@ class ApiServer(
                 .string(4, d.esphomeVersion, force = true)
                 .string(5, d.compilationTime, force = true)
                 .string(6, d.model, force = true)
+                .uint32(10, d.webserverPort)
                 .string(12, d.manufacturer, force = true)
                 .string(13, d.friendlyName, force = true)
                 .uint32(17, d.voiceFeatures)

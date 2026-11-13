@@ -603,7 +603,7 @@ run, and the grade is provisional.
   temperatures.
 - **Background load matters.** The radio, voice wake word and Sendspin run during every part, as
   they do in daily use. That is the one way the panel's own setup can reach the grade: a pane that
-  uses the CPU all the time (on the S1, see [#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105))
+  uses the CPU all the time (on the S1, the wake word: [idle-cpu.md](research/idle-cpu.md), #105)
   slows the reference dashboards too. The device's idle busy share is in the report.
 - **Screen brightness** doesn't change the work the app does. Over a long run it can add heat.
 - The reference dashboards use HA's default card types. Custom cards, cameras and maps are heavier

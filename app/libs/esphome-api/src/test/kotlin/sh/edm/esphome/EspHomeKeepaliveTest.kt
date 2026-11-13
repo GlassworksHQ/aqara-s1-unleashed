@@ -8,11 +8,12 @@ import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
+import java.net.InetAddress
 import java.net.Socket
-import java.net.SocketTimeoutException
 import java.util.Collections
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * The server's keepalive (ApiServer.KEEPALIVE_MS): Home Assistant's aioesphomeapi doesn't ping a
@@ -51,34 +52,50 @@ class EspHomeKeepaliveTest {
         return type
     }
 
+    /** On a fake clock that only the test moves, so a slow machine can't change the outcome (#162). */
     @Test
     fun quietClientsArePingedAndKeptWhileTheyAnswer() {
-        val s = server(keepaliveMs = 300, unresponsiveMs = 1_000)
+        val keepalive = 600L; val unresponsive = 1_500L
+        val now = AtomicLong(1_000_000)
+        val s = server(keepalive, unresponsive).apply { clock = now::get }
         s.start()
         try {
-            Socket("127.0.0.1", s.localPort).use { sock ->
-                sock.soTimeout = 3_000
+            Socket(InetAddress.getLoopbackAddress(), s.localPort).use { sock ->
+                sock.soTimeout = 10_000
                 val out = sock.getOutputStream(); val inp = sock.getInputStream()
-                out.write(frame(Msg.HELLO_REQUEST, ProtoWriter().string(1, "Home Assistant test").uint32(2, 1).uint32(3, 10).toByteArray()))
-                out.write(frame(Msg.SUBSCRIBE_STATES_REQUEST)); out.flush()
-                // Say nothing but answer pings for 2.5 s (well past unresponsiveMs) while states stream.
-                val until = System.currentTimeMillis() + 2_500
-                var pings = 0
-                while (System.currentTimeMillis() < until) {
-                    counter.incrementAndGet(); s.publishStates()
-                    sock.soTimeout = 100
-                    val t = try { readType(inp) } catch (e: SocketTimeoutException) { continue }
-                    assertTrue("server closed a client that answers pings", t != -1)
-                    if (t == Msg.PING_REQUEST) { pings++; out.write(frame(Msg.PING_RESPONSE)); out.flush() }
+                fun send(type: Int, payload: ByteArray = ByteArray(0)) { out.write(frame(type, payload)); out.flush() }
+                fun await(type: Int) {
+                    while (true) {
+                        val t = readType(inp)
+                        assertTrue("server closed a client that answers pings", t != -1)
+                        if (t == type) return
+                    }
                 }
-                assertTrue("no keepalive ping from the server", pings > 0)
-                // Now stop answering: the server drops us after unresponsiveMs.
-                sock.soTimeout = 3_000
-                val t0 = System.currentTimeMillis()
-                while (true) { if (readType(inp) == -1) break }
-                val after = System.currentTimeMillis() - t0
-                // unresponsiveMs counts from our last reply, a little before t0
-                assertTrue("closed after $after ms", after in 500..2_500)
+                // The server stamps traffic with the clock when it reads it, so the clock only moves
+                // after a round trip shows that the server has read everything we sent.
+                fun roundTrip() { send(Msg.PING_REQUEST); await(Msg.PING_RESPONSE) }
+                fun at(t: Long) { now.set(t); s.keepaliveTick() }
+                send(Msg.HELLO_REQUEST, ProtoWriter().string(1, "Home Assistant test").uint32(2, 1).uint32(3, 10).toByteArray())
+                send(Msg.SUBSCRIBE_STATES_REQUEST)
+                roundTrip()
+                var answered = now.get()
+
+                // Quiet but answering for 5 keepalive periods (twice unresponsiveMs) while states stream.
+                repeat(5) {
+                    counter.incrementAndGet(); s.publishStates()
+                    at(answered + keepalive + 1); await(Msg.PING_REQUEST)
+                    send(Msg.PING_RESPONSE); roundTrip()
+                    answered = now.get()
+                }
+
+                // Now stop answering: pinged, then dropped once unresponsiveMs have passed.
+                at(answered + keepalive + 1); await(Msg.PING_REQUEST)
+                counter.incrementAndGet(); s.publishStates()
+                at(answered + unresponsive)
+                assertEquals("dropped before unresponsiveMs had passed", 1, s.connectionCount)
+                // Checked on the socket: the server's own timer may be closing it while connectionCount still counts it.
+                at(answered + unresponsive + 1)
+                while (readType(inp) != -1) Unit
             }
         } finally { s.stop() }
     }
