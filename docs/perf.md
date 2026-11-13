@@ -450,6 +450,10 @@ fired `waiting` 9 to 15 times.
   1.2 s.
 - **But the requests come seconds apart.** On heavy, the longest gap between two segments of one
   stream arriving is 2.8 to 4.3 s, against 1 s segments.
+- A harness bug, found after this run, counted the fetches twice in the views after a view without
+  cameras (s1cam3's runs 1 and 3 for typical, run 1 for heavy: 48 segments against 24, 185 against
+  88): an observer from light stayed connected. The timings above stand, since each fetch was counted
+  twice with the same times. The fix ends the observer there; nothing graded used it.
 
 So hls.js, which runs its loading loop on the page's main thread, doesn't get to run on time. The
 same thread takes 739 ms to show a live change on heavy. The data rules out the decoders (they

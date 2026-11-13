@@ -505,6 +505,20 @@ class CameraStreamsAll(unittest.TestCase):
         self.assertEqual(G.camera_level(run), G.BELOW)
 
 
+class CameraFailedRuns(unittest.TestCase):
+    """CodeRabbit on cbc2be6: the numbers are from the runs whose streams all played, and a run with a
+    stream that showed no frame was hidden whenever another run played. Both outputs say how many."""
+
+    def test_a_failed_run_is_said(self):
+        ok = R.camera_run(camera_line("typical"), "typical")
+        dead = camera_line("typical")
+        dead["streams"][0].update(first_frame_ms=None, shown_pct=None)
+        s_ = {"camera_runs": [ok, R.camera_run(dead, "typical"), ok]}
+        self.assertIn("1 of 3 run(s) had a stream that showed no frame", R.camera_cell(s_, {"camera": "slow"}))
+        self.assertIn("(1 of 3 run(s) had a stream that showed no frame)", R.task_phrase("camera", s_))
+        self.assertNotIn("showed no frame", R.camera_cell({"camera_runs": [ok, ok]}, {"camera": "good"}))
+
+
 class CameraDetail(unittest.TestCase):
     """Detail for the camera task (smoke-cam1, 2026-11-13): which decoders a view got and where its
     segments were late, so a slow camera can be told apart: the decoder, the link or the page."""

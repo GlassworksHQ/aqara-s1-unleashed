@@ -230,7 +230,11 @@ if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
   # the animation test page (under /clarity/page/). The first use fetches the frontend (117 MB).
   python3 "$HERE/hafrontend.py" >/dev/null
   # The reference dashboards' camera streams (#174): HLS segments made once with ffmpeg (about 40 s).
-  python3 "$HERE/camera.py" >/dev/null || { echo "Clarity's camera streams need ffmpeg with libx264 (camera.py)" >&2; exit 2; }
+  # Only the reference dashboards play them (the graded part, its idle samples and --pane-ram); the
+  # animation test page alone doesn't need ffmpeg.
+  if [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
+    python3 "$HERE/camera.py" >/dev/null || { echo "Clarity's camera streams need ffmpeg with libx264 (camera.py)" >&2; exit 2; }
+  fi
   # Something else on the port (an earlier run's fake left behind) would answer for ours.
   if curl -s -o /dev/null --connect-timeout 1 --max-time 3 "http://127.0.0.1:$PORT/manifest.json"; then
     echo "port $PORT is already in use (an earlier run's fake Home Assistant?); stop it or use --port" >&2

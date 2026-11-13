@@ -304,7 +304,11 @@
       };
       el.requestVideoFrameCallback(cb);
     } else {
-      // Without requestVideoFrameCallback: the first frame at loadeddata, gaps from timeupdate.
+      // Without requestVideoFrameCallback: the first frame at loadeddata, gaps from timeupdate. A
+      // video that already has a frame when it is found (it loaded before the 100 ms discovery poll)
+      // counts from now: a little late, never missed. GeckoView 159 has rVFC, so the S1 never takes
+      // this path (video_caps.rvfc).
+      if (el.readyState >= 2) rec.first = performance.now();
       el.addEventListener("loadeddata", () => { if (rec.first === null) rec.first = performance.now(); });
       let last = -1;
       el.addEventListener("timeupdate", () => { if (el.currentTime !== last) { last = el.currentTime; if (rec.counting) rec.ticks.push(performance.now()); } });
@@ -337,6 +341,12 @@
   }
 
   function camerasStart() {
+    // One observer at a time, and none on a view without cameras: camerasEnd returns early there, so
+    // an observer started for light would stay and add every later view's fetches a second time (the
+    // fetch detail of s1cam3's runs 1 and 3 counted twice; their timings stand).
+    if (cams.obs) cams.obs.disconnect();
+    cams.obs = null;
+    if (!cams.expected) return;
     cams.t0 = performance.now();
     // The streams' HLS fetches during the window (S.hlsFetches). An observer, not the timeline: HA's
     // frontend has likely filled the resource buffer by now, and an observer still gets new entries.

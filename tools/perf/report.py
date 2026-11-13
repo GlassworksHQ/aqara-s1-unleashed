@@ -702,7 +702,9 @@ def task_phrase(task, s_):
         if not ff:
             return "a camera never showed a frame"
         shown = statistics.median(r["shown_pct"] for r in runs if r.get("shown_pct") is not None)
-        return f"a camera takes {statistics.median(ff) / 1000:.1f} s to show its first frame and shows {shown:.0f}% of its frames"
+        failed = len(runs) - len(ff)
+        return (f"a camera takes {statistics.median(ff) / 1000:.1f} s to show its first frame and shows {shown:.0f}% of its frames"
+                + (f" ({failed} of {len(runs)} run(s) had a stream that showed no frame)" if failed else ""))
     if med("load_ms") is not None:
         return f"the view takes {med('load_ms') / 1000:.1f} s to open"
     return "opening the view wasn't measured"
@@ -1283,8 +1285,11 @@ def camera_cell(s_, b):
     ff = med("first_frame_ms")
     if ff is None:
         return f"a stream showed no frame, {b.get('camera') or 'n/a'}"
+    # The numbers are the runs whose streams all played; say how many didn't (they make the level).
+    failed = sum(1 for r in runs if r.get("first_frame_ms") is None)
+    note = f", {failed} of {len(runs)} run(s) had a stream that showed no frame" if failed else ""
     return (f"first frame {fmt(ff, ' ms')}, {fmt(med('shown_pct'), ' %')} shown, stalls {fmt(med('stall_total_ms'), ' ms')}, "
-            f"{b.get('camera') or 'n/a'}")
+            f"{b.get('camera') or 'n/a'}{note}")
 
 
 def band_cell(b):

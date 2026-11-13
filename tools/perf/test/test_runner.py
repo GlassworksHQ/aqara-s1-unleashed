@@ -822,6 +822,31 @@ class PortInUse(unittest.TestCase):
             self.assertNotIn("--es url", f.read())           # the kiosk was never pointed anywhere
 
 
+class CamerasOnlyWhenNeeded(unittest.TestCase):
+    """CodeRabbit on cbc2be6: the camera segments (ffmpeg with libx264) are made only when the
+    reference dashboards run; the animation test page alone doesn't need them."""
+
+    def test_without_libx264_only_the_reference_part_refuses(self):
+        tmp = tempfile.mkdtemp()
+        env, _ = fake_env(tmp)
+        env.pop("GW_PERF_CAMERA", None)
+        env["GW_PERF_CACHE"] = os.path.join(tmp, "cache")
+        bindir = os.path.join(tmp, "bin")
+        os.makedirs(bindir)
+        with open(os.path.join(bindir, "ffmpeg"), "w") as f:
+            f.write("#!/bin/sh\necho ' V..... mpeg4  MPEG-4 part 2'\n")   # an ffmpeg without libx264
+        os.chmod(os.path.join(bindir, "ffmpeg"), 0o755)
+        env["PATH"] = bindir + os.pathsep + env["PATH"]
+        p = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", os.path.join(tmp, "a"), "--port", "18081",
+                            "--skip-reference", "--skip-real-use"], env=env, capture_output=True, text=True, timeout=180)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        p = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", os.path.join(tmp, "b"), "--port", "18081",
+                            "--skip-synthetic", "--skip-real-use", "--restore-dashboard", RESTORE],
+                           env=env, capture_output=True, text=True, timeout=180)
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("need ffmpeg with libx264", p.stderr)
+
+
 class SyntheticScreenOff(unittest.TestCase):
     def test_a_run_the_screen_went_off_in_is_recorded_and_left_out(self):
         """The test page isn't graded, but a run with the screen off isn't the panel's frames: the
