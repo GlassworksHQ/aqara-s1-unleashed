@@ -17,6 +17,9 @@ class AqaraS1Plus : Frame {
 
     override val light = Mk6212Light()
 
+    /** The A133's zones are `cpu_thermal_zone`, `gpu_thermal_zone` and `ddr_thermal_zone` (read 2026-11-12). */
+    override val cpuThermalZone = "cpu_thermal_zone"
+
     private val aqaraCloud = AqaraCloud()
 
     /** The time zone that Aqara resets at every boot and the root helper puts back, and the wall base. */
