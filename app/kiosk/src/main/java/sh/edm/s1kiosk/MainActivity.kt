@@ -40,6 +40,7 @@ import sh.edm.s1kiosk.settings.SettingsMenu
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.setup.LoadingOverlay
 import sh.edm.s1kiosk.setup.OfflineText
+import sh.edm.s1kiosk.setup.holdingPanes
 import sh.edm.s1kiosk.setup.PaneStepFacts
 import sh.edm.s1kiosk.setup.SetupFlow
 import sh.edm.s1kiosk.setup.SetupInputs
@@ -163,6 +164,8 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A voice change made in setup restarts the app at Done, also if the activity was recreated meanwhile.
+        restartAfterSetup = savedInstanceState?.getBoolean(STATE_RESTART_AFTER_SETUP) == true
         prefs = KioskPrefs(this)
         glassworks.paneDefinitions(this) // first: a step's one-time check runs before discovery can save an HA URL
         HaAuth.init(this)
@@ -332,7 +335,9 @@ class MainActivity : Activity() {
     private fun refreshSetup() {
         if (!::setupOverlay.isInitialized) return
         // Panes applying or refused: keep it up until Continue works (a pane's step can look done mid-way).
-        val d = SetupState.decide(setupInputs()).let { if (setupOverlay.holdsPanes) it.copy(show = true, step = SetupFlow.PANES) else it }
+        // Panes holds while it applies or after a refusal, but never over a lost Wi-Fi: that step comes
+        // first, and Panes again once the panel is back on.
+        val d = SetupState.decide(setupInputs()).holdingPanes(setupOverlay.holdsPanes)
         if (setupPreview) {
             val forced = setupPreviewStep
             // A forced step: every step before it shows as done.
@@ -795,6 +800,11 @@ class MainActivity : Activity() {
         exitProcess(0)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_RESTART_AFTER_SETUP, restartAfterSetup)
+    }
+
     // ---- back: navigate back inside the page; never leave the kiosk
 
     @Deprecated("Deprecated in Java")
@@ -1036,6 +1046,7 @@ class MainActivity : Activity() {
         private const val RETRY_MS = 10_000L
         /** The connecting screen waits this long after the page loaded for the page to say it's drawn. */
         internal const val READY_FALLBACK_MS = 15_000L
+        private const val STATE_RESTART_AFTER_SETUP = "restart_after_setup"
         private const val SETUP_TICK_MS = 2_000L
         private const val SETTINGS_TICK_MS = 2_000L
     }
