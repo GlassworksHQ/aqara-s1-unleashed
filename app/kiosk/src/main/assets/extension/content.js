@@ -161,6 +161,9 @@
       hasSettingsScreen: false, hasSidebar: false, canWriteTag: false, hasExoPlayer: false,
       canCommissionMatter: false, canImportThreadCredentials: false, hasAssist: false,
       hasBarCodeScanner: 0, canSetupImprov: false, hasEntityAddTo: false, appVersion: "S1 Kiosk",
+      // The app covers the frontend with its connecting screen until it has drawn: the frontend then
+      // drops its own launch screen at once and sends frontend/loaded (partial-panel-resolver.ts).
+      hasSplashscreen: true,
     };
     // Messages that expect an answer (EMOutgoingMessageWithAnswer); everything else is fire-and-forget.
     const NEEDS_ANSWER = ["entity/add_to/get_actions", "matter/share_device", "webrtc/stream/start"];
@@ -168,6 +171,7 @@
       const msg = parsePayload(raw);
       if (!msg || typeof msg.id !== "number" || msg.type === "result") return;
       let reply = null;
+      if (msg.type === "frontend/loaded") readyAfterPaint("frontend/loaded"); // fire-and-forget
       if (msg.type === "config/get") {
         reply = { id: msg.id, type: "result", success: true, result: CONFIG };
       } else if (NEEDS_ANSWER.includes(msg.type)) {
@@ -246,20 +250,30 @@
   // "Loading…" on white) and the frontend removes it once it has drawn. The app keeps its connecting
   // screen up until then and cross-fades into the dashboard, so that white splash never shows. A page
   // without that launch screen (the sign-in page, any other page) is ready once its document is.
+  // The app fades its screen out over what Gecko last painted, and on the S1 the paint without the
+  // launch screen can come well after the DOM change (round 4 panel run: the white splash showed
+  // through the fade). So "ready" waits for two frames to be drawn, and a little more.
+  const PAINT_MARGIN_MS = 150;
   let readySent = false;
   function sendReady(why) {
     if (readySent || !port) return;
     readySent = true;
     try { port.postMessage({ type: "ready", why }); } catch (e) { /* port gone */ }
   }
+  function readyAfterPaint(why) {
+    if (readySent) return;
+    try {
+      requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => sendReady(why), PAINT_MARGIN_MS)));
+    } catch (e) { sendReady(why); }
+  }
   function watchLaunchScreen() {
     const ls = document.getElementById("ha-launch-screen");
-    if (!ls || !ls.parentNode) { sendReady("page"); return; }
+    if (!ls || !ls.parentNode) { readyAfterPaint("page"); return; }
     // Home Assistant's frontend is loading: the app waits longer for it before giving up (a cold load
     // on the S1 can take well over 15 s).
     try { if (port) port.postMessage({ type: "launch" }); } catch (e) { /* port gone */ }
     const obs = new MutationObserver(() => {
-      if (!document.getElementById("ha-launch-screen")) { obs.disconnect(); sendReady("frontend"); }
+      if (!document.getElementById("ha-launch-screen")) { obs.disconnect(); readyAfterPaint("removed"); }
     });
     obs.observe(ls.parentNode, { childList: true });
   }
