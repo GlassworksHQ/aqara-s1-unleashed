@@ -8,6 +8,11 @@ below as the release notes.
 ## [Unreleased]
 
 ### Added
+- **The panel's health shows in Home Assistant.** The device page's *Diagnostic* section gets CPU
+  usage, CPU temperature, Wi-Fi signal and uptime, so you can graph them and alert on them. More
+  sensors are there but off until you turn them on: the app's own CPU and RAM, free RAM and storage,
+  Wi-Fi link speed, the app's uptime, its web content processes and why it last restarted. The panel
+  reads them once a minute and sends a value only when it changed.
 - **Releases now include an APK for 64-bit Android devices.** Each release carries
   `s1-kiosk-arm64-v8a-<version>.apk` beside the S1's APK, for arm64-v8a tablets and similar devices.
   It is experimental and has only run on an emulator. S1 panels keep updating from

@@ -151,6 +151,7 @@ What works today, on v0.4.1. "Verified" means tested on a real panel in a real h
 | Aqara cloud and bloat disabled (reversible) | ✅ Works |
 | Glass Tile boot splash and animation | ✅ Works |
 | Web installer, command-line installer, undo | ✅ Verified end to end (firmware 4.5.80); boot patch tested on two firmware versions |
+| Panel health in Home Assistant: CPU, temperature, RAM, storage, Wi-Fi, uptime ([entities](docs/esphome.md#diagnostics)) | 🧪 New · not yet checked on a panel |
 | App updates from Home Assistant | ✅ Works from v0.4.1 on ([one manual update first](#updates) on older versions) |
 | Time zone kept across reboots | ✅ Works (needs the boot software from v0.4.0) |
 | Radio: Zigbee coordinator for **ZHA** | ✅ Verified · keep the radio's network settings ([known issue](#known-issues)) |

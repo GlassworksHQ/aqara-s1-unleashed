@@ -2,6 +2,7 @@ package sh.edm.s1kiosk.esphome
 
 import sh.edm.esphome.*
 import sh.edm.esphome.android.EspHomeMdns
+import dev.glassworks.diagnostics.DiagnosticsPane
 import dev.glassworks.frame.Frame
 import dev.glassworks.pane.EntityRegistry
 import dev.glassworks.pane.Pane
@@ -253,7 +254,8 @@ class PanelDevice internal constructor(
                     silence = { synchronized(this) { chimePlayer }?.cancel() },
                 )
             } else null,
-        ) + frame.panes(paneContext, exec) + RadioPane(paneContext, runtime, panelIp = ::ipAddress)
+        ) + frame.panes(paneContext, exec) + RadioPane(paneContext, runtime, panelIp = ::ipAddress) +
+            DiagnosticsPane(paneContext, frame.cpuThermalZone, runtime.engine::isContentProcess, exec)
         coreEntities = buildEntities()
         appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
         dashboardRebuild = StableChange(dashboardOptions(appliedDashboards))

@@ -114,6 +114,10 @@ class GeckoEngine(
     override fun open(activity: Activity, host: PageHost, background: Int): Page =
         GeckoPage(activity, host, background).also { it.start() }
 
+    /** GeckoView's manifest runs `GeckoChildProcessServices$tab0..39` in `:sandboxed_tab_<flags><n>`. */
+    override fun isContentProcess(processName: String) =
+        processName.substringAfter(':', "").startsWith("sandboxed_tab")
+
     private inner class GeckoPage(
         private val activity: Activity,
         private val host: PageHost,

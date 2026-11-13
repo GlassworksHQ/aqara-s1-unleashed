@@ -27,6 +27,12 @@ interface Frame {
     /** Ambient light, for the screen policy's brightness curve. Null when the device has no light sensor. */
     val light: LightSource?
 
+    /**
+     * The `type` of the thermal zone that measures the CPU, as in `/sys/class/thermal/thermal_zoneN/type`.
+     * Null when the device has none, and then the diagnostics pane has no temperature entity.
+     */
+    val cpuThermalZone: String? get() = null
+
     /** The device's own settings screens, best first. [systemSettings] picks the first that opens. */
     fun systemSettingsIntents(): List<Intent>
 

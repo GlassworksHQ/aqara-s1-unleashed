@@ -6,6 +6,24 @@
 - 2 GiB DDR4, ~8 GB eMMC (MMC 5.1), PMIC **AXP806**.
 - Android board/product: `peony_evb2` / `peony-perf1`, `android.hardware = sun50iw10p1`.
 
+## Thermal zones and what an app can read
+
+**Verified 2026-11-12** with read-only adb (shell user) on the reference panel, S1 Kiosk 0.4.3,
+kernel 4.9.170. The diagnostics pane uses these (#123).
+
+| Path | Read |
+|---|---|
+| `/sys/class/thermal/thermal_zone0` | `type` = `cpu_thermal_zone`, `temp` = 47999 (m°C), mode enabled |
+| `/sys/class/thermal/thermal_zone1` | `gpu_thermal_zone`, 47463 |
+| `/sys/class/thermal/thermal_zone2` | `ddr_thermal_zone`, 47463 |
+| a zone's `temp` | `-r--r--r-- root root`, `u:object_r:sysfs_thermal:s0` |
+| `/proc/stat` | `-r--r--r--`, `u:object_r:proc_stat:s0`; SELinux is permissive, so the app can read it |
+| `/proc/<pid>/smaps_rollup` | present (backported to 4.9); the shell user gets *Permission denied* for the app's pids |
+
+Every app process, Gecko's included, runs as the app's uid (`ps -A`): the main process, and
+`:crashhelper_…`, `:gpu_…` and `:sandboxed_tab_…<n>` from GeckoView. The main process's `comm` is
+`AndroidUI`, not the package name.
+
 ## FEL button
 
 There is **one unlabeled tactile button on the PCB** (you must open the back cover to reach it). Hold it while applying USB-C power to enter FEL. The **external** case button and the Aqara pairing button do not enter FEL.
