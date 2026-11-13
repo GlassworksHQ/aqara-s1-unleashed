@@ -38,7 +38,7 @@ class CodeOverlay(private val context: Context, private val onClose: () -> Unit)
             WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
+            PixelFormat.OPAQUE,
         )
         runCatching { wm.addView(v, lp); view = v }.onFailure { Log.w(S1Manage.TAG, "can't show the Manage code", it) }
     }
@@ -74,7 +74,8 @@ class CodeOverlay(private val context: Context, private val onClose: () -> Unit)
                 }, LinearLayout.LayoutParams(-2, -2))
             }
             return FrameLayout(context).apply {
-                setBackgroundColor(0xF20A0B0F.toInt())
+                // Flat night, fully opaque: nothing behind (the night clock) may show through the digits.
+                setBackgroundColor(0xFF0A0B0F.toInt())
                 addView(col, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
             }
         }
