@@ -1308,7 +1308,10 @@ class PaneOnAlone(unittest.TestCase):
                          (None, False, None, False))
         b = G.pane_budgets([p], {"assist": {"ram_pss_max_kb": 49152}})["assist"]
         self.assertEqual((b["measurable"], b["ok"]), (False, None))
-        self.assertIn("none (one sample)", "\n".join(R.ram_markdown({"panes": [p], "pane_budget": {}})))
+        md = "\n".join(R.ram_markdown({"panes": [p], "pane_budget": {}}))
+        self.assertIn("none (one sample)", md)
+        self.assertIn("+29.3 MB (not measurable)", md)                       # no tolerance, so not "within" one
+        self.assertNotIn("within tolerance", md)
 
     def test_boot_is_reported_apart_from_the_share(self):
         """#186: `:boot` (29 MB) ran in 1 of 3 Sendspin samples in s1p3 and made its tolerance ±22 MB."""

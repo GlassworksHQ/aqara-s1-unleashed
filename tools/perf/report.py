@@ -1436,6 +1436,11 @@ def markdown(rep):
     return "\n".join(out) + "\n"
 
 
+def noise_word(measurable, tol):
+    """A share's suffix: nothing when measurable; with no tolerance (one sample a side), not measurable."""
+    return "" if measurable else " (not measurable)" if tol is None else " (within tolerance)"
+
+
 def tol_mb(kb):
     return "none (one sample)" if kb is None else f"±{kb / 1024:.1f} MB"
 
@@ -1497,9 +1502,9 @@ def ram_markdown(ram):
             pb = (ram.get("pane_budget") or {}).get(p["id"]) or {}
             word = "not measurable" if pb.get("measurable") is False else budget_word(pb.get("ok"))
             cap = "none" if pb.get("budget_kb") is None else f"{pb['budget_kb'] / 1024:.0f} MB, {word}"
-            out.append(f"| {p['id']} | {p['pss_kb'] / 1024:+.1f} MB{'' if p['pss_measurable'] else ' (within tolerance)'} "
+            out.append(f"| {p['id']} | {p['pss_kb'] / 1024:+.1f} MB{noise_word(p['pss_measurable'], p['pss_tolerance_kb'])} "
                        f"| {tol_mb(p['pss_tolerance_kb'])} (n={p['samples_on']} on, {p['samples_off']} off) | {cap} "
-                       f"| {p['cpu_pct_of_core']:+.1f} % of a core{'' if p['cpu_measurable'] else ' (within tolerance)'} |")
+                       f"| {p['cpu_pct_of_core']:+.1f} % of a core{noise_word(p['cpu_measurable'], p['cpu_tolerance_pct'])} |")
         out += [""] + [f"- {n}" for n in notes] if notes else []
     if ram.get("screen_off_samples"):
         out += ["", "The screen went off in " + ", ".join(ram["screen_off_samples"]) + "; those samples are left out."]
