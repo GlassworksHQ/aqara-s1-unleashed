@@ -74,9 +74,9 @@ jobs:
       - name: Still updates panels in place
         run: tools/release/check-update-compat.sh app/kiosk/build/outputs/apk/release/kiosk-release-unsigned.apk
 
-      # EspHomeKeepaliveTest against the real aioesphomeapi client (#180). It skips without
-      # ESPHOME_PYTHON, so this step fails if it skipped. About 30 s (venv from hashed wheels, then that
-      # test only), and only when app/ or this file changed. The kiosk's EspHomeApiTest uses the same
+      # EspHomeKeepaliveTest (#180) and EspHomeActionsCameraTest (#120) against the real aioesphomeapi
+      # client. They skip without ESPHOME_PYTHON, so this step fails if one skipped. About 30 s (venv
+      # from hashed wheels, then those tests only), and only when app/ or this file changed. The kiosk's EspHomeApiTest uses the same
       # client but isn't here yet. It failed once in two CI runs (#184).
       - name: aioesphomeapi tests needed?
         id: esphome
@@ -97,20 +97,24 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Keepalive test (real aioesphomeapi client)
+      - name: Keepalive, actions and camera tests (real aioesphomeapi client)
         if: steps.esphome.outputs.run == 'true'
         working-directory: app
         run: |
           python -m venv "$RUNNER_TEMP/esphome-venv"
           "$RUNNER_TEMP/esphome-venv/bin/pip" install --quiet --require-hashes --only-binary :all: \
             -r libs/esphome-api/test-requirements.txt
-          report=libs/esphome-api/build/test-results/test/TEST-sh.edm.esphome.EspHomeKeepaliveTest.xml
+          results=libs/esphome-api/build/test-results/test
+          reports="$results/TEST-sh.edm.esphome.EspHomeKeepaliveTest.xml $results/TEST-sh.edm.esphome.EspHomeActionsCameraTest.xml"
           # --rerun: Gradle doesn't see ESPHOME_PYTHON, and the Unit tests step left the task up to date.
           # On a failure, the report's message holds the Python client's output.
-          ESPHOME_PYTHON="$RUNNER_TEMP/esphome-venv/bin/python" ./gradlew --no-daemon \
-            :esphome-api:test --tests sh.edm.esphome.EspHomeKeepaliveTest --rerun \
-            || { cat "$report"; exit 1; }
-          grep -q '<testsuite [^>]* skipped="0"' "$report" || { echo "::error::$report: a test skipped"; exit 1; }
+          ESPHOME_PYTHON="$RUNNER_TEMP/esphome-venv/bin/python" ./gradlew --no-daemon --continue \
+            :esphome-api:test --tests sh.edm.esphome.EspHomeKeepaliveTest \
+            --tests sh.edm.esphome.EspHomeActionsCameraTest --rerun \
+            || { cat $reports; exit 1; }
+          for report in $reports; do
+            grep -q '<testsuite [^>]* skipped="0"' "$report" || { echo "::error::$report: a test skipped"; exit 1; }
+          done
 
   libs-api23:
     runs-on: ubuntu-24.04
