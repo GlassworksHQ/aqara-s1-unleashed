@@ -236,3 +236,11 @@ object SetupState {
     fun setUpBefore(haKnown: Boolean, haSeen: Boolean, apiKeySet: Boolean, haSkipped: Boolean): Boolean =
         haKnown || haSeen || apiKeySet || haSkipped
 }
+
+/**
+ * The setup screen holds Panes while Continue applies or after a refusal (SetupOverlay.holdsPanes), but
+ * never over a lost Wi-Fi: Panes has no way to fix that, so the Wi-Fi step comes first, and Panes again
+ * once the panel is back on.
+ */
+fun SetupDecision.holdingPanes(held: Boolean): SetupDecision =
+    if (held && wifiDone) copy(show = true, step = SetupFlow.PANES) else this
