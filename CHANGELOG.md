@@ -16,7 +16,8 @@ below as the release notes.
   is happening. Light rises through it while the panel connects, the plates dim when there is no
   network, and the top one turns red and dashed when Home Assistant doesn't answer, with a countdown
   to the next try. The connecting screen starts on the boot animation's last frame and the stack
-  settles from there, so power-on is one continuous picture. Setup goes Wi-Fi, Home Assistant (add
+  settles from there, so power-on is one continuous picture. It stays until Home Assistant has drawn
+  the dashboard, so Home Assistant's white loading page no longer flashes in between. Setup goes Wi-Fi, Home Assistant (add
   it, then sign in), Panes, Done. On Panes you choose what the panel does: voice, music and the
   Zigbee / Thread radio. A pane you turn on then asks what it needs: the radio asks Zigbee or Thread
   and the role, then shows what to do in Home Assistant, where a Thread router can join Home
