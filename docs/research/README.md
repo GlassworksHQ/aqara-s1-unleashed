@@ -247,6 +247,7 @@ This page is the index of every note. Notes about one device live with its frame
 
 | File | What's in it |
 |---|---|
+| [mirror-android.md](../../frames/lululemon-mirror/research/mirror-android.md) | Can the lululemon Mirror run Android 8+ for the current GeckoView? The signed boot image blocks it; the kexec idea, the paths, blobs and read-only probes (desk research, #39) |
 | [mirror-abis.md](../../frames/lululemon-mirror/research/mirror-abis.md) | Which ABIs the Mirror's userspace runs: 64-bit in the community image, stock untested (#98) |
 
 ### Generic Android (`frames/generic-android/`)
