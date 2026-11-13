@@ -368,8 +368,6 @@ class Stream:
             wait = min(nxt_k, nxt_f) - time.monotonic()
             if wait > 0 and self.stop.wait(wait):
                 return
-            if self.stop.is_set():
-                return                       # stopped while it waited: send nothing more
             if time.monotonic() >= nxt_k:
                 k += 1
                 e, v = self.sensor_change(k)

@@ -190,14 +190,32 @@ class FakeHA(unittest.TestCase):
         """CodeRabbit on 0c620b0: a worker past its stop check could write after the reset, and a view
         cut short left its stream running into the next restart."""
         hub = fakeha.Hub()
+        inside, release, sent = threading.Event(), threading.Event(), []
+        real = hub.set_state
+
+        def held(*a, **k):              # the worker, caught in a send: past its stop check
+            inside.set()
+            release.wait(3)
+            real(*a, **k)
+            sent.append(a[0])
+        hub.set_state = held
         hub.stream(True)
+        self.assertTrue(inside.wait(2))
+        stopper = threading.Thread(target=hub.stream, args=(False,))
+        stopper.start()
+        time.sleep(0.3)
+        self.assertTrue(stopper.is_alive())            # stopping waits for the worker's send...
+        release.set()
+        stopper.join(3)
+        self.assertFalse(stopper.is_alive())
+        # ...and the worker sends nothing after it, though its next change was due while it was held
+        # (its loop checks the stop before every send; the join covers a stop between the two).
+        self.assertEqual(len(sent), 1)
+        hub.set_state = real
+        hub.reset()                                     # after the worker's last write
         time.sleep(0.5)
-        hub.stream(False)
-        hub.reset()
-        snap = {e: v["state"] for e, v in hub.states.items()}
-        time.sleep(0.5)
-        self.assertEqual({e: v["state"] for e, v in hub.states.items()}, snap)
-        self.assertEqual(snap, {e: v["state"] for e, v in D.states().items()})
+        self.assertEqual(len(sent), 1)
+        self.assertEqual({e: v["state"] for e, v in hub.states.items()}, {e: v["state"] for e, v in D.states().items()})
         # A view cut short: its stream still runs when the runner cancels before the next restart.
         self.http("GET", "/clarity/live?nonce=t")
         time.sleep(0.5)
