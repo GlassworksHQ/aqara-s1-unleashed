@@ -35,4 +35,5 @@ expediter {
 }
 tasks.named("test") { dependsOn("expedite") }
 
-// EspHomeKeepaliveTest runs the real aioesphomeapi client when ESPHOME_PYTHON is set (see the test).
+// EspHomeKeepaliveTest and EspHomeActionsCameraTest run the real aioesphomeapi client when ESPHOME_PYTHON is
+// set (see the tests).
