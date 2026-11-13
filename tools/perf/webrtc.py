@@ -7,17 +7,25 @@ and sends camera.py's H.264 stream, the same bitstream the HLS segments carry, n
 its access units at 15 fps, looped.
 
 The panel reaches this computer only through `adb reverse`, which forwards TCP, and WebRTC's media
-is UDP. So the browser gets one TURN server, over TCP (`turn:127.0.0.1:<port>?transport=tcp`), and
+is UDP. So the browser gets one TURN server, over TCP (`turn:localhost:<port>?transport=tcp`), and
 only relayed candidates (`iceTransportPolicy: relay`). Its TCP connection goes through adb reverse
-to the relay below; the relay's UDP side and the peer are both on this computer's loopback. Nothing
-depends on the network the panel or this computer is on.
+to the relay below. The relay's UDP side and the peer share one address of this computer, so the
+media between them never leaves it, and the panel never sends to that address itself.
+
+Why not loopback for all of it (Firefox 152 desktop, 2026-11-13; GeckoView on the S1 the same):
+Gecko never connects to a TURN server given as 127.0.0.1 (error 701, no TCP connection), and drops a
+relayed candidate whose address is loopback. `localhost` gets it to connect; a relayed address that
+isn't loopback gets it a candidate. Chrome accepts either. Gecko's `media.peerconnection.ice.loopback`
+pref lifts both, but the kiosk's Gecko settings aren't the test's to change.
 
 Host-side only: aiortc and its dependencies come from tools/perf/webrtc-requirements.txt (locked with
-hashes). It listens on 127.0.0.1 and reads nothing from the device.
+hashes). The relay listens on 127.0.0.1 (TCP) and on the media address (UDP); it relays only to the
+peer, and reads nothing from the device.
 """
 import asyncio
 import fractions
 import hashlib
+import os
 import socket
 import struct
 import threading
@@ -37,17 +45,35 @@ TURN_NONCE = b"clarity"
 TURN_LIFETIME = 600
 VIDEO_CLOCK = 90000
 
-# The peer's only candidate is this computer's loopback, the one address the relay reaches without
-# the network. aioice leaves 127.0.0.1 out of its own list.
-if aioice:
-    aioice.ice.get_host_addresses = lambda use_ipv4=True, use_ipv6=True: ["127.0.0.1"]
+
+def media_address():
+    """The address the relay and the peer share: GW_PERF_WEBRTC_ADDR, else this computer's IPv4
+    address towards its default route, else its first IPv4 address that is neither loopback nor
+    link-local (Gecko refuses both for a relay). Packets to it are delivered inside this computer."""
+    if os.environ.get("GW_PERF_WEBRTC_ADDR"):
+        return os.environ["GW_PERF_WEBRTC_ADDR"]
+    usable = lambda a: a and not a.startswith(("127.", "169.254.", "0."))  # noqa: E731
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("192.0.2.1", 9))           # picks the route only; nothing is sent
+            if usable(s.getsockname()[0]):
+                return s.getsockname()[0]
+    except OSError:
+        pass
+    import ifaddr
+    for adapter in ifaddr.get_adapters():
+        for ip in adapter.ips:
+            if isinstance(ip.ip, str) and usable(ip.ip):
+                return ip.ip
+    raise RuntimeError("the WebRTC relay needs an IPv4 address on this computer that isn't loopback "
+                       "(set GW_PERF_WEBRTC_ADDR to one)")
 
 
 def client_config(turn_port):
     """camera/webrtc/get_client_config's result. HA sends only iceServers (webrtc-models'
     RTCConfiguration); the relay-only policy is the fake's one addition, so a browser on the same
     network as this computer can't pair its own address and skip the relay."""
-    return {"configuration": {"iceServers": [{"urls": f"turn:127.0.0.1:{turn_port}?transport=tcp",
+    return {"configuration": {"iceServers": [{"urls": f"turn:localhost:{turn_port}?transport=tcp",
                                               "username": TURN_USER, "credential": TURN_PASSWORD}],
                               "iceTransportPolicy": "relay"}}
 
@@ -93,6 +119,7 @@ class TurnConn(asyncio.Protocol):
         self.tr = transport
         self.client = transport.get_extra_info("peername")[:2]
         self.server.conns.add(self)
+        self.server.record({"t": time.time(), "turn_connected": list(self.client)})
 
     def connection_lost(self, exc):
         self.server.conns.discard(self)
@@ -152,8 +179,9 @@ class TurnConn(asyncio.Protocol):
                 self.relay.close()
                 self.relay = None
             self.reply(m, LIFETIME=min(life, TURN_LIFETIME))
-        elif m.attributes.get("XOR-PEER-ADDRESS", ("",))[0] != "127.0.0.1":
-            # The peer is on this computer's loopback; the relay reaches nothing else.
+        elif m.attributes.get("XOR-PEER-ADDRESS", ("",))[0] != self.server.addr:
+            # The peer is at the media address; the relay reaches nothing else.
+            self.server.record({"t": time.time(), "turn_refused": m.attributes.get("XOR-PEER-ADDRESS")})
             self.reply(m, stun.Class.ERROR, ERROR_CODE=(403, "Forbidden"))
         elif m.message_method == M.CREATE_PERMISSION:
             self.perms.add(m.attributes["XOR-PEER-ADDRESS"][0])
@@ -166,12 +194,13 @@ class TurnConn(asyncio.Protocol):
 
     async def allocate(self, m):
         loop = asyncio.get_running_loop()
-        self.relay, _ = await loop.create_datagram_endpoint(lambda: _Relay(self), local_addr=("127.0.0.1", 0))
+        self.relay, _ = await loop.create_datagram_endpoint(lambda: _Relay(self), local_addr=(self.server.addr, 0))
         if self.tr.is_closing():                  # the browser left while it was made
             self.relay.close()
             return
-        self.reply(m, XOR_RELAYED_ADDRESS=self.relay.get_extra_info("sockname")[:2],
-                   XOR_MAPPED_ADDRESS=self.client, LIFETIME=TURN_LIFETIME)
+        relayed = self.relay.get_extra_info("sockname")[:2]
+        self.server.record({"t": time.time(), "turn_allocated": list(relayed), "client": list(self.client)})
+        self.reply(m, XOR_RELAYED_ADDRESS=relayed, XOR_MAPPED_ADDRESS=self.client, LIFETIME=TURN_LIFETIME)
 
     def from_peer(self, data, addr):
         if addr[0] not in self.perms:
@@ -200,6 +229,10 @@ class WebRTC:
         """streams(profile): the path of its Annex B stream (camera.annexb); record: the fake's log."""
         self.turn_port, self.streams, self.fps, self.record = turn_port, streams, fps, record
         self.sessions, self.aus = {}, {}
+        # The peer's only candidate is the media address: aioice's own list would add every
+        # interface (and leaves loopback out).
+        self.addr = media_address()
+        aioice.ice.get_host_addresses = lambda use_ipv4=True, use_ipv6=True: [self.addr]
         self.loop = asyncio.new_event_loop()
         self.conns = set()
         threading.Thread(target=self.loop.run_forever, daemon=True).start()

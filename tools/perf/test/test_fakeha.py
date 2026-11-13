@@ -306,7 +306,7 @@ class FakeHA(unittest.TestCase):
         with mock.patch.object(fakeha.Handler.hub, "webrtc", None), mock.patch.object(fakeha.Handler.hub, "turn_port", 8090):
             cfg, _ = ws.call({"type": "camera/webrtc/get_client_config", "entity_id": "camera.clarity_cam_0"})
             self.assertEqual(cfg["result"], {"configuration": {
-                "iceServers": [{"urls": "turn:127.0.0.1:8090?transport=tcp", "username": "clarity", "credential": "clarity"}],
+                "iceServers": [{"urls": "turn:localhost:8090?transport=tcp", "username": "clarity", "credential": "clarity"}],
                 "iceTransportPolicy": "relay"}})
             res, _ = ws.call({"type": "camera/webrtc/offer", "entity_id": "camera.clarity_cam_0", "offer": "v=0\r\n"})
             self.assertEqual((res["type"], res["success"], res.get("result")), ("result", True, None))

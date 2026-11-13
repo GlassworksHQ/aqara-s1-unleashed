@@ -78,16 +78,20 @@ class Turn(unittest.TestCase):
         self.assertEqual((r.attributes["REALM"], r.attributes["NONCE"]), (webrtc.TURN_REALM, webrtc.TURN_NONCE))
         self.assertEqual(self.allocate(b"0" * 16).attributes["ERROR-CODE"][0], 401)
 
-    def test_an_allocation_relays_on_this_computers_loopback(self):
+    def test_an_allocation_relays_on_the_media_address_never_loopback(self):
+        """Gecko drops a relayed candidate on loopback (Firefox 152 and the S1's GeckoView,
+        2026-11-13): the relayed address is the media address, which never is."""
         r = self.allocate(webrtc.TURN_KEY)
         self.assertEqual(r.message_class, webrtc.stun.Class.RESPONSE)
         self.assertTrue(r.check_message_integrity(webrtc.TURN_KEY))
-        self.assertEqual(r.attributes["XOR-RELAYED-ADDRESS"][0], "127.0.0.1")
+        self.assertEqual(r.attributes["XOR-RELAYED-ADDRESS"][0], self.svc.addr)
+        self.assertFalse(self.svc.addr.startswith(("127.", "169.254.")))
         self.assertEqual(r.attributes["LIFETIME"], webrtc.TURN_LIFETIME)
 
-    def test_the_relay_reaches_only_this_computers_loopback(self):
-        """Not a relay to anywhere: a permission for another address is refused (CodeRabbit, #205)."""
-        for peer, want in ((("192.0.2.10", 5000), webrtc.stun.Class.ERROR), (("127.0.0.1", 5000), webrtc.stun.Class.RESPONSE)):
+    def test_the_relay_reaches_only_the_peer(self):
+        """Not a relay to anywhere: a permission for any address but the peer's is refused (CodeRabbit, #205)."""
+        for peer, want in ((("192.0.2.10", 5000), webrtc.stun.Class.ERROR), (("127.0.0.1", 5000), webrtc.stun.Class.ERROR),
+                           ((self.svc.addr, 5000), webrtc.stun.Class.RESPONSE)):
             m = webrtc.stun.Message(webrtc.stun.Method.CREATE_PERMISSION, webrtc.stun.Class.REQUEST,
                                     attributes={"XOR-PEER-ADDRESS": peer, "USERNAME": webrtc.TURN_USER,
                                                 "REALM": webrtc.TURN_REALM, "NONCE": webrtc.TURN_NONCE})
@@ -99,7 +103,8 @@ class Turn(unittest.TestCase):
 
     def test_the_browser_gets_the_relay_over_tcp_and_relay_only(self):
         c = webrtc.client_config(8090)["configuration"]
-        self.assertEqual(c["iceServers"][0]["urls"], "turn:127.0.0.1:8090?transport=tcp")
+        # A name, not 127.0.0.1: Gecko never connects to a TURN server at a loopback IP.
+        self.assertEqual(c["iceServers"][0]["urls"], "turn:localhost:8090?transport=tcp")
         self.assertEqual(c["iceTransportPolicy"], "relay")
 
 
@@ -177,10 +182,10 @@ class Session(unittest.TestCase):
             self.assertEqual((answer["id"], answer["event"]["type"]), (res[0]["id"], "answer"), answer)
             answered = time.monotonic() - t0
             self.assertIn("H264", answer["event"]["answer"])
-            # The peer's only candidate is this computer's loopback, whatever networks it is on.
+            # The peer's only candidate is the media address, whatever other networks this computer is on.
             theirs = [line.split()[4] for line in answer["event"]["answer"].splitlines() if line.startswith("a=candidate:")]
             self.assertTrue(theirs)
-            self.assertEqual(set(theirs), {"127.0.0.1"})
+            self.assertEqual(set(theirs), {fakeha.Handler.hub.webrtc.addr})
             await pc.setRemoteDescription(RTCSessionDescription(answer["event"]["answer"], "answer"))
             t_first = await asyncio.wait_for(first, 10) - t0
             await asyncio.sleep(2)

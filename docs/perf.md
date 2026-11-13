@@ -54,7 +54,8 @@ own GeckoView, loaded the way the kiosk loads your dashboard.
 You need adb, Python 3.11 or later, ffmpeg with libx264 (for the camera streams; it runs only on your
 computer) and the kiosk installed on the device. The first run makes a Python venv for the fake's
 WebRTC camera (aiortc, about 60 MB, from `tools/perf/webrtc-requirements.txt`, every wheel's hash
-checked) in `~/.cache/glassworks-perf`. Let the device idle for 10 minutes
+checked) in `~/.cache/glassworks-perf`. The computer needs an IPv4 address that isn't loopback (any
+network interface that is up; the camera's packets never leave the computer). Let the device idle for 10 minutes
 first, with the screen on, at normal room temperature, and the kiosk's zoom at its default ("auto").
 Note the dashboard the kiosk shows now (its URL setting, or `auto`): the graded part points the
 kiosk at the fake Home Assistant and needs to know what to put back.
@@ -538,12 +539,33 @@ an IDR. The answer offers H.264 only.
 | Option | Through adb reverse? | Needs the LAN? | Verdict |
 |---|---|---|---|
 | ICE-TCP (the browser connects to a TCP candidate on the computer) | yes | no | aiortc has no ICE-TCP; it would need another WebRTC stack |
-| **TURN over TCP**: the browser's relay is on the computer, reached through adb reverse | yes | no | **Chosen**. Every hop but the TCP one is on the computer's loopback |
+| **TURN over TCP**: the browser's relay is on the computer, reached through adb reverse | yes | no | **Chosen**. Every hop but the TCP one stays inside the computer |
 | The panel reaches the computer's LAN address | no | yes | Depends on the tester's network (an IoT VLAN, a firewall): not repeatable |
 
-So `get_client_config` names one TURN server, `turn:127.0.0.1:<port + 1>?transport=tcp`, and run.sh
+So `get_client_config` names one TURN server, `turn:localhost:<port + 1>?transport=tcp`, and run.sh
 adds that port to `adb reverse`. The relay (`webrtc.py`, RFC 5766 with long-term credentials) relays
-UDP on the computer's loopback, where the peer's only candidate is. HA sends only `iceServers`; the
+UDP on the computer's **media address**, where the peer's only candidate is: the computer's IPv4
+address towards its default route (else its first one that isn't loopback or link-local;
+`GW_PERF_WEBRTC_ADDR` sets it). Packets between the relay and the peer are delivered inside the
+computer, and the panel never sends to that address itself: it only talks TURN over the TCP
+connection. The relay relays to the peer only.
+
+**Why `localhost` and not loopback for the media** (found on the S1's first WebRTC smoke, 2026-11-13,
+and reproduced in Firefox 152 on a Mac the same day, verified). The first version used `127.0.0.1`
+for all of it. Chrome played it. GeckoView, the kiosk's engine, never connected: 14 offers, no ICE
+candidate from the panel, ICE checking then closed. Gecko (nICEr) has two rules Chrome doesn't:
+
+| TURN server | Relayed address | Firefox connects to the relay? | Relay candidate? |
+|---|---|---|---|
+| `127.0.0.1` | `127.0.0.1` | no (`icecandidateerror` 701) | no |
+| `127.0.0.1`, with Gecko's `media.peerconnection.ice.loopback` on | `127.0.0.1` | yes | yes |
+| `localhost` | `127.0.0.1` | yes, allocates | no (701) |
+| `localhost` | the computer's own address | yes | **yes; ICE connects and the video plays** |
+
+So Gecko won't use a TURN server given as a loopback IP, and drops a relayed candidate on loopback.
+The kiosk's Gecko prefs aren't the test's to change, so the fake avoids both. The tries and the
+commands are in [research/gecko-turn.md](research/gecko-turn.md). `test/webrtc.gecko.test.mjs`
+holds this: it runs the fake's WebRTC in Firefox. HA sends only `iceServers`; the
 fake adds `iceTransportPolicy: "relay"`, which the frontend passes to `RTCPeerConnection` unchanged,
 so a browser on the computer's network can't pair its own address and skip the relay. What differs
 from a real setup is the transport (TCP through adb, not UDP on the LAN); the video and the
@@ -579,12 +601,17 @@ swipes. The report gives each run's worst HLS stream and the level the camera ba
 (`camera_fallback`); the summary gives the numbers (`camera.fallback`). A copy that fails fails only
 itself. RAM between them isn't sampled (they aren't graded tasks).
 
+**Checked in Firefox** (2026-11-13, verified; `test/webrtc.gecko.test.mjs`): the fake's client config,
+offer, answer and candidates through its websocket API as HA's frontend sends them, in headless
+Firefox 152 on a Mac: a relay candidate on the computer's address, ICE connected, the video decoded at
+15 fps (180 frames in 12 s, none lost).
+
 **Checked in Chrome** (2026-11-13, verified; `test/webrtc.e2e.test.mjs`): HA's frontend on the fake,
 in headless Chrome on a Mac, played typical's camera over WebRTC through the relay (candidate pair
 relay over TCP), first frame 326 ms after the navigation, 99.2% shown, no stall, 0 frames dropped.
 Its HLS copy: 318 ms, 99.4%. One fix came from this check: aiortc asks a public STUN server by
 default and held each answer 5 s waiting for it, so the peer has no ICE servers. Not yet run on a
-panel: see the panel plan in #202's PR.
+panel: the S1's first smoke (above) failed on the loopback relay; see the panel plan in #202's PR.
 
 #### Change to screen
 
@@ -1399,16 +1426,20 @@ What the earlier runs on the S1 (2026-11-12, kiosk 0.4.3, GeckoView 159, Android
 ```sh
 python3 -m unittest discover -s tools/perf/test
 node --test tools/perf/test/page.test.mjs tools/perf/test/grade.test.mjs
-# The WebRTC camera (#202), under the WebRTC venv; then HA's frontend in Chrome playing it.
+# The WebRTC camera (#202), under the WebRTC venv; then HA's frontend in Chrome, and Firefox (Gecko).
 PY=$(python3 tools/perf/webrtcenv.py)
 "$PY" -m unittest discover -s tools/perf/test -p test_webrtc.py
 GW_PERF_FAKE_PYTHON="$PY" node --test tools/perf/test/webrtc.e2e.test.mjs
+GW_PERF_FAKE_PYTHON="$PY" node --test tools/perf/test/webrtc.gecko.test.mjs
 ```
 
 `test_webrtc.py` checks the relay (its credentials, one allocation over TCP) and a whole session
 through the fake's websocket API, with aiortc as a relay-only browser. `webrtc.e2e.test.mjs` runs
 HA's real frontend (the pinned build, fetched once) in headless Chrome: Chrome's own build has
-H.264, Playwright's Chromium doesn't (`CHROME=` picks another). Both skip without what they need,
+H.264, Playwright's Chromium doesn't (`CHROME=` picks another). `webrtc.gecko.test.mjs` runs the
+fake's WebRTC in Firefox, whose ICE code is GeckoView's: Gecko is stricter about TURN than Chrome
+(above). It checks the relay candidate always, and the frames when that Firefox offers H.264 (on
+Linux, once it has fetched OpenH264; `FIREFOX=` picks another). All skip without what they need,
 except with `GW_PERF_E2E=1`, as in CI.
 
 `test_fakeha.py` checks the fake Home Assistant against the traffic HA's frontend sent it

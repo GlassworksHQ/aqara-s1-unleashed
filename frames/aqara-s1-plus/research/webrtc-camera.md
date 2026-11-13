@@ -74,6 +74,10 @@ What it means for Clarity (protocol 6, #202):
   reading the decoders from logcat. A WebRTC view with no `MediaCodec` lines is consistent with
   software decoding.
 
+Clarity's first WebRTC smoke on this panel (2026-11-13, about 20:20 UTC) didn't connect: GeckoView
+got no relay candidate from the test's TURN relay on loopback. Why, and the fix, are in
+[docs/research/gecko-turn.md](../../../docs/research/gecko-turn.md).
+
 ## How to reproduce
 
 Read-only, on a panel with S1 Kiosk and HA with go2rtc:

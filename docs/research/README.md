@@ -222,6 +222,7 @@ This page is the index of every note. Notes about one device live with its frame
 | [bringup.md](bringup.md) | The method: how to break into a device step by step, and what the S1 taught us about FEL, U-Boot, fastboot and Android 10 |
 | [TEMPLATE.md](TEMPLATE.md) | Start a new note from this |
 | [microwakeword.md](microwakeword.md) | Replacing openWakeWord with microWakeWord: the Kotlin port of TFLite Micro's audio frontend, the models, test speech, and what is left for the panel |
+| [gecko-turn.md](gecko-turn.md) | Gecko won't use a TURN server at a loopback IP or a relayed candidate on loopback (Chrome does): why the S1 never connected to Clarity's WebRTC camera, and the fix (#202) |
 
 ### Aqara S1 Plus ([`frames/aqara-s1-plus/research/`](../../frames/aqara-s1-plus/research/))
 

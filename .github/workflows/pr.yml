@@ -199,6 +199,8 @@ jobs:
           PY=$(python3 tools/perf/webrtcenv.py)
           "$PY" -m unittest discover -s tools/perf/test -p test_webrtc.py -v
           GW_PERF_FAKE_PYTHON="$PY" node --test tools/perf/test/webrtc.e2e.test.mjs
+          # Gecko (the panel's engine) is stricter about TURN than Chrome: the runner's Firefox.
+          GW_PERF_FAKE_PYTHON="$PY" node --test tools/perf/test/webrtc.gecko.test.mjs
       - name: APK size tool
         run: python3 -m unittest discover -s tools/size/test -v
       - name: Boot generator targets and layout

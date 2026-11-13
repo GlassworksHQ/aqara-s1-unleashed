@@ -703,7 +703,7 @@ def main():
     ap.add_argument("--turn-port", type=int, help="the WebRTC relay's port (default: --port + 1)")
     a = ap.parse_args()
     srv = serve(a.port, a.log, not a.no_harness, a.turn_port)
-    turn = (f"WebRTC relay on 127.0.0.1:{Handler.hub.turn_port}" if Handler.hub.webrtc
+    turn = (f"WebRTC relay on 127.0.0.1:{Handler.hub.turn_port}, media on {Handler.hub.webrtc.addr}" if Handler.hub.webrtc
             else "no WebRTC (aiortc isn't here: tools/perf/webrtc-requirements.txt)")
     print(f"fake Home Assistant {HA_VERSION}, frontend {hafrontend.VERSION}, on http://127.0.0.1:{a.port}; {turn}", flush=True)
     srv.serve_forever()
