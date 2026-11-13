@@ -11,7 +11,7 @@ class SendspinDefinition(prefs: SendspinPrefs) : PaneDefinition {
     // SendspinPane follows the setting live.
     override val setupChoice = PaneChoice(
         title = "Music", detail = "A Sendspin speaker", on = { prefs.enabled },
-        apply = { on, _ -> prefs.enabled = on; null },
+        apply = { on -> prefs.enabled = on; null },
     )
 
     override val extras = listOf(

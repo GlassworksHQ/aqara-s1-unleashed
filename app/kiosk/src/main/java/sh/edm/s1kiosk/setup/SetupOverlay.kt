@@ -28,9 +28,14 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import dev.glassworks.pane.PaneChoice
+import dev.glassworks.pane.SetupCard
+import dev.glassworks.pane.SetupHost
+import dev.glassworks.pane.SetupScreen
+import dev.glassworks.pane.SetupStep
 import sh.edm.s1kiosk.auth.OAuth
 import sh.edm.s1kiosk.esphome.PanelDevice
 import sh.edm.s1kiosk.ui.Glass
+import sh.edm.s1kiosk.ui.GroupedRail
 import sh.edm.s1kiosk.ui.Glass.Companion.AMBER
 import sh.edm.s1kiosk.ui.Glass.Companion.FA
 import sh.edm.s1kiosk.ui.Glass.Companion.GREEN
@@ -48,16 +53,23 @@ import sh.edm.s1kiosk.ui.StackView.Look
  * plates set one per step. Right, a glass card for the current step: one idea, a short heading, one
  * white button. Done is the lit stack on its own, the same picture as boot.
  *
- * Panes asks what the panel should do: one card per pane that offers one ([PaneChoice]), applied
- * together with Continue. The Wi-Fi step shows Improv (Wi-Fi over Bluetooth) inline, Allow included, so
+ * The rail groups the steps (#63 round 2): Wi-Fi, Home Assistant (add it, sign in), Panes (choose which,
+ * then each step of a pane that is on, drawn by the pane through [SetupCard]), Done. A step that is done
+ * shows so, with Continue; the rail and Continue move between steps, also in a preview. Panes only asks
+ * which panes are on: one card per pane that offers one ([PaneChoice]). The Wi-Fi step shows Improv (Wi-Fi over Bluetooth) inline, Allow included, so
  * no separate ImprovOverlay window covers this screen. Laid out for 960×480 dp (1440×720 px at density
  * 1.5). Main thread only.
  */
 class SetupOverlay(
     context: Context,
-    /** The panes' cards on the Panes step (PaneDefinition.setupChoice), in order. None: no Panes step. */
-    private val choices: List<PaneChoice> = emptyList(),
+    /**
+     * The panes on the Panes step, each with its steps (GlassworksRuntime.setupPanes: only usable ones).
+     * None: no Panes group.
+     */
+    private val setupPanes: List<SetupPane> = emptyList(),
 ) : FrameLayout(context) {
+
+    private val choices = setupPanes.map { it.choice }
 
     data class Model(
         /** The current step's id (SetupFlow). */
@@ -89,6 +101,8 @@ class SetupOverlay(
     var onImprovAction: ((WifiStep.Action) -> Unit)? = null
     /** Panes applied with Continue. [restart]: a card that only takes effect at start changed. */
     var onPanesDone: ((restart: Boolean) -> Unit)? = null
+    /** A pane's step was answered on the screen ([SetupHost.next]). */
+    var onStepDone: (() -> Unit)? = null
 
     /** True while visible (including the Done fade-out). */
     var isShowing = false
@@ -103,11 +117,21 @@ class SetupOverlay(
     private var qrFor: String? = null
     private val main = Handler(Looper.getMainLooper())
 
-    /** The rail's steps, in order (Done is a screen of its own, not a row). */
-    private val flow = SetupFlow.ids(choices.isNotEmpty()).filter { it != SetupFlow.DONE }
+    /** Each pane's steps, by id, and which pane (its index in [choices]) they belong to. */
+    private val stepsById = setupPanes.flatMapIndexed { i, p -> p.steps.map { it.id to (i to it) } }.toMap()
+
+    /**
+     * The step on screen when it isn't the current one: one picked on the rail or reached with Continue
+     * on a step that is done (always reachable in a preview).
+     */
+    private var viewing: String? = null
+
+    /** Every step in order, with the steps of the panes that are on ([wanted]). */
+    private fun flow(): List<String> =
+        SetupFlow.ids(choices.isNotEmpty(), stepsById.filter { (_, v) -> model?.preview == true || wanted(v.first) }.keys.toList())
 
     // ---- left: the brand, the steps, the stack
-    private val rows = flow.map { StepRow(TITLES.getValue(it)) }
+    private val railRows = GroupedRail(context).apply { onTap = { id -> open(id) } }
     private val railStack = StackView(context)
     private val previewChip = g.plain("Preview · Close").apply { textSize = 14f; setOnClickListener { onClosePreview?.invoke() } }
 
@@ -120,9 +144,7 @@ class SetupOverlay(
             addView(StackView(context), LinearLayout.LayoutParams(px(24f), px(23f)).apply { marginEnd = px(14f) })
             addView(g.text(19f, TX, Inter.REGULAR).apply { text = "Glassworks" })
         })
-        val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        rows.forEachIndexed { i, r -> list.addView(r.view, LinearLayout.LayoutParams(-1, px(39f)).apply { if (i > 0) topMargin = px(5f) }) }
-        addView(list, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(37f) })
+        addView(railRows, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(33f) })
         addView(View(context), LinearLayout.LayoutParams(-1, 0, 1f))
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -246,10 +268,34 @@ class SetupOverlay(
     /** Shows (or updates) the screen for [m]. */
     fun render(m: Model) {
         cancelFinish()
-        val stepChanged = model?.step != m.step
+        val before = shown()
+        if (model?.step != m.step && !m.preview) viewing = null // progress: back to the current step
         model = m
-        bind(m, stepChanged)
+        bind(m, shown() != before)
         reveal()
+    }
+
+    /** The step on screen. */
+    private fun shown(): String? = viewing ?: model?.step
+
+    /** The rail or Continue picked [id]: show it, if it can be shown. */
+    private fun open(id: String) {
+        val m = model ?: return
+        val f = flow()
+        // Live, only steps that are done and the current one; a preview shows them all.
+        if (!m.preview && id != m.step && id !in m.done) return
+        if (id !in f) return
+        viewing = if (id == m.step) null else id
+        bind(m, true)
+    }
+
+    /** Continue on a step that is done: the next one (the current one ends the walk). */
+    private fun advance() {
+        val m = model ?: return
+        val f = flow()
+        val next = f.getOrNull(f.indexOf(shown()) + 1) ?: return
+        if (next == SetupFlow.DONE && !m.preview) { viewing = null; bind(m, true); return }
+        open(next)
     }
 
     /**
@@ -257,8 +303,9 @@ class SetupOverlay(
      * preview (`--es setup_step done`) holds Done until it is closed, like every other step.
      */
     fun finish(from: Model? = model, holdMs: Long = 1_800, loaded: () -> Unit) {
-        val m = (from ?: return).copy(step = SetupFlow.DONE, done = flow.toSet())
+        val m = (from ?: return).copy(step = SetupFlow.DONE, done = flow().toSet())
         cancelFinish()
+        viewing = null
         model = m
         bind(m, true)
         reveal()
@@ -280,7 +327,20 @@ class SetupOverlay(
      * step can look done mid-way (the radio stores its mode before the helper answers), and a failure
      * must stay where it can be retried.
      */
-    val holdsPanes: Boolean get() = isShowing && model?.step == SetupFlow.PANES && (panes.applying || panes.problem != null)
+    val holdsPanes: Boolean get() = isShowing && shown() == SetupFlow.PANES && (panes.applying || panes.problem != null)
+
+    /** Continue on the Panes step, in this process (SetupInputs.panesChosen). */
+    val panesChosen: Boolean get() = panes.chosen
+
+    /** The step [id] of a pane belongs to a pane that is on: as chosen on the Panes step, else as it runs. */
+    fun wanted(id: String): Boolean = stepsById[id]?.let { wanted(it.first) } ?: true
+
+    private fun wanted(pane: Int): Boolean = panes.wanted(pane)
+
+    /** Every couple of seconds while the app runs: the panes' steps follow their state. */
+    fun tick() {
+        screens.forEach { (id, screen) -> screen.tick(current = isShowing && shown() == id) }
+    }
 
     /** Improv identify: pulse the Bluetooth tile a few times. */
     fun flashImprov() {
@@ -312,7 +372,7 @@ class SetupOverlay(
     // ------------------------------------------------------------------ binding
 
     private fun bind(m: Model, stepChanged: Boolean) {
-        val done = m.step == SetupFlow.DONE
+        val done = shown() == SetupFlow.DONE
         doneView.visibility = if (done) View.VISIBLE else View.GONE
         donePreviewChip.visibility = if (m.preview) View.VISIBLE else View.GONE
         wizard.visibility = if (done) View.GONE else View.VISIBLE
@@ -322,12 +382,21 @@ class SetupOverlay(
     }
 
     private fun bindRail(m: Model) {
-        val current = flow.indexOf(m.step).coerceAtLeast(0)
-        rows.forEachIndexed { i, r ->
-            val id = flow[i]
-            r.bind(if (id == m.step) Dot.CURRENT else if (id in m.done) Dot.DONE else Dot.PENDING)
-        }
+        val flow = flow()
+        val shown = shown()
+        railRows.bind(
+            flow.map { id ->
+                GroupedRail.Row(
+                    id, title(id), SetupFlow.group(id),
+                    mark = when { id == shown || id == m.step -> GroupedRail.Mark.CURRENT; id in m.done -> GroupedRail.Mark.DONE; else -> GroupedRail.Mark.PENDING },
+                    enabled = m.preview || id == m.step || id in m.done,
+                )
+            },
+            GROUPS,
+            shown,
+        )
         // The plates set one per step: none on the first, all three on the last.
+        val current = flow.indexOf(m.step).coerceAtLeast(0)
         val set = if (flow.size < 2) 3 else 3 * current / (flow.size - 1)
         railStack.looks = List(3) { plate -> if (2 - plate < set) Look.OUTLINE else Look.GHOST }
         previewChip.visibility = if (m.preview) View.VISIBLE else View.GONE
@@ -343,15 +412,25 @@ class SetupOverlay(
         primary.isEnabled = true; primary.alpha = 1f
         listOf(primary, ghost, plain, plainLeft).forEach { it.setOnClickListener(null) }
         if (stepChanged) status.visibility = View.GONE
-        cardLabel.text = "Step ${flow.indexOf(m.step) + 1} of ${flow.size}"
+        val shown = shown() ?: return
+        // A step that is done says so, also as a preview's current step (reopened on a set-up panel).
+        val done = shown in m.done
+        cardLabel.text = SetupFlow.group(shown)?.let { grp -> "${GROUPS.getValue(grp)} · ${title(shown)}" } ?: title(shown)
         // The URL field never goes GONE and back while shown: a view that goes GONE (even for one
         // frame) loses focus, and this runs on every discovery/Wi-Fi refresh, i.e. while the user types.
         var content: View? = null
-        when (m.step) {
-            SetupFlow.WIFI -> content = bindWifi(m)
-            SetupFlow.HA -> content = bindHa(m)
+        when (shown) {
+            SetupFlow.WIFI -> content = bindWifi(m, done)
+            SetupFlow.HA -> content = bindHa(m, done)
+            SetupFlow.SIGNIN -> bindSignin(m, done)
             SetupFlow.PANES -> content = bindPanes(m, stepChanged)
-            SetupFlow.SIGNIN -> bindSignin(m)
+            else -> {
+                // A pane's step fills the card itself (SetupCard.content), slot included.
+                setContent(null)
+                stepsById[shown]?.let { (_, step) -> bindPaneStep(step, stepChanged) }
+                hideKeyboard()
+                return
+            }
         }
         setContent(content)
         if (content !== urlField) hideKeyboard()
@@ -366,14 +445,20 @@ class SetupOverlay(
         slot.addView(v, LinearLayout.LayoutParams(-1, -2))
     }
 
-    private fun bindWifi(m: Model): View? {
+    private fun bindWifi(m: Model, done: Boolean): View? {
         val w = m.wifi
         val inst = m.installer
         var tile = false
         when {
-            w.online -> {
+            w.online || done -> {
                 cardTitle.text = if (w.ethernet) "Connected over Ethernet." else "Connected to ${w.ssid ?: "Wi-Fi"}."
                 cardBody.text = "The panel is on the network."
+                // Already there: on to the next step, or change the network.
+                continueButton()
+                ghost.text = "Use another network"
+                ghost.visibility = View.VISIBLE
+                ghost.setOnClickListener { onChooseNetwork?.invoke() }
+                return null
             }
             inst?.phase == InstallerWifi.Phase.CONNECTING -> {
                 cardTitle.text = "Connecting to ${inst.ssid}…"
@@ -401,7 +486,23 @@ class SetupOverlay(
         return improvTile.view
     }
 
-    private fun bindHa(m: Model): View {
+    private fun bindHa(m: Model, done: Boolean): View? {
+        if (done) {
+            cardTitle.text = "Added to Home Assistant."
+            cardBody.text = SpannableStringBuilder().apply {
+                append("As ")
+                val start = length
+                append(PanelDevice.FRIENDLY_NAME)
+                setSpan(ForegroundColorSpan(TX), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                append(", under ESPHome.")
+            }
+            continueButton()
+            // Re-adding by hand: the address and port, on request.
+            plainLeft.text = if (manualShown) "${m.panelIp ?: "<panel IP>"} · port 6053" else "Add it by hand"
+            plainLeft.visibility = View.VISIBLE
+            plainLeft.setOnClickListener { manualShown = true; bind(m, false) }
+            return null
+        }
         if (m.haUrl == null) {
             cardTitle.text = "Find Home Assistant."
             cardBody.text = "The panel is looking for it on the network. If it doesn't show up, enter its address."
@@ -429,20 +530,44 @@ class SetupOverlay(
 
     private fun bindPanes(m: Model, stepChanged: Boolean): View {
         cardTitle.text = "What should it do?"
-        // Four radio modes take two lines of chips: a little less room around them, so all fits.
-        cardTitle.textSize = 40f
-        slotLp.topMargin = px(16f)
         cardBody.visibility = View.GONE
         if (stepChanged) panes.load()
-        panes.next.isEnabled = !panes.applying
-        panes.next.alpha = if (panes.applying) 0.5f else 1f
-        panes.next.setOnClickListener { panes.apply(m.preview) }
+        primary.text = "Continue"
+        primary.visibility = View.VISIBLE
+        primary.isEnabled = !panes.applying
+        primary.alpha = if (panes.applying) 0.5f else 1f
+        primary.setOnClickListener { panes.apply(m.preview) }
         panes.problem?.let { showStatus(it, ROSE) }
         if (panes.applying) showStatus("Setting up…", AMBER)
         return panes.view
     }
 
-    private fun bindSignin(m: Model) {
+    /** A pane's step: the screen sets the label, the step fills the rest ([paneCard]). */
+    private fun bindPaneStep(step: SetupStep, stepChanged: Boolean) {
+        cardTitle.textSize = 40f
+        slotLp.topMargin = px(18f)
+        screens.getValue(step.id).bind(paneCard, stepChanged)
+    }
+
+    private fun continueButton() {
+        primary.text = "Continue"
+        primary.visibility = View.VISIBLE
+        primary.setOnClickListener { advance() }
+    }
+
+    /** How long Continue on Panes waits for every card in all ([BUDGET_MS]; tests shorten it). */
+    internal var panesBudgetMs = BUDGET_MS
+
+    /** "Add it by hand" was tapped on the Home Assistant step that is done. */
+    private var manualShown = false
+
+    private fun bindSignin(m: Model, done: Boolean) {
+        if (done) {
+            cardTitle.text = "Signed in."
+            cardBody.text = "The panel can show your Home Assistant dashboard."
+            continueButton()
+            return
+        }
         val ip = m.panelIp ?: "<panel-ip>"
         val url = "http://$ip:${OAuth.SIGNIN_PORT}/signin"
         if (qrFor != url) {
@@ -489,51 +614,6 @@ class SetupOverlay(
     }
 
     // ------------------------------------------------------------------ pieces
-
-    private enum class Dot { DONE, CURRENT, PENDING }
-
-    private inner class StepRow(name: String) {
-        private val dot = RowDot()
-        private val title = g.text(16.5f, TX).apply { text = name; setSingleLine() }
-        val view = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(px(15f), 0, px(15f), 0)
-            addView(dot, LinearLayout.LayoutParams(px(9f), px(9f)).apply { marginEnd = px(13f) })
-            addView(title, LinearLayout.LayoutParams(0, -2, 1f))
-        }
-
-        fun bind(state: Dot) {
-            dot.state = state
-            title.setTextColor(when (state) { Dot.CURRENT -> TX; Dot.DONE -> MU; Dot.PENDING -> FA })
-            view.background = if (state == Dot.CURRENT) g.surface(12f) else null
-        }
-    }
-
-    /** Done: a green dot. Current: sky to violet. Not yet: a dashed ring. */
-    private inner class RowDot : View(context) {
-        var state = Dot.PENDING
-            set(v) { if (field != v) { field = v; invalidate() } }
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-        override fun onDraw(c: Canvas) {
-            val r = width / 2f
-            paint.shader = null; paint.pathEffect = null
-            when (state) {
-                Dot.DONE -> { paint.style = Paint.Style.FILL; paint.color = GREEN; c.drawCircle(r, r, r, paint) }
-                Dot.CURRENT -> {
-                    paint.style = Paint.Style.FILL
-                    paint.shader = LinearGradient(0f, 0f, width.toFloat(), height.toFloat(), Glass.SKY, Glass.VIOLET, Shader.TileMode.CLAMP)
-                    c.drawCircle(r, r, r, paint)
-                }
-                Dot.PENDING -> {
-                    paint.style = Paint.Style.STROKE; paint.color = FA; paint.strokeWidth = 1.5f * g.dp
-                    paint.pathEffect = DashPathEffect(floatArrayOf(2f * g.dp, 1.6f * g.dp), 0f)
-                    c.drawCircle(r, r, r - g.dp, paint)
-                }
-            }
-        }
-    }
 
     /** "Waiting for Home Assistant": a ring with a sky-to-violet dot that breathes. */
     private inner class Pulse : View(context) {
@@ -606,27 +686,23 @@ class SetupOverlay(
     }
 
     /**
-     * The Panes step: one card per [PaneChoice], two to a row, and the chips of the cards that have
-     * options. What the person sets stays here until Continue applies it.
+     * The Panes step: one card per [PaneChoice], two to a row. It only chooses which panes are on: a
+     * pane that is on is set up in its own steps after this one. What the person sets stays here; Continue
+     * applies every card, each within [BUDGET_MS].
      */
     private inner class PanesView {
         private val on = BooleanArray(choices.size)
-        private val option = arrayOfNulls<String>(choices.size)
+        /** What Continue applied, by card: the panes that are on from then on. Null: not answered yet. */
+        private var applied: BooleanArray? = null
         private val toggles = ArrayList<Glass.Toggle>()
-        private val chipRows = ArrayList<Pair<Int, List<Pair<String, Glass.Chip>>>>()
         var applying = false
             private set
         var problem: String? = null
             private set
+        val chosen: Boolean get() = applied != null
 
         /** A card that only applies at start changed in an earlier attempt that then failed: still owed. */
         private var restartOwed = false
-
-        /**
-         * Continue sits at the end of the last row of chips: the radio's four modes take two lines, and
-         * the step has no room for a row of its own under them.
-         */
-        val next = g.primary("Continue").apply { setPadding(px(30f), px(15f), px(30f), px(15f)) }
 
         val view = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -634,25 +710,15 @@ class SetupOverlay(
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     pair.forEachIndexed { k, c ->
-                        addView(card(r * 2 + k, c), LinearLayout.LayoutParams(0, px(60f), 1f).apply { if (k > 0) marginStart = px(11f) })
+                        addView(card(r * 2 + k, c), LinearLayout.LayoutParams(0, px(68f), 1f).apply { if (k > 0) marginStart = px(11f) })
                     }
                     if (pair.size == 1) addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply { marginStart = px(11f) })
-                }, LinearLayout.LayoutParams(-1, -2).apply { if (r > 0) topMargin = px(9f) })
+                }, LinearLayout.LayoutParams(-1, -2).apply { if (r > 0) topMargin = px(11f) })
             }
-            var last: Wrap? = null
-            choices.forEachIndexed { i, c ->
-                if (c.options.isEmpty()) return@forEachIndexed
-                val chips = c.options.map { o -> o.id to g.chip(o.label).apply { setOnClickListener { if (!applying) option[i] = o.id; sync() } } }
-                chipRows += i to chips
-                last = Wrap(px(10f), px(6f)).apply {
-                    addView(g.text(15.5f, MU).apply { text = "${c.optionsLabel}:"; setPadding(0, px(10f), px(2f), px(10f)) })
-                    chips.forEach { (_, chip) -> addView(chip) }
-                }.also { addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(11f) }) }
-            }
-            val row = last ?: Wrap(0, 0).also { addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14f) }) }
-            row.addView(next)
-            row.end = next
         }
+
+        /** Card [i] is on: as Continue applied it, else as the pane runs. */
+        fun wanted(i: Int): Boolean = applied?.get(i) ?: choices[i].on()
 
         private fun card(i: Int, c: PaneChoice): View {
             val t = g.toggle(false) { v -> if (!applying) on[i] = v; sync() } // locked while Continue applies
@@ -664,8 +730,8 @@ class SetupOverlay(
                 setPadding(px(17f), 0, px(16f), 0)
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
-                    addView(g.text(16f, TX, Inter.MEDIUM).apply { text = c.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END })
-                    addView(g.text(14.5f, MU).apply { text = c.detail; setSingleLine(); ellipsize = TextUtils.TruncateAt.END },
+                    addView(g.text(16.5f, TX, Inter.MEDIUM).apply { text = c.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END })
+                    addView(g.text(15f, MU).apply { text = c.detail; setSingleLine(); ellipsize = TextUtils.TruncateAt.END },
                         LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(5f) })
                 }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = px(10f) })
                 addView(t)
@@ -674,89 +740,115 @@ class SetupOverlay(
             }
         }
 
-        /** Reads every card as it is now (the step was just entered). */
+        /** Reads every card as it is (the step was just entered). */
         fun load() {
-            choices.forEachIndexed { i, c -> on[i] = c.on(); option[i] = c.option() }
+            choices.indices.forEach { on[it] = wanted(it) }
             problem = null
             sync()
         }
 
-        private fun sync() {
-            toggles.forEachIndexed { i, t -> t.checked = on[i] }
-            for ((i, chips) in chipRows) chips.forEach { (id, chip) ->
-                chip.chosen = on[i] && option[i] == id
-                chip.isEnabled = on[i] && !applying
-            }
-        }
+        private fun sync() = toggles.forEachIndexed { i, t -> t.checked = on[i] }
 
-        /** Continue: every card, in order, off the main thread; then on, or why not. */
+        /** Continue: every card, each on its own thread, within [BUDGET_MS] in all; then on, or every problem. */
         fun apply(preview: Boolean) {
             if (applying) return
-            if (preview) { onPanesDone?.invoke(false); return }
+            if (preview) { applied = on.copyOf(); onPanesDone?.invoke(false); advance(); return }
             applying = true
             problem = null
-            val wanted = choices.indices.map { on[it] to option[it] }
-            restartOwed = restartOwed || choices.indices.any { choices[it].restartsApp && choices[it].on() != on[it] }
+            val wanted = on.copyOf()
+            restartOwed = restartOwed || choices.indices.any { choices[it].restartsApp && choices[it].on() != wanted[it] }
             redraw()
-            Thread({
-                val problems = choices.mapIndexedNotNull { i, c ->
-                    runCatching { c.apply(wanted[i].first, wanted[i].second) }.getOrElse { it.message ?: "failed" }?.let { "${c.title}: $it" }
+            val results = arrayOfNulls<String>(choices.size)
+            val workers = choices.mapIndexed { i, c ->
+                Thread({ results[i] = runCatching { c.apply(wanted[i]) }.getOrElse { it.message ?: "failed" } }, "s1-setup-pane-$i").apply { isDaemon = true; start() }
+            }
+            val started = System.currentTimeMillis()
+            fun check() {
+                val late = workers.withIndex().filter { it.value.isAlive }
+                if (late.isNotEmpty() && System.currentTimeMillis() - started < panesBudgetMs) { main.postDelayed(::check, 200); return }
+                applying = false
+                val problems = choices.indices.mapNotNull { i ->
+                    when {
+                        workers[i].isAlive -> "The ${choices[i].title} didn't answer."
+                        results[i] != null -> "${choices[i].title}: ${results[i]}"
+                        else -> null
+                    }
                 }
-                main.post {
-                    applying = false
-                    problem = problems.firstOrNull()
-                    if (problems.isEmpty()) onPanesDone?.invoke(restartOwed.also { restartOwed = false }) else redraw()
-                }
-            }, "s1-setup-panes").apply { isDaemon = true }.start()
+                problem = problems.joinToString("\n").ifEmpty { null }
+                if (problems.isEmpty()) {
+                    applied = wanted
+                    onPanesDone?.invoke(restartOwed.also { restartOwed = false })
+                } else redraw()
+            }
+            main.postDelayed(::check, 200)
         }
 
         private fun redraw() { sync(); model?.let { bindCard(it, stepChanged = false) } }
     }
 
-    /**
-     * Lays its children out left to right and wraps to a new line when one doesn't fit; each line's
-     * children are centred on it. [end] sits at the right end of the last line.
-     */
-    private inner class Wrap(private val gapX: Int, private val gapY: Int) : ViewGroup(this@SetupOverlay.context) {
-        var end: View? = null
-        private val lines = ArrayList<List<View>>()
+    /** What the setup screen offers a pane's step. */
+    private val stepHost = object : SetupHost {
+        override val preview: Boolean get() = model?.preview == true
+        override fun redraw() { model?.let { bindCard(it, stepChanged = false) } }
+        override fun next() { if (model?.preview == true) advance() else { viewing = null; onStepDone?.invoke() } }
+    }
 
-        override fun onMeasure(w: Int, h: Int) {
-            val max = MeasureSpec.getSize(w)
-            lines.clear()
-            var line = ArrayList<View>(); var x = 0
-            for (i in 0 until childCount) {
-                val c = getChildAt(i)
-                if (c.visibility == View.GONE) continue
-                c.measure(MeasureSpec.makeMeasureSpec(max, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
-                if (line.isNotEmpty() && x + c.measuredWidth > max) { lines += line; line = ArrayList(); x = 0 }
-                line += c
-                x += c.measuredWidth + gapX
-            }
-            if (line.isNotEmpty()) lines += line
-            val height = lines.sumOf { l -> l.maxOf { it.measuredHeight } } + gapY * (lines.size - 1).coerceAtLeast(0)
-            setMeasuredDimension(max, height)
+    /** Each pane step's part of this screen. */
+    private val screens: Map<String, SetupScreen> by lazy { stepsById.mapValues { (_, v) -> v.second.screen(context, stepHost) } }
+
+    private val paneCard = object : SetupCard {
+        override fun title(text: String) { cardTitle.text = text }
+
+        override fun body(text: String?) {
+            if (text == null) cardBody.visibility = View.GONE
+            else { cardBody.text = text; cardBody.visibility = View.VISIBLE }
         }
 
-        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
-            var y = 0
-            for (line in lines) {
-                val lh = line.maxOf { it.measuredHeight }
-                var x = 0
-                for (c in line) {
-                    val cx = if (c === end) r - l - c.measuredWidth else x
-                    val cy = y + (lh - c.measuredHeight) / 2
-                    c.layout(cx, cy, cx + c.measuredWidth, cy + c.measuredHeight)
-                    x += c.measuredWidth + gapX
-                }
-                y += lh + gapY
-            }
+        override fun status(text: String?, tone: SetupCard.Tone) {
+            if (text == null) { status.visibility = View.GONE; return }
+            showStatus(text, when (tone) { SetupCard.Tone.MUTED -> FA; SetupCard.Tone.AMBER -> AMBER; SetupCard.Tone.GREEN -> GREEN; SetupCard.Tone.ROSE -> ROSE })
         }
+
+        override fun qr(url: String?) {
+            if (url == null) { qrGlow.visibility = View.GONE; return }
+            if (qrFor != url) { qrImage.setImageBitmap(QrCode.bitmap(url, px(200f))); qrFor = url }
+            qrGlow.visibility = View.VISIBLE
+        }
+
+        override fun content(view: View?) = setContent(view)
+
+        override fun primary(text: String, enabled: Boolean, onClick: () -> Unit) {
+            primary.text = text
+            primary.isEnabled = enabled
+            primary.alpha = if (enabled) 1f else 0.5f
+            primary.visibility = View.VISIBLE
+            primary.setOnClickListener { onClick() }
+        }
+
+        override fun secondary(text: String?, onClick: () -> Unit) {
+            if (text == null) { plainLeft.visibility = View.GONE; return }
+            plainLeft.text = text
+            plainLeft.visibility = View.VISIBLE
+            plainLeft.setOnClickListener { onClick() }
+        }
+
+        override fun tightButtons() { slotLp.topMargin = px(12f) }
+    }
+
+    /** A step's name on the rail and its card's label. */
+    private fun title(id: String): String = when (id) {
+        SetupFlow.WIFI -> "Wi-Fi"
+        SetupFlow.HA -> "Add it"
+        SetupFlow.SIGNIN -> "Sign in"
+        SetupFlow.PANES -> "Choose"
+        SetupFlow.DONE -> "Done"
+        else -> stepsById[id]?.second?.title ?: id
     }
 
     companion object {
-        private val TITLES = mapOf(
-            SetupFlow.WIFI to "Wi-Fi", SetupFlow.HA to "Home Assistant", SetupFlow.PANES to "Panes", SetupFlow.SIGNIN to "Sign in",
-        )
+        private val GROUPS = mapOf(SetupFlow.HA to "Home Assistant", SetupFlow.PANES to "Panes")
+
+        /** Continue on Panes waits this long for every card in all (the radio's Off waits for its helper). */
+        const val BUDGET_MS = 30_000L
     }
 }

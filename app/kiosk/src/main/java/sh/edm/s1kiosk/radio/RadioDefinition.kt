@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.radio
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -8,7 +9,9 @@ import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
 import dev.glassworks.pane.PaneChoice
+import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupOp
+import dev.glassworks.pane.SetupScreen
 import dev.glassworks.pane.SetupStep
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -20,6 +23,7 @@ import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.discovery.HaUrls
 import sh.edm.s1kiosk.radio.ui.RadioFollowUp
 import sh.edm.s1kiosk.radio.ui.RadioSettingsView
+import sh.edm.s1kiosk.radio.ui.RadioSetupScreen
 import sh.edm.s1kiosk.radio.ui.RadioStep
 
 /**
@@ -92,12 +96,22 @@ class RadioDefinition(
         if (done) prefs.setupDone = true
     }
 
+    /**
+     * The radio's setup sub-step shows the follow-up card for the mode it just applied: the step stays
+     * current until Continue there. In memory only: after a restart there is nothing left to show.
+     */
+    @Volatile var followUpOpen = false
+
     val step: SetupStep = object : SetupStep {
         override val id = "radio"
+        override val title = "Radio"
         override val reason = "radio mode not chosen"
 
-        /** Answered on the Panes step or over the setup channel, or a mode was chosen with HA's `Radio mode` select. */
-        override fun done() = stepDone || prefs.mode != null
+        /**
+         * Answered in setup (the mode, then its follow-up) or over the setup channel, or a mode was
+         * chosen with HA's `Radio mode` select.
+         */
+        override fun done() = (stepDone || prefs.mode != null) && !followUpOpen
 
         override fun channelState() = channelJson()
 
@@ -108,22 +122,21 @@ class RadioDefinition(
 
         /** What the S1's Kiln (kiln/packages/setup-channel) sends. */
         override val legacyOps = mapOf("set_radio" to "set_mode", "set_radio_allow" to "set_allow")
+
+        override fun screen(context: Context, host: SetupHost): SetupScreen = RadioSetupScreen(context, host, this@RadioDefinition)
     }
 
     override val setupSteps = listOf(step)
 
     /**
-     * The Panes step's radio card: on means a mode other than Off, the modes are the chips. Continue
-     * applies it through [setMode], the installer's path, which marks the step answered.
+     * The Panes step's radio card: on means a mode other than Off. Off applies Off through [setMode] and
+     * answers the step; on leaves the mode to the radio's own sub-step under Panes.
      */
     override val setupChoice = PaneChoice(
         title = "Zigbee / Thread radio",
         detail = "For your devices",
         on = { readout.mode() != RadioMode.OFF },
-        options = RadioStep.OPTIONS.filter { it.mode != RadioMode.OFF }.map { PaneChoice.Option(it.mode.id, RadioStep.chip(it)) },
-        option = { readout.mode().takeIf { it != RadioMode.OFF }?.id ?: RadioMode.ZIGBEE_TCP.id },
-        optionsLabel = "Radio",
-        apply = { on, option -> applyChoice(if (on) option ?: RadioMode.ZIGBEE_TCP.id else RadioMode.OFF.id) },
+        apply = { on -> if (on) null else applyChoice(RadioMode.OFF.id) },
     )
 
     /**
@@ -136,7 +149,7 @@ class RadioDefinition(
         if (r != null && mode.id == id &&
             RadioStep.classify(mode, true, r.statusText()) in setOf(RadioStep.Result.OK, RadioStep.Result.APPLYING)
         ) { stepDone = true; return null }
-        return setMode(id)
+        return setModeFrom(id, "setup screen")
     }
 
     // ------------------------------------------------------------------ setup channel
@@ -171,13 +184,16 @@ class RadioDefinition(
      * request, then up to [RADIO_FOLLOW_MS] for it to report how it went (the client waits 30 s), and
      * marks the step answered on success.
      */
-    internal fun setMode(id: String): String? {
+    internal fun setMode(id: String): String? = setModeFrom(id, "the installer")
+
+    /** [setMode], saying in the log where the request came from ([source]). */
+    internal fun setModeFrom(id: String, source: String): String? {
         val mode = RadioMode.fromId(id)?.takeIf { m -> RadioStep.OPTIONS.any { it.mode == m } }
             ?: return "Unknown radio mode '$id'."
         val r = readout.controller() ?: return CHANNEL_NOT_RUNNING
         val accepted = AtomicBoolean(false)
         val handled = CountDownLatch(1)
-        Log.i(TAG, "radio mode ${mode.label} from the installer")
+        Log.i(TAG, "radio mode ${mode.label} from $source")
         r.request(mode.label, "installer") { ok -> accepted.set(ok); handled.countDown() }
         if (!handled.await(RADIO_ACCEPT_MS, TimeUnit.MILLISECONDS)) return "The radio didn't answer in time."
         if (!accepted.get()) return r.statusText()

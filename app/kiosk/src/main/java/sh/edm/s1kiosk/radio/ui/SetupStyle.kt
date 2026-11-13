@@ -15,6 +15,16 @@ fun healthColor(h: RadioFollowUp.Health): Int = when (h) {
     RadioFollowUp.Health.OFF -> SetupStyle.MU
 }
 
+/** A ScrollView no taller than [maxPx] (the radio's follow-up card in setup). */
+class BoundedScroll(context: Context, var maxPx: Int) : android.widget.ScrollView(context) {
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val mode = MeasureSpec.getMode(heightMeasureSpec)
+        val size = MeasureSpec.getSize(heightMeasureSpec)
+        val cap = if (mode == MeasureSpec.UNSPECIFIED) maxPx else minOf(size, maxPx)
+        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(cap, MeasureSpec.AT_MOST))
+    }
+}
+
 /** The radio views' look (tablet-home-card.compact.js tokens). */
 class SetupStyle(val context: Context) {
     val dp = context.resources.displayMetrics.density
@@ -41,11 +51,12 @@ class SetupStyle(val context: Context) {
         restyle(this, accent)
     }
 
+    /** The one white button, or a dark pill with a hairline (#63: amber is status, never a button). */
     fun restyle(b: TextView, accent: Boolean) {
         b.setTextColor(if (accent) BG else TX)
         b.background = GradientDrawable().apply {
-            cornerRadius = 16 * dp
-            if (accent) setColor(AMBER) else { setColor(S2); setStroke(px(1f).coerceAtLeast(1), BD) }
+            cornerRadius = 999f
+            if (accent) setColor(TX) else { setColor(S2); setStroke(px(1f).coerceAtLeast(1), BD) }
         }
     }
 
