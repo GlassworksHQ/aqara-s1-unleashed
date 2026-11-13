@@ -402,7 +402,8 @@ boot_resource "$LOGO" "$T/undo/bootloader.img"
 rm -f "$T/emmc/bootloader"
 out=$(fel_undo); rc=$?
 check "our splash: refused" test "$rc" -ne 0
-check "and says why" has "$out" "bootloader.img holds our splash (Glassworks stack), not Aqara's: this backup was taken after an install. Nothing was changed."
+LOGO_NAME=$(python3 -c 'import hashlib, json, sys; h = hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest(); print(next(b["name"] for b in json.load(open(sys.argv[2]))["bootlogos"] if b["sha256"] == h))' "$LOGO" "$REPO/branding/bootlogos.json")
+check "and says why" has "$out" "bootloader.img holds our splash ($LOGO_NAME), not Aqara's: this backup was taken after an install. Nothing was changed."
 check "and the way forward" has "$out" "put back only boot and vbmeta by hand"
 check "before any tool runs" test ! -s "$T/tools.log"
 check "nothing written" test ! -e "$T/emmc/bootloader"

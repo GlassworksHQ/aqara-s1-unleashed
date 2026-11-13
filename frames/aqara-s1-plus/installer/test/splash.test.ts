@@ -53,7 +53,10 @@ describe('undo and our splash', () => {
   });
 
   it('the CLI agrees', async () => {
-    expect(cli(installed)).toBe('ours Glassworks stack');
+    const name = (JSON.parse(readFileSync(LIST, 'utf8')) as { bootlogos: { sha256: string; name: string }[] }).bootlogos
+      .find((b) => b.sha256 === sha256(ourBootlogo()))?.name;
+    expect(name).toBeDefined();
+    expect(cli(installed)).toBe(`ours ${name}`);
     expect(cli(stock)).toBe('not ours');
     expect(await isOurSplash(installed)).toBe(true);
     expect(await isOurSplash(stock)).toBe(false);
