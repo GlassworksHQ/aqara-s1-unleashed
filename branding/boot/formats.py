@@ -114,10 +114,11 @@ def write_bmp(target, landscape, path):
 
 # ---------------------------------------------------------------- animation
 def png_bytes(img):
-    """PNG through oxipng: smaller, and the same bytes on every platform (Pillow's zlib isn't)."""
+    """PNG through oxipng: smaller, and the same bytes on every platform (Pillow's zlib isn't).
+    force: without it, oxipng hands back Pillow's bytes when it can't beat them."""
     b = io.BytesIO()
     img.save(b, "PNG", optimize=True)
-    return oxipng.optimize_from_memory(b.getvalue(), level=4)
+    return oxipng.optimize_from_memory(b.getvalue(), level=4, force=True)
 
 
 def trim(frame):
@@ -249,7 +250,8 @@ def build(target, out, render, n_intro, n_loop, splash_name):
     and lists the splash as `splash_name` (bootlogos.json): a failed build leaves `out` as it was.
     Returns the list of problems (empty = all good)."""
     os.makedirs(out, exist_ok=True)
-    stage = tempfile.mkdtemp(prefix="boot-build-")
+    # next to `out`, on the same filesystem, so each file is published with an atomic os.replace
+    stage = tempfile.mkdtemp(prefix=".boot-build-", dir=os.path.dirname(os.path.abspath(out)))
     print(f"{target.name}: {target.width}x{target.height}, "
           f"{'trimmed' if target.trim else 'full'} frames, splash {target.splash or 'none'}", flush=True)
     print(f"rendering {n_intro}+{n_loop} frames ...", flush=True)
@@ -295,7 +297,7 @@ def build(target, out, render, n_intro, n_loop, splash_name):
         return problems
     for f in OUTPUTS:
         if os.path.exists(os.path.join(stage, f)):
-            shutil.move(os.path.join(stage, f), os.path.join(out, f))
+            os.replace(os.path.join(stage, f), os.path.join(out, f))
         elif os.path.exists(os.path.join(out, f)):
             os.remove(os.path.join(out, f))   # an earlier build's splash, for another target
     shutil.rmtree(stage)
