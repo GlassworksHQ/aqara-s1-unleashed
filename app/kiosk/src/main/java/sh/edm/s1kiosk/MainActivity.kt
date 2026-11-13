@@ -324,7 +324,8 @@ class MainActivity : Activity() {
     /** Re-evaluates the setup screen; cheap, called on every relevant change and every 2 s. */
     private fun refreshSetup() {
         if (!::setupOverlay.isInitialized) return
-        val d = SetupState.decide(setupInputs())
+        // Panes applying or refused: keep it up until Continue works (a pane's step can look done mid-way).
+        val d = SetupState.decide(setupInputs()).let { if (setupOverlay.holdsPanes) it.copy(show = true, step = SetupFlow.PANES) else it }
         if (setupPreview) {
             val forced = setupPreviewStep
             // A forced step: every step before it shows as done.

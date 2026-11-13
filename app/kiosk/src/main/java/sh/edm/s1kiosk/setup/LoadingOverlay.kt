@@ -41,6 +41,9 @@ class LoadingOverlay(context: Context) : FrameLayout(context) {
     var state: State? = null
         private set
 
+    /** The state asked for last: a cross-fade still running shows it when it ends. */
+    private var target: State? = null
+
     private val g = Glass(context)
     private val stack = StackView(context)
     private val title = g.heading(34f).apply { gravity = Gravity.CENTER }
@@ -73,6 +76,9 @@ class LoadingOverlay(context: Context) : FrameLayout(context) {
     fun show(s: State) {
         if (!isShowing) {
             isShowing = true
+            target = s
+            column.animate().cancel()
+            column.alpha = 1f
             bind(s)
             animate().cancel()
             if (visibility != View.VISIBLE) alpha = 0f
@@ -80,7 +86,8 @@ class LoadingOverlay(context: Context) : FrameLayout(context) {
             animate().alpha(1f).setDuration(250).setInterpolator(AccelerateDecelerateInterpolator()).start()
             return
         }
-        if (s == state) return
+        if (s == target) return
+        target = s
         column.animate().cancel()
         column.animate().alpha(0f).setDuration(150).withEndAction {
             bind(s)
@@ -130,6 +137,7 @@ class LoadingOverlay(context: Context) : FrameLayout(context) {
     fun hide() {
         if (!isShowing) return
         isShowing = false
+        target = null
         removeCallbacks(tick)
         animate().alpha(0f).setDuration(300).withEndAction {
             if (!isShowing) { visibility = View.GONE; stack.rising = false; state = null }

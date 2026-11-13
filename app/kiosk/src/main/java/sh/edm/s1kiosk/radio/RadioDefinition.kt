@@ -126,9 +126,16 @@ class RadioDefinition(
         apply = { on, option -> applyChoice(if (on) option ?: RadioMode.ZIGBEE_TCP.id else RadioMode.OFF.id) },
     )
 
-    /** The mode in effect already: the step is answered without asking the radio again. */
+    /**
+     * The mode in effect already, and running or on its way: the step is answered without asking the
+     * radio again. A mode that failed or was refused (the controller stores it before applying) asks again.
+     */
     private fun applyChoice(id: String): String? {
-        if (readout.mode().id == id && readout.controller() != null) { stepDone = true; return null }
+        val r = readout.controller()
+        val mode = readout.mode()
+        if (r != null && mode.id == id &&
+            RadioStep.classify(mode, true, r.statusText()) in setOf(RadioStep.Result.OK, RadioStep.Result.APPLYING)
+        ) { stepDone = true; return null }
         return setMode(id)
     }
 

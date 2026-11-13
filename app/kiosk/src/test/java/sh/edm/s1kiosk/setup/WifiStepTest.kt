@@ -49,7 +49,7 @@ class WifiStepTest {
     fun connectedClientAsksForPermission() {
         val l = WifiStep.improv(on.copy(clients = 1))
         assertEquals(Phase.ASKING, l.phase)
-        assertEquals("Home Assistant wants to send Wi-Fi", l.title)
+        assertEquals("A device wants to send Wi-Fi", l.title) // any BLE central: HA, a proxy, improv-wifi.com
         assertEquals(listOf(Action.ALLOW, Action.NOT_NOW), l.actions)
     }
 
