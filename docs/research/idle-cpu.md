@@ -98,13 +98,14 @@ on screen. Which thread is it, is that work needed, and what would make it small
 
 5. **Where the 36 ms goes** (2026-11-12, verified on the host; the ratio, not the absolute time).
    The same three models from the openWakeWord v0.5.1 release (SHA-256 matching
-   `ModelFetcher.FILES`), timed with LiteRT, one thread, XNNPACK, on an Apple-silicon Mac. Three runs:
+   `ModelFetcher.FILES`), timed with LiteRT, one thread, XNNPACK, on an Apple-silicon Mac, five
+   runs (`tools/voice/model_cost.py`):
 
    | Model | Input → output | Work per 80 ms frame | Host time | Share |
    |---|---|---|---|---|
-   | `melspectrogram` | 1760 samples → 8 × 32 | 2.2 MMAC | 0.20 to 0.29 ms | 13 to 16% |
-   | `embedding_model` | 76 × 32 mel → 96 floats, 20 conv layers | **42.0 MMAC** | 1.31 to 1.50 ms | **83 to 87%** |
-   | `hey_jarvis_v0.1` | 16 × 96 → score | 0.2 MMAC | 0.015 ms | 1% |
+   | `melspectrogram` | 1760 samples → 8 × 32 | 2.2 MMAC | 0.20 to 0.29 ms | 12 to 16% |
+   | `embedding_model` | 76 × 32 mel → 96 floats, 20 conv layers | **42.0 MMAC** | 1.31 to 1.85 ms | **83 to 87%** |
+   | `hey_jarvis_v0.1` | 16 × 96 → score | 0.2 MMAC | 0.015 to 0.049 ms | 1 to 3% |
 
    MACs are counted from the conv, fully-connected and batch-matmul tensor shapes. At 12.5 frames/s
    the embedding alone is about 1.05 GFLOP/s. One A53 at 1.2 GHz does at most about 4.8 fp32
@@ -115,17 +116,19 @@ on screen. Which thread is it, is that work needed, and what would make it small
 
 6. **A lighter engine for comparison** (2026-11-12, verified on the host, untested on the panel).
    ESPHome's own wake word engine, microWakeWord, runs streaming int8 models (v2, from
-   `esphome/micro-wake-word-models`, Apache-2.0) on an ESP32-S3. Timed the same way:
+   `esphome/micro-wake-word-models`, Apache-2.0) on an ESP32-S3. Counted and timed the same way:
 
-   | Model | Input | Per call | Calls per s | CPU per s of audio (3 runs) |
-   |---|---|---|---|---|
-   | openWakeWord (all three models) | 80 ms frame | about 1.6 ms | 12.5 | about 20 ms |
-   | microWakeWord `hey_jarvis` | 3 × 40 int8 features (30 ms) | 0.010 to 0.023 ms | 33 | 0.3 to 0.8 ms |
-   | microWakeWord `okay_nabu` | same | 0.023 to 0.052 ms | 33 | 0.8 to 1.7 ms |
+   | Model | Input | Work per call | Calls per s | Work per s | Host CPU per s of audio |
+   |---|---|---|---|---|---|
+   | openWakeWord (all three models) | 80 ms frame | 44.3 MMAC | 12.5 | 554 MMAC | about 20 ms |
+   | microWakeWord `hey_jarvis` | 3 × 40 int8 features (30 ms) | 0.02 MMAC | 33 | 0.7 MMAC | 0.1 to 0.8 ms |
+   | microWakeWord `okay_nabu` | same | 0.02 MMAC | 33 | 0.7 MMAC | 0.15 to 1.7 ms |
 
-   12 to 60 times less model work. This leaves out microWakeWord's feature front end (a 512-point
-   FFT, filterbank, noise reduction and log every 10 ms), which also runs on the ESP32 in real time.
-   **Guess, not measured:** on the S1 the whole thing would be a few percent of a core.
+   The model does about 800 times less arithmetic, and int8 instead of fp32. Its host time is only
+   microseconds per call, so call overhead dominates and the time ratio varies between runs (12 to
+   150 times less). This leaves out microWakeWord's feature front end (a 512-point FFT, filterbank,
+   noise reduction and log every 10 ms), which also runs on the ESP32 in real time. **Guess, not
+   measured:** on the S1 the whole thing would be a few percent of a core.
 
 ## Result
 
@@ -173,8 +176,10 @@ All read-only on the panel. Nothing is installed or changed.
    then `cat /proc/$P/task/<tid>/schedstat` 10 s apart: (Δ field 1 in ns) / 10 s is the share of a core.
 3. `adb shell logcat -d | grep -E 'tflite|S1Voice'` for XNNPACK and the model loads.
 4. On a computer: download `melspectrogram.tflite`, `embedding_model.tflite` and
-   `hey_jarvis_v0.1.tflite` from openWakeWord v0.5.1 and check them against `ModelFetcher.FILES`,
-   then time each with `ai-edge-litert`, one thread, one model at a time.
+   `hey_jarvis_v0.1.tflite` from openWakeWord v0.5.1 (`tools/voice/fetch-models.sh --no-push`), and
+   microWakeWord's v2 `hey_jarvis.tflite` and `okay_nabu.tflite` for the comparison. Then
+   `uv run --with ai-edge-litert --with numpy python -I tools/voice/model_cost.py <files>`. Host
+   only, nothing touches the panel.
 5. The causal check needs a state change, which is for whoever owns the panel: turn
    `switch.<panel>_mute_microphone` on, wait 30 s, run step 1 again. `voice-mic` should be gone and
    the main process near 5%. Turn the switch back off.

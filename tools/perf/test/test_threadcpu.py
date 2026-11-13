@@ -22,13 +22,22 @@ class ParseStat(unittest.TestCase):
 
 
 class Shares(unittest.TestCase):
-    def test_percent_of_one_core_per_thread(self):
-        procs = {6443: "sh.edm.s1kiosk"}
-        owner = {6769: 6443, 6800: 6443}
-        before = {6769: ("voice-mic", 1000), 6800: ("gone", 5)}
-        after = {6769: ("voice-mic", 1000 + 2700), 6900: ("new", 50)}
-        rows = T.shares(before, after, owner, procs, hz=100, window=60.0)
+    PROCS = {6443: "sh.edm.s1kiosk"}
+
+    def test_percent_of_one_core_per_thread_and_process(self):
+        before = (0.0, {6443: 2000}, {6769: (6443, "voice-mic", 1000), 6800: (6443, "worker", 5)})
+        # The worker used 300 jiffies and exited; only the process line still counts them.
+        after = (60.0, {6443: 2000 + 2700 + 300}, {6769: (6443, "voice-mic", 3700), 6900: (6443, "new", 50)})
+        totals, rows = T.shares(before, after, self.PROCS, hz=100, window=60.0)
         self.assertEqual(rows, [("sh.edm.s1kiosk", 6769, "voice-mic", 45.0)])
+        self.assertEqual(totals, {"sh.edm.s1kiosk": 50.0})
+
+    def test_owner_comes_from_the_same_sample(self):
+        procs = {6443: "sh.edm.s1kiosk", 3587: "otbr-agent"}
+        before = (0.0, {6443: 0, 3587: 0}, {7000: (3587, "otbr", 0)})
+        after = (10.0, {6443: 0, 3587: 100}, {7000: (3587, "otbr", 100)})
+        _, rows = T.shares(before, after, procs, hz=100, window=10.0)
+        self.assertEqual(rows, [("otbr-agent", 7000, "otbr", 10.0)])
 
 
 if __name__ == "__main__":

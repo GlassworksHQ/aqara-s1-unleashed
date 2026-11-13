@@ -23,7 +23,7 @@ def adb(serial, cmd):
 
 
 def parse_stat(line):
-    """One /proc/<pid>/task/<tid>/stat line -> (tid, name, utime + stime in jiffies)."""
+    """One /proc/<pid>/stat or /proc/<pid>/task/<tid>/stat line -> (id, name, utime + stime in jiffies)."""
     head, _, rest = line.rpartition(")")
     tid, _, name = head.partition(" (")
     f = rest.split()
@@ -45,34 +45,42 @@ def pids(serial, package, extra):
 
 
 def sample(serial, procs):
-    cmd = "; ".join(f"cat /proc/{p}/task/*/stat 2>/dev/null" for p in procs) + "; cat /proc/uptime"
-    out = adb(serial, cmd).splitlines()
+    """-> (uptime s, {pid: process jiffies}, {tid: (pid, thread name, jiffies)}).
+
+    The process line counts threads that already exited; the thread lines say who owns each thread.
+    """
+    cmd = "".join(
+        f'echo "P {p} $(cat /proc/{p}/stat)"; for t in /proc/{p}/task/*/stat; do echo "T {p} $(cat $t)"; done; '
+        for p in procs
+    ) + "cat /proc/uptime"
+    out = adb(serial, cmd + " 2>/dev/null").splitlines()
     uptime = float(out[-1].split()[0])
-    threads = {}
+    totals, threads = {}, {}
     for line in out[:-1]:
-        if line.strip():
-            tid, name, j = parse_stat(line)
-            threads[tid] = (name, j)
-    return uptime, threads
+        kind, pid, stat = (line.split(" ", 2) + ["", ""])[:3]
+        if not stat.strip():
+            continue  # the process or thread exited between the glob and the read
+        tid, name, j = parse_stat(stat)
+        if kind == "P":
+            totals[int(pid)] = j
+        else:
+            threads[tid] = (int(pid), name, j)
+    return uptime, totals, threads
 
 
-def thread_owner(serial, procs):
-    cmd = "; ".join(f"for t in /proc/{p}/task/*; do echo {p} ${{t##*/}}; done" for p in procs)
-    owner = {}
-    for line in adb(serial, cmd).splitlines():
-        p, t = line.split()
-        owner[int(t)] = int(p)
-    return owner
+def shares(before, after, procs, hz, window):
+    """Two samples -> ({process name: % of one core}, [(process name, tid, thread name, %)]).
 
-
-def shares(before, after, owner, procs, hz, window):
-    """Threads seen at both ends -> [(process name, tid, thread name, % of one core)]."""
-    rows = []
-    for tid, (name, j1) in after.items():
-        if tid in before:
-            pct = 100 * (j1 - before[tid][1]) / hz / window
-            rows.append((procs.get(owner.get(tid), "?"), tid, name, pct))
-    return rows
+    Thread rows only cover threads alive at both ends; the process totals cover all of them.
+    """
+    pct = lambda d: 100 * d / hz / window  # noqa: E731
+    totals = {procs[p]: pct(j - before[1][p]) for p, j in after[1].items() if p in before[1]}
+    rows = [
+        (procs[p], tid, name, pct(j - before[2][tid][2]))
+        for tid, (p, name, j) in after[2].items()
+        if tid in before[2] and before[2][tid][0] == p
+    ]
+    return totals, rows
 
 
 def main():
@@ -88,20 +96,16 @@ def main():
     procs = pids(a.serial, a.package, set(a.extra))
     if not procs:
         sys.exit(f"no process named {a.package}")
-    owner = thread_owner(a.serial, procs)
-    t0, before = sample(a.serial, procs)
+    before = sample(a.serial, procs)
     time.sleep(a.seconds)
-    t1, after = sample(a.serial, procs)
-    window = t1 - t0
+    after = sample(a.serial, procs)
+    window = after[0] - before[0]
     if pids(a.serial, a.package, set(a.extra)) != procs:
-        print("warning: a process started or stopped during the window; its threads are missing", file=sys.stderr)
+        print("warning: a process started or stopped during the window; it is left out", file=sys.stderr)
+    totals, rows = shares(before, after, procs, a.hz, window)
 
-    rows = shares(before, after, owner, procs, a.hz, window)
     print(f"window {window:.1f} s, {len(rows)} threads, % of one core")
-    by_proc = {}
-    for proc, _, _, pct in rows:
-        by_proc[proc] = by_proc.get(proc, 0) + pct
-    for proc, total in sorted(by_proc.items(), key=lambda kv: -kv[1]):
+    for proc, total in sorted(totals.items(), key=lambda kv: -kv[1]):
         print(f"\n{total:6.1f}  {proc}")
         for p, tid, name, pct in sorted(rows, key=lambda r: -r[3]):
             if p == proc and pct >= a.min:
