@@ -80,6 +80,8 @@ class PanelDevicePaneSwitchesTest {
         device.start()
         second.runDue()
         assertEquals("the dashboard check and the state refresh only", 2, second.periodic)
+        // Not started and stopped again by the reconcile at the end of startup: never started.
+        assertEquals("diagnostics never scheduled its sample", 2, second.fixedDelayScheduled)
     }
 
     /**

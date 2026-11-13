@@ -54,6 +54,10 @@ internal class ManualExecutor : AbstractExecutorService(), ScheduledExecutorServ
     @Volatile var periodic = 0
         private set
 
+    /** Every fixed-delay task ever scheduled, also the ones cancelled since. */
+    @Volatile var fixedDelayScheduled = 0
+        private set
+
     /** Fixed-delay tasks refused because the executor was already shut down. */
     @Volatile var rejectedPeriodic = 0
         private set
@@ -84,6 +88,7 @@ internal class ManualExecutor : AbstractExecutorService(), ScheduledExecutorServ
         synchronized(this) {
             if (down) { rejectedPeriodic++; refuse() }
             periodic++
+            fixedDelayScheduled++
         }
         return Task(Long.MAX_VALUE, seq++, command, fixedDelay = true)
     }
