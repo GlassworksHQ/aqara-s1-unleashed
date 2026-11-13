@@ -2,6 +2,7 @@ package sh.edm.esphome
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.IOException
 import java.net.InetAddress
@@ -26,7 +27,8 @@ class ApiServerBindTest {
         val squatters = (next + 1..next + 20).mapNotNull { p ->
             try { ServerSocket(p, 50, loopback) } catch (_: IOException) { null }
         }
-        assertTrue("held ${squatters.size} of 20 loopback ports", squatters.size >= 15)
+        if (squatters.size < 15) squatters.forEach { it.close() }
+        assumeTrue("could hold only ${squatters.size} of 20 loopback ports on this machine", squatters.size >= 15)
         val server = ApiServer(0, { identity }, emptyList(), keys = null, bindAddress = loopback)
         try {
             server.start()
