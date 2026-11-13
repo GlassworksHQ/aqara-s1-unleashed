@@ -11,6 +11,7 @@
   color: inherit;
   font: inherit;
   text-align: left;
+  text-decoration: none;
   border-radius: var(--r-tile);
   cursor: pointer;
   transition:
@@ -101,8 +102,11 @@
   flex-wrap: wrap;
 }
 
+/* margin and line-height: a heading (FrameCardBody's `as`) looks like the span, whatever the page's h2 rule */
 .name {
+  margin: 0;
   font-size: 18px;
+  line-height: inherit;
   font-weight: 500;
   letter-spacing: -0.01em;
 }

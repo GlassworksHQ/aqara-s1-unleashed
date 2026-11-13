@@ -6,7 +6,8 @@
 //
 // The card's outer element is the caller's: Kiln's is a radio item, the site's a link. Give it
 // `frameCardClass` (with the global `glass` surface) and `useTilt()`'s props, and put `FrameCardBody`
-// inside. The body is all spans, so it is valid inside a button or a link.
+// inside. By default the body's text is all spans, so it is valid inside a button or a link; with a
+// heading level (`as`), the name is that heading and its wrappers are divs, for a link on a page.
 import { useRef } from 'react';
 import { DeviceModel } from './DeviceModel';
 import { STAGE_TEXT, cardTags, type FrameDesign, type Stage } from './frame';
@@ -65,19 +66,21 @@ export function useTilt<T extends HTMLElement>() {
 /**
  * The card's contents: the model, then the name, stage, aka, summary and tags. With `idPrefix`, the
  * summary and the tags get the ids `<idPrefix>-summary` and `<idPrefix>-tags`, for aria-describedby.
+ * `as` makes the name a heading (`h2`…`h4`); leave it out inside a button.
  */
-export function FrameCardBody({ f, idPrefix }: { f: FrameDesign; idPrefix?: string }) {
+export function FrameCardBody({ f, idPrefix, as: Name = 'span' }: { f: FrameDesign; idPrefix?: string; as?: 'span' | 'h2' | 'h3' | 'h4' }) {
+  const Box = Name === 'span' ? 'span' : 'div';
   return (
     <>
       <span className={s.model}>
         <span className={s.float}><span className={s.bob}><DeviceModel id={f.id} model={f.model} label={`${f.name} running Glassworks`} /></span></span>
         <span className={s.shadow} aria-hidden="true" />
       </span>
-      <span className={s.text}>
-        <span className={s.top}>
-          <span className={s.name}>{f.name}</span>
+      <Box className={s.text}>
+        <Box className={s.top}>
+          <Name className={s.name}>{f.name}</Name>
           <StatusPill stage={f.status} />
-        </span>
+        </Box>
         {f.aka && <span className={s.aka}>{f.aka}</span>}
         <span id={idPrefix ? `${idPrefix}-summary` : undefined} className={s.summary}>{f.summary}</span>
         <span id={idPrefix ? `${idPrefix}-tags` : undefined} className={s.tags}>
@@ -88,7 +91,7 @@ export function FrameCardBody({ f, idPrefix }: { f: FrameDesign; idPrefix?: stri
             </span>
           ))}
         </span>
-      </span>
+      </Box>
     </>
   );
 }

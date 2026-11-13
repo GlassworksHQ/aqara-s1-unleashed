@@ -72,5 +72,5 @@ export function cardTags(r: FrameDesign['ratings']) {
 
 export const STAGE_TEXT: Record<Stage, string> = { planned: 'Planned', development: 'Under development', alpha: 'Alpha', beta: 'Beta', stable: 'Stable' };
 
-/** Kiln can install it now. */
-export const ships = (s: Stage) => s === 'alpha' || s === 'beta' || s === 'stable';
+/** Kiln can install it now, or the pane runs on the frame now. `depends`, `unknown` and `no` don't. */
+export const ships = (s: Support) => s === 'alpha' || s === 'beta' || s === 'stable';
