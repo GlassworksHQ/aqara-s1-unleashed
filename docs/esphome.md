@@ -76,27 +76,30 @@ on. The `object_id` is the ESPHome-style snake_case name, the key is FNV-1a of t
 ### Names
 
 The panel calls itself **Glassworks Panel** since #63. What Home Assistant does with that (read
-2026-11-12 from home-assistant/core's `esphome` integration and aioesphomeapi; not yet seen on a live
-HA):
+2026-11-13 from home-assistant/core's tags and aioesphomeapi 46.25.0; on the dev panel's HA 2026.11 on
+2026-11-12, the device showed "Glassworks Panel" and all 67 existing ids stayed `s1_panel_*`):
 
 | | A panel added before #63 | A panel added after #63 |
 |---|---|---|
 | Device name | Becomes "Glassworks Panel" on the next connection (HA's device registry follows the friendly name), unless you renamed the device in HA | "Glassworks Panel" |
 | Config entry title | Stays "S1 Panel" (HA doesn't retitle an entry) | "Glassworks Panel" |
-| Entity ids | Unchanged (`light.s1_panel_screen`, …): an entity id is made once, and the unique id is the MAC plus the entity, never the device name | From the device's name as HA shows it when it first sees the entity: `light.glassworks_panel_screen`, … |
-| Entities that appear after the update (a new feature's entities, or one re-added) | `glassworks_panel_*`, next to the old `s1_panel_*` ones (mixed prefixes) | As above |
+| Entity ids | Unchanged (`light.s1_panel_screen`, …): an entity id is made once, and the unique id (`<mac>/<device_id>/<domain>/<entity name>`) holds no device name | HA 2025.12 and later: from the device's name as HA shows it, `light.glassworks_panel_screen`, …. HA up to 2025.11: from the node name, `light.s1_panel_screen`, … |
+| Entities that appear after the update (a new feature's entities, or one re-added) | HA 2025.12 and later: `glassworks_panel_*`, next to the old `s1_panel_*` ones (mixed prefixes). Up to 2025.11: `s1_panel_*` | As above |
 | Node name (`device_name`, mDNS) | `s1-panel` | `s1-panel` |
 
-A new entity's id starts with the device's name as HA shows it (`name_by_user` or the name), so a
-device you renamed gives your name instead. On HA 2026.9 and later the area's name can come first
-(`light.<area>_glassworks_panel_screen`). The old ids looked the same as the node name only because
-"S1 Panel" and `s1-panel` both slugify to `s1_panel`. Read 2026-11-12 from home-assistant/core:
-`esphome/manager.py` (the device takes `friendly_name` on every connect, 2025.1.0:601),
-`helpers/entity_platform.py` (2025.1.0:800, 2026.1.0:1244) and `helpers/entity_registry.py`
-(2026.9.0:1369).
+Where a new entity's id comes from depends on Home Assistant's version:
+- **Up to 2025.11** the esphome integration sets it itself, from the node name (`device_info.name`):
+  `{domain}.{node name}_{entity}` (`esphome/entity.py` 2025.1.0:234, 2025.11.0:366). HA takes an id an
+  entity supplies as it is, so new ids are `s1_panel_*` whatever the friendly name.
+- **From 2025.12** it doesn't (`esphome/entity.py` 2025.12.0 sets no `entity_id`). The entity has
+  `has_entity_name`, so HA builds the id from the device's name as HA shows it: `name_by_user`, or the
+  name the integration registers from the friendly name (`esphome/manager.py` 2025.1.0:601, 2025.10.0:913;
+  `helpers/entity_platform.py` 2025.1.0:800, 2026.1.0:1244). So `glassworks_panel_*`, or your own name.
+- **From 2026.9** the area's name can come first (`light.<area>_glassworks_panel_screen`,
+  `helpers/entity_registry.py` 2026.9.0:1369).
 
 The node name `s1-panel` never changes (`PanelDevice.NAME`, `PanelNameTest`): HA's config entry keeps
-it (`device_name`) and the mDNS service is named after it.
+it (`device_name`), the mDNS service is named after it, and HA up to 2025.11 makes new entity ids from it.
 
 | Entity | object_id | What it does |
 |---|---|---|
