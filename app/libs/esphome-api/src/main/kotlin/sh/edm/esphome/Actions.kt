@@ -46,8 +46,9 @@ class ActionCall(val action: ApiAction, val args: Map<String, Any>, val returnRe
  * Home Assistant shows the exception's message (for every [supportsResponse] except NONE).
  *
  * Wire format: `ListEntitiesServicesResponse` (41), `ExecuteServiceRequest` (42) and
- * `ExecuteServiceResponse` (131) in aioesphomeapi 46.25.0's api.proto. The key is FNV-1a of [name],
- * as ESPHome's user services do.
+ * `ExecuteServiceResponse` (131) in aioesphomeapi 46.25.0's api.proto. The key is FNV-1a of [name], like
+ * this library's other entities. ESPHome itself hashes user services with FNV-1; that doesn't matter
+ * because Home Assistant echoes back whatever key the device reports.
  */
 class ApiAction(
     name: String,
