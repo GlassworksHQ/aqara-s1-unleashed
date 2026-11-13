@@ -117,9 +117,14 @@ class EspHomeKeepaliveTest {
         private val handled = CountDownLatch(1)
         @Volatile var heldUntilHandled = false
 
-        fun wrap(s: Socket) = object : Socket() {
-            private val inp by lazy { HeldIn(s.getInputStream()) }
-            private val out by lazy { HeldOut(s.getOutputStream()) }
+        /** Accepts into a socket whose streams are held; it is the accepted socket, so close() closes it. */
+        fun serverSocket() = object : ServerSocket() {
+            override fun accept(): Socket = HeldSocket().also { implAccept(it) }
+        }
+
+        inner class HeldSocket : Socket() {
+            private val inp by lazy { HeldIn(super.getInputStream()) }
+            private val out by lazy { HeldOut(super.getOutputStream()) }
             override fun getInputStream(): InputStream = inp
             override fun getOutputStream(): OutputStream = out
         }
@@ -150,13 +155,14 @@ class EspHomeKeepaliveTest {
      */
     @Test
     fun anAnswerReadBeforeThePingsSendReturnsKeepsTheClient() {
-        // Production-like periods: the server's own timer first ticks 5 s after start, after this test.
-        val keepalive = 60_000L; val unresponsive = 150_000L
-        val now = AtomicLong(1_000_000)
+        val keepalive = 600L; val unresponsive = 1_500L
+        val start = 1_000_000L
+        val now = AtomicLong(start)
         val hold = WriteHold()
         val s = server(keepalive, unresponsive).apply {
-            clock = now::get
-            newServerSocket = { object : ServerSocket() { override fun accept() = hold.wrap(super.accept()) } }
+            // The server's own timer sees a clock that never moves, so only this test's ticks act.
+            clock = { if (Thread.currentThread().name == "esphome-keepalive") start else now.get() }
+            newServerSocket = hold::serverSocket
         }
         s.start()
         try {
