@@ -27,7 +27,11 @@ import sh.edm.s1kiosk.frame.WifiScanPolicy.Link
  * the screen off, Android 10 allows that op only because KioskService runs with the location type
  * ([sh.edm.s1kiosk.KioskForeground]). A refused scan returns false, and the scanner logs why.
  * The first refusal for the app-op in each run calls [onForegroundOnly], so the service can take
- * the location type when location was granted after it started.
+ * the location type when fine location was granted after it started. `startScan` needs fine
+ * location, so a coarse-only grant is refused as [WifiScanPolicy.Refusal.NO_PERMISSION] and never
+ * calls it. On Android 14 and later the system likely refuses a background `startForeground` with
+ * the location type without `ACCESS_BACKGROUND_LOCATION`: a late grant then logs one refusal and the
+ * service keeps its types (untested; the S1 runs Android 10).
  *
  * Runs on its own thread, or on [looper] when given. [start] after [stop] starts again.
  */
@@ -55,7 +59,7 @@ class ScreenOffWifiScanner(
     private var thread: HandlerThread? = null
     @Volatile private var handler: Handler? = null
     @Volatile private var loggedFailure = false
-    private var reportedForegroundOnly = false
+    @Volatile private var reportedForegroundOnly = false
 
     private val due = Runnable { step() }
 
