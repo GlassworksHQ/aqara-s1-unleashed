@@ -80,9 +80,11 @@ def ram_summary(ram):
         "idle_by_process_pss_kb": {r: _med(v) for r, v in sorted((idle.get("by_role_pss_kb") or {}).items())},
         "peak_app_pss_kb": peak.get("app_pss_kb"),
         "peak_by_process_pss_kb": dict(sorted((peak.get("by_role_pss_kb") or {}).items())),
+        # A pane the kiosk didn't run as asked has no number (report: `error`) and isn't exported.
         "panes": [{"id": p["id"], "pss_kb": p["pss_kb"], "tolerance_kb": p["pss_tolerance_kb"],
-                   "measurable": p["pss_measurable"], "runs": min(p["samples_on"], p["samples_off"])}
-                  for p in ram.get("panes") or []],
+                   "measurable": p["pss_measurable"], "runs": min(p["samples_on"], p["samples_off"]),
+                   **({"off_by": p["off_by"]} if p.get("off_by") else {})}
+                  for p in ram.get("panes") or [] if not p.get("error")],
         "panes_waiting": [p["id"] for p in ram.get("panes_waiting") or []],
         "budget_ok": (ram.get("budget") or {}).get("ok"),
     }

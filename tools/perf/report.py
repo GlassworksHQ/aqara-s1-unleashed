@@ -111,6 +111,8 @@ def synthetic_run(lines):
         "js": js and {"median_ms": js["median_ms"], "p95_ms": js["p95_ms"],
                       "checksum_ok": js["checksum"] == js["expected"]},
         "complete": any(l["t"] == "done" for l in lines),
+        # The screen went off while the page ran (perfrun.py synthetic): its frames aren't the panel's at work.
+        "screen_off": any(l["t"] == "screen_off" for l in lines),
     }
 
 
@@ -119,7 +121,10 @@ def geckoview_version(ua):
     return m.group(1) if m else None
 
 
-def synthetic_summary(runs):
+def synthetic_summary(all_runs):
+    # A run the screen went off in is listed (per_run) but left out of the medians.
+    runs = [r for r in all_runs if not r.get("screen_off")]
+
     def sp(f):
         return P.spread([f(r) for r in runs])
 
@@ -133,6 +138,7 @@ def synthetic_summary(runs):
                 ladder[fam][k + "_at_top"] = all(x[k] == x["top_step"] for x in fam_runs)
     return {
         "runs": len(runs),
+        "screen_off_runs": len(all_runs) - len(runs),
         "complete_runs": sum(1 for r in runs if r["complete"]),
         "ladder": ladder,
         "steps_without_sf": sum(1 for r in runs for f in r["ladder"].values() for st in f["steps"] if not st["sf_valid"]),
@@ -780,6 +786,9 @@ def idle_frames(idle):
 
 
 def real_use_summary(cold, idles, package):
+    # A sample the screen went off in isn't the panel at work: listed, and left out.
+    off = sorted(f"{i['label']}-{i['run']}" for runs in idles.values() for i in runs if i.get("screen_off"))
+    idles = {k: [i for i in v if not i.get("screen_off")] for k, v in idles.items()}
     on = idles.get("all-on", [])
     mems = [app_memory(i) for i in on]
     cpus = [app_cpu(i, package) for i in on]
@@ -794,6 +803,7 @@ def real_use_summary(cold, idles, package):
         "settle_how": sorted({c["settle"] for c in cold if c.get("settle")}),
         "launch": sorted({c["launch"] for c in cold if c.get("launch")}),
         "errors": [c["error"] for c in cold if c.get("error")],
+        "screen_off_samples": off,
         "idle": {
             "samples": len(on),
             "app_pss_kb": P.spread([m["app_pss_kb"] for m in mems]),
@@ -847,20 +857,52 @@ def _valid(samples):
     return [i for i in samples if app_memory(i)["app_pss_kb"] is not None]
 
 
-def pane_on_alone(ref_idles, package):
+def sample_matches(sample, label, panes):
+    """Whether an idle sample ran what its label says, from the kiosk's log (panes_state): True,
+    False, or None when the sample didn't record it (runs before 2026-11-13: unverified). The screen
+    going off in the sample's window also makes it False: its CPU isn't the panel's at work."""
+    if sample.get("screen_off"):
+        return False
+    st = sample.get("panes_state")
+    if not st or st.get("voice") is None:
+        return None
+    on = label[len(REF_LABEL):-3] if label.endswith("-on") else None
+    for pid, p in panes.items():
+        if p.get("state") and st.get(p["state"]) != (pid == on):
+            return False
+    return True
+
+
+def pane_on_alone(ref_idles, package, panes=None):
     """Each switchable pane on by itself (`ref-<pane>-on`) against every pane off (`ref-panes-off`),
     on the same reference dashboard: the difference of the medians. The tolerance is the larger of
-    the two sets' spreads (max - min); a difference inside it is noise."""
-    off = _valid(ref_idles.get("ref-panes-off", []))
+    the two sets' spreads (max - min); a difference inside it is noise. Only samples that ran what
+    their label says count (sample_matches); without that record a result is `verified: false`, and
+    with none left it is an error, not a number (s1v7: the kiosk lost every switch)."""
+    panes = {k: v for k, v in (panes or {}).items() if v.get("switch")}
+    checked = {lab: [(i, sample_matches(i, lab, panes)) for i in _valid(runs)] for lab, runs in ref_idles.items()}
+    off = [i for i, ok in checked.get("ref-panes-off", []) if ok is not False]
+    off_bad = sum(1 for _, ok in checked.get("ref-panes-off", []) if ok is False)
+    off_verified = all(ok for _, ok in checked.get("ref-panes-off", []) if ok is not False)
     if not off:
+        if off_bad:
+            return [{"id": pid, "method": "on-alone", "error": f"the kiosk didn't run every pane off in {off_bad} panes-off sample(s)"}
+                    for pid in sorted(panes)]
         return []
+    # Assist off by its microphone mute alone (the kiosk kept voice on): its running cost only.
+    muted_only = any((i.get("panes_state") or {}).get("voice") for i in off)
     off_m = [app_memory(i) for i in off]
     off_pss = [m["app_pss_kb"] for m in off_m]
     off_cpu = [app_cpu(i, package)["app_pct_of_core"] for i in off]
     out = []
-    for label, runs in sorted(ref_idles.items()):
-        runs = _valid(runs)
-        if not (label.startswith(REF_LABEL) and label.endswith("-on")) or not runs:
+    for label, pairs in sorted(checked.items()):
+        if not (label.startswith(REF_LABEL) and label.endswith("-on")) or not pairs:
+            continue
+        runs = [i for i, ok in pairs if ok is not False]
+        bad = sum(1 for _, ok in pairs if ok is False)
+        if not runs:
+            out.append({"id": label[len(REF_LABEL):-3], "method": "on-alone",
+                        "error": f"the kiosk didn't run {label[len(REF_LABEL):-3]} on by itself in {bad} sample(s)"})
             continue
         on_m = [app_memory(i) for i in runs]
         on_pss = [m["app_pss_kb"] for m in on_m]
@@ -876,6 +918,9 @@ def pane_on_alone(ref_idles, package):
             "by_role_pss_kb": {r: round(statistics.median([m["by_role"].get(r, {}).get("pss_kb", 0) for m in on_m])
                                         - statistics.median([m["by_role"].get(r, {}).get("pss_kb", 0) for m in off_m])) for r in roles},
             "cpu_pct_of_core": round(d_cpu, 2), "cpu_tolerance_pct": round(cpu_tol, 2), "cpu_measurable": abs(d_cpu) > cpu_tol,
+            "verified": off_verified and all(ok for _, ok in pairs if ok is not False),
+            "excluded": bad + off_bad,
+            **({"off_by": "mute"} if muted_only and label == "ref-assist-on" else {}),
         })
     return out
 
@@ -884,7 +929,8 @@ def reference_ram(ref_idles, refstarts, package, budgets, mem_total_kb):
     """RAM on Clarity's reference dashboards, per process: at idle on the typical dashboard after each
     graded run (`ref-idle`), and the largest sample taken between the graded pages (the peak during
     the graded tasks). Then each switchable pane's share, and the frame's budgets. Not graded."""
-    idle = _valid(ref_idles.get("ref-idle", []))
+    # A sample the screen went off in (perfrun.py idle: screen_off) isn't the panel at work: left out.
+    idle = [i for i in _valid(ref_idles.get("ref-idle", [])) if not i.get("screen_off")]
     # Only graded runs that finished: a run that failed may have stopped mid-page (F6).
     between = [s for r in refstarts if not r.get("error") for s in r.get("memory") or []]
     between = [s for s in between if app_memory(s)["app_pss_kb"] is not None]
@@ -910,7 +956,8 @@ def reference_ram(ref_idles, refstarts, package, budgets, mem_total_kb):
             "app_rss_hwm_kb": max(sum(r["rss_peak_kb"] for r in m["by_role"].values()) for m in bm),
             "mem_available_min_kb": min((m["mem_available_kb"] for m in bm if m["mem_available_kb"] is not None), default=None),
         } if bm else None,
-        "panes": pane_on_alone(ref_idles, package),
+        "panes": pane_on_alone(ref_idles, package, budgets["panes"]),
+        "screen_off_samples": sorted(f"{i['label']}-{i['run']}" for runs in ref_idles.values() for i in runs if i.get("screen_off")),
         "panes_waiting": [{"id": k, "waiting_on": v["waiting_on"], **({"note": v["note"]} if v.get("note") else {})}
                           for k, v in sorted(budgets["panes"].items()) if v.get("waiting_on")],
     }
@@ -1284,6 +1331,8 @@ def markdown(rep):
                 f"Test page {'/'.join(x.upper() for x in s['page_lcp_from']) or 'LCP'} {fmt(s['page_lcp_ms'], ' ms')}."]
         if s["steps_without_sf"]:
             out.append(f"{s['steps_without_sf']} step(s) had no complete SurfaceFlinger history and use rAF only.")
+        if s.get("screen_off_runs"):
+            out.append(f"The screen went off in {s['screen_off_runs']} run(s); they are left out of these numbers.")
     r = rep["real_use"]
     if r and (r["idle"]["samples"] or r["per_run"]):
         i = r["idle"]
@@ -1292,7 +1341,8 @@ def markdown(rep):
                 f"App process start to dashboard load {fmt(r['app_start_to_dashboard_ms'], ' ms')} ({', '.join(r['launch']) or 'n/a'}). "
                 f"Dashboard load {fmt(r['dashboard_load_ms'], ' ms')} ({', '.join(r['settle_how']) or 'n/a'}); "
                 f"its load event {fmt(r['dashboard_page_stop_ms'], ' ms')}; force-stop to a settled dashboard "
-                f"{fmt(r['stop_to_dashboard_ms'], ' ms')}." + (f" Failed cold starts: {len(r['errors'])}." if r["errors"] else ""),
+                f"{fmt(r['stop_to_dashboard_ms'], ' ms')}." + (f" Failed cold starts: {len(r['errors'])}." if r["errors"] else "")
+                + (f" The screen went off in {', '.join(r['screen_off_samples'])}; left out." if r.get("screen_off_samples") else ""),
                 f"Idle: app PSS {fmt(i['app_pss_kb'], ' MB', 1024)}, device RAM in use {fmt(i['device_used_pct'], ' %')}, "
                 f"app CPU {fmt(i['cpu_app_pct_of_core'], ' % of a core')}, device busy {fmt(i['cpu_device_busy_pct'], ' %')}, "
                 f"{fmt(i['frames']['presented_fps'], ' frames/s')} presented."]
@@ -1346,14 +1396,29 @@ def ram_markdown(ram):
             out.append(f"- {k}: {val} against {c['budget_kb'] / 1024:.0f} MB: {budget_word(c['ok'])}")
     if ram.get("panes"):
         out += ["", "Each pane on by itself against every pane off, on the typical reference dashboard (median of runs; "
-                    "the tolerance is the larger spread of the two sets):", "",
+                    "the tolerance is the larger spread of the two sets). Only samples whose kiosk log shows what their "
+                    "label says count:", "",
                 "| Pane | PSS | Tolerance | Budget | CPU |", "|---|---|---|---|---|"]
+        notes = []
         for p in ram["panes"]:
+            if p.get("error"):
+                out.append(f"| {p['id']} | not measured: {p['error']} | | | |")
+                continue
+            if p.get("off_by") == "mute":
+                notes.append(f"{p['id']}: the kiosk kept voice on in every sample, so it is off by its microphone mute only. "
+                             "This is its running cost (the wake word), not its whole cost (the code it loads).")
+            if p.get("verified") is False:
+                notes.append(f"{p['id']}: not checked (samples from before the kiosk's log was read); it may not have been off.")
+            if p.get("excluded"):
+                notes.append(f"{p['id']}: {p['excluded']} sample(s) left out, the kiosk didn't run what their label says.")
             pb = (ram.get("pane_budget") or {}).get(p["id"]) or {}
             cap = "none" if pb.get("budget_kb") is None else f"{pb['budget_kb'] / 1024:.0f} MB, {budget_word(pb.get('ok'))}"
             out.append(f"| {p['id']} | {p['pss_kb'] / 1024:+.1f} MB{'' if p['pss_measurable'] else ' (within tolerance)'} "
                        f"| ±{p['pss_tolerance_kb'] / 1024:.1f} MB (n={p['samples_on']} on, {p['samples_off']} off) | {cap} "
                        f"| {p['cpu_pct_of_core']:+.1f} % of a core{'' if p['cpu_measurable'] else ' (within tolerance)'} |")
+        out += [""] + [f"- {n}" for n in notes] if notes else []
+    if ram.get("screen_off_samples"):
+        out += ["", "The screen went off in " + ", ".join(ram["screen_off_samples"]) + "; those samples are left out."]
     if ram.get("panes_waiting"):
         out += ["", "Not measured per pane yet (no on/off switch until " + ", ".join(sorted({p["waiting_on"] for p in ram["panes_waiting"]}))
                 + "): " + ", ".join(p["id"] for p in ram["panes_waiting"]) + "."]

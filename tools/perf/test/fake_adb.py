@@ -58,8 +58,11 @@ def shell(cmd):
         ez = re.findall(r"--ez (\w+) (true|false)", cmd)
         if ez:
             # Like the kiosk: each `--ez` saves a setting (voice_enabled, sendspin_enabled, restart).
+            # FAKE_VOICE_LOST: as S1 Kiosk 0.4.3, which saves voice_enabled asynchronously and exits
+            # to restart at once, so the write is lost.
             save("intents.json", state("intents.json", []) + [dict(ez)])
-            save("settings.json", dict(state("settings.json", {}), **{k: v for k, v in ez if k != "restart"}))
+            keep = {k: v for k, v in ez if k != "restart" and not (k == "voice_enabled" and os.environ.get("FAKE_VOICE_LOST"))}
+            save("settings.json", dict(state("settings.json", {}), **keep))
         m = re.search(r"--es open '([^']+)'", cmd)
         # Like the S1 kiosk (#103's pins): `open` is dropped until GeckoView's session is up.
         if m and state("session_up.json", True):
@@ -74,6 +77,23 @@ def shell(cmd):
                 save("cold.json", True)
             return "Starting: Intent\nStatus: ok\nActivity: sh.edm.s1kiosk/.MainActivity\nTotalTime: 1700\nWaitTime: 1710\nComplete\n"
         return "Starting: Intent\n"
+    if cmd.startswith("logcat -d"):
+        # The kiosk's start lines for the panes it runs now (perflib.pane_state reads them).
+        s = state("settings.json", {})
+        voice = s.get("voice_enabled", "true") == "true"
+        t = now()
+        out = [f"{t - 5:10.3f}  31236  31237 I S1ESPHome: ESPHome device 's1-panel' mac 00:00:00:00:00:00, voice={'true' if voice else 'false'}"]
+        if s.get("sendspin_enabled", "true") == "true":
+            out.append(f"{t - 4.9:10.3f}  31236  31237 I S1Sendspin: Sendspin player starting (client id test)")
+        if voice and s.get("mic_muted", "false") != "true":
+            out.append(f"{t - 3:10.3f}  31236  31237 I S1Voice: Microphone open: source=6 buffer=20480")
+        if os.environ.get("FAKE_IDLE_SCREEN_OFF") and " -t 1" not in cmd:
+            # One before the sample's window (an earlier night, not this sample's) and one in it.
+            out.insert(0, f"{t - 600:10.3f}   1919   1920 I PowerManagerService: Going to sleep due to timeout (uid 1000)...")
+            out.append(f"{t - 0.5:10.3f}   1919   1920 I PowerManagerService: Going to sleep due to device_admin (uid 1000)...")
+        if " -t 1" in cmd:
+            out = [f"{t - 2:10.3f}      1      1 I old: the last line"]
+        return "\n".join(out) + "\n"
     if cmd.startswith(("input swipe", "input tap")):
         # Like a page: a gesture nobody asked for (no current *-ready left to answer) lands on whatever
         # is on screen. Record it, and don't count it as the page's.
@@ -110,7 +130,9 @@ def shell(cmd):
     if cmd == "dumpsys meminfo":
         # A pane turned on with its extra adds to the app's PSS: Assist 30 MB, Sendspin 10 MB.
         on = state("settings.json", {})
-        main = 190_000 + (30_000 if on.get("voice_enabled") == "true" else 0) + (10_000 if on.get("sendspin_enabled") == "true" else 0)
+        # Assist costs its 30 MB while its microphone runs (voice on, not muted), as on the S1.
+        assist = on.get("voice_enabled") == "true" and on.get("mic_muted", "false") != "true"
+        main = 190_000 + (30_000 if assist else 0) + (10_000 if on.get("sendspin_enabled") == "true" else 0)
         rows = {PKG + ":gpu_disable_art_image_": 200_000, PKG: main, PKG + ":sandboxed_tab_disable_art_image_24": 180_000, "otbr-agent": 2_500}
         body = "".join(f"    {v:,}K: {n} (pid {PIDS[n]}{' / activities' if n == PKG else ''})\n" for n, v in rows.items())
         return "Total PSS by process:\n" + body + "\nTotal PSS by OOM adjustment:\n"
@@ -236,6 +258,9 @@ def page(nonce):
 
     gw({"t": "hello", "ua": "Mozilla/5.0 (Android 10; Mobile; rv:159.0) Gecko/159.0 Firefox/159.0", "load": {"lcp_ms": 420}})
     gw({"t": "js", "runs": 30, "median_ms": 9.5, "p95_ms": 12.0, "checksum": 7, "expected": 7})
+    if os.environ.get("FAKE_SYNTH_SCREEN_OFF"):
+        # The kiosk's idle timeout turns the screen off while the test page runs.
+        line("PowerManagerService", "Going to sleep due to device_admin (uid 1000)...", pid=1919)
     for stage, n in (("css-transform", 1), ("css-transform", 16), ("scroll", 240)):
         gw({"t": "warmup", "stage": stage, "n": n})
         time.sleep(0.05)
