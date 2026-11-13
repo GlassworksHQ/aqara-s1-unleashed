@@ -1,6 +1,41 @@
-# @glassworks/fastboot
+<p align="center">
+  <a href="https://www.glassworks.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/banner-library-fastboot-on-dark.svg">
+      <img alt="fastboot, a Glassworks library" src="https://www.glassworks.dev/brand/banner-library-fastboot-on-light.svg" width="640">
+    </picture>
+  </a>
+</p>
 
-Fastboot over WebUSB for every frame Kiln installs. It is a fork of
+<h1 align="center">fastboot</h1>
+
+<p align="center">
+  <b>Fastboot over WebUSB, for every frame Kiln installs.</b><br>
+  A fork of <a href="https://github.com/kdrag0n/fastboot.js">kdrag0n/fastboot.js</a> (MIT).
+</p>
+
+<p align="center">
+  <a href="LICENSE">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-license-mit-on-dark.svg">
+      <img alt="License: MIT" src="https://www.glassworks.dev/brand/badge-license-mit-on-light.svg" height="30">
+    </picture>
+  </a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-status-alpha-on-dark.svg">
+    <img alt="Status: alpha" src="https://www.glassworks.dev/brand/badge-status-alpha-on-light.svg" height="30">
+  </picture>
+  <a href="https://github.com/orgs/GlassworksHQ/projects/1">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-roadmap-on-dark.svg">
+      <img alt="Roadmap" src="https://www.glassworks.dev/brand/badge-roadmap-on-light.svg" height="30">
+    </picture>
+  </a>
+</p>
+
+---
+
+`@glassworks/fastboot` is a fork of
 [fastboot.js](https://github.com/kdrag0n/fastboot.js) by Danny Lin (MIT, [LICENSE](LICENSE)), kept in
 this monorepo and changed for Kiln (#111). It has two kinds of methods:
 
