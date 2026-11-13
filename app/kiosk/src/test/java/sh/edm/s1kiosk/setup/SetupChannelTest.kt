@@ -295,12 +295,22 @@ class SetupChannelTest {
         assertFalse(reply(c, """{"id":5,"op":"set_mode","mode":"off"}""").getBoolean("ok"))
     }
 
+    /** [steps] through SetupFlow.usable, as the app gathers them: the ids kept, and what was logged. */
+    private fun usable(vararg steps: SetupStep): Pair<List<String>, List<String>> {
+        val log = mutableListOf<String>()
+        return SetupFlow.usable(steps.toList(), log::add).map { it.id } to log
+    }
+
     @Test
     fun aStepCannotTakeACoreKey() {
         val fake = Fake(base)
-        val ha = object : SetupStep by fake.step { override val id = "ha" }
-        assertTrue(runCatching { SetupChannel(fake, listOf(ha)) }.isFailure)
-        assertTrue(runCatching { SetupChannel(fake, listOf(fake.step, fake.step)) }.isFailure)
+        // A core step's id, a key of the core's state, or an earlier step's: left out and logged, never a crash.
+        for (id in listOf("ha", "ip", "wifi", "signin", "done")) {
+            val (kept, log) = usable(object : SetupStep by fake.step { override val id = id })
+            assertEquals(id, emptyList<String>(), kept)
+            assertTrue(log.toString(), log.single().contains("'$id'"))
+        }
+        assertEquals(listOf("radio"), usable(fake.step, fake.step).first)
     }
 
     @Test
@@ -308,13 +318,17 @@ class SetupChannelTest {
         val fake = Fake(base)
         for (core in listOf("set_ha", "ha.set_url", "state")) {
             val greedy = object : SetupStep by fake.step { override val legacyOps = mapOf(core to "set_mode") }
-            assertTrue(core, runCatching { SetupChannel(fake, listOf(greedy)) }.isFailure)
+            val (kept, log) = usable(greedy)
+            assertEquals(core, emptyList<String>(), kept)
+            assertTrue(log.toString(), log.single().contains(core))
         }
         val other = object : SetupStep by fake.step {
             override val id = "camera"
             override val legacyOps = mapOf("set_radio" to "set_mode") // the radio's old name, taken twice
         }
-        assertTrue(runCatching { SetupChannel(fake, listOf(fake.step, other)) }.isFailure)
+        val (kept, log) = usable(fake.step, other)
+        assertEquals(listOf("radio"), kept)
+        assertTrue(log.toString(), log.single().contains("set_radio"))
         // The radio's own old names are fine, and set_ha still reaches the core.
         val c = fake.channel()
         assertTrue(reply(c, """{"id":1,"op":"set_ha","url":"http://ha.local:8123"}""").getBoolean("ok"))

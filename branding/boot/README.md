@@ -25,7 +25,8 @@ animation sees the screen:
 Then build:
 
 ```sh
-python3 -m venv /tmp/s1venv && /tmp/s1venv/bin/pip install pillow numpy uharfbuzz pyoxipng
+python3 -m venv /tmp/s1venv
+/tmp/s1venv/bin/pip install pillow==13.0.0 numpy==2.4.6 uharfbuzz==0.57.0 pyoxipng==9.1.1
 /tmp/s1venv/bin/python branding/boot/generate.py --frame <id> --out <dir>
 ```
 
@@ -40,6 +41,7 @@ The output, in `<dir>`:
 | `splash-landscape.png` | Frame 0, which is also the splash |
 | `bootlogo.bmp` | Only with a `splash` format (below). The build adds its SHA-256 to [`branding/bootlogos.json`](../bootlogos.json), so undo knows it as ours (#106): commit the list with the BMP |
 | `preview.webp` | For docs: half size, at most 720 px on the longest side |
+| `outputs.json` | What the build used and wrote: the target, and the SHA-256 of the generator, the font and each file above |
 
 `--stills <dir>` writes stills at fixed times instead, which takes seconds instead of minutes.
 
@@ -106,5 +108,7 @@ each new frame's first boot.
 - Every zip entry is STORED, the CRCs check out, `desc.txt` is as built, and the zip is within `zipBudget`.
 - The splash BMP: its size, its header, and that it rotates back to `splash-landscape.png`.
 
-Inter (SIL OFL 1.1) is fetched from google/fonts at build time, and the build refuses it unless the
-licence file is the OFL.
+Inter (SIL OFL 1.1) is fetched from a pinned google/fonts commit, each file checked by SHA-256, and
+the build refuses it unless the licence file is the OFL. pyoxipng is required: every PNG goes through
+it, which keeps the output the same on every platform. With the versions above, a rebuild of the S1's
+files is byte-identical on macOS arm64 and on Linux amd64 (`python:3.11-slim`), checked 2026-11-13.

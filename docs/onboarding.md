@@ -236,8 +236,10 @@ line, both ways:
 - `ha.set_url` (first name `set_ha`, which still works) with `url` (http/https only): applied on the main thread exactly as the `url` intent extra
   (dashboard URL setting saved, then the dashboard reloads, or the process restarts when the
   secure-context hosts change, after the reply). The panel's setup screen moves on by itself.
-- `radio.set_mode` (first name `set_radio`) with `mode` (one of the offered ids): through `RadioController.request`, like the
-  radio card on the panel's Panes step. The reply waits for its outcome: success (or still applying after 10 s) marks
+- `radio.set_mode` (first name `set_radio`) with `mode`: through `RadioController.request`, like the
+  radio card on the panel's Panes step. Only the ids in `radio.options` (the radio step's options, `RadioStep.OPTIONS`)
+  are accepted. Any other id, also a `RadioMode` id the step doesn't offer, is `ok:false` with
+  "Unknown radio mode '<id>'." and changes nothing. The reply waits for its outcome: success (or still applying after 10 s) marks
   the panel's radio step answered (`setup_radio_done`); a refusal or error is `ok:false` with
   RadioController's reason (e.g. the missing root helper).
 - `radio.set_allow` (first name `set_radio_allow`) with `allow`: who may reach the radio's TCP

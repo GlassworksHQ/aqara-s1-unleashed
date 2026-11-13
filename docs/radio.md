@@ -671,7 +671,9 @@ Assistant entities and the Thread join from Home Assistant, as a Glassworks pane
   Zigbee repeater β, Thread repeater β). Continue applies it through the same request as the setup
   channel's `radio.set_mode`. The follow-up card (QR codes, stack choice, Join/Leave, the dataset
   field) is in the settings menu. The setup channel (web installer) offers the same five options;
-  options carry optional `experimental` and `repeater` flags.
+  options carry optional `experimental` and `repeater` flags. `radio.set_mode` accepts only those options' ids
+  (`RadioStep.OPTIONS`): a mode the step doesn't offer is refused with "Unknown radio mode", even when
+  `RadioMode` has it ([onboarding.md](onboarding.md#from-the-web-installer-improv-serial--setup-channel-over-adb-)).
 - Kiosk settings menu, Radio section (`radio/ui/RadioSectionView`): the modes as chips (#63; the one in
   effect lit, another asks to switch; before #63 a row of role tiles), then a panel with
   a header strip in the role's colour and a status pill (`RadioFollowUp.health`): Off as an empty state

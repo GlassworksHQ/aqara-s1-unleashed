@@ -1,6 +1,7 @@
 package sh.edm.s1kiosk.radio.ui
 
 import sh.edm.s1kiosk.ui.Inter
+import sh.edm.s1kiosk.ui.QrCode
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -23,7 +24,6 @@ import sh.edm.s1kiosk.radio.ZigbeeStack
 import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Action
 import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Health
 import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Request
-import sh.edm.s1kiosk.setup.SetupOverlay
 import sh.edm.s1kiosk.ui.Glass
 import sh.edm.s1kiosk.ui.Wrap
 
@@ -420,7 +420,7 @@ class RadioSectionView(private val context: Context) {
         }
         val q = c.qr
         if (q != null) {
-            if (qrFor != q.url) { qrImage.setImageBitmap(SetupOverlay.qrBitmap(q.url, s.px(QR_DP))); qrFor = q.url }
+            if (qrFor != q.url) { qrImage.setImageBitmap(QrCode.bitmap(q.url, s.px(QR_DP))); qrFor = q.url }
             qrBox.visibility = VISIBLE
             qrBox.contentDescription = q.caption
         } else qrBox.visibility = GONE

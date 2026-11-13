@@ -3,5 +3,6 @@
 import type { FrameDesign } from '@glassworks/frame-card';
 import s1Plus from '../../../../../frames/aqara-s1-plus/design/frame.json';
 import mirror from '../../../../../frames/lululemon-mirror/design/frame.json';
+import genericAndroid from '../../../../../frames/generic-android/design/frame.json';
 
-export const FRAMES = [s1Plus, mirror] as FrameDesign[];
+export const FRAMES = [s1Plus, mirror, genericAndroid] as FrameDesign[];

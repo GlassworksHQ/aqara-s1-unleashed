@@ -256,7 +256,16 @@ is its part of the setup channel's state, under the step's id; `ops` are the req
 it, on the wire as `<step id>.<op>`. That way the installer can finish every step without the
 screen, and the setup screen is one more client. `SetupChannelStepsTest` fails if a step has no
 requests that finish it. The radio's step is
-[`RadioDefinition`](../../sh/edm/s1kiosk/radio/RadioDefinition.kt).
+[`RadioDefinition`](../../sh/edm/s1kiosk/radio/RadioDefinition.kt). Its `radio.set_mode` accepts
+only the ids the step offers (`RadioStep.OPTIONS`, the state's `radio.options`). Any other mode is
+refused, so a mode only appears to the installer once the step offers it.
+
+**A step id is the step's own.** `GlassworksRuntime.setupSteps` gathers the steps through
+`SetupFlow.usable`. It leaves out, with an error in the `S1Kiosk` log, a step whose id is a core
+step (`wifi`, `ha`, `panes`, `signin`, `done`) or a setup-channel state key (`ip`, `ha`), or an earlier step's,
+and a step whose request names are already taken. A bad step costs only itself: the app still
+starts and the channel still answers. `FramePanesTest` checks a frame's step and section with a
+fake frame.
 
 **On the panel, panes are one step.** The setup screen asks "What should it do?" once, with one card
 per `setupChoice` in definition order: a title, a line under it and a switch. A choice with

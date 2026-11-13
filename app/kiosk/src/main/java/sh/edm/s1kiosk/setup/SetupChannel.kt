@@ -68,7 +68,7 @@ data class ChannelState(val ip: String?, val ha: Ha) {
 
 class SetupChannel(
     private val backend: Backend,
-    /** The panes' setup steps: their state and ops ([SetupStep.ops]). */
+    /** The panes' setup steps (through SetupFlow.usable): their state and ops ([SetupStep.ops]). */
     steps: List<SetupStep> = emptyList(),
     private val log: (String) -> Unit = {},
 ) {
@@ -93,13 +93,6 @@ class SetupChannel(
     /** Older wire names: the core's, then each step's. */
     private val aliases: Map<String, String> = mapOf("set_ha" to HA_SET_URL) +
         steps.flatMap { s -> s.legacyOps.map { (old, name) -> old to "${s.id}.$name" } }
-
-    init {
-        val ids = steps.map { it.id }
-        require(ids.none { it in CORE_KEYS } && ids.size == ids.toSet().size) { "Setup step ids must be unique and not ${CORE_KEYS}: $ids" }
-        val old = steps.flatMap { it.legacyOps.keys }
-        require(old.none { it in CORE_OPS || it in ops } && old.size == old.toSet().size) { "Old op names must be unique and not the core's: $old" }
-    }
 
     /** The whole state: the core's, and each step's part under its id. */
     private fun state(): JSONObject = backend.state().toJson().apply {
