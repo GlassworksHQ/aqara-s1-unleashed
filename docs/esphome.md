@@ -66,7 +66,7 @@ Details and sources: [onboarding.md](onboarding.md#2-adoption--encryption-esphom
 | esphome_version / compilation_time | `2026.10.2` / `S1 Kiosk <app version>` (HA shows "2026.10.2 (S1 Kiosk 0.1.0)") |
 | API version | 1.20 (as ESPHome 2026.10/11); `DeviceCapabilitiesRequest` is answered |
 | Sendspin | `DeviceCapabilitiesResponse.sendspin` = `{feature_flags: PAIRING_TOKEN, client_id}`; `SendspinPairingTokenRequest` (159) → `SendspinPairingTokenResponse` (160), token only over Noise with a key ([sendspin.md](sendspin.md#esphome-hand-off-how-ha-gives-ma-the-token)) |
-| voice_assistant_feature_flags | 61 = VOICE_ASSISTANT 1 + API_AUDIO 4 + TIMERS 8 + ANNOUNCE 16 + START_CONVERSATION 32 (0 when `voice_enabled` is false) |
+| voice_assistant_feature_flags | 61 = VOICE_ASSISTANT 1 + API_AUDIO 4 + TIMERS 8 + ANNOUNCE 16 + START_CONVERSATION 32 (0 when `voice_enabled` is false). Voice turned on or off while the panel runs changes it, and the panel asks Home Assistant to reconnect so it reads it again (#67) |
 
 ## Entities
 
@@ -155,6 +155,25 @@ it (`device_name`), the mDNS service is named after it, and HA up to 2025.11 mak
 
 Plus `Block Aqara cloud` and `Aqara cloud daemon` ([below](#aqara-cloud)), the wall base entities, and the entities HA adds itself for a voice device: `assist_satellite.s1_panel_assist_satellite`,
 *Assist pipeline* and *Wake word* selects (two of each), *Finished speaking detection*.
+
+### Panes on and off
+
+Each pane has a config switch that turns it on or off while the panel runs (#67). The settings menu
+(the switch at the top of the pane's page), setup's Panes step and the adb extras set the same
+setting. A pane that is off keeps its entities, with no state where it has none to give, so the
+entity list doesn't change. The new switches are off in Home Assistant until you turn them on on
+the device page (#132): people set them once.
+
+| Entity | object_id | Pane | adb extra | Enabled in HA by default |
+|---|---|---|---|---|
+| switch `Voice` | `voice` | the voice assistant and timers | `voice_enabled` | no |
+| switch `Music Assistant player (Sendspin)` | `sendspin` | Sendspin (the same entity as before) | `sendspin_enabled` | yes, as before |
+| switch `Wall base` | `wall_base` | the wall base driver; off closes the port, and Aqara's daemon may run again unless `Block Aqara cloud` is on | `wall_base_enabled` | no |
+| switch `Keep time zone` | `keep_time_zone` | the time zone; off lets the root helper stop keeping the zone, and on keeps it again | `time_zone_enabled` | no |
+| switch `Diagnostics` | `diagnostics` | the diagnostic sensors; off stops the sampling | `diagnostics_enabled` | no |
+
+The radio's on/off is `Radio mode` (`Off`). Voice on or off changes the voice features in the device
+info, so the panel asks Home Assistant to reconnect, as it does when the entity list changes.
 
 ### Diagnostics
 
