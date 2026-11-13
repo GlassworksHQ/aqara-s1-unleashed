@@ -787,7 +787,9 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (::settingsOverlay.isInitialized && settingsOverlay.isShowing) { settingsOverlay.hide(); return }
+        // The topmost layer only: the menu's own (a picker, a dialog, then the menu), then a setup preview.
+        if (::settingsOverlay.isInitialized && settingsOverlay.isShowing) { settingsOverlay.back(); return }
+        if (setupPreview) { closeSetupPreview(); return }
         page?.goBack()
     }
 

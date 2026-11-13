@@ -69,7 +69,9 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     /** A change that needs a restart was made since the app started. */
     private var restartPending = false
 
-    private val nav = GroupedRail(context).apply { onTap = { id -> select(id) } }
+    /** Tighter than setup's: with the Panes group open the whole list fits above Done at 960x480 dp (#63 round 2). */
+    private val nav = GroupedRail(context).apply { rowDp = 35f; childDp = 30f; gapDp = 2f; onTap = { id -> select(id) } }
+    private val navScroll = ScrollView(context)
     private val rail = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         addView(LinearLayout(context).apply {
@@ -79,7 +81,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             addView(StackView(context), LinearLayout.LayoutParams(px(22f), px(21f)).apply { marginEnd = px(13f) })
             addView(g.heading(24f).apply { text = "Settings" })
         }, LinearLayout.LayoutParams(-1, px(40f)))
-        addView(ScrollView(context).apply {
+        addView(navScroll.apply {
             isVerticalScrollBarEnabled = false
             isVerticalFadingEdgeEnabled = true // with the Panes group open the rail can run past Done
             setFadingEdgeLength(px(28f))
@@ -168,6 +170,21 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         }
         requestFocus()
     }
+
+    /**
+     * Back: closes the topmost layer only, an open sheet (a picker, an editor, a question), then a pane's
+     * own dialog, then the menu (#63 round 2: Back on a picker closed the whole menu).
+     */
+    fun back() {
+        when {
+            sheet.isOpen -> sheet.close()
+            natives.values.any { it.back() } -> {}
+            else -> hide()
+        }
+    }
+
+    /** The rail fits without scrolling (tests). */
+    internal val railFits: Boolean get() = nav.height <= navScroll.height
 
     fun hide() {
         if (!isShowing) return
@@ -621,6 +638,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             onSave = { close(); yes() }
             open(c.title, c.detail, null, c.action)
         }
+
+        val isOpen: Boolean get() = view.visibility == View.VISIBLE
 
         fun close() {
             if (view.visibility != View.VISIBLE) return

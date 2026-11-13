@@ -189,5 +189,8 @@ sealed interface SettingsItem {
 
         /** The menu closes or is drawn again: close dialogs. */
         fun reset() {}
+
+        /** Back was pressed: close this view's topmost dialog and say so, or false when none is open. */
+        fun back(): Boolean = false
     }
 }

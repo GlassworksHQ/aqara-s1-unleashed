@@ -89,6 +89,7 @@ class SettingsMockups {
         shot("settings-13-radio-on", menu(radioRunning = true, facts = coordinator), "radio")
         shot("settings-14-radio-off-asks", menu(radioRunning = true, facts = coordinator), "radio") { it.previewConfirm("radio") }
         shot("settings-15-pane-cant-run", menu(radioRunning = true, extra = listOf(cantRun)), "base")
+        shot("settings-17-rail-panes-open", menu(radioRunning = true), "voice") // the whole rail, About above Done
         shot("settings-16-screen-scrolled", menu(radioRunning = true), "screen") { o ->
             Mockup.layout(o)
             o.previewScrollTo(Mockup.label(o, "Brightness"), alignBottom = true)
