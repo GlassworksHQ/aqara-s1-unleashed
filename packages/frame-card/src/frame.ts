@@ -46,7 +46,7 @@ export interface FrameDesign {
   boot?: { androidApi?: number; splash?: 'allwinner-boot-resource'; zipBudget?: number };
   specs: { label: string; value: string }[];
   panes: Record<(typeof PANE_IDS)[number], { support: Support; note?: string }>;
-  /** href: where it installs from, while that is somewhere other than Kiln */
+  /** href: where it installs from, only for a frame without `kiln` */
   install: { how: string; href?: string };
   ratings: Record<RatingKey, { value: string; detail?: string }>;
   ratingsNote?: string;
