@@ -274,6 +274,13 @@ class SetupOverlay(
         showStatus(message, if (ok) GREEN else ROSE)
     }
 
+    /**
+     * Panes is applying, or its last Continue failed: the step stays up whatever the rules say. A pane's
+     * step can look done mid-way (the radio stores its mode before the helper answers), and a failure
+     * must stay where it can be retried.
+     */
+    val holdsPanes: Boolean get() = isShowing && model?.step == SetupFlow.PANES && (panes.applying || panes.problem != null)
+
     /** Improv identify: pulse the Bluetooth tile a few times. */
     fun flashImprov() {
         val v = improvTile.view
@@ -610,6 +617,9 @@ class SetupOverlay(
         var problem: String? = null
             private set
 
+        /** A card that only applies at start changed in an earlier attempt that then failed: still owed. */
+        private var restartOwed = false
+
         /**
          * Continue sits at the end of the last row of chips: the radio's four modes take two lines, and
          * the step has no room for a row of its own under them.
@@ -630,7 +640,7 @@ class SetupOverlay(
             var last: Wrap? = null
             choices.forEachIndexed { i, c ->
                 if (c.options.isEmpty()) return@forEachIndexed
-                val chips = c.options.map { o -> o.id to g.chip(o.label).apply { setOnClickListener { option[i] = o.id; sync() } } }
+                val chips = c.options.map { o -> o.id to g.chip(o.label).apply { setOnClickListener { if (!applying) option[i] = o.id; sync() } } }
                 chipRows += i to chips
                 last = Wrap(context, px(10f), px(6f)).apply {
                     addView(g.text(15.5f, MU).apply { text = "${c.optionsLabel}:"; setPadding(0, px(10f), px(2f), px(10f)) })
@@ -643,7 +653,7 @@ class SetupOverlay(
         }
 
         private fun card(i: Int, c: PaneChoice): View {
-            val t = g.toggle(false) { v -> on[i] = v; sync() }
+            val t = g.toggle(false) { v -> if (!applying) on[i] = v; sync() } // locked while Continue applies
             toggles += t
             return LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -684,7 +694,7 @@ class SetupOverlay(
             applying = true
             problem = null
             val wanted = choices.indices.map { on[it] to option[it] }
-            val restart = choices.indices.any { choices[it].restartsApp && choices[it].on() != on[it] }
+            restartOwed = restartOwed || choices.indices.any { choices[it].restartsApp && choices[it].on() != on[it] }
             redraw()
             Thread({
                 val problems = choices.mapIndexedNotNull { i, c ->
@@ -693,7 +703,7 @@ class SetupOverlay(
                 main.post {
                     applying = false
                     problem = problems.firstOrNull()
-                    if (problems.isEmpty()) onPanesDone?.invoke(restart) else redraw()
+                    if (problems.isEmpty()) onPanesDone?.invoke(restartOwed.also { restartOwed = false }) else redraw()
                 }
             }, "s1-setup-panes").apply { isDaemon = true }.start()
         }

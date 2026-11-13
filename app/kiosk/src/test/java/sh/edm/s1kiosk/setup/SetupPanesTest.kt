@@ -124,4 +124,61 @@ class SetupPanesTest {
         Mockup.label(s, "Music: the player didn't start")
         assertEquals(false, called)
     }
+
+    private fun overlay(cs: List<PaneChoice>): SetupOverlay {
+        val a = Mockup.activity()
+        val s = SetupOverlay(a, cs)
+        a.setContentView(s, ViewGroup.LayoutParams(-1, -1))
+        s.render(SetupOverlay.Model(
+            step = SetupFlow.PANES, done = emptySet(), wifi = WifiSetupStatus.Snapshot(WifiSetupStatus.State.CONNECTED, "Example-WiFi"),
+            haUrl = null, haSource = "", panelIp = null, signedIn = false,
+        ))
+        Mockup.idle()
+        return s
+    }
+
+    private fun waitFor(what: String, cond: () -> Boolean) {
+        val until = System.currentTimeMillis() + 5_000
+        while (!cond() && System.currentTimeMillis() < until) { shadowOf(Looper.getMainLooper()).idle(); Thread.sleep(10) }
+        assertEquals(what, true, cond())
+    }
+
+    @Test
+    fun cardsAreLockedWhileContinueApplies() {
+        val release = CountDownLatch(1)
+        var music = true
+        val s = overlay(listOf(
+            PaneChoice("Music", "A Sendspin speaker", on = { music }, apply = { on, _ -> release.await(5, TimeUnit.SECONDS); music = on; null }),
+        ))
+        Mockup.label(s, "Continue").performClick()
+        waitFor("applying") { s.holdsPanes }
+        val t = all(s, Glass.Toggle::class.java)[0]
+        t.performClick() // the person taps while it applies
+        assertEquals(true, t.checked) // nothing changes
+        release.countDown()
+        waitFor("done") { !s.holdsPanes }
+        assertEquals(true, music)
+    }
+
+    @Test
+    fun aRefusalHoldsTheStepAndARestartStaysOwed() {
+        var voice = true
+        var refuse = true
+        val s = overlay(listOf(
+            PaneChoice("Voice", "Assist and timers", on = { voice }, restartsApp = true, apply = { on, _ -> voice = on; null }),
+            PaneChoice("Music", "A Sendspin speaker", on = { true }, apply = { _, _ -> if (refuse) "the player didn't start" else null }),
+        ))
+        var restart: Boolean? = null
+        s.onPanesDone = { restart = it }
+        all(s, Glass.Toggle::class.java)[0].performClick() // voice off: needs a restart
+        Mockup.label(s, "Continue").performClick()
+        waitFor("refused") { runCatching { Mockup.label(s, "Music: the player didn't start") }.isSuccess }
+        assertEquals(true, s.holdsPanes) // the step stays, whatever the rules say
+        assertEquals(null, restart)
+        refuse = false
+        Mockup.label(s, "Continue").performClick() // voice is already saved off: the restart is still owed
+        waitFor("done") { restart != null }
+        assertEquals(true, restart)
+        assertEquals(false, s.holdsPanes)
+    }
 }
