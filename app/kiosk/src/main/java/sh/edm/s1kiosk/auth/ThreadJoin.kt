@@ -111,7 +111,7 @@ class ThreadJoin(
     }
 
     /** What the phone sees after `/thread/callback`. */
-    data class Outcome(val ok: Boolean, val title: String, val text: String)
+    data class Outcome(val ok: Boolean, val title: String, val text: String, val network: String? = null, val channel: Int? = null)
 
     /**
      * `/thread/callback` exchanged the code: fetch with these one-off tokens, then revoke them.
@@ -132,9 +132,10 @@ class ThreadJoin(
         return when (r) {
             is ThreadFetch.Ok -> {
                 val err = finish(r, revoked)
-                if (err == null) Outcome(true, "Joining ${r.networkName.ifEmpty { "your Thread network" }} ✓",
-                    "The panel has your Thread network's settings and is joining it as a Thread router. You can close this page." +
-                        if (revoked) " You were signed out of the panel again." else notRevoked)
+                if (err == null) Outcome(true, "Joining ${r.networkName.ifEmpty { "your Thread network" }}",
+                    "The panel has the network's settings and is joining as a router. You can close this page." +
+                        if (revoked) "" else notRevoked,
+                    network = r.networkName.ifEmpty { null }, channel = r.channel)
                 else Outcome(false, "Couldn't join", err + if (revoked) "" else notRevoked)
             }
             ThreadFetch.NotAdmin -> {

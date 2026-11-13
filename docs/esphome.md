@@ -29,7 +29,7 @@ keeps working while the screen is off. Logs: `adb logcat -s S1ESPHome S1Voice`.
    also pushes them over adb (`tools/voice/fetch-models.sh`, which downloads and checks the same files;
    `--no-models` skips it). Without models the API still works; the engine retries loading every 30 s.
 2. **Discovery**: the panel advertises `s1-panel._esphomelib._tcp` over mDNS. If mDNS reaches HA,
-   **Settings → Devices & services** shows a discovered **ESPHome** device "S1 Panel". Click
+   **Settings → Devices & services** shows a discovered **ESPHome** device "Glassworks Panel". Click
    **Add**.
 3. **Manual**: **Settings → Devices & services → Add integration → ESPHome**, host = the panel's
    IP, port `6053`.
@@ -58,7 +58,7 @@ Details and sources: [onboarding.md](onboarding.md#2-adoption--encryption-esphom
 
 | Field | Value |
 |---|---|
-| name / friendly name | `s1-panel` / `S1 Panel` |
+| name / friendly name | `s1-panel` / `Glassworks Panel` (before #63: `S1 Panel`; see [Names](#names)) |
 | MAC (unique id in HA) | the Wi-Fi MAC of `wlan0` if readable, else a locally administered MAC derived from the chip serial (SHA-256 of `ro.serialno`), else a random one; persisted in prefs (`device_mac`). The first two come out the same after a reinstall, so HA keeps the same device |
 | manufacturer / model | `Aqara` / `Panel Hub S1 Plus (S1 Kiosk)` |
 | esphome_version / compilation_time | `2026.10.2` / `S1 Kiosk <app version>` (HA shows "2026.10.2 (S1 Kiosk 0.1.0)") |
@@ -68,9 +68,26 @@ Details and sources: [onboarding.md](onboarding.md#2-adoption--encryption-esphom
 
 ## Entities
 
-HA names entities `<friendly name> <entity name>`, so with "S1 Panel" they become
-`light.s1_panel_screen` and so on. The `object_id` is the ESPHome-style snake_case name, the key
-is FNV-1a of the `object_id` (stable).
+HA names entities `<friendly name> <entity name>`, so they show as "Glassworks Panel Screen" and so
+on. The `object_id` is the ESPHome-style snake_case name, the key is FNV-1a of the `object_id`
+(stable). The entity ids in this page are those of a panel added before #63 (`light.s1_panel_screen`);
+[Names](#names) says when they read `glassworks_panel_*` instead.
+
+### Names
+
+The panel calls itself **Glassworks Panel** since #63. What Home Assistant does with that (read
+2026-11-12 from home-assistant/core's `esphome` integration and aioesphomeapi; not yet seen on a live
+HA):
+
+| | A panel added before #63 | A panel added after #63 |
+|---|---|---|
+| Device name | Becomes "Glassworks Panel" on the next connection (HA's device registry follows the friendly name), unless you renamed the device in HA | "Glassworks Panel" |
+| Config entry title | Stays "S1 Panel" (HA doesn't retitle an entry) | "Glassworks Panel" |
+| Entity ids | Unchanged (`light.s1_panel_screen`, …): an entity id is made once, and the unique id is the MAC plus the entity, never the device name | HA 2026.1 and later: `light.glassworks_panel_screen`, … (from the device name). HA up to 2025.x: `light.s1_panel_screen`, … (from the node name) |
+| Node name (`device_name`, mDNS) | `s1-panel` | `s1-panel` |
+
+The node name `s1-panel` never changes (`PanelDevice.NAME`, `PanelNameTest`): HA's config entry keeps
+it, and older HA built entity ids from it.
 
 | Entity | object_id | What it does |
 |---|---|---|
@@ -172,8 +189,8 @@ Only *Base* is always present; the rest exist only while a matching base is dete
 | text_sensor `Base protection` | `base_protection` | switch base | `8.0.2014`: `normal`, `over_temperature`, `over_load`, `over_temperature_error`, `over_load_error`, `over_temperature_removed`, `over_load_removed` |
 | event `Base button N` (button) | `base_button_1`..`3` | switch base, per channel | `13.N.85` clicks (LocalService only; the UART protocol has no click frames); event types `single`, `double`, `triple`, `long`, `release`, `unknown` (mapping unverified, raw value logged) |
 
-With the friendly name "S1 Panel" the entity ids are `switch.s1_panel_base_relay_1`,
-`event.s1_panel_base_button_1`, and so on. The names are fixed and don't follow the channel names
+On a panel added before #63 the entity ids are `switch.s1_panel_base_relay_1`,
+`event.s1_panel_base_button_1`, and so on (`glassworks_panel_*` on one added later, see [Names](#names)). The names are fixed and don't follow the channel names
 configured in the Aqara app: HA 2026.11 derives the ESPHome unique id from the entity *name*
 (aioesphomeapi `build_unique_id` v3), so a rename on the Aqara side would orphan the HA entity.
 Rename them in HA.
