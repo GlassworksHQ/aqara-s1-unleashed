@@ -68,7 +68,7 @@ class ImprovBleServer(
     private var server: BluetoothGattServer? = null
     private var advertiser: BluetoothLeAdvertiser? = null
     private var advSet: AdvertisingSet? = null
-    private var useLegacyAdvertise = false
+    private var useLegacyAdvertise = !Compat.hasAdvertisingSets
     private var advertising = false
     private var running = false
 

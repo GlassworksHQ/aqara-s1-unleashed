@@ -32,25 +32,28 @@ class Api23Test {
     @Test fun locationEnabledFollowsTheLocationSetting() {
         val lm = ctx.getSystemService(LocationManager::class.java)
         val wifi = WifiProvisioner(ctx, main)
-        val before = lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
+        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+        val before = providers.associateWith { lm.isProviderEnabled(it) }
         try {
             for (on in listOf(true, false)) {
-                setGps(on)
-                waitFor { lm.isProviderEnabled(LocationManager.GPS_PROVIDER) == on }
+                setLocation(mapOf(LocationManager.GPS_PROVIDER to on, LocationManager.NETWORK_PROVIDER to false))
+                waitFor { providers.any { lm.isProviderEnabled(it) } == on }
                 assertEquals("location ${if (on) "on" else "off"}", on, wifi.locationEnabled)
             }
         } finally {
-            setGps(before)
+            setLocation(before)
         }
     }
 
-    private fun setGps(on: Boolean) {
-        val cmd = if (Compat.hasIsLocationEnabled) {
-            "settings put secure location_mode ${if (on) 3 else 0}"
+    private fun setLocation(providers: Map<String, Boolean>) {
+        val commands = if (Compat.hasIsLocationEnabled) {
+            listOf("settings put secure location_mode ${if (providers.values.any { it }) 3 else 0}")
         } else {
-            "settings put secure location_providers_allowed ${if (on) "+" else "-"}gps"
+            providers.map { (p, on) -> "settings put secure location_providers_allowed ${if (on) "+" else "-"}$p" }
         }
-        instrumentation.uiAutomation.executeShellCommand(cmd).use { FileInputStream(it.fileDescriptor).readBytes() }
+        for (cmd in commands) {
+            instrumentation.uiAutomation.executeShellCommand(cmd).use { FileInputStream(it.fileDescriptor).readBytes() }
+        }
     }
 
     private fun waitFor(ok: () -> Boolean) {
