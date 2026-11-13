@@ -14,6 +14,12 @@ SVG_NS = "http://www.w3.org/2000/svg"
 sys.path.insert(0, os.path.dirname(HERE))
 import dashboards as D  # noqa: E402
 
+# The screen's tokens on glassworks.dev (src/app/globals.css): night, its ink, sky and violet, and the
+# glass surface (rgba(255,255,255,.045)) laid over night. Ember and the status colours aren't here.
+NIGHT, GLASS_ALPHA = (0x0a, 0x0b, 0x0f), 0.045
+BRAND = {"night": "#0a0b0f", "s-fg": "#f4f4f5", "s-mu": "#a1a1aa", "s-fa": "#63636b", "sky": "#38bdf8", "violet": "#a78bfa",
+         "glass-on-night": "#" + "".join(f"{round(c + GLASS_ALPHA * (255 - c)):02x}" for c in NIGHT)}
+
 
 class Pages(unittest.TestCase):
     def read(self, f):
@@ -46,14 +52,21 @@ class Pages(unittest.TestCase):
                 self.assertNotIn("crypto.getRandomValues", self.read(f))
 
     def test_colours_follow_the_brand(self):
-        """glassworks.dev/brand: no ember (Kiln's), no green, amber or rose (status only), night ground,
-        and generated hues between sky and violet. (The reference dashboards are HA's own frontend,
-        in HA's colours.)"""
-        off = re.compile(r"#(ffc107|03a9f4|111318|f43f5e|fdba74|34d399|fbbf24|fb7185)\b|rnd\(\) \* 360", re.I)
-        for name in ("index.html", "perf.js"):
+        """glassworks.dev/brand: every colour the pages write is one of the screen's tokens (a black
+        shadow aside), and generated hues stay between sky and violet (page.test.mjs). The reference
+        dashboards are HA's own frontend, in HA's colours."""
+        allowed = set(BRAND.values())
+        for name in ("index.html", "perf.js", "harness.js"):
+            text = self.read(name)
             with self.subTest(name):
-                self.assertIsNone(off.search(self.read(name)), off.search(self.read(name)))
-        self.assertIn("--bg: #0a0b0f;", self.read("index.html"))
+                self.assertLessEqual({h.lower() for h in re.findall(r"#[0-9a-f]{6}\b|#[0-9a-f]{3}\b", text, re.I)}
+                                     - {"#174"}, allowed)                     # #174 is an issue number in a comment
+                self.assertEqual([c for c in re.findall(r"rgba?\([^)]*\)", text) if not c.startswith("rgba(0,0,0,")], [])
+                self.assertNotIn("rnd() * 360", text)
+        root = dict(re.findall(r"--([\w-]+):\s*([^;]+);", re.search(r":root \{([^}]*)\}", self.read("index.html")).group(1)))
+        self.assertEqual({k: v for k, v in root.items() if k != "color-scheme"},
+                         {"bg": BRAND["night"], "card": BRAND["glass-on-night"], "text": BRAND["s-fg"],
+                          "muted": BRAND["s-mu"], "accent": BRAND["sky"]})
 
 
 class Harness(unittest.TestCase):
