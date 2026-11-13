@@ -11,6 +11,7 @@ import { s1PlusUi } from '../src/frames/aqara-s1-plus';
 import { registry, type Entry } from '../src/wizard/registry';
 import { Session } from '../src/wizard/session';
 import { useRouteSync } from '../src/wizard/useRouteSync';
+import { demoSession } from '../src/wizard/demo';
 
 const BASE = '/aqara-s1-plus';
 
@@ -33,24 +34,29 @@ function session(requestFel = vi.fn(() => Promise.resolve(new FelDevice(new Fake
   return { s, requestFel, knownAdb };
 }
 
-/** The app's route sync, with the address bar as state. */
-function harness(first: ReturnType<typeof session>, path: string, strict = false) {
-  const nav = { path, replaced: [] as string[], set: (_: string) => {} };
+/** The app's route sync, with the address bar and the browser's history as state. */
+function harness(first: { s: Session }, path: string, strict = false) {
+  const nav = { path, replaced: [] as string[], history: [path], set: (_: string) => {} };
   const renewals: Entry[] = [];
   registry.set({ base: BASE, name: 'Aqara S1 Plus', session: first.s });
   const renew = () => { const e = registry.set({ base: BASE, name: 'Aqara S1 Plus', session: session().s }); renewals.push(e); return e; };
-  const replace = (url: string) => { nav.replaced.push(url); nav.set(url); };
+  const router = {
+    replace: (url: string) => { nav.replaced.push(url); nav.history[nav.history.length - 1] = url; nav.set(url); },
+    push: (url: string) => { nav.history.push(url); nav.set(url); },
+  };
   function Sync() {
     const [p, setP] = useState(path);
     nav.set = setP;
     nav.path = p;
     const entry = useSyncExternalStore(registry.subscribe, registry.get)!;
-    useRouteSync(entry, p, replace, renew);
+    useRouteSync(entry, p, router, renew);
     return null;
   }
   render(strict ? <StrictMode><Sync /></StrictMode> : <Sync />);
-  const go = (to: string) => act(() => { nav.set(BASE + to); });
-  return { nav, go, renewals, state: () => registry.get()!.session.store.state };
+  const go = (to: string) => act(() => { nav.history.push(BASE + to); nav.set(BASE + to); });
+  /** the browser's Back button */
+  const back = () => act(() => { nav.history.pop(); nav.set(nav.history.at(-1)!); });
+  return { nav, go, back, renewals, state: () => registry.get()!.session.store.state };
 }
 
 const settle = () => act(() => new Promise((r) => setTimeout(r, 30)));
@@ -109,6 +115,24 @@ describe('navigation', () => {
     expect(registry.get()!.session).not.toBe(one.s);
     expect(h.state().screen).toBe('connect');
     expect(one.s.store.state.screen).toBe('done');
+  });
+
+  it('Back in set-up returns to the step before, on the same session', async () => {
+    const one = { s: demoSession('app') };
+    const h = harness(one, `${BASE}/set-up/wifi`);
+    await until(() => h.state().setup.phase === 'wifi' && h.state().busy === undefined);
+    await act(() => one.s.click('ha', () => one.s.homeAssistant()));
+    await until(() => h.state().setup.phase === 'ha');
+    expect(h.nav.history.slice(-2)).toEqual([`${BASE}/set-up/wifi`, `${BASE}/set-up/home-assistant`]); // a history entry each
+    h.back();
+    await until(() => h.state().setup.phase === 'wifi' && h.state().busy === undefined);
+    expect(h.nav.path).toBe(`${BASE}/set-up/wifi`);
+    expect(h.renewals).toHaveLength(0);
+    expect(registry.get()!.session).toBe(one.s);
+    h.go('/set-up/home-assistant'); // the rail's link forward again, or Forward
+    await until(() => h.state().setup.phase === 'ha');
+    expect(registry.get()!.session).toBe(one.s);
+    one.s.close();
   });
 
   it('runs an entry route once under StrictMode', async () => {

@@ -16,7 +16,7 @@ import { SETUP_SOCKET, SetupChannel, validHaUrl, type SetupState } from '@glassw
 import { radioPlan, type FrameUi } from '../frames/aqara-s1-plus';
 import { explain } from './explain';
 import { AskBridge, flowUi } from './flowUi';
-import { initial, reduce, type Action, type Flow, type Setup, type WizardState } from './state';
+import { initial, reduce, type Action, type AppSettings, type Flow, type Setup, type WizardState } from './state';
 
 /** A tiny store: the session writes, React reads with useSyncExternalStore. */
 export class Store {
@@ -52,7 +52,6 @@ export interface SessionDeps {
   simulated?: boolean;
 }
 
-export interface Settings { locale?: string; timezone?: string; clock24: boolean; keyboard: boolean }
 
 const notPicked = (e: unknown) => e instanceof DOMException && e.name === 'NotFoundError';
 
@@ -73,6 +72,8 @@ export class Session {
   private ip?: string;
   private wifiSsid?: string;
   private wifiHint?: string;
+  /** what the person chose on the settings step, shown again if they go back to it */
+  private chosen?: AppSettings;
   private haTimer?: ReturnType<typeof setInterval>;
   private readonly sleep: (ms: number) => Promise<void>;
   private running?: string;
@@ -249,7 +250,7 @@ export class Session {
     switch (r) {
       case 'install': this.dispatch({ type: 'go', screen: 'connect', flow: 'install' }); return;
       case 'undo': return this.openUndo();
-      case 'resume': if (await this.connectPanel()) this.setupPhase({ phase: 'settings', update: true }); return;
+      case 'resume': if (await this.connectPanel()) this.setupPhase({ phase: 'settings', update: true, chosen: this.chosen }); return;
       case 'wifi': if (await this.connectPanel()) await this.wifi(); return;
       case 'home-assistant': if (await this.connectPanel()) await this.homeAssistant(); return;
       case 'radio': if (await this.connectPanel()) await this.radio(); return;
@@ -257,9 +258,10 @@ export class Session {
   }
 
   /** Settings → install (or update) the app. */
-  async installApp(opts: Settings): Promise<void> {
+  async installApp(opts: AppSettings): Promise<void> {
     const update = this.s.setup.phase === 'settings' && this.s.setup.update;
-    this.setupPhase({ phase: 'settings', update, busy: `Installing ${this.d.frame.app}. About a minute.` });
+    this.chosen = opts;
+    this.setupPhase({ phase: 'settings', update, chosen: opts, busy: `Installing ${this.d.frame.app}. About a minute.` });
     try {
       const res = await this.getFlow(await this.keyReady).setUpApp(this.panel!, {
         timezone: opts.timezone, locale: opts.locale, clock24: opts.clock24, keyboard: opts.keyboard,
@@ -273,7 +275,7 @@ export class Session {
         : undefined;
       await this.wifi();
     } catch (e) {
-      this.setupPhase({ phase: 'settings', update, error: (e as Error).message });
+      this.setupPhase({ phase: 'settings', update, chosen: opts, error: (e as Error).message });
     }
   }
 
@@ -310,6 +312,7 @@ export class Session {
   /** Wi-Fi from this computer, over Improv Serial through adb. */
   async wifi(): Promise<void> {
     this.setupPhase({ phase: 'wifi', status: `Starting ${this.d.frame.app} on the panel…`, hint: this.wifiHint });
+    void this.improv?.close().catch(() => {}); // back on this step: one Improv connection at a time
     this.improv = await this.openImprov();
     if (!this.improv) {
       this.setupPhase({ phase: 'wifi', networks: [], unreachable: true, status: `Couldn't reach ${this.d.frame.app} on the panel.` });

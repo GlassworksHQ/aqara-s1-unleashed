@@ -26,7 +26,7 @@ const checked = () => screen.getAllByRole('radio').find((r) => r.getAttribute('d
 describe('the set-up forms', () => {
   it('Wi-Fi: a pick that a rescan no longer lists is replaced', () => {
     const s = demoSession('connect');
-    render(<Wizard session={s} frame={s1PlusUi} />);
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
     act(() => s.store.dispatch({ type: 'setup', setup: { phase: 'wifi', status: '', networks: nets('Home Net', 'Home Net 5G') } }));
     fireEvent.click(screen.getByRole('radio', { name: /Home Net 5G/ }));
     expect(checked()).toMatch(/Home Net 5G/);
@@ -37,7 +37,7 @@ describe('the set-up forms', () => {
 
   it('Wi-Fi: the replaced pick\'s password goes with it', () => {
     const s = demoSession('connect');
-    render(<Wizard session={s} frame={s1PlusUi} />);
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
     act(() => s.store.dispatch({ type: 'setup', setup: { phase: 'wifi', status: '', networks: nets('Home Net', 'Home Net 5G') } }));
     fireEvent.click(screen.getByRole('radio', { name: /Home Net 5G/ }));
     const password = () => document.querySelector<HTMLInputElement>('input[type=password]')!;
@@ -53,7 +53,7 @@ describe('the set-up forms', () => {
 
   it('Radio: Skip and Finish are off while a radio change runs', async () => {
     const s = demoSession('radio');
-    render(<Wizard session={s} frame={s1PlusUi} />);
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
     await act(() => s.route('radio'));
     const skip = () => screen.getByRole('button', { name: 'Skip, leave it as it is' }) as HTMLButtonElement;
     const finish = () => screen.getByRole('button', { name: 'Finish' }) as HTMLButtonElement;
@@ -69,7 +69,7 @@ describe('the set-up forms', () => {
   it('Home Assistant: the address follows discovery until the person types', () => {
     const s = demoSession('connect');
     const ha = (discovered = '') => ({ discovered, url: '', signedIn: false, signinUrl: '' });
-    render(<Wizard session={s} frame={s1PlusUi} />);
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
     act(() => s.store.dispatch({ type: 'setup', setup: { phase: 'ha', ha: ha() } }));
     const input = () => screen.getByRole('textbox') as HTMLInputElement;
     expect(input().value).toBe('http://homeassistant.local:8123');
@@ -83,7 +83,7 @@ describe('the set-up forms', () => {
 
   it('Firing, after an earlier try wrote: no claim that nothing is written yet', () => {
     const s = demoSession('connect');
-    render(<Wizard session={s} frame={s1PlusUi} />);
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
     act(() => {
       s.store.dispatch({ type: 'changed', by: 'written' });
       s.store.dispatch({ type: 'start', flow: 'install', now: Date.now() });
@@ -92,4 +92,31 @@ describe('the set-up forms', () => {
     expect(document.body.textContent).toMatch(/Your backup comes before any write\./);
     s.close();
   });
+
+  it('the rail lists set-up\'s steps; the ones done link back, and not while something runs', () => {
+    const s = demoSession('connect');
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
+    act(() => s.store.dispatch({ type: 'setup', setup: { phase: 'ha', ha: { signedIn: false } } }));
+    const rail = screen.getByRole('navigation', { name: 'Steps' });
+    const links = () => [...rail.querySelectorAll('.sub a')].map((a) => [a.textContent, a.getAttribute('href')]);
+    expect(links()).toEqual([['App', '/aqara-s1-plus/set-up'], ['Wi-Fi', '/aqara-s1-plus/set-up/wifi']]);
+    expect(rail.querySelector('.sub [aria-current=step]')?.textContent).toBe('Home Assistant');
+    act(() => s.store.dispatch({ type: 'busy', busy: 'save-ha' }));
+    expect(links()).toEqual([]);
+    s.close();
+  });
+
+  it('Settings, gone back to after the app went in: shows what was chosen', async () => {
+    const s = demoSession('app');
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
+    await act(() => s.route('resume'));
+    await act(() => s.installApp({ locale: 'de-DE', timezone: 'Europe/Berlin', clock24: true, keyboard: false }));
+    expect(s.store.state.setup.phase).toBe('wifi');
+    await act(() => s.route('resume')); // Back, or the rail's App
+    const [language, zone] = screen.getAllByRole('combobox') as HTMLSelectElement[];
+    expect([language!.value, zone!.value]).toEqual(['de-DE', 'Europe/Berlin']);
+    expect(screen.getByRole('radio', { name: '24-hour' }).getAttribute('data-state')).toBe('checked');
+    expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(false);
+    s.close();
+  }, 20_000);
 });

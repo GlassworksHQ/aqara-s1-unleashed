@@ -46,7 +46,7 @@ async function setup(flow: 'install' | 'undo' = 'install') {
     backups: { save: async () => {}, original: async () => meta, files: async () => [{ part: 'boot', data: new Uint8Array(4), sha256: '', crc: 0 }] },
     loadKey: async () => key as never,
   }, initial(flow));
-  render(<Wizard session={session} frame={s1PlusUi} />);
+  render(<Wizard session={session} frame={s1PlusUi} base="/aqara-s1-plus" />);
   await new Promise((r) => setTimeout(r, 0)); // the key loads
   return { session, webUsbDevices, key };
 }

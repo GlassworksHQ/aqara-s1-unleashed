@@ -16,10 +16,13 @@ export type Screen = 'connect' | 'firing' | 'setup' | 'done' | 'undo' | 'error';
 
 export interface Network { ssid: string; rssi: number; secure: boolean }
 
+/** The app's settings as the person chose them: kept, so going back to the step shows them again. */
+export interface AppSettings { locale?: string; timezone?: string; clock24: boolean; keyboard: boolean }
+
 /** What the setup step shows, one phase at a time (S1 Kiosk over adb). */
 export type Setup =
   | { phase: 'waiting'; note: string }
-  | { phase: 'settings'; busy?: string; error?: string; update: boolean }
+  | { phase: 'settings'; busy?: string; error?: string; update: boolean; chosen?: AppSettings }
   | {
       phase: 'wifi';
       /** undefined while the panel scans */
@@ -222,12 +225,27 @@ export function railIndex(s: WizardState): number {
   return at[s.flow][s.screen] ?? 0;
 }
 
-export function rail(s: WizardState): { name: string; mark: RailMark }[] {
+/** Set up's own steps, with the route of each (routes.ts SET_UP). */
+const SET_UP_STEPS = [['App', 'set-up'], ['Wi-Fi', 'wifi'], ['Home Assistant', 'home-assistant'], ['Radio', 'radio']] as const;
+const SET_UP_AT: Record<Setup['phase'], number> = { waiting: 0, settings: 0, wifi: 1, ha: 2, radio: 3, 'radio-next': 3 };
+
+export interface RailStep {
+  name: string;
+  mark: RailMark;
+  /** during set-up, its own steps; `route` is the step's (routes.ts), for going back to it */
+  sub?: { name: string; mark: RailMark; route: (typeof SET_UP_STEPS)[number][1] }[];
+}
+
+export function rail(s: WizardState): RailStep[] {
   const now = railIndex(s);
   const all = s.screen === 'done';
+  const at = SET_UP_AT[s.setup.phase];
   return STEPS[s.flow].map((name, i) => ({
     name,
     mark: all || i < now ? 'done' : i > now ? 'todo' : s.screen === 'error' ? 'bad' : s.ask ? 'turn' : 'now',
+    ...(s.flow === 'install' && s.screen === 'setup' && i === now
+      ? { sub: SET_UP_STEPS.map(([n, route], j) => ({ name: n, route, mark: j < at ? 'done' as const : j > at ? 'todo' as const : 'now' as const })) }
+      : {}),
   }));
 }
 

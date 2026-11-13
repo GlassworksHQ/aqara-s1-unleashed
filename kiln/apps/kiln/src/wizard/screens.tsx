@@ -160,10 +160,11 @@ function Settings({ s, session, frame, setup }: P & { setup: Extract<Setup, { ph
   }, [here]);
   const tzHere = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const tzs = useMemo(zones, []);
-  const [locale, setLocale] = useState(() => (LOCALES.includes(here) ? here : LOCALES.find((t) => t.split('-')[0] === here.split('-')[0]) ?? ''));
-  const [tz, setTz] = useState(tzs.includes(tzHere) ? tzHere : '');
-  const [clock, setClock] = useState(new Intl.DateTimeFormat(here, { hour: 'numeric' }).resolvedOptions().hour12 ? '12' : '24');
-  const [keyboard, setKeyboard] = useState(true);
+  const was = setup.chosen;
+  const [locale, setLocale] = useState(() => was ? was.locale ?? '' : (LOCALES.includes(here) ? here : LOCALES.find((t) => t.split('-')[0] === here.split('-')[0]) ?? ''));
+  const [tz, setTz] = useState(was ? was.timezone ?? '' : tzs.includes(tzHere) ? tzHere : '');
+  const [clock, setClock] = useState(was ? (was.clock24 ? '24' : '12') : new Intl.DateTimeFormat(here, { hour: 'numeric' }).resolvedOptions().hour12 ? '12' : '24');
+  const [keyboard, setKeyboard] = useState(was?.keyboard ?? true);
   const busy = !!setup.busy;
   return (
     <section className="card" aria-labelledby="h">
