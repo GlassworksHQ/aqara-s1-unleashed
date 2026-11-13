@@ -49,7 +49,7 @@ def hexc(h):
 
 
 # The brand's night. The S1 composites its boot animation in 32-bit (measured 2026-11-12), so it
-# shows exactly; on an RGB 565 surface it would not (frames/aqara-s1-plus/research/boot-animation.md, step 5).
+# shows exactly; on an RGB 565 surface it would not (docs/research/boot-animation.md, step 5).
 BG = hexc("#0a0b0f")
 
 # ---------------------------------------------------------------- fonts (OFL)
