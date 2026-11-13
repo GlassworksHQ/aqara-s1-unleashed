@@ -99,7 +99,8 @@ dependencies {
         // keeps the APK free software (as Firefox's F-Droid builds do). HA's login doesn't use WebAuthn.
         exclude(group = "com.google.android.gms")
     }
-    // Voice assistant: openWakeWord inference (ships every ABI; abiFilters keeps the one built, minSdk 19).
+    // Voice assistant: wake word inference, microWakeWord and the legacy openWakeWord (ships every ABI;
+    // abiFilters keeps the one built, minSdk 19).
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     // Libraries extracted from this app (app/libs/). esphome-api brings BouncyCastle (Noise), which
     // Sendspin's encryption also uses.
@@ -113,7 +114,7 @@ dependencies {
     // XZ decoder (pure Java, 0BSD) for Silicon Labs' zigbeed .deb (radio/SisdkZigbeed.kt).
     implementation("org.tukaani:xz:1.10")
 
-    // JVM unit tests for the ESPHome API (against aioesphomeapi) and openWakeWord buffering.
+    // JVM unit tests for the ESPHome API (against aioesphomeapi) and the wake word engines.
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")
     // Mock-up screenshots of the real settings/setup views (RadioMockups, only with -Ps1MockupDir=<dir>).
@@ -131,6 +132,9 @@ tasks.withType<Test>().configureEach {
     inputs.dir(rootProject.file("../.github/workflows")).withPropertyName("workflows")
         .withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file("build.gradle.kts").withPropertyName("kioskBuildScript").withPathSensitivity(PathSensitivity.NONE)
+    // WakeWordsTest checks that the host fetch script pins the same models as the app.
+    inputs.file(rootProject.file("../tools/voice/fetch-models.sh")).withPropertyName("fetchModels")
+        .withPathSensitivity(PathSensitivity.NONE)
     // ContentScriptReadyTest runs the web extension's content.js under node: a change to it re-runs the tests.
     inputs.dir("src/main/assets/extension").withPropertyName("webExtension").withPathSensitivity(PathSensitivity.RELATIVE)
 }

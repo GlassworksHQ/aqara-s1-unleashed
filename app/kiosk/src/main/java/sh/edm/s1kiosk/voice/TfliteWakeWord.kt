@@ -1,7 +1,6 @@
 package sh.edm.s1kiosk.voice
 
 import org.tensorflow.lite.Interpreter
-import java.io.Closeable
 import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
@@ -13,7 +12,8 @@ import java.nio.channels.FileChannel
 class ModelsMissingException(message: String) : Exception(message)
 
 /**
- * openWakeWord with TFLite: melspectrogram.tflite -> embedding_model.tflite -> wake model.
+ * openWakeWord with TFLite: melspectrogram.tflite -> embedding_model.tflite -> wake model. The legacy
+ * engine, kept for one release behind [WakeWord.Legacy] (#175). Takes 1280-sample (80 ms) frames.
  * Not thread-safe: use from the microphone thread only.
  */
 class TfliteWakeWord private constructor(
@@ -22,7 +22,7 @@ class TfliteWakeWord private constructor(
     private val melModel: Interpreter,
     private val embModel: Interpreter,
     private val wakeModel: Interpreter,
-) : Closeable {
+) : WakeDetector {
 
     companion object {
         const val MELSPEC_FILE = "melspectrogram.tflite"
@@ -137,7 +137,7 @@ class TfliteWakeWord private constructor(
     private val detector = OwwDetector(OwwFeatures(::runMel, ::runEmbedding), wakeFrames, ::runWake)
 
     /** Feeds one 1280-sample (80 ms) frame of 16 kHz audio; returns the wake score 0..1. */
-    fun process(frame: ShortArray): Float = detector.process(frame)
+    override fun process(frame: ShortArray): Float = detector.process(frame)
 
     override fun close() {
         melModel.close()
