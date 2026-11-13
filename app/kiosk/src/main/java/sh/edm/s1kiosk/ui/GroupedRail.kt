@@ -34,6 +34,11 @@ class GroupedRail(context: Context) : LinearLayout(context) {
 
     var onTap: ((String) -> Unit)? = null
 
+    /** Row heights and the gap between rows, in dp. Settings uses a tighter rail, so its Panes group fits open. */
+    var rowDp = 39f
+    var childDp = 34f
+    var gapDp = 4f
+
     private val g = Glass(context)
 
     init { orientation = VERTICAL }
@@ -71,7 +76,7 @@ class GroupedRail(context: Context) : LinearLayout(context) {
 
     private fun add(v: View) {
         val child = v.tag == CHILD
-        addView(v, LayoutParams(-1, g.px(if (child) 34f else 39f)).apply { if (childCount > 0) topMargin = g.px(4f) })
+        addView(v, LayoutParams(-1, g.px(if (child) childDp else rowDp)).apply { if (childCount > 0) topMargin = g.px(gapDp) })
     }
 
     private fun row(

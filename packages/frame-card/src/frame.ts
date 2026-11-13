@@ -26,6 +26,9 @@ export type Support = Stage | 'depends' | 'unknown' | 'no';
 export const RATING_KEYS = ['difficulty', 'reversible', 'modifiesAndroid', 'root', 'opensDevice', 'vendorApps', 'wipes', 'backup', 'updates'] as const;
 export type RatingKey = (typeof RATING_KEYS)[number];
 export const PANE_IDS = ['assist', 'timers', 'sendspin', 'radio', 'sensors', 'base'] as const;
+/** Android's ABI names (`Build.SUPPORTED_ABIS`) */
+export const ABIS = ['armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'] as const;
+export type Abi = (typeof ABIS)[number];
 
 export interface FrameDesign {
   id: string;
@@ -46,6 +49,8 @@ export interface FrameDesign {
   display?: { width: number; height: number };
   /** the boot branding's format limits (branding/boot/target.py) */
   boot?: { androidApi?: number; splash?: 'allwinner-boot-resource'; zipBudget?: number };
+  /** what the device's userspace runs, preferred first; the app's release builds every frame's (#98). Optional so code that builds a FrameDesign without it still compiles */
+  abis?: Abi[];
   specs: { label: string; value: string }[];
   panes: Record<(typeof PANE_IDS)[number], { support: Support; note?: string }>;
   /** href: where it installs from, only for a frame without `kiln` */

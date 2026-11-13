@@ -24,6 +24,7 @@
     "mount": "wall"
   },
   "render": "render.webp",
+  "abis": ["arm64-v8a", "armeabi-v7a"],
   "specs": [
     {
       "label": "Radio",

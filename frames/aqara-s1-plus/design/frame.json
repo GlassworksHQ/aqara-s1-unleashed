@@ -38,6 +38,7 @@
     "splash": "allwinner-boot-resource",
     "zipBudget": 9000000
   },
+  "abis": ["armeabi-v7a"],
   "specs": [
     {
       "label": "SoC",

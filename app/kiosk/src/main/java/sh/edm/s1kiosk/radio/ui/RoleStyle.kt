@@ -9,7 +9,7 @@ import android.view.View
 import sh.edm.s1kiosk.radio.RadioMode
 
 /**
- * How the radio roles look, in the settings menu's role tiles and the setup screen's radio step: a hue
+ * How the radio roles look in the settings menu's Radio panel: a hue
  * per technology (Zigbee sky blue, Thread violet; Off neutral) and an icon per role (coordinator hub,
  * repeater waves, border router globe, power). Amber stays the accent for the one primary action;
  * green means running, rose an error or a destructive action.

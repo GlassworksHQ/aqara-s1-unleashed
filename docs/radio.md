@@ -678,11 +678,11 @@ Assistant entities and the Thread join from Home Assistant, as a Glassworks pane
   `experimental` and `repeater` flags. `radio.set_mode` accepts only those options' ids
   (`RadioStep.OPTIONS`): a mode the step doesn't offer is refused with "Unknown radio mode", even when
   `RadioMode` has it ([onboarding.md](onboarding.md#from-the-web-installer-improv-serial--setup-channel-over-adb-)).
-- Kiosk settings menu, Radio section (0.4.3, `radio/ui/RadioSectionView`): a row of role tiles (icon in
-  the technology's colour, Zigbee sky blue / Thread violet; the active one tinted with a status dot:
-  green running or joined, amber starting or waiting, rose error; β for experimental), then a panel with
+- Kiosk settings menu, Radio section (`radio/ui/RadioSectionView`): the radio's on/off at the top
+  right (the section's master switch; off asks first, on shows the roles), the roles as in setup
+  (`RadioTechPicker`, #63 round 2; the one in effect lit, another asks to switch), then a panel with
   a header strip in the role's colour and a status pill (`RadioFollowUp.health`): Off as an empty state
-  ("Tap a role above"); a tapped tile previews that role with *Turn on …*; the active role's follow-up
+  ("Turn it on at the top right"); the active role's follow-up
   card (QR code, settings, Zigbee stack choice, Join/Leave, the Thread role and dataset state, a
   write-only `Thread dataset` field behind "Advanced", the long text behind "How does this work?");
   *Starting …* while a role starts; a refused switch in plain words with the role that is still
