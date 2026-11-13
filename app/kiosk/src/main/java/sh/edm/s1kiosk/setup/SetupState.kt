@@ -1,5 +1,7 @@
 package sh.edm.s1kiosk.setup
 
+import dev.glassworks.pane.SetupStep
+
 /**
  * Decides whether the first-boot setup screen is shown and which step it is on (pure JVM, see
  * SetupStateTest). docs/onboarding.md, step 4.
@@ -35,15 +37,33 @@ object SetupFlow {
     const val SIGNIN = "signin"
     const val DONE = "done"
 
-    /** Every step in order: the core's, with the panes' steps ([paneSteps], their ids) before Sign in. */
-    fun ids(paneSteps: List<String>): List<String> {
-        require(paneSteps.none { it in CORE } && paneSteps.size == paneSteps.toSet().size) {
-            "Pane step ids must be unique and not the core's ($CORE): $paneSteps"
-        }
-        return listOf(WIFI, HA) + paneSteps + listOf(SIGNIN, DONE)
-    }
+    /** Every step in order: the core's, with the panes' steps ([paneSteps], their ids, see [usable]) before Sign in. */
+    fun ids(paneSteps: List<String>): List<String> = listOf(WIFI, HA) + paneSteps + listOf(SIGNIN, DONE)
 
     private val CORE = setOf(WIFI, HA, SIGNIN, DONE)
+
+    /**
+     * The panes' [steps] that setup can take, in order. A step is left out, with why in [skipped], when
+     * its id is a core step's or a key of the setup channel's state (its card would never show, its
+     * state would overwrite the core's), or an earlier step's, or when one of its request names is
+     * already taken: the core's, or an earlier step's. A bad step costs only itself: it never stops the
+     * setup screen or the setup channel.
+     */
+    fun usable(steps: List<SetupStep>, skipped: (String) -> Unit): List<SetupStep> {
+        val ids = HashSet(CORE + SetupChannel.CORE_KEYS)
+        val names = HashSet(SetupChannel.CORE_OPS)
+        return steps.filter { s ->
+            val own = s.ops.keys.map { "${s.id}.$it" } + s.legacyOps.keys
+            val clash = own.filter { it in names || own.count { o -> o == it } > 1 }.distinct()
+            val why = when {
+                s.id in ids -> "its id is the core's (${CORE + SetupChannel.CORE_KEYS}) or an earlier step's"
+                clash.isNotEmpty() -> "request names already taken: $clash"
+                else -> null
+            }
+            if (why != null) skipped("Setup step '${s.id}' left out: $why") else { ids += s.id; names += own }
+            why == null
+        }
+    }
 
     /** A step id from `--es setup_step <id>` ([paneSteps] are the panes' ids), or null. */
     fun parse(s: String?, paneSteps: List<String>): String? =

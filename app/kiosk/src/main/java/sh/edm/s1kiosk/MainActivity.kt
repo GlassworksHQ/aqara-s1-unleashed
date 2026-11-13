@@ -71,7 +71,7 @@ class MainActivity : Activity() {
 
     /** The panes' definitions: their setup steps, settings sections and adb extras. */
     private val panes by lazy { glassworks.paneDefinitions(this) }
-    private val paneSteps by lazy { panes.flatMap { it.setupSteps } }
+    private val paneSteps by lazy { glassworks.setupSteps(this) }
 
     /** "Sign in on this panel instead" was chosen: don't cover HA's login page again (this process). */
     private var usePanelLogin = false

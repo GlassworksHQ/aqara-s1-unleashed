@@ -23,7 +23,7 @@ object SetupChannelServer {
     fun start(context: Context, runtime: GlassworksRuntime) {
         if (server != null) return
         val backend = AndroidBackend(context.applicationContext, runtime)
-        val steps = runtime.paneDefinitions(context).flatMap { it.setupSteps }
+        val steps = runtime.setupSteps(context)
         server = AdbSocketServer(SetupChannel.SOCKET, TAG) { input, output ->
             SetupChannel(backend, steps) { Log.i(TAG, it) }.serve(input, output)
         }.also { it.start() }
