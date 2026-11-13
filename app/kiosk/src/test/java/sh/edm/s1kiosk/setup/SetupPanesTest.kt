@@ -115,7 +115,7 @@ class SetupPanesTest {
         assertFalse(s.wanted("radio"))
         all(s, Glass.Toggle::class.java)[1].performClick() // the radio on
         assertEquals(false, continueAndWait(s))
-        assertEquals(listOf("voice true", "radio true"), applied)
+        assertEquals(setOf("voice true", "radio true"), applied.toSet()) // each card on its own thread: any order
         assertTrue(s.panesChosen)
         assertTrue(s.wanted("radio")) // its step now sits under Panes
     }
@@ -125,7 +125,7 @@ class SetupPanesTest {
         val s = overlay()
         all(s, Glass.Toggle::class.java)[0].performClick()
         assertEquals(true, continueAndWait(s))
-        assertEquals(listOf("voice false", "radio false"), applied)
+        assertEquals(setOf("voice false", "radio false"), applied.toSet()) // any order
     }
 
     @Test
