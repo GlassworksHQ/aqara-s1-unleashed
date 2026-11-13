@@ -30,6 +30,7 @@ image follows GitHub's theme.
 | [Glassworks Principles](principles.md) | **Principles banner** (`banner-principles-on-*.svg`), then a part badge under each part's heading | `docs/principles.md` |
 | The Glassworks core (`dev.glassworks.*`), including the pane API | **Core banner** (`banner-core-on-*.svg`) as the header, and the **core badge** (`badge-core-on-*.svg`) | `app/kiosk/src/main/java/dev/glassworks/README.md` |
 | A pane | **Pane badge** (`badge-pane-on-*.svg`) | The pane's README |
+| [Clarity](perf.md), the perf test and grade every frame follows | **Core badge** (`badge-core-on-*.svg`) alone, under the title. No banner | `docs/perf.md`. Its tools in `tools/perf` stay plain, like every dev tool |
 | The installer (`kiln/`, `tools/install.sh`) | **Kiln badge** (`badge-kiln-on-*.svg`) | Kiln's README. The S1 installer is still S1-branded until it moves into Kiln |
 
 Device-specific code lives in the frame, so it doesn't get a badge of its own.

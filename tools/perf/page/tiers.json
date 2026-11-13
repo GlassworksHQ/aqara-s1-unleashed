@@ -1,0 +1,76 @@
+{
+ "_comment": "Clarity reference dashboards (MIT): the counts, the first screen, the update stream and the phases. The one source for the fake Home Assistant (dashboards.py), the in-page harness and the node tests. Project choices, fixed before any frame was graded under them; change one only on purpose, with the docs and the tests, never to move a frame's letter.",
+ "PROTOCOL": 4,
+ "ORDER": [
+  "light",
+  "typical",
+  "heavy"
+ ],
+ "DASHBOARD": "clarity-ref",
+ "_START": "The view the kiosk is pointed at and comes back to after a restart: the light view's cards plus one history graph and one picture, so the cold load brings in the code of every card type HA loads lazily (create-card-element.ts) and opening a view later measures the view, not a first download.",
+ "START": {
+  "base": "light",
+  "histories": 1,
+  "pictures": 1
+ },
+ "TIERS": {
+  "light": {
+   "tiles": 12,
+   "entities": 4,
+   "rows": 5,
+   "longLists": 0,
+   "longRows": 0,
+   "sensors": 2,
+   "histories": 0,
+   "pictures": 0,
+   "glances": 1
+  },
+  "typical": {
+   "tiles": 26,
+   "entities": 11,
+   "rows": 6,
+   "longLists": 0,
+   "longRows": 0,
+   "sensors": 6,
+   "histories": 2,
+   "pictures": 2,
+   "glances": 2
+  },
+  "heavy": {
+   "tiles": 50,
+   "entities": 22,
+   "rows": 8,
+   "longLists": 4,
+   "longRows": 20,
+   "sensors": 16,
+   "histories": 8,
+   "pictures": 15,
+   "glances": 4
+  }
+ },
+ "HEAD": {
+  "sensorTiles": 4,
+  "switchTiles": 3,
+  "rows": 5
+ },
+ "LIVE": {
+  "updatesPerS": 5,
+  "flipEveryMs": 2000,
+  "clockEveryMs": 1000,
+  "tileTransitionMs": 180
+ },
+ "PHASES": {
+  "stillAfterUsableMs": 2500,
+  "freeWindowMs": 500,
+  "warmupMs": 1000,
+  "tapWaitMinMs": 30000,
+  "swipes": 6,
+  "swipeMs": 300,
+  "scrollQuietMs": 400,
+  "swipeWaitMs": 4000,
+  "scrollRoomScreens": 3,
+  "repositionStillMs": 500,
+  "updatesWindowMs": 4000
+ },
+ "GLANCE_ENTITIES": 5
+}

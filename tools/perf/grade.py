@@ -1,4 +1,4 @@
-"""The Glassworks perf rubric (MIT). docs/perf.md explains each row and links its source.
+"""Clarity's rubric (MIT): the grade of the Glassworks perf test. docs/perf.md explains each row and links its source.
 
 Bands follow Core Web Vitals: good, needs-improvement, poor. Thresholds come from published
 guidelines and do not depend on any frame's own numbers. Change them only on purpose, with the
@@ -11,6 +11,7 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "page", "rubr
     RUBRIC = json.load(_f)
 
 RUBRIC_VERSION = RUBRIC["version"]
+NAME = RUBRIC["name"]          # "Clarity": the test's name, kept in rubric.json only
 GOOD, NI, POOR = "good", "needs-improvement", "poor"
 ORDER = {GOOD: 0, NI: 1, POOR: 2}
 
@@ -145,9 +146,9 @@ def limits(bands, level):
 
 def grade(tiers, start_ms):
     """tiers: {light|typical|heavy: {"inp_ms", "load_ms", "scroll_level", "updates_level"}}; start_ms:
-    process start to engine ready. Returns the letter, its plain meaning, each page's bands and
-    level, and what is missing. A missing measurement fails whatever needs it, and the grade is then
-    provisional."""
+    the restart, process start to the start view usable (protocol 4; engine ready before it).
+    Returns the letter, its plain meaning, each page's bands and level, and what is missing. A
+    missing measurement fails whatever needs it, and the grade is then provisional."""
     bands = {t: tier_bands((tiers or {}).get(t)) for t in TIERS}
     levels = {t: page_level(bands[t]) for t in TIERS}
     start = band(start_ms, METRICS["start_ms"])
@@ -229,7 +230,7 @@ def grade_summary(summary):
 
 def memory_budget(memory, budget):
     """#68-style budget check. memory: app_pss_peak_kb, mem_total_kb, mem_available_min_kb.
-    budget: app_pss_max_pct_of_ram, device_available_min_pct (tools/perf/budgets.json).
+    budget: app_pss_max_pct_of_ram, device_available_min_pct (the `ram` of frames/<id>/budgets.json).
     ok is None unless every budgeted value was measured."""
     total = memory.get("mem_total_kb")
     if not total:
@@ -248,6 +249,20 @@ def memory_budget(memory, budget):
     return {"budget": budget, "checks": checks, "ok": ok}
 
 
-def frame_budget(budgets, frame_id):
-    """The default budget with the frame's override on top, so an override may name one key."""
-    return dict(budgets["default"], **budgets.get("frames", {}).get(frame_id, {}))
+def frame_budget(default, frame=None):
+    """A frame's budgets: its `ram` keys over the default's (so a frame may name one key), and its own
+    `panes` (a frame's panes are its own; the default has none)."""
+    frame = frame or {}
+    return {"ram": dict(default.get("ram") or {}, **(frame.get("ram") or {})),
+            "panes": frame.get("panes") or default.get("panes") or {}}
+
+
+def pane_budgets(panes, budgets):
+    """Each measured pane's PSS against its budget (ram_pss_max_kb). ok is None when the pane has no
+    budget or wasn't measured."""
+    out = {}
+    for p in panes:
+        cap = (budgets.get(p["id"]) or {}).get("ram_pss_max_kb")
+        out[p["id"]] = {"value_kb": p.get("pss_kb"), "budget_kb": cap,
+                        "ok": None if cap is None or p.get("pss_kb") is None else p["pss_kb"] <= cap}
+    return out

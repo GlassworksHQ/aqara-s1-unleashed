@@ -1,0 +1,4 @@
+<!DOCTYPE html><html><head><title>stub</title><meta name="theme-color" content="{{ theme_color }}"></head><body><script>window.__haLoadExtraModules = function () {
+{%- for extra_module in extra_modules -%}import("{{ extra_module }}");{%- endfor -%}
+{%- for extra_script in extra_js_es5 -%}_ls("{{ extra_script }}");{%- endfor -%}
+};</script></body></html>

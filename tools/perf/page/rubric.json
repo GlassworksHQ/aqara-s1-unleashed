@@ -1,8 +1,10 @@
 {
   "_comment": "The perf rubric: the bands' thresholds and the letter rules. The single source for tools/perf/grade.py, tools/perf/grade.ts (the site computes the letter from a summary with it) and the test page (perf.js, to stop the ladder). docs/perf.md cites each source. Change on purpose, with the docs and the tests (test/grade-cases.json).",
+  "name": "Clarity",
+  "_name": "The perf test's name, as in \"Clarity A\" or \"a frame's Clarity grade\" (the maintainer, 2026-11-13). The report headline, the summary and grade.ts take it from here, so a rename is one change. File paths keep tools/perf and docs/perf.md.",
   "version": 5,
-  "protocol_version": 3,
-  "_protocol": "The measurement protocol these rules apply to (tools/perf/page/tiers.js PROTOCOL): the pages, the swipes, the update rate, the windows and how the runner reads them. A summary from another protocol can't be graded with this file: re-measure.",
+  "protocol_version": 4,
+  "_protocol": "The measurement protocol these rules apply to (tools/perf/page/tiers.json PROTOCOL): the pages, the swipes, the update rate, the windows and how the runner reads them. A summary from another protocol can't be graded with this file: re-measure. Protocol 4 (2026-11-13): Home Assistant's real frontend on a fake HA, restart and open the view to a usable dashboard.",
   "one_frame_ms": 16.667,
   "vsync_slack_ms": 0.5,
   "metrics": {
@@ -24,7 +26,7 @@
     "load_ms": {
       "good_max": 2500,
       "poor_above": 4000,
-      "source": "Core Web Vitals LCP bounds (good <= 2.5 s, poor > 4 s), applied to each reference dashboard from navigation start to settled (the first frame followed by 750 ms of quiet, after the load event). Settled is at or after the largest paint, so this is stricter than LCP"
+      "source": "Core Web Vitals LCP bounds (good <= 2.5 s, poor > 4 s), applied to opening each reference view (protocol 4): from HA's navigate() in the loaded frontend to usable (every head card and every card on the screen drawn, stable for 2 frames, then the main thread free for 500 ms). Usable is at or after the largest paint, so this is stricter than LCP. Lenient for a view switch (docs/perf.md, Open the view)"
     },
     "inp_ms": {
       "good_max": 200,
@@ -34,7 +36,7 @@
     "start_ms": {
       "good_max": 2500,
       "poor_at": 5000,
-      "source": "app process start to engine ready (GeckoView's own first PageStart). poor: Android vitals' excessive cold start bound (>= 5 s), which vitals apply to TTID. good <= 2.5 s: project choice (LCP's bound)"
+      "source": "the restart (protocol 4): app process start to the reference dashboard's start view being usable, the kiosk having been pointed at it (before protocol 4: to engine ready, GeckoView's own first PageStart). poor: Android vitals' excessive cold start bound (>= 5 s), which vitals apply to TTID. good <= 2.5 s: project choice (LCP's bound)"
     }
   },
   "js_burst_ms": {
@@ -88,7 +90,7 @@
       {
         "level": "good",
         "latency_p95_max_ms": 100,
-        "_comment": "p95 of change to screen (the page applies a change -> the first frame on screen that shows it) <= 100 ms"
+        "_comment": "p95 of change to screen (a change reaches the page -> the first frame on screen that shows it) <= 100 ms"
       },
       {
         "level": "fluid",
