@@ -130,11 +130,17 @@ class EspHomeKeepaliveTest {
         }
 
         inner class HeldOut(o: OutputStream) : FilterOutputStream(o) {
-            override fun write(b: ByteArray, off: Int, len: Int) = out.write(b, off, len)
+            override fun write(b: ByteArray, off: Int, len: Int) {
+                // Before the bytes leave: the answer can be read before flush() runs (#204).
+                if (armed) flushed = true
+                out.write(b, off, len)
+            }
             override fun flush() {
                 val hold = armed
-                if (hold) { armed = false; flushed = true }
+                if (hold) armed = false
                 out.flush()
+                // Bounded: if the reader never handles the answer, give up so the client isn't left waiting
+                // on a write that holds writeLock; the assert below then names the cause.
                 if (hold) heldUntilHandled = handled.await(10, TimeUnit.SECONDS)
             }
         }
@@ -212,10 +218,17 @@ class EspHomeKeepaliveTest {
         try {
             val script = File(javaClass.classLoader!!.getResource("esphome_keepalive.py")!!.toURI())
             // 8 s: several keepalive periods and three times the "unresponsive" limit
+            // Output to a file, so a client that hangs with stdout open can't block the timed wait.
+            val log = File.createTempFile("esphome_keepalive", ".log").apply { deleteOnExit() }
             val proc = ProcessBuilder(python, "-I", script.absolutePath, s.localPort.toString(), "8")
-                .redirectErrorStream(true).start()
-            val out = proc.inputStream.bufferedReader().readText()
-            assertTrue("client timed out:\n$out", proc.waitFor(60, TimeUnit.SECONDS))
+                .redirectErrorStream(true).redirectOutput(log).start()
+            val finished = try {
+                proc.waitFor(60, TimeUnit.SECONDS)
+            } finally {
+                if (proc.isAlive) proc.destroyForcibly()
+            }
+            val out = log.readText()
+            assertTrue("client timed out:\n$out", finished)
             assertEquals("client failed:\n$out", 0, proc.exitValue())
             val r = JSONObject(out.lines().first { it.startsWith("RESULT ") }.removePrefix("RESULT "))
             assertTrue("dropped mid-way:\n$out", r.getBoolean("connected_throughout"))

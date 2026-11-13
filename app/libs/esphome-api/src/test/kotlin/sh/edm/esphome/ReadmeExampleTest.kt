@@ -5,7 +5,7 @@ import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.net.Socket
 
-/** Keeps the README's example compiling and working: a switch toggled by a plaintext API client. */
+/** Keeps the README's examples compiling and working: a switch and an action, used by a plaintext API client. */
 class ReadmeExampleTest {
 
     @Test
@@ -27,17 +27,37 @@ class ReadmeExampleTest {
         // Later, when something changes outside a command: server.publishStates()
         // --- end of README example ---
 
+        val banners = java.util.Collections.synchronizedList(ArrayList<String>())
+        fun showBanner(title: String, seconds: Int) { banners += "$title/$seconds" }
+        fun latestJpeg(): ByteArray? = null
+        // --- README example: actions and cameras (keep in sync with README.md) ---
+        val notify = ApiAction(
+            "notify",
+            args = listOf(ActionArg("title", ActionArgType.STRING), ActionArg("seconds", ActionArgType.INT)),
+            supportsResponse = ActionResponse.STATUS,
+        ) { call ->
+            showBanner(call.string("title"), call.int("seconds"))
+            null // a JSON object instead, for ActionResponse.OPTIONAL or ONLY
+        }
+        val porch = CameraEntity("porch", "Porch", maxFps = 5f) { latestJpeg() }
+        server.setEntities(listOf(lamp, uptime, notify, porch))
+        // --- end of README example ---
+
         try {
             Socket("127.0.0.1", server.localPort).use { s ->
                 val out = s.getOutputStream()
                 out.write(frame(Msg.HELLO_REQUEST, ProtoWriter().string(1, "test").uint32(2, 1).uint32(3, 10).toByteArray()))
                 out.write(frame(Msg.SWITCH_COMMAND, ProtoWriter().fixed32(1, lamp.key, force = true).bool(2, true).toByteArray()))
+                val args = ProtoWriter().fixed32(1, notify.key, force = true)
+                    .message(2, ProtoWriter().string(4, "Door")).message(2, ProtoWriter().uint32(5, 20))
+                out.write(frame(Msg.EXECUTE_SERVICE_REQUEST, args.toByteArray()))
                 out.flush()
                 val until = System.currentTimeMillis() + 5_000
-                while (!lampOn && System.currentTimeMillis() < until) Thread.sleep(20)
+                while ((!lampOn || banners.isEmpty()) && System.currentTimeMillis() < until) Thread.sleep(20)
             }
         } finally { server.stop() }
         assertEquals(true, lampOn)
+        assertEquals(listOf("Door/10"), banners.toList())
     }
 
     private fun varint(o: ByteArrayOutputStream, v: Int) {

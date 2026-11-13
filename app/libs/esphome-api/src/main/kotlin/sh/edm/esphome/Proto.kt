@@ -150,6 +150,54 @@ class ProtoMessage(data: ByteArray) {
         fields[field].orEmpty().mapNotNull { (it as? ByteArray)?.toString(Charsets.UTF_8) }
     fun messages(field: Int): List<ProtoMessage> =
         fields[field].orEmpty().mapNotNull { (it as? ByteArray)?.let(::ProtoMessage) }
+
+    /** Every value of a repeated varint field, packed or not (a parser must accept both). */
+    fun longs(field: Int): List<Long> = fields[field].orEmpty().flatMap { v ->
+        when (v) {
+            is Long -> listOf(v)
+            is ByteArray -> packedVarints(v)
+            else -> emptyList()
+        }
+    }
+
+    /** Every value of a repeated fixed32 field (float, fixed32), packed or not. */
+    fun fixed32s(field: Int): List<Int> = fields[field].orEmpty().flatMap { v ->
+        when (v) {
+            is Int -> listOf(v)
+            is ByteArray -> {
+                if (v.size % 4 != 0) throw ProtoException("truncated packed fixed32")
+                (v.indices step 4).map { i ->
+                    (v[i].toInt() and 0xFF) or ((v[i + 1].toInt() and 0xFF) shl 8) or
+                        ((v[i + 2].toInt() and 0xFF) shl 16) or ((v[i + 3].toInt() and 0xFF) shl 24)
+                }
+            }
+            else -> emptyList()
+        }
+    }
+
+    private fun packedVarints(data: ByteArray): List<Long> {
+        val out = ArrayList<Long>()
+        var pos = 0
+        while (pos < data.size) {
+            var result = 0L
+            var shift = 0
+            while (true) {
+                if (pos >= data.size) throw ProtoException("truncated packed varint")
+                val b = data[pos++].toInt() and 0xFF
+                result = result or ((b and 0x7F).toLong() shl shift)
+                if (b and 0x80 == 0) break
+                shift += 7
+                if (shift > 63) throw ProtoException("varint too long")
+            }
+            out += result
+        }
+        return out
+    }
+
+    companion object {
+        /** sint32 zigzag decoding. */
+        fun zigzag(v: Long): Int = ((v ushr 1) xor -(v and 1)).toInt()
+    }
 }
 
 class ProtoException(message: String) : Exception(message)
