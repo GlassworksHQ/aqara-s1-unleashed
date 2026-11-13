@@ -359,19 +359,19 @@ test("webrtcWindow: no count is ever negative, whatever the receivers do", () =>
 
 test("shownFrames: WebRTC's own counts first; a quality that reads 0 while frames came is not reported", () => {
   const gecko = { quality: { decoded: 0, dropped: 0 }, callbacks: 70, rvfc: true };
-  // GeckoView with the receiver's counts: those, never the zeroed quality.
-  assert.deepEqual(S.shownFrames({ ...gecko, webrtc: { frames_decoded: 75, frames_dropped: 2 } }), { frames: 73, source: "webrtc" });
+  // GeckoView with the receiver's counts: frames decoded (its dropped ones never were), never the zeroed quality.
+  assert.deepEqual(S.shownFrames({ ...gecko, webrtc: { frames_decoded: 75, frames_dropped: 2 } }), { frames: 75, source: "webrtc" });
   // Without them: the 0 is "not reported", and rVFC's callbacks count instead.
   assert.deepEqual(S.shownFrames({ ...gecko, webrtc: null }), { frames: 70, source: "rvfc" });
   assert.deepEqual(S.shownFrames({ ...gecko, webrtc: { inbound: false } }), { frames: 70, source: "rvfc" });
-  // An unreported dropped count is 0 dropped.
-  assert.deepEqual(S.shownFrames({ quality: null, webrtc: { frames_decoded: 40, frames_dropped: null }, callbacks: 0, rvfc: true }),
-                   { frames: 40, source: "webrtc" });
+  // The S1's heavy, smoke 4: 1090 decoded and 690 dropped are 1090 shown, not 400.
+  assert.deepEqual(S.shownFrames({ quality: null, webrtc: { frames_decoded: 1090, frames_dropped: 690 }, callbacks: 0, rvfc: true }),
+                   { frames: 1090, source: "webrtc" });
   // HLS: the decoder's count, as before; a real 0 (nothing came either) stays 0, never rVFC's.
   assert.deepEqual(S.shownFrames({ quality: { decoded: 77, dropped: 1 }, webrtc: null, callbacks: 60, rvfc: true }), { frames: 76, source: "quality" });
   assert.deepEqual(S.shownFrames({ quality: { decoded: 0, dropped: 0 }, webrtc: null, callbacks: 0, rvfc: true }), { frames: 0, source: "quality" });
   assert.deepEqual(S.shownFrames({ quality: null, webrtc: null, callbacks: 0, rvfc: false }), { frames: null, source: "none" });
-  // framesDropped can count frames dropped before decoding too: never fewer than 0 shown.
+  // More dropped than decoded (a stream that hardly decoded): the decoded ones, never fewer than 0.
   assert.deepEqual(S.shownFrames({ quality: null, webrtc: { frames_decoded: 10, frames_dropped: 40 }, callbacks: 3, rvfc: true }),
-                   { frames: 0, source: "webrtc" });
+                   { frames: 10, source: "webrtc" });
 });

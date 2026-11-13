@@ -25,7 +25,6 @@ peer, and reads nothing from the device.
 import asyncio
 import fractions
 import hashlib
-import logging
 import os
 import socket
 import struct
@@ -68,6 +67,56 @@ def media_address():
                 return ip.ip
     raise RuntimeError("the WebRTC relay needs an IPv4 address on this computer that isn't loopback "
                        "(set GW_PERF_WEBRTC_ADDR to one)")
+
+
+# How the peer decides a connection is dead: as go2rtc does in a real setup. HA 2026.11.0 pins go2rtc
+# 1.9.15 (homeassistant/components/go2rtc/const.py, and its Dockerfile), which uses pion/webrtc
+# v4.2.25 and pion/ice v4.4.8 (go2rtc's go.mod) and sets no ICE timeouts (its pkg/webrtc/api.go). So
+# pion/ice's defaults (agent_config.go:21, 24, 31): a Binding request on the selected pair every 2 s,
+# "disconnected" after 5 s without receiving anything from the browser, "failed" 25 s after that
+# (agent.go:906-946). Anything means any packet, media or STUN, however late an answer is
+# (candidate_base.go:337, agent.go:1845). aioice's own check (RFC 7675 as it reads it) gives each
+# answer 0.5 s and closes after 6 late ones, which dropped a busy panel's sessions while its answers
+# were still arriving (the S1's heavy view, #202 smoke 4: none lost, median 1.4 to 2.6 s).
+PION_ICE = {"keepalive_s": 2.0, "disconnected_s": 5.0, "failed_s": 25.0}
+_liveness_listeners = []
+
+
+def _install_pion_liveness():
+    """aioice's consent check, replaced by pion's liveness (above). Once per process."""
+    if getattr(aioice.ice.Connection, "_gw_pion", False):
+        return
+    received = aioice.ice.StunProtocol.datagram_received
+
+    def stamped(self, data, addr):
+        self.gw_rx = time.monotonic()                  # anything from the browser keeps it alive
+        return received(self, data, addr)
+
+    async def keepalive(self):
+        start, quiet_since = time.monotonic(), {}
+        while True:
+            await asyncio.sleep(PION_ICE["keepalive_s"])
+            for component, pair in list(self._nominated.items()):
+                quiet = time.monotonic() - getattr(pair.protocol, "gw_rx", start)
+                if quiet > PION_ICE["disconnected_s"] and component not in quiet_since:
+                    quiet_since[component] = True
+                    for f in _liveness_listeners:
+                        f("disconnected", quiet)
+                elif quiet <= PION_ICE["disconnected_s"] and quiet_since.pop(component, None):
+                    for f in _liveness_listeners:
+                        f("connected", quiet)
+                if quiet > PION_ICE["disconnected_s"] + PION_ICE["failed_s"]:
+                    for f in _liveness_listeners:
+                        f("failed", quiet)
+                    self._query_consent_task = None
+                    return await self.close()
+                request = self.build_request(pair, nominate=False)
+                request.add_message_integrity(self.remote_password.encode("utf8"))
+                pair.protocol.send_stun(request, pair.remote_addr)
+
+    aioice.ice.StunProtocol.datagram_received = stamped
+    aioice.ice.Connection.query_consent = keepalive
+    aioice.ice.Connection._gw_pion = True
 
 
 def client_config(turn_port):
@@ -116,9 +165,8 @@ class TurnConn(asyncio.Protocol):
     def __init__(self, server):
         self.server, self.buf, self.relay, self.perms, self.chan, self.peer_chan = server, b"", None, set(), {}, {}
         self.to_peer = self.from_peer_n = 0        # datagrams relayed each way (logged when it closes)
-        # The peer's ICE checks (aiortc's consent checks once connected) on their way to the browser,
-        # by transaction id, and how long each answer took through the browser: aiortc gives an
-        # answer 0.5 s and drops ICE after 6 checks in a row without one (aioice CONSENT_*).
+        # The peer's ICE checks (its keepalives once connected, PION_ICE) on their way to the
+        # browser, by transaction id, and how long each answer took through the browser.
         self.checks, self.check_rtt, self.late = {}, [], []
 
     def mapped(self):
@@ -281,18 +329,16 @@ class WebRTC:
         # interface (and leaves loopback out).
         self.addr = media_address()
         aioice.ice.get_host_addresses = lambda use_ipv4=True, use_ipv6=True: [self.addr]
-        # aioice says when a connection's consent expired (6 checks in a row unanswered within
-        # 0.5 s); the ICE close that follows is then marked with that reason.
-        self.consent_expired_at = 0.0
-        webrtc = self
+        # The peer's liveness as go2rtc's (PION_ICE); its transitions are logged, and the ICE close
+        # after "failed" is marked with that reason.
+        _install_pion_liveness()
+        self.liveness_failed_at = 0.0
 
-        class _Consent(logging.Handler):
-            def emit(self, rec):
-                if "Consent to send expired" in rec.getMessage():
-                    webrtc.consent_expired_at = time.monotonic()
-                    webrtc.record({"t": time.time(), "aioice": rec.getMessage()})
-        logging.getLogger("aioice.ice").addHandler(_Consent())
-        logging.getLogger("aioice.ice").setLevel(logging.INFO)
+        def liveness(state, quiet):
+            if state == "failed":
+                self.liveness_failed_at = time.monotonic()
+            self.record({"t": time.time(), "webrtc_liveness": state, "quiet_s": round(quiet, 1)})
+        _liveness_listeners.append(liveness)
         self.loop = asyncio.new_event_loop()
         self.conns = set()
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
@@ -346,12 +392,12 @@ class WebRTC:
             @pc.on("iceconnectionstatechange")
             def _ice():
                 # `lost`: closed while the browser was still subscribed (not by its unsubscribe):
-                # `reason` consent when aioice's consent had just expired, else the browser's side
-                # closed (DTLS or the connection ended).
+                # `reason` liveness when nothing came from the browser for 30 s (PION_ICE), else
+                # the browser's side closed (DTLS or the connection ended).
                 lost = pc.iceConnectionState == "closed" and sid in self.sessions
                 extra = {}
                 if lost:
-                    extra = {"lost": True, "reason": "consent" if time.monotonic() - self.consent_expired_at < 2 else "remote"}
+                    extra = {"lost": True, "reason": "liveness" if time.monotonic() - self.liveness_failed_at < 2 else "remote"}
                 self.record(dict({"t": time.time(), "webrtc_ice": pc.iceConnectionState, "session": sid}, **extra))
 
             await pc.setLocalDescription(await pc.createAnswer())

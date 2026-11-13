@@ -243,24 +243,21 @@ class Session(unittest.TestCase):
         self.assertFalse([e for e in mine if e.get("aioice")])
 
 
-    def test_a_browser_that_stops_answering_loses_ice_by_consent_and_says_so(self):
-        """The S1's heavy view (smoke3): the panel's answers stopped reaching the peer, aiortc's
-        consent expired 30 s after connecting, and HA's player made another session. Here with
-        aioice's check every 0.2 s and the relay dropping what the browser sends: the fake's log says
-        the session was lost by consent, and the relay's record counts the checks never answered."""
+    def session_with(self, cam, between, pion=None):
+        """A relay-only aiortc browser on `cam`, with the relay's TCP input from it routed through
+        `between(tcp_in, conn, data)` (to drop or delay it); the session runs 1.5 s, then `play` runs
+        on for `between.seconds`. Returns the fake's log since it started."""
         from unittest import mock
         from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
         from aiortc.rtcconfiguration import RTCIceTransportPolicy
+        since = time.time()
         ws = self.connect()
-        cfg, _ = ws.call({"type": "camera/webrtc/get_client_config", "entity_id": "camera.clarity_cam_1"})
+        cfg, _ = ws.call({"type": "camera/webrtc/get_client_config", "entity_id": cam})
         conf = cfg["result"]["configuration"]
-        mute = {"on": False}
-        tcp_in = webrtc.TurnConn.data_received
+        tcp_in, state = webrtc.TurnConn.data_received, {"on": False}
 
-        def maybe_drop(conn, data):
-            if mute["on"]:
-                return None                                  # nothing the browser sends reaches the relay
-            return tcp_in(conn, data)
+        def routed(conn, data):
+            return between(tcp_in, conn, data) if state["on"] else tcp_in(conn, data)
 
         async def play():
             s = conf["iceServers"][0]
@@ -270,31 +267,55 @@ class Session(unittest.TestCase):
             pc.addTransceiver("video", direction="recvonly")
             await pc.setLocalDescription(await pc.createOffer())
             loop = asyncio.get_running_loop()
-            res, _ = await loop.run_in_executor(None, ws.call, {"type": "camera/webrtc/offer", "entity_id": "camera.clarity_cam_1",
+            res, _ = await loop.run_in_executor(None, ws.call, {"type": "camera/webrtc/offer", "entity_id": cam,
                                                                 "offer": pc.localDescription.sdp})
             await loop.run_in_executor(None, ws.recv)                       # the session's id
             answer = await loop.run_in_executor(None, ws.recv)
             await pc.setRemoteDescription(RTCSessionDescription(answer["event"]["answer"], "answer"))
             await asyncio.sleep(1.5)
-            mute["on"] = True
-            await asyncio.sleep(8)                           # 6 checks, each 0.2 s apart plus 0.5 s unanswered
-            mute["on"] = False                               # so the client's own TURN teardown is answered
+            state["on"] = True
+            await asyncio.sleep(between.seconds)
+            state["on"] = False                              # so the client's own TURN teardown is answered
+            self.closing_at = time.time()
             await pc.close()
             return res
 
-        with mock.patch.object(webrtc.aioice.ice, "CONSENT_INTERVAL", 0.2), mock.patch.object(webrtc.TurnConn, "data_received", maybe_drop):
+        fast = pion or {"keepalive_s": 0.2, "disconnected_s": 0.5, "failed_s": 1.5}
+        with mock.patch.dict(webrtc.PION_ICE, fast), mock.patch.object(webrtc.aioice.ice, "CONSENT_INTERVAL", 0.2), \
+                mock.patch.object(webrtc.TurnConn, "data_received", routed):
             res = asyncio.run(play())
         ws.call({"type": "unsubscribe_events", "subscription": res["id"]})
-        deadline = time.time() + 5
-        while time.time() < deadline:
-            with open(self.log) as f:
-                log = [json.loads(line) for line in f]
-            if [e for e in log if e.get("lost") and e.get("reason") == "consent"]:
-                break
-            time.sleep(0.2)
-        self.assertTrue([e for e in log if e.get("aioice", "").endswith("Consent to send expired")])
-        self.assertTrue([e for e in log if e.get("lost") and e.get("reason") == "consent"])
+        time.sleep(1)
+        with open(self.log) as f:
+            return [e for e in (json.loads(line) for line in f) if e["t"] >= since]
 
+    def test_a_browser_that_goes_silent_loses_ice_by_liveness_and_says_so(self):
+        """Nothing from the browser for disconnected + failed (pion's 5 + 25 s; 0.5 + 1.5 s here):
+        the peer closes ICE, logs disconnected then failed, and marks the loss `reason: liveness`."""
+        def silent(tcp_in, conn, data):
+            return None
+        silent.seconds = 4
+        log = self.session_with("camera.clarity_cam_1", silent)
+        self.assertEqual([e["webrtc_liveness"] for e in log if "webrtc_liveness" in e][:2], ["disconnected", "failed"])
+        self.assertTrue([e for e in log if e.get("lost") and e.get("reason") == "liveness"])
+
+    def test_late_answers_keep_ice_as_go2rtc_would(self):
+        """The S1's heavy view (smoke 4): every answer came, 1.4 to 2.6 s late (median), and aiortc's
+        own check (0.5 s each) dropped every session. pion, in go2rtc, counts any packet as alive.
+        Here every byte from the browser arrives 1 s late, for 5 s, with aioice's own check every 0.2 s
+        (it would close after about 4 s) and pion's timeouts scaled to 2 + 2 s: the session stays."""
+        loop_of = {}
+
+        def late(tcp_in, conn, data):
+            loop = loop_of.setdefault("l", asyncio.get_event_loop())
+            loop.call_later(1.0, tcp_in, conn, data)
+        late.seconds = 5
+        log = self.session_with("camera.clarity_cam_2", late, {"keepalive_s": 0.2, "disconnected_s": 2.0, "failed_s": 2.0})
+        # Lost only when the client itself closed at the end, never while its answers were late.
+        self.assertEqual([e for e in log if e.get("lost") and e["t"] < self.closing_at], [])
+        self.assertEqual([e.get("webrtc_liveness") for e in log if "webrtc_liveness" in e], [])
+        closed = [e for e in log if e.get("turn_closed") and e["to_peer"]]
+        self.assertTrue(closed and closed[0]["checks"]["over_500_ms"] >= 1, closed)       # the answers were late
 
 if __name__ == "__main__":
     unittest.main()

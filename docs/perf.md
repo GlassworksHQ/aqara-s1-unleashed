@@ -365,7 +365,9 @@ hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
   (`requestVideoFrameCallback`, or `loadeddata` without it).
 - **Frames shown**: over the view's live phase up to its first swipe (the updates window and the
   taps, with the cameras on screen), the frames the decoder presented against 15 fps × the time:
-  over WebRTC the receiver's own counts (`getStats`: `framesDecoded` less `framesDropped`), over HLS
+  over WebRTC the receiver's `framesDecoded` (`getStats`: the frames the decoder handed to the
+  renderer; its `framesDropped` are frames that never came out of the decoder, so they aren't
+  subtracted, below), over HLS
   `getVideoPlaybackQuality` (total less dropped). Gecko fills `getVideoPlaybackQuality` only for an
   element with a media decoder, so for a WebRTC video it reads 0 (#202's verifier; seen in Firefox
   through the harness, 2026-11-13: 0 there, 75 from the receiver). A 0 while frames arrived counts as
@@ -616,12 +618,46 @@ showed one meanwhile.
   the video element, which count the time between sessions too. The report says when a camera
   needed another session.
 - **The relay's view** (`fakeha.jsonl`): each relay connection's datagrams both ways when it
-  closes, and the round trip of each of aiortc's ICE checks through the browser (`checks`). aiortc
-  closes ICE when 6 checks in a row go unanswered within 0.5 s (aioice's consent check, about 30 s);
-  that ICE loss is logged with `lost` and `reason: consent`. It is stricter than RFC 7675 and than
-  go2rtc's peer, so a slow panel can lose ICE here where a real setup wouldn't; the `checks` record
-  shows whether that happened
-  ([frames/aqara-s1-plus/research/webrtc-camera.md](../frames/aqara-s1-plus/research/webrtc-camera.md)).
+  closes, and the round trip of each of the peer's ICE checks through the browser (`checks`:
+  answered, unanswered, median and longest, how many over 500 ms). The peer's liveness transitions
+  are `webrtc_liveness` (disconnected, connected, failed), and an ICE loss is `lost` with `reason`
+  (`liveness` or `remote`).
+
+**When the peer gives a connection up: as go2rtc does** (since #202's fifth round, 2026-11-13).
+Real setups answer the frontend's offer with go2rtc. HA 2026.11.0 pins go2rtc 1.9.15
+(`homeassistant/components/go2rtc/const.py`, and its Dockerfile), which uses pion/webrtc v4.2.25 and
+pion/ice v4.4.8 (go2rtc's `go.mod`) and sets no ICE timeouts (its `pkg/webrtc/api.go`). So pion/ice's
+defaults apply (read from its source at v4.4.8):
+
+| pion/ice v4.4.8 | Value | Where |
+|---|---|---|
+| Keepalive: a Binding request on the selected pair | every 2 s | `agent_config.go:21`, `agent.go:951` |
+| "disconnected" | 5 s without receiving anything from the browser | `agent_config.go:24`, `agent.go:906-946` |
+| "failed" (the connection is given up) | 25 s after that, 30 s in all | `agent_config.go:31` |
+| What counts as receiving | any packet: media, or any STUN message, however late an answer is | `candidate_base.go:337`, `agent.go:1845` |
+
+aiortc's own check (aioice 0.13.0, `query_consent`) is stricter: each check's answer must come within
+0.5 s, and 6 late ones in a row close ICE. On the S1's heavy view that dropped every session while the
+panel's answers were all arriving, only late (smoke 4, 2026-11-13: 0 unanswered; median round trip
+1.4 to 2.6 s, longest 9.6 s, about 3 in 4 over 500 ms; typical's median 16 to 22 ms). The answers
+travel through the panel's TCP connection behind the video, on a panel busy with heavy. The fake's
+peer now uses pion's rules (`webrtc.py` `PION_ICE`), so it gives a connection up when a real setup's
+would. This is fidelity to the path real setups use, not tuning toward a letter: the grading rules
+are unchanged, and a panel that stops answering still loses its stream (after 30 s, as with go2rtc).
+
+**Frames shown over WebRTC: `framesDecoded`** (read 2026-11-13 from GeckoView 159's source,
+mozilla-release `7b34a03a910d0385299f4a9f27aa585a786862d8`). Gecko fills `framesDecoded` and
+`framesDropped` from libwebrtc's receive statistics (`dom/media/webrtc/jsapi/RTCRtpReceiver.cpp`,
+lines 542 and 607). `frames_decoded` counts each frame the decoder hands to the renderer
+(`third_party/libwebrtc/video/video_stream_decoder2.cc:53`, `receive_statistics_proxy.cc:664`).
+`frames_dropped` counts frames the frame buffer dropped before decoding
+(`video/video_stream_buffer_controller.cc:148` and `:325-329`) and frames given to the decoder that
+never came out of it (`modules/video_coding/generic_decoder.cc:137, 275, 287`). So no dropped frame is
+a decoded one, and subtracting them undercounted: smoke 4's heavy had 1090 decoded and 690 dropped,
+which read as 400 shown. Frames dropped after the decoder, in the rendering, are in no count ("Not
+including frames dropped in the rendering pipe", `RTCRtpReceiver.cpp:605`); the video element's
+frame callbacks, which give the stalls, see those. Chrome's counters are libwebrtc's too (Gecko
+vendors libwebrtc).
 - **The other player** (`others` on each stream): HLS's first frame while WebRTC started, and
   whether the frontend had removed it by the window's end.
 - **The decoders from logcat**, as for HLS (`media`). On the S1 a real camera over WebRTC logged no

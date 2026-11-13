@@ -85,6 +85,7 @@ got no relay candidate from the test's TURN relay on loopback. Why, and the fix,
 | 1, about 20:20 UTC | d668e26 | never connected | Gecko won't use a TURN server at a loopback IP ([gecko-turn.md](../../../docs/research/gecko-turn.md)) |
 | 2, about 20:49 UTC | a718f9c | allocated, no candidate | the allocation said the browser was on loopback (adb reverse) |
 | 3, later that evening | 5ae5884 | **connected**: 22 relay candidates from the panel, ICE completed 11 of 11 | heavy's counts broke (below) |
+| 4, later still | 3c1e1da | connected; counts sound | every heavy session lost ICE by aiortc's consent check, while the panel's answers were only late (below) |
 
 Smoke 3, typical (verified): first frame 6.3 s from the navigation, 99.6% shown (the receiver's own
 counts), 367 frames decoded, no freeze.
@@ -131,6 +132,27 @@ the order of events above fits it):
   unanswered), and the fake marks an ICE loss `reason: consent` when aioice's consent expired. The
   next smoke tells the two apart. If the answers were only late, the drops are the test's (aiortc's
   strictness, the TCP transport), not the panel's, and that is a decision for the maintainer.
+
+**Smoke 4: late, never missing** (verified; the root, 3c1e1da). The relay timed each of aiortc's
+checks through the panel:
+
+| Connections | Answered / unanswered | Median round trip | Longest | Over 500 ms |
+|---|---|---|---|---|
+| light and typical (3) | 3/0, 13/0, 12/0 | 16 to 22 ms | 460 ms | 0 |
+| heavy, first sessions (4) | 14/0 each | 2.3 to 2.6 s | 8.2 to 9.6 s | 10 to 11 of 14 |
+| heavy, second sessions (4) | 7/0 each | 1.4 to 2.0 s | 2.4 to 2.8 s | 6 of 7 |
+
+aioice logged "Consent to send expired" 8 times, and every ICE loss was by consent. All 4 heavy
+cameras needed another session (41.9 s without video in all). So the losses were the test's: a
+real setup's peer, go2rtc (pion), counts any packet from the browser as alive and gives up only after
+30 s of nothing. The decision (the root, 2026-11-13): the fake's peer now uses pion's rules, with the
+numbers and sources in [docs/perf.md](../../../docs/perf.md). The round trips stay logged.
+
+**Frames shown read low on heavy** (smoke 4: 1090 decoded, 690 dropped, shown 4.9 / 3.9 / 34.1 /
+16.9%). In GeckoView's libwebrtc, `framesDropped` counts frames that never came out of the decoder,
+so `framesDecoded − framesDropped` subtracted frames that weren't in `framesDecoded`. Frames shown over
+WebRTC are now `framesDecoded`; the sources are in docs/perf.md. Typical changes little (356 decoded,
+2 dropped).
 
 **The counts now** (`stats.js` `webrtcWindow`): the page samples every connection that carries a
 camera's video once a second. Each receiver (connection, stats id, SSRC) counts only its own

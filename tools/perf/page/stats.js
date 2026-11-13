@@ -268,7 +268,12 @@
   }
 
   // A stream's frames shown over the window, from the best count the engine gives, and which:
-  // - "webrtc": the WebRTC receiver's own counts (getStats framesDecoded less framesDropped);
+  // - "webrtc": the WebRTC receiver's framesDecoded: frames the decoder handed to the renderer. Its
+  //   framesDropped are frames that never came out of the decoder (the frame buffer's drops, and
+  //   frames the decoder skipped or lost on a reset: libwebrtc video_stream_buffer_controller.cc and
+  //   generic_decoder.cc in GeckoView 159), so they are not in framesDecoded and aren't subtracted;
+  //   drops after the decoder are in no count ("Not including frames dropped in the rendering pipe",
+  //   Gecko's RTCRtpReceiver.cpp). #202's smoke 4 on the S1: 1090 decoded, 690 dropped on heavy;
   // - "quality": getVideoPlaybackQuality (totalVideoFrames less dropped), the decoder's count. Gecko
   //   fills it only for an element with a media decoder, not for a MediaStream (HTMLVideoElement.cpp,
   //   GetVideoPlaybackQuality), where it reads 0: so 0 while rVFC saw frames is "not reported";
@@ -276,7 +281,7 @@
   //   in one rendering update: Chrome, 2026-11-13, 60 callbacks for 77 frames).
   function shownFrames({ quality, webrtc, callbacks, rvfc }) {
     if (webrtc && typeof webrtc.frames_decoded === "number") {
-      return { frames: Math.max(0, webrtc.frames_decoded - (webrtc.frames_dropped || 0)), source: "webrtc" };
+      return { frames: Math.max(0, webrtc.frames_decoded), source: "webrtc" };
     }
     if (quality && typeof quality.decoded === "number" && !(quality.decoded === 0 && callbacks > 0)) {
       return { frames: Math.max(0, quality.decoded - (quality.dropped || 0)), source: "quality" };
