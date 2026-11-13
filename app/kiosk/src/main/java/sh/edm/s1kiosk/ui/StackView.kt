@@ -178,6 +178,7 @@ class StackView(context: Context) : View(context) {
             c.drawPath(plate, paint)
         }
         plate.set(body)
+        plate.computeBounds(box, true) // platePath reused box for the plates below
         paint.style = Paint.Style.FILL
         paint.color = Color.WHITE // the shaders below carry their own alpha; the paint's multiplies it
         paint.shader = LinearGradient(

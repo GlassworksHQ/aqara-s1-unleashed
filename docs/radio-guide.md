@@ -103,7 +103,7 @@ be a second border router in your existing network, but for now that takes joini
 
 1. Set **Radio mode** to *Thread border router*.
 2. In Home Assistant, add the **OpenThread Border Router** integration with the URL
-   `http://<panel IP>:8081`. On the panel, the setup screen and the settings menu show this URL and a
+   `http://<panel IP>:8081`. On the panel, the settings menu's Radio section shows this URL and a
    QR code that opens the integration's setup in Home Assistant on your phone.
 
 Tested so far, both after Wi-Fi dropped and after a restart:
