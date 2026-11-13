@@ -14,13 +14,21 @@ val s1VersionCode: Int? = s1Version?.let { v ->
     major.toInt() * 10000 + minor.toInt() * 100 + patch.toInt()
 }
 
-// The ABI this APK is built for: -Ps1Abi=arm64-v8a or S1_ABI. Unset: armeabi-v7a, the S1's. One APK per
-// ABI, because each per-ABI GeckoView AAR carries its own classes.jar and omni.ja, so two cannot share a
-// classpath (docs/releasing.md "ABIs"). Every ABI's APK has the same versionCode.
-val s1Abis = listOf("armeabi-v7a", "arm64-v8a") // update/Releases.kt ApkAbi, release.yml and test-build.yml list the same
+// The ABI this APK is built for: -Ps1Abi=arm64-v8a or S1_ABI. Unset: the S1's. One APK per ABI, because
+// each per-ABI GeckoView AAR carries its own classes.jar and omni.ja, so two cannot share a classpath
+// (docs/releasing.md "ABIs"). Every ABI's APK has the same versionCode. Each frame declares the ABIs its
+// device runs (`abis` in frames/<id>/design/frame.json), and the release builds them all (#98).
+val frameAbis: Map<String, List<String>> = layout.projectDirectory.dir("../../frames").asFile.listFiles().orEmpty()
+    .map { File(it, "design/frame.json") }.filter { it.isFile }.sortedBy { it.parentFile.parentFile.name }
+    .associate { f ->
+        val abis = (groovy.json.JsonSlurper().parse(f) as Map<*, *>)["abis"] as? List<*>
+        f.parentFile.parentFile.name to (abis?.map { it as String }?.takeIf { it.isNotEmpty() }
+            ?: throw GradleException("$f has no abis"))
+    }
+val releaseAbis = frameAbis.values.flatten().distinct()
 val s1Abi: String = ((findProperty("s1Abi") as String?) ?: System.getenv("S1_ABI"))
-    ?.trim()?.takeIf { it.isNotEmpty() } ?: "armeabi-v7a"
-if (s1Abi !in s1Abis) throw GradleException("s1Abi '$s1Abi' must be one of ${s1Abis.joinToString()}")
+    ?.trim()?.takeIf { it.isNotEmpty() } ?: frameAbis.getValue("aqara-s1-plus").first()
+if (s1Abi !in releaseAbis) throw GradleException("s1Abi '$s1Abi' must be one of ${releaseAbis.joinToString()}")
 
 // Release signing comes only from the environment (CI secrets or a local shell; docs/releasing.md).
 // Nothing set: the release APK is unsigned (never signed with the debug key). Partly set, or
@@ -126,11 +134,13 @@ tasks.withType<Test>().configureEach {
     (project.findProperty("s1MockupDir") as String?)?.let { systemProperty("s1.mockupDir", it) }
     // PanelEntitiesPinTest rewrites its golden file with -Ps1RegenGolden=true.
     (project.findProperty("s1RegenGolden") as String?)?.let { systemProperty("s1.regenGolden", it) }
-    // ApkAbiListsTest reads the workflows and this file. Declared as inputs, so a change to either
-    // re-runs the tests instead of taking them UP-TO-DATE or FROM-CACHE.
+    // ApkAbiListsTest reads the workflows, this file, every frame's frame.json and frame-abis.sh. Declared
+    // as inputs, so a change to any of them re-runs the tests instead of taking them UP-TO-DATE or FROM-CACHE.
     inputs.dir(rootProject.file("../.github/workflows")).withPropertyName("workflows")
         .withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file("build.gradle.kts").withPropertyName("kioskBuildScript").withPathSensitivity(PathSensitivity.NONE)
+    inputs.files(fileTree(rootProject.file("../frames")) { include("*/design/frame.json") }, rootProject.file("../tools/release/frame-abis.sh"))
+        .withPropertyName("frameAbis").withPathSensitivity(PathSensitivity.RELATIVE)
     // ContentScriptReadyTest runs the web extension's content.js under node: a change to it re-runs the tests.
     inputs.dir("src/main/assets/extension").withPropertyName("webExtension").withPathSensitivity(PathSensitivity.RELATIVE)
 }

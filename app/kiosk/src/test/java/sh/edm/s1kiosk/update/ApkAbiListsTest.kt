@@ -1,28 +1,59 @@
 package sh.edm.s1kiosk.update
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.File
 
 /**
- * The ABIs are listed in four places: [ApkAbi], `s1Abis` in app/kiosk/build.gradle.kts, and `ABIS`
- * in the release and test-build workflows, and both workflows name the APKs in their own `apk_name`.
- * An ABI missing from a workflow, or an APK published under another name, ships releases whose APK
- * devices of that ABI never find.
+ * Each frame declares the ABIs its device runs (`abis` in frames/<id>/design/frame.json, #98). The
+ * release builds one APK for each of them (tools/release/frame-abis.sh, which the workflows run, and
+ * app/kiosk/build.gradle.kts), and both workflows name the APKs in their own `apk_name`. The app's
+ * [ApkAbi] must know exactly those ABIs: an APK the app doesn't know is never installed, and an ABI
+ * the app knows but no release builds is looked for in vain.
  */
 class ApkAbiListsTest {
     private val repo: File = generateSequence(File("").absoluteFile) { it.parentFile }
         .first { File(it, ".github/workflows").isDirectory && File(it, "app/kiosk").isDirectory }
     private val ids = ApkAbi.entries.map { it.id }
+    private val workflows = listOf(".github/workflows/release.yml", ".github/workflows/test-build.yml", ".github/workflows/pr.yml")
 
-    private fun listed(file: String, line: Regex): List<String> {
-        val m = File(repo, file).readLines().firstNotNullOfOrNull { line.find(it) }
-            ?: throw AssertionError("$file has no line matching $line")
-        return Regex("[a-z0-9_-]+").findAll(m.groupValues[1]).map { it.value }.toList()
+    /** Every frame's `abis`, in frame-id order, each once. */
+    private val frameAbis: List<String> = File(repo, "frames").listFiles().orEmpty()
+        .map { File(it, "design/frame.json") }.filter { it.isFile }.sortedBy { it.parentFile.parentFile.name }
+        .flatMap { f -> JSONObject(f.readText()).getJSONArray("abis").let { a -> List(a.length()) { a.getString(it) } } }
+        .distinct()
+
+    @Test fun `the update check knows exactly the ABIs the frames run`() {
+        assertEquals(frameAbis, ids)
     }
 
-    @Test fun `the build accepts exactly the ABIs the update check knows`() {
-        assertEquals(ids, listed("app/kiosk/build.gradle.kts", Regex("""^val s1Abis = listOf\(([^)]*)\)""")))
+    @Test fun `the S1 frame runs armeabi-v7a only`() {
+        val s1 = JSONObject(File(repo, "frames/aqara-s1-plus/design/frame.json").readText()).getJSONArray("abis")
+        assertEquals(listOf("armeabi-v7a"), List(s1.length()) { s1.getString(it) })
+    }
+
+    @Test fun `the workflows' ABI list is the frames'`() {
+        val p = ProcessBuilder("tools/release/frame-abis.sh").directory(repo).redirectErrorStream(true).start()
+        val out = p.inputStream.bufferedReader().readText().trim()
+        assertEquals("frame-abis.sh exit: $out", 0, p.waitFor())
+        assertEquals(frameAbis.joinToString(" "), out)
+    }
+
+    @Test fun `no workflow or build script lists ABIs of its own`() {
+        val abiName = Regex(""""(${ApkAbi.entries.joinToString("|") { Regex.escape(it.id) }})"""")
+        assertEquals("app/kiosk/build.gradle.kts", null, abiName.find(File(repo, "app/kiosk/build.gradle.kts").readText())?.value)
+        for (wf in workflows) {
+            val lines = File(repo, wf).readLines().map { it.trim() }
+            assertEquals("$wf: ABIS comes from frame-abis.sh", 1, lines.count { it == """abis="${'$'}(tools/release/frame-abis.sh)"""" })
+            val own = lines.filter { it.startsWith("for abi in") && !it.startsWith("for abi in ${'$'}ABIS; do") }
+            assertEquals("$wf: ABI loops not over ${'$'}ABIS", emptyList<String>(), own)
+        }
+    }
+
+    @Test fun `test builds upload an artifact for every ABI`() {
+        val text = File(repo, ".github/workflows/test-build.yml").readText()
+        for (abi in ids) assertEquals(abi, 1, Regex("""path: dist/${Regex.escape(abi)}/\n""").findAll(text).count())
     }
 
     /** Runs the workflow's one-line `apk_name` shell function for [abi], as the workflow does. */
@@ -62,12 +93,6 @@ class ApkAbiListsTest {
             assertEquals("$wf: the APK name comes from apk_name", 1, lines.count { it == call })
             val stray = lines.filter { !it.startsWith("apk_name() {") && !it.startsWith("#") && literal.containsMatchIn(it) }
             assertEquals("$wf: APK names written outside apk_name", emptyList<String>(), stray)
-        }
-    }
-
-    @Test fun `both workflows build every ABI`() {
-        for (wf in listOf(".github/workflows/release.yml", ".github/workflows/test-build.yml")) {
-            assertEquals(wf, ids, listed(wf, Regex("""^\s+ABIS: ([a-z0-9 _-]+?)\s*(#|$)""")))
         }
     }
 }

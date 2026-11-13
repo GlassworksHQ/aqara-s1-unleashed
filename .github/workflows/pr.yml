@@ -10,7 +10,7 @@
 #            (tools/perf), and the docs' relative links
 #   root     the root side (radio helper, bundle checks, s1kiosk_verify) in a 32-bit ARM container
 #            under QEMU. Slow, so it runs only when tools/root, tools/radio or this file changes
-#   size     builds the release APKs (both ABIs) of this branch and of its base, splits them into the
+#   size     builds the release APKs (one per frame ABI) of this branch and of its base, splits them into the
 #            engine, the core, each pane and the shared libraries (tools/size/apksize.py), shows the
 #            change and fails over the frame's size budget (frames/<id>/budgets.json). The report is
 #            the job summary, and size-comment.yml posts it on the PR (docs/size.md)
@@ -195,11 +195,16 @@ jobs:
       - name: Radio bundle, as the release builds it
         run: SISDK_DIR="$HOME/sisdk-cache" tools/size/radio-bundle.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bundle-head"
 
+      - name: ABIs, one APK each as the release builds them (every frame's abis, tools/release/frame-abis.sh)
+        run: |
+          abis="$(tools/release/frame-abis.sh)"
+          echo "ABIS=$abis" >> "$GITHUB_ENV"
+
       - name: Release APKs of this branch
         working-directory: app
         run: |
           mkdir -p "$RUNNER_TEMP/apk" "$RUNNER_TEMP/size"
-          for abi in armeabi-v7a arm64-v8a; do
+          for abi in $ABIS; do
             bundle="$RUNNER_TEMP/bundle-head"; [ "$abi" = armeabi-v7a ] || bundle=""   # as release.yml
             S1_RADIO_BUNDLE_ASSETS="$bundle" ./gradlew --no-daemon :kiosk:assembleRelease -Ps1Abi="$abi"
             cp kiosk/build/outputs/apk/release/kiosk-release-unsigned.apk "$RUNNER_TEMP/apk/head-$abi.apk"
@@ -214,7 +219,7 @@ jobs:
           missing="$RUNNER_TEMP/size/base-missing"; : > "$missing"
           if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "No base commit ($BASE); no change column."
-            printf '%s\n' armeabi-v7a=no-base-commit arm64-v8a=no-base-commit > "$missing"
+            for abi in $ABIS; do echo "$abi=no-base-commit"; done > "$missing"
             exit 0
           fi
           git worktree add -q "$RUNNER_TEMP/base" "$BASE"
@@ -225,7 +230,7 @@ jobs:
             SISDK_DIR="$RUNNER_TEMP/sisdk-base" tools/size/radio-bundle.sh "$RUNNER_TEMP/base" "$bundle" || bundle=""
           fi
           cd "$RUNNER_TEMP/base/app"
-          for abi in armeabi-v7a arm64-v8a; do
+          for abi in $ABIS; do
             b="$bundle"; [ "$abi" = armeabi-v7a ] || b=""
             if [ "$abi" = armeabi-v7a ] && [ -z "$bundle" ]; then
               echo "The base's radio bundle didn't build; no change column for $abi."
@@ -242,7 +247,7 @@ jobs:
       - name: Size, change and budget
         run: |
           args=""
-          for abi in armeabi-v7a arm64-v8a; do
+          for abi in $ABIS; do
             args="$args --apk $abi=$RUNNER_TEMP/apk/head-$abi.apk"
             [ -f "$RUNNER_TEMP/apk/base-$abi.apk" ] && args="$args --base-apk $abi=$RUNNER_TEMP/apk/base-$abi.apk"
           done
