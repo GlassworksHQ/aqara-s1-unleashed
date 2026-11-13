@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """GitHub social preview (1280x640) in the Glass Tile visual language.
 
-The mark on the right is the Glass Tile boot animation's resting loop frame, rendered by
-glass-tile/generate.py itself, so it matches the panel's splash exactly. The rest is the
+The mark on the right is the Glass Tile boot animation's resting loop frame (the panel's boot
+animation until #63), rendered by social-preview/glass_tile.py. The rest is the
 same language: #0a0b0f, soft sky (top left) and violet (bottom right) glows, thin Inter,
 amber as the single accent.
 
@@ -13,11 +13,11 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, "glass-tile"))
+sys.path.insert(0, os.path.join(HERE, "social-preview"))
 import numpy as np  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
 
-import generate as tile  # noqa: E402
+import glass_tile as tile  # noqa: E402
 from common import AMBER, BG, FA, MU, SKY, SS, TX, VIOLET, font  # noqa: E402
 
 W, H = 1280, 640
