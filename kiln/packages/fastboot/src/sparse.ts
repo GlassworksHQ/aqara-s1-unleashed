@@ -153,7 +153,6 @@ async function createImage(header: SparseHeader, chunks: Array<SparseChunk>): Pr
 
     let buffer = new ArrayBuffer(FILE_HEADER_SIZE);
     let dataView = new DataView(buffer);
-    let arrayView = new Uint8Array(buffer);
 
     dataView.setUint32(0, FILE_MAGIC, true);
     // v1.0
@@ -174,9 +173,8 @@ async function createImage(header: SparseHeader, chunks: Array<SparseChunk>): Pr
 
     blobBuilder.append(new Blob([buffer]));
     for (let chunk of chunks) {
-        buffer = new ArrayBuffer(CHUNK_HEADER_SIZE + chunk.data!.size);
+        buffer = new ArrayBuffer(CHUNK_HEADER_SIZE);
         dataView = new DataView(buffer);
-        arrayView = new Uint8Array(buffer);
 
         dataView.setUint16(0, chunk.type, true);
         dataView.setUint16(2, 0, true); // reserved
@@ -187,9 +185,9 @@ async function createImage(header: SparseHeader, chunks: Array<SparseChunk>): Pr
             true
         );
 
-        let chunkArrayView = new Uint8Array(await common.readBlobAsBuffer(chunk.data!));
-        arrayView.set(chunkArrayView, CHUNK_HEADER_SIZE);
+        // The chunk's data stays a Blob slice, read only when its piece is sent
         blobBuilder.append(new Blob([buffer]));
+        blobBuilder.append(chunk.data!);
     }
 
     return blobBuilder.getBlob();
@@ -245,9 +243,14 @@ export async function* splitBlob(blob: Blob, splitSize: number) {
     // Short-circuit if splitting isn't required
     if (blob.size <= splitSize) {
         common.logDebug("Blob fits in 1 payload, not splitting");
+        let data = await common.readBlobAsBuffer(blob);
+        // Bytes written on the device: a sparse image expands to blocks * blockSize
+        let sparseHeader = parseFileHeader(data);
         yield {
-            data: await common.readBlobAsBuffer(blob),
-            bytes: blob.size,
+            data: data,
+            bytes: sparseHeader
+                ? sparseHeader.blocks * sparseHeader.blockSize
+                : blob.size,
         } as SparseSplit;
         return;
     }
@@ -376,7 +379,7 @@ export async function* splitBlob(blob: Blob, splitSize: number) {
                     chunk,
                 ];
 
-                splitDataBytes = chunk.dataBytes;
+                splitDataBytes = chunk.blocks * header.blockSize;
             }
 
         }

@@ -94,6 +94,9 @@ On the S1 the fork sends exactly what `@glassworks/fastboot` sent before it (che
 | `max-download-size` smaller than one block after the 7/8 margin (under 4681 bytes) | Loops forever (0-byte chunks) | Refused | Bug fix |
 | A sparse magic with a header cut short (under 28 bytes) | `RangeError` | Refused: "truncated sparse image header" | Bug fix. Under 4 bytes the image is raw, as before |
 | `bootBlob` of an image over `max-download-size` | Reads the whole image, then the bootloader refuses it | Refused before it is read | Saves reading a large file for nothing |
+| Resizing a logical partition | Before the image is checked | After the first piece is built, which checks the header and the limit | Bug fix: a refused image left the partition resized and empty |
+| `fromRaw` | Copies each 64 MiB chunk into memory | Keeps each chunk as a slice of the `Blob` | A large `File` stays on disk until its piece is sent |
+| Progress of a sparse image | Counts encoded bytes in places, so it can end below 1 | Counts the bytes written on the device | Bug fix: progress ends at exactly 1 |
 | Reading a Blob | `FileReader` | `blob.arrayBuffer()` | Works in Node, so the tests run |
 | `download` and `flash` before the image is sent | Not checked | Checked against the buffer size and the partition size | Unchanged from our client |
 
