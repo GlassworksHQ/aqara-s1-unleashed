@@ -7,6 +7,12 @@ below as the release notes.
 
 ## [Unreleased]
 
+### Changed
+- **A new boot screen.** The power-on logo and the boot animation now show the Glassworks mark:
+  three glass plates drop into place, the top one lights up from sky to violet, and "Glassworks" and
+  "On Aqara S1 Plus" fade in. While the panel finishes starting, the stack floats and the top plate
+  breathes. It reaches a panel when you run the installer again.
+
 ### Added
 - **Releases now include an APK for 64-bit Android devices.** Each release carries
   `s1-kiosk-arm64-v8a-<version>.apk` beside the S1's APK, for arm64-v8a tablets and similar devices.

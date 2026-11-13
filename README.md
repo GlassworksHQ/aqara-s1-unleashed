@@ -68,10 +68,10 @@ announcements, with a calm full-screen overlay while you talk.
 | 🔄 **Updates in Home Assistant** | New versions show up under *Settings → Updates*, and one click installs them. Fixes for the radio side come with them. [More](#updates) |
 | 🔌 **Wall base relays** | A driver for the mains relay base that speaks its UART protocol directly, with no Aqara daemon. Not yet tried on a real base. [More](docs/research/bases.md) |
 | 🔒 **No Aqara cloud** | Aqara's launcher, apps, updater and cloud daemon are switched off (reversibly), so the panel stops talking to Aqara. |
-| ✨ **Its own boot screen** | The Glass Tile splash and boot animation. [More](branding/glass-tile/README.md) |
+| ✨ **Its own boot screen** | The Glassworks splash and boot animation: glass plates drop into place and the top one lights up. [More](branding/glass-tile/README.md) |
 
 <p align="center">
-  <img src="branding/glass-tile/preview.webp" alt="The Glass Tile boot animation: light sweeps across a glass card that reads S1 Unleashed, and an amber Starting dot appears." width="60%">
+  <img src="branding/glass-tile/preview.webp" alt="The Glassworks boot animation: three glass plates drop onto a dashed outline, the top one lights from sky to violet, and the Glassworks wordmark fades in above &quot;On Aqara S1 Plus&quot;." width="60%">
 </p>
 
 ## Install
@@ -149,7 +149,7 @@ What works today, on v0.4.1. "Verified" means tested on a real panel in a real h
 | Music Assistant player (Sendspin, synced) | ✅ Works |
 | Presence wake, idle-off, night mode, auto-brightness | ✅ Works |
 | Aqara cloud and bloat disabled (reversible) | ✅ Works |
-| Glass Tile boot splash and animation | ✅ Works |
+| Boot splash and animation | 🧪 The Glassworks redraw has not yet run on a panel. The Glass Tile one before it works |
 | Web installer, command-line installer, undo | ✅ Verified end to end (firmware 4.5.80); boot patch tested on two firmware versions |
 | App updates from Home Assistant | ✅ Works from v0.4.1 on ([one manual update first](#updates) on older versions) |
 | Time zone kept across reboots | ✅ Works (needs the boot software from v0.4.0) |
@@ -334,7 +334,7 @@ browser, the radio and the wall base protocol: it's all written up in
 | [`packages/`](packages/frame-card/README.md) | Code shared with glassworks.dev: the frame card and 3D renderer |
 | [`app/`](app/README.md) | S1 Kiosk, the Android app (GeckoView, ESPHome API, voice, Sendspin) |
 | `tools/` | Command-line installer, U-Boot/FEL build, boot patch, radio helper, dev tools |
-| [`branding/`](branding/glass-tile/README.md) | Glass Tile boot splash and animation, social preview |
+| [`branding/`](branding/glass-tile/README.md) | Boot splash and animation, social preview |
 | [`docs/`](docs/README.md) | User guides, plus [research](docs/research/README.md) |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each release |
 
