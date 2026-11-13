@@ -22,8 +22,9 @@ below as the release notes.
 
 ### Fixed
 - **Kiln: Undo and Try again say the right thing in rare cases.** On kiln.glassworks.dev, once a
-  try has written to the panel, a later try that fails before writing says "This attempt wrote
-  nothing; an earlier try did." and keeps *Undo with your backup*, instead of "Nothing was written."
+  try has written to the panel, or given it back to Aqara's apps, a later try that fails before
+  writing says so and keeps *Undo with your backup*, instead of "Nothing was written." This holds in
+  the same browser tab after going back to Kiln's first page or reloading, until a run finishes.
   Closing the browser's device list on such a retry asks for recovery mode, then Undo. On Undo, a
   backup this browser can't read now says so on the screen. Once *Keep its settings* has given
   Aqara's apps back, that backup is the one Undo restores: another can't be picked, even after
