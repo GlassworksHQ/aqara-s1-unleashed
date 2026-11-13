@@ -31,6 +31,16 @@ class SetupStateTest {
     )
 
     @Test
+    fun aHeldPanesStepGivesWayToALostWifi() {
+        // CodeRabbit on #160: after a refusal Panes held the screen, also with Wi-Fi gone, and Panes can't fix Wi-Fi.
+        val online = SetupState.decide(fresh.copy(haKnown = true, haSeen = true, signedIn = true))
+        assertEquals(SetupFlow.PANES, online.holdingPanes(true).step)
+        val offline = SetupState.decide(fresh.copy(online = false, offlineForMs = 60_000, neverSetUp = true))
+        assertEquals(SetupFlow.WIFI, offline.holdingPanes(true).step)
+        assertEquals(online, online.holdingPanes(false))
+    }
+
+    @Test
     fun freshOfflinePanelShowsSetupAtOnce() {
         // First boot after the installer: nothing set up, no Wi-Fi yet. No 30 s "waiting" screen.
         val first = fresh.copy(online = false, offlineForMs = 0, uptimeMs = 1_000, neverSetUp = true)

@@ -627,8 +627,11 @@ class SetupOverlay(
             addUpdateListener { t = it.animatedValue as Float; invalidate() }
         }
 
-        override fun onAttachedToWindow() { super.onAttachedToWindow(); anim.start() }
+        // Runs only while it can be seen: a hidden overlay (a closed preview) keeps its views attached.
+        private fun follow() { if (isShown && isAttachedToWindow) { if (!anim.isStarted) anim.start() } else anim.cancel() }
+        override fun onAttachedToWindow() { super.onAttachedToWindow(); follow() }
         override fun onDetachedFromWindow() { anim.cancel(); super.onDetachedFromWindow() }
+        override fun onVisibilityAggregated(isVisible: Boolean) { super.onVisibilityAggregated(isVisible); post { follow() } }
 
         override fun onDraw(c: Canvas) {
             val r = width / 2f
