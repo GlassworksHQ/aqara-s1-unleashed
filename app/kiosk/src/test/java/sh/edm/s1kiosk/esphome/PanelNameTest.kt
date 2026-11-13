@@ -5,7 +5,8 @@ import org.junit.Test
 
 /**
  * The panel's names in Home Assistant (#63). The friendly name is what people see and may change; the
- * node name is in every existing config entry and the mDNS service: it never changes.
+ * node name is in every existing config entry and the mDNS service, and HA up to 2025.11 makes new
+ * entity ids from it: it never changes.
  */
 class PanelNameTest {
     @Test
