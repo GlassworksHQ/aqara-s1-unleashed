@@ -71,6 +71,7 @@ def ram_summary(ram):
     if not ram:
         return None
     idle, peak = ram.get("reference_idle") or {}, ram.get("graded_peak") or {}
+    budget = ram.get("pane_budget") or {}
     return {
         "idle_app_pss_kb": _med(idle.get("app_pss_kb")),
         "idle_by_process_pss_kb": {r: _med(v) for r, v in sorted((idle.get("by_role_pss_kb") or {}).items())},
@@ -79,6 +80,10 @@ def ram_summary(ram):
         # A pane the kiosk didn't run as asked has no number (report: `error`) and isn't exported.
         "panes": [{"id": p["id"], "pss_kb": p["pss_kb"], "tolerance_kb": p["pss_tolerance_kb"],
                    "measurable": p["pss_measurable"], "runs": min(p["samples_on"], p["samples_off"]),
+                   # The frame's budget for the pane and whether its share is within it. Read with
+                   # `measurable`: a share inside the tolerance can't show that the pane fits.
+                   "budget_kb": (budget.get(p["id"]) or {}).get("budget_kb"),
+                   "budget_ok": (budget.get(p["id"]) or {}).get("ok"),
                    **({"off_by": p["off_by"]} if p.get("off_by") else {})}
                   for p in ram.get("panes") or [] if not p.get("error")],
         "panes_waiting": [p["id"] for p in ram.get("panes_waiting") or []],

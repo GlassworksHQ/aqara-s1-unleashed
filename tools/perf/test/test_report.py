@@ -913,6 +913,13 @@ class Build(unittest.TestCase):
         self.assertEqual(panes["radio"]["method"], "process")
         self.assertEqual(panes["radio"]["pss_kb"], 2500)
 
+    def test_pane_diffs_leave_out_a_sample_the_screen_went_off_in(self):
+        self.write("idle-all-on-9.json", dict(idle("all-on", 9, 900_000, 1.0), screen_off=[12.0]))
+        self.write("idle-sendspin-off-9.json", dict(idle("sendspin-off", 9, 100_000, 1.0), screen_off=[12.0]))
+        panes = {p["id"]: p for p in R.build(self.dir)["real_use"]["panes"]}
+        self.assertEqual((panes["sendspin"]["pss_kb"], panes["sendspin"]["samples_on"], panes["sendspin"]["samples_off"]),
+                         (41_000, 3, 3))
+
     def test_a_sample_without_app_processes_is_not_zero_memory(self):
         empty = idle("all-on", 9, 600_000, 10.0)
         empty["processes"] = {}
@@ -1031,6 +1038,19 @@ class Usable(unittest.TestCase):
     def test_never_before_the_main_thread_is_free(self):
         page = dict(self.page, usable=dict(self.page["usable"], interactive_ms=1600.0))
         self.assertEqual(R.usable_on_screen(page, [99_520]), (99_600, None))
+
+    def test_the_restart_ends_on_the_start_view(self):
+        """The kiosk was pointed at the start view; coming back to any other view isn't the restart."""
+        run = lambda tier: R.reference_run({"proc_mono": 90.0, "restart_page": dict(self.page, tier=tier),  # noqa: E731
+                                            "presents_mono_ms": [99_520]})
+        self.assertEqual((run("start")["start_ms"], run("start")["start_error"]), (9520, None))
+        self.assertIsNone(run("light")["start_ms"])
+        self.assertIn("the 'light' view, not 'start'", run("light")["start_error"])
+
+    def test_a_restart_measured_in_fewer_runs_is_provisional(self):
+        ref = {"graded_runs": 3, "start_ms": {"n": 2}, "tiers": {}}
+        self.assertIn("restart: measured in fewer runs than attempted (2 of 3)", R.coverage_reasons(ref, 3))
+        self.assertEqual(R.coverage_reasons(dict(ref, start_ms={"n": 3}), 3), [])
 
     def test_not_measured_without_a_frame_or_a_usable_line(self):
         self.assertEqual(R.usable_on_screen(self.page, [99_505])[1], "no frame on screen after the dashboard rendered")
