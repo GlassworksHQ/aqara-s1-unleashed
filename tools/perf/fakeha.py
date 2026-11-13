@@ -30,6 +30,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import camera  # noqa: E402
 import dashboards as D  # noqa: E402
+CLARITY = D
 import hafrontend  # noqa: E402
 
 HA_VERSION = "2026.11.0"
@@ -326,24 +327,29 @@ def _const(value):
     return lambda c, m: c.result(m["id"], value() if callable(value) else value)
 
 
+def _home(name):
+    """The home's own answer (dashboards.py, or serve()'s home), looked up when asked."""
+    return lambda c, m: _const(getattr(D, name))(c, m)
+
+
 HANDLERS = {
     "supported_features": _const(None),
     "subscribe_events": _sub_events,
     "subscribe_entities": _sub_entities,
     "unsubscribe_events": _unsub,
-    "get_config": _const(D.config),
-    "get_services": _const(D.services),
-    "get_panels": _const(D.panels),
+    "get_config": _home("config"),
+    "get_services": _home("services"),
+    "get_panels": _home("panels"),
     "get_states": lambda c, m: c.result(m["id"], list(D.state_objects(c.hub.states))),
-    "auth/current_user": _const(D.USER),
+    "auth/current_user": _home("USER"),
     "frontend/get_themes": _const({"themes": {}, "default_theme": "default", "default_dark_theme": None}),
     "frontend/subscribe_user_data": lambda c, m: (c.result(m["id"]), c.event(m["id"], {"value": None})),
     "frontend/subscribe_system_data": lambda c, m: (c.result(m["id"]), c.event(m["id"], {"value": None})),
     "frontend/get_user_data": _const({"value": None}),
-    "frontend/get_translations": _const({"resources": {}}),
+    "frontend/get_translations": lambda c, m: c.result(m["id"], {"resources": D.translations(m.get("category"))}),
     "lovelace/config": lambda c, m: c.result(m["id"], D.lovelace(m.get("url_path"))),
     "lovelace/resources": _const([]),
-    "lovelace/dashboards/list": _const(D.dashboards_list),
+    "lovelace/dashboards/list": _home("dashboards_list"),
     "config/entity_registry/list_for_display": _const(lambda: {"entity_categories": {"0": "config", "1": "diagnostic"},
                                                                 "entities": []}),
     "config/device_registry/list": _const([]),
@@ -596,7 +602,10 @@ def harness_url():
     return f"/clarity/harness-{hashlib.sha256(D.asset('harness.js')[1]).hexdigest()[:16]}.js"
 
 
-def serve(port, log_path=None, harness=True):
+def serve(port, log_path=None, harness=True, home=None):
+    """`home`: a module like dashboards.py to serve instead of Clarity's (tools/showcase/home.py)."""
+    global D
+    D = home or CLARITY
     front = hafrontend.root()
     Handler.front = os.path.realpath(front)
     Handler.harness = harness_url()
