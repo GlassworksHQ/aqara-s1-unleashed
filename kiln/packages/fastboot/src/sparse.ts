@@ -71,9 +71,16 @@ class BlobBuilder {
 export function parseFileHeader(buffer: ArrayBuffer): SparseHeader | null {
     let view = new DataView(buffer);
 
+    // Under 4 bytes there is no magic, so the image is raw
+    if (buffer.byteLength < 4) {
+        return null;
+    }
     let magic = view.getUint32(0, true);
     if (magic !== FILE_MAGIC) {
         return null;
+    }
+    if (buffer.byteLength < FILE_HEADER_SIZE) {
+        throw new ImageError("truncated sparse image header");
     }
 
     // v1.0+
