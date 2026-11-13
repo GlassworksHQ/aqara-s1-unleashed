@@ -51,12 +51,12 @@ describe('FrameCardBody', () => {
     const EXPECTED = /^Expected, not tested yet: /;
 
     it('reads as tested on a frame that ships', () => {
-      expect(s1.status).toBe('beta');
+      expect(ships(s1.status)).toBe(true);
       expect(tags(<FrameCardBody f={s1} idPrefix="c" />)).not.toMatch(EXPECTED);
     });
 
     it('reads as expected on a frame that doesn\'t ship yet, in the text aria-describedby reads', () => {
-      expect(mirror.status).toBe('planned');
+      expect(ships(mirror.status)).toBe(false);
       expect(tags(<FrameCardBody f={mirror} idPrefix="c" />)).toMatch(EXPECTED);
     });
 
@@ -77,6 +77,13 @@ describe('FrameCardBody', () => {
     const h = render(<FrameCardBody f={s1} as="h2" />).querySelector('h2');
     expect(h?.textContent).toBe(s1.name);
     expect(h?.closest('span')).toBeNull();
+  });
+
+  it('resets a heading\'s margin and line height on the name, so it looks like the span', () => {
+    const name = cssRules('.name');
+    expect(name).toHaveLength(1);
+    expect(name[0]).toMatch(/(^|;)\s*margin:\s*0\s*(;|$)/);
+    expect(name[0]).toMatch(/(^|;)\s*line-height:\s*inherit\s*(;|$)/);
   });
 });
 
