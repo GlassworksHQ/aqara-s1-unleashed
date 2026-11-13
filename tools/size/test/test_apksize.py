@@ -180,6 +180,20 @@ class Budgets(unittest.TestCase):
         # Without the base's budgets file, nothing can be called a change.
         self.assertEqual(self.report({"size": {"apk_max_bytes": {"armeabi-v7a": 900_000}}})["budget"]["changes"], [])
 
+    def test_a_removed_budget_is_a_change(self):
+        """CodeRabbit on 226cdbd: a budget the base had and this PR drops was silent ("Within budget.")."""
+        base = {"size": {"apk_max_bytes": {"armeabi-v7a": 900_000}},
+                "panes": {"radio": {"size_max_bytes": 5_000}, "gone": {"size_max_bytes": 7_000}}}
+        rep = self.report({"size": {}, "panes": {"radio": {}}}, base)
+        self.assertEqual(rep["budget"]["changes"], [
+            "armeabi-v7a APK: this PR removes the budget of 0.90 MB",
+            "pane gone: this PR removes the budget of 0.01 MB",
+            "pane radio: this PR removes the budget of 0.01 MB"])
+        self.assertFalse(rep["budget"]["raised"])
+        md = A.markdown(rep)
+        self.assertIn("**This PR changes the size budget.**", md)
+        self.assertIn("- pane radio: this PR removes the budget of 0.01 MB", md)
+
     def test_a_missing_base_is_said(self):
         d = tempfile.mkdtemp()
         head = make_apk(os.path.join(d, "head.apk"))

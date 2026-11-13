@@ -46,12 +46,20 @@ chmod 0755 "$SISDK/zigbeed.sh" "$SISDK/lib/ld-linux-armhf.so.3"
 
 mkdir -p "$W/radio-in"
 python3 - "$SRC/kiln/assets.lock.json" "$W/radio-in" <<'PY'
-import hashlib, json, sys, urllib.request
+import hashlib, json, sys, time, urllib.request
 lock, out = sys.argv[1:]
 for a in json.load(open(lock))["assets"]:
     if a["name"] not in ("otbr-agent", "ot-ctl"):
         continue
-    data = urllib.request.urlopen(a["url"], timeout=120).read()
+    for attempt in range(3):          # a release download can fail now and then: try 3 times
+        try:
+            data = urllib.request.urlopen(a["url"], timeout=120).read()
+            break
+        except OSError as e:
+            if attempt == 2:
+                raise
+            print(f"{a['name']}: {e}; again in {5 * (attempt + 1)} s", file=sys.stderr)
+            time.sleep(5 * (attempt + 1))
     h = hashlib.sha256(data).hexdigest()
     if h != a["sha256"]:
         sys.exit(f"{a['name']}: sha256 {h}, expected {a['sha256']}")

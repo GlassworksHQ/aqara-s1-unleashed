@@ -205,14 +205,19 @@ def check(report, budgets, base_budgets=None):
     (apk_max_bytes) and each pane's own total (panes.<id>.size_max_bytes). The budget is the one in
     this branch's file, so going over passes only when the same PR raises it. `changes` lists every
     budget this PR raises, lowers or adds (one the base didn't have), and `raised` says whether any
-    went up: the comment leads with it. Without the base's budgets file there are no changes to show."""
+    went up: the comment leads with it. A budget the base had and this branch drops is listed too
+    (removed), for the APK of an ABI and for a pane. Without the base's budgets file there are no
+    changes to show."""
     fails, notes, changes, raised = [], [], [], False
     size = (budgets or {}).get("size") or {}
     base_size = ((base_budgets or {}).get("size") or {})
 
     def change(what, old, new):
         nonlocal raised
-        if base_budgets is None or new is None or new == old:
+        if base_budgets is None or new == old:
+            return
+        if new is None:
+            changes.append(f"{what}: this PR removes the budget of {mb(old)}")
             return
         if old is None:
             changes.append(f"{what}: this PR adds a budget of {mb(new)} (the base had none)")
@@ -228,8 +233,10 @@ def check(report, budgets, base_budgets=None):
         elif a["bytes"] > cap:
             fails.append(f"{abi}: the APK is {mb(a['bytes'])}, over its budget of {mb(cap)}")
         change(f"{abi} APK", (base_size.get("apk_max_bytes") or {}).get(abi), cap)
-        for pid, pane in ((budgets or {}).get("panes") or {}).items():
-            pcap = pane.get("size_max_bytes")
+        panes = (budgets or {}).get("panes") or {}
+        # The base's panes too, so a pane budget this PR drops (or a pane it drops) is a change.
+        for pid in sorted(set(panes) | set(((base_budgets or {}).get("panes") or {}))):
+            pcap = (panes.get(pid) or {}).get("size_max_bytes")
             row = a["rows"].get(f"pane:{pid}")
             if pcap is not None and row and row["total"] > pcap:
                 fails.append(f"{abi}: {pid} is {mb(row['total'])}, over its budget of {mb(pcap)}")

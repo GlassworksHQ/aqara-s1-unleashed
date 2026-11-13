@@ -30,7 +30,8 @@ on the device by [Clarity](perf.md#ram).
 | Zip overhead | The APK's own headers and directory |
 
 Each part is split into dex, native, assets and other, in bytes as stored in the APK, so the parts
-add up to the file. The dex files' bytes are shared out by apkanalyzer's per-class sizes.
+add up to the file. The APKs measured are unsigned (`kiosk-release-unsigned.apk`): the released APK is
+a few kB larger, by its signature block, which isn't any part's. The dex files' bytes are shared out by apkanalyzer's per-class sizes.
 
 **Which classes and libraries are whose** is in `tools/size/parts.json`, read from
 `app/kiosk/build.gradle.kts` and the imports in `app/kiosk/src/main` and `app/libs` (2026-11-13). The
@@ -105,8 +106,8 @@ The `size` job in `.github/workflows/pr.yml` measures what ships:
 
 **The comment's headline.** When the pull request raises a budget, or adds one the base didn't
 have, the comment opens with "This PR raises the size budget." and lists each change, before the
-budget check: that is the decision a reviewer is asked to make. A lowered budget opens with "This PR
-changes the size budget."
+budget check: that is the decision a reviewer is asked to make. A lowered or removed budget (for an
+ABI's APK, or a pane's, including a pane the PR drops) opens with "This PR changes the size budget."
 
 **The PR comment.** `.github/workflows/size-comment.yml` posts the report on the pull request, one
 comment updated in place. It runs after PR checks, from the default branch, with permission to
