@@ -35,6 +35,7 @@ class Showcase(unittest.TestCase):
     def tearDownClass(cls):
         cls.srv.shutdown()
         cls.srv.server_close()
+        fakeha.D = fakeha.CLARITY      # the next test module's servers are Clarity's
 
     def connect(self):
         ws = WS(self.srv.server_address[1])
@@ -173,6 +174,14 @@ class Showcase(unittest.TestCase):
         fakeha.serve(0).server_close()
         self.assertIs(fakeha.D, fakeha.CLARITY)
         fakeha.serve(0, harness=False, home=home).server_close()  # back for the other tests here
+
+    def test_clarity_is_back_after_this_module(self):
+        """tearDownClass hands the module back with Clarity's home, as test_fakeha expects."""
+        type(self).tearDownClass()
+        try:
+            self.assertIs(fakeha.D, fakeha.CLARITY)
+        finally:
+            type(self).setUpClass()
 
 
 if __name__ == "__main__":

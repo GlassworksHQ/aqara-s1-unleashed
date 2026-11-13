@@ -117,7 +117,11 @@ Every frame's card shows the same dashboard (maintainer, #144), so the renders a
   (`--num-raster-threads=1` and friends; without them a few edges changed from run to run). Checked
   with two runs on 2026-11-13, Chrome 157.
 
-Redo the renders when HA's look changes, i.e. when Clarity's pinned frontend moves.
+Redo the renders when HA's look changes, i.e. when Clarity's pinned frontend moves. **A new frame needs
+its render too**: run `node tools/showcase/render.mjs <id>` and add `"render": "render.webp"` to its
+`frame.json` (Kiln's `frame-designs.test.ts` fails without it). That needs Chrome (or `CHROME=<path>`),
+Node 22+ and python3; the first run fetches the pinned frontend from PyPI (117 MB, checked by SHA-256)
+into `~/.cache/glassworks-perf`. Kiln's `catalog.ts` then imports the new file.
 
 | Frame | Size | View, density | Rows of sections shown | File |
 |---|---|---|---|---|

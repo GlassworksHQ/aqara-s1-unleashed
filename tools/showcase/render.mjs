@@ -30,10 +30,10 @@ const QUALITY = 82;
 // The kiosk's own look: no sidebar, no header (app/kiosk/src/main/assets/extension/content.js), and
 // HA's default theme in dark mode.
 const inject = (now) => `(() => {
-  // The home's NOW on the page's clock, so the clock card and the graphs' windows are the same every run.
-  // It moves on only in whole minutes, so anything waiting on the time still gets there.
-  const t0 = performance.now(), RealDate = Date;
-  const now = () => ${now} + Math.floor((performance.now() - t0) / 60000) * 60000;
+  // The page's clock stands still at the home's NOW, so the clock card and the graphs' windows are the
+  // same on every run, however slow the machine.
+  const RealDate = Date;
+  const now = () => ${now};
   class FixedDate extends RealDate {
     constructor(...a) { if (a.length) super(...a); else super(now()); }
     static now() { return now(); }
@@ -71,21 +71,52 @@ const READY = `(() => {
   return JSON.stringify({ cards, images: imgs.length, loaded, styled });
 })()`;
 
-// Each section's box, in CSS px: the dashboard's grid of sections, row by row.
+// Each section's top and the bottom of its lowest card, in CSS px. HA stretches a section's own box to its
+// row, so only the cards show a column that ends early.
 const SECTION_BOXES = `(() => {
   const out = [];
+  const lowest = (root, acc) => root.querySelectorAll('*').forEach((el) => {
+    if (el.tagName === 'HUI-CARD' || /^HUI-.+-CARD$/.test(el.tagName)) {
+      const r = el.getBoundingClientRect();
+      if (r.height > 0) acc.bottom = Math.max(acc.bottom, r.bottom);
+    }
+    if (el.shadowRoot) lowest(el.shadowRoot, acc);
+  });
   const walk = (root) => root.querySelectorAll('*').forEach((el) => {
-    if (el.tagName === 'HUI-SECTION') { const r = el.getBoundingClientRect(); out.push({ top: r.top, bottom: r.bottom, left: r.left }); }
+    if (el.tagName === 'HUI-SECTION') {
+      const acc = { bottom: -1 };
+      lowest(el, acc);
+      if (el.shadowRoot) lowest(el.shadowRoot, acc);
+      out.push({ top: el.getBoundingClientRect().top, bottom: acc.bottom });
+      return;
+    }
     if (el.shadowRoot) walk(el.shadowRoot);
   });
   walk(document);
   return JSON.stringify(out);
 })()`;
 
-/** Sections grouped into rows (same top): [{ top, bottom, spread }], spread = how unevenly the row ends. */
+// The clock card's text, to check the page still shows the home's NOW when it is captured.
+const CLOCK_TEXT = `(() => {
+  const deep = (root) => [...root.childNodes].map((n) => n.nodeType === 3 ? n.textContent
+    : (n.shadowRoot ? deep(n.shadowRoot) : '') + (n.childNodes ? deep(n) : '')).join(' ');
+  let text = '';
+  const walk = (root) => root.querySelectorAll('*').forEach((el) => {
+    if (el.tagName === 'HUI-CLOCK-CARD') text = deep(el.shadowRoot ?? el).replace(/\\s+/g, '');
+    else if (el.shadowRoot) walk(el.shadowRoot);
+  });
+  walk(document);
+  return text;
+})()`;
+
+// How unevenly a row of sections may end (px): more is a column that stops early.
+const MAX_SPREAD = 4;
+
+/** Sections grouped into rows (same top): [{ top, bottom, spread }], bottom = the row's lowest card, spread = how unevenly it ends. */
 function rowsOf(boxes) {
   const rows = [];
   for (const b of [...boxes].sort((x, y) => x.top - y.top)) {
+    if (b.bottom < 0) throw new Error(`a section with no cards at ${b.top}`);
     const row = rows.find((r) => Math.abs(r.top - b.top) < 4);
     if (row) row.bottoms.push(b.bottom);
     else rows.push({ top: b.top, bottoms: [b.bottom] });
@@ -196,17 +227,25 @@ async function render(c, base, home, frame) {
 
   // A wider page can lay the cards out a little differently: fold again until it holds.
   let f = fold(await rows(), display.height);
-  for (let t = 0; t < 4; t++) {
+  let stable = false;
+  for (let t = 0; t < 4 && !stable; t++) {
     await metrics(f.density);
     await settle();
     const again = fold(await rows(), display.height);
-    if (Math.abs(again.density - f.density) < 0.002 && again.rows === f.rows) break;
+    stable = Math.abs(again.density - f.density) < 0.002 && again.rows === f.rows;
     f = again;
   }
+  if (!stable) throw new Error(`${frame.id}: the fold didn't settle (last: density ${f.density}, ${f.rows} rows)`);
   const shown = (await rows()).slice(0, f.rows);
+  const spread = Math.max(...shown.map((r) => r.spread));
+  if (spread > MAX_SPREAD) throw new Error(`${frame.id}: a column ends ${spread.toFixed(0)} px before the others: ${JSON.stringify(shown)}`);
+  const clock = (await s('Runtime.evaluate', { expression: CLOCK_TEXT, returnByValue: true })).result.value;
+  // the clock card's digits, without the colon it draws apart: "1930"
+  const hhmm = new Date(home.now).toISOString().slice(11, 16).replace(':', '');
+  if (!clock.includes(hhmm)) throw new Error(`${frame.id}: the clock reads "${clock}", not ${hhmm}`);
   const { data } = await s('Page.captureScreenshot', { format: 'webp', quality: QUALITY });
   await c.send('Target.disposeBrowserContext', { browserContextId });
-  return { webp: Buffer.from(data, 'base64'), view, density: f.density, rows: f.rows, spread: Math.max(...shown.map((r) => r.spread)) };
+  return { webp: Buffer.from(data, 'base64'), view, density: f.density, rows: f.rows, spread };
 }
 
 async function main() {
