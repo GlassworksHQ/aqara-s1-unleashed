@@ -36,6 +36,12 @@ class ReadingsTest {
         assertNull(parsePss("Rss: 1 kB\n"))
     }
 
+    @Test fun aTotalNeedsEveryPart() {
+        assertEquals(30L, totalOrNull(listOf(10L, 20L)))
+        assertNull("one process could not be read", totalOrNull(listOf(10L, null)))
+        assertNull(totalOrNull(emptyList()))
+    }
+
     @Test fun thermalZoneIsFoundByType() {
         for ((i, type) in listOf("cpu_thermal_zone", "gpu_thermal_zone", "ddr_thermal_zone").withIndex()) {
             File(tmp.root, "thermal_zone$i").apply { mkdirs(); File(this, "type").writeText("$type\n") }

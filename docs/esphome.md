@@ -141,7 +141,7 @@ asks Android. It runs no shell commands and needs no root.
 | sensor `App CPU usage` (%) | `app_cpu_usage` | off | 0.5 % | `/proc/<pid>/stat` of every app process (Gecko's too), as a share of all cores |
 | sensor `CPU temperature` (°C) | `cpu_temperature` | on | 0.5 °C | the frame's thermal zone; on the S1 `cpu_thermal_zone`. No entity on a frame without one |
 | sensor `RAM available` (MiB) | `memory_available` | off | 8 MiB | `ActivityManager.MemoryInfo.availMem` |
-| sensor `App RAM` (MiB) | `app_memory` | off | 4 MiB | PSS of every app process, from `/proc/<pid>/smaps_rollup` |
+| sensor `App RAM` (MiB) | `app_memory` | off | 4 MiB | PSS of every app process, from `/proc/<pid>/smaps_rollup`; unknown for a minute if one of them can't be read |
 | sensor `Storage free` (GiB) | `storage_free` | off | 0.05 GiB | `StatFs` on `/data` |
 | sensor `Wi-Fi signal` (dBm) | `wifi_signal` | on | 2 dB | `WifiManager`; unknown while Wi-Fi is down |
 | sensor `Wi-Fi link speed` (Mbit/s) | `wifi_link_speed` | off | 1 Mbit/s | `WifiManager` |

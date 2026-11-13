@@ -58,7 +58,7 @@ class AndroidProbe(
             contentProcesses = processes.takeIf { it.isNotEmpty() }?.count { isContentProcess(it.processName) },
             cpuTemperature = temperature?.let(::read)?.trim()?.toIntOrNull()?.let { it / 1000f },
             memoryAvailableBytes = am?.let { ActivityManager.MemoryInfo().also(it::getMemoryInfo).availMem },
-            appPssBytes = pids.mapNotNull { read(File(proc, "$it/smaps_rollup"))?.let(::parsePss) }.takeIf { it.isNotEmpty() }?.sum(),
+            appPssBytes = totalOrNull(pids.map { read(File(proc, "$it/smaps_rollup"))?.let(::parsePss) }),
             storageFreeBytes = runCatching { StatFs(Environment.getDataDirectory().path).availableBytes }.getOrNull(),
             // -127 is WifiInfo.INVALID_RSSI and -1 an unknown link speed. Both mean Wi-Fi is not connected.
             wifiRssi = wifiInfo?.rssi?.takeIf { it in -126..-1 },

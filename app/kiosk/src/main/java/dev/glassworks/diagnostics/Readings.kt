@@ -66,6 +66,10 @@ fun parsePss(smapsRollup: String): Long? = smapsRollup.lineSequence()
     .firstOrNull { it.startsWith("Pss:") }
     ?.removePrefix("Pss:")?.trim()?.substringBefore(' ')?.toLongOrNull()?.times(1024)
 
+/** The sum of [parts], or null when there are none or one is unknown. A subtotal is not the total. */
+fun totalOrNull(parts: List<Long?>): Long? =
+    if (parts.isEmpty() || parts.any { it == null }) null else parts.sumOf { it!! }
+
 /** The `temp` file of the zone under [thermalRoot] whose `type` is [type], or null. */
 fun findThermalZone(thermalRoot: File, type: String): File? =
     thermalRoot.listFiles { f -> f.name.startsWith("thermal_zone") }.orEmpty().sortedBy { it.name }
