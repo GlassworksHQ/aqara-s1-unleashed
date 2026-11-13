@@ -11,6 +11,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 import grade as G  # noqa: E402
 import perflib as P  # noqa: E402
+import statistics  # noqa: E402
 import report as R  # noqa: E402
 import summary as S  # noqa: E402
 
@@ -1227,9 +1228,51 @@ def ram_idle(label, main_kb, cpu=1.0):
             "cpu": {"procs_pct_of_core": {pkg: cpu}, "device_busy_pct": 10}}
 
 
+def with_boot(sample, boot_kb=29_000):
+    s = dict(sample, processes=dict(sample["processes"]))
+    s["processes"]["sh.edm.s1kiosk:boot"] = {"pid": 3, "role": "boot", "pss_kb": boot_kb, "rss_peak_kb": boot_kb}
+    return s
+
+
+class NoiseBand(unittest.TestCase):
+    """docs/perf.md's claims for perflib.noise_band, by simulation (seeded, normal noise, σ = 1)."""
+
+    def sim(self, n, draws=4000):
+        import random
+        rnd = random.Random(186)
+        bands, low, false = [], 0, 0
+        for _ in range(draws):
+            a, b = [rnd.gauss(0, 1) for _ in range(n)], [rnd.gauss(0, 1) for _ in range(n)]
+            ba, bb = P.noise_band(a), P.noise_band(b)
+            bands.append(ba)
+            low += ba < 0.2
+            false += abs(statistics.median(a) - statistics.median(b)) > max(ba, bb)
+        return statistics.mean(bands), low / draws, false / draws
+
+    def test_three_samples(self):
+        mean, low, false = self.sim(3)
+        self.assertAlmostEqual(mean, 2.0, delta=0.1)       # about 2 σ of one sample
+        self.assertLess(low, 0.02)                         # it rarely collapses (the MAD: 11 %)
+        self.assertLess(false, 0.06)                       # a zero difference reads measurable about 3.5 % of the time
+
+    def test_five_samples(self):
+        """The verifier on #196: the MAD at five averaged 1.64 σ (5% false "measurable");
+        range / d2 runs through seven."""
+        mean, low, false = self.sim(5)
+        self.assertAlmostEqual(mean, 2.0, delta=0.1)
+        self.assertLess(false, 0.03)
+
+    def test_it_doesnt_grow_with_more_samples(self):
+        self.assertLess(self.sim(9)[0], self.sim(3)[0])
+
+    def test_under_two_samples_there_is_none(self):
+        self.assertIsNone(P.noise_band([1.0]))
+        self.assertGreater(P.noise_band([100, 100, 130]), 0)
+
+
 class PaneOnAlone(unittest.TestCase):
     """#68: a pane's share is the median of its on-alone samples less the median of the all-off ones;
-    the tolerance is the larger spread of the two sets."""
+    the tolerance is the larger noise band (2 × 1.4826 × MAD) of the two sets (#186)."""
 
     def test_share_and_tolerance(self):
         idles = {"ref-panes-off": [ram_idle("ref-panes-off", v) for v in (100_000, 104_000, 101_000)],
@@ -1237,11 +1280,59 @@ class PaneOnAlone(unittest.TestCase):
                  "ref-sendspin-on": [ram_idle("ref-sendspin-on", v) for v in (102_000, 103_000, 101_000)]}
         panes = {p["id"]: p for p in R.pane_on_alone(idles, "sh.edm.s1kiosk")}
         self.assertEqual(panes["assist"]["pss_kb"], 30_000)                  # 331 000 - 301 000
-        self.assertEqual(panes["assist"]["pss_tolerance_kb"], 6_000)         # the on set's spread is the larger
+        self.assertEqual(panes["assist"]["pss_tolerance_kb"], 7_088)         # 2 × 6 000 / d2(3); the on set is the noisier
         self.assertTrue(panes["assist"]["pss_measurable"])
         self.assertEqual(panes["sendspin"]["pss_kb"], 1_000)
-        self.assertFalse(panes["sendspin"]["pss_measurable"])                # inside the 4 000 tolerance
+        self.assertFalse(panes["sendspin"]["pss_measurable"])                # inside the off set's 4 725
         self.assertEqual(panes["assist"]["by_role_pss_kb"], {"gpu": 0, "main": 30_000})
+        self.assertEqual((panes["assist"]["boot_samples_on"], panes["assist"]["boot_pss_kb"]), (0, None))
+
+    def test_one_odd_sample_doesnt_set_the_tolerance_of_many(self):
+        """#186: max - min only grows with n. From five samples the band is the MAD's, so ten samples
+        with one 28 MB off stay near three samples' band, not the 30 MB range."""
+        three = [100_000, 101_000, 102_000]
+        ten = three * 3 + [130_000]
+        def tol(off):
+            idles = {"ref-panes-off": [ram_idle("ref-panes-off", v) for v in off],
+                     "ref-assist-on": [ram_idle("ref-assist-on", v + 30_000) for v in three]}
+            return R.pane_on_alone(idles, "sh.edm.s1kiosk")[0]["pss_tolerance_kb"]
+        self.assertEqual(tol(three), 2_363)                                  # 2 × 2 000 / d2(3)
+        self.assertEqual(tol(ten), 2_965)                                    # 2 × 1.4826 × MAD 1 000
+
+    def test_two_agreeing_samples_and_an_odd_one_dont_give_zero(self):
+        """The verifier on #196: the MAD of three samples is the smaller gap, so 100, 100, 130 gave 0."""
+        idles = {"ref-panes-off": [ram_idle("ref-panes-off", v) for v in (100_000, 100_000, 130_000)],
+                 "ref-assist-on": [ram_idle("ref-assist-on", v) for v in (110_000, 110_000, 110_000)]}
+        p = R.pane_on_alone(idles, "sh.edm.s1kiosk")[0]
+        self.assertEqual(p["pss_tolerance_kb"], 35_440)                      # 2 × 30 000 / d2(3)
+        self.assertFalse(p["pss_measurable"])
+
+    def test_one_sample_a_side_has_no_tolerance(self):
+        """s1p1 (n=1) read ±0.0 MB, measurable, budget ok: no evidence for any of it."""
+        idles = {"ref-panes-off": [ram_idle("ref-panes-off", 100_000)], "ref-assist-on": [ram_idle("ref-assist-on", 130_000)] * 3}
+        p = R.pane_on_alone(idles, "sh.edm.s1kiosk")[0]
+        self.assertEqual((p["pss_tolerance_kb"], p["pss_measurable"], p["cpu_tolerance_pct"], p["cpu_measurable"]),
+                         (None, False, None, False))
+        b = G.pane_budgets([p], {"assist": {"ram_pss_max_kb": 49152}})["assist"]
+        self.assertEqual((b["measurable"], b["ok"]), (False, None))
+        md = "\n".join(R.ram_markdown({"panes": [p], "pane_budget": {"assist": b | {"budget_kb": 49152}}}))
+        row = next(l for l in md.splitlines() if l.startswith("| assist |"))
+        # The verifier on #196: the row said "not measurable" three times, and "one sample" at 3 on.
+        self.assertEqual(row, "| assist | +29.3 MB | none: under 2 samples a side (n=3 on, 1 off) | 48 MB, not measurable "
+                              "| +0.0 % of a core |")
+        self.assertNotIn("within tolerance", md)
+
+    def test_boot_is_reported_apart_from_the_share(self):
+        """#186: `:boot` (29 MB) ran in 1 of 3 Sendspin samples in s1p3 and made its tolerance ±22 MB."""
+        off = [ram_idle("ref-panes-off", v) for v in (100_000, 101_000, 102_000)]
+        on = [ram_idle("ref-sendspin-on", 110_000)] + [with_boot(ram_idle("ref-sendspin-on", v)) for v in (111_000, 112_000)]
+        p = R.pane_on_alone({"ref-panes-off": off, "ref-sendspin-on": on}, "sh.edm.s1kiosk")[0]
+        # With :boot in two of three, it moves the median: counted, the share would read +39 MB.
+        self.assertEqual((p["pss_kb"], p["pss_tolerance_kb"]), (10_000, 2_363))
+        self.assertEqual((p["boot_samples_on"], p["boot_samples_off"], p["boot_pss_kb"]), (2, 0, 29_000))
+        self.assertNotIn("boot", p["by_role_pss_kb"])
+        md = "\n".join(R.ram_markdown({"panes": [p], "pane_budget": {}}))
+        self.assertIn("`:boot` (28.3 MB) ran in 2 of 3 on and 0 of 3 off sample(s)", md)
 
     def test_nothing_without_the_all_off_samples(self):
         self.assertEqual(R.pane_on_alone({"ref-assist-on": [ram_idle("ref-assist-on", 1)]}, "sh.edm.s1kiosk"), [])
@@ -1250,13 +1341,13 @@ class PaneOnAlone(unittest.TestCase):
         budgets = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15},
                    "panes": {"assist": {"switch": "voice_enabled", "ram_pss_max_kb": 20_000}, "radio": {"waiting_on": "#67"}}}
         ram = R.reference_ram({"ref-idle": [ram_idle("ref-idle", 300_000)],
-                               "ref-panes-off": [ram_idle("ref-panes-off", 100_000)],
-                               "ref-assist-on": [ram_idle("ref-assist-on", 130_000)]},
+                               "ref-panes-off": [ram_idle("ref-panes-off", v) for v in (100_000, 100_500, 101_000)],
+                               "ref-assist-on": [ram_idle("ref-assist-on", v) for v in (130_000, 130_500, 131_000)]},
                               [{"memory": [ram_idle("x", 320_000), ram_idle("x", 340_000)]}], "sh.edm.s1kiosk", budgets, 2_000_000)
         self.assertEqual(ram["reference_idle"]["app_pss_kb"]["median"], 500_000)
         self.assertEqual(ram["graded_peak"]["app_pss_kb"], 540_000)
         self.assertEqual(ram["graded_peak"]["by_role_pss_kb"], {"gpu": 200_000, "main": 340_000})
-        self.assertEqual(ram["pane_budget"]["assist"]["ok"], False)          # 30 MB against 20 MB
+        self.assertEqual(ram["pane_budget"]["assist"]["ok"], False)          # 30 MB against 20 MB, three samples each
         self.assertEqual(ram["panes_waiting"], [{"id": "radio", "waiting_on": "#67"}])
         self.assertTrue(ram["budget"]["ok"])
         self.assertIsNone(R.reference_ram({}, [], "sh.edm.s1kiosk", budgets, 2_000_000))

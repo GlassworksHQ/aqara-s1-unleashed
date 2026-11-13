@@ -15,7 +15,7 @@ piper-tts 1.8.0, clang (Apple, arm64), JDK 21.
 ## Question
 
 openWakeWord's always-on inference costs about 37% of one core on the S1, and most of it is the
-shared embedding model ([idle-cpu.md](idle-cpu.md), #105: muting the microphone took the main
+shared embedding model ([idle-cpu.md](../../frames/aqara-s1-plus/research/idle-cpu.md), #105: muting the microphone took the main
 process from 39% to 2%). microWakeWord's int8 streaming models do
 about 800 times less arithmetic. Can the panel run them with the same results ESPHome and
 pymicro-wakeword get, and without native code of our own (#175)?
@@ -120,7 +120,7 @@ pymicro-wakeword get, and without native code of our own (#175)?
 | | openWakeWord (0.4.3) | microWakeWord (#175) |
 |---|---|---|
 | Models | 3 per word (mel, embedding, wake), CC BY-NC-SA 4.0 | 1 per word, Apache-2.0 |
-| Arithmetic | ~554 MMAC/s ([idle-cpu.md](idle-cpu.md)) | ~0.7 MMAC/s (same) |
+| Arithmetic | ~554 MMAC/s ([idle-cpu.md](../../frames/aqara-s1-plus/research/idle-cpu.md)) | ~0.7 MMAC/s (same) |
 | Features | float mel model | integer frontend in Kotlin, bit-exact to the C |
 | Inference | every 80 ms | every 30 ms, int8 |
 | Panel CPU, unmuted (main process / `voice-mic`) | 40.8% / 37.9% of a core | **8.1% and 6.5% / 3.7%** (target under 10%) |

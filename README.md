@@ -66,7 +66,7 @@ announcements, with a calm full-screen overlay while you talk.
 | 👋 **Wakes when you walk up** | The screen wakes as you approach, turns off when the room is empty, and dims at night. It is driven by the panel's own sensors. [More](docs/sensors.md) |
 | 📡 **Radio for Home Assistant** | The panel's Zigbee/Thread radio can be a Zigbee coordinator for ZHA or (experimental) Zigbee2MQTT, a Thread border router, or a repeater in your existing network. You switch roles from HA. [How to](docs/radio-guide.md) |
 | 🔄 **Updates in Home Assistant** | New versions show up under *Settings → Updates*, and one click installs them. Fixes for the radio side come with them. [More](#updates) |
-| 🔌 **Wall base relays** | A driver for the mains relay base that speaks its UART protocol directly, with no Aqara daemon. Not yet tried on a real base. [More](docs/research/bases.md) |
+| 🔌 **Wall base relays** | A driver for the mains relay base that speaks its UART protocol directly, with no Aqara daemon. Not yet tried on a real base. [More](frames/aqara-s1-plus/research/bases.md) |
 | 🔒 **No Aqara cloud** | Aqara's launcher, apps, updater and cloud daemon are switched off (reversibly), so the panel stops talking to Aqara. |
 | ✨ **Its own boot screen** | The Glassworks splash and boot animation: glass plates drop into place and the top one lights up. [More](branding/glass-tile/README.md) |
 
@@ -162,13 +162,14 @@ What works today, on v0.4.1. "Verified" means tested on a real panel in a real h
 | Radio firmware updates | 🧪 Experimental · re-flashing Aqara's original firmware verified; no other firmware offered yet |
 | Wall base relays | 🧪 Driver done and checked against Aqara's own tool, but not yet tried on a real base |
 | Wi-Fi setup over Bluetooth (Improv) | 🧪 Implemented; lightly tested |
+| A short entity list in HA: settings and troubleshooting entities start turned off ([list](docs/esphome.md#categories-and-defaults)) | 🧪 New · the check on a panel HA already has is pending |
 
 ## The radio
 
 The S1 Plus has a Silicon Labs Zigbee/Thread radio inside. S1 Unleashed can give it to Home
 Assistant in one role at a time. You pick the role with **Radio mode** on the panel's device page
-in Home Assistant, or in the panel's own settings menu (*Radio*), which also shows what to do next,
-with QR codes for your phone:
+in Home Assistant (turn it on there first: HA adds it turned off), or in the panel's own settings
+menu (*Radio*), which also shows what to do next, with QR codes for your phone:
 
 - **Zigbee coordinator** for ZHA: radio type EZSP, serial path `socket://<panel IP>:6638`.
 - **Zigbee coordinator** for Zigbee2MQTT (experimental): set **Zigbee stack** to *Silicon Labs

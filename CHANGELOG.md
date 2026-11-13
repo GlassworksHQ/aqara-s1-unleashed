@@ -53,6 +53,14 @@ below as the release notes.
 - **New pages on your phone when you scan the panel's code.** Signing in and sharing your Thread
   network open a short page first that says what happens, then *Continue to Home Assistant*. They
   follow your phone's light or dark mode.
+- **A shorter entity list in Home Assistant.** When Home Assistant adds a panel, it now turns on 15 of
+  its 63 entities, down from 55: presence, light level, the screen, the speaker, screen mode, mute,
+  reload and restart, app updates, IP address, radio status and four health values (plus a wall
+  base's relays, buttons, power, energy and protection). Settings you set once, the radio's controls
+  and the troubleshooting sensors are created turned off. To use one, turn it on from the panel's
+  device page in Home Assistant; many settings are also in the panel's settings menu. A panel Home
+  Assistant already has keeps its entities as they were; only *Base protection* moves to the
+  Diagnostic section.
 
 ### Added
 - **Kiln shows what the panel is doing while S1 Kiosk goes in.** On kiln.glassworks.dev the app's
@@ -82,6 +90,9 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Keeping the radio Off in Kiln finishes the panel's radio step.** A fresh panel installed with
+  Kiln no longer asks *Radio* again on its own screen when you left the radio Off. Choosing the mode
+  the radio already runs doesn't restart it. Needs the S1 Kiosk release with this fix.
 - **Kiln's Done always offers your backup.** After an install, Done shows the backup's download even
   when set-up ran after leaving and coming back to the wizard, or after a reload. Before, it could
   show no download, and the backup was only in that browser. When a browser blocks site storage,

@@ -6,7 +6,7 @@
 - **Bugs and hardware reports:** an issue, from the templates below.
 - **Security problems:** privately, as [SECURITY.md](SECURITY.md) says. Not in Discussions or an issue.
 
-Bring-up notes that others can build on belong in [`docs/research/`](docs/research/README.md), in the same PR as the work. Everyone here follows the [code of conduct](CODE_OF_CONDUCT.md).
+Bring-up notes that others can build on belong in the same PR as the work: in `frames/<id>/research/` for one device, or in [`docs/research/`](docs/research/README.md) for what applies to every frame. Everyone here follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Before you propose a feature
 
@@ -38,7 +38,8 @@ python3 tools/check-doc-links.py                     # docs links
 - **UI changes need screenshots** in the PR: before and after for a changed screen, after for a new
   one. Without a panel, use the app's mockup tests or the installer's `?demo=` states
   ([AGENTS.md](AGENTS.md#pull-requests)).
-- **Write down what you find on the hardware** in `docs/research/`, including what didn't work
+- **Write down what you find on the hardware** in `frames/<id>/research/` (or `docs/research/` if it
+  applies to every frame), including what didn't work
   ([the playbook](docs/research/bringup.md), [template](docs/research/TEMPLATE.md)).
 
 Coding agents: start at [AGENTS.md](AGENTS.md).

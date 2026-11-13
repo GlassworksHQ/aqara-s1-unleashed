@@ -25,6 +25,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import grade as G  # noqa: E402
+import notes as N  # noqa: E402
 
 SCHEMA = "glassworks.perf-summary/2"
 
@@ -86,15 +87,23 @@ def ram_summary(ram):
         # whose switches the kiosk lost) isn't exported, so the site can't show it as a measurement.
         "panes": [{"id": p["id"], "pss_kb": p["pss_kb"], "tolerance_kb": p["pss_tolerance_kb"],
                    "measurable": p["pss_measurable"], "runs": min(p["samples_on"], p["samples_off"]),
-                   # The frame's budget for the pane and whether its share is within it. Read with
-                   # `measurable`: a share inside the tolerance can't show that the pane fits.
+                   # The frame's budget for the pane and whether its share is within it. budget_ok is
+                   # None, and budget_measurable false, when the tolerance is too wide to tell (#186).
                    "budget_kb": (budget.get(p["id"]) or {}).get("budget_kb"),
                    "budget_ok": (budget.get(p["id"]) or {}).get("ok"),
+                   "budget_measurable": (budget.get(p["id"]) or {}).get("measurable"),
                    **({"off_by": p["off_by"]} if p.get("off_by") else {})}
                   for p in ram.get("panes") or [] if not p.get("error") and p.get("verified") is True],
         "panes_waiting": [p["id"] for p in ram.get("panes_waiting") or []],
         "budget_ok": (ram.get("budget") or {}).get("ok"),
     }
+
+
+def notes_summary(rep):
+    """What's good and what holds it back, in words (#201; notes.py). Judged by the report's rubric,
+    which `rubric` names: a site with another rubric shouldn't show it."""
+    n = rep.get("notes") or N.notes(rep)
+    return {k: n[k] for k in ("good", "limits", "causes", "text", "rubric")}
 
 
 def measurements(rep, report_url="report.json"):
@@ -132,6 +141,7 @@ def measurements(rep, report_url="report.json"):
         "report": report_url,
         "ram": ram_summary(rep.get("ram")),
         "apk": [{"file": x["file"], "abis": x["abis"], "bytes": x["bytes"]} for x in rep.get("apk") or []] or None,
+        "notes": notes_summary(rep),
     }
 
 

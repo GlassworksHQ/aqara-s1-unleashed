@@ -281,12 +281,24 @@ def frame_budget(default, frame=None):
             "panes": frame.get("panes") or default.get("panes") or {}}
 
 
+# A pane's share is checked against its budget only with this many samples on each side and a
+# tolerance at most this part of the budget (#186). The tolerance is about 2 σ of one sample, not a
+# confidence interval, so "ok" means the share is under the budget by this test's noise, no more.
+PANE_TOLERANCE_MAX_OF_BUDGET = 0.25
+PANE_BUDGET_MIN_SAMPLES = 3
+
+
 def pane_budgets(panes, budgets):
     """Each measured pane's PSS against its budget (ram_pss_max_kb). ok is None when the pane has no
-    budget or wasn't measured."""
+    budget, wasn't measured, or can't be told (measurable false: too few samples, or too wide a
+    tolerance)."""
     out = {}
     for p in panes:
         cap = (budgets.get(p["id"]) or {}).get("ram_pss_max_kb")
-        out[p["id"]] = {"value_kb": p.get("pss_kb"), "budget_kb": cap,
-                        "ok": None if cap is None or p.get("pss_kb") is None else p["pss_kb"] <= cap}
+        tol = p.get("pss_tolerance_kb")
+        n = min(p.get("samples_on") or 0, p.get("samples_off") or 0)
+        measurable = None if cap is None else (tol is not None and n >= PANE_BUDGET_MIN_SAMPLES
+                                               and tol <= PANE_TOLERANCE_MAX_OF_BUDGET * cap)
+        out[p["id"]] = {"value_kb": p.get("pss_kb"), "budget_kb": cap, "tolerance_kb": tol, "measurable": measurable,
+                        "ok": None if cap is None or p.get("pss_kb") is None or measurable is False else p["pss_kb"] <= cap}
     return out

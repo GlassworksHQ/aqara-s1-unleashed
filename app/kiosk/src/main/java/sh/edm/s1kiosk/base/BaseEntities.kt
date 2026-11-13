@@ -38,9 +38,9 @@ object BaseEntities {
 
     fun build(layout: BaseLayout, t: BaseTracker, setRelay: (Int, Boolean) -> Unit): List<ApiEntity> {
         val list = ArrayList<ApiEntity>()
-        list += TextSensorEntity(BASE, "Base", "mdi:wall", EntityCategory.DIAGNOSTIC, get = { t.current()?.describe() })
+        list += TextSensorEntity(BASE, "Base", "mdi:wall", EntityCategory.DIAGNOSTIC, disabledByDefault = true, get = { t.current()?.describe() })
         if (layout.attached) {
-            list += TextSensorEntity(FIRMWARE, "Base firmware", "mdi:chip", EntityCategory.DIAGNOSTIC, get = { t.firmware() })
+            list += TextSensorEntity(FIRMWARE, "Base firmware", "mdi:chip", EntityCategory.DIAGNOSTIC, disabledByDefault = true, get = { t.firmware() })
         }
         if (layout.kind == BaseKind.SWITCH) {
             for (ch in layout.channels) {
@@ -59,7 +59,7 @@ object BaseEntities {
                 ENERGY, "Base energy", "mdi:counter", accuracy = 3, stateClass = 2, get = { t.energy() },
             )
             list += TextSensorEntity(
-                PROTECTION, "Base protection", "mdi:shield-alert-outline",
+                PROTECTION, "Base protection", "mdi:shield-alert-outline", EntityCategory.DIAGNOSTIC,
                 get = { BaseProtocol.protectionText(t.protection()) },
             )
             for (ch in layout.channels) {

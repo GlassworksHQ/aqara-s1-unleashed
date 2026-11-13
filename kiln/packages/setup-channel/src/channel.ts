@@ -47,6 +47,11 @@ export interface SetupState {
      * with an older helper.
      */
     allowed?: string;
+    /**
+     * The panel's own radio step is answered (a mode applied there, in Home Assistant or by Kiln).
+     * Absent from apps that don't send it; their same-mode `set_radio` restarts the radio.
+     */
+    answered?: boolean;
   };
 }
 

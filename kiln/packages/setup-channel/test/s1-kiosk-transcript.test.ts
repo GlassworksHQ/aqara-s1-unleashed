@@ -35,6 +35,7 @@ describe('the S1 Kiosk app, as recorded', () => {
     expect(first.ha.url).toBe('');
     expect(first.radio.options.map((o) => o.id)).toEqual(['off', 'zigbee_tcp', 'thread', 'zigbee_router', 'thread_router']);
     expect(first.radio.helper).toBe(false);
+    expect(first.radio.answered).toBe(false);
 
     const ha = await c.setHa('http://homeassistant.local:8123');
     expect(ha.ha.url).toBe('http://homeassistant.local:8123');
@@ -43,7 +44,7 @@ describe('the S1 Kiosk app, as recorded', () => {
 
     // No root helper on this panel: only Off works, and the refusal says why.
     await expect(c.setRadio('zigbee_tcp')).rejects.toThrow(/root helper/);
-    expect((await c.setRadio('off')).radio.mode).toBe('off');
+    expect((await c.setRadio('off')).radio).toMatchObject({ mode: 'off', answered: true });
 
     // Every request the client sent is one the app answered (ids and arguments as recorded).
     expect(app.sent).toEqual((transcript as Entry[]).map((e) => e.request));

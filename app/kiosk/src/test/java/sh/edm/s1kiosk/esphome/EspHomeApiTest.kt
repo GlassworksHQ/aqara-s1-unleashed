@@ -61,16 +61,16 @@ class EspHomeApiTest {
         return listOf(
             BrightnessLightEntity("screen", "Screen", get = { screenOn to brightness },
                 set = { on, b -> on?.let { screenOn = it }; b?.let { brightness = it } }),
-            SwitchEntity("auto_brightness", "Auto brightness", get = { auto }, set = { auto = it }),
+            SwitchEntity("auto_brightness", "Auto brightness", category = EntityCategory.CONFIG, disabledByDefault = true, get = { auto }, set = { auto = it }),
             BinarySensorEntity("presence", "Presence", deviceClass = "occupancy", get = { true }),
             SensorEntity("illuminance", "Illuminance", unit = "lx", deviceClass = "illuminance", get = { Float.NaN }),
             SelectEntity("screen_mode", "Screen mode", options = listOf("presence", "always"), get = { mode }, set = { mode = it }),
             dashboardSelect(listOf("Default")),
-            NumberEntity("idle_timeout", "Idle timeout", min = 0f, max = 3600f, step = 5f, unit = "s",
+            NumberEntity("idle_timeout", "Idle timeout", disabledByDefault = true, min = 0f, max = 3600f, step = 5f, unit = "s",
                 get = { idle }, set = { idle = it }),
-            NumberEntity("presence_range", "Presence range", min = 0f, max = 2.5f, step = 0.1f, unit = "m",
+            NumberEntity("presence_range", "Presence range", disabledByDefault = true, min = 0f, max = 2.5f, step = 0.1f, unit = "m",
                 get = { 0f }, set = {}),
-            TextEntity("night_window", "Night window", maxLength = 11,
+            TextEntity("night_window", "Night window", disabledByDefault = true, maxLength = 11,
                 pattern = "^$|^[0-9]{1,2}:[0-9]{2}-[0-9]{1,2}:[0-9]{2}$", get = { night }, set = { night = it }),
             ButtonEntity("reload_dashboard", "Reload dashboard", press = {}),
             MediaPlayerEntity("speaker", "Speaker", formats = listOf("mp3" to 0, "mp3" to 1),
@@ -94,7 +94,7 @@ class EspHomeApiTest {
 
     /** Like PanelDevice's "Dashboard" select: same object_id (key) whatever the options. */
     private fun dashboardSelect(options: List<String>) =
-        SelectEntity("dashboard", "Dashboard", options = options, get = { "Default" }, set = {})
+        SelectEntity("dashboard", "Dashboard", disabledByDefault = true, options = options, get = { "Default" }, set = {})
 
     @Test
     fun homeAssistantClient() {
@@ -210,6 +210,12 @@ class EspHomeApiTest {
             assertEquals(SendspinApi.STATUS_ENCRYPTION_REQUIRED, r.getJSONObject("sendspin_token_plain").getInt("status"))
             assertEquals("", r.getJSONObject("sendspin_token_plain").getString("token"))
             assertEquals(15, r.getJSONArray("entities").length())
+            // entity_category and disabled_by_default as the real client decodes them, for every entity.
+            val flags = r.getJSONObject("entity_flags")
+            val expected = plainEntities.associate { it.objectId to "${it.disabledByDefault}/${it.category.value}" }
+            assertEquals(expected, flags.keys().asSequence().associateWith { flags.getString(it) })
+            assertEquals("true/1", flags.getString("auto_brightness"))
+            assertEquals("false/2", flags.getString("ip_address"))
             assertEquals("double", r.getString("event_type"))
             // Update entity: UpdateCommand CHECK (2) then INSTALL (1), decoded by the real client.
             assertEquals(listOf(2, 1), updateCommands.toList())

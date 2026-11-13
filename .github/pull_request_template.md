@@ -18,7 +18,7 @@
 - [ ] Nothing logs tokens, keys, Wi-Fi passwords or Thread datasets
 - [ ] Changes to the boot patch, root helper or radio say so above; they need a real panel
 - [ ] UI changes have screenshots below (before and after for a changed screen)
-- [ ] Hardware or reverse-engineering findings are written up in `docs/research/`, dead ends included
+- [ ] Hardware or reverse-engineering findings are written up in `frames/<id>/research/` (or `docs/research/` if general), dead ends included
 
 ## Screenshots
 

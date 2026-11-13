@@ -13,10 +13,10 @@ the partitions it changes, and that backup stays with you. *Undo a previous inst
 ## No copy protection is bypassed
 
 The panel's own boot log shows that secure boot is not enabled and that no root-of-trust key (ROTPK)
-was ever fused into the chip ([research/findings.md](research/findings.md#secure-boot--verified-boot)).
+was ever fused into the chip ([frames/aqara-s1-plus/research/findings.md](../frames/aqara-s1-plus/research/findings.md#secure-boot--verified-boot)).
 So the chip's mask-ROM recovery mode, FEL, accepts unsigned code. It asks for no signature, key or
 password. The installer uses FEL as it is meant to be used: it loads U-Boot, built from source, into RAM
-([research/fel.md](research/fel.md)).
+([frames/aqara-s1-plus/research/fel.md](../frames/aqara-s1-plus/research/fel.md)).
 
 The install doesn't break or extract any keys and doesn't decrypt anything. To boot the patched boot
 image, it sets the "verification disabled" flag in the panel's own `vbmeta` partition. That is a

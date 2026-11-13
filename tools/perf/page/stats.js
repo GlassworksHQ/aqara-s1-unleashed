@@ -89,10 +89,11 @@
     return parts.map((p, k) => `${tag}+ ${key} ${k}/${parts.length} ${p}`);
   }
 
-  // A hue between the brand's sky (199) and violet (258) for a random number in [0, 1): generated
-  // colours never land on ember (Kiln's) or on green, amber or rose, which mean status only.
+  // A hue between the brand's sky (#38bdf8, 198.4°) and violet (#a78bfa, 255.1°) for a random number
+  // in [0, 1): generated colours never land on ember (Kiln's) or on green, amber or rose, which mean
+  // status only.
   function skyToViolet(r) {
-    return 199 + Math.floor(r * 60);
+    return Math.round((198.4 + r * (255.1 - 198.4)) * 10) / 10;
   }
 
   function intervals(timestamps) {
