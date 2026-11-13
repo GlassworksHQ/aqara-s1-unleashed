@@ -365,7 +365,7 @@ export async function* splitBlob(blob: Blob, splitSize: number) {
     // Finish the final split if necessary
     if (
         splitChunks.length > 0 &&
-        (splitChunks.length > 1 || splitChunks[0].type !== ChunkType.Skip)
+        (splitChunks.length > 1 || splitChunks[0]!.type !== ChunkType.Skip)
     ) {
         let splitImage = await createImage(header, splitChunks);
         common.logDebug(
