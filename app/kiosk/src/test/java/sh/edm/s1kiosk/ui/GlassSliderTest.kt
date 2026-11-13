@@ -50,8 +50,19 @@ class GlassSliderTest {
     fun letGoSetsOnce() {
         val s = slider(1f)
         touch(s, MotionEvent.ACTION_DOWN, 300f)
-        touch(s, MotionEvent.ACTION_UP, 300f)
-        assertEquals(1, set.size)
+        touch(s, MotionEvent.ACTION_MOVE, 450f)
+        touch(s, MotionEvent.ACTION_MOVE, 550f)
+        assertEquals(emptyList<Float>(), set) // moving saves nothing
+        touch(s, MotionEvent.ACTION_UP, 550f)
+        assertEquals(listOf(s.value), set)
+    }
+
+    @Test
+    fun aKeyAtTheEndIsNotUsedSoFocusCanMove() {
+        val s = slider(0f)
+        s.value = s.value // at min
+        val atMin = s.onKeyDown(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT))
+        assertEquals(false, atMin)
     }
 
     @Test

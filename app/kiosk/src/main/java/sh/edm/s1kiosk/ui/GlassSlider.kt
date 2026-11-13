@@ -52,8 +52,12 @@ class GlassSlider(
         value = n
         onMove?.invoke(n)
         onSet?.invoke(n)
+        announce()
         return true
     }
+
+    /** Tells accessibility services the value changed, so a focused slider is re-read. */
+    private fun announce() = sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_SELECTED)
 
     override fun onMeasure(w: Int, h: Int) = setMeasuredDimension(MeasureSpec.getSize(w), (36 * dp).toInt())
 
@@ -94,7 +98,7 @@ class GlassSlider(
             }
             MotionEvent.ACTION_UP -> { value = valueAt(e.x); onMove?.invoke(value); onSet?.invoke(value) }
             // The gesture was taken away (a scroll, the system): nothing is set, the slider goes back.
-            MotionEvent.ACTION_CANCEL -> { value = downValue; onMove?.invoke(value) }
+            MotionEvent.ACTION_CANCEL -> { value = downValue; onMove?.invoke(value); announce() }
         }
         return true
     }
@@ -102,8 +106,9 @@ class GlassSlider(
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (!isEnabled) return super.onKeyDown(keyCode, event)
         return when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MINUS -> { setFromAction(value - step); true }
-            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_PLUS, KeyEvent.KEYCODE_EQUALS -> { setFromAction(value + step); true }
+            // At an end the key isn't used, so focus can move on, as a platform SeekBar does.
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MINUS -> setFromAction(value - step)
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_PLUS, KeyEvent.KEYCODE_EQUALS -> setFromAction(value + step)
             else -> super.onKeyDown(keyCode, event)
         }
     }
