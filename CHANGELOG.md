@@ -36,7 +36,7 @@ below as the release notes.
   its entity ids, so automations and dashboards keep working; Home Assistant shows the device under
   the new name after the update, unless you renamed it yourself. On Home Assistant 2025.12 or later,
   new entities take the device's name as Home Assistant shows it (`glassworks_panel`, or your own
-  name), and from 2026.9 the area's name can come first. On older versions they still start with
+  name), and from 2026.8 the area's name can come first. On older versions they still start with
   `s1_panel`.
 - **New pages on your phone when you scan the panel's code.** Signing in and sharing your Thread
   network open a short page first that says what happens, then *Continue to Home Assistant*. They
