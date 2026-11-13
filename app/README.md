@@ -224,8 +224,10 @@ removed its launch screen and a frame was painted after it), `ready, removed` (t
 frontend that doesn't send frontend/loaded), `ready, page` (a page without a launch screen), or the
 fallbacks `fallback 15 s, no word from the page` and `fallback 45 s, the frontend still loading`.
 `Home Assistant's launch screen is up` marks the page reporting that it's still loading. Whatever the
-timing, HA's launch screen never shows white: content.js styles it, and the page under it, as the night
-background with nothing on it, from `document_start` and only while it is there (`:has`).
+timing, HA's launch screen never shows white: content.js styles it, and the page under it, with the
+night background from `document_start`, hides its logo and attribution, and keeps its info box readable
+(HA writes why a start failed there). The style is scoped with `:has` and removed once the launch screen
+goes; not with `?kiosk=0` or `?edit=1`.
 
 > If the screen is blank/white and `innerWidth` is 0, the **display is off**. Gecko drops its
 > surface while the screen sleeps. Check `adb shell dumpsys power | grep mWakefulness`.

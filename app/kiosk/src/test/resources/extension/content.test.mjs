@@ -10,7 +10,7 @@ import vm from "node:vm";
 const SOURCE = readFileSync(process.env.CONTENT_JS, "utf8");
 
 /** content.js in a fresh page: [launchScreen] in the body or not, [externalAuth] in the URL or not. */
-function page({ launchScreen = true, externalAuth = true } = {}) {
+function page({ launchScreen = true, externalAuth = true, search = null } = {}) {
   const posted = [];
   const timers = [];
   let frames = [];
@@ -30,13 +30,13 @@ function page({ launchScreen = true, externalAuth = true } = {}) {
     addEventListener: (type, fn) => { (domListeners[type] ||= []).push(fn); },
     getElementById: (id) => (id === "ha-launch-screen" ? launch : null),
     querySelector: () => null,
-    createElement: (tag) => ({ tag }),
+    createElement: (tag) => ({ tag, removed: false, remove() { this.removed = true; } }),
     head: null, // document_start: no <head> yet
     documentElement: { appendChild: (el) => appended.push(el) },
   };
   const ctx = {
     window, document, console,
-    location: { search: externalAuth ? "?external_auth=1" : "" },
+    location: { search: search ?? (externalAuth ? "?external_auth=1" : "") },
     URLSearchParams,
     localStorage: { getItem: () => null, setItem() {} },
     CustomEvent: class { constructor(t, o) { this.type = t; Object.assign(this, o); } },
@@ -142,11 +142,44 @@ test("from the start, HA's launch screen draws at night, and only while it is th
   assert.ok(style, "the style is added at document_start, before anything is drawn");
   const css = style.textContent;
   assert.match(css, /#ha-launch-screen\s*\{[^}]*background:\s*#0a0b0f/);
-  assert.match(css, /#ha-launch-screen \*\s*\{[^}]*visibility:\s*hidden/);
-  // Every selector names the launch screen, so once the frontend removes it HA's theme is untouched.
-  const selectors = css.split("}").map((r) => r.split("{")[0].trim()).filter(Boolean).flatMap((sel) => sel.split(","));
-  assert.ok(selectors.length >= 3);
+  // Every selector names the launch screen, so HA's theme is untouched once the frontend removes it.
+  const rules = css.split("}").map((r) => r.split("{")).filter((r) => r[0].trim());
+  const selectors = rules.flatMap(([sel]) => sel.split(","));
+  assert.ok(selectors.length >= 4);
   for (const sel of selectors) assert.match(sel, /ha-launch-screen/, `unscoped rule: ${sel.trim()}`);
+  // ... and the style goes with it (verifier d7acb506, F3).
+  p.domContentLoaded();
+  assert.equal(style.removed, false);
+  p.removeLaunchScreen();
+  assert.equal(style.removed, true);
+});
+
+test("only the logo and the attribution are hidden: a failed start still says why", () => {
+  // Verifier d7acb506, F1: HA writes "Could not load Home Assistant…" into the info box, inside the
+  // launch screen. Hiding everything in it turned a failed start into a black screen.
+  const css = page().appended.find((el) => el.id === "s1kiosk-launch").textContent;
+  const rules = css.split("}").map((r) => r.split("{")).filter((r) => r[0].trim());
+  const hidden = rules.filter(([, decl]) => /visibility:\s*hidden|display:\s*none|opacity:\s*0/.test(decl))
+    .flatMap(([sel]) => sel.split(",").map((x) => x.trim()));
+  assert.deepEqual(hidden.sort(), ["#ha-launch-screen .ha-lockup", "#ha-launch-screen .ohf-logo"]);
+  assert.ok(!/#ha-launch-screen \*/.test(css), "no rule for everything inside the launch screen");
+  const info = rules.find(([sel]) => /ha-launch-screen-info-box/.test(sel));
+  assert.ok(info, "the info box has its own rule");
+  assert.match(info[1], /color:\s*#f4f4f5/);
+});
+
+test("not on a page opened with ?kiosk=0 or ?edit=1", () => {
+  // Verifier d7acb506, F2: like the header and sidebar rules.
+  for (const search of ["?kiosk=0", "?edit=1"]) {
+    assert.equal(page({ search }).appended.filter((el) => el.id === "s1kiosk-launch").length, 0, search);
+  }
+});
+
+test("a page without a launch screen drops the style at once", () => {
+  const p = page({ launchScreen: false, externalAuth: false });
+  const style = p.appended.find((el) => el.id === "s1kiosk-launch");
+  p.domContentLoaded();
+  assert.equal(style.removed, true);
 });
 
 test("only one ready, however many signals come", () => {
