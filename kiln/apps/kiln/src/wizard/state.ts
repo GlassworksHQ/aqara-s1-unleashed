@@ -25,6 +25,10 @@ export type Setup =
   | { phase: 'settings'; busy?: string; error?: string; update: boolean; chosen?: AppSettings }
   | {
       phase: 'wifi';
+      /** the panel is on Wi-Fi already (the app's setup state has an address); `ssid` when Android says which */
+      on?: { ip: string; ssid?: string };
+      /** the person chose to use another network than `on` */
+      changing?: boolean;
       /** undefined while the panel scans */
       networks?: Network[];
       status: string;

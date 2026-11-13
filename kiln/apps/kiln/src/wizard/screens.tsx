@@ -251,6 +251,19 @@ function Wifi({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'wifi'
       </section>
     );
   }
+  if (setup.on && !setup.changing) {
+    const { ssid, ip } = setup.on;
+    return (
+      <section className="card" aria-labelledby="h">
+        <h2 id="h">{ssid ? `Connected to ${ssid}.` : 'Connected to Wi-Fi.'}</h2>
+        <p className="lede">The panel is on this network already, at {ip}. Keep it, or use another network.</p>
+        <div className="foot">
+          <button type="button" className="link" disabled={!!s.busy} onClick={() => void session.click('wifi-scan', () => session.scanWifi())}>Use another network</button>
+          <button type="button" className="btn ember" disabled={!!s.busy} onClick={() => void session.click('ha', () => session.homeAssistant())}>Continue</button>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="card" aria-labelledby="h">
       <h2 id="h">Which Wi-Fi?</h2>
@@ -275,7 +288,9 @@ function Wifi({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'wifi'
         </>
       )}
       <div className="foot">
-        <button type="button" className="link" disabled={!!s.busy} onClick={() => void session.click('ha', () => session.homeAssistant())}>Skip, do it on the panel</button>
+        <button type="button" className="link" disabled={!!s.busy} onClick={() => void session.click('ha', () => session.homeAssistant())}>
+          {setup.on ? `Keep ${setup.on.ssid ?? 'its Wi-Fi'}` : 'Skip, do it on the panel'}
+        </button>
         {setup.unreachable
           ? <button type="button" className="btn ember" disabled={!!s.busy} onClick={() => void session.click('wifi', () => session.wifi())}>Try again</button>
           : <button type="button" className="btn ember" disabled={!setup.networks || !!s.busy} onClick={() => void session.click('join', () => session.joinWifi(isOther ? other : pick, secure ? psk : ''))}>Connect</button>}

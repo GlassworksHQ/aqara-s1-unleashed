@@ -119,4 +119,29 @@ describe('the set-up forms', () => {
     expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(false);
     s.close();
   }, 20_000);
+
+  it('Wi-Fi: a panel already on Wi-Fi says which first; another network is the other way, not the default', async () => {
+    const s = demoSession('wifi');
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
+    await act(() => s.route('wifi'));
+    expect(screen.getByRole('heading').textContent).toBe('Connected to Home Net.');
+    expect(screen.queryByRole('radio')).toBeNull(); // no network list, no Connect
+    expect(document.querySelectorAll('.btn.ember')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Continue' }).className).toMatch(/ember/);
+    await act(() => s.scanWifi()); // Use another network
+    expect(screen.getByRole('heading').textContent).toBe('Which Wi-Fi?');
+    expect(screen.getByRole('radio', { name: /Home Net 5G/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Keep Home Net' })).toBeTruthy();
+    s.close();
+  }, 20_000);
+
+  it('Wi-Fi: a panel not on Wi-Fi goes straight to the networks it can see', async () => {
+    const s = demoSession('wifi-new');
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
+    await act(() => s.route('wifi'));
+    expect(screen.getByRole('heading').textContent).toBe('Which Wi-Fi?');
+    expect(screen.getByRole('radio', { name: /Home Net 5G/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Skip, do it on the panel' })).toBeTruthy();
+    s.close();
+  }, 20_000);
 });

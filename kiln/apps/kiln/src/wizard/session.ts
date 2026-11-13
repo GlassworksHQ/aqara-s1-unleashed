@@ -5,7 +5,7 @@ import type { AdbKey, PanelShell } from '@glassworks/adb';
 import type { Fastboot } from '@glassworks/fastboot';
 import type { FelDevice } from '@glassworks/fel';
 import {
-  IMPROV_SOCKET, ImprovSerialClient, State as ImprovState, describeSwitch, unprovision,
+  IMPROV_SOCKET, ImprovSerialClient, State as ImprovState, describeSwitch, panelWifi, unprovision,
   type AssetName, type Provisioned, type SetUpOptions,
 } from '@glassworks/aqara-s1-plus-installer';
 import {
@@ -309,7 +309,10 @@ export class Session {
     return undefined;
   }
 
-  /** Wi-Fi from this computer, over Improv Serial through adb. */
+  /**
+   * The Wi-Fi step. A panel already on Wi-Fi says so first, with changing it as the other way; one
+   * that isn't goes straight to the networks it can see.
+   */
   async wifi(): Promise<void> {
     this.setupPhase({ phase: 'wifi', status: `Starting ${this.d.frame.app} on the panel…`, hint: this.wifiHint });
     void this.improv?.close().catch(() => {}); // back on this step: one Improv connection at a time
@@ -318,13 +321,37 @@ export class Session {
       this.setupPhase({ phase: 'wifi', networks: [], unreachable: true, status: `Couldn't reach ${this.d.frame.app} on the panel.` });
       return;
     }
-    const already = this.improv.state === ImprovState.Provisioned;
-    this.setupPhase({ phase: 'wifi', status: 'Looking for networks the panel can see…', hint: already ? 'The panel is already on Wi-Fi. Pick another network to change it, or skip.' : this.wifiHint });
+    const on = await this.panelOnWifi();
+    if (on) { this.setupPhase({ phase: 'wifi', on, status: '' }); return; }
+    await this.scanWifi();
+  }
+
+  /**
+   * Whether the panel is on Wi-Fi, from the app's setup state (its address), and which network, from
+   * Android (`dumpsys wifi`, read-only). Undefined when it isn't, or an older app can't say.
+   */
+  private async panelOnWifi(): Promise<{ ip: string; ssid?: string } | undefined> {
+    this.setup ??= await this.openSetup();
+    if (!this.setup) return undefined;
+    const st = await this.withSetup((x) => x.getState()).catch(() => undefined);
+    if (!st?.ip) return undefined;
+    this.ip = st.ip;
+    const ssid = (await panelWifi(this.panel!).catch(() => undefined))?.ssid ?? this.wifiSsid;
+    if (ssid) this.wifiSsid = ssid;
+    return { ip: st.ip, ssid };
+  }
+
+  /** The networks the panel can see, over Improv Serial through adb ("Use another network"). */
+  async scanWifi(): Promise<void> {
+    if (!this.improv) return this.wifi();
+    const was = this.s.setup.phase === 'wifi' ? this.s.setup.on : undefined;
+    const already = !was && this.improv.state === ImprovState.Provisioned;
+    this.setupPhase({ phase: 'wifi', on: was, changing: !!was, status: 'Looking for networks the panel can see…', hint: already ? 'The panel is already on Wi-Fi. Pick another network to change it, or skip.' : this.wifiHint });
     let networks: { ssid: string; rssi: number; secure: boolean }[] = [];
     try { networks = await this.improv.scan(); } catch { /* typed by hand then */ }
     const s = this.s.setup;
     this.setupPhase({
-      phase: 'wifi', networks, hint: s.phase === 'wifi' ? s.hint : undefined,
+      phase: 'wifi', on: was, changing: !!was, networks, hint: s.phase === 'wifi' ? s.hint : undefined,
       status: networks.length ? `${networks.length} in range of the panel` : 'None found. Type the name.',
     });
   }

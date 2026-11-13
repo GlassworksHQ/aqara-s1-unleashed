@@ -27,6 +27,9 @@ describe('the simulated panel', () => {
     await s.asks.click();
     await until(() => st().setup.phase === 'settings');
     await s.installApp({ clock24: true, keyboard: false });
+    await until(() => st().setup.phase === 'wifi' && !!(st().setup as { on?: unknown }).on);
+    expect(st().setup).toMatchObject({ phase: 'wifi', on: { ssid: 'Home Net', ip: '192.0.2.50' } }); // on Wi-Fi already: said first
+    await s.scanWifi(); // Use another network
     await until(() => st().setup.phase === 'wifi' && !!(st().setup as { networks?: unknown[] }).networks);
     await s.joinWifi('Home Net', 'not-a-real-password');
     expect(st().setup).toMatchObject({ phase: 'wifi', joining: { step: 'ok' } });
