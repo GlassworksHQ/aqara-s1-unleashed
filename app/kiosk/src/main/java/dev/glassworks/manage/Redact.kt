@@ -18,8 +18,9 @@ object Redact {
         Regex("eyJ[A-Za-z0-9_-]{4,}\\.[A-Za-z0-9_-]{4,}\\.[A-Za-z0-9_-]+") to { _ -> "<token>" },
         Regex("(?i)\\bBearer\\s+[A-Za-z0-9._~+/=-]+") to { _ -> "Bearer <token>" },
         Regex("(?i)\\bBasic\\s+[A-Za-z0-9+/=._~-]+") to { _ -> "Basic <removed>" },
-        // http://user:pass@host: the whole user part goes, not only the password.
-        Regex("(?i)\\b([a-z][a-z0-9+.-]*://)[^/\\s@]+@") to { m -> m.groupValues[1] + "<removed>@" },
+        // http://user:pass@host: the whole user part goes, up to the last @ before the path, so a raw @ in
+        // the password goes too.
+        Regex("(?i)\\b([a-z][a-z0-9+.-]*://)[^/?#\\s]*@") to { m -> m.groupValues[1] + "<removed>@" },
         // A quoted value to its closing quote; an unquoted one to the end of the field (`&`, `;`, line end),
         // so a Wi-Fi password with spaces or commas goes whole.
         Regex("(?i)\\b([a-z_]*(?:token|password|passwd|passphrase|psk|secret|api_?key|network_?key|noise_?key|key|dataset|tlv|code_verifier))(\"?\\s*[:=]\\s*)(\"[^\"\\n]*\"|'[^'\\n]*'|[^&;\\n]+)") to

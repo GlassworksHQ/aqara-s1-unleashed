@@ -138,7 +138,7 @@ class ManageServer(
             return when (val shown = code.show(PURPOSE_SIGN_IN, "Sign in to manage this panel", pre)) {
                 is PanelCode.Show.Ok -> HttpResponse.seeOther("/manage/code?next=" + enc(next) + if (remember) "&remember=1" else "", cookie)
                 is PanelCode.Show.Locked -> codeLocked(req, next, remember)
-                is PanelCode.Show.Busy -> codeDialog(req, busyText(shown.untilMs), next, remember, 429)
+                is PanelCode.Show.Busy -> { capped(req, shown); codeDialog(req, busyText(shown), next, remember, 429) }
                 PanelCode.Show.Unavailable -> {
                     event("The panel can't show a code (it may not draw over other apps)")
                     signInPage(req, next, NO_CODE + if (haBase() != null) " Sign in with Home Assistant instead." else "", 503)
@@ -233,7 +233,7 @@ class ManageServer(
                 when (val shown = code.show(PURPOSE_REBOOT, "Reboot the panel", s.id)) {
                     is PanelCode.Show.Ok -> HttpResponse.seeOther("/confirm/reboot")
                     is PanelCode.Show.Locked -> html(429, rebootDialog(host.status(), viewer, lockedText()))
-                    is PanelCode.Show.Busy -> html(429, rebootDialog(host.status(), viewer, busyText(shown.untilMs)))
+                    is PanelCode.Show.Busy -> { capped(req, shown); html(429, rebootDialog(host.status(), viewer, busyText(shown))) }
                     PanelCode.Show.Unavailable -> {
                         event("${who(s)}: reboot refused, the panel can't show a code")
                         HttpResponse.seeOther("/?done=nocode")
@@ -265,10 +265,17 @@ class ManageServer(
             // The overview the reboot was asked from, dimmed behind the dialog.
             behindHtml = pages.overview(status, viewer, host.actions, null).substringAfter("<body>").substringBeforeLast("</body>"))
 
-    private fun busyText(untilMs: Long): String {
-        val s = ((untilMs - System.currentTimeMillis() + 999) / 1000).coerceAtLeast(1)
-        return if (s <= 60) "The panel is showing another code. Try again in $s ${if (s == 1L) "second" else "seconds"}."
-        else "The panel has shown several codes in the last few minutes. Try again after ${hhmm(untilMs)}."
+    private fun busyText(b: PanelCode.Show.Busy): String = when (b.why) {
+        PanelCode.Why.SHOWING -> {
+            val s = ((b.untilMs - System.currentTimeMillis() + 999) / 1000).coerceIn(1, 30)
+            "The panel is showing another code. Try again in $s ${if (s == 1L) "second" else "seconds"}."
+        }
+        PanelCode.Why.TOO_MANY -> "The panel has shown too many codes in the last 10 minutes. Try again after ${hhmm(b.untilMs)}."
+    }
+
+    /** The cap on new codes was hit: worth a line in the Log, with who asked. */
+    private fun capped(req: HttpRequest, b: PanelCode.Show.Busy) {
+        if (b.why == PanelCode.Why.TOO_MANY) event("Too many code requests: refused one from ${req.remote ?: "an unknown address"}")
     }
 
     private fun lockedText() = "Too many wrong codes. Try again after ${hhmm(code.lockedUntil() ?: 0)}."

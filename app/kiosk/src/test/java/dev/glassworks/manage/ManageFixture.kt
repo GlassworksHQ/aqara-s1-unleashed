@@ -47,6 +47,7 @@ class ManageFixture(
         local = { HaSignIn.isLocalAddress(it) || it.hostAddress.startsWith("192.0.2.") }, warn = { warnings += it })
 
     val warnings = Collections.synchronizedList(ArrayList<String>())
+    val events = Collections.synchronizedList(ArrayList<String>())
     var revokeWorks = true
     var canReboot = true
     val actions = object : PanelActions {
@@ -102,6 +103,7 @@ class ManageFixture(
         qrPaths = setOf("/signin", "/signin/continue", "/callback", "/thread", "/thread/continue", "/thread/callback"),
         qr = { req -> qrSeen += req.path; qrPages?.invoke(req) ?: HttpResponse.html(200, "<header>QR ${req.path}<!--gw-header-right--></header>") },
         pages = ManagePages(clock = { now }),
+        event = { events += it },
         ownHosts = { setOf("192.0.2.40", "glassworks-panel.local", "fd00::40", "127.0.0.1") },
     )
 
@@ -112,7 +114,7 @@ class ManageFixture(
 
     // ------------------------------------------------------------------ a browser
 
-    inner class Browser(val host: String = "192.0.2.40:8099", val ua: String = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15") {
+    inner class Browser(val host: String = "192.0.2.40:8099", val remote: String = "192.0.2.77", val ua: String = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15") {
         val cookies = LinkedHashMap<String, String>()
 
         fun get(path: String, headers: Map<String, String> = emptyMap()): HttpResponse = send("GET", path, emptyMap(), headers)
@@ -130,7 +132,7 @@ class ManageFixture(
             if (cookies.isNotEmpty()) h["cookie"] = cookies.entries.joinToString("; ") { (k, v) -> "$k=$v" }
             if (method == "POST") h["content-type"] = "application/x-www-form-urlencoded"
             h.putAll(headers)
-            val r = server.handle(HttpRequest(method, path, query, h, body.toByteArray()))
+            val r = server.handle(HttpRequest(method, path, query, h, body.toByteArray(), remote))
             r.headers["Set-Cookie"]?.split('\n')?.forEach { c ->
                 val (k, v) = c.substringBefore(';').split('=', limit = 2)
                 if (c.contains("Max-Age=0")) cookies.remove(k) else cookies[k] = v

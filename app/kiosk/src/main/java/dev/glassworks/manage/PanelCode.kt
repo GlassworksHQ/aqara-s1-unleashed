@@ -45,13 +45,16 @@ class PanelCode(
         class Locked(val untilMs: Long) : Check()
     }
 
+    /** Why [Show.Busy]: another browser's code is up (under 30 s), or too many codes went up lately. */
+    enum class Why { SHOWING, TOO_MANY }
+
     /** What [show] did. */
     sealed class Show {
         class Ok(val shown: Shown) : Show()
         /** Too many wrong codes: no new code until [untilMs]. */
         class Locked(val untilMs: Long) : Show()
         /** Another browser's code went up less than 30 s ago, or too many codes went up lately: try again at [untilMs]. */
-        class Busy(val untilMs: Long) : Show()
+        class Busy(val untilMs: Long, val why: Why) : Show()
         /** The panel can't draw a code now ([canDisplay] is false). */
         object Unavailable : Show()
     }
@@ -76,10 +79,10 @@ class PanelCode(
             val now = clock()
             val p = pending
             if (p != null && now < p.shown.untilMs && now - p.shownAtMs < minGapMs) {
-                return if (p.requester == requester && p.shown.purpose == purpose) Show.Ok(p.shown) else Show.Busy(p.shownAtMs + minGapMs)
+                return if (p.requester == requester && p.shown.purpose == purpose) Show.Ok(p.shown) else Show.Busy(p.shownAtMs + minGapMs, Why.SHOWING)
             }
             while (shows.isNotEmpty() && now - shows.first() >= showWindowMs) shows.removeFirst()
-            if (shows.size >= maxShows) return Show.Busy(shows.first() + showWindowMs)
+            if (shows.size >= maxShows) return Show.Busy(shows.first() + showWindowMs, Why.TOO_MANY)
             shows.addLast(now)
             val code = (random.nextInt(1_000_000)).toString().padStart(6, '0')
             Shown(code, purpose, label, now + ttlMs).also { pending = Pending(it, requester, now) }

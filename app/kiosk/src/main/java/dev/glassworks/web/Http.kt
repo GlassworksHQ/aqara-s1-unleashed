@@ -30,6 +30,8 @@ class HttpRequest(
     val query: Map<String, String>,
     val headers: Map<String, String>,
     val body: ByteArray = ByteArray(0),
+    /** The client's IP address, for the log. Null in tests that build requests by hand. */
+    val remote: String? = null,
 ) {
     /** The `Cookie` header's pairs. */
     val cookies: Map<String, String> by lazy { HttpServer.parseCookies(headers["cookie"]) }
@@ -77,7 +79,10 @@ class HttpServer(
     workers: Int = 4,
     /** Connections that may wait for a worker. Beyond that, a connection gets 503 at once and is closed. */
     queued: Int = 32,
-    /** The whole request (line, headers, body) must arrive within this, so a slow client can't hold a worker. */
+    /**
+     * The whole request (line, headers, body) must arrive within this, so a slow client can't hold a worker.
+     * It counts from when a worker picks the connection up, not from accept: time in the queue comes first.
+     */
     private val requestDeadlineMs: Long = 10_000L,
 ) {
     private var serverSocket: ServerSocket? = null
@@ -121,7 +126,7 @@ class HttpServer(
         s.use { sock ->
             try {
                 val input = BufferedInputStream(DeadlineInput(sock, System.nanoTime() + requestDeadlineMs * 1_000_000))
-                val req = try { read(input, maxBody) } catch (e: TooLarge) {
+                val req = try { read(input, maxBody, sock.inetAddress?.hostAddress) } catch (e: TooLarge) {
                     write(sock.getOutputStream(), HttpResponse.text(413, "Too large"), head = false); return
                 } ?: return
                 val res = try { handler(req) } catch (t: Throwable) {
@@ -158,10 +163,12 @@ class HttpServer(
                 sock.soTimeout = 200
                 write(sock.getOutputStream(), HttpResponse.text(503, "The panel is busy. Try again in a moment."))
                 // Closing with the client's request unread would reset the connection before it reads the 503.
+                // This runs on the accept thread: at most 300 ms in all, however slowly the bytes come.
                 sock.shutdownOutput()
+                val drain = DeadlineInput(sock, System.nanoTime() + BUSY_DRAIN_MS * 1_000_000)
                 val buf = ByteArray(4096)
                 var total = 0
-                while (total < 16 * 1024 && sock.getInputStream().read(buf).also { total += it } >= 0) Unit
+                while (total < 16 * 1024 && drain.read(buf, 0, buf.size).also { total += it } >= 0) Unit
             } catch (_: IOException) {}
         }
         log("busy: refused a connection")
@@ -170,6 +177,9 @@ class HttpServer(
     private class TooLarge : IOException("request too large")
 
     companion object {
+        /** How long a refused connection may keep the accept thread reading its request, in all. */
+        private const val BUSY_DRAIN_MS = 300L
+
         private val REASONS = mapOf(
             200 to "OK", 302 to "Found", 303 to "See Other", 400 to "Bad Request", 401 to "Unauthorized", 403 to "Forbidden",
             404 to "Not Found", 405 to "Method Not Allowed", 409 to "Conflict", 413 to "Payload Too Large",
@@ -179,7 +189,7 @@ class HttpServer(
         fun reason(status: Int) = REASONS[status] ?: "Status"
 
         /** Reads one request, or null when the connection closed first. Public for tests. */
-        fun read(input: InputStream, maxBody: Int = 16 * 1024): HttpRequest? {
+        fun read(input: InputStream, maxBody: Int = 16 * 1024, remote: String? = null): HttpRequest? {
             val head = ByteArrayOutputStream()
             var matched = 0
             val end = "\r\n\r\n".toByteArray()
@@ -208,7 +218,7 @@ class HttpServer(
                 got += n
             }
             val target = try { URI(parts[1]) } catch (_: Exception) { return HttpRequest(parts[0], "?", emptyMap(), headers, body) }
-            return HttpRequest(parts[0], target.rawPath ?: "/", parseQuery(target.rawQuery), headers, body)
+            return HttpRequest(parts[0], target.rawPath ?: "/", parseQuery(target.rawQuery), headers, body, remote)
         }
 
         fun write(out: OutputStream, r: HttpResponse, head: Boolean = false) {

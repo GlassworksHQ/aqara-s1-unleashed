@@ -142,6 +142,8 @@ class ManagePartsTest {
             "psk=My Wifi Password" to "psk=<removed>",
             "Authorization: Basic dXNlcjpodW50ZXIy" to "Authorization: Basic <removed>",
             "Signed in to http://user:hunter2@192.0.2.10:8123" to "Signed in to http://<removed>@192.0.2.10:8123",
+            "http://alex:p@ssw0rd@192.0.2.10:8123/x" to "http://<removed>@192.0.2.10:8123/x",
+            "http://192.0.2.10:8123/u@x?a=b@c" to "http://192.0.2.10:8123/u@x?a=b@c",
             "Home Assistant: https://alex@homeassistant.local:8123/x" to "Home Assistant: https://<removed>@homeassistant.local:8123/x",
             "password=ab,cd&x=1" to "password=<removed>&x=1",
             "psk=MyWifiPassword" to "psk=<removed>",

@@ -88,6 +88,11 @@ manage a panel. Whether other users get a say is open (#124).
   token doesn't change the password. Use HTTPS for Home Assistant, or multi-factor sign-in, if that
   matters on your network.
 
+- **Nothing stops someone on your network from using up the codes.** Anyone who can reach the panel
+  can ask for codes without signing in. After 6 in 10 minutes the panel shows no more, so for up to 10
+  minutes nobody can sign in with the code (signing in with Home Assistant still works). The Log says
+  *Too many code requests* with the address that asked.
+
 Someone who can *change* traffic can also change the page. Use a network you trust; HTTPS on the panel
 may come later.
 

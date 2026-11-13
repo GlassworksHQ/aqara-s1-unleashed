@@ -71,4 +71,37 @@ class HttpServerTest {
             server.stop()
         }
     }
+
+    @Test fun aTricklerTurnedAwayDoesntStopTheNextConnectionBeingAnswered() {
+        val release = CountDownLatch(1)
+        val started = CountDownLatch(1)
+        val server = HttpServer(0, { started.countDown(); release.await(10, TimeUnit.SECONDS); HttpResponse.text(200, "ok") },
+            bindAddress = loopback, workers = 1, queued = 1)
+        server.start()
+        var trickler: Socket? = null
+        try {
+            val busy = open(server.localPort)
+            assertTrue(started.await(3, TimeUnit.SECONDS))
+            val waiting = open(server.localPort)
+            Thread.sleep(200)
+            trickler = Socket(loopback, server.localPort)
+            // Turned away (503), then sends a byte every 150 ms for 3 s: the old drain read on, on the accept thread.
+            val t = Thread {
+                runCatching { repeat(20) { trickler!!.getOutputStream().write('x'.code); trickler!!.getOutputStream().flush(); Thread.sleep(150) } }
+            }.apply { isDaemon = true; start() }
+            Thread.sleep(300)
+            val startNs = System.nanoTime()
+            val next = open(server.localPort)
+            val answer = next.getInputStream().readBytes().toString(Charsets.UTF_8)
+            val tookMs = (System.nanoTime() - startNs) / 1_000_000
+            assertTrue(answer, answer.startsWith("HTTP/1.1 503"))
+            assertTrue("answered in $tookMs ms, while the trickler still trickles", tookMs < 1_500 && t.isAlive)
+            release.countDown()
+            listOf(busy, waiting, next).forEach { it.close() }
+        } finally {
+            release.countDown()
+            trickler?.close()
+            server.stop()
+        }
+    }
 }

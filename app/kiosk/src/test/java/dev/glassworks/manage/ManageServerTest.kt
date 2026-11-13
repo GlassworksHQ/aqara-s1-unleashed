@@ -307,6 +307,24 @@ class ManageServerTest {
         assertEquals("/", a.post("/manage/code", mapOf("next" to "/", "code" to code)).headers["Location"])
     }
 
+    @Test fun theCapOnNewCodesSaysSoAndLogsWhoAsked() {
+        // Six new codes in ten minutes, from different browsers, each after the last one's 30 s.
+        repeat(6) { i ->
+            f.now += 31_000
+            val b = f.Browser(remote = "192.0.2.${60 + i}")
+            b.get("/")
+            assertEquals(303, b.post("/manage/code", mapOf("next" to "/")).status)
+        }
+        f.now += 31_000
+        val stranger = f.Browser(remote = "192.0.2.99")
+        stranger.get("/")
+        val r = stranger.post("/manage/code", mapOf("next" to "/"))
+        assertEquals(429, r.status)
+        assertTrue(r.text().contains("too many codes in the last 10 minutes"))
+        assertFalse("not the other limit's words", r.text().contains("showing another code"))
+        assertTrue(f.events.toString(), f.events.any { it.contains("Too many code requests") && it.contains("192.0.2.99") })
+    }
+
     @Test fun withoutRebootTheButtonAndTheActionAreGone() {
         f.canReboot = false
         val b = f.Browser()
