@@ -15,6 +15,9 @@ with open(os.path.join(HERE, "page", "tiers.json")) as _f:
     TIERS = json.load(_f)
 SEED = 89
 START = 1_794_500_000.0          # a fixed epoch for every last_changed (2026-11-13)
+# The fixed home's size: enough for the heavy dashboard's ~370 entities with room to spare, and a
+# realistic count for a large home (HA homes run to hundreds of entities).
+N_SENSORS, N_ONOFF = 300, 150
 
 USER = {"id": "clarity", "name": "Clarity", "is_owner": False, "is_admin": False,
         "credentials": [{"auth_provider_type": "homeassistant", "auth_provider_id": None}], "mfa_modules": []}
@@ -68,10 +71,10 @@ def states():
 
     add("light.living_room", "off", {"friendly_name": "Living room", "supported_color_modes": ["brightness"],
                                      "color_mode": None, "brightness": None, "supported_features": 0})
-    for i in range(160):
+    for i in range(N_SENSORS):
         add(*_sensor(i, rnd))
     for d in ("light", "switch", "binary_sensor"):
-        for i in range(80):
+        for i in range(N_ONOFF):
             add(*_onoff(d, i, rnd))
     return out
 
@@ -156,13 +159,16 @@ def lovelace(url_path):
         return {"views": [{"title": "Home", "cards": []}]}
     spec, rnd, hd = TIERS["TIERS"][tier], random.Random(SEED), head()
     taken = set(hd["sensors"] + hd["switches"] + hd["rows"] + ["light.living_room"])
-    pool = {d: [f"{d}.clarity_{i}" for i in range(160 if d == "sensor" else 80)] for d in ("sensor", "light", "switch", "binary_sensor")}
+    pool = {d: [f"{d}.clarity_{i}" for i in range(N_SENSORS if d == "sensor" else N_ONOFF)]
+            for d in ("sensor", "light", "switch", "binary_sensor")}
 
     def take(domains, n):
         out = []
         while len(out) < n:
             d = domains[len(out) % len(domains)]
-            e = next(x for x in pool[d] if x not in taken)
+            e = next((x for x in pool[d] if x not in taken), None)
+            if e is None:
+                raise ValueError(f"the fixed home has too few {d} entities for this dashboard")
             taken.add(e)
             out.append(e)
         return out
@@ -210,6 +216,26 @@ def history(entity_ids, start, end):
     return out
 
 
+def statistics(statistic_ids, start_time, end_time, period):
+    """recorder/statistics_during_period (the sensor card's graph for sensors with a state class):
+    seeded hourly points, {id: [{start, end, mean, min, max, state}]}, times in ms."""
+    import datetime
+    t0 = datetime.datetime.fromisoformat(start_time.replace("Z", "+00:00")).timestamp() if start_time else START - 86400
+    t1 = datetime.datetime.fromisoformat(end_time.replace("Z", "+00:00")).timestamp() if end_time else START
+    step = {"5minute": 300, "hour": 3600, "day": 86400}.get(period or "hour", 3600)
+    out = {}
+    for sid in statistic_ids or []:
+        rnd = random.Random(f"{SEED}:stat:{sid}")
+        base, pts, t = 50 + 400 * rnd.random(), [], t0 - t0 % step
+        while t < t1 and len(pts) < 500:
+            mean = round(base * (0.7 + 0.6 * rnd.random()), 2)
+            pts.append({"start": int(t * 1000), "end": int((t + step) * 1000), "mean": mean,
+                        "min": round(mean * 0.9, 2), "max": round(mean * 1.1, 2), "state": mean})
+            t += step
+        out[sid] = pts
+    return out
+
+
 # ---- assets: the picture cards' images, and the harness
 
 def _png(w, h, rnd):
@@ -248,9 +274,45 @@ def asset(name):
         k = int(name[len("picture-"):-4])
         _assets[name] = ("image/png", _png(480, 270, random.Random(f"{SEED}:picture:{k}")))
         return _assets[name]
-    if name in ("harness.js", "stats.js", "tiers.json"):
-        path = os.path.join(HERE, "page", name)
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                return ("application/javascript" if name.endswith(".js") else "application/json", f.read())
+    if name == "harness.js":
+        # One script, first in HA's index.html: the shared statistics, the page config, the harness.
+        def read(n):
+            with open(os.path.join(HERE, "page", n), "rb") as f:
+                return f.read()
+        import hafrontend
+        cfg = dict(TIERS, FRONTEND=hafrontend.VERSION, HEAD_ENTITIES=head())
+        body = read("stats.js") + b"\nwindow.GW_CLARITY = " + json.dumps(cfg).encode() + b";\n" + read("harness.js")
+        return ("application/javascript", body)
     return None
+
+
+class Stream:
+    """The live updates (page/tiers.json LIVE), as HA would send them: `updatesPerS` sensor value
+    changes a second over the head's sensor tiles and rows, and an on/off change every
+    `flipEveryMs` over its on/off tiles. Fixed times and fixed values, so every run is the same."""
+
+    def __init__(self, set_state, states):
+        import threading
+        self.set_state, self.states, self.stop = set_state, states, threading.Event()
+        h = head()
+        self.targets, self.switches = h["sensors"] + h["rows"], h["switches"]
+
+    def run(self):
+        import time
+        start, every, flip = time.monotonic(), 1 / TIERS["LIVE"]["updatesPerS"], TIERS["LIVE"]["flipEveryMs"] / 1000
+        k = f = 0
+        while not self.stop.is_set():
+            nxt_k, nxt_f = start + (k + 1) * every, start + (f + 1) * flip
+            wait = min(nxt_k, nxt_f) - time.monotonic()
+            if wait > 0 and self.stop.wait(wait):
+                return
+            if time.monotonic() >= nxt_k:
+                k += 1
+                e = self.targets[(k * 7) % len(self.targets)]
+                # Never a zero step: the same value again is no change for HA, so nothing would be drawn.
+                v = float(self.states[e]["state"]) + (((k * 13) % 6) + 1) / 10 * (1 if k % 2 else -1)
+                self.set_state(e, f"{v:.1f}")
+            if time.monotonic() >= nxt_f:
+                f += 1
+                e = self.switches[f % len(self.switches)]
+                self.set_state(e, "off" if self.states[e]["state"] == "on" else "on")

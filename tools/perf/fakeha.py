@@ -95,6 +95,16 @@ class Hub:
         self.conns = set()
         self.log = log
         self.unknown = set()
+        self._stream = None
+
+    def stream(self, on):
+        with self.lock:
+            if self._stream:
+                self._stream.stop.set()
+                self._stream = None
+            if on:
+                self._stream = D.Stream(self.set_state, self.states)
+                threading.Thread(target=self._stream.run, daemon=True).start()
 
     def record(self, entry):
         if self.log:
@@ -186,7 +196,11 @@ class Conn:
             self.hub.record({"t": time.time(), "unknown": t, "msg": m})
             self.result(mid, None, success=False, error={"code": "unknown_command", "message": "Unknown command."})
             return
-        h(self, m)
+        try:
+            h(self, m)
+        except Exception as e:   # answer, never drop the connection: the frontend would reconnect forever
+            self.hub.record({"t": time.time(), "failed": t, "error": repr(e)})
+            self.result(mid, None, success=False, error={"code": "home_assistant_error", "message": repr(e)})
 
 
 def _sub_events(c, m):
@@ -256,6 +270,8 @@ HANDLERS = {
     "config/label_registry/list": _const([]),
     "call_service": _call_service,
     "history/stream": _history_stream,
+    "recorder/statistics_during_period": lambda c, m: c.result(m["id"], D.statistics(
+        m.get("statistic_ids"), m.get("start_time"), m.get("end_time"), m.get("period"))),
     "ping": lambda c, m: c.send({"id": m["id"], "type": "pong"}),
     # Read from the frontend's source at the pinned tag (src/data/*.ts): what each one answers.
     "repairs/list_issues": _const({"issues": []}),
@@ -318,6 +334,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/manifest.json":
             return self.send_bytes(200, json.dumps(D.MANIFEST).encode(), "application/manifest+json")
+        if path in ("/clarity/live", "/clarity/still"):
+            # The harness asks for the live updates while it measures them, and stops them when done.
+            Handler.hub.stream(path.endswith("live"))
+            return self.send_bytes(204, b"", "text/plain")
         if path.startswith("/clarity/"):
             body = D.asset(path[len("/clarity/"):])
             if body is None:
