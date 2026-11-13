@@ -1,3 +1,12 @@
+<p>
+  <a href="https://www.glassworks.dev/brand#parts">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-core-on-dark.svg">
+      <img alt="Glassworks Core" src="https://www.glassworks.dev/brand/badge-core-on-light.svg" height="30">
+    </picture>
+  </a>
+</p>
+
 # Performance test and grade
 
 `tools/perf/run.sh` measures how good a wall panel a frame (a device definition, such as the S1's
@@ -49,7 +58,7 @@ tools/perf/run.sh --frame aqara-s1-plus --name "Aqara S1 Plus" --runs 3 --out pe
 | `--name` | the frame id | The frame's name in the report's headline |
 | `--serial` | `$ANDROID_SERIAL` | Which device |
 | `--runs` | 3 | Repeats of each part. The report gives the median and range |
-| `--taps` | 10 | Taps on each reference dashboard's toggle (0 skips them; the grade is then provisional) |
+| `--taps` | 10 | Taps on each reference dashboard's toggle. 0 skips them: tap isn't measured, which fails every level, so the grade is E, provisional |
 | `--skip-synthetic`, `--skip-reference`, `--skip-real-use` | | Skip the animation test page (detail), the reference dashboards (the grade), or the real-use part. Skipping the reference dashboards gives no grade (refused, not an E) |
 | `--quick` | | Short ladder on the animation test page (1, 16 and 128 elements), to check the setup works |
 | `--apk FILE` | | Add the APK's size per ABI to the report (repeat for each ABI) |
@@ -106,9 +115,9 @@ fixed before any frame was graded under them (`tools/perf/page/tiers.js`, pinned
 
 | Page | Cards | What | Elements | Height at 960 CSS px wide |
 |---|---|---|---|---|
-| **Light** | 20 | 12 tiles, 5 entities cards of 5 rows, 2 sensor cards with a graph, a clock | 534 | 860 px of cards in a 1936 px page (see below) |
-| **Typical** | 50 | 26 tiles, 13 entities cards of 6 rows, 6 sensor cards, 2 history graphs, 2 pictures, a clock | 1446 | 2742 px, about 5.5 screens |
-| **Heavy** | 120 | 50 tiles, 26 entities cards of 8 rows, 4 long lists of 20 rows, 16 sensor cards, 8 history graphs, 15 pictures, a clock | 4513 | 8358 px, about 17 screens |
+| **Light** | 20 | 12 tiles, 5 entities cards of 5 rows, 2 sensor cards with a graph, a clock | 522 | 860 px of cards in a 1936 px page (see below) |
+| **Typical** | 50 | 26 tiles, 13 entities cards of 6 rows, 6 sensor cards, 2 history graphs, 2 pictures, a clock | 1420 | 2742 px, about 5.5 screens |
+| **Heavy** | 120 | 50 tiles, 26 entities cards of 8 rows, 4 long lists of 20 rows, 16 sensor cards, 8 history graphs, 15 pictures, a clock | 4463 | 8358 px, about 17 screens |
 
 **The first screen is the same on every page** (`HEAD` in `tiers.js`): the clock, the toggle, 4 sensor
 tiles and 3 on/off tiles (a light, a switch, a media player), and an "Energy" entities card of 5
@@ -126,7 +135,7 @@ one swipe travels (about 560 px on the S1), so every light swipe hit the end of 
 worse than heavy in every position for a reason that was about the test page.
 
 Elements are counted through every shadow root, and heights are from headless Chrome at 960 CSS px
-(2026-11-12). The S1's CSS viewport is 960 × 480 (1440 × 720 at a device pixel ratio of 1.5).
+(2026-11-12, protocol 3: one element fewer per tile than protocol 2, which had a background behind it). The S1's CSS viewport is 960 × 480 (1440 × 720 at a device pixel ratio of 1.5).
 
 Each card copies the way Home Assistant's frontend builds it, read from its source at commit
 [`77170b4`](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67) (2026-11-12):
@@ -141,6 +150,12 @@ Each card copies the way Home Assistant's frontend builds it, read from its sour
 | Picture card | `ha-card` > `img` | [`hui-picture-card.ts` L268](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/hui-picture-card.ts#L268) | An `img` whose JPEG (480 × 270) is generated on the page, so the engine decodes it like a snapshot |
 | Clock | The digital clock card re-renders its text every second (`setInterval(…, 1000)`) | [`hui-clock-card-digital.ts` L25, L117](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/clock/hui-clock-card-digital.ts#L117) | The same, with seconds |
 | Layout | Masonry: one column per matched breakpoint (300, 600, 900, 1200 px); each card goes to the first column whose size is under 5, else to the smallest | [`hui-masonry-view.ts` L19–L32, L111–L119](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/views/hui-masonry-view.ts#L111-L119) | The same rule and breakpoints, with HA-like card sizes (tile 1, entities rows + 1, sensor 2, clock 2, history 4, picture 3) |
+
+**Colours** follow the Glassworks palette ([glassworks.dev/brand](https://www.glassworks.dev/brand)), not
+HA's: a night ground (`#0a0b0f`), sky and violet for "on" and for the graphs, and generated hues
+(pictures, the animation test page) between sky and violet. Ember stays Kiln's, and green, amber and
+rose stay status colours, so a page never borrows them. The repaint work is the same as with HA's
+colours: the same properties change.
 
 No header: HA's kiosk mode hides it. The page scrolls as a document, so a touch scroll goes through
 GeckoView's compositor, as it does in HA.
@@ -507,7 +522,7 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `frame` | `id`, `name`, `device` (model, Android, API, ABI, SoC, CPU, RAM, display with density and refresh, temperatures), `app` (package, version, APK bytes on the device, GeckoView version) |
 | `apk` | One entry per APK given with `--apk`: `abis`, `bytes`, `parts_bytes` (dex, native, assets, resources, other) |
 | `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts (a run failed, a task was measured in fewer runs, scrolling rests on rAF only, the pages ran another protocol) |
-| `graded` | `reference`: `start_ms`, `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
+| `graded` | `reference`: `start_ms`, `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
 | `detail` | `synthetic`, the animation test page: `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `steps_without_sf`, `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `page_lcp_ms`, `page_lcp_from`, `per_run` |
 | `real_use` | Not graded. Your dashboard: `app_start_to_dashboard_ms`, `android_ttid_ms`, `launch`, `stop_to_dashboard_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `errors`, `per_run`. Then `idle`, `peak`, `memory` (`idle`, `peak`, `budget`) and `panes` |
 
@@ -547,7 +562,9 @@ carries change to screen and its runs are latency records, where `/1` had frame 
 
 ### Protocol and rubric versions
 
-Two numbers say whether a stored summary can still be graded:
+Two numbers say whether a stored summary can still be graded. A change that doesn't change the work
+the device does, such as a colour value, doesn't bump either (2026-11-12: the pages moved to the
+Glassworks palette, below, within protocol 3):
 
 | Version | Where | Bump it when | A stored summary |
 |---|---|---|---|
@@ -614,10 +631,12 @@ and RAM per frame and pane, with budgets. It can read these reports as they are:
 The pages write one console line per event, `GWPERF {json}`. It reaches logcat from the content
 process (tag `Isolated Web Content` on the S1), and **only its first 1023 bytes arrive** (read from
 the S1's logcat, 2026-11-12: smoke7's four 4 s updates steps, about 1.5 KB each, were cut there and
-didn't parse; logcat itself allows 4068 bytes). So a page line longer than 900 bytes is split into
+didn't parse; logcat itself allows 4068 bytes). So a page line longer than 900 bytes of UTF-8 is split, never inside a character, into
 numbered parts, `GWPERF+ <nonce>:<n> <k>/<parts> <chunk>` (`stats.js`, `consoleLines`), and the
 runner joins them (`perflib.PageLines`). A line that still doesn't parse is counted
-(`bad_page_lines`) and makes the grade provisional. A page that says done without its updates step
+(`bad_page_lines`) and makes the grade provisional, and so is a line whose parts haven't all arrived
+when its page says done. A swipe the runner answered with no scroll step back is counted too
+(`lost_scroll_steps`), and makes the grade provisional. A page that says done without its updates step
 doesn't fail the run: its other tasks stand, and its live updates read "not measured". Every line has `run`, `nonce` (the runner's id for that page
 load) and `t`:
 
@@ -641,7 +660,22 @@ Frame statistics are defined once, in `tools/perf/page/stats.js` and `tools/perf
 
 ## Example: Aqara S1 Plus
 
-Not graded yet under this definition. The first full run on the S1 goes here, whatever grade it gets.
+**The S1's first full run: A** (s1v6, 3 of 3 runs, protocol 3, rubric v5, S1 Kiosk 0.4.3, measured
+2026-11-13 UTC, the page order turning each run, nothing missing, no gaps):
+
+| Page | Scroll, median of runs (each run) | Change to screen, p95 | Tap (INP) | Opens in |
+|---|---|---|---|---|
+| light | 56.0 fps (54.2 to 56.3), good in all 3 | 76.5 ms (67.7 to 77.6), good | 88 ms | 1181 ms |
+| typical | 53.8 fps (53.1 to 53.8), good in all 3 | 64.0 ms (61.6 to 68.8), good | 64 ms | 1382 ms |
+| heavy | 54.4 fps (54.3 to 54.7), good in all 3 | 70.4 ms (69.2 to 87.9), good | 120 ms | 1985 ms |
+
+Restart (process start to engine ready) took 2929 ms: needs improvement, under the 5 s cap. Every
+swipe moved freely (none reached an edge) and all 18 ran while the live updates did. It is an A, not
+an A+: on heavy, scrolling averages 54 fps with p95 33 ms, under the 60 fps rule, and the frames of the
+live changes don't hold 60 fps either. s1v6 ran with the pages' old colours; the palette change after
+it changes no work (see [Protocol and rubric versions](#protocol-and-rubric-versions)).
+
+The earlier runs, under earlier definitions, are below.
 
 What the earlier runs on the S1 (2026-11-12, kiosk 0.4.3, GeckoView 159, Android 10) established:
 

@@ -401,6 +401,7 @@ def reference_run(c):
         start = round((engine - proc) * 1000)
     tiers = {t: tier_run(t, e, c.get("presents_mono_ms") or []) for t, e in (c.get("tiers") or {}).items()}
     base["bad_page_lines"] = c.get("bad_page_lines") or 0
+    base["lost_scroll_steps"] = sum((e.get("lost_scroll_steps") or 0) for e in (c.get("tiers") or {}).values())
     order = c.get("order") or list(c.get("tiers") or {})
     for t, r in tiers.items():
         r["position"] = order.index(t) + 1 if t in order else None
@@ -502,6 +503,7 @@ def reference_summary(all_runs):
         "own_page_states": sorted({r["own_page_state"] for r in runs if r.get("own_page_state")}),
         "orders": [r.get("order") for r in runs],
         "bad_page_lines": sum(r.get("bad_page_lines") or 0 for r in all_runs),
+        "lost_scroll_steps": sum(r.get("lost_scroll_steps") or 0 for r in all_runs),
         # The protocol of every page that reported; a page that was lost says nothing about it.
         "protocols": sorted({x.get("protocol") for r in runs for x in r["tiers"].values() if not x.get("error")}, key=str),
         "warmups": [r.get("warmup") for r in runs],
@@ -808,6 +810,9 @@ def build(run_dir, apks=(), budgets=None):
     reasons += coverage_reasons(ref, attempted)
     if ref and ref.get("bad_page_lines"):
         reasons.append(f"{ref['bad_page_lines']} page line(s) didn't parse (cut off in logcat?)")
+    if ref and ref.get("lost_scroll_steps"):
+        # A swipe whose step never came isn't in the pool, so the scroll level rests on fewer swipes.
+        reasons.append(f"{ref['lost_scroll_steps']} swipe(s) answered with no scroll step back")
     # Only the graded runs' pages count; a run that failed has none (smoke7 printed "protocol " with
     # nothing after it). A page that didn't say reads as "unknown", as in grade.ts.
     if ref and ref["protocols"] and ref["protocols"] != [G.PROTOCOL_VERSION]:

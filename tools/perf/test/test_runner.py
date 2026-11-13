@@ -207,6 +207,39 @@ class FakeMatchesThePanel(unittest.TestCase):
                 self.assertEqual(got[shape], {tuple(keys)})
 
 
+class FakeSplitsLikeThePage(unittest.TestCase):
+    """The fake's page_lines must give exactly what the page's consoleLines (stats.js) gives."""
+
+    def test_the_fake_and_the_page_split_alike(self):
+        node = shutil.which("node")
+        if not node:
+            if os.environ.get("CI"):
+                raise AssertionError("node is needed")
+            raise unittest.SkipTest("node isn't installed (CI has it)")
+        sys.path.insert(0, HERE)
+        os.environ.setdefault("FAKE_ADB_STATE", tempfile.mkdtemp())
+        import fake_adb as F
+        texts = ['{"t":"done"}', json.dumps({"x": list(range(500))}, separators=(",", ":")),
+                 json.dumps({"names": ["Küche %d 🌡 Wohnzimmer" % i for i in range(200)]}, ensure_ascii=False),
+                 "a" * 899 + " " + "b" * 1200]
+        js = ("const S=require(process.argv[1]);const ts=JSON.parse(require('fs').readFileSync(0,'utf8'));"
+              "process.stdout.write(JSON.stringify(ts.map((t)=>S.consoleLines('GWPERF','k:1',t))))")
+        out = subprocess.run([node, "-e", js, os.path.join(os.path.dirname(HERE), "page", "stats.js")],
+                             input=json.dumps(texts), capture_output=True, text=True, timeout=30)
+        page = json.loads(out.stdout)
+        for text, want in zip(texts, page):
+            with self.subTest(text[:20]):
+                self.assertEqual(F.page_lines("k:1", text), want)
+                self.assertTrue(all(len(l.encode()) <= 1023 for l in want))
+
+    def test_the_fakes_protocol_is_the_pages(self):
+        sys.path.insert(0, HERE)
+        os.environ.setdefault("FAKE_ADB_STATE", tempfile.mkdtemp())
+        import fake_adb as F
+        with open(os.path.join(os.path.dirname(HERE), "page", "tiers.js")) as f:
+            self.assertIn(f"const PROTOCOL = {F.PROTOCOL};", f.read())
+
+
 class LongLines(unittest.TestCase):
     """The S1 keeps 1023 bytes of a page's console line (smoke7, 2026-11-12). Pages split longer
     lines into parts (stats.js consoleLines) and the runner joins them (perflib.PageLines)."""
@@ -238,6 +271,27 @@ class LongLines(unittest.TestCase):
         self.assertEqual(t["updates_errors"], ["the page's updates step never arrived"])
         self.assertNotIn("protocol ;", rep["grade"]["headline"])
 
+    def test_a_line_whose_parts_never_all_arrive_is_counted_at_done(self):
+        """Verifier ce144dd0: a part left pending was dropped silently. At the page's done it counts."""
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, FAKE_DROP_LAST_PART="1")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["missing_steps"], ["light", "typical", "heavy"])
+        self.assertEqual(c["bad_page_lines"], 4)                         # the warm-up's and each page's
+        self.assertEqual([e["lost_lines"] for e in c["tiers"].values()], [1, 1, 1])
+
+    def test_a_lost_scroll_step_is_counted_and_makes_it_provisional(self):
+        """A swipe answered with no scroll step back would leave 5 of 6 swipes pooled, unremarked."""
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, FAKE_DROP_SCROLL_STEP="1")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual([e["lost_scroll_steps"] for e in c["tiers"].values()], [1, 1, 1])
+        self.assertEqual(c["bad_page_lines"], 0)                         # nothing cut: the line never came
+        with open(os.path.join(tmp, "device.json"), "w") as f:
+            json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
+        g = report.build(tmp)["grade"]
+        self.assertIn("3 swipe(s) answered with no scroll step back", g["provisional_reasons"])
+
     def test_page_lines_joins_parts_and_counts_what_doesnt_parse(self):
         pl = perfrun.P.PageLines()
         self.assertEqual(pl.feed('x GWPERF {"t":"done"}'), {"t": "done"})
@@ -247,6 +301,10 @@ class LongLines(unittest.TestCase):
         self.assertIsNone(pl.feed('GWPERF {"t":"step","changes":[[1,2'))     # cut off
         self.assertIsNone(pl.feed("GWPERF+ nonsense"))
         self.assertEqual(pl.bad, 2)
+        self.assertIsNone(pl.feed('GWPERF+ cd:9 0/3 {"t":'))               # page cd's line, never finished
+        self.assertIsNone(pl.feed('GWPERF+ ef:2 0/2 {"t":'))               # another page's
+        self.assertEqual((pl.close("cd"), pl.bad), (1, 3))
+        self.assertEqual(sorted(pl.parts), ["ef:2"])
 
     def test_the_pages_splitter_and_the_runners_joiner_agree(self):
         """stats.js (run in node) splits; perflib joins. Every part fits the panel's 1023 bytes."""

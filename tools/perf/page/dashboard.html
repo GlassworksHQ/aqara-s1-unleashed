@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Glassworks reference dashboard</title>
 <style>
-  :root { color-scheme: dark; --bg: #111318; --card: #1c1f26; --text: #e3e5ea; --muted: #9aa0ab; --accent: #03a9f4; --on: #ffc107; }
+  /* The Glassworks palette (glassworks.dev/brand): the panel's screens are night; sky and violet mean
+     "on" or lit; no ember (Kiln's) and no green, amber or rose (status only). */
+  :root { color-scheme: dark; --bg: #0a0b0f; --card: #16171c; --text: #f4f4f5; --muted: #a1a1aa; --accent: #38bdf8; --on: #a78bfa; }
   html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
   #view { display: flex; gap: 8px; padding: 8px; align-items: flex-start; }
   .col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }

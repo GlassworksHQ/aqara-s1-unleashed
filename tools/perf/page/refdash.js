@@ -141,7 +141,7 @@
     const g = el.shadowRoot.querySelector("canvas").getContext("2d");
     g.strokeStyle = "rgba(255,255,255,.08)";
     for (let y = 40; y < 360; y += 64) { g.beginPath(); g.moveTo(0, y); g.lineTo(600, y); g.stroke(); }
-    for (const colour of ["#03a9f4", "#ffc107"]) {
+    for (const colour of ["#38bdf8", "#a78bfa"]) {     // sky and violet (glassworks.dev/brand)
       g.strokeStyle = colour;
       g.lineWidth = 3;
       g.beginPath();
@@ -162,12 +162,12 @@
     c.height = 270;
     const g = c.getContext("2d");
     const grad = g.createLinearGradient(0, 0, 480, 270);
-    grad.addColorStop(0, `hsl(${Math.floor(rnd() * 360)} 45% 35%)`);
-    grad.addColorStop(1, `hsl(${Math.floor(rnd() * 360)} 45% 15%)`);
+    grad.addColorStop(0, `hsl(${S.skyToViolet(rnd())} 45% 35%)`);
+    grad.addColorStop(1, `hsl(${S.skyToViolet(rnd())} 45% 15%)`);
     g.fillStyle = grad;
     g.fillRect(0, 0, 480, 270);
     for (let i = 0; i < 40; i++) {
-      g.fillStyle = `hsla(${Math.floor(rnd() * 360)} 60% 60% / .35)`;
+      g.fillStyle = `hsla(${S.skyToViolet(rnd())} 60% 60% / .35)`;
       g.beginPath();
       g.arc(rnd() * 480, rnd() * 270, 8 + rnd() * 40, 0, 6.2832);
       g.fill();

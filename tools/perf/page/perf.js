@@ -51,7 +51,7 @@
       for (let i = 0; i < n; i++) {
         const b = document.createElement("div");
         b.className = "box " + cls;
-        b.style.background = `hsl(${Math.floor(rnd() * 360)} 70% 55%)`;
+        b.style.background = `hsl(${S.skyToViolet(rnd())} 70% 55%)`;
         place(rnd, b);
         stage.appendChild(b);
       }
@@ -67,7 +67,7 @@
     for (let i = 0; i < n; i++) {
       const c = document.createElementNS(ns, "circle");
       c.setAttribute("r", "10");
-      c.setAttribute("fill", `hsl(${Math.floor(rnd() * 360)} 70% 55%)`);
+      c.setAttribute("fill", `hsl(${S.skyToViolet(rnd())} 70% 55%)`);
       svg.appendChild(c);
       dots.push({ c, x: rnd() * innerWidth, y: rnd() * innerHeight, p: rnd() * 6.28 });
     }
@@ -87,7 +87,7 @@
     stage.appendChild(cv);
     const g = cv.getContext("2d");
     const ps = [];
-    for (let i = 0; i < n; i++) ps.push({ x: rnd() * cv.width, y: rnd() * cv.height, p: rnd() * 6.28, h: Math.floor(rnd() * 360) });
+    for (let i = 0; i < n; i++) ps.push({ x: rnd() * cv.width, y: rnd() * cv.height, p: rnd() * 6.28, h: S.skyToViolet(rnd()) });
     return (t) => {
       g.clearRect(0, 0, cv.width, cv.height);
       for (const s of ps) {

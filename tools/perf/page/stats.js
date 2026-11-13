@@ -68,21 +68,31 @@
 
   // A page's console line reaches logcat through the content process, which keeps 1023 bytes of it
   // (the S1, 2026-11-12: smoke7's 4 s updates steps were cut at 1023 bytes and didn't parse). Lines
-  // longer than LINE_MAX are split into numbered parts the runner joins (perflib.PageLines):
-  // "TAG+ key k/n chunk". Our lines are ASCII; no part starts or ends with whitespace, which logcat
-  // may trim.
+  // over LINE_MAX bytes of UTF-8 are split into numbered parts the runner joins (perflib.PageLines):
+  // "TAG+ key k/n chunk". The split counts bytes, as logcat does, and never cuts a character; no part
+  // starts or ends with whitespace, which logcat may trim.
   const LINE_MAX = 900;
+  const utf8 = (s) => new TextEncoder().encode(s).length;
   function consoleLines(tag, key, text) {
-    if (text.length <= LINE_MAX) return [tag + " " + text];
+    if (utf8(text) <= LINE_MAX) return [tag + " " + text];
+    const chars = Array.from(text);             // whole code points
+    const sizes = chars.map(utf8);
     const parts = [];
     let i = 0;
-    while (i < text.length) {
-      let j = Math.min(text.length, i + LINE_MAX);
-      while (j < text.length && j > i + 1 && (/\s/.test(text[j - 1]) || /\s/.test(text[j]))) j--;
-      parts.push(text.slice(i, j));
+    while (i < chars.length) {
+      let j = i, bytes = 0;
+      while (j < chars.length && bytes + sizes[j] <= LINE_MAX) bytes += sizes[j++];
+      while (j < chars.length && j > i + 1 && (/\s/.test(chars[j - 1]) || /\s/.test(chars[j]))) j--;
+      parts.push(chars.slice(i, j).join(""));
       i = j;
     }
     return parts.map((p, k) => `${tag}+ ${key} ${k}/${parts.length} ${p}`);
+  }
+
+  // A hue between the brand's sky (199) and violet (258) for a random number in [0, 1): generated
+  // colours never land on ember (Kiln's) or on green, amber or rose, which mean status only.
+  function skyToViolet(r) {
+    return 199 + Math.floor(r * 60);
   }
 
   function intervals(timestamps) {
@@ -91,7 +101,7 @@
     return out;
   }
 
-  const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines };
+  const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines, skyToViolet };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWStats = api;
 })(this);

@@ -146,6 +146,15 @@ class PageLines:
         i = msg.find("GWPERF ")
         return self._parse(msg[i + 7:]) if i >= 0 else None
 
+    def close(self, nonce):
+        """The page `nonce` is done: a line of its whose parts never all arrived is lost. Counted in
+        `bad`, and returned."""
+        lost = [k for k in self.parts if k.split(":")[0] == nonce]
+        for k in lost:
+            del self.parts[k]
+        self.bad += len(lost)
+        return len(lost)
+
 
 def gwperf_payload(msg):
     i = msg.find("GWPERF ")

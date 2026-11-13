@@ -61,6 +61,17 @@ class Pages(unittest.TestCase):
         self.assertIn("(((tick * 13) % 7) - 3) / 10", text)
         self.assertNotIn("Math.random", text)
 
+    def test_colours_follow_the_brand(self):
+        """glassworks.dev/brand: no ember (Kiln's), no green, amber or rose (status only), night ground,
+        and generated hues between sky and violet."""
+        import re
+        off = re.compile(r"#(ffc107|03a9f4|111318|f43f5e|fdba74|34d399|fbbf24|fb7185)\b|rnd\(\) \* 360", re.I)
+        for name in ("dashboard.html", "index.html", "refdash.js", "perf.js"):
+            with self.subTest(name):
+                self.assertIsNone(off.search(self.read(name)), off.search(self.read(name)))
+        for name in ("dashboard.html", "index.html"):
+            self.assertIn("--bg: #0a0b0f;", self.read(name))
+
     def test_scroll_during_updates_counts_state_changes_not_the_clock(self):
         text = self.read("refdash.js")
         self.assertIn("if (kind !== 1) changes.applied++;", text)

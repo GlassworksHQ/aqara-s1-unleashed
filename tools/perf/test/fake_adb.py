@@ -133,16 +133,24 @@ LOCK = threading.Lock()
 # As on the S1 (2026-11-12): a page's console line reaches logcat from the content process, tagged
 # "Isolated Web Content", and only its first 1023 bytes arrive.
 PAGE_TAG, PAGE_LINE_BYTES = "Isolated Web Content", 1023
+# The pages' protocol, read from the pages themselves, so the fake can't fall behind them.
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "page", "tiers.js")) as _f:
+    PROTOCOL = int(re.search(r"const PROTOCOL = (\d+);", _f.read()).group(1))
 PAGE_LINE_MAX = 900     # stats.js LINE_MAX: longer lines are split, as the page does
 
 
 def page_lines(key, text):
-    """The page's consoleLines (stats.js), in Python."""
-    if len(text) <= PAGE_LINE_MAX:
+    """The page's consoleLines (stats.js), in Python: split on UTF-8 bytes, never inside a character.
+    test_runner.FakeMatchesThePanel checks it against the page's own (run in node)."""
+    if len(text.encode()) <= PAGE_LINE_MAX:
         return ["GWPERF " + text]
+    sizes = [len(c.encode()) for c in text]
     parts, i = [], 0
     while i < len(text):
-        j = min(len(text), i + PAGE_LINE_MAX)
+        j, size = i, 0
+        while j < len(text) and size + sizes[j] <= PAGE_LINE_MAX:
+            size += sizes[j]
+            j += 1
         while j < len(text) and j > i + 1 and (text[j - 1].isspace() or text[j].isspace()):
             j -= 1
         parts.append(text[i:j])
@@ -168,7 +176,15 @@ def page_log(obj, split=True, record=True):
         # (test/page-lines.json).
         with open(os.path.join(STATE, "page-lines.jsonl"), "a") as f:
             f.write(json.dumps({"shape": shape_of(obj), "keys": sorted(obj)}) + "\n")
-    for l in (page_lines(f"{obj.get('nonce')}:{SEQ[0]}", text) if split else ["GWPERF " + text]):
+    lines = page_lines(f"{obj.get('nonce')}:{SEQ[0]}", text) if split else ["GWPERF " + text]
+    # Losses, as a busy logcat can lose lines: the last part of a split updates step, or the first
+    # scroll step whole.
+    if os.environ.get("FAKE_DROP_LAST_PART") and len(lines) > 1 and obj.get("stage") == "updates":
+        lines = lines[:-1]
+    if os.environ.get("FAKE_DROP_SCROLL_STEP") and obj.get("t") == "step" and obj.get("stage") == "scroll" \
+            and obj.get("n") == 0:
+        lines = []
+    for l in lines:
         line(PAGE_TAG, l)
 
 
@@ -238,7 +254,7 @@ def refdash(nonce, url):
     if foreign == "after":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     time.sleep(0.7)
-    gw({"t": "refdash", "tier": tier, "protocol": 3, "nodes": 1458, "cards": 50, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
+    gw({"t": "refdash", "tier": tier, "protocol": PROTOCOL, "nodes": 1458, "cards": 50, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
         "fcp_ms": 150, "lcp_ms": 150, "load_ms": 120, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000})
     time.sleep(1.0)
     gw({"t": "warmup", "stage": "updates", "n": 1})

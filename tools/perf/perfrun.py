@@ -401,6 +401,8 @@ def cmd_coldstart(dev, a):
                 entry["swipes"].append(pl)   # it never scrolled, so no window to read
         elif t in ("input-ready", "swipe-ready") and (t == "swipe-ready" or a.taps):
             cmd, n = gesture(pl, size, max_taps=tap_cap(a.taps))
+            if cmd and t == "swipe-ready":
+                entry["swipes_asked"] = entry.get("swipes_asked", 0) + 1
             if cmd is None:
                 # Not sent: the page asked for something off the screen or malformed. That page isn't graded.
                 entry["error"] = f"bad {t} line: {n}"
@@ -416,6 +418,11 @@ def cmd_coldstart(dev, a):
                 entry["error"] = pl.get("message")
             else:
                 entry["done"] = True
+            # Anything of this page's that didn't arrive whole is lost: a line cut into parts that
+            # never all came, and a swipe answered with no scroll step back.
+            entry["lost_lines"] = page_lines.close(pl.get("nonce"))
+            entry["lost_scroll_steps"] = max(0, entry.get("swipes_asked", 0) - len(entry["swipes"]))
+            res["bad_page_lines"] = page_lines.bad
             print(f"  {tier} {t}", file=sys.stderr)
             if st["opened"] == len(slots):
                 # Watch a little longer: another page now means one was on its way during the last tier.

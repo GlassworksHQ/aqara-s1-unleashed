@@ -103,3 +103,20 @@ test("page lines fit the 1023 bytes the S1 keeps of a console line (smoke7)", ()
   assert.ok(parts.every((m, k) => m && Number(m[1]) === k && Number(m[2]) === lines.length));
   assert.equal(parts.map((m) => m[3]).join(""), text);
 });
+
+test("generated hues stay between the brand's sky and violet (no status colours, no ember)", () => {
+  for (const r of [0, 0.25, 0.5, 0.999]) {
+    const h = S.skyToViolet(r);
+    assert.ok(h >= 199 && h <= 258, `${r} -> ${h}`);
+  }
+});
+
+test("non-ASCII lines split on bytes, never inside a character, and still fit 1023 bytes", () => {
+  const text = JSON.stringify({ names: Array.from({ length: 200 }, (_, i) => `Küche ${i} 🌡 Wohnzimmer`) });
+  assert.ok(text.length < 7000 && Buffer.byteLength(text) > text.length);   // multi-byte
+  const lines = S.consoleLines("GWPERF", "k:1", text);
+  for (const l of lines) assert.ok(Buffer.byteLength(l) <= 1023, `${Buffer.byteLength(l)} bytes`);
+  const chunks = lines.map((l) => l.replace(/^GWPERF\+ k:1 \d+\/\d+ /, ""));
+  for (const c of chunks) assert.ok(!c.includes("�"), "a character was cut");
+  assert.equal(chunks.join(""), text);
+});
