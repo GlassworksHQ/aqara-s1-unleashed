@@ -60,7 +60,10 @@ def sample(serial, procs):
         kind, pid, stat = (line.split(" ", 2) + ["", ""])[:3]
         if not stat.strip():
             continue  # the process or thread exited between the glob and the read
-        tid, name, j = parse_stat(stat)
+        try:
+            tid, name, j = parse_stat(stat)
+        except (ValueError, IndexError):
+            continue  # not a stat line (e.g. an error message from a wrapper that merges stderr)
         if kind == "P":
             totals[int(pid)] = j
         else:

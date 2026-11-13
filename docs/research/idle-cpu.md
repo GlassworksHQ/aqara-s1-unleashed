@@ -89,9 +89,9 @@ on screen. Which thread is it, is that work needed, and what would make it small
    I/tflite: Replacing 64 out of 64 node(s) with delegate (TfLiteXNNPackDelegate) node, yielding 1 partitions for the whole graph.    ← embedding
    W/S1Voice: Wake word inference slow: 61 ms per 80 ms frame    ← once, at start-up
    ```
-   XNNPACK is on, and the embedding model runs fully inside it. The mel model is only re-allocated
-   while its input length settles (1760 → 64 000 → 1280 → 1760 samples in the first frames), then
-   never again. There is no second recorder and no second engine (one `voice-mic` thread).
+   XNNPACK is on, and the embedding model runs fully inside it. The mel model's input length
+   settles in the first frames (1760 → 64 000 → 1280 → 1760 samples; **read** from the engine's code,
+   not shown in these log lines). After that nothing re-allocates. There is no second recorder and no second engine (one `voice-mic` thread).
 
 4. **simpleperf** (2026-11-12, verified: not usable read-only).
    ```
@@ -118,7 +118,7 @@ on screen. Which thread is it, is that work needed, and what would make it small
    MACs are counted from the conv, fully-connected and batch-matmul tensor shapes. At 12.5 frames/s
    the embedding alone is about 1.05 GFLOP/s. One A53 at 1.2 GHz does at most about 4.8 fp32
    GFLOP/s with 32-bit NEON (2 multiply-adds per cycle). The panel's 36 ms per frame for about
-   88 MFLOP is about 2.4 GFLOP/s, half of that peak, which is normal for XNNPACK on this core.
+   88 MFLOP is about 2.4 GFLOP/s, half of that peak. **Assumed, not measured:** that this is XNNPACK's normal efficiency on this core. The alternative, XNNPACK near peak plus a large capture share, is what the mute run cannot rule out (see step 7).
    **The limit is fp32 arithmetic on one A53 core, and the work is what openWakeWord's design asks
    for.**
 
@@ -134,7 +134,7 @@ on screen. Which thread is it, is that work needed, and what would make it small
 
    The model does about 800 times less arithmetic, and int8 instead of fp32. Its host time is only
    microseconds per call, so call overhead dominates and the time ratio varies between runs (12 to
-   150 times less). This leaves out microWakeWord's feature front end (a 512-point FFT, filterbank,
+   200 times less, from the table's ranges). This leaves out microWakeWord's feature front end (a 512-point FFT, filterbank,
    noise reduction and log every 10 ms), which also runs on the ESP32 in real time. **Guess, not
    measured:** on the S1 the whole thing would be a few percent of a core.
 
@@ -156,8 +156,10 @@ on screen. Which thread is it, is that work needed, and what would make it small
    lines of logcat, but the thread and its load were back. The switch was turned back off, and
    nothing else changed.
 
-   The perf test's own `smoke10` run reports the assist pane at +29.5% CPU in its pane diff (not
-   rerun here). That is consistent: its window is device-wide, and it runs at a different clock.
+   A Clarity smoke run on the same panel (protocol 4 at #158's 9d986c9, 2026-11-12 22:06, report
+   not committed) showed the assist pane at +29.5% of a core in its pane-on vs panes-off diff. This
+   points the same way, but it's a device-wide window at a different clock, so it's no more than a
+   cross-check.
 
 ## Result
 
