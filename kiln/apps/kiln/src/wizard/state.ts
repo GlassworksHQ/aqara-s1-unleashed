@@ -5,6 +5,7 @@ import type { AskKind, PartState, Phase, Progress } from '@glassworks/kiln-core'
 import type { SetupState } from '@glassworks/setup-channel';
 
 export type Flow = 'install' | 'undo';
+export type Changed = 'written' | 'apps';
 export type Screen = 'connect' | 'firing' | 'setup' | 'done' | 'undo' | 'error';
 
 export interface Network { ssid: string; rssi: number; secure: boolean }
@@ -51,6 +52,11 @@ export interface UndoState {
   checking?: boolean;
   depth: 'factory' | 'keep';
   appsBack: boolean;
+  /**
+   * The apps were given back against this backup, so it is the one to restore: no other may be
+   * picked in this session. Unlike `appsBack`, a depth change or a new Undo keeps it.
+   */
+  locked?: boolean;
   /** `link`: a way forward when undo here can't go on, e.g. undoing by hand */
   note?: { kind: 'busy' | 'ok' | 'err'; title: string; sub: string; link?: { href: string; text: string } };
 }
@@ -75,6 +81,13 @@ export interface WizardState {
    * changed the panel, even before any write is verified (explain.ts says so).
    */
   touched: boolean;
+  /**
+   * an earlier step may have changed the panel, and no run has reached Done since: `written`, a run
+   * started writing; `apps`, the panel was (being) given back to Aqara's apps. Unlike `wrote` and
+   * `touched`, which are this attempt's, a new attempt (go, start) keeps it, and the registry keeps it
+   * for the browser tab across sessions: a later failure must not say nothing was written.
+   */
+  changed?: Changed;
   log: string[];
   parts: [string, Part][];
   setup: Setup;
@@ -99,7 +112,8 @@ export type Action =
   | { type: 'undo'; patch: Partial<UndoState> }
   | { type: 'fail'; failure: Failure }
   | { type: 'done'; done: DoneState }
-  | { type: 'busy'; busy?: string };
+  | { type: 'busy'; busy?: string }
+  | { type: 'changed'; by: Changed };
 
 export const LOG_LIMIT = 400;
 
@@ -119,8 +133,12 @@ export function initial(flow: Flow = 'install'): WizardState {
 
 export function reduce(s: WizardState, a: Action): WizardState {
   switch (a.type) {
-    case 'go':
-      return { ...s, screen: a.screen, flow: a.flow ?? s.flow, ask: undefined };
+    case 'go': {
+      // `wrote` and `touched` are this attempt's. Leaving the Error screen (Try again, Undo) starts the
+      // next attempt clean; `changed` keeps the panel's history.
+      const left = s.screen === 'error' ? { wrote: false, touched: false } : {};
+      return { ...s, ...left, screen: a.screen, flow: a.flow ?? s.flow, ask: undefined };
+    }
     case 'start':
       return {
         ...s, flow: a.flow, screen: 'firing', ask: undefined, wrote: false, touched: false, log: [], parts: [], failure: undefined,
@@ -131,11 +149,12 @@ export function reduce(s: WizardState, a: Action): WizardState {
       const overall = Math.max(s.progress.overall, Math.min(1, a.p.overall));
       // kiln-core reports flash and verify only from inside a write (flashVerified)
       const touched = s.touched || a.p.phase === 'flash' || a.p.phase === 'verify';
-      return { ...s, touched, progress: { ...s.progress, overall, phase: a.p.phase, title: a.p.title, sub: a.p.sub } };
+      return { ...s, touched, changed: touched ? 'written' : s.changed, progress: { ...s.progress, overall, phase: a.p.phase, title: a.p.title, sub: a.p.sub } };
     }
     case 'log': {
       const log = [...s.log, a.line].slice(-LOG_LIMIT);
-      return { ...s, log, wrote: s.wrote || /(flashed|restored) and verified/.test(a.line) };
+      const wrote = s.wrote || /(flashed|restored) and verified/.test(a.line);
+      return { ...s, log, wrote, changed: wrote ? 'written' : s.changed };
     }
     case 'partition': {
       const was = s.parts.find(([p]) => p === a.part)?.[1];
@@ -158,9 +177,11 @@ export function reduce(s: WizardState, a: Action): WizardState {
     case 'fail':
       return { ...s, screen: 'error', ask: undefined, failure: a.failure };
     case 'done':
-      return { ...s, screen: 'done', ask: undefined, done: a.done };
+      return { ...s, screen: 'done', ask: undefined, done: a.done, changed: undefined };
     case 'busy':
       return { ...s, busy: a.busy };
+    case 'changed': // a write outranks the apps
+      return { ...s, changed: s.changed === 'written' ? 'written' : a.by };
   }
 }
 

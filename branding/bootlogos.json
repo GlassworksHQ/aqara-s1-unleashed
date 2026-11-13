@@ -1,6 +1,7 @@
 {
   "about": "SHA-256 of every power-on splash (BOOTLOGO.BMP) we have shipped. Undo refuses a backup whose splash is one of these. The branding build (common.build) appends each new one. Never remove an entry: panels in the field still carry old splashes. See branding/glass-tile/README.md.",
   "bootlogos": [
-    {"sha256": "354402a54d387830a8b2bd3a294db7ab05202d4b7bd3a8429e36a10fa528081b", "name": "Glass Tile", "since": "2026-11-09"}
+    {"sha256": "354402a54d387830a8b2bd3a294db7ab05202d4b7bd3a8429e36a10fa528081b", "name": "Glass Tile", "since": "2026-11-09"},
+    {"sha256": "ee564464d01cb8c06a018c1e0240e8a2367affb0d4e01f3133bb799427080c57", "name": "Glassworks stack", "since": "2026-11-12"}
   ]
 }

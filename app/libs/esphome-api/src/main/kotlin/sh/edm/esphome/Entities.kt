@@ -74,8 +74,9 @@ class SensorEntity(
     /** `SensorStateClass`: 0 none, 1 measurement, 2 total_increasing, 3 total. */
     private val stateClass: Int = 1,
     category: EntityCategory = EntityCategory.NONE,
+    disabledByDefault: Boolean = false,
     private val get: () -> Float?,
-) : ApiEntity(objectId, name, icon, category) {
+) : ApiEntity(objectId, name, icon, category, disabledByDefault) {
     override val listType = Msg.LIST_ENTITIES_SENSOR
     override val stateType = Msg.SENSOR_STATE
     override fun info() = base().string(5, icon).string(6, unit).int32(7, accuracy).string(9, deviceClass)
@@ -88,8 +89,9 @@ class SensorEntity(
 
 class TextSensorEntity(
     objectId: String, name: String, icon: String = "", category: EntityCategory = EntityCategory.NONE,
+    disabledByDefault: Boolean = false,
     private val get: () -> String?,
-) : ApiEntity(objectId, name, icon, category) {
+) : ApiEntity(objectId, name, icon, category, disabledByDefault) {
     override val listType = Msg.LIST_ENTITIES_TEXT_SENSOR
     override val stateType = Msg.TEXT_SENSOR_STATE
     override fun info() = base().string(5, icon).bool(6, disabledByDefault).uint32(7, category.value)

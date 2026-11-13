@@ -229,6 +229,7 @@ test, but it has **not yet met a real base**.
 | [zigbee2mqtt.md](zigbee2mqtt.md) | Zigbee2MQTT on the stock radio: Silicon Labs' zigbeed 8.2.2 on Aqara's RCP, panel tests, licences |
 | [rcp-firmware.md](rcp-firmware.md) | Could a newer multiprotocol RCP be built for this MG21? CPC protocol, tooling, board config |
 | [framework-restart.md](framework-restart.md) | Android 10's ActivityManager breaking during fast kiosk restarts, and `system_server` restarting; the likely (untested) cause of the panel "dropping off USB" |
+| [boot-animation.md](boot-animation.md) | What Android 10's boot animation and the 32 MiB boot image allow: texture caching, trim, the size budget, and what was cut from the #63 design |
 
 User-facing guides stay one level up, in [docs/](../README.md).
 

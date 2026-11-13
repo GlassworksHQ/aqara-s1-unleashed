@@ -8,11 +8,12 @@ import { Store } from '../src/wizard/session';
 import { explain } from '../src/wizard/explain';
 import { initial } from '../src/wizard/state';
 
-afterEach(() => registry.clear());
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// A failed expect must not leave a stubbed window or fake timers to the next test.
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); registry.clear(); });
 
 describe('Session.close', () => {
   it('stops the Home Assistant poll and closes the setup channel and the panel', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] }); // the poll's clock; the simulated panel's replies stay real
     const s = demoSession('home-assistant');
     await s.route('home-assistant');
     expect(s.store.state.setup.phase).toBe('ha');
@@ -21,16 +22,15 @@ describe('Session.close', () => {
     const setupClose = vi.spyOn(internals.setup, 'close');
     const panelClose = vi.fn(async () => {});
     internals.panel.close = panelClose;
-    await wait(3300);
-    expect(poll.mock.calls.length).toBeGreaterThan(0); // it polls every 3 s while open
+    vi.advanceTimersByTime(3000);
+    expect(poll).toHaveBeenCalledTimes(1); // it polls every 3 s while open
     s.close();
     expect(setupClose).toHaveBeenCalled();
     expect(panelClose).toHaveBeenCalled();
-    const after = poll.mock.calls.length;
-    await wait(3300);
-    expect(poll.mock.calls.length).toBe(after);
+    vi.advanceTimersByTime(9000);
+    expect(poll).toHaveBeenCalledTimes(1);
     expect(s.isClosed).toBe(true);
-  }, 15_000);
+  });
 
   it('is called when a new session replaces the current one', () => {
     const one = demoSession('connect');
@@ -48,10 +48,8 @@ describe('Session.close', () => {
     (s as unknown as { d: { openTab: () => null } }).d.openTab = () => null;
     vi.stubGlobal('window', { open: () => null }); // the pop-up blocker said no, twice
     s.signIn('http://homeassistant.local:8123');
-    for (let i = 0; i < 100 && s.store.state.setup.phase === 'ha' && !(s.store.state.setup as { error?: string }).error; i++) await wait(20);
-    expect(s.store.state.setup).toMatchObject({ phase: 'ha', signingIn: false, error: expect.stringMatching(/blocked the sign-in tab/) });
+    await vi.waitFor(() => expect(s.store.state.setup).toMatchObject({ phase: 'ha', signingIn: false, error: expect.stringMatching(/blocked the sign-in tab/) }));
     expect(status(s.store.state)).toBe('idle');
-    vi.unstubAllGlobals();
     s.close();
   });
 
