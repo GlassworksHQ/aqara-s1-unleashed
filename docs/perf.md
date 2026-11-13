@@ -852,9 +852,9 @@ per frame and pane, with budgets. Its two halves come from different places:
   report's `ram` holds the reference dashboard's numbers per process and per pane, and checks them
   against the frame's budgets in `frames/<id>/budgets.json`. The summary carries them (`ram`).
 - **APK size comes from CI** on every pull request, which needs no device: the size per ABI split
-  into the engine, the core, each pane, assets and native libraries, the change from `main`, and the
-  frame's size budget in the same `frames/<id>/budgets.json`. That is its own pull request, stacked on
-  this one. `--apk` still adds sizes to a device report.
+  into the engine, the core, each pane, assets and native libraries, the change from the base branch,
+  and the frame's size budget in the same `frames/<id>/budgets.json`. See [APK size](size.md).
+  `--apk` still adds sizes to a device report.
 - **Panes** use the ids from the code (`assist`, `sendspin`, `radio`, `wall-base`, `timers`,
   `time-zone`, `diagnostics`). Only `assist` and `sendspin` can be switched today; the others wait on
   [#67](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/67).

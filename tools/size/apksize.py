@@ -39,11 +39,13 @@ def read_json(path):
 # ---- the dex: apkanalyzer's per-class sizes
 
 def analyzer_path():
-    """apkanalyzer from the Android SDK's command-line tools (APKANALYZER overrides it)."""
+    """apkanalyzer from the Android SDK's command-line tools: APKANALYZER, else the one on PATH
+    (setup-android puts its cmdline-tools there), else $ANDROID_HOME/cmdline-tools/latest."""
+    import shutil
     if os.environ.get("APKANALYZER"):
         return os.environ["APKANALYZER"]
     sdk = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or ""
-    return os.path.join(sdk, "cmdline-tools", "latest", "bin", "apkanalyzer")
+    return shutil.which("apkanalyzer") or os.path.join(sdk, "cmdline-tools", "latest", "bin", "apkanalyzer")
 
 
 def dex_classes(apk, analyzer=None):
@@ -269,7 +271,7 @@ def validate(rep):
 
 def clean(text):
     """A finding's text for the comment: plain characters only."""
-    return re.sub(r"[^\w .,:;/()<>=+\-−'`#]", "?", str(text))[:300]
+    return re.sub(r"[^\w .,:;/()+\-−'`#]", "?", str(text))[:300]
 
 
 def markdown(rep):

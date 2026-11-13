@@ -1,16 +1,47 @@
 {
-  "_comment": "The Aqara S1 Plus's budgets (#68). Project choices, not published standards; docs/perf.md, \"RAM\", says why and how each is measured. Clarity's report (tools/perf/report.py) reads ram and panes. The pane budgets were set before the first per-pane measurement (2026-11-13); revisit them once one exists.",
+  "_comment": "The Aqara S1 Plus's budgets (#68). Project choices, not published standards; docs/perf.md, \"RAM\", and docs/size.md say why and how each is measured. Clarity's report (tools/perf/report.py) reads ram and panes.*.ram_pss_max_kb; CI's size check (tools/size/apksize.py) reads size and panes.*.size_max_bytes, and fails a PR that goes over unless the same PR raises the budget. The pane RAM budgets were set before the first per-pane measurement (2026-11-13); revisit them once one exists. The size budgets are the 2026-11-13 release build (97.84 MB armeabi-v7a, 100.78 MB arm64-v8a) plus about 2.5%, and each pane's size about twice its own today (at least 100 kB), so growth is a decision, not a drift.",
   "ram": {
     "app_pss_max_pct_of_ram": 50,
     "device_available_min_pct": 15
   },
+  "size": {
+    "apk_max_bytes": {
+      "armeabi-v7a": 100300000,
+      "arm64-v8a": 103300000
+    }
+  },
   "panes": {
-    "assist": { "switch": "voice_enabled", "ram_pss_max_kb": 49152 },
-    "sendspin": { "switch": "sendspin_enabled", "ram_pss_max_kb": 49152 },
-    "radio": { "waiting_on": "#67", "note": "its processes run outside the app and are measured in place" },
-    "wall-base": { "waiting_on": "#67" },
-    "timers": { "waiting_on": "#67", "note": "comes only with the voice assistant, so it is inside assist's share" },
-    "time-zone": { "waiting_on": "#67" },
-    "diagnostics": { "waiting_on": "#67" }
+    "assist": {
+      "switch": "voice_enabled",
+      "ram_pss_max_kb": 49152,
+      "size_max_bytes": 3000000
+    },
+    "sendspin": {
+      "switch": "sendspin_enabled",
+      "ram_pss_max_kb": 49152,
+      "size_max_bytes": 150000
+    },
+    "radio": {
+      "waiting_on": "#67",
+      "note": "its processes run outside the app and are measured in place",
+      "size_max_bytes": 400000
+    },
+    "wall-base": {
+      "waiting_on": "#67",
+      "size_max_bytes": 120000
+    },
+    "timers": {
+      "waiting_on": "#67",
+      "note": "comes only with the voice assistant, so it is inside assist's share",
+      "size_max_bytes": 100000
+    },
+    "time-zone": {
+      "waiting_on": "#67",
+      "size_max_bytes": 100000
+    },
+    "diagnostics": {
+      "waiting_on": "#67",
+      "size_max_bytes": 100000
+    }
   }
 }
