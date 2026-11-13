@@ -151,10 +151,17 @@ jobs:
         id: changed
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        # Fails closed: without a base commit to compare with (none, a force-pushed or garbage-
+        # collected one) or when git diff fails, it rebuilds.
         run: |
-          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ] \
-             || git diff --name-only "$BASE" HEAD -- branding/boot branding/glass-tile branding/bootlogos.json \
-                  frames/aqara-s1-plus/design/frame.json .github/workflows/pr.yml | grep -q .; then
+          paths="branding/boot branding/glass-tile branding/bootlogos.json frames/aqara-s1-plus/design/frame.json .github/workflows/pr.yml"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "No base commit to compare with ($BASE); rebuilding."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif ! changed=$(git diff --name-only "$BASE" HEAD -- $paths); then
+            echo "git diff failed; rebuilding."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$changed" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "Nothing the S1's boot branding is built from changed; skipping the rebuild."

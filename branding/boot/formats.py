@@ -24,8 +24,10 @@ import io
 import json
 import os
 import re
+import shutil
 import struct
 import subprocess
+import tempfile
 import zipfile
 
 import numpy as np
@@ -54,7 +56,7 @@ BG = hexc("#0a0b0f")
 # Pinned: google/fonts at a fixed commit, each file checked by SHA-256, so a rebuild uses the same
 # Inter the committed outputs were made with. To move to a newer Inter, change both and rebuild.
 FONT_CACHE = "/tmp/s1-unleashed-fonts"
-GF_RAW = "https://raw.githubusercontent.com/google/fonts/0fb1bdc740dd9d495e639a160778db34c28807b7/"
+GF_RAW = "https://raw.githubusercontent.com/google/fonts/e1d6480102fed30739fead0faee463101f892c8f/"   # as THIRD-PARTY-NOTICES.md
 FONTS = {"inter": ("ofl/inter/Inter%5Bopsz,wght%5D.ttf",
                    "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
                    "5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57")}   # font, OFL.txt
@@ -173,7 +175,8 @@ class AnimationZip:
         if self.target.trim:
             img, rect = trim(img)
             self.rects.append(rect)
-        self._add(f"{self.part}/frame_{self.n:03d}.png", png_bytes(img))
+        # four digits: frames_on_screen pairs names with trim.txt lines in sorted order
+        self._add(f"{self.part}/frame_{self.n:04d}.png", png_bytes(img))
         self.n += 1
 
     def close(self):
@@ -242,16 +245,17 @@ def write_manifest(target, out):
 def build(target, out, render, n_intro, n_loop, splash_name):
     """render(T) -> screen-sized RGB array, T = global frame index. Frames [0, n_intro) are part0
     and the next n_loop part1, which must be periodic: render(n_intro + n_loop) == render(n_intro).
-    Writes into `out` and lists a splash it writes as `splash_name` (bootlogos.json);
-    returns the list of problems (empty = all good)."""
+    Builds and checks everything in a temporary folder, and only then moves the files into `out`
+    and lists the splash as `splash_name` (bootlogos.json): a failed build leaves `out` as it was.
+    Returns the list of problems (empty = all good)."""
     os.makedirs(out, exist_ok=True)
+    stage = tempfile.mkdtemp(prefix="boot-build-")
     print(f"{target.name}: {target.width}x{target.height}, "
           f"{'trimmed' if target.trim else 'full'} frames, splash {target.splash or 'none'}", flush=True)
     print(f"rendering {n_intro}+{n_loop} frames ...", flush=True)
     # One frame at a time: a frame is rendered, compressed into the zip and shrunk for the preview,
     # then dropped. Only the splash, the loop's first frame and the small preview frames are kept.
-    zp = os.path.join(out, "bootanimation.zip")
-    az = AnimationZip(target, zp + ".part")
+    az = AnimationZip(target, os.path.join(stage, "bootanimation.zip"))
     size = preview_size(target)
     small = []
     splash = first = None
@@ -274,26 +278,31 @@ def build(target, out, render, n_intro, n_loop, splash_name):
         az.frame(first)
     finally:
         az.close()
-    os.replace(zp + ".part", zp)   # only a finished, seamless zip replaces the old one
 
-    with open(os.path.join(out, "splash-landscape.png"), "wb") as f:
+    with open(os.path.join(stage, "splash-landscape.png"), "wb") as f:
         f.write(png_bytes(splash))
-    bmp = os.path.join(out, "bootlogo.bmp")
     if target.splash:
-        write_bmp(target, splash, bmp)
-        list_bootlogo(bmp, splash_name)
-    elif os.path.exists(bmp):
-        os.remove(bmp)   # an earlier build's splash, for another target
-    write_preview(os.path.join(out, "preview.webp"), small)
-    problems = validate(target, out)
-    if not problems:
-        write_manifest(target, out)
-    for p in problems:
-        print("  FAIL:", p)
-    size = os.path.getsize(os.path.join(out, "bootanimation.zip"))
+        write_bmp(target, splash, os.path.join(stage, "bootlogo.bmp"))
+    write_preview(os.path.join(stage, "preview.webp"), small)
+    problems = validate(target, stage)
+    size = os.path.getsize(os.path.join(stage, "bootanimation.zip"))
     budget = f" (budget {target.zip_budget / 1e6:.2f} MB)" if target.zip_budget else ""
     print(f"  bootanimation.zip {size / 1e6:.2f} MB{budget}")
-    print("done, " + ("OK" if not problems else "PROBLEMS"))
+    if problems:
+        for p in problems:
+            print("  FAIL:", p)
+        print(f"done, PROBLEMS: {out} is unchanged; this build is in {stage}")
+        return problems
+    for f in OUTPUTS:
+        if os.path.exists(os.path.join(stage, f)):
+            shutil.move(os.path.join(stage, f), os.path.join(out, f))
+        elif os.path.exists(os.path.join(out, f)):
+            os.remove(os.path.join(out, f))   # an earlier build's splash, for another target
+    shutil.rmtree(stage)
+    if target.splash:
+        list_bootlogo(os.path.join(out, "bootlogo.bmp"), splash_name)
+    write_manifest(target, out)
+    print("done, OK")
     return problems
 
 

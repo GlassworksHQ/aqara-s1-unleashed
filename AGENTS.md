@@ -31,6 +31,9 @@ npm install && npm run stage -w kiln && npm test     # npm workspaces, from the 
 tools/install/test/install-tests.sh                  # install scripts, off-device
 python3 tools/check-doc-links.py                     # relative links and #anchors in docs
 tools/root/build-verify.sh && tools/radio/test/run.sh  # root side, in an armhf container (Docker)
+python3 -m unittest discover -s branding/boot/test   # boot generator: frame targets and layout
+python3 branding/boot/generate.py --frame aqara-s1-plus --out branding/glass-tile && git diff --exit-code branding
+                                                     # the S1's boot branding rebuilds byte for byte (CI: in python:3.11-slim)
 ```
 
 CI (`.github/workflows/pr.yml`) runs all of these. Run the ones for the area you touched before

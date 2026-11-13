@@ -344,7 +344,7 @@ _fonts = {}
 def shaped(scale, text, css_px, wght, tracking_em):
     """The run as (characters, x) per cluster, in screen px from its left edge, and its advance,
     shaped by HarfBuzz with kerning and CSS letter-spacing (after every cluster, the last one too).
-    A cluster is drawn whole, so accents and joined emoji keep all their characters."""
+    A cluster is drawn whole at its first glyph, so a letter keeps a combining accent."""
     path = font_file("inter")
     size = css_px * scale
     opsz = 14   # the page loads Inter from Google Fonts by wght only, which serves the default opsz
@@ -406,7 +406,11 @@ class Scene:
         self.base[:] = BG
         self.grain = np.clip(np.random.default_rng(4).normal(0.5, 0.11, (h, w)), 0, 1) * 0.09  # feTurbulence -> alpha
         self.word_css = baseline(L.scale, L.word_top, WORD_CSS * WORD_LINE, WORD_CSS)
-        line = unicodedata.normalize("NFC", f"On {target.name}".upper())
+        # NFC first: a cluster is drawn as one string at its first glyph's position, so the
+        # y_offset HarfBuzz gives a separate combining mark is lost; composed, the font draws the
+        # accent itself. Inter has no emoji: each draws as a box. The zero-width joiner is dropped,
+        # or Pillow boxes it too, past the width HarfBuzz gave the cluster.
+        line = unicodedata.normalize("NFC", f"On {target.name}".upper()).replace("\u200d", "")
         self.device = text_alpha(L, line, DEVICE_CSS, 500, 0.14,
                                  baseline(L.scale, L.device_top, DEVICE_CSS, DEVICE_CSS))
         self._word = {}

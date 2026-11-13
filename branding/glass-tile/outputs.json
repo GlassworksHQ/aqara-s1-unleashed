@@ -10,14 +10,14 @@
   },
   "inputs": {
     "branding/boot/generate.py": "ff3f349ced487af781d23d65e814a2151ae21945fcfb8d4a821d92b5c7c48907",
-    "branding/boot/stack.py": "68783b8f32339f2345d8fa0bcb8a753929279e446f16df16b07d4ed78e1a009a",
-    "branding/boot/formats.py": "06859e5048fa768fbc1b542e4a1090df0a0cceacc05d807ce34fca81d8bd7ede",
+    "branding/boot/stack.py": "9fb0bc0c19541b111d1a00c3333819830e0ac10e40f19d6230dba918f1818e17",
+    "branding/boot/formats.py": "13dfbde038ddcb52e50cc04b347ee5fd365adcb9dd25f33a297b0bddfb7341a8",
     "branding/boot/target.py": "5ad61d491c360b17a381508fd5a955b4513ef4e9c69d89065ceddc3450845734",
     "Inter": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031"
   },
   "outputs": {
     "bootlogo.bmp": "ee564464d01cb8c06a018c1e0240e8a2367affb0d4e01f3133bb799427080c57",
-    "bootanimation.zip": "2efdfb8de7fe64de0954f30a7138c59983358cb8b6730b2e5b687f89e1251116",
+    "bootanimation.zip": "519bb06596b84e5f429b1b5a81bd22f7a5f5f49ab4f740415a503af811800cc5",
     "splash-landscape.png": "1ab0487a3112d22219e6f334d25007b2e085570b1d8ae15c2f7b99bc452a4680",
     "preview.webp": "f2dbf56082706c9a80eedd4c9ff251b9be158af63e748917559542737ae3d61a"
   },
