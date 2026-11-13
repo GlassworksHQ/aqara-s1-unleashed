@@ -21,6 +21,12 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Kiln: Undo and Try again say the right thing in rare cases.** On kiln.glassworks.dev, after a
+  failed write, *Try again* then closing the browser's device list asks for recovery mode again,
+  instead of repeating the Undo advice. On Undo, a backup this browser can't read is now said on the
+  screen, and once *Keep its settings* has given Aqara's apps back, the backup can no longer be
+  switched. A rescan that changes the picked Wi-Fi network clears the password typed for the old one.
+  Links that are off now look off.
 - **The screen starts at your saved brightness.** With *Auto brightness* off, the app used the
   system brightness after a restart until the light sensor reported a change, while Home Assistant
   already showed your saved brightness. In a dark, still room that could last a long time. The app
