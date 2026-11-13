@@ -123,6 +123,13 @@ def shell(cmd):
             out += f"PID {pid}\n{pid} (Gecko Main) S 1 1 0 0 -1 1 2 3 4 5 {j // 10} {j // 20} 1 1 10 -10\n"
         return out
     if cmd == "nproc":
+        if os.environ.get("FAKE_IDLE_FAILS"):
+            # The device step reads it first; the idle sample's read then fails: a run that stops
+            # partway (run.sh's exit trap).
+            n = state("nproc_reads.json", 0) + 1
+            save("nproc_reads.json", n)
+            if n > 1:
+                return "garbled\n"
         return "4\n"
     if "thermal_zone" in cmd:
         if "case" in cmd:

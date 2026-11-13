@@ -172,6 +172,25 @@ def fake_env(tmp, **extra):
     return env, state
 
 
+class StopsPartway(unittest.TestCase):
+    """The graded part changes the kiosk's dashboard; a run that stops partway still puts it back
+    (run.sh's exit trap), so the panel is left as it was found."""
+
+    def test_the_dashboard_goes_back(self):
+        tmp = tempfile.mkdtemp()
+        env, state = fake_env(tmp, FAKE_IDLE_FAILS="1", GW_PERF_COLD_SETTLE="0", GW_PERF_RUN_GAP="0",
+                              GW_PERF_BETWEEN_QUIET="0.3")
+        p = subprocess.run([RUN, "--frame", "test-frame", "--runs", "2", "--out", os.path.join(tmp, "out"), "--port", "18095",
+                            "--taps", "0", "--skip-synthetic", "--skip-real-use", "--restore-dashboard", RESTORE],
+                           env=env, capture_output=True, text=True, timeout=300)
+        self.assertNotEqual(p.returncode, 0)                       # the idle sample after graded run 1 failed
+        self.assertTrue(os.path.exists(os.path.join(tmp, "out", "refstart-1.json")))
+        self.assertFalse(os.path.exists(os.path.join(tmp, "out", "refstart-2.json")))
+        with open(os.path.join(state, "urls_set.json")) as f:
+            self.assertEqual(json.load(f), ["http://127.0.0.1:18095/clarity-light/0", RESTORE])
+        self.assertIn("pointing the kiosk back at its dashboard", p.stderr)
+
+
 class HomeRelaunch(unittest.TestCase):
     """The S1's kiosk is the home app: force-stop and the system starts it again at once."""
 
@@ -694,6 +713,21 @@ class PaneRam(unittest.TestCase):
                 self.assertEqual(p.returncode, 2, p.stderr)
                 self.assertIn("--pane-ram", p.stderr)
                 self.assertFalse(os.path.exists(os.path.join(state, "intents.json")))
+
+    def test_a_run_that_stops_partway_puts_the_panes_and_the_dashboard_back(self):
+        tmp = tempfile.mkdtemp()
+        env, state = fake_env(tmp, FAKE_IDLE_FAILS="1")
+        p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--runs", "1", "--out", os.path.join(tmp, "out"), "--port", "18093",
+                            "--skip-synthetic", "--skip-reference", "--skip-real-use",
+                            "--pane-ram", "assist=off,sendspin=on", "--restore-dashboard", RESTORE],
+                           env=env, capture_output=True, text=True, timeout=120)
+        self.assertNotEqual(p.returncode, 0)                       # the first idle sample failed
+        with open(os.path.join(state, "intents.json")) as f:
+            intents = json.load(f)
+        self.assertEqual(len(intents), 2)                          # all off, then the exit trap
+        self.assertEqual(intents[-1], {"voice_enabled": "false", "sendspin_enabled": "true"})
+        with open(os.path.join(state, "saved_url.json")) as f:
+            self.assertEqual(json.load(f), RESTORE)
 
     def test_it_needs_the_dashboard_to_put_back(self):
         tmp = tempfile.mkdtemp()

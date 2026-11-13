@@ -105,14 +105,13 @@ class FixedHome(unittest.TestCase):
 
     def test_the_stream_never_sends_a_change_that_isnt_one(self):
         """A zero step re-sends the same value: no change for HA, so nothing would be drawn."""
-        sent = []
         st = D.states()
-        s = D.Stream(lambda e, v: sent.append((e, v)), st)
-        for k in range(1, 50):
-            e = s.targets[(k * 7) % len(s.targets)]
-            v = float(st[e]["state"]) + (((k * 13) % 6) + 1) / 10 * (1 if k % 2 else -1)
-            self.assertNotEqual(f"{v:.1f}", st[e]["state"], k)
-            st[e]["state"] = f"{v:.1f}"
+        s = D.Stream(None, st)
+        for k in range(1, 300):          # a minute of changes: more than any window
+            e, v = s.sensor_change(k)
+            self.assertIn(e, s.targets)
+            self.assertNotEqual(v, st[e]["state"], k)
+            st[e]["state"] = v
 
 
 if __name__ == "__main__":

@@ -297,6 +297,13 @@ class Stream:
         h = head()
         self.targets, self.switches = h["sensors"] + h["rows"], h["switches"]
 
+    def sensor_change(self, k):
+        """The k-th sensor change: (entity, new value). Never a zero step: the same value again is
+        no change for HA, so nothing would be drawn."""
+        e = self.targets[(k * 7) % len(self.targets)]
+        v = float(self.states[e]["state"]) + (((k * 13) % 6) + 1) / 10 * (1 if k % 2 else -1)
+        return e, f"{v:.1f}"
+
     def run(self):
         import time
         start, every, flip = time.monotonic(), 1 / TIERS["LIVE"]["updatesPerS"], TIERS["LIVE"]["flipEveryMs"] / 1000
@@ -308,10 +315,7 @@ class Stream:
                 return
             if time.monotonic() >= nxt_k:
                 k += 1
-                e = self.targets[(k * 7) % len(self.targets)]
-                # Never a zero step: the same value again is no change for HA, so nothing would be drawn.
-                v = float(self.states[e]["state"]) + (((k * 13) % 6) + 1) / 10 * (1 if k % 2 else -1)
-                self.set_state(e, f"{v:.1f}")
+                self.set_state(*self.sensor_change(k))
             if time.monotonic() >= nxt_f:
                 f += 1
                 e = self.switches[f % len(self.switches)]
