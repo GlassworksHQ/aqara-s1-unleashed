@@ -182,17 +182,10 @@ export class Fastboot {
     const maxDlSize = await this.downloadSize();
     const fileHeader = await blob.slice(0, Sparse.FILE_HEADER_SIZE).arrayBuffer();
 
-    let totalBytes = blob.size;
-    let isSparse = false;
-    try {
-      const sparseHeader = Sparse.parseFileHeader(fileHeader);
-      if (sparseHeader !== null) {
-        totalBytes = sparseHeader.blocks * sparseHeader.blockSize;
-        isSparse = true;
-      }
-    } catch {
-      // ImageError = invalid, so keep blob.size
-    }
+    // A sparse magic with a bad header throws ImageError: upstream flashed such an image as raw.
+    const sparseHeader = Sparse.parseFileHeader(fileHeader);
+    const isSparse = sparseHeader !== null;
+    const totalBytes = isSparse ? sparseHeader.blocks * sparseHeader.blockSize : blob.size;
 
     // Logical partitions need to be resized before flashing because they're sized perfectly to the payload.
     if ((await this.getVariable(`is-logical:${partition}`)) === 'yes') {
@@ -222,8 +215,10 @@ export class Fastboot {
 
   /** `fastboot boot`: runs an image from RAM, nothing is written. */
   async bootBlob(blob: Blob, onProgress: FlashProgressCallback = () => {}): Promise<void> {
+    const limit = await this.downloadSize();
+    if (blob.size > limit) throw new FastbootError('image is larger than the fastboot buffer');
     const data = new Uint8Array(await blob.arrayBuffer());
-    await this.download(data, (done, total) => onProgress(done / total), await this.downloadSize());
+    await this.download(data, (done, total) => onProgress(done / total), limit);
     await this.command('boot');
   }
 

@@ -120,4 +120,33 @@ describe('flashBlob against a Qualcomm LK fake', () => {
     await expect(flash(lk, 'system', new Uint8Array(16 * BLOCK + 100))).rejects.toThrow(/whole 4096-byte blocks/);
     expect(lk.commands.filter((c) => c.startsWith('flash:'))).toEqual([]);
   });
+
+  // 7/8 of a limit under 4681 bytes, rounded down to 4096-byte blocks, is 0: splitBlob never advanced.
+  it('refuses a max-download-size too small to hold one block', async () => {
+    const lk = new FakeLk(4000, [['system', 64 * BLOCK]]);
+    await expect(flash(lk, 'system', rawImage(4))).rejects.toThrow(/too small/);
+    expect(lk.downloads).toEqual([]);
+  });
+
+  it('refuses an image with a sparse magic and a bad header, instead of flashing it raw', async () => {
+    const lk = new FakeLk(0x100000, [['system', 64 * BLOCK]]);
+    const { image } = sparseImage([{ raw: rawImage(2) }], 0xee);
+    new DataView(image.buffer).setUint16(4, 2, true); // major version 2
+    await expect(flash(lk, 'system', image)).rejects.toThrow(/Unsupported sparse image version 2/);
+    expect(lk.downloads).toEqual([]);
+  });
+
+  it('bootBlob sends the image and boots it', async () => {
+    const lk = new FakeLk(0x8000, [['system', 64 * BLOCK]]);
+    await new Fastboot(lk).bootBlob(new Blob([rawImage(4) as Uint8Array<ArrayBuffer>]));
+    expect(lk.commands.slice(-2)).toEqual(['download:00004000', 'boot']);
+  });
+
+  it('bootBlob refuses an image over max-download-size before reading it', async () => {
+    const lk = new FakeLk(0x8000, [['system', 64 * BLOCK]]);
+    const big = new Blob([new Uint8Array(0x9000)]);
+    big.arrayBuffer = () => Promise.reject(new Error('read the whole image'));
+    await expect(new Fastboot(lk).bootBlob(big)).rejects.toThrow(/larger than the fastboot buffer/);
+    expect(lk.downloads).toEqual([]);
+  });
 });
