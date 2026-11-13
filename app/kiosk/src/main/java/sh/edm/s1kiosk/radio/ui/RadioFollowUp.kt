@@ -9,7 +9,7 @@ import sh.edm.s1kiosk.radio.ZigbeeStack
  * The follow-up card for the radio's active mode: what to do next in Home Assistant (or Zigbee2MQTT),
  * with a QR code where a phone helps, and the role's own buttons. One definition, two versions ([Place]):
  * the setup screen's radio step after Apply (short, RadioFollowUpView) and the kiosk settings menu's
- * Radio section (role tiles + panel, radio/ui/RadioSectionView). Pure (RadioFollowUpTest).
+ * Radio section (chips + panel, radio/ui/RadioSectionView). Pure (RadioFollowUpTest).
  *
  * Every button runs the same RadioController call as the Home Assistant entity it mirrors (`Radio mode`,
  * `Zigbee stack`, `Join/Leave Zigbee network`, `Leave Thread network`, `Thread dataset`). On the panel,

@@ -254,7 +254,7 @@ class RadioDefinition(
 
     // ------------------------------------------------------------------ settings
 
-    /** The settings menu's Radio section: the role tiles and the panel, then who may connect. */
+    /** The settings menu's Radio section: the modes as chips and the panel, then who may connect. */
     override fun settings(): List<SettingsSection> {
         val running = readout.running()
         val allow = SettingsItem.Text(
@@ -262,6 +262,7 @@ class RadioDefinition(
             // Same setting as HA's "Radio allowed clients" (docs/radio.md "Firewall"): empty = Home Assistant only.
             value = readout::allowedClients,
             enabled = { running },
+            shown = { it.ifBlank { "Home Assistant only" } },
             save = ::saveAllow,
         )
         val allowedNow = SettingsItem.Note { allowedNow(running, readout.allowedNow()) }
@@ -269,13 +270,10 @@ class RadioDefinition(
             SettingsItem.Native(NATIVE_KEY) { host -> RadioSettingsView(host, this) },
             SettingsItem.Group("Who may connect", listOf(allow, allowedNow)),
         ) else listOf(allow, allowedNow) // nothing to drive without the controller: no picker or card
-        return listOf(SettingsSection(id, "Radio", items))
+        return listOf(SettingsSection(id, "Radio", items, heading = "Zigbee / Thread radio"))
     }
 
-    /**
-     * "Save & restart" with a new allow-list: the old list stays on an error; otherwise the radio thread
-     * hands the new list to the helper before the app restarts.
-     */
+    /** A new allow-list: the old list stays on an error; otherwise done once the radio thread handed it to the helper. */
     private fun saveAllow(text: String, done: (String?) -> Unit) {
         val r = readout.controller()
         val wanted = text.trim()

@@ -672,11 +672,10 @@ Assistant entities and the Thread join from Home Assistant, as a Glassworks pane
   channel's `radio.set_mode`. The follow-up card (QR codes, stack choice, Join/Leave, the dataset
   field) is in the settings menu. The setup channel (web installer) offers the same five options;
   options carry optional `experimental` and `repeater` flags.
-- Kiosk settings menu, Radio section (0.4.3, `radio/ui/RadioSectionView`): a row of role tiles (icon in
-  the technology's colour, Zigbee sky blue / Thread violet; the active one tinted with a status dot:
-  green running or joined, amber starting or waiting, rose error; β for experimental), then a panel with
+- Kiosk settings menu, Radio section (`radio/ui/RadioSectionView`): the modes as chips (#63; the one in
+  effect lit, another asks to switch; before #63 a row of role tiles), then a panel with
   a header strip in the role's colour and a status pill (`RadioFollowUp.health`): Off as an empty state
-  ("Tap a role above"); a tapped tile previews that role with *Turn on …*; the active role's follow-up
+  ("Tap a role above"); the active role's follow-up
   card (QR code, settings, Zigbee stack choice, Join/Leave, the Thread role and dataset state, a
   write-only `Thread dataset` field behind "Advanced", the long text behind "How does this work?");
   *Starting …* while a role starts; a refused switch in plain words with the role that is still

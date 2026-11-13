@@ -41,11 +41,12 @@ class SetupStyle(val context: Context) {
         restyle(this, accent)
     }
 
+    /** The one white button, or a dark pill with a hairline (#63: amber is status, never a button). */
     fun restyle(b: TextView, accent: Boolean) {
         b.setTextColor(if (accent) BG else TX)
         b.background = GradientDrawable().apply {
-            cornerRadius = 16 * dp
-            if (accent) setColor(AMBER) else { setColor(S2); setStroke(px(1f).coerceAtLeast(1), BD) }
+            cornerRadius = 999f
+            if (accent) setColor(TX) else { setColor(S2); setStroke(px(1f).coerceAtLeast(1), BD) }
         }
     }
 

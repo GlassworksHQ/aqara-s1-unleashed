@@ -83,6 +83,7 @@ class RadioMockups {
         a.setContentView(o, ViewGroup.LayoutParams(-1, -1))
         val radio = radioDefinition(a, FixedReadout(f, allowedNow = if (f.mode == RadioMode.OFF) null else "192.0.2.20"))
         o.show(MenuFixture.model(a, radio, status = "screen on · presence near"))
+        o.previewSection("radio")
         idle()
         val target = prepare(o)
         layout(o)
@@ -110,8 +111,8 @@ class RadioMockups {
         save(name, o)
     }
 
-    /** The Radio section's top (its label, the tiles). */
-    private fun section(o: KioskSettingsOverlay): View = Mockup.label(o, "Radio").parent as View
+    /** The Radio page's top (its chips). */
+    private fun section(o: KioskSettingsOverlay): View = radio(o).section.tiles
     private fun radio(o: KioskSettingsOverlay) = o.previewNative("radio") as RadioSettingsView
     private fun panel(o: KioskSettingsOverlay): View = radio(o).section.panel
 

@@ -267,10 +267,13 @@ card with `restartsApp` (voice) restarts the app after Continue when it changed.
 when every pane's `setupSteps` are.
 
 **A settings section is data.** Items are `Text`, `Switch`, `Link`, `Note`, `Info` and `Group`, each
-with its value and a `save(value, done)`. "Save & restart" saves every item in order and waits for
-each `done`, so a save can finish on another thread (the radio's allow-list) or report a problem in
-words. `Native` is the one panel-only item: a view for what has no typed item yet (the radio's role
-tiles). A browser can't draw it, so new sections should not need it.
+with its value and a `save(value, done)`. Each change applies on its own, as the person makes it
+(#63): there is no "Save & restart". `done` can come from another thread (the radio's allow-list) and
+reports a problem in words. An item that only takes effect when the app starts again sets
+`restartsApp`; the menu then says so and offers *Restart now*. A `Text` says its value in words with
+`shown` ("After 2 minutes"). A section's `heading` is its page's title when it says more than its
+name in the list. `Native` is the one panel-only item: a view for what has no typed item yet (the
+radio's modes and card). A browser can't draw it, so new sections should not need it.
 
 **Order.** `settingsOrder` puts the core's Dashboard, Screen and Network first, then the panes'
 sections in definition order (Voice, Music, Radio, Wall base, Time zone), then Log, Security and

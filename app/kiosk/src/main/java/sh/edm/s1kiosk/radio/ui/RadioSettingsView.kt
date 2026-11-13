@@ -5,7 +5,7 @@ import dev.glassworks.pane.SettingsItem
 import sh.edm.s1kiosk.radio.RadioDefinition
 
 /**
- * The settings menu's live radio views: the role tiles, then the panel (radio/ui/RadioSectionView),
+ * The settings menu's live radio views: the modes as chips, then the panel (radio/ui/RadioSectionView),
  * made once per menu and kept across openings, so the dataset field keeps its focus and text. Their
  * confirmations open [dialog], centred over the whole menu. Main thread.
  */

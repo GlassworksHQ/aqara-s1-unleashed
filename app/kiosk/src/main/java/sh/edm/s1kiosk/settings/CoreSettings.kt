@@ -5,11 +5,13 @@ import dev.glassworks.pane.SettingsItem.TextKind
 import dev.glassworks.pane.SettingsPlace
 import dev.glassworks.pane.SettingsSection
 import sh.edm.s1kiosk.KioskPrefs
+import java.util.Locale
 
 /**
- * The settings sections the app has itself, before and after the panes': Home Assistant and the
- * dashboard, the screen ("Panel"), About. Network, Log and Security have nothing yet. Values are read
- * when the menu opens; everything is saved with "Save & restart", the same saves as before.
+ * The settings sections the app has itself, before and after the panes': Dashboard, Screen, About
+ * (#63). Network, Log and Security have nothing yet. Values are read when the menu opens; each change
+ * applies on its own. The ones Gecko reads at start (the dashboard's address, zoom, secure hosts) ask
+ * for a restart, as their adb extras always did.
  */
 class CoreSettings(
     private val prefs: KioskPrefs,
@@ -19,41 +21,61 @@ class CoreSettings(
     /** The device's own settings app, when it has one (the frame's systemSettings). */
     private val deviceSettings: SettingsItem.Link?,
     private val licences: SettingsItem.Link,
+    /** What the running app does when a setting it follows live changes. */
+    private val live: Live = Live(),
 ) {
+    class Live(
+        /** Full screen: the page hides or shows HA's header and sidebar. */
+        val fullScreen: () -> Unit = {},
+        /** The presence sensor takes the new range. */
+        val presenceRange: () -> Unit = {},
+        /** Brightness follows the light sensor, or stops. */
+        val brightness: () -> Unit = {},
+    )
+
     fun sections(): Map<SettingsPlace, SettingsSection> = mapOf(
-        SettingsPlace.DASHBOARD to SettingsSection("dashboard", "Home Assistant & dashboard", listOf(
-            text("Dashboard URL", "auto (find Home Assistant)", TextKind.ADDRESS, { prefs.urlSetting }) {
-                prefs.urlSetting = it.ifBlank { KioskPrefs.AUTO }
-            },
-            text("Zoom (1.0 – 2.0)", "auto (device density)", TextKind.DECIMAL, { if (prefs.zoom > 0f) prefs.zoom.toString() else "" }, narrow = true) {
-                prefs.zoom = it.toFloatOrNull() ?: 0f
-            },
-            text("Extra secure-context hosts", "e.g. homeassistant.local,192.168.1.100", TextKind.ADDRESS, { prefs.extraSecureHosts }, narrow = true) {
-                prefs.extraSecureHosts = it
-            },
-            switch("Hide Home Assistant's header & sidebar", "The dashboard fills the screen", { prefs.hideHeader }) {
+        SettingsPlace.DASHBOARD to SettingsSection("dashboard", "Dashboard", listOf(
+            text(
+                "Home Assistant", "Found automatically", TextKind.ADDRESS,
+                value = { prefs.urlSetting.takeIf { it != KioskPrefs.AUTO }.orEmpty() },
+                shown = { it.ifBlank { found() } }, restartsApp = true,
+            ) { prefs.urlSetting = it.ifBlank { KioskPrefs.AUTO } },
+            switch("Full screen", "Hide Home Assistant's header and sidebar", { prefs.hideHeader }) {
                 prefs.hideHeader = it
                 prefs.hideSidebar = it
+                live.fullScreen()
             },
+            text(
+                "Zoom", "Auto", TextKind.DECIMAL, value = { if (prefs.zoom > 0f) number(prefs.zoom) else "" },
+                shown = { v -> v.toFloatOrNull()?.let { "${number(it)}×" } ?: "Auto" }, restartsApp = true,
+            ) { prefs.zoom = it.toFloatOrNull() ?: 0f },
+            text(
+                "Secure hosts", "Other addresses the dashboard loads over HTTP, like a camera", TextKind.ADDRESS,
+                value = { prefs.extraSecureHosts }, restartsApp = true,
+            ) { prefs.extraSecureHosts = it },
         )),
-        SettingsPlace.SCREEN to SettingsSection("screen", "Panel", listOfNotNull(
-            switch("Screen follows presence", "Off when idle, on when someone comes close", { prefs.screenMode == "presence" }) {
+        SettingsPlace.SCREEN to SettingsSection("screen", "Screen", listOfNotNull(
+            switch("Wake when someone's near", "Uses the presence sensor · up to ${range()}", { prefs.screenMode == "presence" }) {
                 prefs.screenMode = if (it) "presence" else "always"
             },
-            text("Screen off after idle (s, 0 = never)", "120", TextKind.NUMBER, { prefs.idleOffSec.toString() }, narrow = true) {
-                prefs.idleOffSec = it.toIntOrNull() ?: 120
-            },
-            text("At night: off after (s)", "20", TextKind.NUMBER, { prefs.nightIdleOffSec.toString() }, narrow = true) {
-                prefs.nightIdleOffSec = it.toIntOrNull() ?: 20
-            },
-            text("Night window", "22:00-07:00 (empty = off)", TextKind.PLAIN, { prefs.nightWindow }, narrow = true) {
-                prefs.nightWindow = it
-            },
-            text("Presence range (m, 0.1 – 2.5)", "firmware default (1.5 m)", TextKind.DECIMAL,
-                { if (prefs.presenceRangeM > 0f) prefs.presenceRangeM.toString() else "" }, narrow = true) {
-                prefs.presenceRangeM = it.toFloatOrNull() ?: 0f
-            },
-            switch("Auto brightness", "Follows the light sensor", { prefs.autoBrightness }) { prefs.autoBrightness = it },
+            text(
+                "Presence range", "The sensor's own (1.5 m)", TextKind.DECIMAL,
+                value = { if (prefs.presenceRangeM > 0f) number(prefs.presenceRangeM) else "" },
+                shown = { v -> v.toFloatOrNull()?.let { "Up to ${number(it)} m" } ?: "" },
+            ) { prefs.presenceRangeM = it.toFloatOrNull() ?: 0f; live.presenceRange() },
+            text(
+                "Turn off when idle", "120", TextKind.NUMBER, value = { prefs.idleOffSec.toString() },
+                shown = { v -> v.toIntOrNull()?.let(::afterIdle) ?: v },
+            ) { prefs.idleOffSec = it.toIntOrNull() ?: 120 },
+            text(
+                "At night", "22:00-07:00", TextKind.PLAIN, value = { prefs.nightWindow },
+                shown = { w -> if (w.isBlank()) "Off" else "${w.replace("-", " – ")} · off after ${prefs.nightIdleOffSec} s" },
+            ) { prefs.nightWindow = it },
+            text(
+                "At night, turn off after", "20", TextKind.NUMBER, value = { prefs.nightIdleOffSec.toString() },
+                shown = { v -> v.toIntOrNull()?.let { "$it s" } ?: v },
+            ) { prefs.nightIdleOffSec = it.toIntOrNull() ?: 20 },
+            switch("Brightness", "Follows the room's light", { prefs.autoBrightness }) { prefs.autoBrightness = it; live.brightness() },
             deviceSettings,
         )),
         SettingsPlace.ABOUT to SettingsSection("about", "About", listOf(
@@ -62,8 +84,17 @@ class CoreSettings(
         )),
     )
 
-    private fun text(title: String, hint: String, kind: TextKind, value: () -> String, narrow: Boolean = false, save: (String) -> Unit) =
-        SettingsItem.Text(title, hint, kind, value, narrow = narrow, save = { v, done -> save(v); done(null) })
+    /** Where the dashboard loads from when its address is automatic. */
+    private fun found(): String = prefs.haBase?.let { b ->
+        "${b.substringAfter("://").substringBefore("/").substringBefore(":")} · found automatically"
+    } ?: "Found automatically"
+
+    private fun range(): String = if (prefs.presenceRangeM > 0f) "${number(prefs.presenceRangeM)} m" else "1.5 m"
+
+    private fun text(
+        title: String, hint: String, kind: TextKind, value: () -> String,
+        shown: (String) -> String = { it }, restartsApp: Boolean = false, save: (String) -> Unit,
+    ) = SettingsItem.Text(title, hint, kind, value, shown = shown, restartsApp = restartsApp, save = { v, done -> save(v.trim()); done(null) })
 
     private fun switch(title: String, detail: String, value: () -> Boolean, save: (Boolean) -> Unit) =
         SettingsItem.Switch(title, detail, value) { v, done -> save(v); done(null) }
@@ -71,5 +102,15 @@ class CoreSettings(
     companion object {
         const val LICENCES_TITLE = "Open source licences"
         const val LICENCES_DETAIL = "The open-source software in the app and the radio package"
+
+        /** "After 2 minutes", "After 45 s", "Never" (0). */
+        fun afterIdle(sec: Int): String = when {
+            sec <= 0 -> "Never"
+            sec % 60 == 0 -> "After ${sec / 60} minute${if (sec == 60) "" else "s"}"
+            else -> "After $sec s"
+        }
+
+        /** 1.25, 1.5, 2: no trailing zeros. */
+        fun number(v: Float): String = String.format(Locale.ROOT, "%.2f", v).trimEnd('0').trimEnd('.')
     }
 }

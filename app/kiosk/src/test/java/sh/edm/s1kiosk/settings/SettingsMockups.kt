@@ -45,10 +45,12 @@ class SettingsMockups {
         return o
     }
 
-    /** The menu scrolled so the section titled [title] is at the top ([bottom]: its end at the bottom). */
-    private fun shot(name: String, o: KioskSettingsOverlay, title: String? = null, bottom: Boolean = false) {
+    /** The menu on the section [id], after [then]. */
+    private fun shot(name: String, o: KioskSettingsOverlay, id: String, then: (KioskSettingsOverlay) -> Unit = {}) {
+        o.previewSection(id)
+        then(o)
+        Mockup.idle()
         Mockup.layout(o)
-        if (title != null) o.previewScrollTo(Mockup.label(o, title).parent as android.view.View, alignBottom = bottom)
         Mockup.save(name, o)
     }
 
@@ -56,11 +58,13 @@ class SettingsMockups {
     fun mockups() {
         assumeTrue("set -Ps1MockupDir=<dir> to write the mock-ups", Mockup.dir != null)
 
-        shot("settings-01-top", menu(radioRunning = true))
-        shot("settings-02-radio", menu(radioRunning = true), "Radio")
-        shot("settings-03-panel", menu(radioRunning = true), "Panel")
-        shot("settings-04-about", menu(radioRunning = true), "About", bottom = true)
-        shot("settings-05-radio-service-not-running", menu(radioRunning = false), "Radio")
-        shot("settings-06-panel-no-device-settings", menu(radioRunning = true, deviceSettings = false), "Panel")
+        shot("settings-01-dashboard", menu(radioRunning = true), "dashboard")
+        shot("settings-02-radio", menu(radioRunning = true), "radio")
+        shot("settings-03-screen", menu(radioRunning = true), "screen")
+        shot("settings-04-about", menu(radioRunning = true), "about")
+        shot("settings-05-radio-service-not-running", menu(radioRunning = false), "radio")
+        shot("settings-06-screen-no-device-settings", menu(radioRunning = true, deviceSettings = false), "screen")
+        shot("settings-07-edit-a-value", menu(radioRunning = true), "dashboard") { it.previewEdit("Home Assistant") }
+        shot("settings-08-restart-needed", menu(radioRunning = true), "dashboard") { it.previewRestart() }
     }
 }

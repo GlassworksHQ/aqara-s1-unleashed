@@ -18,6 +18,11 @@ below as the release notes.
   to the next try. Setup has four steps: Wi-Fi, Home Assistant, Panes and Sign in. On Panes you choose
   what the panel does: voice, music and the Zigbee / Thread radio, with the radio's mode as a row of
   choices. What to do next for the radio's mode is in the settings menu's Radio section.
+- **Settings apply as you change them.** The settings menu has the new look: one section at a time,
+  each setting with its value under it. A switch takes effect when you tap it, and a value when you
+  save it. There is no *Save & restart* any more; the few changes that need the app to restart (the
+  dashboard's address, zoom, secure hosts) say so and offer *Restart now*. The radio's modes are a row
+  of choices.
 - **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
   page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
   Nothing in the sections changed.

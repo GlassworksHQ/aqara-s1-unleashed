@@ -1,7 +1,5 @@
 package sh.edm.s1kiosk.settings
 
-import dev.glassworks.pane.SettingsItem
-
 /**
  * How the kiosk settings menu ([KioskSettingsOverlay]) is asked for, and texts it shows. Pure, for tests.
  * What is in it: [CoreSettings] and the panes' definitions.
@@ -21,17 +19,7 @@ object SettingsMenu {
     fun requested(boolExtra: (String) -> Boolean?): Boolean =
         boolExtra(EXTRA) == true || boolExtra(LEGACY_EXTRA) == true
 
-    const val AQARA_TITLE = "Panel settings (Aqara)"
-    const val AQARA_DETAIL = "Wi-Fi, sound, display, updates, factory reset"
-
-    /** [items] grouped into rows: two adjacent narrow fields share one, everything else has its own. */
-    fun rows(items: List<SettingsItem>): List<List<SettingsItem>> {
-        fun narrow(i: SettingsItem?) = i is SettingsItem.Text && i.narrow
-        val out = ArrayList<List<SettingsItem>>()
-        var i = 0
-        while (i < items.size) {
-            if (narrow(items[i]) && narrow(items.getOrNull(i + 1))) { out += listOf(items[i], items[i + 1]); i += 2 } else { out += listOf(items[i]); i++ }
-        }
-        return out
-    }
+    /** The device's own settings app, last on the Screen page, quieter than the rest (#63). */
+    const val AQARA_TITLE = "Aqara's own settings"
+    const val AQARA_DETAIL = ""
 }

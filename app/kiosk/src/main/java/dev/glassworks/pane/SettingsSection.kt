@@ -15,8 +15,11 @@ import android.view.View
 class SettingsSection(
     /** Stable, for links and tests (`dashboard`, `screen`, a pane's id). */
     val id: String,
+    /** Its name in the menu's list (`Radio`). */
     val title: String,
     val items: List<SettingsItem>,
+    /** The heading of its page, when it says more than [title] (`Zigbee / Thread radio`). */
+    val heading: String = title,
 )
 
 /** Where a settings section sits. The core's own come first and last; panes go in between. */
@@ -31,22 +34,28 @@ fun settingsOrder(core: Map<SettingsPlace, SettingsSection>, panes: List<Setting
         .filter { it.items.isNotEmpty() }
 
 /**
- * A row in a [SettingsSection]. Values are read when the menu opens. Changes are saved together
- * ("Save & restart"): each item's `save` gets the new value and calls `done` with null, or with what
- * went wrong in words for the person at the panel. The core waits for every `done` before it restarts.
+ * A row in a [SettingsSection]. Values are read when the menu opens. Each change applies on its own,
+ * as the person makes it (#63): `save` gets the new value and calls `done` with null, or with what went
+ * wrong in words for the person at the panel. An item whose change only takes effect when the app
+ * starts again says so with `restartsApp`; the menu then says so and offers to restart.
  */
 sealed interface SettingsItem {
 
     enum class TextKind { PLAIN, ADDRESS, NUMBER, DECIMAL }
 
-    /** A value typed in: an address, a number, a list. [narrow]: two narrow fields in a row share a line. */
+    /**
+     * A value typed in: an address, a number, a list. The menu shows [shown] of the value under the
+     * title ([hint] when it is empty) and edits it on its own.
+     */
     class Text(
         val title: String,
         val hint: String,
         val kind: TextKind,
         val value: () -> String,
-        val narrow: Boolean = false,
         val enabled: () -> Boolean = { true },
+        /** The value as the row shows it ("After 2 minutes" for `120`). */
+        val shown: (String) -> String = { it },
+        val restartsApp: Boolean = false,
         val save: (String, done: (String?) -> Unit) -> Unit,
     ) : SettingsItem
 
@@ -54,6 +63,7 @@ sealed interface SettingsItem {
         val title: String,
         val detail: String,
         val value: () -> Boolean,
+        val restartsApp: Boolean = false,
         val save: (Boolean, done: (String?) -> Unit) -> Unit,
     ) : SettingsItem
 
@@ -99,14 +109,4 @@ sealed interface SettingsItem {
         /** The menu closes or is drawn again: close dialogs. */
         fun reset() {}
     }
-}
-
-/** Saves [changes] one after another, in order, then calls [finished] with every problem reported. */
-fun saveAll(changes: List<(done: (String?) -> Unit) -> Unit>, finished: (problems: List<String>) -> Unit) {
-    val problems = ArrayList<String>()
-    fun next(i: Int) {
-        if (i == changes.size) { finished(problems); return }
-        changes[i] { p -> p?.let(problems::add); next(i + 1) }
-    }
-    next(0)
 }

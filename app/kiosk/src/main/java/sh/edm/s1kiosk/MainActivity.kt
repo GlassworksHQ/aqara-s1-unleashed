@@ -24,7 +24,6 @@ import dev.glassworks.engine.PageHost
 import dev.glassworks.engine.PagePort
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.applyFrom
-import dev.glassworks.pane.saveAll
 import dev.glassworks.pane.settingsOrder
 import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.auth.FrontendUrls
@@ -200,10 +199,7 @@ class MainActivity : Activity() {
         threadJoinOverlay = sh.edm.s1kiosk.setup.ThreadJoinOverlay(this).apply {
             onClose = { HaAuth.threadJoin.disarm(); hide() }
         }
-        settingsOverlay = KioskSettingsOverlay(this).apply {
-            onSave = ::saveSettings
-            onReload = { hide(); loadDashboard() }
-        }
+        settingsOverlay = KioskSettingsOverlay(this).apply { onRestart = ::restartProcess }
         // Improv-aware from the start: KioskService (which registers the provider) starts after this.
         wifiStatus = ImprovWifiStatus(this)
         root = android.widget.FrameLayout(this)
@@ -724,28 +720,18 @@ class MainActivity : Activity() {
                 if (!frame.openSystemSettings(c)) Toast.makeText(c, "No settings app on this panel", Toast.LENGTH_LONG).show()
             },
             licences = SettingsItem.Link(CoreSettings.LICENCES_TITLE, CoreSettings.LICENCES_DETAIL) { Licences.show(this) },
+            live = CoreSettings.Live(
+                fullScreen = ::pushConfig,
+                presenceRange = { glassworks.screen.applyPresenceRange() },
+                brightness = { glassworks.screen.refreshBrightness() },
+            ),
         )
+        val paneSections = panes.flatMap { it.settings() }
         settingsOverlay.show(
-            KioskSettingsOverlay.Model(settingsOrder(core.sections(), panes.flatMap { it.settings() }), BuildConfig.VERSION_NAME),
+            KioskSettingsOverlay.Model(settingsOrder(core.sections(), paneSections), BuildConfig.VERSION_NAME, paneSections.map { it.id }.toSet()),
         )
         handler.removeCallbacks(settingsTick)
         handler.postDelayed(settingsTick, 500)
-    }
-
-    /**
-     * "Save & restart": every field's save, in order, then the process restart that applies them. A save
-     * that went wrong (the radio's allow-list) keeps its old value: its message gets time to be read first.
-     */
-    private fun saveSettings(changes: List<(done: (String?) -> Unit) -> Unit>) {
-        saveAll(changes) { problems ->
-            handler.post {
-                if (problems.isEmpty()) restartProcess()
-                else {
-                    Toast.makeText(this, problems.joinToString("\n"), Toast.LENGTH_LONG).show()
-                    handler.postDelayed({ restartProcess() }, 3500)
-                }
-            }
-        }
     }
 
     private var restartWaitingSince = 0L

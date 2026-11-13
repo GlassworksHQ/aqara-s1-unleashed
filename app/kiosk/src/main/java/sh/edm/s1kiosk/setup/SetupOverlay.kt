@@ -45,6 +45,7 @@ import sh.edm.s1kiosk.ui.Glass.Companion.TX
 import sh.edm.s1kiosk.ui.Inter
 import sh.edm.s1kiosk.ui.StackView
 import sh.edm.s1kiosk.ui.StackView.Look
+import sh.edm.s1kiosk.ui.Wrap
 
 /**
  * The first-boot setup screen (docs/onboarding.md, step 4), as drawn in #63: a native, full-screen
@@ -631,12 +632,12 @@ class SetupOverlay(
                 if (c.options.isEmpty()) return@forEachIndexed
                 val chips = c.options.map { o -> o.id to g.chip(o.label).apply { setOnClickListener { option[i] = o.id; sync() } } }
                 chipRows += i to chips
-                last = Wrap(px(10f), px(6f)).apply {
+                last = Wrap(context, px(10f), px(6f)).apply {
                     addView(g.text(15.5f, MU).apply { text = "${c.optionsLabel}:"; setPadding(0, px(10f), px(2f), px(10f)) })
                     chips.forEach { (_, chip) -> addView(chip) }
                 }.also { addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(11f) }) }
             }
-            val row = last ?: Wrap(0, 0).also { addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14f) }) }
+            val row = last ?: Wrap(context, 0, 0).also { addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14f) }) }
             row.addView(next)
             row.end = next
         }
@@ -698,47 +699,6 @@ class SetupOverlay(
         }
 
         private fun redraw() { sync(); model?.let { bindCard(it, stepChanged = false) } }
-    }
-
-    /**
-     * Lays its children out left to right and wraps to a new line when one doesn't fit; each line's
-     * children are centred on it. [end] sits at the right end of the last line.
-     */
-    private inner class Wrap(private val gapX: Int, private val gapY: Int) : ViewGroup(this@SetupOverlay.context) {
-        var end: View? = null
-        private val lines = ArrayList<List<View>>()
-
-        override fun onMeasure(w: Int, h: Int) {
-            val max = MeasureSpec.getSize(w)
-            lines.clear()
-            var line = ArrayList<View>(); var x = 0
-            for (i in 0 until childCount) {
-                val c = getChildAt(i)
-                if (c.visibility == View.GONE) continue
-                c.measure(MeasureSpec.makeMeasureSpec(max, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
-                if (line.isNotEmpty() && x + c.measuredWidth > max) { lines += line; line = ArrayList(); x = 0 }
-                line += c
-                x += c.measuredWidth + gapX
-            }
-            if (line.isNotEmpty()) lines += line
-            val height = lines.sumOf { l -> l.maxOf { it.measuredHeight } } + gapY * (lines.size - 1).coerceAtLeast(0)
-            setMeasuredDimension(max, height)
-        }
-
-        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
-            var y = 0
-            for (line in lines) {
-                val lh = line.maxOf { it.measuredHeight }
-                var x = 0
-                for (c in line) {
-                    val cx = if (c === end) r - l - c.measuredWidth else x
-                    val cy = y + (lh - c.measuredHeight) / 2
-                    c.layout(cx, cy, cx + c.measuredWidth, cy + c.measuredHeight)
-                    x += c.measuredWidth + gapX
-                }
-                y += lh + gapY
-            }
-        }
     }
 
     companion object {
