@@ -3,7 +3,8 @@
 # release.yml makes releases.
 #
 #   app      every module's JVM unit tests, an unsigned release build, and
-#            tools/release/check-update-compat.sh (the APK still updates panels in place)
+#            tools/release/check-update-compat.sh (the APK still updates panels in place). When app/
+#            changes, also the ESPHome API tests against the real aioesphomeapi client
 #   web      the npm workspaces from the repo root (job id kept, as branch protection names it):
 #            Kiln, its packages, the frame recipes and packages/*: typecheck, tests, both builds
 #   scripts  tools/install.sh's off-device tests, the perf test's rubric, report and grade
@@ -70,6 +71,44 @@ jobs:
 
       - name: Still updates panels in place
         run: tools/release/check-update-compat.sh app/kiosk/build/outputs/apk/release/kiosk-release-unsigned.apk
+
+      # EspHomeKeepaliveTest and EspHomeApiTest against the real aioesphomeapi client (#180). They skip
+      # without ESPHOME_PYTHON, so this step fails if either skipped. About a minute (venv from hashed
+      # wheels, then the two tests only), and only when app/ or this file changed.
+      - name: aioesphomeapi tests needed?
+        id: esphome
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        # Fails closed: without a base commit to compare with, or when git fails, the tests run.
+        run: |
+          if [ -n "$BASE" ] && git fetch -q --depth=1 origin "$BASE" 2>/dev/null \
+             && changed=$(git diff --name-only "$BASE" HEAD -- app .github/workflows/pr.yml) && [ -z "$changed" ]; then
+            echo "Nothing under app/ changed; skipping the aioesphomeapi tests."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: steps.esphome.outputs.run == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: aioesphomeapi tests (real client)
+        if: steps.esphome.outputs.run == 'true'
+        working-directory: app
+        run: |
+          python -m venv "$RUNNER_TEMP/esphome-venv"
+          "$RUNNER_TEMP/esphome-venv/bin/pip" install --quiet --require-hashes --only-binary :all: \
+            -r libs/esphome-api/test-requirements.txt
+          # --rerun: Gradle doesn't see ESPHOME_PYTHON, and the Unit tests step left both tasks up to date.
+          ESPHOME_PYTHON="$RUNNER_TEMP/esphome-venv/bin/python" ./gradlew --no-daemon \
+            :esphome-api:test --tests sh.edm.esphome.EspHomeKeepaliveTest --rerun \
+            :kiosk:testDebugUnitTest --tests sh.edm.s1kiosk.esphome.EspHomeApiTest --rerun
+          for f in libs/esphome-api/build/test-results/test/TEST-sh.edm.esphome.EspHomeKeepaliveTest.xml \
+                   kiosk/build/test-results/testDebugUnitTest/TEST-sh.edm.s1kiosk.esphome.EspHomeApiTest.xml; do
+            grep -q '<testsuite [^>]* skipped="0"' "$f" || { echo "::error::$f: a test skipped"; exit 1; }
+          done
 
   web:
     runs-on: ubuntu-24.04

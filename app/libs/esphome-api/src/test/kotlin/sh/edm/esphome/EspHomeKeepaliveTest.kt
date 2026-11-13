@@ -2,15 +2,21 @@ package sh.edm.esphome
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FilterInputStream
+import java.io.FilterOutputStream
 import java.io.InputStream
+import java.io.OutputStream
 import java.net.InetAddress
+import java.net.ServerSocket
 import java.net.Socket
 import java.util.Collections
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -96,6 +102,91 @@ class EspHomeKeepaliveTest {
                 // Checked on the socket: the server's own timer may be closing it while connectionCount still counts it.
                 at(answered + unresponsive + 1)
                 while (readType(inp) != -1) Unit
+            }
+        } finally { s.stop() }
+    }
+
+    /**
+     * Holds the server's next flush until the reader thread has read and handled what the client sent
+     * after it: the client's answer then always arrives before send() returns, the race #171 fixed.
+     */
+    private class WriteHold {
+        @Volatile var armed = false
+        @Volatile private var flushed = false
+        @Volatile private var readAfterFlush = 0
+        private val handled = CountDownLatch(1)
+        @Volatile var heldUntilHandled = false
+
+        fun wrap(s: Socket) = object : Socket() {
+            private val inp by lazy { HeldIn(s.getInputStream()) }
+            private val out by lazy { HeldOut(s.getOutputStream()) }
+            override fun getInputStream(): InputStream = inp
+            override fun getOutputStream(): OutputStream = out
+        }
+
+        inner class HeldOut(o: OutputStream) : FilterOutputStream(o) {
+            override fun write(b: ByteArray, off: Int, len: Int) = out.write(b, off, len)
+            override fun flush() {
+                val hold = armed
+                if (hold) { armed = false; flushed = true }
+                out.flush()
+                if (hold) heldUntilHandled = handled.await(10, TimeUnit.SECONDS)
+            }
+        }
+
+        /** The reader asks for more only once it has handled the last frame (lastRead, pingSent). */
+        inner class HeldIn(i: InputStream) : FilterInputStream(i) {
+            private fun entered() { if (flushed && readAfterFlush >= 3) handled.countDown() }
+            private fun got(n: Int) = n.also { if (flushed && it > 0) readAfterFlush += it }
+            override fun read(): Int { entered(); return `in`.read().also { if (it >= 0) got(1) } }
+            override fun read(b: ByteArray, off: Int, len: Int): Int { entered(); return got(`in`.read(b, off, len)) }
+        }
+    }
+
+    /**
+     * #171: the answer to a keepalive ping can be read before send() returns. Here it always is, and
+     * the client must not be dropped at unresponsiveMs for a ping it answered. Without real traffic
+     * after the answer: the test above sends its own ping, which hides this.
+     */
+    @Test
+    fun anAnswerReadBeforeThePingsSendReturnsKeepsTheClient() {
+        // Production-like periods: the server's own timer first ticks 5 s after start, after this test.
+        val keepalive = 60_000L; val unresponsive = 150_000L
+        val now = AtomicLong(1_000_000)
+        val hold = WriteHold()
+        val s = server(keepalive, unresponsive).apply {
+            clock = now::get
+            newServerSocket = { object : ServerSocket() { override fun accept() = hold.wrap(super.accept()) } }
+        }
+        s.start()
+        try {
+            Socket(InetAddress.getLoopbackAddress(), s.localPort).use { sock ->
+                sock.soTimeout = 10_000
+                val out = sock.getOutputStream(); val inp = sock.getInputStream()
+                fun send(type: Int, payload: ByteArray = ByteArray(0)) { out.write(frame(type, payload)); out.flush() }
+                fun await(type: Int) {
+                    while (true) {
+                        val t = readType(inp)
+                        assertTrue("server closed a client that answered its ping", t != -1)
+                        if (t == type) return
+                    }
+                }
+                send(Msg.HELLO_REQUEST, ProtoWriter().string(1, "Home Assistant test").uint32(2, 1).uint32(3, 10).toByteArray())
+                send(Msg.PING_REQUEST); await(Msg.PING_RESPONSE)
+
+                val pinged = now.get() + keepalive + 1
+                now.set(pinged)
+                hold.armed = true
+                val tick = Thread { s.keepaliveTick() }.apply { start() }
+                await(Msg.PING_REQUEST)
+                send(Msg.PING_RESPONSE)
+                tick.join(10_000)
+                assertFalse("keepaliveTick still blocked", tick.isAlive)
+                assertTrue("the ping's flush was held until its answer was handled", hold.heldUntilHandled)
+
+                now.set(pinged + unresponsive + 1); s.keepaliveTick()
+                assertEquals("dropped a client that answered the ping", 1, s.connectionCount)
+                await(Msg.PING_REQUEST)
             }
         } finally { s.stop() }
     }
