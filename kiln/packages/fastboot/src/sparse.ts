@@ -195,6 +195,11 @@ async function createImage(header: SparseHeader, chunks: Array<SparseChunk>): Pr
  * @returns {Promise<Blob>} Promise that resolves the blob containing the new sparse image.
  */
 export async function fromRaw(blob: Blob): Promise<Blob> {
+    if (blob.size % 4096 !== 0) {
+        throw new ImageError(
+            `A raw image must be whole 4096-byte blocks to be made sparse (${blob.size} bytes)`
+        );
+    }
     let header = {
         blockSize: 4096,
         blocks: blob.size / 4096,
@@ -230,10 +235,6 @@ export async function* splitBlob(blob: Blob, splitSize: number) {
         `Splitting ${blob.size}-byte sparse image into ${splitSize}-byte chunks`
     );
 
-    // 7/8 is a safe value for the split size, to account for extra overhead
-    // AOSP source code does the same
-    const safeSendValue = Math.floor(splitSize * (7/8));
-
     // Short-circuit if splitting isn't required
     if (blob.size <= splitSize) {
         common.logDebug("Blob fits in 1 payload, not splitting");
@@ -251,6 +252,11 @@ export async function* splitBlob(blob: Blob, splitSize: number) {
     if (header === null) {
         throw new ImageError("Blob is not a sparse image");
     }
+
+    // 7/8 is a safe value for the split size, to account for extra overhead
+    // AOSP source code does the same. Whole blocks, so a split raw chunk stays valid.
+    const safeSendValue =
+        Math.floor((splitSize * (7 / 8)) / header.blockSize) * header.blockSize;
 
     // Remove CRC32 (if present), otherwise splitting will invalidate it
     header.crc32 = 0;
@@ -301,7 +307,9 @@ export async function* splitBlob(blob: Blob, splitSize: number) {
 
         for(const chunk of chunksToProcess) {
 
-            let bytesRemaining = splitSize - calcChunksSize(splitChunks);
+            // Room for this chunk's header and the closing skip chunk's, too
+            let bytesRemaining =
+                splitSize - calcChunksSize(splitChunks) - 2 * CHUNK_HEADER_SIZE;
             common.logVerbose(
                 `  Chunk ${i}: type ${chunk.type}, ${chunk.dataBytes} bytes / ${chunk.blocks} blocks, ${bytesRemaining} bytes remaining`
             );

@@ -94,4 +94,30 @@ describe('flashBlob against a Qualcomm LK fake', () => {
     await expect(flash(lk, 'system', rawImage(8))).rejects.toThrow(/flash:system: size too large/);
   });
 
+  // Upstream counted neither the chunk's own header nor the closing don't-care chunk, so a piece
+  // could come out 24 bytes over the limit, and LK refuses that download ("data too large").
+  it('keeps a piece within max-download-size when its chunks fill it exactly', async () => {
+    const max = 64 * 1024;
+    const lk = new FakeLk(max, [['userdata', 1024 * BLOCK]]);
+    const fills: Chunk[] = Array.from({ length: 510 }, (_, i) => ({ fill: i, blocks: 1 }));
+    const { image, expected } = sparseImage([...fills, { raw: rawImage(14) }, { raw: rawImage(2) }], 0xee);
+    await flash(lk, 'userdata', image);
+    for (const n of lk.downloads) expect(n).toBeLessThanOrEqual(max);
+    expect(lk.parts.get('userdata')!.subarray(0, expected.length)).toEqual(expected);
+  });
+
+  // 7/8 of a limit that is not a multiple of the block size used to cut raw chunks mid-block.
+  it('splits correctly when max-download-size is not a multiple of the block size', async () => {
+    const lk = new FakeLk(100_000, [['system', 128 * BLOCK]]);
+    const img = rawImage(100);
+    await flash(lk, 'system', img);
+    for (const n of lk.downloads) expect(n).toBeLessThanOrEqual(100_000);
+    expect(lk.parts.get('system')!.subarray(0, img.length)).toEqual(img);
+  });
+
+  it('refuses a raw image that is not whole blocks when it has to be made sparse', async () => {
+    const lk = new FakeLk(0x8000, [['system', 64 * BLOCK]]);
+    await expect(flash(lk, 'system', new Uint8Array(16 * BLOCK + 100))).rejects.toThrow(/whole 4096-byte blocks/);
+    expect(lk.commands.filter((c) => c.startsWith('flash:'))).toEqual([]);
+  });
 });
