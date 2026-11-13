@@ -1,210 +1,247 @@
 {
-  "_comment": "The perf rubric: the bands' thresholds and the letter rules. The single source for tools/perf/grade.py, tools/perf/grade.ts (the site computes the letter from a summary with it) and the test page (perf.js, to stop the ladder). docs/perf.md cites each source. Change on purpose, with the docs and the tests (test/grade-cases.json).",
-  "version": 5,
-  "protocol_version": 3,
-  "_protocol": "The measurement protocol these rules apply to (tools/perf/page/tiers.js PROTOCOL): the pages, the swipes, the update rate, the windows and how the runner reads them. A summary from another protocol can't be graded with this file: re-measure.",
-  "one_frame_ms": 16.667,
-  "vsync_slack_ms": 0.5,
-  "metrics": {
-    "frame_p95_ms": {
-      "good_max": 17.167,
-      "poor_above": 33.833,
-      "source": "web.dev RAIL (16 ms frame budget); Android vitals slow frame (> 16 ms). One and two frames at 60 Hz, plus 0.5 ms slack"
-    },
-    "frame_jank_pct": {
-      "good_max": 5,
-      "poor_above": 50,
-      "source": "good: same as p95 within budget (derived); poor: Play Console 'excessive slow frames' (> 50% over 16 ms)"
-    },
-    "frame_frozen_pct": {
-      "good_max": 0,
-      "poor_above": 0.1,
-      "source": "Android vitals frozen frame (> 700 ms); poor: Play Console 'excessive frozen frames' (> 0.1%); good 0%: project choice"
-    },
-    "load_ms": {
-      "good_max": 2500,
-      "poor_above": 4000,
-      "source": "Core Web Vitals LCP bounds (good <= 2.5 s, poor > 4 s), applied to each reference dashboard from navigation start to settled (the first frame followed by 750 ms of quiet, after the load event). Settled is at or after the largest paint, so this is stricter than LCP"
-    },
-    "inp_ms": {
-      "good_max": 200,
-      "poor_above": 500,
-      "source": "Core Web Vitals INP (good <= 200 ms, poor > 500 ms), taps on each reference dashboard's toggle"
-    },
-    "start_ms": {
-      "good_max": 2500,
-      "poor_at": 5000,
-      "source": "app process start to engine ready (GeckoView's own first PageStart). poor: Android vitals' excessive cold start bound (>= 5 s), which vitals apply to TTID. good <= 2.5 s: project choice (LCP's bound)"
-    }
+ "_comment": "The perf rubric: the bands' thresholds and the letter rules. The single source for tools/perf/grade.py, tools/perf/grade.ts (the site computes the letter from a summary with it) and the test page (perf.js, to stop the ladder). docs/perf.md cites each source. Change on purpose, with the docs and the tests (test/grade-cases.json).",
+ "name": "Clarity",
+ "_name": "The perf test's name, as in \"Clarity A\" or \"a frame's Clarity grade\" (the maintainer, 2026-11-13). The report headline, the summary and grade.ts take it from here, so a rename is one change. File paths keep tools/perf and docs/perf.md.",
+ "version": 6,
+ "protocol_version": 5,
+ "_protocol": "The measurement protocol these rules apply to (tools/perf/page/tiers.json PROTOCOL): the pages, the swipes, the update rate, the windows and how the runner reads them. A summary from another protocol can't be graded with this file: re-measure. Protocol 4 (2026-11-13): Home Assistant's real frontend on a fake HA, restart and open the view to a usable dashboard. Protocol 5 (#174): live camera streams on typical (one 720p) and heavy (one 720p, three 360p), played by HA's HLS player while every task runs, and the camera task.",
+ "one_frame_ms": 16.667,
+ "vsync_slack_ms": 0.5,
+ "metrics": {
+  "frame_p95_ms": {
+   "good_max": 17.167,
+   "poor_above": 33.833,
+   "source": "web.dev RAIL (16 ms frame budget); Android vitals slow frame (> 16 ms). One and two frames at 60 Hz, plus 0.5 ms slack"
   },
-  "js_burst_ms": {
-    "good_max": 16.667,
-    "poor_above": 50,
-    "source": "project choice: one state burst fits in a frame; poor past RAIL's 50 ms input budget"
+  "frame_jank_pct": {
+   "good_max": 5,
+   "poor_above": 50,
+   "source": "good: same as p95 within budget (derived); poor: Play Console 'excessive slow frames' (> 50% over 16 ms)"
   },
-  "grade": {
-    "_comment": "The letter. Scroll and live updates are judged per run on their own levels (scroll_levels, update_levels: the first whose rule holds; `below` when none does), then the median level of the runs (the worse middle for an even count). Tap, load and start are bands of the median of the runs. A page is at a level when each task is one the level accepts. The first letter whose every page need holds is the grade, else the fallback. A restart in start_cap.band caps the letter at start_cap.letter (never raises it); letters rank by their place in this list. Frames bands are the worst of frame_p95_ms, frame_jank_pct and frame_frozen_pct.",
-    "pages": [
-      "light",
-      "typical",
-      "heavy"
-    ],
-    "tasks": {
-      "tap": "inp_ms",
-      "scroll": "scroll_levels",
-      "updates": "update_levels",
-      "load": "load_ms"
-    },
-    "scroll_levels": [
-      {
-        "level": "premium",
-        "frames_band": [
-          "good"
-        ],
-        "_comment": "the 60 fps rule: the frames band is good (p95 within one frame plus slack, jank <= 5%, no frozen frame)"
-      },
-      {
-        "level": "good",
-        "fps_min": 50,
-        "p95_max_ms": 50.5,
-        "_comment": "average >= 50 fps over the swipes and p95 <= 50 ms: three frames at 60 Hz, plus the rubric's 0.5 ms slack"
-      },
-      {
-        "level": "fluid",
-        "fps_min": 30,
-        "p95_max_ms": 67.17,
-        "_comment": "average >= 30 fps over the swipes and p95 <= 67 ms: four frames at 60 Hz (66.67 ms), plus the 0.5 ms slack"
-      }
-    ],
-    "update_levels": [
-      {
-        "level": "premium",
-        "latency_p95_max_ms": 100,
-        "frames_band": [
-          "good"
-        ],
-        "_comment": "good, and the frames that had a change to draw hold the 60 fps bar (frames band good): a label, like scroll's"
-      },
-      {
-        "level": "good",
-        "latency_p95_max_ms": 100,
-        "_comment": "p95 of change to screen (the page applies a change -> the first frame on screen that shows it) <= 100 ms"
-      },
-      {
-        "level": "fluid",
-        "latency_p95_max_ms": 200,
-        "_comment": "p95 of change to screen <= 200 ms"
-      }
-    ],
-    "below": "slow",
-    "levels": [
-      {
-        "level": "premium",
-        "accepts": {
-          "tap": [
-            "good"
-          ],
-          "scroll": [
-            "premium"
-          ],
-          "updates": [
-            "premium"
-          ],
-          "load": [
-            "good",
-            "needs-improvement"
-          ]
-        }
-      },
-      {
-        "level": "good",
-        "accepts": {
-          "tap": [
-            "good"
-          ],
-          "scroll": [
-            "premium",
-            "good"
-          ],
-          "updates": [
-            "premium",
-            "good"
-          ],
-          "load": [
-            "good",
-            "needs-improvement"
-          ]
-        }
-      },
-      {
-        "level": "fluid",
-        "accepts": {
-          "tap": [
-            "good"
-          ],
-          "scroll": [
-            "premium",
-            "good",
-            "fluid"
-          ],
-          "updates": [
-            "premium",
-            "good",
-            "fluid"
-          ],
-          "load": [
-            "good",
-            "needs-improvement"
-          ]
-        }
-      }
-    ],
-    "letters": [
-      {
-        "letter": "A+",
-        "meaning": "premium",
-        "needs": {
-          "heavy": "premium"
-        },
-        "_comment": "an A where every task on heavy also holds 60 fps (the premium level)"
-      },
-      {
-        "letter": "A",
-        "meaning": "a good wall panel even for large dashboards",
-        "needs": {
-          "heavy": "good"
-        }
-      },
-      {
-        "letter": "B",
-        "meaning": "a good wall panel for typical dashboards; large ones stay fluid",
-        "needs": {
-          "typical": "good",
-          "heavy": "fluid"
-        }
-      },
-      {
-        "letter": "C",
-        "meaning": "a good wall panel for typical dashboards",
-        "needs": {
-          "typical": "fluid"
-        }
-      },
-      {
-        "letter": "D",
-        "meaning": "a good wall panel for light dashboards",
-        "needs": {
-          "light": "fluid"
-        }
-      }
-    ],
-    "fallback": {
-      "letter": "E",
-      "meaning": "not a good wall panel, even for light dashboards"
-    },
-    "start_cap": {
-      "band": "poor",
-      "letter": "C"
-    }
+  "frame_frozen_pct": {
+   "good_max": 0,
+   "poor_above": 0.1,
+   "source": "Android vitals frozen frame (> 700 ms); poor: Play Console 'excessive frozen frames' (> 0.1%); good 0%: project choice"
+  },
+  "load_ms": {
+   "good_max": 2500,
+   "poor_above": 4000,
+   "source": "Core Web Vitals LCP bounds (good <= 2.5 s, poor > 4 s), applied to opening each reference view (protocol 4): from HA's navigate() in the loaded frontend to usable (every head card and every card on the screen drawn, stable for 2 frames, then the main thread free for 500 ms). Usable is at or after the largest paint, so this is stricter than LCP. Lenient for a view switch (docs/perf.md, Open the view)"
+  },
+  "inp_ms": {
+   "good_max": 200,
+   "poor_above": 500,
+   "source": "Core Web Vitals INP (good <= 200 ms, poor > 500 ms), taps on each reference dashboard's toggle"
+  },
+  "start_ms": {
+   "good_max": 2500,
+   "poor_at": 5000,
+   "source": "the restart (protocol 4): app process start to the reference dashboard's start view being usable, the kiosk having been pointed at it (before protocol 4: to engine ready, GeckoView's own first PageStart). poor: Android vitals' excessive cold start bound (>= 5 s), which vitals apply to TTID. good <= 2.5 s: project choice (LCP's bound)"
   }
+ },
+ "js_burst_ms": {
+  "good_max": 16.667,
+  "poor_above": 50,
+  "source": "project choice: one state burst fits in a frame; poor past RAIL's 50 ms input budget"
+ },
+ "grade": {
+  "_comment": "The letter. Scroll and live updates are judged per run on their own levels (scroll_levels, update_levels: the first whose rule holds; `below` when none does), then the median level of the runs (the worse middle for an even count). Tap, load and start are bands of the median of the runs. A page is at a level when each task is one the level accepts. The first letter whose every page need holds is the grade, else the fallback. A restart in start_cap.band caps the letter at start_cap.letter (never raises it); letters rank by their place in this list. Frames bands are the worst of frame_p95_ms, frame_jank_pct and frame_frozen_pct.",
+  "pages": [
+   "light",
+   "typical",
+   "heavy"
+  ],
+  "tasks": {
+   "tap": "inp_ms",
+   "scroll": "scroll_levels",
+   "updates": "update_levels",
+   "load": "load_ms",
+   "camera": "camera_levels"
+  },
+  "scroll_levels": [
+   {
+    "level": "premium",
+    "frames_band": [
+     "good"
+    ],
+    "_comment": "the 60 fps rule: the frames band is good (p95 within one frame plus slack, jank <= 5%, no frozen frame)"
+   },
+   {
+    "level": "good",
+    "fps_min": 50,
+    "p95_max_ms": 50.5,
+    "_comment": "average >= 50 fps over the swipes and p95 <= 50 ms: three frames at 60 Hz, plus the rubric's 0.5 ms slack"
+   },
+   {
+    "level": "fluid",
+    "fps_min": 30,
+    "p95_max_ms": 67.17,
+    "_comment": "average >= 30 fps over the swipes and p95 <= 67 ms: four frames at 60 Hz (66.67 ms), plus the 0.5 ms slack"
+   }
+  ],
+  "update_levels": [
+   {
+    "level": "premium",
+    "latency_p95_max_ms": 100,
+    "frames_band": [
+     "good"
+    ],
+    "_comment": "good, and the frames that had a change to draw hold the 60 fps bar (frames band good): a label, like scroll's"
+   },
+   {
+    "level": "good",
+    "latency_p95_max_ms": 100,
+    "_comment": "p95 of change to screen (a change reaches the page -> the first frame on screen that shows it) <= 100 ms"
+   },
+   {
+    "level": "fluid",
+    "latency_p95_max_ms": 200,
+    "_comment": "p95 of change to screen <= 200 ms"
+   }
+  ],
+  "camera_pages": [
+   "typical",
+   "heavy"
+  ],
+  "_camera": "Live camera streams (#174), on the pages in camera_pages; a page without streams is `none`, which every level accepts. Per run, the worst stream counts: its first frame, timed from the navigation, so it includes building the view; the share of its frames shown over the view's live phase (frames presented / 15 fps x the time), its longest gap between frames and the gaps over 500 ms added up. A stream that never showed a frame fails. Bars from #174's proposal, to be calibrated on the S1 before they're final.",
+  "camera_levels": [
+   {
+    "level": "good",
+    "first_frame_max_ms": 2000,
+    "shown_min_pct": 95,
+    "max_gap_max_ms": 500,
+    "_comment": "first frame within 2 s, at least 95% of frames shown, no stall over 500 ms"
+   },
+   {
+    "level": "fluid",
+    "first_frame_max_ms": 4000,
+    "shown_min_pct": 85,
+    "stall_total_max_ms": 1000,
+    "_comment": "first frame within 4 s, at least 85% shown, stalls (gaps over 500 ms) under 1 s in all"
+   }
+  ],
+  "below": "slow",
+  "levels": [
+   {
+    "level": "premium",
+    "accepts": {
+     "tap": [
+      "good"
+     ],
+     "scroll": [
+      "premium"
+     ],
+     "updates": [
+      "premium"
+     ],
+     "load": [
+      "good",
+      "needs-improvement"
+     ],
+     "camera": [
+      "good",
+      "none"
+     ]
+    }
+   },
+   {
+    "level": "good",
+    "accepts": {
+     "tap": [
+      "good"
+     ],
+     "scroll": [
+      "premium",
+      "good"
+     ],
+     "updates": [
+      "premium",
+      "good"
+     ],
+     "load": [
+      "good",
+      "needs-improvement"
+     ],
+     "camera": [
+      "good",
+      "none"
+     ]
+    }
+   },
+   {
+    "level": "fluid",
+    "accepts": {
+     "tap": [
+      "good"
+     ],
+     "scroll": [
+      "premium",
+      "good",
+      "fluid"
+     ],
+     "updates": [
+      "premium",
+      "good",
+      "fluid"
+     ],
+     "load": [
+      "good",
+      "needs-improvement"
+     ],
+     "camera": [
+      "good",
+      "fluid",
+      "none"
+     ]
+    }
+   }
+  ],
+  "letters": [
+   {
+    "letter": "A+",
+    "meaning": "premium",
+    "needs": {
+     "heavy": "premium"
+    },
+    "_comment": "an A where every task on heavy also holds 60 fps (the premium level)"
+   },
+   {
+    "letter": "A",
+    "meaning": "a good wall panel even for large dashboards",
+    "needs": {
+     "heavy": "good"
+    }
+   },
+   {
+    "letter": "B",
+    "meaning": "a good wall panel for typical dashboards; large ones stay fluid",
+    "needs": {
+     "typical": "good",
+     "heavy": "fluid"
+    }
+   },
+   {
+    "letter": "C",
+    "meaning": "a good wall panel for typical dashboards",
+    "needs": {
+     "typical": "fluid"
+    }
+   },
+   {
+    "letter": "D",
+    "meaning": "a good wall panel for light dashboards",
+    "needs": {
+     "light": "fluid"
+    }
+   }
+  ],
+  "fallback": {
+   "letter": "E",
+   "meaning": "not a good wall panel, even for light dashboards"
+  },
+  "start_cap": {
+   "band": "poor",
+   "letter": "C"
+  }
+ }
 }

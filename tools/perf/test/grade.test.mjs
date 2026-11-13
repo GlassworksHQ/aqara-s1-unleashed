@@ -54,5 +54,6 @@ test("frames and median bands", () => {
 test("scroll levels per run and their median (rubric v5)", () => {
   for (const c of data.scroll_levels) assert.equal(G.scrollLevel(c.stats, rubric), c.level, c.name);
   for (const c of data.update_levels) assert.equal(G.updateLevel(c.run, rubric), c.level, c.name);
+  for (const c of data.camera_levels) assert.equal(G.cameraLevel(c.run, rubric), c.level, c.name);
   for (const c of data.median_levels) assert.equal(G.medianLevel(c.levels, rubric), c.level, JSON.stringify(c));
 });

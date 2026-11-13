@@ -1,10 +1,10 @@
-/* Glassworks perf test page (MIT). Runs the stages in order and logs one `GWPERF {json}` console
+/* Clarity test page (the Glassworks perf test, MIT). Runs the stages in order and logs one `GWPERF {json}` console
  * line per event, which reaches logcat from the content process (tag "Isolated Web Content" on the
  * S1; at most 1023 bytes of a line, so long lines are split: stats.js consoleLines). tools/perf/perfrun.py reads
  * them; the line types and fields are documented in docs/perf.md ("Page log lines").
  *
- * The grade's frames and input come from the reference dashboards (refdash.js); this page is the
- * detail: the animation ladder, the scroll stage and the JS workload.
+ * The grade's frames and input come from the reference dashboards (HA's real frontend, measured by
+ * harness.js); this page is the detail: the animation ladder, the scroll stage and the JS workload.
  *
  * Query: run=<k> seed=<n> vsync=<ms> nonce=<id> (echoed in every line) quick=1 (short ladder, for a
  * smoke test) families=a,b (subset of the ladder).

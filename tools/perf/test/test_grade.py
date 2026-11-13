@@ -1,5 +1,6 @@
 """python3 -m unittest discover -s tools/perf/test"""
 import json
+import re
 import os
 import sys
 import unittest
@@ -46,10 +47,11 @@ INP = {"good": 100, "ni": 300, "poor": 600}
 LOAD = {"good": 1000, "ni": 3000, "poor": 5000}
 
 
-def page(tap="good", scroll="premium", updates="premium", load="good"):
-    """One page's grade inputs: tap and load as values, scroll and live updates as median run levels."""
+def page(tap="good", scroll="premium", updates="premium", load="good", camera="good"):
+    """One page's grade inputs: tap and load as values, scroll, live updates and camera as median run
+    levels (camera counts only on the pages with streams)."""
     return {"inp_ms": INP[tap] if tap else None, "load_ms": LOAD[load] if load else None,
-            "scroll_level": scroll, "updates_level": updates}
+            "scroll_level": scroll, "updates_level": updates, "camera_level": camera}
 
 
 def pages(light=None, typical=None, heavy=None):
@@ -145,6 +147,14 @@ class PageLevel(unittest.TestCase):
             with self.subTest(name):
                 self.assertEqual(G.page_level(G.tier_bands(p)), want)
 
+    def test_the_camera_task_counts_on_the_pages_with_streams(self):
+        self.assertEqual(G.CAMERA_PAGES, ["typical", "heavy"])
+        self.assertEqual(G.page_level(G.tier_bands(page(camera="fluid"), "typical")), "fluid")
+        self.assertEqual(G.page_level(G.tier_bands(page(camera="slow"), "heavy")), None)
+        self.assertEqual(G.page_level(G.tier_bands(page(camera="slow"), "light")), "premium")    # no streams there
+        self.assertEqual(G.tier_bands(page(), "light")["camera"], "none")
+        self.assertEqual(G.page_level(G.tier_bands(page(camera=None), "heavy")), None)
+
     def test_limits_names_the_task(self):
         self.assertEqual(G.limits(G.tier_bands(page(scroll="fluid", load="poor")), "good"), ["scroll", "load"])
 
@@ -200,7 +210,7 @@ class Letter(unittest.TestCase):
         g = G.grade(pages(heavy="drop"), 1000)
         self.assertEqual(g["grade"], "C")
         self.assertTrue(g["provisional"])
-        self.assertEqual(g["missing"], ["heavy.tap", "heavy.scroll", "heavy.updates", "heavy.load"])
+        self.assertEqual(g["missing"], ["heavy.tap", "heavy.scroll", "heavy.updates", "heavy.load", "heavy.camera"])
 
     def test_nothing_measured_is_e_and_provisional(self):
         g = G.grade({}, None)
@@ -243,10 +253,37 @@ class MemoryBudget(unittest.TestCase):
         self.assertFalse(r["ok"])
 
     def test_a_frame_override_may_name_one_key(self):
-        budgets = {"default": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15},
-                   "frames": {"mirror": {"app_pss_max_pct_of_ram": 60}}}
-        self.assertEqual(G.frame_budget(budgets, "mirror"), {"app_pss_max_pct_of_ram": 60, "device_available_min_pct": 15})
-        self.assertEqual(G.frame_budget(budgets, "other"), budgets["default"])
+        default = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15}, "panes": {}}
+        mirror = {"ram": {"app_pss_max_pct_of_ram": 60}, "panes": {"assist": {"ram_pss_max_kb": 1000}}}
+        self.assertEqual(G.frame_budget(default, mirror),
+                         {"ram": {"app_pss_max_pct_of_ram": 60, "device_available_min_pct": 15}, "panes": mirror["panes"]})
+        self.assertEqual(G.frame_budget(default), default)
+
+    def test_the_s1_owns_its_budgets(self):
+        """#68: the RAM budgets per frame and per pane are in the frame's own config."""
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
+        with open(os.path.join(root, "frames", "aqara-s1-plus", "budgets.json")) as f:
+            s1 = json.load(f)
+        self.assertEqual(set(s1["ram"]), {"app_pss_max_pct_of_ram", "device_available_min_pct"})
+        switchable = {k for k, v in s1["panes"].items() if v.get("switch")}
+        self.assertEqual(switchable, {"assist", "sendspin"})
+        for k in switchable:
+            self.assertIsInstance(s1["panes"][k]["ram_pss_max_kb"], int)
+        # Every pane in the app's code is in the frame's file, so a new one can't be left out of RAM.
+        ids = set()
+        for d, _, fs in os.walk(os.path.join(root, "app", "kiosk", "src", "main", "java")):
+            for f in fs:
+                if f.endswith(".kt"):
+                    with open(os.path.join(d, f)) as fh:
+                        ids |= set(re.findall(r'override val id = "([a-z0-9-]+)"', fh.read()))
+        self.assertEqual(set(s1["panes"]), ids)
+        self.assertEqual({k for k, v in s1["panes"].items() if v.get("waiting_on") == "#67"},
+                         {"radio", "wall-base", "timers", "time-zone", "diagnostics"})
+
+    def test_a_pane_over_its_budget(self):
+        r = G.pane_budgets([{"id": "assist", "pss_kb": 60_000}, {"id": "sendspin", "pss_kb": 20_000}, {"id": "x", "pss_kb": 1}],
+                           {"assist": {"ram_pss_max_kb": 49152}, "sendspin": {"ram_pss_max_kb": 49152}})
+        self.assertEqual((r["assist"]["ok"], r["sendspin"]["ok"], r["x"]["ok"]), (False, True, None))
 
 
 class SharedRules(unittest.TestCase):
@@ -293,6 +330,9 @@ class SharedCases(unittest.TestCase):
                 got["limits"] = G.next_limits(g)
                 self.assertEqual(got, c["expect"])
 
+    def test_the_name_lives_in_rubric_json(self):
+        self.assertEqual((G.NAME, G.RUBRIC["name"]), ("Clarity", "Clarity"))
+
     def test_the_rules_come_from_rubric_json(self):
         self.assertEqual(self.data["rubric_version"], G.RUBRIC_VERSION)
         self.assertEqual([l for l, _, _ in G.LETTERS], [l["letter"] for l in G.RUBRIC["grade"]["letters"]])
@@ -305,6 +345,8 @@ class SharedCases(unittest.TestCase):
             self.assertEqual(G.update_level(c["run"]), c["level"], c["name"])
         for c in self.data["median_levels"]:
             self.assertEqual(G.median_level(c["levels"]), c["level"], c)
+        for c in self.data["camera_levels"]:
+            self.assertEqual(G.camera_level(c["run"]), c["level"], c["name"])
 
     def test_frames_and_median_bands(self):
         for c in self.data["frames"]:

@@ -1,0 +1,193 @@
+{
+ "_comment": "Websocket commands HA's real frontend (home-assistant-frontend 20261028.5) sent to the fake Home Assistant on the light and heavy reference dashboards, recorded in headless Chromium with the kiosk's content script (2026-11-13), up to three distinct forms of each. test_fakeha.py replays them: the fake must answer each one. Re-record when the pinned frontend changes.",
+ "frontend": "20261028.5",
+ "messages": [
+  {
+   "type": "auth/current_user"
+  },
+  {
+   "type": "brands/access_token"
+  },
+  {
+   "type": "config/area_registry/list"
+  },
+  {
+   "type": "config/device_registry/list"
+  },
+  {
+   "type": "config/entity_registry/list_for_display"
+  },
+  {
+   "type": "config/floor_registry/list"
+  },
+  {
+   "type": "frontend/get_icons",
+   "category": "entity_component"
+  },
+  {
+   "type": "frontend/get_themes"
+  },
+  {
+   "type": "frontend/get_translations",
+   "language": "en",
+   "category": "entity_component"
+  },
+  {
+   "type": "frontend/get_translations",
+   "language": "en",
+   "category": "entity"
+  },
+  {
+   "type": "frontend/subscribe_system_data",
+   "key": "core"
+  },
+  {
+   "type": "frontend/subscribe_user_data",
+   "key": "core"
+  },
+  {
+   "type": "frontend/subscribe_user_data",
+   "key": "language"
+  },
+  {
+   "type": "frontend/subscribe_user_data",
+   "key": "theme"
+  },
+  {
+   "type": "get_config"
+  },
+  {
+   "type": "get_panels"
+  },
+  {
+   "type": "get_services"
+  },
+  {
+   "type": "history/stream",
+   "entity_ids": [
+    "sensor.clarity_18"
+   ],
+   "start_time": "2026-11-12T02:30:48.192Z",
+   "minimal_response": true,
+   "significant_changes_only": true,
+   "no_attributes": true
+  },
+  {
+   "type": "history/stream",
+   "entity_ids": [
+    "sensor.clarity_19"
+   ],
+   "start_time": "2026-11-12T02:30:48.198Z",
+   "minimal_response": true,
+   "significant_changes_only": true,
+   "no_attributes": true
+  },
+  {
+   "type": "history/stream",
+   "entity_ids": [
+    "sensor.clarity_82"
+   ],
+   "start_time": "2026-11-12T02:31:09.208Z",
+   "minimal_response": true,
+   "significant_changes_only": true,
+   "no_attributes": true
+  },
+  {
+   "type": "labs/subscribe",
+   "domain": "frontend",
+   "preview_feature": "winter_mode"
+  },
+  {
+   "type": "lovelace/config",
+   "url_path": "clarity-light",
+   "force": false
+  },
+  {
+   "type": "lovelace/config",
+   "url_path": "clarity-heavy",
+   "force": false
+  },
+  {
+   "type": "lovelace/info"
+  },
+  {
+   "type": "lovelace/resources"
+  },
+  {
+   "type": "persistent_notification/subscribe"
+  },
+  {
+   "type": "recorder/info"
+  },
+  {
+   "type": "recorder/statistics_during_period",
+   "start_time": "2026-11-12T01:31:09.263Z",
+   "end_time": "2026-11-13T02:31:09.263Z",
+   "statistic_ids": [
+    "sensor.clarity_90",
+    "sensor.clarity_91"
+   ],
+   "period": "hour",
+   "types": [
+    "mean",
+    "state"
+   ]
+  },
+  {
+   "type": "recorder/statistics_during_period",
+   "start_time": "2026-11-12T01:31:09.308Z",
+   "end_time": "2026-11-13T02:31:09.308Z",
+   "statistic_ids": [
+    "sensor.clarity_94",
+    "sensor.clarity_95"
+   ],
+   "period": "hour",
+   "types": [
+    "mean",
+    "state"
+   ]
+  },
+  {
+   "type": "recorder/statistics_during_period",
+   "start_time": "2026-11-12T01:31:09.309Z",
+   "end_time": "2026-11-13T02:31:09.309Z",
+   "statistic_ids": [
+    "sensor.clarity_96",
+    "sensor.clarity_97"
+   ],
+   "period": "hour",
+   "types": [
+    "mean",
+    "state"
+   ]
+  },
+  {
+   "type": "repairs/list_issues"
+  },
+  {
+   "type": "subscribe_entities"
+  },
+  {
+   "type": "subscribe_events",
+   "event_type": "entity_registry_updated"
+  },
+  {
+   "type": "subscribe_events",
+   "event_type": "device_registry_updated"
+  },
+  {
+   "type": "subscribe_events",
+   "event_type": "area_registry_updated"
+  },
+  {
+   "type": "supported_features",
+   "features": {
+    "coalesce_messages": 1
+   }
+  },
+  {
+   "type": "unsubscribe_events",
+   "subscription": 41
+  }
+ ]
+}

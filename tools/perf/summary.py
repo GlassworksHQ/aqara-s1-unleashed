@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Glassworks perf summary (MIT): a small, stable, frame-level summary of a finished report.json, for
+"""Clarity summary (MIT), from the Glassworks perf test: a small, stable, frame-level summary of a finished report.json, for
 places that show a frame's grade (glassworks.dev, a frame's design/frame.json). docs/perf.md, "The
 summary", documents every field.
 
 It holds measurements only, never the letter: the letter is derived, so the site computes it at
 render time from the summary and rubric.json (tools/perf/grade.ts; grade.py gives the same answer).
 Only graded, deterministic measurements go in: each reference dashboard's numbers and each run's
-frame stats, the restart, and what they were measured with. Nothing from real use (your own
-dashboard, memory, CPU, panes) and nothing device-unique (no serial, no addresses).
+frame stats, the restart, and what they were measured with. Two optional parts carry measurements
+that aren't graded: `ram` (on the reference dashboards, with each switchable pane's share) and
+`apk` (sizes per ABI). Nothing from real use (your own dashboard, memory, CPU, panes) and nothing
+device-unique (no serial, no addresses).
 
   tools/perf/summary.py perf-s1/report.json perf-s1/summary.json [--report-url report.json]
                         [--allow-provisional]
@@ -58,8 +60,40 @@ def page_summary(s):
         # draw), and frame pacing (detail).
         "updates": {"latency_p95_ms": _med(s.get("latency_p95_ms"), 1), "latency_median_ms": _med(s.get("latency_median_ms"), 1),
                     "pacing_p95_ms": _med(up.get("p95_ms"), 2), "runs": s.get("updates_runs") or []},
+        # Live cameras (#174), on the pages with streams: each run's worst stream (graded per run).
+        "camera": {"runs": [{k: r.get(k) for k in ("first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms")}
+                            for r in s.get("camera_runs") or []]},
         "runs": {"tap": _n(s.get("inp_ms")), "scroll": len(s.get("scroll_runs") or []),
-                 "updates": len(s.get("updates_runs") or []), "open": _n(s.get("load_ms"))},
+                 "updates": len(s.get("updates_runs") or []), "open": _n(s.get("load_ms")),
+                 "camera": len(s.get("camera_runs") or [])},
+    }
+
+
+def ram_summary(ram):
+    """The report's `ram` (reference dashboards, #68), in kB: medians at idle, the peak during the
+    graded tasks, and each pane's share with its tolerance. None if it wasn't measured."""
+    if not ram:
+        return None
+    idle, peak = ram.get("reference_idle") or {}, ram.get("graded_peak") or {}
+    budget = ram.get("pane_budget") or {}
+    return {
+        "idle_app_pss_kb": _med(idle.get("app_pss_kb")),
+        "idle_by_process_pss_kb": {r: _med(v) for r, v in sorted((idle.get("by_role_pss_kb") or {}).items())},
+        "peak_app_pss_kb": peak.get("app_pss_kb"),
+        "peak_by_process_pss_kb": dict(sorted((peak.get("by_role_pss_kb") or {}).items())),
+        # Only panes whose every sample was checked against the kiosk's log (report: `verified`). A
+        # pane with no number (`error`) or unchecked samples (runs before 2026-11-13, such as s1v7,
+        # whose switches the kiosk lost) isn't exported, so the site can't show it as a measurement.
+        "panes": [{"id": p["id"], "pss_kb": p["pss_kb"], "tolerance_kb": p["pss_tolerance_kb"],
+                   "measurable": p["pss_measurable"], "runs": min(p["samples_on"], p["samples_off"]),
+                   # The frame's budget for the pane and whether its share is within it. Read with
+                   # `measurable`: a share inside the tolerance can't show that the pane fits.
+                   "budget_kb": (budget.get(p["id"]) or {}).get("budget_kb"),
+                   "budget_ok": (budget.get(p["id"]) or {}).get("ok"),
+                   **({"off_by": p["off_by"]} if p.get("off_by") else {})}
+                  for p in ram.get("panes") or [] if not p.get("error") and p.get("verified") is True],
+        "panes_waiting": [p["id"] for p in ram.get("panes_waiting") or []],
+        "budget_ok": (ram.get("budget") or {}).get("ok"),
     }
 
 
@@ -79,6 +113,7 @@ def measurements(rep, report_url="report.json"):
     vp = g.get("viewport") or {}
     return {
         "schema": SCHEMA,
+        "test": G.NAME,
         "protocol_version": rep.get("protocol_version"),
         "report_schema": rep["schema"],
         "measured_on": rep.get("measured_on"),
@@ -95,6 +130,8 @@ def measurements(rep, report_url="report.json"):
         "not_comparable": (vp.get("reason") if vp.get("state") == "refused"
                            else g.get("refused") if g.get("grade") is None else None),
         "report": report_url,
+        "ram": ram_summary(rep.get("ram")),
+        "apk": [{"file": x["file"], "abis": x["abis"], "bytes": x["bytes"]} for x in rep.get("apk") or []] or None,
     }
 
 

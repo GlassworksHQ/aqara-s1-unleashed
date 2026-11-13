@@ -1,4 +1,4 @@
-/* Frame-time statistics for the Glassworks perf test (MIT).
+/* Frame-time statistics for Clarity, the Glassworks perf test (MIT).
  * The same definitions are in tools/perf/perflib.py (frame_stats); both are tested against
  * tools/perf/test/stats-cases.json, so the page and the runner agree to the millisecond.
  */
@@ -101,7 +101,113 @@
     return out;
   }
 
-  const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines, skyToViolet };
+  // Clarity's "usable" (docs/perf.md, "How Clarity measures HA's frontend"), one animation frame at a
+  // time. f: launch (HA's launch screen is still up), viewIndex and wantIndex (the view hui-root shows,
+  // the one asked for), head (the view's first headCards configured cards: { rendered }), onScreen
+  // (every card on the screen: { rendered, top }). prev: { last, stable }. Done when, for two frames
+  // in a row, the launch screen is gone, it is the asked view, every head card and every card on the
+  // screen is drawn, and the layout hasn't moved.
+  function usableStep(f, prev, headCards) {
+    const no = { last: "", stable: 0, done: false };
+    if (f.launch || f.viewIndex !== f.wantIndex) return no;
+    const head = f.head || [];
+    if (head.length < headCards || !head.slice(0, headCards).every((c) => c.rendered)) return no;
+    if (!f.onScreen.length || !f.onScreen.every((c) => c.rendered)) return no;
+    const key = f.onScreen.length + ":" + f.onScreen.map((c) => Math.round(c.top)).join(",");
+    const stable = key === prev.last ? prev.stable + 1 : 0;
+    return { last: key, stable, done: stable >= 1 };
+  }
+
+  // The main thread free: every task posted back to back ran within 50 ms (RAIL's input budget) for
+  // windowMs. One probe: posted and ran (ms); start is when the current free stretch began, or null.
+  function freeStep(posted, ran, start, windowMs) {
+    if (ran - posted > 50) return { start: null, done: false };
+    const s = start === null ? ran : start;
+    return { start: s, done: ran - s >= windowMs };
+  }
+
+  // A card (hui-card) is drawn when its ha-card is laid out. A card made of cards (HA's grid, the heavy
+  // view's camera sub-streams) has no ha-card of its own: it is drawn when it is laid out and every
+  // card in it is. Works on any DOM-like object (firstElementChild, shadowRoot, querySelector(All),
+  // offsetHeight), so node can test it.
+  function cardRendered(card) {
+    const inner = card && card.firstElementChild;
+    const root = inner && inner.shadowRoot;
+    if (!root) return false;
+    const nested = Array.from(root.querySelectorAll("hui-card"));
+    if (nested.length) return inner.offsetHeight > 0 && nested.every(cardRendered);
+    const ha = root.querySelector("ha-card");
+    return !!(ha && ha.offsetHeight > 0);
+  }
+
+  // A camera stream's gaps over a window [t0, t1]: the presented frames' times (requestVideoFrameCallback,
+  // or timeupdate without it) with the window's edges, the longest gap and the gaps over 500 ms added
+  // up (stalls). `pfs`, parallel to `times`, are rVFC's presentedFrames: a cross-check, since a busy
+  // main thread delays the callbacks while the compositor goes on showing frames. `stall_presented`
+  // is how many frames were presented inside those stalls (between two callbacks; the edges can't
+  // say): many means the stall was the callbacks', not the stream's. Detail only; null without pfs.
+  function videoGaps(times, pfs, t0, t1) {
+    const inWin = [];
+    times.forEach((t, i) => { if (t >= t0 && t <= t1) inWin.push({ t, pf: pfs ? pfs[i] : null }); });
+    const pts = [t0].concat(inWin.map((x) => x.t), [t1]);
+    const gaps = pts.slice(1).map((t, k) => t - pts[k]);
+    let presented = pfs ? 0 : null;
+    if (pfs) {
+      for (let k = 1; k < inWin.length; k++) {
+        const a = inWin[k - 1], b = inWin[k];
+        if (b.t - a.t > 500 && a.pf != null && b.pf != null) presented += Math.max(0, b.pf - a.pf - 1);
+      }
+    }
+    return {
+      max_gap_ms: Math.max(...gaps),
+      stall_total_ms: gaps.filter((g) => g > 500).reduce((x, y) => x + y, 0),
+      stall_presented: presented,
+    };
+  }
+
+  // The camera streams' HLS fetches in a window, from Resource Timing entries (hls.js's fetches of
+  // /api/hls/<token>/...). Where a late segment comes from: `queued` is fetch start to request start
+  // (waiting for a connection: HTTP/1.1 allows a few per host), `wait` request start to the first
+  // byte (the server and the link), `total` start to the last byte. `arrival_gap` is the longest
+  // time between two segments of one stream arriving; segments are 1 s, so much more is a stall.
+  function hlsFetches(entries) {
+    const kinds = { segment: [], playlist: [] };
+    const byStream = new Map();
+    for (const e of entries) {
+      const m = /\/api\/hls\/([^/]+)\/(?:(segment)\/\d+\.m4s|(?:master_)?playlist\.m3u8)/.exec(e.name || "");
+      if (!m) continue;
+      (m[2] ? kinds.segment : kinds.playlist).push(e);
+      if (m[2]) {
+        if (!byStream.has(m[1])) byStream.set(m[1], []);
+        byStream.get(m[1]).push(e.responseEnd);
+      }
+    }
+    const summary = (xs, f) => {
+      const v = xs.map(f).filter((x) => x !== null && isFinite(x) && x >= 0).sort((a, b) => a - b);
+      return v.length ? { median: round2(nearestRank(v, 0.5)), p95: round2(nearestRank(v, 0.95)), max: round2(v[v.length - 1]) } : null;
+    };
+    const out = {};
+    for (const [k, xs] of Object.entries(kinds)) {
+      out[k] = {
+        n: xs.length,
+        queued_ms: summary(xs, (e) => (e.requestStart > 0 ? e.requestStart - e.fetchStart : null)),
+        wait_ms: summary(xs, (e) => (e.requestStart > 0 && e.responseStart > 0 ? e.responseStart - e.requestStart : null)),
+        total_ms: summary(xs, (e) => e.responseEnd - e.startTime),
+      };
+    }
+    out.segment.kb = Math.round(kinds.segment.reduce((a, e) => a + (e.transferSize || e.encodedBodySize || 0), 0) / 1024);
+    let gap = null;
+    for (const ends of byStream.values()) {
+      const s = ends.slice().sort((a, b) => a - b);
+      for (let i = 1; i < s.length; i++) gap = Math.max(gap === null ? 0 : gap, s[i] - s[i - 1]);
+    }
+    out.segment.arrival_gap_max_ms = gap === null ? null : round2(gap);
+    out.streams = byStream.size;
+    return out;
+  }
+
+  const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines,
+                skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWStats = api;
 })(this);
