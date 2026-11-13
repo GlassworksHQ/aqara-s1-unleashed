@@ -63,56 +63,98 @@ class PrefsSsStore(context: Context) : SsStore {
         set(v) = sp.edit().putString("last_playback_server", v).apply()
 }
 
-/** [AudioSink] on an [AudioTrack] (USAGE_MEDIA, PCM 16-bit, streaming, ~100 ms buffer). */
-class AudioTrackSink : AudioSink {
-    @Volatile private var track: AudioTrack? = null
-    @Volatile private var gain = 1f
+/**
+ * The output under an [AudioTrackSink]: an [AudioTrack] on the panel ([openAudioTrack]), a fake in
+ * tests. Interleaved 16-bit samples.
+ */
+interface PcmTrack {
+    /** Blocking write of [samples] samples; returns how many were written, or ≤ 0 on an error. */
+    fun write(buf: ShortArray, samples: Int): Int
+
+    /** Like [AudioSink.timestamp]. */
+    fun timestamp(out: LongArray): Boolean
+
+    fun setVolume(gain: Float)
+
+    /** Stops the output, drops what it still holds and frees it. */
+    fun release()
+}
+
+/**
+ * A playing [AudioTrack] (USAGE_MEDIA, PCM 16-bit, streaming, ~100 ms buffer) at [gain]. Creating
+ * one is the call that can block (`AudioTrack.Builder.build()`).
+ */
+fun openAudioTrack(sampleRate: Int, channels: Int, gain: Float): PcmTrack {
+    val mask = if (channels == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
+    val enc = AudioFormat.ENCODING_PCM_16BIT
+    val frame = 2 * channels
+    val minBuf = AudioTrack.getMinBufferSize(sampleRate, mask, enc)
+    val bytes = (maxOf(minBuf, sampleRate * frame / 10) + frame - 1) / frame * frame
+    val t = AudioTrack.Builder()
+        .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+        .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(enc).setChannelMask(mask).build())
+        .setTransferMode(AudioTrack.MODE_STREAM)
+        .setBufferSizeInBytes(bytes)
+        .build()
+    t.setVolume(gain)
+    t.play()
+    SsLog.i("AudioTrack open: $sampleRate Hz, $channels ch, buffer ${bytes / frame} frames (min ${minBuf / frame}), latency hint ${bytes * 1000 / (frame * sampleRate)} ms")
+    return object : PcmTrack {
+        private val at = AudioTimestamp()
+        override fun write(buf: ShortArray, samples: Int) = t.write(buf, 0, samples, AudioTrack.WRITE_BLOCKING)
+        override fun timestamp(out: LongArray): Boolean {
+            if (!t.getTimestamp(at)) return false
+            out[0] = at.framePosition
+            out[1] = at.nanoTime
+            return true
+        }
+        // Can race the audio thread's release (a gain change from another thread): nothing to set then.
+        override fun setVolume(gain: Float) { try { t.setVolume(gain) } catch (_: IllegalStateException) {} }
+        override fun release() {
+            try { t.pause(); t.flush() } catch (_: IllegalStateException) {}
+            t.release()
+        }
+    }
+}
+
+/**
+ * [AudioSink] on one [PcmTrack] at a time, from [newTrack] (an [AudioTrack] on the panel). Like any
+ * sink it serves one run: [SendspinPlayer] makes a new one per run.
+ */
+class AudioTrackSink(
+    private val newTrack: (sampleRate: Int, channels: Int, gain: Float) -> PcmTrack = ::openAudioTrack,
+) : AudioSink {
+    /** Guards publishing [track] and [gain] together, so no gain change is lost; never held while a track is created. */
+    private val lock = Any()
+    @Volatile private var track: PcmTrack? = null
+    private var gain = 1f
     private var channels = 2
-    private val at = AudioTimestamp()
 
     override fun open(sampleRate: Int, channels: Int) {
         close()
         this.channels = channels
-        val mask = if (channels == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
-        val enc = AudioFormat.ENCODING_PCM_16BIT
-        val frame = 2 * channels
-        val minBuf = AudioTrack.getMinBufferSize(sampleRate, mask, enc)
-        val bytes = (maxOf(minBuf, sampleRate * frame / 10) + frame - 1) / frame * frame
-        val t = AudioTrack.Builder()
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-            .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(enc).setChannelMask(mask).build())
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .setBufferSizeInBytes(bytes)
-            .build()
-        t.setVolume(gain)
-        t.play()
-        track = t
-        SsLog.i("AudioTrack open: $sampleRate Hz, $channels ch, buffer ${bytes / frame} frames (min ${minBuf / frame}), latency hint ${bytes * 1000 / (frame * sampleRate)} ms")
+        val t = newTrack(sampleRate, channels, synchronized(lock) { gain })
+        // A gain change while the track was being created found no track: apply the latest now.
+        synchronized(lock) { track = t; t.setVolume(gain) }
     }
 
     override fun write(buf: ShortArray, frames: Int): Int {
         val t = track ?: return 0
-        val n = t.write(buf, 0, frames * channels, AudioTrack.WRITE_BLOCKING)
+        val n = t.write(buf, frames * channels)
         return if (n <= 0) 0 else n / channels
     }
 
-    override fun timestamp(out: LongArray): Boolean {
-        val t = track ?: return false
-        if (!t.getTimestamp(at)) return false
-        out[0] = at.framePosition
-        out[1] = at.nanoTime
-        return true
-    }
+    override fun timestamp(out: LongArray): Boolean = track?.timestamp(out) ?: false
 
     override fun setGain(gain: Float) {
-        this.gain = gain
-        track?.setVolume(gain)
+        synchronized(lock) {
+            this.gain = gain
+            track?.setVolume(gain)
+        }
     }
 
     override fun close() {
-        val t = track ?: return
-        track = null
-        try { t.pause(); t.flush() } catch (_: IllegalStateException) {}
+        val t = synchronized(lock) { track.also { track = null } } ?: return
         t.release()
     }
 }
@@ -141,11 +183,10 @@ class SendspinPlayer(
         { url, hello, hooks -> SendspinSession(url, store, hello, { prefs.unpairedAccess }, hooks) },
     private val newPipeline: (out: PcmOutput, onFlacFailed: (String) -> Unit) -> AudioPipeline =
         { out, onFlacFailed -> AudioPipeline(out, { MediaCodecFlacDecoder() }, onFlacFailed) },
-    private val sink: AudioSink = AudioTrackSink(),
+    private val newSink: () -> AudioSink = { AudioTrackSink() },
 ) {
     private val ctx = context.applicationContext
     @Volatile private var session: SsConnection? = null
-    private val scheduler = PlaybackScheduler(sink, { session?.timeFilter?.snapshot ?: EMPTY })
     /** The run since the last [start], or null when stopped. Written only under this player's lock. */
     @Volatile private var current: Run? = null
     /**
@@ -190,9 +231,18 @@ class SendspinPlayer(
      * One [start] to its [stop], with what its threads own. Once it is no longer [current], its
      * threads exit and its sessions can reach only its own (closed) pipeline, even if a reader is
      * still busy: a quick stop and start can't let the old run act on the new one. The pipeline
-     * reaches the shared scheduler only while its run is current.
+     * reaches its scheduler only while its run is current.
+     *
+     * The output is the run's too (#109): its own [sink] and [scheduler], used only by its audio
+     * thread, which closes the sink when it exits. An audio thread still stuck in the sink after
+     * [stop] gave up on it (AudioTrack creation or a write) holds only its own track, and releases
+     * it when it comes back. It can't keep, write into or close the next run's track.
      */
     private inner class Run {
+        val sink = newSink()
+        val scheduler = PlaybackScheduler(sink, { session?.timeFilter?.snapshot ?: EMPTY }).apply {
+            outputDelayUs = store.outputDelayMs * 1000L
+        }
         val pipeline = newPipeline(outputFor(this)) { reason -> onFlacFailed(this, reason) }
         val hooks = hooksFor(this)
         @Volatile var backoffMs = 1_000L
@@ -210,12 +260,12 @@ class SendspinPlayer(
     private inline fun ifOutputCurrent(r: Run, block: () -> Unit): Boolean =
         synchronized(outputLock) { (current === r).also { if (it) block() } }
 
-    /** The scheduler as [r]'s pipeline sees it: a decode thread still busy after [stop] can't end or feed the next run's stream. */
+    /** [r]'s scheduler as its pipeline sees it: a decode thread still busy after [stop] can't start or feed a stream. */
     private fun outputFor(r: Run) = object : PcmOutput {
-        override fun start(f: SsFormat) { ifOutputCurrent(r) { scheduler.start(f) } }
-        override fun push(c: PcmChunk) { ifOutputCurrent(r) { scheduler.push(c) } }
-        override fun clear(fromUs: Long?) { ifOutputCurrent(r) { scheduler.clear(fromUs) } }
-        override fun end() { ifOutputCurrent(r) { scheduler.end() } }
+        override fun start(f: SsFormat) { ifOutputCurrent(r) { r.scheduler.start(f) } }
+        override fun push(c: PcmChunk) { ifOutputCurrent(r) { r.scheduler.push(c) } }
+        override fun clear(fromUs: Long?) { ifOutputCurrent(r) { r.scheduler.clear(fromUs) } }
+        override fun end() { ifOutputCurrent(r) { r.scheduler.end() } }
     }
 
     /** One-line state for the ESPHome diagnostic sensor. */
@@ -239,11 +289,11 @@ class SendspinPlayer(
         started = true
         store.identity(); store.pairingPsk() // create both before HA asks for the token
         SsLog.i("Sendspin player starting (client id $clientId)")
-        applyGain()
-        scheduler.outputDelayUs = store.outputDelayMs * 1000L
         SsLog.i("FLAC decoder: ${flacDecoder ?: "none"}; offering ${offeredFormats().joinToString { it.codec }}")
         val r = Run()
         synchronized(outputLock) { current = r }
+        // After [current] is set: a gain change that ran before it is read here, and one after it reaches r.sink.
+        applyGain()
         r.audioThread.start(); r.connThread.start(); r.statsThread.start()
         // After a Wi-Fi drop, reconnect as soon as the network is back instead of waiting out the
         // back-off (which grows to 60 s): a wedged link left the player silent for a minute or more.
@@ -271,8 +321,9 @@ class SendspinPlayer(
         // once the run is no longer current it can't reach the next one.
         r.connThread.interrupt(); r.audioThread.interrupt(); r.statsThread.interrupt()
         r.pipeline.close()
-        scheduler.end()
-        // The audio thread owns the sink; let it close it before a restart could start another.
+        r.scheduler.end()
+        // The audio thread closes its run's sink; let it, so the next run's track usually opens after
+        // this one is gone. If it is stuck, it releases the track itself when it comes back.
         try { r.audioThread.join(1_000) } catch (_: InterruptedException) { interrupted = true }
         status = SendspinSession.Status(SendspinSession.Phase.CLOSED)
         onStatusChanged()
@@ -331,7 +382,7 @@ class SendspinPlayer(
 
     private fun applyGain() {
         val g = if (ducked || store.muted) 0f else PlaybackScheduler.amplitude(store.volume)
-        sink.setGain(g)
+        current?.sink?.setGain(g)
     }
 
     // ------------------------------------------------------------------ threads
@@ -373,34 +424,31 @@ class SendspinPlayer(
         val owns = { current === r }
         try {
             while (owns()) {
-                if (!scheduler.step(owns)) scheduler.awaitWork(200)
+                if (!r.scheduler.step(owns)) r.scheduler.awaitWork(200)
             }
         } catch (_: InterruptedException) {
         } catch (t: Throwable) {
             SsLog.w("audio thread failed", t)
         } finally {
-            // Not once a newer run has started: [stop] waits for this thread only so long, and the
-            // next run's audio thread then owns the scheduler and the sink.
-            synchronized(outputLock) {
-                if (current == null || current === r) {
-                    scheduler.end()
-                    scheduler.step() // closes the sink
-                }
-            }
+            // The run's own output, so always: also after [stop] gave up waiting for this thread,
+            // and when a step left because the run stopped during the sink's open (the track it
+            // just created is not the scheduler's yet).
+            r.scheduler.end()
+            r.sink.close()
         }
     }
 
     /** Every 10 s while streaming: the sync figures (docs/sendspin.md "Measuring"). */
     private fun statsLoop(r: Run) {
-        var prev = scheduler.stats()
+        var prev = r.scheduler.stats()
         var prevD = r.pipeline.stats()
         try {
             while (current === r) {
                 Thread.sleep(10_000)
                 val s = session ?: continue
-                val st = scheduler.stats()
+                val st = r.scheduler.stats()
                 val d = r.pipeline.stats(resetMax = true)
-                if (scheduler.isActive) {
+                if (r.scheduler.isActive) {
                     val frames = d.decodedFrames - prevD.decodedFrames
                     SsLog.i(
                         "decode: %s %.0f kbit/s on the wire | FLAC frames %d, decoder latency avg %.0f µs max %.1f ms, errors %d, dropped %d".format(
@@ -505,7 +553,7 @@ class SendspinPlayer(
         override fun onVolume(volume: Int) { if (ifCurrent(r) { store.volume = volume; applyGain() }) onStatusChanged() }
         override fun onMute(muted: Boolean) { if (ifCurrent(r) { store.muted = muted; applyGain() }) onStatusChanged() }
         override fun onOutputDelay(ms: Int) {
-            if (ifCurrent(r) { store.outputDelayMs = ms; scheduler.outputDelayUs = ms * 1000L }) SsLog.i("Output delay set to $ms ms")
+            if (ifCurrent(r) { store.outputDelayMs = ms; r.scheduler.outputDelayUs = ms * 1000L }) SsLog.i("Output delay set to $ms ms")
         }
 
         override fun playerState() = SsPlayerState(
@@ -533,8 +581,8 @@ class SendspinPlayer(
     fun setMuted(muted: Boolean) { store.muted = muted; applyGain(); session?.sendState() }
     val volume: Int get() = store.volume
     val muted: Boolean get() = store.muted
-    /** Tests: whether the shared scheduler is playing a stream. */
-    internal val outputActive: Boolean get() = scheduler.isActive
+    /** Tests: whether the current run's scheduler is playing a stream. */
+    internal val outputActive: Boolean get() = current?.scheduler?.isActive == true
 
     companion object {
         /** The session waits up to 1 s for the server to hang up after the goodbye; allow for that. */
