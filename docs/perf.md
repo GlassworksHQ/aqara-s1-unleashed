@@ -715,14 +715,15 @@ is 83; the test caps it at 85), plus one when the grade is provisional:
    200 ms, open the view 4 s, a camera's first frame 4 s, 85% of its frames shown and 1 s of
    stalls). So the number shown is why it was picked. Only a number that fails is quoted: a scroll
    with enough frames on average but uneven ones gives its slowest frames, and a camera its first
-   frame, its frames shown or its stalls, whichever is furthest past. The restart is named only
+   frame, its frames shown or its stalls, whichever is furthest past, from the runs whose camera
+   level fails (the grade takes the median of per-run levels). The restart is named only
    when it caps the letter.
 3. **The likely cause**, in one sentence, only when the report holds evidence for it. The first
    that applies:
 
    | Likely limit | Said when | Its evidence, in words |
    |---|---|---|
-   | The browser's main thread | A slow scroll is `limited_by: main-thread` (the page's frames, rAF, worse than SurfaceFlinger's), or a camera page gets video late (below) | "it stays busy" when the app keeps 25% of a core or more on typical untouched (`reference_idle.cpu_app_pct_of_core`); "cameras get video late even though the (hardware) decoder keeps up" when a failing camera page's segments arrive 2 s or more apart (1 s segments), a fetch's p95 is under 500 ms and the decoder drops at most 1%; else "the page draws too few frames" |
+   | The browser's main thread | A slow scroll is `limited_by: main-thread` (the page's frames, rAF, worse than SurfaceFlinger's), or a camera page gets video late (below) | "it stays busy" when the app keeps 25% of a core or more on typical untouched (`reference_idle.cpu_app_pct_of_core`); "cameras get video late even though the (hardware) decoder keeps up" when, on a failing camera page, every run that has all three kinds of evidence shows segments arriving 2 s or more apart (1 s segments), a fetch's p95 under 500 ms and its decoder dropping at most 1% (never combined across runs); else "the page draws too few frames" |
    | The GPU | A slow scroll is `limited_by: compositor` (SurfaceFlinger's frames worse than rAF's) | "the screen drops frames the page drew" |
    | The link | A failing camera page's segment fetch p95 is 1 s or more | "camera video takes a second or more to fetch" |
    | The test itself | The fake Home Assistant sent a change more than 200 ms late | "its fake Home Assistant sent changes late" |

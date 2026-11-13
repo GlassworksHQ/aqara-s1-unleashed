@@ -106,12 +106,35 @@ class Shapes(unittest.TestCase):
     def test_a_camera_limit_quotes_only_the_number_that_fails(self):
         """The verifier on #206: "first frame 4.2 s, 100% of frames shown" quoted a strength."""
         t = run("s1cam3")["graded"]["reference"]["tiers"]
-        self.assertEqual(N._limit("camera", t["typical"])[1], "takes 4.2 s to show its camera")      # 100% shown passes
+        # Typical's failing runs (two of three) took 4.2 and 4.7 s; 100% shown passes, so it isn't quoted.
+        self.assertEqual(N._limit("camera", t["typical"])[1], "takes 4.5 s to show its camera")
         heavy = N._limit("camera", t["heavy"])[1]
         self.assertTrue(heavy.startswith("stalls its camera for"), heavy)                          # 3.7 s first frame passes
         for r in t["heavy"]["camera_runs"]:
             r["stall_total_ms"] = 0
         self.assertEqual(N._limit("camera", t["heavy"])[1], "shows 35% of its camera's frames")
+
+    def test_a_camera_limit_comes_from_the_failing_runs(self):
+        """CodeRabbit on #206: separate medians can pass while the per-run levels fail."""
+        t = {"camera_runs": [{"first_frame_ms": 4500, "shown_pct": 99, "stall_total_ms": 0},
+                             {"first_frame_ms": 3000, "shown_pct": 80, "stall_total_ms": 0},
+                             {"first_frame_ms": 3000, "shown_pct": 99, "stall_total_ms": 0}],
+             "camera_levels": ["slow", "slow", "fluid"]}
+        how_far, phrase = N._limit("camera", t)
+        self.assertGreater(how_far, 1)
+        self.assertEqual(phrase, "takes 4.5 s to show its camera")      # the worst failing number of one run
+
+    def test_cameras_late_needs_all_the_evidence_in_one_run(self):
+        """CodeRabbit on #206: slow arrivals from one run and decoder counts from another aren't evidence."""
+        rep = run("s1cam3")
+        runs = rep["graded"]["reference"]["tiers"]["heavy"]["camera_runs"]
+        runs[0]["detail"] = []
+        for r in runs[1:]:
+            r["fetches"] = {}
+        self.assertNotIn("cameras get video late", N.cause_sentence(rep) or "")
+        rep = run("s1cam3")
+        rep["graded"]["reference"]["tiers"]["heavy"]["camera_runs"][1]["fetches"]["segment"]["arrival_gap_max_ms"] = 900
+        self.assertNotIn("cameras get video late", N.cause_sentence(rep) or "")   # one run with full evidence doesn't starve
 
     def test_no_camera_credit_on_a_page_without_one(self):
         rep = fast()

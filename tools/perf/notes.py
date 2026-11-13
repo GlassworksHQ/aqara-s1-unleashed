@@ -68,13 +68,34 @@ def _tiers(rep):
     return (((rep.get("graded") or {}).get("reference") or {}).get("tiers")) or {}
 
 
-def _camera(t):
-    """Medians of each run's worst stream: first frame, % shown, stalls in all."""
-    runs = (t or {}).get("camera_runs") or []
-    def med(k):
-        xs = [r[k] for r in runs if r.get(k) is not None]
-        return statistics.median(xs) if xs else None
-    return med("first_frame_ms"), med("shown_pct"), med("stall_total_ms")
+def _camera_options(r):
+    """One run's camera numbers as (how far past the fluid bar, phrase)."""
+    if r.get("first_frame_ms") is None:
+        return [(10.0, "shows no frame from its camera")]
+    out = [(r["first_frame_ms"] / CAM_FIRST_MS, f"takes {_time(r['first_frame_ms'])} to show its camera")]
+    if r.get("shown_pct") is not None:
+        out.append((CAM_SHOWN_PCT / max(r["shown_pct"], 1), f"shows {r['shown_pct']:.0f}% of its camera's frames"))
+    if r.get("stall_total_ms") is not None:
+        out.append((r["stall_total_ms"] / CAM_STALL_MS, f"stalls its camera for {_time(r['stall_total_ms'])}"))
+    return out
+
+
+def _camera_limit(t):
+    """From the runs whose camera level fails (the grade takes the median of per-run levels): the
+    median of each number over those runs, the one furthest past its bar. When no such median fails
+    (the runs fail on different numbers), the worst failing number of a single run."""
+    runs = t.get("camera_runs") or []
+    levels = t.get("camera_levels") or []
+    failing = [r for r, lv in zip(runs, levels) if lv not in GOOD | FLUID | {None}] or runs
+    if not failing:
+        return None
+    if all(r.get("first_frame_ms") is not None for r in failing):
+        meds = {k: statistics.median(r[k] for r in failing) for k in ("first_frame_ms", "shown_pct", "stall_total_ms")
+                if all(r.get(k) is not None for r in failing)}
+        best = max(_camera_options(meds), default=None)
+        if best and best[0] > 1:
+            return best
+    return max(o for r in failing for o in _camera_options(r))
 
 
 def _limit(task, t):
@@ -97,14 +118,8 @@ def _limit(task, t):
         v = _med(t["inp_ms"])
         return v / TAP_MS, f"takes {_time(v)} to answer a tap"
     if task == "camera":
-        # Only the number that fails its bar (a passing one would read as a strength): the furthest past.
-        ff, shown, stall = _camera(t)
-        options = [(ff / CAM_FIRST_MS, f"takes {_time(ff)} to show its camera") if ff is not None else None,
-                   (CAM_SHOWN_PCT / max(shown, 1), f"shows {shown:.0f}% of its camera's frames") if shown is not None else None,
-                   (stall / CAM_STALL_MS, f"stalls its camera for {_time(stall)}") if stall is not None else None]
-        options = [o for o in options if o]
-        failing = [o for o in options if o[0] > 1]
-        return max(failing or options) if options else None
+        # Only a number that fails its bar: a passing one would read as a strength.
+        return _camera_limit(t)
     return None
 
 
@@ -174,26 +189,33 @@ def limits_sentence(rep):
     return f"{lead}: {(', ' if len(by_page) > 2 else ', and ').join(clauses) if len(by_page) > 1 else by_page[0]}."
 
 
+def _starving_run(r):
+    """True when one run shows a player that gets video late while its decoder keeps up; None when
+    the run lacks any of the three kinds of evidence (they are never combined across runs)."""
+    seg = ((r.get("fetches") or {}).get("segment")) or {}
+    gap, fetch = seg.get("arrival_gap_max_ms"), (seg.get("total_ms") or {}).get("p95")
+    decoded = sum(s.get("decoded") or 0 for s in r.get("detail") or [])
+    dropped = sum(s.get("dropped") or 0 for s in r.get("detail") or [])
+    if gap is None or fetch is None or not decoded:
+        return None
+    return gap >= STARVE_GAP_MS and fetch < FAST_FETCH_MS and dropped <= 0.01 * decoded
+
+
 def _starving_cameras(rep):
-    """Camera pages whose streams get video late while the decoder keeps up: (page, hardware)."""
+    """Failing camera pages where every run with the full evidence starves, and at least one does:
+    (page, whether those runs' decoders were all hardware)."""
     out = []
     for p in PAGES:
         if (_bands(rep).get(p) or {}).get("camera") in NOT_A_LIMIT:
             continue
-        gaps, fetch, decoded, dropped, codecs = [], [], 0, 0, set()
-        for r in _tiers(rep).get(p, {}).get("camera_runs") or []:
-            seg = ((r.get("fetches") or {}).get("segment")) or {}
-            if seg.get("arrival_gap_max_ms") is not None:
-                gaps.append(seg["arrival_gap_max_ms"])
-            if (seg.get("total_ms") or {}).get("p95") is not None:
-                fetch.append(seg["total_ms"]["p95"])
-            for s in r.get("detail") or []:
-                decoded += s.get("decoded") or 0
-                dropped += s.get("dropped") or 0
-            codecs |= set(((r.get("media") or {}).get("codecs")) or [])
-        if gaps and fetch and decoded and max(gaps) >= STARVE_GAP_MS and max(fetch) < FAST_FETCH_MS \
-                and dropped <= 0.01 * decoded:
-            out.append((p, bool(codecs) and not any(c.startswith(("c2.android.", "OMX.google.")) for c in codecs)))
+        runs = _tiers(rep).get(p, {}).get("camera_runs") or []
+        judged = [(r, _starving_run(r)) for r in runs]
+        judged = [(r, v) for r, v in judged if v is not None]
+        if judged and all(v for _, v in judged):
+            codecs = [c for r, _ in judged for c in ((r.get("media") or {}).get("codecs") or [])]
+            hw = all(((r.get("media") or {}).get("codecs")) for r, _ in judged) \
+                and not any(c.startswith(("c2.android.", "OMX.google.")) for c in codecs)
+            out.append((p, hw))
     return out
 
 
