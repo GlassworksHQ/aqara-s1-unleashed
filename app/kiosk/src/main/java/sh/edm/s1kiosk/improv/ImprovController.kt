@@ -60,7 +60,7 @@ object ImprovController {
     /** Keep advertising PROVISIONED this long so clients see it (ESPHome STOP_ADVERTISING_DELAY). */
     const val STOP_DELAY_MS = 10_000L
     private const val FIRMWARE = "S1 Kiosk"
-    private const val DEVICE_NAME = "S1 Panel"
+    private const val DEVICE_NAME = "Glassworks Panel"
 
     private val main = Handler(Looper.getMainLooper())
     private lateinit var app: Context
