@@ -57,6 +57,11 @@ ESPHome device. Package `sh.edm.esphome`, MIT licensed.
 - **Entities:** binary sensor, sensor, text sensor, switch, number, select, text, button, event,
   update, light (brightness) and media player. You can also subclass `ApiEntity`. Any entity can be
   marked `authOnly`, so commands are accepted only over Noise with the provisioned key.
+- **Actions:** user-defined actions that Home Assistant calls as `esphome.<node>_<action>`, with
+  bool, int, float and string arguments and their lists. An action can return JSON to the caller
+  or fail with a message.
+- **Camera:** a camera entity that serves JPEG frames, one at a time or as the stream HA's
+  more-info dialog shows. Images go out in chunks, so states and pings keep flowing meanwhile.
 - **Voice assistant:** the messages are wired through `VoiceAssistantHandler`: start and stop, API
   audio, events, timers, announcements and wake word configuration. The audio, wake word and UI
   stay in your app.
@@ -101,9 +106,44 @@ server.start()
   and `network`, plus `api_encryption` (once encrypted) or `api_encryption_supported` and
   `api_provisioning=zero-psk` (while provisionable). You can also add the device in HA by IP
   address.
+- **Actions and cameras.** See [below](#actions-and-cameras).
 - **Logging.** By default it goes to `android.util.Log` on Android (found by reflection) and to
   stdout elsewhere. Set `EspHomeLog.tag`, or replace `EspHomeLog.sink` to route it into your own
   logger.
+
+## Actions and cameras
+
+```kotlin
+val notify = ApiAction(
+    "notify",
+    args = listOf(ActionArg("title", ActionArgType.STRING), ActionArg("seconds", ActionArgType.INT)),
+    supportsResponse = ActionResponse.STATUS,
+) { call ->
+    showBanner(call.string("title"), call.int("seconds"))
+    null // a JSON object instead, for ActionResponse.OPTIONAL or ONLY
+}
+val porch = CameraEntity("porch", "Porch", maxFps = 5f) { latestJpeg() }
+server.setEntities(listOf(lamp, uptime, notify, porch))
+```
+
+`ReadmeExampleTest` keeps this one working too. Home Assistant then has an action
+`esphome.my_device_notify` with the fields `title` and `seconds` (every field is required), and a
+camera entity `camera.my_device_porch`.
+
+- **Action handlers** run on the server's action thread, one call at a time and in order, so a slow
+  one never holds up the connection. A handler returns JSON as text, or null. To fail the call,
+  throw: HA shows the exception's message. With `ActionResponse.NONE` (the default) HA doesn't wait
+  for the result at all.
+- **The camera's frame function** runs only while a client wants images. A single request takes one
+  frame. A stream takes frames at up to `maxFps` until 5 s pass without another stream request, as
+  ESPHome does. HA's more-info dialog asks again after every frame. Each client has its own camera
+  thread, and the frame function is called when that thread is ready to send, so a slow client gets
+  fewer frames, not a queue. Return null when there is no image: HA then reports it at once instead
+  of timing out. Images go only to clients that have subscribed to states, as in ESPHome.
+- **`authOnly`** works for both: the action runs, or the camera sends images, only over Noise with
+  the provisioned key.
+- **Not in yet:** the camera's idle image every few seconds (ESPHome's `idle_update_interval`), and
+  argument descriptions (HA doesn't show them).
 
 ## Gradle
 
@@ -125,9 +165,9 @@ checks the library's classes, and the BouncyCastle classes they reach, against A
 cd app && ./gradlew :esphome-api:test
 ```
 
-`EspHomeKeepaliveTest` runs the real `aioesphomeapi` client when `ESPHOME_PYTHON` points at a
-Python with it installed. It is skipped otherwise. PR CI installs it from
-[`test-requirements.txt`](test-requirements.txt) (locked with hashes) and fails if the test skipped:
+`EspHomeKeepaliveTest` and `EspHomeActionsCameraTest` run the real `aioesphomeapi` client when
+`ESPHOME_PYTHON` points at a Python with it installed. They are skipped otherwise. PR CI installs it from
+[`test-requirements.txt`](test-requirements.txt) (locked with hashes) and fails if one of them skipped:
 
 ```sh
 python3 -m venv /tmp/esphome-venv && /tmp/esphome-venv/bin/pip install aioesphomeapi==46.25.0

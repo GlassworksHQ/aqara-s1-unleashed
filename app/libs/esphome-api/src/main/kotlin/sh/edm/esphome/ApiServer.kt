@@ -102,8 +102,9 @@ interface VoiceAssistantHandler {
 /**
  * ESPHome native API server (TCP, default port 6053). One reader thread per connection; writes are
  * serialized per connection. Message handling follows esphome `api_connection.cpp`: Hello,
- * DeviceInfo, DeviceCapabilities, ListEntities, SubscribeStates, commands, Ping, Disconnect and the
- * voice assistant messages. Unknown messages are ignored, as ESPHome does.
+ * DeviceInfo, DeviceCapabilities, ListEntities, SubscribeStates, commands, actions ([ApiAction]),
+ * camera images ([CameraEntity]), Ping, Disconnect and the voice assistant messages. Unknown messages
+ * are ignored, as ESPHome does.
  *
  * Encryption follows an ESPHome build with `api: encryption:` but no YAML key ([NoiseKeys]):
  * without a key the server accepts plaintext and zero-PSK Noise clients and lets Home Assistant
@@ -143,6 +144,8 @@ class ApiServer(
         const val UNRESPONSIVE_MS = 150_000L // ESPHome: KEEPALIVE_TIMEOUT_MS * 5 / 2
         /** ESPHome activates a newly saved PSK 100 ms after answering (api_server.cpp update_noise_psk_). */
         const val KEY_ACTIVATION_DELAY_MS = 100L
+        /** A camera stream runs this long after the last stream request (ESPHome api_connection.cpp `CAMERA_STOP_STREAM`). */
+        const val CAMERA_STREAM_MS = 5_000L
     }
 
     @Volatile var voice: VoiceAssistantHandler? = null
@@ -186,6 +189,10 @@ class ApiServer(
     /** Makes the listening socket; a test passes one whose sockets it can hold mid-write. Set before [start]. */
     @Volatile internal var newServerSocket: () -> ServerSocket = { ServerSocket() }
     private var keepaliveTimer: java.util.concurrent.ScheduledExecutorService? = null
+    /** Runs [ApiAction] handlers, one at a time, off the connections' reader threads. */
+    @Volatile private var actionThread: java.util.concurrent.ExecutorService? = null
+    /** [CAMERA_STREAM_MS]; shorter in tests. Set before [start]. */
+    @Volatile internal var cameraStreamMs = CAMERA_STREAM_MS
     @Volatile private var voiceConn: Connection? = null
 
     private val stateLock = Any()
@@ -244,6 +251,9 @@ class ApiServer(
         keepaliveTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
             Thread(r, "esphome-keepalive").apply { isDaemon = true }
         }.also { it.scheduleWithFixedDelay({ keepaliveTick() }, tick, tick, java.util.concurrent.TimeUnit.MILLISECONDS) }
+        actionThread = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+            Thread(r, "esphome-actions").apply { isDaemon = true }
+        }
         EspHomeLog.i("API server listening on ${ss.localPort} (${modeName()})")
     }
 
@@ -311,6 +321,8 @@ class ApiServer(
     fun stop() {
         keepaliveTimer?.shutdownNow()
         keepaliveTimer = null
+        actionThread?.shutdownNow()
+        actionThread = null
         running = false
         try { serverSocket?.close() } catch (_: IOException) {}
         serverSocket = null
@@ -379,6 +391,11 @@ class ApiServer(
         /** When the last frame arrived from the client; [pingSent]: we pinged since then. */
         @Volatile var lastRead = 0L
         @Volatile var pingSent = false
+        private val camera = CameraFeed("esphome-camera-$id", cameraStreamMs, ::visibleCameras) { send(listOf(it)) }
+
+        private fun visibleCameras(): List<CameraEntity> =
+            if (!subscribedStates) emptyList()
+            else entities.filterIsInstance<CameraEntity>().filter { !it.authOnly || authenticated }
 
         fun run() {
             try {
@@ -475,6 +492,7 @@ class ApiServer(
         fun close() {
             if (!isOpen) return
             isOpen = false
+            camera.close()
             try { socket.close() } catch (_: IOException) {}
             connections -= this
             if (voiceConn === this) {
@@ -548,7 +566,39 @@ class ApiServer(
                         onCommand?.invoke()
                     }
                 }
+                Msg.EXECUTE_SERVICE_REQUEST -> executeAction(m)
+                Msg.CAMERA_IMAGE_REQUEST -> camera.request(single = m.bool(1), stream = m.bool(2))
                 else -> handleVoice(f.type, m)
+            }
+        }
+
+        /**
+         * `ExecuteServiceRequest`: the handler runs on [actionThread]. Home Assistant waits for an
+         * `ExecuteServiceResponse` only when it sent a call_id (every [ActionResponse] but NONE).
+         */
+        private fun executeAction(m: ProtoMessage) {
+            val callId = m.uint32(3)
+            fun fail(why: String) {
+                EspHomeLog.w("[$id] action call refused: $why")
+                if (callId != 0) reply(Msg.EXECUTE_SERVICE_RESPONSE, ProtoWriter().uint32(1, callId).string(3, why))
+            }
+            val action = byKey[m.fixed32(1)] as? ApiAction ?: return fail("unknown action key ${m.fixed32(1)}")
+            if (action.authOnly && !authenticated) {
+                return fail("${action.name} only runs over an encrypted connection with the device's key")
+            }
+            val call = try { action.decode(m) } catch (e: IllegalArgumentException) {
+                return fail(e.message ?: "bad arguments")
+            } catch (e: ProtoException) {
+                return fail("bad arguments: ${e.message}")
+            }
+            EspHomeLog.i("[$id] action ${action.name}")
+            val run = Runnable {
+                val response = action.execute(call, callId)
+                if (callId != 0) reply(Msg.EXECUTE_SERVICE_RESPONSE, response)
+                try { onCommand?.invoke() } catch (t: Throwable) { EspHomeLog.w("onCommand failed", t) }
+            }
+            try { actionThread?.execute(run) ?: fail("server stopped") } catch (e: java.util.concurrent.RejectedExecutionException) {
+                fail("server stopped")
             }
         }
 
