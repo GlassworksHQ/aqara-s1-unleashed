@@ -225,7 +225,11 @@ The workflow then:
    image and Ubuntu snapshot; it must reproduce `tools/radio/sisdk-runtime.sha256`; never Silicon Labs'
    zigbeed itself), then signs the radio bundle in the `sign-bundle` job (environment `radio-signing`,
    main only, every input checked against committed hashes; `tools/radio/make-bundle.py --app-version`,
-   version = the versionCode, checked against `tools/root/s1kiosk_bundle.pub`);
+   version = the versionCode, checked against `tools/root/s1kiosk_bundle.pub`). PR CI catches most drift
+   before a tag does. The `size` job in `pr.yml` caches the runtime under a key made from the script,
+   `tools/radio/sisdk/` and the hash file. When one of them changes, it rebuilds from scratch and checks
+   the hashes. On a cache hit, it only checks the cached files against the hashes. So drift outside the
+   repo (the Ubuntu snapshot, the cpc-daemon tag) still shows first in this fresh release build;
 3. builds `:kiosk:assembleRelease` with `S1_VERSION=1.0.0` once per ABI, the `armeabi-v7a` one with
    the bundle as APK assets. The build fails if a key is missing (`S1_REQUIRE_RELEASE_SIGNING=true`);
 4. runs `apksigner verify --print-certs` on each APK, so the certificate fingerprint is in the log,

@@ -123,11 +123,12 @@ cd app && ./gradlew :esphome-api:test
 ```
 
 `EspHomeKeepaliveTest` runs the real `aioesphomeapi` client when `ESPHOME_PYTHON` points at a
-Python with it installed:
+Python with it installed. It is skipped otherwise. PR CI installs it from
+[`test-requirements.txt`](test-requirements.txt) (locked with hashes) and fails if the test skipped:
 
 ```sh
 python3 -m venv /tmp/esphome-venv && /tmp/esphome-venv/bin/pip install aioesphomeapi==46.25.0
-ESPHOME_PYTHON=/tmp/esphome-venv/bin/python ./gradlew :esphome-api:test
+ESPHOME_PYTHON=/tmp/esphome-venv/bin/python ./gradlew :esphome-api:test --rerun
 ```
 
 The app's `EspHomeApiTest` (`:kiosk:testDebugUnitTest`) covers the rest the same way: every entity
