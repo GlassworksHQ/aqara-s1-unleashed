@@ -168,10 +168,10 @@ def limits(bands, level):
 
 
 def grade(tiers, start_ms):
-    """tiers: {light|typical|heavy: {"inp_ms", "load_ms", "scroll_level", "updates_level", "camera_level"}}; start_ms:
-    process start to engine ready. Returns the letter, its plain meaning, each page's bands and
-    level, and what is missing. A missing measurement fails whatever needs it, and the grade is then
-    provisional."""
+    """tiers: {light|typical|heavy: {"inp_ms", "load_ms", "scroll_level", "updates_level", "camera_level"}};
+    start_ms: the restart, process start to the start view usable (protocol 4; engine ready before
+    it). Returns the letter, its plain meaning, each page's bands and level, and what is missing. A
+    missing measurement fails whatever needs it, and the grade is then provisional."""
     bands = {t: tier_bands((tiers or {}).get(t), t) for t in TIERS}
     levels = {t: page_level(bands[t]) for t in TIERS}
     start = band(start_ms, METRICS["start_ms"])

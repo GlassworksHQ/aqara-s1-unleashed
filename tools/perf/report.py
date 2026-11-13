@@ -500,6 +500,10 @@ def reference_run(c):
             start_error = "no process start in logcat"
         elif restart_page is None:
             start_error = c.get("restart_page_error") or "the kiosk didn't come back to a reference dashboard"
+        elif restart_page.get("tier") != "start":
+            # The restart ends on the start view, the one the kiosk was pointed at: any other view
+            # (a stale setting, a page the kiosk restored) isn't the cold load this times.
+            start_error = f"the kiosk came back to the {restart_page.get('tier')!r} view, not 'start'"
         else:
             when, why = usable_on_screen(restart_page, c.get("presents_mono_ms") or [])
             if why:
@@ -826,7 +830,9 @@ def real_use_summary(cold, idles, package):
 
 
 def pane_diffs(idles, package):
-    """Each `<pane>-off` label against the all-on samples. A delta inside the all-on range is noise."""
+    """Each `<pane>-off` label against the all-on samples. A delta inside the all-on range is noise.
+    A sample the screen went off in is left out (real_use_summary lists it)."""
+    idles = {k: [i for i in v if not i.get("screen_off")] for k, v in idles.items()}
     on = [i for i in idles.get("all-on", []) if app_memory(i)["app_pss_kb"] is not None]
     if not on:
         return []
@@ -1067,6 +1073,9 @@ def coverage_reasons(ref, attempted):
     out = []
     if ref["graded_runs"] < attempted:
         out.append(f"{attempted - ref['graded_runs']} of {attempted} graded runs failed or are missing")
+    n_start = (ref.get("start_ms") or {}).get("n", 0) or 0
+    if 0 < n_start < attempted:
+        out.append(f"restart: measured in fewer runs than attempted ({n_start} of {attempted})")
     for t in G.TIERS:
         s_ = ref["tiers"].get(t)
         got = {"tap": s_ and (s_["inp_ms"] or {}).get("n", 0) or 0,
