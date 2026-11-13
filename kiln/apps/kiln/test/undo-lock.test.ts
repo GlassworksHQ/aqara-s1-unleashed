@@ -7,7 +7,8 @@ vi.mock('@glassworks/aqara-s1-plus-installer', async (orig) => ({
   unprovision: async () => {}, // the apps come back (its steps have their own tests)
 }));
 
-import { s1Plus, type PanelShell } from '@glassworks/aqara-s1-plus-installer';
+import type { PanelShell } from '@glassworks/adb';
+import { s1Plus } from '@glassworks/aqara-s1-plus-installer';
 import { backupFile, backupZip, type BackupMeta } from '@glassworks/kiln-core';
 import { s1PlusUi } from '../src/frames/aqara-s1-plus';
 import { demoBootImage } from '../src/wizard/demo';
