@@ -451,7 +451,8 @@ class SendspinRunsTest {
         player.setVolume(40)
         player.start()
         conns.awaitAt(0)
-        val first = awaitTrack { true }
+        // A write means the sink has published the track (the factory adds it to [tracks] just before).
+        val first = awaitTrack { it.writers.isNotEmpty() }
         assertEquals("the first run's track", PlaybackScheduler.amplitude(40), first.gain)
         player.setVolume(20)
         assertEquals("a change reaches the playing track", PlaybackScheduler.amplitude(20), first.gain)
@@ -459,7 +460,7 @@ class SendspinRunsTest {
         player.setMuted(true)
         player.start()
         conns.awaitAt(1)
-        val second = awaitTrack { it !== first }
+        val second = awaitTrack { it !== first && it.writers.isNotEmpty() }
         assertEquals("the next run's track, muted while stopped", 0f, second.gain)
     }
 

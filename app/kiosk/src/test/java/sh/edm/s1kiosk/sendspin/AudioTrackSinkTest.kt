@@ -4,6 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 /** [AudioTrackSink] over fake tracks: one track at a time, released when replaced or closed. */
 class AudioTrackSinkTest {
@@ -49,5 +52,25 @@ class AudioTrackSinkTest {
         duringCreation = { sink.setGain(0f) } // muted or ducked while AudioTrack.Builder.build() runs
         sink.open(48_000, 2)
         assertEquals(0f, made.single().gain)
+    }
+
+    @Test
+    fun aGainChangeFromAnotherThreadDoesNotWaitForTheTrackCreation() {
+        val creating = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        sink.setGain(0.6f)
+        duringCreation = { creating.countDown(); gate.await(5, TimeUnit.SECONDS) } // a slow AudioTrack.Builder.build()
+        val opener = thread(name = "audio") { sink.open(48_000, 2) }
+        try {
+            assertTrue("creation started", creating.await(5, TimeUnit.SECONDS))
+            val duck = thread(name = "voice") { sink.setGain(0f) }
+            duck.join(2_000)
+            assertFalse("setGain returned while the track was still being created", duck.isAlive)
+        } finally {
+            gate.countDown()
+        }
+        opener.join(5_000)
+        assertFalse(opener.isAlive)
+        assertEquals("the change made during creation reached the track", 0f, made.single().gain)
     }
 }
