@@ -46,6 +46,26 @@ class StackView(context: Context) : View(context) {
     var looks: List<Look> = listOf(Look.LIT, Look.OUTLINE, Look.OUTLINE)
         set(v) { require(v.size == 3); field = v; invalidate() }
 
+    /**
+     * Draw in the boot animation's 120-unit viewBox, filling the view (branding/boot/stack.py's geometry),
+     * instead of fitting the plates to the view. The connecting screen uses it to continue the boot's
+     * last frame exactly.
+     */
+    var viewBox = false
+        set(v) { field = v; invalidate() }
+
+    /** How far each plate (top first) is lifted, in units (the boot's float). */
+    var lifts = floatArrayOf(0f, 0f, 0f)
+        set(v) { field = v; invalidate() }
+
+    /** The lit plate's brightness, 1 = full (the boot's breathe dims by brightness, never opacity). */
+    var glow = 1f
+        set(v) { field = v; invalidate() }
+
+    /** How much of [rising]'s light shows, 0..1: the boot's handoff fades it in from the boot's even glow. */
+    var risingMix = 1f
+        set(v) { field = v; invalidate() }
+
     /** Light rising through the plates (connecting): loops while the view is attached. */
     var rising = false
         set(v) { if (field != v) { field = v; if (v) startRising() else stopRising() } }
@@ -93,12 +113,12 @@ class StackView(context: Context) : View(context) {
     }
 
     override fun onDraw(c: Canvas) {
-        val u = min(width / CONTENT_W, height / CONTENT_H)
+        val u = if (viewBox) width / 120f else min(width / CONTENT_W, height / CONTENT_H)
         if (u <= 0f) return
-        val ox = (width - CONTENT_W * u) / 2f - X0 * u
-        val oy = (height - CONTENT_H * u) / 2f - Y0 * u
+        val ox = if (viewBox) 0f else (width - CONTENT_W * u) / 2f - X0 * u
+        val oy = if (viewBox) 0f else (height - CONTENT_H * u) / 2f - Y0 * u
         val p = held ?: phase.takeIf { rising }
-        val light = FloatArray(3) { i -> if (p != null) light(i, p) else 0f }
+        val light = FloatArray(3) { i -> if (p != null) light(i, p) * risingMix else 0f }
         for (i in 2 downTo 0) {
             platePath(i, u, ox, oy)
             when (looks[i]) {
@@ -106,7 +126,7 @@ class StackView(context: Context) : View(context) {
                 Look.PROBLEM -> dashed(c, Glass.ROSE, 4.5f * u, u)
                 Look.OUTLINE -> outline(c, W[i], u, light[i])
                 Look.DIM -> outline(c, W[i] * 0.55f, u, 0f)
-                Look.LIT -> lit(c, i, u, ox, oy, if (p != null) 0.55f + 0.45f * light[i] else 1f)
+                Look.LIT -> lit(c, i, u, ox, oy, glow * if (p != null) 1f - 0.45f * risingMix + 0.45f * light[i] else 1f)
             }
         }
     }
@@ -116,7 +136,7 @@ class StackView(context: Context) : View(context) {
         box.set(0f, 0f, SIDE, SIDE)
         tmp.addRoundRect(box, R, R, Path.Direction.CW)
         // x' = cx + cos30·(x − y), y' = top + (x + y)/2, then into the view.
-        m.setValues(floatArrayOf(C * u, -C * u, ox + CX * u, 0.5f * u, 0.5f * u, oy + (TOP0 + i * GAP) * u, 0f, 0f, 1f))
+        m.setValues(floatArrayOf(C * u, -C * u, ox + CX * u, 0.5f * u, 0.5f * u, oy + (TOP0 + i * GAP - lifts[i]) * u, 0f, 0f, 1f))
         tmp.transform(m, plate)
     }
 

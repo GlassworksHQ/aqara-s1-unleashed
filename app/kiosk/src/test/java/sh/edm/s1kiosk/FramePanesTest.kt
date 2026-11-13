@@ -8,8 +8,10 @@ import dev.glassworks.frame.Frame
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PaneDefinition
+import dev.glassworks.pane.PaneChoice
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
+import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupOp
 import dev.glassworks.pane.SetupStep
 import dev.glassworks.pane.settingsOrder
@@ -53,7 +55,7 @@ class FramePanesTest {
      * A frame with one pane, "camera": one settings section, and a setup step for each of [steps]
      * (id to its one request's name, which answers ok).
      */
-    private class FakeFrame(private vararg val steps: Pair<String, String>) : Frame {
+    private class FakeFrame(private vararg val steps: Pair<String, String>, private val card: Boolean = true) : Frame {
         override val board = "fake-frame"
         override val presence = null
         override val light = null
@@ -62,14 +64,17 @@ class FramePanesTest {
         override fun paneDefinitions(context: Context) = listOf(object : PaneDefinition {
             override val id = "camera"
             override val setupSteps = steps.map { (id, op) -> step(id, op) }
+            override val setupChoice = if (card) PaneChoice("Camera", "A doorbell view", on = { true }, apply = { null }) else null
             override fun settings() = listOf(SettingsSection("camera", "Camera", listOf(SettingsItem.Note { "Camera on" })))
         })
 
         private fun step(id: String, op: String) = object : SetupStep {
             override val id = id
+            override val title = "Camera"
             override val ops = mapOf(op to SetupOp { null })
             override val reason = "camera not set up"
             override fun done() = false
+            override fun screen(context: Context, host: SetupHost) = throw UnsupportedOperationException()
         }
     }
 
@@ -79,8 +84,8 @@ class FramePanesTest {
         val skipped = mutableListOf<String>()
         assertEquals(steps, SetupFlow.usable(steps, skipped::add))
         assertEquals(emptyList<String>(), skipped)
-        assertEquals(listOf("radio"), steps.map { it.id }) // answered on the Panes step
-        assertEquals(listOf("wifi", "ha", "panes", "signin", "done"), SetupFlow.ids(runtime.paneDefinitions(app).any { it.setupChoice != null }))
+        assertEquals(listOf("radio"), steps.map { it.id }) // a sub-step under Panes
+        assertEquals(listOf("wifi", "ha", "signin", "panes", "radio", "done"), SetupFlow.ids(true, steps.map { it.id }))
         assertEquals(steps, runtime.setupSteps(app))
     }
 
@@ -113,7 +118,7 @@ class FramePanesTest {
         assertTrue(errors.toString(), errors[0].contains("'wifi'"))
 
         // The setup screen, as MainActivity.onCreate builds it, still starts.
-        SetupOverlay(app, r.paneDefinitions(app).mapNotNull { it.setupChoice })
+        SetupOverlay(app, r.setupPanes(app))
 
         // Each setup channel connection, as SetupChannelServer makes it: the kept step answers, a
         // dropped step's requests don't exist.
@@ -153,5 +158,16 @@ class FramePanesTest {
         }
         assertTrue("PaneDefinition.setupSteps read outside GlassworksRuntime; use GlassworksRuntime.setupSteps:\n${found.joinToString("\n")}", found.isEmpty())
         assertTrue(read.containsMatchIn(File(main, "sh/edm/s1kiosk/GlassworksRuntime.kt").readText()))
+    }
+
+    @Test
+    fun aPanesStepsWithoutACardAreLeftOut() {
+        // F6: a pane's steps sit under Panes only while its card is on; with no card they could never be
+        // answered on the panel, so setup leaves them out (and says so) instead of waiting for ever.
+        ShadowLog.clear()
+        val r = runtimeWith(FakeFrame("camera" to "look", card = false))
+        assertEquals(listOf("radio"), r.setupSteps(app).map { it.id })
+        val errors = ShadowLog.getLogsForTag("S1Kiosk").filter { it.type == Log.ERROR }.map { it.msg }
+        assertTrue(errors.toString(), errors.any { "'camera'" in it && "no card" in it })
     }
 }

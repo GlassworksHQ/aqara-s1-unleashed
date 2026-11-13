@@ -64,7 +64,7 @@ class RadioSectionView(private val context: Context) {
     /** Off first, then the modes as setup's Panes step names them. */
     private val chipList = listOf(RadioMode.OFF, RadioMode.ZIGBEE_TCP, RadioMode.THREAD, RadioMode.ZIGBEE_ROUTER, RadioMode.THREAD_ROUTER)
         .mapNotNull { m -> RadioStep.OPTIONS.firstOrNull { it.mode == m } }
-        .map { o -> o.mode to Glass(context).chip(if (o.mode == RadioMode.OFF) "Off" else RadioStep.chip(o)).apply { setOnClickListener { tap(o.mode) } } }
+        .map { o -> o.mode to Glass(context).chip(if (o.mode == RadioMode.OFF) "Off" else o.title).apply { setOnClickListener { tap(o.mode) } } }
 
     /** The modes as chips (#63): the one in effect is lit; tapping another asks to switch. */
     val tiles = Wrap(context, s.px(10f), s.px(10f)).apply { chipList.forEach { (_, c) -> addView(c) } }

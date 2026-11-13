@@ -47,6 +47,7 @@ class SetupChannelTest {
 
         val step = object : SetupStep {
             override val id = "radio"
+            override val title = "Radio"
             override val reason = "radio mode not chosen"
             override fun done() = false
             override fun channelState() = RadioDefinition.channelJson(radio.mode, radio.status, radio.helper, radio.allowed)
@@ -65,6 +66,7 @@ class SetupChannelTest {
                 },
             )
             override val legacyOps = mapOf("set_radio" to "set_mode", "set_radio_allow" to "set_allow")
+            override fun screen(context: android.content.Context, host: dev.glassworks.pane.SetupHost) = throw UnsupportedOperationException()
         }
 
         fun channel() = SetupChannel(this, listOf(step))

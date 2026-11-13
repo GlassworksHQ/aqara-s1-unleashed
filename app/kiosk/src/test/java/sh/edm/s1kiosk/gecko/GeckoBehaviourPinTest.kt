@@ -275,7 +275,7 @@ class GeckoBehaviourPinTest {
         h.progress.onPageStart(h.session, "about:blank")
         assertFalse(h.loading.isShowing)
         h.progress.onPageStart(h.session, dash)
-        assertEquals(listOf("Connecting to Home Assistant", "192.0.2.10"), h.loadingTexts())
+        assertEquals(listOf("Glassworks", "Connecting to Home Assistant · 192.0.2.10"), h.loadingTexts())
     }
 
     @Test
@@ -300,8 +300,11 @@ class GeckoBehaviourPinTest {
     fun `a failed load says so and retries the dashboard after 10 s`() = harness().use { h ->
         h.progress.onPageStart(h.session, dash)
         h.progress.onPageStop(h.session, false)
-        assertEquals(listOf("Can't reach Home Assistant", "Trying again in 10 s · 192.0.2.10"), h.loadingTexts())
-        assertEquals(emptyList<String>(), h.eventsDuring { h.advance(8_999) })
+        val stopped = android.os.SystemClock.uptimeMillis()
+        assertEquals(listOf("Glassworks", "Can't reach Home Assistant · Trying again in 10 s · 192.0.2.10"), h.loadingTexts())
+        // 10 s after the failed load (the connecting screen's animations can carry the clock a frame or two).
+        val left = 10_000 - (android.os.SystemClock.uptimeMillis() - stopped)
+        assertEquals(emptyList<String>(), h.eventsDuring { h.advance(left - 1) })
         assertEquals(listOf("s1.load $dash"), h.eventsDuring { h.advance(1) })
     }
 

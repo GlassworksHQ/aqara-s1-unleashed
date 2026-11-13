@@ -70,8 +70,12 @@ class MainActivity : Activity() {
 
     /** The panes' definitions: their setup steps, settings sections and adb extras. */
     private val panes by lazy { glassworks.paneDefinitions(this) }
-    private val paneSteps by lazy { glassworks.setupSteps(this) }
-    private val paneChoices by lazy { panes.mapNotNull { it.setupChoice } }
+    /** The panes on setup's Panes step, each with its steps (only usable ones). */
+    private val setupPanes by lazy { glassworks.setupPanes(this) }
+    private val paneSteps by lazy { setupPanes.flatMap { it.steps } }
+
+    /** A Panes card that only applies at start (voice) changed: restart once setup is done. */
+    private var restartAfterSetup = false
 
     /** "Sign in on this panel instead" was chosen: don't cover HA's login page again (this process). */
     private var usePanelLogin = false
@@ -141,6 +145,7 @@ class MainActivity : Activity() {
     private val setupTick = object : Runnable {
         override fun run() {
             refreshSetup()
+            setupOverlay.tick() // the panes' steps follow their state
             refreshOffline()
             handler.postDelayed(this, SETUP_TICK_MS)
         }
@@ -175,13 +180,13 @@ class MainActivity : Activity() {
         // full-screen window); until it is ready the loading screen draws 8-bit gradients.
         val real = android.graphics.Point().also { @Suppress("DEPRECATION") windowManager.defaultDisplay.getRealSize(it) }
         Backdrop.prewarm(maxOf(real.x, real.y), minOf(real.x, real.y))
-        loadingOverlay = LoadingOverlay(this).apply { onAction = ::openWifiSettings }
+        loadingOverlay = LoadingOverlay(this, glassworks.frame.bootRest).apply { onAction = ::openWifiSettings }
         voiceOverlay = VoiceOverlay(this).apply {
             onCancel = { glassworks.voiceCancel?.invoke() }
             onShowingChanged = { timerOverlay.voiceShowing(it) } // a timer set by voice flies out of the orb
         }
         timerOverlay = TimerOverlay(this)
-        setupOverlay = SetupOverlay(this, paneChoices).apply {
+        setupOverlay = SetupOverlay(this, setupPanes).apply {
             onUsePanel = ::onUsePanelLogin
             onManualUrl = ::onManualHaUrl
             onChooseNetwork = ::openWifiSettings
@@ -189,12 +194,12 @@ class MainActivity : Activity() {
             onClosePreview = ::closeSetupPreview
             onImprovAction = ::onImprovAction
             onPanesDone = { restart ->
-                when {
-                    setupPreview -> closeSetupPreview()
-                    restart -> restartProcess() // voice on or off: PanelDevice reads it at start
-                    else -> refreshSetup()
-                }
+                // Voice on or off: PanelDevice reads it at start. Restart once setup is done, so the
+                // panes' own steps (the radio's) come first.
+                if (restart) restartAfterSetup = true
+                if (!setupPreview) refreshSetup()
             }
+            onStepDone = { refreshSetup() }
         }
         threadJoinOverlay = sh.edm.s1kiosk.setup.ThreadJoinOverlay(this).apply {
             onClose = { HaAuth.threadJoin.disarm(); hide() }
@@ -291,7 +296,7 @@ class MainActivity : Activity() {
         val now = SystemClock.elapsedRealtime()
         if (w.online) offlineSince = 0L else if (offlineSince == 0L) offlineSince = now
         if (w.online && !w.ethernet && !prefs.wifiSeen) prefs.wifiSeen = true
-        val steps = paneSteps.map { PaneStepFacts(it.id, it.done(), it.reason) }
+        val steps = paneSteps.map { PaneStepFacts(it.id, it.done(), it.reason, wanted = setupOverlay.wanted(it.id)) }
         return SetupInputs(
             online = w.online,
             offlineForMs = if (w.online) 0L else now - offlineSince,
@@ -307,6 +312,8 @@ class MainActivity : Activity() {
             usePanelLogin = usePanelLogin,
             showing = setupOverlay.isShowing && !setupPreview,
             paneSteps = steps,
+            panesChosen = setupOverlay.panesChosen,
+            dashboardLoaded = currentUrl.let { u -> u != null && FrontendUrls.sameOrigin(u, prefs.haBase) && !FrontendUrls.isAuthorizePage(u, prefs.haBase) },
             improv = ImprovController.setupFacts,
             installer = ImprovController.installerWifi,
             neverSetUp = SetupState.neverSetUp(
@@ -326,7 +333,8 @@ class MainActivity : Activity() {
             val forced = setupPreviewStep
             // A forced step: every step before it shows as done.
             val m = if (forced == null) setupModel(d, d.step, d.done, preview = true)
-            else setupModel(d, forced, SetupFlow.ids(paneChoices.isNotEmpty()).takeWhile { it != forced }.toSet(), preview = true)
+            // A forced step: every step before it shows as done, and so does any step that really is.
+            else setupModel(d, forced, previewFlow().takeWhile { it != forced }.toSet() + d.done, preview = true)
             if (m.step == SetupFlow.DONE) {
                 // A preview holds Done until it is closed (closeSetupPreview); nothing loads behind it.
                 if (setupOverlay.model?.step != SetupFlow.DONE) setupOverlay.finish(m) {}
@@ -344,7 +352,10 @@ class MainActivity : Activity() {
             setupOverlay.render(setupModel(d, d.step, d.done, preview = false))
         } else if (setupOverlay.isShowing && setupOverlay.model?.step != SetupFlow.DONE) {
             Log.i(TAG, "Setup complete; loading the dashboard")
-            setupOverlay.finish { loadDashboardIfNeeded() }
+            setupOverlay.finish {
+                if (restartAfterSetup) handler.postDelayed({ restartProcess() }, 1_800) // after Done shows
+                else loadDashboardIfNeeded()
+            }
         }
         syncImprovInline()
     }
@@ -364,6 +375,9 @@ class MainActivity : Activity() {
         lastImprovInline = now
         ImprovController.refreshUi()
     }
+
+    /** Every step a preview can show: all the panes' steps, as if every pane were on. */
+    private fun previewFlow() = SetupFlow.ids(setupPanes.isNotEmpty(), paneSteps.map { it.id })
 
     private fun setupModel(d: sh.edm.s1kiosk.setup.SetupDecision, step: String, done: Set<String>, preview: Boolean) =
         SetupOverlay.Model(
@@ -392,8 +406,8 @@ class MainActivity : Activity() {
     /** `--ez show_setup true [--es setup_step wifi|ha|panes|signin|done]`, `--ez show_signin true` (= signin). */
     private fun applySetupPreview(intent: Intent) {
         val asked = intent.getStringExtra("setup_step")
-        val step = SetupFlow.parse(asked, paneChoices.isNotEmpty(), paneSteps.map { it.id })
-        if (asked != null && step == null) Log.e(TAG, "setup_step '$asked' is not a step: ${SetupFlow.ids(paneChoices.isNotEmpty())}")
+        val step = SetupFlow.parse(asked, setupPanes.isNotEmpty(), paneSteps.map { it.id })
+        if (asked != null && step == null) Log.e(TAG, "setup_step '$asked' is not a step: ${previewFlow()}")
         when {
             intent.getBooleanExtra("show_signin", false) -> startSetupPreview(SetupFlow.SIGNIN)
             intent.hasExtra("show_setup") && !intent.getBooleanExtra("show_setup", false) -> closeSetupPreview()

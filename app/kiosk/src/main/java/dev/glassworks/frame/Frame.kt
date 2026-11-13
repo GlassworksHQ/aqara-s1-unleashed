@@ -37,6 +37,12 @@ interface Frame {
     val cpuThermalZone: String? get() = null
 
     /** The device's own settings screens, best first. [systemSettings] picks the first that opens. */
+    /**
+     * The boot animation's last frame and where it sits on the screen (px), so the app's first screen
+     * continues it without a cut (#63); null when the frame has none.
+     */
+    val bootRest: BootRest? get() = null
+
     fun systemSettingsIntents(): List<Intent>
 
     /** Where to choose a Wi-Fi network, best first (the setup screen's "Choose network"). */
@@ -70,3 +76,9 @@ fun Frame.openSystemSettings(context: Context): Boolean {
     val i = systemSettings(context) ?: return false
     return runCatching { context.startActivity(i) }.isSuccess
 }
+
+/**
+ * A boot animation's last frame: a drawable resource, drawn at [left], [top] screen px on flat night,
+ * and the line under the wordmark it shows ([line], "On Aqara S1 Plus").
+ */
+class BootRest(val drawable: Int, val left: Int, val top: Int, val line: String)

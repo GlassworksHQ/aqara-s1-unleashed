@@ -60,7 +60,7 @@ change until Glassworks v1.
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
 | `PaneDefinition` | What the core knows about a pane for the whole process, also while it isn't running: its setup steps, settings sections and adb extras. |
 | `SetupStep` | Something first-boot setup waits for from a pane: state plus setup channel requests. |
-| `PaneChoice` | A pane's card on setup's Panes step: a switch, and the ways it can run as chips. |
+| `PaneChoice` | A pane's card on setup's Panes step: a title, a line and a switch. |
 | `SettingsSection` | A section of the settings: typed items (`SettingsItem`) the panel's menu draws, and the Manage page (#33) will. `settingsOrder` places them. |
 | `ScreenPolicy` | (`dev.glassworks.screen`) Wake on approach, idle off, the night window and its timeout, the brightness curve and the screen mode. It reads the frame's `PresenceSource` and `LightSource` and the app's `ScreenSettings`. One per process, on `GlassworksRuntime.screen`. |
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
@@ -246,8 +246,8 @@ process. The app makes the core's (`GlassworksRuntime.paneDefinitions`), and the
 
 | Member | What it is |
 |---|---|
-| `setupSteps` | What first-boot setup waits for from the pane. The person answers them on the Panes step, after Wi-Fi and Home Assistant and before Sign in. |
-| `setupChoice` | The pane's card on the Panes step ("What should it do?"), or null. |
+| `setupSteps` | What first-boot setup waits for from the pane, while it is on. Each is its own step under Panes, after the person chose the panes. |
+| `setupChoice` | The pane's card on the Panes step, or null. A pane with `setupSteps` needs one. |
 | `settings()` | The pane's settings sections, as they are now. Called each time the menu opens. |
 | `extras` | adb intent extras for its settings (`IntentExtra.bool`, `float`, `string`). `restartsApp` for a setting read only at start. |
 
@@ -267,13 +267,15 @@ and a step whose request names are already taken. A bad step costs only itself: 
 starts and the channel still answers. `FramePanesTest` checks a frame's step and section with a
 fake frame.
 
-**On the panel, panes are one step.** The setup screen asks "What should it do?" once, with one card
-per `setupChoice` in definition order: a title, a line under it and a switch. A choice with
-`options` (the radio's modes) shows them as chips under the cards. Continue calls every card's
-`apply(on, option)` off the main thread; it returns null or why not, in words. A pane with a setup
-step answers it there (the radio's `apply` goes through the same request as `radio.set_mode`). A
-card with `restartsApp` (voice) restarts the app after Continue when it changed. The step is done
-when every pane's `setupSteps` are.
+**On the panel, panes are a group.** The setup screen's Panes step only chooses: one card per
+`setupChoice` in definition order, a title, a line under it and a switch. Continue calls every card's
+`apply(on)` off the main thread, each within 30 s; it returns null or why not, in words. A card with
+`restartsApp` (voice) restarts the app when setup is over, if it changed. Then each pane that is on
+has its steps under Panes, in order. A step draws its own card: `title` names its row in the rail,
+and `screen(context, host)` returns a `SetupScreen` that fills a `SetupCard` (title, body, content,
+status, primary and secondary buttons) and calls `host.next()` when it is answered. The shell names
+no pane. `GlassworksRuntime.setupPanes` pairs each choice with its steps and leaves out a pane with
+steps but no card, with an error in the log: the person could never turn it on or off.
 
 **A settings section is data.** Items are `Text`, `Switch`, `Link`, `Note`, `Info` and `Group`, each
 with its value and a `save(value, done)`. Each change applies on its own, as the person makes it

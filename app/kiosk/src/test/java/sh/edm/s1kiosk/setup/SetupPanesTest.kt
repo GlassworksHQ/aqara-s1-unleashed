@@ -1,11 +1,19 @@
 package sh.edm.s1kiosk.setup
 
 import android.app.Application
+import android.content.Context
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import dev.glassworks.pane.PaneChoice
+import dev.glassworks.pane.SetupCard
+import dev.glassworks.pane.SetupHost
+import dev.glassworks.pane.SetupScreen
+import dev.glassworks.pane.SetupStep
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -17,34 +25,54 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** The Panes step: what Continue applies, and when it asks for a restart. */
+/**
+ * Setup's Panes group (#63 round 2): the Panes step only chooses which panes are on, Continue applies
+ * every card; a pane that is on then has its own steps under Panes. And moving between steps: a step
+ * that is done says so with Continue, the rail and Continue move in a preview.
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class, qualifiers = "w960dp-h480dp-land-hdpi")
 class SetupPanesTest {
 
     private val applied = Collections.synchronizedList(ArrayList<String>())
     private var voice = true
-    private var radio = "off"
+    private var radioOn = false
 
-    private val choices = listOf(
-        PaneChoice("Voice", "Assist and timers", on = { voice }, restartsApp = true, apply = { on, _ -> applied += "voice $on"; null }),
-        PaneChoice(
-            "Zigbee / Thread radio", "For your devices", on = { radio != "off" },
-            options = listOf(PaneChoice.Option("zigbee_tcp", "Zigbee coordinator"), PaneChoice.Option("thread", "Thread border router")),
-            option = { if (radio == "off") "zigbee_tcp" else radio },
-            apply = { on, o -> applied += "radio ${if (on) o else "off"}"; null },
-        ),
+    /** A pane step that only shows its title, answered with its own Continue. */
+    private fun step(id: String, title: String) = object : SetupStep {
+        override val id = id
+        override val title = title
+        override val reason = "$id not set up"
+        override fun done() = false
+        override fun screen(context: Context, host: SetupHost) = object : SetupScreen {
+            override fun bind(card: SetupCard, entered: Boolean) {
+                card.title("$title, set up")
+                card.body(null)
+                card.content(null)
+                card.primary("Continue") { host.next() }
+            }
+        }
+    }
+
+    private val radioStep = step("radio", "Radio")
+
+    private val panes = listOf(
+        SetupPane(PaneChoice("Voice", "Assist and timers", on = { voice }, restartsApp = true, apply = { on -> applied += "voice $on"; null }), emptyList()),
+        SetupPane(PaneChoice("Zigbee / Thread radio", "For your devices", on = { radioOn }, apply = { on -> applied += "radio $on"; null }), listOf(radioStep)),
     )
 
-    private fun panes(): SetupOverlay {
+    private fun model(step: String, done: Set<String> = SetupFlow.ids(true).takeWhile { it != step }.toSet(), preview: Boolean = false, online: Boolean = true) =
+        SetupOverlay.Model(
+            step = step, done = done,
+            wifi = if (online) WifiSetupStatus.Snapshot(WifiSetupStatus.State.CONNECTED, "Example-WiFi") else WifiSetupStatus.Snapshot(WifiSetupStatus.State.NOT_CONNECTED),
+            haUrl = "http://homeassistant.local:8123", haSource = "mdns", panelIp = "192.0.2.10", signedIn = true, preview = preview,
+        )
+
+    private fun overlay(ps: List<SetupPane> = panes, m: SetupOverlay.Model = model(SetupFlow.PANES)): SetupOverlay {
         val a = Mockup.activity()
-        val s = SetupOverlay(a, choices)
+        val s = SetupOverlay(a, ps)
         a.setContentView(s, ViewGroup.LayoutParams(-1, -1))
-        s.render(SetupOverlay.Model(
-            step = SetupFlow.PANES, done = setOf(SetupFlow.WIFI, SetupFlow.HA),
-            wifi = WifiSetupStatus.Snapshot(WifiSetupStatus.State.CONNECTED, "Example-WiFi"),
-            haUrl = "http://homeassistant.local:8123", haSource = "mdns", panelIp = "192.0.2.10", signedIn = false,
-        ))
+        s.render(m)
         Mockup.idle()
         return s
     }
@@ -57,100 +85,83 @@ class SetupPanesTest {
         walk(root)
     }
 
-    /** Taps Continue and waits for the cards to be applied; the answer onPanesDone got. */
+    /** The text view on screen that says exactly [text]. */
+    private fun shown(root: View, text: String): TextView? = all(root, TextView::class.java).firstOrNull { it.text.toString() == text }
+
+    private fun waitFor(what: String, cond: () -> Boolean) {
+        val until = System.currentTimeMillis() + 5_000
+        while (!cond() && System.currentTimeMillis() < until) { shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50)); Thread.sleep(10) }
+        assertEquals(what, true, cond())
+    }
+
+    /** Taps Continue on Panes and waits for the cards to be applied; the answer onPanesDone got. */
     private fun continueAndWait(s: SetupOverlay): Boolean? {
         var restart: Boolean? = null
         val done = CountDownLatch(1)
         s.onPanesDone = { restart = it; done.countDown() }
-        Mockup.label(s, "Continue").performClick()
+        shown(s, "Continue")!!.performClick()
         val until = System.currentTimeMillis() + 5_000
         while (done.count > 0 && System.currentTimeMillis() < until) {
-            shadowOf(Looper.getMainLooper()).idle()
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50))
             done.await(20, TimeUnit.MILLISECONDS)
         }
         return restart
     }
 
     @Test
-    fun continueAppliesEveryCardAsSet() {
-        val s = panes()
-        all(s, Glass.Toggle::class.java)[1].performClick() // the radio on: the coordinator is offered first
-        Mockup.label(s, "Thread border router").performClick()
+    fun panesOnlyChoosesAndContinueAppliesEveryCard() {
+        val s = overlay()
+        assertEquals(null, shown(s, "Zigbee coordinator")) // no mode here: the radio's own step asks it
+        assertFalse(s.wanted("radio"))
+        all(s, Glass.Toggle::class.java)[1].performClick() // the radio on
         assertEquals(false, continueAndWait(s))
-        assertEquals(listOf("voice true", "radio thread"), applied)
+        assertEquals(listOf("voice true", "radio true"), applied)
+        assertTrue(s.panesChosen)
+        assertTrue(s.wanted("radio")) // its step now sits under Panes
     }
 
     @Test
     fun turningVoiceOffAsksForARestart() {
-        val s = panes()
+        val s = overlay()
         all(s, Glass.Toggle::class.java)[0].performClick()
         assertEquals(true, continueAndWait(s))
-        assertEquals(listOf("voice false", "radio off"), applied)
+        assertEquals(listOf("voice false", "radio false"), applied)
     }
 
     @Test
-    fun aPreviewNeverAppliesAnything() {
-        val a = Mockup.activity()
-        val s = SetupOverlay(a, choices)
-        a.setContentView(s, ViewGroup.LayoutParams(-1, -1))
-        s.render(SetupOverlay.Model(
-            step = SetupFlow.PANES, done = emptySet(), wifi = WifiSetupStatus.Snapshot(WifiSetupStatus.State.CONNECTED, "Example-WiFi"),
-            haUrl = null, haSource = "", panelIp = null, signedIn = false, preview = true,
-        ))
-        Mockup.idle()
-        assertEquals(false, continueAndWait(s))
-        assertEquals(emptyList<String>(), applied)
-    }
-
-    @Test
-    fun aProblemStaysOnTheStep() {
-        val failing = listOf(PaneChoice("Music", "A Sendspin speaker", on = { true }, apply = { _, _ -> "the player didn't start" }))
-        val a = Mockup.activity()
-        val s = SetupOverlay(a, failing)
-        a.setContentView(s, ViewGroup.LayoutParams(-1, -1))
-        s.render(SetupOverlay.Model(
-            step = SetupFlow.PANES, done = emptySet(), wifi = WifiSetupStatus.Snapshot(WifiSetupStatus.State.CONNECTED, "Example-WiFi"),
-            haUrl = null, haSource = "", panelIp = null, signedIn = false,
-        ))
-        Mockup.idle()
+    fun everyProblemShowsAndTheStepHolds() {
+        val failing = listOf(
+            SetupPane(PaneChoice("Music", "A Sendspin speaker", on = { true }, apply = { "the player didn't start" }), emptyList()),
+            SetupPane(PaneChoice("Voice", "Assist and timers", on = { true }, apply = { "the microphone is busy" }), emptyList()),
+        )
+        val s = overlay(failing)
         var called = false
         s.onPanesDone = { called = true }
-        Mockup.label(s, "Continue").performClick()
-        val until = System.currentTimeMillis() + 5_000
-        while (System.currentTimeMillis() < until && runCatching { Mockup.label(s, "Music: the player didn't start") }.isFailure) {
-            shadowOf(Looper.getMainLooper()).idle()
-            Thread.sleep(20)
-        }
-        Mockup.label(s, "Music: the player didn't start")
-        assertEquals(false, called)
+        shown(s, "Continue")!!.performClick()
+        waitFor("refused") { shown(s, "Music: the player didn't start\nVoice: the microphone is busy") != null }
+        assertFalse(called)
+        assertTrue(s.holdsPanes)
     }
 
-    private fun overlay(cs: List<PaneChoice>): SetupOverlay {
-        val a = Mockup.activity()
-        val s = SetupOverlay(a, cs)
-        a.setContentView(s, ViewGroup.LayoutParams(-1, -1))
-        s.render(SetupOverlay.Model(
-            step = SetupFlow.PANES, done = emptySet(), wifi = WifiSetupStatus.Snapshot(WifiSetupStatus.State.CONNECTED, "Example-WiFi"),
-            haUrl = null, haSource = "", panelIp = null, signedIn = false,
-        ))
-        Mockup.idle()
-        return s
-    }
-
-    private fun waitFor(what: String, cond: () -> Boolean) {
-        val until = System.currentTimeMillis() + 5_000
-        while (!cond() && System.currentTimeMillis() < until) { shadowOf(Looper.getMainLooper()).idle(); Thread.sleep(10) }
-        assertEquals(what, true, cond())
+    @Test
+    fun aCardThatDoesntAnswerIsNamed() {
+        val stuck = CountDownLatch(1)
+        val slow = listOf(SetupPane(PaneChoice("Music", "A Sendspin speaker", on = { true }, apply = { stuck.await(10, TimeUnit.SECONDS); null }), emptyList()))
+        val s = overlay(slow)
+        s.panesBudgetMs = 300
+        shown(s, "Continue")!!.performClick()
+        waitFor("named") { shown(s, "The Music didn't answer.") != null }
+        assertTrue(s.holdsPanes) // there is a way out: try again, or turn it off
+        assertTrue(shown(s, "Continue")!!.isEnabled)
+        stuck.countDown()
     }
 
     @Test
     fun cardsAreLockedWhileContinueApplies() {
         val release = CountDownLatch(1)
         var music = true
-        val s = overlay(listOf(
-            PaneChoice("Music", "A Sendspin speaker", on = { music }, apply = { on, _ -> release.await(5, TimeUnit.SECONDS); music = on; null }),
-        ))
-        Mockup.label(s, "Continue").performClick()
+        val s = overlay(listOf(SetupPane(PaneChoice("Music", "A Sendspin speaker", on = { music }, apply = { on -> release.await(5, TimeUnit.SECONDS); music = on; null }), emptyList())))
+        shown(s, "Continue")!!.performClick()
         waitFor("applying") { s.holdsPanes }
         val t = all(s, Glass.Toggle::class.java)[0]
         t.performClick() // the person taps while it applies
@@ -162,23 +173,57 @@ class SetupPanesTest {
 
     @Test
     fun aRefusalHoldsTheStepAndARestartStaysOwed() {
-        var voice = true
         var refuse = true
         val s = overlay(listOf(
-            PaneChoice("Voice", "Assist and timers", on = { voice }, restartsApp = true, apply = { on, _ -> voice = on; null }),
-            PaneChoice("Music", "A Sendspin speaker", on = { true }, apply = { _, _ -> if (refuse) "the player didn't start" else null }),
+            SetupPane(PaneChoice("Voice", "Assist and timers", on = { voice }, restartsApp = true, apply = { on -> voice = on; null }), emptyList()),
+            SetupPane(PaneChoice("Music", "A Sendspin speaker", on = { true }, apply = { if (refuse) "the player didn't start" else null }), emptyList()),
         ))
         var restart: Boolean? = null
         s.onPanesDone = { restart = it }
         all(s, Glass.Toggle::class.java)[0].performClick() // voice off: needs a restart
-        Mockup.label(s, "Continue").performClick()
-        waitFor("refused") { runCatching { Mockup.label(s, "Music: the player didn't start") }.isSuccess }
-        assertEquals(true, s.holdsPanes) // the step stays, whatever the rules say
+        shown(s, "Continue")!!.performClick()
+        waitFor("refused") { shown(s, "Music: the player didn't start") != null }
+        assertTrue(s.holdsPanes)
         assertEquals(null, restart)
         refuse = false
-        Mockup.label(s, "Continue").performClick() // voice is already saved off: the restart is still owed
+        shown(s, "Continue")!!.performClick() // voice is already saved off: the restart is still owed
         waitFor("done") { restart != null }
         assertEquals(true, restart)
-        assertEquals(false, s.holdsPanes)
+        assertFalse(s.holdsPanes)
+    }
+
+    @Test
+    fun aPreviewNeverAppliesAndMovesOn() {
+        radioOn = true
+        val s = overlay(m = model(SetupFlow.PANES, preview = true))
+        shown(s, "Continue")!!.performClick()
+        Mockup.idle()
+        assertEquals(emptyList<String>(), applied)
+        assertTrue(shown(s, "Radio, set up") != null) // on to the radio's own step
+    }
+
+    @Test
+    fun aWifiStepThatIsDoneLeadsWithContinue() {
+        // Reopened on a connected panel (a preview here): Continue moves on, another network is second.
+        val s = overlay(m = model(SetupFlow.WIFI, done = setOf(SetupFlow.WIFI), preview = true))
+        assertTrue(shown(s, "Connected to Example-WiFi.") != null)
+        assertTrue(shown(s, "Use another network") != null)
+        shown(s, "Continue")!!.performClick()
+        Mockup.idle()
+        assertTrue(shown(s, "Add it in Home Assistant.") != null || shown(s, "Added to Home Assistant.") != null)
+    }
+
+    @Test
+    fun theRailMovesAPreviewAndHoldsALiveSetup() {
+        // A preview: any row, by touch.
+        val p = overlay(m = model(SetupFlow.WIFI, done = emptySet(), preview = true, online = false))
+        all(p, View::class.java).first { it.contentDescription == "Home Assistant" && it.isClickable }.performClick()
+        Mockup.idle()
+        assertTrue(shown(p, "Add it in Home Assistant.") != null)
+        // Live: a step that isn't reached yet doesn't open.
+        val live = overlay(m = model(SetupFlow.WIFI, done = emptySet(), online = false))
+        all(live, View::class.java).firstOrNull { it.contentDescription == "Home Assistant" && it.isClickable }?.performClick()
+        Mockup.idle()
+        assertTrue(shown(live, "Connect to Wi-Fi.") != null)
     }
 }

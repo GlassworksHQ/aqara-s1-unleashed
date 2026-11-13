@@ -68,19 +68,49 @@ class RadioDefinitionTest {
         val d = definition()
         assertFalse(d.step.done())
         assertEquals("radio mode not chosen", d.step.reason)
-        // Its card on the Panes step: off, the modes as chips, the coordinator offered first.
-        val c = d.setupChoice
-        assertFalse(c.on())
-        assertEquals(listOf("Zigbee coordinator", "Thread border router", "Zigbee repeater β", "Thread repeater β"), c.options.map { it.label })
-        assertEquals(RadioMode.ZIGBEE_TCP.id, c.option())
+        assertEquals("Radio", d.step.title) // its row under Panes
+        // Its card on the Panes step only says on or off; the mode is its own sub-step.
+        assertFalse(d.setupChoice.on())
+    }
+
+    @Test
+    fun onLeavesTheModeToTheRadiosOwnStep() {
+        val d = definition(controller())
+        assertNull(d.setupChoice.apply(true))
+        assertFalse(d.step.done()) // the radio's sub-step under Panes still asks
+    }
+
+    @Test
+    fun theFollowUpHoldsTheStepUntilContinue() {
+        val d = definition()
+        prefs.radio.mode = RadioMode.THREAD.id // the mode is applied...
+        d.followUpOpen = true // ...and setup shows what to do next
+        assertFalse(d.step.done())
+        d.followUpOpen = false
+        assertTrue(d.step.done())
     }
 
     @Test
     fun continueWithTheModeInEffectAnswersTheStep() {
         val d = definition(controller())
         assertFalse(d.step.done())
-        assertNull(d.setupChoice.apply(false, null)) // Off, as it is: nothing to ask the radio
+        assertNull(d.setupChoice.apply(false)) // Off, as it is: nothing to ask the radio
         assertTrue(d.step.done())
+    }
+
+    @Test
+    fun offOnARadioInAnErrorAsksTheRadioAgain() {
+        // F10: the mode is already Off, but Aqara's services wouldn't stop. Off on the Panes step must
+        // not take the shortcut ("already Off") but ask the radio again, and say what it answered.
+        val stuck = object : SysProps by TestInit() {
+            override fun set(name: String, value: String) {} // ctl.stop does nothing: the services keep running
+        }
+        prefs.radio.mode = RadioMode.OFF.id
+        val c = controller(stuck).also { it.start() }
+        assertTrue(c.statusText(), c.statusText().startsWith("error"))
+        val d = definition(c)
+        val answer = d.setupChoice.apply(false)
+        assertTrue("$answer", answer != null && answer.startsWith("error")) // the shortcut would say null
     }
 
     @Test
@@ -102,7 +132,6 @@ class RadioDefinitionTest {
         prefs.radio.mode = RadioMode.THREAD.id
         assertTrue(d.step.done())
         assertTrue(d.setupChoice.on())
-        assertEquals(RadioMode.THREAD.id, d.setupChoice.option())
     }
 
     @Test

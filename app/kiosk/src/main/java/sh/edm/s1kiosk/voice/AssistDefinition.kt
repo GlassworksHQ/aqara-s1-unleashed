@@ -11,7 +11,7 @@ class AssistDefinition(prefs: VoicePrefs) : PaneDefinition {
     // PanelDevice reads `enabled` once per start, so a change restarts the app (as `voice_enabled` does).
     override val setupChoice = PaneChoice(
         title = "Voice", detail = "Assist and timers", on = { prefs.enabled }, restartsApp = true,
-        apply = { on, _ -> prefs.enabled = on; null },
+        apply = { on -> prefs.enabled = on; null },
     )
 
     override val extras = listOf(
