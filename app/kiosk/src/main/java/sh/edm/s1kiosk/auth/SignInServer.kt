@@ -113,26 +113,30 @@ class SignInServer(
     fun handle(req: Request): Response {
         if (req.method != "GET" && req.method != "HEAD") return page(405, "Method Not Allowed", "Not allowed", "Only GET is supported.")
         return when (req.path) {
-            "/", "" -> index(req)
-            "/signin" -> signin(req)
+            "/", "", "/signin" -> landing()
+            CONTINUE -> signin(req)
             "/callback" -> callback(req)
-            ThreadJoin.PATH -> threadStart(req)
+            ThreadJoin.PATH -> threadLanding()
+            THREAD_CONTINUE -> threadStart(req)
             ThreadJoin.CALLBACK -> threadCallback(req)
             "/favicon.ico" -> Response(404, "Not Found", mapOf("Content-Type" to "text/plain"), ByteArray(0))
             else -> page(404, "Not Found", "Not found", "This panel only serves the sign-in pages.")
         }
     }
 
-    private fun index(req: Request): Response {
-        val ha = haBase()
-        return if (ha == null) notFoundHa()
-        else page(200, "OK", "Sign in the panel", "Sign in to Home Assistant to show your dashboard on the panel.",
-            action = "<a class=\"btn\" href=\"/signin\">Sign in</a>")
+    /** What the QR code opens (#63): what signing in is for, and the one way on. */
+    private fun landing(): Response {
+        val ha = haBase()?.let(OAuth::trimBase) ?: return notFoundHa()
+        return page(
+            200, "OK", "Sign in this panel", "So it can show your Home Assistant dashboard.", Look.START,
+            tile = haTile(ha), button = button("Continue to Home Assistant", CONTINUE),
+            foot = "You sign in on Home Assistant's own page. The panel never sees your password.",
+        )
     }
 
     private fun notFoundHa() = page(
         503, "Service Unavailable", "Home Assistant not found yet",
-        "The panel hasn't found Home Assistant. Enter its address on the panel, then scan the code again.",
+        "Enter its address on the panel, like <b>homeassistant.local</b>, then scan the code again.",
     )
 
     private fun signin(req: Request): Response {
@@ -156,8 +160,7 @@ class SignInServer(
             return page(400, "Bad Request", "Sign-in cancelled", "Home Assistant answered: ${esc(err)}. Scan the code to try again.")
         }
         val pending = states.consume(q["state"], PendingSignIn.PURPOSE_SIGNIN)
-            ?: return page(400, "Bad Request", "This sign-in link has expired",
-                "Scan the QR code on the panel again.")
+            ?: return expired()
         val code = q["code"]?.takeIf { it.isNotEmpty() }
             ?: return page(400, "Bad Request", "Can't sign in", "Home Assistant didn't send an authorization code. Scan the code to try again.")
         return when (val r = tokens.exchangeCode(pending.haBase, pending.clientId, code, pending.codeVerifier)) {
@@ -171,13 +174,13 @@ class SignInServer(
                     return page(500, "Internal Server Error", "Can't sign in", "The panel couldn't store the sign-in.")
                 }
                 AuthLog.i("Signed in to ${pending.haBase} (refresh token stored)")
-                page(200, "OK", "Panel signed in ✓", "You can close this page. The panel is loading your dashboard.", ok = true)
+                page(200, "OK", "Panel signed in", "It's loading your dashboard now. You can close this page.", Look.DONE,
+                    tile = haTile(pending.haBase, dot = true))
             }
             is TokenResult.Error -> {
                 AuthLog.w("code exchange failed: ${r.code} (${r.httpStatus})")
                 when {
-                    r.isInvalidCode -> page(400, "Bad Request", "This sign-in link has expired",
-                        "The code from Home Assistant was already used or is too old. Scan the QR code on the panel again.")
+                    r.isInvalidCode -> expired()
                     r.httpStatus <= 0 -> page(502, "Bad Gateway", "Can't reach Home Assistant",
                         "The panel couldn't reach ${esc(pending.haBase)}. Check the network and scan the code again.")
                     else -> page(502, "Bad Gateway", "Can't sign in",
@@ -187,10 +190,28 @@ class SignInServer(
         }
     }
 
+    /** What the Thread QR code opens (#63): who must sign in, and why it's safe. */
+    private fun threadLanding(): Response {
+        val join = thread ?: return page(404, "Not Found", "Not found", "This panel only serves the sign-in pages.")
+        if (!join.armed()) return notWaiting()
+        haBase() ?: return notFoundHa()
+        return page(
+            200, "OK", "Share your Thread network", "The panel joins it as a Thread router.", Look.START,
+            tile = infoTile("Sign in as a Home Assistant <b>administrator</b>. The panel uses it once to copy the network's settings, then signs out."),
+            button = button("Continue to Home Assistant", THREAD_CONTINUE),
+            foot = "Your network key is never shown or logged.",
+        )
+    }
+
+    private fun notWaiting() = page(409, "Conflict", "Not waiting for a sign-in",
+        "Start “Join Home Assistant's Thread network” on the panel first, then scan the code it shows.")
+
+    private fun expired() = page(400, "Bad Request", "This link has expired", "Scan the code on the panel again. It shows a new one.",
+        foot = "Codes last 10 minutes and work once.")
+
     private fun threadStart(req: Request): Response {
         val join = thread ?: return page(404, "Not Found", "Not found", "This panel only serves the sign-in pages.")
-        if (!join.armed()) return page(409, "Conflict", "Not waiting for a sign-in",
-            "Start “Join Home Assistant's Thread network” on the panel first, then scan the code it shows.")
+        if (!join.armed()) return notWaiting()
         val ha = haBase()?.let(OAuth::trimBase) ?: return notFoundHa()
         val host = OAuth.sanitizeHost(req.headers["host"])
             ?: return page(400, "Bad Request", "Can't sign in", "Open this page with the panel's address (scan the QR code).")
@@ -212,7 +233,7 @@ class SignInServer(
             return page(400, "Bad Request", "Sign-in cancelled", "Home Assistant answered: ${esc(err)}. Scan the code to try again.")
         }
         val pending = states.consume(q["state"], PendingSignIn.PURPOSE_THREAD)
-            ?: return page(400, "Bad Request", "This link has expired", "Scan the QR code on the panel again.")
+            ?: return expired()
         // Closed on the panel, or timed out, since this sign-in started: don't join after all.
         if (!join.armed()) return page(409, "Conflict", "Not waiting for a sign-in",
             "The panel stopped waiting. Start “Get it from Home Assistant” on the panel again, then scan the new code.")
@@ -223,12 +244,12 @@ class SignInServer(
                 val rt = r.refreshToken
                     ?: return page(502, "Bad Gateway", "Can't sign in", "Home Assistant didn't return a refresh token.")
                 val o = join.onGrant(StoredAuth(pending.haBase, pending.clientId, rt), r)
-                page(if (o.ok) 200 else 502, if (o.ok) "OK" else "Bad Gateway", o.title, esc(o.text), ok = o.ok)
+                if (o.ok) page(200, "OK", o.title, esc(o.text), Look.DONE, tile = o.network?.let { networkTile(it, o.channel) }.orEmpty())
+                else page(502, "Bad Gateway", o.title, esc(o.text))
             }
             is TokenResult.Error -> {
                 AuthLog.w("thread: code exchange failed: ${r.code} (${r.httpStatus})")
-                if (r.isInvalidCode) page(400, "Bad Request", "This link has expired",
-                    "The code from Home Assistant was already used or is too old. Scan the QR code on the panel again.")
+                if (r.isInvalidCode) expired()
                 else page(502, "Bad Gateway", "Can't sign in",
                     "Home Assistant refused the sign-in (${esc(r.code)}). Scan the code to try again.")
             }
@@ -271,25 +292,78 @@ class SignInServer(
     }
 
     companion object {
+        /** The sign-in and Thread pages' "Continue to Home Assistant": the redirect to HA's sign-in. */
+        const val CONTINUE = "/signin/continue"
+        const val THREAD_CONTINUE = "/thread/continue"
+
         fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
-        /** Small page in the dashboard's visual language (tablet-home-card tokens). */
-        fun page(status: Int, reason: String, title: String, text: String, ok: Boolean = false, action: String = ""): Response {
-            val accent = if (ok) "#34d399" else "#a1a1aa"
+        /** The stack tells the state, as on the panel: outlined to start, lit when done, rose and dashed for a problem. */
+        enum class Look { START, DONE, PROBLEM }
+
+        private fun host(base: String) = base.substringAfter("://").substringBefore("/").substringBefore(":")
+
+        fun haTile(base: String, dot: Boolean = false) = """<div class="tile"><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 11.5 12 4.5l8 7V20h-5.5v-5.5h-5V20H4z"/></svg></span><div><small>Home Assistant</small>${esc(host(base))}</div>${if (dot) "<i class=\"ok\"></i>" else ""}</div>"""
+
+        fun infoTile(html: String) = """<div class="tile info"><span class="ii">i</span><div class="txt">$html</div></div>"""
+
+        fun networkTile(name: String, channel: Int?) =
+            """<div class="tile"><i class="ok lead"></i><div><small>Thread network</small>${esc(name)}${channel?.let { " · channel $it" } ?: ""}</div></div>"""
+
+        fun button(label: String, href: String) = """<a class="btn" href="$href">${esc(label)} <span aria-hidden="true">↗</span></a>"""
+
+        /** The stack as inline SVG: plates are isometric rounded squares (branding/boot/stack.py), top plate last. */
+        private fun mark(look: Look, cls: String): String {
+            fun plate(i: Int, attrs: String) =
+                """<rect width="60" height="60" rx="9" transform="matrix(.866 .5 -.866 .5 60 ${11 + i * 19})" vector-effect="non-scaling-stroke" $attrs/>"""
+            val top = when (look) {
+                Look.START -> plate(0, """fill="none" class="p0"""")
+                Look.DONE -> plate(0, """fill="url(#lit)" class="lit"""")
+                Look.PROBLEM -> plate(0, """fill="none" class="bad"""")
+            }
+            return """<svg class="$cls" viewBox="2 6 116 108" aria-hidden="true"><defs><linearGradient id="lit" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset=".55" stop-color="#818cf8"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>""" +
+                plate(2, """fill="none" class="p2"""") + plate(1, """fill="none" class="p1"""") + top + "</svg>"
+        }
+
+        /**
+         * One small self-contained page (#63): the system font, an inline mark, dark or light as the
+         * device is, the same tokens as glassworks.dev. [text] is HTML (escape what comes from outside).
+         * Done pages have no button; errors say the one fix on the panel.
+         */
+        fun page(
+            status: Int, reason: String, title: String, text: String, look: Look = Look.PROBLEM,
+            tile: String = "", button: String = "", foot: String = "",
+        ): Response {
+            val name = esc(sh.edm.s1kiosk.esphome.PanelDevice.FRIENDLY_NAME)
+            val heading = esc(title).let { if (it.endsWith(".")) it else "$it." }
             val html = """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">
-<title>S1 Panel</title><style>
-:root{--bg:#0a0b0f;--s1:rgba(255,255,255,.045);--s2:rgba(255,255,255,.08);--bd:rgba(255,255,255,.07);--tx:#f4f4f5;--mu:#a1a1aa;--fa:#63636b}
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light">
+<title>$name</title><style>
+:root{--bg:#0a0b0f;--tx:#f4f4f5;--mu:#a1a1aa;--fa:#63636b;--tile:rgba(255,255,255,.045);--bd:rgba(255,255,255,.07);--btn:#f4f4f5;--btx:#0a0b0f;--pl:#f4f4f5;--g1:rgba(56,189,248,.13);--g2:rgba(167,139,250,.14)}
+@media (prefers-color-scheme:light){:root{--bg:#eceef2;--tx:#0a0b0f;--mu:#52525b;--fa:#8a8a93;--tile:rgba(255,255,255,.75);--bd:rgba(10,11,15,.08);--btn:#0a0b0f;--btx:#f4f4f5;--pl:#0a0b0f;--g1:rgba(56,189,248,.22);--g2:rgba(167,139,250,.22)}}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%}
-body{min-height:100vh;display:grid;place-items:center;padding:24px;color:var(--tx);
-font-family:"Google Sans","Product Sans",Inter,system-ui,-apple-system,sans-serif;
-background:radial-gradient(900px 600px at -10% -20%,rgba(56,189,248,.13),transparent 60%),radial-gradient(800px 600px at 110% 120%,rgba(167,139,250,.14),transparent 60%),var(--bg)}
-.card{width:100%;max-width:440px;background:var(--s1);border:1px solid var(--bd);border-radius:26px;padding:28px;backdrop-filter:blur(20px)}
-.lbl{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--fa);font-weight:600}
-h1{font-size:32px;font-weight:300;letter-spacing:-.02em;margin:12px 0 10px;color:$accent}
-p{font-size:16px;line-height:1.5;color:var(--mu);margin:0}
-.btn{display:inline-block;margin-top:20px;padding:12px 18px;border-radius:16px;background:var(--s2);color:var(--tx);text-decoration:none;font-size:15px}
-</style></head><body><div class="card"><div class="lbl">S1 Panel</div><h1>${esc(title)}</h1><p>$text</p>$action</div></body></html>"""
+body{min-height:100vh;display:flex;flex-direction:column;padding:28px 24px;color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+background:radial-gradient(900px 600px at -10% -20%,var(--g1),transparent 60%),radial-gradient(800px 600px at 110% 120%,var(--g2),transparent 60%),var(--bg)}
+header{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600}header .m{width:20px;height:20px}
+main{flex:1;display:flex;flex-direction:column;max-width:960px;width:100%;margin:0 auto}
+.big{width:52px;height:52px;margin:auto 0 18px}
+h1{font-size:30px;font-weight:300;letter-spacing:-.02em;line-height:1.15;margin:0 0 10px}
+p{color:var(--mu);margin:0}p b,.txt b{color:var(--tx);font-weight:500}
+.tile{display:flex;align-items:center;gap:14px;margin-top:22px;padding:14px 16px;border-radius:16px;background:var(--tile);border:1px solid var(--bd);font-size:15px}
+.tile>div{flex:1}.tile small{display:block;font-size:12px;color:var(--fa);margin-bottom:2px}
+.ic{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;color:#38bdf8;background:rgba(56,189,248,.14)}
+.info{align-items:flex-start;color:var(--mu);font-size:14px}.ii{display:grid;place-items:center;width:18px;height:18px;border:1.5px solid var(--mu);border-radius:50%;font-size:11px;font-weight:700;flex:none;margin-top:2px}
+i.ok{width:8px;height:8px;border-radius:50%;background:#34d399;flex:none}
+.act{margin-top:auto;padding-top:28px;min-height:1px}.btn{display:block;text-align:center;padding:15px 20px;border-radius:999px;background:var(--btn);color:var(--btx);text-decoration:none;font-weight:500}
+.foot{text-align:center;font-size:12.5px;color:var(--fa);margin-top:12px}
+svg rect{stroke:var(--pl);stroke-width:2.4}.p0{stroke-opacity:.7}.p1{stroke-opacity:.45}.p2{stroke-opacity:.2}
+.bad{stroke:#fb7185!important;stroke-dasharray:5 4}svg rect.lit{stroke:none}header .m rect{stroke-width:1.4}
+@media (min-width:720px){body{padding:28px 40px}main{display:grid;grid-template-columns:1fr 1.1fr;grid-template-rows:1fr auto auto 1fr;column-gap:56px}
+.big{grid-column:1;grid-row:2/4;width:200px;height:190px;justify-self:end;align-self:center;margin:0}.copy,.act{grid-column:2;max-width:380px}.copy{grid-row:2}.act{grid-row:3;margin:0;padding-top:20px}
+.btn{display:inline-block}.foot{text-align:left}}
+</style></head><body><header>${mark(if (look == Look.DONE) Look.DONE else Look.START, "m")}<span>$name</span></header>
+<main>${mark(look, "big")}<div class="copy"><h1>$heading</h1><p>$text</p>$tile</div>""" +
+                """<div class="act">$button${if (foot.isNotEmpty()) "<div class=\"foot\">${esc(foot)}</div>" else ""}</div></main></body></html>"""
             return Response(status, reason, mapOf("Content-Type" to "text/html; charset=utf-8", "Cache-Control" to "no-store"),
                 html.toByteArray(Charsets.UTF_8))
         }
