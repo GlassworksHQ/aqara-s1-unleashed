@@ -94,8 +94,9 @@ class PanelDevice internal constructor(
         init { EspHomeLog.tag = "S1ESPHome" }
 
         /**
-         * The ESPHome node name. Home Assistant's config entry keeps it (`device_name`), HA up to 2025.x
-         * built new entity ids from it (`s1_panel_*`), and the mDNS service is named after it. Never change it.
+         * The ESPHome node name. Home Assistant's config entry keeps it (`device_name`) and the mDNS
+         * service is named after it. Never change it. Entity ids don't come from it: HA prefixes a new
+         * entity's id with the device's name as HA shows it ([FRIENDLY_NAME], or the user's own).
          */
         const val NAME = "s1-panel"
 
