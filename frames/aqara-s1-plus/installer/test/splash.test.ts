@@ -64,7 +64,7 @@ describe('undo and our splash', () => {
 
   // Entries are permanent: panels in the field still carry old splashes. No test can catch a removed
   // entry once its bootlogo.bmp is gone from the tree, so never remove one.
-  it('knows every bootlogo.bmp in branding/ (common.build lists each one it writes)', () => {
+  it('knows every bootlogo.bmp in branding/ (the build in branding/boot lists each one it writes)', () => {
     const listed = new Set((JSON.parse(readFileSync(LIST, 'utf8')) as { bootlogos: { sha256: string }[] }).bootlogos.map((b) => b.sha256));
     const bmps: string[] = [];
     const walk = (d: string): void => {

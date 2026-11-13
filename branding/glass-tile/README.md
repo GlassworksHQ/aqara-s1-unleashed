@@ -1,16 +1,15 @@
 # Boot branding
 
 The panel's power-on splash and Android boot animation: the Glassworks stack, as drawn in #63
-("Boot animation (final)"). `generate.py` ports the curves of the design's reference page
-(`kiosk-ui/boot/boot-reference.html` at `5df8f044`, the "Translucent" frame) and renders every frame
-at the panel's 1440x720. The folder keeps its old name because the installers read these files from
-here.
+("Boot animation (final)"), built for the S1 by the frame-neutral generator in
+[`branding/boot`](../boot/README.md) from the S1's `frame.json` (1440x720, Android 10, the Allwinner
+splash, a 9 MB budget). This folder holds the S1's output and what was measured on the S1. It keeps
+its old name because the installers read these files from here.
 
 | File | What | Installed by |
 |---|---|---|
 | `bootlogo.bmp` | Splash shown by the bootloader at power-on: frame 0 of the animation. 720x1440, 24-bit, uncompressed, the landscape picture rotated 90° clockwise, 3,110,454 bytes (same format as stock) | `tools/install/fel-install.sh` (step 7) and Kiln's S1 recipe, both swapping it into the panel's own `bootloader` (boot-resource, FAT16) partition in place (`tools/branding/set-bootlogo.py`, `replaceBootlogo()`) |
 | `bootanimation.zip` | Android boot animation: 1440x720 @ 30 fps, STORED, each frame trimmed (`trim.txt`) | `tools/root/patch-boot-magisk.sh` and Kiln: shipped in the boot image and bind-mounted over `/system/media/bootanimation.zip` (`tools/root/s1kiosk_branding.rc`) |
-| `generate.py`, `common.py` | The generator: the design, and the output formats with their checks. Needs Pillow, numpy and uharfbuzz (pyoxipng makes the frames smaller). Inter (SIL OFL 1.1) is fetched from google/fonts at build time | - |
 | `splash-landscape.png`, `preview.webp` | Previews only | - |
 
 ## The sequence
@@ -64,7 +63,7 @@ so the hash is the only mark.
 
 | Who | What |
 |---|---|
-| The branding build (`common.build`, so every `generate.py`) | Appends the hash of each `bootlogo.bmp` it writes, with the concept's name and the date. Commit the list with the new `bootlogo.bmp` |
+| The boot generator (`branding/boot`, `formats.build`), for any frame with a splash | Appends the hash of each `bootlogo.bmp` it writes, with the concept's name and the date. Commit the list with the new `bootlogo.bmp` |
 | Whoever adds a splash some other way | Adds its hash to the list by hand, in the same PR |
 | Nobody | Removes an entry. Panels in the field still carry old splashes |
 | `frames/aqara-s1-plus/installer/test/splash.test.ts` | Fails if any `bootlogo.bmp` under `branding/` is missing from the list |
@@ -76,9 +75,8 @@ A splash passed with `BRANDING=<your.bmp>` isn't in the list, so undo treats it 
 
 ```sh
 python3 -m venv /tmp/s1venv && /tmp/s1venv/bin/pip install pillow numpy uharfbuzz pyoxipng
-/tmp/s1venv/bin/python branding/glass-tile/generate.py                 # writes the files above
-/tmp/s1venv/bin/python branding/glass-tile/generate.py --frame <id>    # another frame's device name
-/tmp/s1venv/bin/python branding/glass-tile/generate.py --stills <dir>  # stills at fixed times, for comparisons
+/tmp/s1venv/bin/python branding/boot/generate.py --frame aqara-s1-plus --out branding/glass-tile
+/tmp/s1venv/bin/python branding/boot/generate.py --frame aqara-s1-plus --stills <dir>  # stills at fixed times, for comparisons
 ```
 
 The build checks the splash format, that frame 0 is the splash pixel for pixel, the trim of every

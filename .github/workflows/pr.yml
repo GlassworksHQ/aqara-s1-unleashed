@@ -94,6 +94,8 @@ jobs:
         run: |
           python3 -m unittest discover -s tools/perf/test -v
           node --test tools/perf/test/page.test.mjs tools/perf/test/grade.test.mjs
+      - name: Boot generator targets and layout
+        run: python3 -m unittest discover -s branding/boot/test -v
       - name: Docs links
         run: python3 tools/check-doc-links.py
 
