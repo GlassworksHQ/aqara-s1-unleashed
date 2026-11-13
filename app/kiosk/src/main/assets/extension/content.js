@@ -241,6 +241,28 @@
   }
   setTimeout(scheduleDashboards, DASH_RETRY_MS);
 
+  // ---- ready: the page is drawn (#63 round 2) ----------------------------------------------------
+  // Home Assistant's index.html starts with its own launch screen (#ha-launch-screen: the logo and
+  // "Loading…" on white) and the frontend removes it once it has drawn. The app keeps its connecting
+  // screen up until then and cross-fades into the dashboard, so that white splash never shows. A page
+  // without that launch screen (the sign-in page, any other page) is ready once its document is.
+  let readySent = false;
+  function sendReady(why) {
+    if (readySent || !port) return;
+    readySent = true;
+    try { port.postMessage({ type: "ready", why }); } catch (e) { /* port gone */ }
+  }
+  function watchLaunchScreen() {
+    const ls = document.getElementById("ha-launch-screen");
+    if (!ls || !ls.parentNode) { sendReady("page"); return; }
+    const obs = new MutationObserver(() => {
+      if (!document.getElementById("ha-launch-screen")) { obs.disconnect(); sendReady("frontend"); }
+    });
+    obs.observe(ls.parentNode, { childList: true });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watchLaunchScreen);
+  else watchLaunchScreen();
+
   // HA renders lazily and re-renders on navigation; re-apply cheaply.
   setInterval(apply, 1000);
   document.addEventListener("DOMContentLoaded", apply);

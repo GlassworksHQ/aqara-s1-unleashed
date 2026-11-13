@@ -225,7 +225,7 @@ class MainActivity : Activity() {
         // The launch backdrop (res/drawable/launch_backdrop.xml) covers the cold start; once our own
         // views have drawn, a plain colour behind them costs the GPU nothing on every later frame.
         window.decorView.post { window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0xFF0A0B0F.toInt())) }
-        // Visible from the first frame: the dashboard's first paint or the setup screen replaces it.
+        // Visible from the first frame: the page saying it is drawn ("ready", content.js) or the setup screen replaces it.
         loadingOverlay.show(
             if (hasNetwork()) LoadingOverlay.State.Connecting(LoadingOverlay.CONNECTING, dashboardHost())
             else LoadingOverlay.State.Connecting(OfflineText.CONNECTING_TITLE, OfflineText.CONNECTING_DETAIL, host = false),
@@ -836,8 +836,10 @@ class MainActivity : Activity() {
             }
         }
 
+        // Not the end of the connecting screen: Home Assistant's first paint is its own white launch
+        // screen. The page says when it's drawn ("ready", content.js); this only arms the fallback.
         override fun onFirstPaint() {
-            handler.post { loadingOverlay.hide() }
+            handler.post { handler.removeCallbacks(hideLoading); handler.postDelayed(hideLoading, READY_FALLBACK_MS) }
         }
 
         override fun onContentGone(killed: Boolean) {
@@ -876,7 +878,9 @@ class MainActivity : Activity() {
 
         override fun onPageStop(success: Boolean) {
             if (success) {
-                handler.postDelayed(hideLoading, 1500) // in case first-contentful-paint was missed
+                // In case the page never says it's ready (no web extension, a frontend that fails).
+                handler.removeCallbacks(hideLoading)
+                handler.postDelayed(hideLoading, READY_FALLBACK_MS)
             } else {
                 if (hasNetwork()) {
                     offlineShown = false
@@ -926,6 +930,7 @@ class MainActivity : Activity() {
      */
     private fun onPortRequest(m: JSONObject, port: PagePort) {
         if (m.optString("type") == "dashboards") { onDashboards(m, port); return }
+        if (m.optString("type") == "ready") { onPageReady(port); return }
         val id = m.optInt("id", -1)
         if (id < 0) return
         fun reply(o: JSONObject?) {
@@ -939,6 +944,19 @@ class MainActivity : Activity() {
             "getExternalAuth" -> externalAuth(m, port, ::reply)
             "revokeExternalAuth" -> revokeExternalAuth(port, ::reply)
             else -> reply(null)
+        }
+    }
+
+    /**
+     * `{type: "ready"}` from content.js: the top-level page is drawn (Home Assistant removed its own
+     * launch screen), so the connecting screen cross-fades into it and the frontend's white splash never
+     * shows (#63 round 2). A frame's word doesn't count.
+     */
+    private fun onPageReady(sender: PagePort) {
+        if (!sender.topLevel) return
+        handler.post {
+            handler.removeCallbacks(hideLoading)
+            loadingOverlay.hide()
         }
     }
 
@@ -1016,6 +1034,8 @@ class MainActivity : Activity() {
         private const val REQ_STARTUP = 1
         private const val REQ_GECKO = 2
         private const val RETRY_MS = 10_000L
+        /** The connecting screen waits this long after the page loaded for the page to say it's drawn. */
+        internal const val READY_FALLBACK_MS = 15_000L
         private const val SETUP_TICK_MS = 2_000L
         private const val SETTINGS_TICK_MS = 2_000L
     }

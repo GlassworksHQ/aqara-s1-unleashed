@@ -269,7 +269,7 @@ class GeckoBehaviourPinTest {
 
     @Test
     fun `page start shows the connecting screen with the host`() = harness().use { h ->
-        h.content.onFirstContentfulPaint(h.session)
+        h.send(h.connect(dash), org.json.JSONObject("""{"type":"ready","why":"frontend"}"""), replies = 0)
         h.advance(1_000)
         assertFalse(h.loading.isShowing)
         h.progress.onPageStart(h.session, "about:blank")
@@ -279,18 +279,31 @@ class GeckoBehaviourPinTest {
     }
 
     @Test
-    fun `first contentful paint hides the loading screen`() = harness().use { h ->
+    fun `first contentful paint keeps the connecting screen up`() = harness().use { h ->
+        // #63 round 2: Home Assistant's first paint is its own white launch screen; hiding then flashed it.
         assertTrue(h.loading.isShowing)
         h.content.onFirstContentfulPaint(h.session)
-        h.idle()
+        h.advance(5_000)
+        assertTrue(h.loading.isShowing)
+    }
+
+    @Test
+    fun `the page saying it's drawn hides the connecting screen, a frame doesn't`() = harness().use { h ->
+        h.progress.onPageStart(h.session, dash)
+        h.progress.onPageStop(h.session, true)
+        h.send(h.connect("$dash/frame", topLevel = false), org.json.JSONObject("""{"type":"ready","why":"page"}"""), replies = 0)
+        h.advance(500)
+        assertTrue(h.loading.isShowing)
+        h.send(h.connect(dash), org.json.JSONObject("""{"type":"ready","why":"frontend"}"""), replies = 0)
+        h.advance(500)
         assertFalse(h.loading.isShowing)
     }
 
     @Test
-    fun `a page that loaded hides the loading screen after 1500 ms`() = harness().use { h ->
+    fun `a page that never says it's drawn hides the connecting screen after 15 s`() = harness().use { h ->
         h.progress.onPageStart(h.session, dash)
         h.progress.onPageStop(h.session, true)
-        h.advance(1_499)
+        h.advance(sh.edm.s1kiosk.MainActivity.READY_FALLBACK_MS - 1)
         assertTrue(h.loading.isShowing)
         h.advance(1)
         assertFalse(h.loading.isShowing)
