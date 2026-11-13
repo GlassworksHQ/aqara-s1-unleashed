@@ -11,7 +11,9 @@ import org.robolectric.annotation.GraphicsMode
 import sh.edm.improv.ImprovState
 import sh.edm.s1kiosk.radio.FixedReadout
 import sh.edm.s1kiosk.radio.RadioMode
-import sh.edm.s1kiosk.radio.RadioSetupScreen
+import sh.edm.s1kiosk.radio.radioDefinition
+import sh.edm.s1kiosk.radio.ui.RadioSetupScreen
+import sh.edm.s1kiosk.radio.ui.RadioStep
 import sh.edm.s1kiosk.radio.radioDefinition
 import sh.edm.s1kiosk.ui.Mockup
 

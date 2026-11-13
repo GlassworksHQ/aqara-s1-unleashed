@@ -474,7 +474,7 @@ Laid out for 960×480 dp.
    services → S1 Panel discovered → Add", the panel's IP + port 6053 for a manual ESPHome add, and
    the HA URL (or the manual URL field from step 3 when HA wasn't found). **Skip for now** persists
    `setup_ha_skipped` (for kiosk-only use without the ESPHome device).
-3. **Radio** (`setup/RadioStep.kt`, `RadioStepTest`): Off (default), Zigbee coordinator (ZHA or
+3. **Radio** (`radio/ui/RadioStep.kt`, `RadioStepTest`): Off (default), Zigbee coordinator (ZHA or
    Zigbee2MQTT, network radio over TCP, `socket://<panel-ip>:6638`), Thread border router
    (experimental). Zigbee router (repeater) and Thread router (repeater) (both experimental) are listed under them in a
    compact second row. `RadioStep.COMING_SOON` (shown, tagged "Coming soon", not selectable) is empty

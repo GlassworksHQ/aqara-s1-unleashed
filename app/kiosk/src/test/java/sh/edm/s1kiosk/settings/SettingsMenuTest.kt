@@ -21,7 +21,7 @@ import sh.edm.s1kiosk.radio.RadioDefinition
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.ZigbeeStack
 import sh.edm.s1kiosk.radio.radioDefinition
-import sh.edm.s1kiosk.setup.RadioFollowUp
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp
 import sh.edm.s1kiosk.ui.Mockup
 
 @RunWith(RobolectricTestRunner::class)

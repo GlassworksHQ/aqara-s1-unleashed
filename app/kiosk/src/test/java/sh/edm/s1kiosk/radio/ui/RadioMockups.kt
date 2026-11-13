@@ -1,4 +1,4 @@
-package sh.edm.s1kiosk.settings
+package sh.edm.s1kiosk.radio.ui
 
 import android.app.Activity
 import android.app.Application
@@ -18,21 +18,19 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import sh.edm.s1kiosk.radio.FixedReadout
 import sh.edm.s1kiosk.radio.HelperFacts
-import sh.edm.s1kiosk.radio.RadioSettingsView
-import sh.edm.s1kiosk.radio.RadioSetupScreen
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.ThreadRouterState
 import sh.edm.s1kiosk.radio.ZigbeeStack
 import sh.edm.s1kiosk.radio.radioDefinition
-import sh.edm.s1kiosk.setup.RadioFollowUp
-import sh.edm.s1kiosk.setup.RadioFollowUp.Action
-import sh.edm.s1kiosk.setup.RadioFollowUp.Request
-import sh.edm.s1kiosk.setup.RadioStep
-import sh.edm.s1kiosk.setup.SetupOverlay
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Action
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Request
+import sh.edm.s1kiosk.settings.KioskSettingsOverlay
+import sh.edm.s1kiosk.settings.MenuFixture
 import sh.edm.s1kiosk.setup.SetupFlow
-import sh.edm.s1kiosk.ui.Mockup
+import sh.edm.s1kiosk.setup.SetupOverlay
 import sh.edm.s1kiosk.setup.WifiSetupStatus
 import sh.edm.s1kiosk.ui.Inter
+import sh.edm.s1kiosk.ui.Mockup
 import java.io.File
 import java.time.Duration
 

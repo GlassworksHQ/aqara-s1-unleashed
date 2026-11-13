@@ -1,4 +1,4 @@
-package sh.edm.s1kiosk.setup
+package sh.edm.s1kiosk.radio.ui
 
 import sh.edm.s1kiosk.radio.RadioHelper
 import sh.edm.s1kiosk.radio.RadioMode
