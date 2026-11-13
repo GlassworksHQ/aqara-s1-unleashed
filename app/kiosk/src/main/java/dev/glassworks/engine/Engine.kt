@@ -28,6 +28,9 @@ interface Engine {
 
     /** Whether [processName], one of this app's processes, is one the engine renders web content in. */
     fun isContentProcess(processName: String): Boolean
+
+    /** The engine and its version in words, for the Manage page ("GeckoView 159.0"). */
+    val name: String get() = ""
 }
 
 /** What an engine starts with. */

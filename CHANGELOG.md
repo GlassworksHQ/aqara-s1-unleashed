@@ -26,6 +26,12 @@ below as the release notes.
   Nothing in the sections changed.
 
 ### Added
+- **A Manage page for the panel, in your browser.** Open the panel's device page in Home Assistant
+  and click *Visit*, or go to `http://<panel>:8099/`. Sign in with a Home Assistant administrator, or
+  with a code the panel shows when Home Assistant is down. It shows how the panel is doing and which
+  features run, keeps a log across reboots, downloads diagnostics with tokens and keys removed, and
+  can reload the dashboard, restart the app, reboot (with the code on the panel) and check for
+  updates. Settings show there but are changed on the panel for now.
 - **Kiln shows what the panel is doing while S1 Kiosk goes in.** On kiln.glassworks.dev the app's
   install now lists each step as the panel goes through it: S1 Kiosk and the on-screen keyboard
   going in, the home screen, your settings, and the first start. When it updates an app that's

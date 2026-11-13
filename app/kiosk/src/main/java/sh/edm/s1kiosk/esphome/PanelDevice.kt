@@ -25,6 +25,7 @@ import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.MainActivity
 import sh.edm.s1kiosk.timers.TimersPane
 import sh.edm.s1kiosk.auth.HaAuth
+import sh.edm.s1kiosk.auth.OAuth
 import sh.edm.s1kiosk.radio.RadioPane
 import sh.edm.s1kiosk.dashboard.Dashboard
 import sh.edm.s1kiosk.dashboard.DashboardOptions
@@ -205,6 +206,8 @@ class PanelDevice internal constructor(
             manufacturer = "Aqara",
             model = "Panel Hub S1 Plus (S1 Kiosk)",
             voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
+            // Home Assistant's "Visit" link on the device page opens the Manage page (#33).
+            webserverPort = OAuth.SIGNIN_PORT,
         )
         EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${voiceEnabled}")
         if (!unlessStopped { initEntities(id); acquireLocks() }) return
@@ -401,6 +404,9 @@ class PanelDevice internal constructor(
     private fun chimes(): TtsPlayer = synchronized(this) { chimePlayer ?: TtsPlayer().also { chimePlayer = it } }
 
     /** The user cancelled the current voice run (tap on the overlay). */
+    /** Home Assistant is connected and listening to the panel's states now. */
+    fun homeAssistantConnected(): Boolean = server?.hasSubscriber == true
+
     fun cancelVoice() {
         exec.execute { assist?.cancel() }
     }

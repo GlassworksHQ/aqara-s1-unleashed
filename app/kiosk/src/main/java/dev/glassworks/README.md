@@ -277,6 +277,26 @@ tiles). A browser can't draw it, so new sections should not need it.
 sections in definition order (Voice, Music, Radio, Wall base, Time zone), then Log, Security and
 About: the Manage page's nav (#33). A section without items is left out.
 
+## The Manage page
+
+The panel serves `http://<panel>:8099/` ([docs/manage.md](../../../../../../../docs/manage.md), #33),
+on the same port as the QR-code sign-in pages. The core has the whole page; a frame gives it one
+`ManageHost`.
+
+| Part | What it does |
+|---|---|
+| `web.HttpServer`, `web.PageShell` | The small HTTP server, and the one look every page shares, the QR pages included. Change the look in `PageShell` only |
+| `manage.ManageServer` | Routes, the session gate, the `Origin` and CSRF checks, the actions. The QR paths it's given go to the QR server untouched, without a session |
+| `manage.HaSignIn` | Sign in through HA as an OAuth client of the local HA only: PKCE, `auth/current_user` must say `is_admin`, the refresh token revoked at once |
+| `manage.SessionStore` | The page's own sessions: a SHA-256 of the cookie on disk, 30 days when remembered, tied to the HA address |
+| `manage.PanelCode` | The 6-digit code on the panel's screen: one purpose and browser, 5 minutes, 5 tries, 10 wrong in 15 min locks entry |
+| `manage.ManageLog`, `LogcatTail`, `Redact` | The 7-day log across reboots, fed from the app's own logcat, and the redaction for it and the diagnostics file |
+| `manage.ManageHost` | What the frame supplies: `status()` (`PanelStatus`: tiles, `PaneRow`s with a `PaneState`, the settings sections), `actions`, `diagnostics()` |
+
+The settings sections show read-only: `Text`, `Switch`, `Info` and `Note` show their values; `Link`
+and `Native` say "On the panel". Editing them in a browser needs a typed value and action model
+instead of closures and views; that, and each pane's on/off switch (#67), is phase 2.
+
 ## Android versions
 
 Code outside `dev.glassworks.platform` never reads `Build.VERSION.SDK_INT`. If you need a version

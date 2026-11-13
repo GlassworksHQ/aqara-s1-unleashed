@@ -23,6 +23,7 @@ import sh.edm.s1kiosk.esphome.PanelDevice
 import sh.edm.s1kiosk.frame.ScreenOffWifiScanner
 import sh.edm.s1kiosk.improv.ImprovController
 import sh.edm.s1kiosk.improv.ImprovSerialServer
+import sh.edm.s1kiosk.manage.CodeOverlay
 import sh.edm.s1kiosk.setup.SetupChannelServer
 import sh.edm.s1kiosk.voice.VoiceEvent
 import sh.edm.s1kiosk.voice.VoiceUi
@@ -38,6 +39,7 @@ class KioskService : Service() {
     private var device: PanelDevice? = null
     private var discovery: HaDiscovery? = null
     private var wifiScanner: ScreenOffWifiScanner? = null
+    private var codeOverlay: CodeOverlay? = null
     private lateinit var foreground: KioskForeground
 
     override fun onCreate() {
@@ -56,6 +58,13 @@ class KioskService : Service() {
         glassworks.voiceUi = VoiceUi(glassworks.voiceState)
         glassworks.voiceCancel = { device?.cancelVoice() }
         HaAuth.startServer(this)
+        codeOverlay = CodeOverlay(this) { glassworks.panelCode.dismiss() }
+        glassworks.panelCode.display = { shown ->
+            main.post {
+                if (shown != null) glassworks.screen.wake("panel code")
+                codeOverlay?.show(shown)
+            }
+        }
         val d = HaDiscovery(this, UrlConnectionPoster(timeoutMs = 5_000)) { url, source ->
             // Applied by the activity (dashboard URL "auto": load it, or restart for secure-context hosts).
             main.post { glassworks.commandSink?.invoke(Intent().putExtra("ha_discovered", url).putExtra("ha_source", source)) }
@@ -65,6 +74,7 @@ class KioskService : Service() {
         d.start()
         device = PanelDevice(this, glassworks, { e -> main.post { onVoiceEvent(e) } }, d::onApiHello).also {
             it.start()
+            glassworks.device = it
         }
         ImprovController.init(this) // Improv Wi-Fi via BLE (provisioning mode; see improv/)
         // The web installer, over adb (docs/onboarding.md): Wi-Fi via Improv Serial, then HA + radio.
@@ -89,12 +99,16 @@ class KioskService : Service() {
         SetupChannelServer.stop()
         ImprovSerialServer.stop()
         ImprovController.shutdown()
+        glassworks.device = null
         device?.stop()
         device = null
         discovery?.stop()
         discovery = null
         glassworks.discovery = null
         HaAuth.stopServer()
+        glassworks.panelCode.display = {}
+        codeOverlay?.show(null)
+        codeOverlay = null
         wifiScanner?.stop()
         wifiScanner = null
         super.onDestroy()
