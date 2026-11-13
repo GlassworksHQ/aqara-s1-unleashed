@@ -8,7 +8,6 @@ import sh.edm.esphome.ApiServer
 import sh.edm.esphome.EntityCategory
 import sh.edm.esphome.SendspinApi
 import sh.edm.esphome.SendspinTokenSource
-import sh.edm.esphome.SwitchEntity
 import sh.edm.esphome.TextSensorEntity
 
 /**
@@ -22,11 +21,8 @@ class SendspinPane(ctx: PaneContext, haBase: () -> String?) : Pane {
 
     private val player = SendspinPlayer(ctx.context, prefs, haBase, ctx.device.macAddress, ctx.publishStates)
 
+    // Its on/off (`sendspin`) is the core's, from SendspinDefinition.switch.
     override fun entities(): List<ApiEntity> = listOf(
-        SwitchEntity(
-            "sendspin", "Music Assistant player (Sendspin)", "mdi:speaker-wireless", EntityCategory.CONFIG,
-            get = { prefs.enabled }, set = { prefs.enabled = it },
-        ),
         TextSensorEntity(
             "sendspin_status", "Music Assistant player status", "mdi:speaker-wireless", EntityCategory.DIAGNOSTIC,
             get = { player.statusText() },
@@ -43,16 +39,15 @@ class SendspinPane(ctx: PaneContext, haBase: () -> String?) : Pane {
         }
     }
 
-    override fun start() {
-        if (prefs.enabled) player.start()
-    }
+    /** The core starts it while the switch is on, and stops it when it is turned off. */
+    override fun start() = player.start()
 
-    override fun stop() = player.stop("shutdown")
+    // client/goodbye's reason: the person turned the player off, or the panel is stopping.
+    override fun stop() = player.stop(if (prefs.enabled) "shutdown" else "user_request")
 
     override fun onEvent(event: PanelEvent) {
         when (event) {
             is PanelEvent.SettingChanged -> when (event.key) {
-                SendspinPrefs.KEY_ENABLED -> if (prefs.enabled) player.start() else player.stop("user_request")
                 // A new client/hello must carry the changed setting: reconnect.
                 SendspinPrefs.KEY_UNPAIRED, SendspinPrefs.KEY_SERVER -> player.restartSession()
                 SendspinPrefs.KEY_FLAC -> player.onFlacSettingChanged()

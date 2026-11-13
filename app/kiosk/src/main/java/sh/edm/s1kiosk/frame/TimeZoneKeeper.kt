@@ -6,6 +6,7 @@ import sh.edm.s1kiosk.radio.ShellProps
 import sh.edm.s1kiosk.radio.SysProps
 import java.util.TimeZone
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
@@ -34,9 +35,8 @@ class TimeZoneKeeper(
         private val ID = Regex("^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+){0,2}$")
     }
 
-    private val exec = if (inline) null else Executors.newSingleThreadScheduledExecutor { r ->
-        Thread(r, "s1-timezone").apply { isDaemon = true }
-    }
+    /** Its own thread while it runs ([start] to [stop]); null otherwise, and always when [inline]. */
+    @Volatile private var exec: ScheduledExecutorService? = null
 
     @Volatile private var wanted = ""
     @Volatile private var shown = ""
@@ -47,24 +47,49 @@ class TimeZoneKeeper(
     /** `Time zone status`. Cheap. */
     fun statusText(): String = shown
 
+    /** Starts the checks. Again after [stop] too: the pane can be turned off and on (#67). */
     fun start() {
+        if (!inline) exec = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "s1-timezone").apply { isDaemon = true } }
         post { refresh() }
         exec?.scheduleWithFixedDelay({ post { refresh() } }, 30, 30, TimeUnit.SECONDS)
     }
 
-    fun stop() { exec?.shutdownNow() }
+    fun stop() {
+        exec?.shutdownNow()
+        exec = null
+    }
 
     /** From the `Time zone` entity. Returns null when accepted, else why not (nothing changes then). */
     fun set(input: String): String? {
         val id = input.trim()
         if (!ID.matches(id) || id.length > 64) return "'$id' is not a time zone id (like Europe/Berlin or America/New_York)"
         if (id !in zones()) return "'$id' is not a time zone this panel knows"
-        post {
+        val queued = post {
             props.set(PROP, id)
             log("time zone to keep: $id")
             refresh()
         }
-        return null
+        return if (queued) null else "the time zone pane is off"
+    }
+
+    /**
+     * The pane was turned off: the root helper lets go of the zone (it leaves it to Aqara again). Returns
+     * the zone it kept, "" for none. On the caller's thread.
+     */
+    fun release(): String {
+        val zone = props.get(PROP).trim()
+        if (zone.isNotEmpty()) {
+            props.set(PROP, "")
+            log("time zone pane off: no longer keeping $zone")
+        }
+        return zone
+    }
+
+    /** Hands [zone] to the root helper again (the pane was turned on). On the caller's thread. */
+    fun keepAgain(zone: String) {
+        if (props.get(PROP).trim().isNotEmpty()) return
+        props.set(PROP, zone)
+        log("time zone pane on: keeping $zone again")
     }
 
     /** Re-reads the props and recomputes [text]/[statusText]; [onChange] when something changed. */
@@ -88,8 +113,10 @@ class TimeZoneKeeper(
         }
     }
 
-    private fun post(block: () -> Unit) {
-        val e = exec
-        if (e == null) block() else e.execute { try { block() } catch (t: Throwable) { log("time zone task failed: $t") } }
+    /** Runs [block] on its thread, or now when [inline]. False while it isn't running. */
+    private fun post(block: () -> Unit): Boolean {
+        if (inline) { block(); return true }
+        val e = exec ?: return false
+        return runCatching { e.execute { try { block() } catch (t: Throwable) { log("time zone task failed: $t") } } }.isSuccess
     }
 }

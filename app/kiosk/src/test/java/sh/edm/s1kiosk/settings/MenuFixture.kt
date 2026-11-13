@@ -16,15 +16,15 @@ import sh.edm.s1kiosk.radio.RadioDefinition
  */
 object MenuFixture {
     /** Voice and Music as the app has them: a card on setup's Panes step and no settings of their own. */
-    fun cardOnly(id: String, title: String, detail: String, on: () -> Boolean = { true }, restartsApp: Boolean = false, apply: (Boolean) -> String? = { null }) =
+    fun cardOnly(id: String, title: String, detail: String, on: () -> Boolean = { true }, apply: (Boolean) -> String? = { null }) =
         object : PaneDefinition {
             override val id = id
-            override val setupChoice = PaneChoice(title, detail, on = on, restartsApp = restartsApp, apply = apply)
+            override val setupChoice = PaneChoice(title, detail, on = on, apply = apply)
         }
 
     fun model(
         context: Context, radio: RadioDefinition, deviceSettings: Boolean = true, version: String = "0.4.3", status: String = "screen on",
-        panes: List<PaneDefinition> = listOf(cardOnly("voice", "Voice", "Assist and timers", restartsApp = true), cardOnly("sendspin", "Music", "A Sendspin speaker"), radio),
+        panes: List<PaneDefinition> = listOf(cardOnly("voice", "Voice", "Assist and timers"), cardOnly("sendspin", "Music", "A Sendspin speaker"), radio),
         live: CoreSettings.Live = CoreSettings.Live(),
     ): KioskSettingsOverlay.Model {
         val core = CoreSettings(

@@ -77,8 +77,11 @@ class WallBasePane(
     override fun onEvent(event: PanelEvent) {
         if (event !is PanelEvent.SettingChanged) return
         when (event.key) {
-            WallBasePrefs.KEY_BLOCK_AQARA_CLOUD, WallBasePrefs.KEY_BACKEND, WallBasePrefs.KEY_TRANSPORT ->
-                device.execute { reconfigure("setting ${event.key} changed") }
+            // Turned off, the core has stopped the base and closed its port: Aqara's daemon may run again, unless it is blocked.
+            WallBasePrefs.KEY_ENABLED -> if (!prefs.enabled) device.execute { applyAqaraCloud("wall base off") }
+            WallBasePrefs.KEY_BLOCK_AQARA_CLOUD, WallBasePrefs.KEY_BACKEND, WallBasePrefs.KEY_TRANSPORT -> device.execute {
+                if (prefs.enabled) reconfigure("setting ${event.key} changed") else applyAqaraCloud("setting ${event.key} changed, wall base off")
+            }
         }
     }
 
@@ -104,6 +107,8 @@ class WallBasePane(
      */
     private fun applyAqaraCloud(why: String, backend: BaseBackend = base.config.backend) {
         val run = when {
+            // No wall base link: only the blocking setting counts.
+            !prefs.enabled -> !prefs.blockAqaraCloud
             // The UART link owns /dev/ttyS3: ha_master is never needed (and must not run).
             backend == BaseBackend.UART -> false
             !prefs.blockAqaraCloud -> true
@@ -116,6 +121,7 @@ class WallBasePane(
         val ok = cloud.setDaemon(run)
         aqaraCloudStatus = when {
             !ok -> "error (${cloud.daemonState().ifBlank { "unknown" }})"
+            !prefs.enabled -> if (run) "running" else "blocked"
             !run && !prefs.blockAqaraCloud -> "stopped (UART wall base backend owns ${UartBaseLink.SERIAL_PATH})"
             !run -> "blocked"
             prefs.blockAqaraCloud -> "running (needed by the wall base, LocalService backend)"

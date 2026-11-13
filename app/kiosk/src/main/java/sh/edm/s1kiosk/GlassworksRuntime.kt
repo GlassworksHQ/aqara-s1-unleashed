@@ -3,6 +3,7 @@ package sh.edm.s1kiosk
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import dev.glassworks.diagnostics.DiagnosticsDefinition
 import dev.glassworks.engine.Engine
 import dev.glassworks.engine.EngineSettings
 import dev.glassworks.engine.gecko.GeckoEngine
@@ -52,8 +53,8 @@ class GlassworksRuntime(
     private var definitions: List<PaneDefinition>? = null
 
     /**
-     * Every pane's definition, made once: their setup steps, settings sections and adb extras. The
-     * core's panes in the order the settings list them (voice, music, radio), then the frame's.
+     * Every pane's definition, made once: their on/off, setup steps, settings sections and adb extras. The
+     * core's panes in the order the settings list them (voice, music, radio), then the frame's, then diagnostics.
      * MainActivity and KioskService ask for them first thing, before discovery can save an HA URL in
      * this process (the radio step's one-time check needs that).
      */
@@ -66,8 +67,8 @@ class GlassworksRuntime(
                 setUpBefore = { SetupState.setUpBefore(prefs.haBase != null, prefs.haSeen, prefs.apiEncryption, prefs.haSetupSkipped) },
                 readout = RadioDefinition.AppReadout(this, prefs.radio) { prefs.haBase },
             )
-            listOf(AssistDefinition(prefs.voice), SendspinDefinition(prefs.sendspin), radio) +
-                paneFrame.paneDefinitions(app)
+            listOf(AssistDefinition(prefs.paneFile("assist")), SendspinDefinition(prefs.paneFile("sendspin")), radio) +
+                paneFrame.paneDefinitions(app) + DiagnosticsDefinition(prefs.paneFile("diagnostics"))
         }.also { definitions = it }
     }
 

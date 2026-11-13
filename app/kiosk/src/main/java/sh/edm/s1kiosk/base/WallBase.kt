@@ -56,8 +56,8 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
     }
 
     private val ctx = context.applicationContext
-    private val exec: ScheduledExecutorService =
-        Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "s1-base").apply { isDaemon = true } }
+    /** The "s1-base" thread. A new one for each [start] after a [stop]: the pane can be turned off and on (#67). */
+    @Volatile private var exec: ScheduledExecutorService = newThread()
     val tracker = BaseTracker(initial)
     private var link: BaseLink? = null
     @Volatile var config: Config = config
@@ -72,6 +72,7 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
     private fun now() = SystemClock.elapsedRealtime()
 
     fun start() {
+        if (exec.isShutdown) exec = newThread()
         exec.execute { startLink() }
         exec.scheduleWithFixedDelay({ safe("tick") { tick() } }, 1, 1, TimeUnit.SECONDS)
     }
@@ -101,25 +102,31 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
 
     val backendDescription: String get() = link?.describe ?: config.backend.pref
 
-    /** From Home Assistant (API connection thread). */
+    /** From Home Assistant (API connection thread). Dropped while the base is stopped. */
     fun setRelay(channel: Int, on: Boolean) {
-        exec.execute {
-            val l = link
-            if (l == null || !l.isConnected) {
-                Log.w(TAG, "relay $channel -> $on ignored: no link to the base")
-                return@execute
-            }
-            val res = BaseRes.relay(channel)
-            l.write(res, if (on) 1 else 0)
-            if (l.confirmWrites) {
-                // Confirm (the base or a report may also answer by itself).
-                exec.schedule({ link?.read(listOf(res)) }, 500, TimeUnit.MILLISECONDS)
-                exec.schedule({ link?.read(listOf(res, BaseRes.POWER)) }, 2_000, TimeUnit.MILLISECONDS)
-            }
+        runCatching { exec.execute { relay(channel, on) } }
+    }
+
+    /** The "s1-base" thread. */
+    private fun relay(channel: Int, on: Boolean) {
+        val l = link
+        if (l == null || !l.isConnected) {
+            Log.w(TAG, "relay $channel -> $on ignored: no link to the base")
+            return
+        }
+        val res = BaseRes.relay(channel)
+        l.write(res, if (on) 1 else 0)
+        if (l.confirmWrites) {
+            // Confirm (the base or a report may also answer by itself).
+            exec.schedule({ link?.read(listOf(res)) }, 500, TimeUnit.MILLISECONDS)
+            exec.schedule({ link?.read(listOf(res, BaseRes.POWER)) }, 2_000, TimeUnit.MILLISECONDS)
         }
     }
 
     // ------------------------------------------------------------------ internals (s1-base thread)
+
+    private fun newThread(): ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "s1-base").apply { isDaemon = true } }
 
     private inline fun safe(what: String, block: () -> Unit) {
         try { block() } catch (t: Throwable) { Log.w(TAG, "$what failed", t) }

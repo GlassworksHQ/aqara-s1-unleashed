@@ -39,7 +39,7 @@ class AssistPaneTest {
     private val input = FakeInput()
     private var created: Triple<VoiceConfig, String, (String) -> Unit>? = null
 
-    private fun pane(voiceEnabled: Boolean = true, onVoiceEvent: (VoiceEvent) -> Unit = { heard += it }) = AssistPane(
+    private fun pane(onVoiceEvent: (VoiceEvent) -> Unit = { heard += it }) = AssistPane(
         ctx = PaneContext(
             app, KioskPrefs(app)::paneFile,
             DeviceIdentity(
@@ -48,7 +48,6 @@ class AssistPaneTest {
             ),
             publishStates = {}, emit = { events += it }, entitiesChanged = {}, sendEvent = { _, _ -> },
         ),
-        voiceEnabled = voiceEnabled,
         player = object : UrlPlayer {
             override fun play(urls: List<String>, onDone: (Boolean) -> Unit) {}
             override fun stop() {}
@@ -61,7 +60,7 @@ class AssistPaneTest {
     )
 
     private val panes = ArrayList<AssistPane>()
-    private fun started(voiceEnabled: Boolean = true) = pane(voiceEnabled).also { panes += it; it.start() }
+    private fun started() = pane().also { panes += it; it.start() }
 
     @Before fun setUp() {
         prefs.micMuted = false
@@ -302,8 +301,29 @@ class AssistPaneTest {
     }
 
     @Test
-    fun withVoiceOffTheEntitiesStayAndNothingRuns() {
-        val p = started(voiceEnabled = false)
+    fun turnedOffAndOnAgainItTakesTheServerAndClearsTheTimers() {
+        val p = started()
+        val server = ApiServer(0, { error("unused") }, emptyList(), null as ByteArray?)
+        p.bind(server)
+        val first = server.voice
+        assertNotNull(first)
+        p.stop() // voice turned off while the server runs
+        assertNull(server.voice)
+        assertEquals("the board stops showing timers nobody reports", PanelEvent.TimersChanged(emptyList()), events.last())
+        created = null
+        events.clear()
+        p.start() // and on again: no bind() this time
+        assertNotNull("a new engine", created)
+        assertNotNull(server.voice)
+        assertTrue("a new controller", server.voice !== first)
+        p.stop()
+        p.stop() // the panel stopping too: nothing more to clear
+        assertEquals(listOf(PanelEvent.TimersChanged(emptyList())), events)
+    }
+
+    @Test
+    fun neverStartedTheEntitiesStayAndNothingRuns() {
+        val p = pane().also { panes += it }
         assertNull(created)
         assertEquals(
             listOf("mute_microphone", "wake_sound", "voice_overlay", "mic_gain", "wake_word_threshold"),

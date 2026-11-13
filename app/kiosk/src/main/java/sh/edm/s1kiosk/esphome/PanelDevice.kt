@@ -7,6 +7,7 @@ import dev.glassworks.frame.Frame
 import dev.glassworks.pane.EntityRegistry
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
+import dev.glassworks.pane.PaneSwitch
 import dev.glassworks.pane.PanelEvent
 import dev.glassworks.pane.forEachPane
 import dev.glassworks.pane.stopAll
@@ -113,6 +114,8 @@ class PanelDevice internal constructor(
         /** Same flags as an ESPHome voice_assistant with a media player (Voice PE): no SPEAKER. */
         const val VOICE_FEATURES = VoiceFeature.VOICE_ASSISTANT or VoiceFeature.API_AUDIO or
             VoiceFeature.TIMERS or VoiceFeature.ANNOUNCE or VoiceFeature.START_CONVERSATION
+        /** The voice assistant's pane id ([AssistPane]), whose switch sets [VOICE_FEATURES]. */
+        private const val ASSIST = "assist"
         private val MAC_RE = Regex("^([0-9A-F]{2}:){5}[0-9A-F]{2}$")
     }
 
@@ -122,14 +125,19 @@ class PanelDevice internal constructor(
     /** Typed as the interface. The device-only parts come in through [Frame.panes]. */
     private val frame: Frame = runtime.frame
     private val screen = runtime.screen
-    private val voiceEnabled = prefs.voice.enabled
+    /** Each pane's on/off, by pane id ([dev.glassworks.pane.PaneDefinition.switch]). A pane with none always runs. */
+    private val switches: Map<String, PaneSwitch> =
+        runtime.paneDefinitions(ctx).mapNotNull { d -> d.switch?.let { d.id to it } }.toMap()
+    /** The ids of the panes started now. esphome-main. */
+    private val started = HashSet<String>()
 
     private var server: ApiServer? = null
     /** Guards [stopped] and the hand-over of [server] between [startServer] and [stop]. */
     private val lifecycle = Any()
     private var stopped = false
     private val noiseKeys = NoiseKeys(prefs.noiseKeyStore)
-    private lateinit var identity: DeviceIdentity
+    /** Read by the API server on its connection threads; replaced when voice is turned on or off. */
+    @Volatile private lateinit var identity: DeviceIdentity
     private lateinit var entities: List<ApiEntity>
     private lateinit var coreEntities: List<ApiEntity>
     private val voicePlayer = ExoAudioPlayer(context, "voice", AudioAttributes.USAGE_ASSISTANT)
@@ -206,9 +214,9 @@ class PanelDevice internal constructor(
             compilationTime = "S1 Kiosk ${BuildConfig.VERSION_NAME}",
             manufacturer = "Aqara",
             model = "Panel Hub S1 Plus (S1 Kiosk)",
-            voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
+            voiceFeatures = voiceFeatures(),
         )
-        EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${voiceEnabled}")
+        EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${id.voiceFeatures != 0}")
         if (!unlessStopped { initEntities(id); acquireLocks() }) return
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
@@ -217,7 +225,8 @@ class PanelDevice internal constructor(
             exec.execute { server?.publishStates() }
         }
 
-        panes.forEachPane("start") { pane -> unlessStopped { pane.start() } }
+        for ((pane, s) in switches) EspHomeLog.i("Pane $pane ${if (s.on) "on" else "off"}")
+        panes.forEachPane("start") { pane -> unlessStopped { if (isOn(pane)) { pane.start(); started += pane.id } } }
         if (!unlessStopped { updates.start() }) return
         startServer()
         unlessStopped {
@@ -245,7 +254,6 @@ class PanelDevice internal constructor(
         )
         val assistPane = AssistPane(
             paneContext,
-            voiceEnabled,
             player = voicePlayer,
             speaker = speakerMedia,
             resolveUrl = ::resolveUrl,
@@ -254,22 +262,21 @@ class PanelDevice internal constructor(
             createInput = { cfg, model, onModelChanged -> VoiceEngine(ctx, cfg, model, onModelChanged) },
         )
         assist = assistPane
-        panes = listOfNotNull(
+        panes = listOf(
             SendspinPane(paneContext, haBase = { prefs.haBase }),
             assistPane,
-            // Timers only come from the voice assistant.
-            if (voiceEnabled) {
-                TimersPane(
-                    paneContext,
-                    screen,
-                    schedule = { ms, action -> exec.schedule({ action() }, ms, TimeUnit.MILLISECONDS) },
-                    play = { chimes().chime() },
-                    silence = { synchronized(this) { chimePlayer }?.cancel() },
-                )
-            } else null,
+            // Timers only come from the voice assistant: without it the pane has nothing to do.
+            TimersPane(
+                paneContext,
+                screen,
+                schedule = { ms, action -> exec.schedule({ action() }, ms, TimeUnit.MILLISECONDS) },
+                play = { chimes().chime() },
+                silence = { synchronized(this) { chimePlayer }?.cancel() },
+            ),
         ) + frame.panes(paneContext, exec) + RadioPane(paneContext, runtime, panelIp = ::ipAddress) +
             DiagnosticsPane(paneContext, frame.cpuThermalZone, runtime.engine::isContentProcess, exec)
-        coreEntities = buildEntities()
+        // Every pane's on/off, also while the pane is off.
+        coreEntities = buildEntities() + switches.values.map { it.entity() }
         appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
         dashboardRebuild = StableChange(dashboardOptions(appliedDashboards))
         entities = assemble()
@@ -395,8 +402,40 @@ class PanelDevice internal constructor(
             "api_encryption", "api_key" -> onApiKeyPrefChanged()
             "speaker_volume", "speaker_muted" -> applyVolume()
         }
+        // Before the event, so a pane that hears its own switch is already started or stopped.
+        if (switches.values.any { it.key == key }) applySwitches()
         emit(PanelEvent.SettingChanged(key))
         server?.publishStates()
+    }
+
+    private fun isOn(pane: Pane) = switches[pane.id]?.on != false
+
+    /** The voice assistant's features for Home Assistant: none while its pane is off. */
+    private fun voiceFeatures() = if (switches[ASSIST]?.on != false) VOICE_FEATURES else 0
+
+    /**
+     * esphome-main: starts each pane that was turned on and stops each that was turned off (#67). When voice
+     * changed, the device info changes too, and Home Assistant reconnects to read it.
+     */
+    private fun applySwitches() {
+        for (pane in panes) {
+            val on = isOn(pane)
+            if (on == (pane.id in started)) continue
+            if (on) {
+                if (!unlessStopped { listOf(pane).forEachPane("start") { it.start() }; started += pane.id }) return
+            } else {
+                started -= pane.id
+                listOf(pane).forEachPane("stop") { it.stop() }
+            }
+            EspHomeLog.i("Pane ${pane.id} ${if (on) "on" else "off"}")
+        }
+        val features = voiceFeatures()
+        if (features != identity.voiceFeatures) {
+            identity = identity.copy(voiceFeatures = features)
+            runtime.voiceState = if (features != 0) "idle" else "off"
+            EspHomeLog.i("voice=${features != 0}: Home Assistant reconnects to read the voice features")
+            rebuildEntities()
+        }
     }
 
     /** The chime player, made on first use (from the ESPHome, voice or main thread). */

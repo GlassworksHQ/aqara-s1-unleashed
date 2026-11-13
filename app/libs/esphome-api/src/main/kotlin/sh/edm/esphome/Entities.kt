@@ -107,9 +107,10 @@ class TextSensorEntity(
 class SwitchEntity(
     objectId: String, name: String, icon: String = "", category: EntityCategory = EntityCategory.NONE,
     private val deviceClass: String = "",
+    disabledByDefault: Boolean = false,
     private val get: () -> Boolean,
     private val set: (Boolean) -> Unit,
-) : ApiEntity(objectId, name, icon, category) {
+) : ApiEntity(objectId, name, icon, category, disabledByDefault) {
     override val listType = Msg.LIST_ENTITIES_SWITCH
     override val stateType = Msg.SWITCH_STATE
     override val commandType = Msg.SWITCH_COMMAND

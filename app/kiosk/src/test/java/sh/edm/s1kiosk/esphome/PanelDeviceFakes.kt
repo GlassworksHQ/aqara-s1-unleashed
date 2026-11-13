@@ -16,12 +16,15 @@ import java.util.concurrent.TimeUnit
  */
 internal class ManualExecutor : AbstractExecutorService(), ScheduledExecutorService {
 
-    private inner class Task(val dueMs: Long, val seq: Long, val action: Runnable) : ScheduledFuture<Any?> {
+    private inner class Task(val dueMs: Long, val seq: Long, val action: Runnable, val fixedDelay: Boolean = false) : ScheduledFuture<Any?> {
         @Volatile var cancelled = false
         @Volatile var done = false
         override fun cancel(mayInterrupt: Boolean): Boolean {
-            cancelled = true
-            synchronized(this@ManualExecutor) { queue.remove(this) }
+            synchronized(this@ManualExecutor) {
+                if (fixedDelay && !cancelled && !down) periodic--
+                cancelled = true
+                queue.remove(this)
+            }
             return true
         }
         override fun isCancelled() = cancelled
@@ -47,7 +50,7 @@ internal class ManualExecutor : AbstractExecutorService(), ScheduledExecutorServ
         throw RejectedExecutionException("esphome-main is shut down")
     }
 
-    /** Fixed-delay tasks running (the dashboard check and the state refresh); a shutdown cancels them. */
+    /** Fixed-delay tasks running (the dashboard check and the state refresh); a shutdown or their own cancel stops them. */
     @Volatile var periodic = 0
         private set
 
@@ -82,7 +85,7 @@ internal class ManualExecutor : AbstractExecutorService(), ScheduledExecutorServ
             if (down) { rejectedPeriodic++; refuse() }
             periodic++
         }
-        return Task(Long.MAX_VALUE, seq++, command)
+        return Task(Long.MAX_VALUE, seq++, command, fixedDelay = true)
     }
 
     /**

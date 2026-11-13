@@ -43,7 +43,7 @@ class SettingsMockups {
         KioskPrefs(app).apply { urlSetting = "http://homeassistant.local:8123/lovelace/panel"; zoom = 1.25f; presenceRangeM = 1.8f; nightWindow = "22:00-07:00" }
         val radio = radioDefinition(app, FixedReadout(if (radioRunning) facts else null, running = radioRunning))
         val panes = listOf(
-            MenuFixture.cardOnly("voice", "Voice", "Assist and timers", restartsApp = true),
+            MenuFixture.cardOnly("voice", "Voice", "Assist and timers"),
             MenuFixture.cardOnly("sendspin", "Music", "A Sendspin speaker"), radio,
         ) + extra
         o.show(MenuFixture.model(app, radio, deviceSettings, status = "screen on · presence near · voice=idle", panes = panes))
