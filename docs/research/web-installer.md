@@ -659,6 +659,10 @@ and install, so none goes in silently:
 | `prefs` | after the keyboard | time zone, language, clock |
 | `start` | `am start` with the settings | the app starts with them (again, on an update) |
 
+When the installed S1 Kiosk has another signing key, the switch (`switch.ts`) uninstalls it and runs
+its own `pm install` calls (the new APK, and the old one back if that fails). They report no phases of
+their own, so on the screen they sit under the S1 Kiosk install row.
+
 Kiln ends `start` when the app's Improv socket is listening in `/proc/net/unix` again. The screen
 names no durations: 22 s is one measurement on one panel.
 
