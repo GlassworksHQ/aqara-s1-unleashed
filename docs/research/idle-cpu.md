@@ -66,15 +66,21 @@ on screen. Which thread is it, is that work needed, and what would make it small
 
 2. **What the thread does per frame** (2026-11-12, verified).
    ```
-   $ adb shell 'P=$(pidof sh.edm.s1kiosk); T=<voice-mic tid>; cat /proc/$P/task/$T/schedstat; sleep 10; cat /proc/$P/task/$T/schedstat'
+   $ adb shell 'P=$(pidof sh.edm.s1kiosk); T=<voice-mic tid>; cat /proc/$P/task/$T/schedstat; grep ctxt /proc/$P/task/$T/status; sleep 10; cat /proc/$P/task/$T/schedstat; grep ctxt /proc/$P/task/$T/status'
    351264021991 3039967668 58023
+   voluntary_ctxt_switches:	34052
+   nonvoluntary_ctxt_switches:	23973
    355748620002 3060881130 58596
+   voluntary_ctxt_switches:	34430
+   nonvoluntary_ctxt_switches:	24166
    $ adb shell 'cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq'
    1200000 (all four cores)
    ```
    4.48 s on CPU in 10 s, in 573 slices. 10 s of audio is 125 frames of 80 ms, so the thread spends
-   about **36 ms of CPU per frame** at 1.2 GHz. The 4.6 slices per frame are `AudioRecord.read`
-   returning in parts plus preemption; there is no spinning.
+   about **36 ms of CPU per frame** at 1.2 GHz. The 4.6 scheduling slices per frame are 3.0
+   voluntary switches (the thread blocked, which in this loop is `AudioRecord.read`) and 1.5
+   preemptions. So the thread sleeps about three times per frame and isn't a pure busy loop.
+   These counters don't show what it does while it runs.
 
 3. **Is the runtime set up right?** (2026-11-12, verified from logcat)
    ```
@@ -170,7 +176,8 @@ with the screen on and off. The mute switch stops the recorder and inference tog
 **Inferred, not measured on the panel: inference is nearly all of it.** Capture wasn't measured on its
 own (see Open questions). The evidence for inference:
 
-- The thread blocks in `AudioRecord.read` and wakes 4.6 times per frame (step 2), with no spinning.
+- The thread blocks about 3 times per frame (voluntary switches, step 2), so it isn't a pure busy
+  loop. What it does while it runs comes from the next point, not from the counters.
 - Inference is 44.3 MMAC per frame (step 5), and the thread uses 42 to 45 M cycles per frame. That
   is about one multiply-add per cycle, half the A53's fp32 NEON peak, which XNNPACK normally reaches.
   If capture took a sizeable share, the models would have to run faster than that.
