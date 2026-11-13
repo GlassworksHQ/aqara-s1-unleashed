@@ -4,6 +4,8 @@
 #
 #   app      every module's JVM unit tests, an unsigned release build, and
 #            tools/release/check-update-compat.sh (the APK still updates panels in place)
+#   libs-api23  the libraries' lint (NewApi) and their androidTest checks on an API 23 emulator:
+#            esphome-api, esphome-api-android and improv run on Android 6 (#151)
 #   web      the npm workspaces from the repo root (job id kept, as branch protection names it):
 #            Kiln, its packages, the frame recipes and packages/*: typecheck, tests, both builds
 #   scripts  tools/install.sh's off-device tests, the perf test's rubric, report and grade
@@ -70,6 +72,44 @@ jobs:
 
       - name: Still updates panels in place
         run: tools/release/check-update-compat.sh app/kiosk/build/outputs/apk/release/kiosk-release-unsigned.apk
+
+  libs-api23:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
+      - name: Android SDK platform
+        run: sdkmanager --install "platforms;android-37.2"
+      - name: Lint (NewApi at minSdk 23)
+        working-directory: app
+        run: ./gradlew --no-daemon :esphome-api-android:lintDebug :improv:lintDebug
+      - name: Build the androidTest APKs
+        working-directory: app
+        run: ./gradlew --no-daemon :esphome-api-android:assembleDebugAndroidTest :improv:assembleDebugAndroidTest
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: androidTest on an API 23 emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 23
+          arch: x86_64
+          target: default
+          disable-animations: true
+          working-directory: app
+          script: ./gradlew --no-daemon :esphome-api-android:connectedDebugAndroidTest :improv:connectedDebugAndroidTest
 
   web:
     runs-on: ubuntu-24.04
