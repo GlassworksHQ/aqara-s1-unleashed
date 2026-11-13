@@ -1,10 +1,10 @@
 # Boot animation: what Android 10 and the boot image allow
 
-**Status (2026-11-12): working when played on a running panel; the real boot is untested.** The #63
-animation fits the boot image with 2.05 MB to spare and holds one frame in GPU memory at a time. The
-panel's vendor-modified player plays it right: trimmed frames in place, the intro at full speed, the
-loop running, in 32-bit colour. The design's corner glows don't fit and were dropped. Playing it as
-the panel boots, and the splash, still need a panel run.
+**Status (2026-11-12): working on the S1, through a real boot.** The #63 animation fits the boot
+image with 2.05 MB to spare and holds one frame in GPU memory at a time. The panel's vendor-modified
+player plays it right: trimmed frames in place, the intro at full speed, the loop running, in 32-bit
+colour. Installed for real (step 7), the splash hands over to frame 0 without a jump and the loop
+stops when the panel is ready. The design's corner glows don't fit and were dropped.
 
 Device: Aqara S1 Plus, firmware 4.5.80 (stock `boot` from a local backup, not in the repo). Tools:
 AOSP `frameworks/base` at `android-10.0.0_r41`, Kiln's `@glassworks/bootpatch`, Pillow 13, oxipng.
@@ -116,6 +116,12 @@ loops 7.2 s at 30 fps. Can the panel's boot animation carry that, and what does 
    - The first second of the recording shows the dashboard before the player covers it. That part
      is personal and stays out of the PR.
 
+7. **A real install and boot** (2026-11-12, verified by the maintainer and the root, after #143
+   merged). The maintainer installed `main`'s build with Kiln (production) over FEL and filmed the
+   power-on: the splash, then frame 0 with no jump, the animation, and the loop ending when the panel
+   was ready. The root read the `bootloader` partition back: `set-bootlogo.py --ours` says
+   `ours Glassworks stack`. The panel runs `main`'s build on its dev boot since.
+
 ## Result
 
 | | Full design | Shipped |
@@ -152,11 +158,7 @@ The zip also lives in RAM (Magisk's tmpfs) for as long as the panel runs: 8.7 MB
 
 ## Open questions
 
-All need a real boot on a panel (hard rule 5):
-
-- Does the splash hand over to frame 0 without a step? The splash is written to `bootloader`; only
-  a power-on shows both.
-- Does the intro keep 30 fps while the system starts? Step 6 measured it on a running panel. Each
-  frame is a 300x485 or smaller PNG, less than the old animation's 800x400, so it should.
+- Does the intro keep 30 fps while the system starts? Step 6 measured it on a running panel; step
+  7's film hasn't been counted frame by frame.
 - How long does a slow boot take (first boot after an install)? 25 loops cover 3 minutes. After
   that the stack holds still.
