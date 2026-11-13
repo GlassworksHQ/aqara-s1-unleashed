@@ -1,3 +1,5 @@
+# Performance test and grade
+
 <p>
   <a href="https://www.glassworks.dev/brand#parts">
     <picture>
@@ -6,8 +8,6 @@
     </picture>
   </a>
 </p>
-
-# Performance test and grade
 
 `tools/perf/run.sh` measures how good a wall panel a frame (a device definition, such as the S1's
 `aqara-s1-plus`) makes, and gives it a grade from **A+** to **E**. The letter says **the biggest
