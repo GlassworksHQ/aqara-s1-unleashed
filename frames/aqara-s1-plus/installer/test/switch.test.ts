@@ -127,6 +127,9 @@ describe('Wi-Fi owner and store parsing', () => {
     expect(parseWifiOwner(fixture('dumpsys-wifi-kiosk.txt'))).toEqual({ owner: 'kiosk', ssid: 'Home & Garden' });
     expect(parseWifiOwner(fixture('dumpsys-wifi-other.txt'))).toEqual({ owner: 'other', ssid: 'Neighbours' });
     expect(parseWifiOwner(fixture('dumpsys-wifi-none.txt'))).toEqual({ owner: 'none' });
+    // an older, disconnected mWifiInfo printed first names a saved network that isn't the connected one
+    const stale = 'mWifiInfo SSID: Neighbours, BSSID: aa:bb:cc:dd:ee:09, Supplicant state: DISCONNECTED, RSSI: -80, Net ID: 0, score: 0\n';
+    expect(parseWifiOwner(stale + fixture('dumpsys-wifi-kiosk.txt'))).toEqual({ owner: 'kiosk', ssid: 'Home & Garden' });
     expect(parseWifiOwner('nothing useful')).toEqual({ owner: 'unknown' });
   });
 

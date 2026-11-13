@@ -17,7 +17,7 @@
   const C = Math.cos(Math.PI / 6);
   const SN = 0.5;
   const VB = { w: 640, h: 400 };
-  const LABELS = { screws: "Screws out", cover: "Back off", hold: "Hold the button", plug: "Plug in" };
+  const LABELS = { screws: "Take out the screws", cover: "Remove the back cover", hold: "Hold the button", plug: "Plug in the USB cable" };
 
   const clamp = (v) => Math.max(0, Math.min(1, v));
   const seg = (t, a, b) => (b <= a ? (t >= b ? 1 : 0) : clamp((t - a) / (b - a)));

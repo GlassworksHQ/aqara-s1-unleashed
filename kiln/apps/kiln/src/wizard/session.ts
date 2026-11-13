@@ -5,8 +5,8 @@ import type { AdbKey, PanelShell } from '@glassworks/adb';
 import type { Fastboot } from '@glassworks/fastboot';
 import type { FelDevice } from '@glassworks/fel';
 import {
-  IMPROV_SOCKET, ImprovSerialClient, State as ImprovState, describeSwitch, unprovision,
-  type AssetName, type Provisioned, type SetUpOptions,
+  IMPROV_SOCKET, ImprovSerialClient, PKG, kioskVersion, State as ImprovState, describeSwitch, panelWifi, unprovision,
+  type AppPhase, type AssetName, type Provisioned, type SetUpOptions,
 } from '@glassworks/aqara-s1-plus-installer';
 import {
   BackupRefused, InstallFlow, backupZip, checkRestorable, fmtSize, readBackupZip, restoreFromBackup,
@@ -16,7 +16,7 @@ import { SETUP_SOCKET, SetupChannel, validHaUrl, type SetupState } from '@glassw
 import { radioPlan, type FrameUi } from '../frames/aqara-s1-plus';
 import { explain } from './explain';
 import { AskBridge, flowUi } from './flowUi';
-import { initial, reduce, type Action, type Flow, type Setup, type WizardState } from './state';
+import { initial, reduce, type Action, type AppSettings, type Flow, type Setup, type WizardState } from './state';
 
 /** A tiny store: the session writes, React reads with useSyncExternalStore. */
 export class Store {
@@ -52,7 +52,6 @@ export interface SessionDeps {
   simulated?: boolean;
 }
 
-export interface Settings { locale?: string; timezone?: string; clock24: boolean; keyboard: boolean }
 
 const notPicked = (e: unknown) => e instanceof DOMException && e.name === 'NotFoundError';
 
@@ -73,6 +72,12 @@ export class Session {
   private ip?: string;
   private wifiSsid?: string;
   private wifiHint?: string;
+  /** what the person chose on the settings step, shown again if they go back to it */
+  private chosen?: AppSettings;
+  /** the Home Assistant address as the person typed it, shown again if they go back to the step */
+  haAddress?: string;
+  /** the app is on the panel: provision put it there, or `pm path` found it */
+  private hasApp = false;
   private haTimer?: ReturnType<typeof setInterval>;
   private readonly sleep: (ms: number) => Promise<void>;
   private running?: string;
@@ -118,7 +123,15 @@ export class Session {
     this.flow ??= new InstallFlow(this.d.recipe, {
       asset: (n, p) => this.d.asset(n, p),
       hasAsset: (n) => this.d.hasAsset(n),
-      backups: this.d.backups,
+      backups: {
+        // safe in this browser from here on: the tab's record, so any later Done offers it
+        save: async (meta, files) => {
+          await this.d.backups.save(meta, files);
+          const { serial: _, ...backup } = meta;
+          this.dispatch({ type: 'backup', backup });
+        },
+        original: () => this.d.backups.original(),
+      },
       key,
       devices: this.d.devices,
       sleep: this.d.sleep,
@@ -241,31 +254,70 @@ export class Session {
     switch (r) {
       case 'install': this.dispatch({ type: 'go', screen: 'connect', flow: 'install' }); return;
       case 'undo': return this.openUndo();
-      case 'resume': if (await this.connectPanel()) this.setupPhase({ phase: 'settings', update: true }); return;
+      case 'resume': if (await this.connectPanel()) this.setupPhase({ phase: 'settings', update: await this.appInstalled(), chosen: this.chosen }); return;
       case 'wifi': if (await this.connectPanel()) await this.wifi(); return;
       case 'home-assistant': if (await this.connectPanel()) await this.homeAssistant(); return;
       case 'radio': if (await this.connectPanel()) await this.radio(); return;
     }
   }
 
+  /**
+   * A signal that cancels a read-only panel command after `ms` (on this session's clock), so a wedged
+   * command is stopped on the panel, not only left behind. The caller falls back to the cautious answer.
+   */
+  private lid(ms = 8000): AbortSignal {
+    const ac = new AbortController();
+    void this.sleep(ms).then(() => ac.abort(new Error('the panel did not answer in time')));
+    return ac.signal;
+  }
+
+  /**
+   * Whether the app is on the panel (an update, not a first install): known once it went in, else asked
+   * (read-only). No answer counts as a first install.
+   */
+  private async appInstalled(): Promise<boolean> {
+    this.hasApp ||= (await this.panel!.run(`pm path ${PKG}`, this.lid()).catch(() => ({ out: '' }))).out.includes('package:');
+    return this.hasApp;
+  }
+
+  /** The settings form's values as they change: what going back to the step shows. */
+  keepSettings(opts: AppSettings): void { this.chosen = opts; }
+
   /** Settings → install (or update) the app. */
-  async installApp(opts: Settings): Promise<void> {
-    const update = this.s.setup.phase === 'settings' && this.s.setup.update;
-    this.setupPhase({ phase: 'settings', update, busy: `Installing ${this.d.frame.app}. About a minute.` });
+  async installApp(opts: AppSettings): Promise<void> {
+    this.chosen = opts;
+    const seen: AppPhase[] = [];
+    let update = this.s.setup.phase === 'settings' && this.s.setup.update;
+    const at = (p?: AppPhase) => {
+      if (p) seen.push(p);
+      this.setupPhase({ phase: 'settings', update, chosen: opts, installing: [...seen] });
+    };
+    at(); // the APK downloads before provision's first phase
     try {
+      // an update replaces a running app, which Android restarts; a first install has none running
+      update = await this.appInstalled();
+      at();
       const res = await this.getFlow(await this.keyReady).setUpApp(this.panel!, {
         timezone: opts.timezone, locale: opts.locale, clock24: opts.clock24, keyboard: opts.keyboard,
         // A development build on the panel: Android needs it removed first. Ask, saying what is kept.
         confirmSwitch: async (plan) => (this.d.confirm ?? window.confirm)(`${describeSwitch(plan)}\n\nSwitch now?`),
+        onPhase: at,
       });
+      this.hasApp = true;
       const sw = res.switched;
       this.ip = res.ip;
       this.wifiHint = sw?.wifi === 'lost'
         ? `Switching versions made the panel forget ${sw.ssid ? `"${sw.ssid}"` : 'its Wi-Fi'}. Pick it again and type its password.`
         : undefined;
+      // the first start: done when the app listens again (the Wi-Fi step would wait for it too)
+      if (seen.at(-1)?.step !== 'start') at({ step: 'start' });
+      if (!(await this.waitForSocket(IMPROV_SOCKET))) {
+        this.setupPhase({ phase: 'wifi', networks: [], unreachable: true, status: `Couldn't reach ${this.d.frame.app} on the panel.` });
+        return;
+      }
       await this.wifi();
     } catch (e) {
-      this.setupPhase({ phase: 'settings', update, error: (e as Error).message });
+      this.setupPhase({ phase: 'settings', update, chosen: opts, error: (e as Error).message });
     }
   }
 
@@ -299,21 +351,51 @@ export class Session {
     return undefined;
   }
 
-  /** Wi-Fi from this computer, over Improv Serial through adb. */
+  /**
+   * The Wi-Fi step. A panel already on Wi-Fi says so first, with changing it as the other way; one
+   * that isn't goes straight to the networks it can see.
+   */
   async wifi(): Promise<void> {
     this.setupPhase({ phase: 'wifi', status: `Starting ${this.d.frame.app} on the panel…`, hint: this.wifiHint });
+    void this.improv?.close().catch(() => {}); // back on this step: one Improv connection at a time
     this.improv = await this.openImprov();
     if (!this.improv) {
       this.setupPhase({ phase: 'wifi', networks: [], unreachable: true, status: `Couldn't reach ${this.d.frame.app} on the panel.` });
       return;
     }
-    const already = this.improv.state === ImprovState.Provisioned;
-    this.setupPhase({ phase: 'wifi', status: 'Looking for networks the panel can see…', hint: already ? 'The panel is already on Wi-Fi. Pick another network to change it, or skip.' : this.wifiHint });
+    const on = await this.panelOnWifi();
+    if (on) { this.setupPhase({ phase: 'wifi', on, status: '' }); return; }
+    await this.scanWifi();
+  }
+
+  /**
+   * Whether the panel is on Wi-Fi, from the app's setup state (its address), and which network, from
+   * Android (`dumpsys wifi`, read-only). Undefined when it isn't, or an older app can't say.
+   */
+  private async panelOnWifi(): Promise<{ ip: string; ssid?: string } | undefined> {
+    this.setup ??= await this.openSetup();
+    if (!this.setup) return undefined;
+    const st = await this.withSetup((x) => x.getState()).catch(() => undefined);
+    if (!st?.ip) return undefined;
+    this.ip = st.ip;
+    // read-only and only for the name: a panel slow to answer doesn't hold up the step
+    const named = await panelWifi(this.panel!, this.lid()).catch(() => undefined);
+    const ssid = named?.ssid ?? this.wifiSsid;
+    if (ssid) this.wifiSsid = ssid;
+    return { ip: st.ip, ssid };
+  }
+
+  /** The networks the panel can see, over Improv Serial through adb ("Use another network"). */
+  async scanWifi(): Promise<void> {
+    if (!this.improv) return this.wifi();
+    const was = this.s.setup.phase === 'wifi' ? this.s.setup.on : undefined;
+    const already = !was && this.improv.state === ImprovState.Provisioned;
+    this.setupPhase({ phase: 'wifi', on: was, changing: !!was, status: 'Looking for networks the panel can see…', hint: already ? 'The panel is already on Wi-Fi. Pick another network to change it, or skip.' : this.wifiHint });
     let networks: { ssid: string; rssi: number; secure: boolean }[] = [];
     try { networks = await this.improv.scan(); } catch { /* typed by hand then */ }
     const s = this.s.setup;
     this.setupPhase({
-      phase: 'wifi', networks, hint: s.phase === 'wifi' ? s.hint : undefined,
+      phase: 'wifi', on: was, changing: !!was, networks, hint: s.phase === 'wifi' ? s.hint : undefined,
       status: networks.length ? `${networks.length} in range of the panel` : 'None found. Type the name.',
     });
   }
@@ -458,7 +540,11 @@ export class Session {
       }
     }
     const st = this.setup!.state!;
-    const plan = radioPlan(mode, st.ip ?? this.ip ?? '<panel IP>', st.ha.url ?? '', st.radio.allowed);
+    // which S1 Kiosk is on the panel decides how a Thread router gets its network (read-only)
+    // no answer counts as an older app: the Thread step then keeps the way that works on every version
+    const app = mode === 'thread_router' ? await kioskVersion(this.panel!, this.lid()).catch(() => undefined) : undefined;
+    if (this.closed || this.s.screen !== 'setup' || this.s.setup.phase !== 'radio') return;
+    const plan = radioPlan(mode, st.ip ?? this.ip ?? '<panel IP>', st.ha.url ?? '', st.radio.allowed, { version: app?.name, code: app?.code });
     if (plan) { this.setupPhase({ phase: 'radio-next', plan }); return; }
     this.finish();
   }
@@ -467,19 +553,19 @@ export class Session {
   finish(): void {
     clearInterval(this.haTimer);
     void this.setup?.close();
-    const r = this.result;
+    const b = this.s.backup;
     const wifi = this.wifiSsid;
-    const total = r ? r.meta.files.reduce((n, f) => n + f.size, 0) : 0;
+    const total = b ? b.files.reduce((n, f) => n + f.size, 0) : 0;
     this.dispatch({
       type: 'done', done: {
         title: 'Done.',
         body: wifi
           ? `The panel is on ${wifi}. Home Assistant finds it by itself as an ESPHome device.`
           : `On the panel, join Wi-Fi and sign in to Home Assistant. Home Assistant then finds it as an ESPHome device${this.ip ? ` (${this.ip}, port 6053)` : ''}.`,
-        backup: r && {
-          name: `${r.meta.id}.zip`,
-          info: `${r.meta.files.length} partitions · ${fmtSize(total)}`,
-          hint: r.meta.bootWasPatched
+        backup: b && {
+          name: `${b.id}.zip`,
+          info: `${b.files.length} partitions · ${fmtSize(total)}`,
+          hint: b.bootWasPatched
             ? 'This panel already had the software, so this backup isn\'t the original. Keep the one from your first install.'
             : 'Original software, backed up. Keep it: it\'s also kept in this browser.',
         },
@@ -487,11 +573,19 @@ export class Session {
     });
   }
 
-  downloadBackup(): void {
-    const r = this.result;
-    if (!r) return;
-    const blob = backupZip(r.meta, r.files);
-    (this.d.download ?? saveBlob)(`${r.meta.id}.zip`, blob);
+  /** Done's download: the files from this session's run, or from this browser's store for an earlier session's. */
+  async downloadBackup(): Promise<void> {
+    const b = this.s.backup;
+    const shown = this.s.done;
+    if (!b) return;
+    try {
+      const files = this.result?.meta.id === b.id ? this.result.files : await this.d.backups.files(b);
+      (this.d.download ?? saveBlob)(`${b.id}.zip`, backupZip(b, files));
+    } catch (e) {
+      // only on the Done that asked: after Undo or a new run, a late error must not bring it back
+      if (this.closed || this.s.screen !== 'done' || this.s.done !== shown || !shown?.backup) return;
+      this.dispatch({ type: 'done', done: { ...shown, backup: { ...shown.backup, error: `Couldn't read it from this browser: ${(e as Error).message}` } } });
+    }
   }
 
   // ---- undo -----------------------------------------------------------------------------------
