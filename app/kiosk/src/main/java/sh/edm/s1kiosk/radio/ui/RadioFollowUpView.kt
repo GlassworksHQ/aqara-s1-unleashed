@@ -1,4 +1,4 @@
-package sh.edm.s1kiosk.setup
+package sh.edm.s1kiosk.radio.ui
 
 import sh.edm.s1kiosk.ui.Inter
 import android.content.Context
@@ -11,13 +11,13 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import sh.edm.s1kiosk.radio.RadioMode
-import sh.edm.s1kiosk.setup.RadioFollowUp.Action
-import sh.edm.s1kiosk.setup.RadioFollowUp.Request
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Action
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Request
 
 /**
  * The setup screen's short follow-up card ([RadioFollowUp.Place.SETUP]) under the radio step's title:
  * the lines, the serial path / URL, a one-line state in the role's health colour, and Join. The QR
- * code goes in the setup screen's own tile ([qr]). The settings menu draws its own (settings/RadioSectionView).
+ * code goes in the setup screen's own tile ([qr]). The settings menu draws its own (radio/ui/RadioSectionView).
  * Views are made once and updated on every [bind]. Main thread only.
  */
 class RadioFollowUpView(context: Context) : LinearLayout(context) {

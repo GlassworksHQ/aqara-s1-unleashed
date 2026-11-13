@@ -2,7 +2,7 @@ package sh.edm.s1kiosk.radio
 
 import android.content.Context
 import sh.edm.s1kiosk.KioskPrefs
-import sh.edm.s1kiosk.setup.RadioFollowUp
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp
 import sh.edm.s1kiosk.setup.SetupState
 
 /** A radio as the mock-ups and view tests show it: fixed facts, no controller behind it. */

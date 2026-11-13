@@ -1,4 +1,4 @@
-package sh.edm.s1kiosk.radio
+package sh.edm.s1kiosk.radio.ui
 
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
@@ -12,18 +12,15 @@ import android.widget.LinearLayout
 import dev.glassworks.pane.SetupCard
 import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupScreen
-import sh.edm.s1kiosk.setup.BoundedScroll
-import sh.edm.s1kiosk.setup.RadioFollowUp
-import sh.edm.s1kiosk.setup.RadioFollowUpView
-import sh.edm.s1kiosk.setup.RadioStep
-import sh.edm.s1kiosk.setup.RoleIcon
-import sh.edm.s1kiosk.setup.RoleStyle
-import sh.edm.s1kiosk.setup.SetupStyle
+import sh.edm.s1kiosk.radio.HelperFacts
+import sh.edm.s1kiosk.radio.RadioDefinition
+import sh.edm.s1kiosk.radio.RadioMode
+import sh.edm.s1kiosk.radio.ZigbeeStack
 
 /**
  * The radio step on one setup screen (docs/radio.md, "App side"): the five roles to choose from, then
  * "Apply" through the same RadioController path as HA's `Radio mode` select, and once a mode other than
- * Off works, its follow-up card (setup/RadioFollowUp, the same card as the settings menu's Radio
+ * Off works, its follow-up card (radio/ui/RadioFollowUp, the same card as the settings menu's Radio
  * section): what to do in Home Assistant, the QR code, the role's buttons. "Back" returns to the
  * choice. The last "Apply" belongs to this screen (the activity), as before. Main thread.
  */

@@ -13,7 +13,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import sh.edm.s1kiosk.KioskPrefs
-import sh.edm.s1kiosk.setup.RadioFollowUp
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp
 
 /** Init without a root helper unless asked: `ctl.start/stop` flip init.svc.*, other props are stored. */
 internal class TestInit(helper: Boolean = false) : SysProps {

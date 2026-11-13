@@ -11,6 +11,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import sh.edm.s1kiosk.radio.RadioDefinition
+import sh.edm.s1kiosk.radio.ui.RadioStep
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.PipedInputStream

@@ -23,7 +23,7 @@ import sh.edm.s1kiosk.radio.HelperFacts
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.ZigbeeStack
 import sh.edm.s1kiosk.radio.radioDefinition
-import sh.edm.s1kiosk.setup.RadioFollowUp
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp
 import sh.edm.s1kiosk.ui.Inter
 import java.io.File
 import java.time.Duration

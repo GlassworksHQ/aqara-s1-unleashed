@@ -12,16 +12,18 @@ import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupOp
 import dev.glassworks.pane.SetupScreen
 import dev.glassworks.pane.SetupStep
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONArray
 import org.json.JSONObject
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.auth.HaAuth
 import sh.edm.s1kiosk.discovery.HaUrls
-import sh.edm.s1kiosk.setup.RadioFollowUp
-import sh.edm.s1kiosk.setup.RadioStep
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
+import sh.edm.s1kiosk.radio.ui.RadioFollowUp
+import sh.edm.s1kiosk.radio.ui.RadioSettingsView
+import sh.edm.s1kiosk.radio.ui.RadioSetupScreen
+import sh.edm.s1kiosk.radio.ui.RadioStep
 
 /**
  * What the radio's setup step and settings section read. The app's comes from the running
