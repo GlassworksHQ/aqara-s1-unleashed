@@ -31,6 +31,9 @@ A new library in `libs/` or a new pane needs a branded README header: see
 - `./gradlew test` runs the JVM tests for every module. Some tests talk to Python reference
   implementations in `src/test/resources/` (`aioesphomeapi`, a Sendspin server, openWakeWord, microWakeWord on LiteRT). Keep
   those passing rather than skipping them.
+- `./gradlew test` needs `jq` on the `PATH`: `ApkAbiListsTest` runs `tools/release/frame-abis.sh`,
+  which reads every frame's `abis` with it. GitHub's runners and macOS 15+ have it; else
+  `brew install jq` or `apt install jq`.
 - Put protocol logic (ESPHome, Improv, EZSP/ASH, the wall base, Sendspin, FLAC) in plain Kotlin
   that a JVM test can drive, and keep the Android glue thin. `app/libs/esphome-api` must stay free of
   Android imports.

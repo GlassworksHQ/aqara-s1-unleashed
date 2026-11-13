@@ -223,7 +223,7 @@ This page is the index of every note. Notes about one device live with its frame
 | [TEMPLATE.md](TEMPLATE.md) | Start a new note from this |
 | [microwakeword.md](microwakeword.md) | Replacing openWakeWord with microWakeWord: the Kotlin port of TFLite Micro's audio frontend, the models, test speech, and what is left for the panel |
 
-### Aqara S1 Plus ([`frames/aqara-s1-plus/research/`](../../frames/aqara-s1-plus/README.md#research-notes))
+### Aqara S1 Plus ([`frames/aqara-s1-plus/research/`](../../frames/aqara-s1-plus/research/))
 
 | File | What's in it |
 |---|---|
@@ -243,11 +243,13 @@ This page is the index of every note. Notes about one device live with its frame
 | [boot-animation.md](../../frames/aqara-s1-plus/research/boot-animation.md) | What Android 10's boot animation and the 32 MiB boot image allow: texture caching, trim, the size budget, and what was cut from the #63 design |
 | [idle-cpu.md](../../frames/aqara-s1-plus/research/idle-cpu.md) | Why the kiosk uses ~40% of a core at idle: the wake word's embedding model, per-thread numbers, and the options (#105) |
 
-### lululemon Studio Mirror ([`frames/lululemon-mirror/`](../../frames/lululemon-mirror/README.md))
+### lululemon Studio Mirror ([`frames/lululemon-mirror/research/`](../../frames/lululemon-mirror/research/))
 
-No notes yet.
+| File | What's in it |
+|---|---|
+| [mirror-abis.md](../../frames/lululemon-mirror/research/mirror-abis.md) | Which ABIs the Mirror's userspace runs: 64-bit in the community image, stock untested (#98) |
 
-### Generic Android ([`frames/generic-android/`](../../frames/generic-android/README.md))
+### Generic Android (`frames/generic-android/`)
 
 No notes yet.
 
