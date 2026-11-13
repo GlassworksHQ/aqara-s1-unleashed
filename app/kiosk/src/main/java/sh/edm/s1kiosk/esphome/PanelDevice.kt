@@ -94,17 +94,18 @@ class PanelDevice internal constructor(
         init { EspHomeLog.tag = "S1ESPHome" }
 
         /**
-         * The ESPHome node name. Home Assistant's config entry keeps it (`device_name`) and the mDNS
-         * service is named after it. Never change it. Entity ids don't come from it: HA prefixes a new
-         * entity's id with the device's name as HA shows it ([FRIENDLY_NAME], or the user's own), and
-         * on HA 2026.9+ the area's name can come first.
+         * The ESPHome node name. Home Assistant's config entry keeps it (`device_name`), the mDNS service
+         * is named after it, and HA up to 2025.11 makes new entity ids from it (`s1_panel_*`). Never
+         * change it. From HA 2025.12 new entity ids take the device's name as HA shows it
+         * ([FRIENDLY_NAME], or the user's own), and from 2026.9 the area's name can come first.
          */
         const val NAME = "s1-panel"
 
         /**
          * What Home Assistant calls the panel (#63), from DeviceInfo and the mDNS `friendly_name`. HA's
          * device registry takes it on every connect unless someone renamed the device there. Entity ids
-         * already registered never change: their unique ids are the MAC and the object id.
+         * already registered never change: their unique ids are `<mac>/<device_id>/<domain>/<entity name>`
+         * (aioesphomeapi `build_unique_id` v3), with no device name in them.
          */
         const val FRIENDLY_NAME = "Glassworks Panel"
         /** Reported ESPHome version (recent, so HA doesn't treat the device as outdated). */
