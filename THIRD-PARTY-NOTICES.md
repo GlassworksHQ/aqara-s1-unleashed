@@ -366,7 +366,8 @@ file, its `package.json` licence and author are given. What it adds:
 - **The device renders** (`frames/<id>/design/render.webp`, on the frame cards): screenshots of the
   **Home Assistant frontend** 20261028.5 (Apache-2.0, Copyright Home Assistant contributors,
   https://github.com/home-assistant/frontend) drawing a made-up dashboard, made by
-  `tools/showcase/render.mjs`. The images show the frontend's own look, with the **Material Design
+  `tools/showcase/render.mjs`. The camera still and the album art in them are drawn by
+  `tools/showcase/home.py` (this project's, MIT). The images show the frontend's own look, with the **Material Design
   Icons** it bundles (`@mdi/js`, Apache-2.0, Copyright Pictogrammers, https://github.com/Templarian/MaterialDesign)
   and text in the **Roboto** font it serves (Google). Only rendered pixels are kept: no code, icon file
   or font file from the frontend is in the images or in Kiln. The frontend's licence was read from its

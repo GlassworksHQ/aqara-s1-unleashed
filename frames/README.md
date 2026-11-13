@@ -81,20 +81,32 @@ renderer needs side colours (`sides`) where the sketch has `color.body`, and the
 ### The render
 
 Every frame's card shows the same dashboard (maintainer, #144), so the renders are comparable:
-`render.webp`, made by `node tools/showcase/render.mjs [frame-id ...]`. It serves the showcase home
-([`tools/showcase/home.py`](../tools/showcase/home.py): made-up rooms and states, no clock and no
-dates) from Clarity's fake Home Assistant with the frontend build Clarity pins
-([`tools/perf/hafrontend.py`](../tools/perf/hafrontend.py)), opens it in headless Chrome as the kiosk
-shows it (no header, no sidebar, HA's default theme in dark mode), and captures it at the frame's
-`display` at density 1.5. A frame without one screen size (`generic-android`) is drawn at
-1920×1200, a common 10" tablet. Two runs give the same bytes (checked 2026-11-13, Chrome 157).
+`render.webp`, made by `node tools/showcase/render.mjs [--variant rich|calm] [frame-id ...]`.
+
+- **What it shows.** The showcase home ([`tools/showcase/home.py`](../tools/showcase/home.py)): a
+  made-up house in the evening, on HA's sections view. A clock and the weather with its forecast,
+  person and power badges, a thermostat, lights and switches as tiles, a speaker with album art, a
+  garden camera, the day's temperature and power, and the week's energy. The camera still and the
+  album art are drawn by `home.py` itself: no camera, no real place, no faces. The clock shows a time
+  and no date; the graphs cover today only, so their axes name no day.
+- **Variants.** `rich` (the default, above) and `calm` (tiles, the clock and weather, one graph).
+- **How.** It serves that home from Clarity's fake Home Assistant with the frontend build Clarity
+  pins ([`tools/perf/hafrontend.py`](../tools/perf/hafrontend.py)), and opens it in headless Chrome as
+  the kiosk shows it: no header, no sidebar, HA's default theme in dark mode. The page's clock is held
+  at the home's `NOW` (19:30 UTC). It captures each frame's `display` at density 1, the kiosk's zoom
+  at 67%, which fits a whole home on the screen. A frame without one screen size (`generic-android`)
+  is drawn at 1920×1200, a common 10" tablet.
+- **Same bytes every run.** All data and pictures are seeded, and Chrome rasters on one thread
+  (`--num-raster-threads=1` and friends; without them a few edges changed from run to run). Checked
+  with two and three runs on 2026-11-13, Chrome 157.
+
 Redo the renders when HA's look changes, i.e. when Clarity's pinned frontend moves.
 
 | Frame | Size | File |
 |---|---|---|
-| `aqara-s1-plus` | 1440×720 | 26.8 KiB |
-| `lululemon-mirror` | 1080×1920 | 29.0 KiB |
-| `generic-android` | 1920×1200 | 29.4 KiB |
+| `aqara-s1-plus` | 1440×720 | 43.9 KiB |
+| `lululemon-mirror` | 1080×1920 | 58.6 KiB |
+| `generic-android` | 1920×1200 | 57.5 KiB |
 
 `kiln/apps/kiln/test/frame-designs.test.ts` checks every `design/frame.json`: Kiln lists it, every
 rating and pane is there, `recovery` exists, the render is a WebP at the screen's size, and the mockup

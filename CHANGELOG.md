@@ -16,8 +16,9 @@ below as the release notes.
   is more sensitive, and a threshold you set for openWakeWord doesn't carry over. The old
   openWakeWord words stay in the list as "(openWakeWord)" for this release.
 - **Kiln's panel cards show a real Home Assistant dashboard.** Each device on kiln.glassworks.dev now
-  shows the same made-up home, drawn by Home Assistant's own frontend at that device's screen size,
-  instead of a sketch with a fixed time and date. The Mirror's is portrait.
+  shows the same made-up home, drawn by Home Assistant's own frontend at that device's screen size:
+  the clock and weather, a thermostat, lights, music, a garden camera and the day's graphs. Before,
+  it was a sketch with a fixed date. The Mirror's is portrait.
 - **A new boot screen.** The power-on logo and the boot animation now show the Glassworks mark:
   three glass plates drop into place, the top one lights up from sky to violet, and "Glassworks" and
   "On Aqara S1 Plus" fade in. While the panel finishes starting, the stack floats and the top plate

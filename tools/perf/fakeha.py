@@ -262,7 +262,7 @@ class Conn:
     def handle(self, m):
         mid, t = m.get("id"), m.get("type")
         self.hub.record({"t": time.time(), "type": t, "keys": sorted(m), "msg": m})
-        h = HANDLERS.get(t)
+        h = getattr(D, "HANDLERS", {}).get(t) or HANDLERS.get(t)     # a home may add its own commands
         if h is None:
             self.hub.unknown.add(t)
             self.hub.record({"t": time.time(), "unknown": t, "msg": m})
@@ -451,8 +451,9 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/hls/"):
             return self.hls(path)
         if path.startswith("/api/camera_proxy/"):
-            # The camera's still (the card's poster): a generated picture.
-            return self.send_bytes(200, D.asset("picture-0.png")[1], "image/png")
+            # The camera's still (the card's poster): a generated picture, the home's own if it has one.
+            still = D.asset(f"still-{path[len('/api/camera_proxy/'):]}.png") or D.asset("picture-0.png")
+            return self.send_bytes(200, still[1], still[0])
         if path == "/clarity/cancel":
             # The runner, before each restart: a view that was cut short leaves no command, no stream
             # and no changed state behind, as /clarity/still would have.
