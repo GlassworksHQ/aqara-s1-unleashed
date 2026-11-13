@@ -639,21 +639,31 @@ What it shows:
 3. `pm install` returns `Success` only after dex2oat: on Android 10 the install-time compile is
    synchronous (`reason=install`).
 
-So the installer can see these points, in order, and `provision()` reports them as `AppPhase`
-(`frames/aqara-s1-plus/installer/src/provision.ts`):
+This was an **update**: S1 Kiosk was installed and running. A **first install** (a panel without
+S1 Kiosk, after Kiln's boot step) has no app running when `pm install` starts, so step 1's stop
+can't happen, and Android has no S1 Kiosk to restart when dex2oat ends. We expect no restart there
+until `am start`, but that is **untested**: it needs a factory-fresh panel, and the dev panel always
+has the app. So Kiln says the app restarts only on an update (it checks `pm path sh.edm.s1kiosk`
+first), and says nothing about restarts on a first install.
+
+The installer can see these points, in order, and `provision()` reports them as `AppPhase`
+(`frames/aqara-s1-plus/installer/src/provision.ts`). Every APK the recipe installs gets its own copy
+and install, so none goes in silently:
 
 | Phase | Starts at | What the panel does |
 |---|---|---|
-| `copy` | before the APK push | nothing yet; the APK goes to `/data/local/tmp` |
-| `install` | the push is done, `pm install` runs | install and dex2oat; the app stops and restarts twice |
-| `settings` | `pm install` returned | permissions, home app, debloat, keyboard, time zone, language, clock |
-| `start` | `am start` with the settings | the app starts again with them |
+| `apk kiosk copy` | before the S1 Kiosk push | nothing yet; the APK goes to `/data/local/tmp` |
+| `apk kiosk install` | the push is done, `pm install` runs | install and dex2oat; on an update the app stops and restarts twice |
+| `home` | `pm install` returned | permissions, home app, Aqara's DND off, debloat |
+| `apk keyboard copy`, `install` | the keyboard push, then its `pm install` (when the recipe has the keyboard) | the on-screen keyboard goes in |
+| `prefs` | after the keyboard | time zone, language, clock |
+| `start` | `am start` with the settings | the app starts with them (again, on an update) |
 
 Kiln ends `start` when the app's Improv socket is listening in `/proc/net/unix` again. The screen
 names no durations: 22 s is one measurement on one panel.
 
-Not checked: the timeline on a factory-fresh panel (first install, not an update), and whether the
-signing-key switch path (`switch.ts`) restarts the app more often.
+Not checked: the first-install timeline (above), and whether the signing-key switch path
+(`switch.ts`) restarts the app more often.
 
 ---
 
