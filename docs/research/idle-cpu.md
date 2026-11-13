@@ -1,6 +1,6 @@
 # Idle CPU: why the kiosk uses ~40% of a core with nothing on screen
 
-**Status (2026-11-12): working (cause found), fix not chosen.** The load is the wake word: the
+**Status (2026-11-12): working (cause confirmed on the panel), fix not chosen.** The load is the wake word: the
 `voice-mic` thread runs openWakeWord's embedding model on every 80 ms of audio. That costs 30 to
 36 ms of CPU per frame on the S1 (37 to 45% of a core, by CPU clock), with the screen on or off.
 The model needs that work; no bug wastes it. The options are below,
@@ -130,6 +130,26 @@ on screen. Which thread is it, is that work needed, and what would make it small
    noise reduction and log every 10 ms), which also runs on the ESP32 in real time. **Guess, not
    measured:** on the S1 the whole thing would be a few percent of a core.
 
+7. **Mute the microphone, then unmute it** (2026-11-12 22:41 to 22:46, verified; run by the panel's
+   owner from the plan in reproduce step 5). S1 Kiosk 0.4.3, radio `thread_router`,
+   `threadcpu.py` from 51e8304, 60 s windows.
+
+   | State | Main process | `voice-mic` | Gecko tab | `otbr-agent` |
+   |---|---|---|---|---|
+   | Unmuted | 39.1% | 37.2% | 3.8% | 0.0% |
+   | Muted (`switch.<panel>_mute_microphone` on; logcat `S1Voice: Microphone muted (released)` at 22:43:09), 30 s later | **2.2%** | no thread | 5.7% | |
+   | Unmuted again, 15 s later | 38.5% | 36.7% | | |
+
+   Muting removes the `voice-mic` thread and 36.9 of the main process's 39.1 points. Unmuting brings
+   them back. This is the causal check: **the wake word path is about 36 to 37 points of the
+   process's 39**, and the rest of the app is about 2%. The tab rose from 3.8 to 5.7% while muted,
+   which is the page, not the mic. On unmute, the `Microphone open` log line was not in the last 400
+   lines of logcat, but the thread and its load were back. The switch was turned back off, and
+   nothing else changed.
+
+   The perf test's own `smoke10` run reports the assist pane at +29.5% CPU in its pane diff (not
+   rerun here). That is consistent: its window is device-wide, and it runs at a different clock.
+
 ## Result
 
 | Thread | % of one core | What it is |
@@ -139,9 +159,11 @@ on screen. Which thread is it, is that work needed, and what would make it small
 | Gecko content and GPU processes | 0.1 to 8 | the page; the 8% was a dashboard with an audio stream open |
 | `otbr-agent` (radio) | 0.0 | |
 
-The idle load is the wake word, at the same level with the screen on and off. It's inherent to
-openWakeWord on this CPU, not a busy loop or a poll. Muting the microphone (the HA switch) stops it,
-because `setMuted(true)` stops the recorder and inference with it (`VoiceEngine.kt:73`).
+**Confirmed (step 7): the idle load is the wake word.** Muting the microphone takes the main
+process from 39.1% to 2.2% of a core, and unmuting brings it back to 38.5%. The load is the same
+with the screen on and off. It's inherent to openWakeWord on this CPU, not a busy loop or a poll.
+The mute switch stops it because `setMuted(true)` stops the recorder, and inference with it
+(`VoiceEngine.kt:73`).
 
 One side effect worth fixing whatever the choice: inference runs on the capture thread at
 `THREAD_PRIORITY_URGENT_AUDIO` (`Microphone.kt:79`). That is 36 ms of model work every 80 ms at
@@ -168,7 +190,8 @@ chosen, move inference off the audio-priority thread.
 
 ## How to reproduce
 
-All read-only on the panel. Nothing is installed or changed.
+Steps 1 to 4 are read-only on the panel. Step 5 flips one HA switch and puts it back. Nothing is
+installed.
 
 1. `tools/perf/threadcpu.py -s <serial> --seconds 60 --extra otbr-agent`, three times. Note the
    screen state (`adb shell dumpsys power | grep mWakefulness`).
@@ -181,15 +204,15 @@ All read-only on the panel. Nothing is installed or changed.
    `uv run --with ai-edge-litert --with numpy python -I tools/voice/model_cost.py <files>`. Host
    only, nothing touches the panel.
 5. The causal check needs a state change, which is for whoever owns the panel: turn
-   `switch.<panel>_mute_microphone` on, wait 30 s, run step 1 again. `voice-mic` should be gone and
-   the main process near 5%. Turn the switch back off.
+   `switch.<panel>_mute_microphone` on, check logcat for `S1Voice: Microphone muted (released)`,
+   wait 30 s, and run step 1 again. `voice-mic` should be gone and the main process at about 2%.
+   Turn the switch back off, and run step 1 once more to see the thread return.
 
 ## Open questions
 
-- The muted-microphone check (reproduce step 5) on the panel, to confirm the 37 to 45 points causally.
 - microWakeWord on the S1: the front end's cost in Kotlin, and whether TFLite Java 2.16 runs the
   stateful streaming models (`VAR_HANDLE`, `READ_VARIABLE`, `ASSIGN_VARIABLE`, `CALL_ONCE`). They
   run in LiteRT on the host.
 - Does inference at audio priority cost dashboard frames? Compare the perf test's main-thread fps
-  with the mic muted and unmuted.
+  with the mic muted and unmuted (step 6 of the panel plan; not run yet).
 - The Mirror (Android 6, slower CPU) will be worse with openWakeWord. Not measured.
