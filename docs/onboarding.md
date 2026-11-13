@@ -245,9 +245,10 @@ line, both ways:
   are accepted. Any other id, also a `RadioMode` id the step doesn't offer, is `ok:false` with
   "Unknown radio mode '<id>'." and changes nothing. The reply waits for its outcome: success (or still applying after 10 s) marks
   the panel's radio step answered (`setup_radio_done`); a refusal or error is `ok:false` with
-  RadioController's reason (e.g. the missing root helper). The mode the radio already runs, settled
-  (`RadioStep.classify` OK), only marks the step answered: no request, no helper restart. Kiln sends
-  it for a fresh panel kept on Off, when `radio.answered` is false.
+  RadioController's reason (e.g. the missing root helper). The mode in effect already, running or on its
+  way (`RadioStep.classify` OK or applying), only marks the step answered: no request, no helper
+  restart, the same rule as the Panes card. Kiln sends it for a fresh panel kept on Off, when
+  `radio.answered` is false.
 - `radio.set_allow` (first name `set_radio_allow`) with `allow`: who may reach the radio's TCP
   services, as the `Radio allowed clients` entity ([radio.md](radio.md)).
 - While connected, `{"event":"state","state":…}` is pushed whenever the serialized state changes

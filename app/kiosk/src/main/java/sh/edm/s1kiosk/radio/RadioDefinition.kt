@@ -151,13 +151,16 @@ class RadioDefinition(
      * The mode in effect already, and running or on its way: the step is answered without asking the
      * radio again. A mode that failed or was refused (the controller stores it before applying) asks again.
      */
-    private fun applyChoice(id: String): String? {
+    private fun applyChoice(id: String): String? = keepOrSet(id, "setup screen")
+
+    /** [applyChoice]'s rule for any [source]: a request for the mode in effect would restart the helper for nothing. */
+    private fun keepOrSet(id: String, source: String): String? {
         val r = readout.controller()
         val mode = readout.mode()
         if (r != null && mode.id == id &&
             RadioStep.classify(mode, true, r.statusText()) in setOf(RadioStep.Result.OK, RadioStep.Result.APPLYING)
         ) { stepDone = true; return null }
-        return setModeFrom(id, "setup screen")
+        return setModeFrom(id, source)
     }
 
     // ------------------------------------------------------------------ setup channel
@@ -191,21 +194,16 @@ class RadioDefinition(
     /**
      * Through RadioController.request, like the panel's radio step: waits for the controller to take the
      * request, then up to [RADIO_FOLLOW_MS] for it to report how it went (the client waits 30 s), and
-     * marks the step answered on success.
+     * marks the step answered on success. The mode in effect already only answers the step ([keepOrSet]):
+     * Kiln sends it for a fresh panel kept on Off.
      */
-    internal fun setMode(id: String): String? = setModeFrom(id, "the installer")
+    internal fun setMode(id: String): String? = keepOrSet(id, "the installer")
 
     /** [setMode], saying in the log where the request came from ([source]). */
     internal fun setModeFrom(id: String, source: String): String? {
         val mode = RadioMode.fromId(id)?.takeIf { m -> RadioStep.OPTIONS.any { it.mode == m } }
             ?: return "Unknown radio mode '$id'."
         val r = readout.controller() ?: return CHANNEL_NOT_RUNNING
-        // Kiln's "keep Off" on a fresh panel: a request would restart the helper for nothing.
-        if (mode == r.mode && RadioStep.classify(mode, true, r.statusText()) == RadioStep.Result.OK) {
-            Log.i(TAG, "radio mode ${mode.label} kept by the installer")
-            stepDone = true
-            return null
-        }
         val accepted = AtomicBoolean(false)
         val handled = CountDownLatch(1)
         Log.i(TAG, "radio mode ${mode.label} from $source")
