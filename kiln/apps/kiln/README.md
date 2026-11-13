@@ -64,6 +64,9 @@ app has done a full install on a real panel from a Vercel preview (#27).
 | `/api/release-asset` | Streams an S1 Kiosk release APK from GitHub Releases (no CORS there) | — |
 
 The session is the truth and the address bar follows it (`src/wizard/routes.ts`, `useRouteSync.ts`).
+Moving forward through set-up adds a history entry, so Back (and the rail's set-up steps) go back to
+the step before on the same session, with what was entered kept; every other move replaces the
+address.
 A route never starts or repeats a flow: while something runs (USB work, a picker, the app going in),
 any other route of the frame shows the running step, and leaving for the picker keeps it running
 (the picker shows "Back to it"). A route that starts something new once the last flow finished gets
@@ -77,6 +80,12 @@ When a run stops with an error and the person moves on (Try again, another route
 Kiln keeps that failure until the next run starts: the picker and Connect say "The last run stopped:
 …" with **Download its log**, a text file with what happened, the error and the technical log
 (`wizard/registry.ts`). Nothing else keeps it, and a reload drops it.
+
+The browser tab keeps two things across sessions and reloads (`wizard/registry.ts`, sessionStorage):
+whether an earlier step may have changed the panel, and which backup the latest run saved. So a later
+session's failure never says "nothing was written" when a try did, and its Done still offers the
+backup's download (the files stay in IndexedDB). When the browser blocks storage, a reload can't
+know, and the screens say Kiln can't tell instead.
 
 ## How it fits together
 
@@ -111,7 +120,9 @@ npm run build -w @glassworks/kiln-app     # next build
 ```
 
 Without a panel: `/aqara-s1-plus?demo=run` clicks through a simulated panel behind the real
-InstallFlow. Other `?demo=` names jump to one screen (`src/wizard/demo.ts`). They work in `next dev`,
+InstallFlow. Other `?demo=` names jump to one screen (`src/wizard/demo.ts`), for example
+`app-installing` (the app's install phases), `wifi` (the panel on Wi-Fi already) and `wifi-new` (it
+isn't). They work in `next dev`,
 or in a build made with `NEXT_PUBLIC_KILN_DEMO=1`.
 
 ## Vercel

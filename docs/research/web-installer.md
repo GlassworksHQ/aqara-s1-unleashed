@@ -613,6 +613,48 @@ Commands the port needs (all via `adb.subprocess.noneProtocol.spawnWaitText(...)
 The HA dashboard URL the user types on the "configure" screen becomes the `--es url` extra
 (`MainActivity.kt:411`, `KioskPrefs.KEY_URL="url"`). **[verified: extra key]**
 
+### 7.1 What the panel does while the app goes in  **[verified 2026-11-12, dev panel, read-only logcat]**
+
+Kiln shows the app install in phases (#141). Each phase starts at a command the installer runs, so
+the screen follows what the panel does, not a timer. To find where the restarts fall, we read the
+dev panel's log after an `adb install -r` of S1 Kiosk 0.4.3 over itself, with the app running:
+
+```
+$ adb logcat -d -b all | grep -E 'installPackageLI|dexopt|dex2oat took|pkg removed|Start proc [0-9]+:sh.edm.s1kiosk/'
+18:39:25.468 ActivityManager: Force stopping sh.edm.s1kiosk appid=10083 user=-1: installPackageLI
+18:39:25.713 PackageManager.DexOptimizer: Running dexopt (dexoptNeeded=1) on: …/base.apk pkg=sh.edm.s1kiosk isa=arm … targetFilter=speed-profile
+18:39:25.743 ActivityManager: Start proc 7498:sh.edm.s1kiosk/u0a83 for activity {sh.edm.s1kiosk/sh.edm.s1kiosk.MainActivity}
+18:39:47.740 dex2oat : dex2oat took 21.964s (16.386s cpu) (threads: 3) …
+18:39:47.938 ActivityManager: Force stopping sh.edm.s1kiosk appid=10083 user=0: pkg removed
+$ adb shell dumpsys package sh.edm.s1kiosk | grep -A1 'Dexopt state'
+      arm: [status=speed-profile] [reason=install]
+```
+
+What it shows:
+
+1. Android stops the app as the install starts (`installPackageLI`). The app is the home screen, so
+   it starts again at once, while dex2oat runs.
+2. dex2oat compiles the app for this panel (`speed-profile`, about 22 s on the S1). When it ends,
+   Android stops the app again (`pkg removed`), and it starts again.
+3. `pm install` returns `Success` only after dex2oat: on Android 10 the install-time compile is
+   synchronous (`reason=install`).
+
+So the installer can see these points, in order, and `provision()` reports them as `AppPhase`
+(`frames/aqara-s1-plus/installer/src/provision.ts`):
+
+| Phase | Starts at | What the panel does |
+|---|---|---|
+| `copy` | before the APK push | nothing yet; the APK goes to `/data/local/tmp` |
+| `install` | the push is done, `pm install` runs | install and dex2oat; the app stops and restarts twice |
+| `settings` | `pm install` returned | permissions, home app, debloat, keyboard, time zone, language, clock |
+| `start` | `am start` with the settings | the app starts again with them |
+
+Kiln ends `start` when the app's Improv socket is listening in `/proc/net/unix` again. The screen
+names no durations: 22 s is one measurement on one panel.
+
+Not checked: the timeline on a factory-fresh panel (first install, not an update), and whether the
+signing-key switch path (`switch.ts`) restarts the app more often.
+
 ---
 
 ## 8. Screen flow and the two special cases

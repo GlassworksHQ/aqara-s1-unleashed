@@ -17,6 +17,12 @@ below as the release notes.
   Nothing in the sections changed.
 
 ### Added
+- **Kiln shows what the panel is doing while S1 Kiosk goes in.** On kiln.glassworks.dev the app's
+  install now lists its phases: copying it to the panel, Android installing and optimising it,
+  your settings, and its first start. It says that the app restarting on the panel meanwhile is
+  expected. The Wi-Fi step says *Connected to <network>* when the panel is on Wi-Fi already, with
+  another network as the other choice. Back and the step list on the left go back through the
+  set-up steps without losing what you entered.
 - **The panel's health shows in Home Assistant.** The device page's *Diagnostic* section gets CPU
   usage, CPU temperature, Wi-Fi signal and uptime, so you can graph them and alert on them. More
   sensors are there but off until you turn them on: the app's own CPU and RAM, free RAM and storage,
@@ -35,6 +41,13 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Kiln's Done always offers your backup.** After an install, Done shows the backup's download even
+  when set-up ran after leaving and coming back to the wizard, or after a reload. Before, it could
+  show no download, and the backup was only in that browser. When a browser blocks site storage,
+  Kiln no longer says "nothing was written" after a reload: it says it can't tell. Every screen now
+  has one main button, the recovery steps no longer look like buttons ("Remove the back cover"), and
+  the ends of the main buttons are no longer cut off. The Thread router's next steps start with one
+  button to the panel in Home Assistant.
 - **Undo no longer puts our splash back as Aqara's.** If a panel's `boot` was put back without its
   splash and the panel was then installed again, that install's backup held a stock `boot` with our
   power-on splash, and undo restored our splash while saying the stock one was back. Both installers
