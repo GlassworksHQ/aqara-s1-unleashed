@@ -2,6 +2,8 @@
 
 The repo-wide rules are in [`../AGENTS.md`](../AGENTS.md). The feature list, every adb extra and the
 logcat tags are in [`README.md`](README.md); read it before you add a new one.
+A new library in `libs/` or a new pane needs a branded README header: see
+[Branding](../AGENTS.md#branding).
 
 ## The target
 

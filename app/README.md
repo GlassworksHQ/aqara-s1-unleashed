@@ -1,4 +1,36 @@
-# S1 Kiosk (MIT)
+<h1 align="center">S1 Kiosk</h1>
+
+<p align="center">
+  <b>The Home Assistant kiosk app for the Aqara Panel Hub S1 Plus.</b><br>
+  A GeckoView browser, the first-boot setup, and the panel's entities in HA.
+</p>
+
+<p align="center">
+  <a href="https://www.glassworks.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-on-dark.svg">
+      <img alt="Built on Glassworks" src="https://www.glassworks.dev/brand/badge-on-light.svg" height="30">
+    </picture>
+  </a>
+  <a href="LICENSE">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-license-mit-on-dark.svg">
+      <img alt="License: MIT" src="https://www.glassworks.dev/brand/badge-license-mit-on-light.svg" height="30">
+    </picture>
+  </a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-status-beta-on-dark.svg">
+    <img alt="Status: beta" src="https://www.glassworks.dev/brand/badge-status-beta-on-light.svg" height="30">
+  </picture>
+  <a href="https://github.com/orgs/GlassworksHQ/projects/1">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-roadmap-on-dark.svg">
+      <img alt="Roadmap" src="https://www.glassworks.dev/brand/badge-roadmap-on-light.svg" height="30">
+    </picture>
+  </a>
+</p>
+
+---
 
 A minimal, clean-room **GeckoView** kiosk browser for the Aqara Panel Hub S1 Plus
 (Android 10, 32-bit `armeabi-v7a`, 1440×720). It shows a Home Assistant dashboard
