@@ -95,8 +95,8 @@ Where a new entity's id comes from depends on Home Assistant's version:
   `has_entity_name`, so HA builds the id from the device's name as HA shows it: `name_by_user`, or the
   name the integration registers from the friendly name (`esphome/manager.py` 2025.1.0:601, 2025.10.0:913;
   `helpers/entity_platform.py` 2025.1.0:800, 2026.1.0:1244). So `glassworks_panel_*`, or your own name.
-- **From 2026.9** the area's name can come first (`light.<area>_glassworks_panel_screen`,
-  `helpers/entity_registry.py` 2026.9.0:1369).
+- **From 2026.8** the area's name can come first (`light.<area>_glassworks_panel_screen`,
+  `helpers/entity_registry.py` 2026.8.0:1367; earlier versions have no area part).
 
 The node name `s1-panel` never changes (`PanelDevice.NAME`, `PanelNameTest`): HA's config entry keeps
 it (`device_name`), the mDNS service is named after it, and HA up to 2025.11 makes new entity ids from it.

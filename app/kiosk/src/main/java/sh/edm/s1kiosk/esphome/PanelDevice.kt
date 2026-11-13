@@ -100,7 +100,7 @@ class PanelDevice internal constructor(
          * The ESPHome node name. Home Assistant's config entry keeps it (`device_name`), the mDNS service
          * is named after it, and HA up to 2025.11 makes new entity ids from it (`s1_panel_*`). Never
          * change it. From HA 2025.12 new entity ids take the device's name as HA shows it
-         * ([FRIENDLY_NAME], or the user's own), and from 2026.9 the area's name can come first.
+         * ([FRIENDLY_NAME], or the user's own), and from 2026.8 the area's name can come first.
          */
         const val NAME = "s1-panel"
 
@@ -438,8 +438,11 @@ class PanelDevice internal constructor(
         }
     }
 
+    /** Before the screen starts, the manual value it will apply; never while auto brightness is on (#129). */
     private fun currentBrightness(): Float =
-        screen.brightness.takeIf { it >= 0f } ?: prefs.manualBrightness.takeIf { it > 0f } ?: 1f
+        screen.brightness.takeIf { it >= 0f }
+            ?: prefs.manualBrightness.takeIf { !prefs.autoBrightness && it > 0f }
+            ?: 1f
 
     private fun buildEntities(): List<ApiEntity> = listOf(
         // --- screen & sensors

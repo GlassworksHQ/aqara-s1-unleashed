@@ -184,6 +184,8 @@ class ApiServer(
     /** [KEEPALIVE_MS] / [UNRESPONSIVE_MS]; shorter in tests. Set before [start]. */
     @Volatile var keepaliveMs = KEEPALIVE_MS
     @Volatile var unresponsiveMs = UNRESPONSIVE_MS
+    /** The keepalive's time source, in ms; tests drive it by hand. */
+    @Volatile internal var clock: () -> Long = System::currentTimeMillis
     private var keepaliveTimer: java.util.concurrent.ScheduledExecutorService? = null
     @Volatile private var voiceConn: Connection? = null
 
@@ -286,9 +288,9 @@ class ApiServer(
         for (c in connections) c.retire()
     }
 
-    /** Pings quiet clients and drops the ones that stay silent (see [KEEPALIVE_MS]). */
-    private fun keepaliveTick() {
-        val now = System.currentTimeMillis()
+    /** Pings quiet clients and drops the ones that stay silent (see [KEEPALIVE_MS]). Tests call it too. */
+    internal fun keepaliveTick() {
+        val now = clock()
         for (c in connections) {
             try {
                 if (!c.ready || !c.isOpen) continue
@@ -299,7 +301,9 @@ class ApiServer(
                         c.close()
                     }
                 } else if (idle > keepaliveMs) {
-                    c.pingSent = c.send(listOf(Frame(Msg.PING_REQUEST, ByteArray(0))))
+                    // Set first: an answer read before send() returns must still clear it.
+                    c.pingSent = true
+                    if (!c.send(listOf(Frame(Msg.PING_REQUEST, ByteArray(0))))) c.pingSent = false
                 }
             } catch (t: Throwable) { EspHomeLog.w("keepalive failed", t) }
         }
@@ -409,11 +413,11 @@ class ApiServer(
                     return
                 }
                 authenticated = k != null && active != null && transport is NoiseTransport
-                lastRead = System.currentTimeMillis(); ready = true
+                lastRead = clock(); ready = true
                 while (isOpen) {
                     val f = transport.read() ?: break
                     // any traffic counts, as in ESPHome (last_traffic_); a pending ping is answered by it
-                    lastRead = System.currentTimeMillis(); pingSent = false
+                    lastRead = clock(); pingSent = false
                     handle(f)
                 }
             } catch (e: SocketTimeoutException) {
