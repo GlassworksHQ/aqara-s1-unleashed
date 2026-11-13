@@ -710,7 +710,7 @@ def cmd_coldstart(dev, a):
     # failed run: its other measurements stand, and the report says what is missing.
     res["missing_steps"] = [t for t, e in res["tiers"].items() if "step" not in e] if ref else []
     if res["missing_steps"]:
-        print(f"  {', '.join(res['missing_steps'])}: no updates step; {page_lines.bad} page line(s) didn't parse",
+        print(f"  {', '.join(res['missing_steps'])}: no updates step; {page_lines.bad} page line(s) didn't parse or never arrived whole",
               file=sys.stderr)
     elif not ref and res["own_page_stop_mono"] is None:
         res["error"] = f"the dashboard did not finish loading within {a.timeout:.0f} s"

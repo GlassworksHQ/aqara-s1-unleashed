@@ -311,28 +311,33 @@ if [ -n "$PANE_RAM" ]; then
   # the dashboard; the second sets voice_enabled, which restarts the app, so every sample starts
   # from a fresh process. perfrun.py panes reads the kiosk's log to check what it runs. A sample that
   # ran something else, or saw the screen go off, is left out of the report (docs/perf.md).
-  log "RAM per pane: every pane off, then each on by itself, $RUNS time(s) (they go back to $PANE_RAM after)"
+  log "RAM per pane: every pane off, then each on by itself, $((RUNS + 1)) cycles, the first a warm-up (they go back to $PANE_RAM after)"
   DASHBOARD_OK=0
   SWITCHED=1
   PANES_SWITCHED=1
-  for k in $(seq 1 "$RUNS"); do
+  # Cycle 0 is a warm-up, not recorded: its files go to warmup/, which the report doesn't read. In
+  # s1p1 and s1p3 the first sample had the GPU process 15 MB under every later one (#186).
+  mkdir -p "$OUT/warmup"
+  for k in 0 $(seq 1 "$RUNS"); do
+    dir=$OUT
+    [ "$k" = 0 ] && dir=$OUT/warmup
     for state in $(awk '$1 == "STATE" && $2 != "restore" { print $2 }' <<< "$PANES"); do
       label=$([ "$state" = none ] && echo ref-panes-off || echo "ref-$state-on")
-      log "panes: $label $k/$RUNS"
+      log "panes: $label $([ "$k" = 0 ] && echo "warm-up (not recorded)" || echo "$k/$RUNS")"
       # Set and check what the kiosk runs (perfrun.py panes); each sample starts from a fresh app
       # process, since voice_enabled restarts it. The idle sample records what it ran too.
       # A state that didn't take (a pane, or the dashboard intent refused: url_taken false) gets no
       # sample: it wouldn't be this label on the reference dashboard.
-      if ! run panes --set "$(pane_set "$state")" --url "http://127.0.0.1:$PORT/clarity-ref/typical" \
-          --settle "$SWITCH_SETTLE" --tries 3 > "$OUT/panes-$label-$k.json"; then
-        log "panes: the kiosk didn't run $label (see panes-$label-$k.json); no sample taken"
+      if ! OUT=$dir run panes --set "$(pane_set "$state")" --url "http://127.0.0.1:$PORT/clarity-ref/typical" \
+          --settle "$SWITCH_SETTLE" --tries 3 > "$dir/panes-$label-$k.json"; then
+        log "panes: the kiosk didn't run $label (see $dir/panes-$label-$k.json); no sample taken"
         continue
       fi
-      if grep -q '"voice_applied": false' "$OUT/panes-$label-$k.json"; then
+      if grep -q '"voice_applied": false' "$dir/panes-$label-$k.json"; then
         log "panes: voice_enabled didn't take (this kiosk saves it asynchronously before it restarts); Assist is off by its microphone mute"
       fi
-      thermal "$label-$k"
-      run idle --label "$label" --run "$k" --settle "$IDLE_SETTLE" --window "$IDLE_WINDOW"
+      OUT=$dir thermal "$label-$k"
+      OUT=$dir run idle --label "$label" --run "$k" --settle "$IDLE_SETTLE" --window "$IDLE_WINDOW"
     done
   done
 fi

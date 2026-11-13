@@ -112,10 +112,21 @@ test("page lines fit the 1023 bytes the S1 keeps of a console line (smoke7)", ()
   assert.equal(parts.map((m) => m[3]).join(""), text);
 });
 
+function hue(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return Math.round(((h * 60 + 360) % 360) * 10) / 10;
+}
+
 test("generated hues stay between the brand's sky and violet (no status colours, no ember)", () => {
-  for (const r of [0, 0.25, 0.5, 0.999]) {
+  // glassworks.dev src/app/globals.css: --sky #38bdf8, --violet #a78bfa.
+  const sky = hue("#38bdf8"), violet = hue("#a78bfa");
+  assert.deepEqual([sky, violet], [198.4, 255.1]);
+  assert.equal(S.skyToViolet(0), sky);
+  for (const r of [0.25, 0.5, 0.999, 0.99999]) {
     const h = S.skyToViolet(r);
-    assert.ok(h >= 199 && h <= 258, `${r} -> ${h}`);
+    assert.ok(h >= sky && h <= violet, `${r} -> ${h}`);
   }
 });
 

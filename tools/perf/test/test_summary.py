@@ -141,14 +141,25 @@ class Export(unittest.TestCase):
         s = S.summarise(rep)
         self.assertEqual(s["ram"], {"idle_app_pss_kb": 500_000, "idle_by_process_pss_kb": {"gpu": 200_000, "main": 300_000},
                                     "peak_app_pss_kb": 540_000, "peak_by_process_pss_kb": {"gpu": 200_000, "main": 340_000},
-                                    "panes": [{"id": "assist", "pss_kb": 30_000, "tolerance_kb": 0, "measurable": True, "runs": 1,
-                                               "budget_kb": 49152, "budget_ok": True}],
+                                    # One sample a side: no tolerance, so no claim (s1p1 read ±0.0 MB and "ok").
+                                    "panes": [{"id": "assist", "pss_kb": 30_000, "tolerance_kb": None, "measurable": False, "runs": 1,
+                                               "budget_kb": 49152, "budget_ok": None, "budget_measurable": False}],
                                     "panes_waiting": ["radio"], "budget_ok": True})
         self.assertEqual(s["apk"], [{"file": "s1-kiosk.apk", "abis": ["armeabi-v7a"], "bytes": 90_000_000}])
         plain = S.summarise(self.reps["B"])
         self.assertEqual((plain["ram"], plain["apk"]), (None, None))
         self.assertEqual(G.grade_summary(s), G.grade_summary(plain))
         self.assertEqual(ts_grades([s]), ts_grades([plain]))
+
+    def test_a_budget_the_tolerance_cant_check_isnt_ok(self):
+        """#186: s1p3 exported budget_ok true for a ±31.6 MB share against a 48 MB budget."""
+        ram = {"panes": [{"id": "assist", "pss_kb": 5_300, "pss_tolerance_kb": 32_400, "pss_measurable": False,
+                          "samples_on": 3, "samples_off": 3, "verified": True,
+                          "cpu_pct_of_core": 36.3, "cpu_tolerance_pct": 1.2, "cpu_measurable": True}]}
+        ram["pane_budget"] = G.pane_budgets(ram["panes"], {"assist": {"ram_pss_max_kb": 49152}})
+        p = S.ram_summary(ram)["panes"][0]
+        self.assertEqual((p["budget_ok"], p["budget_measurable"]), (None, False))
+        self.assertIn("48 MB, not measurable", "\n".join(R.ram_markdown(ram)))
 
     def test_unverified_panes_arent_exported(self):
         """The verifier's note 14: s1v7's panes (no log check; the kiosk lost the switches) read
@@ -159,7 +170,7 @@ class Export(unittest.TestCase):
         ram = R.reference_ram({"ref-panes-off": [TR.ram_idle("ref-panes-off", 100_000)],
                                "ref-assist-on": [TR.ram_idle("ref-assist-on", 130_000)]},
                               [], "sh.edm.s1kiosk", budgets, 2_000_000)
-        self.assertEqual((ram["panes"][0]["verified"], ram["panes"][0]["pss_measurable"]), (False, True))
+        self.assertEqual(ram["panes"][0]["verified"], False)
         self.assertEqual(S.ram_summary(ram)["panes"], [])
         del ram["panes"][0]["verified"]                  # a report from before the field existed
         self.assertEqual(S.ram_summary(ram)["panes"], [])
