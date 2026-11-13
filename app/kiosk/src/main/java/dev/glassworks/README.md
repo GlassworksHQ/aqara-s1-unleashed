@@ -256,7 +256,16 @@ screen, and the setup screen is one more client. `SetupChannelStepsTest` fails i
 requests that finish it. `screen()` draws the step: the setup screen gives the step's `SetupScreen`
 a `SetupCard` (title, body, a status line, a QR code, the step's own view, two buttons) and a
 `SetupHost` (`preview`, `redraw()`, `next()`). The radio's step is
-[`RadioDefinition`](../../sh/edm/s1kiosk/radio/RadioDefinition.kt).
+[`RadioDefinition`](../../sh/edm/s1kiosk/radio/RadioDefinition.kt). Its `radio.set_mode` accepts
+only the ids the step offers (`RadioStep.OPTIONS`, the state's `radio.options`). Any other mode is
+refused, so a mode only appears to the installer once the step offers it.
+
+**A step id is the step's own.** `GlassworksRuntime.setupSteps` gathers the steps through
+`SetupFlow.usable`. It leaves out, with an error in the `S1Kiosk` log, a step whose id is a core
+step (`wifi`, `ha`, `signin`, `done`) or a setup-channel state key (`ip`, `ha`), or an earlier step's,
+and a step whose request names are already taken. A bad step costs only itself: the app still
+starts and the channel still answers. `FramePanesTest` checks a frame's step and section with a
+fake frame.
 
 **A settings section is data.** Items are `Text`, `Switch`, `Link`, `Note`, `Info` and `Group`, each
 with its value and a `save(value, done)`. "Save & restart" saves every item in order and waits for

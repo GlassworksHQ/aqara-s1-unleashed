@@ -676,7 +676,9 @@ Assistant entities and the Thread join from Home Assistant, as a Glassworks pane
   border router vs router; Thread router: a QR code to `<HA>/config/thread`, two short copy steps and
   the Thread role. No QR code without Home Assistant's address. The full card (stack choice, Leave
   buttons, notes, the dataset field) is in the settings menu. The setup channel (web installer) offers the same five options; options carry optional
-  `experimental` and `repeater` flags.
+  `experimental` and `repeater` flags. `radio.set_mode` accepts only those options' ids
+  (`RadioStep.OPTIONS`): a mode the step doesn't offer is refused with "Unknown radio mode", even when
+  `RadioMode` has it ([onboarding.md](onboarding.md#from-the-web-installer-improv-serial--setup-channel-over-adb-)).
 - Kiosk settings menu, Radio section (0.4.3, `radio/ui/RadioSectionView`): a row of role tiles (icon in
   the technology's colour, Zigbee sky blue / Thread violet; the active one tinted with a status dot:
   green running or joined, amber starting or waiting, rose error; β for experimental), then a panel with

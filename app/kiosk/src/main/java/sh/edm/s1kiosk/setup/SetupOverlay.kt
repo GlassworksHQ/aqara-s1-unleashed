@@ -1,8 +1,8 @@
 package sh.edm.s1kiosk.setup
 
 import sh.edm.s1kiosk.ui.Inter
+import sh.edm.s1kiosk.ui.QrCode
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -20,10 +20,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.qrcode.QRCodeWriter
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import dev.glassworks.pane.SetupCard
 import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupScreen
@@ -44,7 +40,10 @@ import sh.edm.s1kiosk.auth.OAuth
  */
 class SetupOverlay(
     context: Context,
-    /** The panes' steps, in order (PaneDefinition.setupSteps). They go between Home Assistant and Sign in. */
+    /**
+     * The panes' steps, in order. They go between Home Assistant and Sign in. Callers pass
+     * GlassworksRuntime.setupSteps, never PaneDefinition.setupSteps: only that list has the clashing steps left out.
+     */
     paneSteps: List<SetupStep> = emptyList(),
 ) : FrameLayout(context) {
 
@@ -384,7 +383,7 @@ class SetupOverlay(
                 val ip = m.panelIp ?: "<panel-ip>"
                 val url = "http://$ip:${OAuth.SIGNIN_PORT}/signin"
                 if (qrFor != url) {
-                    qrImage.setImageBitmap(qrBitmap(url, px(186f)))
+                    qrImage.setImageBitmap(QrCode.bitmap(url, px(186f)))
                     qrFor = url
                 }
                 qrTile.visibility = View.VISIBLE
@@ -470,7 +469,7 @@ class SetupOverlay(
         override fun qr(url: String?) {
             if (url == null) { qrTile.visibility = View.GONE; return }
             if (qrFor != url) {
-                qrImage.setImageBitmap(qrBitmap(url, px(186f)))
+                qrImage.setImageBitmap(QrCode.bitmap(url, px(186f)))
                 qrFor = url
             }
             qrTile.visibility = View.VISIBLE
@@ -731,15 +730,5 @@ class SetupOverlay(
         private val LIGHT = Inter.LIGHT
         private val REGULAR = Inter.REGULAR
         private val MEDIUM = Inter.MEDIUM
-
-        fun qrBitmap(text: String, size: Int): Bitmap {
-            val hints = mapOf(EncodeHintType.MARGIN to 0, EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M)
-            val m = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size, hints)
-            val px = IntArray(m.width * m.height)
-            for (y in 0 until m.height) for (x in 0 until m.width) {
-                px[y * m.width + x] = if (m[x, y]) BG else Color.WHITE
-            }
-            return Bitmap.createBitmap(px, m.width, m.height, Bitmap.Config.ARGB_8888)
-        }
     }
 }
