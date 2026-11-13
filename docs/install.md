@@ -256,7 +256,8 @@ within seconds after boot, and whenever it changes later.
 
 - The installer records your choice (`persist.s1kiosk.timezone`) along with setting it.
 - To change it later: the panel's ESPHome device in Home Assistant, Configuration, **Time zone**: an id
-  like `Europe/Berlin` or `America/New_York`. It only accepts zones the panel knows, and only from Home
+  like `Europe/Berlin` or `America/New_York`. HA adds it turned off, so turn it on first
+  ([how](esphome.md#categories-and-defaults)). It only accepts zones the panel knows, and only from Home
   Assistant's encrypted connection. **Time zone status** (Diagnostic) says whether the zone is being
   kept.
 - Panels set up before this: on their first boot with the new helper it keeps the zone that is in place

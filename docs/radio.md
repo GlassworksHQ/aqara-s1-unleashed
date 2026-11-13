@@ -9,7 +9,9 @@ border router, or Thread router (repeater joining an existing Thread network). T
 entities always reach HA as an ESPHome device over Wi-Fi, whatever the radio does. The mode is picked in Home Assistant with the
 `Radio mode` select of the panel's ESPHome device (`select.s1_panel_radio_mode` on a panel added before
 #63, `select.glassworks_panel_radio_mode` on newer ones, [Names](esphome.md#names)), status in the
-`Radio status` text sensor.
+`Radio status` text sensor. Every radio entity except `Radio status` is disabled by default (#132):
+turn it on in Home Assistant before you use it ([esphome.md](esphome.md#categories-and-defaults)), or
+use the panel's settings menu. The steps on this page assume it is on.
 
 | Mode (select option) | Needs root helper | State (2026-11-10, reference panel) |
 |---|---|---|
