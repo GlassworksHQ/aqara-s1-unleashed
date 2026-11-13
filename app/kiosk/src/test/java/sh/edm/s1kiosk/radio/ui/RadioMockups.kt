@@ -135,6 +135,11 @@ class RadioMockups {
         shot("07-thread-router-waiting-for-dataset", waitingThread) { section(it) }
         shot("08-thread-router-advanced-open", waitingThread, bottom = true) { o -> radio(o).section.previewOpen(dataset = true); panel(o) }
         shot("09-thread-router-joined", threadRouter) { section(it) }
+        shot("09b-thread-router-leave", threadRouter, bottom = true) { o ->
+            // The active card's Leave (the Off block has one too, hidden): a ghost, not rose.
+            generateSequence(listOf<View>(o)) { l -> l.flatMap { v -> (v as? android.view.ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null } }
+                .flatten().filterIsInstance<android.widget.TextView>().first { it.text.toString() == "Leave Thread network" && it.isShown }
+        }
         shot("10-how-does-this-work-open", coordinator, bottom = true) { o -> radio(o).section.previewOpen(more = true); panel(o) }
         shot("11-confirm-switch", coordinator) { o ->
             radio(o).previewDialog.show(RadioFollowUp.ask(Request.Mode(RadioMode.THREAD_ROUTER), coordinator)!!) {}
