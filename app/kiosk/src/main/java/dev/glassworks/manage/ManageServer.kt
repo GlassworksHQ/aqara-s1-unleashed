@@ -266,8 +266,9 @@ class ManageServer(
             behindHtml = pages.overview(status, viewer, host.actions, null).substringAfter("<body>").substringBeforeLast("</body>"))
 
     private fun busyText(untilMs: Long): String {
-        val s = ((untilMs - System.currentTimeMillis() + 999) / 1000).coerceIn(1, 30)
-        return "The panel is showing a code for another browser. Try again in $s seconds."
+        val s = ((untilMs - System.currentTimeMillis() + 999) / 1000).coerceAtLeast(1)
+        return if (s <= 60) "The panel is showing another code. Try again in $s ${if (s == 1L) "second" else "seconds"}."
+        else "The panel has shown several codes in the last few minutes. Try again after ${hhmm(untilMs)}."
     }
 
     private fun lockedText() = "Too many wrong codes. Try again after ${hhmm(code.lockedUntil() ?: 0)}."

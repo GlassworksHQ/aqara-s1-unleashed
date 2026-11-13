@@ -18,7 +18,8 @@ import java.security.SecureRandom
  *
  * Asking is limited too: a code on the screen stays for at least [minGapMs] (30 s). The same browser
  * asking again for the same thing gets the same code; anyone else waits, so nobody can keep replacing
- * another person's code. Thread-safe.
+ * another person's code. And at most [maxShows] new codes go up in [showWindowMs] (6 in 10 min, all
+ * browsers together), so nobody can keep the screen lit and waking with codes. Thread-safe.
  */
 class PanelCode(
     private val clock: () -> Long = System::currentTimeMillis,
@@ -28,6 +29,8 @@ class PanelCode(
     private val windowMs: Long = 15 * 60_000L,
     private val windowFailures: Int = 10,
     private val minGapMs: Long = 30_000L,
+    private val maxShows: Int = 6,
+    private val showWindowMs: Long = 10 * 60_000L,
 ) {
     /** What the panel shows: [code], and in words what it is for ([label], "Sign in to manage this panel"). */
     data class Shown(val code: String, val purpose: String, val label: String, val untilMs: Long) {
@@ -47,7 +50,7 @@ class PanelCode(
         class Ok(val shown: Shown) : Show()
         /** Too many wrong codes: no new code until [untilMs]. */
         class Locked(val untilMs: Long) : Show()
-        /** Another browser's code went up less than 30 s ago: try again at [untilMs]. */
+        /** Another browser's code went up less than 30 s ago, or too many codes went up lately: try again at [untilMs]. */
         class Busy(val untilMs: Long) : Show()
         /** The panel can't draw a code now ([canDisplay] is false). */
         object Unavailable : Show()
@@ -57,6 +60,7 @@ class PanelCode(
 
     private var pending: Pending? = null
     private val failures = ArrayDeque<Long>()
+    private val shows = ArrayDeque<Long>()
 
     /** Called with the code to show, or null to hide it. The panel's screen sets it. Any thread. */
     @Volatile var display: (Shown?) -> Unit = {}
@@ -74,6 +78,9 @@ class PanelCode(
             if (p != null && now < p.shown.untilMs && now - p.shownAtMs < minGapMs) {
                 return if (p.requester == requester && p.shown.purpose == purpose) Show.Ok(p.shown) else Show.Busy(p.shownAtMs + minGapMs)
             }
+            while (shows.isNotEmpty() && now - shows.first() >= showWindowMs) shows.removeFirst()
+            if (shows.size >= maxShows) return Show.Busy(shows.first() + showWindowMs)
+            shows.addLast(now)
             val code = (random.nextInt(1_000_000)).toString().padStart(6, '0')
             Shown(code, purpose, label, now + ttlMs).also { pending = Pending(it, requester, now) }
         }

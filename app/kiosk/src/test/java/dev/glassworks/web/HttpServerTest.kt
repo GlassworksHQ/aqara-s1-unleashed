@@ -43,4 +43,32 @@ class HttpServerTest {
             server.stop()
         }
     }
+
+    @Test fun aClientThatTricklesItsRequestIsCutOffAndTheWorkerFreed() {
+        var handled = 0
+        val server = HttpServer(0, { handled++; HttpResponse.text(200, "ok") }, bindAddress = loopback, workers = 1, queued = 4,
+            requestDeadlineMs = 600)
+        server.start()
+        try {
+            val slow = Socket(loopback, server.localPort).apply { soTimeout = 5_000 }
+            val started = System.nanoTime()
+            val out = slow.getOutputStream()
+            out.write("GET / HTTP/1.1\r\n".toByteArray())
+            // One header byte every 100 ms: each read is quick, the whole head never ends in time.
+            val closed = try {
+                repeat(30) { out.write('x'.code); out.flush(); Thread.sleep(100) }
+                false
+            } catch (_: java.io.IOException) { true }
+            val tookMs = (System.nanoTime() - started) / 1_000_000
+            assertTrue("cut off after $tookMs ms (closed=$closed)", closed || slow.getInputStream().read() == -1)
+            assertTrue("within about the deadline, not the old 15 s per read: $tookMs ms", tookMs < 3_500)
+            assertTrue("the handler never saw it", handled == 0)
+            // The one worker is free again.
+            val ok = open(server.localPort).getInputStream().readBytes().toString(Charsets.UTF_8)
+            assertTrue(ok, ok.startsWith("HTTP/1.1 200"))
+            slow.close()
+        } finally {
+            server.stop()
+        }
+    }
 }

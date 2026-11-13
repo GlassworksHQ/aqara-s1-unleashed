@@ -13,6 +13,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.URLDecoder
 import java.util.concurrent.ArrayBlockingQueue
@@ -76,6 +77,8 @@ class HttpServer(
     workers: Int = 4,
     /** Connections that may wait for a worker. Beyond that, a connection gets 503 at once and is closed. */
     queued: Int = 32,
+    /** The whole request (line, headers, body) must arrive within this, so a slow client can't hold a worker. */
+    private val requestDeadlineMs: Long = 10_000L,
 ) {
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false
@@ -117,8 +120,8 @@ class HttpServer(
         val id = ids.incrementAndGet()
         s.use { sock ->
             try {
-                sock.soTimeout = 15_000
-                val req = try { read(BufferedInputStream(sock.getInputStream()), maxBody) } catch (e: TooLarge) {
+                val input = BufferedInputStream(DeadlineInput(sock, System.nanoTime() + requestDeadlineMs * 1_000_000))
+                val req = try { read(input, maxBody) } catch (e: TooLarge) {
                     write(sock.getOutputStream(), HttpResponse.text(413, "Too large"), head = false); return
                 } ?: return
                 val res = try { handler(req) } catch (t: Throwable) {
@@ -133,12 +136,32 @@ class HttpServer(
         }
     }
 
+    /** Reads from [sock] until [deadlineNanos], however the bytes trickle in; then a [SocketTimeoutException]. */
+    private class DeadlineInput(private val sock: Socket, private val deadlineNanos: Long) : InputStream() {
+        private val inp = sock.getInputStream()
+
+        private fun arm() {
+            val left = (deadlineNanos - System.nanoTime()) / 1_000_000
+            if (left <= 0) throw SocketTimeoutException("request took too long")
+            sock.soTimeout = left.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        }
+
+        override fun read(): Int { arm(); return inp.read() }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int { arm(); return inp.read(b, off, len) }
+    }
+
     /** Every worker is busy and the queue is full: say so and close, without reading the request. */
     private fun busy(s: Socket) {
         s.use { sock ->
             try {
-                sock.soTimeout = 1_000
+                sock.soTimeout = 200
                 write(sock.getOutputStream(), HttpResponse.text(503, "The panel is busy. Try again in a moment."))
+                // Closing with the client's request unread would reset the connection before it reads the 503.
+                sock.shutdownOutput()
+                val buf = ByteArray(4096)
+                var total = 0
+                while (total < 16 * 1024 && sock.getInputStream().read(buf).also { total += it } >= 0) Unit
             } catch (_: IOException) {}
         }
         log("busy: refused a connection")

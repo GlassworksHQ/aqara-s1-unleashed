@@ -1,7 +1,10 @@
 # The Manage page
 
 Every panel serves a Manage page at `http://<panel>:8099/` once it's set up. Open it from Home
-Assistant (the panel's device page, **Visit**) or type the address. It shows how the panel is doing,
+Assistant (the panel's device page, **Visit**) or type the address: the panel's IP address
+(`http://192.0.2.40:8099/`) or `http://s1-panel.local:8099/`. Other names for it, such as one your
+router gives it (`panel.lan`) or a name with a trailing dot, get "Open this page with the panel's
+address": the page only answers to its own addresses and names (see below). It shows how the panel is doing,
 keeps a log, and runs the everyday actions. It's part of the Glassworks core, so every frame has it.
 
 Status: **new, not yet checked on a panel.** This first version shows the panes' settings but
@@ -29,7 +32,8 @@ Aqara's own settings app.
    address it already has, and only when that address is on your network (a private IP or a `.local`
    name). It never uses a Nabu Casa or other public address.
 2. **Use the code on the panel** when Home Assistant is down. The panel shows a 6-digit code for 5
-   minutes; type it in the browser.
+   minutes; type it in the browser. If you sign in this way before the panel has a Home Assistant
+   address, that sign-in ends when the panel first stores one; sign in again then.
 
 **Remember this browser for 30 days** keeps you signed in on that browser. Without it, the sign-in
 ends when you close the browser (at the latest after 12 hours). Security lists every signed-in
@@ -58,15 +62,19 @@ manage a panel. Whether other users get a say is open (#124).
 - The code on the panel works once, for one browser and one purpose, for 5 minutes. Five wrong tries
   end a code; ten wrong tries in 15 minutes lock code entry for everyone until they're 15 minutes old.
   A code stays up for at least 30 seconds: asking again from the same browser keeps it, and another
-  browser has to wait, so nobody can keep replacing your code.
+  browser has to wait, so nobody can keep replacing your code. At most 6 new codes go up in 10
+  minutes, from all browsers together, so nobody can keep the screen lit with codes.
+- A browser must send its whole request within 10 seconds, so a slow one can't hold the panel's few
+  connections.
 - If the panel can't draw the code (the app may not draw over other apps), the page says so instead
   of waiting for a code that never shows.
 - The page answers only to the panel's own addresses and names (its IP addresses, `s1-panel.local`,
   its Android host name), so another name pointed at it (DNS rebinding, or a spoofed `.local` answer)
   gets nothing.
 - No scripts, no outside files, and a strict Content-Security-Policy.
-- The log and the diagnostics file have tokens, keys, passwords, Thread datasets and MAC addresses
-  removed, so you can attach them to an issue.
+- The log and the diagnostics file have tokens, keys, passwords (including `Basic` credentials and a
+  user and password in an address), Thread datasets and MAC addresses removed, so you can attach them
+  to an issue.
 
 **What plain HTTP on your network doesn't protect.** The page is `http://`, like Home Assistant on
 `http://`. Someone who can read your Wi-Fi traffic can see:

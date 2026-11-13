@@ -300,7 +300,7 @@ class ManageServerTest {
         b.get("/")
         val busy = b.post("/manage/code", mapOf("next" to "/"))
         assertEquals(429, busy.status)
-        assertTrue(busy.text().contains("showing a code for another browser"))
+        assertTrue(busy.text().contains("The panel is showing another code."))
         // a asking again keeps its code on the screen, and it still works.
         a.post("/manage/code", mapOf("next" to "/"))
         assertEquals(1, f.shown.size)

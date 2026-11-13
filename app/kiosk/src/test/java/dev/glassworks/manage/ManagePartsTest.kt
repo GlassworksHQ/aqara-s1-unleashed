@@ -108,6 +108,18 @@ class ManagePartsTest {
         assertEquals(PanelCode.Check.NoCode, c.check("signin", "b", b.code))
     }
 
+    @Test fun atMostSixNewCodesInTenMinutesSoNobodyCanKeepTheScreenUp() {
+        val c = code()
+        val start = now
+        repeat(6) { i -> now = start + i * 31_000L; c.ok("signin", "browser-$i") }
+        now = start + 6 * 31_000L
+        val busy = c.show("signin", "x", "browser-6")
+        assertTrue(busy is PanelCode.Show.Busy)
+        assertEquals(start + 10 * 60_000L, (busy as PanelCode.Show.Busy).untilMs)
+        now = start + 10 * 60_000L
+        assertTrue("open again once the oldest is 10 min old", c.show("signin", "x", "browser-6") is PanelCode.Show.Ok)
+    }
+
     @Test fun noCodeWhenThePanelCantShowOne() {
         val c = PanelCode(clock = { now })
         assertTrue(c.show("signin", "x", "a") is PanelCode.Show.Unavailable)
@@ -115,7 +127,7 @@ class ManagePartsTest {
 
     @Test fun codesAreSixDigits() {
         val c = code()
-        repeat(50) { now += 31_000; assertTrue(Regex("\\d{6}").matches(c.ok("signin", "a").code)) }
+        repeat(50) { now += 10 * 60_000L; assertTrue(Regex("\\d{6}").matches(c.ok("signin", "a").code)) }
     }
 
     // ------------------------------------------------------------------ redaction
@@ -128,6 +140,9 @@ class ManagePartsTest {
             "{\"password\": \"hunter2\"}" to "{\"password\": \"<removed>\"}",
             "{\"password\": \"hunter two\"}" to "{\"password\": \"<removed>\"}",
             "psk=My Wifi Password" to "psk=<removed>",
+            "Authorization: Basic dXNlcjpodW50ZXIy" to "Authorization: Basic <removed>",
+            "Signed in to http://user:hunter2@192.0.2.10:8123" to "Signed in to http://<removed>@192.0.2.10:8123",
+            "Home Assistant: https://alex@homeassistant.local:8123/x" to "Home Assistant: https://<removed>@homeassistant.local:8123/x",
             "password=ab,cd&x=1" to "password=<removed>&x=1",
             "psk=MyWifiPassword" to "psk=<removed>",
             "wifi passphrase: hunter22" to "wifi passphrase: <removed>",

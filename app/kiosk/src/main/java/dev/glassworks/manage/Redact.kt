@@ -8,7 +8,8 @@ package dev.glassworks.manage
  * Removes secrets and device-unique values from text people may post in an issue: the log and the
  * diagnostics file. The panel's code already never logs them; this is the second net.
  *
- * Removed: HA tokens (JWTs, `Bearer …`), `key=value` pairs whose name says secret (token, password, psk,
+ * Removed: HA tokens (JWTs, `Bearer …`), `Basic …` credentials, a user and password in a URL
+ * (`http://user:pass@host`), `key=value` pairs whose name says secret (token, password, psk,
  * passphrase, key, secret, dataset, tlv), base64 32-byte keys (the ESPHome API key), long hex (Thread datasets and
  * network keys, EUI64s, extended PAN ids, serials), and MAC addresses.
  */
@@ -16,6 +17,9 @@ object Redact {
     private val rules: List<Pair<Regex, (MatchResult) -> String>> = listOf(
         Regex("eyJ[A-Za-z0-9_-]{4,}\\.[A-Za-z0-9_-]{4,}\\.[A-Za-z0-9_-]+") to { _ -> "<token>" },
         Regex("(?i)\\bBearer\\s+[A-Za-z0-9._~+/=-]+") to { _ -> "Bearer <token>" },
+        Regex("(?i)\\bBasic\\s+[A-Za-z0-9+/=._~-]+") to { _ -> "Basic <removed>" },
+        // http://user:pass@host: the whole user part goes, not only the password.
+        Regex("(?i)\\b([a-z][a-z0-9+.-]*://)[^/\\s@]+@") to { m -> m.groupValues[1] + "<removed>@" },
         // A quoted value to its closing quote; an unquoted one to the end of the field (`&`, `;`, line end),
         // so a Wi-Fi password with spaces or commas goes whole.
         Regex("(?i)\\b([a-z_]*(?:token|password|passwd|passphrase|psk|secret|api_?key|network_?key|noise_?key|key|dataset|tlv|code_verifier))(\"?\\s*[:=]\\s*)(\"[^\"\\n]*\"|'[^'\\n]*'|[^&;\\n]+)") to
