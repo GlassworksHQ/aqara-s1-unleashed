@@ -197,12 +197,14 @@ class SetupOverlay(
     }
 
     // ---- Done: the lit stack on its own
+    private val donePreviewChip = g.plain("Preview · Close").apply { textSize = 14f; setOnClickListener { onClosePreview?.invoke() } }
     private val doneView = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
         addView(StackView(context), LinearLayout.LayoutParams(px(108f), px(103f)))
         addView(g.heading(44f).apply { text = "You're all set." }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(40f) })
         addView(g.text(17f, MU).apply { text = "Opening your dashboard…" }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(18f) })
+        addView(donePreviewChip, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(28f) })
         visibility = View.GONE
     }
 
@@ -250,7 +252,10 @@ class SetupOverlay(
         reveal()
     }
 
-    /** Shows Done, calls [loaded] (load the dashboard behind it), then fades out. */
+    /**
+     * Shows Done, calls [loaded] (load the dashboard behind it), then fades out after [holdMs]. A
+     * preview (`--es setup_step done`) holds Done until it is closed, like every other step.
+     */
     fun finish(from: Model? = model, holdMs: Long = 1_800, loaded: () -> Unit) {
         val m = (from ?: return).copy(step = SetupFlow.DONE, done = flow.toSet())
         cancelFinish()
@@ -258,6 +263,7 @@ class SetupOverlay(
         bind(m, true)
         reveal()
         loaded()
+        if (m.preview) return
         val r = Runnable { finishing = null; hide() }
         finishing = r
         postDelayed(r, holdMs)
@@ -308,6 +314,7 @@ class SetupOverlay(
     private fun bind(m: Model, stepChanged: Boolean) {
         val done = m.step == SetupFlow.DONE
         doneView.visibility = if (done) View.VISIBLE else View.GONE
+        donePreviewChip.visibility = if (m.preview) View.VISIBLE else View.GONE
         wizard.visibility = if (done) View.GONE else View.VISIBLE
         if (done) { hideKeyboard(); return }
         bindRail(m)
