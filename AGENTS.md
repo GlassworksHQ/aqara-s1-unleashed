@@ -138,19 +138,24 @@ header from the example in the table, then change the name, the tagline and the 
 
 | The README is for | Header | Copy it from |
 |---|---|---|
-| A library (`app/libs/*`, or a standalone package in `kiln/packages/`) | `banner-library-<name>`, centred title and tagline, then the MIT, status and roadmap badges | [improv](app/libs/improv/README.md) |
+| A library: something another project could use on its own (`app/libs/*`, `packages/*`, or such a package in `kiln/packages/`) | `banner-library-<name>`, centred title and tagline, then the MIT, status and roadmap badges | [improv](app/libs/improv/README.md) |
 | The Glassworks core or a pane | `banner-core` or `banner-pane`, title and tagline, then the part badge, licence, status and roadmap badges | [core](app/kiosk/src/main/java/dev/glassworks/README.md) |
 | Kiln | `banner-kiln`, title and tagline, then the Kiln, MIT, status and roadmap badges | [Kiln](kiln/apps/kiln/README.md) |
 | An app or product built on the core | Title and tagline, then Built on Glassworks, MIT, status and roadmap badges. No banner | [S1 Kiosk](app/README.md) |
 | Kiln's internals and design work | The Kiln badge alone | [docs/design/kiln](docs/design/kiln/README.md) |
+| A Glassworks spec in `docs/` that every frame follows (e.g. the perf grade) | The core badge alone, under the title | [principles.md](docs/principles.md) (its part badges) |
 
-Not every README gets one: research notes, dev tools (`tools/*`), the old S1 installer in `kiln/src`
+Not every README gets one: research notes, scripts in `tools/*` (the doc they serve carries the badge), the old S1 installer in `kiln/src`
 and S1's own branding stay plain. The root README stays S1-branded until the rebrand.
 
 - **A new library needs its banner first.** If `banner-library-<name>` isn't on
   [/brand#banners](https://www.glassworks.dev/brand#banners), add the library to glassworks.dev
   (steps in [docs/branding.md](docs/branding.md#adding-a-library)) and say in the PR that it waits on
-  that deploy. Don't merge a README that points at a banner that isn't live yet.
+  that deploy. Don't merge a README that points at a banner that isn't live yet. The banner's line
+  fits about 50 characters: render it (`rsvg-convert`) in both themes and look before you open that PR.
+- **A fork credits upstream in the header**: the second line under the title says "A fork of
+  [owner/repo](link) (licence).", and the body records the upstream commit. Keep upstream's
+  copyright in `THIRD-PARTY-NOTICES.md`.
 - **Use the Glassworks info badges, not shields.io.** The licence badge is `badge-license-mit` for
   MIT and `badge-license` for MPL-2.0. Pick the one status badge that's true now, and change it when
   the stage changes.
