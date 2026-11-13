@@ -270,7 +270,7 @@ class ManageServer(
             val s = ((b.untilMs - System.currentTimeMillis() + 999) / 1000).coerceIn(1, 30)
             "The panel is showing another code. Try again in $s ${if (s == 1L) "second" else "seconds"}."
         }
-        PanelCode.Why.TOO_MANY -> "The panel has shown too many codes in the last 10 minutes. Try again after ${hhmm(b.untilMs)}."
+        PanelCode.Why.TOO_MANY -> "The panel has shown too many codes in the last ${code.showWindowMs / 60_000} minutes. Try again after ${hhmm(b.untilMs)}."
     }
 
     /** The cap on new codes was hit: worth a line in the Log, with who asked. */

@@ -163,7 +163,8 @@ class HttpServer(
                 sock.soTimeout = 200
                 write(sock.getOutputStream(), HttpResponse.text(503, "The panel is busy. Try again in a moment."))
                 // Closing with the client's request unread would reset the connection before it reads the 503.
-                // This runs on the accept thread: at most 300 ms in all, however slowly the bytes come.
+                // This runs on the accept thread: at most 300 ms per refused connection, however slowly its bytes
+                // come. Refusals run one after another there, so many at once add up (20 ≈ 5 s, measured).
                 sock.shutdownOutput()
                 val drain = DeadlineInput(sock, System.nanoTime() + BUSY_DRAIN_MS * 1_000_000)
                 val buf = ByteArray(4096)
@@ -217,7 +218,7 @@ class HttpServer(
                 if (n < 0) return null
                 got += n
             }
-            val target = try { URI(parts[1]) } catch (_: Exception) { return HttpRequest(parts[0], "?", emptyMap(), headers, body) }
+            val target = try { URI(parts[1]) } catch (_: Exception) { return HttpRequest(parts[0], "?", emptyMap(), headers, body, remote) }
             return HttpRequest(parts[0], target.rawPath ?: "/", parseQuery(target.rawQuery), headers, body, remote)
         }
 

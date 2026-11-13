@@ -30,7 +30,8 @@ class PanelCode(
     private val windowFailures: Int = 10,
     private val minGapMs: Long = 30_000L,
     private val maxShows: Int = 6,
-    private val showWindowMs: Long = 10 * 60_000L,
+    /** The window [maxShows] counts in; public so the page can say it. */
+    val showWindowMs: Long = 10 * 60_000L,
 ) {
     /** What the panel shows: [code], and in words what it is for ([label], "Sign in to manage this panel"). */
     data class Shown(val code: String, val purpose: String, val label: String, val untilMs: Long) {
