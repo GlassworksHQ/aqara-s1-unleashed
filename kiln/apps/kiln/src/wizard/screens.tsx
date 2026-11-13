@@ -392,9 +392,10 @@ export function Done({ s, session }: P) {
       {d.backup && (
         <div className="well">
           <span className="grow"><span>{d.backup.hint}</span><span className="small">{d.backup.name} · {d.backup.info}</span></span>
-          <button type="button" className="btn ghost" onClick={() => session.downloadBackup()}>Download</button>
+          <button type="button" className="btn ghost" onClick={() => void session.downloadBackup()}>Download</button>
         </div>
       )}
+      {d.backup?.error && <p className="status err" role="alert">{d.backup.error}</p>}
       <div className="foot">
         {s.flow === 'install' ? <button type="button" className="link" onClick={() => void session.click('undo', () => session.openUndo())}>Undo</button> : <span />}
         <Link className="btn ghost" href="/">Back to Kiln</Link>

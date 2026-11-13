@@ -1,7 +1,7 @@
 // The frame's current session, outside React, so it outlives route changes and the picker can see
 // a running install. Type-only imports: the picker reads this without loading the engine.
 import type { Session } from './session';
-import type { Changed, Failure, WizardState } from './state';
+import type { Changed, Failure, SavedBackup, WizardState } from './state';
 
 export interface Entry {
   /** the frame's route base, e.g. /aqara-s1-plus */
@@ -59,6 +59,27 @@ function remember(base: string, c: Changed | undefined) {
   } catch { /* no storage: this page load still has `history` */ }
 }
 
+/**
+ * The backup the tab's latest run saved (WizardState.backup), per frame base, kept the same way: a
+ * later session's Done (set-up entered again, a reload) still offers its download. The files stay in
+ * IndexedDB; this is only which backup it was.
+ */
+const backups = new Map<string, SavedBackup>();
+const backupKey = (base: string) => `kiln:backup:${base}`;
+
+function recallBackup(base: string): SavedBackup | undefined {
+  if (backups.has(base) || seen.has(base)) return backups.get(base);
+  try {
+    const v = JSON.parse(sessionStorage.getItem(backupKey(base)) ?? 'null') as SavedBackup | null;
+    return v && typeof v.id === 'string' && Array.isArray(v.files) && typeof v.bootWasPatched === 'boolean' ? v : undefined;
+  } catch { return undefined; }
+}
+
+function rememberBackup(base: string, b: SavedBackup) {
+  backups.set(base, b);
+  try { sessionStorage.setItem(backupKey(base), JSON.stringify(b)); } catch { /* this page load still has `backups` */ }
+}
+
 let current: Entry | undefined;
 let lastFailure: LastFailure | undefined;
 let unwatch: (() => void) | undefined;
@@ -76,6 +97,7 @@ function watch(e: Entry) {
   unwatch = e.session.store.subscribe(() => {
     const s = e.session.store.state;
     if (s.changed !== prev.changed) remember(e.base, s.changed);
+    if (s.backup && s.backup !== prev.backup) rememberBackup(e.base, s.backup);
     if (prev.screen === 'error' && s.screen !== 'error') { keep(e, prev); notify(); }
     if (s.screen === 'firing' && prev.screen !== 'firing' && lastFailure) { lastFailure = undefined; notify(); }
     prev = s;
@@ -92,9 +114,11 @@ export const registry = {
     }
     current = e;
     const earlier = recall(e.base);
+    const saved = recallBackup(e.base);
     seen.add(e.base);
     watch(e); // first, so `history` keeps what the session starts from
     if (earlier) e.session.store.dispatch({ type: 'changed', by: earlier });
+    if (saved && !e.session.store.state.backup) e.session.store.dispatch({ type: 'backup', backup: saved });
     notify();
     return e;
   },
@@ -107,7 +131,8 @@ export const registry = {
   clear() {
     unwatch?.(); unwatch = undefined; current = undefined; lastFailure = undefined; seen.clear();
     for (const base of history.keys()) remember(base, undefined);
-    try { for (const k of Object.keys(sessionStorage)) if (k.startsWith('kiln:changed:')) sessionStorage.removeItem(k); } catch { /* none */ }
+    backups.clear();
+    try { for (const k of Object.keys(sessionStorage)) if (/^kiln:(changed|backup):/.test(k)) sessionStorage.removeItem(k); } catch { /* none */ }
   },
 };
 

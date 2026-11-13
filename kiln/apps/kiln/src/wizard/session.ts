@@ -118,7 +118,15 @@ export class Session {
     this.flow ??= new InstallFlow(this.d.recipe, {
       asset: (n, p) => this.d.asset(n, p),
       hasAsset: (n) => this.d.hasAsset(n),
-      backups: this.d.backups,
+      backups: {
+        // safe in this browser from here on: the tab's record, so any later Done offers it
+        save: async (meta, files) => {
+          await this.d.backups.save(meta, files);
+          const { serial: _, ...backup } = meta;
+          this.dispatch({ type: 'backup', backup });
+        },
+        original: () => this.d.backups.original(),
+      },
       key,
       devices: this.d.devices,
       sleep: this.d.sleep,
@@ -467,19 +475,19 @@ export class Session {
   finish(): void {
     clearInterval(this.haTimer);
     void this.setup?.close();
-    const r = this.result;
+    const b = this.s.backup;
     const wifi = this.wifiSsid;
-    const total = r ? r.meta.files.reduce((n, f) => n + f.size, 0) : 0;
+    const total = b ? b.files.reduce((n, f) => n + f.size, 0) : 0;
     this.dispatch({
       type: 'done', done: {
         title: 'Done.',
         body: wifi
           ? `The panel is on ${wifi}. Home Assistant finds it by itself as an ESPHome device.`
           : `On the panel, join Wi-Fi and sign in to Home Assistant. Home Assistant then finds it as an ESPHome device${this.ip ? ` (${this.ip}, port 6053)` : ''}.`,
-        backup: r && {
-          name: `${r.meta.id}.zip`,
-          info: `${r.meta.files.length} partitions · ${fmtSize(total)}`,
-          hint: r.meta.bootWasPatched
+        backup: b && {
+          name: `${b.id}.zip`,
+          info: `${b.files.length} partitions · ${fmtSize(total)}`,
+          hint: b.bootWasPatched
             ? 'This panel already had the software, so this backup isn\'t the original. Keep the one from your first install.'
             : 'Original software, backed up. Keep it: it\'s also kept in this browser.',
         },
@@ -487,11 +495,17 @@ export class Session {
     });
   }
 
-  downloadBackup(): void {
-    const r = this.result;
-    if (!r) return;
-    const blob = backupZip(r.meta, r.files);
-    (this.d.download ?? saveBlob)(`${r.meta.id}.zip`, blob);
+  /** Done's download: the files from this session's run, or from this browser's store for an earlier session's. */
+  async downloadBackup(): Promise<void> {
+    const b = this.s.backup;
+    if (!b) return;
+    try {
+      const files = this.result?.meta.id === b.id ? this.result.files : await this.d.backups.files(b);
+      (this.d.download ?? saveBlob)(`${b.id}.zip`, backupZip(b, files));
+    } catch (e) {
+      const d = this.s.done;
+      if (d?.backup) this.dispatch({ type: 'done', done: { ...d, backup: { ...d.backup, error: `Couldn't read it from this browser: ${(e as Error).message}` } } });
+    }
   }
 
   // ---- undo -----------------------------------------------------------------------------------

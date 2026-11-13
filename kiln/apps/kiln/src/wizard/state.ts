@@ -1,7 +1,7 @@
 // The wizard's state: which screen, the "your turn" sheet, progress, logs, and each setup phase's
 // data. Every change goes through `reduce`; the rail, the stack, the plain log and the chip are
 // derived from it by the selectors below, so a screen never keeps its own copy.
-import type { AskKind, PartState, Phase, Progress } from '@glassworks/kiln-core';
+import type { AskKind, BackupMeta, PartState, Phase, Progress } from '@glassworks/kiln-core';
 import type { SetupState } from '@glassworks/setup-channel';
 
 export type Flow = 'install' | 'undo';
@@ -70,8 +70,11 @@ export interface UndoState {
 export interface DoneState {
   title: string;
   body: string;
-  backup?: { name: string; info: string; hint: string };
+  backup?: { name: string; info: string; hint: string; error?: string };
 }
+
+/** A backup a run in this tab saved: what Done offers. The serial stays in IndexedDB only. */
+export type SavedBackup = Omit<BackupMeta, 'serial'>;
 
 export interface Part { state: PartState; size?: number; sha256?: string; pct?: number }
 
@@ -94,6 +97,12 @@ export interface WizardState {
    * for the browser tab across sessions: a later failure must not say nothing was written.
    */
   changed?: Changed;
+  /**
+   * The latest backup a run in this browser tab saved. Like `changed`, the registry keeps it for the tab
+   * across sessions and reloads, so Done offers it after any session's set-up, not only the one that
+   * installed.
+   */
+  backup?: SavedBackup;
   log: string[];
   parts: [string, Part][];
   setup: Setup;
@@ -119,7 +128,8 @@ export type Action =
   | { type: 'fail'; failure: Failure }
   | { type: 'done'; done: DoneState }
   | { type: 'busy'; busy?: string }
-  | { type: 'changed'; by: Changed };
+  | { type: 'changed'; by: Changed }
+  | { type: 'backup'; backup: SavedBackup };
 
 export const LOG_LIMIT = 400;
 
@@ -186,6 +196,8 @@ export function reduce(s: WizardState, a: Action): WizardState {
       return { ...s, screen: 'done', ask: undefined, done: a.done, changed: undefined };
     case 'busy':
       return { ...s, busy: a.busy };
+    case 'backup':
+      return { ...s, backup: a.backup };
     case 'changed': // a write outranks the apps, and both outrank not knowing
       return { ...s, changed: s.changed && OUTRANKS[s.changed] > OUTRANKS[a.by] ? s.changed : a.by };
   }
