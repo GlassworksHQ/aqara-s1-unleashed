@@ -13,11 +13,10 @@ below as the release notes.
   "On Aqara S1 Plus" fade in. While the panel finishes starting, the stack floats and the top plate
   breathes. It reaches a panel when you run the installer again.
 - **The panel is called Glassworks Panel, in Home Assistant too.** A panel you already added keeps all
-  its entity ids, so automations and dashboards keep working. Home Assistant shows the device and every
-  entity's name with the new name after the update, unless you renamed the device yourself. Entities
-  Home Assistant first sees after the update, on a panel you add from now on or a new entity on one you
-  have, get ids that start with the device's name as Home Assistant shows it: `glassworks_panel_`, or
-  your own name for it.
+  its entity ids, so automations and dashboards keep working; Home Assistant shows the device under
+  the new name after the update, unless you renamed it yourself. New entities take the device's name
+  as Home Assistant shows it (`glassworks_panel`, or your own name), and on Home Assistant 2026.9 or
+  later the area's name can come first.
 - **New pages on your phone when you scan the panel's code.** Signing in and sharing your Thread
   network open a short page first that says what happens, then *Continue to Home Assistant*. They
   follow your phone's light or dark mode.
