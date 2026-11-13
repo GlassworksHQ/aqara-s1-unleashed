@@ -237,8 +237,11 @@ class PanelDevice internal constructor(
             exec.scheduleWithFixedDelay({ checkDashboards() }, 2, 2, TimeUnit.SECONDS)
             exec.scheduleWithFixedDelay({ server?.publishStates() }, 5, 5, TimeUnit.SECONDS)
         }
-        // A switch changed after its pane started and before the listener above: no event came for it.
-        for (key in applySwitches()) emit(PanelEvent.SettingChanged(key))
+        // A switch changed after its pane started and before the listener above: no event came for it. And
+        // each pane that is off hears its own switch once, so it puts back what it undoes outside the app
+        // (Aqara's daemon, the time zone the root helper keeps) after a restart too.
+        val off = panes.filter { !isOn(it) }.mapNotNull { switches[it.id]?.key }
+        for (key in (applySwitches() + off).distinct()) emit(PanelEvent.SettingChanged(key))
     }
 
     /**
@@ -426,7 +429,8 @@ class PanelDevice internal constructor(
             val on = isOn(pane)
             if (on == (pane.id in started)) continue
             if (on) {
-                if (!unlessStopped { listOf(pane).forEachPane("start") { it.start() }; started += pane.id }) return changed
+                // Recorded only once start() returned: a pane that failed to start is tried again on the next change.
+                if (!unlessStopped { listOf(pane).forEachPane("start") { it.start(); started += pane.id } }) return changed
             } else {
                 started -= pane.id
                 listOf(pane).forEachPane("stop") { it.stop() }

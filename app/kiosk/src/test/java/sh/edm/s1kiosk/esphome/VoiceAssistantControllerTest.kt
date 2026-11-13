@@ -41,6 +41,29 @@ class VoiceAssistantControllerTest {
         assertEquals(State.STREAMING, controller.currentState)
     }
 
+    /**
+     * #210 review: the voice pane stopping closes its controller. The run ends with Idle, as a cancel
+     * does, and a wake word still on its way starts nothing, unlike after the person's cancel.
+     */
+    @Test
+    fun closedItEndsTheRunAndTakesNoOther() {
+        startRun()
+        events.clear()
+        assertTrue(controller.close())
+        assertEquals(VoiceEvent.Idle, events.last())
+        val requests = requests().size
+        assertFalse("no run after close", controller.onWakeWord("Hey Jarvis"))
+        assertEquals(requests, requests().size)
+        assertEquals(State.IDLE, controller.currentState)
+    }
+
+    @Test
+    fun aCancelledRunLeavesTheNextOneFree() {
+        startRun()
+        assertTrue(controller.cancel())
+        assertTrue(controller.onWakeWord("Hey Jarvis"))
+    }
+
     @Test
     fun wakeWithoutHomeAssistantIsAnError() {
         assertFalse(controller.onWakeWord("Hey Jarvis"))

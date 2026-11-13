@@ -112,6 +112,39 @@ class PanelDevicePaneSwitchesTest {
         }
     }
 
+    /**
+     * #210 review: a pane that is off when the app starts still hears its own switch once. The wall base
+     * then applies the blocking setting to Aqara's daemon, which init restarted at boot.
+     */
+    @Test fun theWallBaseOffAtStartStillPutsAqarasDaemonRight() {
+        device.stop()
+        set("wall-base", false)
+        val logged = java.util.Collections.synchronizedList(ArrayList<String>())
+        val sink = EspHomeLog.sink
+        EspHomeLog.sink = EspHomeLog.Sink { level, tag, msg, t -> logged += msg; sink.log(level, tag, msg, t) }
+        try {
+            val second = ManualExecutor()
+            device = PanelDevice(app, runtime, onVoiceEvent = {}, onApiHello = { _, _ -> }, exec = second, mdns = RecordingMdns(),
+                apiPort = 0, apiBindAddress = InetAddress.getLoopbackAddress())
+            device.start()
+            second.runDue()
+            assertTrue("the wall base applied its daemon policy: ${logged.filter { "Aqara" in it }}", logged.any { it.startsWith("Aqara cloud (wall base off)") })
+        } finally {
+            EspHomeLog.sink = sink
+        }
+    }
+
+    /** #210 review: a pane whose start failed isn't recorded as running, so the next switch change tries it again. */
+    @Test fun aPaneThatFailedToStartIsTriedAgain() {
+        set("diagnostics", false)
+        assertEquals(2, exec.periodic)
+        exec.refuseNextFixedDelay = true
+        set("diagnostics", true) // its start throws: no sample scheduled
+        assertEquals(2, exec.periodic)
+        set("time-zone", false) // any switch change
+        assertEquals("diagnostics started this time", 3, exec.periodic)
+    }
+
     @Test fun diagnosticsOffStopsSamplingAndOnStartsItAgain() {
         assertEquals("the dashboard check, the state refresh and the diagnostics sample", 3, exec.periodic)
         set("diagnostics", false)

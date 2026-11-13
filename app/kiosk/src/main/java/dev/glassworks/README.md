@@ -340,7 +340,9 @@ The default is on for the S1's panes, as before the switch.
 - **The shell runs a pane only while it is on.** It builds every pane, so an off pane's entities
   stay, but starts only the ones that are on. When a switch's key changes, it starts or stops that
   pane on the device thread, then raises `SettingChanged` for the key, so a pane that has work to
-  undo outside the app (the time zone, Aqara's daemon) hears its own switch after `stop`.
+  undo outside the app (the time zone, Aqara's daemon) hears its own switch after `stop`. At start,
+  once it listens to the settings, the shell applies the switches again and raises `SettingChanged`
+  for each pane that is off, so such a pane puts that work right after a restart too.
 - **A pane can start again after `stop`.** Make the threads in `start`, not in the constructor, and
   let `stop` free them. `stop` also runs when the app stops, so a pane that must undo something only
   when it is turned off does it on its own `SettingChanged`.

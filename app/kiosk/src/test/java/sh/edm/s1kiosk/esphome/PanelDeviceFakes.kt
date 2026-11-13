@@ -54,6 +54,9 @@ internal class ManualExecutor : AbstractExecutorService(), ScheduledExecutorServ
     @Volatile var periodic = 0
         private set
 
+    /** The next fixed-delay task is refused, as by a shut-down executor: a pane's start that fails. */
+    @Volatile var refuseNextFixedDelay = false
+
     /** Every fixed-delay task ever scheduled, also the ones cancelled since. */
     @Volatile var fixedDelayScheduled = 0
         private set
@@ -87,6 +90,7 @@ internal class ManualExecutor : AbstractExecutorService(), ScheduledExecutorServ
     override fun scheduleWithFixedDelay(command: Runnable, initialDelay: Long, delay: Long, unit: TimeUnit): ScheduledFuture<*> {
         synchronized(this) {
             if (down) { rejectedPeriodic++; refuse() }
+            if (refuseNextFixedDelay) { refuseNextFixedDelay = false; throw RejectedExecutionException("refused once by the test") }
             periodic++
             fixedDelayScheduled++
         }

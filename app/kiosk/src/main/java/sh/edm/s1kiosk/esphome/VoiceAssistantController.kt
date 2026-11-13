@@ -76,6 +76,8 @@ class VoiceAssistantController(
     private var playGen = 0
     /** The user cancelled the current run: ignore its late events (transcript, response, TTS). */
     private var discardRun = false
+    /** The voice pane stopped ([close]): no new run starts, also from a wake word already on its way. */
+    private var closed = false
     private val timers = LinkedHashMap<String, Timer>()
 
     val currentState: State get() = synchronized(lock) { state }
@@ -108,6 +110,7 @@ class VoiceAssistantController(
     }
 
     private fun startRun(phrase: String?, fx: MutableList<() -> Unit>): Boolean {
+        if (closed) return false
         if (!subscribed) {
             fx += { emit(VoiceEvent.Error("Home Assistant is not connected")) }
             return false
@@ -188,6 +191,16 @@ class VoiceAssistantController(
             add { emit(VoiceEvent.Idle) }
         }
         return cancelled
+    }
+
+    /**
+     * The voice pane stops (voice turned off, or the panel stopping): from now on no run starts, and the
+     * current one ends as [cancel] ends it, so its Idle resumes the music and lets go of the speaker.
+     * Unlike [cancel], which the person uses between runs, this controller takes no run again.
+     */
+    fun close(): Boolean {
+        locked { closed = true }
+        return cancel()
     }
 
     /** Called about once a second: watchdogs. */

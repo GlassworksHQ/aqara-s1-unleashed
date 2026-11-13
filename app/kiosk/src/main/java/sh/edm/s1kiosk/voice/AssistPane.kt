@@ -139,8 +139,9 @@ class AssistPane(
 
     override fun stop() {
         val running = controller != null
-        // Turned off mid-run: end the run, so its Idle resumes the music and lets go of the speaker.
-        controller?.cancel()
+        // Turned off mid-run: end the run, so its Idle resumes the music and lets go of the speaker. Closed,
+        // not only cancelled: a wake word on its way from the microphone can't start a new run.
+        controller?.close()
         watchdog?.shutdownNow()
         watchdog = null
         input?.stop()
