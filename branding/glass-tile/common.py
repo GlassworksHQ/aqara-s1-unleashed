@@ -43,7 +43,11 @@ def hexc(h):
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
 
-BG = hexc("#0a0b0f")
+# Night (#0a0b0f) moved to the nearest colour RGB 565 holds exactly. The bootanimation surface is
+# RGB_565 with dithering off (BootAnimation.cpp lines 284, 878), so #0a0b0f would show as (8,8,8) or
+# (8,12,16) depending on the GPU's rounding, next to a splash at (10,11,15). #080c10 is the same
+# colour on both, so the splash hands over without a step.
+BG = hexc("#080c10")
 
 # ---------------------------------------------------------------- fonts (OFL)
 FONT_CACHE = "/tmp/s1-unleashed-fonts"

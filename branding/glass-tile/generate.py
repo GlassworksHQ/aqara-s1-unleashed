@@ -41,6 +41,7 @@ ORIGIN = (SCREEN[0] / 2 - 75 * SCALE, LOCK_TOP * SCALE)
 FG = hexc("#f4f4f5")
 FA = hexc("#63636b")
 BODY = hexc("#0b0c11")
+NIGHT = hexc("#0a0b0f")                  # the page's background, which the breathing dims toward
 W = (0.7, 0.45, 0.2)                     # outline weight per plate, 0 = top
 
 PLAY, LOOP = 4.0, 7.2
@@ -335,7 +336,7 @@ def paint_stack(cv, st):
         h, w = f.d.shape
         lit.over((255, 255, 255), GRAIN[f.y0:f.y0 + h, f.x0:f.x0 + w] * body)
         lit.over((255, 255, 255), (1 - np.clip(np.hypot(u - 0.3, v - 0.15) / 0.7, 0, 1)) * 0.3 * body)
-        lit.over(BG, (1 - st.glow) * body)
+        lit.over(NIGHT, (1 - st.glow) * body)
         rgb, a = gradient(v, RIM)
         lit.over(rgb, a * f.stroke(2.2))
         lit.onto(cv, st.lit * q.op)
@@ -398,8 +399,9 @@ WORD_TOP = LOCK_TOP + 150 + 22
 class Scene:
     """Everything that doesn't depend on t, computed once per device name.
 
-    The background is flat BG. The reference page also has two corner glows, but they cost about
-    24 KB in every frame: with them the zip is 19.9 MB and the boot image doesn't fit (README)."""
+    The background is flat BG, night as RGB 565 holds it (common.py). The reference page also has
+    two corner glows, but they cost about 24 KB in every frame: with them the zip is 19.9 MB and the
+    boot image doesn't fit (README)."""
 
     def __init__(self, device_name):
         self.base = np.empty(SCREEN[::-1] + (3,))
