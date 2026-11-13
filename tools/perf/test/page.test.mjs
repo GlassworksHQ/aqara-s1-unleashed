@@ -61,20 +61,23 @@ test("the measured window leaves SurfaceFlinger's history room for the read afte
   }
 });
 
-const T = require("../page/tiers.js");
+// page/tiers.json: the one source for the fake HA (dashboards.py) and the harness.
+const T = JSON.parse(readFileSync(new URL("../page/tiers.json", import.meta.url)));
+T.cardCount = (t) => { const s = T.TIERS[t]; return s.tiles + s.entities + s.glances + s.longLists + s.sensors + s.histories + s.pictures + 1; };
 
 test("the three reference dashboards are fixed: light, typical, heavy", () => {
   assert.deepEqual(T.ORDER, ["light", "typical", "heavy"]);
-  assert.deepEqual(T.TIERS.light, { tiles: 12, entities: 5, rows: 5, longLists: 0, longRows: 0, sensors: 2, histories: 0, pictures: 0 });
-  assert.deepEqual(T.TIERS.typical, { tiles: 26, entities: 13, rows: 6, longLists: 0, longRows: 0, sensors: 6, histories: 2, pictures: 2 });
-  assert.deepEqual(T.TIERS.heavy, { tiles: 50, entities: 26, rows: 8, longLists: 4, longRows: 20, sensors: 16, histories: 8, pictures: 15 });
+  assert.deepEqual(T.TIERS.light, { tiles: 12, entities: 4, glances: 1, rows: 5, longLists: 0, longRows: 0, sensors: 2, histories: 0, pictures: 0 });
+  assert.deepEqual(T.TIERS.typical, { tiles: 26, entities: 11, glances: 2, rows: 6, longLists: 0, longRows: 0, sensors: 6, histories: 2, pictures: 2 });
+  assert.deepEqual(T.TIERS.heavy, { tiles: 50, entities: 22, glances: 4, rows: 8, longLists: 4, longRows: 20, sensors: 16, histories: 8, pictures: 15 });
+  assert.equal(T.GLANCE_ENTITIES, 5);
   assert.deepEqual(T.LIVE, { updatesPerS: 5, flipEveryMs: 2000, clockEveryMs: 1000, tileTransitionMs: 180 });
 });
 
 test("every page has the same first screen, so every page gets the same update stream", () => {
-  assert.deepEqual(T.HEAD, { sensorTiles: 4, switchTiles: 3, rows: 5, tiles: 7 });
+  assert.deepEqual(T.HEAD, { sensorTiles: 4, switchTiles: 3, rows: 5 });
   for (const t of T.ORDER) {
-    assert.ok(T.TIERS[t].tiles >= 1 + T.HEAD.tiles, `${t} has the toggle and the head's tiles`);
+    assert.ok(T.TIERS[t].tiles >= 1 + T.HEAD.sensorTiles + T.HEAD.switchTiles, `${t} has the toggle and the head's tiles`);
     assert.ok(T.TIERS[t].entities >= 1, `${t} has the head's entities card`);
   }
 });
@@ -119,4 +122,72 @@ test("non-ASCII lines split on bytes, never inside a character, and still fit 10
   const chunks = lines.map((l) => l.replace(/^GWPERF\+ k:1 \d+\/\d+ /, ""));
   for (const c of chunks) assert.ok(!c.includes("�"), "a character was cut");
   assert.equal(chunks.join(""), text);
+});
+
+// ---- "usable" (F1): each clause has a test that fails without it
+
+function usableAfter(frames, headCards = 2) {
+  let st = { last: "", stable: 0, done: false };
+  for (const f of frames) {
+    st = S.usableStep(f, st, headCards);
+    if (st.done) return true;
+  }
+  return false;
+}
+const drawn = (top) => ({ rendered: true, top });
+const ok = { launch: false, viewIndex: 2, wantIndex: 2, head: [{ rendered: true }, { rendered: true }], onScreen: [drawn(0), drawn(120)] };
+
+test("usable: two frames in a row with everything drawn and nothing moving", () => {
+  assert.equal(usableAfter([ok]), false);                 // one frame isn't enough
+  assert.equal(usableAfter([ok, ok]), true);
+});
+
+test("usable: not while HA's launch screen is up", () => {
+  const f = { ...ok, launch: true };
+  assert.equal(usableAfter([f, f, f]), false);
+});
+
+test("usable: not before hui-root shows the view that was asked for", () => {
+  const f = { ...ok, viewIndex: 1 };
+  assert.equal(usableAfter([f, f, f]), false);
+});
+
+test("usable: not while a head card is missing or not drawn, even if every card on screen is", () => {
+  const missing = { ...ok, head: [{ rendered: true }] };
+  assert.equal(usableAfter([missing, missing, missing]), false);
+  const blank = { ...ok, head: [{ rendered: true }, { rendered: false }] };
+  assert.equal(usableAfter([blank, blank, blank]), false);
+});
+
+test("usable: not while a card on the screen isn't drawn, or there are none", () => {
+  const blank = { ...ok, onScreen: [drawn(0), { rendered: false, top: 120 }] };
+  assert.equal(usableAfter([blank, blank, blank]), false);
+  const none = { ...ok, onScreen: [] };
+  assert.equal(usableAfter([none, none, none]), false);
+});
+
+test("usable: not while the layout moves", () => {
+  const moved = { ...ok, onScreen: [drawn(0), drawn(160)] };
+  assert.equal(usableAfter([ok, moved, ok, moved]), false);
+  const more = { ...ok, onScreen: [drawn(0), drawn(120), drawn(240)] };
+  assert.equal(usableAfter([ok, more, more]), true);      // stable again from the second `more`
+});
+
+test("free: every probe within 50 ms for the whole window, from when the stretch began", () => {
+  // A long probe (80 ms), a short one that starts a stretch, a long one that ends it, then short
+  // probes of 40 ms from 305 on: free from 305, done once 500 ms of them have run.
+  const probes = [[0, 80], [80, 85], [85, 300], [300, 305]];
+  for (let t = 305; t < 900; t += 40) probes.push([t, t + 40]);
+  let st = { start: null, done: false };
+  const seen = [];
+  for (const [p, r] of probes) {
+    st = S.freeStep(p, r, st.start, 500);
+    seen.push(st.start);
+    if (st.done) break;
+  }
+  assert.deepEqual(seen.slice(0, 5), [null, 85, null, 305, 305]);
+  assert.equal(st.done, true);
+  assert.equal(st.start, 305);
+  assert.ok(probes.findIndex(([, r]) => r - 305 >= 500) === seen.length - 1);   // done at the first probe 500 ms on
+  assert.equal(S.freeStep(0, 51, 0, 1).done, false);       // a probe over 50 ms is never free
 });

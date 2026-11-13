@@ -14,7 +14,7 @@ change the boot path.
 | `install/` | `fel-install.sh` (FEL → backup → patch → flash → verify), `fb-read-partition.sh`, the `--undo` path | Has off-device tests in `install/test/` |
 | `root/` | Init services baked into `boot` via Magisk `overlay.d`: first boot, update, bundle, netwatch, branding; `s1kiosk_verify` (C) | Runs as root under permissive SELinux |
 | `radio/` | Root helper `s1kiosk_radio.sh` (contract v4), the otbr/zigbeed builds, the bundle maker | Tests: `radio/test/run.sh` |
-| `perf/` | `run.sh`: the performance test and grade for any frame; `summary.py` exports a frame's measurements, `grade.ts` computes the letter from them ([docs/perf.md](../docs/perf.md)); `threadcpu.py`: per-thread CPU of the app over a window, read-only ([idle-cpu.md](../docs/research/idle-cpu.md)) | Opens a test page and restarts the app; never changes a setting |
+| `perf/` | `run.sh`: Clarity, the performance test and grade for any frame; `summary.py` exports a frame's measurements, `grade.ts` computes the letter from them ([docs/perf.md](../docs/perf.md)); `threadcpu.py`: per-thread CPU of the app over a window, read-only ([idle-cpu.md](../docs/research/idle-cpu.md)) | Opens test pages and restarts the app; points the dashboard setting at its fake Home Assistant for the graded part (and turns panes off and on with `--pane-ram`), then puts them back |
 | `bracket/` | The wall base emulator and the proof script | |
 | `esp32-uart-bridge/` | ESP32-S3 USB↔UART bridge for the debug console | |
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Device side of the Glassworks perf test (MIT). Called by tools/perf/run.sh; see docs/perf.md.
+"""Device side of Clarity, the Glassworks perf test (MIT). Called by tools/perf/run.sh; see docs/perf.md.
 
 What it touches on the device:
   device     read-only (getprop, /proc, dumpsys, wm size).
@@ -20,6 +20,8 @@ import argparse
 import json
 import os
 import queue
+import urllib.parse
+import urllib.request
 import re
 import secrets
 import subprocess
@@ -141,6 +143,10 @@ def cmd_synthetic(dev, a):
         lines_in = P.PageLines()
         for line in lc.stdout:
             rec = P.parse_logcat_line(line)
+            if rec and seen.is_set() and SLEEP_RE.search(rec["msg"]):
+                # The screen went off while the test page ran: its frames aren't the panel's then.
+                f.write(json.dumps({"t": "screen_off", "mono": rec["mono"]}) + "\n")
+                f.flush()
             pl = lines_in.feed(rec["msg"]) if rec else None
             if not pl or pl.get("nonce") != a.nonce:
                 continue
@@ -176,6 +182,71 @@ def cmd_synthetic(dev, a):
     if status != "done":
         sys.exit(f"synthetic run {a.run}: {status}")
 
+
+def parse_set(spec):
+    """"voice_enabled=false,mic_muted=true,..." -> {extra: bool}."""
+    out = {}
+    for part in (spec or "").split(","):
+        if part:
+            k, _, v = part.partition("=")
+            if not re.fullmatch(r"[a-z_]{1,40}", k) or v not in ("true", "false"):
+                raise SystemExit(f"--set {part!r}: give extra=true|false")
+            out[k] = v == "true"
+    return out
+
+
+def expected_state(want, voice_now):
+    """What pane_state should read for `want`. The microphone is open only with voice on and not
+    muted; when the kiosk didn't apply voice_enabled (S1 Kiosk 0.4.3 saves it asynchronously, then
+    exits to restart, so the write is lost), that is judged with the voice it really runs."""
+    voice = want.get("voice_enabled", voice_now)
+    out = {}
+    if "sendspin_enabled" in want:
+        out["sendspin"] = want["sendspin_enabled"]
+    if "mic_muted" in want or "voice_enabled" in want:
+        out["mic"] = bool(voice_now if voice_now is not None else voice) and not want.get("mic_muted", False)
+    return out
+
+
+def cmd_panes(dev, a):
+    """Set the panes the kiosk runs, then check from its log that it runs them (#158's s1v7: every
+    switch was lost). The settings applied live (Sendspin, the microphone mute, the dashboard URL)
+    go first, in an intent that doesn't restart the app, and are saved while the runner waits; then
+    voice_enabled, which restarts the app. Up to --tries times. Prints the result as JSON; exit 0 when
+    everything but voice_enabled took (voice_applied says whether that did too), else 1."""
+    want = parse_set(a.set)
+    live = " ".join(f"--ez {k} {'true' if v else 'false'}" for k, v in want.items() if k != "voice_enabled")
+    url = f"--es url '{a.url}'" if a.url else ""
+    res = {"want": want, "attempts": 0, "state": None, "ok": False, "voice_applied": None,
+           "url_taken": None if not a.url else False}
+    for attempt in range(1, a.tries + 1):
+        res["attempts"] = attempt
+        if live or url:
+            out = dev.sh(f"am start -W -n {dev.component} {url} {live}".strip(), timeout=60)
+            if a.url:
+                # am exits 0 even when the kiosk didn't take the intent: read its answer (as run.sh does).
+                res["url_taken"] = any(l.strip() == "Status: ok" for l in out.splitlines())
+            time.sleep(PANES_SAVE_S)
+        if "voice_enabled" in want:
+            dev.sh(f"am start -W -n {dev.component} --ez voice_enabled {'true' if want['voice_enabled'] else 'false'}", timeout=60)
+        else:
+            dev.sh(f"am start -W -n {dev.component} --ez restart true", timeout=60)
+        time.sleep(a.settle)
+        st = P.pane_state(dev.sh("logcat -d -v monotonic", timeout=60))
+        res["state"] = st
+        exp = expected_state(want, st["voice"])
+        res["ok"] = st["voice"] is not None and all(st[k] == v for k, v in exp.items()) and res["url_taken"] is not False
+        res["voice_applied"] = None if "voice_enabled" not in want else st["voice"] == want["voice_enabled"]
+        if res["ok"] and res["voice_applied"] is not False:
+            break
+        if res["ok"] and attempt >= 2:
+            break                     # voice_enabled doesn't take on this kiosk; the rest did
+    print(json.dumps(res))
+    sys.exit(0 if res["ok"] else 1)
+
+
+# The live settings are saved with apply(): give the write this long before the app restarts.
+PANES_SAVE_S = float(os.environ.get("GW_PERF_PANES_SAVE_S", "3"))
 
 GESTURE_MS = (50, 2000)   # a swipe's duration the page may ask for
 MAX_TAPS = 50
@@ -227,6 +298,14 @@ def own_page_finished(stop_mono, stop_at, now):
 # ---- cold start to dashboard
 
 PAGE_RE = re.compile(r"GeckoView:(PageStart|PageStop) uri=(\S+)")
+# Android's PowerManagerService, on any device: the screen is going off. With the screen off Gecko
+# runs no animation frames and slows its timers, so nothing timed then is the panel's (smoke10: the
+# kiosk's 20 s night idle timeout held light's view switch back 22 s and stopped heavy).
+SLEEP_RE = re.compile(r"PowerManagerService.*Going to sleep|Going to sleep due to")
+# While a view opens, and between views, the runner sends the kiosk's own wake intent this often, so
+# its idle timeout (20 s at night on the S1) never turns the screen off. Not between a view's warm-up
+# and done: its taps and swipes are touches, which reset the timeout, and nothing extra lands there.
+KEEP_AWAKE_S = float(os.environ.get("GW_PERF_KEEP_AWAKE_S", "8"))     # the off-device test shortens it
 
 
 def cmd_coldstart(dev, a):
@@ -237,20 +316,25 @@ def cmd_coldstart(dev, a):
     Both record when the engine is ready: GeckoView's first PageStart (its own about:blank), which
     comes before the kiosk does anything for Home Assistant.
     coldstart (real use, not graded) then follows the kiosk's own dashboard to its PageStop.
-    refstart (graded) waits until the kiosk's own page has finished (or --own-page-wait seconds if
-    it never does), then opens a warm-up page (--warmup-tier, not graded: it takes the kiosk's
-    teardown, the first JIT and the cold caches), then each reference dashboard (--url, --tiers) and
-    follows its lines: taps and swipes where the page asks. The order turns by one page each run
-    (run 1: light, typical, heavy; run 2: typical, heavy, light; run 3: heavy, light, typical), so no
-    page always comes first. Each page opens only once the screen has been still for --between-quiet
-    seconds (the page before it stops its updates when it is done). `open` can't be sent sooner: until
-    the session is up the kiosk drops it (#103's pins). After the first open, any other page is an
-    error.
+    refstart (graded, protocol 4) waits until the kiosk is back on the reference dashboard's start
+    view (run.sh pointed it there) and the harness says it is usable: the restart's end. Then it opens
+    each reference view (--tiers; --warmup-tier adds one, not graded) through the fake Home
+    Assistant (--url): the harness, in the frontend that is already loaded, navigates to it as HA's
+    view tabs do. It follows each view's lines: taps and swipes where the view asks. The order turns
+    by one view each run (run 1: light, typical, heavy; run 2: typical, heavy, light; run 3: heavy,
+    light, typical), so no view always comes first. Each opens only once the screen has been still
+    for --between-quiet seconds (the view before stops its updates when it is done). After the first
+    open, any page load is an error: a view switch loads no page. Without a restart page (the kiosk
+    came back to its own dashboard), it waits for that page as protocols 1 to 3 did.
 
     logcat follows the whole device, so its queue is rarely empty: no decision here waits for an
     empty queue. Before deciding, the loop reads everything queued so far (drain)."""
     ref = a.cmd == "refstart"
     base = [t for t in a.tiers.split(",") if t] if ref else []
+    if ref and a.warmup_tier and a.warmup_tier in base:
+        # The frontend keeps a view it has shown (hui-root's _viewCache): the graded open of that view
+        # would skip building it.
+        sys.exit(f"--warmup-tier {a.warmup_tier} is also graded; a view shown twice is cached the second time")
     turn = (a.run - 1) % len(base) if base else 0
     tiers = base[turn:] + base[:turn]
     slots = (["warmup"] if ref and a.warmup_tier else []) + tiers
@@ -269,6 +353,14 @@ def cmd_coldstart(dev, a):
                     presents.update(ts)
             stop.wait(1.0)
 
+    def keep_awake():
+        """The kiosk's wake intent, every KEEP_AWAKE_S, from the restart page's end until the last view
+        is done, except while a view is live (between its warm-up and its done)."""
+        while not stop.wait(KEEP_AWAKE_S):
+            if st.get("restart_done_at") and not st.get("live") and not st.get("break_after"):
+                dev.wake()
+                res["wakes"] = res.get("wakes", 0) + 1
+
     def quiet_for(secs, cap):
         """Wait until no new frame has been presented for `secs` (at most `cap` s). True if it went quiet."""
         end, last, since = time.time() + cap, len(presents), time.time()
@@ -280,11 +372,13 @@ def cmd_coldstart(dev, a):
 
     poller = threading.Thread(target=poll, daemon=True)
     poller.start()
+    if ref:
+        threading.Thread(target=keep_awake, daemon=True).start()
     res = {"run": a.run, "launch": None, "am_total_ms": None, "ttid_ms": None, "stop_mono": None, "proc_mono": None,
            "displayed_mono": None, "engine_mono": None, "engine_uri": None, "own_page_start_mono": None,
            "own_page_stop_mono": None, "own_page_loads": 0, "own_page_state": None,
            "page_start_mono": None, "page_stop_mono": None, "tiers": {}, "order": tiers, "warmup": None,
-           "between": [], "bad_page_lines": 0, "error": None}
+           "between": [], "bad_page_lines": 0, "protocol_restart": ref, "memory": [], "error": None}
     page_lines = P.PageLines()
     st = {"engine_at": None, "own_stop_at": 0.0, "current": None, "measure_mono": None, "break_after": None,
           "opened": 0, "next_at": None, "gestures": []}
@@ -314,13 +408,21 @@ def cmd_coldstart(dev, a):
         st["current"], st["measure_mono"], st["next_at"] = (slot, nonce), None, None
         paused.clear()
         if slot == "warmup":
-            tier, extra = a.warmup_tier, "&taps=0&swipes=0&warmup=1"
+            tier, extra = a.warmup_tier, {"taps": 0, "swipes": 0, "warmup": 1}
             res["warmup"] = {"tier": tier, "nonce": nonce, "swipes": []}
         else:
-            tier, extra = slot, f"&taps={a.taps}"
+            tier, extra = slot, {"taps": a.taps}
             res["tiers"][tier] = {"nonce": nonce, "swipes": []}
-        url = f"{a.url}?tier={tier}&nonce={nonce}&run={a.run}&vsync={a.vsync}{extra}"
-        dev.sh(f"am start -n {dev.component} --es open '{url}'")
+        # Protocol 4: the frontend is already loaded on the start view. The fake Home Assistant hands
+        # this command to the harness, which opens the view with HA's own navigation (no page load).
+        # The idle timeout starts again now: the view has its full 20 s (and KEEP_AWAKE_S after that).
+        dev.wake()
+        q = urllib.parse.urlencode(dict({"view": tier, "nonce": nonce, "run": a.run, "vsync": a.vsync}, **extra))
+        try:
+            with urllib.request.urlopen(f"{a.url.rstrip('/')}/clarity/open?{q}", timeout=10) as r:
+                r.read()
+        except OSError as e:
+            res["error"] = f"the fake Home Assistant didn't take the command to open {tier}: {e}"
 
     def read_sf(pl, rec):
         """SurfaceFlinger's history just after a window, cut to the window the page logged."""
@@ -345,8 +447,12 @@ def cmd_coldstart(dev, a):
             if res["ttid_ms"] is not None:
                 res["displayed_mono"] = rec["mono"]
         cur = st["current"]
+        if ref and SLEEP_RE.search(msg) and res["proc_mono"] is not None:
+            res.setdefault("screen_off", []).append({"mono": rec["mono"], "during": cur[0] if cur else "the restart"})
         pl = page_lines.feed(msg)
         res["bad_page_lines"] = page_lines.bad
+        if ref and cur is None and pl and pl.get("nonce") == "":
+            return handle_restart(pl, rec)
         if cur and pl and pl.get("nonce") == cur[1]:
             return handle_page(cur[0], pl, rec)
         m = PAGE_RE.search(msg)
@@ -364,6 +470,7 @@ def cmd_coldstart(dev, a):
             if kind == "PageStart":
                 res["own_page_loads"] += 1
                 res["own_page_start_mono"], res["own_page_stop_mono"] = rec["mono"], None
+                res["own_page_uri"] = uri
             elif kind == "PageStop" and res["own_page_start_mono"] is not None and res["own_page_stop_mono"] is None:
                 res["own_page_stop_mono"] = rec["mono"]
                 st["own_stop_at"] = time.time()
@@ -376,6 +483,22 @@ def cmd_coldstart(dev, a):
                 return True
         return False
 
+    def handle_restart(pl, rec):
+        """The kiosk's own page after the restart: the reference dashboard it was pointed at (run.sh
+        --restore-dashboard), with no nonce. Its `refdash` holds the restart's usable time; its `done`
+        lets the graded pages open."""
+        t = pl.get("t")
+        pl["mono"] = rec["mono"]
+        if t == "refdash":
+            res["restart_page"] = pl
+            st["restart_usable_at"] = time.time()
+        elif t == "done":
+            st["restart_done_at"] = time.time()
+        elif t == "error":
+            res["restart_page_error"] = pl.get("message")
+            st["restart_done_at"] = time.time()
+        return False
+
     def handle_page(tier, pl, rec):
         entry, t = entry_of(tier), pl.get("t")
         pl["mono"] = rec["mono"]
@@ -385,6 +508,7 @@ def cmd_coldstart(dev, a):
             entry["live_mono"] = rec["mono"]
             paused.set()  # no dumpsys while frames are measured, taps are timed or the page scrolls
             dev.wake()
+            st["live"] = True
         elif t == "measure":
             st["measure_mono"] = rec["mono"]
             if pl.get("stage") == "updates":
@@ -414,6 +538,7 @@ def cmd_coldstart(dev, a):
         elif t == "input":
             entry["input"] = pl
         elif t in ("done", "error"):
+            st["live"] = False
             if t == "error":
                 entry["error"] = pl.get("message")
             else:
@@ -441,10 +566,19 @@ def cmd_coldstart(dev, a):
             if rec and handle(rec):
                 return True
 
+    if ref:
+        # No command left from a view that was cut short: the frontend after the restart must not run it.
+        try:
+            with urllib.request.urlopen(f"{a.url.rstrip('/')}/clarity/cancel", timeout=10) as r:
+                r.read()
+        except OSError:
+            pass                          # the open below says so if the fake is gone
     dev.sh("input keyevent KEYCODE_WAKEUP")
     dev.sh(f"am force-stop {dev.package}")
     t0 = time.time()
     while time.time() - t0 < a.timeout:
+        if res["error"]:
+            break                         # e.g. a view couldn't be opened
         if st["break_after"] and time.time() > st["break_after"]:
             break
         if res["launch"] is None and time.time() - t0 > a.settle:
@@ -454,8 +588,25 @@ def cmd_coldstart(dev, a):
                 res["launch"] = "am-start"
                 am = dev.sh(f"am start -W -n {dev.component}", timeout=120)
                 res["am_total_ms"] = int((re.findall(r"TotalTime: (\d+)", am) or [0])[0]) or None
-        if ref and st["current"] is None and st["engine_at"]:
-            finished = own_page_finished(res["own_page_stop_mono"], st["own_stop_at"], time.time())
+        if ref and st.get("restart_usable_at") and not st.get("restart_done_at") \
+                and time.time() - st["restart_usable_at"] > RESTART_DONE_WAIT_S:
+            # Its usable line came, its done line didn't (lost in logcat): the restart is measured
+            # from the usable line alone; go on rather than wait out the whole run (F8).
+            res["restart_done_missing"] = True
+            st["restart_done_at"] = time.time()
+        if ref and st["current"] is None and st.get("restart_done_at") and st["next_at"] is None and not st["opened"]:
+            # Protocol 4: the kiosk came back to the reference dashboard and it is usable: open the
+            # graded pages once the screen is still (the next_at branch below).
+            res["own_page_state"] = "reference"
+            st["next_at"] = time.time()
+        if ref and st["current"] is None and st["engine_at"] and not st.get("restart_done_at") and not st["opened"] \
+                and not res.get("restart_page"):
+            # The kiosk came back to the reference dashboard: only its harness says when the restart
+            # ended (refdash, then done), and HA's load event comes well before that, so a page that
+            # finished loading mustn't open the views (it would cut the restart's lines off). The
+            # wait for the kiosk's own page is for a kiosk that came back somewhere else.
+            on_reference = "/clarity-ref/" in (res.get("own_page_uri") or "")
+            finished = not on_reference and own_page_finished(res["own_page_stop_mono"], st["own_stop_at"], time.time())
             if finished or time.time() - st["engine_at"] > a.own_page_wait:
                 before = (res["own_page_stop_mono"], res["own_page_loads"])
                 still = quiet_for(2.0, 10.0) if finished else False
@@ -471,6 +622,11 @@ def cmd_coldstart(dev, a):
             # The page before has stopped its updates; open the next one on a still screen, so no
             # page is measured over the last one's work. (Its teardown on navigation is part of
             # opening a view, as in HA, and the warm-up makes it the same for every page.)
+            if a.memory and st["opened"]:
+                # RAM after each graded page, between pages: nothing is timed now. The largest of
+                # these is the peak during the graded tasks (report.py, ram).
+                res["memory"].append(dict(memory_sample(dev, [x for x in a.radio_procs.split(",") if x], summaries=False),
+                                          after=slots[st["opened"] - 1]))
             paused.clear()
             still = quiet_for(a.between_quiet, 10.0) if a.between_quiet > 0 else True
             if drain():
@@ -484,6 +640,9 @@ def cmd_coldstart(dev, a):
             continue
         if rec and handle(rec):
             break
+    if ref and a.memory and st["opened"] == len(slots) and not res["error"]:
+        res["memory"].append(dict(memory_sample(dev, [x for x in a.radio_procs.split(",") if x], summaries=False),
+                                  after=slots[-1]))
     lc.terminate()
     if res["error"]:
         pass
@@ -491,6 +650,12 @@ def cmd_coldstart(dev, a):
         res["error"] = f"GeckoView never started a page within {a.timeout:.0f} s"
     elif ref and st["opened"] < len(slots):
         res["error"] = f"the reference dashboards did not finish within {a.timeout:.0f} s"
+    elif ref and st["current"] and not entry_of(st["current"][0]).get("done") and not entry_of(st["current"][0]).get("error"):
+        # The last view never said done (smoke10's heavy, with the screen off): not a lost line.
+        res["error"] = f"{st['current'][0]} didn't finish within {a.timeout:.0f} s"
+    if ref and not res["error"] and res.get("screen_off"):
+        res["error"] = (f"the screen went off during the graded run ({len(res['screen_off'])} time(s), first "
+                        f"{res['screen_off'][0]['during']}): with the screen off nothing timed is the panel's")
     # A page that said done without its updates step (smoke7: the line was cut off in logcat) isn't a
     # failed run: its other measurements stand, and the report says what is missing.
     res["missing_steps"] = [t for t, e in res["tiers"].items() if "step" not in e] if ref else []
@@ -513,6 +678,10 @@ def cmd_coldstart(dev, a):
         sys.exit(f"{a.cmd} {a.run}: {res['error']}")
 
 
+# The restart page logs done right after its usable line; this long without it, the line was lost.
+RESTART_DONE_WAIT_S = 10
+
+
 # ---- idle: CPU, frames and memory on the dashboard
 
 def cpu_snapshot(dev, pids):
@@ -528,49 +697,88 @@ def cpu_snapshot(dev, pids):
 
 def cmd_idle(dev, a):
     radio = [x for x in a.radio_procs.split(",") if x]
+    if a.url:
+        # A reference dashboard (no nonce: the harness only says it is usable, and the live updates
+        # stay off), opened one-off as the graded pages are.
+        dev.sh(f"am start -n {dev.component} --es open '{a.url}'")
     end = time.time() + a.settle
     while time.time() < end:
         dev.wake()
-        time.sleep(min(10, max(0, end - time.time())))
+        time.sleep(min(KEEP_AWAKE_S, max(0, end - time.time())))
     dev.wake()
     time.sleep(3)
     pids = dev.pids(radio)
     ncpu = int(dev.sh("nproc").strip() or 1)
+    # Where the log is now, so a screen that goes off in the window can be found in it afterwards.
+    mark = last_mono(dev.sh("logcat -d -v monotonic -t 1", timeout=60))
     before = cpu_snapshot(dev, pids)
     # Frames from before the window are still in SurfaceFlinger's history; keep only newer ones.
     period, history = dev.sf()
     newest_before = max(history, default=0)
     presents = set()
-    t_end = time.time() + a.window
+    t_end, woke = time.time() + a.window, time.time()
     while time.time() < t_end:
         time.sleep(1.5)
+        if time.time() - woke >= KEEP_AWAKE_S:
+            # The kiosk's idle timeout (20 s at night) is shorter than the settle and the window:
+            # keep the screen on through the window too (s1v7: off 0.14 s before its end).
+            dev.wake()
+            woke = time.time()
         p, ts = dev.sf()
         period = p or period
         presents.update(t for t in ts if t > newest_before)
     after = cpu_snapshot(dev, pids)
+    log = dev.sh("logcat -d -v monotonic", timeout=120)
     dev.wake()
-    by_proc = P.parse_meminfo_by_process(dev.sh("dumpsys meminfo", timeout=120))
+    mem = memory_sample(dev, radio)
+    write_json(os.path.join(a.out, f"idle-{a.label}-{a.run}.json"), dict({
+        "label": a.label, "run": a.run, "window_s": a.window, "ncpu": ncpu,
+        "cpu": P.cpu_percent(before, after, ncpu),
+        "frames": {"period_ms": period, "presents_mono_ms": sorted(t / 1e6 for t in presents)},
+        # The screen going off in the window: its CPU and frames aren't the panel's at work.
+        "screen_off": screen_offs(log, mark),
+        # What the kiosk ran (voice, Sendspin, the wake word's microphone), from its log.
+        "panes_state": P.pane_state(log),
+    }, **mem))
+
+
+def last_mono(logcat_text):
+    """The monotonic time of the last line of a `logcat -v monotonic` dump (None if it has none)."""
+    recs = [P.parse_logcat_line(l) for l in logcat_text.splitlines()]
+    monos = [r["mono"] for r in recs if r]
+    return monos[-1] if monos else None
+
+
+def screen_offs(logcat_text, since):
+    """When the screen went off after `since` (monotonic s), from Android's PowerManagerService."""
+    out = []
+    for line in logcat_text.splitlines():
+        rec = P.parse_logcat_line(line)
+        if rec and (since is None or rec["mono"] > since) and SLEEP_RE.search(rec["msg"]):
+            out.append(round(rec["mono"], 3))
+    return out
+
+
+def memory_sample(dev, radio, summaries=True):
+    """PSS of every app process (main, :boot, Gecko's GPU, content and crash helper processes) and
+    the radio's, with each one's peak RSS, and the device's MemTotal/MemAvailable. Read-only."""
     procs = {}
-    for name, pid, pss in by_proc:
+    for name, pid, pss in P.parse_meminfo_by_process(dev.sh("dumpsys meminfo", timeout=120)):
         role = P.process_role(name, dev.package)
         if role or name in radio:
             hwm = re.search(r"VmHWM:\s+(\d+)", dev.sh(f"cat /proc/{pid}/status"))
             entry = {"pid": pid, "role": role or "radio", "pss_kb": pss, "rss_peak_kb": int(hwm.group(1)) if hwm else None}
-            if role:
+            if role and summaries:
                 entry["summary"] = P.parse_meminfo_app(dev.sh(f"dumpsys meminfo {pid}", timeout=60))
             procs[name] = entry
-    write_json(os.path.join(a.out, f"idle-{a.label}-{a.run}.json"), {
-        "label": a.label, "run": a.run, "window_s": a.window, "ncpu": ncpu,
-        "cpu": P.cpu_percent(before, after, ncpu),
-        "frames": {"period_ms": period, "presents_mono_ms": sorted(t / 1e6 for t in presents)},
-        "processes": procs,
-        "device_mem": P.parse_proc_meminfo(dev.sh("cat /proc/meminfo")),
-    })
+    return {"processes": procs, "device_mem": P.parse_proc_meminfo(dev.sh("cat /proc/meminfo"))}
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["device", "synthetic", "refstart", "coldstart", "idle"])
+    ap.add_argument("cmd", choices=["device", "synthetic", "refstart", "coldstart", "idle", "panes"])
+    ap.add_argument("--set", help="panes: the kiosk's pane extras, extra=true|false,...")
+    ap.add_argument("--tries", type=int, default=3, help="panes: attempts")
     ap.add_argument("--serial", default=os.environ.get("ANDROID_SERIAL"))
     ap.add_argument("--package", default="sh.edm.s1kiosk")
     ap.add_argument("--activity", default=".MainActivity")
@@ -588,7 +796,8 @@ def main():
     ap.add_argument("--radio-procs", default="otbr-agent,cpcd,zigbeed")
     ap.add_argument("--own-page-wait", type=float, default=30, help="refstart: seconds to wait for the kiosk's own page")
     ap.add_argument("--tiers", default="light,typical,heavy", help="refstart: reference dashboards; run k starts k-1 pages in")
-    ap.add_argument("--warmup-tier", default="light", help="refstart: the warm-up page, opened first and not graded ('' for none)")
+    ap.add_argument("--warmup-tier", default="", help="refstart: a warm-up page opened first and not graded (protocol 4: none; the restart page is the warm-up)")
+    ap.add_argument("--memory", type=int, default=1, help="refstart: sample RAM between the graded pages (0: no)")
     ap.add_argument("--between-quiet", type=float, default=2.0, help="refstart: seconds of still screen before each page opens")
     ap.add_argument("--vsync", default="16.667", help="refstart: the display's refresh period in ms")
     a = ap.parse_args()
@@ -597,7 +806,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     dev = Device(a.serial, a.package, a.activity)
     {"device": cmd_device, "synthetic": cmd_synthetic, "refstart": cmd_coldstart, "coldstart": cmd_coldstart,
-     "idle": cmd_idle}[a.cmd](dev, a)
+     "idle": cmd_idle, "panes": cmd_panes}[a.cmd](dev, a)
 
 
 if __name__ == "__main__":

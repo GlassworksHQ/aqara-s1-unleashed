@@ -1,4 +1,4 @@
-# Performance test and grade
+# Clarity: the performance test and grade
 
 <p>
   <a href="https://www.glassworks.dev/brand#parts">
@@ -9,8 +9,10 @@
   </a>
 </p>
 
-`tools/perf/run.sh` measures how good a wall panel a frame (a device definition, such as the S1's
-`aqara-s1-plus`) makes, and gives it a grade from **A+** to **E**. The letter says **the biggest
+**Clarity** is the Glassworks perf test. `tools/perf/run.sh` measures how good a wall panel a frame
+(a device definition, such as the S1's `aqara-s1-plus`) makes, and gives it a Clarity grade from
+**A+** to **E**, as in "Clarity A". The name lives in `rubric.json` (`name`), which the report, the
+summary and `grade.ts` read; the files keep their `perf` paths. The letter says **the biggest
 fixed dashboard on which every wall-panel task still feels good**:
 
 | Grade | Meaning |
@@ -22,7 +24,7 @@ fixed dashboard on which every wall-panel task still feels good**:
 | D | A good wall panel for light dashboards |
 | E | Not a good wall panel, even for light dashboards |
 
-The report opens with one line such as "Aqara S1 Plus: C, a good wall panel for typical dashboards.
+The report opens with one line such as "Aqara S1 Plus: Clarity C, a good wall panel for typical dashboards.
 Held back by large dashboards: scrolling averages 41.5 fps (p95 50 ms)." (an example of the
 format, not a measured result). The second sentence names the tasks that keep the frame from the
 next letter up. A table under it shows each page's tasks.
@@ -32,24 +34,31 @@ The letter is derived, so it isn't stored anywhere it is shown: a frame's
 letter at render time from the summary and `rubric.json` (see [Showing the grade](#showing-the-grade)).
 
 The grade is measured on three fixed **reference dashboards** that this test ships: light, typical
-and heavy. They are seeded and load nothing from the network, so the grade doesn't depend on your
-Home Assistant, your dashboard or your network. The one way your panel's own setup reaches it is
-background load: the panes, the radio and the device's heat keep running while the pages are
-measured, as they do every day (see [What the grade does and doesn't tell
-you](#what-the-grade-does-and-doesnt-tell-you)). The bands underneath come from published guidelines
-(Core Web Vitals, RAIL, Android vitals), not from any frame's own numbers.
+and heavy. Since protocol 4 (2026-11-13) they are **Home Assistant's real frontend**, a pinned
+release, showing fixed Lovelace dashboards. A small fake Home Assistant on your computer
+(`tools/perf/fakeha.py`) serves that frontend and answers its websocket with fixed states and the
+same stream of updates every time. So the grade doesn't depend on your Home Assistant, your
+dashboard or your network. The one way your panel's own setup reaches it is background load: the
+panes, the radio and the device's heat keep running while the pages are measured, as they do every
+day (see [What the grade does and doesn't tell you](#what-the-grade-does-and-doesnt-tell-you)). The
+bands underneath come from published guidelines (Core Web Vitals, RAIL, Android vitals), not from
+any frame's own numbers.
 
-The test also measures the panel as you run it (your own dashboard, memory, CPU, the panes) and
-animation capacity. Those are reported separately and never graded. It needs no app changes: every
-page runs in the kiosk's own GeckoView.
+The test also measures RAM on the reference dashboards (per process, at idle and at the peak, and
+per pane), the panel as you run it (your own dashboard, memory, CPU) and animation capacity. Those
+are reported separately and never graded. It needs no app changes: every page runs in the kiosk's
+own GeckoView, loaded the way the kiosk loads your dashboard.
 
 ## Run it
 
 You need adb, Python 3 and the kiosk installed on the device. Let the device idle for 10 minutes
 first, with the screen on, at normal room temperature, and the kiosk's zoom at its default ("auto").
+Note the dashboard the kiosk shows now (its URL setting, or `auto`): the graded part points the
+kiosk at the fake Home Assistant and needs to know what to put back.
 
 ```sh
-tools/perf/run.sh --frame aqara-s1-plus --name "Aqara S1 Plus" --runs 3 --out perf-s1
+tools/perf/run.sh --frame aqara-s1-plus --name "Aqara S1 Plus" --runs 3 \
+  --restore-dashboard http://homeassistant.local:8123/lovelace/0 --out perf-s1
 ```
 
 | Option | Default | What |
@@ -58,16 +67,21 @@ tools/perf/run.sh --frame aqara-s1-plus --name "Aqara S1 Plus" --runs 3 --out pe
 | `--name` | the frame id | The frame's name in the report's headline |
 | `--serial` | `$ANDROID_SERIAL` | Which device |
 | `--runs` | 3 | Repeats of each part. The report gives the median and range |
+| `--restore-dashboard` | (required for the grade) | The kiosk's dashboard setting now: a URL, or `auto`. The graded part puts it back when it ends and on any exit. The runner can't read it (it never reads app data), so you give it. It can't be the fake Home Assistant's address |
+| `--pane-ram` | | Also measure each switchable pane's RAM, with the panes' settings now, which it puts back: `assist=on,sendspin=on,mic=on` (`mic` is Assist's microphone: on unless muted). See [RAM](#ram) |
 | `--taps` | 10 | Taps on each reference dashboard's toggle. 0 skips them: tap isn't measured, which fails every level, so the grade is E, provisional |
 | `--skip-synthetic`, `--skip-reference`, `--skip-real-use` | | Skip the animation test page (detail), the reference dashboards (the grade), or the real-use part. Skipping the reference dashboards gives no grade (refused, not an E) |
 | `--quick` | | Short ladder on the animation test page (1, 16 and 128 elements), to check the setup works |
 | `--apk FILE` | | Add the APK's size per ABI to the report (repeat for each ABI) |
-| `--idle-only LABEL` | | Take one idle sample with this label and nothing else (for [panes](#memory-and-cpu-per-pane)) |
+| `--idle-only LABEL` | | Take one idle sample with this label and nothing else (for [panes on your dashboard](#ram-of-each-pane-on-your-own-dashboard)) |
 | `--max-start-temp` | 50 | Waits up to 10 minutes for the CPU to cool below this (°C) |
 
-A full run with `--runs 3` should take about 30 minutes. That is an estimate from the step timings,
-not yet timed on a device under this definition. A graded run is a restart, a warm-up page, then
-the three reference dashboards with 10 taps and 6 swipes each.
+The first run fetches HA's frontend (117 MB, once) into `~/.cache/glassworks-perf` and checks its
+SHA-256 (`tools/perf/hafrontend.py`). A full run with `--runs 3` should take about 40 minutes, and
+`--pane-ram` adds about 10. Those are estimates from the step timings, not yet timed on a device
+under protocol 4. A graded run is a restart back to the reference dashboard's start view, then the
+three reference views, each opened in the loaded frontend as a view tab opens it, with 10 taps and
+6 swipes each, then an idle sample on the typical view.
 
 For the site, export the frame's summary from the finished report:
 
@@ -84,15 +98,51 @@ tools/perf/report.py <dir>` rebuilds the report from the raw files at any time, 
 
 ### What it changes on the device
 
-- **The pages** open with the kiosk's one-off `--es open <url>` extra. The saved dashboard URL is
-  **never changed**. They are served from your computer through `adb reverse`
-  (`http://127.0.0.1:8089` on the device) with caching off, so every run loads them the same way.
-  The device's network plays no part.
-- **The screen stays on** because the runner sends the kiosk's own wake intent (`--es screen on`)
-  when each page goes live. No setting changes.
-- **Taps and swipes**, only on our own pages and only when the page asks: each page logs where its
-  "Living room" toggle is (`input tap`) and where to swipe (`input swipe`), tagged with that page
-  load's nonce. A request with another page's nonce is ignored. Before anything reaches
+- **The dashboard setting, for the graded part only.** The kiosk is pointed at the start view of
+  the fake Home Assistant's reference dashboard with its own `--es url` extra (the saved
+  dashboard), so a restart comes back to a reference dashboard as it comes back to yours. When the
+  graded part ends, and on any exit the shell can catch, it is pointed back at
+  `--restore-dashboard` with `am start -W`, and the runner reads the answer: `am` exits 0 even when
+  the kiosk didn't take the intent. If it didn't, the runner tries once more, then exits with
+  status 3 and logs the command to send yourself. A run killed with `SIGKILL` can't put it back
+  either; send `--es url <your dashboard>` yourself. The fake's sign-in is stored for its own
+  address (`127.0.0.1:8089`) only, so your Home Assistant's sign-in is untouched.
+- **The pages.** The frontend loads once per graded run, when the kiosk comes back after the
+  restart. The three reference views then open **inside** it: the runner hands each one to the fake
+  Home Assistant (`/clarity/open`), and the harness, already running in the frontend, picks it up
+  (`/clarity/next`) and navigates there as HA's view tabs do. No page loads, and any page load while
+  a view is measured fails the run. Only the animation test page and the idle sample's page open
+  with the kiosk's one-off `--es open <url>` extra. Everything is served from your computer through
+  `adb reverse` (`http://127.0.0.1:8089` on the device), so the device's network plays no part.
+  HA's frontend files are cached for a year, as HA serves them (their names carry a hash); the app
+  shell, the API and the harness are never cached. The harness's URL carries a hash of its content,
+  so a panel that cached an older harness (8c0027b served it at a fixed URL for a year) never runs
+  it again. HA's frontend registers its service worker only on https or `localhost`
+  (`register-service-worker.ts`), so on `http://127.0.0.1` there is none, as on an http HA.
+- **The panes, with `--pane-ram` only.** The kiosk's own extras turn the switchable panes off and
+  on in turn, in two intents: first the settings it applies live (`--ez sendspin_enabled`,
+  `--ez mic_muted`), then `--ez voice_enabled`, which restarts the app. The runner then reads the
+  kiosk's log to check what it runs (see [RAM](#ram)). On exit they are put back to the settings you
+  gave. While a pane is off, the panel doesn't play music or hear its wake word.
+- **The screen stays on** because the runner sends the kiosk's own wake intent (`--es screen on`):
+  just before each view opens, every 8 s while it opens and between views, and when it goes live.
+  Not while a view is live (its taps and swipes are touches, which keep the screen on) and not
+  during the restart. It changes no setting. If the screen goes off anyway during a graded run
+  (Android's `PowerManagerService: Going to sleep` in logcat), that run is an error: with the
+  screen off Gecko runs no animation frames and slows its timers, so nothing timed then is the
+  panel's. In smoke10 (9d986c9, 22:06, the kiosk's 20 s night timeout) the screen went off three
+  times: light's view switch waited 22 s for it to wake, typical's main thread looked busy for
+  112 s, and heavy never ran.
+- **Idle samples and the animation test page** keep the screen on the same way: an idle sample
+  sends the wake intent every 8 s through its settle and its window, and the test page on every
+  line it logs. If the screen goes off anyway, the sample (`screen_off`) or the run (a `screen_off`
+  line in `synthetic-<n>.jsonl`) records it, and the report lists it and leaves it out. In s1v7
+  (131f6da, 2026-11-13) the screen went off at the end of the third `ref-idle` window, 0.14 s before
+  the runner's wake, after the graded run had ended: no graded window overlapped it, and the RAM
+  was read after the wake. Before this, that sample would have counted.
+- **Taps and swipes**, only on the reference pages and only when the page asks: each page logs
+  where its "Living room" toggle is (`input tap`) and where to swipe (`input swipe`), tagged with
+  that page load's nonce. A request with another page's nonce is ignored. Before anything reaches
   `adb shell`, the runner checks the request: whole pixels inside the screen (`wm size`), 1 to 50
   taps (and no more than `--taps`), a swipe of 50 to 2000 ms. A bad request isn't sent; that page
   gets an error and isn't graded. A gesture is sent only while its page is still the current one,
@@ -107,101 +157,211 @@ tools/perf/report.py <dir>` rebuilds the report from the raw files at any time, 
 
 ## The reference dashboards
 
-`tools/perf/page/dashboard.html?tier=…` renders a fixed, seeded Home Assistant-like dashboard. The
-three pages differ in **how much is on them**, not in animation. They are mostly still, like HA,
-with a steady stream of state updates once they are live. The counts are **project choices**,
-fixed before any frame was graded under them (`tools/perf/page/tiers.js`, pinned by
-`test/page.test.mjs`):
+Since protocol 4 they are **Home Assistant's real frontend**: the `home-assistant-frontend` release
+**20261028.5** (Apache-2.0), the build Home Assistant core serves. `tools/perf/hafrontend.py` fetches
+its wheel from PyPI on first use and checks it against a pinned SHA-256, like Magisk; it isn't in
+the repo (117 MB). Its files are only served to the panel, never run on your computer. The licence
+is in `THIRD-PARTY-NOTICES.md`.
 
-| Page | Cards | What | Elements | Height at 960 CSS px wide |
-|---|---|---|---|---|
-| **Light** | 20 | 12 tiles, 5 entities cards of 5 rows, 2 sensor cards with a graph, a clock | 522 | 860 px of cards in a 1936 px page (see below) |
-| **Typical** | 50 | 26 tiles, 13 entities cards of 6 rows, 6 sensor cards, 2 history graphs, 2 pictures, a clock | 1420 | 2742 px, about 5.5 screens |
-| **Heavy** | 120 | 50 tiles, 26 entities cards of 8 rows, 4 long lists of 20 rows, 16 sensor cards, 8 history graphs, 15 pictures, a clock | 4463 | 8358 px, about 17 screens |
+**The fake Home Assistant** (`tools/perf/fakeha.py`, standard-library Python) serves the frontend over
+HTTP and answers its websocket API: HA's sign-in flow (without the login page), the 27 commands this
+release sends while it loads and runs a dashboard (recorded from it, `test/fakeha-traffic.json`),
+`subscribe_entities` with fixed states, and the live updates. The dashboard, states, history and
+pictures come from `tools/perf/dashboards.py`, seeded, from the counts in `tools/perf/page/tiers.json`
+(pinned by `test/page.test.mjs` and `test/test_pages.py`). The counts are **project choices**, fixed
+before any frame was graded under protocol 4.
 
-**The first screen is the same on every page** (`HEAD` in `tiers.js`): the clock, the toggle, 4 sensor
-tiles and 3 on/off tiles (a light, a switch, a media player), and an "Energy" entities card of 5
-sensor rows, taken from the page's own counts. The rest of the page comes after it, shuffled. Only the first screen changes while the page is live, so every page gets
-the same update stream; the pages differ in how much is around and below it. (Before 2026-11-12 the
-updates went to whatever was on screen. On the S1's smoke5 that was tiles with 180 ms fades on
-light and rows without fades on heavy, so light's updates looked worse than heavy's.)
+**One dashboard, four views.** `clarity-ref` is one Lovelace dashboard, as a real panel's is. Its
+views are the **start** view (`/clarity-ref/start`), where the kiosk comes back to after a restart,
+and the three **reference views** (`/clarity-ref/light`, `typical`, `heavy`), which the grade is
+measured on. A view opens inside the loaded frontend, as a view tab or a navigate action opens it
+(see [Open the view](#open-the-view-a-navigation-in-the-loaded-frontend)).
 
-**Room to flick (protocol 2).** Every page leaves at least 3 screens of scrolling below its top, so
-no swipe reaches the end. Light's 20 cards are only 860 px tall, so its page continues with the
-view's empty background below them, to 1936 px. Before this, light could scroll 380 px, less than
-one swipe travels (about 560 px on the S1), so every light swipe hit the end of the page after about
-380 ms. That is the slow start of a flick on every page: on s1v5, every page scrolled at 39 to
-46 fps in a swipe's first 380 ms and typical and heavy at 51 to 57 fps after it. So light read
-worse than heavy in every position for a reason that was about the test page.
-
-Elements are counted through every shadow root, and heights are from headless Chrome at 960 CSS px
-(2026-11-12, protocol 3: one element fewer per tile than protocol 2, which had a background behind it). The S1's CSS viewport is 960 × 480 (1440 × 720 at a device pixel ratio of 1.5).
-
-Each card copies the way Home Assistant's frontend builds it, read from its source at commit
-[`77170b4`](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67) (2026-11-12):
-
-| Part of the page | How HA does it | Source | On the page |
-|---|---|---|---|
-| Tile | `ha-card` > `ha-tile-container` > `ha-tile-icon` (a shape and the icon) and `ha-tile-info` (name, state). On a state change only the icon fades over 180 ms, ease-in-out: its shape's background colour and opacity, and the icon's colour. The card's own 180 ms transitions (box-shadow, border-colour) change only on keyboard focus | [`hui-tile-card.ts` L302–L386](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/hui-tile-card.ts#L302-L386), [`ha-tile-icon.ts` L125–L143](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/components/tile/ha-tile-icon.ts#L125-L143), [`tile-card-style.ts` L10–L15](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/tile/tile-card-style.ts#L10-L15) | The same structure; only the icon's shape and colour fade (protocol 2 also faded a background behind the tile, which HA doesn't) |
-| Icons | `ha-state-icon` > `ha-svg-icon` > `svg`, each a custom element with its own shadow root | [`state-badge.ts`](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/components/entity/state-badge.ts) | The same two nested custom elements; the icons are simple SVGs drawn for the page |
-| Entities card | `ha-card` > `h1.card-header` + `#states` > one row per entity (badge, name with a secondary line, state) | [`hui-entities-card.ts` L228, L259](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/hui-entities-card.ts#L228) | The same |
-| Sensor card graph | `hui-graph-base`: an SVG with a filled area path and a line path | [`hui-graph-base.ts` L74–L112](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/components/hui-graph-base.ts#L74-L112), [`hui-sensor-card.ts`](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/hui-sensor-card.ts) | An SVG with the same two paths over 49 points |
-| History graph | `state-history-charts` on `ha-chart-base`: ECharts on a canvas | [`hui-history-graph-card.ts` L370](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/hui-history-graph-card.ts#L370), [`ha-chart-base.ts` L892](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/components/chart/ha-chart-base.ts#L892) | A canvas with two series over 97 points, drawn once (a chart at rest) |
-| Picture card | `ha-card` > `img` | [`hui-picture-card.ts` L268](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/hui-picture-card.ts#L268) | An `img` whose JPEG (480 × 270) is generated on the page, so the engine decodes it like a snapshot |
-| Clock | The digital clock card re-renders its text every second (`setInterval(…, 1000)`) | [`hui-clock-card-digital.ts` L25, L117](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/clock/hui-clock-card-digital.ts#L117) | The same, with seconds |
-| Layout | Masonry: one column per matched breakpoint (300, 600, 900, 1200 px); each card goes to the first column whose size is under 5, else to the smallest | [`hui-masonry-view.ts` L19–L32, L111–L119](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/views/hui-masonry-view.ts#L111-L119) | The same rule and breakpoints, with HA-like card sizes (tile 1, entities rows + 1, sensor 2, clock 2, history 4, picture 3) |
-
-**Colours** follow the Glassworks palette ([glassworks.dev/brand](https://www.glassworks.dev/brand)), not
-HA's: a night ground (`#0a0b0f`), sky and violet for "on" and for the graphs, and generated hues
-(pictures, the animation test page) between sky and violet. Ember stays Kiln's, and green, amber and
-rose stay status colours, so a page never borrows them. The repaint work is the same as with HA's
-colours: the same properties change.
-
-No header: HA's kiosk mode hides it. The page scrolls as a document, so a touch scroll goes through
-GeckoView's compositor, as it does in HA.
-
-**Live updates, as Home Assistant does them (protocol 2).** Read from HA's frontend at `77170b4`:
-
-| What HA does | Source | On the page |
+| View | Cards | What |
 |---|---|---|
-| Every state change reaches the dashboard as it arrives: no throttling in the frontend | [`connection-mixin.ts` L269](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/state/connection-mixin.ts#L269) | Changes are applied as they come |
-| Only the card whose entity changed re-renders | [`has-changed.ts` L67–L86](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/common/has-changed.ts#L67-L86) | Only that card's text or tile changes |
-| A tile's colour comes from whether its entity is active. A sensor with a value is always active, so a value change doesn't change its colour; only on/off changes fade | [`hui-tile-card.ts` L198–L233](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/hui-tile-card.ts#L198-L233), [`state_active.ts`](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/common/entity/state_active.ts) | A sensor's new value changes its text only; an on/off change flips the tile with the 180 ms fade |
+| **Start** | 22 | The light view's cards, plus a history graph and a picture (`START` in `tiers.json`) |
+| **Light** | 20 | 12 tiles, 4 entities cards of 5 rows, a glance, 2 sensor cards with a graph, a clock |
+| **Typical** | 50 | 26 tiles, 11 entities cards of 6 rows, 2 glances, 6 sensor cards, 2 history graphs, 2 pictures, a clock |
+| **Heavy** | 120 | 50 tiles, 22 entities cards of 8 rows, 4 long lists of 20 rows, 4 glances, 16 sensor cards, 8 history graphs, 15 pictures, a clock |
+
+Every card is one of HA's own types (`tile`, `entities`, `glance`, `sensor` with its graph,
+`history-graph`, `picture`, `clock`), in HA's masonry view, with HA's default theme. The pictures are
+generated PNGs the fake serves, and the graphs' history and statistics follow the window each card
+asks for, so they look the same on any date. In headless Chromium at 960 CSS px (2026-11-13) heavy
+builds about 8000 elements, counted through every shadow root; protocol 3's imitation of it had 4463.
+
+**Why the start view has a history graph and a picture.** HA loads the code of some card types only
+when a card of that type first appears (`create-card-element.ts` at the pinned tag: `history-graph`
+L86, `clock` L94, `picture` L100; tile, entities, glance and sensor are always loaded). On a panel,
+that happens once, after the frontend loads. With the start view holding every type the reference
+views use, the cold load pays for that code, inside the restart, and opening a view measures the
+view, not the first download of a card's code. In smoke9 (8c0027b, 2026-11-13), each page loaded
+the whole frontend, and typical, the first page in the order with a history graph and a picture,
+opened in 8.2 s, against heavy's 5.0 s. Its first screen was drawn at 5.2 s (light 4.5 s, heavy
+5.0 s), but its main thread stayed busy until 8.2 s.
+
+**The first screen is the same on every view** (`HEAD` in `tiers.json`): the clock (with seconds),
+the "Living room" toggle (a tile whose tap toggles its light), 4 sensor tiles, 3 on/off tiles (two
+lights and a switch), and an "Energy" entities card of 5 sensor rows: the **head**, the first 10
+cards of every view's config. The rest of the view comes after it, shuffled. Only the head changes
+while the view is live, so every view gets the same update stream; the views differ in how much is
+around and below it.
+
+**Room to flick (protocol 2 and later).** Every page leaves at least 3 screens of scrolling below its
+top, so no swipe reaches the end. On HA's frontend the harness does it with one style in
+`hui-root`'s shadow root (`#view { min-height: … }`), after the page has loaded: light's 20 cards
+would otherwise end within about one screen. Before protocol 2, light could scroll less than one
+swipe travels (about 560 px on the S1), so every light swipe hit the end of the page and read worse
+than heavy.
+
+No header: the kiosk hides HA's header and sidebar, as it does on your dashboard. The page scrolls as
+a document, so a touch scroll goes through GeckoView's compositor.
+
+**Live updates, as Home Assistant sends them.** The fake sends each change the way HA core does: a
+`subscribe_entities` event with the entity's new state, a new context id, and new `last_changed` and
+`last_updated`. Read from HA's frontend at
+[`77170b4`](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67):
+
+| What HA does | Source | So |
+|---|---|---|
+| Every state change reaches the dashboard as it arrives: no throttling in the frontend | [`connection-mixin.ts` L269](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/state/connection-mixin.ts#L269) | One event per change |
+| Only the card whose entity changed re-renders | [`has-changed.ts` L67–L86](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/common/has-changed.ts#L67-L86) | The harness watches only the first screen's cards |
+| A tile's colour comes from whether its entity is active. A sensor with a value is always active, so a value change doesn't change its colour; an on/off change fades the icon over 180 ms | [`hui-tile-card.ts` L198–L233](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/panels/lovelace/cards/hui-tile-card.ts#L198-L233), [`ha-tile-icon.ts` L125–L143](https://github.com/home-assistant/frontend/blob/77170b447f88b74da78a5288c421d39339253c67/src/components/tile/ha-tile-icon.ts#L125-L143) | A sensor change has no transition; an on/off change has 180 ms (`tileTransitionMs`) |
 
 The stream: **5 sensor value changes a second** over the first screen's 4 sensor tiles and 5 sensor
-rows, **one on/off change every 2 s** over its 3 on/off tiles, and the clock every second. The rates
-are **project choices**. 5 a second is a busy home: dozens of power and energy sensors that report
-every 5 to 10 s add up to a few changes a second on one view, and those are value changes. Lights and
-switches change on someone's action or an automation, far less often. One every 2 s is still more
-than most homes see; it is there so every window has an HA tile fade in it. The timers aim at fixed
-times, so a late change doesn't push the next ones back. When the page is done, it stops them, so the
-next page never opens over a page that is still updating.
+rows, and **one on/off change every 2 s** over its 3 on/off tiles. HA's clock card ticks by itself.
+The rates are **project choices**. 5 a second is a busy home: dozens of power and energy sensors that
+report every 5 to 10 s add up to a few changes a second on one view, and those are value changes.
+Lights and switches change on someone's action or an automation, far less often. One every 2 s is
+still more than most homes see; it is there so every window has an HA tile fade in it. The changes go
+out at fixed times, so a late one doesn't push the next ones back, and every value step is non-zero
+(a zero step is no change for HA, and nothing would be drawn). The view starts the stream when it
+goes live and stops it when it is done (`/clarity/live`, `/clarity/still`), so the next view never
+opens over one that is still updating. Each start is a new **generation** of the stream, and each
+change's context id carries its generation and its number (`01JC1ARITY` `S`/`F`, 5 digits, 10
+digits: 26 characters, as HA's ULIDs; the frontend treats it as opaque). So the harness knows when
+the fake sent each change, and never mistakes a late one from the view before for this view's. When
+a stream stops, and before the next view opens, the fake puts every entity the stream or a tap
+changed back as it started (`Hub.reset`), told to the frontend as any change is. So every view starts
+from the same states, and its stream sends the same values. The fake logs how late it sent each
+change (`fakeha.jsonl`) and puts that in the change's context id too, so each change is timed from
+when it actually went out, and a late send (smoke10: one, 92 ms, on the Mac that ran it) doesn't
+count against the panel. The report is provisional only if a send was more than one update
+interval (200 ms) late, when the stream's own rhythm wasn't the protocol's.
 
-Protocol 1 (2026-11-12, before this) flipped a tile's colour on almost every update, sensor tiles
-included, which HA never does. On s1v5 about half the frames inside those fades were late on every
-page, while text-only and idle frames were nearly all on time.
+**The order.** Each graded run starts with a restart: the kiosk comes back to the start view, which
+is the restart's measurement and also takes the cold caches, the first JIT and every card type's
+code. So protocol 4 has no separate warm-up page (protocols 1 to 3 opened one; `--warmup-tier` can
+still add a view, but not one that is also graded: hui-root keeps a view it has shown, so its graded
+open would skip building it, and the runner refuses that). Then the three views open in an order that turns by one each run: run 1 light,
+typical, heavy; run 2 typical, heavy, light; run 3 heavy, light, typical. So no view always comes
+first, and the report gives each view's results at each place in the order. Each view opens from
+the view before it (the start view for the first), as you would tap from one tab to the next. The
+runner waits for the screen to be still for 2 s first, at most 10 s. On HA's dashboards that wait
+never ends early: the head's clock card shows seconds, so a frame is drawn every second. So each view
+opens 10 s after the view before it ended, and every run's `between` reads `moving` (s1v7, all
+three runs). The 10 s stays, as s1v7 was measured with it: by then the view before has stopped its
+updates and its last work.
 
-**The order (protocol 1 and later).** Each graded run opens a **warm-up** page first: the light page, with no
-taps or swipes, not graded. It takes the kiosk's own dashboard's teardown, the first JIT and the
-cold caches. Then the three pages run in an order that turns by one page each run: run 1 light,
-typical, heavy; run 2 typical, heavy, light; run 3 heavy, light, typical. So no page always comes
-first, and the report gives each page's results at each place in the order. Each page opens only
-once the screen has been still for 2 s (at most 10 s). (On the S1's smoke5, 2026-11-12, light
-always came first, right after the kiosk's dashboard, and graded worse than heavy.)
-
-Each page runs in phases, one log line per event:
-1. **Open the view.** It renders and reports its load times.
-2. It stays still until 2.5 s after its load event, so the load can settle and the kiosk's own
-   loading screen is gone. (The kiosk covers every page it loads with "Connecting to Home Assistant"
-   and hides it at the page's first paint, or 1.5 s after its load event if that was missed, with a
-   300 ms fade. The 2.5 s clear that fallback with 0.7 s to spare.)
+Each view runs in phases, one log line per event:
+1. **Open the view.** The harness navigates to it and reports when it was usable.
+2. It stays still for 2.5 s after it was usable (`stillAfterUsableMs`), as you look before you touch.
 3. **Live updates.** It goes live: a warm-up of 1 s, then a 4 s window in which each change is timed to
-   the screen (about 26 changes). The first 100 display refreshes (1.67 s at 60 Hz) of it also give
+   the screen (about 22: 20 sensor values and 2 on/off changes). The first 100 display refreshes (1.67 s at 60 Hz) of it also give
    the frame pacing (detail).
-4. **Tap.** 10 taps on the toggle while the updates run.
-5. **Scroll.** 6 swipes while the updates still run. Before each, the page jumps back to its top and
-   waits 0.5 s still; each swipe is then the same flick down the page, from 85% to 15% of the
+4. **Tap.** 10 taps on the toggle while the updates run. The fake toggles the light and sends the
+   change back, as HA does.
+5. **Scroll.** 6 swipes while the updates still run. Before each, the view jumps back to its top and
+   waits 0.5 s still; each swipe is then the same flick down the view, from 85% to 15% of the
    screen's height in 300 ms. The fling is included.
+
+### How Clarity measures HA's frontend
+
+The harness (`tools/perf/page/harness.js`) is the first script in HA's `index.html`: the fake puts it
+right after `<head>`, with the frame stats (`stats.js`) and the config from `tiers.json`, at a URL
+that carries a hash of all of it. It changes nothing HA does except the room to flick. It runs as
+long as the frontend does: it reports when the view it landed on was usable (the restart's end, with
+no nonce), then waits for the runner's commands and measures each view it is asked to open. It asks
+for animation frames only while a view is measured, so between views and at idle it adds none.
+
+#### Open the view: a navigation in the loaded frontend
+
+On a wall panel HA's frontend loads once (after a restart), and opening a view is a navigation inside
+it: a view tab, or a navigate action on a card. Both end in HA's `navigate()`
+(`src/common/navigate.ts`, `performNavigation`, at the pinned tag): `history.pushState`, then a
+`location-changed` event on the window. `hui-root` reads the route and swaps in the view
+(`hui-root.ts` `_selectView` L1289–L1347: the old view's element comes out of `#view`, the new
+view's `hui-view` goes in, cached if it was shown before in this load; its cards are built when it is
+first shown). The harness calls that same pair, so the frontend can't tell it from a tab. Each view
+is shown once per run, so none comes from the cache. Open the view runs from the navigation to
+usable. The frontend's cold load is the restart's, and is graded there.
+
+Protocol 4 as first written (8c0027b, smoke9) loaded the whole frontend for each reference
+dashboard and called that "open the view". That counted the cold load twice (it is the restart too),
+judged it against a page-load bar, and let first-use code downloads land on whichever page came
+first (above).
+
+#### Usable
+
+Usable is when HA has drawn the view and would answer a touch at once. Two parts, both rules in
+`stats.js` with a node test for each clause (`page.test.mjs`):
+1. **Drawn** (`usableStep`): the first of two animation frames in a row in which HA's launch screen
+   is gone, `hui-root` shows the asked view (`hui-view.index`), every head card (the view's first 10
+   configured cards, from the layout's own list, so one HA hasn't put on the page yet counts as not
+   drawn) and every card on the screen has its `ha-card` laid out (`offsetHeight > 0`), and the
+   layout hasn't moved. The report also checks the first screen held at least the 10 head cards.
+2. **Free** (`freeStep`): from then, the main thread runs every task posted back to back within
+   50 ms (RAIL's input budget) for 500 ms (`freeWindowMs`, a project choice); usable is when that
+   stretch began. A single quick task isn't enough: HA builds the cards below the first screen in
+   many tasks, and one probe can land in a gap between two long ones. In smoke9 heavy's single probe
+   passed 47 ms after its first screen was drawn while typical's main thread stayed busy for 3 s.
+   500 ms is far shorter than Lighthouse's TTI window (5 s quiet): it asks that a touch now, and the
+   next, would be answered, not that HA has finished every card below the fold.
+
+On the screen, usable is the first frame SurfaceFlinger presented that can carry the drawn frame (one
+refresh after it, less 3 ms for the clock mapping), and never before the main thread was free.
+
+#### Change to screen
+
+- **When a change was sent.** Each change's context id carries its slot in the stream and how late
+  the fake sent it, and the fake sends change k at a fixed time after the stream started (plus that
+  lateness, a few ms). One that never reached the page counts from its fixed time. The fake answers `/clarity/live` with that
+  start on its own clock, and the harness ties its clock to the fake's while the view is still: 12
+  round trips to `/clarity/time`, the shortest kept, uncertain by half its length (`clock_rtt_ms`;
+  the report is provisional over 40 ms). So it knows when the fake sent each change, and change to
+  screen runs from then. The moment the harness asks for the stream won't do: a busy main thread can
+  hold the request back before it leaves (heavy, in headless Chromium, 2026-11-13: about 625 ms,
+  which would have added that much to every change).
+- **When it reached the page.** The harness wraps `WebSocket` so its own message listener is
+  registered before HA's. On HA's frontend that listener runs on the main thread, so a busy main
+  thread holds a change back before HA has seen it. That wait counts: the user waits for it too. The
+  report gives how many changes reached the page in the window and how long they waited
+  (`arrivals`). The frontend can hold two connections for a moment (a reconnect), so a change is
+  counted once per entity and context id.
+- **When HA drew it.** A `MutationObserver` on each watched card's shadow roots sees HA change the
+  card. The first animation frame after that is the frame the change is drawn in (its tick). The
+  report then takes the first SurfaceFlinger present at least one refresh later, as before.
+- **One that never arrived** in the window (smoke9's heavy: frames stalled for up to 649 ms and the
+  changes came in bursts) counts as not shown by the window's end, from when it was sent, so at least
+  that long. Before this, such a window read "only 17 of 20 state updates ran in the window" and
+  heavy's updates were "not measured", which hid the panel failing the task.
+
+**What differs from your dashboard.** The kiosk loads the reference pages as it loads yours, in the
+same GeckoView, with its loading cover, zoom and hidden header. The differences:
+
+| | Your dashboard | The reference dashboards |
+|---|---|---|
+| Server | Your Home Assistant, over Wi-Fi | The fake, on your computer over `adb reverse` (USB) |
+| Sign-in | HA's login page once, or the kiosk's phone sign-in (`external_auth=1`) | HA's own sign-in flow; the fake answers `/auth/authorize` at once with a code, and the frontend keeps its tokens as it does with HA |
+| Scripts | HA's | HA's, after the harness (one script) and one `min-height` style |
+| Translations, icons | HA sends them | None: words HA would translate show HA's fallback, and icons come from the frontend's own set |
+| Registries, areas, services | Yours | Empty or minimal: enough for the cards on the page |
+| History, pictures | Yours | Seeded history and statistics over the window each card asks for, and generated pictures |
+| Opening a view | Your tap on a view tab or a navigate action | The same `navigate()`, called by the harness: no touch, so the tap's own cost isn't in it (tap is graded on its own) |
+
+The fake answers every command the frontend sent while it was recorded. A command it doesn't know
+gets an error, which the frontend handles as it would from HA, and the fake logs it in
+`fakeha.jsonl` (`"unknown"`), which makes the grade provisional.
 
 ## What it measures
 
@@ -211,19 +371,19 @@ Each page runs in phases, one log line per event:
 |---|---|---|
 | Tap | INP: the worst of 10 taps on the toggle, taken while the live updates run. Event Timing gives the delay, the handler time and the time to the next paint. Taps under 16 ms aren't reported by Event Timing; they count as 16 ms | Each page |
 | Scroll | Real swipes (`input swipe`), while the live updates run. A swipe's window runs from its first scroll event until 400 ms with no scroll event, the fling included, capped at 100 refreshes. A swipe that reached the end of the page anyway (`hit_edge`) is left out and counted: it stops early, so its window is mostly the flick's slow start. All of a run's other swipes are pooled: rAF over every swipe, SurfaceFlinger over the swipes whose history it kept (decided swipe by swipe). The frames are the worse of the two, judged on the run's scroll level (average fps over the swipes and p95; see [The grade](#the-grade)), and the page takes the median level. A run in which SurfaceFlinger kept no swipe rests on rAF only, which can't see frames the compositor dropped: the report says so and the grade is provisional. `scrolled_px` proves the page moved: a page that didn't move is "not measured". Each swipe logs how many state changes (sensor values and on/off changes, not the clock) ran during it (`changes_during`); a page where none did is provisional | Each page; SurfaceFlinger |
-| Live updates | **Change to screen**: per change, from when the page applied it to the first frame on screen that can show it. The page notes when it applied each change and the next animation frame (the frame the change is drawn in); that frame can reach the screen one refresh later at the earliest, so the first SurfaceFlinger present after that is taken (frames presented sooner were already on their way). A change with no frame by the window's end counts as the time from it to the window's end, which is conservative: it may show later still (one less than 250 ms from the end isn't counted). One SurfaceFlinger's history doesn't reach isn't counted, and if fewer than half are counted the run isn't. The two clocks are tied by the page's log line to within a few ms, so a value can be a refresh off; the bars are 100 and 200 ms. Each run's level is from the p95 over the window's changes; the page takes the median level. **Frame pacing** over the frames that had a change to draw (a rAF interval counts when it overlaps a change, from when it was due to when it ran plus its transition) decides only the premium level (A+) and is reported. A **live check** at the window's start logs whether the toggle and everything that changes are on screen, and the change log proves the updates ran. If something was off screen, there were no targets, or two or more of the window's sensor updates are missing, the updates aren't graded (and, if off screen, the taps neither) | Each page; SurfaceFlinger |
-| Open the view | From the page's navigation start to **settled**: the first frame followed by 750 ms with no new frame, where that quiet reaches past the page's load event. The search starts at **the frame that shows the first paint**: the first frame at or after it, less 50 ms for the clock mapping. A pause before that frame is mid-load, like a pause before the load event. Settled is never earlier than the load event or the first paint. The page's times come from its own clock, tied to logcat's by its log line (navigation start mapped 11 to 23 ms before PageStart on the S1). Without a load event, a frame after the first paint, or a quiet gap, it is "not measured", never 0. The time from the first paint to the frame that shows it is reported (`paint_to_screen_ms`) | Each page; SurfaceFlinger |
-| Restart | From the app's process start (`Start proc` in logcat) to the engine being ready: GeckoView's own first page, `about:blank`. Once per run, for the whole frame. See [Why restart ends at engine ready](#why-restart-ends-at-engine-ready) | logcat |
+| Live updates | **Change to screen**: per change, from when the fake sent it (from the stream's schedule; see [Change to screen](#change-to-screen)) to the first frame on screen that can show it. The harness notes when each change reached the page (before HA's own listener), when HA changed the card, and the next animation frame (the frame the change is drawn in); that frame can reach the screen one refresh later at the earliest, so the first SurfaceFlinger present after that is taken (frames presented sooner were already on their way). A change with no frame by the window's end counts as the time from it to the window's end, which is conservative: it may show later still (one less than 250 ms from the end isn't counted). A change that never reached the page in the window counts the same way. One SurfaceFlinger's history doesn't reach isn't counted, and if fewer than half are counted the run isn't. The two clocks are tied by the page's log line to within a few ms, so a value can be a refresh off; the bars are 100 and 200 ms. Each run's level is from the p95 over the window's changes; the page takes the median level. **Frame pacing** over the frames that had a change to draw (a rAF interval counts when it overlaps a change, from when it was due to when it ran plus its transition) decides only the premium level (A+) and is reported. A **live check** at the window's start logs whether the toggle and everything that changes are on screen, and the change log proves the updates ran. If something was off screen or there were no targets, the updates aren't graded (and, if off screen, the taps neither). Since protocol 4 the change log is the fake's schedule, so updates that didn't arrive are never a reason to skip the window: they count | Each view; SurfaceFlinger |
+| Open the view | From the navigation to the view (HA's `navigate()`, as a view tab calls it, in the frontend that is already loaded) to **usable**: the view's head and every card on its first screen drawn, and the main thread free (see [Open the view](#open-the-view-a-navigation-in-the-loaded-frontend) and [Usable](#usable)). The times come from the page's own clock, tied to logcat's by its log line. If the view never says it was usable, or no frame reached the screen after it, it is "not measured", never 0. (Protocols 1 to 3, and protocol 4 as first written, loaded the whole page for each dashboard) | Each view; SurfaceFlinger |
+| Restart | From the app's process start (`Start proc` in logcat) to the reference dashboard's start view being **usable**, as for open the view: the kiosk comes back to it by itself, because the graded part points its dashboard setting there. This is HA's cold load: the app, the websocket, the registries, every card type's code and the first view. Once per run, for the whole frame. The engine being ready (GeckoView's own first page, `about:blank`) is reported, not graded (`engine_ready_ms`). See [Restart: back to a usable dashboard](#restart-back-to-a-usable-dashboard) | logcat; the restart page |
 
-Each graded run is one restart, a warm-up page, then the three reference dashboards in the run's
-order. The first page opens once the kiosk's own page has stopped for 2 s with no new load
-(`OWN_PAGE_QUIET_S`), so they never compete with it. A second
-load of the kiosk's own page (a reload, a sign-in redirect) restarts that wait. If the kiosk's page
-keeps painting after it finished (a clock card), that is normal and changes nothing. If it hasn't
-finished 30 s after engine ready (Home Assistant down or hung), the pages open anyway, and the grade is marked
-**provisional**: the kiosk may still have been retrying its page. The letter itself is kept, because
-dropping a measurement would let Home Assistant move it. While the pages are measured, and for 1.5 s
-after the last one, any other page the kiosk loads makes the run an error, and that run isn't graded.
+Each graded run is one restart back to the start view, then the three reference views in the run's
+order. The first view opens once the restart page has said it was usable and the screen has been
+still for 2 s, never on HA's load event, which comes seconds earlier. If its `done` line is lost, the runner goes on 10 s after its usable line. If the
+kiosk doesn't come back to a reference dashboard (another page loads, or none says it was usable),
+the restart is "not measured" ("the kiosk didn't come back to a reference dashboard") and that
+run's views still open after the old wait for the kiosk's own page: up to 30 s after engine ready,
+then provisional. While the views are measured, and for 1.5 s after the last one, any page the
+kiosk loads makes the run an error, and that run isn't graded: a view switch loads no page. So does
+a view that never says done by the run's time limit (smoke10's heavy), and the screen going off.
 
 **SurfaceFlinger's data.** It keeps the last 127 frames and is read just after each window. A window
 is at most 100 refreshes, so the other 27 slots cover that read, and the page's own logged window
@@ -244,10 +404,11 @@ and lags the compositor's first scrolled frame.
 | Animations it can handle | The animation test page's ladder: five families of animated elements, each doubling from 1 to 1024 (CSS transform, CSS opacity, SVG, canvas 2D, HA-like tiles whose numbers change every frame). The report gives the largest count held at 60 fps and at 30 fps. The same page has a scripted scroll stage and a JS workload (an HA-like state update for 400 entities, checked by a checksum) |
 | Android's TTID | The `Displayed …: +Nms` line of each restart |
 | Your dashboard | A restart back to your own dashboard: process start to its `PageStart`, its load to settled, and the whole wait from the force-stop. A run that doesn't finish within 120 s is recorded as an error |
-| Memory | PSS of every app process (the app, Gecko's GPU, content and crash helper processes), the main process's App Summary, each process's peak RSS (`VmHWM`), the radio's processes, and `MemTotal`/`MemAvailable`, at idle on your dashboard and at the run's peak |
+| RAM on the reference dashboards | PSS per process at idle on the typical reference dashboard and the peak during the graded tasks, and each switchable pane's share. See [RAM](#ram) |
+| Memory on your dashboard | PSS of every app process (the app, Gecko's GPU, content and crash helper processes), the main process's App Summary, each process's peak RSS (`VmHWM`), the radio's processes, and `MemTotal`/`MemAvailable`, at idle on your dashboard and at the run's peak |
 | CPU at idle | Jiffies of every app and radio process over 15 s, and the whole device's busy share |
 | Idle frames | Frames your dashboard presents while nobody touches it |
-| Panes | What each pane adds; see [Memory and CPU per pane](#memory-and-cpu-per-pane) |
+| Panes on your dashboard | What turning each pane off saves; see [RAM of each pane on your own dashboard](#ram-of-each-pane-on-your-own-dashboard) |
 | Device | Model, Android version and API, ABI, SoC, cores, max clock, RAM, display, app version, APK size, GeckoView version (from the running engine's user agent), temperatures |
 
 Your dashboard isn't swiped. A drag on it can move a slider or flip a switch; the reference
@@ -265,8 +426,18 @@ animation test page reads it to stop its ladder. The sources were checked on 202
 | Jank rate (frames over 16.7 ms) | ≤ 5% | > 50% | Poor: [Play Console](https://support.google.com/googleplay/android-developer/answer/9844486) "excessive slow frames", more than 50% of frames over 16 ms. Good: the same as a p95 within budget |
 | Frozen frames (over 700 ms) | 0% (**a project choice**) | > 0.1% | [Android vitals](https://developer.android.com/topic/performance/vitals/render): frozen frames take longer than 700 ms; Play Console "excessive frozen frames" is more than 0.1% |
 | INP: worst tap to next paint | ≤ 200 ms | > 500 ms | [Core Web Vitals INP](https://web.dev/articles/inp): good at or below 200 ms, poor above 500 ms |
-| Open the view, navigation start to settled | ≤ 2.5 s | > 4 s | [Core Web Vitals LCP](https://web.dev/articles/lcp): "Good LCP values are 2.5 seconds or less, poor values are greater than 4.0 seconds". Settled is at or after the largest paint, so this is stricter than LCP |
-| Restart, process start to engine ready | ≤ 2.5 s (**a project choice**: LCP's bound) | ≥ 5 s | [Android vitals](https://developer.android.com/topic/performance/vitals/launch-time) counts a cold start that "takes 5 seconds or longer" as excessive (vitals apply it to TTID) |
+| Open the view, navigation to usable | ≤ 2.5 s | > 4 s | [Core Web Vitals LCP](https://web.dev/articles/lcp): "Good LCP values are 2.5 seconds or less, poor values are greater than 4.0 seconds". Usable needs every first-screen card drawn and the main thread free, so it is at or after the largest paint. See the note below the table |
+| Restart, process start to a usable dashboard | ≤ 2.5 s (**a project choice**: LCP's bound) | ≥ 5 s | [Android vitals](https://developer.android.com/topic/performance/vitals/launch-time) counts a cold start that "takes 5 seconds or longer" as excessive (vitals apply it to TTID) |
+
+**LCP's bands are lenient for an in-app navigation.** They are for a page load, network included.
+Opening a view loads no page: it is a response to a tap. [RAIL](https://web.dev/articles/rail) asks
+to "complete a transition initiated by user input within 100 ms", says that from 100 to 1000 ms
+"things feel part of a natural and continuous progression of tasks", and that "beyond 1000
+milliseconds (1 second), users lose focus on the task they are performing". Its load goal is for
+pages: "be interactive in 5 seconds or less" on a first load, "under 2 seconds" for later ones
+(checked 2026-11-13). So 2.5 s is generous for a view switch. The bands are unchanged here (rubric v5): changing them
+is a rubric decision for its own PR, not a measurement fix, and it must not be made to move a
+letter. A proposal, not adopted: grade a view switch against RAIL's 1 s.
 
 A frames band is the worst of its three measurements. A window holds about 100 frames, so a single
 frozen frame in it is 1%, which is poor. Frame times are snapped to whole display refreshes before
@@ -321,8 +492,8 @@ provisional and the headline doesn't claim that every task holds 60 fps.
 letter: the grade is refused ("the reference dashboards weren't measured"), not an E, and the
 summary says it isn't comparable.
 
-**A restart of 5 s or more caps the grade at C.** A panel whose engine takes that long to come back
-after a restart (an update, a crash, a power cut) is not an A+, A or B panel. A cap never raises a
+**A restart of 5 s or more caps the grade at C.** A panel that takes that long to come back to a usable
+dashboard after a restart (an update, a crash, a power cut) is not an A+, A or B panel. A cap never raises a
 letter. Letters rank by their place in the table, not by spelling.
 
 A measurement that is missing fails whatever needs it, and the grade is marked **provisional**, with
@@ -380,12 +551,22 @@ typical scrolls at 49.6 to 50.8 fps, just under the good bar in two of three run
 lands where the user guessed it would isn't evidence either way. The record of what changed and when
 is here so anyone can check.
 
-### Why restart ends at engine ready
+**Protocol 4 (2026-11-13) changed what is measured, not how it is judged.** The S1's first full run
+under protocol 3 graded A (see [the example](#example-aqara-s1-plus)). The maintainer questioned it:
+the panel feels slower than that, and the reference pages were an imitation of HA's cards, lighter
+than HA's frontend (heavy had 4463 elements against about 8000) and without its work (loading the
+app, the websocket, Lit's rendering, HA's state handling). So the reference dashboards became HA's
+real frontend, and restart now ends at a usable dashboard. No threshold, level or letter rule moved:
+rubric v5 stands. The protocol-3 A is superseded. The S1's protocol 4 result is a D (s1v7,
+2026-11-13; [Example](#example-aqara-s1-plus)).
+
+### Restart: back to a usable dashboard
 
 Android vitals time a cold start to the launched activity's first frame (TTID). On the S1 that is
 MainActivity's first window: the kiosk's own native loading screen ("Starting up", "Connecting to
-Home Assistant…"), not a splash activity (the `:boot` direct-boot home activity ships disabled). In
-the S1 smoke run (2026-11-12) Android reported a TTID of 111 ms. The timeline after the force-stop:
+Home Assistant…"), not a splash activity (the `:boot` direct-boot home activity ships disabled). Any
+kiosk can draw a loading screen within 100 ms, so TTID doesn't separate frames; it is reported, not
+graded. The S1's timeline after a force-stop (smoke run, 2026-11-12, your own dashboard):
 
 | Event | After the force-stop |
 |---|---|
@@ -395,21 +576,23 @@ the S1 smoke run (2026-11-12) Android reported a TTID of 111 ms. The timeline af
 | Your dashboard's `PageStart` | 4.5 s |
 | Your dashboard settled | 11.5 s |
 
-Any kiosk can draw a loading screen within 100 ms, so TTID doesn't separate frames. Android's answer
-is TTFD (`reportFullyDrawn`), which the kiosk doesn't call, and this test changes no app code.
-Timing your own dashboard would make the grade depend on your Home Assistant. Opening a reference
-page during the restart doesn't work either: until GeckoView's session is up, the kiosk ignores
-`open` (#103's pins; seen on the S1 too), and once it is up, the request races the kiosk's own
-dashboard load. So restart ends at **engine ready**, the engine's own first page (`about:blank`; the
-report records it, and a restart whose first page is anything else isn't graded). That comes before
-the kiosk does anything for Home Assistant. Both ends are stamped on the device in logcat, so the
-harness's adb round trips aren't in it. The first paint of a real page is graded under "open the
-view".
+What you wait for after a restart is a usable dashboard. Timing your own would make the grade depend
+on your Home Assistant, and opening a reference page during the restart doesn't work: until
+GeckoView's session is up, the kiosk ignores `open` (#103's pins; seen on the S1 too), and once it is
+up, the request races the kiosk's own dashboard load. So protocols 1 to 3 ended the restart at
+**engine ready**, GeckoView's own first page (`about:blank`).
 
-**How the 5 s bound compares with Android vitals.** Engine ready comes after TTID, so passing 5 s
-here is harder than passing it on TTID. It still ends before any page has painted, so it is more
-lenient than a bound on the time to the first real content. Proposal, not adopted: also cap the
-grade at C when engine ready plus the light page's first paint reaches 5 s.
+Protocol 4 changes the kiosk's dashboard setting instead, for the graded part only (a user decision,
+2026-11-13: "I'm okay with it changing for the test and then it changing back"). The kiosk points at
+the start view of the fake Home Assistant's reference dashboard, so after the force-stop it comes
+back to it by itself, by the same path that brings it back to yours. The restart ends when that dashboard is usable, as
+defined for open the view. Its start, the process start, is stamped on the device in logcat, and its
+end is on the page's clock, tied to logcat's by the page's log line, so the harness's adb round trips
+aren't in it. Engine ready is still reported (`engine_ready_ms`).
+
+**How the 5 s bound compares with Android vitals.** Vitals apply 5 s to TTID, the first frame of any
+kind. Here the same 5 s covers the whole way to a dashboard you can use, so it is much stricter than
+vitals, and stricter than the engine-ready bound of protocols 1 to 3.
 
 ### Zoom and viewport
 
@@ -451,14 +634,17 @@ These have no published standard, or depend on your own Home Assistant:
 |---|---|---|
 | JS state update (median) | good ≤ 16.7 ms, poor > 50 ms | Good: the update fits in one frame. Poor: past RAIL's 50 ms input-processing budget ("process user input events within 50 ms"), which is also the [Long Tasks](https://www.w3.org/TR/longtasks-1/) cut-off (that draft is now discontinued). The 400-entity size stands for a larger home |
 | Animations it can handle | reported only | A wall panel mostly shows still dashboards; animation capacity is useful to compare frames, not to judge a panel |
-| App memory, peak PSS of all app processes | ≤ 50% of `MemTotal` | An always-on panel shares its RAM with the system, vendor daemons and the radio. Half for the app leaves room for them |
+| App memory, peak PSS of all app processes (on the reference dashboards, and on yours) | ≤ 50% of `MemTotal` | An always-on panel shares its RAM with the system, vendor daemons and the radio. Half for the app leaves room for them |
 | Device memory, lowest `MemAvailable` during the run | ≥ 15% of `MemTotal` | Headroom for the system and the radio. A first choice, not a measured limit; change it in the same PR as the evidence |
+| A pane's RAM, its PSS on by itself against every pane off | the frame's `ram_pss_max_kb` for that pane (48 MB for `assist` and `sendspin` on the S1) | Set on 2026-11-13, before the first per-pane measurement; revisit with the first one. A pane that needs more should say why in its PR |
 | CPU at idle | reported only | No standard. Lower means less heat and power on a panel that never sleeps |
 | Your dashboard's start and load | reported only | Your dashboard, your network and your Home Assistant, so not comparable between panels |
 | Idle frames | reported only | A still dashboard should present almost nothing. A clock or an animated card adds frames |
 
-The memory budgets are in `tools/perf/budgets.json`, with a default and a per-frame override. An
-override names only the keys it changes; the rest come from the default.
+The budgets are the frame's own, in `frames/<id>/budgets.json` (#68): `ram` for the frame and
+`panes.<id>` for each pane. `tools/perf/budgets.json` is the default for a frame without one; a
+frame's `ram` names only the keys it changes, and its panes are its own. Clarity reports a budget
+as `ok`, `over` or `n/a`; it doesn't fail the run, because the device run isn't CI.
 
 ### How Home Assistant animates (reference for the animation detail)
 
@@ -476,16 +662,101 @@ how HA animates, for any future animation detail page:
 
 HA's own cards don't spin state icons; custom cards such as Mushroom do, with a CSS `transform`.
 
-## Memory and CPU per pane
+## RAM
 
-Not graded: it depends on your panes and your Home Assistant. What each pane adds is measured by
-turning that pane off through its Home Assistant entity and comparing with everything on. You need
-an admin account in Home Assistant, and a panel you are allowed to disturb: while a pane is off, the
-panel doesn't play music or hear its wake word. The runner doesn't talk to Home Assistant. You
-toggle the entity, and take an idle sample after each change. Alternate on and off, three times
-each. Use a separate output directory: the full run's `all-on` samples come 30 s after a restart,
-and a panel that has been up for a while may use more memory, so mixing them could bias the
-difference.
+Not graded (#68). RAM is read with `dumpsys meminfo` (PSS per process) and `/proc/<pid>/status`
+(`VmHWM`, the peak RSS since the process started), per process: `main` (the app), `boot` (`:boot`,
+the direct-boot home activity, when it runs), `gpu` (Gecko's GPU process), `tab` (Gecko's content
+processes, summed) and `crashhelper`. The radio's processes run outside the app and are reported on
+their own.
+
+**On the reference dashboards** (the report's `ram`), so the numbers don't depend on your Home
+Assistant:
+
+- **At idle**: after each graded run, the runner opens the typical reference dashboard (with no
+  nonce, so nothing on it is timed and the live updates stay off), waits 30 s, samples CPU and
+  frames for 15 s, then RAM (label `ref-idle`). The report gives the median of the runs per process.
+- **Peak during the graded tasks**: after each graded page, while the screen is still and nothing is
+  timed, the runner samples RAM. The largest of those samples is the peak. It is taken between tasks,
+  not inside them (a `dumpsys` during a task would disturb what it measures), so a short peak inside
+  a task can be missed; `VmHWM` catches it, and the report gives it beside the PSS peak.
+- **Per pane**, with `--pane-ram assist=on,sendspin=on,mic=on` (the settings now, put back
+  afterwards). The kiosk is pointed at the typical reference dashboard. In each run the runner turns every switchable
+  pane off and takes an idle sample (`ref-panes-off`), then turns each pane on by itself and takes one
+  (`ref-<pane>-on`). A pane's share is the median of its "on" samples less the median of the "off"
+  samples. The **tolerance** is the larger spread (max − min) of the two sets; a share inside it is
+  reported as "within tolerance", not as a number to act on. With `--runs 3`, each median is of
+  three samples. The switches are the kiosk's own extras, named in the frame's `budgets.json`
+  (`switch`): `voice_enabled` for `assist` and `sendspin_enabled` for `sendspin`. `mute` names
+  Assist's microphone mute (`mic_muted`) and `state` what the kiosk's log shows while the pane runs
+  (below). Turning Assist off
+  this way stops the whole pane, unlike the mute switch (below), which leaves its model loaded. It
+  also leaves out the timers pane, which only comes from the voice assistant, so `assist`'s share
+  includes the timers'.
+- **Each sample is checked** against the kiosk's log (`perflib.pane_state`): the ESPHome line the
+  app logs at start (`voice=true|false`), then `Sendspin player starting`, and `Microphone open`,
+  `Microphone muted (released)` or `Microphone unmuted`. The runner tries a state up to three times
+  (`panes-<label>-<n>.json` has what it asked and what ran), and the idle sample records what ran
+  (`panes_state`). The report counts only samples that ran what their label says, gives how many it
+  left out (`excluded`), and has no number for a pane with none left (`error`). Samples from before
+  this check say `verified: false`.
+- **Assist off by its mute.** S1 Kiosk 0.4.3 and earlier save `voice_enabled` asynchronously and
+  then exit at once to restart, so the write is lost and voice stays on. In s1v7 (131f6da,
+  2026-11-13) every switch was lost: the "panes off" samples ran Assist and Sendspin, and Assist read
+  −0.4% of a core against
+  [#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)'s 37%. So the runner also
+  mutes the microphone (`mic_muted`) for "off" states, which the kiosk applies live, and stops after
+  two tries at `voice_enabled`. When voice stayed on, Assist's share is its running cost only (the
+  wake word, recorder and inference; [idle-cpu.md](research/idle-cpu.md) step 7), not the code and
+  model it loads. The report says so (`off_by: "mute"`). s1v7's pane numbers are not valid; the S1's
+  are s1p1 and s1p3 ([Example](#example-aqara-s1-plus)).
+- **The tolerance is too wide for the pane budgets yet.** On the S1 (s1p3, 2026-11-13) it was
+  ±31.6 MB, two thirds of the 48 MB budget. A share with that uncertainty can't establish whether
+  the pane fits its budget. The budget check (`pane_budget`, and the summary's `budget_ok`) compares
+  the share alone, so its "ok" says nothing about fit while the share isn't measurable. Two things
+  made it wide, neither of them a pane:
+  1. **The first sample is low.** In both s1p1 and s1p3 the first sample (`ref-panes-off-1`) had
+     the GPU process at 141 to 142 MB, against 155 to 157 MB in every later one. In s1p3 the app was
+     17.4 to 33.3 MB under the other samples (with `:boot` left out). It sets the panes-off spread (564.7 to 596.4 MB).
+  2. **`:boot` comes and goes.** The direct-boot home activity's process (29.2 MB) was in 2 of 12
+     samples (s1p1's `ref-sendspin-on-1` and s1p3's `ref-sendspin-on-3`), not in the other two
+     Sendspin samples. That is what s1p1's Sendspin +50 MB was. Why it runs then is untested; it is a
+     HOME activity, so a restart may start it.
+
+  Leaving out s1p3's first sample and counting the app without `:boot` gives a tolerance of about
+  ±9 MB, from the same samples (computed, not a new run). So the fix, not made yet: an unrecorded
+  warm-up cycle before the first run, and `:boot` reported apart from the pane's share (or a RAM
+  read that waits for it to exit). More runs alone won't do it: the tolerance is the spread
+  (max − min), which only grows with more samples. With more runs it would have to be another
+  statistic, such as the median absolute deviation.
+- **Waiting on #67**: `radio`, `wall-base`, `timers`, `time-zone` and `diagnostics` have no on/off switch until
+  [#67](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/67), so they aren't measured on
+  their own. The report lists them. The radio's processes are measured where they run.
+
+**Why not an emulator in CI** (assessed 2026-11-13, from the build and the panes' needs; not tried).
+#68 asked whether an x86_64 Android emulator in CI could measure RAM per pane. Not now:
+1. The kiosk ships `armeabi-v7a` and `arm64-v8a` APKs only. An x86_64 run needs a third ABI build of
+   the app and of GeckoView; an ARM APK on an x86_64 image runs through translation, whose memory
+   isn't the panel's.
+2. Gecko's GPU process holds a large part of the app's PSS (about 210 MB of 700 MB on the S1, s1v6),
+   and that depends on the graphics driver: the emulator's is not the S1's PowerVR Rogue GE8300
+   (read on the panel 2026-11-12, [boot-animation.md](research/boot-animation.md)).
+3. The panes need what an emulator fakes or lacks: Assist a microphone and a voice pipeline,
+   Sendspin a Music Assistant server and audio output, the radio its serial port and the root side.
+   Their memory without those isn't their memory on a panel.
+
+So **the device run is the source of RAM numbers**, and CI checks only the APK size, which needs no
+device.
+
+### RAM of each pane on your own dashboard
+
+The older method, on your dashboard and through Home Assistant, still works and is reported under
+`real_use.panes`: turn a pane off through its Home Assistant entity and compare with everything on.
+You need an admin account in Home Assistant, and a panel you are allowed to disturb. The runner
+doesn't talk to Home Assistant. You toggle the entity, and take an idle sample after each change.
+Alternate on and off, three times each. Use a separate output directory: the full run's `all-on`
+samples come 30 s after a restart, and a panel that has been up for a while may use more memory, so
+mixing them could bias the difference.
 
 ```sh
 tools/perf/run.sh --frame aqara-s1-plus --out perf-s1-panes --idle-only all-on
@@ -521,13 +792,16 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `runs_attempted` | Graded runs attempted (`plan.json`), the count each band is over |
 | `frame` | `id`, `name`, `device` (model, Android, API, ABI, SoC, CPU, RAM, display with density and refresh, temperatures), `app` (package, version, APK bytes on the device, GeckoView version) |
 | `apk` | One entry per APK given with `--apk`: `abis`, `bytes`, `parts_bytes` (dex, native, assets, resources, other) |
+| `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (over 200 ms, one update interval, is provisional). `null` without the log, which is provisional for protocol 4 |
+| `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb`, `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`, `verified`, `excluded`, and `off_by: "mute"` when Assist was off by its mute alone; or `id`, `method` and `error` when no sample ran as asked), `screen_off_samples` (idle samples the screen went off in, left out), `panes_waiting` (`id`, `waiting_on`, `note`), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `ok`). See [RAM](#ram) |
 | `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts (a run failed, a task was measured in fewer runs, scrolling rests on rAF only, the pages ran another protocol) |
-| `graded` | `reference`: `start_ms`, `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
-| `detail` | `synthetic`, the animation test page: `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `steps_without_sf`, `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `page_lcp_ms`, `page_lcp_from`, `per_run` |
-| `real_use` | Not graded. Your dashboard: `app_start_to_dashboard_ms`, `android_ttid_ms`, `launch`, `stop_to_dashboard_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `errors`, `per_run`. Then `idle`, `peak`, `memory` (`idle`, `peak`, `budget`) and `panes` |
+| `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
+| `detail` | `synthetic`, the animation test page: `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `steps_without_sf`, `screen_off_runs` (left out of the rest), `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `page_lcp_ms`, `page_lcp_from`, `per_run` |
+| `real_use` | Not graded. Your dashboard: `app_start_to_dashboard_ms`, `android_ttid_ms`, `launch`, `stop_to_dashboard_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `errors`, `screen_off_samples`, `per_run`. Then `idle`, `peak`, `memory` (`idle`, `peak`, `budget`) and `panes` |
 
 `own_page_states` says, per run, how the kiosk's own page ended before the reference dashboards
-opened: `finished-still` (stopped, then quiet), `finished-moving` (stopped, still painting, such as
+opened: `reference` (protocol 4: it came back to the reference dashboard and said it was usable),
+`finished-still` (stopped, then quiet), `finished-moving` (stopped, still painting, such as
 a clock card; normal) or `never-finished` (still loading 30 s after engine ready; the grade is provisional).
 
 ## The summary (`glassworks.perf-summary/2`)
@@ -535,12 +809,14 @@ a clock card; normal) or `never-finished` (still loading 30 s after engine ready
 `tools/perf/summary.py` writes a small, stable, frame-level summary of a finished report, for places
 that show a frame's grade (glassworks.dev, later a frame's `design/frame.json`). It holds
 **measurements only, never the letter or its meaning**: the letter is derived, so it stays derived
-(see [Showing the grade](#showing-the-grade)). Only graded, deterministic measurements go in.
-Nothing from real use, and nothing device-unique.
+(see [Showing the grade](#showing-the-grade)). Only measurements from the reference dashboards and
+the APKs go in: the graded ones, and two optional parts that aren't graded (`ram`, `apk`). Nothing
+from real use, and nothing device-unique.
 
 | Key | What |
 |---|---|
 | `schema` | `"glassworks.perf-summary/2"` |
+| `test` | The test's name, `"Clarity"` (`rubric.json` `name`), so a summary says what measured it |
 | `protocol_version` | How it was measured. A site grades it only with a rubric for the same protocol |
 | `report_schema` | The report it came from, `"glassworks.perf/4"` |
 | `measured_on` | The run's date, `YYYY-MM-DD` (UTC) |
@@ -549,15 +825,18 @@ Nothing from real use, and nothing device-unique.
 | `viewport` | `css` (CSS px), `dpr` (device pixel ratio), `default_dpr` (density / 160) |
 | `runs` | `attempted`, `graded` |
 | `pages` | Per page (`light`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
-| `restart_ms` | Process start to engine ready (median) |
+| `restart_ms` | Process start to a usable reference dashboard (median; to engine ready before protocol 4) |
 | `gaps` | Measurement facts that leave it short: "1 of 3 graded runs failed or are missing", "heavy: scrolling rests on rAF only in 1 run(s)…". Empty when complete |
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |
 | `report` | A relative path or URL of the full report (`--report-url`) |
 | `complete` | `false` when it was exported with `--allow-provisional` and has gaps, missing measurements or isn't comparable |
+| `ram` | Not graded; `null` if not measured. In kB: `idle_app_pss_kb` and `idle_by_process_pss_kb` (medians at idle on the typical reference dashboard), `peak_app_pss_kb` and `peak_by_process_pss_kb` (the peak during the graded tasks), `panes` (each: `id`, `pss_kb`, `tolerance_kb`, `measurable`, `runs`, `budget_kb` and `budget_ok` (the frame's pane budget and whether the share is within it; `null` without a budget; read it with `measurable`, since a share inside the tolerance can't show that the pane fits), and `off_by` when the report has it. Only panes whose every sample was checked against the kiosk's log (`verified`) are listed: one with no number, or from a run before that check (such as s1v7), isn't), `panes_waiting` (pane ids), `budget_ok` (`true`, `false` or `null`) |
+| `apk` | Not graded; `null` if no APK was given. Per APK: `file`, `abis`, `bytes` |
 
 The levels need each run's measurements (each run gets a level, then the median level is taken), which
 is why the summary carries `runs` and not only medians. Medians are kept for display. Fields are only
-added within a version; a change of meaning is a new one. `/2` (2026-11-12, rubric v5): `updates`
+added within a version; a change of meaning is a new one (`ram` and `apk` were added within `/2`,
+2026-11-13, and `grade.ts` ignores them). `/2` (2026-11-12, rubric v5): `updates`
 carries change to screen and its runs are latency records, where `/1` had frame pacing.
 
 ### Protocol and rubric versions
@@ -568,7 +847,7 @@ Glassworks palette, below, within protocol 3):
 
 | Version | Where | Bump it when | A stored summary |
 |---|---|---|---|
-| `protocol_version` | `tiers.js` `PROTOCOL`, and `rubric.json` `protocol_version` (the protocol its rules are for; `page.test.mjs` pins them equal) | **How** something is measured changes: the pages, the first screen, the swipes, the update rate, the windows, the warm-up and order, or how the runner and report read them | From another protocol: **re-measure**. Its numbers mean something else |
+| `protocol_version` | `tiers.json` `PROTOCOL`, and `rubric.json` `protocol_version` (the protocol its rules are for; `page.test.mjs` pins them equal) | **How** something is measured changes: the pages, the first screen, the swipes, the update rate, the windows, the warm-up and order, or how the runner and report read them | From another protocol: **re-measure**. Its numbers mean something else |
 | `version` (rubric) | `rubric.json` | **How it is judged** changes: a threshold, a level, a letter rule, the restart cap | Graded again with the new rubric at render time. No re-measure |
 
 So a change to the letter table changes every frame's letter on the site without a new run, while a
@@ -578,7 +857,14 @@ turning order, the shared first screen, change frames and the first-paint settle
 left out, the HA-faithful update stream, change-to-screen timing over a 4 s window, and the changes
 counted during each swipe. Protocol 3 (2026-11-12) fades only what HA fades on a tile (the icon's
 shape and colour, not a background behind it) and counts only state changes, not the clock, during a
-swipe.
+swipe. Protocol 4 (2026-11-13) runs HA's real frontend (release 20261028.5) behind a fake Home
+Assistant, times the restart to a usable dashboard, points the kiosk's dashboard setting at the
+reference dashboard for the restart, and drops the warm-up page. Within protocol 4, before any
+frame had a protocol 4 result (2026-11-13, after smoke9): the reference dashboards became views of
+one dashboard, opened by navigation in the loaded frontend; usable waits for the head and a 500 ms
+free stretch; change to screen runs from when the fake sent a change; and the fake resets the home
+between views. smoke9's numbers came before that and aren't protocol 4's. Every summary from
+protocol 3, the S1's A included, is now "re-measure".
 
 ### Showing the grade
 
@@ -609,22 +895,20 @@ report's grade, and that `grade.ts` (run under node) equals Python's.
 
 ### How #68 uses it
 
-[#68](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/68) is the CI report of APK size
-and RAM per frame and pane, with budgets. It can read these reports as they are:
+[#68](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/68) is the report of APK size and RAM
+per frame and pane, with budgets. Its two halves come from different places:
 
-- **Per frame:** one `report.json` per frame, keyed by `frame.id`. Its job compares
-  `real_use.memory.peak` and `real_use.memory.idle.app_pss_kb` with the frame's RAM budget, and
-  `apk[].bytes` with the frame's size budget, per ABI.
-- **Per pane:** `real_use.panes[]` uses the pane ids from the code (`sendspin`, `assist`,
-  `wall-base`, `radio`), so a pane's RAM budget is checked against `pss_kb`. #68 measures on an
-  emulator, each pane on by itself against all off. It writes its results in the same shape, with
-  its own `method` value.
-- **Budgets** live in `tools/perf/budgets.json` until #68 moves them into each frame's Gradle config.
-  Over budget fails the check unless the same PR raises the budget.
-- `apk[].parts_bytes` is the start of #68's split; #68 adds each pane's dex, assets and native
-  libraries.
-
-#68 waits for the Gradle modules (#21) and the pane switches (#67). This test doesn't.
+- **RAM comes from this test, on the device** (see [RAM](#ram) for why not an emulator). The
+  report's `ram` holds the reference dashboard's numbers per process and per pane, and checks them
+  against the frame's budgets in `frames/<id>/budgets.json`. The summary carries them (`ram`),
+  with each pane's budget and whether it is within it (`budget_kb`, `budget_ok`).
+- **APK size comes from CI** on every pull request, which needs no device: the size per ABI split
+  into the engine, the core, each pane, assets and native libraries, the change from `main`, and the
+  frame's size budget in the same `frames/<id>/budgets.json`. That is its own pull request, stacked on
+  this one. `--apk` still adds sizes to a device report.
+- **Panes** use the ids from the code (`assist`, `sendspin`, `radio`, `wall-base`, `timers`,
+  `time-zone`, `diagnostics`). Only `assist` and `sendspin` can be switched today; the others wait on
+  [#67](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/67).
 
 ## Page log lines
 
@@ -642,26 +926,83 @@ load) and `t`:
 
 | `t` | Fields |
 |---|---|
-| `refdash` | Reference dashboard: `tier`, `protocol`, `nodes`, `cards`, `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
+| `refdash` | A reference view, usable: `tier` (the view: `start` for the restart page, or `light`, `typical`, `heavy`), `protocol`, `frontend` (HA's frontend release), `nodes`, `cards` (the view's cards), `cards_rendered` (how many HA had built when it was usable), `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (the frontend's own load: the restart page only, else `null`), `nav_ms` (the navigation to the view; 0 for the frontend's own load), `usable` (`rendered_tick_ms`, the frame in which it was drawn; `first_screen_cards`; `head_cards`, the 10 head cards it waited for; `interactive_ms`, when the main thread's free stretch began) (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
 | `warmup` | `stage`, `n`. The page goes live; the runner wakes the screen and stops polling SurfaceFlinger |
 | `measure` | `stage`, `n`. A window starts. For `updates`, the live check: `moving`, `offscreen`, `targets`, `update_every_ms` |
-| `step` | `stage` (`updates`, `scroll`, or a ladder family), `n`, `window_ms` (the window's length on the page's clock), `raf` (frame stats). For `updates`: `t0` (the window's start on the page's clock), `pacing_ms` (the stretch `raf_times` covers), `raf_times` and `changes` (`[due, ran, transition ms, kind, tick]`: kind 0 a sensor value, 1 the clock, 2 an on/off change; tick, the animation frame it was drawn in), all ms after `t0`. For `scroll`: `scrolled_px`, `hit_edge`, `changes_during`, `first_scroll_ms`, `raf_intervals`. The runner reads SurfaceFlinger |
+| `step` | `stage` (`updates`, `scroll`, or a ladder family), `n`, `window_ms` (the window's length on the page's clock), `raf` (frame stats). For `updates`: `t0` (the window's start on the page's clock), `pacing_ms` (the stretch `raf_times` covers), `from` (`sent`: the changes start when the fake sent them), `stream_at_ms` (when the harness asked for the stream), `raf_times` and `changes` (`[sent, arrived, transition ms, kind, tick]`: every change the fake sent up to the window's end, from its schedule; `arrived` and `tick` are `null` for one that hadn't reached the page when the window was logged; kind 0 a sensor value, 2 an on/off change (1, the clock, was protocol 3's); tick, the animation frame it was drawn in), all ms after `t0`. For `scroll`: `scrolled_px`, `hit_edge`, `changes_during`, `first_scroll_ms`, `raf_intervals`. The runner reads SurfaceFlinger |
 | `input-ready` | `x`, `y` (device pixels), `taps`. The runner taps |
 | `swipe-ready` | `n`, `x`, `y1`, `y2` (device pixels), `ms`. The runner swipes once |
 | `input` | `stage`, `method`, `taps`, `values`, `inp_ms` |
 | `hello`, `js` | Animation test page: `ua`, `dpr`, `css`, `cores`, `load`; the JS workload's `runs`, `median_ms`, `p95_ms`, `checksum`, `expected` |
 | `done`, `error` | `message` on error. At `done` the page has stopped its updates |
 
-The warm-up page is the light page opened with `taps=0&swipes=0&warmup=1`; its lines are kept in
-`refstart-<k>.json` under `warmup`, not graded.
+The restart page logs with an empty nonce (its parts are numbered `restart:<n>`): only `refdash` and
+`done`, kept in `refstart-<k>.json` under `restart_page`. A warm-up view (`--warmup-tier`, none by
+default since protocol 4) is a view opened with `taps=0&swipes=0&warmup=1`; its lines are kept
+under `warmup`, not graded.
+
+The runner and the harness talk through the fake Home Assistant, never through adb:
+
+| Request | From | What |
+|---|---|---|
+| `/clarity/open?view=&nonce=&run=&vsync=&taps=[&swipes=&warmup=]` | the runner | Open this view next. Checked: a known view, a hex nonce, numbers only; else 400 |
+| `/clarity/next?after=<nonce>` | the harness | Waits up to 20 s for a command other than `after` (the last one this page ran); 200 with it, or 204. The command stays until its view's stream stops, so a long poll left behind by a page that died (a force-stopped frontend's) can't use it up |
+| `/clarity/live`, `/clarity/still` | the harness | Start the stream (200 `{"gen": n}`, its generation), or stop it, end the view's command and reset the home |
+| `/clarity/cancel` | the runner | Before each restart: no command, no stream and no changed state is left from a view that was cut short |
 
 Frame statistics are defined once, in `tools/perf/page/stats.js` and `tools/perf/perflib.py`.
 `tools/perf/test/stats-cases.json` pins both to the same answers.
 
 ## Example: Aqara S1 Plus
 
-**The S1's first full run: A** (s1v6, 3 of 3 runs, protocol 3, rubric v5, S1 Kiosk 0.4.3, measured
-2026-11-13 UTC, the page order turning each run, nothing missing, no gaps):
+**Protocol 4: D** (s1v7, 131f6da, 3 of 3 runs, rubric v5, S1 Kiosk 0.4.3, the radio in
+`thread_router`, 2026-11-13; not provisional). "A good wall panel for light dashboards. Held back by
+typical dashboards: scrolling averages 35.1 fps (p95 83 ms); the view takes 4.8 s to open." The
+verifier recomputed the D by hand, with `grade.py` and with `grade.ts`.
+
+| View | Level | Tap | Scroll | Change to screen (p95) | Open the view |
+|---|---|---|---|---|---|
+| light (20 cards) | fluid | 96 ms | 40.9 fps, p95 66.7 ms | 84 ms | 1.45 s |
+| typical (50 cards) | neither | 96 ms | 35.1 fps, p95 83.3 ms | 96 ms | 4.82 s |
+| heavy (120 cards) | neither | 88 ms | 23.3 fps, p95 133 ms | 156 ms | 14.5 s |
+
+Restart, process start to the start view usable: **11.7 s** (11.6 to 13.0 s), poor; engine ready
+2.9 s (detail). Medians of 3 runs. Scrolling holds back every view and open the view holds back
+typical and heavy. Taps and the live changes are good everywhere except heavy's changes (fluid).
+The panel ran with the wake word using about 37% of a core
+([#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)); the move to microWakeWord
+(#181) needs a re-measure. s1v7's pane numbers are not valid (see [RAM](#ram)); s1p1 and s1p3 below
+are.
+
+**RAM per pane** (s1p1 and s1p3, 248ce09, 2026-11-13, S1 Kiosk 0.4.3, the radio in
+`thread_router`; verified: every sample's kiosk log showed what its label says, none left out, and
+the panel was put back each time). In both runs the kiosk kept `voice_enabled` (the 0.4.3 bug
+above), so Assist is off by its microphone mute: its running cost, not the model it loads.
+
+| | Assist CPU | Assist PSS | Sendspin CPU | Sendspin PSS |
+|---|---|---|---|---|
+| s1p3, 3 runs (9 samples) | **+36.3% of a core** (±1.2) | +5.2 MB, within ±31.6 | +1.9%, within ±2.9 | +0.3 MB, within ±31.6 |
+| s1p1, 1 run (smoke) | +36.5% | +21.3 MB | +3.5% | +50.1 MB (`:boot`, see [RAM](#ram)) |
+
+Assist's CPU matches [#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)'s 37%
+(the wake word's model). Neither pane's PSS is measurable at this tolerance, so these runs can't say
+whether either fits its 48 MB budget ([why, and the fix](#ram)). The app at idle on the typical
+reference dashboard, all panes off: 565 to 596 MB.
+
+**smoke9** (8c0027b, one run, 2026-11-13, protocol 4 as first written: each reference dashboard a
+full page load) read **E, provisional**: open the view 4.9, 8.2 and 5.0 s (light, typical, heavy);
+restart 10.4 s; scroll 42.9, 36.9 and 19.1 fps (heavy's p95 167 ms); change to screen 112 and 115 ms
+on light and typical, heavy not measured ("only 17 of 20 state updates ran in the window"); taps 168,
+88 and 232 ms. Its RAM part ran (Assist +2.8 MB, Sendspin +15.2 MB, n=1) and the restore worked. It
+is not a protocol 4 result: open the view then counted HA's cold load each time, heavy's updates
+were dropped instead of counted (its changes reached the page in bursts, with frames stalled for up
+to 649 ms), and its fake HA log was never written (`run.sh` didn't pass `--log`), so its "no
+unknown commands" couldn't have seen one. All three are fixed above.
+
+**Protocol 3, superseded: A** (s1v6, 3 of 3 runs, rubric v5, S1 Kiosk 0.4.3, measured 2026-11-13
+UTC, the page order turning each run, nothing missing, no gaps). Protocol 3's pages were an imitation
+of HA's cards and its restart ended at engine ready, so this letter doesn't carry over (see
+[Not tuned to any frame](#not-tuned-to-any-frame)):
 
 | Page | Scroll, median of runs (each run) | Change to screen, p95 | Tap (INP) | Opens in |
 |---|---|---|---|---|
@@ -670,7 +1011,10 @@ Frame statistics are defined once, in `tools/perf/page/stats.js` and `tools/perf
 | heavy | 54.4 fps (54.3 to 54.7), good in all 3 | 70.4 ms (69.2 to 87.9), good | 120 ms | 1985 ms |
 
 Restart (process start to engine ready) took 2929 ms: needs improvement, under the 5 s cap. Every
-swipe moved freely (none reached an edge) and all 18 ran while the live updates did. It is an A, not
+swipe moved freely (none reached an edge) and all 18 ran while the live updates did. Android's
+framework didn't crash during the run: its dropbox count was the same before and after (checked by
+the root on the panel). The run's `summary.json` (`summary.py`) grades A in both `grade.py` and
+`grade.ts`. It is an A, not
 an A+: on heavy, scrolling averages 54 fps with p95 33 ms, under the 60 fps rule, and the frames of the
 live changes don't hold 60 fps either. s1v6 ran with the pages' old colours; the palette change after
 it changes no work (see [Protocol and rubric versions](#protocol-and-rubric-versions)).
@@ -735,6 +1079,10 @@ What the earlier runs on the S1 (2026-11-12, kiosk 0.4.3, GeckoView 159, Android
 python3 -m unittest discover -s tools/perf/test
 node --test tools/perf/test/page.test.mjs tools/perf/test/grade.test.mjs
 ```
+
+`test_fakeha.py` checks the fake Home Assistant against the traffic HA's frontend sent it
+(`test/fakeha-traffic.json`), on a stub frontend, so the tests never download the real one. After a
+frontend upgrade, record the traffic again and add any new command to the fake.
 
 The node tests need node 24 or later, which runs `grade.ts` without a build step.
 

@@ -395,6 +395,14 @@ here, and `semver` (ISC) needs `LICENSES/ISC.txt`.
   panel downloads them from the official v0.5.1 release (https://github.com/dscripka/openWakeWord)
   and checks their SHA-256. 0.4 and earlier fetched them; a new panel doesn't, unless a legacy word
   is picked.
+- **Home Assistant frontend** (`home-assistant-frontend` 20261028.5, the build HA 2026.11 serves):
+  Apache-2.0 ([`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt)), Copyright Home Assistant
+  contributors, https://github.com/home-assistant/frontend (tag `20261028.5`). Clarity, the perf test
+  in `tools/perf`, downloads the wheel from PyPI on the computer that runs the test, checks its
+  SHA-256 (`df2af7a4…4258730`, `tools/perf/hafrontend.py`), and serves it to the panel under test,
+  from that computer. Its files are served as they are, except its `index.html` template, which is
+  filled in with the test's harness script added first (`tools/perf/fakeha.py`). The project neither
+  ships nor hosts it.
 - **Aqara/Lumi firmware.** None is included. The installer's partition backup stays with the owner. On
   the panel, the radio helper uses Aqara's own `cpcd` and stock radio firmware where they already are.
 

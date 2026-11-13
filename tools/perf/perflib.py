@@ -1,4 +1,4 @@
-"""Parsers and statistics for the Glassworks perf test (MIT). Pure functions, no adb.
+"""Parsers and statistics for Clarity, the Glassworks perf test (MIT). Pure functions, no adb.
 
 frame_stats() is the same definition as page/stats.js; test/stats-cases.json pins both.
 """
@@ -276,3 +276,32 @@ def cpu_percent(before, after, ncpu):
             d = after["procs"][name] - j0
             procs[name] = _r2(100 * d / dt * ncpu)
     return {"device_busy_pct": _r2(100 * (busy1 - busy0) / dt), "procs_pct_of_core": procs}
+
+
+# ---- what the kiosk started with (the S1's panes), from its log. Read-only.
+
+ESPHOME_START_RE = re.compile(r"ESPHome device .*\bvoice=(true|false)")
+
+
+def pane_state(logcat_text):
+    """The panes the kiosk's current process runs, from its log (`logcat -d`): `voice` (the ESPHome
+    line it logs at start, `voice=`), `sendspin` (its player started after that line) and `mic` (the
+    wake word's microphone open: voice on, opened, not muted since). None when the log has no start
+    line (it rotated, or the kiosk hasn't started). Reads the lines only; keeps nothing of them."""
+    lines = logcat_text.splitlines()
+    idx = None
+    for i, line in enumerate(lines):
+        if ESPHOME_START_RE.search(line):
+            idx = i
+    if idx is None:
+        return {"voice": None, "sendspin": None, "mic": None}
+    voice = ESPHOME_START_RE.search(lines[idx]).group(1) == "true"
+    sendspin, mic = False, False
+    for line in lines[idx + 1:]:
+        if "Sendspin player starting" in line:
+            sendspin = True
+        elif "Microphone open" in line or "Microphone unmuted" in line:
+            mic = True
+        elif "Microphone muted" in line:
+            mic = False
+    return {"voice": voice, "sendspin": sendspin, "mic": voice and mic}
