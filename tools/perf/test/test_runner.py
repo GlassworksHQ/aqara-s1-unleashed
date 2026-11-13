@@ -177,8 +177,8 @@ class Runner(unittest.TestCase):
         inputs = sorted({c for c in shell if c.startswith("input ")})
         # Taps on the toggle and swipes where the page asked, with its coordinates: nothing else.
         self.assertEqual(inputs, ["input keyevent KEYCODE_WAKEUP", "input swipe 720 612 720 108 300", "input tap 720 360"])
-        self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 6)                 # 2 on each page
-        self.assertEqual(sum(1 for c in shell if c.startswith("input swipe ")), 6)            # 2 on each page
+        self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 10)    # 2 on each page and HLS copy (#202)
+        self.assertEqual(sum(1 for c in shell if c.startswith("input swipe ")), 6)            # 2 on each page; none on a copy
         forbidden = re.compile(r"(^|[;&|]\s*)(settings|svc|cmd|setprop|am broadcast|pm (?!path\b))|--ez ")   # no pane is switched without --pane-ram
         self.assertEqual([c for c in shell if forbidden.search(c)], [])
         extras = {m for c in shell for m in re.findall(r"--e\w \w+", c)}
@@ -190,7 +190,8 @@ class Runner(unittest.TestCase):
         self.assertTrue(opens[0].startswith("http://127.0.0.1:18089/clarity/page/index.html?"), opens[0])
         self.assertEqual(opens[1], "http://127.0.0.1:18089/clarity-ref/typical")       # the idle sample's page, no nonce
         views = [c.split()[1:4:2] for c in self.commands if c.startswith("view ")]
-        self.assertEqual(views, [["light", "taps=2"], ["typical", "taps=2"], ["heavy", "taps=2"]])
+        self.assertEqual(views, [["light", "taps=2"], ["typical", "taps=2"], ["heavy", "taps=2"],
+                                 ["typical-hls", "taps=2"], ["heavy-hls", "taps=2"]])
 
     def test_no_gesture_without_the_current_pages_request(self):
         """The fake rejects any tap or swipe that no current *-ready line asked for."""
