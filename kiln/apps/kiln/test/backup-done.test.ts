@@ -83,4 +83,30 @@ describe('Done\'s backup download', () => {
     s.finish();
     expect(s.store.state.done!.backup).toBeUndefined();
   });
+
+  it('a download that fails after leaving Done doesn\'t bring Done back', async () => {
+    const s = demoSession('app');
+    sessions.push(s);
+    registry.set(entry(s));
+    s.store.dispatch({ type: 'backup', backup: { id: 's1-backup-20261112-101500', created: '', bootWasPatched: false, files: [{ part: 'boot', size: 1, sha256: '' }] } });
+    s.finish();
+    let fail!: (e: Error) => void;
+    (s as unknown as { d: { backups: { files: () => Promise<never> } } }).d.backups.files = () => new Promise((_, rej) => { fail = rej; });
+    const going = s.downloadBackup();
+    await s.openUndo(); // Undo, while this browser's store is still reading
+    fail(new Error('The operation failed for reasons unrelated to the database itself.'));
+    await going;
+    expect(s.store.state.screen).toBe('undo');
+  });
+
+  it('a download that fails on Done says so there', async () => {
+    const s = demoSession('app');
+    sessions.push(s);
+    registry.set(entry(s));
+    s.store.dispatch({ type: 'backup', backup: { id: 's1-backup-20261112-101500', created: '', bootWasPatched: false, files: [{ part: 'boot', size: 1, sha256: '' }] } });
+    s.finish();
+    (s as unknown as { d: { backups: { files: () => Promise<never> } } }).d.backups.files = () => Promise.reject(new Error('quota'));
+    await s.downloadBackup();
+    expect(s.store.state.done!.backup!.error).toBe('Couldn\'t read it from this browser: quota');
+  });
 });

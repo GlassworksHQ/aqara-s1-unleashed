@@ -204,7 +204,6 @@ const demoRecipe: Recipe<AssetName, SetUpOptions, Provisioned> = {
 /** A session on the simulated panel. */
 export function demoSession(which: Demo): Session {
   const saved: { meta: BackupMeta; files: BackupFile[] }[] = [];
-  // run and the app's first-install states start without S1 Kiosk on the panel
   // run and the app's first-install states start without S1 Kiosk on the panel; radio-thread-old has 0.4.3
   const app = ['run', 'app', 'app-installing', 'app-keyboard'].includes(which) ? null
     : which === 'radio-thread-old' ? { name: '0.4.3', code: 403 } : { name: '0.5.0', code: 500 };

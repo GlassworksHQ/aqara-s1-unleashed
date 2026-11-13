@@ -156,11 +156,13 @@ describe('the set-up forms', () => {
     expect(screen.getByRole('heading').textContent).toBe('Installing S1 Kiosk.');
     expect(rows()).toEqual(['cur Install S1 Kiosk', '- Make it the panel\'s home screen', '- Install the on-screen keyboard', '- Apply your time zone, language and clock', '- First start']);
     expect(document.querySelector('.join li.cur .sub-step')?.textContent).toBe('Android installs it and optimises it for this panel');
+    expect(screen.getByRole('status').textContent).toBe('Install S1 Kiosk. Android installs it and optimises it for this panel'); // what a screen reader hears
     expect(document.body.textContent).not.toMatch(/restart/); // no app runs yet, so nothing restarts
     await act(async () => { // the keyboard's turn
       for (let i = 0; i < 300 && !document.querySelector('.join li.cur')?.textContent?.startsWith('Install the on-screen keyboard'); i++) await new Promise((r) => setTimeout(r, 10));
     });
     expect(rows()).toEqual(['done Install S1 Kiosk', 'done Make it the panel\'s home screen', 'cur Install the on-screen keyboard', '- Apply your time zone, language and clock', '- First start']);
+    expect(screen.getByRole('status').textContent).toMatch(/^Install the on-screen keyboard\. (Copying it to the panel|Android installs it)$/); // each step is announced
     const phases = (s.store.state.setup as { installing?: { step: string; apk?: string; stage?: string }[] }).installing!.map((p) => p.apk ? `${p.apk} ${p.stage}` : p.step);
     expect(phases.slice(0, 4)).toEqual(['kiosk copy', 'kiosk install', 'home', 'keyboard copy']);
     await act(() => going);
@@ -176,9 +178,20 @@ describe('the set-up forms', () => {
     const going = s.installApp({ clock24: true, keyboard: false });
     await act(() => new Promise((r) => setTimeout(r, 1200))); // S1 Kiosk's pm install
     expect(screen.getByRole('heading').textContent).toBe('Updating S1 Kiosk.');
-    expect(screen.getByRole('status').textContent).toBe('The app on the panel closes and restarts during this. That\'s expected.');
+    expect(screen.getByRole('status').textContent).toBe('Install S1 Kiosk. Android installs it and optimises it for this panel. The app on the panel closes and restarts during this. That\'s expected.');
     expect([...document.querySelectorAll('.join li')].map((li) => li.firstChild?.textContent)).not.toContain('Install the on-screen keyboard'); // not asked for
     await act(() => going);
+    s.close();
+  }, 20_000);
+
+  it('Settings: an edit not yet installed survives going to another step and back', async () => {
+    const s = demoSession('app-update');
+    render(<Wizard session={s} frame={s1PlusUi} base="/aqara-s1-plus" />);
+    await act(() => s.route('resume'));
+    fireEvent.change(screen.getAllByRole('combobox')[0]!, { target: { value: 'fr-FR' } });
+    await act(() => s.route('wifi')); // Forward (the rail), which unmounts the form
+    await act(() => s.route('resume')); // Back
+    expect((screen.getAllByRole('combobox')[0] as HTMLSelectElement).value).toBe('fr-FR');
     s.close();
   }, 20_000);
 });

@@ -35,14 +35,15 @@ function session(requestFel = vi.fn(() => Promise.resolve(new FelDevice(new Fake
 }
 
 /** The app's route sync, with the address bar and the browser's history as state. */
-function harness(first: { s: Session }, path: string, strict = false) {
+/** `slowPush`: the address bar takes a moment to follow a push, as Next's router does. */
+function harness(first: { s: Session }, path: string, strict = false, slowPush = false) {
   const nav = { path, replaced: [] as string[], history: [path], set: (_: string) => {} };
   const renewals: Entry[] = [];
   registry.set({ base: BASE, name: 'Aqara S1 Plus', session: first.s });
   const renew = () => { const e = registry.set({ base: BASE, name: 'Aqara S1 Plus', session: session().s }); renewals.push(e); return e; };
   const router = {
     replace: (url: string) => { nav.replaced.push(url); nav.history[nav.history.length - 1] = url; nav.set(url); },
-    push: (url: string) => { nav.history.push(url); nav.set(url); },
+    push: (url: string) => { nav.history.push(url); if (slowPush) setTimeout(() => nav.set(url), 40); else nav.set(url); },
   };
   function Sync() {
     const [p, setP] = useState(path);
@@ -132,6 +133,20 @@ describe('navigation', () => {
     h.go('/set-up/home-assistant'); // the rail's link forward again, or Forward
     await until(() => h.state().setup.phase === 'ha');
     expect(registry.get()!.session).toBe(one.s);
+    one.s.close();
+  });
+
+  it('asks for a push once, even when the state changes again before the address bar follows', async () => {
+    const one = { s: demoSession('app') };
+    const h = harness(one, `${BASE}/set-up/wifi`, false, true);
+    await until(() => h.state().setup.phase === 'wifi' && h.state().busy === undefined);
+    await act(async () => {
+      void one.s.click('ha', () => one.s.homeAssistant());
+      for (let i = 0; i < 5; i++) { one.s.store.dispatch({ type: 'log', line: `tick ${i}` }); await new Promise((r) => setTimeout(r, 2)); }
+    });
+    await until(() => h.nav.path === `${BASE}/set-up/home-assistant`);
+    await settle();
+    expect(h.nav.history.filter((u) => u.endsWith('/home-assistant'))).toHaveLength(1); // one Back returns to Wi-Fi
     one.s.close();
   });
 

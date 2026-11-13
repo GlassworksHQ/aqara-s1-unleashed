@@ -12,6 +12,8 @@ export function useRouteSync(entry: Entry, path: string, nav: { replace(url: str
   const { session } = entry;
   const s = useSyncExternalStore(session.store.subscribe, session.store.get, session.store.get);
   const last = useRef<string | undefined>(undefined);
+  /** a push asked for and not yet in the address bar: a store change meanwhile must not push it again */
+  const pushing = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const search = entry.demo ? location.search : '';
@@ -19,6 +21,7 @@ export function useRouteSync(entry: Entry, path: string, nav: { replace(url: str
     const to = (step: Step) => nav.replace(url(step));
     const step = path.startsWith(entry.base) ? stepOf(path.slice(entry.base.length)) : undefined;
     const moved = last.current !== path;
+    if (moved) pushing.current = undefined; // the address bar moved: any push asked for has landed or lost
     if (moved && !entry.demo && step === 'start') {
       // this frame's own older #/ links. The path isn't recorded yet, so StrictMode's second run
       // repeats this same redirect instead of putting the start back in between.
@@ -28,7 +31,7 @@ export function useRouteSync(entry: Entry, path: string, nav: { replace(url: str
     last.current = path;
     const d = entry.demo || !moved ? onState(s, step) : onNavigate(s, session.started, step);
     if (d.kind === 'replace') to(d.step);
-    if (d.kind === 'push') nav.push(url(d.step));
+    if (d.kind === 'push' && pushing.current !== url(d.step)) { pushing.current = url(d.step); nav.push(url(d.step)); }
     if (d.kind === 'enter') {
       const e = d.fresh ? renew() : entry;
       const route = ENTRIES[d.step]!.route;

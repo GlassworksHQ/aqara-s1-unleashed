@@ -259,11 +259,27 @@ export class Session {
     }
   }
 
-  /** Whether the app is on the panel (an update, not a first install): known once it went in, else asked (read-only). */
+  /**
+   * A signal that cancels a read-only panel command after `ms` (on this session's clock), so a wedged
+   * command is stopped on the panel, not only left behind. The caller falls back to the cautious answer.
+   */
+  private lid(ms = 8000): AbortSignal {
+    const ac = new AbortController();
+    void this.sleep(ms).then(() => ac.abort(new Error('the panel did not answer in time')));
+    return ac.signal;
+  }
+
+  /**
+   * Whether the app is on the panel (an update, not a first install): known once it went in, else asked
+   * (read-only). No answer counts as a first install.
+   */
   private async appInstalled(): Promise<boolean> {
-    this.hasApp ||= (await this.panel!.run(`pm path ${PKG}`).catch(() => ({ out: '' }))).out.includes('package:');
+    this.hasApp ||= (await this.panel!.run(`pm path ${PKG}`, this.lid()).catch(() => ({ out: '' }))).out.includes('package:');
     return this.hasApp;
   }
+
+  /** The settings form's values as they change: what going back to the step shows. */
+  keepSettings(opts: AppSettings): void { this.chosen = opts; }
 
   /** Settings → install (or update) the app. */
   async installApp(opts: AppSettings): Promise<void> {
@@ -361,7 +377,7 @@ export class Session {
     if (!st?.ip) return undefined;
     this.ip = st.ip;
     // read-only and only for the name: a panel slow to answer doesn't hold up the step
-    const named = await Promise.race([panelWifi(this.panel!).catch(() => undefined), this.sleep(8000).then(() => undefined)]);
+    const named = await panelWifi(this.panel!, this.lid()).catch(() => undefined);
     const ssid = named?.ssid ?? this.wifiSsid;
     if (ssid) this.wifiSsid = ssid;
     return { ip: st.ip, ssid };
@@ -523,7 +539,8 @@ export class Session {
     }
     const st = this.setup!.state!;
     // which S1 Kiosk is on the panel decides how a Thread router gets its network (read-only)
-    const app = mode === 'thread_router' ? await kioskVersion(this.panel!).catch(() => undefined) : undefined;
+    // no answer counts as an older app: the Thread step then keeps the way that works on every version
+    const app = mode === 'thread_router' ? await kioskVersion(this.panel!, this.lid()).catch(() => undefined) : undefined;
     if (this.closed || this.s.screen !== 'setup' || this.s.setup.phase !== 'radio') return;
     const plan = radioPlan(mode, st.ip ?? this.ip ?? '<panel IP>', st.ha.url ?? '', st.radio.allowed, { version: app?.name, code: app?.code });
     if (plan) { this.setupPhase({ phase: 'radio-next', plan }); return; }
@@ -557,13 +574,15 @@ export class Session {
   /** Done's download: the files from this session's run, or from this browser's store for an earlier session's. */
   async downloadBackup(): Promise<void> {
     const b = this.s.backup;
+    const shown = this.s.done;
     if (!b) return;
     try {
       const files = this.result?.meta.id === b.id ? this.result.files : await this.d.backups.files(b);
       (this.d.download ?? saveBlob)(`${b.id}.zip`, backupZip(b, files));
     } catch (e) {
-      const d = this.s.done;
-      if (d?.backup) this.dispatch({ type: 'done', done: { ...d, backup: { ...d.backup, error: `Couldn't read it from this browser: ${(e as Error).message}` } } });
+      // only on the Done that asked: after Undo or a new run, a late error must not bring it back
+      if (this.closed || this.s.screen !== 'done' || this.s.done !== shown || !shown?.backup) return;
+      this.dispatch({ type: 'done', done: { ...shown, backup: { ...shown.backup, error: `Couldn't read it from this browser: ${(e as Error).message}` } } });
     }
   }
 

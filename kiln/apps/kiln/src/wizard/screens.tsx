@@ -190,18 +190,21 @@ function Installing({ frame, setup }: { frame: FrameUi; setup: Extract<Setup, { 
   const rows = ROWS.filter((r, i) => r.id !== 'keyboard' || reached.has('keyboard') || (setup.chosen?.keyboard !== false && i > cur));
   const at = rows.findIndex((r) => r.id === ROWS[cur]!.id);
   const { sub, note } = now ? nowSays(now, setup.update) : {};
+  // the list changes only its marks, which a live region doesn't read: say the step in words
+  const says = [rows[at]?.text(frame.app), sub, note].filter(Boolean).join('. ').replace(/\.\./g, '.');
   return (
     <section className="card" aria-labelledby="h">
       <h2 id="h">{setup.update ? `Updating ${frame.app}.` : `Installing ${frame.app}.`}</h2>
       <p className="lede">Keep it plugged in.</p>
-      <ol className="join" aria-live="polite">
+      <ol className="join">
         {rows.map((r, i) => (
           <li key={r.id} className={i < at ? 'done' : i === at ? 'cur' : ''}>
             {r.text(frame.app)}{i === at && sub && <span className="sub-step">{sub}</span>}
           </li>
         ))}
       </ol>
-      {note && <p className="small" role="status">{note}</p>}
+      {note && <p className="small" aria-hidden="true">{note}</p>}
+      <p className="visually-hidden" role="status">{says}</p>
       <div className="bar wait"><i /></div>
     </section>
   );
@@ -224,6 +227,10 @@ function Settings({ s, session, frame, setup }: P & { setup: Extract<Setup, { ph
   const [clock, setClock] = useState(was ? (was.clock24 ? '24' : '12') : new Intl.DateTimeFormat(here, { hour: 'numeric' }).resolvedOptions().hour12 ? '12' : '24');
   const [keyboard, setKeyboard] = useState(was?.keyboard ?? true);
   const busy = !!setup.installing;
+  // kept as it changes, so going to another set-up step and back doesn't lose an edit not yet installed
+  useEffect(() => {
+    session.keepSettings({ locale: locale || undefined, timezone: tz || undefined, clock24: clock === '24', keyboard });
+  }, [session, locale, tz, clock, keyboard]);
   if (setup.installing) return <Installing frame={frame} setup={setup} />;
   return (
     <section className="card" aria-labelledby="h">
