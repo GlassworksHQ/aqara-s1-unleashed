@@ -893,7 +893,9 @@ def sample_matches(sample, label, panes):
         return None
     on = label[len(REF_LABEL):-3] if label.endswith("-on") else None
     for pid, p in panes.items():
-        if p.get("state") and st.get(p["state"]) != (pid == on):
+        # A pane the sample didn't record (a run from before its switch, #67) can't count against it.
+        ran_it = st.get(p["state"]) if p.get("state") else None
+        if ran_it is not None and ran_it != (pid == on):
             return False
     return True
 
@@ -998,8 +1000,8 @@ def reference_ram(ref_idles, refstarts, package, budgets, mem_total_kb):
         } if bm else None,
         "panes": pane_on_alone(ref_idles, package, budgets["panes"]),
         "screen_off_samples": sorted(f"{i['label']}-{i['run']}" for runs in ref_idles.values() for i in runs if i.get("screen_off")),
-        "panes_waiting": [{"id": k, "waiting_on": v["waiting_on"], **({"note": v["note"]} if v.get("note") else {})}
-                          for k, v in sorted(budgets["panes"].items()) if v.get("waiting_on")],
+        "panes_not_switched": [{"id": k, "why": v["not_switched"], **({"note": v["note"]} if v.get("note") else {})}
+                               for k, v in sorted(budgets["panes"].items()) if v.get("not_switched")],
     }
     peak = out["graded_peak"] or {}
     avail = [m["mem_available_kb"] for m in im + bm if m["mem_available_kb"] is not None]
@@ -1531,9 +1533,8 @@ def ram_markdown(ram):
         out += [""] + [f"- {n}" for n in notes] if notes else []
     if ram.get("screen_off_samples"):
         out += ["", "The screen went off in " + ", ".join(ram["screen_off_samples"]) + "; those samples are left out."]
-    if ram.get("panes_waiting"):
-        out += ["", "Not measured per pane yet (no on/off switch until " + ", ".join(sorted({p["waiting_on"] for p in ram["panes_waiting"]}))
-                + "): " + ", ".join(p["id"] for p in ram["panes_waiting"]) + "."]
+    if ram.get("panes_not_switched"):
+        out += ["", "Not measured on their own: " + "; ".join(f"{p['id']} ({p['why']})" for p in ram["panes_not_switched"]) + "."]
     return out
 
 
