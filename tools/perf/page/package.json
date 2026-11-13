@@ -1,0 +1,5 @@
+{
+  "//": "The perf pages are plain browser scripts with a CommonJS fallback for node tests (module.exports). The repo root is an ES module package (#130); this keeps these as CommonJS. Not an npm workspace.",
+  "type": "commonjs",
+  "private": true
+}
