@@ -80,6 +80,24 @@ class Owners(unittest.TestCase):
         self.assertEqual(A.owner_of_class("sh.edm.s1kiosk.frame.TimeZonePanel", PARTS), ("core", None))
         self.assertEqual(A.owner_of_class("org.mozillax.Foo", PARTS), ("core", None))
 
+    def test_the_longest_prefix_wins(self):
+        """A library prefix that is a prefix of a pane's (the verifier's note 5), and the other way round."""
+        parts = {"engine": {"dex": []}, "panes": {"p": {"dex": ["org.example.pane."]}, "q": {"dex": ["org.lib."]}},
+                 "libraries": {"lib": {"dex": ["org.example."], "used_by": ["core"]},
+                               "inner": {"dex": ["org.lib.inner."], "used_by": ["core"]}}}
+        self.assertEqual(A.owner_of_class("org.example.pane.Foo", parts), ("pane", "p"))
+        self.assertEqual(A.owner_of_class("org.example.Other", parts), ("library", "lib"))
+        self.assertEqual(A.owner_of_class("org.lib.inner.X", parts), ("library", "inner"))
+        self.assertEqual(A.owner_of_class("org.lib.Y", parts), ("pane", "q"))
+
+    def test_a_panes_classes_outside_its_package(self):
+        """The verifier's note 6: classes only a pane uses, outside its package, are that pane's."""
+        for name in ("sh.edm.s1kiosk.esphome.VoiceAssistantController", "sh.edm.s1kiosk.esphome.VoiceAssistantController$start$1",
+                     "sh.edm.s1kiosk.esphome.UrlPlayer", "sh.edm.s1kiosk.esphome.WakeWordCatalog"):
+            self.assertEqual(A.owner_of_class(name, PARTS), ("pane", "assist"), name)
+        self.assertEqual(A.owner_of_class("sh.edm.s1kiosk.frame.TimeZoneKeeper", PARTS), ("pane", "time-zone"))
+        self.assertEqual(A.owner_of_class("sh.edm.s1kiosk.esphome.PanelDevice", PARTS), ("core", None))
+
     def test_a_pane_with_no_code_is_noted(self):
         self.assertIn("radio", self.b["panes_without_code"])
         self.assertNotIn("assist", self.b["panes_without_code"])
@@ -103,8 +121,16 @@ class AssetsLint(unittest.TestCase):
 
     def test_the_app_today_passes(self):
         """The kiosk's own assets (the GeckoView extension, the baseline profile, the licences) are the
-        core's; GeckoView's omni.ja is the engine's (2026-11-13: no pane ships assets yet)."""
+        core's; GeckoView's omni.ja is the engine's."""
         self.assertEqual(self.lint("assets/dexopt/baseline.prof", "assets/licenses/LICENSE")["lint"], [])
+
+    def test_the_radio_bundle_is_the_radios(self):
+        """The release's armeabi-v7a APK carries the signed radio bundle at assets/radio-bundle/, where
+        RadioBundle.kt and release.yml's checks expect it: the radio pane's assets, not a lint failure."""
+        b = self.lint("assets/radio-bundle/manifest", "assets/radio-bundle/sisdk/lib/libc.so.6")
+        self.assertEqual(b["lint"], [])
+        self.assertEqual(b["owners"]["pane:radio"]["assets"], 20)
+        self.assertEqual(self.lint("assets/radio-bundle-extra/x")["lint"][0][:28], "assets/radio-bundle-extra/x:")
 
 
 class Budgets(unittest.TestCase):
@@ -129,12 +155,49 @@ class Budgets(unittest.TestCase):
         self.assertFalse(rep["budget"]["ok"])
         self.assertIn("assist is", rep["budget"]["fails"][0])
 
-    def test_raising_the_budget_in_the_same_pr_passes_and_says_so(self):
+    def test_raising_the_budget_in_the_same_pr_passes_and_leads_the_comment(self):
         base = {"size": {"apk_max_bytes": {"armeabi-v7a": 600_000}}}
         head = {"size": {"apk_max_bytes": {"armeabi-v7a": 900_000}}}
         rep = self.report(head, base, xul=700_000)
         self.assertTrue(rep["budget"]["ok"])
-        self.assertIn("this PR changes the APK budget from 0.60 MB to 0.90 MB", " ".join(rep["budget"]["notes"]))
+        self.assertTrue(rep["budget"]["raised"])
+        self.assertEqual(rep["budget"]["changes"], ["armeabi-v7a APK: this PR raises the budget from 0.60 MB to 0.90 MB"])
+        lines = A.markdown(rep).splitlines()
+        self.assertEqual(lines[3], "**This PR raises the size budget.**")     # first, before "Within budget."
+        self.assertLess(lines.index("**This PR raises the size budget.**"), lines.index("Within budget."))
+
+    def test_a_budget_the_base_didnt_have_is_said(self):
+        rep = self.report({"size": {"apk_max_bytes": {"armeabi-v7a": 900_000}}, "panes": {"radio": {"size_max_bytes": 5_000}}},
+                          {"size": {}})
+        self.assertIn("armeabi-v7a APK: this PR adds a budget of 0.90 MB (the base had none)", rep["budget"]["changes"])
+        self.assertIn("pane radio: this PR adds a budget of 0.01 MB (the base had none)", rep["budget"]["changes"])
+        self.assertTrue(rep["budget"]["raised"])
+
+    def test_a_lowered_budget_is_a_change_not_a_raise(self):
+        rep = self.report({"size": {"apk_max_bytes": {"armeabi-v7a": 900_000}}}, {"size": {"apk_max_bytes": {"armeabi-v7a": 950_000}}})
+        self.assertFalse(rep["budget"]["raised"])
+        self.assertIn("**This PR changes the size budget.**", A.markdown(rep))
+        # Without the base's budgets file, nothing can be called a change.
+        self.assertEqual(self.report({"size": {"apk_max_bytes": {"armeabi-v7a": 900_000}}})["budget"]["changes"], [])
+
+    def test_a_missing_base_is_said(self):
+        d = tempfile.mkdtemp()
+        head = make_apk(os.path.join(d, "head.apk"))
+        rep = A.build_report("aqara-s1-plus", {"armeabi-v7a": head}, {}, PARTS, {"size": {}}, None,
+                             classes_of=lambda p: A.parse_classes(CLASSES), base_missing={"armeabi-v7a": "base-build-failed"})
+        self.assertEqual(rep["abis"]["armeabi-v7a"]["base_missing"], "base-build-failed")
+        self.assertIn("- armeabi-v7a: no change column: the base didn't build.", A.markdown(rep))
+        rep["abis"]["armeabi-v7a"]["base_missing"] = "anything [else](x)"
+        with self.assertRaises(ValueError):
+            A.markdown(rep)
+
+    def test_an_apk_of_another_abi_is_refused(self):
+        d = tempfile.mkdtemp()
+        apk = make_apk(os.path.join(d, "a.apk"))                 # lib/armeabi-v7a/
+        with self.assertRaises(SystemExit) as e:
+            A.build_report("aqara-s1-plus", {"arm64-v8a": apk}, {}, PARTS, {"size": {}}, None,
+                           classes_of=lambda p: A.parse_classes(CLASSES))
+        self.assertEqual(e.exception.code, 2)
 
     def test_the_change_from_the_base(self):
         rep = self.report({"size": {}}, xul=510_000)
@@ -178,12 +241,33 @@ class Comment(unittest.TestCase):
 
     def test_findings_are_plain_text(self):
         rep = self.rep()
-        rep["budget"]["fails"] = ["x <img src=x onerror=alert(1)> [link](http://evil) @someone"]
+        rep["budget"]["fails"] = ["x <img src=x onerror=alert(1)> [link](http://evil) @someone", "see https://evil.example/x now"]
         md = A.markdown(rep)
         body = md.split("How this is measured")[0]
         self.assertNotIn("](", body)
         self.assertNotIn("<img", body)
         self.assertNotIn("@someone", md)
+        self.assertNotIn("://", body)
+        self.assertIn("see (link removed) now", body)
+
+    def test_the_comment_has_limits(self):
+        rep = self.rep()
+        rep["budget"]["notes"] = [f"note {i}" for i in range(50)]
+        md = A.markdown(rep)
+        self.assertIn("- note 19", md)
+        self.assertNotIn("- note 20", md)
+        self.assertIn("- and 30 more (the job summary has them all)", md)
+        rows = rep["abis"]["armeabi-v7a"]["rows"]
+        many = copy.deepcopy(rep)
+        many["abis"]["armeabi-v7a"]["rows"] = {f"pane:p{i}": rows["core"] for i in range(A.MAX_ROWS + 1)}
+        for bad in (many,
+                    dict(rep, abis={"armeabi-v7a": dict(rep["abis"]["armeabi-v7a"], rows=[1, 2])}),
+                    dict(rep, abis={"armeabi-v7a": dict(rep["abis"]["armeabi-v7a"], rows={"core": "big"})}),
+                    dict(rep, abis={"armeabi-v7a": dict(rep["abis"]["armeabi-v7a"], base_rows=[])}),
+                    dict(rep, abis={"armeabi-v7a": "x"}),
+                    dict(rep, budget=["x"])):
+            with self.assertRaises(ValueError):
+                A.markdown(bad)
 
     def test_render_from_the_command_line(self):
         d = tempfile.mkdtemp()
@@ -235,9 +319,24 @@ class Cli(unittest.TestCase):
                                 "--md", os.path.join(d, "s.md")], capture_output=True, text=True)
             self.assertEqual(p.returncode, want, p.stderr)
             self.assertTrue(os.path.exists(os.path.join(d, "s.json")))      # written either way
-        p = subprocess.run([sys.executable, TOOL, "report", "--frame", "aqara-s1-plus", "--apk", "mips=x.apk",
-                            "--json", "x", "--md", "y"], capture_output=True, text=True)
-        self.assertNotEqual(p.returncode, 0)
+        # Bad input is 2, not 1 (1 means over budget).
+        for bad in (["--apk", "mips=x.apk"], ["--apk", f"armeabi-v7a={apk}", "--base-missing", "armeabi-v7a=maybe"],
+                    ["--apk", f"arm64-v8a={apk}", "--apkanalyzer", fake, "--budgets", b]):
+            p = subprocess.run([sys.executable, TOOL, "report", "--frame", "aqara-s1-plus", *bad,
+                                "--json", os.path.join(d, "x"), "--md", os.path.join(d, "y")], capture_output=True, text=True)
+            self.assertEqual(p.returncode, 2, (bad, p.stderr))
+        self.assertTrue(os.access(TOOL, os.X_OK))
+
+    def test_the_size_job_bundles_what_the_release_does(self):
+        """tools/size/radio-bundle.sh and release.yml's "Sign the radio bundle" step bundle the same files."""
+        def bundled(text):
+            return sorted(re.findall(r"--(?:file|dir) \"?([a-z0-9_.-]+)=", text))
+        with open(os.path.join(ROOT, ".github", "workflows", "release.yml")) as f:
+            release = f.read()
+        with open(os.path.join(os.path.dirname(HERE), "radio-bundle.sh")) as f:
+            mine = f.read()
+        self.assertEqual(bundled(mine), bundled(release))
+        self.assertEqual(bundled(mine), ["ot-ctl", "otbr-agent", "s1kiosk_radio.sh", "sisdk"])
 
 
 if __name__ == "__main__":

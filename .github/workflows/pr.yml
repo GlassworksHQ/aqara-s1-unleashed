@@ -154,7 +154,7 @@ jobs:
 
   size:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90   # two ABIs on two commits, plus the radio bundle's sisdk build on a cache miss
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -175,32 +175,59 @@ jobs:
       - name: Android SDK platform
         run: sdkmanager --install "platforms;android-37.2"
 
+      # The release's armeabi-v7a APK carries the signed radio bundle (release.yml), so this one does
+      # too: the same files, signed with a throwaway key (tools/size/radio-bundle.sh, docs/size.md).
+      # The sisdk runtime is reproducible and checked against tools/radio/sisdk-runtime.sha256 either
+      # way; the cache only saves rebuilding it.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/sisdk-cache
+          key: sisdk-${{ hashFiles('tools/radio/build-sisdk-runtime.sh', 'tools/radio/sisdk-runtime.sha256', 'tools/radio/sisdk/**') }}
+
+      - name: Radio bundle, as the release builds it
+        run: SISDK_DIR="$HOME/sisdk-cache" tools/size/radio-bundle.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bundle-head"
+
       - name: Release APKs of this branch
         working-directory: app
         run: |
           mkdir -p "$RUNNER_TEMP/apk" "$RUNNER_TEMP/size"
           for abi in armeabi-v7a arm64-v8a; do
-            ./gradlew --no-daemon :kiosk:assembleRelease -Ps1Abi="$abi"
+            bundle="$RUNNER_TEMP/bundle-head"; [ "$abi" = armeabi-v7a ] || bundle=""   # as release.yml
+            S1_RADIO_BUNDLE_ASSETS="$bundle" ./gradlew --no-daemon :kiosk:assembleRelease -Ps1Abi="$abi"
             cp kiosk/build/outputs/apk/release/kiosk-release-unsigned.apk "$RUNNER_TEMP/apk/head-$abi.apk"
           done
 
-      # The base: the PR's base commit, or the commit before a push. Without one (or if it doesn't
-      # build), the report has no change column and the budget is still checked.
+      # The base: the PR's base commit, or the commit before a push. Without one, or for an ABI it
+      # doesn't build, the report says so (base_missing) and the budget is still checked.
       - name: Release APKs of the base
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
+          missing="$RUNNER_TEMP/size/base-missing"; : > "$missing"
           if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "No base commit ($BASE); no change column."
+            printf '%s\n' armeabi-v7a=no-base-commit arm64-v8a=no-base-commit > "$missing"
             exit 0
           fi
           git worktree add -q "$RUNNER_TEMP/base" "$BASE"
+          # The base's own bundle when its inputs differ (this script, on the base's files).
+          bundle="$RUNNER_TEMP/bundle-head"
+          if ! git diff --quiet "$BASE" HEAD -- tools/radio kiln/assets.lock.json; then
+            bundle="$RUNNER_TEMP/bundle-base"
+            SISDK_DIR="$RUNNER_TEMP/sisdk-base" tools/size/radio-bundle.sh "$RUNNER_TEMP/base" "$bundle" || bundle=""
+          fi
           cd "$RUNNER_TEMP/base/app"
           for abi in armeabi-v7a arm64-v8a; do
-            if ./gradlew --no-daemon :kiosk:assembleRelease -Ps1Abi="$abi"; then
+            b="$bundle"; [ "$abi" = armeabi-v7a ] || b=""
+            if [ "$abi" = armeabi-v7a ] && [ -z "$bundle" ]; then
+              echo "The base's radio bundle didn't build; no change column for $abi."
+              echo "$abi=base-build-failed" >> "$missing"; continue
+            fi
+            if S1_RADIO_BUNDLE_ASSETS="$b" ./gradlew --no-daemon :kiosk:assembleRelease -Ps1Abi="$abi"; then
               cp kiosk/build/outputs/apk/release/kiosk-release-unsigned.apk "$RUNNER_TEMP/apk/base-$abi.apk"
             else
               echo "The base didn't build for $abi; no change column for it."
+              echo "$abi=base-build-failed" >> "$missing"
             fi
           done
 
@@ -211,6 +238,7 @@ jobs:
             args="$args --apk $abi=$RUNNER_TEMP/apk/head-$abi.apk"
             [ -f "$RUNNER_TEMP/apk/base-$abi.apk" ] && args="$args --base-apk $abi=$RUNNER_TEMP/apk/base-$abi.apk"
           done
+          while IFS= read -r m; do [ -n "$m" ] && args="$args --base-missing $m"; done < "$RUNNER_TEMP/size/base-missing"
           base_budgets="$RUNNER_TEMP/base/frames/aqara-s1-plus/budgets.json"
           [ -f "$base_budgets" ] && args="$args --base-budgets $base_budgets"
           # shellcheck disable=SC2086 # $args is a list of options

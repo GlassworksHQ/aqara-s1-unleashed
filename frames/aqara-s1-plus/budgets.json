@@ -1,12 +1,12 @@
 {
-  "_comment": "The Aqara S1 Plus's budgets (#68). Project choices, not published standards; docs/perf.md, \"RAM\", and docs/size.md say why and how each is measured. Clarity's report (tools/perf/report.py) reads ram and panes.*.ram_pss_max_kb; CI's size check (tools/size/apksize.py) reads size and panes.*.size_max_bytes, and fails a PR that goes over unless the same PR raises the budget. The pane RAM budgets were set before the first per-pane measurement (2026-11-13); revisit them once one exists. The size budgets are the 2026-11-13 release build (97.84 MB armeabi-v7a, 100.78 MB arm64-v8a) plus about 2.5%, and each pane's size about twice its own today (at least 100 kB), so growth is a decision, not a drift. A switchable pane's `state` is how its log shows it running (tools/perf/perflib.py pane_state): Assist by the wake word's microphone, Sendspin by its player. Assist is turned off with voice_enabled and its microphone mute (`mute`), because S1 Kiosk 0.4.3 loses a voice_enabled change across its restart (#158, s1v7).",
+  "_comment": "The Aqara S1 Plus's budgets (#68). Project choices, not published standards; docs/perf.md, \"RAM\", and docs/size.md say why and how each is measured. Clarity's report (tools/perf/report.py) reads ram and panes.*.ram_pss_max_kb; CI's size check (tools/size/apksize.py) reads size and panes.*.size_max_bytes, and fails a PR that goes over unless the same PR raises the budget. The pane RAM budgets were set before the first per-pane measurement (2026-11-13); revisit them once one exists. The size budgets are the 2026-11-13 release build as it ships (101.17 MB armeabi-v7a, with the radio bundle as release.yml adds it; 100.78 MB arm64-v8a, without) plus about 2.5%, and each pane's size about twice its own then (at least 100 kB; the radio's includes the bundle, 3.49 MB), so growth is a decision, not a drift. A switchable pane's `state` is how its log shows it running (tools/perf/perflib.py pane_state): Assist by the wake word's microphone, Sendspin by its player. Assist is turned off with voice_enabled and its microphone mute (`mute`), because S1 Kiosk 0.4.3 loses a voice_enabled change across its restart (#158, s1v7).",
   "ram": {
     "app_pss_max_pct_of_ram": 50,
     "device_available_min_pct": 15
   },
   "size": {
     "apk_max_bytes": {
-      "armeabi-v7a": 100300000,
+      "armeabi-v7a": 103700000,
       "arm64-v8a": 103300000
     }
   },
@@ -27,7 +27,7 @@
     "radio": {
       "waiting_on": "#67",
       "note": "its processes run outside the app and are measured in place",
-      "size_max_bytes": 400000
+      "size_max_bytes": 7000000
     },
     "wall-base": {
       "waiting_on": "#67",

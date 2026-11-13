@@ -1,5 +1,5 @@
 {
- "_comment": "Which part of the APK each file and dex class belongs to (tools/size/apksize.py, docs/size.md). Read from app/kiosk/build.gradle.kts and the imports in app/kiosk/src/main and app/libs (2026-11-13). The longest matching dex prefix wins; a class nothing matches is core. A library is counted in a pane's own total only when that pane alone uses it.",
+ "_comment": "Which part of the APK each file and dex class belongs to (tools/size/apksize.py, docs/size.md). Read from app/kiosk/build.gradle.kts and the imports in app/kiosk/src/main and app/libs (2026-11-13). The longest matching dex prefix wins; a class nothing matches is core. A library is counted in a pane's own total only when that pane alone uses it. A pane's `assets` are paths outside assets/panes/<id>/ that are its own (the radio bundle, which the app and release.yml expect at assets/radio-bundle/). A pane's `dex` lists its package and the classes elsewhere that only it uses (read 2026-11-13 from their users).",
  "engine": {
   "_why": "GeckoView: its Java and native code, and omni.ja (Gecko's own JS, CSS and resources).",
   "dex": ["org.mozilla.", "org.webrtc."],
@@ -20,12 +20,16 @@
   "zxing": {"dex": ["com.google.zxing."], "used_by": ["core"], "_why": "the sign-in QR code (ui/)"}
  },
  "panes": {
-  "assist": {"dex": ["sh.edm.s1kiosk.voice.", "sh.edm.s1kiosk.VoiceOverlay"]},
+  "assist": {"dex": ["sh.edm.s1kiosk.voice.", "sh.edm.s1kiosk.VoiceOverlay", "sh.edm.s1kiosk.esphome.VoiceAssistantController",
+                     "sh.edm.s1kiosk.esphome.UrlPlayer", "sh.edm.s1kiosk.esphome.WakeWordCatalog"],
+             "_why": "VoiceAssistantController.kt (esphome/) declares these three, used only by voice/"},
   "sendspin": {"dex": ["sh.edm.s1kiosk.sendspin."]},
-  "radio": {"dex": ["sh.edm.s1kiosk.radio."]},
+  "radio": {"dex": ["sh.edm.s1kiosk.radio."], "assets": ["assets/radio-bundle/"],
+            "_why": "the signed radio bundle, which the release adds to armeabi-v7a (release.yml, RadioBundle.kt)"},
   "wall-base": {"dex": ["sh.edm.s1kiosk.base."]},
   "timers": {"dex": ["sh.edm.s1kiosk.timers.", "sh.edm.s1kiosk.TimerBoard", "sh.edm.s1kiosk.TimerOverlay"]},
-  "time-zone": {"dex": ["sh.edm.s1kiosk.frame.TimeZonePane"]},
+  "time-zone": {"dex": ["sh.edm.s1kiosk.frame.TimeZonePane", "sh.edm.s1kiosk.frame.TimeZoneKeeper"],
+                "_why": "TimeZoneKeeper is used only by TimeZonePane"},
   "diagnostics": {"dex": ["dev.glassworks.diagnostics."]}
  }
 }
