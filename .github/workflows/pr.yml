@@ -189,6 +189,16 @@ jobs:
         run: |
           python3 -m unittest discover -s tools/perf/test -v
           node --test tools/perf/test/page.test.mjs tools/perf/test/grade.test.mjs
+      # Clarity's WebRTC camera (#202): the fake's peer and TURN relay under the hash-locked venv, then HA's
+      # real frontend (the pinned build, 117 MB) in the runner's Chrome playing the fake's WebRTC stream.
+      # GW_PERF_E2E=1: they fail here instead of skipping.
+      - name: Perf test WebRTC camera, end to end
+        env:
+          GW_PERF_E2E: "1"
+        run: |
+          PY=$(python3 tools/perf/webrtcenv.py)
+          "$PY" -m unittest discover -s tools/perf/test -p test_webrtc.py -v
+          GW_PERF_FAKE_PYTHON="$PY" node --test tools/perf/test/webrtc.e2e.test.mjs
       - name: APK size tool
         run: python3 -m unittest discover -s tools/size/test -v
       - name: Boot generator targets and layout

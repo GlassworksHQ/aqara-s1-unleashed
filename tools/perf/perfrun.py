@@ -342,7 +342,9 @@ def cmd_coldstart(dev, a):
         sys.exit(f"--warmup-tier {a.warmup_tier} is also graded; a view shown twice is cached the second time")
     turn = (a.run - 1) % len(base) if base else 0
     tiers = base[turn:] + base[:turn]
-    slots = (["warmup"] if ref and a.warmup_tier else []) + tiers
+    # The HLS fallback views (#202; detail, not graded) come after the graded ones, in a fixed order.
+    fallback = [t for t in a.fallback.split(",") if t] if ref else []
+    slots = (["warmup"] if ref and a.warmup_tier else []) + tiers + fallback
     lc = dev.logcat()
     lines = queue.Queue()
     threading.Thread(target=lambda: [lines.put(l) for l in lc.stdout], daemon=True).start()
@@ -383,7 +385,8 @@ def cmd_coldstart(dev, a):
            "displayed_mono": None, "engine_mono": None, "engine_uri": None, "own_page_start_mono": None,
            "own_page_stop_mono": None, "own_page_loads": 0, "own_page_state": None,
            "page_start_mono": None, "page_stop_mono": None, "tiers": {}, "order": tiers, "warmup": None,
-           "between": [], "bad_page_lines": 0, "protocol_restart": ref, "memory": [], "error": None}
+           "between": [], "bad_page_lines": 0, "protocol_restart": ref, "memory": [], "error": None,
+           "fallback": {}}
     page_lines = P.PageLines()
     st = {"engine_at": None, "own_stop_at": 0.0, "current": None, "measure_mono": None, "break_after": None,
           "opened": 0, "next_at": None, "gestures": []}
@@ -391,7 +394,9 @@ def cmd_coldstart(dev, a):
     proc_re = re.compile(rf"Start proc \d+:{re.escape(dev.package)}/")
 
     def entry_of(slot):
-        return res["warmup"] if slot == "warmup" else res["tiers"][slot]
+        if slot == "warmup":
+            return res["warmup"]
+        return res["fallback"][slot] if slot in fallback else res["tiers"][slot]
 
     def note_media(rec, cur):
         """Which decoders each view got, from Android's own log lines (any device): the codec name
@@ -435,6 +440,10 @@ def cmd_coldstart(dev, a):
         if slot == "warmup":
             tier, extra = a.warmup_tier, {"taps": 0, "swipes": 0, "warmup": 1}
             res["warmup"] = {"tier": tier, "nonce": nonce, "swipes": []}
+        elif slot in fallback:
+            # As a graded view, taps included, so the camera window is the same; no swipes.
+            tier, extra = slot, {"taps": a.taps, "swipes": 0}
+            res["fallback"][slot] = {"nonce": nonce, "swipes": []}
         else:
             tier, extra = slot, {"taps": a.taps}
             res["tiers"][tier] = {"nonce": nonce, "swipes": []}
@@ -651,9 +660,10 @@ def cmd_coldstart(dev, a):
             # The page before has stopped its updates; open the next one on a still screen, so no
             # page is measured over the last one's work. (Its teardown on navigation is part of
             # opening a view, as in HA, and the warm-up makes it the same for every page.)
-            if a.memory and st["opened"]:
+            if a.memory and st["opened"] and slots[st["opened"] - 1] not in fallback:
                 # RAM after each graded page, between pages: nothing is timed now. The largest of
-                # these is the peak during the graded tasks (report.py, ram).
+                # these is the peak during the graded tasks (report.py, ram); the fallback views
+                # aren't graded tasks.
                 res["memory"].append(dict(memory_sample(dev, [x for x in a.radio_procs.split(",") if x], summaries=False),
                                           after=slots[st["opened"] - 1]))
             paused.clear()
@@ -669,7 +679,7 @@ def cmd_coldstart(dev, a):
             continue
         if rec and handle(rec):
             break
-    if ref and a.memory and st["opened"] == len(slots) and not res["error"]:
+    if ref and a.memory and st["opened"] == len(slots) and not res["error"] and slots[-1] not in fallback:
         res["memory"].append(dict(memory_sample(dev, [x for x in a.radio_procs.split(",") if x], summaries=False),
                                   after=slots[-1]))
     lc.terminate()
@@ -682,9 +692,15 @@ def cmd_coldstart(dev, a):
     elif ref and st["current"] and not entry_of(st["current"][0]).get("done") and not entry_of(st["current"][0]).get("error"):
         # The last view never said done (smoke10's heavy, with the screen off): not a lost line.
         res["error"] = f"{st['current'][0]} didn't finish within {a.timeout:.0f} s"
-    if ref and not res["error"] and res.get("screen_off"):
-        res["error"] = (f"the screen went off during the graded run ({len(res['screen_off'])} time(s), first "
-                        f"{res['screen_off'][0]['during']}): with the screen off nothing timed is the panel's")
+    offs = [x for x in res.get("screen_off", []) if x["during"] not in fallback]
+    if ref and not res["error"] and offs:
+        res["error"] = (f"the screen went off during the graded run ({len(offs)} time(s), first "
+                        f"{offs[0]['during']}): with the screen off nothing timed is the panel's")
+    graded_done = ref and all((res["tiers"].get(t) or {}).get("done") or (res["tiers"].get(t) or {}).get("error") for t in tiers)
+    if res["error"] and graded_done and fallback and st["current"] and st["current"][0] in fallback:
+        # A fallback view that failed fails only itself: the graded views were done.
+        res["fallback_error"], res["error"] = res["error"], None
+        print(f"  fallback: {res['fallback_error']}", file=sys.stderr)
     # A page that said done without its updates step (smoke7: the line was cut off in logcat) isn't a
     # failed run: its other measurements stand, and the report says what is missing.
     res["missing_steps"] = [t for t, e in res["tiers"].items() if "step" not in e] if ref else []
@@ -825,13 +841,15 @@ def main():
     ap.add_argument("--radio-procs", default="otbr-agent,cpcd,zigbeed")
     ap.add_argument("--own-page-wait", type=float, default=30, help="refstart: seconds to wait for the kiosk's own page")
     ap.add_argument("--tiers", default="light,typical,heavy", help="refstart: reference dashboards; run k starts k-1 pages in")
+    ap.add_argument("--fallback", default="", help="refstart: views opened after the graded ones, measured as detail "
+                    "(protocol 6: typical-hls,heavy-hls, the cameras over HLS)")
     ap.add_argument("--warmup-tier", default="", help="refstart: a warm-up page opened first and not graded (protocol 4: none; the restart page is the warm-up)")
     ap.add_argument("--memory", type=int, default=1, help="refstart: sample RAM between the graded pages (0: no)")
     ap.add_argument("--between-quiet", type=float, default=2.0, help="refstart: seconds of still screen before each page opens")
     ap.add_argument("--vsync", default="16.667", help="refstart: the display's refresh period in ms")
     a = ap.parse_args()
     if a.timeout is None:
-        a.timeout = {"coldstart": 120, "refstart": 600}.get(a.cmd, 1200)
+        a.timeout = {"coldstart": 120, "refstart": 900}.get(a.cmd, 1200)
     os.makedirs(a.out, exist_ok=True)
     dev = Device(a.serial, a.package, a.activity)
     {"device": cmd_device, "synthetic": cmd_synthetic, "refstart": cmd_coldstart, "coldstart": cmd_coldstart,

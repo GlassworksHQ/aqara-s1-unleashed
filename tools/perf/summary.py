@@ -61,12 +61,22 @@ def page_summary(s):
         "updates": {"latency_p95_ms": _med(s.get("latency_p95_ms"), 1), "latency_median_ms": _med(s.get("latency_median_ms"), 1),
                     "pacing_p95_ms": _med(up.get("p95_ms"), 2), "runs": s.get("updates_runs") or []},
         # Live cameras (#174), on the pages with streams: each run's worst stream (graded per run).
-        "camera": {"runs": [{k: r.get(k) for k in ("first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms")}
-                            for r in s.get("camera_runs") or []]},
+        # Protocol 6 (#202): `path`, what the graded streams played over (web_rtc), and `fallback`,
+        # the same page's cameras over HLS (detail, not graded; null before protocol 6).
+        "camera": camera_summary(s),
         "runs": {"tap": _n(s.get("inp_ms")), "scroll": len(s.get("scroll_runs") or []),
                  "updates": len(s.get("updates_runs") or []), "open": _n(s.get("load_ms")),
                  "camera": len(s.get("camera_runs") or [])},
     }
+
+
+def camera_summary(s):
+    keys = ("first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms")
+    runs = s.get("camera_runs") or []
+    fb, paths = s.get("camera_fallback"), {r.get("path") or "hls" for r in runs}
+    return {"runs": [{k: r.get(k) for k in keys} for r in runs],
+            "path": paths.pop() if len(paths) == 1 else None,
+            "fallback": fb and {"path": fb["path"], "runs": [{k: r.get(k) for k in keys} for r in fb["runs"]]}}
 
 
 def ram_summary(ram):

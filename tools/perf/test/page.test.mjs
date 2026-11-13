@@ -269,3 +269,30 @@ test("videoGaps: frames presented inside a stall say the callbacks stalled, not 
   // The graded numbers don't change with the cross-check.
   assert.equal(S.videoGaps(times, [10, 11, 12, 28, 29], 0, 1500).stall_total_ms, 1067);
 });
+
+// ---- a WebRTC stream's receiver counts (#202): getStats over the camera window, detail
+
+test("webrtcStats: the inbound video's counts over the window, its decoder, codec and candidate pair", () => {
+  const before = [{ id: "IT1", type: "inbound-rtp", kind: "video", framesReceived: 10, framesDecoded: 9, framesDropped: 0,
+                    freezeCount: 0, totalFreezesDuration: 0, jitterBufferDelay: 1, jitterBufferEmittedCount: 9 }];
+  const after = [
+    { id: "IT1", type: "inbound-rtp", kind: "video", codecId: "C1", framesReceived: 130, framesDecoded: 128, framesDropped: 2,
+      freezeCount: 1, totalFreezesDuration: 0.4, jitterBufferDelay: 7, jitterBufferEmittedCount: 129,
+      decoderImplementation: "ExternalDecoder", powerEfficientDecoder: true },
+    { id: "IA1", type: "inbound-rtp", kind: "audio", framesDecoded: 999 },
+    { id: "C1", type: "codec", mimeType: "video/H264", sdpFmtpLine: "packetization-mode=1;profile-level-id=42e01f" },
+    { id: "T1", type: "transport", selectedCandidatePairId: "P1" },
+    { id: "P1", type: "candidate-pair", localCandidateId: "L1", state: "succeeded" },
+    { id: "L1", type: "local-candidate", candidateType: "relay", relayProtocol: "tcp", protocol: "udp" },
+  ];
+  const w = S.webrtcStats(before, after);
+  assert.deepEqual([w.frames_received, w.frames_decoded, w.frames_dropped, w.freezes, w.freeze_s], [120, 119, 2, 1, 0.4]);
+  assert.equal(w.jitter_buffer_ms, 50);                    // 6 s over 120 frames
+  assert.deepEqual([w.decoder, w.power_efficient, w.codec], ["ExternalDecoder", true, "video/H264"]);
+  assert.deepEqual(w.candidate, { local: "relay", relay: "tcp", protocol: "udp" });
+  // An engine that leaves fields out: null, never 0; no start snapshot counts from 0.
+  const bare = S.webrtcStats(null, [{ id: "I", type: "inbound-rtp", mediaType: "video", framesDecoded: 5 }]);
+  assert.deepEqual([bare.frames_decoded, bare.freezes, bare.decoder, bare.power_efficient, bare.candidate], [5, null, null, null, null]);
+  assert.equal(S.webrtcStats(before, null), null);
+  assert.deepEqual(S.webrtcStats(null, [{ id: "A", type: "inbound-rtp", kind: "audio" }]), { inbound: false });
+});

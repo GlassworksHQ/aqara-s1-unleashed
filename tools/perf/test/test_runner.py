@@ -62,8 +62,10 @@ class Runner(unittest.TestCase):
         os.chmod(adb, 0o755)
         env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="2",
                    GW_PERF_COLD_SETTLE="0", GW_PERF_RUN_GAP="0", GW_PERF_BETWEEN_QUIET="0.5", GW_PERF_FRONTEND=STUB_FRONTEND,
-                   GW_PERF_SWITCH_SETTLE="0", FAKE_HA_URL="http://127.0.0.1:18089", GW_PERF_CAMERA=STUB_CAMERA)
+                   GW_PERF_SWITCH_SETTLE="0", FAKE_HA_URL="http://127.0.0.1:18089", GW_PERF_CAMERA=STUB_CAMERA,
+                   GW_PERF_FAKE_PYTHON=sys.executable)
         env.pop("ANDROID_SERIAL", None)
+        cls.state = state
         cls.out = os.path.join(cls.tmp, "out")
         cls.proc = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", cls.out, "--port", "18089", "--taps", "2",
                                    "--restore-dashboard", RESTORE],
@@ -98,7 +100,8 @@ class Runner(unittest.TestCase):
         self.assertEqual(ref["restart_to"], "usable")
         self.assertEqual(ref["engine_ready_ms"]["n"], 1)                  # kept as detail
         self.assertEqual(ref["orders"], [["light", "typical", "heavy"]])
-        self.assertEqual(ref["per_run"][0]["between"], ["still", "still", "still"])   # after the restart page and each page
+        # After the restart page and each page, the HLS copies included (#202).
+        self.assertEqual(ref["per_run"][0]["between"], ["still"] * 5)
         for t in ("light", "typical", "heavy"):
             s = ref["tiers"][t]
             self.assertIsNotNone(s["load_ms"], t)
@@ -114,6 +117,28 @@ class Runner(unittest.TestCase):
         self.assertEqual(r["real_use"]["memory"]["idle"]["app_pss_kb"]["median"], 570000)
         self.assertEqual(r["real_use"]["idle"]["samples"], 1)        # the reference dashboard's samples aren't real use
         self.assertEqual({p["id"] for p in r["real_use"]["panes"]}, {"radio"})
+
+    def test_the_hls_copies_come_after_the_graded_views(self):
+        """#202: run.sh opens the camera pages' HLS copies after each run's graded views, without
+        swipes; they're detail beside the graded WebRTC cameras and never in the grade."""
+        with open(os.path.join(self.state, "opened.json")) as f:
+            self.assertEqual(json.load(f), ["light", "typical", "heavy", "typical-hls", "heavy-hls"])
+        with open(os.path.join(self.out, "refstart-1.json")) as f:
+            c = json.load(f)
+        self.assertEqual(sorted(c["fallback"]), ["heavy-hls", "typical-hls"])
+        self.assertEqual(c["fallback"]["heavy-hls"]["swipes"], [])
+        self.assertEqual(c["order"], ["light", "typical", "heavy"])
+        ref = self.rep["graded"]["reference"]
+        for t in ("typical", "heavy"):
+            self.assertEqual({r["path"] for r in ref["tiers"][t]["camera_runs"]}, {"web_rtc"}, t)
+            fb = ref["tiers"][t]["camera_fallback"]
+            self.assertEqual((fb["path"], [r["view"] for r in fb["runs"]]), ("hls", [f"{t}-hls"]), t)
+        # The decoders: over HLS the hardware one per stream; over WebRTC none logged (software).
+        self.assertEqual(ref["tiers"]["heavy"]["camera_fallback"]["runs"][0]["media"],
+                         {"codecs": ["OMX.allwinner.video.decoder.avc"] * 4, "flushes": 2, "eos": 1})
+        self.assertEqual(ref["tiers"]["typical"]["camera_fallback"]["runs"][0]["media"]["codecs"],
+                         ["OMX.allwinner.video.decoder.avc"])
+        self.assertIsNone(ref["tiers"]["heavy"]["camera_runs"][0]["media"])
 
     def test_ram_on_the_reference_dashboards(self):
         """#68: RAM per process at idle on the typical reference dashboard after the graded run, and the
@@ -203,7 +228,8 @@ def fake_env(tmp, **extra):
     os.chmod(adb, 0o755)
     extra.setdefault("FAKE_HA_URL", HA.url if HA else "")
     env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="1",
-               GW_PERF_FRONTEND=STUB_FRONTEND, GW_PERF_CAMERA=STUB_CAMERA, GW_PERF_SWITCH_SETTLE="0", GW_PERF_PANES_SAVE_S="0", **extra)
+               GW_PERF_FRONTEND=STUB_FRONTEND, GW_PERF_CAMERA=STUB_CAMERA, GW_PERF_SWITCH_SETTLE="0", GW_PERF_PANES_SAVE_S="0",
+               GW_PERF_FAKE_PYTHON=sys.executable, **extra)
     env.pop("ANDROID_SERIAL", None)
     return env, state
 
@@ -374,15 +400,15 @@ class LongLines(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertIsNone(c["error"])
         self.assertEqual(c["missing_steps"], ["light", "typical", "heavy"])
-        # Each page's updates step, and heavy's camera line (four streams and the HLS fetches: also
-        # longer than a logcat line).
-        self.assertEqual(c["bad_page_lines"], 4)
+        # Each page's updates step, and the camera lines: since protocol 6 (#202) even typical's one
+        # stream carries its WebRTC receiver's counts, so it is longer than a logcat line too.
+        self.assertEqual(c["bad_page_lines"], 5)
         self.assertNotIn("camera", c["tiers"]["heavy"])
-        self.assertIn("camera", c["tiers"]["typical"])                   # one stream: short enough
+        self.assertNotIn("camera", c["tiers"]["typical"])
         with open(os.path.join(tmp, "device.json"), "w") as f:
             json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
         rep = report.build(tmp)
-        self.assertIn("4 page line(s) didn't parse (cut off in logcat?)", rep["grade"]["provisional_reasons"])
+        self.assertIn("5 page line(s) didn't parse (cut off in logcat?)", rep["grade"]["provisional_reasons"])
         t = rep["graded"]["reference"]["tiers"]["light"]
         self.assertIsNotNone(t["scroll"])
         self.assertEqual(t["updates_errors"], ["the page's updates step never arrived"])
@@ -580,14 +606,15 @@ class Restart(unittest.TestCase):
         self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
         self.assertIsNone(self.build(tmp)["graded"]["reference"]["per_run"][0]["start_error"])
 
-    def run_short(self, timeout, **env):
+    def run_short(self, timeout, fallback="", **env):
         with FakeHA() as ha:
             tmp = tempfile.mkdtemp()
             env.setdefault("FAKE_SAVED_URL", ha.url + "/clarity-ref/start")
             e, state = fake_env(tmp, GW_PERF_COLD_SETTLE="0", FAKE_HA_URL=ha.url, **env)
             p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart", "--out", tmp,
                                 "--run", "1", "--settle", "0", "--url", ha.url, "--taps", "0", "--timeout", str(timeout),
-                                "--between-quiet", "0.3"], env=e, capture_output=True, text=True, timeout=timeout + 60)
+                                "--between-quiet", "0.3", "--fallback", fallback], env=e, capture_output=True, text=True,
+                               timeout=timeout + 60)
             with open(os.path.join(tmp, "refstart-1.json")) as f:
                 c = json.load(f)
             with open(os.path.join(state, "commands.log")) as f:
@@ -606,6 +633,17 @@ class Restart(unittest.TestCase):
         p, c, _ = self.run_short(25, FAKE_HANG="heavy")
         self.assertNotEqual(p.returncode, 0)
         self.assertEqual(c["error"], "heavy didn't finish within 25 s")
+
+    def test_a_fallback_view_that_never_finishes_fails_only_itself(self):
+        """#202: the HLS copies come after the graded views; one that hangs (or a screen that goes off
+        during it) leaves the graded run standing, and says why."""
+        p, c, _ = self.run_short(40, fallback="typical-hls,heavy-hls", FAKE_HANG="heavy-hls", FAKE_SCREEN_OFF="heavy-hls")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNone(c["error"])
+        self.assertEqual(c["fallback_error"], "heavy-hls didn't finish within 40 s")
+        self.assertTrue(c["fallback"]["typical-hls"]["done"])
+        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
+        self.assertTrue(all(e.get("done") for e in c["tiers"].values()))
 
     def test_the_screen_is_kept_awake_while_views_open_but_not_while_live(self):
         p, c, log = self.run_short(120, FAKE_SLOW_VIEW="2.5", GW_PERF_KEEP_AWAKE_S="0.7")
@@ -670,11 +708,11 @@ class Cameras(unittest.TestCase):
         self.assertGreater(len(json.dumps({k: v for k, v in heavy.items() if k != "mono"}, separators=(",", ":"))), line_max)
         self.assertEqual((heavy["fetches"]["streams"], len(heavy["streams"])), (4, 4))
         self.assertEqual(tiers["heavy"]["camera_runs"][0]["fetches"]["segment"]["n"], 20)
-        # Which decoders each view got, from logcat (detail): one hardware decoder per stream.
-        self.assertEqual(c["media"]["heavy"], {"codecs": ["OMX.allwinner.video.decoder.avc"] * 4, "flushes": 2, "eos": 1})
-        self.assertEqual(c["media"]["typical"]["codecs"], ["OMX.allwinner.video.decoder.avc"])
-        self.assertNotIn("light", c["media"])
-        self.assertEqual(tiers["heavy"]["camera_runs"][0]["media"]["flushes"], 2)
+        # Protocol 6: the graded streams play over WebRTC, which the S1 decodes in software (#202's
+        # step 0): no hardware decoder in logcat. The HLS copies' decoders: FullRun.
+        self.assertEqual({r["path"] for r in tiers["heavy"]["camera_runs"]}, {"web_rtc"})
+        self.assertEqual(c.get("media") or {}, {})
+        self.assertIsNone(tiers["heavy"]["camera_runs"][0]["media"])
 
     def test_a_stream_that_never_plays_fails_the_task(self):
         tmp = tempfile.mkdtemp()

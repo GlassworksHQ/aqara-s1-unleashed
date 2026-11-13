@@ -112,7 +112,7 @@ class FixedHome(unittest.TestCase):
     def test_counts_and_card_types(self):
         want = {"start": 23, "light": 20, "typical": 50, "heavy": 120}
         views = {v["path"]: v["cards"] for v in D.lovelace(D.DASHBOARD)["views"]}
-        self.assertEqual(list(views), ["start", "light", "typical", "heavy"])
+        self.assertEqual(list(views), ["start", "light", "typical", "heavy", "typical-hls", "heavy-hls"])
         for tier, n in want.items():
             with self.subTest(tier):
                 self.assertEqual(len(views[tier]), n)
@@ -128,6 +128,19 @@ class FixedHome(unittest.TestCase):
         self.assertEqual((grid["type"], grid["columns"], [c["entity"] for c in grid["cards"]]),
                          ("grid", 3, ["camera.clarity_cam_1", "camera.clarity_cam_2", "camera.clarity_cam_3"]))
         self.assertNotIn("picture-entity", {c["type"] for c in views["light"]})
+
+    def test_the_fallback_views_are_their_view_with_hls_only_cameras(self):
+        """#202: typical-hls and heavy-hls are typical and heavy, card for card, but their cameras
+        offer HLS only, so the frontend plays them with hls.js; the graded views' offer WebRTC too."""
+        views = {v["path"]: v["cards"] for v in D.lovelace(D.DASHBOARD)["views"]}
+        for fb, base in D.FALLBACK.items():
+            with self.subTest(fb):
+                self.assertEqual(json.dumps(views[fb]).replace("clarity_hls_", "clarity_cam_"), json.dumps(views[base]))
+                cams = [c for c in json.dumps(views[fb]).split('"') if c.startswith("camera.")]
+                self.assertTrue(cams)
+                self.assertEqual({tuple(D.CAMERA_STREAM_TYPES[c]) for c in cams}, {("hls",)})
+                graded = [c for c in json.dumps(views[base]).split('"') if c.startswith("camera.")]
+                self.assertEqual({tuple(sorted(D.CAMERA_STREAM_TYPES[c])) for c in graded}, {("hls", "web_rtc")})
 
     def test_the_start_view_loads_every_lazy_card_type(self):
         """HA loads history-graph, picture and clock lazily (create-card-element.ts L86, L94, L100).

@@ -278,7 +278,9 @@ def page(nonce):
 def refdash(nonce, url):
     """A reference dashboard: it loads (first paint 150 ms, load event 120 ms), stays still, goes live
     (state updates), one window of frames, the taps, then swipes where it asks, done."""
-    tier = re.search(r"/clarity-ref/(\w+)", url).group(1)
+    tier = re.search(r"/clarity-ref/([\w-]+)", url).group(1)
+    # Protocol 6: a camera page's HLS copy (tiers.json FALLBACK) plays over HLS; the rest over WebRTC.
+    page, path = (tier[:-4], "hls") if tier.endswith("-hls") else (tier, "web_rtc")
     taps = int(re.search(r"taps=(\d+)", url).group(1))
     m = re.search(r"swipes=(\d+)", url)
     swipes = int(m.group(1)) if m else int(os.environ.get("FAKE_SWIPES", "2"))
@@ -353,25 +355,31 @@ def refdash(nonce, url):
             time.sleep(0.1)
         gw({"t": "input", "stage": tier, "method": "event-timing", "taps": state("taps.json", 0) - before,
             "values": [16, 48], "inp_ms": 48})
-    n = {"typical": 1, "heavy": 4}.get(tier, 0)
+    n = {"typical": 1, "heavy": 4}.get(page, 0)
     if n:
         # #174: the view's live cameras, from going live to the first swipe. FAKE_NO_VIDEO: none plays.
         dead = os.environ.get("FAKE_NO_VIDEO") == tier
-        # As the S1 logs them (2026-11-13): a hardware decoder per stream from the media process, and on
-        # heavy the Allwinner decoder's flushes and drains when a stream runs out of data.
-        for _ in range(0 if dead else n):
+        # As the S1 logs them (2026-11-13): over HLS, a hardware decoder per stream from the media
+        # process, and on heavy the Allwinner decoder's flushes and drains when a stream runs out of
+        # data. Over WebRTC, nothing: Gecko decodes it in software (#202, step 0).
+        for _ in range(0 if dead or path == "web_rtc" else n):
             line("MediaCodec", "[OMX.allwinner.video.decoder.avc] setting surface generation to 17119233", pid=16718)
-        if tier == "heavy" and not dead:
+        if tier == "heavy-hls" and not dead:
             line("omx_vdec_aw", "<__anFlush:1043>: decoder flush", pid=1774)
             line("omx_vdec_aw", "<__anFlush:1043>: decoder flush", pid=1774)
             line("omx_vdec", "<doSubmit:2004>: found eos flag in input data", pid=1774)
-        gw({"t": "camera", "stage": tier, "window_ms": 5000, "fps": 15, "expected": n, "found": n,
+        webrtc = {"inbound": True, "frames_received": 75, "frames_decoded": 75, "frames_dropped": 0, "freezes": 0, "freeze_s": 0,
+                  "decoder": None, "power_efficient": None, "codec": "video/H264",
+                  "candidate": {"local": "relay", "relay": "tcp", "protocol": "udp"}}
+        gw({"t": "camera", "stage": tier, "path": path, "window_ms": 5000, "fps": 15, "expected": n, "found": n,
             "streams": [{"found": True, "w": 0 if dead else (1280 if i == 0 else 640), "h": 0 if dead else (720 if i == 0 else 360),
                          "first_frame_ms": None if dead else 640.0, "shown_pct": None if dead else 100.0,
                          "max_gap_ms": None if dead else 70.0, "stall_total_ms": None if dead else 0.0,
                          "stall_presented": None if dead else 0,
                          "frames": 0 if dead else 75, "decoded": 0 if dead else 75, "dropped": 0, "waiting": 0,
-                         "source": "quality+rvfc"} for i in range(n)],
+                         "source": "quality+rvfc", "path": path,
+                         **({"webrtc": None if dead else webrtc, "others": [{"path": "hls", "first_frame_ms": 420.0, "connected": False}]}
+                            if path == "web_rtc" else {"others": []})} for i in range(n)],
             # The segments' fetch times (stats.js hlsFetches). Heavy's whole line is longer than a
             # logcat line (1023 bytes), so it goes out in parts, as the page's does.
             "fetches": {"segment": {"n": 5 * n, "queued_ms": {"median": 1.2, "p95": 3.4, "max": 4.1},

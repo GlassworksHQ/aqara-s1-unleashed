@@ -49,6 +49,22 @@
   for (const k of ["CONNECTING", "OPEN", "CLOSING", "CLOSED"]) Clarity[k] = Native[k];
   window.WebSocket = Clarity;
 
+  // The page's WebRTC connections (HA's ha-web-rtc-player makes one per camera), so the camera task
+  // can read each stream's getStats. The connection is the browser's own; only the list is ours.
+  const peers = [];
+  const NativePC = window.RTCPeerConnection;
+  if (NativePC) {
+    const ClarityPC = function (config) {
+      const pc = new NativePC(config);
+      peers.push(pc);
+      for (let i = peers.length - 1; i >= 0; i--) if (peers[i].signalingState === "closed") peers.splice(i, 1);
+      return pc;
+    };
+    ClarityPC.prototype = NativePC.prototype;
+    if (NativePC.generateCertificate) ClarityPC.generateCertificate = NativePC.generateCertificate.bind(NativePC);
+    window.RTCPeerConnection = ClarityPC;
+  }
+
   // The live stream's context ids carry its slot (dashboards.py, stream_context): the stream's
   // generation and the change's number. The fake sends change k at a fixed time after the stream
   // started, so the harness knows when each one was sent, even if the main thread was too busy to
@@ -272,24 +288,32 @@
     sr(root).appendChild(s);
   }
 
-  // ---- live cameras (#174): the view's video elements, their first frame and their playback
+  // ---- live cameras (#174, #202): the view's video elements, their first frame and their playback
 
-  // What this engine offers HA's camera player (ha-hls-player.ts: hls.js on MSE when H.264 is
-  // supported there, else native HLS). Logged with every refdash, so a panel run says which path ran.
+  // What this engine offers HA's camera players: hls.js on MSE when H.264 is supported there, else
+  // native HLS (ha-hls-player.ts); WebRTC needs RTCPeerConnection (ha-web-rtc-player.ts). Logged with
+  // every refdash, so a panel run says which paths could run.
   function videoCaps() {
     const v = document.createElement("video");
     return {
       mse_h264: !!(window.MediaSource && MediaSource.isTypeSupported('video/mp4; codecs="avc1.4d401f"')),
       native_hls: v.canPlayType("application/vnd.apple.mpegurl"),
       rvfc: "requestVideoFrameCallback" in HTMLVideoElement.prototype,
+      webrtc: !!NativePC,
     };
   }
 
-  const cams = { recs: [], expected: 0, nav: 0, until: 0, t0: null };
-  const camCount = (tier) => (C.CAMERAS[tier] || []).reduce((n, x) => n + (Array.isArray(x) ? x.length : 1), 0);
+  // One entry per camera (HA's ha-camera-stream), with a record per player it got: with go2rtc HA
+  // offers WebRTC and HLS, and the frontend starts both, shows HLS until WebRTC has video, then keeps
+  // WebRTC only (ha-camera-stream.ts _streams). The graded stream is the view's path's.
+  const cams = { list: [], expected: 0, nav: 0, t0: null, path: null };
+  const camCount = (tier) => (C.CAMERAS[(C.FALLBACK || {})[tier] || tier] || []).reduce((n, x) => n + (Array.isArray(x) ? x.length : 1), 0);
+  const pathOf = (tier) => ((C.FALLBACK || {})[tier] ? "hls" : C.CAMERA.path);
+  const PLAYERS = { "ha-web-rtc-player": "web_rtc", "ha-hls-player": "hls" };
+  const hostOf = (el) => { const r = el.getRootNode(); return r && r.host ? r.host : null; };
 
   function watchVideo(el) {
-    const rec = { el, first: null, frames: [], pfs: [], ticks: [], counting: false, waiting: 0, q0: null };
+    const rec = { el, first: null, frames: [], pfs: [], ticks: [], counting: false, waiting: 0, q0: null, s0: null };
     const frame = (t, pf) => {
       if (rec.first === null) rec.first = t;
       if (rec.counting) {
@@ -300,7 +324,7 @@
     if (el.requestVideoFrameCallback) {
       const cb = (now, md) => {
         frame((md && md.presentationTime) || now, md && md.presentedFrames);
-        if (cams.recs.includes(rec)) el.requestVideoFrameCallback(cb);
+        if (el.isConnected || rec.first === null) el.requestVideoFrameCallback(cb);
       };
       el.requestVideoFrameCallback(cb);
     } else {
@@ -317,10 +341,32 @@
     return rec;
   }
 
-  // Finds the view's videos as HA builds them (inside the camera cards' shadow roots), for up to 20 s.
+  // The connection that carries a WebRTC player's video, by its track.
+  function peerOf(el) {
+    const st = el.srcObject, track = st && st.getVideoTracks && st.getVideoTracks()[0];
+    if (!track) return null;
+    return peers.find((pc) => pc.signalingState !== "closed" &&
+      pc.getReceivers().some((r) => r.track && r.track.id === track.id)) || null;
+  }
+
+  async function peerStats(rec) {
+    const pc = rec && peerOf(rec.el);
+    if (!pc) return null;
+    try {
+      const out = [];
+      (await pc.getStats()).forEach((x) => out.push(x));
+      return out;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Finds the view's cameras and their videos as HA builds them (inside the camera cards' shadow
+  // roots), for up to 20 s, until each has a frame on the graded path.
   async function trackCameras(nav) {
-    cams.recs = [];
+    cams.list = [];
     cams.expected = camCount(V.tier);
+    cams.path = pathOf(V.tier);
     cams.nav = nav;
     if (!cams.expected) return;
     const seen = new Set(), end = nav + 20000, index = C.VIEWS.indexOf(V.tier);
@@ -331,11 +377,17 @@
       for (const card of cards(view)) {
         for (const r of shadowRoots(card, [])) {
           for (const v of r.querySelectorAll("video")) {
-            if (!seen.has(v)) { seen.add(v); cams.recs.push(watchVideo(v)); }
+            if (seen.has(v)) continue;
+            seen.add(v);
+            const player = hostOf(v), stream = player && hostOf(player);
+            const kind = (player && PLAYERS[player.localName]) || "other";
+            let cam = cams.list.find((c) => c.stream === stream);
+            if (!cam) cams.list.push((cam = { stream, recs: {} }));
+            if (!cam.recs[kind]) cam.recs[kind] = watchVideo(v);
           }
         }
       }
-      if (cams.recs.length >= cams.expected && cams.recs.every((r) => r.first !== null)) return;
+      if (cams.list.length >= cams.expected && cams.list.every((c) => c.recs[cams.path] && c.recs[cams.path].first !== null)) return;
       await sleep(100);
     }
   }
@@ -359,25 +411,26 @@
     } catch (e) {
       cams.obs = null;
     }
-    for (const r of cams.recs) {
-      r.counting = true;
-      r.frames = [];
-      r.pfs = [];
-      r.ticks = [];
-      r.q0 = r.el.getVideoPlaybackQuality ? r.el.getVideoPlaybackQuality() : null;
+    for (const c of cams.list) {
+      for (const r of Object.values(c.recs)) {
+        r.counting = true;
+        r.frames = [];
+        r.pfs = [];
+        r.ticks = [];
+        r.q0 = r.el.getVideoPlaybackQuality ? r.el.getVideoPlaybackQuality() : null;
+        r.s0 = peerStats(r);
+      }
     }
   }
 
   // Playback from the view going live to its first swipe: the cameras on screen, the updates and the
   // taps running (the swipes scroll them away, and an engine may rightly stop decoding a video no
-  // one can see). Shown: frames presented against fps x the time; stalls: gaps over 500 ms.
-  function camerasEnd() {
+  // one can see). Shown: frames presented against fps x the time; stalls: gaps over 500 ms. Each
+  // camera is graded on its view's path (CAMERA path; HLS on a fallback view).
+  async function camerasEnd() {
     if (!cams.expected) return;
     const t1 = performance.now(), dur = t1 - cams.t0, fps = C.CAMERA.fps;
-    const streams = [];
-    for (let i = 0; i < Math.max(cams.expected, cams.recs.length); i++) {
-      const r = cams.recs[i];
-      if (!r) { streams.push({ found: false, first_frame_ms: null, shown_pct: null, max_gap_ms: null, stall_total_ms: null }); continue; }
+    const stream = (r) => {
       r.counting = false;
       const times = r.el.requestVideoFrameCallback ? r.frames : r.ticks;
       const q1 = r.el.getVideoPlaybackQuality ? r.el.getVideoPlaybackQuality() : null;
@@ -388,7 +441,7 @@
       // frames that land in one rendering update (Chrome, 2026-11-13: 60 callbacks for 77 frames).
       const shown = decoded !== null ? decoded - dropped : (r.el.requestVideoFrameCallback ? r.frames.length : null);
       const g = S.videoGaps(times, r.el.requestVideoFrameCallback ? r.pfs : null, cams.t0, t1);
-      streams.push({
+      return {
         found: true, w: r.el.videoWidth, h: r.el.videoHeight,
         first_frame_ms: r.first === null ? null : r1(r.first - cams.nav),
         shown_pct: shown === null || r.first === null ? null : r1(Math.min(100, (100 * shown) / ((fps * dur) / 1000))),
@@ -397,14 +450,35 @@
         stall_presented: r.first === null ? null : g.stall_presented,
         frames: shown, callbacks: r.frames.length, decoded, dropped, waiting: r.waiting,
         source: (decoded !== null ? "quality" : "rvfc") + (r.el.requestVideoFrameCallback ? "+rvfc" : "+timeupdate"),
-      });
+      };
+    };
+    const missing = { found: false, first_frame_ms: null, shown_pct: null, max_gap_ms: null, stall_total_ms: null };
+    const streams = [];
+    for (let i = 0; i < Math.max(cams.expected, cams.list.length); i++) {
+      const c = cams.list[i], r = c && c.recs[cams.path];
+      const out = Object.assign({ path: cams.path }, r ? stream(r) : missing);
+      // The camera's other player, if it had one (HLS while WebRTC started): its first frame, and
+      // whether the frontend had removed it by the window's end. Detail.
+      out.others = c ? Object.keys(c.recs).filter((k) => k !== cams.path).map((k) => {
+        const o = c.recs[k];
+        o.counting = false;
+        return { path: k, first_frame_ms: o.first === null ? null : r1(o.first - cams.nav), connected: o.el.isConnected };
+      }) : [];
+      if (r && cams.path === "web_rtc") {
+        // The WebRTC receiver's own counts over the same window (getStats), detail: frames decoded,
+        // dropped and frozen, the decoder it used, the codec, and the candidate pair (relay over TCP).
+        const s1 = await peerStats(r);
+        out.webrtc = S.webrtcStats(await r.s0, s1);
+      }
+      streams.push(out);
     }
     if (cams.obs) {
       for (const e of cams.obs.takeRecords()) if (e.name.includes("/api/hls/")) cams.fetches.push(e.toJSON());
       cams.obs.disconnect();
     }
     const fetches = cams.obs ? S.hlsFetches(cams.fetches.filter((e) => e.startTime >= cams.t0 && e.startTime <= t1)) : null;
-    log({ t: "camera", stage: V.tier, window_ms: Math.round(dur), fps, expected: cams.expected, found: cams.recs.length, streams, fetches });
+    log({ t: "camera", stage: V.tier, path: cams.path, window_ms: Math.round(dur), fps, expected: cams.expected,
+          found: cams.list.filter((c) => c.recs[cams.path]).length, streams, fetches });
   }
 
   // ---- opening a view: HA's own navigate()
@@ -598,7 +672,7 @@
     camerasStart();
     await updatesWindow(head);
     if (V.taps) await input();
-    camerasEnd();
+    await camerasEnd();
     for (let i = 0; i < V.swipes; i++) await swipe(i);
     await stream(false);
     unwatch();

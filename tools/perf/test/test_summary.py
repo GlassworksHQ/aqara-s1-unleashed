@@ -115,7 +115,12 @@ class Export(unittest.TestCase):
         self.assertEqual((heavy["inp_ms"], heavy["open_ms"]), (150, 400))
         self.assertEqual(heavy["camera"]["runs"][0], {"first_frame_ms": 600.0, "shown_pct": 100.0, "max_gap_ms": 70.0, "stall_total_ms": 0.0})
         self.assertEqual(heavy["runs"]["camera"], 3)
-        self.assertEqual(s["pages"]["light"]["camera"], {"runs": []})
+        self.assertEqual(s["pages"]["light"]["camera"], {"runs": [], "path": None, "fallback": None})
+        # #202 (additive): the graded path, and the page's cameras over HLS as detail.
+        self.assertEqual(heavy["camera"]["path"], "web_rtc")
+        self.assertEqual(heavy["camera"]["fallback"]["path"], "hls")
+        self.assertEqual(heavy["camera"]["fallback"]["runs"][0],
+                         {"first_frame_ms": 3700.0, "shown_pct": 35.0, "max_gap_ms": 4600.0, "stall_total_ms": 26600.0})
         self.assertEqual((heavy["scroll"]["fps"], heavy["scroll"]["p95_ms"], heavy["scroll"]["scrolled_px"]), (45.0, 33.33, 2100))
         self.assertEqual(heavy["scroll"]["sf_valid"], [True, True, True])
         self.assertEqual((heavy["scroll"]["swipes_moved"], heavy["scroll"]["swipes_at_edge"]), (9, 0))

@@ -559,12 +559,59 @@ class CameraDetail(unittest.TestCase):
                          "a camera never showed a frame")
 
 
-def camera_line(tier, first_ms=600.0, shown=100.0, max_gap=70.0, stall=0.0):
-    """The harness's camera line (#174) for a view with streams: each plays at once and in full."""
+class CameraFallback(unittest.TestCase):
+    """#202: the graded camera task is the WebRTC path's; HLS, on the camera pages' copies, is
+    measured as detail and never moves the level or the letter."""
+
+    def test_the_fallback_is_detail_beside_the_graded_path(self):
+        runs = [R.reference_run(refstart(k, 100)) for k in (1, 2, 3)]
+        ref = R.reference_summary(runs)
+        heavy = ref["tiers"]["heavy"]
+        self.assertEqual({r["path"] for r in heavy["camera_runs"]}, {"web_rtc"})
+        self.assertEqual(heavy["camera_level"], "good")
+        fb = heavy["camera_fallback"]
+        self.assertEqual((fb["path"], fb["level"], fb["levels"]), ("hls", G.BELOW, [G.BELOW] * 3))
+        self.assertEqual([(r["view"], r["shown_pct"]) for r in fb["runs"]], [("heavy-hls", 35.0)] * 3)
+        self.assertEqual(ref["tiers"]["typical"]["camera_fallback"]["level"], "good")
+        self.assertIsNone(ref["tiers"]["light"]["camera_fallback"])
+        # The same runs without the copies grade the same: the fallback is never in the grade.
+        bare = [R.reference_run(dict(refstart(k, 100), fallback={})) for k in (1, 2, 3)]
+        self.assertEqual(G.grade(*R.grade_inputs({"reference": ref})),
+                         G.grade(*R.grade_inputs({"reference": R.reference_summary(bare)})))
+        md = R.camera_detail(ref)
+        self.assertIn("heavy cameras over HLS, the fallback (detail, not graded; slow by the camera bars): run 1: first frame "
+                      "3700 ms, 35 % shown, stalls 26600 ms, slow", "\n".join(md))
+
+    def test_a_failed_copy_fails_only_itself(self):
+        c = dict(refstart(1, 100), fallback={"heavy-hls": {"error": "heavy-hls didn't finish within 900 s"}},
+                 fallback_error="heavy-hls didn't finish within 900 s")
+        run = R.reference_run(c)
+        self.assertIsNone(run["error"])
+        self.assertEqual(run["camera_fallback"]["heavy"]["error"], "heavy-hls didn't finish within 900 s")
+        self.assertIsNone(run["camera_fallback"]["heavy"]["first_frame_ms"])
+
+    def test_webrtc_detail_names_the_decoder_and_the_relay(self):
+        line = camera_line("typical")
+        line["streams"][0]["webrtc"] = {"frames_decoded": 290, "frames_dropped": 3, "freezes": 1, "freeze_s": 0.6,
+                                        "decoder": "libvpx", "power_efficient": False,
+                                        "candidate": {"local": "relay", "relay": "tcp", "protocol": "udp"}}
+        run = R.camera_run(line, "typical")
+        self.assertEqual(R.webrtc_detail(run), "decoder libvpx (software), 290 frames decoded, 3 dropped, 1 freezes (0.6 s), "
+                                               "candidate relay/tcp")
+        self.assertEqual(R.webrtc_detail(R.camera_run(camera_line("typical", path="hls"), "typical")), "")
+        # Protocol 5's lines don't name a path: HLS was the only one.
+        old = camera_line("typical")
+        del old["path"]
+        self.assertEqual(R.camera_run(old, "typical")["path"], "hls")
+
+
+def camera_line(tier, first_ms=600.0, shown=100.0, max_gap=70.0, stall=0.0, path="web_rtc"):
+    """The harness's camera line (#174) for a view with streams: each plays at once and in full, over
+    WebRTC (protocol 6) unless `path` says otherwise."""
     n = {"typical": 1, "heavy": 4}.get(tier, 0)
     if not n:
         return None
-    return {"t": "camera", "stage": tier, "window_ms": 20000, "fps": 15, "expected": n, "found": n,
+    return {"t": "camera", "stage": tier, "path": path, "window_ms": 20000, "fps": 15, "expected": n, "found": n,
             "streams": [{"found": True, "w": 1280 if i == 0 else 640, "h": 720 if i == 0 else 360, "first_frame_ms": first_ms,
                          "shown_pct": shown, "max_gap_ms": max_gap, "stall_total_ms": stall, "frames": 300, "decoded": 300,
                          "dropped": 0, "waiting": 0, "source": "quality+rvfc"} for i in range(n)]}
@@ -583,6 +630,10 @@ def refstart(k, inp, heavy_missed=20):
             "own_page_state": "finished-still",
             "tiers": {"light": tier_entry("light", inp), "typical": tier_entry("typical", inp),
                       "heavy": tier_entry("heavy", inp, scroll_missed=heavy_missed)},
+            # Protocol 6: the camera pages' HLS copies after them (#202, detail); heavy's starves.
+            "fallback": {"typical-hls": {"done": True, "camera": camera_line("typical", path="hls")},
+                         "heavy-hls": {"done": True, "camera": camera_line("heavy", first_ms=3700.0, shown=35.0,
+                                                                            max_gap=4600.0, stall=26600.0, path="hls")}},
             "presents_mono_ms": load_frames()}
 
 

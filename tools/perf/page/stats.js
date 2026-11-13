@@ -206,8 +206,43 @@
     return out;
   }
 
+  // A WebRTC video's receiver over a window, from two getStats() snapshots (arrays of reports): the
+  // inbound video's counts over the window (frames received, decoded, dropped; freezes and pauses as
+  // the browser counts them), the decoder it reports (decoderImplementation, powerEfficientDecoder:
+  // whether it is hardware; an engine may leave them out), the codec, and the candidate pair in use
+  // (relay over TCP through adb reverse, on a panel). Detail; null without the end snapshot.
+  function webrtcStats(before, after) {
+    if (!after) return null;
+    const index = (rs) => new Map((rs || []).map((r) => [r.id, r]));
+    const a = index(after), b = index(before);
+    const inbound = (after || []).find((r) => r.type === "inbound-rtp" && (r.kind || r.mediaType) === "video");
+    if (!inbound) return { inbound: false };
+    const was = b.get(inbound.id) || {};
+    const delta = (k) => (typeof inbound[k] === "number" ? round2(inbound[k] - (typeof was[k] === "number" ? was[k] : 0)) : null);
+    const codec = a.get(inbound.codecId) || {};
+    const transport = (after || []).find((r) => r.type === "transport" && r.selectedCandidatePairId);
+    const pair = (transport && a.get(transport.selectedCandidatePairId)) ||
+      (after || []).find((r) => r.type === "candidate-pair" && (r.nominated || r.selected) && r.state === "succeeded");
+    const local = pair ? a.get(pair.localCandidateId) || {} : {};
+    const jb = delta("jitterBufferDelay"), jbn = delta("jitterBufferEmittedCount");
+    return {
+      inbound: true,
+      frames_received: delta("framesReceived"), frames_decoded: delta("framesDecoded"),
+      frames_dropped: delta("framesDropped"), key_frames: delta("keyFramesDecoded"),
+      freezes: delta("freezeCount"), freeze_s: delta("totalFreezesDuration"),
+      pauses: delta("pauseCount"), pause_s: delta("totalPausesDuration"),
+      packets_lost: delta("packetsLost"), nacks: delta("nackCount"), plis: delta("pliCount"),
+      jitter_buffer_ms: jb !== null && jbn ? round2((1000 * jb) / jbn) : null,
+      decoder: inbound.decoderImplementation || null,
+      power_efficient: typeof inbound.powerEfficientDecoder === "boolean" ? inbound.powerEfficientDecoder : null,
+      codec: codec.mimeType || null, fmtp: codec.sdpFmtpLine || null,
+      candidate: pair ? { local: local.candidateType || null, relay: local.relayProtocol || null,
+                          protocol: local.protocol || null } : null,
+    };
+  }
+
   const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines,
-                skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps };
+                skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps, webrtcStats };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWStats = api;
 })(this);

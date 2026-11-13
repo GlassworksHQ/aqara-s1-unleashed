@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import unittest
+from unittest import mock
 import urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -146,7 +147,7 @@ class FakeHA(unittest.TestCase):
         cfg, _ = ws.call({"type": "lovelace/config", "url_path": "clarity-ref", "force": False})
         # One dashboard: the start view (where a restart lands), then the three reference views.
         self.assertEqual([(v["path"], len(v["cards"])) for v in cfg["result"]["views"]],
-                         [("start", 23), ("light", 20), ("typical", 50), ("heavy", 120)])
+                         [("start", 23), ("light", 20), ("typical", 50), ("heavy", 120), ("typical-hls", 50), ("heavy-hls", 120)])
         res, ev = ws.call({"type": "subscribe_entities"})
         self.assertIn("light.living_room", ev[0]["event"]["a"])
         self.assertEqual(set(ev[0]["event"]["a"]["sensor.clarity_0"]), {"s", "a", "c", "lc", "lu"})
@@ -259,11 +260,16 @@ class FakeHA(unittest.TestCase):
         self.assertEqual(self.http("GET", base + "/segment/1.m4s")[2], b"seg001-720p")   # the server still answers
 
     def test_a_live_camera_stream_as_ha_serves_it(self):
-        """#174: HLS only (as HA's stream integration), a fresh stream per camera/stream, a live window of
-        the last four whole segments, the loop's files, and a discontinuity where the loop wraps."""
+        """#174: HLS as HA's stream integration serves it, a fresh stream per camera/stream, a live window
+        of the last four whole segments, the loop's files, and a discontinuity where the loop wraps.
+        #202: a camera with go2rtc offers WebRTC and HLS; the fallback views' cameras HLS only."""
         ws = self.connect()
         cap, _ = ws.call({"type": "camera/capabilities", "entity_id": "camera.clarity_cam_0"})
+        self.assertEqual(cap["result"], {"frontend_stream_types": ["hls", "web_rtc"], "two_way_audio": False})
+        cap, _ = ws.call({"type": "camera/capabilities", "entity_id": "camera.clarity_hls_0"})
         self.assertEqual(cap["result"], {"frontend_stream_types": ["hls"], "two_way_audio": False})
+        bad, _ = ws.call({"type": "camera/capabilities", "entity_id": "camera.nope"})
+        self.assertEqual((bad["success"], bad["error"]["code"]), (False, "not_found"))
         cfg, _ = ws.call({"type": "get_config"})
         self.assertTrue({"camera", "stream"} <= set(cfg["result"]["components"]))     # ha-hls-player needs `stream`
         st, _ = ws.call({"type": "camera/stream", "entity_id": "camera.clarity_cam_0"})
@@ -290,6 +296,42 @@ class FakeHA(unittest.TestCase):
         n = int(re.findall(r"segment/(\d+)\.m4s", live)[-1])
         self.assertGreaterEqual(n, 120)
         self.assertEqual(self.http("GET", f"{base}/segment/{n}.m4s")[2], f"seg{n % 120:03d}-720p".encode())
+
+    def test_webrtc_signalling_as_ha_answers_it(self):
+        """#202, HA core's camera/webrtc.py with go2rtc: get_client_config, then the offer as a
+        subscription (its result, the session's id, then the peer's answer or an error event), the
+        browser's candidates, and errors for a camera without web_rtc. Here without the peer (no
+        aiortc in this Python): the offer's last event is the error that says so."""
+        ws = self.connect()
+        with mock.patch.object(fakeha.Handler.hub, "webrtc", None), mock.patch.object(fakeha.Handler.hub, "turn_port", 8090):
+            cfg, _ = ws.call({"type": "camera/webrtc/get_client_config", "entity_id": "camera.clarity_cam_0"})
+            self.assertEqual(cfg["result"], {"configuration": {
+                "iceServers": [{"urls": "turn:127.0.0.1:8090?transport=tcp", "username": "clarity", "credential": "clarity"}],
+                "iceTransportPolicy": "relay"}})
+            res, _ = ws.call({"type": "camera/webrtc/offer", "entity_id": "camera.clarity_cam_0", "offer": "v=0\r\n"})
+            self.assertEqual((res["type"], res["success"], res.get("result")), ("result", True, None))
+            ev = ws.recv()
+            self.assertEqual((ev["id"], ev["event"]["type"]), (res["id"], "session"))
+            sid = ev["event"]["session_id"]
+            self.assertRegex(sid, r"^01JC1ARITYW\d{15}$")
+            err = ws.recv()
+            self.assertEqual((err["id"], err["type"], err["event"]["type"], err["event"]["code"]),
+                             (res["id"], "event", "error", "webrtc_offer_failed"))
+            self.assertIn("aiortc", err["event"]["message"])
+            cand = {"candidate": "candidate:1 1 udp 16785407 127.0.0.1 5000 typ relay raddr 0.0.0.0 rport 0",
+                    "sdpMid": "0", "sdpMLineIndex": 0}
+            ok, _ = ws.call({"type": "camera/webrtc/candidate", "entity_id": "camera.clarity_cam_0", "session_id": sid,
+                             "candidate": cand})
+            self.assertTrue(ok["success"])
+            un, _ = ws.call({"type": "unsubscribe_events", "subscription": res["id"]})
+            self.assertTrue(un["success"])
+            for t, code in (("camera/webrtc/get_client_config", "webrtc_get_client_config_failed"),
+                            ("camera/webrtc/offer", "webrtc_offer_failed"),
+                            ("camera/webrtc/candidate", "webrtc_candidate_failed")):
+                bad, ev = ws.call({"type": t, "entity_id": "camera.clarity_hls_0", "offer": "v=0", "session_id": sid,
+                                   "candidate": cand})
+                self.assertEqual((bad["success"], bad["error"]["code"], ev), (False, code, []), t)
+                self.assertIn("does not support WebRTC", bad["error"]["message"])
 
     def test_the_runner_opens_views_through_it(self):
         self.assertEqual(self.http("GET", "/clarity/open?view=typical&nonce=ab12&run=1&taps=10&vsync=16.667")[0], 204)
@@ -332,7 +374,7 @@ class FakeHA(unittest.TestCase):
         self.assertNotIn("{{", html)
         status, _, js, cache = self.http("GET", m.group(1))
         self.assertIn("window.GW_CLARITY = ", js.decode())
-        self.assertIn('"PROTOCOL": 5', js.decode())
+        self.assertIn('"PROTOCOL": 6', js.decode())
         self.assertIn('"HEAD_CARDS": 10', js.decode())
 
     def test_the_harness_is_never_cached_at_a_fixed_url(self):

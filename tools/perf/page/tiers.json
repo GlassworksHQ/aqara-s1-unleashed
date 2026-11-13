@@ -1,6 +1,6 @@
 {
  "_comment": "Clarity reference dashboards (MIT): the counts, the first screen, the update stream and the phases. The one source for the fake Home Assistant (dashboards.py), the in-page harness and the node tests. Project choices, fixed before any frame was graded under them; change one only on purpose, with the docs and the tests, never to move a frame's letter.",
- "PROTOCOL": 5,
+ "PROTOCOL": 6,
  "ORDER": [
   "light",
   "typical",
@@ -13,7 +13,7 @@
   "histories": 1,
   "pictures": 1
  },
- "_CAMERAS": "Live camera cards (#174), right after the head: HA's picture-entity card with camera_view live, played by the frontend's HLS player. Light has none; typical one 720p; heavy one 720p and a grid of three 360p (a main stream and sub-streams). They take the place of picture cards, so the card counts stay. The start view has one 360p camera, so the cold load brings in the camera player's code, as it does every other lazy card type.",
+ "_CAMERAS": "Live camera cards (#174), right after the head: HA's picture-entity card with camera_view live. Light has none; typical one 720p; heavy one 720p and a grid of three 360p (a main stream and sub-streams). They take the place of picture cards, so the card counts stay. The start view has one 360p camera, so the cold load brings in the camera player's code, as it does every other lazy card type. Protocol 6 (#202): these cameras are HA's with go2rtc, as real setups are: camera/capabilities offers web_rtc and hls, the frontend plays WebRTC, and the camera task grades that stream (CAMERA path).",
  "CAMERAS": {
   "start": [
    "360p"
@@ -31,11 +31,17 @@
    ]
   ]
  },
+ "_FALLBACK": "HLS, measured as a fallback (#202; detail, not graded): after each run's graded views, a copy of each view with cameras, whose cameras offer HLS only (HA's stream integration without go2rtc), so HA's frontend plays them with hls.js. Opened as the graded views are, without the swipes.",
+ "FALLBACK": {
+  "typical-hls": "typical",
+  "heavy-hls": "heavy"
+ },
  "CAMERA": {
   "fps": 15,
   "segmentS": 1,
   "windowSegments": 4,
-  "preRollS": 4
+  "preRollS": 4,
+  "path": "web_rtc"
  },
  "TIERS": {
   "light": {

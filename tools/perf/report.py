@@ -28,6 +28,9 @@ SETTLE_GAP_MS = 750
 # (nav start mapped 11 to 23 ms before PageStart on the S1, 2026-11-12). The frame that shows the
 # first paint may so appear up to this much before it; three refreshes at 60 Hz.
 PAINT_SLACK_MS = 50
+# Protocol 6 (#202): the HLS copies of the camera pages (page/tiers.json FALLBACK), measured as detail.
+with open(os.path.join(HERE, "page", "tiers.json")) as _f:
+    CAMERA_FALLBACK = json.load(_f).get("FALLBACK", {})
 FAMILIES = ["css-transform", "css-opacity", "svg", "canvas2d", "ha-cards"]
 
 
@@ -296,17 +299,47 @@ def camera_run(line, tier):
     played = [s for s in streams if s.get("first_frame_ms") is not None and s.get("shown_pct") is not None]
     whole = len(played) == len(streams) and len(streams) >= (line.get("expected") or 0)
     return {
+        # The path the frontend played the graded streams on: web_rtc since protocol 6, hls before
+        # (protocol 5's lines don't say; HLS was the only path then).
+        "path": line.get("path") or "hls",
         "first_frame_ms": max(s["first_frame_ms"] for s in played) if whole and played else None,
         "shown_pct": min(s["shown_pct"] for s in played) if whole and played else None,
         "max_gap_ms": max((s.get("max_gap_ms") or 0) for s in played) if whole and played else None,
         "stall_total_ms": max((s.get("stall_total_ms") or 0) for s in played) if whole and played else None,
         "streams": len(streams), "expected": line.get("expected"), "window_ms": line.get("window_ms"),
         "detail": [{k: s.get(k) for k in ("w", "h", "first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms", "stall_presented",
-                                            "frames", "decoded", "dropped", "waiting", "source")} for s in streams],
+                                            "frames", "decoded", "dropped", "waiting", "source", "webrtc", "others")}
+                   for s in streams],
         # Detail, not graded: the streams' HLS fetches in the window (stats.js hlsFetches), and the
         # decoders the view got (reference_run adds `media`, from logcat).
         "fetches": line.get("fetches"),
     }
+
+
+def camera_fallback_runs(c):
+    """One run's HLS fallback views (#202, detail): per camera page, its HLS copy's camera_run, with
+    the decoders it got and the view's error if it failed. Empty before protocol 6."""
+    out = {}
+    for view, e in (c.get("fallback") or {}).items():
+        page = CAMERA_FALLBACK.get(view)
+        if not page:
+            continue
+        r = camera_run(e.get("camera"), page) or {"first_frame_ms": None, "shown_pct": None, "max_gap_ms": None,
+                                                 "stall_total_ms": None, "streams": 0, "path": "hls"}
+        r.update(view=view, media=(c.get("media") or {}).get(view), error=e.get("error") or (
+            c.get("fallback_error") if not e.get("done") else None))
+        out[page] = r
+    return out
+
+
+def camera_fallback_summary(runs, tier):
+    """A page's HLS fallback over the runs (#202): each run's worst stream, and the level the camera
+    bars would give it. Detail: the grade uses the graded path only."""
+    fb = [r["camera_fallback"][tier] for r in runs if tier in (r.get("camera_fallback") or {})]
+    if not fb:
+        return None
+    return {"path": "hls", "runs": fb, "levels": [G.camera_level(x) for x in fb],
+            "level": G.median_level(G.camera_level(x) for x in fb)}
 
 
 def arrivals(step):
@@ -524,6 +557,7 @@ def reference_run(c):
     for t, r in tiers.items():
         if r.get("camera_run") is not None:
             r["camera_run"]["media"] = (c.get("media") or {}).get(t)
+    base["camera_fallback"] = camera_fallback_runs(c)
     base["bad_page_lines"] = c.get("bad_page_lines") or 0
     base["lost_scroll_steps"] = sum((e.get("lost_scroll_steps") or 0) for e in (c.get("tiers") or {}).values())
     order = c.get("order") or list(c.get("tiers") or {})
@@ -605,6 +639,7 @@ def reference_summary(all_runs):
             "camera_runs": [x["camera_run"] for x in rs if x.get("camera_run")],
             "camera_levels": [G.camera_level(x["camera_run"]) for x in rs if x.get("camera_run")],
             "camera_level": G.median_level(G.camera_level(x["camera_run"]) for x in rs if x.get("camera_run")),
+            "camera_fallback": camera_fallback_summary(runs, t),
             "updates_levels": [G.update_level(x["updates_run"]) for x in rs if x.get("updates_run")],
             "updates_level": G.median_level(G.update_level(x["updates_run"]) for x in rs if x.get("updates_run")),
             "swipes_during_updates": [x.get("swipes_during_updates") for x in rs if x.get("scroll")],
@@ -1270,7 +1305,39 @@ def camera_detail(ref):
                              f"{p95(sg.get('queued_ms'))}), longest gap between a stream's segments "
                              + ("n/a" if sg.get("arrival_gap_max_ms") is None else f"{sg['arrival_gap_max_ms']:.0f} ms"))
             out.append(f"{t} cameras, run {k} (detail): " + "; ".join(parts) + ".")
+    for t, s_ in ref["tiers"].items():
+        for k, c in enumerate(s_.get("camera_runs") or [], 1):
+            w = webrtc_detail(c)
+            if w:
+                out.append(f"{t} cameras over WebRTC, run {k} (detail): {w}.")
+        fb = s_.get("camera_fallback")
+        if fb:
+            cells = []
+            for k, (r, lv) in enumerate(zip(fb["runs"], fb["levels"]), 1):
+                if r.get("first_frame_ms") is None:
+                    cells.append(f"run {k}: no frame{' (' + r['error'] + ')' if r.get('error') else ''}")
+                else:
+                    cells.append(f"run {k}: first frame {fmt_n(r['first_frame_ms'], ' ms')}, {fmt_n(r['shown_pct'], ' %')} shown, "
+                                 f"stalls {fmt_n(r['stall_total_ms'], ' ms')}, {lv}")
+            out.append(f"{t} cameras over HLS, the fallback (detail, not graded; {fb['level'] or 'n/a'} by the camera bars): "
+                       + "; ".join(cells) + ".")
     return out
+
+
+def webrtc_detail(c):
+    """A run's WebRTC streams in a few words (#202): the decoder the browser reports, frames dropped
+    and frozen by its own counts, and the candidate pair. Empty for HLS."""
+    ws = [s["webrtc"] for s in c.get("detail") or [] if s.get("webrtc")]
+    if not ws:
+        return ""
+    decs = sorted({w.get("decoder") or "not reported" for w in ws})
+    hw = sorted({"hardware" if w.get("power_efficient") else "software" for w in ws if w.get("power_efficient") is not None})
+    cand = sorted({f"{(w.get('candidate') or {}).get('local')}/{(w.get('candidate') or {}).get('relay')}" for w in ws
+                   if w.get("candidate")})
+    total = lambda k: sum(w.get(k) or 0 for w in ws)  # noqa: E731
+    return (f"decoder {', '.join(decs)}" + (f" ({', '.join(hw)})" if hw else "")
+            + f", {total('frames_decoded'):.0f} frames decoded, {total('frames_dropped'):.0f} dropped, "
+            f"{total('freezes'):.0f} freezes ({total('freeze_s'):.1f} s), candidate {', '.join(cand) or 'n/a'}")
 
 
 def camera_cell(s_, b):
