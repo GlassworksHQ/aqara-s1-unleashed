@@ -41,8 +41,11 @@ describe('frame designs', () => {
     }
   });
 
-  it('the S1 is installable from Kiln; the Mirror is planned and isn\'t', () => {
+  it('the S1 is installable from Kiln; the planned frames aren\'t', () => {
     expect(read('aqara-s1-plus')).toMatchObject({ status: 'beta', kiln: '/aqara-s1-plus', recovery: 'recovery.json' });
-    expect(read('lululemon-mirror').kiln).toBeUndefined();
+    for (const id of ['lululemon-mirror', 'generic-android']) {
+      expect(read(id), id).toMatchObject({ status: 'planned' });
+      expect(read(id).kiln, id).toBeUndefined();
+    }
   });
 });

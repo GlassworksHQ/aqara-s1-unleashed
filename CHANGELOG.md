@@ -28,6 +28,8 @@ below as the release notes.
   Nothing in the sections changed.
 
 ### Added
+- **Kiln's picker lists Generic Android as planned.** Next to the S1 and the Mirror, a card for any
+  Android tablet or panel, which will install as a normal app without root. It can't be picked yet.
 - **The panel's health shows in Home Assistant.** The device page's *Diagnostic* section gets CPU
   usage, CPU temperature, Wi-Fi signal and uptime, so you can graph them and alert on them. More
   sensors are there but off until you turn them on: the app's own CPU and RAM, free RAM and storage,

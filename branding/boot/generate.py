@@ -11,8 +11,9 @@ The S1's committed files are rebuilt with
 
 Writes into <dir>: bootanimation.zip, splash-landscape.png, preview.webp, and bootlogo.bmp when the
 frame has a splash format. Exits 1 when a check fails (README: "What the build checks").
-Needs Pillow, numpy and uharfbuzz (pyoxipng makes the frames smaller). Inter (SIL OFL 1.1) is
-fetched from google/fonts at build time.
+Also writes outputs.json (the target and the SHA-256 of the generator, the font and each output).
+Needs Pillow, numpy, uharfbuzz and pyoxipng at the versions in README.md. Inter (SIL OFL 1.1) is
+fetched from a pinned google/fonts commit and checked by SHA-256.
 """
 import argparse
 import dataclasses
