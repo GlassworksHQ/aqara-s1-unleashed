@@ -123,8 +123,15 @@ tools/perf/report.py <dir>` rebuilds the report from the raw files at any time, 
   `--ez sendspin_enabled`) turn the switchable panes off and on in turn; turning Assist off or on
   restarts the app. On exit they are put back to the settings you gave. While a pane is off, the
   panel doesn't play music or hear its wake word.
-- **The screen stays on** because the runner sends the kiosk's own wake intent (`--es screen on`)
-  when each page goes live. No setting changes.
+- **The screen stays on** because the runner sends the kiosk's own wake intent (`--es screen on`):
+  just before each view opens, every 8 s while it opens and between views, and when it goes live.
+  Not while a view is live (its taps and swipes are touches, which keep the screen on) and not
+  during the restart. It changes no setting. If the screen goes off anyway during a graded run
+  (Android's `PowerManagerService: Going to sleep` in logcat), that run is an error: with the
+  screen off Gecko runs no animation frames and slows its timers, so nothing timed then is the
+  panel's. In smoke10 (9d986c9, 22:06, the kiosk's 20 s night timeout) the screen went off three
+  times: light's view switch waited 22 s for it to wake, typical's main thread looked busy for
+  112 s, and heavy never ran.
 - **Taps and swipes**, only on the reference pages and only when the page asks: each page logs
   where its "Living room" toggle is (`input tap`) and where to swipe (`input swipe`), tagged with
   that page load's nonce. A request with another page's nonce is ignored. Before anything reaches
@@ -229,7 +236,10 @@ the fake sent each change, and never mistakes a late one from the view before fo
 a stream stops, and before the next view opens, the fake puts every entity the stream or a tap
 changed back as it started (`Hub.reset`), told to the frontend as any change is. So every view starts
 from the same states, and its stream sends the same values. The fake logs how late it sent each
-change (`fakeha.jsonl`); the report is provisional if it was ever more than 50 ms late.
+change (`fakeha.jsonl`) and puts that in the change's context id too, so each change is timed from
+when it actually went out, and a late send (smoke10: one, 92 ms, on the Mac that ran it) doesn't
+count against the panel. The report is provisional only if a send was more than one update
+interval (200 ms) late, when the stream's own rhythm wasn't the protocol's.
 
 **The order.** Each graded run starts with a restart: the kiosk comes back to the start view, which
 is the restart's measurement and also takes the cold caches, the first JIT and every card type's
@@ -301,8 +311,9 @@ refresh after it, less 3 ms for the clock mapping), and never before the main th
 
 #### Change to screen
 
-- **When a change was sent.** Each change's context id carries its slot in the stream, and the fake
-  sends change k at a fixed time after the stream started. The fake answers `/clarity/live` with that
+- **When a change was sent.** Each change's context id carries its slot in the stream and how late
+  the fake sent it, and the fake sends change k at a fixed time after the stream started (plus that
+  lateness, a few ms). One that never reached the page counts from its fixed time. The fake answers `/clarity/live` with that
   start on its own clock, and the harness ties its clock to the fake's while the view is still: 12
   round trips to `/clarity/time`, the shortest kept, uncertain by half its length (`clock_rtt_ms`;
   the report is provisional over 40 ms). So it knows when the fake sent each change, and change to
@@ -359,7 +370,8 @@ kiosk doesn't come back to a reference dashboard (another page loads, or none sa
 the restart is "not measured" ("the kiosk didn't come back to a reference dashboard") and that
 run's views still open after the old wait for the kiosk's own page: up to 30 s after engine ready,
 then provisional. While the views are measured, and for 1.5 s after the last one, any page the
-kiosk loads makes the run an error, and that run isn't graded: a view switch loads no page.
+kiosk loads makes the run an error, and that run isn't graded: a view switch loads no page. So does
+a view that never says done by the run's time limit (smoke10's heavy), and the screen going off.
 
 **SurfaceFlinger's data.** It keeps the last 127 frames and is read just after each window. A window
 is at most 100 refreshes, so the other 27 slots cover that read, and the page's own logged window

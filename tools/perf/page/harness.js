@@ -53,7 +53,7 @@
   // generation and the change's number. The fake sends change k at a fixed time after the stream
   // started, so the harness knows when each one was sent, even if the main thread was too busy to
   // read it then.
-  const SLOT = /^01JC1ARITY([SF])(\d{5})(\d{10})$/;
+  const SLOT = /^01JC1ARITY([SF])(\d{5})(\d{6})(\d{4})$/;
 
   function onMessage(ev) {
     if (!live.watch.size || typeof ev.data !== "string" || ev.data.indexOf('"c":{') < 0) return;
@@ -77,7 +77,8 @@
         const slot = typeof ctx === "string" ? SLOT.exec(ctx) : null;
         // HA's tile fades 180 ms on an on/off change (ha-tile-icon.ts); a sensor value changes text only.
         const change = { at, d: onOff ? C.LIVE.tileTransitionMs : 0, kind: onOff ? 2 : 0, dom: null, tick: null,
-                         slot: slot ? slot[1] + Number(slot[3]) : null, gen: slot ? Number(slot[2]) : null };
+                         slot: slot ? slot[1] + Number(slot[3]) : null, gen: slot ? Number(slot[2]) : null,
+                         late: slot ? Number(slot[4]) : 0 };
         w.pending.push(change);
         if (live.on) live.changes.push(change);
       }
@@ -350,8 +351,11 @@
     for (let k = 1; live.liveAt + k * EVERY <= t1; k++) sched.push(["S" + k, live.liveAt + k * EVERY, 0, 0]);
     for (let f = 1; live.liveAt + f * FLIP <= t1; f++) sched.push(["F" + f, live.liveAt + f * FLIP, C.LIVE.tileTransitionMs, 2]);
     sched.sort((a, b) => a[1] - b[1]);
-    const changes = sched.filter((s) => s[1] + s[2] >= t0 - EVERY).map(([slot, sent, d, kind]) => {
+    // A change that arrived says how late the fake sent it; one that didn't counts from its fixed
+    // time (earlier, so against the panel, by the fake's few ms).
+    const changes = sched.filter((s) => s[1] + s[2] >= t0 - EVERY).map(([slot, due, d, kind]) => {
       const c = got.get(slot);
+      const sent = due + (c ? c.late : 0);
       return [r1(sent - t0), c ? r1(c.at - t0) : null, d, kind, c && c.tick !== null ? r1(c.tick - t0) : null];
     });
     log({ t: "step", stage: "updates", n: 1, window_ms: Math.round(t1 - t0), t0: r1(t0), pacing_ms: S.measureMs(V.vsync),

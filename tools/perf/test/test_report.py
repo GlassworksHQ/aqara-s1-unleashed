@@ -1084,12 +1084,14 @@ class FakeLog(unittest.TestCase):
 
     def test_unknown_failed_or_late(self):
         log = self.log({"t": 2, "unknown": "energy/get_prefs", "msg": {}}, {"t": 3, "failed": "history/stream", "error": "x"},
-                       {"t": 4, "stream": "S", "k": 2, "late_ms": 80.0})
+                       {"t": 4, "stream": "S", "k": 2, "late_ms": 250.0})
         reasons = R.fake_ha_reasons(log, True)
         self.assertEqual(len(reasons), 3)
         self.assertIn("energy/get_prefs (1)", reasons[0])
         self.assertIn("history/stream (1)", reasons[1])
-        self.assertIn("80 ms late", reasons[2])
+        self.assertIn("250 ms late", reasons[2])
+        # smoke10's 92 ms isn't a reason: each change is timed from when it was actually sent.
+        self.assertEqual(R.fake_ha_reasons(self.log({"t": 4, "stream": "S", "k": 2, "late_ms": 92.0}), True), [])
 
     def test_protocol_4_without_the_log_is_provisional(self):
         self.assertEqual(R.fake_ha_reasons(None, True), ["the fake Home Assistant's log (fakeha.jsonl) is missing"])

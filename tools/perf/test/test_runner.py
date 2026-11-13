@@ -564,6 +564,47 @@ class Restart(unittest.TestCase):
         self.assertEqual(c["own_page_state"], "reference")
         self.assertIsNone(self.build(tmp)["graded"]["reference"]["per_run"][0]["start_error"])
 
+    def run_short(self, timeout, **env):
+        with FakeHA() as ha:
+            tmp = tempfile.mkdtemp()
+            env.setdefault("FAKE_SAVED_URL", ha.url + "/clarity-ref/start")
+            e, state = fake_env(tmp, GW_PERF_COLD_SETTLE="0", FAKE_HA_URL=ha.url, **env)
+            p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart", "--out", tmp,
+                                "--run", "1", "--settle", "0", "--url", ha.url, "--taps", "0", "--timeout", str(timeout),
+                                "--between-quiet", "0.3"], env=e, capture_output=True, text=True, timeout=timeout + 60)
+            with open(os.path.join(tmp, "refstart-1.json")) as f:
+                c = json.load(f)
+            with open(os.path.join(state, "commands.log")) as f:
+                return p, c, f.read().splitlines()
+
+    def test_a_screen_that_goes_off_fails_the_run(self):
+        """smoke10: the kiosk's 20 s night timeout turned the screen off while views opened; nothing timed
+        then is the panel's, so the run isn't graded."""
+        p, c, _ = self.run_short(90, FAKE_SCREEN_OFF="typical")
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("the screen went off during the graded run", c["error"])
+        self.assertEqual(c["screen_off"][0]["during"], "typical")
+
+    def test_a_view_that_never_finishes_fails_the_run(self):
+        """smoke10's heavy: usable, then nothing (the screen was off) until the run's limit."""
+        p, c, _ = self.run_short(25, FAKE_HANG="heavy")
+        self.assertNotEqual(p.returncode, 0)
+        self.assertEqual(c["error"], "heavy didn't finish within 25 s")
+
+    def test_the_screen_is_kept_awake_while_views_open_but_not_while_live(self):
+        p, c, log = self.run_short(120, FAKE_SLOW_VIEW="2.5", GW_PERF_KEEP_AWAKE_S="0.7")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertGreaterEqual(c["wakes"], 6)                 # about 3 while each slow view opened
+        live = False
+        for line in log:
+            if line.startswith("page warmup"):
+                live, during = True, 0
+            elif line.startswith("page done"):
+                self.assertLessEqual(during, 1, "a wake while the view was live, besides the one at its warm-up")
+                live = False
+            elif live and "--es screen on" in line:
+                during += 1
+
     def test_a_warm_up_view_that_is_also_graded_is_refused(self):
         with FakeHA() as ha:
             tmp = tempfile.mkdtemp()

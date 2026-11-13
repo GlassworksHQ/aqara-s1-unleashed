@@ -38,12 +38,14 @@ def context():
     return f"01JC1ARITY{_ctx[0]:016d}"
 
 
-def stream_context(kind, gen, k):
-    """The context id of a live stream's k-th change: S for a sensor value, F for an on/off flip, and
-    the stream's generation (one per /clarity/live). 26 characters, as HA's ULIDs; HA's frontend
-    treats a context id as opaque. The harness reads the slot from it, so it knows when the fake sent
-    the change (the stream runs at fixed times from its start), and that it is this stream's."""
-    return f"01JC1ARITY{kind}{gen:05d}{k:010d}"
+def stream_context(kind, gen, k, late_ms=0):
+    """The context id of a live stream's k-th change: S for a sensor value, F for an on/off flip, the
+    stream's generation (one per /clarity/live), its number, and how late the fake sent it (ms, after
+    its fixed time from the stream's start). 26 characters, as HA's ULIDs; HA's frontend treats a
+    context id as opaque. The harness reads it, so it knows when the fake actually sent the change,
+    and that it is this stream's. (smoke10: one change went out 92 ms late; timed from its fixed
+    time, it would have read 92 ms slower than the panel showed it.)"""
+    return f"01JC1ARITY{kind}{gen:05d}{k:06d}{max(0, min(9999, round(late_ms))):04d}"
 
 
 # ---- the entities
@@ -371,11 +373,13 @@ class Stream:
             if time.monotonic() >= nxt_k:
                 k += 1
                 e, v = self.sensor_change(k)
-                self.set_state(e, v, context=stream_context("S", self.gen, k))
-                # How late the fake itself sent it: the report shows the fake kept its schedule.
-                self.record({"stream": "S", "k": k, "late_ms": round((time.monotonic() - nxt_k) * 1000, 1)})
+                late = (time.monotonic() - nxt_k) * 1000
+                self.set_state(e, v, context=stream_context("S", self.gen, k, late))
+                # How late the fake itself sent it (also in the context): the report shows the rhythm.
+                self.record({"stream": "S", "k": k, "late_ms": round(late, 1)})
             if time.monotonic() >= nxt_f:
                 f += 1
                 e = self.switches[f % len(self.switches)]
-                self.set_state(e, "off" if self.states[e]["state"] == "on" else "on", context=stream_context("F", self.gen, f))
-                self.record({"stream": "F", "k": f, "late_ms": round((time.monotonic() - nxt_f) * 1000, 1)})
+                late = (time.monotonic() - nxt_f) * 1000
+                self.set_state(e, "off" if self.states[e]["state"] == "on" else "on", context=stream_context("F", self.gen, f, late))
+                self.record({"stream": "F", "k": f, "late_ms": round(late, 1)})

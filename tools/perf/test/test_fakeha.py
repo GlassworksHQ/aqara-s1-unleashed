@@ -168,10 +168,16 @@ class FakeHA(unittest.TestCase):
         self.assertGreaterEqual(len(got), 4)
         self.assertEqual(len({c for _, c in got}), len(got))          # every change its own context
         # The harness's SLOT pattern: kind, this stream's generation, the change's number in order.
-        slots = [re.fullmatch(r"01JC1ARITY([SF])(\d{5})(\d{10})", c).groups() for _, c in got]
-        self.assertEqual({int(g) for _, g, _ in slots}, {gen})
-        sensors = [int(k) for kind, _, k in slots if kind == "S"]
+        slots = [re.fullmatch(r"01JC1ARITY([SF])(\d{5})(\d{6})(\d{4})", c).groups() for _, c in got]
+        self.assertEqual({int(g) for _, g, _, _ in slots}, {gen})
+        sensors = [int(k) for kind, _, k, _ in slots if kind == "S"]
         self.assertEqual(sensors, list(range(1, len(sensors) + 1)))
+        self.assertTrue(all(int(late) < 1000 for *_, late in slots))      # how late each went out, in ms
+
+    def test_a_late_send_says_how_late(self):
+        self.assertEqual(D.stream_context("S", 3, 17, 92.4), "01JC1ARITYS000030000170092")
+        self.assertEqual(len(D.stream_context("F", 1, 1, 0)), 26)
+        self.assertEqual(D.stream_context("S", 1, 1, 12345)[-4:], "9999")
 
     def test_the_home_goes_back_after_each_view(self):
         """F7: whatever the stream or a tap changed goes back when the view's stream stops, so every

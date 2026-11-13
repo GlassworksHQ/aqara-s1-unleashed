@@ -92,7 +92,8 @@ class Harness(unittest.TestCase):
 
     def test_changes_are_timed_from_when_the_fake_sent_them(self):
         self.assertIn('from: "sent"', self.text)
-        self.assertIn("const SLOT = /^01JC1ARITY([SF])(\\d{5})(\\d{10})$/;", self.text)
+        self.assertIn("const SLOT = /^01JC1ARITY([SF])(\\d{5})(\\d{6})(\\d{4})$/;", self.text)
+        self.assertIn("const sent = due + (c ? c.late : 0);", self.text)
 
     def test_a_stream_that_didnt_start_is_an_error_not_a_slow_panel(self):
         self.assertIn("if (j.gen === undefined) throw new Error(`the live stream didn't start", self.text)

@@ -264,6 +264,11 @@ def refdash(nonce, url):
     def gw(obj):
         page_log(dict(obj, nonce=nonce, run=1), split=not os.environ.get("FAKE_NO_SPLIT"))
 
+    # FAKE_SLOW_VIEW: the view takes this long to be usable (the runner keeps the screen awake).
+    time.sleep(float(os.environ.get("FAKE_SLOW_VIEW", "0")))
+    if os.environ.get("FAKE_SCREEN_OFF") == tier:
+        # As smoke10: the kiosk's idle timeout turns the screen off while the view opens.
+        line("PowerManagerService", "Going to sleep due to device_admin (uid 1000)...", pid=1919)
     if foreign == "before":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     # Protocol 4: the frontend stays loaded; the view opens by navigation, so no page load is logged.
@@ -292,6 +297,9 @@ def refdash(nonce, url):
         "usable": {"rendered_tick_ms": round(nav + 200, 1), "first_screen_cards": 14, "head_cards": 10,
                    "interactive_ms": round(nav + 220, 1)}})
     time.sleep(1.0)
+    if os.environ.get("FAKE_HANG") == tier:
+        return                 # as smoke10's heavy: usable, then nothing more (no done)
+    mark(f"page warmup {tier}")
     gw({"t": "warmup", "stage": "updates", "n": 1})
     time.sleep(0.3)
     gw({"t": "measure", "stage": "updates", "n": 1, "moving": 12, "offscreen": 0, "targets": 10, "update_every_ms": 200,
@@ -342,6 +350,7 @@ def refdash(nonce, url):
             "raf_intervals": [16.7] * 30})
         time.sleep(0.2)
     save("asked.json", {})
+    mark(f"page done {tier}")
     if os.environ.get("FAKE_HA_URL"):
         # As the harness does at the end of a view: stop the stream, which also ends the command.
         import urllib.request
@@ -395,6 +404,12 @@ def dashboard():
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace/0?external_auth=1")
         time.sleep(0.8)
         line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
+
+
+def mark(text):
+    """A line in commands.log, in order with the adb commands (the tests read it)."""
+    with open(os.path.join(STATE, "commands.log"), "a") as f:
+        f.write(text + "\n")
 
 
 def take_commands(base):

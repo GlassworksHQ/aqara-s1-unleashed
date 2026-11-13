@@ -938,9 +938,10 @@ def apk_sizes(paths):
 # The page's clock is tied to the fake's by the shortest of 12 round trips; one longer than this
 # leaves the send times uncertain by more than half of it (20 ms: a fifth of the 100 ms bar).
 CLOCK_RTT_MS = 40
-# The fake keeps its own schedule to within a few ms; more than this late and the stream itself, not
-# the panel, could have held a change back.
-STREAM_LATE_MS = 50
+# Each change is timed from when the fake actually sent it (its lateness is in its context id), so a
+# late send doesn't count against the panel. More than one update interval late and the stream's own
+# rhythm (5 a second) wasn't what the protocol says.
+STREAM_LATE_MS = 200
 
 
 def fake_ha_log(path):

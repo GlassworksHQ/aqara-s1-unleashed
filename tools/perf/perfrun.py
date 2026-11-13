@@ -229,6 +229,14 @@ def own_page_finished(stop_mono, stop_at, now):
 # ---- cold start to dashboard
 
 PAGE_RE = re.compile(r"GeckoView:(PageStart|PageStop) uri=(\S+)")
+# Android's PowerManagerService, on any device: the screen is going off. With the screen off Gecko
+# runs no animation frames and slows its timers, so nothing timed then is the panel's (smoke10: the
+# kiosk's 20 s night idle timeout held light's view switch back 22 s and stopped heavy).
+SLEEP_RE = re.compile(r"PowerManagerService.*Going to sleep|Going to sleep due to")
+# While a view opens, and between views, the runner sends the kiosk's own wake intent this often, so
+# its idle timeout (20 s at night on the S1) never turns the screen off. Not between a view's warm-up
+# and done: its taps and swipes are touches, which reset the timeout, and nothing extra lands there.
+KEEP_AWAKE_S = float(os.environ.get("GW_PERF_KEEP_AWAKE_S", "8"))     # the off-device test shortens it
 
 
 def cmd_coldstart(dev, a):
@@ -276,6 +284,14 @@ def cmd_coldstart(dev, a):
                     presents.update(ts)
             stop.wait(1.0)
 
+    def keep_awake():
+        """The kiosk's wake intent, every KEEP_AWAKE_S, from the restart page's end until the last view
+        is done, except while a view is live (between its warm-up and its done)."""
+        while not stop.wait(KEEP_AWAKE_S):
+            if st.get("restart_done_at") and not st.get("live") and not st.get("break_after"):
+                dev.wake()
+                res["wakes"] = res.get("wakes", 0) + 1
+
     def quiet_for(secs, cap):
         """Wait until no new frame has been presented for `secs` (at most `cap` s). True if it went quiet."""
         end, last, since = time.time() + cap, len(presents), time.time()
@@ -287,6 +303,8 @@ def cmd_coldstart(dev, a):
 
     poller = threading.Thread(target=poll, daemon=True)
     poller.start()
+    if ref:
+        threading.Thread(target=keep_awake, daemon=True).start()
     res = {"run": a.run, "launch": None, "am_total_ms": None, "ttid_ms": None, "stop_mono": None, "proc_mono": None,
            "displayed_mono": None, "engine_mono": None, "engine_uri": None, "own_page_start_mono": None,
            "own_page_stop_mono": None, "own_page_loads": 0, "own_page_state": None,
@@ -328,6 +346,8 @@ def cmd_coldstart(dev, a):
             res["tiers"][tier] = {"nonce": nonce, "swipes": []}
         # Protocol 4: the frontend is already loaded on the start view. The fake Home Assistant hands
         # this command to the harness, which opens the view with HA's own navigation (no page load).
+        # The idle timeout starts again now: the view has its full 20 s (and KEEP_AWAKE_S after that).
+        dev.wake()
         q = urllib.parse.urlencode(dict({"view": tier, "nonce": nonce, "run": a.run, "vsync": a.vsync}, **extra))
         try:
             with urllib.request.urlopen(f"{a.url.rstrip('/')}/clarity/open?{q}", timeout=10) as r:
@@ -358,6 +378,8 @@ def cmd_coldstart(dev, a):
             if res["ttid_ms"] is not None:
                 res["displayed_mono"] = rec["mono"]
         cur = st["current"]
+        if ref and SLEEP_RE.search(msg) and res["proc_mono"] is not None:
+            res.setdefault("screen_off", []).append({"mono": rec["mono"], "during": cur[0] if cur else "the restart"})
         pl = page_lines.feed(msg)
         res["bad_page_lines"] = page_lines.bad
         if ref and cur is None and pl and pl.get("nonce") == "":
@@ -417,6 +439,7 @@ def cmd_coldstart(dev, a):
             entry["live_mono"] = rec["mono"]
             paused.set()  # no dumpsys while frames are measured, taps are timed or the page scrolls
             dev.wake()
+            st["live"] = True
         elif t == "measure":
             st["measure_mono"] = rec["mono"]
             if pl.get("stage") == "updates":
@@ -446,6 +469,7 @@ def cmd_coldstart(dev, a):
         elif t == "input":
             entry["input"] = pl
         elif t in ("done", "error"):
+            st["live"] = False
             if t == "error":
                 entry["error"] = pl.get("message")
             else:
@@ -557,6 +581,12 @@ def cmd_coldstart(dev, a):
         res["error"] = f"GeckoView never started a page within {a.timeout:.0f} s"
     elif ref and st["opened"] < len(slots):
         res["error"] = f"the reference dashboards did not finish within {a.timeout:.0f} s"
+    elif ref and st["current"] and not entry_of(st["current"][0]).get("done") and not entry_of(st["current"][0]).get("error"):
+        # The last view never said done (smoke10's heavy, with the screen off): not a lost line.
+        res["error"] = f"{st['current'][0]} didn't finish within {a.timeout:.0f} s"
+    if ref and not res["error"] and res.get("screen_off"):
+        res["error"] = (f"the screen went off during the graded run ({len(res['screen_off'])} time(s), first "
+                        f"{res['screen_off'][0]['during']}): with the screen off nothing timed is the panel's")
     # A page that said done without its updates step (smoke7: the line was cut off in logcat) isn't a
     # failed run: its other measurements stand, and the report says what is missing.
     res["missing_steps"] = [t for t, e in res["tiers"].items() if "step" not in e] if ref else []
