@@ -208,13 +208,14 @@ class FakeHA(unittest.TestCase):
         release.set()
         stopper.join(3)
         self.assertFalse(stopper.is_alive())
-        # ...and the worker sends nothing after it, though its next change was due while it was held
-        # (its loop checks the stop before every send; the join covers a stop between the two).
-        self.assertEqual(len(sent), 1)
+        # ...and the worker sends nothing after it returns (its loop checks the stop before every
+        # sensor send; a switch change due in the same pass may still go out before the join ends).
+        n = len(sent)
+        self.assertIn(n, (1, 2))
         hub.set_state = real
         hub.reset()                                     # after the worker's last write
         time.sleep(0.5)
-        self.assertEqual(len(sent), 1)
+        self.assertEqual(len(sent), n)
         self.assertEqual({e: v["state"] for e, v in hub.states.items()}, {e: v["state"] for e, v in D.states().items()})
         # A view cut short: its stream still runs when the runner cancels before the next restart.
         self.http("GET", "/clarity/live?nonce=t")

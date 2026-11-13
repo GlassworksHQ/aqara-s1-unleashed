@@ -97,6 +97,9 @@ class Hub:
         self.unknown = set()
         self._stream = None
         self.gen = 0
+        # One start or stop at a time (a cancel can meet a page's still): the join below runs outside
+        # self.lock, which the worker's set_state needs, but inside this one.
+        self.stream_lock = threading.Lock()
         # The runner's current command for the harness (open a view). It stays until that view's
         # stream stops (/clarity/still): a page asks for one other than the last it ran, so a request
         # left behind by a page that died (a force-stopped frontend's long poll) can't use it up.
@@ -141,6 +144,10 @@ class Hub:
         """Start (a new generation of) the live stream, or stop it. Returns the generation and, for a
         start, the schedule's zero on the fake's monotonic clock (ms). A stopped stream's worker is
         waited for (outside the lock its set_state needs), so it sends nothing after this returns."""
+        with self.stream_lock:
+            return self._stream_locked(on)
+
+    def _stream_locked(self, on):
         with self.lock:
             old, self._stream = self._stream, None
             if old:
