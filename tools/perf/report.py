@@ -303,6 +303,9 @@ def camera_run(line, tier):
         "streams": len(streams), "expected": line.get("expected"), "window_ms": line.get("window_ms"),
         "detail": [{k: s.get(k) for k in ("w", "h", "first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms", "frames",
                                             "decoded", "dropped", "waiting", "source")} for s in streams],
+        # Detail, not graded: the streams' HLS fetches in the window (stats.js hlsFetches), and the
+        # decoders the view got (reference_run adds `media`, from logcat).
+        "fetches": line.get("fetches"),
     }
 
 
@@ -518,6 +521,9 @@ def reference_run(c):
     else:
         start = round((engine - proc) * 1000)
     tiers = {t: tier_run(t, e, c.get("presents_mono_ms") or []) for t, e in (c.get("tiers") or {}).items()}
+    for t, r in tiers.items():
+        if r.get("camera_run") is not None:
+            r["camera_run"]["media"] = (c.get("media") or {}).get(t)
     base["bad_page_lines"] = c.get("bad_page_lines") or 0
     base["lost_scroll_steps"] = sum((e.get("lost_scroll_steps") or 0) for e in (c.get("tiers") or {}).values())
     order = c.get("order") or list(c.get("tiers") or {})
@@ -687,6 +693,16 @@ def task_phrase(task, s_):
         if med("latency_p95_ms") is None:
             return "live updates weren't measured"
         return f"a change takes {med('latency_p95_ms'):.0f} ms to show (p95)"
+    if task == "camera":
+        # Each run's worst stream (camera_run); the median of the runs, as the level is.
+        runs = (s_ or {}).get("camera_runs") or []
+        if not runs:
+            return "the cameras weren't measured"
+        ff = [r["first_frame_ms"] for r in runs if r.get("first_frame_ms") is not None]
+        if not ff:
+            return "a camera never showed a frame"
+        shown = statistics.median(r["shown_pct"] for r in runs if r.get("shown_pct") is not None)
+        return f"a camera takes {statistics.median(ff) / 1000:.1f} s to show its first frame and shows {shown:.0f}% of its frames"
     if med("load_ms") is not None:
         return f"the view takes {med('load_ms') / 1000:.1f} s to open"
     return "opening the view wasn't measured"
@@ -1227,6 +1243,30 @@ def device_line(dev, app):
     return ", ".join(p for p in parts if p) + "."
 
 
+def camera_detail(ref):
+    """report.md: per camera page and run, the decoders it got and where its segments were late
+    (detail, not graded)."""
+    out = []
+    for t, s_ in ref["tiers"].items():
+        for k, c in enumerate(s_.get("camera_runs") or [], 1):
+            m, f = c.get("media"), c.get("fetches")
+            if not m and not f:
+                continue
+            parts = []
+            if m:
+                names = sorted(set(m["codecs"]))
+                parts.append(f"decoders {len(m['codecs'])} ({', '.join(names) or 'none logged'}), "
+                             f"{m['flushes']} flushes, {m['eos']} drains")
+            if f:
+                sg = f.get("segment") or {}
+                p95 = lambda x: "n/a" if not x else f"{x['p95']:.0f} ms"  # noqa: E731
+                parts.append(f"{sg.get('n', 0)} segments, fetch p95 {p95(sg.get('total_ms'))} (queued p95 "
+                             f"{p95(sg.get('queued_ms'))}), longest gap between a stream's segments "
+                             + ("n/a" if sg.get("arrival_gap_max_ms") is None else f"{sg['arrival_gap_max_ms']:.0f} ms"))
+            out.append(f"{t} cameras, run {k} (detail): " + "; ".join(parts) + ".")
+    return out
+
+
 def camera_cell(s_, b):
     """The page's live cameras in report.md: the worst stream's first frame, frames shown and stalls
     (median of runs), and the level; `none` on a page without streams."""
@@ -1290,6 +1330,7 @@ def markdown(rep):
                 + (f" ({vp['reason']})" if vp.get("reason") else "") + "."]
         if ref["start_errors"]:
             out.append(f"Restart not measured in {len(ref['start_errors'])} run(s) ({'; '.join(sorted(set(ref['start_errors'])))}).")
+        out += camera_detail(ref)
         for t, s_ in ref["tiers"].items():
             for what in ("scroll", "updates", "load"):
                 errs = s_[f"{what}_errors"]

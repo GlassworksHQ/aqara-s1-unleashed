@@ -356,6 +356,14 @@ def refdash(nonce, url):
     if n:
         # #174: the view's live cameras, from going live to the first swipe. FAKE_NO_VIDEO: none plays.
         dead = os.environ.get("FAKE_NO_VIDEO") == tier
+        # As the S1 logs them (2026-11-13): a hardware decoder per stream from the media process, and on
+        # heavy the Allwinner decoder's flushes and drains when a stream runs out of data.
+        for _ in range(0 if dead else n):
+            line("MediaCodec", "[OMX.allwinner.video.decoder.avc] setting surface generation to 17119233", pid=16718)
+        if tier == "heavy" and not dead:
+            line("omx_vdec_aw", "<__anFlush:1043>: decoder flush", pid=1774)
+            line("omx_vdec_aw", "<__anFlush:1043>: decoder flush", pid=1774)
+            line("omx_vdec", "<doSubmit:2004>: found eos flag in input data", pid=1774)
         gw({"t": "camera", "stage": tier, "window_ms": 5000, "fps": 15, "expected": n, "found": n,
             "streams": [{"found": True, "w": 0 if dead else (1280 if i == 0 else 640), "h": 0 if dead else (720 if i == 0 else 360),
                          "first_frame_ms": None if dead else 640.0, "shown_pct": None if dead else 100.0,

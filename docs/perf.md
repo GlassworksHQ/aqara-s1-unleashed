@@ -351,9 +351,9 @@ is 120 s; past it the playlist wraps with `EXT-X-DISCONTINUITY`. WebRTC (go2rtc)
 (`Hls.isSupported()`), else the browser's own HLS, and ExoPlayer only in HA's companion app (not
 the kiosk). On a panel that is hls.js on MSE in GeckoView, ending in the device's hardware decoder.
 Checked in Chrome with H.264 (2026-11-13): the frontend took hls.js on MSE (`blob:` sources) and
-played every stream. GeckoView on the S1 isn't checked yet: every `refdash` line now carries the
-engine's `video_caps` (`mse_h264`, `native_hls`, `rvfc`), so the first panel run says which path
-it took.
+played every stream. GeckoView on the S1 takes the same path (smoke-cam1, 2026-11-13, verified):
+`video_caps` read `mse_h264: true`, `native_hls: "maybe"`, `rvfc: true`, so HA's player picks
+hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
 
 **What is measured.** For each stream, by the harness, on the views with streams:
 - **First frame**: from the navigation to the stream's first presented frame
@@ -372,6 +372,74 @@ it took.
 
 Each run's camera numbers are its **worst** stream's. A stream that never showed a frame (or wasn't
 found) fails the task: it was measured, and the panel didn't play it.
+
+**Detail, to tell a slow camera's cause apart** (not graded; added after smoke-cam1):
+- **The decoders each view got** (`media` in each run's camera detail), from the logcat the runner
+  already reads: the codec name when Android's `MediaCodec` puts one on a surface
+  (`[<name>] setting surface generation`) or `CCodec` allocates one (`allocate(<name>)`: Codec2,
+  where Android 10's software `c2.android.*` decoders run). On the S1 also the Allwinner decoder's
+  flushes (`omx_vdec_aw`: `decoder flush`) and end-of-stream drains (`omx_vdec`: `found eos flag`):
+  Gecko drains and flushes a decoder whose stream ran out of data. Names and counts only.
+- **The segments' fetch times** (`fetches` in the camera line, `stats.js` `hlsFetches`), from
+  Resource Timing during the window, through a `PerformanceObserver` (HA's frontend has already
+  filled the page's resource buffer by then): for segments and playlists, `queued_ms` (fetch start
+  to request start: waiting for a connection), `wait_ms` (request to first byte: the fake and the
+  link), `total_ms`, the kilobytes, and the longest gap between two segments of one stream arriving.
+  This assumes hls.js fetches from the page's main thread (its default loader); untested on the panel.
+
+To read the decoders yourself (read-only):
+`adb logcat -d -v threadtime -s MediaCodec CCodec OMXNodeInstance GeckoMediaManager omx_vdec_aw omx_vdec`.
+`OMXNodeInstance` names each hardware instance (`[0x…:allwinner.decoder.avc]`), and
+`GeckoMediaManager` logs when GeckoView's media process stops (`Media service has been unbound`),
+which frees its decoders.
+
+**First panel run: smoke-cam1** (#182 at 59ffd21, S1 Kiosk 0.4.3, `thread_router`, 2026-11-13,
+03:44 to 03:49 by the panel's clock; **1 run, not calibrated**). The run exited 0, the restore
+worked, and the fake knew every camera command (7 `camera/*` calls, none unknown or failed; its
+live changes at most 23 ms late).
+
+| View | Streams | First frame | Shown | Stalls | The view's other tasks, with the streams |
+|---|---|---|---|---|---|
+| typical | 1 of 1 (720p) | 4.4 s | 100% (362 decoded, 0 dropped) | none; longest gap 283 ms | scroll 23.7 fps (s1v7 without streams: 35.1); opens in 6.6 s (4.8) |
+| heavy | 4 of 4 (720p, 3 × 360p) | 3.8 to 4.1 s | 28 to 42% | 25.6 to 29.8 s of gaps over 500 ms; longest 4.6 to 7.1 s; 13 to 18 `waiting` | scroll 5.6 fps (23.3), p95 283 ms; a change takes 1433 ms (156); opens in 33 s (14.5); tap 272 ms (88) |
+
+The grade stays D: light has no streams, and typical and heavy were already below fluid on other
+tasks. The maintainer predicted streams would hurt (#174); on heavy they do.
+
+What the panel's logcat says about heavy (read 2026-11-13, read-only):
+1. **Every stream had the hardware decoder.** Heavy's four streams got four instances of
+   `OMX.allwinner.video.decoder.avc` (four node ids) within 0.4 s. There was no Codec2 software
+   decoder. The S1's codec limits allow 4 concurrent instances (the root read
+   `max-concurrent-instances` 4), so heavy sat at the limit, not over it. Typical's decoder was gone
+   before heavy opened: GeckoView's media process stopped ("Media service has been unbound") 2.5 s
+   before heavy's decoders started, in a new media process.
+2. **The decoders ran out of data; they didn't fall behind.** Each heavy stream dropped 0 or 1 frames
+   and decoded what it got, but fired `waiting` 13 to 18 times. In heavy's first minute the decoders
+   logged 117 flushes and 43 end-of-stream drains (typical: 1 flush, no drain), and 3630 decoder log lines
+   against typical's 171. That is Gecko draining and flushing decoders whose buffers emptied. So the
+   segments reached the media buffer late.
+3. **Why they were late isn't known yet.** HA's player turns low-latency HLS off with more than 2
+   streams unless the page came over HTTP/2 (`_isLLHLSSupported`, `ha-hls-player.ts`), and the fake
+   serves HTTP/1.1, as HA itself does without a proxy. So heavy's four streams poll plain HLS. They
+   share the engine's few connections per host with the frontend, through `adb reverse`. Heavy's
+   main thread was also badly blocked (a change took 1.4 s to show), and hls.js appends on it. The
+   data is small: 3 Mbit/s for all four. The `fetches` detail above is for telling these apart in
+   the next run: queueing points at connections, a long wait at the link or the fake, and neither
+   at the page.
+
+**The bars: a proposal, not a change** (the maintainer decides, in its own PR):
+- **Keep frames shown (95 / 85%) and the gaps (500 ms / 1 s of stalls) as they are.** Neither
+  result was near them: typical showed 100% with a 283 ms longest gap, and heavy 28 to 42% with
+  half-minute stalls. One run can't place them more finely.
+- **First frame (2 / 4 s) is the bar the data sits on.** Typical took 4.4 s and heavy 3.8 to 4.1 s.
+  It runs from the navigation, so it includes building the view: typical's view took 6.6 s to open.
+  Before moving it, split it in the next run's detail: from the navigation to the card asking for
+  the stream (`camera/stream` in the fake's log, on its clock, which the page's is tied to), and
+  from there to the first frame. If the second part is short, the bar is measuring the view, which
+  open the view already grades. Then I would time first frame from the stream request.
+- **Don't calibrate on the S1's letter.** Today the camera bars can't move the S1's D either way,
+  which makes this a good time to set them on their own merits.
+- Wait for the 3-run camera run with the new detail, and a screencap during heavy, before deciding.
 
 #### Change to screen
 
@@ -850,7 +918,7 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (over 200 ms, one update interval, is provisional). `null` without the log, which is provisional for protocol 4 |
 | `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb`, `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`, `verified`, `excluded`, and `off_by: "mute"` when Assist was off by its mute alone; or `id`, `method` and `error` when no sample ran as asked), `screen_off_samples` (idle samples the screen went off in, left out), `panes_waiting` (`id`, `waiting_on`, `note`), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `ok`). See [RAM](#ram) |
 | `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts (a run failed, a task was measured in fewer runs, scrolling rests on rAF only, the pages ran another protocol) |
-| `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `camera_runs` (each run's worst stream, with each stream as `detail`), `camera_levels` (per run) and `camera_level` (graded), `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
+| `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `camera_runs` (each run's worst stream, with each stream as `detail`, and as detail `fetches` (the HLS fetch times) and `media` (the decoders the view got, from logcat)), `camera_levels` (per run) and `camera_level` (graded), `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
 | `detail` | `synthetic`, the animation test page: `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `steps_without_sf`, `screen_off_runs` (left out of the rest), `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `page_lcp_ms`, `page_lcp_from`, `per_run` |
 | `real_use` | Not graded. Your dashboard: `app_start_to_dashboard_ms`, `android_ttid_ms`, `launch`, `stop_to_dashboard_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `errors`, `screen_off_samples`, `per_run`. Then `idle`, `peak`, `memory` (`idle`, `peak`, `budget`) and `panes` |
 
@@ -989,7 +1057,7 @@ load) and `t`:
 | `input-ready` | `x`, `y` (device pixels), `taps`. The runner taps |
 | `swipe-ready` | `n`, `x`, `y1`, `y2` (device pixels), `ms`. The runner swipes once |
 | `input` | `stage`, `method`, `taps`, `values`, `inp_ms` |
-| `camera` | Views with streams (#174), logged before the swipes: `stage`, `window_ms`, `fps`, `expected`, `found`, and per stream `w`, `h`, `first_frame_ms` (after the navigation), `shown_pct`, `max_gap_ms`, `stall_total_ms`, `frames` (presented, from the decoder), `callbacks` (`requestVideoFrameCallback`), `decoded`, `dropped`, `waiting`, `source` |
+| `camera` | Views with streams (#174), logged before the swipes: `stage`, `window_ms`, `fps`, `expected`, `found`, and per stream `w`, `h`, `first_frame_ms` (after the navigation), `shown_pct`, `max_gap_ms`, `stall_total_ms`, `frames` (presented, from the decoder), `callbacks` (`requestVideoFrameCallback`), `decoded`, `dropped`, `waiting`, `source`; then `fetches` (`segment` and `playlist`: `n`, `queued_ms`, `wait_ms`, `total_ms`, each `median`, `p95`, `max`; `segment.kb`, `segment.arrival_gap_max_ms`; `streams`) |
 | `hello`, `js` | Animation test page: `ua`, `dpr`, `css`, `cores`, `load`; the JS workload's `runs`, `median_ms`, `p95_ms`, `checksum`, `expected` |
 | `done`, `error` | `message` on error. At `done` the page has stopped its updates |
 

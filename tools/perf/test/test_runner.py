@@ -659,6 +659,11 @@ class Cameras(unittest.TestCase):
         tiers = self.build(tmp)["graded"]["reference"]["tiers"]
         self.assertEqual((tiers["typical"]["camera_level"], tiers["heavy"]["camera_level"]), ("good", "good"))
         self.assertIsNone(tiers["light"]["camera_level"])
+        # Which decoders each view got, from logcat (detail): one hardware decoder per stream.
+        self.assertEqual(c["media"]["heavy"], {"codecs": ["OMX.allwinner.video.decoder.avc"] * 4, "flushes": 2, "eos": 1})
+        self.assertEqual(c["media"]["typical"]["codecs"], ["OMX.allwinner.video.decoder.avc"])
+        self.assertNotIn("light", c["media"])
+        self.assertEqual(tiers["heavy"]["camera_runs"][0]["media"]["flushes"], 2)
 
     def test_a_stream_that_never_plays_fails_the_task(self):
         tmp = tempfile.mkdtemp()

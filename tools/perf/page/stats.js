@@ -126,8 +126,49 @@
     return { start: s, done: ran - s >= windowMs };
   }
 
+  // The camera streams' HLS fetches in a window, from Resource Timing entries (hls.js's fetches of
+  // /api/hls/<token>/...). Where a late segment comes from: `queued` is fetch start to request start
+  // (waiting for a connection: HTTP/1.1 allows a few per host), `wait` request start to the first
+  // byte (the server and the link), `total` start to the last byte. `arrival_gap` is the longest
+  // time between two segments of one stream arriving; segments are 1 s, so much more is a stall.
+  function hlsFetches(entries) {
+    const kinds = { segment: [], playlist: [] };
+    const byStream = new Map();
+    for (const e of entries) {
+      const m = /\/api\/hls\/([^/]+)\/(?:(segment)\/\d+\.m4s|(?:master_)?playlist\.m3u8)/.exec(e.name || "");
+      if (!m) continue;
+      (m[2] ? kinds.segment : kinds.playlist).push(e);
+      if (m[2]) {
+        if (!byStream.has(m[1])) byStream.set(m[1], []);
+        byStream.get(m[1]).push(e.responseEnd);
+      }
+    }
+    const summary = (xs, f) => {
+      const v = xs.map(f).filter((x) => x !== null && isFinite(x) && x >= 0).sort((a, b) => a - b);
+      return v.length ? { median: round2(nearestRank(v, 0.5)), p95: round2(nearestRank(v, 0.95)), max: round2(v[v.length - 1]) } : null;
+    };
+    const out = {};
+    for (const [k, xs] of Object.entries(kinds)) {
+      out[k] = {
+        n: xs.length,
+        queued_ms: summary(xs, (e) => (e.requestStart > 0 ? e.requestStart - e.fetchStart : null)),
+        wait_ms: summary(xs, (e) => (e.requestStart > 0 && e.responseStart > 0 ? e.responseStart - e.requestStart : null)),
+        total_ms: summary(xs, (e) => e.responseEnd - e.startTime),
+      };
+    }
+    out.segment.kb = Math.round(kinds.segment.reduce((a, e) => a + (e.transferSize || e.encodedBodySize || 0), 0) / 1024);
+    let gap = null;
+    for (const ends of byStream.values()) {
+      const s = ends.slice().sort((a, b) => a - b);
+      for (let i = 1; i < s.length; i++) gap = Math.max(gap === null ? 0 : gap, s[i] - s[i - 1]);
+    }
+    out.segment.arrival_gap_max_ms = gap === null ? null : round2(gap);
+    out.streams = byStream.size;
+    return out;
+  }
+
   const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines,
-                skyToViolet, usableStep, freeStep };
+                skyToViolet, usableStep, freeStep, hlsFetches };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWStats = api;
 })(this);

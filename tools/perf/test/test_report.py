@@ -485,6 +485,36 @@ def tier_entry(tier, inp, scroll_missed=0, updates_missed=0, load_ms=200, fcp_ms
             "swipes": [swipe(nav, i, late(60, scroll_missed)) for i in range(3)]}
 
 
+class CameraDetail(unittest.TestCase):
+    """Detail for the camera task (smoke-cam1, 2026-11-13): which decoders a view got and where its
+    segments were late, so a slow camera can be told apart: the decoder, the link or the page."""
+
+    def test_the_decoders_and_fetches_reach_report_md(self):
+        fetches = {"segment": {"n": 120, "queued_ms": {"median": 2, "p95": 900, "max": 1500},
+                               "wait_ms": {"median": 10, "p95": 40, "max": 80},
+                               "total_ms": {"median": 30, "p95": 1100, "max": 2000}, "kb": 4000, "arrival_gap_max_ms": 5200},
+                   "playlist": {"n": 130, "queued_ms": None, "wait_ms": None, "total_ms": None}, "streams": 4}
+        line = dict(camera_line("heavy"), fetches=fetches)
+        c = {"proc_mono": 20.0, "tiers": {"heavy": dict(tier_entry("heavy", 100), camera=line)},
+             "media": {"heavy": {"codecs": ["OMX.allwinner.video.decoder.avc"] * 4, "flushes": 117, "eos": 43}}}
+        run = R.reference_run(c)["tiers"]["heavy"]["camera_run"]
+        self.assertEqual((run["fetches"]["segment"]["n"], run["media"]["flushes"]), (120, 117))
+        ref = {"tiers": {"heavy": {"camera_runs": [run]}}}
+        md = R.camera_detail(ref)
+        self.assertEqual(md, ["heavy cameras, run 1 (detail): decoders 4 (OMX.allwinner.video.decoder.avc), 117 flushes, "
+                              "43 drains; 120 segments, fetch p95 1100 ms (queued p95 900 ms), longest gap between a "
+                              "stream's segments 5200 ms."])
+        self.assertEqual(R.camera_detail({"tiers": {"heavy": {"camera_runs": [dict(run, media=None, fetches=None)]}}}), [])
+
+    def test_the_headline_names_the_camera_not_the_view_again(self):
+        """smoke-cam1's headline read "the view takes 6.6 s to open" twice: camera had no phrase of its
+        own and fell through to the open-the-view one."""
+        s_ = {"load_ms": {"median": 6620}, "camera_runs": [{"first_frame_ms": 4405.1, "shown_pct": 100.0}]}
+        self.assertEqual(R.task_phrase("camera", s_), "a camera takes 4.4 s to show its first frame and shows 100% of its frames")
+        self.assertEqual(R.task_phrase("camera", {"camera_runs": [{"first_frame_ms": None, "shown_pct": None}]}),
+                         "a camera never showed a frame")
+
+
 def camera_line(tier, first_ms=600.0, shown=100.0, max_gap=70.0, stall=0.0):
     """The harness's camera line (#174) for a view with streams: each plays at once and in full."""
     n = {"typical": 1, "heavy": 4}.get(tier, 0)

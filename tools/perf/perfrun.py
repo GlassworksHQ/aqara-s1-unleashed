@@ -245,6 +245,11 @@ def cmd_panes(dev, a):
     sys.exit(0 if res["ok"] else 1)
 
 
+# Decoders, from logcat (refstart's note_media). MediaCodec and CCodec are Android's own; omx_vdec_aw
+# and omx_vdec are the Allwinner decoder's (the S1), read 2026-11-13 from the panel's logcat.
+MEDIA_TAGS = {"MediaCodec", "CCodec", "omx_vdec_aw", "omx_vdec"}
+MEDIA_ALLOC_RE = re.compile(r"^\[([\w.]+)\] setting surface generation|^allocate\(([\w.]+)\)")
+
 # The live settings are saved with apply(): give the write this long before the app restarts.
 PANES_SAVE_S = float(os.environ.get("GW_PERF_PANES_SAVE_S", "3"))
 
@@ -388,6 +393,26 @@ def cmd_coldstart(dev, a):
     def entry_of(slot):
         return res["warmup"] if slot == "warmup" else res["tiers"][slot]
 
+    def note_media(rec, cur):
+        """Which decoders each view got, from Android's own log lines (any device): the codec name
+        when MediaCodec puts one on a surface (video) or Codec2 allocates one. On the S1 also the
+        Allwinner decoder's flushes and end-of-stream drains (Gecko drains a decoder that ran out of
+        data). Names and counts only; read-only."""
+        tag, msg = rec["tag"], rec["msg"]
+        if tag not in MEDIA_TAGS:
+            return
+        m = MEDIA_ALLOC_RE.search(msg) if tag in ("MediaCodec", "CCodec") else None
+        flush = tag == "omx_vdec_aw" and "decoder flush" in msg
+        eos = tag == "omx_vdec" and "found eos flag" in msg
+        if not (m or flush or eos):
+            return
+        where = cur[0] if cur else "between"
+        rec_ = res.setdefault("media", {}).setdefault(where, {"codecs": [], "flushes": 0, "eos": 0})
+        if m:
+            rec_["codecs"].append(m.group(1) or m.group(2))
+        rec_["flushes"] += flush
+        rec_["eos"] += eos
+
     def send(nonce, cmd, n, gap):
         """Taps or a swipe for the page that asked, and only while it is still the current page."""
         for i in range(n):
@@ -447,6 +472,8 @@ def cmd_coldstart(dev, a):
             if res["ttid_ms"] is not None:
                 res["displayed_mono"] = rec["mono"]
         cur = st["current"]
+        if ref:
+            note_media(rec, cur)
         if ref and SLEEP_RE.search(msg) and res["proc_mono"] is not None:
             res.setdefault("screen_off", []).append({"mono": rec["mono"], "during": cur[0] if cur else "the restart"})
         pl = page_lines.feed(msg)

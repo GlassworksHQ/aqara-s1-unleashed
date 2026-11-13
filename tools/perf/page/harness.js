@@ -344,6 +344,17 @@
 
   function camerasStart() {
     cams.t0 = performance.now();
+    // The streams' HLS fetches during the window (S.hlsFetches). An observer, not the timeline: HA's
+    // frontend has likely filled the resource buffer by now, and an observer still gets new entries.
+    cams.fetches = [];
+    try {
+      cams.obs = new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) if (e.name.includes("/api/hls/")) cams.fetches.push(e.toJSON());
+      });
+      cams.obs.observe({ type: "resource" });
+    } catch (e) {
+      cams.obs = null;
+    }
     for (const r of cams.recs) {
       r.counting = true;
       r.frames = [];
@@ -383,7 +394,12 @@
         source: (decoded !== null ? "quality" : "rvfc") + (r.el.requestVideoFrameCallback ? "+rvfc" : "+timeupdate"),
       });
     }
-    log({ t: "camera", stage: V.tier, window_ms: Math.round(dur), fps, expected: cams.expected, found: cams.recs.length, streams });
+    if (cams.obs) {
+      for (const e of cams.obs.takeRecords()) if (e.name.includes("/api/hls/")) cams.fetches.push(e.toJSON());
+      cams.obs.disconnect();
+    }
+    const fetches = cams.obs ? S.hlsFetches(cams.fetches.filter((e) => e.startTime >= cams.t0 && e.startTime <= t1)) : null;
+    log({ t: "camera", stage: V.tier, window_ms: Math.round(dur), fps, expected: cams.expected, found: cams.recs.length, streams, fetches });
   }
 
   // ---- opening a view: HA's own navigate()

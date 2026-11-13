@@ -196,3 +196,25 @@ test("free: every probe within 50 ms for the whole window, from when the stretch
   assert.ok(probes.findIndex(([, r]) => r - 305 >= 500) === seen.length - 1);   // done at the first probe 500 ms on
   assert.equal(S.freeStep(0, 51, 0, 1).done, false);       // a probe over 50 ms is never free
 });
+
+// ---- the camera streams' HLS fetches (smoke-cam1): where a late segment comes from
+
+test("hlsFetches: segments and playlists apart, queueing, the longest gap per stream", () => {
+  const e = (path, start, req, first, end, size = 0) =>
+    ({ name: `http://127.0.0.1:8089${path}`, startTime: start, fetchStart: start, requestStart: req, responseStart: first, responseEnd: end, transferSize: size });
+  const out = S.hlsFetches([
+    e("/api/hls/clarity000001/segment/3.m4s", 0, 5, 20, 40, 2048),
+    e("/api/hls/clarity000001/segment/4.m4s", 1000, 1900, 1910, 1950, 2048),   // waited 900 ms for a connection
+    e("/api/hls/clarity000002/segment/9.m4s", 500, 501, 510, 520, 1024),
+    e("/api/hls/clarity000001/playlist.m3u8", 900, 901, 905, 906, 300),
+    e("/api/websocket", 0, 1, 2, 3),                                            // not a stream's
+  ]);
+  assert.equal(out.streams, 2);
+  assert.equal(out.segment.n, 3);
+  assert.equal(out.playlist.n, 1);
+  assert.deepEqual(out.segment.queued_ms, { median: 5, p95: 900, max: 900 });
+  assert.equal(out.segment.arrival_gap_max_ms, 1910);   // stream 1: 40 -> 1950; stream 2 has one segment
+  assert.equal(out.segment.kb, 5);
+  // requestStart 0 (no detailed timing): not counted as 0 ms of queueing.
+  assert.equal(S.hlsFetches([e("/api/hls/a/segment/1.m4s", 0, 0, 0, 10)]).segment.queued_ms, null);
+});
