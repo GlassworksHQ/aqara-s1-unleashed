@@ -36,6 +36,7 @@ describe('the Undo screen', () => {
     expect(link(/Use this browser/).disabled).toBe(true);
     await vi.waitFor(() => expect(s.store.state.undo.checking).toBe(false)); // this file isn't a backup
     expect(link(/Use this browser/).disabled).toBe(false);
+    expect(link(/Another file/).disabled).toBe(false); // a file is always one click away, whatever this browser holds
     s.close();
   });
 
