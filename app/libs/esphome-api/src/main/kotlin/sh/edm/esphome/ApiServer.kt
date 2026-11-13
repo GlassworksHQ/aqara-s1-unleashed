@@ -74,6 +74,11 @@ data class DeviceIdentity(
     val manufacturer: String,
     val model: String,
     val voiceFeatures: Int,
+    /**
+     * The port of the device's own web page, or 0 for none. Home Assistant then links the device page's
+     * "Visit" to `http://<host>:<port>` (`configuration_url`, components/esphome/manager.py).
+     */
+    val webserverPort: Int = 0,
 ) {
     /** Lowercase hex without separators, as in ESPHome's mDNS `mac` TXT and Noise ServerHello. */
     val macHex: String get() = macAddress.replace(":", "").lowercase()
@@ -641,6 +646,7 @@ class ApiServer(
                 .string(4, d.esphomeVersion, force = true)
                 .string(5, d.compilationTime, force = true)
                 .string(6, d.model, force = true)
+                .uint32(10, d.webserverPort)
                 .string(12, d.manufacturer, force = true)
                 .string(13, d.friendlyName, force = true)
                 .uint32(17, d.voiceFeatures)
