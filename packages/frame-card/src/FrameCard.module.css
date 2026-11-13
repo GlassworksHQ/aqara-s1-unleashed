@@ -222,6 +222,19 @@
   background: color-mix(in srgb, var(--rose) 10%, transparent);
 }
 
+/* read by screen readers only; beats `.tags > span` */
+.tags > .expected {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .tagIcon {
   width: 13px;
   height: 13px;

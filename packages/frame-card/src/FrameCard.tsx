@@ -10,7 +10,7 @@
 // heading level (`as`), the name is that heading and its wrappers are divs, for a link on a page.
 import { useRef } from 'react';
 import { DeviceModel } from './DeviceModel';
-import { STAGE_TEXT, cardTags, type FrameDesign, type Stage } from './frame';
+import { STAGE_TEXT, cardTags, ships, type FrameDesign, type Stage } from './frame';
 import s from './FrameCard.module.css';
 
 /** The card's own class: the hover lift, the floating model and the tags. */
@@ -66,9 +66,13 @@ export function useTilt<T extends HTMLElement>() {
 /**
  * The card's contents: the model, then the name, stage, aka, summary and tags. With `idPrefix`, the
  * summary and the tags get the ids `<idPrefix>-summary` and `<idPrefix>-tags`, for aria-describedby.
- * `as` makes the name a heading (`h2`…`h4`); leave it out inside a button.
+ * `as` makes the name a heading (`h2`…`h4`); leave it out inside a button. `expected` (by default, a
+ * frame that doesn't ship yet) tells screen readers the tags are expected, not tested. It is hidden
+ * text, not an aria-label, so it joins the tags in a link's name and in Kiln's aria-describedby.
  */
-export function FrameCardBody({ f, idPrefix, as: Name = 'span' }: { f: FrameDesign; idPrefix?: string; as?: 'span' | 'h2' | 'h3' | 'h4' }) {
+export function FrameCardBody({ f, idPrefix, as: Name = 'span', expected = !ships(f.status) }: {
+  f: FrameDesign; idPrefix?: string; as?: 'span' | 'h2' | 'h3' | 'h4'; expected?: boolean;
+}) {
   const Box = Name === 'span' ? 'span' : 'div';
   return (
     <>
@@ -84,6 +88,7 @@ export function FrameCardBody({ f, idPrefix, as: Name = 'span' }: { f: FrameDesi
         {f.aka && <span className={s.aka}>{f.aka}</span>}
         <span id={idPrefix ? `${idPrefix}-summary` : undefined} className={s.summary}>{f.summary}</span>
         <span id={idPrefix ? `${idPrefix}-tags` : undefined} className={s.tags}>
+          {expected && <span className={s.expected}>Expected, not tested yet: </span>}
           {cardTags(f.ratings).map((t) => (
             <span key={t.text} className={t.severity ? s[t.severity] : undefined}>
               <TagIcon k={t.key} value={t.value} />

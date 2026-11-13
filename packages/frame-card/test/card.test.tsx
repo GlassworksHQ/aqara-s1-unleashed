@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // What a caller of the card gets: the stage's shape, the name as a heading or not, the link's text,
-// and ships() for both a frame's stage and a pane's support.
+// what the install tags say to a screen reader, and ships() for a frame's stage and a pane's support.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -11,6 +11,12 @@ import { DeviceModel, FrameCardBody, ships, type FrameDesign, type Support } fro
 
 const s1 = s1Json as FrameDesign;
 const mirror = mirrorJson as FrameDesign;
+
+/** The declarations of each rule in FrameCard.module.css whose selector is exactly `selector`. */
+const cssRules = (selector: string) => {
+  const css = readFileSync(join(__dirname, '../src/FrameCard.module.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  return [...css.matchAll(/(?<=^|\})\s*([^{}]+?)\s*\{([^}]*)\}/g)].filter((m) => m[1] === selector).map((m) => m[2]!);
+};
 
 const render = (node: React.ReactElement) => {
   const el = document.createElement('div');
@@ -40,6 +46,33 @@ describe('FrameCardBody', () => {
     expect([...el.querySelectorAll('span')].some((n) => n.textContent === s1.name)).toBe(true);
   });
 
+  describe('install tags', () => {
+    const tags = (node: React.ReactElement) => render(node).querySelector('#c-tags')!.textContent;
+    const EXPECTED = /^Expected, not tested yet: /;
+
+    it('reads as tested on a frame that ships', () => {
+      expect(s1.status).toBe('beta');
+      expect(tags(<FrameCardBody f={s1} idPrefix="c" />)).not.toMatch(EXPECTED);
+    });
+
+    it('reads as expected on a frame that doesn\'t ship yet, in the text aria-describedby reads', () => {
+      expect(mirror.status).toBe('planned');
+      expect(tags(<FrameCardBody f={mirror} idPrefix="c" />)).toMatch(EXPECTED);
+    });
+
+    it('follows an explicit expected prop', () => {
+      expect(tags(<FrameCardBody f={s1} idPrefix="c" expected />)).toMatch(EXPECTED);
+      expect(tags(<FrameCardBody f={mirror} idPrefix="c" expected={false} />)).not.toMatch(EXPECTED);
+    });
+
+    it('hides the words from sight, out of the tags\' flow', () => {
+      const rule = cssRules('.tags > .expected');
+      expect(rule).toHaveLength(1);
+      expect(rule[0]).toMatch(/position:\s*absolute/);
+      expect(rule[0]).toMatch(/clip-path:\s*inset\(50%\)/);
+    });
+  });
+
   it('makes the name a heading when asked, not inside a span', () => {
     const h = render(<FrameCardBody f={s1} as="h2" />).querySelector('h2');
     expect(h?.textContent).toBe(s1.name);
@@ -48,10 +81,9 @@ describe('FrameCardBody', () => {
 });
 
 it('the card\'s class doesn\'t underline its text, for a card that is a link', () => {
-  const css = readFileSync(join(__dirname, '../src/FrameCard.module.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-  const card = [...css.matchAll(/(?<=^|\})\s*([^{}]+?)\s*\{([^}]*)\}/g)].filter((m) => m[1] === '.card');
+  const card = cssRules('.card');
   expect(card).toHaveLength(1);
-  expect(card[0]![2]).toMatch(/(^|;)\s*text-decoration:\s*none\s*(;|$)/);
+  expect(card[0]).toMatch(/(^|;)\s*text-decoration:\s*none\s*(;|$)/);
 });
 
 describe('ships', () => {
