@@ -9,8 +9,8 @@ below as the release notes.
 
 ### Changed
 - **The wake word uses far less CPU.** The panel now listens with microWakeWord, the engine Home
-  Assistant Voice PE uses, instead of openWakeWord, which kept about a third of a core busy all the
-  time. Your wake word stays as it was (Hey Jarvis, Alexa or Hey Mycroft), and Okay Nabu is new. The
+  Assistant Voice PE uses, instead of openWakeWord. Listening for the wake word took about 37% of a
+  core on the S1 and now takes about 4%. Your wake word stays as it was (Hey Jarvis, Alexa or Hey Mycroft), and Okay Nabu is new. The
   panel downloads the new models itself once. *Wake word threshold* now means the new engine's
   cutoff: each word starts at its own (0.9 to 0.97), lower is more sensitive, and a threshold you set
   for openWakeWord doesn't carry over. The old openWakeWord words stay in the list as

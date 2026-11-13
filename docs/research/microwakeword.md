@@ -1,10 +1,10 @@
 # microWakeWord on the S1: can it replace openWakeWord, and what does it cost?
 
-**Status (2026-11-12): working on the host, untested on the panel.** S1 Kiosk runs microWakeWord's
-four official models behind a Kotlin port of the TFLite Micro audio frontend. The port matches the
-frontend's C code bit for bit, and all four models fire on their own word in a synthesised clip and
-nowhere else. The panel's CPU, detection rate and false wakes are not measured yet (the panel plan is
-at the end).
+**Status (2026-11-13): working; CPU measured on the panel, voice tests pending.** S1 Kiosk runs
+microWakeWord's four official models behind a Kotlin port of the TFLite Micro audio frontend. The
+port matches the frontend's C code bit for bit, and all four models fire on their own word in a
+synthesised clip and nowhere else. On the S1 the wake word's thread went from 37.9% to 3.7% of a
+core. Detection with real voices and false wakes are not measured yet.
 
 Device: Aqara S1 Plus (Allwinner A133, Android 10, armeabi-v7a), S1 Kiosk 0.4.3 before the change.
 Tools: pymicro-features 2.0.2, pymicro-wakeword 2.5.0, ai-edge-litert 2.3.0, TensorFlow 2.16.1,
@@ -121,7 +121,7 @@ pymicro-wakeword get, and without native code of our own (#175)?
 | Arithmetic | ~554 MMAC/s ([idle-cpu.md](idle-cpu.md)) | ~0.7 MMAC/s (same) |
 | Features | float mel model | integer frontend in Kotlin, bit-exact to the C |
 | Inference | every 80 ms | every 30 ms, int8 |
-| Panel CPU, unmuted | 37 to 45% of a core | **pending** (target under 10%) |
+| Panel CPU, unmuted (main process / `voice-mic`) | 40.8% / 37.9% of a core | **8.1% and 6.5% / 3.7%** (target under 10%) |
 | Detections at 2 m, 10 tries per word | not measured | **pending** |
 | False wakes, 30 min | not measured | **pending** |
 
@@ -141,14 +141,25 @@ Host only; nothing touches a device.
 
 ## Panel run
 
-Pending; the panel plan is in the PR. Results go here: threadcpu before and after (60 s, unmuted),
-the saved word after the update, detections per word at about 2 m, false wakes over 30 minutes.
+**CPU and the update** (2026-11-13, 00:06 to 00:10, verified; run by the panel's owner). Aqara S1
+Plus, S1 Kiosk 0.4.3, then test build `e88f1148` (6c1b5f8) installed over it with `adb install -r`.
+`tools/perf/threadcpu.py`, 60 s windows, unmuted, CPU at 1.512 GHz:
+
+| | Main process | `voice-mic` |
+|---|---|---|
+| Before (openWakeWord) | 40.8% | 37.9% |
+| After (microWakeWord), two windows | 8.1%, 6.5% | 3.7% |
+
+- The panel downloaded the four models and checked their SHA-256 on first start.
+- The word saved by 0.4.3 moved over: `Wake word 'hey_jarvis' ('Hey Jarvis', microWakeWord) loaded;
+  threshold 0.97`. TFLite 2.16.1's Java API on armeabi-v7a runs the resource-variable models.
+- No FATAL in logcat.
+
+**Pending:** each word said 10 times at about 2 m, and 30 minutes of room or TV sound for false
+wakes. Both need the maintainer.
 
 ## Open questions
 
-- Does TFLite 2.16.1's Java API on armeabi-v7a run the resource-variable models? The host 2.16.1 run
-  says yes; the panel says for sure.
-- The real CPU on the A53: Kotlin frontend plus 33 small inferences per second through JNI.
 - Detection and false wakes with real voices and the S1's microphones. The cutoffs are ESPHome's,
   tuned for Voice PE's microphones and its XMOS front end, which the S1 doesn't have.
 - Whether wake-word work at `THREAD_PRIORITY_URGENT_AUDIO` still costs dashboard fps (#105's open
