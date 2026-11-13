@@ -8,6 +8,13 @@ below as the release notes.
 ## [Unreleased]
 
 ### Changed
+- **The wake word uses far less CPU.** The panel now listens with microWakeWord, the engine Home
+  Assistant Voice PE uses, instead of openWakeWord. On the S1, the microphone's thread went from
+  about 37% of a core to about 4%. Your wake word stays as it was (Hey Jarvis, Alexa or Hey
+  Mycroft), and Okay Nabu is new. The panel downloads the new models itself once. *Wake word
+  threshold* now means the new engine's cutoff: each word starts at its own (0.9 to 0.97), lower
+  is more sensitive, and a threshold you set for openWakeWord doesn't carry over. The old
+  openWakeWord words stay in the list as "(openWakeWord)" for this release.
 - **A new boot screen.** The power-on logo and the boot animation now show the Glassworks mark:
   three glass plates drop into place, the top one lights up from sky to violet, and "Glassworks" and
   "On Aqara S1 Plus" fade in. While the panel finishes starting, the stack floats and the top plate

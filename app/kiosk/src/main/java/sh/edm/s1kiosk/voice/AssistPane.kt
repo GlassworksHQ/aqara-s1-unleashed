@@ -58,8 +58,8 @@ interface SpeakerMedia {
  *
  * The core keeps the speaker. It hands over [player] (the voice channel, shared with announcements),
  * [speaker] (the music to pause), [resolveUrl] and [wakeChime] (the chime player is shared with timers).
- * [createInput] makes the microphone and wake word engine from the config, the stored model and a
- * callback that stores the model the user picks. [onVoiceEvent] is how the voice overlay hears about
+ * [createInput] makes the microphone and wake word engine from the config, the stored wake word id and
+ * a callback that stores the word the user picks. [onVoiceEvent] is how the voice overlay hears about
  * every event.
  */
 class AssistPane(
@@ -99,9 +99,10 @@ class AssistPane(
             "mic_gain", "Mic gain", "mdi:microphone-plus", min = 0.5f, max = 4f, step = 0.1f, unit = "x",
             get = { prefs.micGain }, set = { prefs.micGain = it },
         ),
+        // microWakeWord's cutoffs go up to 0.97 (WakeWords.MICRO), openWakeWord's default is 0.5.
         NumberEntity(
-            "wake_word_threshold", "Wake word threshold", "mdi:account-voice", min = 0.1f, max = 0.95f, step = 0.05f,
-            get = { prefs.wakeThreshold }, set = { prefs.wakeThreshold = it },
+            "wake_word_threshold", "Wake word threshold", "mdi:account-voice", min = 0.1f, max = 0.99f, step = 0.01f,
+            get = { prefs.threshold }, set = { prefs.threshold = it },
         ),
     )
 
@@ -113,8 +114,8 @@ class AssistPane(
 
     override fun start() {
         if (!voiceEnabled) return
-        val cfg = VoiceConfig(threshold = prefs.wakeThreshold, micGain = prefs.micGain)
-        val engine = createInput(cfg, prefs.wakeModel) { model -> prefs.wakeModel = model }
+        val cfg = VoiceConfig(threshold = prefs.threshold, micGain = prefs.micGain)
+        val engine = createInput(cfg, prefs.wakeWord) { id -> prefs.wakeWord = id }
         engine.onError = { msg -> dispatch(VoiceEvent.Error(msg, local = true)) }
         val c = VoiceAssistantController(
             send = { type, payload -> server?.sendVoice(type, payload) ?: false },
@@ -153,8 +154,11 @@ class AssistPane(
         when (event.key) {
             VoicePrefs.KEY_MIC_MUTED -> engine.setMuted(prefs.micMuted)
             VoicePrefs.KEY_MIC_GAIN -> engine.setGain(prefs.micGain)
-            VoicePrefs.KEY_WAKE_THRESHOLD -> engine.threshold = prefs.wakeThreshold
-            VoicePrefs.KEY_WAKE_MODEL -> engine.setActive(listOfNotNull(prefs.wakeModel.takeIf { it.isNotEmpty() }?.let(TfliteWakeWord::modelName)))
+            VoicePrefs.KEY_WAKE_THRESHOLD, VoicePrefs.KEY_WAKE_CUTOFF -> engine.threshold = prefs.threshold
+            VoicePrefs.KEY_WAKE_WORD -> {
+                engine.setActive(listOfNotNull(prefs.wakeWord.ifEmpty { null }))
+                engine.threshold = prefs.threshold
+            }
         }
     }
 
