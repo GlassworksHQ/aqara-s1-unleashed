@@ -23,7 +23,8 @@ set -euo pipefail
 SRC="$(cd "$1" && pwd -P)"
 OUT="$2"
 W="$(mktemp -d)"
-trap 'rm -rf "$W"' EXIT
+# Best effort: the sisdk build's container leaves root-owned files in its build directory.
+trap 'rm -rf "$W" 2>/dev/null || true' EXIT
 
 sisdk_ok() {   # the directory holds exactly the committed runtime
   [ -d "$1" ] || return 1
@@ -36,7 +37,10 @@ else
   rm -rf "$SISDK"
   SISDK_OUT="$SISDK" SISDK_BUILD="$W/sisdk-build" "$SRC/tools/radio/build-sisdk-runtime.sh"
 fi
-# As release.yml sets them after the artifact (which doesn't keep modes).
+# A copy this user owns (the build's container writes as root on Linux), with the modes release.yml
+# sets after its artifact (which doesn't keep them).
+cp -R "$SISDK" "$W/sisdk-modes"
+SISDK="$W/sisdk-modes"
 find "$SISDK" -type f -exec chmod 0644 {} +
 chmod 0755 "$SISDK/zigbeed.sh" "$SISDK/lib/ld-linux-armhf.so.3"
 
