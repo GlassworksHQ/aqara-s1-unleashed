@@ -55,14 +55,22 @@ Two differences from the reference page, both forced by the above:
 On the reference panel a normal boot shows the animation for about 6.5 s (7.2 s to 13.7 s after
 power-on, read 2026-11-12), so the intro plays in full and the loop mostly matters on slow boots.
 
-## Splash hashes
+## Splashes undo knows as ours
 
-For telling our splash from Aqara's (#106): the SHA-256 of every `bootlogo.bmp` we have shipped.
+Undo must not put our splash back as if it were Aqara's (#106). So both installers refuse a backup
+whose `bootloader.img` holds a splash we shipped. They know ours by the SHA-256 of `BOOTLOGO.BMP`,
+listed in [`branding/bootlogos.json`](../bootlogos.json). The splash's header is the same as stock,
+so the hash is the only mark.
 
-| Splash | SHA-256 |
+| Who | What |
 |---|---|
-| Glassworks stack (#63) | `ee564464d01cb8c06a018c1e0240e8a2367affb0d4e01f3133bb799427080c57` |
-| Glass Tile (2026-11-09 to #63) | `354402a54d387830a8b2bd3a294db7ab05202d4b7bd3a8429e36a10fa528081b` |
+| The branding build (`common.build`, so every `generate.py`) | Appends the hash of each `bootlogo.bmp` it writes, with the concept's name and the date. Commit the list with the new `bootlogo.bmp` |
+| Whoever adds a splash some other way | Adds its hash to the list by hand, in the same PR |
+| Nobody | Removes an entry. Panels in the field still carry old splashes |
+| `frames/aqara-s1-plus/installer/test/splash.test.ts` | Fails if any `bootlogo.bmp` under `branding/` is missing from the list |
+| Readers | Kiln's S1 recipe (`src/splash.ts`, `backup.ours`) and `fel-install.sh --undo` (`tools/branding/set-bootlogo.py --ours`) |
+
+A splash passed with `BRANDING=<your.bmp>` isn't in the list, so undo treats it as not ours.
 
 ## Rebuild
 

@@ -15,7 +15,10 @@ Facts this file relies on:
         the same folder (each gets its own frame list).
       - 'c' parts play to the end even after boot completes; 'p' parts stop at once.
 """
+import datetime
+import hashlib
 import io
+import json
 import os
 import re
 import struct
@@ -163,6 +166,25 @@ def write_preview(path, frames, scale=0.5):
     small[0].save(path, "WEBP", save_all=True, append_images=small[1:], duration=durs, loop=0, quality=100, method=5)
 
 
+# The splashes undo knows as ours (#106, branding/bootlogos.json). Every build lists its splash.
+BOOTLOGOS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bootlogos.json")
+SPLASH_NAME = "Glassworks stack"
+
+
+def list_bootlogo(bmp, name):
+    """Adds bmp's SHA-256 to branding/bootlogos.json, the splashes undo knows as ours. Only appends."""
+    sha = hashlib.sha256(open(bmp, "rb").read()).hexdigest()
+    with open(BOOTLOGOS, encoding="utf-8") as f:
+        doc = json.load(f)
+    if any(b["sha256"] == sha for b in doc["bootlogos"]):
+        return
+    doc["bootlogos"].append({"sha256": sha, "name": name, "since": datetime.date.today().isoformat()})
+    lines = ",\n".join("    " + json.dumps(b) for b in doc["bootlogos"])
+    with open(BOOTLOGOS, "w", encoding="utf-8") as f:
+        f.write('{\n  "about": ' + json.dumps(doc["about"]) + ',\n  "bootlogos": [\n' + lines + "\n  ]\n}\n")
+    print(f"  listed {sha[:12]}… in {os.path.relpath(BOOTLOGOS)} (commit it with the new bootlogo.bmp)")
+
+
 def build(here, render, n_intro, n_loop):
     """render(T) -> SCREEN-sized RGB array, T = global frame index. Frames [0, n_intro) are part0
     and the next n_loop part1, which must be periodic: render(n_intro + n_loop) == render(n_intro)."""
@@ -176,6 +198,7 @@ def build(here, render, n_intro, n_loop):
     splash = intro[0]
     splash.save(os.path.join(here, "splash-landscape.png"), optimize=True)
     write_bmp(splash, os.path.join(here, "bootlogo.bmp"))
+    list_bootlogo(os.path.join(here, "bootlogo.bmp"), SPLASH_NAME)
     write_bootanimation(os.path.join(here, "bootanimation.zip"), intro, loop)
     write_preview(os.path.join(here, "preview.webp"), [splash] * 30 + intro + loop)
     problems = validate(here)

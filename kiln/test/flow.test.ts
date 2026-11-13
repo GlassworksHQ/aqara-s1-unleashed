@@ -146,6 +146,11 @@ describe.skipIf(!HAVE)('install flow on simulated hardware with the real 4.5.80 
     // and refuses a re-run backup whose boot is already patched
     const patched = new Map(back.files); patched.set('boot', uboot.data('boot'));
     await expect(restoreFromBackup(s1Plus.backup, new Fastboot(new FakeUboot(layout)), patched, () => {})).rejects.toThrow(/already patched/);
+    // and a backup with stock boot but our splash: boot was put back without its splash, then installed again (#106)
+    const ourSplash = new Map(back.files); ourSplash.set('bootloader', uboot.data('bootloader'));
+    const u3 = new FakeUboot(layout);
+    await expect(restoreFromBackup(s1Plus.backup, new Fastboot(u3), ourSplash, () => {})).rejects.toThrow('this backup\'s splash is already ours');
+    expect(u3.flashed).toEqual([]);
   }, 120_000);
 
   it('a second run on the installed panel produces the same boot and flashes nothing else', async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BackupRefused } from '@glassworks/kiln-core';
 import { explain } from '../src/wizard/explain';
 
 describe('a failure, in words', () => {
@@ -14,6 +15,15 @@ describe('a failure, in words', () => {
     const f = explain(e, 2, 'none');
     expect(f.title).toBe(title);
     expect(f.body.startsWith('Nothing was written.')).toBe(true);
+    expect(f.wrote).toBe(false);
+  });
+
+  it('a backup undo refuses (As it came from Aqara): the refusal, not "something went wrong"', () => {
+    const why = 'this backup\'s splash is already ours, not the original: use the one from your first install';
+    const f = explain(new BackupRefused(why), 2, 'none');
+    expect(f.title).toBe('This backup can\'t undo the install.');
+    expect(f.body).toBe('Nothing was written. Use the backup from your first install, or undo by hand.');
+    expect(f.raw).toBe(why);
     expect(f.wrote).toBe(false);
   });
 

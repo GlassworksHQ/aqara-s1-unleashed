@@ -27,6 +27,11 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Undo no longer puts our splash back as Aqara's.** If a panel's `boot` was put back without its
+  splash and the panel was then installed again, that install's backup held a stock `boot` with our
+  power-on splash, and undo restored our splash while saying the stock one was back. Both installers
+  now refuse such a backup before writing anything, and point you to the first install's backup or
+  the by-hand undo in docs/install.md.
 - **The screen starts at your saved brightness.** With *Auto brightness* off, the app used the
   system brightness after a restart until the light sensor reported a change, while Home Assistant
   already showed your saved brightness. In a dark, still room that could last a long time. The app
