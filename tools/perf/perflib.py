@@ -1,4 +1,4 @@
-"""Parsers and statistics for the Glassworks perf test (MIT). Pure functions, no adb.
+"""Parsers and statistics for Clarity, the Glassworks perf test (MIT). Pure functions, no adb.
 
 frame_stats() is the same definition as page/stats.js; test/stats-cases.json pins both.
 """

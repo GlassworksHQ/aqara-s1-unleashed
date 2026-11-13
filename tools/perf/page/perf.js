@@ -1,4 +1,4 @@
-/* Glassworks perf test page (MIT). Runs the stages in order and logs one `GWPERF {json}` console
+/* Clarity test page (the Glassworks perf test, MIT). Runs the stages in order and logs one `GWPERF {json}` console
  * line per event, which reaches logcat from the content process (tag "Isolated Web Content" on the
  * S1; at most 1023 bytes of a line, so long lines are split: stats.js consoleLines). tools/perf/perfrun.py reads
  * them; the line types and fields are documented in docs/perf.md ("Page log lines").

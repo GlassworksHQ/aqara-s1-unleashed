@@ -576,9 +576,9 @@ def headline(name, g, ref):
     scrolling averages 41.5 fps (p95 50 ms).' The second sentence names the tasks that keep it
     from the next letter up, so it never reads against the letter."""
     if g["grade"] is None:
-        return f"{name}: not graded. {g['refused']}."
+        return f"{name}: no {G.NAME} grade. {g['refused']}."
     hb = held_back(g, ref)
-    out = f"{name}: {g['grade']}, {g['meaning']}."
+    out = f"{name}: {G.NAME} {g['grade']}, {g['meaning']}."
     if g["grade"] == G.LETTER_ORDER[0] and not g["missing"]:
         # Only when everything was measured: A+ needs only heavy, and it isn't absolute without the rest.
         out += " Every task holds 60 fps on large dashboards."
@@ -911,7 +911,7 @@ def markdown(rep):
     g = rep["grade"]
     dev = rep["frame"]["device"]
     app = rep["frame"]["app"]
-    out = [f"# Perf report: {rep['frame']['name']}", "", device_line(dev, app), "",
+    out = [f"# {G.NAME} report: {rep['frame']['name']}", "", device_line(dev, app), "",
            f"**{g['headline']}**", "",
            "The grade comes only from the three reference dashboards this test ships (light, typical, heavy), "
            "so it doesn't depend on your Home Assistant. Background load (panes, the radio, heat) still reaches it.", ""]

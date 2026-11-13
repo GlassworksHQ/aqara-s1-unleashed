@@ -293,6 +293,9 @@ class SharedCases(unittest.TestCase):
                 got["limits"] = G.next_limits(g)
                 self.assertEqual(got, c["expect"])
 
+    def test_the_name_lives_in_rubric_json(self):
+        self.assertEqual((G.NAME, G.RUBRIC["name"]), ("Clarity", "Clarity"))
+
     def test_the_rules_come_from_rubric_json(self):
         self.assertEqual(self.data["rubric_version"], G.RUBRIC_VERSION)
         self.assertEqual([l for l, _, _ in G.LETTERS], [l["letter"] for l in G.RUBRIC["grade"]["letters"]])

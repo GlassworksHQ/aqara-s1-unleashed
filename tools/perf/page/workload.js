@@ -1,4 +1,4 @@
-/* Seeded workloads for the Glassworks perf test (MIT).
+/* Seeded workloads for Clarity, the Glassworks perf test (MIT).
  * Pure functions only (no DOM), so tools/perf/test/page.test.mjs can run them in node and pin the
  * checksum the page reports. A checksum mismatch on a panel means the work did not run as written.
  */

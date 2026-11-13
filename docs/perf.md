@@ -1,4 +1,4 @@
-# Performance test and grade
+# Clarity: the performance test and grade
 
 <p>
   <a href="https://www.glassworks.dev/brand#parts">
@@ -9,8 +9,10 @@
   </a>
 </p>
 
-`tools/perf/run.sh` measures how good a wall panel a frame (a device definition, such as the S1's
-`aqara-s1-plus`) makes, and gives it a grade from **A+** to **E**. The letter says **the biggest
+**Clarity** is the Glassworks perf test. `tools/perf/run.sh` measures how good a wall panel a frame
+(a device definition, such as the S1's `aqara-s1-plus`) makes, and gives it a Clarity grade from
+**A+** to **E**, as in "Clarity A". The name lives in `rubric.json` (`name`), which the report, the
+summary and `grade.ts` read; the files keep their `perf` paths. The letter says **the biggest
 fixed dashboard on which every wall-panel task still feels good**:
 
 | Grade | Meaning |
@@ -22,7 +24,7 @@ fixed dashboard on which every wall-panel task still feels good**:
 | D | A good wall panel for light dashboards |
 | E | Not a good wall panel, even for light dashboards |
 
-The report opens with one line such as "Aqara S1 Plus: C, a good wall panel for typical dashboards.
+The report opens with one line such as "Aqara S1 Plus: Clarity C, a good wall panel for typical dashboards.
 Held back by large dashboards: scrolling averages 41.5 fps (p95 50 ms)." (an example of the
 format, not a measured result). The second sentence names the tasks that keep the frame from the
 next letter up. A table under it shows each page's tasks.

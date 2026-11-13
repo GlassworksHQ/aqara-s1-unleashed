@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Glassworks perf summary (MIT): a small, stable, frame-level summary of a finished report.json, for
+"""Clarity summary (MIT), from the Glassworks perf test: a small, stable, frame-level summary of a finished report.json, for
 places that show a frame's grade (glassworks.dev, a frame's design/frame.json). docs/perf.md, "The
 summary", documents every field.
 
@@ -79,6 +79,7 @@ def measurements(rep, report_url="report.json"):
     vp = g.get("viewport") or {}
     return {
         "schema": SCHEMA,
+        "test": G.NAME,
         "protocol_version": rep.get("protocol_version"),
         "report_schema": rep["schema"],
         "measured_on": rep.get("measured_on"),

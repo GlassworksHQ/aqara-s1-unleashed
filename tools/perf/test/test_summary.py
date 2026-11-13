@@ -20,7 +20,7 @@ import report as R  # noqa: E402
 import summary as S  # noqa: E402
 import test_report as T  # noqa: E402
 
-SUMMARY_KEYS = {"schema", "protocol_version", "report_schema", "measured_on", "frame", "app_version", "viewport",
+SUMMARY_KEYS = {"schema", "test", "protocol_version", "report_schema", "measured_on", "frame", "app_version", "viewport",
                 "runs", "pages", "restart_ms", "gaps", "not_comparable", "report", "complete"}
 PAGE_KEYS = {"inp_ms", "open_ms", "scroll", "updates", "runs"}
 GRADE_KEYS = ("grade", "meaning", "levels", "bands", "capped_by_start", "missing", "provisional", "start")
@@ -100,6 +100,7 @@ class Export(unittest.TestCase):
         self.assertEqual(json.loads(json.dumps(s)), s)
         self.assertEqual(set(s), SUMMARY_KEYS)
         self.assertEqual(s["schema"], "glassworks.perf-summary/2")
+        self.assertEqual(s["test"], "Clarity")                     # the name, from rubric.json
         self.assertEqual((s["protocol_version"], s["report_schema"]), (G.PROTOCOL_VERSION, "glassworks.perf/4"))
         self.assertEqual(s["measured_on"], "2026-11-12")
         self.assertEqual(s["frame"], {"id": "test-frame", "name": "test-frame"})

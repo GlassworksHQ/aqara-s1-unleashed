@@ -50,7 +50,7 @@ class Runner(unittest.TestCase):
         g = r["grade"]
         self.assertEqual(g["grade"], "A+")                          # the fake panel holds 60 fps everywhere
         self.assertFalse(g["provisional"], g["missing"])
-        self.assertTrue(g["headline"].startswith("test-frame: A+, premium."),
+        self.assertTrue(g["headline"].startswith("test-frame: Clarity A+, premium."),
                         g["headline"])
         self.assertEqual(g["viewport"]["state"], "ok")
         ref = r["graded"]["reference"]

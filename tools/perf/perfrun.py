@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Device side of the Glassworks perf test (MIT). Called by tools/perf/run.sh; see docs/perf.md.
+"""Device side of Clarity, the Glassworks perf test (MIT). Called by tools/perf/run.sh; see docs/perf.md.
 
 What it touches on the device:
   device     read-only (getprop, /proc, dumpsys, wm size).

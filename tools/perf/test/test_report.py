@@ -581,7 +581,7 @@ class Build(unittest.TestCase):
         self.assertEqual(g["start"], {"value": 800, "band": "good"})   # process 20.0 s -> engine 20.7 to 20.9 s
         self.assertEqual(g["viewport"], {"state": "ok", "reason": None})
         self.assertFalse(g["provisional"])
-        self.assertEqual(g["headline"], "test-frame: B, a good wall panel for typical dashboards; large ones stay fluid. "
+        self.assertEqual(g["headline"], "test-frame: Clarity B, a good wall panel for typical dashboards; large ones stay fluid. "
                                         "Held back by large dashboards: scrolling averages 45.0 fps (p95 33 ms).")
         self.assertEqual(self.rep["graded"]["reference"]["android_ttid_ms"]["median"], 111)   # reported, not graded
         self.assertEqual(self.rep["real_use"]["dashboard_load_ms"]["median"], 3400)            # not graded either
@@ -597,7 +597,7 @@ class Build(unittest.TestCase):
             self.write(f"refstart-{k}.json", run)
         g = R.build(self.dir)["grade"]
         self.assertEqual(g["grade"], "E")
-        self.assertEqual(g["headline"], "test-frame: E, not a good wall panel, even for light dashboards. Held back by "
+        self.assertEqual(g["headline"], "test-frame: Clarity E, not a good wall panel, even for light dashboards. Held back by "
                                         "light dashboards: scrolling averages 18.5 fps (p95 67 ms); opening the "
                                         "view wasn't measured. Provisional: not everything was measured.")
         self.assertNotIn("53 fps", g["headline"])
@@ -606,7 +606,7 @@ class Build(unittest.TestCase):
         for k in (1, 2, 3):
             self.write(f"refstart-{k}.json", refstart(k, 100, heavy_missed=0))
         g = R.build(self.dir)["grade"]
-        self.assertEqual(g["headline"], "test-frame: A+, premium. Every task holds 60 fps on large dashboards.")
+        self.assertEqual(g["headline"], "test-frame: Clarity A+, premium. Every task holds 60 fps on large dashboards.")
 
     def test_an_a_short_of_premium_says_what_is_short(self):
         """Heavy scrolls at the good rule (54.5 fps, p95 33 ms) but 10% of its frames are late: an A,
@@ -615,7 +615,7 @@ class Build(unittest.TestCase):
             self.write(f"refstart-{k}.json", refstart(k, 100, heavy_missed=6))
         g = R.build(self.dir)["grade"]
         self.assertEqual(g["grade"], "A")
-        self.assertEqual(g["headline"], "test-frame: A, a good wall panel even for large dashboards. Short of A+ "
+        self.assertEqual(g["headline"], "test-frame: Clarity A, a good wall panel even for large dashboards. Short of A+ "
                                         "on large dashboards: scrolling averages 54.5 fps (p95 33 ms).")
 
     def test_the_measured_update_level_reaches_the_grade(self):
@@ -708,7 +708,7 @@ class Build(unittest.TestCase):
         self.assertIsNone(g["grade"])
         self.assertEqual(g["viewport"]["state"], "refused")
         self.assertIn("expected 1.5 (density 240 / 160)", g["refused"])
-        self.assertTrue(g["headline"].startswith("test-frame: not graded."))
+        self.assertTrue(g["headline"].startswith("test-frame: no Clarity grade."))
 
     def test_an_unknown_density_makes_it_provisional(self):
         with open(os.path.join(self.dir, "device.json")) as f:
@@ -846,7 +846,7 @@ class Build(unittest.TestCase):
         g = rep["grade"]
         self.assertIsNone(g["grade"])
         self.assertEqual(g["refused"], "the reference dashboards weren't measured")
-        self.assertTrue(g["headline"].startswith("test-frame: not graded."))
+        self.assertTrue(g["headline"].startswith("test-frame: no Clarity grade."))
         s = S.summarise(rep, allow_provisional=True)
         self.assertEqual(s["not_comparable"], "the reference dashboards weren't measured")
         self.assertEqual(G.grade_summary(s)["status"], "not-comparable")
@@ -985,7 +985,7 @@ class Build(unittest.TestCase):
 
     def test_markdown_renders(self):
         md = R.markdown(self.rep)
-        self.assertIn("**test-frame: B, a good wall panel for typical dashboards; large ones stay fluid.", md)
+        self.assertIn("**test-frame: Clarity B, a good wall panel for typical dashboards; large ones stay fluid.", md)
         self.assertIn("| heavy (120 cards) | fluid |", md)
         self.assertIn("| scroll |", md)                                 # what holds heavy back from smooth
         self.assertIn("Restart, app process to engine ready: 800 ms (700 to 900, n=3)", md)

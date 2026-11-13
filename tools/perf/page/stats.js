@@ -1,4 +1,4 @@
-/* Frame-time statistics for the Glassworks perf test (MIT).
+/* Frame-time statistics for Clarity, the Glassworks perf test (MIT).
  * The same definitions are in tools/perf/perflib.py (frame_stats); both are tested against
  * tools/perf/test/stats-cases.json, so the page and the runner agree to the millisecond.
  */

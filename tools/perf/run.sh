@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Glassworks perf test: grade a frame (MIT). Docs: docs/perf.md.
+# Clarity, the Glassworks perf test: grade a frame (MIT). Docs: docs/perf.md.
 #
 # What it touches on the device:
 #   - Opens the test page and the three reference dashboards with the kiosk's one-off `--es open`

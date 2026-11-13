@@ -1,4 +1,4 @@
-"""The Glassworks perf rubric (MIT). docs/perf.md explains each row and links its source.
+"""Clarity's rubric (MIT): the grade of the Glassworks perf test. docs/perf.md explains each row and links its source.
 
 Bands follow Core Web Vitals: good, needs-improvement, poor. Thresholds come from published
 guidelines and do not depend on any frame's own numbers. Change them only on purpose, with the
@@ -11,6 +11,7 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "page", "rubr
     RUBRIC = json.load(_f)
 
 RUBRIC_VERSION = RUBRIC["version"]
+NAME = RUBRIC["name"]          # "Clarity": the test's name, kept in rubric.json only
 GOOD, NI, POOR = "good", "needs-improvement", "poor"
 ORDER = {GOOD: 0, NI: 1, POOR: 2}
 

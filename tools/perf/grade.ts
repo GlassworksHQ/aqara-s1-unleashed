@@ -1,4 +1,5 @@
-/* Glassworks perf grade (MIT): the letter, computed from a perf summary and rubric.json.
+/* Clarity grade (MIT): the letter of the Glassworks perf test, computed from a summary and
+ * rubric.json. Show it as `${rubric.name} ${grade}` ("Clarity A"); the name lives in rubric.json.
  *
  * The letter is derived, so it is computed where it is shown: the marketing site (and later the
  * shared frame package, #114) imports this module with a frame's summary (tools/perf/summary.py,
@@ -16,6 +17,7 @@ export type Level = string | null;
 export interface Rule { good_max: number; poor_above?: number; poor_at?: number }
 
 export interface Rubric {
+  name: string;           // "Clarity": show a grade as `${name} ${grade}`
   version: number;
   protocol_version: number;
   metrics: Record<string, Rule>;
