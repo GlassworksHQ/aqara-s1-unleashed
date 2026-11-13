@@ -11,6 +11,8 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN = os.path.join(os.path.dirname(HERE), "run.sh")
+STUB_FRONTEND = os.path.join(HERE, "stub_frontend")       # the runner tests never fetch HA's frontend
+RESTORE = "http://192.0.2.10:8123/lovelace/0"
 sys.path.insert(0, os.path.dirname(HERE))
 import perfrun  # noqa: E402
 import report  # noqa: E402
@@ -27,10 +29,12 @@ class Runner(unittest.TestCase):
             f.write(f'#!/bin/sh\nexec "{sys.executable}" "{os.path.join(HERE, "fake_adb.py")}" "$@"\n')
         os.chmod(adb, 0o755)
         env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="2",
-                   GW_PERF_COLD_SETTLE="0", GW_PERF_RUN_GAP="0", GW_PERF_BETWEEN_QUIET="0.5")
+                   GW_PERF_COLD_SETTLE="0", GW_PERF_RUN_GAP="0", GW_PERF_BETWEEN_QUIET="0.5", GW_PERF_FRONTEND=STUB_FRONTEND,
+                   GW_PERF_SWITCH_SETTLE="0")
         env.pop("ANDROID_SERIAL", None)
         cls.out = os.path.join(cls.tmp, "out")
-        cls.proc = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", cls.out, "--port", "18089", "--taps", "2"],
+        cls.proc = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", cls.out, "--port", "18089", "--taps", "2",
+                                   "--restore-dashboard", RESTORE],
                                   env=env, capture_output=True, text=True, timeout=300)
         with open(os.path.join(state, "commands.log")) as f:
             cls.commands = f.read().splitlines()
@@ -57,10 +61,10 @@ class Runner(unittest.TestCase):
         self.assertEqual(ref["errors"], [])
         self.assertEqual(set(ref["tiers"]), {"light", "typical", "heavy"})
         self.assertEqual(ref["engine_uris"], ["about:blank"])
-        self.assertEqual(ref["own_page_states"], ["finished-still"])
+        self.assertEqual(ref["own_page_states"], ["reference"])        # the kiosk came back to the fake HA
+        self.assertGreater(ref["start_ms"]["median"], 0)                  # restart: process start to usable
         self.assertEqual(ref["orders"], [["light", "typical", "heavy"]])
-        self.assertEqual(ref["warmups"], [{"tier": "light", "finished": True}])
-        self.assertEqual(ref["per_run"][0]["between"], ["still", "still", "still"])   # after the warm-up and each page
+        self.assertEqual(ref["per_run"][0]["between"], ["still", "still", "still"])   # after the restart page and each page
         for t in ("light", "typical", "heavy"):
             s = ref["tiers"][t]
             self.assertIsNotNone(s["load_ms"], t)
@@ -76,25 +80,34 @@ class Runner(unittest.TestCase):
         self.assertEqual(r["real_use"]["memory"]["idle"]["app_pss_kb"]["median"], 570000)
         self.assertEqual({p["id"] for p in r["real_use"]["panes"]}, {"radio"})
 
-    def test_it_never_changes_a_setting(self):
+    def test_it_changes_one_setting_and_puts_it_back(self):
+        """Protocol 4: the kiosk's saved dashboard points at the fake HA for the graded part, then back
+        at --restore-dashboard. Nothing else changes."""
+        shell = [c[len("shell "):] for c in self.commands if c.startswith("shell ")]
+        urls = [re.search(r"--es url '([^']+)'", c).group(1) for c in shell if "--es url" in c]
+        self.assertEqual(urls, ["http://127.0.0.1:18089/clarity-light/0", RESTORE])
+        i_set = next(i for i, c in enumerate(self.commands) if "--es url" in c)
+        i_back = max(i for i, c in enumerate(self.commands) if "--es url" in c)
+        graded = [i for i, c in enumerate(self.commands) if "/clarity-" in c and "--es open" in c]
+        self.assertLess(i_set, graded[0])
+        self.assertGreater(i_back, graded[-1])
+
+    def test_it_changes_no_other_setting(self):
         shell = [c[len("shell "):] for c in self.commands if c.startswith("shell ")]
         inputs = sorted({c for c in shell if c.startswith("input ")})
         # Taps on the toggle and swipes where the page asked, with its coordinates: nothing else.
         self.assertEqual(inputs, ["input keyevent KEYCODE_WAKEUP", "input swipe 720 612 720 108 300", "input tap 720 360"])
         self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 6)                 # 2 on each page
         self.assertEqual(sum(1 for c in shell if c.startswith("input swipe ")), 6)            # 2 on each page
-        forbidden = re.compile(r"(^|[;&|]\s*)(settings|svc|cmd|setprop|am broadcast|pm (?!path\b))|--es url|--ez ")
+        forbidden = re.compile(r"(^|[;&|]\s*)(settings|svc|cmd|setprop|am broadcast|pm (?!path\b))|--ez ")
         self.assertEqual([c for c in shell if forbidden.search(c)], [])
         extras = {m for c in shell for m in re.findall(r"--e\w \w+", c)}
-        self.assertEqual(extras, {"--es open", "--es screen"})
+        self.assertEqual(extras, {"--es open", "--es screen", "--es url"})
         opens = [re.search(r"--es open '([^']+)'", c).group(1) for c in shell if "--es open" in c]
-        self.assertEqual(len(opens), 5)
-        self.assertTrue(opens[0].startswith("http://127.0.0.1:18089/index.html?"), opens[0])
-        # The warm-up page: no taps, no swipes, not graded.
-        self.assertTrue(opens[1].startswith("http://127.0.0.1:18089/dashboard.html?tier=light&nonce=") and
-                        opens[1].endswith("&taps=0&swipes=0&warmup=1"), opens[1])
-        for url, tier in zip(opens[2:], ("light", "typical", "heavy")):
-            self.assertTrue(url.startswith(f"http://127.0.0.1:18089/dashboard.html?tier={tier}&nonce=") and "&taps=2" in url, url)
+        self.assertEqual(len(opens), 4)
+        self.assertTrue(opens[0].startswith("http://127.0.0.1:18089/clarity/page/index.html?"), opens[0])
+        for url, tier in zip(opens[1:], ("light", "typical", "heavy")):
+            self.assertTrue(url.startswith(f"http://127.0.0.1:18089/clarity-{tier}/0?nonce=") and "&taps=2" in url, url)
 
     def test_no_gesture_without_the_current_pages_request(self):
         """The fake rejects any tap or swipe that no current *-ready line asked for."""
@@ -105,13 +118,13 @@ class Runner(unittest.TestCase):
     def test_swipes_come_only_after_the_pages_own_request(self):
         """Each swipe follows a swipe-ready from the page being measured: the commands log has no swipe
         before the first reference page opened."""
-        first_open = next(i for i, c in enumerate(self.commands) if "dashboard.html" in c)
+        first_open = next(i for i, c in enumerate(self.commands) if "/clarity-" in c and "--es open" in c)
         first_swipe = next(i for i, c in enumerate(self.commands) if c.startswith("shell input swipe"))
         self.assertGreater(first_swipe, first_open)
 
     def test_the_reference_dashboards_open_only_once_the_session_is_up(self):
         """On the S1, `open` before GeckoView's first page is dropped (#103's pins); the fake does the same."""
-        i_blank = next(i for i, c in enumerate(self.commands) if "dashboard.html" in c)
+        i_blank = next(i for i, c in enumerate(self.commands) if "/clarity-" in c and "--es open" in c)
         stops = [i for i, c in enumerate(self.commands) if c.startswith("shell am force-stop")]
         self.assertGreater(i_blank, stops[0])
 
@@ -130,7 +143,8 @@ def fake_env(tmp, **extra):
     with open(adb, "w") as f:
         f.write(f'#!/bin/sh\nexec "{sys.executable}" "{os.path.join(HERE, "fake_adb.py")}" "$@"\n')
     os.chmod(adb, 0o755)
-    env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="1", **extra)
+    env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="1",
+               GW_PERF_FRONTEND=STUB_FRONTEND, GW_PERF_SWITCH_SETTLE="0", **extra)
     env.pop("ANDROID_SERIAL", None)
     return env, state
 
@@ -156,7 +170,7 @@ class HomeRelaunch(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         env, state = fake_env(tmp, FAKE_HOME_RELAUNCH="1")
         p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
-                            "--out", tmp, "--run", "1", "--settle", "3", "--url", "http://127.0.0.1:1/dashboard.html",
+                            "--out", tmp, "--run", "1", "--settle", "3", "--url", "http://127.0.0.1:1",
                             "--taps", "0"], env=env, capture_output=True, text=True, timeout=120)
         self.assertEqual(p.returncode, 0, p.stderr[-2000:])
         with open(os.path.join(tmp, "refstart-1.json")) as f:
@@ -169,9 +183,11 @@ class HomeRelaunch(unittest.TestCase):
 
 
 def refstart(tmp, run=1, taps=0, **env_extra):
+    # As run.sh leaves it for the graded part: the kiosk points at the light reference dashboard.
+    env_extra.setdefault("FAKE_SAVED_URL", "http://127.0.0.1:1/clarity-light/0")
     env, state = fake_env(tmp, GW_PERF_COLD_SETTLE="0", **env_extra)
     p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
-                        "--out", tmp, "--run", str(run), "--settle", "0", "--url", "http://127.0.0.1:1/dashboard.html",
+                        "--out", tmp, "--run", str(run), "--settle", "0", "--url", "http://127.0.0.1:1",
                         "--taps", str(taps), "--timeout", "90", "--between-quiet", "0.3"], env=env, capture_output=True, text=True, timeout=150)
     with open(os.path.join(tmp, f"refstart-{run}.json")) as f:
         return p, json.load(f)
@@ -236,8 +252,8 @@ class FakeSplitsLikeThePage(unittest.TestCase):
         sys.path.insert(0, HERE)
         os.environ.setdefault("FAKE_ADB_STATE", tempfile.mkdtemp())
         import fake_adb as F
-        with open(os.path.join(os.path.dirname(HERE), "page", "tiers.js")) as f:
-            self.assertIn(f"const PROTOCOL = {F.PROTOCOL};", f.read())
+        with open(os.path.join(os.path.dirname(HERE), "page", "tiers.json")) as f:
+            self.assertEqual(json.load(f)["PROTOCOL"], F.PROTOCOL)
 
 
 class LongLines(unittest.TestCase):
@@ -261,11 +277,11 @@ class LongLines(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertIsNone(c["error"])
         self.assertEqual(c["missing_steps"], ["light", "typical", "heavy"])
-        self.assertEqual(c["bad_page_lines"], 4)                         # the warm-up's and each page's
+        self.assertEqual(c["bad_page_lines"], 3)                         # each page's
         with open(os.path.join(tmp, "device.json"), "w") as f:
             json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
         rep = report.build(tmp)
-        self.assertIn("4 page line(s) didn't parse (cut off in logcat?)", rep["grade"]["provisional_reasons"])
+        self.assertIn("3 page line(s) didn't parse (cut off in logcat?)", rep["grade"]["provisional_reasons"])
         t = rep["graded"]["reference"]["tiers"]["light"]
         self.assertIsNotNone(t["scroll"])
         self.assertEqual(t["updates_errors"], ["the page's updates step never arrived"])
@@ -277,7 +293,7 @@ class LongLines(unittest.TestCase):
         p, c = refstart(tmp, FAKE_DROP_LAST_PART="1")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertEqual(c["missing_steps"], ["light", "typical", "heavy"])
-        self.assertEqual(c["bad_page_lines"], 4)                         # the warm-up's and each page's
+        self.assertEqual(c["bad_page_lines"], 3)                         # each page's
         self.assertEqual([e["lost_lines"] for e in c["tiers"].values()], [1, 1, 1])
 
     def test_a_lost_scroll_step_is_counted_and_makes_it_provisional(self):
@@ -405,21 +421,53 @@ class Order(unittest.TestCase):
         with open(os.path.join(tmp, "state", "opened.json")) as f:
             return json.load(f)
 
-    def test_run_2_starts_one_page_in_after_a_warm_up(self):
+    def test_run_2_starts_one_page_in_after_the_restart_page(self):
+        """Protocol 4: the kiosk's own page after the restart (the light reference dashboard, not
+        graded as light) is the warm-up; then the order turns."""
         tmp = tempfile.mkdtemp()
         p, c = refstart(tmp, run=2)
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertEqual(c["order"], ["typical", "heavy", "light"])
-        self.assertEqual(self.opened(tmp), ["light-warmup", "typical", "heavy", "light"])
-        self.assertTrue(c["warmup"]["done"])
-        self.assertNotIn("warmup", c["tiers"])
+        self.assertEqual(self.opened(tmp), ["typical", "heavy", "light"])
+        self.assertIsNotNone(c["restart_page"])
         self.assertEqual(len(c["between"]), 3)
 
     def test_run_3(self):
         tmp = tempfile.mkdtemp()
         p, c = refstart(tmp, run=3)
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
-        self.assertEqual(self.opened(tmp), ["light-warmup", "heavy", "light", "typical"])
+        self.assertEqual(self.opened(tmp), ["heavy", "light", "typical"])
+
+
+class Restart(unittest.TestCase):
+    """Protocol 4: restart = process start to the kiosk's own page (the reference dashboard run.sh
+    pointed it at) being usable on screen."""
+
+    def build(self, tmp):
+        with open(os.path.join(tmp, "device.json"), "w") as f:
+            json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
+        return report.build(tmp)
+
+    def test_restart_ends_at_the_usable_reference_dashboard(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["restart_page"]["usable"]["first_screen_cards"], 13)
+        run = self.build(tmp)["graded"]["reference"]["per_run"][0]
+        self.assertIsNone(run["start_error"])
+        # Usable comes after the engine is ready: the restart now includes loading HA's frontend.
+        self.assertGreater(run["start_ms"], run["engine_ready_ms"])
+
+    def test_no_reference_dashboard_after_the_restart_is_not_measured(self):
+        """If the kiosk came back to something else, the restart isn't measured (never engine ready instead)."""
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, FAKE_RESTART_PAGE_LOST="1")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        rep = self.build(tmp)
+        run = rep["graded"]["reference"]["per_run"][0]
+        self.assertIsNone(run["start_ms"])
+        self.assertEqual(run["start_error"], "the kiosk didn't come back to a reference dashboard")
+        self.assertIn("start", rep["grade"]["missing"])
 
 
 class NoisyLogcat(unittest.TestCase):
@@ -433,10 +481,17 @@ class NoisyLogcat(unittest.TestCase):
     def test_unrelated_lines_twenty_a_second(self):
         p, c = refstart(tempfile.mkdtemp(), FAKE_LOGCAT_NOISE="0.05")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["own_page_state"], "reference")
+
+    def test_the_own_page_wait_with_noise_when_the_kiosk_shows_its_own_dashboard(self):
+        """The fallback, when the kiosk wasn't pointed at the fake HA: wait for its own page."""
+        p, c = refstart(tempfile.mkdtemp(), FAKE_LOGCAT_NOISE="0.05", FAKE_SAVED_URL="")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertEqual(c["own_page_state"], "finished-still")
 
     def test_a_reload_more_than_2_s_later_restarts_the_wait_even_with_noise(self):
-        p, c = refstart(tempfile.mkdtemp(), FAKE_OWN_RELOAD="1", FAKE_OWN_RELOAD_DELAY="2.6", FAKE_LOGCAT_NOISE="0.05")
+        p, c = refstart(tempfile.mkdtemp(), FAKE_OWN_RELOAD="1", FAKE_OWN_RELOAD_DELAY="2.6", FAKE_LOGCAT_NOISE="0.05",
+                        FAKE_SAVED_URL="")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertEqual(c["own_page_loads"], 2)
         self.assertIsNone(c["error"])
@@ -453,7 +508,7 @@ class ForeignPage(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         env, _ = fake_env(tmp, FAKE_FOREIGN_PAGE=where, GW_PERF_COLD_SETTLE="0")
         p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
-                            "--out", tmp, "--run", "1", "--settle", "0", "--url", "http://127.0.0.1:1/dashboard.html",
+                            "--out", tmp, "--run", "1", "--settle", "0", "--url", "http://127.0.0.1:1",
                             "--taps", "0"], env=env, capture_output=True, text=True, timeout=120)
         with open(os.path.join(tmp, "refstart-1.json")) as f:
             return p.returncode, json.load(f)
@@ -472,7 +527,7 @@ class ForeignPage(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         env, _ = fake_env(tmp, FAKE_OWN_RELOAD="1", GW_PERF_COLD_SETTLE="0")
         p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart",
-                            "--out", tmp, "--run", "1", "--settle", "0", "--url", "http://127.0.0.1:1/dashboard.html",
+                            "--out", tmp, "--run", "1", "--settle", "0", "--url", "http://127.0.0.1:1",
                             "--taps", "0"], env=env, capture_output=True, text=True, timeout=120)
         self.assertEqual(p.returncode, 0, p.stderr[-2000:])
         with open(os.path.join(tmp, "refstart-1.json")) as f:

@@ -46,11 +46,16 @@ def shell(cmd):
     if cmd.startswith("getprop "):
         return props.get(cmd.split()[1], "")
     if cmd.startswith("am start"):
+        u = re.search(r"--es url '([^']+)'", cmd)
+        if u:
+            # Like the kiosk: `url` saves the dashboard (a URL or "auto") and loads it.
+            save("saved_url.json", u.group(1))
+            save("urls_set.json", state("urls_set.json", []) + [u.group(1)])
         m = re.search(r"--es open '([^']+)'", cmd)
         # Like the S1 kiosk (#103's pins): `open` is dropped until GeckoView's session is up.
         if m and state("session_up.json", True):
             nonce = re.search(r"nonce=(\w+)", m.group(1)).group(1)
-            save("refnonce.json" if "/dashboard.html" in m.group(1) else "nonce.json", [nonce, m.group(1)])
+            save("refnonce.json" if "/clarity-" in m.group(1) else "nonce.json", [nonce, m.group(1)])
         if " -W " in cmd:
             if not os.environ.get("FAKE_NO_DASHBOARD"):
                 save("cold.json", True)
@@ -134,8 +139,8 @@ LOCK = threading.Lock()
 # "Isolated Web Content", and only its first 1023 bytes arrive.
 PAGE_TAG, PAGE_LINE_BYTES = "Isolated Web Content", 1023
 # The pages' protocol, read from the pages themselves, so the fake can't fall behind them.
-with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "page", "tiers.js")) as _f:
-    PROTOCOL = int(re.search(r"const PROTOCOL = (\d+);", _f.read()).group(1))
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "page", "tiers.json")) as _f:
+    PROTOCOL = json.load(_f)["PROTOCOL"]
 PAGE_LINE_MAX = 900     # stats.js LINE_MAX: longer lines are split, as the page does
 
 
@@ -224,7 +229,7 @@ def page(nonce):
 def refdash(nonce, url):
     """A reference dashboard: it loads (first paint 150 ms, load event 120 ms), stays still, goes live
     (state updates), one window of frames, the taps, then swipes where it asks, done."""
-    tier = re.search(r"tier=(\w+)", url).group(1)
+    tier = re.search(r"/clarity-(\w+)/", url).group(1)
     taps = int(re.search(r"taps=(\d+)", url).group(1))
     m = re.search(r"swipes=(\d+)", url)
     swipes = int(m.group(1)) if m else int(os.environ.get("FAKE_SWIPES", "2"))
@@ -254,8 +259,11 @@ def refdash(nonce, url):
     if foreign == "after":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     time.sleep(0.7)
-    gw({"t": "refdash", "tier": tier, "protocol": PROTOCOL, "nodes": 1458, "cards": 50, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
-        "fcp_ms": 150, "lcp_ms": 150, "load_ms": 120, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000})
+    gw({"t": "refdash", "tier": tier, "protocol": PROTOCOL, "frontend": "20261028.5", "nodes": 1458, "cards": 50,
+        "cards_rendered": 47, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
+        "fcp_ms": 150, "lcp_ms": 150, "load_ms": 120, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000,
+        # Protocol 4: the first screen's cards rendered at 300 ms on the page's clock, the main thread free at 320.
+        "usable": {"rendered_tick_ms": 300.0, "first_screen_cards": 14, "interactive_ms": 320.0}})
     time.sleep(1.0)
     gw({"t": "warmup", "stage": "updates", "n": 1})
     time.sleep(0.3)
@@ -320,6 +328,22 @@ def dashboard():
     save("session_up.json", True)
     a = now()
     paint(a + 0.2, a + 1.2)  # the screen paints whether or not anyone reads logcat
+    saved = state("saved_url.json") or os.environ.get("FAKE_SAVED_URL")
+    if saved and "/clarity-" in saved and not os.environ.get("FAKE_RESTART_PAGE_LOST"):
+        # Protocol 4: the kiosk was pointed at a reference dashboard; it comes back to it, and the
+        # harness (no nonce: restart mode) says when it was usable, then done.
+        line("GeckoSession", f"handleMessage GeckoView:PageStart uri={saved}")
+        origin = time.time() * 1000 - 200
+        time.sleep(0.5)
+        page_log({"t": "refdash", "tier": "light", "protocol": PROTOCOL, "frontend": "20261028.5", "nodes": 1082, "cards": 20,
+                  "cards_rendered": 20, "css": [960, 480],
+                  "dpr": float(os.environ.get("FAKE_DPR", "1.5")), "scroll_height": 1936, "fcp_ms": 120, "lcp_ms": 120,
+                  "load_ms": 100, "usable": {"rendered_tick_ms": 400.0, "first_screen_cards": 13, "interactive_ms": 410.0},
+                  "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000, "run": 1, "nonce": ""}, record=False)
+        line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
+        time.sleep(0.2)
+        page_log({"t": "done", "stage": "restart", "run": 1, "nonce": ""}, record=False)
+        return
     line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     time.sleep(0.8)
     line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")

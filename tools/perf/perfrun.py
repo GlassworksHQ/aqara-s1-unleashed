@@ -284,7 +284,7 @@ def cmd_coldstart(dev, a):
            "displayed_mono": None, "engine_mono": None, "engine_uri": None, "own_page_start_mono": None,
            "own_page_stop_mono": None, "own_page_loads": 0, "own_page_state": None,
            "page_start_mono": None, "page_stop_mono": None, "tiers": {}, "order": tiers, "warmup": None,
-           "between": [], "bad_page_lines": 0, "error": None}
+           "between": [], "bad_page_lines": 0, "protocol_restart": ref, "error": None}
     page_lines = P.PageLines()
     st = {"engine_at": None, "own_stop_at": 0.0, "current": None, "measure_mono": None, "break_after": None,
           "opened": 0, "next_at": None, "gestures": []}
@@ -319,7 +319,8 @@ def cmd_coldstart(dev, a):
         else:
             tier, extra = slot, f"&taps={a.taps}"
             res["tiers"][tier] = {"nonce": nonce, "swipes": []}
-        url = f"{a.url}?tier={tier}&nonce={nonce}&run={a.run}&vsync={a.vsync}{extra}"
+        # Protocol 4: a reference dashboard of the fake Home Assistant (fakeha.py), at its own path.
+        url = f"{a.url.rstrip('/')}/clarity-{tier}/0?nonce={nonce}&run={a.run}&vsync={a.vsync}{extra}"
         dev.sh(f"am start -n {dev.component} --es open '{url}'")
 
     def read_sf(pl, rec):
@@ -347,6 +348,8 @@ def cmd_coldstart(dev, a):
         cur = st["current"]
         pl = page_lines.feed(msg)
         res["bad_page_lines"] = page_lines.bad
+        if ref and cur is None and pl and pl.get("nonce") == "":
+            return handle_restart(pl, rec)
         if cur and pl and pl.get("nonce") == cur[1]:
             return handle_page(cur[0], pl, rec)
         m = PAGE_RE.search(msg)
@@ -374,6 +377,21 @@ def cmd_coldstart(dev, a):
             else:
                 res["error"] = "the kiosk loaded another page while a reference dashboard was measured"
                 return True
+        return False
+
+    def handle_restart(pl, rec):
+        """The kiosk's own page after the restart: the reference dashboard it was pointed at (run.sh
+        --restore-dashboard), with no nonce. Its `refdash` holds the restart's usable time; its `done`
+        lets the graded pages open."""
+        t = pl.get("t")
+        pl["mono"] = rec["mono"]
+        if t == "refdash":
+            res["restart_page"] = pl
+        elif t == "done":
+            st["restart_done_at"] = time.time()
+        elif t == "error":
+            res["restart_page_error"] = pl.get("message")
+            st["restart_done_at"] = time.time()
         return False
 
     def handle_page(tier, pl, rec):
@@ -454,7 +472,13 @@ def cmd_coldstart(dev, a):
                 res["launch"] = "am-start"
                 am = dev.sh(f"am start -W -n {dev.component}", timeout=120)
                 res["am_total_ms"] = int((re.findall(r"TotalTime: (\d+)", am) or [0])[0]) or None
-        if ref and st["current"] is None and st["engine_at"]:
+        if ref and st["current"] is None and st.get("restart_done_at") and st["next_at"] is None and not st["opened"]:
+            # Protocol 4: the kiosk came back to the reference dashboard and it is usable: open the
+            # graded pages once the screen is still (the next_at branch below).
+            res["own_page_state"] = "reference"
+            st["next_at"] = time.time()
+        if ref and st["current"] is None and st["engine_at"] and not st.get("restart_done_at") and not st["opened"] \
+                and not res.get("restart_page"):
             finished = own_page_finished(res["own_page_stop_mono"], st["own_stop_at"], time.time())
             if finished or time.time() - st["engine_at"] > a.own_page_wait:
                 before = (res["own_page_stop_mono"], res["own_page_loads"])
@@ -588,7 +612,7 @@ def main():
     ap.add_argument("--radio-procs", default="otbr-agent,cpcd,zigbeed")
     ap.add_argument("--own-page-wait", type=float, default=30, help="refstart: seconds to wait for the kiosk's own page")
     ap.add_argument("--tiers", default="light,typical,heavy", help="refstart: reference dashboards; run k starts k-1 pages in")
-    ap.add_argument("--warmup-tier", default="light", help="refstart: the warm-up page, opened first and not graded ('' for none)")
+    ap.add_argument("--warmup-tier", default="", help="refstart: a warm-up page opened first and not graded (protocol 4: none; the restart page is the warm-up)")
     ap.add_argument("--between-quiet", type=float, default=2.0, help="refstart: seconds of still screen before each page opens")
     ap.add_argument("--vsync", default="16.667", help="refstart: the display's refresh period in ms")
     a = ap.parse_args()

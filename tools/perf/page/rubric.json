@@ -3,8 +3,8 @@
   "name": "Clarity",
   "_name": "The perf test's name, as in \"Clarity A\" or \"a frame's Clarity grade\" (the maintainer, 2026-11-13). The report headline, the summary and grade.ts take it from here, so a rename is one change. File paths keep tools/perf and docs/perf.md.",
   "version": 5,
-  "protocol_version": 3,
-  "_protocol": "The measurement protocol these rules apply to (tools/perf/page/tiers.js PROTOCOL): the pages, the swipes, the update rate, the windows and how the runner reads them. A summary from another protocol can't be graded with this file: re-measure.",
+  "protocol_version": 4,
+  "_protocol": "The measurement protocol these rules apply to (tools/perf/page/tiers.json PROTOCOL): the pages, the swipes, the update rate, the windows and how the runner reads them. A summary from another protocol can't be graded with this file: re-measure. Protocol 4 (2026-11-13): Home Assistant's real frontend on a fake HA.",
   "one_frame_ms": 16.667,
   "vsync_slack_ms": 0.5,
   "metrics": {

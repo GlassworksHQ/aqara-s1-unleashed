@@ -22,11 +22,11 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ADB="${ADB:-adb}"
 FRAME="" NAME="" RUNS=3 OUT="" PORT=8089 PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
-SYNTH=1 REF=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=()
+SYNTH=1 REF=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=() RESTORE=""
 # Waits, in seconds. Only the off-device test (test/test_runner.py) shortens them.
 IDLE_SETTLE="${GW_PERF_IDLE_SETTLE:-30}" IDLE_WINDOW="${GW_PERF_IDLE_WINDOW:-15}"
 COLD_SETTLE="${GW_PERF_COLD_SETTLE:-3}" COLD_TIMEOUT="${GW_PERF_COLD_TIMEOUT:-120}" RUN_GAP="${GW_PERF_RUN_GAP:-10}"
-BETWEEN_QUIET="${GW_PERF_BETWEEN_QUIET:-2}"
+BETWEEN_QUIET="${GW_PERF_BETWEEN_QUIET:-2}" SWITCH_SETTLE="${GW_PERF_SWITCH_SETTLE:-10}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -45,6 +45,7 @@ while [ $# -gt 0 ]; do
     --idle-only) IDLE_ONLY="$2"; shift 2 ;;
     --max-start-temp) MAX_TEMP_C="$2"; shift 2 ;;
     --apk) APKS+=(--apk "$2"); shift 2 ;;
+    --restore-dashboard) RESTORE="$2"; shift 2 ;;
     -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -106,8 +107,20 @@ done
 # anything that leaves it (the test page, a force-stop), and only a cold start that loaded the
 # dashboard sets it again. On exit, the app is restarted unless it is set; that is harmless if the
 # dashboard was up after all.
-SERVER_PID="" DASHBOARD_OK=1
+SERVER_PID="" DASHBOARD_OK=1 SWITCHED=0
+# Protocol 4: the graded part points the kiosk at the fake Home Assistant's light dashboard (its
+# saved dashboard, `--es url`), so a restart comes back to it; it points it back at RESTORE after,
+# and here on any exit. The runner can't read the setting itself (it never reads app data).
+point_back() {
+  if [ "$SWITCHED" = 1 ]; then
+    log "pointing the kiosk back at its dashboard ($RESTORE)"
+    sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'$RESTORE'" >/dev/null || true
+    SWITCHED=0
+    DASHBOARD_OK=0
+  fi
+}
 cleanup() {
+  point_back
   if [ "$DASHBOARD_OK" != 1 ]; then
     log "restoring the dashboard (restart the app)"
     sh_dev am force-stop "$PACKAGE" || true
@@ -118,6 +131,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if [ "$REF" = 1 ]; then
+  # The graded part changes the kiosk's saved dashboard for its duration, so it must know what to put
+  # back: the panel's dashboard URL, or "auto" if it finds HA itself. See docs/perf.md, "Run it".
+  case "$RESTORE" in
+    "") echo "the graded part needs --restore-dashboard <url|auto>: the dashboard the kiosk shows now" >&2; exit 2 ;;
+    *127.0.0.1:"$PORT"*) echo "--restore-dashboard is the fake Home Assistant; give the panel's own dashboard" >&2; exit 2 ;;
+    *"'"*|*'"'*|*' '*) echo "--restore-dashboard can't hold quotes or spaces" >&2; exit 2 ;;
+  esac
+fi
+
 run device ${NAME:+--name "$NAME"}
 thermal start
 VSYNC=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["display"]["vsync_ms"] or 16.667)' "$OUT/device.json")
@@ -125,15 +148,19 @@ log "device recorded; vsync ${VSYNC} ms"
 wait_cool
 
 if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ]; then
-  python3 "$HERE/serve.py" "$PORT" "$HERE/page" >"$OUT/server.log" 2>&1 &
+  # The fake Home Assistant (fakeha.py) serves HA's pinned frontend, the reference dashboards and
+  # the animation test page (under /clarity/page/). The first use fetches the frontend (117 MB).
+  python3 "$HERE/hafrontend.py" >/dev/null
+  python3 "$HERE/fakeha.py" --port "$PORT" >"$OUT/server.log" 2>&1 &
   SERVER_PID=$!
+  for _ in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$PORT/manifest.json" && break; sleep 0.5; done
   "$ADB" reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
 fi
 
 if [ "$SYNTH" = 1 ]; then
   for k in $(seq 1 "$RUNS"); do
     nonce=$(python3 -c 'import secrets; print(secrets.token_hex(4))')
-    url="http://127.0.0.1:$PORT/index.html?run=$k&seed=1&vsync=$VSYNC&nonce=$nonce&quick=$QUICK"
+    url="http://127.0.0.1:$PORT/clarity/page/index.html?run=$k&seed=1&vsync=$VSYNC&nonce=$nonce&quick=$QUICK"
     log "synthetic run $k/$RUNS"
     DASHBOARD_OK=0
     thermal "synthetic-$k"
@@ -147,16 +174,22 @@ fi
 if [ "$REF" = 1 ]; then
   # How many graded runs were attempted, so a run that left no file still counts against the grade.
   printf '{"runs": %d}\n' "$RUNS" > "$OUT/plan.json"
-  # The graded part. Each run: a cold start (start = process start to engine ready), then the three
-  # reference dashboards in turn, once the kiosk's own first page has gone quiet.
+  # The graded part. The kiosk is pointed at the fake HA's light dashboard; each run force-stops it,
+  # times the restart to that dashboard being usable, then opens the three reference dashboards in
+  # turn (the order turns each run).
+  log "pointing the kiosk at the reference dashboard for the graded runs (it goes back to $RESTORE after)"
+  DASHBOARD_OK=0
+  SWITCHED=1
+  sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'http://127.0.0.1:$PORT/clarity-light/0'" >/dev/null
+  sleep "$SWITCH_SETTLE"
   for k in $(seq 1 "$RUNS"); do
-    log "graded run $k/$RUNS: cold start, a warm-up page, then the three reference dashboards (the order turns each run)"
+    log "graded run $k/$RUNS: restart to the reference dashboard, then the three reference dashboards"
     thermal "refstart-$k"
-    DASHBOARD_OK=0
-    run refstart --run "$k" --settle "$COLD_SETTLE" --url "http://127.0.0.1:$PORT/dashboard.html" \
+    run refstart --run "$k" --settle "$COLD_SETTLE" --url "http://127.0.0.1:$PORT" \
       --vsync "$VSYNC" --taps "$TAPS" --between-quiet "$BETWEEN_QUIET" || log "graded run $k failed; see refstart-$k.json"
     sleep "$RUN_GAP"
   done
+  point_back
 fi
 
 if [ "$REAL" = 1 ]; then

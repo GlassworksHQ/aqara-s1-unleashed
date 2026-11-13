@@ -167,6 +167,24 @@ def first_paint_on_screen(presents_ms, fcp_ms, live_ms):
     return next((t for t in sorted(presents_ms) if fcp_ms - PAINT_SLACK_MS <= t <= live_ms), None)
 
 
+def usable_on_screen(page, presents_ms, period=None):
+    """Protocol 4: when HA's real frontend was usable, on logcat's clock (ms), or (None, why). The
+    harness logs the animation frame in which every first-screen card had rendered and the moment
+    a posted task ran within 50 ms (the main thread free). Usable is the first frame SurfaceFlinger
+    presented that can carry that render (one refresh after its frame at the earliest), and never
+    before the main thread was free."""
+    u = (page or {}).get("usable")
+    if not u or u.get("rendered_tick_ms") is None:
+        return None, "the page didn't report when it was usable"
+    period = period or P.BUDGET_MS
+    earliest = P.page_to_mono_ms(page, u["rendered_tick_ms"]) + period - PRESENT_SLACK_MS
+    shown = next((t for t in sorted(presents_ms) if t >= earliest), None)
+    if shown is None:
+        return None, "no frame on screen after the dashboard rendered"
+    free = P.page_to_mono_ms(page, u["interactive_ms"]) if u.get("interactive_ms") is not None else shown
+    return max(shown, free), None
+
+
 def change_frames(step, period=None):
     """The live-update frames that had a change to draw. A change is due at a fixed time, runs when the
     main thread gets to it, and its transition lasts d ms (HA's 180 ms on a tile; 0 for text). A rAF
@@ -329,7 +347,15 @@ def tier_run(tier, entry, presents_ms):
     # A lost updates step (smoke7: cut off in logcat) leaves only the live updates unmeasured.
     no_step = not step
     step = step or {}
-    if not page.get("load_ms") or not page.get("fcp_ms"):
+    if page.get("usable") is not None:
+        # Protocol 4: open the view = navigation start to a usable dashboard (usable_on_screen).
+        when, why = usable_on_screen(page, presents_ms)
+        if why:
+            out["load_error"] = why
+        else:
+            out["load_ms"] = round(when - P.page_to_mono_ms(page, 0))
+            out["first_screen_cards"] = page["usable"].get("first_screen_cards")
+    elif not page.get("load_ms") or not page.get("fcp_ms"):
         out["load_error"] = "no load event or first paint reported"
     else:
         nav = P.page_to_mono_ms(page, 0)
@@ -392,7 +418,22 @@ def reference_run(c):
             "own_page_loads": c.get("own_page_loads"), "engine_uri": c.get("engine_uri")}
     proc, engine = c.get("proc_mono"), c.get("engine_mono")
     start, start_error = None, None
-    if proc is None or engine is None:
+    base["engine_ready_ms"] = round((engine - proc) * 1000) if proc is not None and engine is not None else None
+    restart_page = c.get("restart_page")
+    if c.get("protocol_restart") or restart_page is not None:
+        # Protocol 4: restart = process start to the kiosk's own page (the reference dashboard it was
+        # pointed at) being usable on screen. Engine ready stays as detail.
+        if proc is None:
+            start_error = "no process start in logcat"
+        elif restart_page is None:
+            start_error = c.get("restart_page_error") or "the kiosk didn't come back to a reference dashboard"
+        else:
+            when, why = usable_on_screen(restart_page, c.get("presents_mono_ms") or [])
+            if why:
+                start_error = why
+            else:
+                start = round(when - proc * 1000)
+    elif proc is None or engine is None:
         start_error = "no process start or engine ready in logcat"
     elif c.get("engine_uri") not in (None, "about:blank"):
         # Engine ready is GeckoView's own first page; any other first page may already wait on the network.

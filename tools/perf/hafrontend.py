@@ -47,7 +47,10 @@ def wheel_path():
 
 
 def root():
-    """The unpacked `hass_frontend` directory of the pinned build."""
+    """The unpacked `hass_frontend` directory of the pinned build. GW_PERF_FRONTEND points at another
+    one instead (the off-device tests use a stub: their fake adb never fetches a page)."""
+    if os.environ.get("GW_PERF_FRONTEND"):
+        return os.environ["GW_PERF_FRONTEND"]
     out = os.path.join(CACHE, f"hass_frontend-{VERSION}")
     done = os.path.join(out, ".unpacked")
     if not os.path.exists(done):

@@ -175,6 +175,11 @@
     return { rendered_tick_ms: r1(renderedTick.ts), first_screen_cards: renderedTick.first, interactive_ms: r1(interactive) };
   }
 
+  function cardCount(t) {
+    const s = C.TIERS[t];
+    return s ? s.tiles + s.entities + s.glances + s.longLists + s.sensors + s.histories + s.pictures + 1 : null;
+  }
+
   function nodeCount(root) {
     let n = 0;
     for (const el of root.querySelectorAll("*")) {
@@ -195,7 +200,9 @@
     const nav = performance.getEntriesByType("navigation")[0] || {};
     const fcp = performance.getEntriesByName("first-contentful-paint")[0];
     log({
-      t: "refdash", tier: TIER, protocol: C.PROTOCOL, frontend: C.FRONTEND, nodes: nodeCount(document), cards: cards().length,
+      t: "refdash", tier: TIER, protocol: C.PROTOCOL, frontend: C.FRONTEND, nodes: nodeCount(document),
+      // The dashboard's cards (page/tiers.json) and how many HA had built when it was usable.
+      cards: cardCount(TIER), cards_rendered: cards().length,
       css: [innerWidth, innerHeight], dpr: devicePixelRatio, scroll_height: document.documentElement.scrollHeight,
       fcp_ms: fcp ? Math.round(fcp.startTime) : null, lcp_ms: lcp === null ? null : Math.round(lcp),
       load_ms: nav.loadEventEnd ? Math.round(nav.loadEventEnd) : null,

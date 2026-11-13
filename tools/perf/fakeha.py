@@ -338,6 +338,16 @@ class Handler(BaseHTTPRequestHandler):
             # The harness asks for the live updates while it measures them, and stops them when done.
             Handler.hub.stream(path.endswith("live"))
             return self.send_bytes(204, b"", "text/plain")
+        if path.startswith("/clarity/page/"):
+            # The animation test page (detail), from tools/perf/page.
+            base = os.path.realpath(os.path.join(HERE, "page"))
+            full = os.path.realpath(os.path.join(base, path[len("/clarity/page/"):]))
+            if not full.startswith(base + os.sep) or not os.path.isfile(full):
+                return self.send_bytes(404, b"", "text/plain")
+            with open(full, "rb") as f:
+                body = f.read()
+            ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
+            return self.send_bytes(200, body, "application/javascript" if full.endswith(".js") else ctype)
         if path.startswith("/clarity/"):
             body = D.asset(path[len("/clarity/"):])
             if body is None:
