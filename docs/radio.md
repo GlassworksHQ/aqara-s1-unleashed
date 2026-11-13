@@ -7,7 +7,8 @@ The panel's 802.15.4 radio can be offered to Home Assistant in one single-protoc
 Zigbee coordinator (EZSP over TCP, for ZHA), Zigbee router (repeater in an existing mesh), Thread
 border router, or Thread router (repeater joining an existing Thread network). The panel's own
 entities always reach HA as an ESPHome device over Wi-Fi, whatever the radio does. The mode is picked in Home Assistant with the
-`Radio mode` select of the panel's ESPHome device (`select.s1_panel_radio_mode`), status in the
+`Radio mode` select of the panel's ESPHome device (`select.s1_panel_radio_mode` on a panel added before
+#63, `select.glassworks_panel_radio_mode` on newer ones, [Names](esphome.md#names)), status in the
 `Radio status` text sensor.
 
 | Mode (select option) | Needs root helper | State (2026-11-10, reference panel) |

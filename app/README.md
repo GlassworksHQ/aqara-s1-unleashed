@@ -243,7 +243,8 @@ tools/voice/fetch-models.sh            # downloads the openWakeWord models on th
 ```
 
 Entity ids look like `light.s1_panel_screen`, `select.s1_panel_screen_mode`,
-`media_player.s1_panel_speaker`; pick the wake word and the Assist pipeline on the device page.
+`media_player.s1_panel_speaker` on a panel added before #63; newer ones start with `glassworks_panel_`
+([Names](../docs/esphome.md#names)). Pick the wake word and the Assist pipeline on the device page.
 Encryption is automatic: a panel without a key lets HA 2026.11+ provision one when you add it
 (ESPHome dynamic encryption key). You can also set a key by hand with
 `--es api_key <base64 32 bytes> --ez api_encryption true`. Keys are never logged. Tune the mic with
