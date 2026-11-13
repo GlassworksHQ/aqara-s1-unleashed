@@ -81,7 +81,7 @@ class RealRuns(unittest.TestCase):
 
 
 class Shapes(unittest.TestCase):
-    """The maintainer's rules (2026-11-13): at most 4 sentences and about 70 words (5 with the
+    """The maintainer's rules (2026-11-13): at most 4 sentences and about 85 words (5 with the
     provisional note), strengths in one sentence, at most 3 limits with one number each, one cause."""
 
     def test_short(self):
@@ -96,7 +96,7 @@ class Shapes(unittest.TestCase):
         """s1cam3 fails five tasks. Each is quoted once, on the lightest page it fails on, and ranked by
         that number: live updates (heavy 0.7 s against 0.2 s), scroll (typical's slowest frames 117 ms
         against 67 ms) and open the view (typical 6.6 s against 4 s) beat the tap (heavy 290 ms
-        against 200 ms) and the camera (typical 4.2 s against 4 s)."""
+        against 200 ms) and the camera (typical 4.5 s against 4 s)."""
         limits = N.notes(run("s1cam3"))["limits"]
         self.assertEqual(limits, "Bigger dashboards slow down: typical scrolls at 25 fps and takes 6.6 s to open, "
                                  "and heavy takes 0.7 s to show a change.")

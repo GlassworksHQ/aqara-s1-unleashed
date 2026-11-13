@@ -72,7 +72,8 @@ def _camera_options(r):
     """One run's camera numbers that fail the fluid bar, as (how far past it, phrase), with
     grade.camera_level's own tests: a stall at exactly its bar fails (>=), the others past it."""
     if r.get("first_frame_ms") is None:
-        return [(10.0, "shows no frame from its camera")]
+        # No frame at all ranks above any measured miss; 10x is past every bar's worst real ratio.
+        return [(10.0, "has a camera stream that shows no frame")]
     out = []
     if r["first_frame_ms"] > CAM_FIRST_MS:
         out.append((r["first_frame_ms"] / CAM_FIRST_MS, f"takes {_time(r['first_frame_ms'])} to show its camera"))

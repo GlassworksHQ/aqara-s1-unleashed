@@ -703,7 +703,7 @@ back. Another table gives each page's results at each place in the run order.
 Under the headline, every report has a short paragraph in plain words (`notes`, #201). It is built
 by fixed rules in `tools/perf/notes.py` from the report alone, so the same report always gives the
 same text. It never gives the letter or its meaning. It is a summary: every number it leaves out
-is in the report body. At most four sentences and about 70 words (the maintainer's model, 2026-11-13,
+is in the report body. At most four sentences and about 85 words (the maintainer's model, 2026-11-13,
 is 83; the test caps it at 85), plus one when the grade is provisional:
 
 1. **What's good**, in one sentence: the heaviest page that reaches a level, and what is quick,
@@ -713,7 +713,8 @@ is 83; the test caps it at 85), plus one when the grade is provisional:
    once, with one rounded number, on the lightest page it fails on, and ranked by how far that
    number is past its fluid bar (rubric.json: scroll 30 fps and 67 ms, a change 200 ms, a tap
    200 ms, open the view 4 s, a camera's first frame 4 s, 85% of its frames shown and 1 s of
-   stalls). So the number shown is why it was picked. Only a number that fails is quoted: a scroll
+   stalls). So the number shown is why it was picked. The lightest page is on purpose: the text
+   names the first dashboard that fails, not the worst, so heavy's bigger misses stay in the body. Only a number that fails is quoted: a scroll
    with enough frames on average but uneven ones gives its slowest frames, and a camera its first
    frame, its frames shown or its stalls, whichever is furthest past, from the runs whose camera
    level fails (the grade takes the median of per-run levels). The restart is named only
