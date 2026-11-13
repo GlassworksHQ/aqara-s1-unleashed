@@ -121,8 +121,10 @@ npm run build -w @glassworks/kiln-app     # next build
 
 Without a panel: `/aqara-s1-plus?demo=run` clicks through a simulated panel behind the real
 InstallFlow. Other `?demo=` names jump to one screen (`src/wizard/demo.ts`), for example
-`app-installing` (the app's install phases), `wifi` (the panel on Wi-Fi already) and `wifi-new` (it
-isn't). They work in `next dev`,
+`app` and `app-update` (settings before a first install and an update), `app-installing` and
+`app-keyboard` (the install's steps), `wifi` (the panel on Wi-Fi already) and `wifi-new` (it isn't),
+`radio-thread` and `radio-thread-old` (a Thread router on an S1 Kiosk that gets the network from
+Home Assistant, and on 0.4.3, which can't). They work in `next dev`,
 or in a build made with `NEXT_PUBLIC_KILN_DEMO=1`.
 
 ## Vercel

@@ -24,8 +24,8 @@ export interface AppSettings { locale?: string; timezone?: string; clock24: bool
 /** What the setup step shows, one phase at a time (S1 Kiosk over adb). */
 export type Setup =
   | { phase: 'waiting'; note: string }
-  /** `installing`: the app is going in, at this phase (provision's AppPhase, then the first start) */
-  | { phase: 'settings'; installing?: AppPhase; error?: string; update: boolean; chosen?: AppSettings }
+  /** `installing`: the app is going in; provision's AppPhases so far, the last one now */
+  | { phase: 'settings'; installing?: AppPhase[]; error?: string; update: boolean; chosen?: AppSettings }
   | {
       phase: 'wifi';
       /** the panel is on Wi-Fi already (the app's setup state has an address); `ssid` when Android says which */
@@ -54,7 +54,13 @@ export interface RadioStep {
   /** how to get what the step needs, under it */
   how?: { title: string; body: string; link: string; linkText: string };
 }
-export interface RadioPlan { title: string; lead: string; steps: RadioStep[] }
+export interface RadioPlan {
+  title: string;
+  lead: string;
+  steps: RadioStep[];
+  /** a way that isn't recommended (an older app's), behind "More help" */
+  more?: RadioStep[];
+}
 
 export interface Failure {
   title: string;

@@ -4,7 +4,7 @@
 import type { PanelShell } from '@glassworks/adb';
 import {
   PacketReader, PacketType, Rpc, State as ImprovState, frame, parseResult, s1Plus, strings,
-  type AssetName, type ByteStream, type Provisioned, type SetUpOptions,
+  type AppPhase, type AssetName, type ByteStream, type Provisioned, type SetUpOptions,
 } from '@glassworks/aqara-s1-plus-installer';
 import type { Fastboot } from '@glassworks/fastboot';
 import type { FelDevice } from '@glassworks/fel';
@@ -15,7 +15,7 @@ import { s1PlusUi } from '../frames/aqara-s1-plus';
 import { explain } from './explain';
 import { Session, type SessionDeps } from './session';
 
-export const DEMOS = ['run', 'selftest', 'connect', 'ask-fastboot', 'install', 'ask-adb', 'app', 'app-installing', 'wifi', 'wifi-new', 'wifi-fail', 'home-assistant', 'radio', 'radio-next',
+export const DEMOS = ['run', 'selftest', 'connect', 'ask-fastboot', 'install', 'ask-adb', 'app', 'app-update', 'app-installing', 'app-keyboard', 'wifi', 'wifi-new', 'wifi-fail', 'home-assistant', 'radio', 'radio-next', 'radio-thread', 'radio-thread-old',
   'done', 'undo', 'undo-refused', 'undo-refused-splash', 'undo-apps-back', 'undo-unreadable', 'undo-connect', 'restore', 'undo-done', 'error', 'error-written'] as const;
 export type Demo = (typeof DEMOS)[number];
 
@@ -104,10 +104,12 @@ function improvStream(fail: boolean, net: Net): ByteStream {
 }
 
 /** `online`: on Wi-Fi already, as a panel set up with Aqara's app is. */
-export function simulatedPanel(wifiFails = false, online = true, app = true): PanelShell {
+/** `app`: S1 Kiosk's version on the panel (`dumpsys package`), or null when it isn't installed. */
+export function simulatedPanel(wifiFails = false, online = true, app: { name: string; code: number } | null = { name: '0.5.0', code: 500 }): PanelShell {
   const net: Net = { online };
   const out = (cmd: string) => cmd === 'getprop sys.boot_completed' || cmd.startsWith('grep -c') ? '1\n'
     : cmd === 'pm path sh.edm.s1kiosk' && app ? 'package:/data/app/sh.edm.s1kiosk-1/base.apk\n'
+    : cmd === 'dumpsys package sh.edm.s1kiosk' && app ? `    versionCode=${app.code} minSdk=26 targetSdk=34\n    versionName=${app.name}\n`
     : cmd === 'dumpsys wifi' && net.online ? DUMPSYS_WIFI
     : cmd.startsWith('ip -4') && net.online ? `3: wlan0    inet ${IP}/24 brd 192.0.2.255 scope global wlan0\n` : '';
   return {
@@ -184,7 +186,13 @@ const demoRecipe: Recipe<AssetName, SetUpOptions, Provisioned> = {
   writesBeforeBoot: async ({ backup, log }) => { log('vbmeta flags: 0'); return [{ part: 'vbmeta', data: backup.get('vbmeta')!, what: 'Turning off verified boot' }]; },
   setUp: async (_panel, opts, { step }) => {
     // provision's phases, in its order, without the panel's real durations
-    for (const [phase, s, ms] of [['copy', 'Install kiosk app', 600], ['install', '', 2500], ['settings', 'Permissions', 800], ['start', 'Start the kiosk', 400]] as const) {
+    const phases: [AppPhase, string, number][] = [
+      [{ step: 'apk', apk: 'kiosk', stage: 'copy' }, 'Install kiosk app', 600], [{ step: 'apk', apk: 'kiosk', stage: 'install' }, '', 2500],
+      [{ step: 'home' }, 'Permissions', 600],
+      ...(opts.keyboard !== false ? [[{ step: 'apk', apk: 'keyboard', stage: 'copy' }, 'Keyboard', 200], [{ step: 'apk', apk: 'keyboard', stage: 'install' }, '', 600]] as [AppPhase, string, number][] : []),
+      [{ step: 'prefs' }, '', 300], [{ step: 'start' }, 'Start the kiosk', 400],
+    ];
+    for (const [phase, s, ms] of phases) {
       opts.onPhase?.(phase);
       if (s) step(s);
       await wait(ms);
@@ -196,7 +204,11 @@ const demoRecipe: Recipe<AssetName, SetUpOptions, Provisioned> = {
 /** A session on the simulated panel. */
 export function demoSession(which: Demo): Session {
   const saved: { meta: BackupMeta; files: BackupFile[] }[] = [];
-  const panel = simulatedPanel(which === 'wifi-fail', which !== 'wifi-fail' && which !== 'wifi-new', which !== 'run');
+  // run and the app's first-install states start without S1 Kiosk on the panel
+  // run and the app's first-install states start without S1 Kiosk on the panel; radio-thread-old has 0.4.3
+  const app = ['run', 'app', 'app-installing', 'app-keyboard'].includes(which) ? null
+    : which === 'radio-thread-old' ? { name: '0.4.3', code: 403 } : { name: '0.5.0', code: 500 };
+  const panel = simulatedPanel(which === 'wifi-fail', which !== 'wifi-fail' && which !== 'wifi-new', app);
   let adbAllowed = which !== 'run'; // the static states start on an installed panel
   const deps: SessionDeps = {
     recipe: demoRecipe,
@@ -268,13 +280,17 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
       dispatch({ type: 'setup', setup: { phase: 'waiting', note: 'The panel is starting its new software. The first start takes a minute or two.' } });
       void session.asks.open('adb', () => new Promise(() => {}), never);
       return;
-    case 'app':
+    case 'app': // a first install: the panel has no S1 Kiosk yet
+    case 'app-update': // S1 Kiosk is on the panel: installing replaces it
       await session.route('resume');
-      dispatch({ type: 'setup', setup: { phase: 'settings', update: false } });
       return;
     case 'app-installing': // Android installing and optimising the app
+    case 'app-keyboard': // the next APK: the on-screen keyboard
       await session.route('resume');
-      dispatch({ type: 'setup', setup: { phase: 'settings', update: false, installing: 'install' } });
+      dispatch({ type: 'setup', setup: { phase: 'settings', update: false, chosen: { clock24: true, keyboard: true }, installing: [
+        { step: 'apk', apk: 'kiosk', stage: 'copy' }, { step: 'apk', apk: 'kiosk', stage: 'install' },
+        ...(which === 'app-keyboard' ? [{ step: 'home' }, { step: 'apk', apk: 'keyboard', stage: 'install' }] as AppPhase[] : []),
+      ] } });
       return;
     case 'wifi': // the panel is on Wi-Fi already
     case 'wifi-new': // it isn't: the networks it can see
@@ -290,6 +306,11 @@ export async function enterDemo(session: Session, which: Demo): Promise<void> {
     case 'radio-next':
       await session.route('radio');
       await session.applyRadio('zigbee_tcp');
+      return;
+    case 'radio-thread': // a Thread router, on an S1 Kiosk that gets the network from Home Assistant
+    case 'radio-thread-old': // the same on 0.4.3, which can't
+      await session.route('radio');
+      await session.applyRadio('thread_router');
       return;
     case 'done':
       dispatch({ type: 'done', done: {

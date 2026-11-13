@@ -37,6 +37,8 @@ describe('one ember action per screen', () => {
   it.each<[Demo, string]>([
     ['connect', 'Connect'],
     ['app', 'Install S1 Kiosk'],
+    ['app-update', 'Update and continue'],
+    ['radio-thread-old', 'Finish'],
     ['wifi', 'Continue'],
     ['wifi-new', 'Connect'],
     ['home-assistant', 'Continue'],
@@ -63,13 +65,24 @@ describe('one ember action per screen', () => {
     expect(embers()).toEqual(['Back to Kiln']);
   });
 
-  it('Thread router: the panel\'s page leads, the dataset is the how-to under it, Finish is quieter', async () => {
-    await show('radio', (s) => s.applyRadio('thread_router'));
+  it('Thread router on an app that gets the network from Home Assistant: that leads, and no pasting', async () => {
+    await show('radio-thread');
     expect(embers()).toEqual(['Open the panel in Home Assistant']);
-    const steps = [...document.querySelectorAll('ol.next > li')];
-    expect(steps[0]!.querySelector('b')!.textContent).toBe('Give it your Thread network\'s dataset');
-    expect(steps[0]!.querySelector('.how b')!.textContent).toBe('Where to copy the dataset');
-    expect(steps[0]!.textContent).toMatch(/The dataset contains the network key: paste it only there\./);
+    const first = document.querySelector('ol.next > li')!;
+    expect(first.querySelector('b')!.textContent).toBe('Let the panel get it from Home Assistant');
+    expect(first.textContent).toMatch(/press Join Home Assistant's Thread network\. Or tap Get it from Home Assistant/);
+    expect(document.body.textContent).not.toMatch(/dataset|More help/); // no copy and paste, not even as an option
     expect([...document.querySelectorAll('button')].find((b) => b.textContent === 'Finish')!.className).toMatch(/ghost/);
+  }, 20_000);
+
+  it('Thread router on 0.4.3, which can\'t: says so; pasting the dataset only under More help', async () => {
+    await show('radio-thread-old');
+    expect(document.querySelector('.lede')!.textContent).toMatch(/S1 Kiosk 0\.4\.3 can't get your Thread network from Home Assistant itself/);
+    expect(document.body.textContent).not.toMatch(/Active dataset TLVs/);
+    await act(async () => { [...document.querySelectorAll('button')].find((b) => b.textContent === 'More help')!.click(); });
+    const more = document.body.textContent!;
+    expect(more).toMatch(/Active dataset TLVs/);
+    expect(more).toMatch(/The dataset contains the network key: paste it only there\./);
+    expect(embers()).toEqual(['Finish']); // the old way is help, not the main action
   }, 20_000);
 });

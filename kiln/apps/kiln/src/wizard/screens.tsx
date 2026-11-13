@@ -12,7 +12,7 @@ import type { FrameUi } from '../frames/aqara-s1-plus';
 import { LABELS, mount } from '../recovery/player';
 import type { Session } from './session';
 import type { AppPhase } from '@glassworks/aqara-s1-plus-installer';
-import { eta, milestones, type Network, type Setup, type WizardState } from './state';
+import { eta, milestones, type Network, type RadioStep, type Setup, type WizardState } from './state';
 
 type P = { s: WizardState; session: Session; frame: FrameUi };
 
@@ -151,26 +151,55 @@ const LOCALES = ['en-US', 'en-GB', 'en-AU', 'en-CA', 'de-DE', 'fr-FR', 'fr-CA', 
   'pl-PL', 'cs-CZ', 'sv-SE', 'da-DK', 'nb-NO', 'fi-FI', 'ru-RU', 'uk-UA', 'tr-TR', 'el-GR', 'hu-HU', 'ro-RO', 'ja-JP', 'ko-KR', 'zh-CN', 'zh-TW', 'zh-HK'];
 
 /**
- * The app going in, phase by phase as the panel reports them (provision's AppPhase). Android stops and
- * restarts the app while it installs and optimises it, and again on its first start: say so, so a
- * restarting panel reads as progress.
+ * The app going in, as the panel reports it (provision's AppPhase): one row per APK the recipe
+ * installs, with its copy and its `pm install`, and the steps between. Android stops and restarts
+ * S1 Kiosk while it installs and optimises it, and again on its first start: say so, so a restarting
+ * panel reads as progress.
  */
-const APP_PHASES: { id: AppPhase; text: (app: string) => string; note?: string }[] = [
-  { id: 'copy', text: (app) => `Copy ${app} to the panel` },
-  { id: 'install', text: () => 'Android installs it and optimises it for this panel', note: 'The app on the panel closes and restarts during this. That\'s expected.' },
-  { id: 'settings', text: () => 'Apply your settings' },
-  { id: 'start', text: () => 'First start', note: 'It starts again with your settings.' },
+type Row = 'kiosk' | 'home' | 'keyboard' | 'prefs' | 'start';
+const ROWS: { id: Row; text: (app: string) => string }[] = [
+  { id: 'kiosk', text: (app) => `Install ${app}` },
+  { id: 'home', text: () => 'Make it the panel\'s home screen' },
+  { id: 'keyboard', text: () => 'Install the on-screen keyboard' },
+  { id: 'prefs', text: () => 'Apply your time zone, language and clock' },
+  { id: 'start', text: () => 'First start' },
 ];
+const rowOf = (p: AppPhase): Row => (p.step === 'apk' ? p.apk : p.step);
+
+/**
+ * `update`: the app was on the panel already. Then `pm install -r` stops it while it runs, it comes
+ * back, and the end of dex2oat restarts it again (docs/research/web-installer.md §7.1). A first
+ * install has no app running, so nothing there is said to restart.
+ */
+function nowSays(p: AppPhase, update: boolean): { sub?: string; note?: string } {
+  if (p.step === 'apk' && p.stage === 'copy') return { sub: 'Copying it to the panel' };
+  if (p.step === 'apk' && p.apk === 'kiosk') {
+    return { sub: 'Android installs it and optimises it for this panel', note: update ? 'The app on the panel closes and restarts during this. That\'s expected.' : undefined };
+  }
+  if (p.step === 'apk') return { sub: 'Android installs it' };
+  if (p.step === 'start') return { note: update ? 'It starts again with your settings.' : 'It starts with your settings.' };
+  return {};
+}
 
 function Installing({ frame, setup }: { frame: FrameUi; setup: Extract<Setup, { phase: 'settings' }> }) {
-  const at = APP_PHASES.findIndex((p) => p.id === setup.installing);
-  const note = APP_PHASES[at]?.note;
+  const seen = setup.installing ?? [];
+  const now = seen.at(-1);
+  const reached = new Set(seen.map(rowOf));
+  const cur = now ? ROWS.findIndex((r) => r.id === rowOf(now)) : 0;
+  // the keyboard row while it is still to come, if asked for; one passed without an install is left out
+  const rows = ROWS.filter((r, i) => r.id !== 'keyboard' || reached.has('keyboard') || (setup.chosen?.keyboard !== false && i > cur));
+  const at = rows.findIndex((r) => r.id === ROWS[cur]!.id);
+  const { sub, note } = now ? nowSays(now, setup.update) : {};
   return (
     <section className="card" aria-labelledby="h">
       <h2 id="h">{setup.update ? `Updating ${frame.app}.` : `Installing ${frame.app}.`}</h2>
-      <p className="lede">Keep it plugged in. The panel&apos;s screen may go dark or restart a few times.</p>
+      <p className="lede">Keep it plugged in.</p>
       <ol className="join" aria-live="polite">
-        {APP_PHASES.map((p, i) => <li key={p.id} className={i < at ? 'done' : i === at ? 'cur' : ''}>{p.text(frame.app)}</li>)}
+        {rows.map((r, i) => (
+          <li key={r.id} className={i < at ? 'done' : i === at ? 'cur' : ''}>
+            {r.text(frame.app)}{i === at && sub && <span className="sub-step">{sub}</span>}
+          </li>
+        ))}
       </ol>
       {note && <p className="small" role="status">{note}</p>}
       <div className="bar wait"><i /></div>
@@ -382,32 +411,42 @@ function Copy({ value }: { value: string }) {
   }}>{t}</button>;
 }
 
+function PlanStep({ st }: { st: RadioStep }) {
+  return (
+    <li style={{ display: 'grid', gap: 6, border: '1px solid var(--edge)', borderRadius: 14, padding: '12px 14px' }}>
+      <b style={{ fontWeight: 500 }}>{st.title}</b>
+      <span className="small" style={{ color: 'var(--muted)' }}>{st.body}</span>
+      {st.kv && <dl className="kv">{st.kv.map(([k, v, copy]) => <span key={k} style={{ display: 'contents' }}><dt>{k}</dt><dd>{copy ? <><code>{v}</code><Copy value={v} /></> : v}</dd></span>)}</dl>}
+      {st.link && (st.primary
+        ? <a className="btn ember" style={{ justifySelf: 'start' }} href={st.link} target="_blank" rel="noopener">{st.primary}</a>
+        : <a className="link" href={st.link} target="_blank" rel="noopener">Open in Home Assistant</a>)}
+      {st.how && (
+        <div className="how">
+          <b>{st.how.title}</b>
+          <span className="small">{st.how.body}</span>
+          <a className="link" href={st.how.link} target="_blank" rel="noopener">{st.how.linkText}</a>
+        </div>
+      )}
+    </li>
+  );
+}
+
 function RadioNext({ session, setup }: P & { setup: Extract<Setup, { phase: 'radio-next' }> }) {
   const { plan } = setup;
   const led = plan.steps.some((st) => st.primary);
+  const [more, setMore] = useState(false);
+  const list = { listStyle: 'none', margin: 0, padding: 0 } as const;
   return (
     <section className="card" aria-labelledby="h">
       <h2 id="h">{plan.title}</h2>
       <p className="lede">{plan.lead}</p>
-      <ol className="next" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-        {plan.steps.map((st) => (
-          <li key={st.title} style={{ display: 'grid', gap: 6, border: '1px solid var(--edge)', borderRadius: 14, padding: '12px 14px' }}>
-            <b style={{ fontWeight: 500 }}>{st.title}</b>
-            <span className="small" style={{ color: 'var(--muted)' }}>{st.body}</span>
-            {st.kv && <dl className="kv">{st.kv.map(([k, v, copy]) => <span key={k} style={{ display: 'contents' }}><dt>{k}</dt><dd>{copy ? <><code>{v}</code><Copy value={v} /></> : v}</dd></span>)}</dl>}
-            {st.link && (st.primary
-              ? <a className="btn ember" style={{ justifySelf: 'start' }} href={st.link} target="_blank" rel="noopener">{st.primary}</a>
-              : <a className="link" href={st.link} target="_blank" rel="noopener">Open in Home Assistant</a>)}
-            {st.how && (
-              <div className="how">
-                <b>{st.how.title}</b>
-                <span className="small">{st.how.body}</span>
-                <a className="link" href={st.how.link} target="_blank" rel="noopener">{st.how.linkText}</a>
-              </div>
-            )}
-          </li>
-        ))}
-      </ol>
+      <ol className="next" style={list}>{plan.steps.map((st) => <PlanStep key={st.title} st={st} />)}</ol>
+      {plan.more && (
+        <Collapsible.Root open={more} onOpenChange={setMore} className="tech">
+          <Collapsible.Trigger className="link" style={{ justifySelf: 'start' }}>{more ? 'Less' : 'More help'}</Collapsible.Trigger>
+          <Collapsible.Content><ol className="next" style={list}>{plan.more.map((st) => <PlanStep key={st.title} st={st} />)}</ol></Collapsible.Content>
+        </Collapsible.Root>
+      )}
       <div className="foot"><span /><button type="button" className={`btn ${led ? 'ghost' : 'ember'}`} onClick={() => session.finish()}>Finish</button></div>
     </section>
   );

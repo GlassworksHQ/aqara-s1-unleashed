@@ -5,7 +5,7 @@ import type { AdbKey, PanelShell } from '@glassworks/adb';
 import type { Fastboot } from '@glassworks/fastboot';
 import type { FelDevice } from '@glassworks/fel';
 import {
-  IMPROV_SOCKET, ImprovSerialClient, PKG, State as ImprovState, describeSwitch, panelWifi, unprovision,
+  IMPROV_SOCKET, ImprovSerialClient, PKG, kioskVersion, State as ImprovState, describeSwitch, panelWifi, unprovision,
   type AppPhase, type AssetName, type Provisioned, type SetUpOptions,
 } from '@glassworks/aqara-s1-plus-installer';
 import {
@@ -267,11 +267,18 @@ export class Session {
 
   /** Settings → install (or update) the app. */
   async installApp(opts: AppSettings): Promise<void> {
-    const update = this.s.setup.phase === 'settings' && this.s.setup.update;
     this.chosen = opts;
-    const at = (installing: AppPhase) => this.setupPhase({ phase: 'settings', update, chosen: opts, installing });
-    at('copy');
+    const seen: AppPhase[] = [];
+    let update = this.s.setup.phase === 'settings' && this.s.setup.update;
+    const at = (p?: AppPhase) => {
+      if (p) seen.push(p);
+      this.setupPhase({ phase: 'settings', update, chosen: opts, installing: [...seen] });
+    };
+    at(); // the APK downloads before provision's first phase
     try {
+      // an update replaces a running app, which Android restarts; a first install has none running
+      update = await this.appInstalled();
+      at();
       const res = await this.getFlow(await this.keyReady).setUpApp(this.panel!, {
         timezone: opts.timezone, locale: opts.locale, clock24: opts.clock24, keyboard: opts.keyboard,
         // A development build on the panel: Android needs it removed first. Ask, saying what is kept.
@@ -285,7 +292,7 @@ export class Session {
         ? `Switching versions made the panel forget ${sw.ssid ? `"${sw.ssid}"` : 'its Wi-Fi'}. Pick it again and type its password.`
         : undefined;
       // the first start: done when the app listens again (the Wi-Fi step would wait for it too)
-      at('start');
+      if (seen.at(-1)?.step !== 'start') at({ step: 'start' });
       if (!(await this.waitForSocket(IMPROV_SOCKET))) {
         this.setupPhase({ phase: 'wifi', networks: [], unreachable: true, status: `Couldn't reach ${this.d.frame.app} on the panel.` });
         return;
@@ -515,7 +522,10 @@ export class Session {
       }
     }
     const st = this.setup!.state!;
-    const plan = radioPlan(mode, st.ip ?? this.ip ?? '<panel IP>', st.ha.url ?? '', st.radio.allowed);
+    // which S1 Kiosk is on the panel decides how a Thread router gets its network (read-only)
+    const app = mode === 'thread_router' ? await kioskVersion(this.panel!).catch(() => undefined) : undefined;
+    if (this.closed || this.s.screen !== 'setup' || this.s.setup.phase !== 'radio') return;
+    const plan = radioPlan(mode, st.ip ?? this.ip ?? '<panel IP>', st.ha.url ?? '', st.radio.allowed, { version: app?.name, code: app?.code });
     if (plan) { this.setupPhase({ phase: 'radio-next', plan }); return; }
     this.finish();
   }

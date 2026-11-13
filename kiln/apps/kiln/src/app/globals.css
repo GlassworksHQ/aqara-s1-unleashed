@@ -240,6 +240,7 @@ h2.huge { font-size: 44px; font-weight: 200; }
 .join li.cur { color: var(--fg); }
 .join li.cur::before { content: "→"; color: var(--ember-b); }
 .join li.fail { color: var(--problem-ink); }
+.join .sub-step { display: block; margin-left: 18px; font-size: 13px; color: var(--muted); }
 .join li.fail::before { content: "!"; color: var(--problem); }
 .next { display: grid; gap: 12px; }
 .how { display: grid; gap: 4px; margin-top: 6px; padding: 10px 12px; border-radius: 10px; background: var(--well); }
