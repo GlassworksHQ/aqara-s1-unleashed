@@ -80,4 +80,16 @@ describe('the set-up forms', () => {
     expect(input().value).toBe('http://192.0.2.20:8123');
     s.close();
   });
+
+  it('Firing, after an earlier try wrote: no claim that nothing is written yet', () => {
+    const s = demoSession('connect');
+    render(<Wizard session={s} frame={s1PlusUi} />);
+    act(() => {
+      s.store.dispatch({ type: 'changed', by: 'written' });
+      s.store.dispatch({ type: 'start', flow: 'install', now: Date.now() });
+    });
+    expect(document.body.textContent).not.toMatch(/Nothing is written/);
+    expect(document.body.textContent).toMatch(/Your backup comes before any write\./);
+    s.close();
+  });
 });

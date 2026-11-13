@@ -5,7 +5,13 @@ import type { AskKind, PartState, Phase, Progress } from '@glassworks/kiln-core'
 import type { SetupState } from '@glassworks/setup-channel';
 
 export type Flow = 'install' | 'undo';
-export type Changed = 'written' | 'apps';
+/**
+ * What an earlier step did to the panel: `written`, a run started writing; `apps`, the panel was (being)
+ * given back to Aqara's apps; `unknown`, this browser tab can't remember (its storage is blocked), so an
+ * earlier page load may have done either.
+ */
+export type Changed = 'written' | 'apps' | 'unknown';
+const OUTRANKS: Record<Changed, number> = { unknown: 0, apps: 1, written: 2 };
 export type Screen = 'connect' | 'firing' | 'setup' | 'done' | 'undo' | 'error';
 
 export interface Network { ssid: string; rssi: number; secure: boolean }
@@ -180,8 +186,8 @@ export function reduce(s: WizardState, a: Action): WizardState {
       return { ...s, screen: 'done', ask: undefined, done: a.done, changed: undefined };
     case 'busy':
       return { ...s, busy: a.busy };
-    case 'changed': // a write outranks the apps
-      return { ...s, changed: s.changed === 'written' ? 'written' : a.by };
+    case 'changed': // a write outranks the apps, and both outrank not knowing
+      return { ...s, changed: s.changed && OUTRANKS[s.changed] > OUTRANKS[a.by] ? s.changed : a.by };
   }
 }
 

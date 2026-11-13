@@ -24,20 +24,36 @@ export interface LastFailure { name: string; when: Date; failure: Failure; log: 
  * The panel's history (WizardState.changed) for this browser tab, per frame base. A new session (Back
  * to Kiln, then the frame again) starts from it, and so does a reload (sessionStorage), so neither
  * forgets that an earlier step changed the panel. Only a run reaching Done clears it.
+ *
+ * With storage blocked (site data off), a reload forgets: the first session of a page load then
+ * starts from `unknown`, never from "nothing changed".
  */
 const history = new Map<string, Changed>();
+/** Bases this page load has had a session for: from then on `history` alone knows. */
+const seen = new Set<string>();
 const storageKey = (base: string) => `kiln:changed:${base}`;
+
+/** sessionStorage, if this browser lets the page write it (Chrome with site data blocked throws). */
+function storage(): Storage | undefined {
+  try {
+    sessionStorage.setItem('kiln:probe', '1');
+    sessionStorage.removeItem('kiln:probe');
+    return sessionStorage;
+  } catch { return undefined; }
+}
 
 function recall(base: string): Changed | undefined {
   if (history.has(base)) return history.get(base);
-  try {
-    const v = sessionStorage.getItem(storageKey(base));
-    return v === 'written' || v === 'apps' ? v : undefined;
-  } catch { return undefined; }
+  if (seen.has(base)) return undefined;
+  const store = storage();
+  if (!store) return 'unknown';
+  const v = store.getItem(storageKey(base));
+  return v === 'written' || v === 'apps' ? v : undefined;
 }
 
 function remember(base: string, c: Changed | undefined) {
   if (c) history.set(base, c); else history.delete(base);
+  if (c === 'unknown') return; // nothing to keep: it is what a page load without storage starts from
   try {
     if (c) sessionStorage.setItem(storageKey(base), c); else sessionStorage.removeItem(storageKey(base));
   } catch { /* no storage: this page load still has `history` */ }
@@ -76,8 +92,9 @@ export const registry = {
     }
     current = e;
     const earlier = recall(e.base);
+    seen.add(e.base);
+    watch(e); // first, so `history` keeps what the session starts from
     if (earlier) e.session.store.dispatch({ type: 'changed', by: earlier });
-    watch(e);
     notify();
     return e;
   },
@@ -88,7 +105,7 @@ export const registry = {
   },
   /** Tests only. */
   clear() {
-    unwatch?.(); unwatch = undefined; current = undefined; lastFailure = undefined;
+    unwatch?.(); unwatch = undefined; current = undefined; lastFailure = undefined; seen.clear();
     for (const base of history.keys()) remember(base, undefined);
     try { for (const k of Object.keys(sessionStorage)) if (k.startsWith('kiln:changed:')) sessionStorage.removeItem(k); } catch { /* none */ }
   },

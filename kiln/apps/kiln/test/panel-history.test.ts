@@ -66,3 +66,35 @@ describe('the panel\'s history', () => {
     expect(other.store.state.changed).toBeUndefined();
   });
 });
+
+describe('with this tab\'s storage blocked', () => {
+  const blocked = () => {
+    const err = () => { throw new DOMException('The operation is insecure.', 'SecurityError'); };
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(err);
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(err);
+  };
+  afterEach(() => vi.restoreAllMocks());
+
+  it('a reload never claims nothing was written: it says Kiln can\'t tell', async () => {
+    blocked();
+    vi.resetModules(); // a new page load in a tab whose earlier load may have written
+    const again = await import('../src/wizard/registry');
+    const demo = await import('../src/wizard/demo');
+    const two = fresh(demo.demoSession);
+    again.registry.set(entry(two));
+    expect(two.store.state.changed).toBe('unknown');
+    closedList(two);
+    expect(two.store.state.failure!.body).toMatch(/^This attempt wrote nothing\. Kiln can't tell if an earlier try in this browser tab did\. /);
+    expect(two.store.state.failure!.body).not.toMatch(/Nothing was written/);
+    const three = fresh(demo.demoSession);
+    again.registry.set(entry(three)); // Back to Kiln and the frame again: still unknown
+    expect(three.store.state.changed).toBe('unknown');
+    writeSome(three);
+    expect(three.store.state.changed).toBe('written'); // a write this load saw outranks not knowing
+    three.store.dispatch({ type: 'done', done: { title: 'Done.', body: '' } });
+    const four = fresh(demo.demoSession);
+    again.registry.set(entry(four)); // this page load saw the Done: nothing since
+    expect(four.store.state.changed).toBeUndefined();
+    again.registry.clear();
+  });
+});

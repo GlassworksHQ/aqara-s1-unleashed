@@ -60,12 +60,15 @@ export function explain(e: unknown, at: number, written: Written, installed = fa
   const rule = installed && named('NotFoundError')(e)
     ? { title: 'Nothing was picked.', fix: 'Try again, and pick the panel in the browser\'s list.' }
     : RULES.find((r) => r.test(e, raw));
-  const before = written === 'none' && !!earlier;
-  const changed = !installed && (written !== 'none' || !!earlier);
+  const known = earlier === 'written' || earlier === 'apps';
+  const before = written === 'none' && !installed && known;
+  const unsure = written === 'none' && !installed && earlier === 'unknown';
+  const changed = !installed && (written !== 'none' || known);
   const said = installed ? 'The new software is in place.'
     : written === 'verified' ? 'Part of the new software was written.'
     : written === 'maybe' ? 'Part of the new software may have been written.'
     : before ? (earlier === 'written' ? 'This attempt wrote nothing; an earlier try did.' : 'This attempt wrote nothing; the panel\'s apps were changed earlier.')
+    : unsure ? 'This attempt wrote nothing. Kiln can\'t tell if an earlier try in this browser tab did.'
     : 'Nothing was written.';
   // a refused backup: the way on is another backup or undo by hand, not this one again.
   // A closed device list: nothing runs, so the way back starts with recovery mode.
