@@ -109,7 +109,7 @@ jobs:
           target: default
           disable-animations: true
           working-directory: app
-          script: ./gradlew --no-daemon :esphome-api-android:connectedDebugAndroidTest :improv:connectedDebugAndroidTest
+          script: ./gradlew --no-daemon --continue :esphome-api-android:connectedDebugAndroidTest :improv:connectedDebugAndroidTest
 
   web:
     runs-on: ubuntu-24.04
