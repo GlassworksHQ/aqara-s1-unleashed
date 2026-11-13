@@ -418,28 +418,87 @@ What the panel's logcat says about heavy (read 2026-11-13, read-only):
    logged 117 flushes and 43 end-of-stream drains (typical: 1 flush, no drain), and 3630 decoder log lines
    against typical's 171. That is Gecko draining and flushing decoders whose buffers emptied. So the
    segments reached the media buffer late.
-3. **Why they were late isn't known yet.** HA's player turns low-latency HLS off with more than 2
+3. **Why they were late wasn't known then.** HA's player turns low-latency HLS off with more than 2
    streams unless the page came over HTTP/2 (`_isLLHLSSupported`, `ha-hls-player.ts`), and the fake
-   serves HTTP/1.1, as HA itself does without a proxy. So heavy's four streams poll plain HLS. They
-   share the engine's few connections per host with the frontend, through `adb reverse`. Heavy's
-   main thread was also badly blocked (a change took 1.4 s to show), and hls.js appends on it. The
-   data is small: 3 Mbit/s for all four. The `fetches` detail above is for telling these apart in
-   the next run: queueing points at connections, a long wait at the link or the fake, and neither
-   at the page.
+   serves HTTP/1.1, as HA itself does without a proxy. So heavy's four streams poll plain HLS. The
+   candidates were the engine's few connections per host, `adb reverse`, and heavy's blocked main
+   thread, on which hls.js runs. s1cam3 answers it (below): the main thread.
 
-**The bars: a proposal, not a change** (the maintainer decides, in its own PR):
-- **Keep frames shown (95 / 85%) and the gaps (500 ms / 1 s of stalls) as they are.** Neither
-  result was near them: typical showed 100% with a 283 ms longest gap, and heavy 28 to 42% with
-  half-minute stalls. One run can't place them more finely.
-- **First frame (2 / 4 s) is the bar the data sits on.** Typical took 4.4 s and heavy 3.8 to 4.1 s.
-  It runs from the navigation, so it includes building the view: typical's view took 6.6 s to open.
-  Before moving it, split it in the next run's detail: from the navigation to the card asking for
-  the stream (`camera/stream` in the fake's log, on its clock, which the page's is tied to), and
-  from there to the first frame. If the second part is short, the bar is measuring the view, which
-  open the view already grades. Then I would time first frame from the stream request.
-- **Don't calibrate on the S1's letter.** Today the camera bars can't move the S1's D either way,
-  which makes this a good time to set them on their own merits.
-- Wait for the 3-run camera run with the new detail, and a screencap during heavy, before deciding.
+**Three runs: s1cam3** (#182 at cbc2be6, S1 Kiosk 0.4.3, `thread_router`, 2026-11-13, about 05:45 to
+06:40; **3 of 3 runs, verified, not calibrated**). Clarity D, not provisional. The run exited 0 and
+the restore worked. The fake knew every command (none unknown or failed), and sent each live change
+at most 192 ms late, under the 200 ms limit.
+
+| View | First frame (from the navigation) | Shown | Stalls (from rVFC) | The view's other tasks, with the streams |
+|---|---|---|---|---|
+| typical, 1 × 720p | 4.2 s (3.8 to 4.7) | 100% (99.8 to 100) | none; longest gap 0.2 to 0.27 s | scroll 25.0 fps (s1v7 without streams: 35.1); opens in 6.6 s (4.8) |
+| heavy, 720p + 3 × 360p | 3.7 s (3.6 to 4.4), the worst stream's | 35% (32 to 42), the worst stream's | 26.6 s (24.7 to 27.2) | scroll 5.7 fps (23.3), p95 350 ms; a change takes 739 ms (156); opens in 35.7 s (14.5); tap 288 ms (88) |
+
+The decoders, from the runner's `media` detail (logcat, read-only):
+- **Every stream got the hardware decoder** (`OMX.allwinner.video.decoder.avc`): 1 on typical, 4 on
+  heavy, in every run. No software decoder.
+- **Typical's decoder was flushed 1 to 3 times per run** and drained at most once. **Heavy's four were
+  flushed 241 to 263 times and drained 97 to 107 times per run.** Gecko drains a decoder whose stream
+  ran out of data.
+
+Each heavy stream decoded 169 to 269 of the 474 to 526 frames its window was due, dropped none, and
+fired `waiting` 9 to 15 times.
+
+**Why heavy's streams starve: the page's main thread.** From the `fetches` detail (Resource Timing):
+- **Each fetch is quick.** Heavy's segment fetch p95 is 114 to 162 ms (queued for a connection: p95
+  93 to 137 ms). Typical's is 45 to 58 ms, with the longest gap between a stream's segments about
+  1.2 s.
+- **But the requests come seconds apart.** On heavy, the longest gap between two segments of one
+  stream arriving is 2.8 to 4.3 s, against 1 s segments.
+
+So hls.js, which runs its loading loop on the page's main thread, doesn't get to run on time. The
+same thread takes 739 ms to show a live change on heavy. The data rules out the decoders (they
+had nothing to decode), the fake (about 3 Mbit/s over loopback, no lock on the HLS path; #182's
+verifier) and the link (each fetch is fast once asked). The maintainer predicted this (#174): a
+JavaScript player on a slow CPU, beside a heavy dashboard.
+
+**The stalls overstate on a blocked page.** rVFC's callbacks run with the page's rendering, so on
+heavy they fired only 33 to 62 times per stream while the decoder presented 169 to 269 frames.
+65 to 146 frames per stream (397 to 463 per run, `stall_presented`) were presented inside the
+gaps counted as stalls. "Shown" comes from the decoder's own count (`getVideoPlaybackQuality`), so
+it stands. Heavy fails the camera task on "shown" alone.
+
+**Where first frame's time goes.** The fake's log puts the view's `camera/stream` request 0.7 to
+1.3 s after the view was opened. The rest is the stream starting up, while the view is still being
+built: 3.1 to 3.4 s on typical, 1.5 to 3.0 s on heavy (the Mac's clock for both events; about ±0.1 s).
+
+**RAM with the cameras** (not graded). The app at idle on the typical view, now with its 720p
+stream, is **850 MB** (848 to 851) against s1v7's 736 MB without it: **+114 MB**. The peak during the
+graded tasks is **889 MB**, against 743 MB. Per process at idle:
+
+| Process | s1v7 (no streams) | s1cam3 |
+|---|---|---|
+| tab | 320 MB | 361 MB |
+| gpu | 213 MB | 232 MB |
+| main | 195 MB | 211 MB |
+| media (GeckoView's media process) | none | 28 MB (28 to 43 between pages) |
+| utility | none | 15 MB |
+
+The app is the same 0.4.3 in both runs. Only the test code differs (131f6da and cbc2be6), and its
+harness adds a few kB to the page. The frame's budget for the app's peak is 988 MB (half the S1's 1976 MB), so the
+peak is within it, with 99 MB to spare.
+
+**The bars: a proposal, not a change** (the maintainer decides, in its own PR; updated after s1cam3):
+- **Keep frames shown (95 / 85%).** It is the robust measure. It comes from the decoder's own count,
+  and it separates the views by far: typical 99.8 to 100%, heavy 32 to 42%.
+- **Measure stalls from frames presented, not from rVFC callbacks.** Keep the numbers (no gap over
+  500 ms; under 1 s of stalls in all), but count a gap only when `presentedFrames` didn't move in it.
+  On a blocked page the callback gaps overstate (above). This is a change to what is measured, so it
+  is a new protocol. It wouldn't change heavy's result (shown fails it), but it would stop a page
+  whose video plays from failing on its callbacks.
+- **Keep first frame timed from the navigation, at 2 / 4 s.** That is what a person sees, as open the
+  view is. After smoke-cam1 I suggested timing it from the stream request; s1cam3 shows the view's
+  part is only 0.7 to 1.3 s and most of the wait is the stream's start. Timing from the request would
+  move typical's 4.2 s (over fluid's 4 s) to about 3.2 s (under it): a change of definition, not of
+  the panel, so I withdraw it. #174's bars have no external source for camera start-up, so they stay
+  a project choice.
+- **Don't calibrate on the S1's letter.** The camera bars don't move the S1's D: typical and heavy
+  were below fluid on scroll and open the view already.
 
 #### Change to screen
 
@@ -1084,6 +1143,11 @@ Frame statistics are defined once, in `tools/perf/page/stats.js` and `tools/perf
 `tools/perf/test/stats-cases.json` pins both to the same answers.
 
 ## Example: Aqara S1 Plus
+
+**Protocol 5: D** (s1cam3, cbc2be6, 3 of 3 runs, rubric v6, S1 Kiosk 0.4.3, `thread_router`,
+2026-11-13; not provisional): protocol 4's views with live camera streams. Typical's 720p stream
+plays in full (first frame 4.2 s), and heavy's four starve (35% shown) on a saturated main thread.
+The details are in [Live camera streams](#live-camera-streams-174-protocol-5).
 
 **Protocol 4: D** (s1v7, 131f6da, 3 of 3 runs, rubric v5, S1 Kiosk 0.4.3, the radio in
 `thread_router`, 2026-11-13; not provisional). "A good wall panel for light dashboards. Held back by
