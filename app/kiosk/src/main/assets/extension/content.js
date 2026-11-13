@@ -19,6 +19,25 @@
 
   let cfg = { hideHeader: true, hideSidebar: true };
 
+  // ---- Home Assistant's launch screen, at night (#63 round 5) ----------------------------------------
+  // HA's index.html starts with its own white launch screen (#ha-launch-screen: the logo and "Loading…"
+  // on #fafafa). However the app times the end of its connecting screen, on the S1 that splash could
+  // still be what Gecko last painted (round 5 panel run: one white frame in two cold starts). So it
+  // never draws white: the launch screen is the night background with nothing on it, and so is the
+  // page under it. Every rule is scoped to the launch screen being there (:has), so it touches nothing
+  // once the frontend has removed it, and HA's own theme applies as before.
+  const LAUNCH_CSS = `
+    html:has(#ha-launch-screen), html:has(#ha-launch-screen) body { background: #0a0b0f !important; }
+    #ha-launch-screen { background: #0a0b0f !important; }
+    #ha-launch-screen * { visibility: hidden !important; }
+  `;
+  try {
+    const s = document.createElement("style");
+    s.id = "s1kiosk-launch";
+    s.textContent = LAUNCH_CSS;
+    (document.head || document.documentElement).appendChild(s);
+  } catch (e) { /* not fatal: the connecting screen still covers it */ }
+
   // With the header hidden, its height is 0 for everything under hui-root too: cards that size
   // themselves as `calc(100vh - var(--header-height))` otherwise end 56 CSS px short and leave a
   // blank strip at the bottom of the screen (issue #7).
@@ -255,13 +274,15 @@
   // through the fade). So "ready" waits for two frames to be drawn, and a little more.
   const PAINT_MARGIN_MS = 150;
   let readySent = false;
+  let readyPending = false; // one chain of frames at a time
   function sendReady(why) {
     if (readySent || !port) return;
     readySent = true;
     try { port.postMessage({ type: "ready", why }); } catch (e) { /* port gone */ }
   }
   function readyAfterPaint(why) {
-    if (readySent) return;
+    if (readySent || readyPending) return;
+    readyPending = true;
     try {
       requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => sendReady(why), PAINT_MARGIN_MS)));
     } catch (e) { sendReady(why); }

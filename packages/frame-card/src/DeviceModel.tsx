@@ -12,9 +12,10 @@ const PAINT_VARS = {
   '--dev-glass': PAINT.glass, '--dev-mirror-a': PAINT.mirrorA, '--dev-mirror-b': PAINT.mirrorB, '--dev-mirror-c': PAINT.mirrorC,
 } as CSSProperties;
 
-export function DeviceModel({ id, model, label }: { id: string; model: FrameModel; label: string }) {
+/** `aspect` is the stage's width / height: 2 by default, as on Kiln's cards; a taller stage, e.g. 0.8, suits a portrait frame's own page. */
+export function DeviceModel({ id, model, label, aspect = 2 }: { id: string; model: FrameModel; label: string; aspect?: number }) {
   const stage = useRef<HTMLDivElement>(null);
-  const g = useMemo(() => geometry(model, 2), [model]);
+  const g = useMemo(() => geometry(model, aspect), [model, aspect]);
   // --u = 1% of the stage width, for the depth and perspective lengths
   useEffect(() => {
     const el = stage.current;
@@ -27,7 +28,7 @@ export function DeviceModel({ id, model, label }: { id: string; model: FrameMode
   }, []);
   const blur = `frame-floor-${id}`;
   return (
-    <div ref={stage} className={s.stage} style={PAINT_VARS} role="img" aria-label={label}>
+    <div ref={stage} className={s.stage} style={{ ...PAINT_VARS, aspectRatio: aspect }} role="img" aria-label={label}>
       <div className={s.model} data-layout={g.layout} data-finish={g.finish} data-mount={g.mount} style={{ transform: g.transform, ...g.vars } as CSSProperties}>
         {g.mount === 'wall' && <div className={s.shadow} aria-hidden="true" />}
         <svg className={s.sides} viewBox={`0 0 100 ${g.stageH}`} preserveAspectRatio="none" aria-hidden="true">

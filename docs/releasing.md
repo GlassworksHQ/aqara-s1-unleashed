@@ -2,7 +2,8 @@
 
 Panels update themselves from GitHub Releases: the app lists
 `https://api.github.com/repos/GlassworksHQ/aqara-s1-unleashed/releases`, picks its own newest release
-and shows the result in Home Assistant as **update.s1_panel_app_update**
+and shows the result in Home Assistant as **update.s1_panel_app_update** (on a panel added before #63;
+newer ones start with `glassworks_panel_`, [Names](esphome.md#names))
 ([esphome.md](esphome.md#app-updates)). A release is built and published by
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) when you push a `v*` or
 `aqara-s1-plus-v*` tag. It holds one APK per ABI, each with its `.sha256` (see [ABIs](#abis)):

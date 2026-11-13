@@ -93,6 +93,8 @@ server.start()
   SharedPreferences). `save` must be synchronous, and the key must never be logged.
 - **Threads.** Entity getters and setters run on connection threads, so make them thread-safe.
 - **Changing entities at runtime.** `server.setEntities(...)`.
+- **A web page for the device.** Set `DeviceIdentity(webserverPort = 8080)` and Home Assistant links
+  the device page's "Visit" to `http://<device>:8080`. The default, 0, sends nothing.
 - **Discovery.** HA finds devices over mDNS `_esphomelib._tcp`. On Android, use `EspHomeMdns` from
   [esphome-api-android](../esphome-api-android/README.md). On other platforms, advertise it
   yourself (Avahi, JmDNS…) with the TXT keys `friendly_name`, `version`, `mac` (`identity.macHex`)

@@ -19,6 +19,7 @@ function page({ launchScreen = true, externalAuth = true } = {}) {
   let launch = launchScreen ? { id: "ha-launch-screen", parentNode: {} } : null;
   const domListeners = {};
   const toPage = [];
+  const appended = [];
 
   const window = {
     wrappedJSObject: { externalBus: (m) => toPage.push(m) },
@@ -29,7 +30,9 @@ function page({ launchScreen = true, externalAuth = true } = {}) {
     addEventListener: (type, fn) => { (domListeners[type] ||= []).push(fn); },
     getElementById: (id) => (id === "ha-launch-screen" ? launch : null),
     querySelector: () => null,
-    createElement: () => ({}),
+    createElement: (tag) => ({ tag }),
+    head: null, // document_start: no <head> yet
+    documentElement: { appendChild: (el) => appended.push(el) },
   };
   const ctx = {
     window, document, console,
@@ -58,7 +61,7 @@ function page({ launchScreen = true, externalAuth = true } = {}) {
   vm.runInNewContext(SOURCE, ctx);
 
   return {
-    posted, toPage, window,
+    posted, toPage, window, appended,
     ready: () => posted.filter((m) => m.type === "ready"),
     domContentLoaded() { document.readyState = "interactive"; (domListeners.DOMContentLoaded || []).forEach((f) => f()); },
     /** HA's frontend removes its launch screen. */
@@ -130,4 +133,28 @@ test("a page without a launch screen is ready once it has painted", () => {
   assert.deepEqual(p.ready(), []);
   p.frame(); p.frame(); p.advance(150);
   assert.deepEqual(p.ready().map((m) => m.why), ["page"]);
+});
+
+test("from the start, HA's launch screen draws at night, and only while it is there", () => {
+  // Round 5 panel run: one fully white frame in two cold starts, timing alone can't rule it out.
+  const p = page();
+  const style = p.appended.find((el) => el.tag === "style" && el.id === "s1kiosk-launch");
+  assert.ok(style, "the style is added at document_start, before anything is drawn");
+  const css = style.textContent;
+  assert.match(css, /#ha-launch-screen\s*\{[^}]*background:\s*#0a0b0f/);
+  assert.match(css, /#ha-launch-screen \*\s*\{[^}]*visibility:\s*hidden/);
+  // Every selector names the launch screen, so once the frontend removes it HA's theme is untouched.
+  const selectors = css.split("}").map((r) => r.split("{")[0].trim()).filter(Boolean).flatMap((sel) => sel.split(","));
+  assert.ok(selectors.length >= 3);
+  for (const sel of selectors) assert.match(sel, /ha-launch-screen/, `unscoped rule: ${sel.trim()}`);
+});
+
+test("only one ready, however many signals come", () => {
+  const p = page();
+  p.domContentLoaded();
+  p.window.externalApp.externalBus(JSON.stringify({ id: 7, type: "frontend/loaded" }));
+  p.removeLaunchScreen();
+  p.window.externalApp.externalBus(JSON.stringify({ id: 8, type: "frontend/loaded" }));
+  p.frame(); p.frame(); p.advance(500);
+  assert.equal(p.ready().length, 1);
 });
