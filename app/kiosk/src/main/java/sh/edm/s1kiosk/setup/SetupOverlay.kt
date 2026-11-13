@@ -40,7 +40,10 @@ import sh.edm.s1kiosk.auth.OAuth
  */
 class SetupOverlay(
     context: Context,
-    /** The panes' steps, in order (PaneDefinition.setupSteps). They go between Home Assistant and Sign in. */
+    /**
+     * The panes' steps, in order. They go between Home Assistant and Sign in. Callers pass
+     * GlassworksRuntime.setupSteps, never PaneDefinition.setupSteps: only that list has the clashing steps left out.
+     */
     paneSteps: List<SetupStep> = emptyList(),
 ) : FrameLayout(context) {
 

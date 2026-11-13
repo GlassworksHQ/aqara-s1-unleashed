@@ -262,7 +262,7 @@ refused, so a mode only appears to the installer once the step offers it.
 
 **A step id is the step's own.** `GlassworksRuntime.setupSteps` gathers the steps through
 `SetupFlow.usable`. It leaves out, with an error in the `S1Kiosk` log, a step whose id is a core
-step's (`wifi`, `ha`, `signin`, `done`) or a key of the channel's state (`ip`), or an earlier step's,
+step (`wifi`, `ha`, `signin`, `done`) or a setup-channel state key (`ip`, `ha`), or an earlier step's,
 and a step whose request names are already taken. A bad step costs only itself: the app still
 starts and the channel still answers. `FramePanesTest` checks a frame's step and section with a
 fake frame.

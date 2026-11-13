@@ -22,11 +22,14 @@ object SetupChannelServer {
 
     fun start(context: Context, runtime: GlassworksRuntime) {
         if (server != null) return
-        val backend = AndroidBackend(context.applicationContext, runtime)
+        val channel = channels(context, runtime, AndroidBackend(context.applicationContext, runtime))
+        server = AdbSocketServer(SetupChannel.SOCKET, TAG) { input, output -> channel().serve(input, output) }.also { it.start() }
+    }
+
+    /** Makes a channel per connection, over the panes' steps as setup takes them (GlassworksRuntime.setupSteps). */
+    internal fun channels(context: Context, runtime: GlassworksRuntime, backend: SetupChannel.Backend): () -> SetupChannel {
         val steps = runtime.setupSteps(context)
-        server = AdbSocketServer(SetupChannel.SOCKET, TAG) { input, output ->
-            SetupChannel(backend, steps) { Log.i(TAG, it) }.serve(input, output)
-        }.also { it.start() }
+        return { SetupChannel(backend, steps) { Log.i(TAG, it) } }
     }
 
     fun stop() {

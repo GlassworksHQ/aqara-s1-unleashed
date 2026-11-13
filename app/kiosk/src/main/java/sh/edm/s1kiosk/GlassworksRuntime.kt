@@ -28,6 +28,8 @@ import sh.edm.s1kiosk.voice.VoiceUi
 class GlassworksRuntime(
     /** The device this app runs on, made once with the runtime. */
     val frame: AqaraS1Plus,
+    /** The frame whose panes join the core's ([paneDefinitions]): [frame] in the app. Tests pass a fake one. */
+    private val paneFrame: Frame = frame,
 ) {
     /** The screen's on/off and brightness, from the frame's sensors. MainActivity and KioskService start it. */
     val screen = ScreenPolicy(
@@ -55,28 +57,27 @@ class GlassworksRuntime(
      * this process (the radio step's one-time check needs that).
      */
     fun paneDefinitions(context: Context): List<PaneDefinition> = synchronized(this) {
-        definitions ?: paneDefinitions(context, frame).also { definitions = it }
-    }
-
-    /** The core's definitions, then [frame]'s. Made anew on each call: [paneDefinitions] keeps the app's. Tests pass a fake frame. */
-    internal fun paneDefinitions(context: Context, frame: Frame): List<PaneDefinition> {
-        val app = context.applicationContext
-        val prefs = KioskPrefs(app)
-        val radio = RadioDefinition(
-            prefs.radio,
-            setUpBefore = { SetupState.setUpBefore(prefs.haBase != null, prefs.haSeen, prefs.apiEncryption, prefs.haSetupSkipped) },
-            readout = RadioDefinition.AppReadout(this, prefs.radio) { prefs.haBase },
-        )
-        return listOf(AssistDefinition(prefs.voice), SendspinDefinition(prefs.sendspin), radio) + frame.paneDefinitions(app)
+        definitions ?: run {
+            val app = context.applicationContext
+            val prefs = KioskPrefs(app)
+            val radio = RadioDefinition(
+                prefs.radio,
+                setUpBefore = { SetupState.setUpBefore(prefs.haBase != null, prefs.haSeen, prefs.apiEncryption, prefs.haSetupSkipped) },
+                readout = RadioDefinition.AppReadout(this, prefs.radio) { prefs.haBase },
+            )
+            listOf(AssistDefinition(prefs.voice), SendspinDefinition(prefs.sendspin), radio) +
+                paneFrame.paneDefinitions(app)
+        }.also { definitions = it }
     }
 
     /**
-     * The panes' setup steps, in order, for the setup screen and the setup channel. A step setup can't
-     * take (SetupFlow.usable: a clashing id or request name) is left out with an error in the log, so a
-     * bad pane never stops the app from starting. Tests pass [definitions] with a fake frame's.
+     * The panes' setup steps, in order, for the setup screen and the setup channel. The only place that
+     * reads PaneDefinition.setupSteps (FramePanesTest checks). A step setup can't take
+     * (SetupFlow.usable: a clashing id or request name) is left out with an error in the log, so a bad
+     * pane never stops the app from starting.
      */
-    fun setupSteps(context: Context, definitions: List<PaneDefinition> = paneDefinitions(context)): List<SetupStep> =
-        SetupFlow.usable(definitions.flatMap { it.setupSteps }) { Log.e(TAG, it) }
+    fun setupSteps(context: Context): List<SetupStep> =
+        SetupFlow.usable(paneDefinitions(context).flatMap { it.setupSteps }) { Log.e(TAG, it) }
 
     /** Set while KioskService runs; the radio's setup step and settings section apply radio changes through it. */
     @Volatile var radio: RadioController? = null

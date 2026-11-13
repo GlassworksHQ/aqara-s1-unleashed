@@ -56,7 +56,7 @@ object SetupFlow {
             val own = s.ops.keys.map { "${s.id}.$it" } + s.legacyOps.keys
             val clash = own.filter { it in names || own.count { o -> o == it } > 1 }.distinct()
             val why = when {
-                s.id in ids -> "its id is the core's (${CORE + SetupChannel.CORE_KEYS}) or an earlier step's"
+                s.id in ids -> "its id is a core step ($CORE), a setup-channel state key (${SetupChannel.CORE_KEYS}) or an earlier step's"
                 clash.isNotEmpty() -> "request names already taken: $clash"
                 else -> null
             }
