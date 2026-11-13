@@ -21,13 +21,24 @@ import sh.edm.esphome.DeviceIdentity
 import sh.edm.esphome.EntityCategory
 import sh.edm.esphome.ProtoMessage
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class DiagnosticsPaneTest {
-    private val exec = Executors.newSingleThreadScheduledExecutor()
+    /** A real executor that also records each repeating task's first delay and period, in ms. */
+    private class RecordingExecutor : ScheduledThreadPoolExecutor(1) {
+        val repeating = mutableListOf<Pair<Long, Long>>()
+
+        override fun scheduleWithFixedDelay(command: Runnable, initialDelay: Long, delay: Long, unit: TimeUnit): ScheduledFuture<*> {
+            synchronized(repeating) { repeating += unit.toMillis(initialDelay) to unit.toMillis(delay) }
+            return super.scheduleWithFixedDelay(command, initialDelay, delay, unit)
+        }
+    }
+
+    private val exec = RecordingExecutor()
     private var published = 0
     private val samples = ArrayDeque<Sample>()
     private var exitReason: Int? = null
@@ -116,6 +127,7 @@ class DiagnosticsPaneTest {
         assertTrue(sampled.await(5, TimeUnit.SECONDS))
         assertEquals("unknown", text(p, "last_restart_reason"))
         assertEquals(48f, value(p, "cpu_temperature"))
+        assertEquals("one sample now, then one a minute", listOf(0L to 60_000L), exec.repeating)
         p.stop()
     }
 

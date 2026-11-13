@@ -151,6 +151,7 @@ asks Android. It runs no shell commands and needs no root.
 | text_sensor `Last restart reason` | `last_restart_reason` | off | | why the app's process last ended, e.g. `crash`, `low memory`, `app updated`; Android 11 and later. Always `unknown` on the S1 (Android 10) |
 
 - CPU usage and App CPU usage are unknown for the first minute after a start: they need two samples.
+- CPU usage counts I/O wait as idle. `top` shows `iow` apart from `idle`, so a busy share worked out from `top`'s `idle` column counts I/O wait as busy and reads higher.
 - The timestamps are accurate to about a minute, because ESPHome sends sensor values as 32-bit floats.
 - The pane logs its own cost under `S1ESPHome` (`diagnostics: sample N took X ms CPU`) for the
   first three samples and then once an hour.

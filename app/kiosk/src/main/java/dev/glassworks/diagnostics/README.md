@@ -65,7 +65,13 @@ pane doesn't know Gecko's process names.
 Once a minute, the pane reads `/proc/stat`, the CPU zone's `temp`, and `stat` and `smaps_rollup`
 for each of the app's processes. That is about a dozen small files on the S1. It also makes three
 binder calls: running processes, memory and Wi-Fi. The pane logs its own CPU time under `S1ESPHome`
-(`diagnostics: sample N took X ms CPU`) for the first three samples and then once an hour.
+(`diagnostics: sample N took X ms CPU`) for the first three samples and then once an hour. On the
+reference S1 the first three samples took 34, 28 and 28 ms (2026-11-12), about 0.05 % of one core.
+
+## Turning it off
+
+There is no off switch yet. When #67's pane on/off switch lands, `stop()` must also clear `values`:
+an off pane keeps its entities, and they must read unknown, not the last value sent.
 
 ## Android versions
 
