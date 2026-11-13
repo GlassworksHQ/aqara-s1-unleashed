@@ -543,10 +543,11 @@ export class Session {
 
   /** Only the latest backup choice may land: an earlier file's check that ends later is dropped. */
   private choice = 0;
+  private givingBack = false;
 
   async undoFromFile(f: File): Promise<void> {
-    // locked: the apps were given back against the backup in use. running: a give-back may be checking it now.
-    if (this.s.undo.locked || this.running) return;
+    // locked: the apps were given back against the backup in use; givingBack: they are being, against it
+    if (this.s.undo.locked || this.givingBack) return;
     const mine = ++this.choice;
     this.undoFiles = undefined;
     this.dispatch({ type: 'undo', patch: { source: 'file', ready: false, checking: true, file: `Checking ${f.name}…` } });
@@ -563,7 +564,7 @@ export class Session {
   }
 
   async undoFromBrowser(): Promise<void> {
-    if (this.s.undo.locked || this.running) return;
+    if (this.s.undo.locked || this.givingBack) return;
     const mine = ++this.choice;
     const orig = await this.d.backups.original().catch(() => undefined);
     if (orig && mine === this.choice) await this.useBrowserBackup(orig, mine);
@@ -580,7 +581,10 @@ export class Session {
       const key = this.key;
       if (!key) { this.dispatch({ type: 'undo', patch: { note: { kind: 'err', title: 'Not ready yet.', sub: 'Click Continue again in a moment.' } } }); return Promise.resolve(); }
       const picked = this.d.devices.requestAdb(key);
-      return this.giveBack(picked, this.undoFiles);
+      // the give-back takes the choice: a backup read still pending can no longer land
+      ++this.choice;
+      this.givingBack = true;
+      return this.giveBack(picked, this.undoFiles).finally(() => { this.givingBack = false; });
     }
     this.dispatch({ type: 'go', screen: 'connect', flow: 'undo' });
     return Promise.resolve();
@@ -610,6 +614,7 @@ export class Session {
         } } });
         return;
       }
+      this.dispatch({ type: 'changed', by: 'apps' }); // before it starts: a give-back that stops partway has changed the panel too
       await unprovision(panel, (s, d) => busy(s || d || ''));
       this.dispatch({ type: 'undo', patch: { appsBack: true, locked: true, note: { kind: 'ok', title: 'Aqara\'s apps are back.', sub: 'Next, put the original software back: Continue, then recovery mode.' } } });
     } catch (e) {

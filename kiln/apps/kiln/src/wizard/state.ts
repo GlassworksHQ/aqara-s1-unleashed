@@ -5,6 +5,7 @@ import type { AskKind, PartState, Phase, Progress } from '@glassworks/kiln-core'
 import type { SetupState } from '@glassworks/setup-channel';
 
 export type Flow = 'install' | 'undo';
+export type Changed = 'written' | 'apps';
 export type Screen = 'connect' | 'firing' | 'setup' | 'done' | 'undo' | 'error';
 
 export interface Network { ssid: string; rssi: number; secure: boolean }
@@ -81,11 +82,12 @@ export interface WizardState {
    */
   touched: boolean;
   /**
-   * a run in this session may have changed the panel's storage, and none has reached Done since.
-   * Unlike `wrote` and `touched`, which are this attempt's, a new attempt (go, start) keeps it: a
-   * later failure must not say nothing was written.
+   * an earlier step may have changed the panel, and no run has reached Done since: `written`, a run
+   * started writing; `apps`, the panel was (being) given back to Aqara's apps. Unlike `wrote` and
+   * `touched`, which are this attempt's, a new attempt (go, start) keeps it, and the registry keeps it
+   * for the browser tab across sessions: a later failure must not say nothing was written.
    */
-  changed: boolean;
+  changed?: Changed;
   log: string[];
   parts: [string, Part][];
   setup: Setup;
@@ -110,7 +112,8 @@ export type Action =
   | { type: 'undo'; patch: Partial<UndoState> }
   | { type: 'fail'; failure: Failure }
   | { type: 'done'; done: DoneState }
-  | { type: 'busy'; busy?: string };
+  | { type: 'busy'; busy?: string }
+  | { type: 'changed'; by: Changed };
 
 export const LOG_LIMIT = 400;
 
@@ -121,7 +124,6 @@ export function initial(flow: Flow = 'install'): WizardState {
     progress: { overall: 0, phase: 'boot', title: 'Starting', sub: '', started: 0 },
     wrote: false,
     touched: false,
-    changed: false,
     log: [],
     parts: [],
     setup: { phase: 'waiting', note: '' },
@@ -147,12 +149,12 @@ export function reduce(s: WizardState, a: Action): WizardState {
       const overall = Math.max(s.progress.overall, Math.min(1, a.p.overall));
       // kiln-core reports flash and verify only from inside a write (flashVerified)
       const touched = s.touched || a.p.phase === 'flash' || a.p.phase === 'verify';
-      return { ...s, touched, changed: s.changed || touched, progress: { ...s.progress, overall, phase: a.p.phase, title: a.p.title, sub: a.p.sub } };
+      return { ...s, touched, changed: touched ? 'written' : s.changed, progress: { ...s.progress, overall, phase: a.p.phase, title: a.p.title, sub: a.p.sub } };
     }
     case 'log': {
       const log = [...s.log, a.line].slice(-LOG_LIMIT);
       const wrote = s.wrote || /(flashed|restored) and verified/.test(a.line);
-      return { ...s, log, wrote, changed: s.changed || wrote };
+      return { ...s, log, wrote, changed: wrote ? 'written' : s.changed };
     }
     case 'partition': {
       const was = s.parts.find(([p]) => p === a.part)?.[1];
@@ -175,9 +177,11 @@ export function reduce(s: WizardState, a: Action): WizardState {
     case 'fail':
       return { ...s, screen: 'error', ask: undefined, failure: a.failure };
     case 'done':
-      return { ...s, screen: 'done', ask: undefined, done: a.done, changed: false };
+      return { ...s, screen: 'done', ask: undefined, done: a.done, changed: undefined };
     case 'busy':
       return { ...s, busy: a.busy };
+    case 'changed': // a write outranks the apps
+      return { ...s, changed: s.changed === 'written' ? 'written' : a.by };
   }
 }
 

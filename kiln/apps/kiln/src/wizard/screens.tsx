@@ -48,7 +48,7 @@ export function Connect({ s, session, frame }: P) {
     <section className="card" aria-labelledby="h">
       <h2 id="h" className="huge">Hold the button. Plug it in.</h2>
       <Recovery frame={frame} />
-      <p className="small">Then click Connect and pick <code>{frame.felPick}</code>.{s.flow === 'undo' ? ' Nothing is written until your backup checks out.' : ' Nothing is written yet.'}</p>
+      <p className="small">Then click Connect and pick <code>{frame.felPick}</code>.{s.flow === 'undo' ? ' Nothing is written until your backup checks out.' : s.changed ? ' An earlier try already changed the panel.' : ' Nothing is written yet.'}</p>
       {driver && <p className="small">{driver} <a className="link" href={frame.help.drivers} target="_blank" rel="noopener">How</a></p>}
       <LastRun />
       <div className="foot">

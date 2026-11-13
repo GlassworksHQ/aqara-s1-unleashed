@@ -1,6 +1,6 @@
 // What a failure means for the person at the panel: what happened, whether anything was written, and
 // the one most likely fix. Matched on the engine's messages, first match wins.
-import type { Failure } from './state';
+import type { Changed, Failure } from './state';
 
 interface Rule {
   test: (e: unknown, msg: string) => boolean;
@@ -44,23 +44,23 @@ const CLEAN_TIPS: [string, string][] = [
 /**
  * What this attempt wrote before it stopped: `verified`, a write was flashed and read back; `maybe`, a
  * write started and didn't finish; `none`. `installed`: the new software was already in place (the
- * setup step), so nothing more could break. `earlier`: an earlier attempt in this session may have
- * changed the panel, so `none` isn't "nothing was written".
+ * setup step), so nothing more could break. `earlier`: an earlier step may have changed the panel
+ * (WizardState.changed), so `none` isn't "nothing was written".
  */
 export type Written = 'none' | 'maybe' | 'verified';
 
-export function explain(e: unknown, at: number, written: Written, installed = false, earlier = false): Failure {
+export function explain(e: unknown, at: number, written: Written, installed = false, earlier?: Changed): Failure {
   const raw = e instanceof Error ? e.message : String(e);
   // On an installed panel a cancelled picker is the adb one: the recovery-mode advice doesn't apply.
   const rule = installed && named('NotFoundError')(e)
     ? { title: 'Nothing was picked.', fix: 'Try again, and pick the panel in the browser\'s list.' }
     : RULES.find((r) => r.test(e, raw));
-  const before = !installed && written === 'none' && earlier;
-  const changed = !installed && (written !== 'none' || earlier);
+  const before = written === 'none' && !!earlier;
+  const changed = !installed && (written !== 'none' || !!earlier);
   const said = installed ? 'The new software is in place.'
     : written === 'verified' ? 'Part of the new software was written.'
     : written === 'maybe' ? 'Part of the new software may have been written.'
-    : before ? 'This attempt wrote nothing; an earlier try did.'
+    : before ? (earlier === 'written' ? 'This attempt wrote nothing; an earlier try did.' : 'This attempt wrote nothing; the panel\'s apps were changed earlier.')
     : 'Nothing was written.';
   // a closed device list: nothing runs, so the way back starts with recovery mode
   const fix = before && named('NotFoundError')(e) && at === 1

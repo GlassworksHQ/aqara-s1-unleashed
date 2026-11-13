@@ -29,7 +29,9 @@ describe('Try again after a failed write', () => {
     expect(screen.getByRole('heading', { name: 'Something went wrong while writing.' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Connect' }));
+    expect(await screen.findByText(/An earlier try already changed the panel\./)).toBeTruthy(); // not "Nothing is written yet."
+    expect(screen.queryByText(/Nothing is written yet/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect(await screen.findByRole('heading', { name: 'No panel in recovery mode.' })).toBeTruthy();
     expect(screen.getByText(/hold the board button first/, { selector: '.lede' }).textContent)

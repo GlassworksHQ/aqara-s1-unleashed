@@ -65,7 +65,7 @@ describe('after a run that wrote', () => {
     d({ type: 'go', screen: 'connect' });
     d({ type: 'start', flow: 'undo', now: 1 });
     d({ type: 'done', done: { title: 'The original software is back.', body: '' } });
-    expect(s.store.state.changed).toBe(false);
+    expect(s.store.state.changed).toBeUndefined();
     d({ type: 'go', screen: 'connect', flow: 'install' });
     fail(1, closed());
     expect(failure()).toMatchObject({ wrote: false, body: expect.stringMatching(/^Nothing was written\./) });
