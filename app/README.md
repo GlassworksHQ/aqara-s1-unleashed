@@ -87,7 +87,7 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   `/dev/ttyS3` itself (relays, power, energy, protection), so `ha_master` and Aqara's cloud stay stopped.
   The LocalService path through `ha_master` remains as a fallback (`base_backend`). See
   [docs/research/bases.md](../docs/research/bases.md) and [docs/research/base-protocol.md](../docs/research/base-protocol.md).
-- **Native Music Assistant player (Sendspin)**: MA sees the panel as its own player "S1 Panel" and plays
+- **Native Music Assistant player (Sendspin)**: MA sees the panel as its own player "Glassworks Panel" and plays
   to it in sync with your other Sendspin speakers (groupable). It pairs automatically: HA hands MA the
   panel's pairing token over the ESPHome API. See below and [docs/sendspin.md](../docs/sendspin.md).
 - **Wi-Fi setup over Bluetooth (Improv via BLE)**: a panel with no network (30 s after boot), or one
@@ -223,7 +223,9 @@ goes, with the reason: `Connecting screen hidden: ready, frontend/loaded` (Home 
 removed its launch screen and a frame was painted after it), `ready, removed` (the same, for a
 frontend that doesn't send frontend/loaded), `ready, page` (a page without a launch screen), or the
 fallbacks `fallback 15 s, no word from the page` and `fallback 45 s, the frontend still loading`.
-`Home Assistant's launch screen is up` marks the page reporting that it's still loading.
+`Home Assistant's launch screen is up` marks the page reporting that it's still loading. Whatever the
+timing, HA's launch screen never shows white: content.js styles it, and the page under it, as the night
+background with nothing on it, from `document_start` and only while it is there (`:has`).
 
 > If the screen is blank/white and `innerWidth` is 0, the **display is off**. Gecko drops its
 > surface while the screen sleeps. Check `adb shell dumpsys power | grep mWakefulness`.
@@ -239,12 +241,13 @@ while the screen is off, and talking to it wakes the screen. See [docs/esphome.m
 
 ```sh
 tools/voice/fetch-models.sh            # downloads the openWakeWord models on the host and adb-pushes them
-# HA: the panel is auto-discovered (Settings -> Devices & services -> ESPHome "S1 Panel" -> Add), or
+# HA: the panel is auto-discovered (Settings -> Devices & services -> ESPHome "Glassworks Panel" -> Add), or
 #     Add integration -> ESPHome -> <panel IP>, port 6053
 ```
 
 Entity ids look like `light.s1_panel_screen`, `select.s1_panel_screen_mode`,
-`media_player.s1_panel_speaker`; pick the wake word and the Assist pipeline on the device page.
+`media_player.s1_panel_speaker` on a panel added before #63; newer ones start with `glassworks_panel_`
+([Names](../docs/esphome.md#names)). Pick the wake word and the Assist pipeline on the device page.
 Encryption is automatic: a panel without a key lets HA 2026.11+ provision one when you add it
 (ESPHome dynamic encryption key). You can also set a key by hand with
 `--es api_key <base64 32 bytes> --ez api_encryption true`. Keys are never logged. Tune the mic with

@@ -37,7 +37,7 @@ function setup(flow: 'install' | 'undo' = 'install') {
     sleep: () => new Promise((r) => setTimeout(r, 0)),
     devices: { knownFastboot: async () => undefined, requestFastboot: () => new Promise(() => {}), knownAdb: async () => undefined, requestAdb },
   }, initial(flow));
-  render(<Wizard session={session} frame={s1PlusUi} />);
+  render(<Wizard session={session} frame={s1PlusUi} base="/aqara-s1-plus" />);
   return { session, felCalls: () => felCalls, requestAdb };
 }
 

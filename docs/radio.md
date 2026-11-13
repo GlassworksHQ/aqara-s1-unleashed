@@ -7,7 +7,8 @@ The panel's 802.15.4 radio can be offered to Home Assistant in one single-protoc
 Zigbee coordinator (EZSP over TCP, for ZHA), Zigbee router (repeater in an existing mesh), Thread
 border router, or Thread router (repeater joining an existing Thread network). The panel's own
 entities always reach HA as an ESPHome device over Wi-Fi, whatever the radio does. The mode is picked in Home Assistant with the
-`Radio mode` select of the panel's ESPHome device (`select.s1_panel_radio_mode`), status in the
+`Radio mode` select of the panel's ESPHome device (`select.s1_panel_radio_mode` on a panel added before
+#63, `select.glassworks_panel_radio_mode` on newer ones, [Names](esphome.md#names)), status in the
 `Radio status` text sensor.
 
 | Mode (select option) | Needs root helper | State (2026-11-10, reference panel) |
@@ -956,8 +957,12 @@ and the **proof build from `build-otbr.sh` already is that profile** (all of tho
   failed on the last one: every scan was refused (`UID … has no location permission`), with the
   permission granted, because a foreground service counts as foreground for location only with
   the `location` type. So the real gate is the uid state that the app-op's foreground mode accepts,
-  not the permission itself. The kiosk's service now runs with `microphone|location`. If location
-  is granted after the service started, the first scan refused for the app-op adds the type. Verified
+  not the permission itself. The kiosk's service now runs with `microphone|location`. If fine
+  location is granted after the service started, the first scan refused for the app-op adds the
+  type. A coarse-only grant can't scan: it is refused as "no location permission" and adds nothing.
+  On Android 14 and later, a background `startForeground` with the location type is likely refused
+  without `ACCESS_BACKGROUND_LOCATION`, so a late grant there logs one refusal and keeps the types
+  (untested; the S1 runs Android 10). Verified
   2026-11-12 (dd6401a): with the screen asleep, `svc wifi disable`/`enable` reconnected 21 s after
   the enable (one scan, at 10 s), and Home Assistant was back 5 s later.
 - **Aqara's watchdog** keeps restarting things. The helper re-enforces every 3 s; a Z3Gateway start

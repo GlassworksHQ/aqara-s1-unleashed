@@ -11,7 +11,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FrameUi } from '../frames/aqara-s1-plus';
 import { LABELS, mount } from '../recovery/player';
 import type { Session } from './session';
-import { eta, milestones, type Network, type Setup, type WizardState } from './state';
+import type { AppPhase } from '@glassworks/aqara-s1-plus-installer';
+import { eta, milestones, type Network, type RadioStep, type Setup, type WizardState } from './state';
 
 type P = { s: WizardState; session: Session; frame: FrameUi };
 
@@ -48,7 +49,7 @@ export function Connect({ s, session, frame }: P) {
     <section className="card" aria-labelledby="h">
       <h2 id="h" className="huge">Hold the button. Plug it in.</h2>
       <Recovery frame={frame} />
-      <p className="small">Then click Connect and pick <code>{frame.felPick}</code>.{s.flow === 'undo' ? ' Nothing is written until your backup checks out.' : s.changed ? ' An earlier try already changed the panel.' : ' Nothing is written yet.'}</p>
+      <p className="small">Then click Connect and pick <code>{frame.felPick}</code>.{s.flow === 'undo' ? ' Nothing is written until your backup checks out.' : s.changed === 'unknown' ? ' Kiln can\'t tell if an earlier try in this browser tab changed the panel.' : s.changed ? ' An earlier try already changed the panel.' : ' Nothing is written yet.'}</p>
       {driver && <p className="small">{driver} <a className="link" href={frame.help.drivers} target="_blank" rel="noopener">How</a></p>}
       <LastRun />
       <div className="foot">
@@ -138,7 +139,7 @@ export function Firing({ s, frame }: P) {
         {steps.map((m) => <li key={m.text}><span className={m.done ? 'ok' : 'go'}>{m.done ? '✓' : '→'}</span> {m.text}</li>)}
       </ul>
       <div className="foot">
-        <span className="small">{s.flow === 'undo' ? 'Each part is checked after it is written.' : backedUp ? 'Your backup is safe in this browser.' : 'Nothing is written until your backup is safe in this browser.'}</span>
+        <span className="small">{s.flow === 'undo' ? 'Each part is checked after it is written.' : backedUp ? 'Your backup is safe in this browser.' : 'Your backup comes before any write.'}</span>
         <TechLog s={s} />
       </div>
     </section>
@@ -148,6 +149,66 @@ export function Firing({ s, frame }: P) {
 const zones = () => (Intl as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? [];
 const LOCALES = ['en-US', 'en-GB', 'en-AU', 'en-CA', 'de-DE', 'fr-FR', 'fr-CA', 'es-ES', 'es-US', 'es-MX', 'it-IT', 'nl-NL', 'pt-PT', 'pt-BR',
   'pl-PL', 'cs-CZ', 'sv-SE', 'da-DK', 'nb-NO', 'fi-FI', 'ru-RU', 'uk-UA', 'tr-TR', 'el-GR', 'hu-HU', 'ro-RO', 'ja-JP', 'ko-KR', 'zh-CN', 'zh-TW', 'zh-HK'];
+
+/**
+ * The app going in, as the panel reports it (provision's AppPhase): one row per APK the recipe
+ * installs, with its copy and its `pm install`, and the steps between. Android stops and restarts
+ * S1 Kiosk while it installs and optimises it, and again on its first start: say so, so a restarting
+ * panel reads as progress.
+ */
+type Row = 'kiosk' | 'home' | 'keyboard' | 'prefs' | 'start';
+const ROWS: { id: Row; text: (app: string) => string }[] = [
+  { id: 'kiosk', text: (app) => `Install ${app}` },
+  { id: 'home', text: () => 'Make it the panel\'s home screen' },
+  { id: 'keyboard', text: () => 'Install the on-screen keyboard' },
+  { id: 'prefs', text: () => 'Apply your time zone, language and clock' },
+  { id: 'start', text: () => 'First start' },
+];
+const rowOf = (p: AppPhase): Row => (p.step === 'apk' ? p.apk : p.step);
+
+/**
+ * `update`: the app was on the panel already. Then `pm install -r` stops it while it runs, it comes
+ * back, and the end of dex2oat restarts it again (docs/research/web-installer.md §7.1). A first
+ * install has no app running, so nothing there is said to restart.
+ */
+function nowSays(p: AppPhase, update: boolean): { sub?: string; note?: string } {
+  if (p.step === 'apk' && p.stage === 'copy') return { sub: 'Copying it to the panel' };
+  if (p.step === 'apk' && p.apk === 'kiosk') {
+    return { sub: 'Android installs it and optimises it for this panel', note: update ? 'The app on the panel closes and restarts during this. That\'s expected.' : undefined };
+  }
+  if (p.step === 'apk') return { sub: 'Android installs it' };
+  if (p.step === 'start') return { note: update ? 'It starts again with your settings.' : 'It starts with your settings.' };
+  return {};
+}
+
+function Installing({ frame, setup }: { frame: FrameUi; setup: Extract<Setup, { phase: 'settings' }> }) {
+  const seen = setup.installing ?? [];
+  const now = seen.at(-1);
+  const reached = new Set(seen.map(rowOf));
+  const cur = now ? ROWS.findIndex((r) => r.id === rowOf(now)) : 0;
+  // the keyboard row while it is still to come, if asked for; one passed without an install is left out
+  const rows = ROWS.filter((r, i) => r.id !== 'keyboard' || reached.has('keyboard') || (setup.chosen?.keyboard !== false && i > cur));
+  const at = rows.findIndex((r) => r.id === ROWS[cur]!.id);
+  const { sub, note } = now ? nowSays(now, setup.update) : {};
+  // the list changes only its marks, which a live region doesn't read: say the step in words
+  const says = [rows[at]?.text(frame.app), sub, note].filter(Boolean).join('. ').replace(/\.\./g, '.');
+  return (
+    <section className="card" aria-labelledby="h">
+      <h2 id="h">{setup.update ? `Updating ${frame.app}.` : `Installing ${frame.app}.`}</h2>
+      <p className="lede">Keep it plugged in.</p>
+      <ol className="join">
+        {rows.map((r, i) => (
+          <li key={r.id} className={i < at ? 'done' : i === at ? 'cur' : ''}>
+            {r.text(frame.app)}{i === at && sub && <span className="sub-step">{sub}</span>}
+          </li>
+        ))}
+      </ol>
+      {note && <p className="small" aria-hidden="true">{note}</p>}
+      <p className="visually-hidden" role="status">{says}</p>
+      <div className="bar wait"><i /></div>
+    </section>
+  );
+}
 
 /** Language, time zone and clock, defaulting to this computer's; then the app goes in. */
 function Settings({ s, session, frame, setup }: P & { setup: Extract<Setup, { phase: 'settings' }> }) {
@@ -160,11 +221,17 @@ function Settings({ s, session, frame, setup }: P & { setup: Extract<Setup, { ph
   }, [here]);
   const tzHere = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const tzs = useMemo(zones, []);
-  const [locale, setLocale] = useState(() => (LOCALES.includes(here) ? here : LOCALES.find((t) => t.split('-')[0] === here.split('-')[0]) ?? ''));
-  const [tz, setTz] = useState(tzs.includes(tzHere) ? tzHere : '');
-  const [clock, setClock] = useState(new Intl.DateTimeFormat(here, { hour: 'numeric' }).resolvedOptions().hour12 ? '12' : '24');
-  const [keyboard, setKeyboard] = useState(true);
-  const busy = !!setup.busy;
+  const was = setup.chosen;
+  const [locale, setLocale] = useState(() => was ? was.locale ?? '' : (LOCALES.includes(here) ? here : LOCALES.find((t) => t.split('-')[0] === here.split('-')[0]) ?? ''));
+  const [tz, setTz] = useState(was ? was.timezone ?? '' : tzs.includes(tzHere) ? tzHere : '');
+  const [clock, setClock] = useState(was ? (was.clock24 ? '24' : '12') : new Intl.DateTimeFormat(here, { hour: 'numeric' }).resolvedOptions().hour12 ? '12' : '24');
+  const [keyboard, setKeyboard] = useState(was?.keyboard ?? true);
+  const busy = !!setup.installing;
+  // kept as it changes, so going to another set-up step and back doesn't lose an edit not yet installed
+  useEffect(() => {
+    session.keepSettings({ locale: locale || undefined, timezone: tz || undefined, clock24: clock === '24', keyboard });
+  }, [session, locale, tz, clock, keyboard]);
+  if (setup.installing) return <Installing frame={frame} setup={setup} />;
   return (
     <section className="card" aria-labelledby="h">
       <h2 id="h">{setup.update ? `Update ${frame.app}.` : 'A few settings.'}</h2>
@@ -190,7 +257,6 @@ function Settings({ s, session, frame, setup }: P & { setup: Extract<Setup, { ph
         </RadioGroup.Root>
         <label className="check"><input type="checkbox" checked={keyboard} onChange={(e) => setKeyboard(e.target.checked)} disabled={busy} /> On-screen keyboard</label>
       </div>
-      {setup.busy && <p className="status work" role="status">{setup.busy}</p>}
       {setup.error && <p className="status err" role="alert">{setup.error}</p>}
       <div className="foot">
         <span className="small">About a minute.</span>
@@ -250,6 +316,19 @@ function Wifi({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'wifi'
       </section>
     );
   }
+  if (setup.on && !setup.changing) {
+    const { ssid, ip } = setup.on;
+    return (
+      <section className="card" aria-labelledby="h">
+        <h2 id="h">{ssid ? `Connected to ${ssid}.` : 'Connected to Wi-Fi.'}</h2>
+        <p className="lede">The panel is on this network already, at {ip}. Keep it, or use another network.</p>
+        <div className="foot">
+          <button type="button" className="link" disabled={!!s.busy} onClick={() => void session.click('wifi-scan', () => session.scanWifi())}>Use another network</button>
+          <button type="button" className="btn ember" disabled={!!s.busy} onClick={() => void session.click('ha', () => session.homeAssistant())}>Continue</button>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="card" aria-labelledby="h">
       <h2 id="h">Which Wi-Fi?</h2>
@@ -274,7 +353,9 @@ function Wifi({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'wifi'
         </>
       )}
       <div className="foot">
-        <button type="button" className="link" disabled={!!s.busy} onClick={() => void session.click('ha', () => session.homeAssistant())}>Skip, do it on the panel</button>
+        <button type="button" className="link" disabled={!!s.busy} onClick={() => void session.click('ha', () => session.homeAssistant())}>
+          {setup.on ? `Keep ${setup.on.ssid ?? 'its Wi-Fi'}` : 'Skip, do it on the panel'}
+        </button>
         {setup.unreachable
           ? <button type="button" className="btn ember" disabled={!!s.busy} onClick={() => void session.click('wifi', () => session.wifi())}>Try again</button>
           : <button type="button" className="btn ember" disabled={!setup.networks || !!s.busy} onClick={() => void session.click('join', () => session.joinWifi(isOther ? other : pick, secure ? psk : ''))}>Connect</button>}
@@ -286,13 +367,14 @@ function Wifi({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'wifi'
 /** 6 · Home Assistant: the address it found, and sign-in on the panel's own page (no token in this browser). */
 function HomeAssistant({ s, session, setup }: P & { setup: Extract<Setup, { phase: 'ha' }> }) {
   const suggested = setup.ha.url || setup.ha.discovered || 'http://homeassistant.local:8123';
-  const [typed, setTyped] = useState<string>();
+  // kept in the session as it is typed, so another set-up step and back doesn't lose it
+  const [typed, setTyped] = useState<string | undefined>(() => session.haAddress);
   const url = typed ?? suggested; // follows what the panel finds until the person types
   return (
     <section className="card" aria-labelledby="h">
       <h2 id="h">{setup.ha.signedIn ? 'Signed in to Home Assistant.' : 'Sign in to Home Assistant.'}</h2>
       <p className="lede">{setup.ha.discovered ? `Found at ${new URL(setup.ha.discovered).host}.` : 'Not found by itself. Type its address.'}</p>
-      <label className="field"><span>Address</span><input className="input" value={url} onChange={(e) => setTyped(e.target.value)} inputMode="url" autoComplete="off" /></label>
+      <label className="field"><span>Address</span><input className="input" value={url} onChange={(e) => { setTyped(e.target.value); session.haAddress = e.target.value; }} inputMode="url" autoComplete="off" /></label>
       {!setup.ha.signedIn && <button type="button" className="btn ghost" style={{ justifySelf: 'start' }} disabled={!!s.busy} onClick={() => void session.click('sign-in', () => session.signIn(url.trim()))}>Sign in</button>}
       {setup.ha.signedIn && <p className="status ok">The panel is signed in.</p>}
       {setup.note && !setup.ha.signedIn && <p className="status" role="status">{setup.note}</p>}
@@ -337,23 +419,43 @@ function Copy({ value }: { value: string }) {
   }}>{t}</button>;
 }
 
+function PlanStep({ st }: { st: RadioStep }) {
+  return (
+    <li style={{ display: 'grid', gap: 6, border: '1px solid var(--edge)', borderRadius: 14, padding: '12px 14px' }}>
+      <b style={{ fontWeight: 500 }}>{st.title}</b>
+      <span className="small" style={{ color: 'var(--muted)' }}>{st.body}</span>
+      {st.kv && <dl className="kv">{st.kv.map(([k, v, copy]) => <span key={k} style={{ display: 'contents' }}><dt>{k}</dt><dd>{copy ? <><code>{v}</code><Copy value={v} /></> : v}</dd></span>)}</dl>}
+      {st.link && (st.primary
+        ? <a className="btn ember" style={{ justifySelf: 'start' }} href={st.link} target="_blank" rel="noopener">{st.primary}</a>
+        : <a className="link" href={st.link} target="_blank" rel="noopener">Open in Home Assistant</a>)}
+      {st.how && (
+        <div className="how">
+          <b>{st.how.title}</b>
+          <span className="small">{st.how.body}</span>
+          <a className="link" href={st.how.link} target="_blank" rel="noopener">{st.how.linkText}</a>
+        </div>
+      )}
+    </li>
+  );
+}
+
 function RadioNext({ session, setup }: P & { setup: Extract<Setup, { phase: 'radio-next' }> }) {
   const { plan } = setup;
+  const led = plan.steps.some((st) => st.primary);
+  const [more, setMore] = useState(false);
+  const list = { listStyle: 'none', margin: 0, padding: 0 } as const;
   return (
     <section className="card" aria-labelledby="h">
       <h2 id="h">{plan.title}</h2>
       <p className="lede">{plan.lead}</p>
-      <ol className="next" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-        {plan.steps.map((st) => (
-          <li key={st.title} style={{ display: 'grid', gap: 6, border: '1px solid var(--edge)', borderRadius: 14, padding: '12px 14px' }}>
-            <b style={{ fontWeight: 500 }}>{st.title}</b>
-            <span className="small" style={{ color: 'var(--muted)' }}>{st.body}</span>
-            {st.kv && <dl className="kv">{st.kv.map(([k, v, copy]) => <span key={k} style={{ display: 'contents' }}><dt>{k}</dt><dd>{copy ? <><code>{v}</code><Copy value={v} /></> : v}</dd></span>)}</dl>}
-            {st.link && <a className="link" href={st.link} target="_blank" rel="noopener">Open in Home Assistant</a>}
-          </li>
-        ))}
-      </ol>
-      <div className="foot"><span /><button type="button" className="btn ember" onClick={() => session.finish()}>Finish</button></div>
+      <ol className="next" style={list}>{plan.steps.map((st) => <PlanStep key={st.title} st={st} />)}</ol>
+      {plan.more && (
+        <Collapsible.Root open={more} onOpenChange={setMore} className="tech">
+          <Collapsible.Trigger className="link" style={{ justifySelf: 'start' }}>{more ? 'Less' : 'More help'}</Collapsible.Trigger>
+          <Collapsible.Content><ol className="next" style={list}>{plan.more.map((st) => <PlanStep key={st.title} st={st} />)}</ol></Collapsible.Content>
+        </Collapsible.Root>
+      )}
+      <div className="foot"><span /><button type="button" className={`btn ${led ? 'ghost' : 'ember'}`} onClick={() => session.finish()}>Finish</button></div>
     </section>
   );
 }
@@ -381,7 +483,7 @@ export function SetUp(p: P) {
   }
 }
 
-/** 7 · Done: in one line. The backup is one row with a download; undo is a link. */
+/** 7 · Done: in one line. The backup is one row whose download is the ember action; undo is a link. */
 export function Done({ s, session }: P) {
   const d = s.done!;
   return (
@@ -391,13 +493,14 @@ export function Done({ s, session }: P) {
       <p className="lede">{d.body}</p>
       {d.backup && (
         <div className="well">
-          <span className="grow"><span>{d.backup.hint}</span><span className="small">{d.backup.name} · {d.backup.info}</span></span>
-          <button type="button" className="btn ghost" onClick={() => session.downloadBackup()}>Download</button>
+          <span className="grow"><span>{d.backup.hint}</span><span className="small">{d.backup.name} · {d.backup.info}</span><span className="small">The latest backup made in this browser tab.</span></span>
+          <button type="button" className="btn ember" onClick={() => void session.downloadBackup()}>Download</button>
         </div>
       )}
+      {d.backup?.error && <p className="status err" role="alert">{d.backup.error}</p>}
       <div className="foot">
         {s.flow === 'install' ? <button type="button" className="link" onClick={() => void session.click('undo', () => session.openUndo())}>Undo</button> : <span />}
-        <Link className="btn ghost" href="/">Back to Kiln</Link>
+        <Link className={`btn ${d.backup ? 'ghost' : 'ember'}`} href="/">Back to Kiln</Link>
       </div>
     </section>
   );

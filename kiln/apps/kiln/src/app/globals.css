@@ -76,6 +76,17 @@ code { font: 500 0.82em var(--f-mono); background: var(--well); padding: 2px 6px
 .todo .mk { border: 1.5px dashed var(--faint); }
 .turn .mk { background: var(--turn); box-shadow: 0 0 0 4px color-mix(in srgb, var(--turn) 22%, transparent); }
 .bad .mk { background: var(--problem); }
+.steps li.has-sub { flex-wrap: wrap; }
+/* set-up's own steps under it: the ones done link back */
+.sub { list-style: none; margin: 2px 0 0 24px; padding: 0; display: grid; gap: 2px; flex-basis: 100%; }
+.steps .sub li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--faint); padding: 3px 0; background: none; border: 0; border-radius: 0; }
+.sub li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; border: 1.5px dashed var(--faint); flex: none; }
+.steps .sub li.done { color: var(--muted); }
+.sub li.done::before { border: 0; background: var(--green); }
+.steps .sub li.now { color: var(--fg); }
+.sub li.now::before { border: 1.5px solid var(--ember-b); }
+.sub a { color: inherit; text-decoration: none; }
+.sub a:hover { color: var(--fg); text-decoration: underline; }
 .rail-stack { margin-top: 18px; }
 
 /* ---- the stack ---- */
@@ -144,7 +155,9 @@ h2.huge { font-size: 44px; font-weight: 200; }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 999px; padding: 11px 20px; font-weight: 500; font-size: 15px; border: 1px solid transparent; cursor: pointer; text-decoration: none; background: none; }
 .btn:disabled { opacity: 0.45; cursor: default; }
-.btn.ember { background: var(--ember-gradient); color: var(--on-ember); box-shadow: 0 8px 30px -10px color-mix(in srgb, var(--ember-b) 70%, transparent); }
+/* border-box: the gradient spans the transparent border too, instead of repeating a sliver of its
+   far end under it at both ends of the pill */
+.btn.ember { background: var(--ember-gradient) border-box; color: var(--on-ember); box-shadow: 0 8px 30px -10px color-mix(in srgb, var(--ember-b) 70%, transparent); }
 .btn.ghost { border-color: var(--edge); color: var(--fg); background: var(--glass); }
 .btn.pulsing { animation: glowp 1.8s ease-in-out infinite; }
 @keyframes glowp { 50% { box-shadow: 0 8px 40px -6px color-mix(in srgb, var(--ember-b) 95%, transparent); } }
@@ -181,8 +194,13 @@ h2.huge { font-size: 44px; font-weight: 200; }
 .recview svg { display: block; width: 100%; height: auto; }
 .beats { display: flex; gap: 6px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
 .beats li { font-size: 12.5px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--edge); color: var(--faint); transition: background 0.3s, color 0.3s; }
+/* where the animation is, drawn like the rail's current step: a progress marker, not a button */
+.beats li { display: inline-flex; align-items: center; gap: 7px; }
+.beats li::before { content: ""; width: 7px; height: 7px; border-radius: 50%; border: 1.5px dashed var(--faint); flex: none; }
 .beats li.past { color: var(--muted); }
-.beats li.on { background: var(--ember-gradient); color: var(--on-ember); border-color: transparent; }
+.beats li.past::before { border: 0; background: var(--muted); }
+.beats li.on { color: var(--fg); background: var(--glass); border-color: color-mix(in srgb, var(--fg) 24%, transparent); }
+.beats li.on::before { border: 1.5px solid var(--ember-b); box-shadow: 0 0 8px color-mix(in srgb, var(--ember-b) 50%, transparent); }
 
 .list { display: grid; border: 1px solid var(--edge); border-radius: 14px; overflow: hidden; }
 .opt { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border: 0; border-top: 1px solid var(--edge); background: none; text-align: left; cursor: pointer; width: 100%; }
@@ -222,8 +240,11 @@ h2.huge { font-size: 44px; font-weight: 200; }
 .join li.cur { color: var(--fg); }
 .join li.cur::before { content: "→"; color: var(--ember-b); }
 .join li.fail { color: var(--problem-ink); }
+.join .sub-step { display: block; margin-left: 18px; font-size: 13px; color: var(--muted); }
 .join li.fail::before { content: "!"; color: var(--problem); }
 .next { display: grid; gap: 12px; }
+.how { display: grid; gap: 4px; margin-top: 6px; padding: 10px 12px; border-radius: 10px; background: var(--well); }
+.how b { font-weight: 500; font-size: 13.5px; }
 .next > div { display: grid; gap: 6px; border: 1px solid var(--edge); border-radius: 14px; padding: 12px 14px; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 4px 0 0; font-size: 13.5px; }
 .kv dt { color: var(--faint); }

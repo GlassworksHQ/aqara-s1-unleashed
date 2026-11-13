@@ -29,6 +29,22 @@ export const DEBLOAT = [
 /** Aqara's radio + cloud services, started again on undo (provider-first order, docs/radio.md). */
 const AQARA_SERVICES = ['zigbee_cpcd', 'zigbee_socat', 'zigbee_zigbeed', 'zigbee_host', 'zigbee_agent', 'ha_matter', 'ha_master'];
 
+/** Each APK provision installs: S1 Kiosk, and the on-screen keyboard when the recipe has it. */
+export type AppApk = 'kiosk' | 'keyboard';
+
+/**
+ * What the panel is doing while the app goes in, at the commands that start each part:
+ * `apk` `copy`, an APK is pushed, then `install`, its `pm install` runs (for S1 Kiosk on Android 10 it
+ * returns only after dex2oat has optimised it, about 22 s on an S1, docs/research/web-installer.md
+ * §7.1, while Android stops and restarts the app twice); `home`, permissions, home app, DND and the
+ * debloat; `prefs`, time zone, language and clock; `start`, the app starts with them (once more).
+ */
+export type AppPhase =
+  | { step: 'apk'; apk: AppApk; stage: 'copy' | 'install' }
+  | { step: 'home' }
+  | { step: 'prefs' }
+  | { step: 'start' };
+
 export interface ProvisionOptions {
   kioskApk: Uint8Array;
   haUrl?: string;
@@ -49,6 +65,9 @@ export interface ProvisionOptions {
    * re-sent), false to stop with nothing changed. Without it, provision stops.
    */
   confirmSwitch?: (plan: SwitchPlan) => Promise<boolean>;
+
+  /** Called as each AppPhase begins, in order. */
+  onPhase?: (phase: AppPhase) => void;
 }
 
 /** What a signing-key switch did (provision's result, when there was one). */
@@ -128,14 +147,15 @@ class Runner {
     const r = await this.p.run(cmd);
     return r.out;
   }
-  async install(name: string, apk: Uint8Array, grant: boolean) {
-    const out = await this.tryInstall(name, apk, grant);
+  async install(name: string, apk: Uint8Array, grant: boolean, pushed?: () => void) {
+    const out = await this.tryInstall(name, apk, grant, pushed);
     if (!/Success/.test(out)) throw new Error(`installing ${name} failed: ${out.trim()}`);
   }
-  /** pm install -r; returns pm's output either way (the caller decides what a failure means). */
-  async tryInstall(name: string, apk: Uint8Array, grant: boolean): Promise<string> {
+  /** pm install -r; returns pm's output either way (the caller decides what a failure means). `pushed`: the APK is on the panel. */
+  async tryInstall(name: string, apk: Uint8Array, grant: boolean, pushed?: () => void): Promise<string> {
     const tmp = `/data/local/tmp/${name}.apk`;
     await this.p.push(tmp, apk, 0o644);
+    pushed?.();
     try {
       return (await this.p.run(`pm install -r ${grant ? '-g ' : ''}${tmp}`)).out;
     } finally {
@@ -155,6 +175,17 @@ class Runner {
   }
 }
 
+/**
+ * S1 Kiosk's version on the panel, from `dumpsys package` (read-only); undefined when it isn't
+ * installed. `signal` cancels the read.
+ */
+export async function kioskVersion(p: PanelShell, signal?: AbortSignal): Promise<{ name?: string; code: number } | undefined> {
+  const dump = (await p.run(`dumpsys package ${PKG}`, signal)).out;
+  const code = /versionCode=(\d+)/.exec(dump)?.[1];
+  const name = /versionName=(\S+)/.exec(dump)?.[1];
+  return code ? { name: name === 'null' ? undefined : name, code: Number(code) } : undefined;
+}
+
 export async function deviceInfo(p: PanelShell): Promise<{ model: string; sdk: string }> {
   const model = (await p.run('getprop ro.product.model')).out.trim();
   const sdk = (await p.run('getprop ro.build.version.sdk')).out.trim();
@@ -169,9 +200,11 @@ export async function provision(p: PanelShell, opts: ProvisionOptions, onStep: S
   r.detail(`model=${model} sdk=${sdk}`);
   if (sdk !== '29') r.detail('WARNING: expected Android 10 (sdk 29); continuing');
 
+  const phase = opts.onPhase ?? (() => {});
   r.step('Install kiosk app');
+  phase({ step: 'apk', apk: 'kiosk', stage: 'copy' });
   let sw: SwitchOutcome | undefined;
-  const pmOut = await r.tryInstall('s1kiosk', opts.kioskApk, true);
+  const pmOut = await r.tryInstall('s1kiosk', opts.kioskApk, true, () => phase({ step: 'apk', apk: 'kiosk', stage: 'install' }));
   if (!/Success/.test(pmOut)) {
     if (!isKeyMismatch(pmOut)) throw new Error(`installing s1kiosk failed: ${pmOut.trim()}`);
     const plan = await planSwitch(p);
@@ -182,6 +215,7 @@ export async function provision(p: PanelShell, opts: ProvisionOptions, onStep: S
     sw.notes.forEach((n) => r.detail(n));
   }
 
+  phase({ step: 'home' });
   r.step('Permissions');
   await r.try(`pm grant ${PKG} android.permission.RECORD_AUDIO`);
   await r.try(`pm grant ${PKG} android.permission.CAMERA`);
@@ -206,7 +240,8 @@ export async function provision(p: PanelShell, opts: ProvisionOptions, onStep: S
 
   if (opts.keyboardApk) {
     r.step('Keyboard');
-    await r.install('keyboard', opts.keyboardApk, false);
+    phase({ step: 'apk', apk: 'keyboard', stage: 'copy' });
+    await r.install('keyboard', opts.keyboardApk, false, () => phase({ step: 'apk', apk: 'keyboard', stage: 'install' }));
     const ime = (await r.try('ime list -a -s')).split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.includes('baidu'));
     if (ime) {
       await r.run(`ime enable ${q(ime)}`);
@@ -215,6 +250,7 @@ export async function provision(p: PanelShell, opts: ProvisionOptions, onStep: S
     }
   }
 
+  phase({ step: 'prefs' });
   if (opts.timezone) {
     if (!/^[A-Za-z0-9_+\-/]+$/.test(opts.timezone)) throw new Error(`bad time zone ${opts.timezone}`);
     r.step(`Time zone ${opts.timezone}`);
@@ -233,6 +269,7 @@ export async function provision(p: PanelShell, opts: ProvisionOptions, onStep: S
     await r.run(`settings put system time_12_24 ${opts.clock24 ? 24 : 12}`);
   }
 
+  phase({ step: 'start' });
   r.step('Start the kiosk');
   const extras = [opts.haUrl ? `--es url ${q(opts.haUrl)}` : '', opts.locale ? `--es set_locale ${q(opts.locale)}` : ''].filter(Boolean);
   await r.run(`am start -n ${ACT}${extras.length ? ` ${extras.join(' ')}` : ''}`);

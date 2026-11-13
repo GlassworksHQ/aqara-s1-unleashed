@@ -20,6 +20,9 @@ import dev.glassworks.platform.PlatformApi
  *
  * [promote] runs again whenever a grant may have changed. It calls [startWith] only when the
  * wanted types differ from the ones the service runs with.
+ *
+ * Call it on the main thread only. [types] is not synchronized, and `startForeground` belongs to
+ * the service's thread; callbacks from other threads post to it first.
  */
 class KioskForeground(
     private val platform: PlatformApi,
