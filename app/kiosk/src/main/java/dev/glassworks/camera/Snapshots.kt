@@ -82,7 +82,14 @@ class FrameEgress(
     }
 
     companion object {
-        /** A little longer than Home Assistant's 5 s gap between camera stream requests. */
+        /**
+         * A little longer than Home Assistant's 5 s gap between camera stream requests. It stands in for
+         * "until the still has been sent": [CameraEntity] hands the JPEG to its connection's camera
+         * thread and says nothing when the last chunk is written. A still of a few hundred KB goes out
+         * well within it on a LAN. The bound is `CameraEntity.MAX_FRAME_BYTES` (8 MiB) on a slow link:
+         * at 1 Mbit/s that takes about a minute, and the indicator would go off first. The camera
+         * should send stills far smaller than that.
+         */
         const val HOLD_MS = 6_000L
     }
 }

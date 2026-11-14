@@ -83,6 +83,16 @@ class SnapshotsTest {
         val cam = snapshotCamera({ jpeg }, { CameraPolicy(false, CameraUse.PRESENCE_AND_SNAPSHOTS) }, egress)
         assertTrue(cam.authOnly)
         assertEquals("camera", cam.objectId)
-        assertEquals(SNAPSHOT_FPS, cam.maxFps)
+        assertEquals(2f, cam.maxFps)
+    }
+
+    @Test fun theDefaultHoldIsSixSeconds() {
+        val seen = mutableListOf<Boolean>()
+        val e = FrameEgress({ now }, { delay, r -> timers += (now + delay) to r }) { seen += it }
+        e.still()
+        advance(5_999)
+        assertTrue(e.leaving)
+        advance(6_000)
+        assertFalse(e.leaving)
     }
 }

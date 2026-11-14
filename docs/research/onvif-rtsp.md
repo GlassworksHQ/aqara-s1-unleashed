@@ -2,11 +2,13 @@
 
 **Status (2026-11-13): untested.** Desk research for the camera pane's opt-in stream (#117). Nothing
 is built yet. HA's needs are read from its source; UniFi Protect's from Ubiquiti's help page and an
-MIT proxy that Protect adopts. No Protect console has met a panel.
+MIT proxy whose author reports that Protect adopts it. No Protect console has met a panel, and we
+haven't run the proxy.
 
 Device: none. Sources: `home-assistant/core` `dev` branch, `homeassistant/components/onvif/`
 (read 2026-11-13); `onvif-zeep-async` 4.3.0 (`openvideolibs/python-onvif-zeep-async`, branch `async`);
-`connorgallopo/rtsp-to-onvif` (MIT, tested on Protect 7.1.60).
+`connorgallopo/rtsp-to-onvif` (MIT; a fork of `p10tyr/rtsp-to-onvif`; its README reports Protect
+7.1.60 with Hikvision-family cameras).
 
 ## Question
 
@@ -40,7 +42,10 @@ write it or take a library?
    - Ubiquiti names no ONVIF profile. Its notes: time sync, Digest and WS-UsernameToken auth, and
      "if streams change after adoption, remove and re-add the camera". Motion has to come from the
      camera's own events.
-   - rtsp-to-onvif is adopted by Protect 7.1.60. Its ONVIF server answers only `GetCapabilities`,
+   - rtsp-to-onvif is a fork of [p10tyr/rtsp-to-onvif](https://github.com/p10tyr/rtsp-to-onvif), which
+     built on Daniela Hase's virtual ONVIF server. Its README says Protect 7.1.60 adopts it, tested by
+     its author with Hikvision-family cameras only ("Not tested: … Protect versions other than 7.1.60,
+     and other brands"). That is the author's test, not ours. Its ONVIF server answers only `GetCapabilities`,
      `GetDeviceInformation`, `GetNetworkInterfaces`, `GetProfiles`, `GetServices`, `GetSnapshotUri`,
      `GetStreamUri`, `GetSystemDateAndTime`, `GetVideoEncoderConfigurationOptions` and
      `GetVideoSources`, plus a WS-Discovery `ProbeMatch` for `NetworkVideoTransmitter`

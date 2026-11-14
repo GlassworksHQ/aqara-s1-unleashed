@@ -53,7 +53,10 @@ fun interface PersonDetector {
     fun score(frame: LumaFrame): Float
 }
 
-/** Where frames go. Called on one thread that isn't the main thread. */
+/**
+ * Where frames go. Called on one thread that isn't the main thread. While the source is open, frames
+ * keep coming; if none comes for [CameraPresence.STALE_MS], presence counts the camera as gone.
+ */
 interface FrameSink {
     fun frame(frame: LumaFrame)
 
@@ -63,7 +66,10 @@ interface FrameSink {
 
 /** The camera, as presence sees it. The frame's implementation picks the camera and the size. */
 fun interface FrameSource {
-    /** Starts delivering about [fps] frames a second to [sink]. Closing stops them and releases the camera. */
+    /**
+     * Starts delivering about [fps] frames a second to [sink]. Closing stops them and releases the
+     * camera; it may be called from any thread, also before the first frame.
+     */
     fun open(fps: Float, sink: FrameSink): AutoCloseable
 }
 
@@ -105,9 +111,12 @@ class PresenceFilter(
 /**
  * A [PresenceSource] from camera frames, for frames with a camera and no presence sensor. It looks at
  * about [fps] frames a second and drops the rest. Frames go to [detector] and nowhere else: none is
- * kept or sent. The raw value of each reading is the detector's score, or -1 when the camera was lost.
+ * kept or sent. The raw value of each reading is the detector's score, or -1 when there is none: the
+ * camera was lost, went silent for [STALE_MS], or the detector failed. Each of those reads as far, and
+ * [onProblem] gets why, once until frames are scored again.
  *
- * [clock] is `SystemClock.elapsedRealtime`; [post] runs a reading on the main thread.
+ * [clock] is `SystemClock.elapsedRealtime`; [post] runs a reading on the main thread, and [after] runs
+ * one there after a delay.
  */
 class CameraPresence(
     private val camera: FrameSource,
@@ -116,6 +125,8 @@ class CameraPresence(
     private val filter: PresenceFilter = PresenceFilter(),
     private val clock: () -> Long = android.os.SystemClock::elapsedRealtime,
     private val post: (Runnable) -> Unit = Handler(Looper.getMainLooper())::post,
+    private val after: (delayMs: Long, Runnable) -> Unit = { ms, r -> Handler(Looper.getMainLooper()).postDelayed(r, ms) },
+    private val onProblem: (why: String) -> Unit = {},
 ) : PresenceSource {
     init { require(fps > 0f) { "fps must be positive" } }
 
@@ -124,11 +135,9 @@ class CameraPresence(
 
     override fun start(context: Context, onReading: (near: Boolean, raw: Float) -> Unit) {
         val s = Session(onReading)
-        synchronized(lock) {
-            session?.close()
-            session = s
-        }
-        s.handle = camera.open(fps, s)
+        val old = synchronized(lock) { session.also { session = s } }
+        old?.close()
+        s.attach(camera.open(fps, s))
     }
 
     override fun stop(context: Context) {
@@ -138,37 +147,88 @@ class CameraPresence(
     /** A camera has no distance to set: how near counts is how big a person looks to the model. */
     override fun setRange(context: Context, metres: Float): String? = if (metres <= 0f) null else NO_RANGE
 
+    // Every field is guarded by [lock], which the filter shares across sessions.
     private inner class Session(private val onReading: (Boolean, Float) -> Unit) : FrameSink {
-        @Volatile var handle: AutoCloseable? = null
-        @Volatile private var closed = false
-        private var lastMs = Long.MIN_VALUE
+        private var handle: AutoCloseable? = null
+        private var closed = false
+        private var lastScoredMs = Long.MIN_VALUE
+        private var lastFrameMs = 0L
+        private var watching = false
+        private var failing = false
+
+        /** The camera [open] returned. A [close] that came first closes it at once. */
+        fun attach(h: AutoCloseable) {
+            val lateClose = synchronized(lock) { if (!closed) handle = h; closed }
+            if (lateClose) h.close()
+        }
 
         override fun frame(frame: LumaFrame) {
-            if (closed) return
             val now = clock()
-            if (lastMs != Long.MIN_VALUE && now - lastMs < (1000f / fps).toLong()) return
-            lastMs = now
-            val score = detector.score(frame)
-            val near = synchronized(lock) { if (closed) return else filter.update(score, now) }
-            post { if (!closed) onReading(near, score) }
+            synchronized(lock) {
+                if (closed) return
+                lastFrameMs = now
+                if (!watching) { watching = true; after(STALE_MS, ::checkStale) }
+                if (lastScoredMs != Long.MIN_VALUE && now - lastScoredMs < (1000f / fps).toLong()) return
+                lastScoredMs = now
+            }
+            val score = try {
+                detector.score(frame)
+            } catch (e: Exception) {
+                fail("the detector failed: ${e.javaClass.simpleName}")
+                return
+            }
+            val near = synchronized(lock) {
+                if (closed) return
+                failing = false
+                filter.update(score, now)
+            }
+            post { if (isOpen()) onReading(near, score) }
         }
 
-        override fun lost(why: String) {
-            if (!closed) post { if (!closed) onReading(false, -1f) }
+        override fun lost(why: String) = fail("the camera stopped: $why")
+
+        /** Far, and why, once until a frame is scored again. */
+        private fun fail(why: String) {
+            val first = synchronized(lock) {
+                if (closed) return
+                filter.reset()
+                (!failing).also { failing = true }
+            }
+            post {
+                if (!isOpen()) return@post
+                if (first) onProblem(why)
+                onReading(false, -1f)
+            }
         }
+
+        private fun checkStale() {
+            val idle = synchronized(lock) {
+                watching = false
+                if (closed) return
+                (clock() - lastFrameMs).also { if (it < STALE_MS) { watching = true; after(STALE_MS - it, ::checkStale) } }
+            }
+            if (idle >= STALE_MS) fail("no frames for ${idle / 1000} s")
+        }
+
+        private fun isOpen() = synchronized(lock) { !closed }
 
         fun close() {
-            synchronized(lock) {
+            val h = synchronized(lock) {
                 closed = true
                 filter.reset()
+                handle.also { handle = null }
             }
-            handle?.close()
+            h?.close()
         }
     }
 
     companion object {
         /** Enough to notice someone walking up within a second, cheap enough to run all day. */
         const val DEFAULT_FPS = 2f
+
+        /** A camera that sends nothing this long counts as gone, so a stuck source can't keep the screen on. */
+        const val STALE_MS = 5_000L
+
         const val NO_RANGE = "The camera has no range setting"
     }
 }
