@@ -769,6 +769,23 @@ class Restart(unittest.TestCase):
         # (This short run sends no taps, so light's and heavy's tap aren't measured; typical's fails.)
         self.assertEqual([m for m in grade.grade_summary(out).get("missing") or [] if m.startswith("typical.")], [])
 
+    def test_the_screen_stays_on_through_a_slow_restart(self):
+        """s1rtc7 run 2: the screen went off 20.4 s after the force-stop, before the kiosk's first
+        frame (the S1's 20 s night timeout), and the restart then waited 280 s. Here the fake's
+        screen sleeps 3 s after the last wake or touch, through a 7 s restart: the wake key from the
+        stop on keeps it on, and every later phase has its own nudge."""
+        nudged = dict(FAKE_SCREEN_SLEEP_S="3", FAKE_RESTART_SLOW="7", GW_PERF_RESTART_WAKE_S="1",
+                      GW_PERF_KEEP_AWAKE_S="1", GW_PERF_LIVE_IDLE_WAKE_S="1")
+        p, c, _ = self.run_short(90, **nudged)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNone(c["error"])
+        self.assertNotIn("screen_off", c)
+        self.assertGreaterEqual(c["restart_wakes"], 5)                 # 7 s at one a second, and the relaunch's
+        # Without the restart's nudges the same fake screen goes off in the restart, as on the S1.
+        p, c, _ = self.run_short(90, **dict(nudged, GW_PERF_RESTART_WAKE_S="1000"))
+        self.assertEqual(c["screen_off"][0]["during"], "the restart", c.get("screen_off"))
+        self.assertIn("first the restart", c["error"])
+
     def test_a_slow_view_that_keeps_going_isnt_cut_off(self):
         """Protocol 8 (#202, s1rtc4): heavy was usable after 43 s and still working at 300 s, before its
         swipes. The usable deadline covers only a view that never became usable; one that keeps

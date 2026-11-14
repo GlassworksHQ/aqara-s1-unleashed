@@ -40,6 +40,13 @@ def now():
 
 
 def shell(cmd):
+    if os.environ.get("FAKE_SCREEN_SLEEP_S") and ("KEYCODE_WAKEUP" in cmd or "--es screen on" in cmd
+                                                   or cmd.startswith(("input swipe", "input tap"))):
+        save("awake_at.json", time.time())       # what keeps the fake screen on (a wake, a touch)
+        save("asleep.json", False)
+        if "KEYCODE_WAKEUP" in cmd:
+            save("nudges.json", state("nudges.json", 0) + 1)
+            return ""
     props = {"ro.product.manufacturer": "Example", "ro.product.model": "Test Panel", "ro.build.version.release": "10",
              "ro.build.version.sdk": "29", "ro.product.cpu.abi": "armeabi-v7a", "ro.product.cpu.abilist": "armeabi-v7a,armeabi",
              "ro.board.platform": "testsoc", "ro.hardware": "testhw"}
@@ -530,12 +537,24 @@ def take_commands(base):
         save("refnonce.json", [cmd["nonce"], f"/clarity-ref/{cmd['view']}?{urllib.parse.urlencode(q)}"])
 
 
+def screen_timeout(after_s):
+    """As the S1 at night: the screen goes off after_s seconds after the last wake or touch."""
+    save("awake_at.json", state("awake_at.json") or time.time())
+    while True:
+        time.sleep(0.1)
+        if not state("asleep.json") and time.time() - (state("awake_at.json") or 0) > after_s:
+            save("asleep.json", True)
+            line("PowerManagerService", "Going to sleep due to timeout (uid 1000)...", pid=1919)
+
+
 def logcat():
     print("    1.000  1  1 I old: line from before", flush=True)
     if os.environ.get("FAKE_HA_URL"):
         threading.Thread(target=take_commands, args=(os.environ["FAKE_HA_URL"],), daemon=True).start()
     if os.environ.get("FAKE_LOGCAT_NOISE"):
         threading.Thread(target=noise, args=(float(os.environ["FAKE_LOGCAT_NOISE"]),), daemon=True).start()
+    if os.environ.get("FAKE_SCREEN_SLEEP_S"):
+        threading.Thread(target=screen_timeout, args=(float(os.environ["FAKE_SCREEN_SLEEP_S"]),), daemon=True).start()
     end = now() + 60
     while now() < end:
         if state("nonce.json"):

@@ -11,8 +11,9 @@
 #     (`--ez voice_enabled`, `--ez sendspin_enabled`, `--ez wall_base_enabled`, `--ez time_zone_enabled`,
 #     `--ez diagnostics_enabled`), restarts the app after each change (`--ez restart true`), and puts
 #     them back to the given settings on exit.
-#   - Sends `--es screen on` (the kiosk's own wake intent) during warm-ups, so the screen stays on
-#     without changing the idle timeout.
+#   - Sends `--es screen on` (the kiosk's own wake intent) during warm-ups, and Android's wake key
+#     (`input keyevent KEYCODE_WAKEUP`) through each restart, so the screen stays on without changing
+#     the idle timeout.
 #   - Taps each reference dashboard's "Living room" toggle (`input tap`) and swipes it (`input swipe`),
 #     only where and when the page asks, to measure taps and scrolling.
 #   - Force-stops the app for each cold start (KEYCODE_WAKEUP first, so the screen is on); the app

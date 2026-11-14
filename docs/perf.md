@@ -141,8 +141,12 @@ tools/perf/report.py <dir>` rebuilds the report from the raw files at any time, 
   word, drive the wall base, keep the time zone or sample its diagnostics.
 - **The screen stays on** because the runner sends the kiosk's own wake intent (`--es screen on`):
   just before each view opens, every 8 s while it opens and between views, and when it goes live.
-  Not while a view is live (its taps and swipes are touches, which keep the screen on) and not
-  during the restart. It changes no setting. If the screen goes off anyway during a graded run
+  While a view is live only once nothing has touched the panel for 10 s (its taps and swipes are
+  touches). During the restart, from the force-stop until the restart page is done (and through a
+  recovery's restart), Android's own wake key (`input keyevent KEYCODE_WAKEUP`) at the stop, at
+  the relaunch and every 8 s: the kiosk's intent would launch the stopped app and change the restart
+  being measured. In s1rtc7 run 2 (2026-11-14, 01:12) the screen went off 20.4 s after the stop,
+  before the kiosk's first frame, which then waited 280 s for the screen. It changes no setting. If the screen goes off anyway during a graded run
   (Android's `PowerManagerService: Going to sleep` in logcat), that run is an error: with the
   screen off Gecko runs no animation frames and slows its timers, so nothing timed then is the
   panel's. In smoke10 (9d986c9, 22:06, the kiosk's 20 s night timeout) the screen went off three

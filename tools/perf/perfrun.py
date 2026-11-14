@@ -47,6 +47,12 @@ class Device:
         subprocess.Popen(self.adb + ["shell", f"am start -n {self.component} --es screen on"],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    def nudge(self):
+        """Android's own wake key, for while the kiosk is stopped or starting: the kiosk's intent
+        (wake) would launch it, and change the restart being measured."""
+        subprocess.Popen(self.adb + ["shell", "input keyevent KEYCODE_WAKEUP"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     def logcat(self):
         p = subprocess.Popen(self.adb + ["logcat", "-v", "monotonic", "-T", "1"],
                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, errors="replace")
@@ -324,6 +330,10 @@ KEEP_AWAKE_S = float(os.environ.get("GW_PERF_KEEP_AWAKE_S", "8"))     # the off-
 # command on a busy S1): s1rtc5 run 1 (23:50) lost heavy's screen 16 to 20 s after its last tap, while
 # the page waited out its camera window before the swipes, and the wake came 14 s later (it was 30 s).
 LIVE_IDLE_WAKE_S = float(os.environ.get("GW_PERF_LIVE_IDLE_WAKE_S", "10"))
+# From the force-stop until the restart page is done (and through a recovery's restart), the wake key
+# this often, and once at the stop and once at the relaunch: s1rtc7 run 2 lost the screen 20.4 s after
+# the stop, before the kiosk's first frame, which then waited 280 s for the screen to come back.
+RESTART_WAKE_S = float(os.environ.get("GW_PERF_RESTART_WAKE_S", "8"))
 # A view not done this long after it opened is recorded as timed out: what it measured stands, and
 # what it didn't fails (#202, smoke 7: heavy never finished, and the whole run was dropped after 900 s).
 # The runner then restarts the kiosk, as at the run's start, and opens the run's remaining views: a
@@ -405,8 +415,18 @@ def cmd_coldstart(dev, a):
         is done; while a view is live (between its warm-up and its done), only once nothing has touched
         the panel for LIVE_IDLE_WAKE_S. Checked every second (or more often), so neither waits on the
         other's period."""
-        last = 0.0
-        while not stop.wait(min(1.0, KEEP_AWAKE_S, LIVE_IDLE_WAKE_S / 2)):
+        last = last_nudge = 0.0
+        relaunch_seen = False
+        while not stop.wait(min(1.0, KEEP_AWAKE_S, LIVE_IDLE_WAKE_S / 2, RESTART_WAKE_S / 2)):
+            if not st.get("restart_done_at") or st.get("recovering"):
+                # The restart (or a recovery's): the wake key, at once when the app comes back up.
+                relaunched = res["proc_mono"] is not None and not relaunch_seen
+                relaunch_seen = relaunch_seen or relaunched
+                if relaunched or time.time() - last_nudge >= RESTART_WAKE_S:
+                    last_nudge = time.time()
+                    dev.nudge()
+                    res["restart_wakes"] = res.get("restart_wakes", 0) + 1
+                continue
             if st.get("restart_done_at") and not st.get("live") and not st.get("break_after"):
                 if time.time() - last < KEEP_AWAKE_S:
                     continue
@@ -701,6 +721,8 @@ def cmd_coldstart(dev, a):
             pass                          # the open below says so if the fake is gone
     dev.sh("input keyevent KEYCODE_WAKEUP")
     dev.sh(f"am force-stop {dev.package}")
+    if ref:
+        dev.nudge()                       # the restart starts awake; keep_awake goes on from here
     t0 = time.time()
     while time.time() - t0 < a.timeout:
         if res["error"]:
@@ -742,8 +764,9 @@ def cmd_coldstart(dev, a):
                 paused.clear()
                 st["recovering"] = {"at": time.time()}
                 res.setdefault("recoveries", []).append({"after": view})
-                dev.wake()
+                dev.nudge()
                 dev.sh(f"am force-stop {dev.package}")
+                dev.nudge()
                 continue
         if st.get("recovering"):
             rv = st["recovering"]
