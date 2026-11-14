@@ -225,7 +225,7 @@ This page is the index of every note. Notes about one device live with its frame
 | [gecko-turn.md](gecko-turn.md) | Gecko won't use a TURN server at a loopback IP or a relayed candidate on loopback (Chrome does): why the S1 never connected to Clarity's WebRTC camera, and the fix (#202) |
 | [ha-esphome-actions-events.md](ha-esphome-actions-events.md) | What a notification can carry over ESPHome each way: why `notify` takes one JSON `data` argument, and why a tapped button goes to HA as a bus event, not an event entity (#118) |
 | [camera-presence.md](camera-presence.md) | Which detector wakes the screen from a camera: ML Kit and a person model weighed, then the maintainer's lighting-insensitive motion detector chosen (#117) |
-| [onvif-rtsp.md](onvif-rtsp.md) | What HA's ONVIF integration and UniFi Protect need from a camera, the libraries weighed, and the maintainer's tested RTSP and ONVIF server that Glassworks ports (#117) |
+| [onvif-rtsp.md](onvif-rtsp.md) | What HA's ONVIF integration and UniFi Protect need from a camera, the libraries weighed, the maintainer's tested RTSP and ONVIF server that Glassworks ports, and HA's pull loop on a refused sign-in, with a lab to rerun it (#117) |
 
 ### Aqara S1 Plus ([`frames/aqara-s1-plus/`](../../frames/aqara-s1-plus/README.md#research-notes))
 

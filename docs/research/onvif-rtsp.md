@@ -1,6 +1,6 @@
 # ONVIF and RTSP: what HA and UniFi Protect need from a panel's camera, and what to build it on
 
-**Status (2026-11-14): ported, not yet run on a panel.** First desk research for the camera pane's
+**Status (2026-11-14): ported; met Home Assistant on a tablet** ([its pull loop](#home-assistants-pull-loop-on-a-refused-sign-in-2026-11-14)). First desk research for the camera pane's
 opt-in stream (#117). Then the maintainer decided that Glassworks follows their own implementation,
 which they tested against Home Assistant's ONVIF integration and UniFi Protect (see [Result](#result)).
 HA's needs below are read from its source; UniFi Protect's from Ubiquiti's help page and an MIT proxy
@@ -162,6 +162,41 @@ curl -sfL https://raw.githubusercontent.com/connorgallopo/rtsp-to-onvif/d07f08ad
 
 The library table's commands are in step 3.
 
+## Home Assistant's pull loop on a refused sign-in (2026-11-14)
+
+**Seen on a tablet (verified, 2026-11-14 10:57–10:59, the root's tablet run on build `28c157d`).** The
+stream turned on with a sign-in set. Within a second, the maintainer's Home Assistant (an ONVIF entry
+for the tablet's address and port 8000, left from the IP camera app the tablet ran before) sent
+`Renew`, then `CreatePullPointSubscription`, about every 0.75 s: 127 Renews in about 90 s, and still
+going. HA's motion sensor for the tablet stayed `on`. HA logged nothing for ONVIF at WARNING. The
+panel's log showed only those two calls: no `PullMessages`, and no subscription created.
+
+**Read (HA 2026.11.1, `homeassistant/components/onvif/event_manager.py`; onvif-zeep-async 4.3.0,
+`onvif/managers.py`).** HA's PullPoint manager pulls every 0.75 s (`PULLPOINT_COOLDOWN_TIME`), with a
+60 s timeout. When `PullMessages` answers with a SOAP Fault, it assumes the camera restarted and calls
+`resume()`, which renews the subscription at once and, when the Renew fails too, creates a new one
+(`_renew_or_restart_subscription`). Other errors wait 60 s. The renewal itself runs at 80 % of
+`TerminationTime - CurrentTime`; HA asks for `PT600S`, so about every 8 minutes.
+
+**Lab (verified, 2026-11-14):** the pane's `OnvifServer` on this computer, and HA's client driven as HA
+drives it (`tools/camera/onvif-lab.sh`, `tools/camera/onvif-ha-client.py`):
+
+| Case | What happened |
+|---|---|
+| The right sign-in; the server restarts at 30 s and forgets the subscription | One Fault ("Unknown subscription"), one Renew and one Create, then pulls resume. Motion arrives on and off. `TerminationTime` is `CurrentTime` + 600 s, in UTC with a `Z`; no loop |
+| The server's sign-in changes at 20 s; the client keeps the old one | Every pull answers "Sender not authorized". HA renews and re-creates: 34 Renews and 35 Creates in 25 s. The server's log shows only those two calls, as on the tablet |
+
+**What it rules out:** the timestamps. Our `CurrentTime` and `TerminationTime` are in UTC with a `Z`,
+last the interval asked for, and a Renew moves the end on; `OnvifServerTest` pins all three. **What it
+shows (likely on the tablet, matching the lab):** HA's entry still holds the old app's sign-in, and
+every request after `GetServices` is refused. The fix is in HA: reconfigure the tablet's ONVIF entry
+with the stream's username and password. The panel now logs a refused sign-in, once a minute per
+client and never with the sign-in, so this shows at once:
+`ONVIF PullMessages from <address> refused: the sign-in doesn't match the stream's`.
+
+To run the lab again: `tools/camera/onvif-lab.sh 45 ONVIF_LAB_CREDS_CHANGE_AT=20` (or
+`ONVIF_LAB_RESTART_AT=30`). It serves on 127.0.0.1:18000 only.
+
 ## Open questions
 
 - Adoption by a real Protect console (an acceptance criterion of #117). Needs a console and a frame
@@ -170,5 +205,7 @@ The library table's commands are in step 3.
   differ by SoC; measure on the target device.
 - RootEncoder + RTSP-Server's APK cost, and whether we accept a JitPack dependency.
 - Which ports. ONVIF has no fixed port; RTSP's is 554, which an app can't bind, so 8554.
-- Events: whether to publish presence as an ONVIF motion event, so Protect and Frigate get motion
-  from the panel's own detector. Optional for both clients.
+- Events: presence is published as ONVIF motion (cell motion and motion alarm), on and off with
+  `camera_presence`. Frigate and Protect's use of it is untested.
+- Whether to slow down a client whose sign-in keeps being refused, so a stale entry costs less than
+  a request every 0.75 s. Not done: HA would still loop, only slower.

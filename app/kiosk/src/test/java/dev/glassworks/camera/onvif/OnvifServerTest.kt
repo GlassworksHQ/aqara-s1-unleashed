@@ -24,6 +24,8 @@ class OnvifServerTest {
     private val pass = "secret"
     private var server: OnvifServer? = null
 
+    private val logged = java.util.Collections.synchronizedList(mutableListOf<String>())
+
     private fun newServer(withCreds: Boolean = true, snapshot: (() -> ByteArray?)? = { byteArrayOf(1, 2, 3) }) = OnvifServer(
         port = 0,
         host = { "192.0.2.41" },
@@ -31,7 +33,8 @@ class OnvifServerTest {
         stream = { OnvifStreamInfo("rtsp://192.0.2.41:8554/live", 1920, 1080, 30, 6000) },
         credentials = { if (withCreds) user to pass else null },
         snapshot = snapshot,
-        enableDiscovery = false
+        enableDiscovery = false,
+        onLog = { logged += it },
     ).also { server = it }
 
     @After fun tearDown() { server?.stop() }
@@ -193,6 +196,52 @@ class OnvifServerTest {
         assertEquals(200, call(s, "<wsnt:Renew><wsnt:TerminationTime>PT120S</wsnt:TerminationTime></wsnt:Renew>", path).status)
         assertEquals(200, call(s, "<wsnt:Unsubscribe/>", path).status)
         assertEquals(400, call(s, pull, path).status)
+    }
+
+    /** The time an element holds, in ms; it must be UTC with a Z, as Home Assistant's client reads it. */
+    private fun utc(el: org.w3c.dom.Element, name: String): Long {
+        val t = OnvifXml.text(el, name)!!
+        assertTrue("$name is UTC with a Z: $t", Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$""").matches(t))
+        return OnvifXml.parseDateTime(t)!!
+    }
+
+    @Test fun `subscription times are UTC, last the interval asked for, and a renew moves the end on`() {
+        // Home Assistant 2026.11.1 (onvif-zeep-async 4.3.0) asks for PT600S and renews at 80 % of
+        // TerminationTime - CurrentTime: about every 8 minutes with these answers.
+        val s = newServer()
+        val created = parseOk(call(s, "<tev:CreatePullPointSubscription><tev:InitialTerminationTime>PT600S</tev:InitialTerminationTime></tev:CreatePullPointSubscription>", "/onvif/events_service")).documentElement
+        val path = OnvifXml.text(created, "Address")!!.substringAfter("192.0.2.41:${s.localPort}")
+        val now0 = utc(created, "CurrentTime")
+        val end0 = utc(created, "TerminationTime")
+        assertTrue("now is now", kotlin.math.abs(now0 - System.currentTimeMillis()) < 2_000)
+        assertEquals(600_000L, end0 - now0)
+
+        Thread.sleep(1_100) // a second later, so the end visibly moves
+        val renewed = parseOk(call(s, "<wsnt:Renew><wsnt:TerminationTime>PT600S</wsnt:TerminationTime></wsnt:Renew>", path)).documentElement
+        val now1 = utc(renewed, "CurrentTime")
+        val end1 = utc(renewed, "TerminationTime")
+        assertEquals(600_000L, end1 - now1)
+        assertTrue("the renew extends the subscription", end1 > end0)
+
+        // An absolute end (what the client sends once it judges a camera's relative times broken) is kept.
+        val at = OnvifXml.isoUtc(System.currentTimeMillis() + 300_000)
+        val absolute = parseOk(call(s, "<wsnt:Renew><wsnt:TerminationTime>$at</wsnt:TerminationTime></wsnt:Renew>", path)).documentElement
+        assertEquals(at, OnvifXml.text(absolute, "TerminationTime"))
+
+        // A pull says the same end, and the subscription is still there.
+        val pulled = parseOk(call(s, "<tev:PullMessages><tev:Timeout>PT0S</tev:Timeout><tev:MessageLimit>10</tev:MessageLimit></tev:PullMessages>", path)).documentElement
+        assertEquals(at, OnvifXml.text(pulled, "TerminationTime"))
+        assertTrue(utc(pulled, "TerminationTime") > utc(pulled, "CurrentTime"))
+    }
+
+    @Test fun `a refused sign-in is logged once a minute per client, without the sign-in`() {
+        val s = newServer()
+        val pull = "<tev:PullMessages><tev:Timeout>PT0S</tev:Timeout></tev:PullMessages>"
+        repeat(5) { assertEquals(400, call(s, pull, "/onvif/pullpoint/x", header = usernameToken(password = "an-old-apps-password")).status) }
+        val lines = logged.filter { "refused" in it }
+        assertEquals(lines.toString(), 1, lines.size)
+        assertTrue(lines.single(), lines.single().contains("PullMessages") && lines.single().contains("doesn't match"))
+        assertTrue("no username or password in the log", lines.none { user in it || pass in it || "an-old-apps-password" in it })
     }
 
     @Test fun `no sign-in set means nobody gets in, but date and time is open`() {
