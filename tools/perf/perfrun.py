@@ -320,7 +320,10 @@ KEEP_AWAKE_S = float(os.environ.get("GW_PERF_KEEP_AWAKE_S", "8"))     # the off-
 # normal views tap or swipe every few seconds, but a page stuck on a busy panel can outlast the
 # kiosk's idle timeout, and with the screen off nothing it measures is the panel's (#202, smoke 7:
 # heavy went 120 s without a gesture, and the screen went off).
-LIVE_IDLE_WAKE_S = float(os.environ.get("GW_PERF_LIVE_IDLE_WAKE_S", "30"))
+# 10 s, under the kiosk's 20 s night timeout with room for a slow `adb shell input` (2.4 to 4.7 s a
+# command on a busy S1): s1rtc5 run 1 (23:50) lost heavy's screen 16 to 20 s after its last tap, while
+# the page waited out its camera window before the swipes, and the wake came 14 s later (it was 30 s).
+LIVE_IDLE_WAKE_S = float(os.environ.get("GW_PERF_LIVE_IDLE_WAKE_S", "10"))
 # A view not done this long after it opened is recorded as timed out: what it measured stands, and
 # what it didn't fails (#202, smoke 7: heavy never finished, and the whole run was dropped after 900 s).
 # The runner then restarts the kiosk, as at the run's start, and opens the run's remaining views: a
@@ -335,6 +338,19 @@ STAGE_IDLE_S = float(os.environ.get("GW_PERF_STAGE_IDLE_S", "180"))
 # dashboard isn't usable within RECOVER_WAIT_S, the run fails.
 RECOVER_LAUNCH_S = float(os.environ.get("GW_PERF_RECOVER_LAUNCH_S", "10"))
 RECOVER_WAIT_S = float(os.environ.get("GW_PERF_RECOVER_WAIT_S", "180"))
+
+
+def watch_threads():
+    """Every exception a thread of this process raises, from now on: [str], printed as usual too.
+    cmd_coldstart fails the run on any (s1rtc5's runs went on with a dead helper thread)."""
+    errors = []
+
+    def hook(args):
+        name = args.thread.name if args.thread else "a thread"
+        errors.append(f"{name}: {args.exc_type.__name__}: {args.exc_value}")
+        threading.__excepthook__(args)
+    threading.excepthook = hook
+    return errors
 
 
 def cmd_coldstart(dev, a):
@@ -386,9 +402,15 @@ def cmd_coldstart(dev, a):
 
     def keep_awake():
         """The kiosk's wake intent, every KEEP_AWAKE_S, from the restart page's end until the last view
-        is done, except while a view is live (between its warm-up and its done)."""
-        while not stop.wait(KEEP_AWAKE_S):
+        is done; while a view is live (between its warm-up and its done), only once nothing has touched
+        the panel for LIVE_IDLE_WAKE_S. Checked every second (or more often), so neither waits on the
+        other's period."""
+        last = 0.0
+        while not stop.wait(min(1.0, KEEP_AWAKE_S, LIVE_IDLE_WAKE_S / 2)):
             if st.get("restart_done_at") and not st.get("live") and not st.get("break_after"):
+                if time.time() - last < KEEP_AWAKE_S:
+                    continue
+                last = time.time()
                 dev.wake()
                 res["wakes"] = res.get("wakes", 0) + 1
             elif st.get("live") and time.time() - max(st.get("touched_at", 0), st.get("live_at", 0)) > LIVE_IDLE_WAKE_S:
@@ -405,6 +427,7 @@ def cmd_coldstart(dev, a):
                 last, since = len(presents), time.time()
         return time.time() - since >= secs
 
+    thread_errors = watch_threads()
     poller = threading.Thread(target=poll, daemon=True)
     poller.start()
     if ref:
@@ -449,14 +472,16 @@ def cmd_coldstart(dev, a):
     def send(nonce, cmd, n, gap):
         """Taps or a swipe for the page that asked, and only while it is still the current page."""
         for i in range(n):
-            if not st["current"] or st["current"][1] != nonce:
+            cur = st["current"]
+            if not cur or cur[1] != nonce:
                 return
             t0 = time.time()
             st["touched_at"] = t0
             dev.sh(cmd)
+            st["touched_at"] = time.time()     # it reached the panel when `input` returned (seconds later)
             # When each gesture went over adb and how long `input` took on the panel, on this
             # computer's clock (fakeha.jsonl's): #202, smoke 5's heavy stalled during the taps.
-            res.setdefault("gestures_sent", []).append([st["current"][0], round(t0, 3), cmd.split()[1],
+            res.setdefault("gestures_sent", []).append([cur[0], round(t0, 3), cmd.split()[1],
                                                          round(time.time() - t0, 3)])
             if i + 1 < n:
                 time.sleep(gap)
@@ -760,13 +785,13 @@ def cmd_coldstart(dev, a):
             finished = not on_reference and own_page_finished(res["own_page_stop_mono"], st["own_stop_at"], time.time())
             if finished or time.time() - st["engine_at"] > a.own_page_wait:
                 before = (res["own_page_stop_mono"], res["own_page_loads"])
-                still = quiet_for(2.0, 10.0) if finished else False
+                calm = quiet_for(2.0, 10.0) if finished else False
                 if drain():
                     break
                 if (res["own_page_stop_mono"], res["own_page_loads"]) != before:
                     continue  # the kiosk loaded its page again meanwhile: wait for that one
                 # finished-moving: a clock card keeps painting; normal, and not a reason to doubt the run.
-                res["own_page_state"] = "never-finished" if not finished else ("finished-still" if still else "finished-moving")
+                res["own_page_state"] = "never-finished" if not finished else ("finished-still" if calm else "finished-moving")
                 open_next()
                 continue
         if st["next_at"] is not None:
@@ -780,10 +805,10 @@ def cmd_coldstart(dev, a):
                 res["memory"].append(dict(memory_sample(dev, [x for x in a.radio_procs.split(",") if x], summaries=False),
                                           after=slots[st["opened"] - 1]))
             paused.clear()
-            still = quiet_for(a.between_quiet, 10.0) if a.between_quiet > 0 else True
+            calm = quiet_for(a.between_quiet, 10.0) if a.between_quiet > 0 else True
             if drain():
                 break
-            res["between"].append("still" if still else "moving")
+            res["between"].append("still" if calm else "moving")
             open_next()
             continue
         try:
@@ -814,6 +839,11 @@ def cmd_coldstart(dev, a):
         res["fallback_error"], res["error"] = res["error"], None
         print(f"  fallback: {res['fallback_error']}", file=sys.stderr)
     # Off while the kiosk restarted after a timed-out view: nothing was measured then.
+    if thread_errors:
+        # A runner thread died (s1rtc5: a local named like the stop helper made it a bool): what it
+        # kept (wakes, gestures, the stream's stop) is gone, so the run isn't trusted. Loud, not quiet.
+        res["thread_errors"] = thread_errors
+        res["error"] = f"a runner thread failed ({thread_errors[0]}); the run isn't trusted"
     offs = [x for x in res.get("screen_off", []) if x["during"] not in fallback and x["during"] != "recovery"]
     if ref and not res["error"] and offs:
         res["error"] = (f"the screen went off during the graded run ({len(offs)} time(s), first "

@@ -1,4 +1,5 @@
 """run.sh and perfrun.py end to end against test/fake_adb.py (no device)."""
+import contextlib
 import json
 import os
 import re
@@ -342,6 +343,34 @@ def unasked(tmp):
         return []
     with open(p) as f:
         return json.load(f)
+
+
+class Threads(unittest.TestCase):
+    """s1rtc5: a local named like the runner's stream-stop helper made it a bool, and its thread died
+    on every view (TypeError: 'bool' object is not callable) while the runs went on. Any exception in
+    a runner thread now fails the run, and a graded run raises none."""
+
+    def test_a_graded_run_raises_nothing_in_any_thread(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, taps=2)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertNotIn("Exception in thread", p.stderr)
+        self.assertNotIn("thread_errors", c)
+        self.assertIsNone(c["error"])
+
+    def test_a_thread_that_raises_is_recorded(self):
+        sys.path.insert(0, os.path.dirname(HERE))
+        import perfrun
+        old = threading.excepthook
+        try:
+            errors = perfrun.watch_threads()
+            th = threading.Thread(target=lambda: True(), name="still")
+            with open(os.devnull, "w") as quiet, contextlib.redirect_stderr(quiet):
+                th.start()
+                th.join()
+        finally:
+            threading.excepthook = old
+        self.assertEqual(errors, ["still: TypeError: 'bool' object is not callable"])
 
 
 class FakeMatchesThePanel(unittest.TestCase):
