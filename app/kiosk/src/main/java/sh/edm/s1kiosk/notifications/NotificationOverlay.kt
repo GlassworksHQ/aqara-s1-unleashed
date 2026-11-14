@@ -364,6 +364,8 @@ class NotificationOverlay(
     }
 
     private fun fillSheet(s: LinearLayout) {
+        // The list is rebuilt on every change: keep where the person had scrolled to.
+        val scrolled = (0 until s.childCount).map { s.getChildAt(it) }.filterIsInstance<ScrollView>().firstOrNull()?.scrollY ?: 0
         s.removeAllViews()
         s.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -391,6 +393,7 @@ class NotificationOverlay(
             isVerticalFadingEdgeEnabled = true
             setFadingEdgeLength(px(24f))
             addView(rows, LayoutParams(-1, -2))
+            if (scrolled > 0) post { scrollTo(0, scrolled) }
         }, LinearLayout.LayoutParams(-1, 0, 1f))
         s.addView(g.text(13f, FA).apply { text = "Kept until the panel restarts. Home Assistant can send them again." },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10f) })

@@ -145,4 +145,18 @@ class NotificationOverlayTest {
         val pictures = NotificationOverlay::class.java.getDeclaredField("pictures").apply { isAccessible = true }.get(o) as Map<*, *>
         assertTrue("nothing stored after detach", pictures.isEmpty())
     }
+
+    /** Verifier: the list keeps its scroll position when a notification comes or goes. */
+    @Test
+    fun theListKeepsItsScroll() {
+        repeat(12) { center.handle("Message $it", "Notification $it", """{"tag":"t$it"}""") }
+        overlay.openList()
+        Mockup.idle(); Mockup.layout(overlay.rootView)
+        val list = { views(overlay).filterIsInstance<android.widget.ScrollView>().first() }
+        list().scrollTo(0, 300)
+        assertEquals(300, list().scrollY)
+        center.handle("Message new", "Notification new", "")
+        Mockup.layout(overlay.rootView); Mockup.idle(); Mockup.layout(overlay.rootView)
+        assertEquals(300, list().scrollY)
+    }
 }
