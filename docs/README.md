@@ -10,6 +10,7 @@ rules every part follows.
 | [install.md](install.md) | Installing with the web installer or the command line, updating, undo, troubleshooting |
 | [onboarding.md](onboarding.md) | Design notes for the first boot: Wi-Fi (Improv), adding it to Home Assistant, QR sign-in, dashboard picker (the steps themselves are in install.md) |
 | [esphome.md](esphome.md) | The panel as an ESPHome device: every entity, the voice assistant, encryption, app updates |
+| [notifications.md](notifications.md) | Notifications from Home Assistant: the `notify` action and its fields, button presses, priorities, Do not disturb, the doorbell blueprint |
 | [sendspin.md](sendspin.md) | The native Music Assistant player (Sendspin): setup, pairing, synced playback |
 | [perf.md](perf.md) | Clarity, the performance test and grade for any frame: how to run it, what it measures, the rubric and its sources, the report format |
 | [size.md](size.md) | APK size per frame and per pane in CI: the parts, the assets lint, the size budgets, the PR comment |

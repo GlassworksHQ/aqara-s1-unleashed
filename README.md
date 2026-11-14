@@ -62,6 +62,7 @@ announcements, with a calm full-screen overlay while you talk.
 | | |
 |---|---|
 | 🏠 **One ESPHome device** | HA discovers the panel and sets up encryption automatically. You get the screen as a light, presence, light level, a speaker, voice settings and the wall base, plus the dashboard and radio controls. [More](docs/esphome.md) |
+| 🔔 **Notifications** | HA sends a notification and the panel shows it over the dashboard, with a camera's picture, buttons and a sound. It can also open a dashboard view full screen, like a doorbell's. [More](docs/notifications.md) |
 | 🎵 **Music Assistant player** | A native Sendspin player that plays in sync with your other speakers. [More](docs/sendspin.md) |
 | 👋 **Wakes when you walk up** | The screen wakes as you approach, turns off when the room is empty, and dims at night. It is driven by the panel's own sensors. [More](docs/sensors.md) |
 | 📡 **Radio for Home Assistant** | The panel's Zigbee/Thread radio can be a Zigbee coordinator for ZHA or (experimental) Zigbee2MQTT, a Thread border router, or a repeater in your existing network. You switch roles from HA. [How to](docs/radio-guide.md) |
@@ -147,6 +148,7 @@ What works today, on v0.4.1. "Verified" means tested on a real panel in a real h
 | ESPHome device with automatic encryption | ✅ Works |
 | Voice assistant with on-device wake word, timers, announcements | ✅ Works · far-field tuning ongoing |
 | Music Assistant player (Sendspin, synced) | ✅ Works |
+| Notifications from HA: cards, pictures, buttons, sounds, a view full screen ([how](docs/notifications.md)) | 🧪 New · not yet run on a panel |
 | Presence wake, idle-off, night mode, auto-brightness | ✅ Works |
 | Aqara cloud and bloat disabled (reversible) | ✅ Works |
 | Boot splash and animation | 🧪 The Glassworks redraw has not yet run on a panel. The Glass Tile one before it works |

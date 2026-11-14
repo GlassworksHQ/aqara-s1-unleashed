@@ -121,7 +121,10 @@ A feature the panel can have or leave out. The rules are in
 
 1. **It adds something only the panel can do.** If a HA dashboard can do it, it's a dashboard.
 2. **It works through ESPHome alone.** State as entities, the settings worth changing from HA as
-   config entities, commands as ESPHome actions, reports as events.
+   config entities, commands as ESPHome actions, reports as events. One approved exception
+   (2026-11-13, #118): a report whose name the automation chose, like a notification's button,
+   goes out as a bus event (`esphome.<name>`), because HA's event entity only fires names it listed
+   up front. It is still ESPHome alone and needs no option in HA.
 3. **Other protocols are opt-in outputs.** An open standard something else already speaks, off by
    default, with the pane still working without it.
 4. **The panel's sign-in only reads.** The panel may read from HA what ESPHome can't carry (the

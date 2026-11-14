@@ -1,6 +1,7 @@
 # ESPHome actions and events in Home Assistant: what a notification can carry each way
 
-**Status (2026-11-13): read from source, not yet run end to end.** Home Assistant makes every
+**Status (2026-11-13): read from source; the bus event verified against the real aioesphomeapi
+client (`EspHomeHaEventTest`), not yet against a running Home Assistant.** Home Assistant makes every
 ESPHome action argument required, and an ESPHome event entity can only fire the event types it
 listed up front. So the notifications pane (#118) takes one JSON `data` argument, and reports a
 tapped button as a bus event, not as an event entity.
@@ -56,8 +57,9 @@ Can both go over ESPHome alone, with nothing installed in HA?
 | A free-form button id back to HA | Not on an event entity | Bus event `esphome.notification_action` with `action` and `tag` (HA adds `device_id`) |
 
 `HomeAssistantEvent` in `esphome-api` encodes message 35; `HomeAssistantEventTest` checks it byte
-for byte against aioesphomeapi. The server doesn't send it yet: that waits for the writer queue
-(#213, #215).
+for byte against aioesphomeapi. `ApiServer.sendHomeAssistantEvent` sends it to every connection that
+subscribed (#118), and `EspHomeHaEventTest` checks that aioesphomeapi 46.25.0 decodes it as an event
+with its data (2026-11-13, verified).
 
 ## How to reproduce
 

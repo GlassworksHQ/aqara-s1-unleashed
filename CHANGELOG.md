@@ -70,6 +70,13 @@ below as the release notes.
   Diagnostic section.
 
 ### Added
+- **Notifications from Home Assistant on the panel.** Call `esphome.<panel>_notify` with a title, a
+  message and the Companion app's fields, and the panel shows a card over the dashboard, with a
+  camera's picture, up to three buttons and a sound. A button press fires `esphome.notification_action`
+  in Home Assistant. A high or critical one wakes the screen, `url` opens a dashboard view full screen
+  and comes back after the timeout, and *Do not disturb* holds everything but critical. Off until you
+  turn it on, on the setup screen or in the settings. A doorbell blueprint is in the repo. Examples:
+  docs/notifications.md.
 - **Turn any pane off, and back on, without a restart.** Voice, music, the wall base, the time zone
   and diagnostics each have an on/off: at the top of the pane's page in the panel's settings, in
   Home Assistant (new switches Voice, Wall base, Keep time zone and Diagnostics, off on the device
