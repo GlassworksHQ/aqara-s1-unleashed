@@ -286,9 +286,12 @@ Parts of the app are standalone modules other projects can use:
   (including over adb, from a web page over USB), Wi-Fi joining that works on Android 10+, and the
   pure-Kotlin protocol and state machines. Its browser client is
   [`kiln/packages/improv-serial`](../kiln/packages/improv-serial/README.md).
+- [`libs/bluetooth-proxy`](libs/bluetooth-proxy/README.md): an ESPHome Bluetooth proxy on Android:
+  BLE scanning on Android's terms, batched into `esphome-api`. Passive only so far, and not in the
+  app yet (#121).
 
 They build with the app (`./gradlew :esphome-api:test :esphome-api-android:assembleDebug
-:improv:testDebugUnitTest`) and aren't published to a Maven repository or npm yet.
+:improv:testDebugUnitTest :bluetooth-proxy:testDebugUnitTest`) and aren't published to a Maven repository or npm yet.
 
 ## License
 
