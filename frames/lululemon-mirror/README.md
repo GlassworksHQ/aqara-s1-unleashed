@@ -44,7 +44,9 @@ A Glassworks **frame**: the device definition for the lululemon Studio Mirror. I
 
 ## Status
 
-**Status: planned.** Only the original version works: a Qualcomm board, stock software 1.x and a screen of about 40 inches. The later version (software 5.x, about 43 inches, a blue button on the top edge) has a locked NXP board.
+**Status: planned.** Nothing installs on it yet. Only the original version is a possible target: a Qualcomm board, stock software 1.x and a screen of about 40 inches. The later version (software 5.x, about 43 inches, a blue button on the top edge) has a locked NXP board.
+
+The original version runs Android 6.0.1, and S1 Kiosk needs Android 8.0 or newer (`minSdk` 26), so today's app doesn't install on it. Why a newer Android is hard on this board: [mirror-android.md](research/mirror-android.md).
 
 The Clarity badge above is its performance grade ([docs/perf.md](../../docs/perf.md)), worked out on glassworks.dev from its measurements.
 
@@ -62,7 +64,9 @@ The Clarity badge above is its performance grade ([docs/perf.md](../../docs/perf
 
 ## Install
 
-It installs by flashing system and userdata over fastboot from a computer. It doesn't install from Kiln yet.
+Not available yet. As planned, it installs by flashing system and userdata over fastboot from a computer, not from Kiln.
+
+**That erases lululemon's software for good.** There is no way to back up the stock image first, so there is no way back.
 
 Check before flashing: fastboot must report MSM8916 and the expected partition sizes. If anything differs, stop.
 

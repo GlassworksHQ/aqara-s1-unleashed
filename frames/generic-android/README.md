@@ -44,7 +44,7 @@ A Glassworks **frame**: the device definition for the Generic Android. Its data 
 
 ## Status
 
-**Status: planned.**
+**Status: planned.** It needs Android 8.0 or newer: S1 Kiosk's `minSdk` is 26.
 
 The Clarity badge above is its performance grade ([docs/perf.md](../../docs/perf.md)), worked out on glassworks.dev from its measurements.
 

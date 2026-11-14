@@ -83,7 +83,7 @@ Without root, the app can install over adb on its own, but you lose the radio mo
 | Sendspin | Beta |  |
 | Zigbee and Thread radio | Beta | Zigbee coordinator or router, and Thread. |
 | Presence and light | Beta | Presence from the time-of-flight sensor. |
-| Wall base | Beta |  |
+| Wall base | Beta | The driver passes against Aqara's own tool, but has not yet been tried on a real base ([base-protocol.md](research/base-protocol.md)). |
 
 ## Research notes
 
