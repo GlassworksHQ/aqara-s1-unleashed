@@ -53,8 +53,11 @@ internal class FakeScanner : BleScanner {
     }
 
     override fun stop() {
-        calls += "stop"; running = false
+        if (running) calls += "stop"
+        running = false
     }
+
+    override fun release() { calls += "release" }
 
     fun hear(n: Int) = listener!!.onAdvertisement(0xC0FFEE000000L + n, -50 - n, byteArrayOf(2, 1, 6, 0, 0, 0))
 }
@@ -118,6 +121,23 @@ class BluetoothProxyEngineTest {
         assertNull(engine.status.failure)
     }
 
+    @Test fun bluetoothComingBackRetriesAtOnce() {
+        subscribe(true)
+        repeat(3) {
+            scanner.running = false
+            scanner.listener!!.onFailed(ScanFailure.BLUETOOTH_OFF)
+            loop.advanceBy(0)
+            loop.advanceBy(5 * 60_000L) // the backoff has grown past 1 min by the third failure
+        }
+        scanner.running = false
+        scanner.listener!!.onFailed(ScanFailure.BLUETOOTH_OFF)
+        loop.advanceBy(1_000)
+        val before = scanner.calls.size
+        scanner.listener!!.onReady()
+        loop.advanceBy(0)
+        assertEquals("started without waiting for the backoff", "start LOW_LATENCY", scanner.calls.drop(before).single())
+    }
+
     @Test fun advertisementsPerMinuteCountsTheLastFullMinute() {
         subscribe(true)
         repeat(40) { scanner.hear(it) }
@@ -133,9 +153,19 @@ class BluetoothProxyEngineTest {
         subscribe(true)
         engine.close()
         loop.advanceBy(0)
-        assertEquals(listOf("start LOW_LATENCY", "stop"), scanner.calls)
+        assertEquals(listOf("start LOW_LATENCY", "stop", "release"), scanner.calls)
         subscribe(true)
-        assertEquals("stays closed", 2, scanner.calls.size)
+        assertEquals("stays closed", 3, scanner.calls.size)
+    }
+
+    @Test fun closeReleasesTheScannerAfterAFailureToo() {
+        subscribe(true)
+        scanner.running = false
+        scanner.listener!!.onFailed(ScanFailure.LOCATION_OFF)
+        loop.advanceBy(0)
+        engine.close()
+        loop.advanceBy(0)
+        assertEquals(listOf("start LOW_LATENCY", "release"), scanner.calls)
     }
 
     @Test fun adStructuresDropAndroidsPaddingAndKeepWholeStructures() {

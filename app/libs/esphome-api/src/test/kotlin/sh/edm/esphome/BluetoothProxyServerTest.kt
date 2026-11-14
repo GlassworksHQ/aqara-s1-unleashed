@@ -88,6 +88,31 @@ class BluetoothProxyServerTest {
         }
     }
 
+    @Test fun aReplacedHandlerHearsTheSubscriberLeaveAndTheNewOneHearsItCome() {
+        start()
+        val other = CopyOnWriteArrayList<Boolean>()
+        val b = object : BluetoothProxyHandler {
+            override val featureFlags = handler.featureFlags
+            override fun onSubscribed(subscribed: Boolean) { other += subscribed }
+        }
+        PlainClient(server.localPort).use { c ->
+            c.subscribe()
+            server.bluetooth = b
+            assertEquals("the old handler stops", listOf(true, false), calls)
+            assertEquals("the new one starts", listOf(true), other)
+            assertTrue("the subscriber keeps its advertisements", server.sendBluetoothAdvertisements(listOf(advertisement(1))))
+            c.await(BluetoothMsg.LE_RAW_ADVERTISEMENTS_RESPONSE)
+
+            server.bluetooth = null
+            assertEquals(listOf(true, false), other)
+            assertFalse(server.sendBluetoothAdvertisements(listOf(advertisement(2))))
+
+            server.bluetooth = handler
+            c.subscribe()
+            assertEquals("a later subscription reaches the handler set now", listOf(true, false, true), calls)
+        }
+    }
+
     @Test fun theNewestSubscriberWinsAndTheProxyStopsWhenItLeaves() {
         start()
         val stale = PlainClient(server.localPort)

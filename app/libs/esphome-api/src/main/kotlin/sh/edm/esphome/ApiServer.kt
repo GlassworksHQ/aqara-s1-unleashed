@@ -167,9 +167,20 @@ class ApiServer(
 
     /**
      * The device's Bluetooth proxy, or null for none (no flags in DeviceInfo, subscriptions ignored).
-     * Its [BluetoothProxyHandler.onSubscribed] is called under a lock, so it must not block.
+     * Its [BluetoothProxyHandler.onSubscribed] is called under a lock, so it must not block. Replacing
+     * it while a client is subscribed tells the old one the subscriber left and the new one it came.
      */
     @Volatile var bluetooth: BluetoothProxyHandler? = null
+        set(value) {
+            synchronized(bluetoothLock) {
+                val old = field
+                if (old === value) return
+                field = value
+                if (bluetoothConn == null) return
+                old?.onSubscribed(false)
+                if (value == null) bluetoothConn = null else value.onSubscribed(true)
+            }
+        }
 
     /** Called after a command message was handled (state may have changed). */
     @Volatile var onCommand: (() -> Unit)? = null

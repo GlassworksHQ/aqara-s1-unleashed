@@ -29,7 +29,11 @@ enum class ScanFailure {
 interface BleScanner {
     fun start(power: ScanPower, listener: Listener)
 
+    /** Stops the current scan. Does nothing if none runs. */
     fun stop()
+
+    /** Done for good: the engine is closing. Free what [start] set up. */
+    fun release() {}
 
     /** Called on any thread. */
     interface Listener {
@@ -39,6 +43,10 @@ interface BleScanner {
          */
         fun onAdvertisement(address: Long, rssi: Int, data: ByteArray)
 
+        /** The current scan ended on its own: Android refused it, or Bluetooth went off. Once per scan. */
         fun onFailed(failure: ScanFailure)
+
+        /** Scanning may work again (Bluetooth came back on): no need to wait for the next retry. */
+        fun onReady() {}
     }
 }

@@ -88,6 +88,10 @@ Read from Android 10's Bluetooth service (`packages/apps/Bluetooth`, `android10-
 | A scan becomes opportunistic after 30 min unless its filters fit in the controller | `ScanManager.regularScanTimeout` | Restarts the scan every 25 min. |
 | A background app's scan drops to `BLE_SCAN_BACKGROUND_MODE` (low power) | `ScanManager.handleImportanceChange` | Nothing: a kiosk app is in the foreground. |
 
+`AndroidBleScanner` also watches the adapter while the engine uses it. Bluetooth turning off ends
+the scan (`BLUETOOTH_OFF`), and turning back on retries at once instead of after the backoff. A
+failure that Android delivers late for a scan already stopped is ignored.
+
 Android can't switch to a passive scan (no scan requests), so the proxy doesn't offer ESPHome's
 scanner mode switch (`FEATURE_STATE_AND_MODE`).
 

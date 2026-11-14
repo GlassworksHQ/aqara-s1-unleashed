@@ -51,6 +51,12 @@ internal class ScanSchedule(private val limits: Limits = Limits()) {
         retryAt = now + backoff.coerceAtMost(limits.maxRetryMs)
     }
 
+    /** Whatever made the scan fail is gone (Bluetooth is back): start again as soon as the budget allows. */
+    fun onReady() {
+        failures = 0
+        retryAt = Long.MIN_VALUE
+    }
+
     /** An advertisement arrived, so scanning works: the next failure retries quickly again. */
     fun onAdvertisement() {
         failures = 0

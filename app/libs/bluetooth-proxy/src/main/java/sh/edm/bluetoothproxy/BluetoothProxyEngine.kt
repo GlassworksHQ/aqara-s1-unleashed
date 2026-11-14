@@ -99,6 +99,12 @@ class BluetoothProxyEngine internal constructor(
             schedule.onFailed(loop.now())
             reconcile()
         }
+
+        override fun onReady() = loop.execute {
+            if (closed) return@execute
+            schedule.onReady()
+            reconcile()
+        }
     }
 
     override fun onSubscribed(subscribed: Boolean) = loop.execute {
@@ -115,7 +121,8 @@ class BluetoothProxyEngine internal constructor(
             closed = true
             wake?.invoke()
             flush?.invoke()
-            if (schedule.scanning) scanner.stop()
+            scanner.stop()
+            scanner.release()
             scanning = false
         }
         loop.shutdown()
