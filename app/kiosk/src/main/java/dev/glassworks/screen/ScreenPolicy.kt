@@ -244,8 +244,10 @@ class ScreenPolicy(
         override fun run() {
             handler.postDelayed(this, TICK_MS)
             if (!screenOn) return
-            // Still wanted on: take the wake lock again before its own timeout runs out.
-            if (awake?.isHeld == true && SystemClock.elapsedRealtime() - awakeSince >= AWAKE_REFRESH_MS) keepAwake()
+            // Still wanted on: take the wake lock again before its own timeout runs out. Not while the
+            // device isn't interactive: the power key may have just turned it off, its broadcast not yet
+            // here, and the lock's ACQUIRE_CAUSES_WAKEUP would turn the screen back on.
+            if (awake?.isHeld == true && pm.isInteractive && SystemClock.elapsedRealtime() - awakeSince >= AWAKE_REFRESH_MS) keepAwake()
             if (prefs.screenMode == "always") {
                 setKeepOn(true)
                 return

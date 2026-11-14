@@ -439,4 +439,17 @@ class ScreenBehaviourPinTest {
         h.advance(3_000)
         assertFalse(awake!!.isHeld)
     }
+
+    /** #257, CodeRabbit on #258: the power key before its broadcast arrives: the renewal doesn't wake the screen again. */
+    @Test fun noRenewalWhileTheScreenIsGoingOff() {
+        h.setClock(12, 0)
+        h.start()
+        h.wake("home assistant")
+        val held = shadowOf(awake!!).timesHeld
+        h.advance(59_000)
+        // The power key: not interactive any more, the screen-off broadcast not delivered yet.
+        shadowOf(h.context.getSystemService(android.os.PowerManager::class.java)).setIsInteractive(false)
+        h.advance(3_000)
+        assertEquals("not taken again while going off", held, shadowOf(awake!!).timesHeld)
+    }
 }
