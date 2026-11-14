@@ -64,7 +64,7 @@ interface SendspinTokenSource {
 
 /** What `DeviceInfoResponse` / `HelloResponse` / mDNS report. */
 data class DeviceIdentity(
-    /** ESPHome node name (hostname-style), e.g. `s1-panel`. */
+    /** ESPHome node name (hostname-style), e.g. `aqara-s1-plus-a1b2c3`. */
     val name: String,
     val friendlyName: String,
     /** `AA:BB:CC:DD:EE:FF`; Home Assistant's config entry unique id is derived from it. */

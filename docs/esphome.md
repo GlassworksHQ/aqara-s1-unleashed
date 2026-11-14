@@ -378,7 +378,7 @@ Only *Base* is always present; the rest exist only while a matching base is dete
 | event `Base button N` (button) | `base_button_1`..`3` | switch base, per channel | `13.N.85` clicks (LocalService only; the UART protocol has no click frames); event types `single`, `double`, `triple`, `long`, `release`, `unknown` (mapping unverified, raw value logged) |
 
 On a panel added before #63 the entity ids are `switch.s1_panel_base_relay_1`,
-`event.s1_panel_base_button_1`, and so on (`glassworks_panel_*` on one added later, see [Names](#names)). The names are fixed and don't follow the channel names
+`event.s1_panel_base_button_1`, and so on (`aqara_s1_plus_*` on a new S1, see [Names](#names)). The names are fixed and don't follow the channel names
 configured in the Aqara app: HA 2026.11 derives the ESPHome unique id from the entity *name*
 (aioesphomeapi `build_unique_id` v3), so a rename on the Aqara side would orphan the HA entity.
 Rename them in HA.

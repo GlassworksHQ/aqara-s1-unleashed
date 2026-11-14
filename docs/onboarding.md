@@ -61,8 +61,8 @@ manifest (permissions + `ImprovActivity`), and one ESPHome button in `PanelDevic
   `improv_auto` is off;
 - on demand: `adb shell am start -n sh.edm.s1kiosk/.improv.ImprovActivity --ez improv true`
   (`--ez improv false` stops), or the HA button **"Start Wi-Fi setup (Bluetooth)"**
-  (`button.s1_panel_start_wi_fi_setup_bluetooth` on a panel added before #63, `glassworks_panel_…` on
-  newer ones, [Names](esphome.md#names); config category);
+  (`button.s1_panel_start_wi_fi_setup_bluetooth` on a panel added before #63, `aqara_s1_plus_…` on
+  a new S1, [Names](esphome.md#names); config category);
 - for **10 minutes** (extended while connecting / after a failure), then advertising and the GATT
   server stop. After PROVISIONED it keeps advertising that state for 10 s, then stops (like ESPHome).
 - In auto mode, if a network appears by other means it reports PROVISIONED and stops.
@@ -419,8 +419,8 @@ on the way:
 
 ### 5. Which dashboard ✅
 
-- ✅ ESPHome **select** `Dashboard` (`select.s1_panel_dashboard` on a panel added before #63, newer ones
-  start with `glassworks_panel_`, [Names](esphome.md#names); object_id `dashboard`) on the
+- ✅ ESPHome **select** `Dashboard` (`select.s1_panel_dashboard` on a panel added before #63, `aqara_s1_plus_`
+  on a new S1, [Names](esphome.md#names); object_id `dashboard`) on the
   device page. Options: **Default** (HA's root, i.e. the user's default dashboard), then every
   Lovelace dashboard by title (duplicates get the `url_path` appended), then **Custom** only while
   the saved URL matches none of them. Choosing one saves the dashboard URL and reloads; the URL stays

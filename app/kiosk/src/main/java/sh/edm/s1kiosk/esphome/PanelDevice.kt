@@ -132,6 +132,9 @@ class PanelDevice internal constructor(
     private val noiseKeys = NoiseKeys(prefs.noiseKeyStore)
     /** Read by the API server on its connection threads; replaced when voice is turned on or off. */
     @Volatile private lateinit var identity: DeviceIdentity
+
+    /** The node name it announces, or null before it has started. The Manage page answers to it as `.local`. */
+    val nodeName: String? get() = if (::identity.isInitialized) identity.name else null
     private lateinit var entities: List<ApiEntity>
     private lateinit var coreEntities: List<ApiEntity>
     private val voicePlayer = ExoAudioPlayer(context, "voice", AudioAttributes.USAGE_ASSISTANT)
@@ -204,9 +207,10 @@ class PanelDevice internal constructor(
     internal fun startInternal() {
         if (synchronized(lifecycle) { stopped }) return
         val mac = stableMac()
+        val name = frame.nodeName(mac) ?: run { EspHomeLog.w("No ESPHome node name for MAC '$mac': the device isn't announced"); return }
         // HA keys its entry and entity unique ids by the MAC, so a new node name keeps both (docs/esphome.md#names).
         val id = DeviceIdentity(
-            name = checkNotNull(frame.nodeName(mac)) { "stableMac() gave $mac" },
+            name = name,
             friendlyName = frame.friendlyName(),
             macAddress = mac,
             esphomeVersion = ESPHOME_VERSION,

@@ -2,7 +2,9 @@
 
 Every panel serves a Manage page at `http://<panel>:8099/` once it's set up. Open it from Home
 Assistant (the panel's device page, **Visit**) or type the address: the panel's IP address
-(`http://192.0.2.40:8099/`) or its ESPHome name, `http://aqara-s1-plus-a1b2c3.local:8099/` ([names](esphome.md#names)). Other names for it, such as one your
+(`http://192.0.2.40:8099/`). Its ESPHome name ([names](esphome.md#names)) is not a host name you can
+open: the panel's mDNS advert points at Android's own host name, and nothing publishes
+`<name>.local`. Other names for it, such as one your
 router gives it (`panel.lan`) or a name with a trailing dot, get "Open this page with the panel's
 address": the page only answers to its own addresses and names (see below). It shows how the panel is doing,
 keeps a log, and runs the everyday actions. It's part of the Glassworks core, so every frame has it.
