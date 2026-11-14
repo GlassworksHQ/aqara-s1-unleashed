@@ -99,6 +99,15 @@ class NotificationCenter(
         }
     }
 
+    /**
+     * A button's `uri` was tapped: [url] (already checked by [HaUrls]) opens full screen, with the same
+     * way back as a `url` notification. Silent; the person asked for it, so Do not disturb doesn't hold it.
+     */
+    fun openPage(title: String, url: String) {
+        store.post(Notification(title, "", url = url, sound = Sound.NONE), doNotDisturb = false)
+        changed()
+    }
+
     /** Closed by hand: the card's close, a swipe, or Back on a page. */
     fun dismiss(id: Long) {
         if (store.dismiss(id) != null) changed()
