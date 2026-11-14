@@ -38,6 +38,8 @@ data class Sample(
     val wifiLinkSpeed: Int?,
     /** `Process.getStartElapsedRealtime()`. */
     val appStartElapsedMs: Long,
+    /** The size of `/data`, for the settings page's storage meter. */
+    val storageTotalBytes: Long? = null,
 )
 
 /** Clock ticks since boot: all of them, and the idle ones (idle plus I/O wait). */

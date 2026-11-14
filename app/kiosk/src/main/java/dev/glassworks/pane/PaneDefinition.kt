@@ -38,6 +38,13 @@ interface PaneDefinition {
      */
     fun settings(): List<SettingsSection> = emptyList()
 
+    /**
+     * The same, for a page that shows the running pane (#212): [running] is the pane the shell built,
+     * also while it is off, or null while the panel's device isn't running. Override this one or
+     * [settings]. The core shows a pane's sections only while its [switch] is on.
+     */
+    fun settings(running: Pane?): List<SettingsSection> = settings()
+
     /** Intent extras (`adb shell am start … --ez sendspin_flac false`) that change this pane's settings. Its [switch] has its own. */
     val extras: List<IntentExtra> get() = emptyList()
 }

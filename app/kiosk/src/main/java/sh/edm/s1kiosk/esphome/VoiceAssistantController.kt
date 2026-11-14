@@ -48,6 +48,8 @@ class VoiceAssistantController(
     private val onTimersChanged: (List<Timer>) -> Unit = {},
     private val maxStreamMs: Long = 15_000L,
     private val clock: () -> Long = ::nowMs,
+    /** Called after each answer to Home Assistant's `VoiceAssistantConfigurationRequest` (#212: a wake word picked on the panel). */
+    private val onConfigurationRead: () -> Unit = {},
 ) : VoiceAssistantHandler {
 
     enum class State { IDLE, STARTING, STREAMING, AWAITING, RESPONDING, ANNOUNCING }
@@ -395,7 +397,7 @@ class VoiceAssistantController(
     }
 
     override fun configuration(): VoiceConfiguration =
-        VoiceConfiguration(wakeWords.available(), wakeWords.activeIds(), maxActive = 1)
+        VoiceConfiguration(wakeWords.available(), wakeWords.activeIds(), maxActive = 1).also { onConfigurationRead() }
 
     override fun setActiveWakeWords(ids: List<String>) {
         VoiceLog.i("voice: HA set active wake words $ids")

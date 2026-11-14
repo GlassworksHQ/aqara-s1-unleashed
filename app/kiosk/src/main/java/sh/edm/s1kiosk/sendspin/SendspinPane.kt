@@ -19,7 +19,8 @@ class SendspinPane(ctx: PaneContext, haBase: () -> String?) : Pane {
 
     private val prefs = SendspinPrefs(ctx.prefs(id))
 
-    private val player = SendspinPlayer(ctx.context, prefs, haBase, ctx.device.macAddress, ctx.publishStates)
+    /** Internal: the settings page (SendspinDefinition) reads it and sets its volume. */
+    internal val player = SendspinPlayer(ctx.context, prefs, haBase, ctx.device.macAddress, ctx.publishStates)
 
     // Its on/off (`sendspin`) is the core's, from SendspinDefinition.switch.
     override fun entities(): List<ApiEntity> = listOf(

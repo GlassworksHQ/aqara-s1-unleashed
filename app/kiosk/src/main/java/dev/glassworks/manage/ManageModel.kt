@@ -5,6 +5,7 @@
 package dev.glassworks.manage
 
 import dev.glassworks.pane.PaneState
+import dev.glassworks.pane.paneState
 import dev.glassworks.pane.SettingsSection
 
 /**
@@ -28,16 +29,10 @@ data class PaneRow(val id: String, val title: String, val state: PaneState, val 
  * run anyway (the radio without the root helper). Otherwise [running] says what the pane is doing ("Wake word …"); when the
  * frame can't say, the row reads On with the switch's line under it. No section: the id in words, state unknown.
  */
-fun paneRow(id: String, section: SettingsSection?, links: List<Pair<String, String>> = emptyList(), running: () -> PaneState? = { null }): PaneRow {
+fun paneRow(id: String, section: SettingsSection?, links: List<Pair<String, String>> = emptyList(), running: () -> PaneState? = { section?.status?.invoke() }): PaneRow {
     val title = section?.title ?: id.replace('-', ' ').replaceFirstChar { it.uppercase() }
-    val on = section?.master?.let { m -> runCatching { m.value() }.getOrNull() }
-    val unavailable = section?.let { runCatching { it.unavailable() }.getOrNull() }
-    val state = when {
-        on == false -> PaneState(PaneState.Kind.OFF, "Turned off")
-        unavailable != null -> PaneState(PaneState.Kind.CANT_RUN, unavailable)
-        else -> runCatching(running).getOrNull()
-            ?: if (on == true) PaneState(PaneState.Kind.RUNNING, section.master?.detail.orEmpty(), chip = "On") else PaneState.UNKNOWN
-    }
+    // The same state, and chip, as the panel's rail ([paneState], #243).
+    val state = paneState(section, running)
     // A pane that is off offers nothing to do until it is on again.
     return PaneRow(id, title, state, section?.id, if (state.kind == PaneState.Kind.OFF) emptyList() else links)
 }

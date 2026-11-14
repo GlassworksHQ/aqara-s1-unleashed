@@ -4,7 +4,7 @@
 
 package dev.glassworks.manage
 
-import dev.glassworks.pane.NO_SETTINGS
+import dev.glassworks.pane.NOT_RUNNING
 import dev.glassworks.pane.PaneState
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
@@ -62,16 +62,16 @@ class ManagePanesTest {
         assertEquals(PaneState.UNKNOWN, row.state)
     }
 
-    @Test fun aPaneWithOnlyItsSwitchHasNoSettingsToList() {
+    @Test fun aPaneTheDeviceDoesntRunYetHasNoSettingsToList() {
         val f = ManageFixture()
         f.status = f.status.copy(
             panes = f.status.panes + PaneRow("time-zone", "Time zone", PaneState(PaneState.Kind.RUNNING, "Keeps the zone", "On"), "time-zone"),
-            sections = f.status.sections + SettingsSection("time-zone", "Time zone", listOf(SettingsItem.Note { NO_SETTINGS }), master = master),
+            sections = f.status.sections + SettingsSection("time-zone", "Time zone", listOf(SettingsItem.Note { NOT_RUNNING }), master = master),
         )
         val b = f.Browser()
         b.signInWithHa()
         val page = b.get("/time-zone").text()
-        assertEquals("the no-settings line once", 1, Regex(Regex.escape(NO_SETTINGS)).findAll(page).count())
+        assertEquals("the not-running line once", 1, Regex(Regex.escape(NOT_RUNNING)).findAll(page).count())
         assertFalse(page.contains("Change these on the panel"))
     }
 }
