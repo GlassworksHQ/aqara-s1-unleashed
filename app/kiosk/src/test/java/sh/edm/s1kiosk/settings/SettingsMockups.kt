@@ -44,7 +44,11 @@ class SettingsMockups {
         val radio = radioDefinition(app, FixedReadout(if (radioRunning) facts else null, running = radioRunning))
         val panes = listOf(
             MenuFixture.cardOnly("voice", "Voice", "Assist and timers"),
-            MenuFixture.cardOnly("sendspin", "Music", "A Sendspin speaker"), radio,
+            MenuFixture.cardOnly("sendspin", "Music", "A Sendspin speaker"),
+            dev.glassworks.notifications.NotificationsDefinition(
+                KioskPrefs(app).paneFile("notifications"), dev.glassworks.notifications.NotificationsHub(), "esphome.s1_panel_notify", now = { 0L },
+            ),
+            radio,
         ) + MenuFixture.switchOnly(app) + extra
         o.show(MenuFixture.model(app, radio, deviceSettings, status = "screen on · presence near · voice=idle", panes = panes))
         Mockup.idle()

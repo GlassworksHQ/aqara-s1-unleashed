@@ -181,9 +181,11 @@ class NotificationOverlay(
 
     private fun renderPill(inView: Int) {
         val held = state.list.count { it.held }
+        // The open page has its own bar: it isn't one more to show.
+        val count = state.list.count { it.id != state.page?.id }
         val text = when {
             state.doNotDisturb -> "Do not disturb" to if (held > 0) "  ·  $held held" else ""
-            state.list.size > inView.coerceAtMost(3) -> "${state.list.size} notification${if (state.list.size == 1) "" else "s"}" to "  ·  Show all"
+            count > 1 || count > inView -> "$count notification${if (count == 1) "" else "s"}" to "  ·  Show all"
             else -> null
         }
         if (text == null || listOpen) { pill.visibility = View.GONE; return }
@@ -450,6 +452,8 @@ class NotificationOverlay(
             val h = height.toFloat()
             p.shader = null; p.color = Color.argb(20, 255, 255, 255)
             c.drawRoundRect(0f, 0f, width.toFloat(), h, h / 2, h / 2, p)
+            // The track's colour set the paint's alpha: back to opaque before the gradient.
+            p.color = Color.WHITE
             p.shader = LinearGradient(0f, 0f, width.toFloat(), 0f, SKY, VIOLET, Shader.TileMode.CLAMP)
             c.drawRoundRect(0f, 0f, width * left.coerceIn(0f, 1f), h, h / 2, h / 2, p)
         }
