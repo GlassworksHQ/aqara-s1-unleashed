@@ -156,6 +156,20 @@ class BluetoothProxyEngineTest {
         assertEquals("nothing forwarded", emptyList<List<RawAdvertisement>>(), sent)
     }
 
+    /** The generation alone decides: the new scan runs, so "is a scan running" can't (#222 review). */
+    @Test fun aReplacedScansLateAdvertisementIsDroppedWhileTheNewScanRuns() {
+        subscribe(true)
+        val first = scanner.listener!!
+        loop.advanceBy(25 * 60_000L) // restart: the second scan runs
+        assertTrue(engine.status.scanning)
+        sent.clear()
+        first.onAdvertisement(0xC0FFEE0000AAL, -50, byteArrayOf(2, 1, 6)) // the first scan's, late
+        scanner.hear(1) // the running scan's
+        loop.advanceBy(1_000)
+        assertEquals("only the running scan's advertisement", listOf(0xC0FFEE000001L), sent.flatten().map { it.address })
+        assertNull(engine.status.failure)
+    }
+
     @Test fun bluetoothComingBackRetriesAtOnce() {
         subscribe(true)
         repeat(3) {
