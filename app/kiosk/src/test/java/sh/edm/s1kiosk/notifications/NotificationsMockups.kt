@@ -92,8 +92,10 @@ class NotificationsMockups {
         root.addView(o, FrameLayout.LayoutParams(-1, -1))
         o.update(state)
         then(o)
-        // Pictures load on a worker thread and come back through the main looper.
-        repeat(10) { Thread.sleep(50); Mockup.idle() }
+        // Pictures load on a worker thread, and the critical orb's layers bake on another; both come back
+        // through the main looper.
+        val critical = state.cards.any { it.notification.priority == Priority.CRITICAL }
+        repeat(if (critical) 60 else 10) { Thread.sleep(if (critical) 100 else 50); Mockup.idle() }
         Mockup.layout(root)
         Mockup.save(name, root)
     }
