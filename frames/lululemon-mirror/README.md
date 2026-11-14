@@ -23,8 +23,8 @@
     </picture>
   </a>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-status-under-development-on-dark.svg">
-    <img alt="Status: under development" src="https://www.glassworks.dev/brand/badge-status-under-development-on-light.svg" height="30">
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-status-planned-on-dark.svg">
+    <img alt="Status: planned" src="https://www.glassworks.dev/brand/badge-status-planned-on-light.svg" height="30">
   </picture>
   <a href="https://github.com/orgs/GlassworksHQ/projects/1">
     <picture>
@@ -44,7 +44,7 @@ A Glassworks **frame**: the device definition for the lululemon Studio Mirror. I
 
 ## Status
 
-**Status: planned.** (The badge above says "under development": there is no "planned" status badge yet.) Nothing installs on it yet. Only the original version is a possible target: a Qualcomm board, stock software 1.x and a screen of about 40 inches. The later version (software 5.x, about 43 inches, a blue button on the top edge) has a locked NXP board.
+**Status: planned.** Nothing installs on it yet. The target is the Qualcomm (MSM8916) board with stock software 1.x. A later revision uses an NXP i.MX8 board, where only hardware-assisted (JTAG) access has been reported; it is not a target. Screen size doesn't tell them apart ([revisions.md](research/revisions.md)).
 
 The original version runs Android 6.0.1, and S1 Kiosk needs Android 8.0 or newer (`minSdk` 26), so today's app doesn't install on it. Why a newer Android is hard on this board: [mirror-android.md](research/mirror-android.md).
 
@@ -86,6 +86,7 @@ Check before flashing: fastboot must report MSM8916 and the expected partition s
 What we found on this device, and how ([all notes](../../docs/research/README.md#the-research-notes)):
 
 - [mirror-android.md](research/mirror-android.md): Can the lululemon Mirror run Android 8+ for the current GeckoView? The signed boot image blocks it; the kexec idea, the paths, blobs and read-only probes (desk research, #39)
+- [revisions.md](research/revisions.md): Which Mirror revisions are a target: the later NXP i.MX8 board, and why screen size doesn't identify it (read, no hardware)
 - [mirror-abis.md](research/mirror-abis.md): Which ABIs the Mirror's userspace runs: 64-bit in the community image, stock untested (#98)
 
 ## Files
