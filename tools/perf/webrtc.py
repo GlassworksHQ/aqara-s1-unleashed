@@ -26,6 +26,7 @@ import asyncio
 import fractions
 import hashlib
 import os
+import re
 import socket
 import struct
 import threading
@@ -266,7 +267,8 @@ class TurnConn(asyncio.Protocol):
         if m.message_method == M.BINDING and m.message_class == stun.Class.REQUEST:
             return self.reply(m, auth=False, XOR_MAPPED_ADDRESS=self.mapped())
         if m.message_class == stun.Class.INDICATION:
-            if m.message_method == M.SEND and self.relay and m.attributes.get("XOR-PEER-ADDRESS", ("",))[0] in self.perms:
+            if m.message_method == M.SEND and self.relay and m.attributes.get("XOR-PEER-ADDRESS", ("",))[0] in self.perms \
+                    and self.server.is_peer(m.attributes["XOR-PEER-ADDRESS"]):
                 self.relay.sendto(m.attributes.get("DATA", b""), m.attributes["XOR-PEER-ADDRESS"])
                 self.to_peer += 1
                 self.answer_seen(m.attributes.get("DATA", b""))
@@ -298,6 +300,10 @@ class TurnConn(asyncio.Protocol):
             self.reply(m)
         elif m.message_method == M.CHANNEL_BIND:
             num, peer = m.attributes["CHANNEL-NUMBER"], m.attributes["XOR-PEER-ADDRESS"]
+            if not self.server.is_peer(peer):
+                # The media address, but not one of the fake's peers' ports: another program's (#205, CodeRabbit).
+                self.server.record({"t": time.time(), "turn_refused": list(peer)})
+                return self.reply(m, stun.Class.ERROR, ERROR_CODE=(403, "Forbidden"))
             if num not in self.chan:
                 self.server.record({"t": time.time(), "turn_channel": list(peer), "number": num, "client": list(self.client)})
             self.chan[num], self.peer_chan[peer] = peer, num
@@ -326,7 +332,7 @@ class TurnConn(asyncio.Protocol):
                     self.late.append([round(time.time(), 1), round(rtt)])
 
     def from_peer(self, data, addr):
-        if addr[0] not in self.perms:
+        if addr[0] not in self.perms or not self.server.is_peer(addr):
             return
         self.from_peer_n += 1
         if len(data) >= 20 and data[:2] == b"\x00\x01":       # a STUN Binding request: the peer's check
@@ -406,6 +412,15 @@ class WebRTC:
     def close(self, session_id):
         self.loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._close(session_id)))
 
+    def is_peer(self, addr):
+        """One of this service's WebRTC peers: the media address at a port a live session's peer
+        listens on. The relay reaches nothing else, not even another program on the media address:
+        its credentials are a fixed test value (#205, CodeRabbit)."""
+        try:
+            return addr[0] == self.addr and int(addr[1]) in {p for s in list(self.sessions.values()) for p in s.get("ports", ())}
+        except (TypeError, ValueError, IndexError):
+            return False
+
     async def _offer(self, sid, entity_id, profile, sdp, send):
         from aiortc import RTCConfiguration, RTCPeerConnection, RTCRtpSender, RTCSessionDescription
         s = self.sessions[sid] = {"ready": asyncio.Event(), "pc": None, "entity_id": entity_id}
@@ -443,6 +458,10 @@ class WebRTC:
 
             await pc.setLocalDescription(await pc.createAnswer())
             answer = pc.localDescription.sdp
+            # The ports this peer listens on (its host candidates in the answer, all gathered by
+            # now): the relay sends to and takes from these only (is_peer).
+            s["ports"] = {int(p) for host, p in re.findall(r"a=candidate:\S+ \d+ \S+ \d+ (\S+) (\d+) typ host", answer)
+                          if host == self.addr}
             fmtp = next((line for line in answer.splitlines() if line.startswith("a=fmtp") and "profile-level-id" in line), None)
             self.record({"t": time.time(), "webrtc_answer": entity_id, "session": sid, "fmtp": fmtp})
             send({"type": "answer", "answer": answer})

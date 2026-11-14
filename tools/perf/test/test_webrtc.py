@@ -109,6 +109,25 @@ class Turn(unittest.TestCase):
             if want == webrtc.stun.Class.ERROR:
                 self.assertEqual(r.attributes["ERROR-CODE"][0], 403)
 
+    def test_a_channel_goes_only_to_a_peers_port(self):
+        """CodeRabbit on #205 (Security): with the fixed test credentials, the relay must not reach
+        another program on the media address. A channel to a port no live peer listens on is refused;
+        one to a peer's port (from its answer's host candidates) is bound."""
+        sid = "test-ports"
+        self.svc.sessions[sid] = {"ports": {5002}}
+        self.addCleanup(self.svc.sessions.pop, sid, None)
+        for port, number, want in ((5001, 0x4001, webrtc.stun.Class.ERROR), (5002, 0x4002, webrtc.stun.Class.RESPONSE)):
+            m = webrtc.stun.Message(webrtc.stun.Method.CHANNEL_BIND, webrtc.stun.Class.REQUEST,
+                                    attributes={"CHANNEL-NUMBER": number, "XOR-PEER-ADDRESS": (self.svc.addr, port),
+                                                "USERNAME": webrtc.TURN_USER, "REALM": webrtc.TURN_REALM, "NONCE": webrtc.TURN_NONCE})
+            m.add_message_integrity(webrtc.TURN_KEY)
+            r = self.ask(m)
+            self.assertEqual(r.message_class, want, port)
+            if want == webrtc.stun.Class.ERROR:
+                self.assertEqual(r.attributes["ERROR-CODE"][0], 403)
+        self.assertFalse(self.svc.is_peer(("192.0.2.10", 5002)))
+        self.assertFalse(self.svc.is_peer((self.svc.addr, "x")))
+
     def test_the_diagnostic_transports(self):
         """#202, smoke 5: lan-turn is the same relay over this computer's network; lan-udp has no relay,
         as a real setup on a LAN. adb stays the test's."""
