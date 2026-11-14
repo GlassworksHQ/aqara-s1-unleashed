@@ -128,35 +128,56 @@ class ManageSettingsTest {
         assertFalse("no dialog, nothing inert", b.get("/dashboard").text().contains(" inert>"))
     }
 
-    /** #242 for #252: the camera stream's sign-in, write-only. The password is never on a page or in the Log. */
-    @Test fun aSignInIsWriteOnlyAndClears() {
-        var stored: Pair<String, String>? = null
-        val camera = SettingsSection("camera", "Camera", listOf(SettingsItem.Group("ONVIF stream", listOf(
-            SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }) { v, d -> stored = v; d(null) }))))
-        f.statusFn = { f.status.copy(sections = listOf(camera)) }
+    /**
+     * #242 for #252: the camera stream's sign-in. The password is hidden on every page, shows only after Show
+     * (a POST from a browser signed in with Home Assistant), and is never in the Log.
+     */
+    @Test fun aSignInsPasswordIsHiddenUntilShownAndNeverLogged() {
         val secret = "made-up-secret-7"
+        var stored: Pair<String, String>? = "viewer" to secret
+        val camera = SettingsSection("camera", "Camera", listOf(SettingsItem.Group("ONVIF stream", listOf(
+            SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }, { stored?.second }) { v, d -> stored = v; d(null) }))))
+        f.statusFn = { f.status.copy(sections = listOf(camera)) }
+        val key = "ONVIF stream/Sign-in"
         val b = signedIn()
-        val pages = ArrayList<String>()
-        fun post(vararg p: Pair<String, String>) = b.post("/settings", form(b, "camera", "ONVIF stream/Sign-in", *p)).also { pages += it.text() }
-        pages += b.get("/camera").text()
-        assertTrue(pages.last().contains("Not set"))
-        val refused = post("user" to "view:er", "password" to secret)
-        assertEquals(422, refused.status)
-        assertTrue(refused.text().contains("A user name can't have a colon or spaces."))
-        assertNull(stored)
-        assertEquals(303, post("user" to "viewer", "password" to secret).status)
-        assertEquals("viewer" to secret, stored)
-        pages += b.get("/camera").text()
-        assertTrue(pages.last().contains("Set"))
-        val dialog = b.get("/camera?edit=ONVIF+stream%2FSign-in").text().also { pages += it }
-        assertTrue("the password field starts empty", dialog.contains("type=\"password\" name=\"password\" value=\"\""))
-        assertTrue("Clear, while one is set", dialog.contains("name=\"clear\" value=\"1\">Clear</button>"))
-        assertEquals(422, post("user" to "viewer", "password" to "").status)
-        assertEquals(303, post("clear" to "1").status)
+        val hidden = ArrayList<String>()
+        fun post(path: String, vararg p: Pair<String, String>) = b.post(path, form(b, "camera", key, *p))
+        hidden += b.get("/camera").text()
+        val dialog = b.get("/camera?edit=ONVIF+stream%2FSign-in").text().also { hidden += it }
+        assertTrue("hidden by default: an empty password field", dialog.contains("type=\"password\" name=\"password\" value=\"\""))
+        assertTrue("Show asks the panel for it", dialog.contains("formaction=\"/settings/reveal\">Show</button>"))
+        assertEquals("a GET can't show it", 404, b.get("/settings/reveal").status)
+        hidden += b.get("/settings/reveal?section=camera&key=ONVIF+stream%2FSign-in").text()
+
+        val shown = post("/settings/reveal")
+        assertEquals(200, shown.status)
+        assertTrue("shown on the explicit action", shown.text().contains("type=\"text\" name=\"password\" value=\"$secret\""))
+        assertTrue(f.events.contains("Alex showed Camera › ONVIF stream › Sign-in's password"))
+
+        hidden += post("/settings", "user" to "view:er", "password" to "").also { assertEquals(422, it.status) }.text()
+        assertEquals(303, post("/settings", "user" to "viewer2", "password" to "").status)
+        assertEquals("an empty field keeps the password", "viewer2" to secret, stored)
+        hidden += b.get("/camera").text()
+        assertEquals(303, post("/settings", "clear" to "1").status)
         assertNull("Clear removes it", stored)
-        for (p in pages) assertFalse("the password is never sent back to the browser", p.contains(secret))
-        assertFalse("nor in the Log", f.events.any { it.contains(secret) })
+        for (p in hidden) assertFalse("the password is only on the page that showed it", p.contains(secret))
+        assertFalse("never in the Log", f.events.any { it.contains(secret) })
         assertTrue(f.events.contains("Alex set Camera › ONVIF stream › Sign-in") && f.events.contains("Alex cleared Camera › ONVIF stream › Sign-in"))
+    }
+
+    @Test fun showingASignInsPasswordNeedsAHomeAssistantSignIn() {
+        val secret = "made-up-secret-7"
+        val camera = SettingsSection("camera", "Camera", listOf(SettingsItem.SignIn("Sign-in", { true }, { "viewer" }, { secret }) { _, d -> d(null) }))
+        f.statusFn = { f.status.copy(sections = listOf(camera)) }
+        val b = f.Browser()
+        b.post("/manage/code", mapOf("next" to "/"))
+        b.post("/manage/code", mapOf("next" to "/", "code" to f.shown.last()!!.code))
+        val dialog = b.get("/camera?edit=Sign-in").text()
+        assertTrue("Show is there, greyed", dialog.contains("type=\"button\" disabled title=\"${esc(ManagePages.NEEDS_HA_REVEAL)}\">Show</button>"))
+        val r = b.post("/settings/reveal", form(b, "camera", "Sign-in"))
+        assertEquals(403, r.status)
+        assertFalse(r.text().contains(secret))
+        assertFalse(f.events.any { it.contains(secret) })
     }
 
     @Test fun anItemThePageNoLongerHasChangesNothing() {

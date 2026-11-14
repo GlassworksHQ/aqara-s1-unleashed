@@ -67,7 +67,7 @@ class ManagePaneSwitchesTest {
 
     /** The diagnostics file lists a sign-in as set or not, never its password (#252). */
     @Test fun diagnosticsNeverListASignInsPassword() {
-        val item = dev.glassworks.pane.SettingsItem.SignIn("Sign-in", { true }, { "viewer" }) { _, d -> d(null) }
+        val item = dev.glassworks.pane.SettingsItem.SignIn("Sign-in", { true }, { "viewer" }, { "made-up-secret-7" }) { _, d -> d(null) }
         val lines = manage.itemLines(listOf(dev.glassworks.pane.SettingsItem.Group("ONVIF stream", listOf(item))))
         assertEquals(listOf("ONVIF stream:", "  Sign-in: Set"), lines)
     }

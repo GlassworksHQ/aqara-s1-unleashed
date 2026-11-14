@@ -704,11 +704,18 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_DONE) { onSave?.invoke(); true } else false }
         }
         val field = edit()
-        /** A sign-in's password ([signIn]): never filled from the model, emptied when the sheet closes. */
-        val password = edit().apply {
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            typeface = Inter.typeface(context, Inter.REGULAR, 18f) // the password type sets monospace
-            hint = "Password"
+        /** A sign-in's password ([signIn]): empty until Show, emptied and hidden again when the sheet closes. */
+        val password = edit()
+        private fun hidePassword() {
+            password.setText("")
+            password.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            password.typeface = Inter.typeface(context, Inter.REGULAR, 18f) // the password type sets monospace
+        }
+        /** Shows the stored password, on request only. */
+        private val showButton = g.plain("Show")
+        private val passwordRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
         /** What the sheet shows under its name: the field, the choices or the window. */
         private val body = FrameLayout(context)
@@ -750,8 +757,9 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             hint.text = hintText
             hint.visibility = if (hintText.isEmpty()) View.GONE else View.VISIBLE
             (field.parent as? android.view.ViewGroup)?.removeView(field)
-            (password.parent as? android.view.ViewGroup)?.removeView(password)
-            password.setText("")
+            passwordRow.removeAllViews()
+            (passwordRow.parent as? android.view.ViewGroup)?.removeView(passwordRow)
+            hidePassword()
             clearButton.visibility = View.GONE
             onClear = null
             body.removeAllViews()
@@ -806,14 +814,29 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             }
         }
 
-        /** A user name and a password, saved together after [SettingsChange.signIn]'s checks; Clear while one is set. */
+        /**
+         * A user name and a password, saved together after [SettingsChange.signIn]'s checks. While one is set:
+         * Show puts the stored password in its field, an empty field keeps it, and Clear removes it.
+         */
         fun signIn(i: SettingsItem.SignIn, after: () -> Unit) {
             val fields = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
             val set = i.isSet()
             // open() takes the fields out of the last sheet: add them to this one after it.
-            open(i.title, if (set) "A sign-in is set. Type a new one to replace it." else "", fields, "Save")
+            open(i.title, "", fields, "Save")
             fields.addView(field, LinearLayout.LayoutParams(-1, -2))
-            fields.addView(password, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12f) })
+            passwordRow.addView(password, LinearLayout.LayoutParams(0, -2, 1f))
+            if (set) {
+                password.hint = "Password · leave empty to keep it"
+                showButton.visibility = View.VISIBLE
+                showButton.setOnClickListener {
+                    password.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                    password.typeface = Inter.typeface(context, Inter.REGULAR, 18f)
+                    password.setText(runCatching { i.reveal() }.getOrNull().orEmpty())
+                    showButton.visibility = View.GONE
+                }
+                passwordRow.addView(showButton, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(6f) })
+            } else password.hint = "Password"
+            fields.addView(passwordRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12f) })
             field.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             field.hint = "User name"
             field.setText(i.user().orEmpty())
@@ -904,7 +927,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         fun close() {
             if (view.visibility != View.VISIBLE) return
             onSave = null
-            password.setText("")
+            hidePassword()
             hideKeyboard()
             view.visibility = View.GONE
         }

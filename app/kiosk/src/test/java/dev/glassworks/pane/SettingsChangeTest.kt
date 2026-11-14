@@ -92,12 +92,13 @@ class SettingsChangeTest {
 
     @Test fun aSignInTakesANameWithoutAColonAndAPasswordWithinTheirLimits() {
         var stored: Pair<String, String>? = "viewer" to "made-up-old"
-        val i = SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }) { v, d -> stored = v; d(null) }
+        val i = SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }, { stored?.second }) { v, d -> stored = v; d(null) }
         fun sign(u: String, p: String): String? { var a: String? = "no answer"; SettingsChange.signIn(i, u, p) { a = it }; return a }
         assertEquals("A user name can't have a colon or spaces.", sign("a:b", "made-up-pass"))
         assertEquals("A user name can't have a colon or spaces.", sign("a b", "made-up-pass"))
         assertEquals("Type a user name.", sign(" ", "made-up-pass"))
-        assertEquals("Type a password.", sign("viewer", ""))
+        assertNull("an empty password keeps the stored one", sign("viewer", ""))
+        assertEquals("viewer" to "made-up-old", stored)
         assertEquals("Use at most 64 characters for the user name.", sign("u".repeat(65), "made-up-pass"))
         assertEquals("Use at most 128 characters for the password.", sign("viewer", "p".repeat(129)))
         assertEquals("viewer" to "made-up-old", stored)
@@ -107,6 +108,7 @@ class SettingsChangeTest {
         SettingsChange.clear(i) { a = it }
         assertNull(a)
         assertNull("Clear removes it", stored)
+        assertEquals("with none stored, a password is needed", "Type a password.", sign("viewer", ""))
     }
 
     @Test fun aSignInSaveThatThrowsNeverRepeatsWhatWasTyped() {

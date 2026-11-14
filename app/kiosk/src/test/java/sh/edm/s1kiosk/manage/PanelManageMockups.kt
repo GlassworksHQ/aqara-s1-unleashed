@@ -71,7 +71,7 @@ class PanelManageMockups {
         val out = File(Mockup.dir!!, "parity").apply { mkdirs() }
         var stored: Pair<String, String>? = "viewer" to "made-up-pass"
         val camera = dev.glassworks.pane.SettingsSection("camera", "Camera", listOf(dev.glassworks.pane.SettingsItem.Group("ONVIF stream", listOf(
-            dev.glassworks.pane.SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }) { v, d -> stored = v; d(null) },
+            dev.glassworks.pane.SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }, { stored?.second }) { v, d -> stored = v; d(null) },
             dev.glassworks.pane.SettingsItem.Info({ "Address" }, { "rtsp://192.0.2.40:8554/camera" }),
         ))), master = dev.glassworks.pane.SettingsItem.Switch("Camera", "", { true }) { _, d -> d(null) })
         val m = KioskSettingsOverlay.Model(listOf(camera), "0.4.3", setOf("camera"))
@@ -84,5 +84,9 @@ class PanelManageMockups {
         f.statusFn = { f.status.copy(panes = listOf(paneRow("camera", camera)), sections = listOf(camera)) }
         val b = f.Browser().also { it.signInWithHa() }
         File(out, "camera-sign-in-manage.html").writeBytes(b.get("/camera?edit=ONVIF+stream%2FSign-in").body)
+        // After Show: the password in its field, on the panel and on the page.
+        Mockup.label(o, "Show").performClick(); Mockup.idle()
+        Mockup.save("parity/camera-sign-in-shown-panel", o)
+        File(out, "camera-sign-in-shown-manage.html").writeBytes(b.post("/settings/reveal", mapOf("csrf" to b.csrf(), "section" to "camera", "key" to "ONVIF stream/Sign-in")).body)
     }
 }

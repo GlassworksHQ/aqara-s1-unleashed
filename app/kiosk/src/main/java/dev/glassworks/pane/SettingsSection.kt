@@ -202,15 +202,17 @@ sealed interface SettingsItem {
     ) : SettingsItem
 
     /**
-     * A sign-in: a user name and a password, saved together (the camera stream's, #252). Write-only: the
-     * item can't read the password back, so no surface can show it, send it to a browser or log it.
-     * [isSet]: one is stored, and the row says [shown] of that. [user]: the stored name, to start the sheet
-     * from. `save` gets the pair, or null for Clear. [SettingsChange.signIn] checks it first.
+     * A sign-in: a user name and a password, saved together (the camera stream's, #252; the panel makes one
+     * per device). The password is hidden: the row says [shown] of [isSet], and a surface reads [reveal] only
+     * when the person asks to see it (Show), so it can be typed into Protect, Home Assistant's ONVIF or Frigate.
+     * Never in a log, an entity or the diagnostics. `save` gets the pair, or null for Clear;
+     * [SettingsChange.signIn] checks it first.
      */
     class SignIn(
         val title: String,
         val isSet: () -> Boolean,
         val user: () -> String? = { null },
+        val reveal: () -> String? = { null },
         val shown: (Boolean) -> String = { if (it) "Set" else "Not set" },
         val save: (Pair<String, String>?, done: (String?) -> Unit) -> Unit,
     ) : SettingsItem

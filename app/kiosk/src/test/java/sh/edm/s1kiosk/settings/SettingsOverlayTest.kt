@@ -82,30 +82,33 @@ class SettingsOverlayTest {
         assertFalse("the switch follows", toggle.checked)
     }
 
-    /** #242 for #252: a sign-in on the panel. The password field starts empty, never shows it back, and Clear removes it. */
+    /** #242 for #252: a sign-in on the panel. Its password is hidden until Show, gone when the sheet closes; Clear removes it. */
     @Test
-    fun aSignInSavesClearsAndNeverShowsThePassword() {
-        var stored: Pair<String, String>? = null
-        val o = one(listOf(SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }) { v, d -> stored = v; d(null) }))
+    fun aSignInsPasswordShowsOnlyOnRequest() {
         val secret = "made-up-secret-7"
-        fun texts(): List<String> = generateSequence(listOf<View>(o)) { level ->
+        var stored: Pair<String, String>? = "viewer" to secret
+        val o = one(listOf(SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }, { stored?.second }) { v, d -> stored = v; d(null) }))
+        fun views() = generateSequence(listOf<View>(o)) { level ->
             level.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null }
-        }.flatten().filterIsInstance<android.widget.TextView>().map { it.text.toString() }.toList()
+        }.flatten().toList()
+        fun texts() = views().filterIsInstance<android.widget.TextView>().map { it.text.toString() }
+        assertTrue(shown(o, "Set"))
         row(o, "Sign-in").performClick()
         Mockup.idle()
-        val fields = generateSequence(listOf<View>(o)) { level ->
-            level.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null }
-        }.flatten().filterIsInstance<EditText>().filter { it.isShown }.toList()
+        assertFalse("hidden when the sheet opens", texts().any { it.contains(secret) })
+        Mockup.label(o, "Show").performClick()
+        Mockup.idle()
+        val fields = views().filterIsInstance<EditText>().filter { it.isShown }
         assertEquals("a user name and a password", 2, fields.size)
-        fields[0].setText("viewer"); fields[1].setText(secret)
+        assertEquals("shown on request", secret, fields[1].text.toString())
+        fields[0].setText("viewer2")
         Mockup.label(o, "Save").performClick()
         settle()
-        assertEquals("viewer" to secret, stored)
-        assertTrue(shown(o, "Set"))
-        assertFalse("no view holds the password once saved", texts().any { it.contains(secret) })
+        assertEquals("viewer2" to secret, stored)
+        assertFalse("gone once the sheet closes", texts().any { it.contains(secret) })
         row(o, "Sign-in").performClick()
         Mockup.idle()
-        assertTrue(texts().none { it.contains(secret) })
+        assertFalse("hidden again when it opens again", texts().any { it.contains(secret) })
         Mockup.label(o, "Clear").performClick()
         settle()
         assertEquals(null, stored)

@@ -171,8 +171,11 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
     sealed interface Dialog {
         val key: String
 
-        /** Change the item at [key]; [problem]: why the last try didn't save, and [typed]: what was sent then, shown again. */
-        class Edit(override val key: String, val problem: String? = null, val typed: String? = null) : Dialog
+        /**
+         * Change the item at [key]; [problem]: why the last try didn't save, and [typed]: what was sent then,
+         * shown again. [revealed]: a sign-in's password, after the person asked to see it.
+         */
+        class Edit(override val key: String, val problem: String? = null, val typed: String? = null, val revealed: String? = null) : Dialog
 
         /** Ask [ask] before setting the switch at [key] to [value] (`on`/`off`). */
         class Confirm(override val key: String, val value: String, val ask: SettingsItem.Confirm) : Dialog
@@ -268,12 +271,19 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
                     val all = (item.choices + now).distinct().sortedWith(compareBy<Int> { it == 0 }.thenBy { it })
                     sheet(item.title, "", chips(now.toString(), all.map { it.toString() to safe { item.shown(it) }.removePrefix("After ") }), null, d.problem)
                 }
-                // The password field always starts empty: the page never has the password to put in it.
+                // The password is on the page only after Show ([Dialog.Edit.revealed]); otherwise its field starts empty.
                 is SettingsItem.SignIn -> {
                     val set = runCatching { item.isSet() }.getOrDefault(false)
-                    sheet(item.title, if (set) "A sign-in is set. Type a new one to replace it." else "",
+                    val pass = d.revealed?.let { """<input class="fld" type="text" name="password" value="${esc(it)}" autocomplete="off" spellcheck="false" aria-label="Password">""" }
+                        ?: """<input class="fld" type="password" name="password" value="" placeholder="${if (set) "Password · leave empty to keep it" else "Password"}" autocomplete="new-password" aria-label="Password">"""
+                    val show = when {
+                        !set || d.revealed != null -> ""
+                        v.homeAssistant -> """<button class="pill sm" type="submit" formaction="/settings/reveal">Show</button>"""
+                        else -> """<button class="pill sm" type="button" disabled title="${esc(NEEDS_HA_REVEAL)}">Show</button>"""
+                    }
+                    sheet(item.title, if (set && !v.homeAssistant) NEEDS_HA_REVEAL else "",
                         """<div class="flds"><input class="fld" name="user" value="${esc(safe { item.user() })}" placeholder="User name" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus aria-label="User name">""" +
-                            """<input class="fld" type="password" name="password" value="" placeholder="Password" autocomplete="new-password" aria-label="Password"></div>""",
+                            """<div class="pw">$pass$show</div></div>""",
                         "Save", d.problem, more = if (set) """<button class="pill" type="submit" name="clear" value="1">Clear</button>""" else "")
                 }
                 is SettingsItem.Choice -> sheet(item.title, "", chips(safe { item.value() }, runCatching { item.options() }.getOrDefault(emptyList())), null, d.problem)
@@ -378,6 +388,9 @@ ${ownCard(v, s, "log")}<section class="card logs">$rows</section>"""
 
         /** A pane's on/off on the page of a browser signed in with the panel's code. */
         const val NEEDS_HA = "Turning a pane on or off needs a Home Assistant sign-in. Sign out, then continue with Home Assistant."
+
+        /** A sign-in's Show on the page of a browser signed in with the panel's code. */
+        const val NEEDS_HA_REVEAL = "Showing the password needs a Home Assistant sign-in. It shows on the panel too."
 
         /** A row that opens something only the panel has. */
         const val ON_THE_PANEL = "On the panel"
@@ -484,7 +497,7 @@ details.off summary::-webkit-details-marker{display:none}details.off summary::af
 .scrim .dlg{max-height:calc(100vh - 32px);overflow:auto}
 .pcs{display:flex;flex-wrap:wrap;gap:10px;margin:4px 0}.pc{padding:10px 17px;border-radius:999px;border:1px solid var(--edge);background:var(--glass);color:var(--muted);font:inherit;font-size:15.5px;font-weight:500;cursor:pointer}
 .pc:hover{background:var(--hover)}.pc.on{background:linear-gradient(90deg,var(--sky),var(--violet));color:#0a0b0f;border-color:transparent}
-.flds{display:flex;flex-direction:column;gap:12px}.fld{width:100%;padding:14px 18px;border-radius:16px;border:1px solid var(--edge);background:var(--field);color:var(--fg);font:inherit;font-size:17px}.fld:focus{outline:none;border-color:rgba(56,189,248,.55)}
+.flds{display:flex;flex-direction:column;gap:12px}.pw{display:flex;gap:10px;align-items:center}.pw .fld{flex:1;min-width:0}.fld{width:100%;padding:14px 18px;border-radius:16px;border:1px solid var(--edge);background:var(--field);color:var(--fg);font:inherit;font-size:17px}.fld:focus{outline:none;border-color:rgba(56,189,248,.55)}
 .sw{display:flex;justify-content:space-between;align-items:center;gap:12px;color:var(--fg);font-size:16.5px;cursor:pointer}
 .sw input{appearance:none;-webkit-appearance:none;margin:0;width:${Tokens.Toggle.W}px;height:${Tokens.Toggle.H}px;border-radius:999px;background:var(--field);border:1px solid var(--edge);position:relative;cursor:pointer;flex:none;order:2}
 .sw input::after{content:"";position:absolute;top:${Tokens.Toggle.KNOB_INSET - 1}px;left:${Tokens.Toggle.KNOB_INSET - 1}px;width:${Tokens.Toggle.H - 2 * Tokens.Toggle.KNOB_INSET}px;height:${Tokens.Toggle.H - 2 * Tokens.Toggle.KNOB_INSET}px;border-radius:50%;background:var(--muted)}
