@@ -93,6 +93,15 @@
     var(--night);
 }
 
+/* the frame's render: HA's dashboard at the screen's own size (tools/showcase) */
+.render {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
 /* the reflection: a soft diagonal band that slides with the pointer */
 .glare {
   position: absolute;

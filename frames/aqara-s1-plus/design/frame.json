@@ -30,6 +30,7 @@
     "mount": "wall"
   },
   "recovery": "recovery.json",
+  "render": "render.webp",
   "display": {
     "width": 1440,
     "height": 720

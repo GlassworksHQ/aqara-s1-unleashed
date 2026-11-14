@@ -363,6 +363,22 @@ file, its `package.json` licence and author are given. What it adds:
   Authors (https://github.com/JetBrains/JetBrainsMono)". Fetched from Google Fonts at build time.
 - The Glassworks tokens, mark, and Kiln's favicon and app icon (`kiln/packages/brand`) are Glassworks' own, from
   https://github.com/GlassworksHQ/glassworks.dev.
+- **The device renders** (`frames/<id>/design/render.webp`, on the frame cards): screenshots of the
+  **Home Assistant frontend** 20261028.5 (Apache-2.0, Copyright Home Assistant contributors,
+  https://github.com/home-assistant/frontend) drawing a made-up dashboard, made by
+  `tools/showcase/render.mjs`. The TV still and the album art in them are drawn by
+  `tools/showcase/home.py` (this project's, MIT). The two camera stills are photos from Wikimedia
+  Commons, both **CC0 1.0** (public domain), cropped, graded to dusk, resized and, for the first, a sign post blurred
+  (`tools/showcase/photos/`, with `make.py` and a README):
+  - `front-garden.jpg`: "Aigantighe Art Gallery - 06 - House and driveway", David Nind, 2019,
+    https://commons.wikimedia.org/wiki/File:Aigantighe_Art_Gallery_-_06_-_House_and_driveway.jpg
+  - `driveway.jpg`: "Driveway - 30 May 2026", Aethonatic,
+    https://commons.wikimedia.org/wiki/File:Driveway_-_30_May_2026.jpg
+
+  The images show the frontend's own look, with the **Material Design Icons** it bundles (`@mdi/js`, Apache-2.0, Copyright Pictogrammers, https://github.com/Templarian/MaterialDesign)
+  and text in the **Roboto** font it serves (Google). Only rendered pixels are kept: no code, icon file
+  or font file from the frontend is in the images or in Kiln. The frontend's licence was read from its
+  wheel's `METADATA` (`License-Expression: Apache-2.0`) on 2026-11-13. [`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt).
 
 Not shipped, by the build's traces:
 
@@ -402,7 +418,8 @@ here, and `semver` (ISC) needs `LICENSES/ISC.txt`.
   SHA-256 (`df2af7a4…4258730`, `tools/perf/hafrontend.py`), and serves it to the panel under test,
   from that computer. Its files are served as they are, except its `index.html` template, which is
   filled in with the test's harness script added first (`tools/perf/fakeha.py`). The project neither
-  ships nor hosts it.
+  ships nor hosts it. `tools/showcase/render.mjs` serves the same build the same way to a headless
+  Chrome on that computer, to make the device renders (section 4); only those screenshots are kept.
 - **FFmpeg with libx264** (GPL-2.0-or-later as built with libx264). Clarity's camera streams
   (`tools/perf/camera.py`) run the ffmpeg already on the computer that runs the test, to encode its
   built-in test pattern into the test's HLS segments. Those segments are test data, served to the panel
