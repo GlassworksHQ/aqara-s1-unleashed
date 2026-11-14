@@ -88,8 +88,10 @@ Read from Android 10's Bluetooth service (`packages/apps/Bluetooth`, `android10-
 | A background app's scan drops to `BLE_SCAN_BACKGROUND_MODE` (low power) | `ScanManager.handleImportanceChange` | Nothing: a kiosk app is in the foreground. |
 
 `AndroidBleScanner` also watches the adapter while the engine uses it. Bluetooth turning off ends
-the scan (`BLUETOOTH_OFF`), and turning back on retries at once instead of after the backoff. A
-failure that Android delivers late for a scan already stopped is ignored.
+the scan (`BLUETOOTH_OFF`), and turning back on retries at once instead of after the backoff.
+Android can deliver a scan's failure or results late. A failure for a scan already stopped or
+replaced is ignored, and so is a late result from a scan that was replaced or has failed: only the
+running scan's advertisements are forwarded.
 
 Android can't switch to a passive scan (no scan requests), so the proxy doesn't offer ESPHome's
 scanner mode switch (`FEATURE_STATE_AND_MODE`).
@@ -102,7 +104,7 @@ proxy.
 ## Tests
 
 `./gradlew :bluetooth-proxy:testDebugUnitTest`. `AndroidBleScannerTest` runs the Android glue on
-Android 10 under Robolectric: the empty filter, the failure codes, a late failure, Bluetooth off and on. `BluetoothProxyHomeAssistantTest` runs Home
-Assistant's client (aioesphomeapi, the version HA pins) against `ApiServer` and the engine with a
-fake radio. It skips unless `ESPHOME_PYTHON` points at a Python with it installed
-(`../esphome-api/test-requirements.txt`).
+Android 10 under Robolectric: the empty filter, the failure codes, a late failure, Bluetooth off and
+on. `BluetoothProxyHomeAssistantTest` runs Home Assistant's client (aioesphomeapi, the version HA
+pins) against `ApiServer` and the engine with a fake radio. It skips unless `ESPHOME_PYTHON` points
+at a Python with it installed (`../esphome-api/test-requirements.txt`).
