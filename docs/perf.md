@@ -19,12 +19,18 @@ fixed dashboard on which every wall-panel task still feels good**:
 |---|---|
 | A+ | Premium: an A where every task on large dashboards also holds 60 fps |
 | A | A good wall panel even for large dashboards |
-| B | A good wall panel for typical dashboards; large ones stay fluid |
-| C | A good wall panel for typical dashboards |
+| B | A good wall panel for typical dashboards, with a camera |
+| C | A good wall panel for typical dashboards without a camera |
 | D | A good wall panel for light dashboards |
 | E | Not a good wall panel, even for light dashboards |
 
-The report opens with one line such as "Aqara S1 Plus: Clarity C, a good wall panel for typical dashboards.
+Typical is measured twice in each run: without a camera (`typical-nocam`) and with one (`typical`).
+A live camera costs a panel more than anything else on a dashboard, and many homes have none, so C
+asks only for the camera-free typical, and B for typical with its camera playing (the maintainer,
+2026-11-13). Each letter adds one page: D light, C typical without a camera, B typical with one, A
+and A+ heavy. The thresholds are those of the pre-release rubrics; only the ladder's steps changed.
+
+The report opens with one line such as "Aqara S1 Plus: Clarity C, a good wall panel for typical dashboards without a camera.
 Held back by large dashboards: scrolling averages 41.5 fps (p95 50 ms)." (an example of the
 format, not a measured result). The second sentence names the tasks that keep the frame from the
 next letter up. A table under it shows each page's tasks.
@@ -51,8 +57,11 @@ own GeckoView, loaded the way the kiosk loads your dashboard.
 
 ## Run it
 
-You need adb, Python 3, ffmpeg with libx264 (for the camera streams; it runs only on your computer)
-and the kiosk installed on the device. Let the device idle for 10 minutes
+You need adb, Python 3.11 or later, ffmpeg with libx264 (for the camera streams; it runs only on your
+computer) and the kiosk installed on the device. The first run makes a Python venv for the fake's
+WebRTC camera (aiortc, about 93 MB on macOS (measured 2026-11-14), from `tools/perf/webrtc-requirements.txt`, every wheel's hash
+checked) in `~/.cache/glassworks-perf`. The computer needs an IPv4 address that isn't loopback (any
+network interface that is up; the camera's packets never leave the computer). Let the device idle for 10 minutes
 first, with the screen on, at normal room temperature, and the kiosk's zoom at its default ("auto").
 Note the dashboard the kiosk shows now (its URL setting, or `auto`): the graded part points the
 kiosk at the fake Home Assistant and needs to know what to put back.
@@ -81,8 +90,9 @@ The first run fetches HA's frontend (117 MB, once) into `~/.cache/glassworks-per
 SHA-256 (`tools/perf/hafrontend.py`). A full run with `--runs 3` should take about 40 minutes, and
 `--pane-ram` adds about 10. Those are estimates from the step timings, not yet timed on a device
 under protocol 4. A graded run is a restart back to the reference dashboard's start view, then the
-three reference views, each opened in the loaded frontend as a view tab opens it, with 10 taps and
-6 swipes each, then an idle sample on the typical view.
+four reference views (light, typical without and with its camera, heavy), each opened in the loaded
+frontend as a view tab opens it, with 10 taps and 6 swipes each, then an idle sample on the typical
+view.
 
 For the site, export the frame's summary from the finished report:
 
@@ -109,10 +119,11 @@ tools/perf/report.py <dir>` rebuilds the report from the raw files at any time, 
   either; send `--es url <your dashboard>` yourself. The fake's sign-in is stored for its own
   address (`127.0.0.1:8089`) only, so your Home Assistant's sign-in is untouched.
 - **The pages.** The frontend loads once per graded run, when the kiosk comes back after the
-  restart. The three reference views then open **inside** it: the runner hands each one to the fake
+  restart. The four reference views then open **inside** it: the runner hands each one to the fake
   Home Assistant (`/clarity/open`), and the harness, already running in the frontend, picks it up
   (`/clarity/next`) and navigates there as HA's view tabs do. No page loads, and any page load while
-  a view is measured fails the run. Only the animation test page and the idle sample's page open
+  a view is measured fails the run. Since protocol 6, each graded run ends with the camera views'
+  HLS copies (detail, not graded; see [WebRTC cameras](#webrtc-cameras-202-protocol-6)). Only the animation test page and the idle sample's page open
   with the kiosk's one-off `--es open <url>` extra. Everything is served from your computer through
   `adb reverse` (`http://127.0.0.1:8089` on the device), so the device's network plays no part.
   HA's frontend files are cached for a year, as HA serves them (their names carry a hash); the app
@@ -130,8 +141,12 @@ tools/perf/report.py <dir>` rebuilds the report from the raw files at any time, 
   word, drive the wall base, keep the time zone or sample its diagnostics.
 - **The screen stays on** because the runner sends the kiosk's own wake intent (`--es screen on`):
   just before each view opens, every 8 s while it opens and between views, and when it goes live.
-  Not while a view is live (its taps and swipes are touches, which keep the screen on) and not
-  during the restart. It changes no setting. If the screen goes off anyway during a graded run
+  While a view is live only once nothing has touched the panel for 10 s (its taps and swipes are
+  touches). During the restart, from the force-stop until the restart page is done (and through a
+  recovery's restart), Android's own wake key (`input keyevent KEYCODE_WAKEUP`) at the stop, at
+  the relaunch and every 8 s: the kiosk's intent would launch the stopped app and change the restart
+  being measured. In s1rtc7 run 2 (2026-11-14, 01:12) the screen went off 20.4 s after the stop,
+  before the kiosk's first frame, which then waited 280 s for the screen. It changes no setting. If the screen goes off anyway during a graded run
   (Android's `PowerManagerService: Going to sleep` in logcat), that run is an error: with the
   screen off Gecko runs no animation frames and slows its timers, so nothing timed then is the
   panel's. In smoke10 (9d986c9, 22:06, the kiosk's 20 s night timeout) the screen went off three
@@ -257,8 +272,9 @@ interval (200 ms) late, when the stream's own rhythm wasn't the protocol's.
 is the restart's measurement and also takes the cold caches, the first JIT and every card type's
 code. So protocol 4 has no separate warm-up page (protocols 1 to 3 opened one; `--warmup-tier` can
 still add a view, but not one that is also graded: hui-root keeps a view it has shown, so its graded
-open would skip building it, and the runner refuses that). Then the three views open in an order that turns by one each run: run 1 light,
-typical, heavy; run 2 typical, heavy, light; run 3 heavy, light, typical. So no view always comes
+open would skip building it, and the runner refuses that). Then the four views open in an order that turns by one each run: run 1 light,
+typical-nocam, typical, heavy; run 2 typical-nocam, typical, heavy, light; run 3 typical, heavy, light,
+typical-nocam. So no view always comes
 first, and the report gives each view's results at each place in the order. Each view opens from
 the view before it (the start view for the first), as you would tap from one tab to the next. The
 runner waits for the screen to be still for 2 s first, at most 10 s. On HA's dashboards that wait
@@ -344,11 +360,16 @@ feature and plays what it offers: WebRTC first, then HLS, else MJPEG (`ha-camera
 pinned tag). The fake offers HLS, as HA's `stream` integration does, and lists `stream` among HA's
 components (`ha-hls-player.ts` refuses to play without it). `camera/stream` starts a fresh stream
 (`/api/hls/<token>/master_playlist.m3u8`), whose live playlist is a window of the last four whole
-1 s segments, as if the camera had been streaming for 4 s already. The segments are H.264 Main, fMP4,
+1 s segments. Since protocol 7 the stream starts when the frontend asks, as HA's does by default (no
+"preload stream": `camera/prefs.py`), and the master playlist answers once two segments are made,
+as HA's `HlsMasterPlaylistView` waits (`stream/hls.py`, HA 2026.11.0). Protocol 5 started it as if
+the camera had been streaming for 4 s, which on the WebRTC views let HA's HLS players start before
+WebRTC and take the panel's hardware decoders (#202, smoke 7). The segments are H.264 Main, fMP4,
 made once by `tools/perf/camera.py` with ffmpeg from its moving test pattern (`testsrc`, with its
 burnt-in counter): no video is in the repo, and the same ffmpeg makes the same bytes every time
 (bitexact, one encoder thread; `manifest.json` records the version and every file's SHA-256). The loop
-is 120 s; past it the playlist wraps with `EXT-X-DISCONTINUITY`. WebRTC (go2rtc) is a later option.
+is 120 s; past it the playlist wraps with `EXT-X-DISCONTINUITY`. Since protocol 6 the graded cameras
+play over WebRTC, and HLS is the fallback (next section).
 
 **Which player.** `ha-hls-player.ts` uses hls.js on MSE when the engine supports H.264 there
 (`Hls.isSupported()`), else the browser's own HLS, and ExoPlayer only in HA's companion app (not
@@ -361,15 +382,52 @@ hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
 **What is measured.** For each stream, by the harness, on the views with streams:
 - **First frame**: from the navigation to the stream's first presented frame
   (`requestVideoFrameCallback`, or `loadeddata` without it).
-- **Frames shown**: over the view's live phase up to its first swipe (the updates window and the
-  taps, with the cameras on screen), the frames the decoder presented (`getVideoPlaybackQuality`:
-  total less dropped) against 15 fps × the time. The swipes scroll the cameras away, and an engine
+- **Frames shown**: over the camera window, a fixed 30 s from the view going live (`CAMERA.windowMs`; the updates window and the taps run in it, with the cameras on screen, and the
+  swipes come after it), the frames the decoder presented against 15 fps × the time:
+  over WebRTC the receiver's `framesDecoded` (`getStats`: the frames the decoder handed to the
+  renderer; its `framesDropped` are frames that never came out of the decoder, so they aren't
+  subtracted, below), over HLS
+  `getVideoPlaybackQuality` (total less dropped). Gecko fills `getVideoPlaybackQuality` only for an
+  element with a media decoder, so for a WebRTC video it reads 0 (#202's verifier; seen in Firefox
+  through the harness, 2026-11-13: 0 there, 75 from the receiver). A 0 while frames arrived counts as
+  not reported, and `requestVideoFrameCallback`'s callbacks count instead (`stats.js` `shownFrames`;
+  each stream's `source` says which). The swipes scroll the cameras away, and an engine
   may rightly stop decoding a video no one can see, so they aren't in this window; scrolling is still
   measured with the streams playing. (`requestVideoFrameCallback` can fire once for two frames that
   land in one rendering update: in Chrome, 60 callbacks for 77 decoded frames. So it is used for the
   first frame and the gaps only.)
-- **Stalls**: gaps over 500 ms between presented frames in that window, the longest and their sum,
-  and the `waiting` events.
+- **Gaps and stalls over WebRTC (graded)**: the receiver's own, from `getStats` samples
+  about once a second (`stats.js` `webrtcWindow`). Per interval between two samples: if no receiver
+  decoded a frame, the whole interval is a stall; otherwise each receiver's new freezes and pauses
+  are stalls at their full length, less the time with nothing decoded just before, which they cover
+  too. A freeze is libwebrtc's (`VideoQualityObserver`, read in Firefox's tree,
+  `third_party/libwebrtc/video/video_quality_observer2.cc`, 2026-11-13): a gap between frames
+  handed to the renderer of at least 3 × the mean of the last 30, or the mean + 150 ms, counted at
+  its full length. A pause is the stream going inactive. The longest gap is the longest freeze,
+  pause or run with nothing decoded (two in one interval count as their sum, an upper bound).
+  Without any, every gap was under the freeze rule, and the longest gap is that rule's bound for
+  the window's mean interval (217 ms at 15 fps; `gaps_source` `webrtc (bound)`). Each stream's
+  `stalls_at` says where they were. One outage a receiver reports as both a freeze and a pause in
+  the same interval counts once, the longer of the two; different receivers add up. The intervals
+  run on the inbound reports' own `timestamp`s (Gecko reads the counts on its call thread right
+  after the ask, `RTCRtpReceiver.cpp`; a busy main thread delays only the answer, by up to
+  `statsWaitMs`, 10 s, at the window's end), so a late answer counts nothing past the time its
+  counts were taken, and frames shown are over that same span (`clock`: `stats`, or `asked` when a
+  sample has no timestamp). A receiver that reports no `freezeCount` has stalls and gaps `n/a`
+  (`stalls_reported` false), never 0: that run's camera level isn't measured, and the report says so.
+- **Gaps and stalls over HLS (the fallback, not graded)**: gaps over 500 ms between frames
+  presented by `requestVideoFrameCallback`, the longest and their sum, and the `waiting` events.
+
+**Why the receiver's and not the page's frame callbacks** (#202, s1rtc4). On the S1's
+heavy view the page's frame callbacks ran 127 times in a 147 s window: 132 s of "stalls", with no
+gap over 4.8 s. In the same window the receiver decoded 2198 frames (99.3% of 15 fps) with 2
+freezes, 0.49 s in all, and the compositor presented 1866 frames inside the callbacks' "stalls"
+(`presentedFrames`). The maintainer, watching the panel, saw all four test patterns' counters
+ticking smoothly. A busy main thread delays the callbacks, not the video, which the compositor
+shows on its own thread. The callbacks' gaps stay as detail (`callback_gaps`: how busy the page
+was). Checked in Chrome (`webrtc.e2e.test.mjs`): with the page blocked 900 ms of every second through
+typical's camera window, the callbacks read 25 s of stalls and the receiver none, 450 of 450
+frames.
 - Scroll, taps and live updates run with the streams playing, as on a panel showing a camera; RAM and
   CPU per process too.
 
@@ -507,6 +565,304 @@ peak is within it, with 99 MB to spare.
 - **Don't calibrate on the S1's letter.** The camera bars don't move the S1's D: typical and heavy
   were below fluid on scroll and open the view already.
 
+#### WebRTC cameras (#202, protocol 6)
+
+**Why.** Real setups mostly play cameras over WebRTC: go2rtc has been built into HA since 2024.11.
+Then the browser's own media stack carries the video, and no JavaScript runs per segment. Over HLS,
+hls.js fetches on the page's main thread, and on the S1's heavy view it fetched late (s1cam3, above).
+So protocol 6 grades the camera task on WebRTC, and keeps HLS as a measured fallback.
+
+**What the fake serves.** The cameras on the graded views are HA's cameras with go2rtc. Their
+`camera/capabilities` offers `web_rtc` and `hls`, as HA core does for a camera with a WebRTC provider
+(`camera_capabilities`, HA 2026.11.0). With both, HA's frontend starts both players: HLS shows until
+WebRTC has video, then only WebRTC stays (`ha-camera-stream.ts` `_streams`, frontend 20261028.5). The
+fake answers the commands `ha-web-rtc-player.ts` sends, in HA's own shapes (HA core's `homeassistant/components/camera/webrtc.py`; the fake's peer and relay
+are `tools/perf/webrtc.py`):
+
+| Command | The fake's answer |
+|---|---|
+| `camera/webrtc/get_client_config` | `{configuration: {iceServers: [TURN over TCP], iceTransportPolicy: "relay"}}` |
+| `camera/webrtc/offer` | A subscription: `result` first, then events `session` (`session_id`), `answer` (the SDP), or `error` (`code`, `message`) |
+| `camera/webrtc/candidate` | Passes the browser's candidate to the peer; `result` |
+| `unsubscribe_events` (the offer's id) | Closes the session, as HA does |
+
+A camera without `web_rtc` gets HA's errors (`webrtc_offer_failed` and the others). The peer is
+aiortc on your computer (`tools/perf/webrtc.py`). It sends `camera.py`'s H.264 as it is: the same
+bitstream as the HLS segments, remuxed to Annex B, never re-encoded, its access units at 15 fps from
+an IDR. The answer offers H.264 only.
+
+**How the panel reaches it: over the LAN when it can (protocol 7, the maintainer's option B, 2026-11-13).**
+Real setups carry WebRTC video over the LAN, UDP between the browser and go2rtc. Through `adb reverse`
+the S1's heavy view stalled: four relayed streams share one USB link with the frontend's websocket
+on a busy panel (#202's smokes 4 and 5; [the research note](../frames/aqara-s1-plus/research/webrtc-camera.md)).
+So before the graded part, run.sh asks the panel whether it can reach the computer
+(`tools/perf/lanprobe.py`, run under the fake's Python, before the fake starts):
+
+| Order | Check | If it works | Transport |
+|---|---|---|---|
+| 1 | the panel sends one UDP datagram with a random token to the computer's media address, port `--port + 1` | the computer received the token | **`lan-udp`**: no relay; the browser and the peer pair over UDP on the LAN, as a real setup does |
+| 2 | the panel opens one TCP connection there and sends a token | the computer received it | `lan-turn`: the same relay, over TCP to the computer's address |
+| 3 | (neither, or the computer has no LAN address) | | `adb`: TURN over TCP through adb reverse, as before |
+
+**What it does on the panel:** two `toybox nc` commands over `adb shell`, as adb's shell user: one UDP
+datagram and one TCP connection, both from the panel to this computer only. They are connections
+from the panel; nothing on the panel is written or changed. It records no addresses.
+
+UDP comes first because it is the real path: no TCP head-of-line blocking, no relay in the media's
+way. TCP to the relay is only for a network that drops UDP from the panel but passes TCP (the
+computer's firewall decides per program, and the check runs under the fake's own Python, so it
+answers for the fake). Over `lan-udp` the browser has no ICE servers; Gecko hides its own addresses
+behind mDNS names, and the peer learns them from Gecko's checks as peer-reflexive candidates
+(verified in Firefox, `test/webrtc.gecko.test.mjs`, 2026-11-13).
+
+`--webrtc-transport adb|lan-turn|lan-udp` sets it instead (`auto` is the default). report.json and the
+summary record it (`webrtc_transport`: `transport`, `chosen_by`, `reason`), and report.md says it
+beside the camera results. Over `adb`, heavy's camera result is marked as possibly the test's link's,
+not the panel's. **Results over different transports aren't comparable**: the summary carries it,
+and `gradeSummary` (grade.ts and grade.py) returns it with the letter (`transport`, and over adb
+`transport_caveat`), so a site can keep them apart. It never changes a letter or a threshold.
+
+The adb path, as designed first (still the fallback). `adb reverse` forwards TCP, and WebRTC's media
+is UDP. The choice then:
+
+| Option | Through adb reverse? | Needs the LAN? | Verdict |
+|---|---|---|---|
+| ICE-TCP (the browser connects to a TCP candidate on the computer) | yes | no | aiortc has no ICE-TCP; it would need another WebRTC stack |
+| **TURN over TCP**: the browser's relay is on the computer, reached through adb reverse | yes | no | **Chosen**. Every hop but the TCP one stays inside the computer |
+| The panel reaches the computer's LAN address | no | yes | Depends on the tester's network (an IoT VLAN, a firewall): not repeatable |
+
+So `get_client_config` names one TURN server, `turn:localhost:<port + 1>?transport=tcp`, and run.sh
+adds that port to `adb reverse`. The relay (`webrtc.py`, RFC 5766 with long-term credentials) relays
+UDP on the computer's **media address**, where the peer's only candidate is: the computer's IPv4
+address towards its default route (else its first one that isn't loopback or link-local;
+`GW_PERF_WEBRTC_ADDR` sets it). Packets between the relay and the peer are delivered inside the
+computer, and the panel never sends to that address itself: it only talks TURN over the TCP
+connection. The relay relays to the peer only.
+
+**Why `localhost` and not loopback for the media** (found on the S1's first WebRTC smoke, 2026-11-13,
+and reproduced in Firefox 152 on a Mac the same day, verified). The first version used `127.0.0.1`
+for all of it. Chrome played it. GeckoView, the kiosk's engine, never connected: 14 offers, no ICE
+candidate from the panel, ICE checking then closed. Gecko (nICEr) has three rules Chrome doesn't:
+
+| TURN server | Relayed address | Firefox connects to the relay? | Relay candidate? |
+|---|---|---|---|
+| `127.0.0.1` | `127.0.0.1` | no (`icecandidateerror` 701) | no |
+| `127.0.0.1`, with Gecko's `media.peerconnection.ice.loopback` on | `127.0.0.1` | yes | yes |
+| `localhost` | `127.0.0.1` | yes, allocates | no (701) |
+| `localhost` | the computer's own address | yes | yes; ICE connects and the video plays (a browser on the computer) |
+| `localhost`, through adb reverse (the relay sees the browser as `127.0.0.1`) | the computer's own address | yes, allocates | no (the S1's second smoke, and Firefox through a stand-in) |
+| the same, the allocation's mapped address reported as the computer's own address | the computer's own address | yes | **yes; ICE connects and the video plays** |
+
+So Gecko won't use a TURN server given as a loopback IP, drops a relayed candidate on loopback, and
+drops one whose allocation says the browser itself is on loopback (XOR-MAPPED-ADDRESS). Through adb
+reverse the relay only ever sees `127.0.0.1` (adb's own connection), and the browser's real address is
+unknown to it, so it reports the media address there: with relay-only ICE that only labels the
+candidate. A relayed address the browser has no route to is fine (Firefox, `192.0.2.55`). The kiosk's
+Gecko prefs aren't the test's to change, so the fake avoids all three. The tries and the
+commands are in [research/gecko-turn.md](research/gecko-turn.md). `test/webrtc.gecko.test.mjs`
+holds this: it runs the fake's WebRTC in Firefox. HA sends only `iceServers`; the
+fake adds `iceTransportPolicy: "relay"`, which the frontend passes to `RTCPeerConnection` unchanged,
+so a browser on the computer's network can't pair its own address and skip the relay. What differs
+from a real setup is the transport (TCP through adb, not UDP on the LAN); the video and the
+browser's media stack are the same. So the receiver's loss and jitter numbers (detail) aren't
+comparable with a camera on a LAN; the graded bars (first frame, shown, stalls) are what count.
+
+While a run lasts, the relay's UDP side and the peer listen on the media address, which other hosts
+on that network can reach. The relay passes on only datagrams from the peer's address, so injecting
+into a session would take a spoofed source address on that network: a low risk for a test that runs
+minutes. On macOS the first run may show the firewall's "accept incoming connections" prompt for
+Python; either answer works, since nothing comes from outside the computer.
+
+**The profile in the answer isn't the stream's, as with go2rtc.** The stream is x264's Main
+profile, and the fake's answer lists the two Baseline `profile-level-id`s aiortc has, `42001f`
+first, then `42e01f`. go2rtc 1.9.15, which HA 2026.11.0 pins, does the same: its `Codec.Match`
+(`pkg/core/codec.go:126`) compares only the codec name, clock rate and channels, its own H.264 list
+starts with `42001f` (`pkg/webrtc/api.go:277`), and it passes a camera's Main or High stream
+through unchanged. Gecko, the panel's engine, offers only `42e01f` and `42001f`, so a Main fmtp
+wouldn't negotiate with it at all. Re-encoding to Baseline would make the stream less like a real
+camera's (read 2026-11-14, CodeRabbit on #205).
+
+**The video has no B-frames** (protocol 6, both paths). Protocol 5's segments had them (x264's
+default, I B B B P). Browsers' WebRTC receivers don't reorder B-frames, and IP cameras send I and P
+frames only, so `camera.py` encodes with `-bf 0`. So the HLS numbers aren't comparable with protocol 5's
+(s1cam3) either: the same streams, re-encoded without B-frames.
+
+**What is graded.** The camera task, with the same bars and the same rules: first frame, frames
+shown, stalls ("a stall is a stall"; the maintainer, #174). On a graded view each camera's stream is
+its WebRTC player's video. A camera whose WebRTC never showed a frame fails the task, even if HLS
+showed one meanwhile.
+
+**Detail, not graded:**
+- **The receiver's own counts** (`webrtc` on each stream, `stats.js` `webrtcWindow`): frames received, decoded and dropped, freezes and their time, pauses, packets lost,
+  NACKs and PLIs, the jitter buffer, the codec and its fmtp line, and the candidate pair (`relay`
+  over `tcp` on a panel). Also the decoder the browser names (`decoderImplementation`,
+  `powerEfficientDecoder`); an engine may leave them out. The harness lists the page's
+  `RTCPeerConnection`s to read them, and changes nothing about them. The page samples every
+  connection that carries the camera's video once a second, because HA's player can renegotiate or
+  replace it mid-window (on the S1's heavy view it did, after ICE failed: research note below). Each
+  receiver (connection, stats id, SSRC) counts only its own increments: one that appears mid-window
+  counts from 0, a counter that goes back counts on from 0, two receivers are never subtracted, and
+  no count is negative. `sessions` and `receivers` say how many there were; `no_video_ms` is the time
+  between samples in which none decoded a frame. `connections` lists each one: when HA's player made
+  it, its offers (a `restartIce` is a second one) and its ICE states. The graded stalls stay those of
+  the video element, which count the time between sessions too. The report says when a camera
+  needed another session.
+- **The relay's view** (`fakeha.jsonl`): each relay connection's datagrams both ways when it
+  closes, and the round trip of each of the peer's ICE checks through the browser (`checks`:
+  answered, unanswered, median and longest, how many over 500 ms). The peer's liveness transitions
+  are `webrtc_liveness` (disconnected, connected, failed), and an ICE loss is `lost` with `reason`
+  (`liveness` or `remote`).
+
+**A view the panel can't finish** (#202: smoke 7, s1rtc3, s1rtc4). Each task has its own budget
+so a slow view still gets every task tried:
+
+| Task | Budget |
+|---|---|
+| Open the view (usable) | 300 s from opening (`GW_PERF_VIEW_DEADLINE_S`): the only per-view deadline |
+| Live updates | 1 s warm-up and a 4 s window |
+| Taps | 5 s a tap (`PHASES.tapEachMs`; at least 30 s): `adb shell input` took 2.4 to 4.7 s a tap on s1rtc4's heavy |
+| Cameras | a fixed 30 s from the view going live, beside the updates and the taps |
+| Scroll | each swipe up to 4 s, after the cameras' window |
+
+The harness checks each budget on waits paced by animation frames: on s1rtc4's heavy a 30 s tap
+wait, checked by a timer, ended after 140 s, because the page's timers wait behind the frontend's
+queue while the refresh driver's frames come first. It doesn't wait for answers a busy page holds:
+its camera line came 93 s after the window, waiting on a getStats a second for each of 4 receivers
+(now one at a time, and at most 10 s at the end), and the stream's stop at the end (at most 5 s;
+the runner stops it at the fake too, and the fake ignores a stop for a view that isn't the current
+one). INP is the page's own Event Timing, from when each tap reached the page, never from when the
+runner sent it.
+
+After the view is usable, the runner times it out only when it says nothing for 180 s
+(`GW_PERF_STAGE_IDLE_S`): stuck in one task. A view that times out (`timed_out` in the run's file
+and the report, with `timed_out_after`: the last thing it said, or `usable`) fails its own tasks and
+nothing else:
+
+1. What it measured stands.
+2. What it didn't is measured as failing, not as missing: "didn't finish" is itself the
+   measurement, as a camera that never shows a frame fails rather than goes unmeasured. Open and tap
+   count as the time it ran (`timed_out_s`, at least the deadline when it was never usable), and
+   scroll, live updates and the cameras get a `{"timed_out": true}` record, which every grader
+   (grade.py, grade.ts) puts below the lowest bar. So a timeout doesn't make the grade provisional;
+   report.md names it in the detail, and the report's and summary's `timed_out_runs` count it per
+   page.
+3. The runner then restarts the kiosk as at the run's start (`am force-stop`; `am start` if nothing
+   relaunched it within 10 s), waits for its reference dashboard to be usable again (at most
+   180 s, or the run fails), and opens the run's remaining views (`recoveries` in the run's file).
+   The run's restart time stays the first restart's, and RAM isn't sampled right after this one.
+
+Before, the whole run waited out its 900 s and was dropped (smoke 7); then the run's later views
+weren't opened (s1rtc3); then heavy, usable after 43 s and still working, ran out of a 300 s
+per-view deadline before its swipes (s1rtc4). The runner also sends the kiosk's wake intent during a
+live view once nothing has touched the panel for 10 s (`live_wakes`; it was 30 s until s1rtc5, whose
+heavy lost the screen at night 16 to 20 s after its last tap), and Android's wake key through each
+restart (`restart_wakes`): see "The screen stays on". A page stuck on a busy panel can outlast the
+kiosk's idle timeout (20 s at night on the S1), and with the screen off nothing measured is the
+panel's. A graded run may take up to 1800 s (`--timeout`).
+None of this moves a threshold.
+
+**Drawn long before usable** (detail). A view is usable when its first screen is drawn and its main
+thread is free: every probe (a `setTimeout(0)`) runs within 50 ms, for 500 ms. On s1rtc4's heavy
+the first screen was drawn 1.1 to 1.3 s after the navigation, and the main thread was free after 43
+to 46 s; its live updates then drew 5 to 8 frames a second. So the wait is the frontend's own work,
+not a starved callback of the harness's: a tap in that time waits as the probes do. Each view's
+`drawn_ms` and `busy_ms` (the longest a probe waited, each second of the wait) are detail, and
+report.md says when the two are more than 5 s apart.
+
+**Checking Clarity against the screen** (debugging only). `tools/perf/debug/screencam_moments.py`
+lists, for a view in a run, when it was opened, drawn, usable, each camera's first frame and each
+stall, in this computer's epoch ms, and the frames of a screen-camera recording to look at, with how
+far the test pattern's counter should move if the video played. It reads a run's files and nothing
+reads it: no part of the grading path (run.sh, perfrun.py, report.py, summary.py, the graders)
+uses it or anything a screen camera records (`test_screencam_moments.py` checks this). Recordings
+show the room: keep them local.
+
+**Stream sizes, against a real setup.** go2rtc passes a camera's own stream through without
+transcoding, so a `picture-entity` card with `camera_view: live` plays what the camera entity
+streams: for most integrations the main stream (often 1080p or more, several Mbit/s), unless the
+user picks a sub-stream entity (UniFi Protect's lower channels, Reolink's "fluent" stream). This is
+general knowledge, not measured here. Clarity's heavy view plays 720p and three 640×360 at 15 fps,
+about 0.45 and 0.35 Mbit/s of `testsrc` (camera.py): lighter than a typical real four-camera grid,
+never heavier.
+
+**Where the video waits** (diagnostics, #202's sixth round). On the S1's heavy view the panel
+stopped receiving video for tens of seconds ([the research note](../frames/aqara-s1-plus/research/webrtc-camera.md)).
+To find where it waits:
+- `fakeha.jsonl`: each relay connection's `seconds` (each second: seconds since it opened, kB down
+  and up, datagrams down and up so far, and kB queued on this computer toward the panel), and
+  `ws_second` (the frontend websockets' kB and messages each way, and the longest blocked send).
+- `tools/perf/transportwatch.py --out DIR [--logcat]`, beside run.sh, read-only: the panel's TCP
+  sockets on the fake's ports each second (`rx_queue` on the kiosk's socket is data not yet read),
+  each thread's CPU in the kiosk and adbd every few seconds, and logcat if asked. Its sampling costs
+  the panel a few percent of a core (adbd 3.6% at idle, with it).
+- refstart's `gestures_sent`: when each tap and swipe went over adb, and how long `input` took.
+- `run.sh --webrtc-transport adb|lan-turn|lan-udp`: one path, forced, to compare with what `auto`
+  picked (since protocol 7 the graded path is `auto`'s choice; see "How the panel reaches it").
+
+**When the peer gives a connection up: as go2rtc does** (since #202's fifth round, 2026-11-13).
+Real setups answer the frontend's offer with go2rtc. HA 2026.11.0 pins go2rtc 1.9.15
+(`homeassistant/components/go2rtc/const.py`, and its Dockerfile), which uses pion/webrtc v4.2.25 and
+pion/ice v4.4.8 (go2rtc's `go.mod`) and sets no ICE timeouts (its `pkg/webrtc/api.go`). So pion/ice's
+defaults apply (read from its source at v4.4.8):
+
+| pion/ice v4.4.8 | Value | Where |
+|---|---|---|
+| Keepalive: a Binding request on the selected pair | every 2 s | `agent_config.go:21`, `agent.go:951` |
+| "disconnected" | 5 s without receiving anything from the browser | `agent_config.go:24`, `agent.go:906-946` |
+| "failed" (the connection is given up) | 25 s after that, 30 s in all | `agent_config.go:31` |
+| What counts as receiving | any packet: media, or any STUN message, however late an answer is | `candidate_base.go:337`, `agent.go:1845` |
+
+aiortc's own check (aioice 0.13.0, `query_consent`) is stricter: each check's answer must come within
+0.5 s, and 6 late ones in a row close ICE. On the S1's heavy view that dropped every session while the
+panel's answers were all arriving, only late (smoke 4, 2026-11-13: 0 unanswered; median round trip
+1.4 to 2.6 s, longest 9.6 s, about 3 in 4 over 500 ms; typical's median 16 to 22 ms). The answers
+travel through the panel's TCP connection behind the video, on a panel busy with heavy. The fake's
+peer now uses pion's rules (`webrtc.py` `PION_ICE`), so it gives a connection up when a real setup's
+would. This is fidelity to the path real setups use, not tuning toward a letter: the grading rules
+are unchanged, and a panel that stops answering still loses its stream (after 30 s, as with go2rtc).
+
+**Frames shown over WebRTC: `framesDecoded`** (read 2026-11-13 from GeckoView 159's source,
+mozilla-release `7b34a03a910d0385299f4a9f27aa585a786862d8`). Gecko fills `framesDecoded` and
+`framesDropped` from libwebrtc's receive statistics (`dom/media/webrtc/jsapi/RTCRtpReceiver.cpp`,
+lines 542 and 607). `frames_decoded` counts each frame the decoder hands to the renderer
+(`third_party/libwebrtc/video/video_stream_decoder2.cc:53`, `receive_statistics_proxy.cc:664`).
+`frames_dropped` counts frames the frame buffer dropped before decoding
+(`video/video_stream_buffer_controller.cc:148` and `:325-329`) and frames given to the decoder that
+never came out of it (`modules/video_coding/generic_decoder.cc:137, 275, 287`). So no dropped frame is
+a decoded one, and subtracting them undercounted: smoke 4's heavy had 1090 decoded and 690 dropped,
+which read as 400 shown. Frames dropped after the decoder, in the rendering, are in no count ("Not
+including frames dropped in the rendering pipe", `RTCRtpReceiver.cpp:605`); the video element's
+frame callbacks, which give the stalls, see those. Chrome's counters are libwebrtc's too (Gecko
+vendors libwebrtc).
+- **The other player** (`others` on each stream): HLS's first frame while WebRTC started, and
+  whether the frontend had removed it by the window's end.
+- **The decoders from logcat**, as for HLS (`media`). GeckoView's WebRTC uses Android's MediaCodec
+  when an instance is free: over the LAN, typical's one camera got the S1's hardware decoder and
+  played 100%. The S1 has 4 hardware H.264 instances; on heavy, HA's HLS players (started with
+  WebRTC, as HA's frontend does with go2rtc) took them first while the fake's HLS started instantly,
+  and the rest fell to Android's software decoder (#202, smoke 7;
+  [frames/aqara-s1-plus/research/webrtc-camera.md](../frames/aqara-s1-plus/research/webrtc-camera.md)).
+  The log doesn't say which player got which decoder.
+
+**The HLS fallback** (detail, never in the grade). After each run's graded views, the runner opens
+`typical-hls` and `heavy-hls`: the same views, card for card, whose cameras offer HLS only (HA's
+`stream` integration without go2rtc). They run as the graded views do, taps included, without the
+swipes. The report gives each run's worst HLS stream and the level the camera bars would give it
+(`camera_fallback`); the summary gives the numbers (`camera.fallback`). A copy that fails fails only
+itself. RAM between them isn't sampled (they aren't graded tasks).
+
+**Checked in Firefox** (2026-11-13, verified; `test/webrtc.gecko.test.mjs`): the fake's client config,
+offer, answer and candidates through its websocket API as HA's frontend sends them, in headless
+Firefox 152 on a Mac: a relay candidate on the computer's address, ICE connected, the video decoded at
+15 fps (180 frames in 12 s, none lost).
+
+**Checked in Chrome** (2026-11-13, verified; `test/webrtc.e2e.test.mjs`): HA's frontend on the fake,
+in headless Chrome on a Mac, played typical's camera over WebRTC through the relay (candidate pair
+relay over TCP), first frame 326 ms after the navigation, 99.2% shown, no stall, 0 frames dropped.
+Its HLS copy: 318 ms, 99.4%. One fix came from this check: aiortc asks a public STUN server by
+default and held each answer 5 s waiting for it, so the peer has no ICE servers. Not yet run on a
+panel: the S1's first smoke (above) failed on the loopback relay; see the panel plan in #202's PR.
+
 #### Change to screen
 
 - **When a change was sent.** Each change's context id carries its slot in the stream and how late
@@ -561,8 +917,11 @@ gets an error, which the frontend handles as it would from HA, and the fake logs
 | Open the view | From the navigation to the view (HA's `navigate()`, as a view tab calls it, in the frontend that is already loaded) to **usable**: the view's head and every card on its first screen drawn, and the main thread free (see [Open the view](#open-the-view-a-navigation-in-the-loaded-frontend) and [Usable](#usable)). The times come from the page's own clock, tied to logcat's by its log line. If the view never says it was usable, or no frame reached the screen after it, it is "not measured", never 0. (Protocols 1 to 3, and protocol 4 as first written, loaded the whole page for each dashboard) | Each view; SurfaceFlinger |
 | Restart | From the app's process start (`Start proc` in logcat) to the reference dashboard's start view being **usable**, as for open the view: the kiosk comes back to it by itself, because the graded part points its dashboard setting there. This is HA's cold load: the app, the websocket, the registries, every card type's code and the first view. Once per run, for the whole frame. The engine being ready (GeckoView's own first page, `about:blank`) is reported, not graded (`engine_ready_ms`). See [Restart: back to a usable dashboard](#restart-back-to-a-usable-dashboard) | logcat; the restart page |
 
-Each graded run is one restart back to the start view, then the three reference views in the run's
-order. The first view opens once the restart page has said it was usable and the screen has been
+Each graded run is one restart back to the start view, then the four reference views in the run's
+order (`tiers.json` `ORDER`: light, typical-nocam, typical, heavy; run k starts k − 1 views in).
+`typical-nocam` is typical card for card, with a still picture (`picture` card) where its camera
+card was (`tiers.json` `PLAIN`), as the cameras took picture cards' places in protocol 5: the same
+cards and layout, without the live video. The first view opens once the restart page has said it was usable and the screen has been
 still for 2 s, never on HA's load event, which comes seconds earlier. If its `done` line is lost, the runner goes on 10 s after its usable line. If the
 kiosk doesn't come back to a reference dashboard (another page loads, or none says it was usable),
 the restart is "not measured" ("the kiosk didn't come back to a reference dashboard") and that
@@ -589,6 +948,7 @@ and lags the compositor's first scrolled frame.
 |---|---|
 | Animations it can handle | The animation test page's ladder: five families of animated elements, each doubling from 1 to 1024 (CSS transform, CSS opacity, SVG, canvas 2D, HA-like tiles whose numbers change every frame). The report gives the largest count held at 60 fps and at 30 fps. The same page has a scripted scroll stage and a JS workload (an HA-like state update for 400 entities, checked by a checksum) |
 | Android's TTID | The `Displayed …: +Nms` line of each restart |
+| CPU clock per view | Every core's `scaling_cur_freq` every 5 s (`GW_PERF_CPU_CLOCK_S`) from a view's open to its done, and each core's `cpuinfo_max_freq` once, when the sampler starts (read-only `cat`s of `/sys/devices/system/cpu/cpu*/cpufreq/` over adb). The sampler runs while the SurfaceFlinger poller is paused too: it is the one adb call inside timed windows, on purpose, and costs a fraction of a percent of a core. report.md gives each view's median and range in MHz beside the CPU's top clock, or each core's median when they differ (a big.LITTLE CPU's clusters), so a capped or boosted CPU shows (#244: the S1's power HAL holds 1.2 of its 1.608 GHz). The run's file has `cpu_khz` (`[view, time, {cpu number: kHz}]`, the numbers from the sysfs paths, so cpu10 is never taken for cpu2; a reading that crossed into another view, a recovery or the run's end is dropped), `cpu_max_khz` (`{cpu number: kHz}`) and `cpu_clock_s`; report.json has each tier's `cpu_mhz` (cores pooled) and `cpu_mhz_by_core` (by cpu number), and `graded.reference.cpu_max_mhz` and `cpu_clock_s` |
 | Your dashboard | A restart back to your own dashboard: process start to its `PageStart`, its load to settled, and the whole wait from the force-stop. A run that doesn't finish within 120 s is recorded as an error |
 | RAM on the reference dashboards | PSS per process at idle on the typical reference dashboard and the peak during the graded tasks, and each switchable pane's share. See [RAM](#ram) |
 | Memory on your dashboard | PSS of every app process (the app, Gecko's GPU, content and crash helper processes), the main process's App Summary, each process's peak RSS (`VmHWM`), the radio's processes, and `MemTotal`/`MemAvailable`, at idle on your dashboard and at the run's peak |
@@ -653,13 +1013,14 @@ the two middles for an even count):
 | Live updates | good, and the frames that had a change to draw hold the 60 fps bar | 95% of changes on screen within 100 ms | within 200 ms |
 | Tap | INP good (≤ 200 ms) | INP good | INP good |
 | Open the view | ≤ 2.5 s, or up to 4 s | the same | the same |
-| Cameras (typical and heavy only) | as good | first frame within 2 s, at least 95% of frames shown, no gap over 500 ms | first frame within 4 s, at least 85% shown, stalls under 1 s in all |
+| Cameras (typical and heavy only; over WebRTC since protocol 6) | as good | first frame within 2 s, at least 95% of frames shown, no gap over 500 ms | first frame within 4 s, at least 85% shown, stalls under 1 s in all |
 
-Below fluid, a measured scroll, live-update or camera level is `slow`. A camera's gaps and stalls
-come from `requestVideoFrameCallback`, which a busy main thread delays while the compositor goes on
-showing frames, so on a page whose main thread is blocked a stall can be the page's, not the stream's.
-Each stream's `stall_presented` (detail) is the cross-check: the frames rVFC's `presentedFrames` says
-were shown inside the stalls. Many means the callbacks stalled, not the video. The camera bars are #174's
+Below fluid, a measured scroll, live-update or camera level is `slow`. Over WebRTC (graded) a
+camera's gaps and stalls are the receiver's own counts ("What is measured"). Over HLS
+they come from `requestVideoFrameCallback`, which a busy main thread delays while the compositor
+goes on showing frames, so there a stall can be the page's, not the stream's; each stream's
+`stall_presented` (detail) is the cross-check: the frames rVFC's `presentedFrames` says were shown
+inside the stalls. The camera bars are #174's
 proposal, to be calibrated on the S1 before they're final (a decision for the maintainer, in its own
 PR, never to move a letter); there is no separate premium bar for cameras. A page without streams
 (light) has camera `none`, which every level accepts. The p95 caps are whole frames at
@@ -673,10 +1034,14 @@ updates that make scrolling stutter cost the page its scroll level.
 |---|---|
 | A+ | Heavy premium: every task there holds 60 fps (the headline reads "A+, premium") |
 | A | Heavy good |
-| B | Typical good and Heavy fluid |
-| C | Typical fluid |
+| B | Typical (with its camera) good |
+| C | Typical without a camera (`typical-nocam`) fluid |
 | D | Light fluid |
 | E | None of the above |
+
+The camera-free typical and these steps came in pre-release rubrics 10 and 11 (the maintainer,
+2026-11-13, #205), before any result under them. A report without `typical-nocam` has that page
+"not measured", and is pre-release anyway (see "Versions").
 
 The scale is A+, A, B, C, D, E (a user decision on 2026-11-12; an earlier draft of v5 had premium as
 a label on an A). A+ needs only heavy, like A; when light or typical weren't measured, the grade is
@@ -711,7 +1076,11 @@ is 83; the test caps it at 85), plus one when the grade is provisional:
 
 1. **What's good**, in one sentence: the heaviest page that reaches a level, and what is quick,
    smooth or fluid there ("Light dashboards feel good: …"). Without a level, the page with the most
-   good or fluid tasks ("… come closest").
+   good or fluid tasks ("… come closest"). When it is typical without a camera and typical with one
+   doesn't reach a level, the sentence says what the camera costs, with its worst limit: "Typical
+   dashboards feel good without a camera: …; with one, it shows 40% of its camera's frames." That
+   limit isn't quoted again in the next sentence. Pages read as "typical" (without a camera) and
+   "typical with a camera"; a pre-release report keeps "typical" for its one typical.
 2. **What holds it back**, in one sentence, at most three limits. Each failing task is quoted
    once, with one rounded number, on the lightest page it fails on, and ranked by how far that
    number is past its fluid bar (rubric.json: scroll 30 fps and 67 ms, a change 200 ms, a tap
@@ -730,16 +1099,16 @@ is 83; the test caps it at 85), plus one when the grade is provisional:
    | The browser's main thread | A slow scroll is `limited_by: main-thread` (the page's frames, rAF, worse than SurfaceFlinger's), or a camera page gets video late (below) | "it stays busy" when the app keeps 25% of a core or more on typical untouched (`reference_idle.cpu_app_pct_of_core`); "cameras get video late even though the (hardware) decoder keeps up" when, on a failing camera page, every run that has all three kinds of evidence shows segments arriving 2 s or more apart (1 s segments), a fetch's p95 under 500 ms and its decoder dropping at most 1% (never combined across runs); else "the page draws too few frames" |
    | The GPU | A slow scroll is `limited_by: compositor` (SurfaceFlinger's frames worse than rAF's) | "the screen drops frames the page drew" |
    | The link | A failing camera page's segment fetch p95 is 1 s or more | "camera video takes a second or more to fetch" |
-   | The test itself | The fake Home Assistant sent a change more than 200 ms late | "its fake Home Assistant sent changes late" |
+   | The test itself | The fake Home Assistant sent a graded view's change more than 200 ms late | "its fake Home Assistant sent changes late" |
 
 4. **Memory**, when RAM was measured: "Memory isn't the limit (X of Y MB)", the app's peak against
    its budget, when both the peak and the device's available memory are within the frame's budgets;
    "Memory is a limit" with the budget it misses; or only the peak ("The app's memory peaks at X
    of Y MB") when available memory wasn't read.
 5. **Provisional**, only when the grade is: one plain clause from the run's protocols and what is
-   missing, not the reasons' wording. A run of an older protocol reads "measured with an older
-   version of the test" (", without cameras" when its camera tasks are missing, since cameras came
-   with protocol 5); every other reason and missing task is counted ("2 things weren't measured
+   missing, not the reasons' wording. A run from before Clarity v1 reads "measured with a
+   pre-release version of Clarity" (", without cameras" when its camera tasks are missing, since
+   cameras came with pre-release protocol 5); every other reason and missing task is counted ("2 things weren't measured
    fully"). The report keeps the reasons in full (`grade.provisional_reasons`). report.md leaves
    this clause out under its headline, which already gives the reasons.
 
@@ -750,8 +1119,8 @@ the report's rubric, so `notes.rubric` names its version. On the S1:
 | Run | Notes |
 |---|---|
 | s1cam3 (protocol 5, 3 runs) | Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger dashboards slow down: typical scrolls at 25 fps and takes 6.6 s to open, and heavy takes 0.7 s to show a change. The likely limit is the browser's main thread: it stays busy (97% of a core on typical with a camera playing), so cameras get video late even though the hardware decoder keeps up. Memory isn't the limit (889 of 988 MB). |
-| s1v7 (protocol 4, provisional under the protocol 5 rubric) | Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 4.8 s to open. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: measured with an older version of the test, without cameras. |
-| smoke11 (protocol 4, 1 run, provisional) | Light dashboards feel good: taps and opening a view are quick, and scrolling and live updates are fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 5.2 s to open, and heavy takes 230 ms to answer a tap. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (748 of 988 MB). Provisional: measured with an older version of the test, without cameras. |
+| s1v7 (protocol 4, provisional under the protocol 5 rubric) | Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 4.8 s to open. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: measured with a pre-release version of Clarity, without cameras. |
+| smoke11 (protocol 4, 1 run, provisional) | Light dashboards feel good: taps and opening a view are quick, and scrolling and live updates are fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 5.2 s to open, and heavy takes 230 ms to answer a tap. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (748 of 988 MB). Provisional: measured with a pre-release version of Clarity, without cameras. |
 
 The task levels (`scroll_levels`, `update_levels`), the page levels, the letters (A+ first) and the
 restart cap live in `tools/perf/page/rubric.json` (`grade`), next to the thresholds.
@@ -1078,6 +1447,7 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | Key | What |
 |---|---|
 | `schema` | `"glassworks.perf/4"`. A field that changes meaning gets a new version (`/4`, 2026-11-12: `grade.bands` carries scroll and live-update levels, rubric v5) |
+| `clarity` | Clarity's version: `1` for v1; `null` for a report from before v1 (pre-release), which the site shows as "re-measure". See [Versions](#versions) |
 | `protocol_version` | The measurement protocol the pages ran (`null` if the runs disagree). See [Protocol and rubric versions](#protocol-and-rubric-versions) |
 | `measured_on` | The run's date (UTC, from the computer that ran it) |
 | `runs_attempted` | Graded runs attempted (`plan.json`), the count each band is over |
@@ -1085,10 +1455,11 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `apk` | One entry per APK given with `--apk`: `abis`, `bytes`, `parts_bytes` (dex, native, assets, resources, other) |
 | `notes` | What's good and what holds it back, in words ([The notes](#the-notes-whats-good-what-holds-it-back)): `good` and `limits` (a sentence each, or `null`), `causes` (the likely cause and memory, each a sentence, either may be missing), `text` (the paragraph), `rubric` (the rubric version it judged by) |
 | `thermal` | Each stage's thermal zones from `thermal.tsv`, in order: `phase`, `zones` (°C) |
-| `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (over 200 ms, one update interval, is provisional). `null` without the log, which is provisional for protocol 4 |
+| `webrtc_transport` | Protocol 7: `transport` (`lan-udp`, `lan-turn`, `adb`), `chosen_by` (`auto`, `flag`), `reason` (lanprobe.py's), `limited` (over adb with heavy's cameras measured: why heavy's camera result may be the link's; else `null`). `null` before protocol 7 |
+| `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (the graded views' streams only; over 200 ms, one update interval, is provisional), `stream_late_detail_max_ms` (the views that aren't graded: the HLS copies and a warm-up; detail, a line in report.md, never provisional: #205, s1rtc8's one 2 s burst on typical-hls). Each change belongs to the view open when it was sent. `null` without the log, which is provisional |
 | `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`, `cpu_app_pct_of_core`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb` (`null` under two samples a side), `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`, `verified`, `excluded`, `boot_samples_on` and `boot_samples_off` (samples `:boot` ran in, left out of the share), `boot_pss_kb` (its median PSS, or `null`), and `off_by: "mute"` when Assist was off by its mute alone; or `id`, `method` and `error` when no sample ran as asked), `screen_off_samples` (idle samples the screen went off in, left out), `panes_waiting` (`id`, `waiting_on`, `note`; empty since #67, kept because this version only adds fields), `panes_not_switched` (`id`, `why`, `note`: a pane not measured on its own, and why), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `tolerance_kb`, `measurable` (three samples a side and a tolerance at most a quarter of the budget), `ok` (`null` when not measurable: read it as unknown, not as over)). See [RAM](#ram) |
-| `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts: the kiosk's own page never finished loading in a graded run; graded runs failed or are missing; the restart or a task was measured in fewer runs than attempted; a page's live changes rest on a loose clock tie; no swipe ran during the live updates; scrolling rests on rAF only; the fake Home Assistant's log is missing, or it didn't know or failed a command, or sent a change late; page lines didn't parse or never arrived whole (`bad_page_lines`); swipes were answered with no scroll step back (`lost_scroll_steps`); the pages ran another protocol; the viewport couldn't be checked |
-| `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `camera_runs` (each run's worst stream, with each stream as `detail`, and as detail `fetches` (the HLS fetch times) and `media` (the decoders the view got, from logcat)), `camera_levels` (per run) and `camera_level` (graded), `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
+| `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts: the kiosk's own page never finished loading in a graded run; graded runs failed or are missing; the restart or a task was measured in fewer runs than attempted; a page's live changes rest on a loose clock tie; no swipe ran during the live updates; scrolling rests on rAF only; the fake Home Assistant's log is missing, or it didn't know or failed a command, or sent a graded view's change late; page lines didn't parse or never arrived whole (`bad_page_lines`); swipes were answered with no scroll step back (`lost_scroll_steps`); "measured with a pre-release version of Clarity (protocol N): re-measure"; the pages ran another protocol; "<page>: N camera run(s) whose stalls couldn't be measured (no freeze counts from the receiver, or no frames to measure gaps over): n/a, not measured"; the viewport couldn't be checked |
+| `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `camera_runs` (each run's worst stream and its `path`, with each stream as `detail`, and as detail `fetches` (the HLS fetch times) and `media` (the decoders the view got, from logcat)), `camera_levels` (per run) and `camera_level` (graded), `camera_fallback` (protocol 6, detail: `path` `hls`, `runs` (each run's worst HLS stream on the view's HLS copy, with its `view`, `media` and `error`), `levels` and `level` as the camera bars would give them; `null` on a page without streams), `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
 | `detail` | `synthetic`, the animation test page: `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `steps_without_sf`, `screen_off_runs` (left out of the rest), `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `page_lcp_ms`, `page_lcp_from`, `per_run` |
 | `real_use` | Not graded. Your dashboard: `app_start_to_dashboard_ms`, `android_ttid_ms`, `launch`, `stop_to_dashboard_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `errors`, `screen_off_samples`, `per_run`. Then `idle`, `peak`, `memory` (`idle`, `peak`, `budget`) and `panes` |
 
@@ -1110,6 +1481,7 @@ from real use, and nothing device-unique.
 |---|---|
 | `schema` | `"glassworks.perf-summary/2"` |
 | `test` | The test's name, `"Clarity"` (`rubric.json` `name`), so a summary says what measured it |
+| `clarity` | Clarity's version, `1`. Without it the summary is pre-release: `gradeSummary` returns `re-measure` ([Versions](#versions)) |
 | `protocol_version` | How it was measured. A site grades it only with a rubric for the same protocol |
 | `report_schema` | The report it came from, `"glassworks.perf/4"` |
 | `measured_on` | The run's date, `YYYY-MM-DD` (UTC) |
@@ -1117,7 +1489,7 @@ from real use, and nothing device-unique.
 | `app_version` | The kiosk's version name |
 | `viewport` | `css` (CSS px), `dpr` (device pixel ratio), `default_dpr` (density / 160) |
 | `runs` | `attempted`, `graded` |
-| `pages` | Per page (`light`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
+| `pages` | Per page (`light`, `typical-nocam`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams; a run's record is `{"timed_out": true}` with the numbers `null` when the page didn't finish before its streams were measured), `timed_out_runs` (protocol 7: in how many runs the page didn't finish within the runner's deadline; their unmeasured tasks are in the runs as failing: `open_ms` and `inp_ms` at the deadline, `{"timed_out": true}` records for `scroll`, `updates` and `camera`), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
 | `restart_ms` | Process start to a usable reference dashboard (median; to engine ready before protocol 4) |
 | `gaps` | Measurement facts that leave it short: "1 of 3 graded runs failed or are missing", "heavy: scrolling rests on rAF only in 1 run(s)…". Empty when complete |
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |
@@ -1126,6 +1498,7 @@ from real use, and nothing device-unique.
 | `ram` | Not graded; `null` if not measured. In kB: `idle_app_pss_kb` and `idle_by_process_pss_kb` (medians at idle on the typical reference dashboard), `peak_app_pss_kb` and `peak_by_process_pss_kb` (the peak during the graded tasks), `panes` (each: `id`, `pss_kb`, `tolerance_kb` (`null` under two samples a side), `measurable`, `runs`, `budget_kb` and `budget_ok` (the frame's pane budget and whether the share is within it; `null` without a budget, or when the tolerance is too wide to tell), `budget_measurable` (`false` under three samples a side or with a tolerance over a quarter of the budget; `null` without one; read a null `budget_ok` as unknown, not as over), and `off_by` when the report has it. Only panes whose every sample was checked against the kiosk's log (`verified`) are listed: one with no number, or from a run before that check (such as s1v7), isn't), `panes_waiting` (pane ids; empty since #67), `panes_not_switched` (pane ids), `budget_ok` (`true`, `false` or `null`) |
 | `apk` | Not graded; `null` if no APK was given. Per APK: `file`, `abis`, `bytes` |
 | `notes` | The report's `notes` (`good`, `limits`, `causes`, `text`, `rubric`). Show them only when `rubric` is the site's rubric version: they judge tasks by that rubric |
+| `webrtc_transport` | Protocol 7: the camera video's path, `transport` (`lan-udp`, `lan-turn` or `adb`), `chosen_by` (`auto` or `flag`), `reason`, and `possibly_limited` (over adb, heavy's camera result may be the test's link's). Letters over different transports aren't comparable; `gradeSummary` returns `transport` and `transport_caveat` with the letter. `null` before protocol 7 |
 
 The levels need each run's measurements (each run gets a level, then the median level is taken), which
 is why the summary carries `runs` and not only medians. Medians are kept for display. Fields are only
@@ -1159,7 +1532,40 @@ one dashboard, opened by navigation in the loaded frontend; usable waits for the
 free stretch; change to screen runs from when the fake sent a change; and the fake resets the home
 between views. smoke9's numbers came before that and aren't protocol 4's. Every summary from
 protocol 3, the S1's A included, is now "re-measure". Protocol 5 (#174, 2026-11-13) adds live camera
-streams to typical and heavy (and the start view), and the camera task (rubric v6).
+streams to typical and heavy (and the start view), and the camera task (rubric v6). Protocol 6
+(#202, 2026-11-13) plays those cameras over WebRTC, as HA with go2rtc does, and grades that; encodes
+the video without B-frames; and opens the camera views' HLS copies after each run's graded views, as
+detail (rubric v7, the same rules). Protocol 7 (#202 option B, 2026-11-13) sends that video over the
+LAN when the panel can reach the computer (UDP first, then TCP to the relay) and through adb reverse
+otherwise, and records which (rubric v8, the same rules). Protocol 8 (#202, s1rtc4, 2026-11-13)
+gives each task its own budget, so a slow view still gets every task tried, and grades a WebRTC
+camera's gaps and stalls on the receiver's counts (rubric v9, the same rules): the camera window is a
+fixed 30 s from the view going live; the harness's own waits are paced by animation frames, which a
+busy main thread delays less than its timers; the taps wait 5 s each; and the runner's per-view
+deadline covers only a view that never became usable ("A view the panel can't finish"). Rubric
+v10 and v11 (2026-11-13) split typical into typical without and with its camera and made each letter
+add one page.
+
+### Versions
+
+**Clarity v1 is the first release (2026-11-14): protocol 1, rubric 1.** Nobody outside the project
+had used Clarity, so the maintainer reset the numbers. Every protocol and rubric number in this page's
+history (protocols 1 to 8, rubrics 1 to 11, before 2026-11-14) is **pre-release**, and its results
+aren't comparable with v1's.
+
+- Each page line, report and summary of v1 says `clarity: 1` (the harness's `refdash` line,
+  report.json and the summary). One without it was measured with a pre-release version: report.py
+  makes it provisional ("measured with a pre-release version of Clarity (protocol N): re-measure"),
+  the notes say so, and `gradeSummary` returns `re-measure`, never a v1 letter. The marker decides,
+  not the number, because v1's protocol 1 repeats a pre-release number.
+- Pre-release protocol 8 was v1's release candidate: the same measurement, run once on the S1
+  (s1rtc5, #205, 2026-11-13) before its lines carried the marker. report.py reads its lines as v1
+  (the one bypass of the marker, and only for lines that carry the round's `usable.busy_ms`, which
+  no earlier protocol 8 line has),
+  so its report.json is rebuilt as v1 without re-measuring: `tools/perf/report.py <run-dir>`, then
+  `tools/perf/summary.py <run-dir>/report.json <out>`.
+- A later version will raise `clarity` with a change that makes earlier results incomparable, and
+  `protocol_version` and the rubric's `version` with each change to the measurement or the rules.
 
 ### Showing the grade
 
@@ -1222,14 +1628,14 @@ load) and `t`:
 
 | `t` | Fields |
 |---|---|
-| `refdash` | A reference view, usable: `tier` (the view: `start` for the restart page, or `light`, `typical`, `heavy`), `protocol`, `frontend` (HA's frontend release), `nodes`, `cards` (the view's cards), `cards_rendered` (how many HA had built when it was usable), `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (the frontend's own load: the restart page only, else `null`), `nav_ms` (the navigation to the view; 0 for the frontend's own load), `video_caps` (`mse_h264`, `native_hls`, `rvfc`: which camera player path the engine offers), `usable` (`rendered_tick_ms`, the frame in which it was drawn; `first_screen_cards`; `head_cards`, the 10 head cards it waited for; `interactive_ms`, when the main thread's free stretch began) (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
+| `refdash` | A reference view, usable: `tier` (the view: `start` for the restart page, or `light`, `typical`, `heavy`), `protocol`, `clarity` (v1: `1`), `frontend` (HA's frontend release), `nodes`, `cards` (the view's cards), `cards_rendered` (how many HA had built when it was usable), `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (the frontend's own load: the restart page only, else `null`), `nav_ms` (the navigation to the view; 0 for the frontend's own load), `video_caps` (`mse_h264`, `native_hls`, `rvfc`, `webrtc`: which camera player paths the engine offers), `usable` (`rendered_tick_ms`, the frame in which it was drawn; `first_screen_cards`; `head_cards`, the 10 head cards it waited for; `interactive_ms`, when the main thread's free stretch began; `busy_ms`, protocol 8, the longest a probe waited each second until then) (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
 | `warmup` | `stage`, `n`. The page goes live; the runner wakes the screen and stops polling SurfaceFlinger |
 | `measure` | `stage`, `n`. A window starts. For `updates`, the live check: `moving`, `offscreen`, `targets`, `update_every_ms` |
 | `step` | `stage` (`updates`, `scroll`, or a ladder family), `n`, `window_ms` (the window's length on the page's clock), `raf` (frame stats). For `updates`: `t0` (the window's start on the page's clock), `pacing_ms` (the stretch `raf_times` covers), `from` (`sent`: the changes start when the fake sent them), `stream_at_ms` (when the harness asked for the stream), `raf_times` and `changes` (`[sent, arrived, transition ms, kind, tick]`: every change the fake sent up to the window's end, from its schedule; `arrived` and `tick` are `null` for one that hadn't reached the page when the window was logged; kind 0 a sensor value, 2 an on/off change (1, the clock, was protocol 3's); tick, the animation frame it was drawn in), all ms after `t0`. For `scroll`: `scrolled_px`, `hit_edge`, `changes_during`, `first_scroll_ms`, `raf_intervals`. The runner reads SurfaceFlinger |
 | `input-ready` | `x`, `y` (device pixels), `taps`. The runner taps |
 | `swipe-ready` | `n`, `x`, `y1`, `y2` (device pixels), `ms`. The runner swipes once |
 | `input` | `stage`, `method`, `taps`, `values`, `inp_ms` |
-| `camera` | Views with streams (#174), logged before the swipes: `stage`, `window_ms`, `fps`, `expected`, `found`, and per stream `w`, `h`, `first_frame_ms` (after the navigation), `shown_pct`, `max_gap_ms`, `stall_total_ms`, `frames` (presented, from the decoder), `callbacks` (`requestVideoFrameCallback`), `decoded`, `dropped`, `waiting`, `source`, `stall_presented` (frames presented inside the stalls, from rVFC's `presentedFrames`; `null` without rVFC); then `fetches` (`segment` and `playlist`: `n`, `queued_ms`, `wait_ms`, `total_ms`, each `median`, `p95`, `max`; `segment.kb`, `segment.arrival_gap_max_ms`; `streams`) |
+| `camera` | Views with streams (#174), logged before the swipes: `stage`, `path` (`web_rtc` or `hls`, protocol 6), `window_ms`, `t0_ms` and `nav_ms` (the window's start and the navigation, page clock; protocol 8), `fps`, `expected`, `found`, and per stream `w`, `h`, `first_frame_ms` (after the navigation), `shown_pct`, `max_gap_ms`, `stall_total_ms`, `frames` (presented, from the decoder), `callbacks` (`requestVideoFrameCallback`), `decoded`, `dropped`, `waiting`, `source`, `stall_presented` (frames presented inside the stalls, from rVFC's `presentedFrames`; `null` without rVFC), `gaps_source` (`webrtc`, `webrtc (bound)`, `webrtc (no freeze counts: n/a)`, `rvfc` or `timeupdate`: where `max_gap_ms` and `stall_total_ms` come from), `stalls_at` (where the stalls were, page clock), `callback_gaps` (WebRTC, protocol 8: the frame callbacks' `max_gap_ms`, `stall_total_ms`, `presented`, `callbacks`, `stalls_at`; detail), `span_ms` (WebRTC: the receiver samples' span, which shown is over), `path`, `others` (the camera's other players: `path`, `first_frame_ms`, `connected`), `webrtc` (WebRTC only: `stats.js` `webrtcStats`); then `fetches` (`segment` and `playlist`: `n`, `queued_ms`, `wait_ms`, `total_ms`, each `median`, `p95`, `max`; `segment.kb`, `segment.arrival_gap_max_ms`; `streams`) |
 | `hello`, `js` | Animation test page: `ua`, `dpr`, `css`, `cores`, `load`; the JS workload's `runs`, `median_ms`, `p95_ms`, `checksum`, `expected` |
 | `done`, `error` | `message` on error. At `done` the page has stopped its updates |
 
@@ -1385,8 +1791,22 @@ What the earlier runs on the S1 (2026-11-12, kiosk 0.4.3, GeckoView 159, Android
 
 ```sh
 python3 -m unittest discover -s tools/perf/test
-node --test tools/perf/test/page.test.mjs tools/perf/test/grade.test.mjs
+node --test tools/perf/test/page.test.mjs tools/perf/test/grade.test.mjs tools/perf/test/browserguard.test.mjs
+# The WebRTC camera (#202), under the WebRTC venv; then HA's frontend in Chrome, and Firefox (Gecko).
+PY=$(python3 tools/perf/webrtcenv.py)
+"$PY" -m unittest discover -s tools/perf/test -p test_webrtc.py
+GW_PERF_FAKE_PYTHON="$PY" node --test tools/perf/test/webrtc.e2e.test.mjs
+GW_PERF_FAKE_PYTHON="$PY" node --test tools/perf/test/webrtc.gecko.test.mjs
 ```
+
+`test_webrtc.py` checks the relay (its credentials, one allocation over TCP) and a whole session
+through the fake's websocket API, with aiortc as a relay-only browser. `webrtc.e2e.test.mjs` runs
+HA's real frontend (the pinned build, fetched once) in headless Chrome: Chrome's own build has
+H.264, Playwright's Chromium doesn't (`CHROME=` picks another). `webrtc.gecko.test.mjs` runs the
+fake's WebRTC in Firefox, whose ICE code is GeckoView's: Gecko is stricter about TURN than Chrome
+(above). It checks the relay candidate always, and the frames when that Firefox offers H.264 (on
+Linux, once it has fetched OpenH264; `FIREFOX=` picks another). All skip without what they need,
+except with `GW_PERF_E2E=1`, as in CI.
 
 `test_fakeha.py` checks the fake Home Assistant against the traffic HA's frontend sent it
 (`test/fakeha-traffic.json`), on a stub frontend, so the tests never download the real one. After a

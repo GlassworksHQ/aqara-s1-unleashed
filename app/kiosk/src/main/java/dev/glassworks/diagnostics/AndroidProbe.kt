@@ -64,6 +64,7 @@ class AndroidProbe(
             wifiRssi = wifiInfo?.rssi?.takeIf { it in -126..-1 },
             wifiLinkSpeed = wifiInfo?.linkSpeed?.takeIf { it > 0 },
             appStartElapsedMs = Process.getStartElapsedRealtime(),
+            storageTotalBytes = runCatching { StatFs(Environment.getDataDirectory().path).totalBytes }.getOrNull(),
         )
     }
 

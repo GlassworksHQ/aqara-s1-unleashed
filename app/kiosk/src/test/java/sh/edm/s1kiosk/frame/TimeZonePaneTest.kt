@@ -73,6 +73,18 @@ class TimeZonePaneTest {
         pane.onEvent(PanelEvent.SettingChanged(TimeZonePrefs.KEY_ENABLED))
     }
 
+    /** #212: the settings page picks a zone, or Home Assistant's once it said, the way HA's time_zone does. */
+    @Test fun thePagePicksAZoneAndKnowsHomeAssistants() {
+        turn(true)
+        assertEquals(null, pane.homeAssistantRule)
+        pane.onEvent(PanelEvent.HomeAssistantTimeZone("CET-1CEST,M3.5.0,M10.5.0/3"))
+        assertEquals("CET-1CEST,M3.5.0,M10.5.0/3", pane.homeAssistantRule)
+        assertEquals(null, pane.keep("Europe/Berlin"))
+        assertEquals("Europe/Berlin", pane.kept)
+        assertEquals("Europe/Berlin", props.get(TimeZoneKeeper.PROP))
+        assertEquals("'Mars/Olympus' is not a time zone this panel knows", pane.keep("Mars/Olympus"))
+    }
+
     /**
      * The panel run on 39d668e (2026-11-14): off cleared the property, and within a second the helper
      * adopted the zone in place again. Off must stay off through the helper's checks.

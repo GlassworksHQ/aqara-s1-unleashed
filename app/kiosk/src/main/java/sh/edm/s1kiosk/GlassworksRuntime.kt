@@ -12,6 +12,7 @@ import dev.glassworks.engine.EngineSettings
 import dev.glassworks.engine.gecko.GeckoEngine
 import dev.glassworks.frame.Frame
 import dev.glassworks.manage.PanelCode
+import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SetupStep
 import dev.glassworks.screen.ScreenPolicy
@@ -27,6 +28,7 @@ import sh.edm.s1kiosk.setup.SetupState
 import sh.edm.s1kiosk.update.UpdateManager
 import sh.edm.s1kiosk.voice.AssistDefinition
 import sh.edm.s1kiosk.voice.VoiceUi
+import java.util.concurrent.Executors
 
 /**
  * What the app's components hand each other while the process runs. [KioskApp] owns the one
@@ -58,6 +60,12 @@ class GlassworksRuntime(
     private var definitions: List<PaneDefinition>? = null
 
     /**
+     * One thread for the settings pages' work that must not run on the main thread and must keep its order
+     * (Music's volume, sent to Music Assistant). Made on first use; idle, it is one parked daemon thread.
+     */
+    private val settingsWorker by lazy { Executors.newSingleThreadExecutor { r -> Thread(r, "s1-settings").apply { isDaemon = true } } }
+
+    /**
      * Every pane's definition, made once: their on/off, setup steps, settings sections and adb extras. The
      * core's panes in the order the settings list them (voice, music, radio, Bluetooth proxy), then the frame's, then diagnostics.
      * MainActivity and KioskService ask for them first thing, before discovery can save an HA URL in
@@ -73,7 +81,7 @@ class GlassworksRuntime(
                 readout = RadioDefinition.AppReadout(this, prefs.radio) { prefs.haBase },
             )
             val bluetoothProxy = BluetoothProxyDefinition(prefs.paneFile("bluetooth-proxy"), AndroidProxyRadio(app), ::BluetoothProxyPage)
-            listOf(AssistDefinition(prefs.paneFile("assist")), SendspinDefinition(prefs.paneFile("sendspin")), radio, bluetoothProxy) +
+            listOf(AssistDefinition(prefs.paneFile("assist")), SendspinDefinition(prefs.paneFile("sendspin"), settingsWorker::execute), radio, bluetoothProxy) +
                 paneFrame.paneDefinitions(app) + DiagnosticsDefinition(prefs.paneFile("diagnostics"))
         }.also { definitions = it }
     }
@@ -107,6 +115,14 @@ class GlassworksRuntime(
 
     /** Set while KioskService runs; the radio's setup step and settings section apply radio changes through it. */
     @Volatile var radio: RadioController? = null
+
+    /**
+     * The panes the device shell built, also the ones that are off; empty while it isn't running. Each
+     * pane's settings page reads its own (#212).
+     */
+    @Volatile var panes: List<Pane> = emptyList()
+
+    fun runningPane(id: String): Pane? = panes.firstOrNull { it.id == id }
 
     /** Set while KioskService runs; the sign-in screen uses it for manual HA URL entry. */
     @Volatile var discovery: HaDiscovery? = null

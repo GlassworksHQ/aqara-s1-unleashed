@@ -39,6 +39,12 @@ abstract class ApiEntity(
 
     abstract fun info(): ProtoWriter
     open fun state(): ProtoWriter? = null
+
+    /**
+     * The state as Home Assistant shows it, for a device's own screens: `51.5 °C`, `On`, the text. Null
+     * when it has none now (unknown), or when the entity has no state (a button, an event).
+     */
+    open fun shownState(): String? = null
     open fun command(msg: ProtoMessage) {}
 
     protected fun base() = ProtoWriter().string(1, objectId, force = true).fixed32(2, key, force = true)
@@ -70,6 +76,7 @@ class BinarySensorEntity(
         val v = get()
         return ProtoWriter().fixed32(1, key, true).bool(2, v == true).bool(3, v == null)
     }
+    override fun shownState() = get()?.let(::onOff)
 }
 
 class SensorEntity(
@@ -89,6 +96,10 @@ class SensorEntity(
         val v = get()?.takeIf { !it.isNaN() }
         return ProtoWriter().fixed32(1, key, true).float(2, v ?: 0f).bool(3, v == null)
     }
+    override fun shownState(): String? {
+        val v = get()?.takeIf { !it.isNaN() } ?: return null
+        return if (deviceClass == "timestamp") timestamp(v) else number(v, accuracy, unit)
+    }
 }
 
 class TextSensorEntity(
@@ -103,6 +114,7 @@ class TextSensorEntity(
         val v = get()
         return ProtoWriter().fixed32(1, key, true).string(2, v).bool(3, v == null)
     }
+    override fun shownState() = get()
 }
 
 class SwitchEntity(
@@ -119,6 +131,7 @@ class SwitchEntity(
         .string(9, deviceClass)
     override fun state() = ProtoWriter().fixed32(1, key, true).bool(2, get())
     override fun command(msg: ProtoMessage) = set(msg.bool(2))
+    override fun shownState() = onOff(get())
 }
 
 class NumberEntity(
@@ -143,6 +156,7 @@ class NumberEntity(
         return ProtoWriter().fixed32(1, key, true).float(2, v ?: 0f).bool(3, v == null)
     }
     override fun command(msg: ProtoMessage) = set(msg.float(2).coerceIn(min, max))
+    override fun shownState() = get()?.takeIf { !it.isNaN() }?.let { number(it, decimals(step), unit) }
 }
 
 class SelectEntity(
@@ -165,6 +179,7 @@ class SelectEntity(
         val v = msg.string(2)
         if (v in options) set(v)
     }
+    override fun shownState() = get()?.takeIf { it in options }
 }
 
 /** [mode]: ESPHome TextMode, 0 = text, 1 = password (HA masks the field). */
@@ -189,6 +204,7 @@ class TextEntity(
         val v = msg.string(2)
         if (v.length in minLength..maxLength && (pattern.isEmpty() || Regex(pattern).matches(v))) set(v)
     }
+    override fun shownState() = get()?.let { if (mode == 1) "••••••" else it }
 }
 
 class ButtonEntity(
@@ -360,3 +376,20 @@ class MediaPlayerEntity(
         const val FEATURE_MEDIA_ANNOUNCE = 1 shl 20
     }
 }
+
+/** `On` or `Off`, as Home Assistant shows a switch or a binary sensor. */
+private fun onOff(v: Boolean) = if (v) "On" else "Off"
+
+/** [v] with [decimals] places and its unit after a space (`51.5 °C`, `23 %`), as Home Assistant shows it. */
+private fun number(v: Float, decimals: Int, unit: String): String {
+    val n = String.format(java.util.Locale.ROOT, "%.${decimals.coerceIn(0, 6)}f", v)
+    return if (unit.isEmpty()) n else "$n $unit"
+}
+
+/** The places a number with this [step] needs: 0.01 has two. */
+private fun decimals(step: Float): Int =
+    java.math.BigDecimal(step.toString()).stripTrailingZeros().scale().coerceIn(0, 6)
+
+/** A timestamp sensor's Unix seconds as the device's local date and time (`2026-11-10 09:12`). */
+private fun timestamp(seconds: Float): String =
+    java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.ROOT).format(java.util.Date(seconds.toLong() * 1000))

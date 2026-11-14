@@ -27,7 +27,8 @@ import java.util.concurrent.TimeUnit
  */
 class DiagnosticsPane internal constructor(
     private val ctx: PaneContext,
-    hasTemperature: Boolean,
+    /** The frame names a thermal zone for the CPU: there is a temperature entity. */
+    val hasTemperature: Boolean,
     private val device: ScheduledExecutorService,
     private val probe: Probe,
 ) : Pane {
@@ -76,6 +77,29 @@ class DiagnosticsPane internal constructor(
 
     @Volatile private var restartReason: String? = null
 
+    /**
+     * Each metric's readings with their sample's `elapsedMs`, oldest first: the settings page's last hour
+     * (#212). Kept by time, not by count, so a reading that went away for an hour leaves no old line.
+     */
+    private val hour = HashMap<String, ArrayDeque<Pair<Long, Float>>>()
+
+    /** The last sample, for the settings page. Null until the first, and again once stopped. */
+    @Volatile var lastSample: Sample? = null
+        private set
+
+    /** Why the app last restarted, as `ApplicationExitInfo.REASON_*`, or null when Android can't say (before 11). */
+    @Volatile var lastExitReason: Int? = null
+        private set
+
+    /** Each metric's reading in the last sample; absent when that sample had none (Wi-Fi gone). */
+    private val now = ConcurrentHashMap<String, Float>()
+
+    /** [objectId]'s reading in the last sample, or null when it had none. Any thread. */
+    fun current(objectId: String): Float? = now[objectId]
+
+    /** [objectId]'s readings over the hour before the last sample, oldest first. Any thread. */
+    fun lastHour(objectId: String): List<Float> = synchronized(hour) { hour[objectId]?.map { it.second }.orEmpty() }
+
     private val entities = metrics.map { m ->
         SensorEntity(
             m.objectId, m.name, m.icon, m.unit, m.accuracy, m.deviceClass, m.stateClass,
@@ -96,7 +120,8 @@ class DiagnosticsPane internal constructor(
 
     /** The device thread. Again after [stop] too: the pane can be turned off and on (#67). */
     override fun start() {
-        restartReason = exitReasonText(probe.lastExitReason())
+        lastExitReason = probe.lastExitReason()
+        restartReason = exitReasonText(lastExitReason)
         prev = null
         synchronized(this) {
             task?.cancel(false)
@@ -112,6 +137,10 @@ class DiagnosticsPane internal constructor(
         }
         values.clear()
         restartReason = null
+        lastExitReason = null
+        lastSample = null
+        now.clear()
+        synchronized(hour) { hour.clear() }
         ctx.publishStates()
     }
 
@@ -121,13 +150,21 @@ class DiagnosticsPane internal constructor(
         val cur = probe.sample()
         var changed = false
         for (m in metrics) {
+            val sampled = m.value(prev, cur)?.let { roundTo(it, m.accuracy) }
+            if (sampled == null) now.remove(m.objectId) else now[m.objectId] = sampled
+            synchronized(hour) {
+                val h = hour.getOrPut(m.objectId) { ArrayDeque(HOUR_SAMPLES) }
+                if (sampled != null) h.addLast(cur.elapsedMs to sampled)
+                while (h.isNotEmpty() && h.first().first <= cur.elapsedMs - HOUR_MS) h.removeFirst()
+            }
             val old = values[m.objectId]
-            val new = settle(old, m.value(prev, cur)?.let { roundTo(it, m.accuracy) }, m.band)
+            val new = settle(old, sampled, m.band)
             if (new == old) continue
             if (new == null) values.remove(m.objectId) else values[m.objectId] = new
             changed = true
         }
         prev = cur
+        lastSample = cur
         if (changed) ctx.publishStates()
         val cost = SystemClock.currentThreadTimeMillis() - cpuStart
         costMs += cost
@@ -136,12 +173,15 @@ class DiagnosticsPane internal constructor(
         if (ticks <= 3 || ticks % 60 == 0) EspHomeLog.i("diagnostics: sample $ticks took $cost ms CPU, $costMs ms in all")
     }
 
-    private companion object {
-        const val PERIOD_S = 60L
-        const val MIB = 1024f * 1024f
-        const val GIB = MIB * 1024f
+    companion object {
+        private const val PERIOD_S = 60L
+        /** An hour of samples, one every [PERIOD_S]: about 60 readings per metric. */
+        const val HOUR_SAMPLES = 60
+        private const val HOUR_MS = HOUR_SAMPLES * PERIOD_S * 1000
+        private const val MIB = 1024f * 1024f
+        private const val GIB = MIB * 1024f
 
         /** A Float holds a Unix time to 128 s, so a smaller band would only show rounding. */
-        const val CLOCK_BAND_S = 120f
+        private const val CLOCK_BAND_S = 120f
     }
 }

@@ -4,8 +4,9 @@
 
 package dev.glassworks.manage
 
-import dev.glassworks.pane.NO_SETTINGS
+import dev.glassworks.pane.NOT_RUNNING
 import dev.glassworks.pane.PaneState
+import dev.glassworks.pane.chipWord
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
 import dev.glassworks.web.PageShell
@@ -97,13 +98,13 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
     private fun action(v: Viewer, path: String, label: String, cls: String = "pill") =
         """<form method="post" action="${esc(path)}">${csrf(v)}<button class="$cls" type="submit">${esc(label)}</button></form>"""
 
+    /** The pane's chip: its word ([chipWord], the same as the panel's rail, #243) and its dot. */
     private fun chip(state: PaneState): String {
-        val (tone, label) = when (state.kind) {
-            PaneState.Kind.RUNNING -> "ok" to (state.chip ?: "Running")
-            PaneState.Kind.OFF -> "off" to (state.chip ?: "Off")
-            PaneState.Kind.CANT_RUN -> "off" to (state.chip ?: "Can't run")
-            PaneState.Kind.PROBLEM -> "bad" to (state.chip ?: "Problem")
-            PaneState.Kind.UNKNOWN -> return ""
+        val label = state.chipWord ?: return ""
+        val tone = when (state.kind) {
+            PaneState.Kind.RUNNING -> "ok"
+            PaneState.Kind.PROBLEM -> "bad"
+            else -> "off"
         }
         return """<span class="chip"><i class="dot $tone"></i>${esc(label)}</span>"""
     }
@@ -147,7 +148,7 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
         val note = when {
             off -> """<p class="foot">${esc(TURNED_OFF)}</p>"""
             shown.isNotEmpty() -> """<p class="foot">Change these on the panel for now. The Manage page will change them too.</p>"""
-            else -> """<p class="foot">${esc(NO_SETTINGS)}</p>"""
+            else -> """<p class="foot">${esc(NOT_RUNNING)}</p>"""
         }
         val more = if (off || links.isEmpty()) "" else """<section class="card list">${links.joinToString("") { (label, href) ->
             """<a class="row" href="${esc(href)}"><div><b>${esc(label)}</b></div><i class="chev" aria-hidden="true">›</i></a>""" }}</section>"""
@@ -172,11 +173,19 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
             is SettingsItem.Group -> """<div class="grp"><div class="lh"><b>${esc(item.title)}</b></div>${items(item.items)}</div>"""
             // A view only the panel can draw: say so, rather than drop the row.
             is SettingsItem.Native -> row(nativeTitle(item.key), "Shown on the panel's own settings", "On the panel")
+            // #212's items, as rows until the Manage page draws them as the panel does (#242).
+            is SettingsItem.Choice -> row(item.title, null, safe { item.value().let { v -> item.options().firstOrNull { it.first == v }?.second ?: v } })
+            is SettingsItem.Status -> """<div class="row static"><div><span>${esc(safe { item.text() })}</span></div></div>"""
+            is SettingsItem.States -> """<div class="grp"><div class="lh"><b>${esc(item.title)}</b></div>${safeRows(item).joinToString("") { row(it.name, null, it.value) }}</div>"""
+            is SettingsItem.Tiles -> safeTiles(item).joinToString("") { t -> row(t.name, t.detail.ifEmpty { null }, listOf(t.value, t.unit).filter { it.isNotEmpty() }.joinToString(" ")) }
         }
     }
 
-    /** Not only the core's "no settings" note, which a pane with just an on/off gets ([dev.glassworks.pane.paneSections]). */
-    private fun SettingsSection.hasSettings() = items.any { it !is SettingsItem.Note || safe { it.text() } != NO_SETTINGS }
+    /** Not only the core's "isn't running yet" note, which a pane gets while the panel's device doesn't run ([dev.glassworks.pane.paneSections]). */
+    private fun SettingsSection.hasSettings() = items.any { it !is SettingsItem.Note || safe { it.text() } != NOT_RUNNING }
+
+    private fun safeRows(i: SettingsItem.States) = runCatching { i.rows() }.getOrDefault(emptyList())
+    private fun safeTiles(i: SettingsItem.Tiles) = runCatching { i.tiles() }.getOrDefault(emptyList())
 
     private fun nativeTitle(key: String) = key.split('-', '_', '.').joinToString(" ").replaceFirstChar { it.uppercase() }
 

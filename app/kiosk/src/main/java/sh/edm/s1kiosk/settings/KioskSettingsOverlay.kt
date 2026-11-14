@@ -8,6 +8,7 @@ import android.text.InputType
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -17,13 +18,14 @@ import android.widget.ScrollView
 import android.widget.TextView
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
-import dev.glassworks.pane.SettingsStatus
+import dev.glassworks.pane.PaneState
+import dev.glassworks.pane.chipWord
+import dev.glassworks.pane.paneState
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.ui.Glass
 import sh.edm.s1kiosk.ui.Glass.Companion.AMBER
 import sh.edm.s1kiosk.ui.Glass.Companion.BD
 import sh.edm.s1kiosk.ui.Glass.Companion.FA
-import sh.edm.s1kiosk.ui.Glass.Companion.GREEN
 import sh.edm.s1kiosk.ui.Glass.Companion.MU
 import sh.edm.s1kiosk.ui.Glass.Companion.ROSE
 import sh.edm.s1kiosk.ui.Glass.Companion.TX
@@ -31,6 +33,7 @@ import sh.edm.s1kiosk.ui.GlassSlider
 import sh.edm.s1kiosk.ui.GroupedRail
 import sh.edm.s1kiosk.ui.Inter
 import sh.edm.s1kiosk.ui.StackView
+import sh.edm.s1kiosk.ui.TileView
 import sh.edm.s1kiosk.ui.Wrap
 import java.util.Locale
 
@@ -38,8 +41,10 @@ import java.util.Locale
  * The kiosk settings menu, as drawn in #63. Left: the mark, "Settings" and the rail ([GroupedRail], the
  * same as setup's): the core's Dashboard, Screen and Network, then a Panes group with each pane's
  * section, then Log, Security and About, in the order [Model.sections] has them
- * (dev.glassworks.pane.settingsOrder, #33's nav), and Done. A pane that can't run is greyed; a pane's
- * status is its dot. Right: the section that is picked, in a glass card: a pane's on/off at top right
+ * (dev.glassworks.pane.settingsOrder, #33's nav), and Done. A pane that can't run is greyed; panes that
+ * are off fold under "Off · N" at the end of the group (#212). A pane's status dot follows its name, so
+ * every name starts at the same x. Right: the section that is picked, in a glass card: a pane's on/off
+ * at top right
  * ([SettingsSection.master]), then its rows, each a name with its value under it. A switch applies when
  * tapped, a slider when let go, a duration or a time window when picked, a typed value on Save. A change
  * that only takes effect at start shows #33's banner with Restart now.
@@ -57,6 +62,12 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
 
     /** "Restart now": a change waits for the app to start again. */
     var onRestart: (() -> Unit)? = null
+
+    /**
+     * The model as it is now. After a pane is turned on or off its page changes (#212: an off pane's page
+     * says what that means), so the menu asks again.
+     */
+    var reload: (() -> Model)? = null
 
     var isShowing = false
         private set
@@ -196,13 +207,44 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         animate().alpha(0f).setDuration(200).withEndAction { if (!isShowing) visibility = View.GONE }.start()
     }
 
-    /** While the menu is open (MainActivity, every couple of seconds): native views and the rail's dots read their state again. */
+    /** While the menu is open (MainActivity, every couple of seconds): native views, live rows and the rail read their state again. */
     fun refresh() {
         if (!isShowing) return
-        natives.values.forEach { it.refresh() }
+        if (!sheet.isOpen && !masterBusy) reload?.invoke()?.let { next ->
+            model = next
+            val s = next.sections.firstOrNull { it.id == current }
+            // The page changed under the person (a base mounted, the pane turned off from Home Assistant,
+            // the device started): draw it again from the new model. Otherwise only its values move.
+            if (s == null || shape(s) != builtShape) {
+                if (s == null) current = next.sections.firstOrNull()?.id
+                build()
+                return
+            }
+        }
+        // Only the page on screen: the others' views wait until they are shown again.
+        natives.values.forEach { if (it.view.parent != null) it.refresh() }
+        live.forEach { it() }
         bindRail()
         bindMaster()
     }
+
+    /** The shape the open page was drawn from ([shape]). */
+    private var builtShape: List<Any?> = emptyList()
+
+    /** What a page is made of: what it reads ([SettingsSection.source]), its master's value, whether it can run, and its items' kinds and names. */
+    private fun shape(s: SettingsSection): List<Any?> {
+        fun of(items: List<SettingsItem>): List<Any?> = items.flatMap { i ->
+            when (i) {
+                is SettingsItem.Group -> listOf("group ${i.title}") + of(i.items)
+                is SettingsItem.Native -> listOf("native ${i.key}")
+                else -> listOf("${i::class.simpleName} ${titleOf(i).orEmpty()}")
+            }
+        }
+        return listOf(s.source, s.master?.value(), s.unavailable() != null) + of(s.items)
+    }
+
+    /** The page's read-only rows ([SettingsItem.States]) that read their values again on [refresh]. */
+    private val live = ArrayList<() -> Unit>()
 
     /** Previews (the mock-ups): a section's page, an open editor or picker, a native view, the restart banner. */
     internal fun previewSection(id: String) { current = id; build() }
@@ -211,6 +253,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             is SettingsItem.Text -> { sheet.text(i) {}; typed?.let { sheet.field.setText(it) } }
             is SettingsItem.Duration -> sheet.duration(i) {}
             is SettingsItem.TimeRange -> sheet.range(i) {}
+            is SettingsItem.Choice -> sheet.choice(i) {}
             else -> {}
         }
     }
@@ -221,6 +264,9 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     }
     internal fun previewRestart() { restartPending = true; banner.bind() }
     internal fun previewNative(key: String): SettingsItem.NativeView? = natives[key]
+
+    /** The native views kept now, by key (tests). */
+    internal val keptNatives: Set<String> get() = natives.keys.toSet()
     internal fun previewScrollTo(v: View, alignBottom: Boolean = false) {
         val r = Rect()
         v.getDrawingRect(r)
@@ -240,6 +286,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         val m = model ?: return
         bindRail()
         val s = m.sections.firstOrNull { it.id == current } ?: return
+        builtShape = shape(s)
         crumb.visibility = if (s.id in m.panes) View.VISIBLE else View.GONE
         title.text = s.heading
         val why = s.unavailable()
@@ -249,22 +296,30 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         bindMaster()
         banner.bind()
         rows.removeAllViews()
+        live.clear()
         natives.values.forEach { n -> (n.view.parent as? android.view.ViewGroup)?.removeView(n.view); n.reset() }
+        // A key no section has now (a pane from before a device restart, another base) is let go of.
+        val keys = m.sections.flatMap { nativeKeys(it.items) }.toSet()
+        natives.keys.retainAll(keys)
         addItems(s.items, divided = s.items.none { it is SettingsItem.Native })
         scroll.scrollTo(0, 0)
     }
 
-    /** The rail: core sections on their own, the panes' under Panes; a pane that can't run is greyed. */
+    /** The rail: core sections on their own, the panes' under Panes; a pane that can't run is greyed, one that is off folds. */
     private fun bindRail() {
         val m = model ?: return
         nav.bind(m.sections.map { s ->
-            val status = s.status()
             val why = s.unavailable()
+            val pane = s.id in m.panes
+            // Every pane's chip after its name, the Manage page's state and word (#243). Status colours mean status only.
+            val state = if (pane) paneState(s) else null
             GroupedRail.Row(
-                s.id, s.title, group = if (s.id in m.panes) PANES else null,
-                mark = if (status != null && why == null) GroupedRail.Mark.STATUS else GroupedRail.Mark.NONE,
-                color = when (status) { SettingsStatus.WORKING -> AMBER; SettingsStatus.PROBLEM -> ROSE; else -> GREEN },
-                dim = why != null, detail = if (why != null) "Can't run" else null,
+                s.id, s.title, group = if (pane) PANES else null,
+                dim = why != null,
+                off = why == null && s.master?.value() == false,
+                chip = state?.chipWord?.let { word ->
+                    GroupedRail.Chip(word, when (state.kind) { PaneState.Kind.RUNNING -> Glass.GREEN; PaneState.Kind.PROBLEM -> ROSE; else -> FA })
+                },
             )
         }, mapOf(PANES to "Panes"), current)
     }
@@ -304,8 +359,17 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             else {
                 problem.visibility = View.GONE
                 if (m.restartsApp) restartPending = true
+                reload?.invoke()?.let { model = it }
                 build()
             }
+        }
+    }
+
+    private fun nativeKeys(items: List<SettingsItem>): List<String> = items.flatMap { i ->
+        when (i) {
+            is SettingsItem.Native -> listOf(i.key)
+            is SettingsItem.Group -> nativeKeys(i.items)
+            else -> emptyList()
         }
     }
 
@@ -319,18 +383,30 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         is SettingsItem.Duration -> i.title
         is SettingsItem.TimeRange -> i.title
         is SettingsItem.Link -> i.title
+        is SettingsItem.Choice -> i.title
         else -> null
     }
 
-    /** [items] as rows; [divided]: a hairline above each row, as drawn. */
+    /** [items] as rows; [divided]: a hairline above each row, as drawn, but not right under a status line or tiles. */
     private fun addItems(items: List<SettingsItem>, divided: Boolean) {
+        var after: SettingsItem? = null
         for (i in items) {
+            val under = after
+            after = i
             if (i is SettingsItem.Group) {
                 rows.addView(g.label(i.title), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(26f); bottomMargin = px(4f) })
                 addItems(i.items, divided = true)
                 continue
             }
-            if (divided) rows.addView(View(context).apply { setBackgroundColor(BD) }, LinearLayout.LayoutParams(-1, px(1f).coerceAtLeast(1)))
+            when (i) {
+                is SettingsItem.States -> { rows.addView(states(i), LinearLayout.LayoutParams(-1, -2)); continue }
+                is SettingsItem.Status -> { rows.addView(status(i), LinearLayout.LayoutParams(-1, -2)); continue }
+                is SettingsItem.Tiles -> { rows.addView(tiles(i), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f); bottomMargin = px(6f) }); continue }
+                else -> {}
+            }
+            if (divided && under !is SettingsItem.Status && under !is SettingsItem.Tiles) {
+                rows.addView(View(context).apply { setBackgroundColor(BD) }, LinearLayout.LayoutParams(-1, px(1f).coerceAtLeast(1)))
+            }
             rows.addView(item(i), LinearLayout.LayoutParams(-1, -2))
         }
     }
@@ -343,9 +419,127 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         is SettingsItem.TimeRange -> row(i.title, i.shown(i.value()), chevron = true, dim = false) { sheet.range(i) { build() } }
         is SettingsItem.Link -> row(i.title, i.detail, chevron = true, dim = i.detail.isEmpty()) { i.open(context) }
         is SettingsItem.Note -> g.text(14.5f, MU).apply { text = i.text(); setLineSpacing(0f, 1.25f); setPadding(0, px(14f), 0, px(14f)) }
-        is SettingsItem.Info -> row(i.title(), i.detail(), chevron = false, dim = false, onClick = null)
-        is SettingsItem.Group -> error("groups are laid out by addItems")
+        is SettingsItem.Info -> infoRow(i)
+        is SettingsItem.Choice -> row(i.title, choiceName(i), chevron = true, dim = false) { sheet.choice(i) { build() } }.also { r ->
+            // The picked one's name follows a change made elsewhere (Home Assistant's wake word select). The
+            // value view is always there today (a choice always has a name); the null branch is a guard only.
+            ((r.getChildAt(0) as? ViewGroup)?.getChildAt(1) as? TextView)?.let { value ->
+                live += { val n = choiceName(i); if (value.text != n) value.text = n }
+            }
+        }
+        is SettingsItem.Group, is SettingsItem.States, is SettingsItem.Status, is SettingsItem.Tiles -> error("laid out by addItems")
         is SettingsItem.Native -> natives.getOrPut(i.key) { i.create(nativeHost) }.also { it.refresh() }.view
+    }
+
+    /** A name and a status line under it, read again on [refresh] (#212: what plays now). */
+    private fun infoRow(i: SettingsItem.Info): View {
+        val name = g.text(16.5f, TX)
+        val value = g.text(15f, MU).apply { setLineSpacing(0f, 1.15f) }
+        fun bind() {
+            name.text = i.title()
+            val v = i.detail()
+            if (value.text != v) value.text = v
+            value.visibility = if (v.isEmpty()) View.GONE else View.VISIBLE
+        }
+        bind()
+        live += ::bind
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = px(64f)
+            setPadding(0, px(12f), 0, px(12f))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(name)
+                addView(value, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f) })
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = px(16f) })
+        }
+    }
+
+    private fun choiceName(i: SettingsItem.Choice): String { val v = i.value(); return i.options().firstOrNull { it.first == v }?.second ?: v }
+
+    /**
+     * "In Home Assistant" (#212): its label, then a name on the left and its value on the right, one line
+     * each. Rows off by default in Home Assistant are dimmed, with a line that says why. Read again on [refresh].
+     */
+    private fun states(i: SettingsItem.States): View {
+        val box = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        var names: List<String>? = null
+        val values = ArrayList<TextView>()
+        fun bind() {
+            val list = i.rows()
+            if (list.map { it.name } == names) {
+                list.forEachIndexed { n, r -> if (values[n].text != r.value) values[n].text = r.value }
+                return
+            }
+            names = list.map { it.name }
+            values.clear()
+            box.removeAllViews()
+            box.addView(g.label(i.title), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(22f); bottomMargin = px(6f) })
+            list.forEach { r ->
+                box.addView(View(context).apply { setBackgroundColor(BD) }, LinearLayout.LayoutParams(-1, px(1f).coerceAtLeast(1)))
+                box.addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    minimumHeight = px(46f)
+                    addView(g.text(15.5f, if (r.offByDefault) MU else TX).apply { text = r.name; setSingleLine(); ellipsize = TextUtils.TruncateAt.END },
+                        LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = px(16f) })
+                    addView(g.text(15f, if (r.offByDefault) FA else MU).apply { text = r.value; setSingleLine() }.also { values += it })
+                }, LinearLayout.LayoutParams(-1, -2))
+            }
+            if (list.any { it.offByDefault }) box.addView(g.text(13.5f, FA).apply { text = OFF_BY_DEFAULT; setLineSpacing(0f, 1.2f) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12f) })
+        }
+        bind()
+        live += ::bind
+        return box
+    }
+
+    /** The line under the heading: a green dot while the pane works, a grey one otherwise, and its words. */
+    private fun status(i: SettingsItem.Status): View {
+        val dot = View(context)
+        val words = g.text(15f, MU)
+        fun bind() {
+            dot.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (i.ok()) Glass.GREEN else FA) }
+            words.text = i.text()
+        }
+        bind()
+        live += ::bind
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, px(2f), 0, px(6f))
+            addView(dot, LinearLayout.LayoutParams(px(8f), px(8f)).apply { marginEnd = px(10f) })
+            addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+        }
+    }
+
+    /** Readings as tiles, [SettingsItem.Tiles.columns] to a row; values read again on [refresh]. */
+    private fun tiles(i: SettingsItem.Tiles): View {
+        val box = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val views = ArrayList<TileView>()
+        val gap = px(if (i.columns >= 4) 10f else 12f)
+        fun bind() {
+            val list = i.tiles()
+            if (list.size != views.size) {
+                views.clear()
+                box.removeAllViews()
+                val graph = list.any { it.history != null || it.meter != null }
+                list.chunked(i.columns).forEachIndexed { r, row ->
+                    box.addView(LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        repeat(i.columns) { c ->
+                            val v = if (c < row.size) TileView(context, if (i.columns >= 4) 22f else 27f, graph).also { views += it } else View(context)
+                            addView(v, LinearLayout.LayoutParams(0, -1, 1f).apply { if (c > 0) marginStart = gap })
+                        }
+                    }, LinearLayout.LayoutParams(-1, -2).apply { if (r > 0) topMargin = gap })
+                }
+            }
+            list.forEachIndexed { n, t -> views[n].bind(t) }
+        }
+        bind()
+        live += ::bind
+        return box
     }
 
     private fun shownOf(i: SettingsItem.Text): String {
@@ -405,6 +599,11 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
                     else problem.visibility = View.GONE
                 }
             }
+        }
+        // A value changed elsewhere (Home Assistant set the volume) moves the slider too, unless it is held.
+        live += {
+            val v = i.value()
+            if (!slider.dragging && v != slider.value) { slider.value = v; shown.text = i.shown(v) }
         }
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -634,6 +833,20 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             open(i.title, "", content, "Save")
         }
 
+        /** The options as chips; picking one applies it. */
+        fun choice(i: SettingsItem.Choice, after: () -> Unit) {
+            val now = i.value()
+            val chips = Wrap(context, px(10f), px(10f))
+            onSave = null
+            i.options().forEach { (id, name) ->
+                chips.addView(g.chip(name).apply {
+                    chosen = id == now
+                    setOnClickListener { onSave = {}; commit(false, after) { done -> i.save(id, done) } }
+                })
+            }
+            open(i.title, "", chips, null)
+        }
+
         /** A question before a change: its words, Cancel and the action. */
         fun confirm(c: SettingsItem.Confirm, yes: () -> Unit) {
             onSave = { close(); yes() }
@@ -652,6 +865,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
 
     companion object {
         const val RESTART_TEXT = "This takes effect after the app restarts. It takes about 5 seconds."
+        const val OFF_BY_DEFAULT = "Dimmed: off by default in Home Assistant. Turn them on there to keep their history."
         private const val PANES = "panes"
 
         /** What a save that threw says. */

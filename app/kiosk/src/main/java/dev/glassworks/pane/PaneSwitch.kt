@@ -36,6 +36,8 @@ class PaneSwitch(
      * no voice features, so the switch changes what Home Assistant reads at connect.
      */
     val voiceAssistant: Boolean = false,
+    /** What being off means, in a sentence, on the pane's page while it is off (#212). */
+    val offNote: String = "$title is off. Its entities are unavailable in Home Assistant until you turn it on.",
 ) {
     /** Cheap, any thread. */
     var on: Boolean

@@ -10,6 +10,7 @@ import sh.edm.esphome.EventEntity
 import sh.edm.esphome.SwitchEntity
 import sh.edm.esphome.TextSensorEntity
 import sh.edm.s1kiosk.frame.AqaraCloud
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
@@ -43,6 +44,18 @@ class WallBasePane(
     /** Built once per layout, so the event entity [onButton] fires is the instance the server has. */
     @Volatile private var built: Pair<BaseLayout, List<ApiEntity>>? = null
     @Volatile private var aqaraCloudStatus = "unknown"
+
+    /** Each button's last press, by channel: its event type and when (wall clock ms), for the settings page (#212). */
+    private val presses = ConcurrentHashMap<Int, Pair<String, Long>>()
+
+    /** What the base reports, for the settings page. Any thread. */
+    val tracker: BaseTracker get() = base.tracker
+    val backend: BaseBackend get() = base.config.backend
+
+    fun lastPress(channel: Int): Pair<String, Long>? = presses[channel]
+
+    /** A relay switched on the panel's settings page, as Home Assistant's switch does. */
+    fun setRelay(channel: Int, on: Boolean) = base.setRelay(channel, on)
 
     private val cloudEntities = listOf(
         SwitchEntity(
@@ -153,6 +166,7 @@ class WallBasePane(
         }
 
         override fun onButton(channel: Int, type: String) {
+            presses[channel] = type to System.currentTimeMillis()
             val e = baseEntities().firstOrNull { it.objectId == BaseEntities.buttonId(channel) } as? EventEntity
             if (e == null) EspHomeLog.w("base button $channel ($type): no event entity in the current set")
             else ctx.sendEvent(e, type)

@@ -14,6 +14,11 @@ import report as R  # noqa: E402
 import summary as S  # noqa: E402
 
 
+def pages(rep):
+    """The pages a fixture report has (the real runs predate rubric v10's typical-nocam)."""
+    return [p for p in G.TIERS if p in rep["graded"]["reference"]["tiers"]]
+
+
 def run(name):
     with open(os.path.join(HERE, "notes-runs", name + ".json")) as f:
         return json.load(f)
@@ -29,26 +34,26 @@ S1V7 = (
     "Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger "
     "dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 4.8 s to open. The likely "
     "limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the "
-    "page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: measured with an older "
-    "version of the test, without cameras.")
+    "page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: measured with a pre-release "
+    "version of Clarity, without cameras.")
 
 SMOKE11 = (
     "Light dashboards feel good: taps and opening a view are quick, and scrolling and live updates are fluid. "
     "Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 5.2 s to open, and "
     "heavy takes 230 ms to answer a tap. The likely limit is the browser's main thread: it stays busy (46% of a "
     "core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (748 of 988 "
-    "MB). Provisional: measured with an older version of the test, without cameras.")
+    "MB). Provisional: measured with a pre-release version of Clarity, without cameras.")
 
 
 def fast():
     """A fast frame: every task good on every page, a quick restart, cool, within its memory."""
     rep = run("s1cam3")
-    for p in G.TIERS:
+    for p in pages(rep):
         rep["grade"]["bands"][p] = {"tap": "good", "scroll": "premium", "updates": "good", "load": "good",
                                     "camera": "none" if p == "light" else "good"}
         rep["graded"]["reference"]["tiers"][p]["scroll_limited_by"] = ["main-thread"]
     rep["grade"].update(start={"value": 2500.0, "band": "good"}, missing=[], provisional=False,
-                        levels={p: "premium" for p in G.TIERS})
+                        levels={p: "premium" for p in pages(rep)})
     rep["thermal"] = [{"phase": "refstart-1", "zones": {"cpu_thermal_zone": 41.0}}]
     return rep
 
@@ -161,7 +166,7 @@ class Shapes(unittest.TestCase):
 
     def test_without_a_level_the_closest_page(self):
         rep = run("s1cam3")
-        rep["grade"]["levels"] = {p: None for p in G.TIERS}
+        rep["grade"]["levels"] = {p: None for p in pages(rep)}
         self.assertTrue(N.notes(rep)["good"].startswith("Light dashboards come closest:"))
 
     def test_a_refused_grade_says_why_and_nothing_else(self):
@@ -172,8 +177,8 @@ class Shapes(unittest.TestCase):
 
     def test_nothing_good(self):
         rep = run("s1cam3")
-        rep["grade"]["levels"] = {p: None for p in G.TIERS}
-        for p in G.TIERS:
+        rep["grade"]["levels"] = {p: None for p in pages(rep)}
+        for p in pages(rep):
             rep["grade"]["bands"][p] = {k: "slow" if k in ("scroll", "updates", "camera") else "poor" for k in G.TASKS}
         n = N.notes(rep)
         self.assertIsNone(n["good"])
@@ -187,7 +192,7 @@ class CausesNeedEvidence(unittest.TestCase):
         return N.cause_sentence(rep) or ""
 
     def no_main(self, rep):
-        for p in G.TIERS:
+        for p in pages(rep):
             rep["graded"]["reference"]["tiers"][p]["scroll_limited_by"] = ["equal"]
         return rep
 
@@ -224,6 +229,17 @@ class CausesNeedEvidence(unittest.TestCase):
         for r in rep["graded"]["reference"]["tiers"]["heavy"]["camera_runs"]:
             r["media"]["codecs"] = ["c2.android.avc.decoder"]
         self.assertIn("even though the decoder keeps up", self.cause(rep))   # not "hardware"
+
+    def test_webrtc_runs_carry_no_segment_evidence(self):
+        """#202: on a WebRTC run the segment fetches are the HLS player's, before WebRTC took over."""
+        rep = run("s1cam3")
+        for r in rep["graded"]["reference"]["tiers"]["heavy"]["camera_runs"]:
+            r["path"] = "web_rtc"
+        self.assertNotIn("cameras get video late", self.cause(rep))
+        rep = self.no_main(rep)
+        for r in rep["graded"]["reference"]["tiers"]["heavy"]["camera_runs"]:
+            r["fetches"]["segment"]["total_ms"] = {"median": 800, "p95": 1500, "max": 2000}
+        self.assertNotIn("link", self.cause(rep))
 
     def test_slow_fetches_point_at_the_link(self):
         rep = self.no_main(run("s1cam3"))
@@ -263,9 +279,16 @@ class CausesNeedEvidence(unittest.TestCase):
         self.assertTrue(N.notes(rep)["limits"].startswith("Bigger dashboards slow down: a restart takes 12 s, typical scrolls at 25 fps, and heavy"))
 
     def test_a_restart_that_wasnt_measured_is_counted(self):
-        rep = run("s1cam3")
+        rep = current(run("s1cam3"))
         rep["grade"].update(start={"value": None, "band": None}, missing=["start"], provisional=True)
         self.assertTrue(N.notes(rep)["text"].endswith("Provisional: 1 thing wasn't measured fully."))
+
+
+def current(rep):
+    """A fixture run as if it ran this rubric's protocol: s1cam3 ran protocol 5, and since #202 the
+    rubric is for a later protocol, which these tests aren't about."""
+    rep["graded"]["reference"].update(protocols=[G.PROTOCOL_VERSION], clarity=[G.CLARITY])
+    return rep
 
 
 class Provisional(unittest.TestCase):
@@ -273,27 +296,65 @@ class Provisional(unittest.TestCase):
 
     def test_an_older_protocol_without_cameras(self):
         rep = run("s1v7")
-        self.assertEqual(N.provisional_sentence(rep), "Provisional: measured with an older version of the test, without cameras.")
+        self.assertEqual(N.provisional_sentence(rep), "Provisional: measured with a pre-release version of Clarity, without cameras.")
         self.assertNotIn("rubric is for protocol", N.notes(rep)["text"])
         self.assertIn("the pages ran protocol 4; this rubric is for protocol 5", rep["grade"]["provisional_reasons"])
 
     def test_other_reasons_and_missing_tasks_are_counted(self):
-        rep = run("s1cam3")
+        rep = current(run("s1cam3"))
         rep["grade"].update(provisional=True, missing=["heavy.updates"],
                             provisional_reasons=["1 of 3 graded runs failed or are missing", "the fake Home Assistant sent a live change 250 ms late"])
         self.assertEqual(N.provisional_sentence(rep), "Provisional: 3 things weren't measured fully.")
         rep = run("s1v7")
         rep["grade"]["provisional_reasons"].append("1 of 3 graded runs failed or are missing")
         self.assertEqual(N.provisional_sentence(rep),
-                         "Provisional: measured with an older version of the test, without cameras, and 1 thing wasn't measured fully.")
+                         "Provisional: measured with a pre-release version of Clarity, without cameras, and 1 thing wasn't measured fully.")
 
     def test_a_newer_protocol_is_another_version(self):
         rep = run("s1v7")
-        rep["graded"]["reference"]["protocols"] = [G.PROTOCOL_VERSION + 1]
-        self.assertEqual(N.provisional_sentence(rep), "Provisional: measured with another version of the test, and 2 things weren't measured fully.")
+        rep["graded"]["reference"].update(protocols=[G.PROTOCOL_VERSION + 1], clarity=[G.CLARITY])
+        self.assertEqual(N.provisional_sentence(rep), "Provisional: measured with a different version of Clarity, and 2 things weren't measured fully.")
+
+    def test_a_pre_release_protocol_with_v1s_number_is_still_pre_release(self):
+        """Clarity v1 (2026-11-14) starts its numbers again: pre-release protocol 1 isn't v1's."""
+        rep = run("s1v7")
+        rep["graded"]["reference"]["protocols"] = [G.PROTOCOL_VERSION]
+        self.assertIn("a pre-release version of Clarity", N.provisional_sentence(rep))
 
     def test_not_provisional_says_nothing(self):
         self.assertIsNone(N.provisional_sentence(run("s1cam3")))
+
+
+class TypicalWithoutACamera(unittest.TestCase):
+    """Rubric v10 (#205): typical is measured without its camera (C) and with it (B)."""
+
+    def rep(self):
+        import copy
+        rep = fast()
+        tiers = rep["graded"]["reference"]["tiers"]
+        tiers["typical-nocam"] = copy.deepcopy(tiers["typical"])
+        tiers["typical-nocam"]["camera_runs"] = []
+        for p in ("light", "typical-nocam", "typical", "heavy"):
+            rep["grade"]["bands"][p] = {"tap": "good", "scroll": "fluid", "updates": "good", "load": "good",
+                                        "camera": "none" if p in ("light", "typical-nocam") else "good"}
+        # Heavy and typical with its camera fail on the camera: 40% of its frames shown.
+        for p in ("typical", "heavy"):
+            rep["grade"]["bands"][p]["camera"] = "slow"
+            tiers[p]["camera_levels"] = ["slow"] * 3
+            tiers[p]["camera_runs"] = [{"first_frame_ms": 1500, "shown_pct": 40.0, "stall_total_ms": 200}] * 3
+        rep["grade"]["levels"] = {"light": "fluid", "typical-nocam": "fluid", "typical": None, "heavy": None}
+        return rep
+
+    def test_typical_feels_good_without_a_camera_and_says_what_one_costs(self):
+        n = N.notes(self.rep())
+        self.assertEqual(n["good"], "Typical dashboards feel good without a camera: taps, live updates and opening a view "
+                                    "are quick, and scrolling is fluid; with one, it shows 40% of its camera's frames.")
+        # The camera page's limit isn't said twice; heavy's still is.
+        self.assertEqual(n["limits"], "Bigger dashboards slow down: heavy shows 40% of its camera's frames.")
+
+    def test_a_report_from_before_v10_keeps_typical_s_name(self):
+        rep = run("s1v7")
+        self.assertNotIn("with a camera", N.notes(rep)["text"])
 
 
 class InTheReport(unittest.TestCase):
@@ -318,7 +379,7 @@ class InTheReport(unittest.TestCase):
         md = R.markdown(dict(rep, detail={"synthetic": None}, real_use=None, apk=[]))
         self.assertEqual(md.count("Provisional"), 1, md[:1500])
         self.assertIn(S1V7.split(" Provisional:")[0], md)
-        self.assertIn("Provisional: measured with an older version", N.notes(rep)["text"])     # the summary keeps it
+        self.assertIn("Provisional: measured with a pre-release version", N.notes(rep)["text"])     # the summary keeps it
 
     def test_under_the_headline_and_in_the_summary(self):
         rep = run("s1cam3")

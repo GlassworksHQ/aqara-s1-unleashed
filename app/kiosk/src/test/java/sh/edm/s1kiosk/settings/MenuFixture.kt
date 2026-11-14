@@ -2,6 +2,7 @@ package sh.edm.s1kiosk.settings
 
 import android.content.Context
 import dev.glassworks.pane.PaneChoice
+import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.paneSections
@@ -38,6 +39,7 @@ object MenuFixture {
         context: Context, radio: RadioDefinition, deviceSettings: Boolean = true, version: String = "0.4.3", status: String = "screen on",
         panes: List<PaneDefinition> = listOf(cardOnly("voice", "Voice", "Assist and timers"), cardOnly("sendspin", "Music", "A Sendspin speaker"), radio),
         live: CoreSettings.Live = CoreSettings.Live(),
+        running: (String) -> Pane? = { null },
     ): KioskSettingsOverlay.Model {
         val core = CoreSettings(
             KioskPrefs(context), version, status = { status },
@@ -45,7 +47,7 @@ object MenuFixture {
             licences = SettingsItem.Link(CoreSettings.LICENCES_TITLE, CoreSettings.LICENCES_DETAIL) {},
             live = live,
         )
-        val sections = paneSections(panes)
+        val sections = paneSections(panes, running)
         return KioskSettingsOverlay.Model(settingsOrder(core.sections(), sections), version, sections.map { it.id }.toSet())
     }
 }

@@ -223,6 +223,10 @@ Only then is the address proven to be Home Assistant's, so a pane that trusts th
 The radio ([`RadioPane.kt`](../../sh/edm/s1kiosk/radio/RadioPane.kt)) does: it lets only that
 address reach its TCP services.
 
+On an authenticated connection the core also asks Home Assistant for the time, and raises
+`HomeAssistantTimeZone(posix)` with HA's zone as the POSIX rule it sends (`CET-1CEST,M3.5.0,M10.5.0/3`,
+not an IANA id). The time zone pane offers it on its page.
+
 ### Entities that change, and events
 
 A pane's entity list may change while the panel runs. The wall base
@@ -306,10 +310,14 @@ status, primary and secondary buttons) and calls `host.next()` when it is answer
 no pane. `GlassworksRuntime.setupPanes` pairs each choice with its steps and leaves out a pane with
 steps but no card, with an error in the log: the person could never turn it on or off.
 
-**A settings section is data.** Items are `Text`, `Switch`, `Slider`, `Duration`, `TimeRange`, `Link`,
-`Note`, `Info` and `Group`, each with its value and a `save(value, done)`. A slider, a duration (picked
-from its choices, with units) and a daily window are never typed (#63 round 2), so a browser can draw
-the same controls. A `Switch` can ask first (`confirm` gives a `Confirm`: the question, what it costs,
+**A settings section is data.** Items are `Text`, `Switch`, `Slider`, `Duration`, `TimeRange`, `Choice`,
+`Link`, `Note`, `Info` and `Group`, each with its value and a `save(value, done)`, and the read-only
+`Status` (the line under a page's heading), `Tiles` (readings with their last hour, #212) and `States`
+(entities as Home Assistant shows them). A slider, a duration (picked from its choices, with units), a
+choice and a daily window are never typed (#63 round 2), so a browser can draw the same controls.
+`Info`, `Status`, `Tiles`, `States` and a `Slider` not being dragged are read again every couple of
+seconds while the page is open. If the page itself changes (a base mounted, the pane turned off from
+Home Assistant, the device started), the menu draws it again from the definitions. A `Switch` can ask first (`confirm` gives a `Confirm`: the question, what it costs,
 the button's word). Each change applies on its own, as the person makes it
 (#63): there is no "Save & restart". `done` can come from another thread (the radio's allow-list) and
 reports a problem in words. An item that only takes effect when the app starts again sets
@@ -322,15 +330,33 @@ radio's modes and card). A browser can't draw it, so new sections should not nee
 sections in definition order (Voice, Music, Radio, Wall base, Time zone), then Log, Security and
 About: the Manage page's nav (#33). A section without items is left out. The panel's menu draws them
 in the same rail as setup (`ui/GroupedRail`): the panes' sections under a Panes group that opens while
-one of them is picked.
+one of them is picked. Panes whose `master` is off fold under "Off · N" at the end of the group
+(#212); the fold opens while one of them is picked. Every pane's row has a status chip after its name
+(#243): Running, On, Off, Can't run or Problem, from `paneState`, which the Manage page uses too. A
+section's `status` is the pane's own state and line (the radio's role, Voice's wake word); without
+one, its switch says On or Off. Status colours mean status only, and every name starts at the same x.
 
 **A pane's section has its on/off.** `paneSections` gives each pane's section a `master`, the
 switch at the top right of its page, made from the pane's setup card (`setupChoice`), else from its
-`switch`, unless the pane gives its own (the radio's asks before turning off). A pane with an on/off
-and no section of its own gets a section that says so (Voice, Music, Wall base, Time zone,
-Diagnostics). A section's `status` is its dot in the nav (green, amber,
-rose: status only), and `unavailable` says, in a few words, why the pane can't run on this panel: the
-nav greys it with "Can't run" and its page says why, without a switch.
+`switch`, unless the pane gives its own (the radio's asks before turning off). `unavailable` says, in
+a few words, why the pane can't run on this panel: the nav greys it with "Can't run" and its page says
+why, without a switch.
+
+**Every pane's page shows its state (#212).** No page says the pane has no settings.
+
+- A page reads its running pane: override `settings(running: Pane?)` instead of `settings()`. `running`
+  is the pane the shell built, also while it is off, or null while the panel's device isn't running
+  (`GlassworksRuntime.panes`). Show what Home Assistant has for the pane, and the controls it has there.
+- A pane with no section of its own gets one built from its entities (`inHomeAssistant`): each name
+  and its state as Home Assistant shows it (`ApiEntity.shownState`). Entities off by default in HA are
+  dimmed.
+- A page of its own says which of the pane's entities it covers (`SettingsSection.covers`: it shows
+  them, or leaves them out on purpose). The core then ends the page with "In Home Assistant" for the
+  other entities, or adds nothing when none is left, so no entity is listed twice. A page that leaves
+  `covers` null gets nothing added.
+- While a pane's `switch` is off, its page is the switch's `offNote` (what being off means, in a
+  sentence) and its entities, each `Unavailable`. Its own sections wait until it is on.
+- Without a running device, the page says so (`NOT_RUNNING`).
 
 ## On and off
 

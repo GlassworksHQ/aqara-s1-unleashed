@@ -105,6 +105,76 @@ class AssistPane(
         ),
     )
 
+    /** The Assist satellite's state in Home Assistant's words (Idle, Listening, Processing, Responding), for the settings page (#212). */
+    @Volatile var satellite: String = IDLE
+        private set
+
+    /** The timers running or paused now, as last reported. */
+    @Volatile var timers: List<PanelTimer> = emptyList()
+        private set
+
+    /**
+     * A wake word picked on the panel's settings page (#212). Home Assistant reads the satellite's wake
+     * words only when it sets the satellite up, which it does on each connect (esphome/manager.py
+     * on_disconnect unloads the assist_satellite platform). Its wake word select then keeps its own pick
+     * unless that pick reads "no wake word": the old word is no longer active, so the first read turns
+     * it to no_wake_word, and only a second read takes the panel's word (esphome/select.py
+     * async_satellite_config_updated, read 2026-11-14; the root's panel run saw no_wake_word after one).
+     * So Home Assistant is asked to connect again twice: now, and once more after its next read. Only
+     * within [REREAD_WINDOW_MS] of the pick: a read much later (HA was down) is HA's own and buys nothing.
+     * The trade-off: if HA is down for more than that when the word is picked, its select may read
+     * no_wake_word after it comes back, until its next configuration read (any later reconnect) takes the
+     * panel's word.
+     */
+    fun useWakeWord(id: String) {
+        if (id == prefs.wakeWord) return
+        prefs.wakeWord = id
+        synchronized(rereadLock) {
+            rereadUntil = clock() + REREAD_WINDOW_MS
+            rereads = 2
+        }
+        ctx.entitiesChanged()
+    }
+
+    /** Guards [rereads] and [rereadUntil] together: a late read must not clear a newer pick's count (CodeRabbit on #249). */
+    private val rereadLock = Any()
+
+    /**
+     * Configuration reads by Home Assistant still to count after a word picked on the panel ([useWakeWord]):
+     * any read, the first one after the pick included, whatever started it.
+     */
+    private var rereads = 0
+
+    /** Until when ([clock]) a read still counts toward the second reconnect. */
+    private var rereadUntil = 0L
+
+    /** `SystemClock.elapsedRealtime`; a test moves it. */
+    internal var clock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
+
+    /**
+     * How long after Home Assistant's read it is asked to connect again: time for it to apply the read.
+     * Empirical: 2 s worked in the root's panel run on 2026-11-14, the only evidence; HA applies the read
+     * at once in its event loop (esphome/select.py), so it is a margin, not a measured need.
+     */
+    internal var rereadDelayMs = 2_000L
+
+    /** After a read: the first of two, within the window, asks for the second ([useWakeWord]). Any thread. */
+    private fun configurationRead() {
+        val again = synchronized(rereadLock) {
+            when {
+                rereads == 0 -> false
+                // The deadline is read before the clock, so the test's interleave lands between them.
+                rereadUntil < clock() -> { rereads = 0; false }
+                else -> --rereads == 1
+            }
+        }
+        if (again) {
+            val w = watchdog
+            if (w == null) ctx.entitiesChanged()
+            else runCatching { w.schedule({ ctx.entitiesChanged() }, rereadDelayMs, TimeUnit.MILLISECONDS) }.onFailure { ctx.entitiesChanged() }
+        }
+    }
+
     /** Hands Home Assistant's voice requests to the controller. Called again if the server restarts. */
     override fun bind(server: ApiServer) {
         this.server = server
@@ -126,6 +196,7 @@ class AssistPane(
                 ctx.emit(PanelEvent.TimersChanged(list.map { PanelTimer(it.id, it.name, it.totalSeconds, it.secondsLeft, it.active) }))
             },
             maxStreamMs = cfg.maxStreamMs,
+            onConfigurationRead = ::configurationRead,
         )
         engine.controller = c
         controller = c
@@ -149,11 +220,13 @@ class AssistPane(
         // The server outlives the pane (voice turned off, or the panel stopping): take the stopped controller back.
         server?.let { if (it.voice === controller) it.voice = null }
         controller = null
+        satellite = IDLE
         // No voice, no timer reports: the board would stand still.
         if (running) ctx.emit(PanelEvent.TimersChanged(emptyList()))
     }
 
     override fun onEvent(event: PanelEvent) {
+        if (event is PanelEvent.TimersChanged) timers = event.timers
         if (event !is PanelEvent.SettingChanged) return
         val engine = input ?: return
         when (event.key) {
@@ -174,6 +247,13 @@ class AssistPane(
 
     internal fun dispatch(e: VoiceEvent) {
         if (e is VoiceEvent.WakeDetected && prefs.wakeSound) wakeChime()
+        satellite = when (e) {
+            is VoiceEvent.WakeDetected, is VoiceEvent.Listening -> "Listening"
+            is VoiceEvent.Thinking -> "Processing"
+            is VoiceEvent.Speaking -> "Responding"
+            is VoiceEvent.Idle, is VoiceEvent.Error -> IDLE
+            else -> satellite
+        }
         // Pause music while the assistant listens and talks, resume afterwards.
         when (e) {
             is VoiceEvent.WakeDetected, is VoiceEvent.Listening, is VoiceEvent.Speaking -> {
@@ -187,5 +267,12 @@ class AssistPane(
             else -> Unit
         }
         try { onVoiceEvent(e) } catch (t: Throwable) { EspHomeLog.w("voice listener failed", t) }
+    }
+
+    internal companion object {
+        const val IDLE = "Idle"
+
+        /** How long after the panel's pick Home Assistant's reads still count ([useWakeWord]). Internal for tests. */
+        internal const val REREAD_WINDOW_MS = 30_000L
     }
 }

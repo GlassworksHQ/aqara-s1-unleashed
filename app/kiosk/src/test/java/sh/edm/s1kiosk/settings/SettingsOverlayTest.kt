@@ -277,9 +277,10 @@ class SettingsOverlayTest {
 
     @Test
     fun theRailFitsWithThePanesOpen() {
-        // Root's panel run: with Voice, Music and Radio open, About was clipped under Done.
+        // Root's panel run: with Voice, Music and Radio open, About was clipped under Done. The fixture's
+        // radio is off, so it folds under "Off · 1" (#212) while an on pane is picked.
         val o = open()
-        o.previewSection("radio")
+        o.previewSection("voice")
         Mockup.layout(o)
         assertTrue(shown(o, "About"))
         assertTrue(o.railFits)
@@ -307,5 +308,220 @@ class SettingsOverlayTest {
         Mockup.label(o, "IP addresses or ranges, or any").let { (it.parent.parent as View).performClick() }
         Mockup.idle()
         assertEquals(null, editor(o))
+    }
+
+    /** Panes a, b and c; [off] are turned off. The model is made again on each reload, as MainActivity does. */
+    private fun panes(off: MutableSet<String>): KioskSettingsOverlay {
+        fun model() = KioskSettingsOverlay.Model(listOf("a", "b", "c").map { id ->
+            val master = SettingsItem.Switch(id.uppercase(), "", { id !in off }) { on, done -> if (on) off -= id else off += id; done(null) }
+            SettingsSection(id, id.uppercase(), listOf(SettingsItem.Note { if (id in off) "$id is off" else "$id is on" }), master = master)
+        }, "0.4.3", setOf("a", "b", "c"))
+        return open(model = { model() }).apply { reload = ::model }
+    }
+
+    @Test
+    fun offPanesFoldUnderOffAtTheEndOfTheGroup() {
+        val o = panes(mutableSetOf("a"))
+        o.previewSection("b")
+        Mockup.idle()
+        assertTrue(shown(o, "B")); assertTrue(shown(o, "C")); assertTrue(shown(o, "Off · 1"))
+        assertFalse("folded", shown(o, "A"))
+        val rail = generateSequence(Mockup.label(o, "B") as View) { it.parent as? View }.first { it is sh.edm.s1kiosk.ui.GroupedRail } as ViewGroup
+        val order = List(rail.childCount) { rail.getChildAt(it).contentDescription?.toString() }
+        assertEquals(listOf("Panes", "B", "C", "Off: 1 panes"), order)
+        // Tapping the fold opens its first pane, and the fold stays open while it is picked.
+        rail.getChildAt(3).performClick()
+        Mockup.idle()
+        assertTrue(shown(o, "a is off")); assertTrue(shown(o, "A"))
+    }
+
+    @Test
+    fun aPaneTurnedOffFoldsAndItsPageChangesAtOnce() {
+        val o = panes(mutableSetOf())
+        o.previewSection("b")
+        Mockup.idle()
+        assertTrue(shown(o, "b is on"))
+        o.findViewsWithText("B on").performFirstClick()
+        settle()
+        assertTrue("the page was made again", shown(o, "b is off"))
+        assertTrue(shown(o, "Off · 1"))
+    }
+
+    @Test
+    fun homeAssistantsRowsFollowTheirValues() {
+        var watts = "12.4 W"
+        val o = one(listOf(SettingsItem.States("In Home Assistant") { listOf(SettingsItem.StateRow("Base power", watts), SettingsItem.StateRow("Base firmware", "0.0.0_0034", offByDefault = true)) }))
+        assertTrue(shown(o, "12.4 W"))
+        assertTrue(shown(o, KioskSettingsOverlay.OFF_BY_DEFAULT))
+        watts = "3.1 W"
+        o.refresh()
+        assertTrue(shown(o, "3.1 W"))
+    }
+
+    @Test
+    fun aChoiceAppliesWhenPicked() {
+        var word = "okay_nabu"
+        val o = one(listOf(SettingsItem.Choice("Wake word", { word }, { listOf("okay_nabu" to "Okay Nabu", "hey_jarvis" to "Hey Jarvis") }) { v, done -> word = v; done(null) }))
+        assertTrue(shown(o, "Okay Nabu"))
+        row(o, "Wake word").performClick()
+        Mockup.idle()
+        Mockup.label(o, "Hey Jarvis").performClick()
+        settle()
+        assertEquals("hey_jarvis", word)
+        assertTrue(shown(o, "Hey Jarvis"))
+    }
+
+    @Test
+    fun everyPaneHasItsStatusChipAfterItsName() {
+        // Maintainer, #243 (2026-11-14): a chip after every pane's name, Running / On / Off / Can't run, the
+        // Manage page's words; every name starts at the same x.
+        fun master(on: Boolean) = SettingsItem.Switch("x", "", { on }) { _, d -> d(null) }
+        val running = dev.glassworks.pane.PaneState(dev.glassworks.pane.PaneState.Kind.RUNNING, "Zigbee coordinator")
+        val o = open(model = { _ ->
+            KioskSettingsOverlay.Model(listOf(
+                SettingsSection("dashboard", "Dashboard", listOf(SettingsItem.Note { "" })),
+                SettingsSection("voice", "Voice", listOf(SettingsItem.Note { "" }), master = master(true)),
+                SettingsSection("radio", "Radio", listOf(SettingsItem.Note { "" }), master = master(true), status = { running }),
+                SettingsSection("base", "Wall base", listOf(SettingsItem.Note { "" }), master = master(true), unavailable = { "no base port" }),
+                SettingsSection("music", "Music", listOf(SettingsItem.Note { "" }), master = master(false)),
+            ), "0.4.3", setOf("voice", "radio", "base", "music"))
+        })
+        o.previewSection("music") // opens the fold too
+        Mockup.layout(o)
+        fun chipOf(name: String): String? {
+            val row = Mockup.label(o, name).parent as ViewGroup
+            assertEquals("the name first", Mockup.label(o, name), row.getChildAt(0))
+            return (1 until row.childCount).map { row.getChildAt(it) }.firstOrNull { it.contentDescription?.startsWith("status ") == true }
+                ?.contentDescription?.removePrefix("status ")?.toString()
+        }
+        assertEquals("On", chipOf("Voice"))
+        assertEquals("Running", chipOf("Radio"))
+        assertEquals("Can't run", chipOf("Wall base"))
+        assertEquals("Off", chipOf("Music"))
+        assertEquals("a core section has none", null, runCatching { chipOf("Dashboard") }.getOrNull())
+        fun x(v: View) = IntArray(2).also { v.getLocationInWindow(it) }[0]
+        val xs = listOf("Voice", "Radio", "Wall base", "Music").map { x(Mockup.label(o, it)) }.toSet()
+        assertEquals("every pane's name starts at the same x", 1, xs.size)
+    }
+
+    @Test
+    fun aPaneTurnedOffFromHomeAssistantChangesItsOpenPage() {
+        // CodeRabbit on #235: the switch followed, the page kept the pane's controls.
+        val off = mutableSetOf<String>()
+        val o = panes(off)
+        o.previewSection("b")
+        Mockup.idle()
+        assertTrue(shown(o, "b is on"))
+        off += "b"
+        o.refresh()
+        Mockup.idle()
+        assertTrue(shown(o, "b is off"))
+        assertTrue(shown(o, "Off · 1"))
+    }
+
+    @Test
+    fun aPageWhoseItemsChangeWhileOpenIsDrawnAgain() {
+        // CodeRabbit on #235: a base mounted while the page was open kept the "no base" card.
+        var attached = false
+        fun model() = KioskSettingsOverlay.Model(listOf(SettingsSection("wall-base", "Wall base",
+            if (attached) listOf(SettingsItem.Info({ "Relay 1" }, { "On" })) else listOf(SettingsItem.Note { "No base connected" }),
+        )), "0.4.3", setOf("wall-base"))
+        val o = open(model = { model() }).apply { reload = ::model }
+        assertTrue(shown(o, "No base connected"))
+        o.refresh()
+        assertTrue("the same shape: not drawn again", shown(o, "No base connected"))
+        attached = true
+        o.refresh()
+        Mockup.idle()
+        assertTrue(shown(o, "Relay 1"))
+        assertFalse(shown(o, "No base connected"))
+    }
+
+    @Test
+    fun aSliderFollowsAValueChangedElsewhere() {
+        // CodeRabbit on #235: Home Assistant set the volume, the open page kept the old one.
+        var volume = 40f
+        val o = one(listOf(SettingsItem.Slider("Volume", { volume }, 0f, 100f, 1f, { "${it.toInt()} %" }) { v, done -> volume = v; done(null) }))
+        assertTrue(shown(o, "40 %"))
+        volume = 25f
+        o.refresh()
+        assertTrue(shown(o, "25 %"))
+        val slider = Mockup.label(o, "Volume").let { generateSequence(listOf<View>(o)) { l -> l.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null } }
+            .flatten().filterIsInstance<sh.edm.s1kiosk.ui.GlassSlider>().single() }
+        assertEquals(25f, slider.value, 0f)
+    }
+
+    @Test
+    fun aPageIsDrawnFromThePaneThatRunsNow() {
+        // CodeRabbit on #235: after a device restart the tiles kept reading the stopped pane.
+        class Run(val reading: String)
+        var running = Run("23 % (stopped pane)")
+        fun model() = running.let { r ->
+            KioskSettingsOverlay.Model(listOf(SettingsSection("diagnostics", "Diagnostics", listOf(SettingsItem.Info({ "CPU" }, { r.reading })), source = r)), "0.4.3", setOf("diagnostics"))
+        }
+        val o = open(model = { model() }).apply { reload = ::model }
+        assertTrue(shown(o, "23 % (stopped pane)"))
+        running = Run("9 % (new pane)")
+        o.refresh()
+        Mockup.idle()
+        assertTrue(shown(o, "9 % (new pane)"))
+    }
+
+    @Test
+    fun nativeViewsOfAnOldPaneAreLetGoAndOnlyTheShownOneRefreshes() {
+        // #235 verifier N5: views keyed by the running pane piled up across device restarts, and every
+        // kept view refreshed every tick, shown or not.
+        var run = 1
+        val refreshed = HashMap<String, Int>()
+        fun native(key: String) = SettingsItem.Native(key) { host ->
+            object : SettingsItem.NativeView {
+                override val view = android.widget.TextView(host.context).apply { text = key }
+                override fun refresh() { refreshed[key] = (refreshed[key] ?: 0) + 1 }
+            }
+        }
+        fun model() = KioskSettingsOverlay.Model(listOf(
+            SettingsSection("a", "A", listOf(native("a-run$run"))),
+            SettingsSection("b", "B", listOf(native("b-run$run"))),
+        ), "0.4.3", setOf("a", "b"))
+        val o = open(model = { model() }).apply { reload = ::model }
+        o.previewSection("b")
+        o.previewSection("a")
+        Mockup.idle()
+        assertEquals(setOf("a-run1", "b-run1"), o.keptNatives)
+        refreshed.clear()
+        o.refresh()
+        assertEquals("only the page on screen", mapOf("a-run1" to 1), refreshed.toMap())
+        run = 2 // the device restarted: new panes, new keys
+        o.refresh()
+        Mockup.idle()
+        assertEquals("the old pane's views are let go of", setOf("a-run2"), o.keptNatives)
+    }
+
+    @Test
+    fun aPaneTurnedBackOnFromHomeAssistantRedrawsItsPageAndLeavesTheFold() {
+        // #235 verifier N6.
+        val off = mutableSetOf("b")
+        val o = panes(off)
+        o.previewSection("b")
+        Mockup.idle()
+        assertTrue(shown(o, "b is off"))
+        assertTrue(shown(o, "Off · 1"))
+        off -= "b"
+        o.refresh()
+        Mockup.idle()
+        assertTrue("the page is the pane's own again", shown(o, "b is on"))
+        assertFalse("nothing left to fold", shown(o, "Off · 1"))
+    }
+
+    @Test
+    fun aChoiceFollowsAValueChangedElsewhere() {
+        // CodeRabbit on #235: Home Assistant picked another wake word; the open page kept the old name.
+        var word = "okay_nabu"
+        val o = one(listOf(SettingsItem.Choice("Wake word", { word }, { listOf("okay_nabu" to "Okay Nabu", "hey_jarvis" to "Hey Jarvis") }) { v, done -> word = v; done(null) }))
+        assertTrue(shown(o, "Okay Nabu"))
+        word = "hey_jarvis"
+        o.refresh()
+        assertTrue(shown(o, "Hey Jarvis"))
+        assertFalse(shown(o, "Okay Nabu"))
     }
 }
