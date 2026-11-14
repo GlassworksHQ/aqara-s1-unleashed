@@ -182,8 +182,14 @@ class RtspServer(
 
     private fun reaperLoop() {
         while (running.get()) {
-            try { Thread.sleep(5000) } catch (_: InterruptedException) { break }
+            try { Thread.sleep(minOf(5_000L, handshakeTimeoutMs.toLong())) } catch (_: InterruptedException) { break }
             val now = System.currentTimeMillis()
+            // Glassworks: an unsigned connection past its deadline is closed here too, whatever its
+            // reader is doing (the reader skips stray line breaks without returning).
+            for (c in ArrayList(connections)) if (c.overdue(now)) {
+                onLog("RTSP: ${c.socket.inetAddress.hostAddress} didn't sign in in time")
+                c.close()
+            }
             for (s in sessions.values) {
                 // TCP sessions live as long as their connection; UDP ones need keepalives.
                 if (!s.tcp && now - s.lastActivity > SESSION_TIMEOUT_S * 1000L) {
@@ -314,6 +320,8 @@ class RtspServer(
         // skips sign-in) can't keep a slot forever.
         private val connectedAt = System.currentTimeMillis()
         @Volatile private var signedIn = false
+
+        fun overdue(now: Long) = !signedIn && now - connectedAt > handshakeTimeoutMs
         private val writeLock = Any()
         private val mySessions = mutableSetOf<String>()
 

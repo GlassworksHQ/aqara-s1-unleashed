@@ -305,17 +305,29 @@ class RtspServerTest {
         c.sock.close()
     }
 
+    /** Sends [bytes] every 100 ms for 3 s; true if the server closed the connection meanwhile (a write failed). */
+    private fun closedWhileSending(bytes: ByteArray): Boolean {
+        val sock = Socket("127.0.0.1", port)
+        val out = sock.getOutputStream()
+        val closed = runCatching { repeat(30) { out.write(bytes); out.flush(); Thread.sleep(100) } }.isFailure
+        sock.close()
+        return closed
+    }
+
     @Test fun interleavedFramesCantKeepAConnectionOpenWithoutSigningIn() {
         port = freePort()
         server = RtspServer(port, { USER }, { counts += it }, handshakeTimeoutMs = 400)
         server.start()
-        val sock = Socket("127.0.0.1", port).apply { soTimeout = 3000 }
-        val out = sock.getOutputStream()
-        val closed = runCatching {
-            repeat(20) { out.write(byteArrayOf('$'.code.toByte(), 1, 0, 4, 0x80.toByte(), 201.toByte(), 0, 1)); out.flush(); Thread.sleep(100) }
-        }.isFailure || sock.getInputStream().read() == -1
-        assertTrue("closed within the handshake time although RTCP-like frames kept coming", closed)
-        sock.close()
+        // Kept busy the whole time, so the read timeout never fires: only the deadline can close it.
+        assertTrue(closedWhileSending(byteArrayOf('$'.code.toByte(), 1, 0, 4, 0x80.toByte(), 201.toByte(), 0, 1)))
+    }
+
+    @Test fun strayLineBreaksCantKeepAConnectionOpenWithoutSigningIn() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, handshakeTimeoutMs = 400)
+        server.start()
+        // The reader skips these without returning: the reaper has to close it.
+        assertTrue(closedWhileSending(byteArrayOf('\r'.code.toByte())))
     }
 
     @Test fun theStreamCarriesThePanelsName() {
