@@ -8,7 +8,6 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.GradientDrawable
@@ -39,6 +38,7 @@ import sh.edm.s1kiosk.ui.Glass.Companion.SKY
 import sh.edm.s1kiosk.ui.Glass.Companion.TX
 import sh.edm.s1kiosk.ui.Glass.Companion.VIOLET
 import sh.edm.s1kiosk.ui.Inter
+import sh.edm.s1kiosk.voice.OrbArt
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -83,6 +83,10 @@ class NotificationOverlay(
     private val pill = pill()
     private val pageBar = FrameLayout(context)
     private val stage = FrameLayout(context)
+    /** The critical alert's animated orb: one, kept while the stage's text is rebuilt, so its motion runs on. */
+    internal val criticalOrb = CriticalOrb(context)
+    /** The stage's text and buttons, rebuilt on each change. */
+    private val stageContent = FrameLayout(context)
     private val sheetLayer = FrameLayout(context)
 
     /** A picture loaded for an entry, or why not. */
@@ -96,6 +100,12 @@ class NotificationOverlay(
         column.addView(pill, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(12f) })
         addView(pageBar, LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = px(MARGIN_DP) })
         addView(stage, LayoutParams(-1, -1))
+        stage.addView(View(context).apply { background = Backdrop(); alpha = 0.97f }, LayoutParams(-1, -1))
+        // The timer-done stage's layout: the orb's glow box (300 dp) centred on 162 dp.
+        stage.addView(criticalOrb, LayoutParams(px(OrbArt.GLOW_DP), px(OrbArt.GLOW_DP), Gravity.TOP or Gravity.CENTER_HORIZONTAL)
+            .apply { topMargin = px(162f - OrbArt.GLOW_DP / 2) })
+        stage.addView(stageContent, LayoutParams(-1, -1))
+        stage.visibility = View.GONE
         addView(sheetLayer, LayoutParams(-1, -1))
         render()
     }
@@ -134,6 +144,7 @@ class NotificationOverlay(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         detached = false
+        if (stage.visibility == View.VISIBLE) criticalOrb.start()
     }
 
     override fun onDetachedFromWindow() {
@@ -207,12 +218,16 @@ class NotificationOverlay(
     }
 
     private fun renderStage(e: Entry?) {
-        stage.removeAllViews()
-        if (e == null) { stage.visibility = View.GONE; return }
+        stageContent.removeAllViews()
+        if (e == null) {
+            criticalOrb.stop()
+            stage.visibility = View.GONE
+            return
+        }
         stage.visibility = View.VISIBLE
         stage.isClickable = true // nothing behind it takes a tap until it's answered
-        stage.addView(View(context).apply { background = Backdrop(); alpha = 0.97f }, LayoutParams(-1, -1))
-        stage.addView(Orb(context), LayoutParams(px(300f), px(300f), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = px(12f) })
+        // The ripple and the pulse, until it's answered or dismissed (or the overlay leaves the window).
+        if (!detached) criticalOrb.start()
         val n = e.notification
         // The buttons sit at the bottom of the screen, so Dismiss is always there; the text gets the
         // room between the orb and them, and scrolls if HA sent more than fits on 480 dp.
@@ -226,7 +241,7 @@ class NotificationOverlay(
             if (n.title.isNotEmpty() && n.message.isNotEmpty()) addView(g.text(17f, MU).apply { this.text = n.message; gravity = Gravity.CENTER },
                 LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(8f) })
         }
-        stage.addView(ScrollView(context).apply {
+        stageContent.addView(ScrollView(context).apply {
             isVerticalFadingEdgeEnabled = true
             setFadingEdgeLength(px(20f))
             addView(text, LayoutParams(-1, -2))
@@ -234,7 +249,7 @@ class NotificationOverlay(
             topMargin = px(STAGE_TEXT_TOP_DP)
             bottomMargin = px(STAGE_BUTTONS_BOTTOM_DP + STAGE_BUTTONS_DP + 16f)
         })
-        stage.addView(LinearLayout(context).apply {
+        stageContent.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             n.actions.forEachIndexed { i, a ->
@@ -507,25 +522,6 @@ class NotificationOverlay(
             val moon = Path().apply { addCircle(r, r, r, Path.Direction.CW) }
             moon.op(Path().apply { addCircle(r * 1.55f, r * 0.6f, r * 0.85f, Path.Direction.CW) }, Path.Op.DIFFERENCE)
             c.drawPath(moon, p)
-        }
-    }
-
-    /** The critical alert's orb: the timer-done stage's glass orb with a rose core (status). */
-    private class Orb(context: Context) : View(context) {
-        private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-        override fun onDraw(c: Canvas) {
-            val d = resources.displayMetrics.density
-            val cx = width / 2f; val cy = height / 2f
-            p.style = Paint.Style.FILL
-            p.shader = RadialGradient(cx, cy, 150 * d, Color.argb(70, 0xfb, 0x71, 0x85), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-            c.drawCircle(cx, cy, 150 * d, p); p.shader = null
-            p.style = Paint.Style.STROKE; p.strokeWidth = 1.2f * d; p.color = Color.argb(70, 0xfb, 0x71, 0x85)
-            c.drawCircle(cx, cy, 92 * d, p)
-            p.style = Paint.Style.FILL
-            p.shader = RadialGradient(cx - 14 * d, cy - 16 * d, 60 * d, Color.argb(255, 0xfd, 0xa4, 0xaf), Color.argb(255, 0x9f, 0x12, 0x39), Shader.TileMode.CLAMP)
-            c.drawCircle(cx, cy, 56 * d, p); p.shader = null
-            p.style = Paint.Style.STROKE; p.color = Color.argb(160, 0xfd, 0xa4, 0xaf)
-            c.drawCircle(cx, cy, 56 * d, p)
         }
     }
 

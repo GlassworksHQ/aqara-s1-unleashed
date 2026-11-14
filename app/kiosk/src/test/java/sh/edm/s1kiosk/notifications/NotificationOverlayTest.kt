@@ -159,4 +159,27 @@ class NotificationOverlayTest {
         Mockup.layout(overlay.rootView); Mockup.idle(); Mockup.layout(overlay.rootView)
         assertEquals(300, list().scrollY)
     }
+
+    /**
+     * S1 run 2026-11-14: the critical stage stood still. Its orb now runs the timer-done stage's motion
+     * (a ripple every 1.5 s, the core pulsing) while the stage is shown, and stops on Dismiss.
+     */
+    @Test
+    fun theCriticalStageAnimatesUntilDismissed() {
+        val orb = overlay.criticalOrb
+        assertFalse("nothing critical: no loop", orb.running)
+        center.handle("Under the sink", "Water leak", """{"priority":"critical"}""")
+        assertTrue(orb.running)
+        val scales = (1..6).map {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(250))
+            orb.coreScale
+        }
+        assertTrue("frames are drawn (${orb.frames})", orb.frames > 5)
+        assertTrue("the core pulses: $scales", scales.toSet().size > 1)
+        click("Dismiss")
+        assertFalse("dismissed: the loop stops", orb.running)
+        val after = orb.frames
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1_000))
+        assertEquals("no frames after", after, orb.frames)
+    }
 }
