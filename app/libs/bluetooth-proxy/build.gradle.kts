@@ -27,5 +27,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")
+    // AndroidBleScannerTest: the Android glue on Android 10 (sdk 29), as the kiosk's own Robolectric tests.
+    testImplementation("org.robolectric:robolectric:4.17")
 }
 

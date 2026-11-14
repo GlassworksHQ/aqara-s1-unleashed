@@ -113,5 +113,8 @@ addresses of bonded and nearby devices: grep for the lines you need, or redact b
   would be lost. Compare a known sensor's data on the panel with an ESP32 proxy's. Untested.
 - **GATT connections:** how many the RTL8821CS holds at once, and whether Android 10's hidden
   attribute handles match ESPHome's. See the active-connections design in #121. Untested.
+- **The scanner's source.** The proxy doesn't send `bluetooth_mac_address` (field 18), so HA keys
+  the scanner on the panel's ESPHome MAC (the Wi-Fi MAC, or one derived from the serial). Android 10
+  hides the Bluetooth MAC from apps. Fine for listening; to decide before GATT connections.
 - **Next to the Matter pane's BLE advertising (#47).** Android allows a scan and an advertiser at
   once; the chip doing both was not tried.

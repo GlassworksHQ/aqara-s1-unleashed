@@ -101,7 +101,8 @@ proxy.
 
 ## Tests
 
-`./gradlew :bluetooth-proxy:testDebugUnitTest`. `BluetoothProxyHomeAssistantTest` runs Home
+`./gradlew :bluetooth-proxy:testDebugUnitTest`. `AndroidBleScannerTest` runs the Android glue on
+Android 10 under Robolectric: the empty filter, the failure codes, a late failure, Bluetooth off and on. `BluetoothProxyHomeAssistantTest` runs Home
 Assistant's client (aioesphomeapi, the version HA pins) against `ApiServer` and the engine with a
 fake radio. It skips unless `ESPHOME_PYTHON` points at a Python with it installed
 (`../esphome-api/test-requirements.txt`).
