@@ -9,7 +9,7 @@ package dev.glassworks.manage
  * diagnostics file. The panel's code already never logs them; this is the second net.
  *
  * Removed: HA tokens (JWTs, `Bearer …`), `Basic …` credentials, a user and password in a URL
- * (`http://user:pass@host`), `key=value` pairs whose name says secret (token, password, psk,
+ * (`http://user:pass@host`), every value in a URL's query (`?auth=…`), `key=value` pairs whose name says secret (token, password, psk,
  * passphrase, key, secret, dataset, tlv), base64 32-byte keys (the ESPHome API key), long hex (Thread datasets and
  * network keys, EUI64s, extended PAN ids, serials), and MAC addresses.
  */
@@ -21,9 +21,13 @@ object Redact {
         // http://user:pass@host: the whole user part goes, up to the last @ before the path, so a raw @ in
         // the password goes too.
         Regex("(?i)\\b([a-z][a-z0-9+.-]*://)[^/?#\\s]*@") to { m -> m.groupValues[1] + "<removed>@" },
-        // A quoted value to its closing quote; an unquoted one to the end of the field (`&`, `;`, line end),
-        // so a Wi-Fi password with spaces or commas goes whole.
-        Regex("(?i)\\b([a-z_]*(?:token|password|passwd|passphrase|psk|secret|api_?key|network_?key|noise_?key|key|dataset|tlv|code_verifier))(\"?\\s*[:=]\\s*)(\"[^\"\\n]*\"|'[^'\\n]*'|[^&;\\n]+)") to
+        // Every value in a URL's query: a dashboard address can carry a secret under any name (`?auth=…`).
+        Regex("(?i)(\\b[a-z][a-z0-9+.-]*://[^\\s?#]*\\?)([^\\s#]*)") to { m ->
+            m.groupValues[1] + m.groupValues[2].split('&').joinToString("&") { p -> if ('=' in p) p.substringBefore('=') + "=<removed>" else p }
+        },
+        // A quoted value to its closing quote (an escaped quote, `\"`, doesn't close it); an unquoted one to the
+        // end of the field (`&`, `;`, line end), so a Wi-Fi password with spaces or commas goes whole.
+        Regex("(?i)\\b([a-z_]*(?:token|password|passwd|passphrase|psk|secret|api_?key|network_?key|noise_?key|key|dataset|tlv|code_verifier))(\"?\\s*[:=]\\s*)(\"(?:[^\"\\\\\\n]|\\\\.)*\"|'(?:[^'\\\\\\n]|\\\\.)*'|[^&;\\n]+)") to
             { m -> m.groupValues[1] + m.groupValues[2] + (if (m.groupValues[3].startsWith("\"")) "\"<removed>\"" else if (m.groupValues[3].startsWith("'")) "'<removed>'" else "<removed>") },
         Regex("(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{43}=") to { _ -> "<key>" },
         Regex("\\b(?:[0-9A-Fa-f]{2}[:-]){7}[0-9A-Fa-f]{2}\\b") to { _ -> "<eui64>" },

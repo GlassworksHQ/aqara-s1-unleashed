@@ -18,6 +18,8 @@ import java.util.Collections
 class ManageFixture(
     var haBase: String? = "http://192.0.2.10:8123",
     var setUp: Boolean = true,
+    /** When set, the HA address the server reads, call by call (an address that changes mid-request). */
+    var haBaseFn: (() -> String?)? = null,
     /** The QR pages; by default a stub that names the path. */
     private val qrPages: ((HttpRequest) -> HttpResponse)? = null,
 ) {
@@ -99,7 +101,7 @@ class ManageFixture(
     }
 
     val server = ManageServer(
-        host = host, haBase = { haBase }, setUp = { setUp }, sessions = sessions, code = code, signIn = signIn, log = log,
+        host = host, haBase = { haBaseFn?.invoke() ?: haBase }, setUp = { setUp }, sessions = sessions, code = code, signIn = signIn, log = log,
         qrPaths = setOf("/signin", "/signin/continue", "/callback", "/thread", "/thread/continue", "/thread/callback"),
         qr = { req -> qrSeen += req.path; qrPages?.invoke(req) ?: HttpResponse.html(200, "<header>QR ${req.path}<!--gw-header-right--></header>") },
         pages = ManagePages(clock = { now }),

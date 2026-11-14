@@ -2,6 +2,11 @@ package sh.edm.s1kiosk.manage
 
 import dev.glassworks.manage.ManageFixture
 import dev.glassworks.manage.LogEntry
+import dev.glassworks.manage.PaneRow
+import dev.glassworks.pane.NO_SETTINGS
+import dev.glassworks.pane.PaneState
+import dev.glassworks.pane.SettingsItem
+import dev.glassworks.pane.SettingsSection
 import dev.glassworks.web.HttpResponse
 import dev.glassworks.web.PageShell.Look
 import org.junit.Assume.assumeTrue
@@ -75,5 +80,18 @@ class ManagePageMockups {
         save("10b-qr-done-signed-in", b.get("/callback"))
         save("10c-qr-sign-in-signed-in", b.get("/signin"))
         save("10d-qr-sign-in", anon.get("/signin"))
+
+        // #67: every pane has its on/off. Music off; Time zone and Diagnostics have only their switch.
+        val on = SettingsItem.Switch("Time zone", "Keeps the zone Aqara resets at boot", { true }) { _, d -> d(null) }
+        f.status = f.status.copy(
+            panes = f.status.panes.map { if (it.id == "sendspin") it.copy(state = PaneState(PaneState.Kind.OFF, "Turned off")) else it } + listOf(
+                PaneRow("time-zone", "Time zone", PaneState(PaneState.Kind.RUNNING, "Keeps the zone Aqara resets at boot", "On"), "time-zone"),
+                PaneRow("diagnostics", "Diagnostics", PaneState(PaneState.Kind.RUNNING, "CPU, temperature, memory and Wi-Fi in Home Assistant", "On"), "diagnostics"),
+            ),
+            sections = f.status.sections + SettingsSection("time-zone", "Time zone", listOf(SettingsItem.Note { NO_SETTINGS }), master = on),
+        )
+        save("11-overview-panes-on-off", b.get("/"))
+        save("11b-pane-off", b.get("/sendspin"))
+        save("11c-pane-switch-only", b.get("/time-zone"))
     }
 }

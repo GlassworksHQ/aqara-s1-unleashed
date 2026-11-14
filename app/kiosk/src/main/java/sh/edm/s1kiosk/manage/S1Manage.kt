@@ -51,6 +51,7 @@ import sh.edm.s1kiosk.auth.WsHaSocket
 import sh.edm.s1kiosk.esphome.PanelDevice
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.settings.CoreSettings
+import sh.edm.s1kiosk.setup.SetupState
 import sh.edm.s1kiosk.update.UpdateManager
 import sh.edm.s1kiosk.voice.WakeWords
 import java.io.File
@@ -67,14 +68,14 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
     private val app = context.applicationContext
     private val dir = File(app.filesDir, "manage")
     val log = ManageLog(File(dir, "log"))
-    private val tail = LogcatTail(log, ::logSource) { Log.w(TAG, it) }
+    private val tail = LogcatTail(log, ::logSource, onError = { Log.w(TAG, it) })
 
     private val host = Host()
 
     val server = ManageServer(
         host = host,
         haBase = { prefs.haBase },
-        setUp = { HaAuth.signedIn },
+        setUp = ::setUp,
         sessions = SessionStore(File(dir, "sessions.json")),
         code = runtime.panelCode,
         signIn = HaSignIn(Gateway(tokens) { url -> WsHaSocket.connect(url) }, warn = { Log.w(TAG, it) }),
@@ -89,6 +90,8 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
 
     /** What the Manage page shows now; tests read it. */
     internal fun status(): PanelStatus = host.status()
+
+    internal val actions: PanelActions get() = host.actions
 
     fun startLog() = tail.start()
 
@@ -227,24 +230,25 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
         private val main = Handler(Looper.getMainLooper())
         private val dpm get() = app.getSystemService(DevicePolicyManager::class.java)
 
-        private fun toActivity(extra: String): String? {
+        private fun toActivity(extra: String, delayMs: Long = 0): String? {
             val i = Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(extra, true)
-            main.post {
+            main.postDelayed({
                 val sink = runtime.commandSink
                 if (sink != null) sink(i) else runCatching { app.startActivity(i) }.onFailure { Log.w(TAG, "can't start the activity", it) }
-            }
+            }, delayMs)
             return null
         }
 
         override fun reloadDashboard() = toActivity("reload")
 
-        override fun restartApp() = toActivity("restart")
+        // After the page's answer has gone out: the restart ends this process, and the HTTP worker with it.
+        override fun restartApp() = toActivity("restart", ACTION_DELAY_MS)
 
         override val canReboot: Boolean get() = runCatching { dpm?.isDeviceOwnerApp(app.packageName) == true }.getOrDefault(false)
 
         override fun reboot(): String? {
             if (!canReboot) return "The app can only reboot the panel as its device owner."
-            main.postDelayed({ runCatching { dpm?.reboot(ComponentName(app, AdminReceiver::class.java)) }.onFailure { Log.w(TAG, "reboot failed", it) } }, 1_000)
+            main.postDelayed({ runCatching { dpm?.reboot(ComponentName(app, AdminReceiver::class.java)) }.onFailure { Log.w(TAG, "reboot failed", it) } }, ACTION_DELAY_MS)
             return null
         }
 
@@ -254,6 +258,15 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
             return null
         }
     }
+
+    /**
+     * The panel is set up, so `/` is the Manage page and not the QR sign-in: its dashboard is signed in,
+     * or setup has passed Home Assistant ([SetupState.setUpBefore]: added, keyed or skipped), which also
+     * covers a panel that signed in on its own screen ("Sign in on this panel instead") and so holds no
+     * HA credentials. Every QR code names its own path (`/signin`, `/thread`), so none of them needs `/`.
+     */
+    internal fun setUp(): Boolean =
+        HaAuth.signedIn || SetupState.setUpBefore(prefs.haBase != null, prefs.haSeen, prefs.apiEncryption, prefs.haSetupSkipped)
 
     /** The panel's IP addresses now, `localhost`, its ESPHome name and its Android host name, as `.local`. */
     private fun ownHosts(): Set<String> {
@@ -315,6 +328,9 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
 
     companion object {
         const val TAG = "S1Manage"
+
+        /** How long a restart or reboot waits, so the page that started it reaches the browser first. */
+        const val ACTION_DELAY_MS = 1_000L
 
         /** The S1's log tags, in words, for the Manage log. The rest (Gecko, Android) stays out. */
         fun logSource(tag: String): String? = when {

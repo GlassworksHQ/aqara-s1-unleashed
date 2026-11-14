@@ -40,8 +40,9 @@ data class Session(
 /**
  * The Manage page's signed-in browsers. Sessions live [rememberMs] (30 days) when remembered, else
  * [shortMs] (12 h, and the cookie dies with the browser). Every session ends when the panel's HA address
- * changes ([lookup]'s haBase). Persisted to [file] so a remembered browser survives an
- * app restart or a reboot. Thread-safe.
+ * changes: the first [lookup] or [list] that sees another address removes every session made for the old
+ * one, so they don't come back if the address does. Persisted to [file] so a remembered browser survives
+ * an app restart or a reboot. Thread-safe.
  */
 class SessionStore(
     private val file: File?,
@@ -74,11 +75,12 @@ class SessionStore(
     /** The session for the cookie [token], if it is valid now and was made for [haBase]. Marks it used. */
     @Synchronized
     fun lookup(token: String?, haBase: String?): Session? {
+        endOthers(haBase)
         if (token.isNullOrEmpty() || token.length > 100) return null
         val k = hash(token)
         val s = sessions[k] ?: return null
         val now = clock()
-        if (now >= s.expiresMs || s.haBase != haBase) {
+        if (now >= s.expiresMs) {
             sessions.remove(k); save(); return null
         }
         val used = s.copy(lastUsedMs = now)
@@ -88,19 +90,36 @@ class SessionStore(
         return used
     }
 
+    /** The browsers signed in for [haBase] now, last used first. */
     @Synchronized
-    fun list(): List<Session> {
+    fun list(haBase: String?): List<Session> {
+        endOthers(haBase)
         val now = clock()
         return sessions.values.filter { now < it.expiresMs }.sortedByDescending { it.lastUsedMs }
     }
 
-    /** Signs out the browser with the public [id]. True if there was one. */
+    /** What [revoke] did. */
+    enum class Revoked { NONE, DONE, NOT_SAVED }
+
+    /**
+     * Signs out the browser with the public [id]: at once in memory, and on disk. When the file can't be
+     * written it is deleted, which signs every remembered browser out at the next start (the safe side).
+     * [Revoked.NOT_SAVED]: not even that worked, so a remembered session can come back after a restart.
+     */
     @Synchronized
-    fun revoke(id: String): Boolean {
-        val k = sessions.values.firstOrNull { it.id == id }?.key ?: return false
+    fun revoke(id: String): Revoked {
+        val k = sessions.values.firstOrNull { it.id == id }?.key ?: return Revoked.NONE
         sessions.remove(k)
+        if (save()) return Revoked.DONE
+        val f = file ?: return Revoked.DONE
+        return if (runCatching { !f.exists() || f.delete() }.getOrDefault(false)) Revoked.DONE else Revoked.NOT_SAVED
+    }
+
+    /** Ends every session made for another HA address than [haBase]. */
+    private fun endOthers(haBase: String?) {
+        if (sessions.values.none { it.haBase != haBase }) return
+        sessions.values.removeAll { it.haBase != haBase }
         save()
-        return true
     }
 
     private fun load() {
@@ -125,8 +144,9 @@ class SessionStore(
         }
     }
 
-    private fun save() {
-        val f = file ?: return
+    /** Writes the remembered sessions; false when the file couldn't be written. */
+    private fun save(): Boolean {
+        val f = file ?: return true
         val arr = JSONArray()
         // A session that dies with the browser needn't survive a restart either.
         for (s in sessions.values.filter { it.remember }) arr.put(
@@ -134,12 +154,14 @@ class SessionStore(
                 .put("browser", s.browser).put("created", s.createdMs).put("used", s.lastUsedMs).put("expires", s.expiresMs)
                 .put("remember", s.remember).put("csrf", s.csrf).put("ha", s.haBase ?: ""),
         )
-        try {
+        return try {
             f.parentFile?.mkdirs()
             val tmp = File(f.parentFile, f.name + ".tmp")
             tmp.writeText(arr.toString())
-            if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
-        } catch (_: Exception) {}
+            tmp.renameTo(f) || (f.delete() && tmp.renameTo(f))
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun randomToken(bytes: Int): String {

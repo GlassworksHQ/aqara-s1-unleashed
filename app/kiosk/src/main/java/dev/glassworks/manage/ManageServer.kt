@@ -113,12 +113,14 @@ class ManageServer(
                     button = """<a class="btn" href="/">Back to sign in</a>"""))
             }
             is HaSignIn.Result.Ok -> {
-                // Authenticated against the address the sign-in started with: if the panel's has changed since, start again.
-                if (r.haBase != haBase()?.trim()?.trimEnd('/')) {
+                // Authenticated against the address the sign-in started with: if the panel's has changed since, start
+                // again. Read once, so the session is bound to the address that was checked.
+                val ha = haBase()
+                if (r.haBase != ha?.trim()?.trimEnd('/')) {
                     return html(409, PageShell.qrPage(name(), "Home Assistant's address changed", "Sign in again.", PageShell.Look.PROBLEM,
                         button = """<a class="btn" href="/">Back to sign in</a>"""))
                 }
-                val (token, s) = sessions.create(r.user.name, SignedInWith.HOME_ASSISTANT, SessionStore.browserName(req.headers["user-agent"]), r.remember, haBase())
+                val (token, s) = sessions.create(r.user.name, SignedInWith.HOME_ASSISTANT, SessionStore.browserName(req.headers["user-agent"]), r.remember, ha)
                 event("${r.user.name} signed in with Home Assistant (${s.browser})")
                 // HA sent the browser here from another site: a redirect would still be cross-site, and the
                 // new Strict cookie wouldn't go with it. A page that reloads to the target is same-site.
@@ -176,7 +178,7 @@ class ManageServer(
     private fun signOut(req: HttpRequest, session: Session?): HttpResponse {
         if (session == null) return HttpResponse.seeOther("/")
         if (!csrfOk(req, session)) return HttpResponse.text(403, "This form has expired. Go back and try again.")
-        sessions.revoke(session.id)
+        if (sessions.revoke(session.id) == SessionStore.Revoked.NOT_SAVED) return notSaved()
         event("${who(session)} signed out (${session.browser})")
         return HttpResponse.seeOther("/", mapOf("Set-Cookie" to clearCookie(SESSION)))
     }
@@ -199,7 +201,7 @@ class ManageServer(
                 html(200, pages.log(status, viewer, log.read(level, q), level, q))
             }
             path == "/log/diagnostics.txt" -> diagnostics()
-            path == "/security" -> html(200, pages.security(status, viewer, sessions.list(), s.id, notice(req.query["done"])))
+            path == "/security" -> html(200, pages.security(status, viewer, sessions.list(haBase()), s.id, notice(req.query["done"])))
             path == "/about" -> html(200, pages.about(status, viewer))
             path == "/confirm/reboot" -> html(200, rebootDialog(status, viewer, null))
             else -> {
@@ -249,14 +251,20 @@ class ManageServer(
             }
             "/security/signout" -> {
                 val id = req.form["id"].orEmpty()
-                val target = sessions.list().firstOrNull { it.id == id }
-                sessions.revoke(id)
+                val target = sessions.list(haBase()).firstOrNull { it.id == id }
+                if (sessions.revoke(id) == SessionStore.Revoked.NOT_SAVED) return notSaved()
                 target?.let { event("${who(s)} signed out ${it.browser}") }
                 if (id == s.id) HttpResponse.seeOther("/", mapOf("Set-Cookie" to clearCookie(SESSION)))
                 else HttpResponse.seeOther("/security?done=signedout")
             }
             else -> HttpResponse.text(404, "Not found.")
         }
+    }
+
+    /** The panel couldn't store a sign-out: it holds until the app restarts, and the person should know. */
+    private fun notSaved(): HttpResponse {
+        event("A sign-out couldn't be saved; it holds until the app restarts")
+        return HttpResponse.text(500, "Signed out until the app restarts: the panel couldn't save it. Try again.")
     }
 
     private fun rebootDialog(status: PanelStatus, viewer: ManagePages.Viewer, problem: String?): String =

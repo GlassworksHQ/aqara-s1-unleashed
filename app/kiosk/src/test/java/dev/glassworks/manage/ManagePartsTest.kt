@@ -45,7 +45,8 @@ class ManagePartsTest {
         val store = SessionStore(null, clock = { now })
         val (t1, s1) = store.create("Alex", SignedInWith.HOME_ASSISTANT, "Safari on Mac", true, null)
         val (t2, _) = store.create("Alex", SignedInWith.HOME_ASSISTANT, "Chrome on Windows", true, null)
-        assertTrue(store.revoke(s1.id))
+        assertEquals(SessionStore.Revoked.DONE, store.revoke(s1.id))
+        assertEquals(SessionStore.Revoked.NONE, store.revoke(s1.id))
         assertNull(store.lookup(t1, null))
         assertNotNull(store.lookup(t2, null))
     }
@@ -84,6 +85,7 @@ class ManagePartsTest {
         fun wrong(x: PanelCode.Shown) = if (x.code == "000000") "111111" else "000000"
         for (left in 4 downTo 0) assertEquals(left, (c.check("signin", "a", wrong(s)) as PanelCode.Check.Wrong).triesLeft)
         assertEquals(PanelCode.Check.NoCode, c.check("signin", "a", s.code))
+        now += 30_000 // no new code within 30 s of the last
         s = c.ok("signin", "a")
         repeat(4) { c.check("signin", "a", wrong(s)) }
         val locked = c.check("signin", "a", wrong(s))
@@ -143,7 +145,8 @@ class ManagePartsTest {
             "Authorization: Basic dXNlcjpodW50ZXIy" to "Authorization: Basic <removed>",
             "Signed in to http://user:hunter2@192.0.2.10:8123" to "Signed in to http://<removed>@192.0.2.10:8123",
             "http://alex:p@ssw0rd@192.0.2.10:8123/x" to "http://<removed>@192.0.2.10:8123/x",
-            "http://192.0.2.10:8123/u@x?a=b@c" to "http://192.0.2.10:8123/u@x?a=b@c",
+            // An @ in the path is no user part; the query's values go, whatever they are.
+            "http://192.0.2.10:8123/u@x?a=b@c" to "http://192.0.2.10:8123/u@x?a=<removed>",
             "Home Assistant: https://alex@homeassistant.local:8123/x" to "Home Assistant: https://<removed>@homeassistant.local:8123/x",
             "password=ab,cd&x=1" to "password=<removed>&x=1",
             "psk=MyWifiPassword" to "psk=<removed>",
@@ -247,5 +250,110 @@ class ManagePartsTest {
     @Test fun pkceChallengeIsS256() {
         // RFC 7636 appendix B.
         assertEquals("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", HaSignIn.challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"))
+    }
+
+    // ------------------------------------------------------------------ CodeRabbit round on f5b117c
+
+    @Test fun aSignOutThatCantBeSavedDeletesTheFileOrSaysSo() {
+        val file = File(dir, "s.json")
+        val store = SessionStore(file, clock = { now })
+        val (_, s) = store.create("Alex", SignedInWith.HOME_ASSISTANT, "Safari on Mac", true, null)
+        // Writing fails (a directory where the temp file goes), deleting works: the file goes, everyone is out after a restart.
+        File(dir, "s.json.tmp").mkdirs()
+        File(File(dir, "s.json.tmp"), "x").writeText("x")
+        assertEquals(SessionStore.Revoked.DONE, store.revoke(s.id))
+        assertFalse(file.exists())
+    }
+
+    @Test fun redactionTakesEscapedQuotesAndQueryValues() {
+        val out = Redact.text("""{"password":"alpha\"bravo"} http://homeassistant.local:8123/lovelace/0?auth=secret123&kiosk&x=1#top""")
+        assertFalse(out, out.contains("bravo"))
+        assertFalse(out, out.contains("secret123"))
+        assertTrue(out, out.contains("/lovelace/0?auth=<removed>&kiosk&x=<removed>#top"))
+    }
+
+    @Test fun pruningFindsAnOldLineAfterANewerOne() {
+        val log = ManageLog(File(dir, "log"), clock = { now })
+        log.append(LogEntry(now, LogEntry.Level.INFO, "App", "new"))
+        // The clock jumped back at boot: an older line after a newer one.
+        log.append(LogEntry(now - 8L * 24 * 3600 * 1000, LogEntry.Level.INFO, "App", "old"))
+        log.prune()
+        val disk = File(dir, "log/log.0").readText()
+        assertFalse(disk, disk.contains("old"))
+        assertTrue(disk.contains("new"))
+    }
+
+    @Test fun theTailPrunesWhenItStartsWithNothingWrittenOrRead() {
+        val log = ManageLog(File(dir, "log"), clock = { now })
+        log.append(LogEntry(now, LogEntry.Level.INFO, "App", "a week ago"))
+        now += 8L * 24 * 3600 * 1000
+        val tail = LogcatTail(log, { null }, logcat = { ProcessBuilder("sleep", "30").start() })
+        tail.start()
+        try {
+            val f = File(dir, "log/log.0")
+            val until = System.currentTimeMillis() + 5_000
+            while (f.exists() && System.currentTimeMillis() < until) Thread.sleep(20)
+            assertFalse("the old line left the disk", f.exists())
+        } finally {
+            tail.stop()
+        }
+    }
+
+    @Test fun aWorkerFromAnEarlierStartNeverKeepsItsLogcat() {
+        val log = ManageLog(File(dir, "log"), clock = { now })
+        val first = java.util.concurrent.CountDownLatch(1)
+        val made = java.util.concurrent.CopyOnWriteArrayList<Process>()
+        var calls = 0
+        val tail = LogcatTail(log, { null }, logcat = {
+            val mine = synchronized(made) { ++calls }
+            if (mine == 1) first.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            ProcessBuilder("sleep", "30").start().also { made += it }
+        })
+        tail.start() // worker A waits inside logcat
+        tail.stop()
+        tail.start() // worker B
+        val until = System.currentTimeMillis() + 5_000
+        while (made.size < 1 && System.currentTimeMillis() < until) Thread.sleep(10)
+        first.countDown() // A's logcat starts now, after the restart
+        while (made.size < 2 && System.currentTimeMillis() < until) Thread.sleep(10)
+        Thread.sleep(200)
+        tail.stop()
+        val deadline = System.currentTimeMillis() + 5_000
+        while (made.any { it.isAlive } && System.currentTimeMillis() < deadline) Thread.sleep(20)
+        assertEquals("both logcats are gone after stop()", 0, made.count { it.isAlive })
+    }
+
+    @Test fun noNewCodeWithin30SecondsOfABurnedOneUnlessItWasTypedRight() {
+        val c = PanelCode(clock = { now }).apply { canDisplay = { true } }
+        val a = (c.show("signin", "Sign in", "a") as PanelCode.Show.Ok).shown
+        repeat(5) { c.check("signin", "a", if (a.code == "000000") "111111" else "000000") }
+        assertTrue("burned, but the 30 s still hold", c.show("signin", "Sign in", "b") is PanelCode.Show.Busy)
+        c.dismiss()
+        assertTrue("closed, and the 30 s still hold", c.show("signin", "Sign in", "b") is PanelCode.Show.Busy)
+        now += 30_000
+        val b = (c.show("signin", "Sign in", "b") as PanelCode.Show.Ok).shown
+        assertEquals(PanelCode.Check.Ok, c.check("signin", "b", b.code))
+        assertTrue("typed right: the next code goes up at once", c.show("reboot", "Reboot", "b") is PanelCode.Show.Ok)
+    }
+
+    @Test fun aLateHideNeverHidesANewerCode() {
+        val c = PanelCode(clock = { now })
+        c.canDisplay = { true }
+        val screen = java.util.concurrent.atomic.AtomicReference<PanelCode.Shown?>()
+        var other: Thread? = null
+        c.display = { s ->
+            // The hide is on its way to the screen when another browser asks for a code. Under the lock the new
+            // code waits for the hide; without it, the new code is drawn first and the hide then clears it.
+            if (s == null && other == null) {
+                other = Thread { c.show("signin", "Sign in", "b") }.apply { start(); join(300) }
+            }
+            screen.set(s)
+        }
+        c.show("signin", "Sign in", "a")
+        now += 5 * 60_000L
+        c.expire()
+        other!!.join(5_000)
+        assertNotNull(c.current())
+        assertEquals("the screen shows the code that is current", c.current(), screen.get())
     }
 }

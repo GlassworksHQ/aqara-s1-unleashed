@@ -251,7 +251,8 @@ class ManageServerTest {
         // Five wrong tries: that code is gone, even typed right.
         assertEquals(401, b.post("/manage/code", mapOf("next" to "/", "code" to code)).status)
         assertNull(b.cookies[ManageServer.SESSION])
-        // Five more on a new code: code entry locks for everyone.
+        // Five more on a new code (after the 30 s a code stays): code entry locks for everyone.
+        f.now += 30_000
         b.post("/manage/code", mapOf("next" to "/"))
         val second = f.shown.last()!!.code
         val wrong2 = if (second == "000000") "111111" else "000000"
@@ -363,7 +364,7 @@ class ManageServerTest {
         val page = a.get("/security").text()
         assertTrue(page.contains("Safari on Mac"))
         assertTrue(page.contains("Chrome on Windows"))
-        val other = f.sessions.list().first { it.browser == "Chrome on Windows" }
+        val other = f.sessions.list(f.haBase).first { it.browser == "Chrome on Windows" }
         assertEquals(303, a.post("/security/signout", mapOf("csrf" to a.csrf(), "id" to other.id)).status)
         assertTrue(b.get("/").text().contains("Manage this panel."))
         assertTrue(a.get("/").text().contains("Running"))
@@ -421,5 +422,43 @@ class ManageServerTest {
         assertFalse("no Thread join while the radio is off", radio.contains("href=\"/thread\""))
         assertFalse("no settings while it is off", radio.contains("socket://192.0.2.40:6638"))
         assertFalse(radio.contains("Change these on the panel"))
+    }
+
+    @Test fun theSessionIsBoundToTheAddressTheSignInWasCheckedAgainst() {
+        val b = f.Browser()
+        b.get("/")
+        val start = b.post("/manage/ha", mapOf("next" to "/", "remember" to "1"))
+        val state = HttpServer.parseQuery(start.headers["Location"]!!.substringAfter('?'))["state"]!!
+        // The address changes while the callback runs: after the session lookup and the check, before the session is made.
+        var reads = 0
+        f.haBaseFn = { if (++reads <= 2) "http://192.0.2.10:8123" else "http://192.0.2.11:8123" }
+        b.get("/manage/callback?code=CODE&state=$state", mapOf("sec-fetch-site" to "cross-site"))
+        assertFalse("a session checked against .10 never works for .11", b.get("/").text().contains("Reload dashboard"))
+    }
+
+    @Test fun aSignOutThePanelCantSaveSaysSo() {
+        val b = f.Browser()
+        b.signInWithHa()
+        val csrf = b.csrf()
+        // The sessions file can't be written or deleted: its directory is read-only.
+        java.io.File(f.dir, "sessions.json").delete()
+        java.io.File(f.dir, "sessions.json").mkdirs()
+        java.io.File(java.io.File(f.dir, "sessions.json"), "x").writeText("x")
+        val r = b.post("/manage/signout", mapOf("csrf" to csrf))
+        assertEquals(500, r.status)
+        assertTrue(r.text().contains("couldn't save"))
+    }
+
+    @Test fun anAddressChangeEndsEverySessionEvenOnesNotUsedSince() {
+        val one = f.Browser()
+        one.signInWithHa()
+        val two = f.Browser(ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36")
+        two.signInWithHa()
+        val home = f.haBase
+        f.haBase = "http://192.0.2.11:8123"
+        one.get("/") // only this browser comes back while the address is new
+        f.haBase = home
+        assertFalse("the other browser's session ended too", two.get("/").text().contains("Reload dashboard"))
+        assertTrue(f.sessions.list(home).isEmpty())
     }
 }

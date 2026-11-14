@@ -15,7 +15,7 @@ doesn't change them yet; change them on the panel's own settings for now.
 | Page | What it has |
 |---|---|
 | Overview | Running or not, version and uptime; Home Assistant, Wi-Fi, the web engine, memory; every pane with its state (running, off, or can't run and why). Buttons: **Reload dashboard**, **Restart app**, **Reboot**, **Check for updates** |
-| Dashboard, Panel, each pane | The settings the panel's own menu has, read-only for now. The radio's page links to the Thread join |
+| Dashboard, Panel, each pane | The settings the panel's own menu has, read-only for now. A pane's page shows whether it's on; a pane that's off shows only that, and where to turn it on. The radio's page links to the Thread join |
 | Log | The last 7 days, kept across reboots. Filter by warnings or errors, search, and **Download diagnostics** |
 | Security | The browsers signed in, each with **Sign out** |
 | About | Versions, frame, licences |
@@ -61,9 +61,10 @@ manage a panel. Whether other users get a say is open (#124).
   your signed-in page has. A link or form on another site can't make the panel do anything.
 - The code on the panel works once, for one browser and one purpose, for 5 minutes. Five wrong tries
   end a code; ten wrong tries in 15 minutes lock code entry for everyone until they're 15 minutes old.
-  A code stays up for at least 30 seconds: asking again from the same browser keeps it, and another
-  browser has to wait, so nobody can keep replacing your code. At most 6 new codes go up in 10
-  minutes, from all browsers together, so nobody can keep the screen lit with codes.
+  No new code goes up within 30 seconds of the last one, even when that one was used up or closed
+  (unless it was typed right): asking again from the same browser keeps it, and another browser has
+  to wait, so nobody can keep replacing your code. At most 6 new codes go up in 10 minutes, from all
+  browsers together, so nobody can keep the screen lit with codes.
 - A browser must send its whole request within 10 seconds, so a slow one can't hold the panel's few
   connections.
 - If the panel can't draw the code (the app may not draw over other apps), the page says so instead
@@ -73,8 +74,9 @@ manage a panel. Whether other users get a say is open (#124).
   gets nothing.
 - No scripts, no outside files, and a strict Content-Security-Policy.
 - The log and the diagnostics file have tokens, keys, passwords (including `Basic` credentials and a
-  user and password in an address), Thread datasets and MAC addresses removed, so you can attach them
-  to an issue.
+  user and password in an address), every value in an address's query (`?auth=…`), Thread datasets and
+  MAC addresses removed. It goes by what these look like, so it can miss a secret in an unusual form:
+  look over a file before you attach it to an issue.
 
 **What plain HTTP on your network doesn't protect.** The page is `http://`, like Home Assistant on
 `http://`. Someone who can read your Wi-Fi traffic can see:
@@ -85,8 +87,15 @@ manage a panel. Whether other users get a say is open (#124).
 - **Your Home Assistant password, if Home Assistant itself is on `http://`.** You type it on Home
   Assistant's own login page, not on the panel, so the panel never has it; but over plain HTTP that page
   sends it in the clear, as it does whenever you sign in to Home Assistant over `http://`. Revoking the
-  token doesn't change the password. Use HTTPS for Home Assistant, or multi-factor sign-in, if that
-  matters on your network.
+  token doesn't change the password. HTTPS for Home Assistant is what protects it on the way;
+  multi-factor sign-in adds a second step, so a caught password alone doesn't get anyone in.
+- **The sign-in's exchange with Home Assistant, if Home Assistant is on `http://`.** The panel trades
+  the one-time code for Home Assistant's tokens, asks who you are and revokes them, over the address it
+  has, so over `http://` these pass in the clear for a few seconds. Revoking the refresh token also ends
+  its access token, so a caught token works only until then. Someone who can *change* that traffic could
+  also answer for Home Assistant and sign in as an administrator. This is a choice: most Home Assistant
+  installs on a home network are `http://`, the panel's own dashboard sign-in crosses the same way, and
+  the code on the panel is there for whoever would rather not.
 - **Nothing stops someone on your network from using up the codes.** Anyone who can reach the panel
   can ask for codes without signing in. After 6 in 10 minutes the panel shows no more, so for up to 10
   minutes nobody can sign in with the code (signing in with Home Assistant still works). The Log says

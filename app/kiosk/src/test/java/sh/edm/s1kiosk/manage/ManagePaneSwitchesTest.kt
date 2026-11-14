@@ -3,12 +3,15 @@ package sh.edm.s1kiosk.manage
 import android.app.Application
 import dev.glassworks.pane.PaneState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.KioskPrefs
@@ -24,6 +27,7 @@ import sh.edm.s1kiosk.frame.AqaraS1Plus
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
+@org.robolectric.annotation.LooperMode(org.robolectric.annotation.LooperMode.Mode.PAUSED)
 class ManagePaneSwitchesTest {
     private val app = RuntimeEnvironment.getApplication()
     private val runtime = GlassworksRuntime(AqaraS1Plus())
@@ -54,5 +58,25 @@ class ManagePaneSwitchesTest {
     @Test fun thePanesTheManagePageLists() {
         val ids = manage.status().panes.map { it.id }
         assertTrue(ids.toString(), ids.containsAll(listOf("assist", "sendspin", "radio", "wall-base", "time-zone", "diagnostics")))
+    }
+
+    @Test fun aPanelSetUpWithoutHaCredentialsStillCountsAsSetUp() {
+        assertFalse("a new panel: / is the QR sign-in", manage.setUp())
+        // Home Assistant added the panel; it signed in on its own screen, so it holds no HA credentials.
+        prefs.haSeen = true
+        assertTrue(manage.setUp())
+        prefs.haSeen = false
+        prefs.haSetupSkipped = true
+        assertTrue(manage.setUp())
+    }
+
+    @Test fun restartWaitsSoThePageReachesTheBrowserFirst() {
+        val sent = ArrayList<android.content.Intent>()
+        runtime.commandSink = { sent += it }
+        assertNull(manage.actions.restartApp())
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(S1Manage.ACTION_DELAY_MS - 100))
+        assertTrue("not yet: the answer is still on its way", sent.isEmpty())
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(200))
+        assertTrue(sent.single().getBooleanExtra("restart", false))
     }
 }
