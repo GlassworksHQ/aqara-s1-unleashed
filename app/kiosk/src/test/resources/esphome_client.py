@@ -57,7 +57,7 @@ async def plaintext(port):
     R["device_info"] = {
         "name": info.name, "friendly_name": info.friendly_name, "mac": info.mac_address,
         "esphome_version": info.esphome_version, "manufacturer": info.manufacturer, "model": info.model,
-        "voice_flags": info.voice_assistant_feature_flags,
+        "voice_flags": info.voice_assistant_feature_flags, "webserver_port": info.webserver_port,
     }
     caps = await cli.device_capabilities_compat(info)
     R["caps_voice_flags"] = caps.voice_assistant.feature_flags

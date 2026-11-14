@@ -170,6 +170,7 @@ $A --es wake_model okay_nabu --ef wake_threshold 0.9 --ef mic_gain 2.0 --ez mic_
 $A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # manual ESPHome API key (HA normally provisions one)
 $A --ez voice_enabled false           # each pane on/off, applied live (default on): voice_enabled, sendspin_enabled,
                                       #   wall_base_enabled, time_zone_enabled, diagnostics_enabled
+$A --ez bluetooth_proxy_enabled true  # the Bluetooth proxy on/off (default off)
 $A --ez sendspin_enabled false        # Music Assistant player (Sendspin) off/on (default on)
 $A --es sendspin_server 192.168.1.100 # Sendspin server: auto (default: mDNS, else <HA host>:8927) or host[:port][/path] / ws://
 $A --ez sendspin_unpaired_access true # let a server play without pairing (guest mode; default off)
@@ -215,7 +216,7 @@ python3 tools/gecko-eval/gecko_eval.py 'JSON.stringify({w: innerWidth, h: innerH
 ```
 
 Gecko's prefs are written to `files/geckoview-config.yaml` at startup and logged under the
-`S1Kiosk` tag. Sign-in and HA discovery log under `S1Auth` / `S1Discovery`, the Music Assistant
+`S1Kiosk` tag. Sign-in and HA discovery log under `S1Auth` / `S1Discovery`, the Manage page under `S1Manage` ([docs/manage.md](../docs/manage.md); its own log keeps the `S1…` lines for 7 days in `files/manage/log/`), the Music Assistant
 player under `S1Sendspin` (with a `sync:` line every 10 s while playing). The Wi-Fi scans the app
 starts while the screen is off log under `S1Kiosk.Wifi`. None of them log tokens or keys. Page
 console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
@@ -287,8 +288,8 @@ Parts of the app are standalone modules other projects can use:
   pure-Kotlin protocol and state machines. Its browser client is
   [`kiln/packages/improv-serial`](../kiln/packages/improv-serial/README.md).
 - [`libs/bluetooth-proxy`](libs/bluetooth-proxy/README.md): an ESPHome Bluetooth proxy on Android:
-  BLE scanning on Android's terms, batched into `esphome-api`. Passive only so far, and not in the
-  app yet (#121).
+  BLE scanning on Android's terms, batched into `esphome-api`. Listening only so far; the app's
+  Bluetooth proxy pane runs it (#121).
 
 They build with the app (`./gradlew :esphome-api:test :esphome-api-android:assembleDebug
 :improv:testDebugUnitTest :bluetooth-proxy:testDebugUnitTest`) and aren't published to a Maven repository or npm yet.

@@ -20,7 +20,7 @@ export interface FrameModel {
   parts?: { kind: 'tube'; from: V3; to: V3; diameter: number; color: string }[];
 }
 
-/** The same stages as the Glassworks status badges, plus planned. */
+/** The same stages as the Glassworks status badges (planned, under development, alpha, beta, stable). */
 export type Stage = 'planned' | 'development' | 'alpha' | 'beta' | 'stable';
 export type Support = Stage | 'depends' | 'unknown' | 'no';
 export const RATING_KEYS = ['difficulty', 'reversible', 'modifiesAndroid', 'root', 'opensDevice', 'vendorApps', 'wipes', 'backup', 'updates'] as const;

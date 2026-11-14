@@ -70,12 +70,26 @@ below as the release notes.
   Diagnostic section.
 
 ### Added
+- **The panel can be a Bluetooth proxy for Home Assistant.** Turn on *Bluetooth proxy* in the
+  panel's settings or on setup's Panes step, and Home Assistant finds it by itself and hears the
+  Bluetooth thermometers, plant sensors and tags near the panel. It only listens: devices that need a
+  connection, like locks, still need an ESP32 proxy. Off by default. It never logs or keeps the
+  addresses it hears, and sends them only over an encrypted connection with the panel's key, which
+  Home Assistant 2026.11 and later sets when you add the panel.
+- **Setup's Panes step scrolls when there are more panes than fit.** Continue stays where it is,
+  below the list, and every pane's name shows in full.
 - **Turn any pane off, and back on, without a restart.** Voice, music, the wall base, the time zone
   and diagnostics each have an on/off: at the top of the pane's page in the panel's settings, in
   Home Assistant (new switches Voice, Wall base, Keep time zone and Diagnostics, off on the device
   page until you turn them on there), and with adb. A pane that is off stops its work and comes
   back when you turn it on. Voice no longer restarts the app. The wall base now has its card on
   setup's Panes step. The radio's on/off stays its mode.
+- **A Manage page for the panel, in your browser.** Open the panel's device page in Home Assistant
+  and click *Visit*, or go to `http://<panel>:8099/`. Sign in with a Home Assistant administrator, or
+  with a code the panel shows when Home Assistant is down. It shows how the panel is doing and which
+  features run, keeps a log across reboots, downloads diagnostics with tokens and keys removed, and
+  can reload the dashboard, restart the app, reboot (with the code on the panel) and check for
+  updates. Settings show there but are changed on the panel for now.
 - **Kiln shows what the panel is doing while S1 Kiosk goes in.** On kiln.glassworks.dev the app's
   install now lists each step as the panel goes through it: S1 Kiosk and the on-screen keyboard
   going in, the home screen, your settings, and the first start. When it updates an app that's

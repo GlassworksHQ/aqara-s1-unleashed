@@ -66,6 +66,7 @@ change until Glassworks v1.
 | `ScreenPolicy` | (`dev.glassworks.screen`) Wake on approach, idle off, the night window and its timeout, the brightness curve and the screen mode. It reads the frame's `PresenceSource` and `LightSource` and the app's `ScreenSettings`. One per process, on `GlassworksRuntime.screen`. |
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
 | `DiagnosticsPane` | (`dev.glassworks.diagnostics`) The panel's health as diagnostic entities: CPU, temperature, RAM, storage, Wi-Fi, uptime, the last restart reason. A core pane, so every frame has it. The entities are in [docs/esphome.md](../../../../../../../docs/esphome.md#diagnostics). |
+| `BluetoothProxyPane` | (`dev.glassworks.bluetoothproxy`) The panel as an ESPHome Bluetooth proxy (#121). The work is in the [bluetooth-proxy library](../../../../../../libs/bluetooth-proxy/README.md); the pane gives it the device's server and adds two diagnostic entities. Its page is the frame's to draw ([`BluetoothProxyModel`](bluetoothproxy/ProxyPhase.kt)); the S1's is `BluetoothProxyPage`. See [its README](bluetoothproxy/README.md). |
 | `Engine` | (`dev.glassworks.engine`) The web engine that shows the dashboard: open a page, load, reload, go back, restart after a crash, and talk to the page's scripts. `GeckoEngine` (`dev.glassworks.engine.gecko`) is the only code that uses GeckoView. One per process, on `GlassworksRuntime.engine`. |
 
 ## What makes a pane
@@ -370,9 +371,34 @@ The default is on for the S1's panes, as before the switch.
 | Wall base (`wall-base`) | `wall_base_enabled` | `wall_base` | yes |
 | Time zone (`time-zone`) | `time_zone_enabled` | `keep_time_zone` | no |
 | Diagnostics (`diagnostics`) | `diagnostics_enabled` | `diagnostics` | no |
+| Bluetooth proxy (`bluetooth-proxy`) | `bluetooth_proxy_enabled` (off by default) | `bluetooth_proxy` | yes, unless the panel has no Bluetooth LE |
 
 The radio has no `PaneSwitch`: its on/off is its mode (`Off`), and its card and settings switch are
 its own. Timers have none either: they come only from voice.
+
+## The Manage page
+
+The panel serves `http://<panel>:8099/` ([docs/manage.md](../../../../../../../docs/manage.md), #33),
+on the same port as the QR-code sign-in pages. The core has the whole page; a frame gives it one
+`ManageHost`.
+
+| Part | What it does |
+|---|---|
+| `web.HttpServer`, `web.PageShell` | The small HTTP server, and the one look every page shares, the QR pages included. Change the look in `PageShell` only |
+| `manage.ManageServer` | Routes, the session gate, the `Origin` and CSRF checks, the actions. The QR paths it's given go to the QR server untouched, without a session |
+| `manage.HaSignIn` | Sign in through HA as an OAuth client of the local HA only: PKCE, `auth/current_user` must say `is_admin`, the refresh token revoked at once |
+| `manage.SessionStore` | The page's own sessions: a SHA-256 of the cookie on disk, 30 days when remembered, tied to the HA address |
+| `manage.PanelCode` | The 6-digit code on the panel's screen: one purpose and browser, 5 minutes, 5 tries, 10 wrong in 15 min locks entry |
+| `manage.ManageLog`, `LogcatTail`, `Redact` | The 7-day log across reboots, fed from the app's own logcat, and the redaction for it and the diagnostics file |
+| `manage.ManageHost` | What the frame supplies: `status()` (`PanelStatus`: tiles, `PaneRow`s with a `PaneState`, the settings sections), `actions`, `diagnostics()` |
+
+The settings sections are the ones the panel's menu draws (`paneSections`, `settingsOrder`), and
+they show read-only: `Text`, `Switch`, `Info` and `Note` show their values; `Slider`, `Duration` and
+`TimeRange` show their value in words; `Link` and `Native` say "On the panel". A pane's row
+(`manage.paneRow`) takes its name and on/off from its section: the title, `unavailable` for Can't run,
+the `master` switch (#67) for Off. A pane that is off shows its state and nothing else: no settings,
+no links. The frame adds only what a running pane is doing. Editing in a browser needs a typed value
+and action model instead of closures and views; that is phase 2.
 
 ## Android versions
 
