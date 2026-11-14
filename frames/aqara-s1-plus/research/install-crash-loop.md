@@ -268,6 +268,17 @@ every command. In short, on a panel with the kiosk running:
 3. Save `adb shell 'logcat -d -b events -v time'` straight away: the loop overwrites the other
    buffers in seconds.
 
+To watch it as it happens (both read-only), run the sampler on the computer, and read the watchdog's
+status on a panel whose boot image has the new `s1kiosk_netwatch.sh`:
+```sh
+# the counters every 2 s, until Ctrl-C
+while true; do printf '%s ' "$(date +%T)"; adb shell 'dumpsys activity processes sh.edm.s1kiosk' | grep -m1 'Process LRU list' || echo none; sleep 2; done | tee lru.txt
+# the watchdog: "ok <act> <svc> of <total>", "broken: …", or "restarted the framework at uptime …"
+adb shell 'getprop sys.s1kiosk.am.status; getprop sys.s1kiosk.am.restarts'
+```
+Attempt 9 ran a standalone dry-run copy of that check (the same `lru_starts` read every 10 s,
+logging instead of killing). On an older boot image, the sampler alone shows the same thing.
+
 The loop ends in a framework restart by itself (78 s in attempt 9). Nothing is installed, so there is
 nothing to undo. Check that the kiosk is back and the radio mode is unchanged afterwards.
 

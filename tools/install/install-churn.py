@@ -29,9 +29,16 @@ def seconds(t):
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
+def elapsed(start, end):
+    """Seconds from start to end (times of day); logcat -v time has no year, so a day rollover is +24 h."""
+    d = end - start
+    return d + 86400 if d < 0 else d
+
+
 def rows(lines):
     out = []
-    cur = None
+    cur = None      # the latest row: kills, bind failures and restarts count here
+    inst = None     # the latest install: its dexopt, dex2oat and starts count here, even after a force-stop
     dex2oat_pid = None
     for raw in lines:
         m = LINE.match(raw.rstrip("\n"))
@@ -41,38 +48,40 @@ def rows(lines):
         tag = tag.strip()
         if tag == "ActivityManager" and msg.startswith(f"Force stopping {PKG} "):
             reason = msg.rsplit(": ", 1)[-1]
-            if reason == "pkg removed" and cur and cur["kind"] == "install" and not cur["second"]:
-                cur["second"] = True
-                cur["stop"] = "stop"
+            if reason == "pkg removed" and inst and not inst["second"]:
+                inst["second"] = True
+                cur = inst
                 continue
             cur = {"time": t, "kind": "install" if reason == "installPackageLI" else "force-stop",
                    "why": reason, "killed": 0, "dexopt": None, "dexopt_t": None, "dex2oat": None,
-                   "starts": 0, "bindfail": 0, "restart": None, "second": False, "stop": "stop"}
+                   "starts": 0, "bindfail": 0, "restart": None, "second": False}
             out.append(cur)
+            if cur["kind"] == "install":
+                inst = cur
             continue
         if cur is None:
             continue
         if tag == "ActivityManager" and re.match(rf"Killing \d+:{re.escape(PKG)}[:/]", msg):
             cur["killed"] += 1
         elif (tag == "installd" and msg.startswith("DexInv: --- BEGIN") and f"/{PKG}-" in msg
-              and cur["kind"] == "install" and cur["dexopt_t"] is None):
-            cur["dexopt_t"] = seconds(t)
+              and inst and inst["dexopt_t"] is None):
+            inst["dexopt_t"] = seconds(t)
         elif tag == "installd" and msg.startswith("DexInv: --- END") and f"/{PKG}-" in msg:
-            if cur["dexopt_t"] is not None and cur["dexopt"] is None:
-                cur["dexopt"] = seconds(t) - cur["dexopt_t"]
-        elif (tag == "dex2oat" and "--compilation-reason=install" in msg and cur["dexopt_t"] is not None
-              and cur["dexopt"] is None):
+            if inst and inst["dexopt_t"] is not None and inst["dexopt"] is None:
+                inst["dexopt"] = elapsed(inst["dexopt_t"], seconds(t))
+        elif (tag == "dex2oat" and "--compilation-reason=install" in msg and inst
+              and inst["dexopt_t"] is not None and inst["dexopt"] is None):
             dex2oat_pid = pid
         elif tag == "dex2oat" and pid == dex2oat_pid and msg.startswith("dex2oat took"):
             w = re.match(r"dex2oat took ([\d.]+)(m?s) \(([\d.]+)(m?s) cpu\)", msg)
             if w:
                 def sec(v, u):
                     return float(v) / (1000 if u == "ms" else 1)
-                cur["dex2oat"] = (sec(w.group(1), w.group(2)), sec(w.group(3), w.group(4)))
+                inst["dex2oat"] = (sec(w.group(1), w.group(2)), sec(w.group(3), w.group(4)))
             dex2oat_pid = None
         elif (tag == "ActivityManager" and msg.startswith("Start proc ") and f":{PKG}" in msg
-              and cur["dexopt_t"] is not None and cur["dexopt"] is None):
-            cur["starts"] += 1
+              and inst and inst["dexopt_t"] is not None and inst["dexopt"] is None):
+            inst["starts"] += 1
         elif tag == "ActivityManager" and msg.startswith("Exception thrown during bind") and PKG in msg:
             cur["bindfail"] += 1
         elif tag == "Zygote" and "Exit zygote because system server" in msg and cur["restart"] is None:
