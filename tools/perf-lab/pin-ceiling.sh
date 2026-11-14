@@ -52,7 +52,7 @@ read -r now < \$M
 echo "end \$(date +%s) \$why restored=\$now" >> $D/gw244-pin.log
 rmdir $D/gw244-pin.lock
 SH
-    asroot "mkdir $D/gw244-pin.lock 2>/dev/null || { echo 'refused: a pin is already running ($D/gw244-pin.lock exists)'; exit 1; }; rm -f $D/gw244-pin.stop; echo $(printf '%s\n' "$LOOP" | base64 | tr -d '\n') | base64 -d > $D/gw244-pin.sh; nohup sh $D/gw244-pin.sh > /dev/null 2>&1 &" || exit 1
+    asroot "mkdir $D/gw244-pin.lock 2>/dev/null || { echo 'refused: a pin is already running ($D/gw244-pin.lock exists)'; exit 1; }; rm -f $D/gw244-pin.stop; echo $(printf '%s\n' "$LOOP" | base64 | tr -d '\n') | base64 -d > $D/gw244-pin.sh || { rmdir $D/gw244-pin.lock; echo 'could not write the loop script'; exit 1; }; nohup sh $D/gw244-pin.sh > /dev/null 2>&1 &" || exit 1
     sleep 2
     asroot "cat $D/gw244-pin.log; cat /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq"
     ;;
