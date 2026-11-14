@@ -33,7 +33,9 @@ internal class ScanSchedule(private val limits: Limits = Limits()) {
     private var lingerUntil = Long.MIN_VALUE
     private var runningSince: Long? = null
     private val starts = ArrayDeque<Long>()
-    private var retryAt = Long.MIN_VALUE
+    /** When the next start may happen after a failure (Long.MIN_VALUE: none waiting). */
+    var retryAt = Long.MIN_VALUE
+        private set
     private var failures = 0
 
     val scanning: Boolean get() = runningSince != null

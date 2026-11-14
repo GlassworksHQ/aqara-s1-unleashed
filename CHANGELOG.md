@@ -76,6 +76,14 @@ below as the release notes.
   turn on an ONVIF and RTSP stream (ports 8554 and 8000) for Home Assistant's ONVIF integration,
   Frigate or UniFi Protect, with its own username and password. Everything is off until you turn
   it on, and *Camera privacy* closes the camera.
+- **The panel can be a Bluetooth proxy for Home Assistant.** Turn on *Bluetooth proxy* in the
+  panel's settings or on setup's Panes step, and Home Assistant finds it by itself and hears the
+  Bluetooth thermometers, plant sensors and tags near the panel. It only listens: devices that need a
+  connection, like locks, still need an ESP32 proxy. Off by default. It never logs or keeps the
+  addresses it hears, and sends them only over an encrypted connection with the panel's key, which
+  Home Assistant 2026.11 and later sets when you add the panel.
+- **Setup's Panes step scrolls when there are more panes than fit.** Continue stays where it is,
+  below the list, and every pane's name shows in full.
 - **Turn any pane off, and back on, without a restart.** Voice, music, the wall base, the time zone
   and diagnostics each have an on/off: at the top of the pane's page in the panel's settings, in
   Home Assistant (new switches Voice, Wall base, Keep time zone and Diagnostics, off on the device

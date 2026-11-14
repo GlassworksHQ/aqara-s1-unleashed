@@ -7,6 +7,9 @@ aqara_cloud|1186447373|TextSensorEntity|Aqara cloud daemon|mdi:cloud-outline||DI
 auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONFIG|authOnly=false|options=|disabledByDefault
 base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|disabledByDefault
 block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|disabledByDefault
+bluetooth_advertisements|-116549064|SensorEntity|Bluetooth advertisements|mdi:bluetooth-audio||DIAGNOSTIC|authOnly=false|options=|disabledByDefault
+bluetooth_proxy|1860802466|SwitchEntity|Bluetooth proxy|mdi:bluetooth||CONFIG|authOnly=true|options=|disabledByDefault
+bluetooth_proxy_status|-602386831|TextSensorEntity|Bluetooth proxy status|mdi:bluetooth-settings||DIAGNOSTIC|authOnly=false|options=|disabledByDefault
 cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|disabledByDefault

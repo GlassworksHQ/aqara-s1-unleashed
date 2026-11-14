@@ -70,10 +70,10 @@ permissions; the manifest entries come with the library.
 
 | | |
 |---|---|
-| `BluetoothProxyEngine` | The proxy. Scans only while a client is subscribed to advertisements, batches up to 16 per message or for 200 ms (as ESPHome does on Wi-Fi), and reports a `ProxyStatus`. Runs on one thread of its own. |
+| `BluetoothProxyEngine` | The proxy. Scans only while a client is subscribed to advertisements, batches up to 16 per message or for 200 ms (as ESPHome does on Wi-Fi), and reports a `ProxyStatus`: advertisements and different devices in the last full minute, the last hour's counts, and when the next try is after a failure. Runs on one thread of its own. |
 | `ScanSchedule` (internal) | When to start, stop and restart the one scan. Pure Kotlin, time passed in. |
 | `BleScanner`, `ScanPower`, `ScanFailure` | The scanner seam. Tests use a fake. |
-| `AndroidBleScanner` | `BluetoothLeScanner`, with one empty `ScanFilter` (see below). |
+| `AndroidBleScanner` | `BluetoothLeScanner`, with one empty `ScanFilter` (see below). `turnBluetoothOn()` for a "Turn on Bluetooth" button (apps may up to Android 12). |
 
 ## Android's scan rules
 
@@ -88,21 +88,24 @@ Read from Android 10's Bluetooth service (`packages/apps/Bluetooth`, `android10-
 | A background app's scan drops to `BLE_SCAN_BACKGROUND_MODE` (low power) | `ScanManager.handleImportanceChange` | Nothing: a kiosk app is in the foreground. |
 
 `AndroidBleScanner` also watches the adapter while the engine uses it. Bluetooth turning off ends
-the scan (`BLUETOOTH_OFF`), and turning back on retries at once instead of after the backoff. A
-failure that Android delivers late for a scan already stopped is ignored.
+the scan (`BLUETOOTH_OFF`), and turning back on retries at once instead of after the backoff.
+Android can deliver a scan's failure or results late. A failure for a scan already stopped or
+replaced is ignored, and so is a late result from a scan that was replaced or has failed: only the
+running scan's advertisements are forwarded.
 
 Android can't switch to a passive scan (no scan requests), so the proxy doesn't offer ESPHome's
 scanner mode switch (`FEATURE_STATE_AND_MODE`).
 
 ## Privacy
 
-Nothing here logs an address. Addresses go only to the subscribed client, as with an ESPHome
-proxy.
+Nothing here logs an address. Addresses go only to the subscribed client, and only an authenticated
+connection (Noise with the device's provisioned key) may subscribe: `BluetoothProxyHandler.authOnly`,
+on by default. On a device without a key, nobody on the LAN can listen in plaintext.
 
 ## Tests
 
 `./gradlew :bluetooth-proxy:testDebugUnitTest`. `AndroidBleScannerTest` runs the Android glue on
-Android 10 under Robolectric: the empty filter, the failure codes, a late failure, Bluetooth off and on. `BluetoothProxyHomeAssistantTest` runs Home
-Assistant's client (aioesphomeapi, the version HA pins) against `ApiServer` and the engine with a
-fake radio. It skips unless `ESPHOME_PYTHON` points at a Python with it installed
-(`../esphome-api/test-requirements.txt`).
+Android 10 under Robolectric: the empty filter, the failure codes, a late failure, Bluetooth off and
+on. `BluetoothProxyHomeAssistantTest` runs Home Assistant's client (aioesphomeapi, the version HA
+pins) against `ApiServer` and the engine with a fake radio. It skips unless `ESPHOME_PYTHON` points
+at a Python with it installed (`../esphome-api/test-requirements.txt`).

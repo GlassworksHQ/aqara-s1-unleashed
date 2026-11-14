@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import dev.glassworks.bluetoothproxy.BluetoothProxyDefinition
 import dev.glassworks.camera.CameraDefinition
 import dev.glassworks.camera.CameraHub
 import dev.glassworks.camera.CameraIdentity
@@ -295,6 +296,7 @@ class PanelDevice internal constructor(
                 silence = { synchronized(this) { chimePlayer }?.cancel() },
             ),
         ) + frame.panes(paneContext, exec) + RadioPane(paneContext, runtime, panelIp = ::ipAddress) +
+            runtime.paneDefinitions(ctx).filterIsInstance<BluetoothProxyDefinition>().map { it.pane(paneContext, exec) } +
             listOfNotNull(cameraPane(paneContext, identity)) +
             DiagnosticsPane(paneContext, frame.cpuThermalZone, runtime.engine::isContentProcess, exec)
         // Every pane's on/off, also while the pane is off.

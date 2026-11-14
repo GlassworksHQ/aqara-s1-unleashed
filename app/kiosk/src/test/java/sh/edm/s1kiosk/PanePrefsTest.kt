@@ -1,15 +1,18 @@
 package sh.edm.s1kiosk
 
-import sh.edm.s1kiosk.frame.AqaraCloud
-import sh.edm.s1kiosk.frame.AqaraS1Plus
-import sh.edm.s1kiosk.frame.TimeZonePrefs
-import dev.glassworks.camera.CameraPrefs
-import dev.glassworks.diagnostics.DiagnosticsPrefs
 import android.app.Application
 import android.content.SharedPreferences
+import dev.glassworks.bluetoothproxy.BluetoothProxyPane
+import dev.glassworks.bluetoothproxy.BluetoothProxyPrefs
+import dev.glassworks.bluetoothproxy.ProxyRadio
+import dev.glassworks.camera.CameraPrefs
+import dev.glassworks.diagnostics.DiagnosticsPrefs
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PanelEvent
+import java.io.File
+import java.lang.reflect.Proxy
+import java.util.concurrent.Executors
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -19,6 +22,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import sh.edm.bluetoothproxy.BleScanner
+import sh.edm.bluetoothproxy.ScanFailure
+import sh.edm.bluetoothproxy.ScanPower
 import sh.edm.esphome.DeviceIdentity
 import sh.edm.esphome.NumberEntity
 import sh.edm.esphome.ProtoMessage
@@ -29,6 +35,9 @@ import sh.edm.s1kiosk.base.WallBase
 import sh.edm.s1kiosk.base.WallBasePane
 import sh.edm.s1kiosk.base.WallBasePrefs
 import sh.edm.s1kiosk.esphome.UrlPlayer
+import sh.edm.s1kiosk.frame.AqaraCloud
+import sh.edm.s1kiosk.frame.AqaraS1Plus
+import sh.edm.s1kiosk.frame.TimeZonePrefs
 import sh.edm.s1kiosk.radio.RadioPane
 import sh.edm.s1kiosk.radio.RadioPrefs
 import sh.edm.s1kiosk.sendspin.SendspinPane
@@ -37,9 +46,6 @@ import sh.edm.s1kiosk.timers.TimersPane
 import sh.edm.s1kiosk.voice.AssistPane
 import sh.edm.s1kiosk.voice.SpeakerMedia
 import sh.edm.s1kiosk.voice.VoicePrefs
-import java.io.File
-import java.lang.reflect.Proxy
-import java.util.concurrent.Executors
 
 /**
  * Each pane reaches its settings only through `PaneContext.prefs(its id)` and its own prefs class,
@@ -56,7 +62,7 @@ class PanePrefsTest {
     /** The prefs class of each namespace, built over a file. */
     private val owners: Map<String, (SharedPreferences) -> Any> = mapOf(
         "sendspin" to ::SendspinPrefs, "assist" to ::VoicePrefs, "wall-base" to ::WallBasePrefs, "radio" to ::RadioPrefs,
-        "time-zone" to ::TimeZonePrefs, "diagnostics" to ::DiagnosticsPrefs, "camera" to ::CameraPrefs,
+        "time-zone" to ::TimeZonePrefs, "diagnostics" to ::DiagnosticsPrefs, "bluetooth-proxy" to ::BluetoothProxyPrefs, "camera" to ::CameraPrefs,
     )
 
     @After fun tearDown() {
@@ -84,8 +90,9 @@ class PanePrefsTest {
         for (pane in panes()) {
             val ns = pane.id
             val asked = HashMap(asked)
-            if (ns == "timers") {
-                assertTrue("timers asked for settings: ${asked.keys}", asked.isEmpty())
+            // Timers have no settings; the Bluetooth proxy's one key, its on/off, is the core's (PaneSwitch).
+            if (ns == "timers" || ns == "bluetooth-proxy") {
+                assertTrue("$ns asked for settings: ${asked.keys}", asked.isEmpty())
             } else {
                 assertEquals("${pane.id} asked for other namespaces", setOf(ns), asked.keys)
                 assertTrue("${pane.id} read no settings: the recorder sees nothing", asked.getValue(ns).isNotEmpty())
@@ -116,6 +123,18 @@ class PanePrefsTest {
         yield(drive(WallBasePane(ctx, WallBase.Config(BaseBackend.LOCALSERVICE), device, AqaraCloud()), start = false))
         yield(drive(RadioPane(ctx, GlassworksRuntime(AqaraS1Plus()), panelIp = { null }), start = false))
         yield(drive(TimersPane(ctx, GlassworksRuntime(AqaraS1Plus()).screen, schedule = { _, _ -> device.submit {} }, play = {}, silence = {})))
+        yield(drive(BluetoothProxyPane(ctx, NoRadio, device)))
+    }
+
+    /** No Bluetooth to scan with: the pane runs its lifecycle and entities, and reads what it reads. */
+    private object NoRadio : ProxyRadio {
+        override fun newScanner() = object : BleScanner {
+            override fun start(power: ScanPower, listener: BleScanner.Listener) {}
+            override fun stop() {}
+        }
+        override fun unavailable(): ScanFailure? = null
+        override fun turnBluetoothOn() = false
+        override fun turnLocationOn() = false
     }
 
     private fun assist() = AssistPane(

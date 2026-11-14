@@ -14,6 +14,9 @@ base_power|-1903019258|SensorEntity|Base power|mdi:flash|power|NONE|authOnly=fal
 base_protection|349729978|TextSensorEntity|Base protection|mdi:shield-alert-outline||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 base_relay_1|1844124898|SwitchEntity|Base relay 1|mdi:light-switch|switch|NONE|authOnly=false|options=|eventTypes=
 block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+bluetooth_advertisements|-116549064|SensorEntity|Bluetooth advertisements|mdi:bluetooth-audio||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+bluetooth_proxy|1860802466|SwitchEntity|Bluetooth proxy|mdi:bluetooth||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+bluetooth_proxy_status|-602386831|TextSensorEntity|Bluetooth proxy status|mdi:bluetooth-settings||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=|eventTypes=
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
@@ -90,6 +93,9 @@ base_protection|349729978|TextSensorEntity|Base protection|mdi:shield-alert-outl
 base_relay_1|1844124898|SwitchEntity|Base relay 1|mdi:light-switch|switch|NONE|authOnly=false|options=|eventTypes=
 base_relay_2|1827347279|SwitchEntity|Base relay 2|mdi:light-switch|switch|NONE|authOnly=false|options=|eventTypes=
 block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+bluetooth_advertisements|-116549064|SensorEntity|Bluetooth advertisements|mdi:bluetooth-audio||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+bluetooth_proxy|1860802466|SwitchEntity|Bluetooth proxy|mdi:bluetooth||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+bluetooth_proxy_status|-602386831|TextSensorEntity|Bluetooth proxy status|mdi:bluetooth-settings||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=|eventTypes=
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
@@ -168,6 +174,9 @@ base_relay_1|1844124898|SwitchEntity|Base relay 1|mdi:light-switch|switch|NONE|a
 base_relay_2|1827347279|SwitchEntity|Base relay 2|mdi:light-switch|switch|NONE|authOnly=false|options=|eventTypes=
 base_relay_3|1810569660|SwitchEntity|Base relay 3|mdi:light-switch|switch|NONE|authOnly=false|options=|eventTypes=
 block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+bluetooth_advertisements|-116549064|SensorEntity|Bluetooth advertisements|mdi:bluetooth-audio||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+bluetooth_proxy|1860802466|SwitchEntity|Bluetooth proxy|mdi:bluetooth||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+bluetooth_proxy_status|-602386831|TextSensorEntity|Bluetooth proxy status|mdi:bluetooth-settings||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=|eventTypes=
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
@@ -237,6 +246,9 @@ auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONF
 base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 base_firmware|-1684920788|TextSensorEntity|Base firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+bluetooth_advertisements|-116549064|SensorEntity|Bluetooth advertisements|mdi:bluetooth-audio||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+bluetooth_proxy|1860802466|SwitchEntity|Bluetooth proxy|mdi:bluetooth||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+bluetooth_proxy_status|-602386831|TextSensorEntity|Bluetooth proxy status|mdi:bluetooth-settings||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=|eventTypes=
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
@@ -306,6 +318,9 @@ auto_brightness|783277728|SwitchEntity|Auto brightness|mdi:brightness-auto||CONF
 base|1037866200|TextSensorEntity|Base|mdi:wall||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 base_firmware|-1684920788|TextSensorEntity|Base firmware|mdi:chip||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outline||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+bluetooth_advertisements|-116549064|SensorEntity|Bluetooth advertisements|mdi:bluetooth-audio||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
+bluetooth_proxy|1860802466|SwitchEntity|Bluetooth proxy|mdi:bluetooth||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+bluetooth_proxy_status|-602386831|TextSensorEntity|Bluetooth proxy status|mdi:bluetooth-settings||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=|eventTypes=
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=|eventTypes=
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
