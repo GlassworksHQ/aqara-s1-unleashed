@@ -297,6 +297,26 @@ class Parity(unittest.TestCase):
         # Without the flag the same runs are the summary's ordinary records.
         self.assertNotIn("stalls_reported", self.sums["B"]["pages"]["heavy"]["camera"]["runs"][0])
 
+    def test_what_the_counts_left_out_reaches_both_graders(self):
+        """#265's verifier: `uncovered_ms` must reach the summary, and both graders must hold the fluid
+        total bar against stalls + it (600 + 400 ms: open, so heavy's camera is missing)."""
+        rep = json.loads(json.dumps(self.reps["B"]))
+        heavy = rep["graded"]["reference"]["tiers"]["heavy"]
+        heavy["camera_runs"] = [dict(r, first_frame_ms=1200, shown_pct=99.0, stall_total_ms=600.0, max_gap_ms=600.0,
+                                     uncovered_ms=400.0) for r in heavy["camera_runs"]]
+        s = S.summarise(rep, allow_provisional=True)
+        self.assertTrue(all(r["uncovered_ms"] == 400.0 for r in s["pages"]["heavy"]["camera"]["runs"]))
+        ts, py = ts_grades([s])[0], G.grade_summary(s)
+        self.assertIn("heavy.camera", py["missing"])
+        self.assertEqual((ts["grade"], ts["missing"]), (py["grade"], py["missing"]))
+        for r in heavy["camera_runs"]:
+            r["uncovered_ms"] = 399.0
+        s = S.summarise(rep, allow_provisional=True)
+        ts, py = ts_grades([s])[0], G.grade_summary(s)
+        self.assertNotIn("heavy.camera", py["missing"])
+        self.assertEqual(py["bands"]["heavy"]["camera"], "fluid")
+        self.assertEqual((ts["grade"], ts["missing"], ts["bands"]), (py["grade"], py["missing"], py["bands"]))
+
     def test_a_pre_release_summary_is_re_measured_in_both(self):
         """Clarity v1 (2026-11-14): a summary without `clarity: 1` is pre-release, even at protocol 1."""
         for extra in ({"clarity": None}, {"clarity": None, "protocol_version": 7}):

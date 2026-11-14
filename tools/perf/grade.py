@@ -145,8 +145,11 @@ def camera_level(run):
             continue
         if "max_gap_max_ms" in lv and (run.get("max_gap_ms") is None or run["max_gap_ms"] > lv["max_gap_max_ms"]):
             continue
-        if "stall_total_max_ms" in lv and (run.get("stall_total_ms") is None or run["stall_total_ms"] >= lv["stall_total_max_ms"]):
-            continue
+        if "stall_total_max_ms" in lv:
+            if run.get("stall_total_ms") is None or run["stall_total_ms"] >= lv["stall_total_max_ms"]:
+                continue
+            if run["stall_total_ms"] + (run.get("uncovered_ms") or 0) >= lv["stall_total_max_ms"]:
+                return None             # under the bar as counted, maybe not in what the counts left out (#265): open
         return lv["level"]
     return BELOW
 

@@ -290,9 +290,17 @@ def change_to_screen(step, page, period=None):
             "max_ms": xs[-1], "skipped": skipped}, None
 
 
+def _good_max_gap_ms():
+    """The longest gap the camera's "good" level allows (rubric.json camera_levels), by name."""
+    good = next((lv for lv in G.CAMERA_LEVELS if lv.get("level") == "good"), None)
+    if not good or "max_gap_max_ms" not in good:
+        raise RuntimeError("rubric.json camera_levels needs a 'good' level with max_gap_max_ms (report.CAMERA_UNCOVERED_MAX_MS)")
+    return good["max_gap_max_ms"]
+
+
 # The most of a camera's window its receiver counts may leave out: the longest gap "good" allows
-# (rubric.json camera_levels, 500 ms). A longer stretch could hold a stall the counts never saw.
-CAMERA_UNCOVERED_MAX_MS = min(lv["max_gap_max_ms"] for lv in G.CAMERA_LEVELS if "max_gap_max_ms" in lv)
+# (500 ms). A longer stretch could hold a stall the counts never saw.
+CAMERA_UNCOVERED_MAX_MS = _good_max_gap_ms()
 
 
 def camera_run(line, tier):
@@ -315,6 +323,9 @@ def camera_run(line, tier):
     window = line.get("window_ms")
     short = [s for s in played if s.get("span_ms") is not None and window and window - s["span_ms"] > CAMERA_UNCOVERED_MAX_MS]
     unreported += [s for s in short if s not in unreported]
+    # Shorter ones are graded, but their stalls can be under-read by up to what they left out: the
+    # graders hold the fluid total bar against stalls + that (grade.camera_level).
+    left_out = [max(0.0, window - s["span_ms"]) for s in played if s.get("span_ms") is not None and window]
     whole = len(played) == len(streams) and len(streams) >= (line.get("expected") or 0)
     return {
         # The path the frontend played the graded streams on: web_rtc since protocol 6, hls before
@@ -327,8 +338,8 @@ def camera_run(line, tier):
         "max_gap_ms": max(s["max_gap_ms"] for s in played) if whole and played and not unreported else None,
         "stall_total_ms": max(s["stall_total_ms"] for s in played) if whole and played and not unreported else None,
         **({"stalls_reported": False} if whole and played and unreported else {}),
-        # The most of the window a stream's receiver counts left out, when over the bar (detail).
-        **({"uncovered_ms": round(max(window - s["span_ms"] for s in short), 1)} if whole and short else {}),
+        # The most of the window a stream's receiver counts left out (0 when they cover it; none over HLS).
+        **({"uncovered_ms": round(max(left_out), 1)} if whole and left_out else {}),
         "streams": len(streams), "expected": line.get("expected"), "window_ms": line.get("window_ms"),
         "detail": [{k: s.get(k) for k in ("w", "h", "first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms", "stall_presented",
                                             "frames", "decoded", "dropped", "waiting", "source", "webrtc", "others",
@@ -1304,11 +1315,16 @@ def coverage_reasons(ref, attempted):
         short = [f"{task} {n} of {attempted}" for task, n in got.items() if 0 < n < attempted]
         if short:
             out.append(f"{t}: measured in fewer runs than attempted ({', '.join(short)})")
-        # Runs whose stalls are n/a and whose level that leaves open (a first frame or frames shown that
-        # already fail every level decide it: grade.camera_level).
-        open_ = [c for c in (s_ or {}).get("camera_runs") or [] if c.get("stalls_reported") is False and G.camera_level(c) is None]
-        short = [c for c in open_ if c.get("uncovered_ms") is not None]
-        na = len(open_) - len(short)
+        # Camera runs whose level is left open (grade.camera_level): stalls n/a, or a stalls total that
+        # what the counts left out could take over the fluid bar. A first frame or frames shown that
+        # already fail every level decide it, and those aren't open.
+        open_ = [c for c in (s_ or {}).get("camera_runs") or [] if not c.get("timed_out") and G.camera_level(c) is None]
+        short = [c for c in open_ if c.get("stalls_reported") is False and (c.get("uncovered_ms") or 0) > CAMERA_UNCOVERED_MAX_MS]
+        na = sum(1 for c in open_ if c.get("stalls_reported") is False) - len(short)
+        edge = len(open_) - len(short) - na
+        if edge:
+            out.append(f"{t}: {edge} camera run(s) whose stalls, with the part of the window their receiver counts left "
+                       "out, could reach the fluid bar: not measured")
         if short:
             worst = max(c["uncovered_ms"] for c in short)
             out.append(f"{t}: {len(short)} camera run(s) whose receiver counts left up to {worst / 1000:.1f} s of the "
@@ -1625,8 +1641,14 @@ def camera_cell(s_, b):
         return f"{late_note or 'a stream showed no frame'}, {b.get('camera') or 'n/a'}"
     # The numbers are the runs whose streams all played; say how many didn't (they make the level).
     failed = sum(1 for r in runs if r.get("first_frame_ms") is None and not r.get("timed_out"))
+    # The stalls median is over the runs that measured them: say how many didn't, and how many runs'
+    # levels are left open (#265: s1rtc9's typical read "stalls 0 ms, n=2" with run 3 n/a).
+    na = sum(1 for r in runs if r.get("stalls_reported") is False)
+    open_ = sum(1 for r in runs if not r.get("timed_out") and G.camera_level(r) is None)
     note = (f", {failed} of {len(runs)} run(s) had a stream that showed no frame" if failed else "") \
-        + (f", {late_note}" if late else "")
+        + (f", {late_note}" if late else "") \
+        + (f", stalls n/a in {na} of {len(runs)} run(s)" if na else "") \
+        + (f", the level not measured in {open_} of {len(runs)} run(s)" if open_ else "")
     return (f"first frame {fmt(ff, ' ms')}, {fmt(med('shown_pct'), ' %')} shown, stalls {fmt(med('stall_total_ms'), ' ms')}, "
             f"{b.get('camera') or 'n/a'}{note}")
 
