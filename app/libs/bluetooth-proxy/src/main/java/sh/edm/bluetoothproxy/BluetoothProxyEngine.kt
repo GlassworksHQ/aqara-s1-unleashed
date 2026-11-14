@@ -87,14 +87,21 @@ class BluetoothProxyEngine internal constructor(
     val status: ProxyStatus
         get() = ProxyStatus(subscribed, scanning, failure, counter.perMinute(loop.now()))
 
-    private val listener = object : BleScanner.Listener {
+    /** Counts scan starts and stops. A scan's failure counts only while its generation is current. */
+    private var generation = 0
+
+    /**
+     * The listener for the scan [scanGeneration]. The scanner may hand over a failure just before the
+     * engine stops or replaces that scan; the loop handles it after, so it checks the generation.
+     */
+    private fun listener(scanGeneration: Int) = object : BleScanner.Listener {
         override fun onAdvertisement(address: Long, rssi: Int, data: ByteArray) {
             val adv = RawAdvertisement(address, rssi, addressType = 0, data = adStructures(data))
             loop.execute { add(adv) }
         }
 
         override fun onFailed(failure: ScanFailure) = loop.execute {
-            if (closed) return@execute
+            if (closed || scanGeneration != generation) return@execute
             this@BluetoothProxyEngine.failure = failure
             schedule.onFailed(loop.now())
             reconcile()
@@ -133,9 +140,9 @@ class BluetoothProxyEngine internal constructor(
         val step = schedule.step(loop.now())
         when (step.action) {
             ScanSchedule.Action.NONE -> Unit
-            ScanSchedule.Action.START -> scanner.start(power, listener)
-            ScanSchedule.Action.STOP -> scanner.stop()
-            ScanSchedule.Action.RESTART -> { scanner.stop(); scanner.start(power, listener) }
+            ScanSchedule.Action.START -> scanner.start(power, listener(++generation))
+            ScanSchedule.Action.STOP -> { generation++; scanner.stop() }
+            ScanSchedule.Action.RESTART -> { scanner.stop(); scanner.start(power, listener(++generation)) }
         }
         scanning = schedule.scanning
         wake = step.wakeAt?.let { loop.schedule(it) { if (!closed) reconcile() } }

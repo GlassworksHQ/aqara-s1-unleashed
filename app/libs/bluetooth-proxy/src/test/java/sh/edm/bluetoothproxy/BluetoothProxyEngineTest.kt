@@ -121,6 +121,18 @@ class BluetoothProxyEngineTest {
         assertNull(engine.status.failure)
     }
 
+    @Test fun aFailureTheEngineHandlesAfterARestartDoesNotEndTheNewScan() {
+        subscribe(true)
+        val first = scanner.listener!!
+        loop.advanceBy(25 * 60_000L) // the 25 min restart: the first scan stops, a second starts
+        assertEquals(listOf("start LOW_LATENCY", "stop", "start LOW_LATENCY"), scanner.calls)
+        first.onFailed(ScanFailure.ANDROID_ERROR) // handed over before the restart, handled after it
+        loop.advanceBy(60_000)
+        assertEquals("no third start over the running scan", 3, scanner.calls.size)
+        assertTrue(engine.status.scanning)
+        assertNull(engine.status.failure)
+    }
+
     @Test fun bluetoothComingBackRetriesAtOnce() {
         subscribe(true)
         repeat(3) {
