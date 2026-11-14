@@ -4822,6 +4822,17 @@
     "stall_total_ms": null
    },
    "level": "slow"
+  },
+  {
+   "name": "a receiver without freeze counts (#205): stalls n/a, the run not measured",
+   "run": {
+    "stalls_reported": false,
+    "first_frame_ms": 1200,
+    "shown_pct": 99.0,
+    "max_gap_ms": null,
+    "stall_total_ms": null
+   },
+   "level": null
   }
  ]
 }

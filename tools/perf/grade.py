@@ -133,6 +133,8 @@ def camera_level(run):
         return BELOW
     if run.get("first_frame_ms") is None or run.get("shown_pct") is None:
         return BELOW
+    if run.get("stalls_reported") is False:
+        return None                     # its receiver reported no freezes: stalls n/a, not measured
     for lv in CAMERA_LEVELS:
         if run["first_frame_ms"] > lv["first_frame_max_ms"] or run["shown_pct"] < lv["shown_min_pct"]:
             continue

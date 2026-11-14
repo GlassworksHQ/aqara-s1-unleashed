@@ -545,6 +545,22 @@ class TimedOut(unittest.TestCase):
         self.assertEqual(R.camera_cell({"camera_runs": [late]}, {"camera": "slow"}), "the view didn't finish in 1 of 1 run(s), slow")
 
 
+class StallsNotReported(unittest.TestCase):
+    """#205's verifier: a receiver that reports no freezeCount has stalls n/a, never 0 (which would
+    pass the bars), and that run's camera level is not measured."""
+
+    def test_na_not_zero(self):
+        line = camera_line("typical")
+        for st in line["streams"]:
+            st.update(stall_total_ms=None, max_gap_ms=None, gaps_source="webrtc (no freeze counts: n/a)")
+        run = R.camera_run(line, "typical")
+        self.assertEqual((run["stall_total_ms"], run["max_gap_ms"], run["stalls_reported"]), (None, None, False))
+        self.assertIsNone(G.camera_level(run))
+        ok = R.camera_run(camera_line("typical"), "typical")
+        self.assertNotIn("stalls_reported", ok)
+        self.assertEqual(G.camera_level(ok), "good")
+
+
 class CameraDetail(unittest.TestCase):
     """Detail for the camera task (smoke-cam1, 2026-11-13): which decoders a view got and where its
     segments were late, so a slow camera can be told apart: the decoder, the link or the page."""
@@ -1123,11 +1139,18 @@ class Build(unittest.TestCase):
                 self.assertEqual(G.grade_summary(s)["status"], "re-measure")
 
     def test_v1s_release_candidate_reads_as_v1(self):
-        """Pre-release protocol 8 (#205's s1rtc5, before the lines carried `clarity`) is v1's measurement."""
-        rep = self.build_with(protocol=8, clarity=None)
-        self.assertEqual((rep["clarity"], rep["protocol_version"]), (G.CLARITY, G.PROTOCOL_VERSION))
-        self.assertFalse(any("pre-release" in r for r in rep["grade"].get("provisional_reasons") or []))
-        self.assertEqual(G.grade_summary(S.summarise(rep, allow_provisional=True))["status"], "graded")
+        """Pre-release protocol 8 (#205's s1rtc5, before the lines carried `clarity`) is v1's measurement,
+        but only its own lines, which carry the round's usable.busy_ms (the one bypass of the marker)."""
+        self.assertEqual(R.page_version({"protocol": 8, "usable": {"busy_ms": [12, 0]}}), (G.PROTOCOL_VERSION, G.CLARITY))
+        self.assertEqual(R.page_version({"protocol": 8, "usable": {"interactive_ms": 1}}), (8, None))
+        self.assertEqual(R.page_version({"protocol": 8}), (8, None))
+        self.assertEqual(R.page_version({"protocol": 1, "clarity": 1}), (1, 1))
+        self.assertEqual(R.page_version({"protocol": 1}), (1, None))          # pre-release protocol 1
+        self.assertTrue(R.is_v1({"protocols": [1], "clarity": [1]}))
+        self.assertFalse(R.is_v1({"protocols": [1], "clarity": [None]}))
+        rep = self.build_with(protocol=8, clarity=None)                       # the fixture's lines have no busy_ms
+        self.assertIsNone(rep["clarity"])
+        self.assertIn("measured with a pre-release version of Clarity (protocol 8): re-measure", rep["grade"]["provisional_reasons"])
 
     def test_v1_with_another_protocol_number_is_another_protocol(self):
         rep = self.build_with(protocol=G.PROTOCOL_VERSION + 1, clarity=G.CLARITY)

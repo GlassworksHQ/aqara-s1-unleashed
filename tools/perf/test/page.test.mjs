@@ -466,3 +466,42 @@ test("pacedSleep: a wait ends on the first frame past its time when the timers a
   await S.pacedSleep(500, quiet);
   assert.equal(fired, 500);
 });
+
+// ---- #205's verifier: freezes and pauses, late answers, receivers without freeze counts
+
+test("webrtcWindow: one outage reported as both a freeze and a pause counts once", () => {
+  const w = S.webrtcWindow([steady(0, 0, 0, 0, { pauseCount: 0, totalPausesDuration: 0 }),
+                            steady(1000, 15, 0, 0, { pauseCount: 0, totalPausesDuration: 0 }),
+                            steady(3000, 30, 1, 2.0, { pauseCount: 1, totalPausesDuration: 2.0 })]);
+  assert.equal(w.stall_ms, 2000);                  // was 4000: the sum of the two counters
+  assert.equal(w.max_gap_ms, 2000);
+  assert.equal(w.gaps, 1);
+  // Two receivers' outages still add up.
+  const two = (t, n, f, fd) => at(t, ["pc1", [
+    { id: "A", ssrc: 1, type: "inbound-rtp", kind: "video", framesDecoded: n, freezeCount: f, totalFreezesDuration: fd },
+    { id: "B", ssrc: 2, type: "inbound-rtp", kind: "video", framesDecoded: n, freezeCount: f, totalFreezesDuration: fd }]]);
+  assert.equal(S.webrtcWindow([two(0, 0, 0, 0), two(1000, 15, 1, 0.5)]).stall_ms, 1000);
+});
+
+test("webrtcWindow: intervals run on the reports' own timestamps, so a late answer counts nothing past them", () => {
+  // Asked at 0 and 1000 ms; the second answer came late, but its counts were taken at 1000 ms
+  // (Gecko reads them on its call thread). The ask times say so, and so do the reports.
+  const stamped = (t, ts, n) => at(t, ["pc1", [{ id: "IT1", ssrc: 1, type: "inbound-rtp", kind: "video", framesDecoded: n,
+                                                  freezeCount: 0, totalFreezesDuration: 0, timestamp: ts }]]);
+  const w = S.webrtcWindow([stamped(0, 5_000_000, 0), stamped(1000, 5_002_000, 30)]);
+  assert.equal(w.clock, "stats");
+  assert.equal(w.span_ms, 2000);                   // the reports' span, not the asks'
+  const shown = S.shownFrames({ quality: null, webrtc: w, callbacks: 0, rvfc: true });
+  assert.equal(Math.round((100 * shown.frames) / (15 * w.span_ms / 1000)), 100);   // 30 frames in 2 s at 15 fps
+  // Without timestamps on every sample: the ask times.
+  assert.equal(S.webrtcWindow([steady(0, 0), steady(1000, 15)]).clock, "asked");
+});
+
+test("webrtcWindow: a receiver without freeze counts has stalls n/a, not 0", () => {
+  const bare = (t, n) => at(t, ["pc1", [{ id: "IT1", ssrc: 1, type: "inbound-rtp", kind: "video", framesDecoded: n }]]);
+  const w = S.webrtcWindow([bare(0, 0), bare(1000, 15), bare(2000, 30)]);
+  assert.equal(w.stalls_reported, false);
+  assert.equal(w.stall_ms, null);
+  assert.equal(w.max_gap_ms, null);
+  assert.equal(w.max_gap_bound, false);
+});

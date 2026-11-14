@@ -537,7 +537,8 @@
             out.max_gap_ms = out.webrtc.max_gap_ms;
             out.stall_total_ms = out.webrtc.stall_ms;
           }
-          out.gaps_source = out.webrtc.max_gap_bound ? "webrtc (bound)" : "webrtc";
+          out.gaps_source = !out.webrtc.stalls_reported ? "webrtc (no freeze counts: n/a)"
+            : out.webrtc.max_gap_bound ? "webrtc (bound)" : "webrtc";
           out.span_ms = out.webrtc.span_ms;
         }
         // Each connection the camera's video came over in the window: when HA's player made it, its

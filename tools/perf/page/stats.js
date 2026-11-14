@@ -235,13 +235,34 @@
               "pauseCount", "totalPausesDuration", "packetsLost", "nackCount", "pliCount", "jitterBufferDelay",
               "jitterBufferEmittedCount"];
   const EMPTY_MIN_MS = 200;                // an interval with nothing decoded this short is the sampling's
+  // A sample's time: when its counts were taken. The inbound reports' own `timestamp` (Gecko sets it
+  // on its call thread as it reads them, RTCRtpReceiver.cpp GetTimestampMaker().GetNow(), right
+  // after the ask; a busy main thread delays only the answer), on the page's clock from the first
+  // sample's ask; the ask time when a sample has none. So a late answer can't count frames or
+  // freezes past the time it says (#205's verifier, harness.js's end-of-window sample).
+  function sampleTimes(samples) {
+    const ts = samples.map((smp) => {
+      const v = [];
+      for (const { reports } of smp.pcs || []) {
+        for (const r of reports || []) {
+          if (r.type === "inbound-rtp" && (r.kind || r.mediaType) === "video" && typeof r.timestamp === "number") v.push(r.timestamp);
+        }
+      }
+      return v.length ? Math.max(...v) : null;
+    });
+    if (ts.some((x) => x === null)) return { times: samples.map((s) => s.t), clock: "asked" };
+    return { times: ts.map((x) => samples[0].t + (x - ts[0])), clock: "stats" };
+  }
+
   function webrtcWindow(samples) {
     if (!samples || !samples.length) return null;
     const total = Object.fromEntries(RX.map((k) => [k, null]));
     const prev = new Map(), pcs = new Set();
     let last = null, noVideo = 0, lastT = null, run = 0, stall = 0, maxGap = 0, gaps = 0;
     const where = [];                      // detail: where the stalls were, on the page's clock (a window each)
-    samples.forEach((smp, i) => {
+    const { times, clock } = sampleTimes(samples);
+    samples.forEach((smp0, i) => {
+      const smp = { t: times[i], pcs: smp0.pcs };
       let decoded = 0;                     // frames decoded since the sample before, all receivers
       let frozenMs = 0, longest = 0;       // the freezes and pauses that ended since then
       for (const { pc, reports } of smp.pcs || []) {
@@ -258,15 +279,20 @@
             total[k] = (total[k] || 0) + add;
             if (k === "framesDecoded") decoded += add;
           }
-          // This receiver's new freezes and pauses, in ms (each counter on its own, as above).
-          for (const [n, d] of [["freezeCount", "totalFreezesDuration"], ["pauseCount", "totalPausesDuration"]]) {
+          // This receiver's new freezes and pauses, in ms (each counter on its own, as above). One
+          // outage that a receiver reports as both a freeze and a pause in the same interval counts
+          // once, the longer (libwebrtc counts a gap as one or the other, but an engine needn't: #205's
+          // verifier gave 4000 ms for one 2 s outage); different receivers add up.
+          const moved = [["freezeCount", "totalFreezesDuration"], ["pauseCount", "totalPausesDuration"]].map(([n, d]) => {
             const cnt = typeof r[n] === "number" ? r[n] - (typeof was[n] === "number" && r[n] >= was[n] ? was[n] : 0) : 0;
             const dur = typeof r[d] === "number" ? r[d] - (typeof was[d] === "number" && r[d] >= was[d] ? was[d] : 0) : 0;
-            if (cnt > 0 && dur > 0) {
-              frozenMs += 1000 * dur;
-              longest = Math.max(longest, 1000 * dur);       // two in one interval: their sum, an upper bound
-              gaps += cnt;
-            }
+            return cnt > 0 && dur > 0 ? { cnt, ms: 1000 * dur } : null;
+          }).filter(Boolean);
+          if (moved.length) {
+            const ms = moved.length === 2 ? Math.max(moved[0].ms, moved[1].ms) : moved[0].ms;
+            frozenMs += ms;
+            longest = Math.max(longest, ms);               // two in one interval: their sum, an upper bound
+            gaps += Math.max(...moved.map((m) => m.cnt));
           }
           prev.set(key, r);
           const transport = (reports || []).find((x) => x.type === "transport" && x.selectedCandidatePairId);
@@ -293,13 +319,20 @@
     });
     if (!last) return { inbound: false, sessions: 0, receivers: 0 };
     const r2 = (k) => (total[k] === null ? null : round2(total[k]));
-    const span = samples[samples.length - 1].t - samples[0].t;
+    const span = times[times.length - 1] - times[0];
+    // A receiver that never reported freezes (freezeCount): its stalls and gaps are n/a, not 0.
+    if (total.freezeCount === null) {
+      maxGap = null;
+      stall = null;
+    }
     // No freeze, pause or empty interval: every gap was under the freeze rule for the mean interval.
     const mean = total.framesDecoded ? span / total.framesDecoded : null;
-    const bound = !maxGap && mean !== null ? Math.max(3 * mean, mean + 150) : null;
+    const bound = maxGap === 0 && mean !== null ? Math.max(3 * mean, mean + 150) : null;
     return {
       inbound: true, sessions: pcs.size, receivers: prev.size, no_video_ms: round2(noVideo),
-      span_ms: round2(span), stall_ms: round2(stall), max_gap_ms: bound !== null ? round2(bound) : (maxGap || total.framesDecoded ? round2(maxGap) : null),
+      span_ms: round2(span), clock, stalls_reported: total.freezeCount !== null,
+      stall_ms: stall === null ? null : round2(stall),
+      max_gap_ms: maxGap === null ? null : bound !== null ? round2(bound) : (maxGap || total.framesDecoded ? round2(maxGap) : null),
       max_gap_bound: bound !== null, gaps,
       stalls_at: where.slice(0, 20).map(([a, b]) => [round2(a), round2(b)]),
       frames_received: r2("framesReceived"), frames_decoded: r2("framesDecoded"), frames_dropped: r2("framesDropped"),

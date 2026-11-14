@@ -300,6 +300,7 @@ def camera_run(line, tier):
         return None
     streams = line.get("streams") or []
     played = [s for s in streams if s.get("first_frame_ms") is not None and s.get("shown_pct") is not None]
+    unreported = [s for s in played if s.get("stall_total_ms") is None or s.get("max_gap_ms") is None]
     whole = len(played) == len(streams) and len(streams) >= (line.get("expected") or 0)
     return {
         # The path the frontend played the graded streams on: web_rtc since protocol 6, hls before
@@ -307,8 +308,11 @@ def camera_run(line, tier):
         "path": line.get("path") or "hls",
         "first_frame_ms": max(s["first_frame_ms"] for s in played) if whole and played else None,
         "shown_pct": min(s["shown_pct"] for s in played) if whole and played else None,
-        "max_gap_ms": max((s.get("max_gap_ms") or 0) for s in played) if whole and played else None,
-        "stall_total_ms": max((s.get("stall_total_ms") or 0) for s in played) if whole and played else None,
+        # A stream whose receiver reported no freeze counts has no stalls or gaps (n/a, not 0): the
+        # run's are then n/a too, and its camera level not measured (grade.camera_level).
+        "max_gap_ms": max(s["max_gap_ms"] for s in played) if whole and played and not unreported else None,
+        "stall_total_ms": max(s["stall_total_ms"] for s in played) if whole and played and not unreported else None,
+        **({"stalls_reported": False} if whole and played and unreported else {}),
         "streams": len(streams), "expected": line.get("expected"), "window_ms": line.get("window_ms"),
         "detail": [{k: s.get(k) for k in ("w", "h", "first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms", "stall_presented",
                                             "frames", "decoded", "dropped", "waiting", "source", "webrtc", "others",
@@ -452,14 +456,17 @@ RC_PROTOCOL = 8
 
 def page_version(page):
     """(protocol, clarity) of a view's page line: v1's say `clarity: 1`; v1's release candidate
-    (RC_PROTOCOL, no marker) reads as v1; any other line without the marker is pre-release
+    (RC_PROTOCOL, no marker, with its `usable.busy_ms`) reads as v1; any other line without the marker is pre-release
     (clarity None, its protocol as it said), whatever its number: pre-release protocols 1 to 8 reuse
     the numbers v1 starts again from."""
     if not page:
         return None, None
     if page.get("clarity") is not None:
         return page.get("protocol"), page["clarity"]
-    if page.get("protocol") == RC_PROTOCOL:
+    if page.get("protocol") == RC_PROTOCOL and (page.get("usable") or {}).get("busy_ms") is not None:
+        # The one bypass of the marker, and only for the release candidate's own lines: they carry
+        # `usable.busy_ms`, which the harness added with it (#205 round 10). An earlier line that said
+        # protocol 8 (none ran outside #205's branch) stays pre-release.
         return G.PROTOCOL_VERSION, G.CLARITY
     return page.get("protocol"), None
 
@@ -1256,6 +1263,9 @@ def coverage_reasons(ref, attempted):
         short = [f"{task} {n} of {attempted}" for task, n in got.items() if 0 < n < attempted]
         if short:
             out.append(f"{t}: measured in fewer runs than attempted ({', '.join(short)})")
+        na = sum(1 for c in (s_ or {}).get("camera_runs") or [] if c.get("stalls_reported") is False)
+        if na:
+            out.append(f"{t}: {na} camera run(s) without the receiver's freeze counts (stalls n/a, not measured)")
         rtts = (s_ or {}).get("clock_rtt_ms") or []
         if any(r is None or r > CLOCK_RTT_MS for r in rtts):
             out.append(f"{t}: the live changes' send times rest on a clock tie looser than ±{CLOCK_RTT_MS // 2} ms in some run")
