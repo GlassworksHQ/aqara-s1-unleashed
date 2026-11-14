@@ -27,6 +27,10 @@ The panel adds one action to Home Assistant: `esphome.<panel>_notify`. For a pan
 (the default) it is `esphome.s1_panel_notify`. *Developer tools → Actions* lists it: search for
 `_notify`.
 
+**Who can call it.** On a panel without an API key, anyone on your network can call `notify`, so
+anyone there could raise a critical alert or open a view of your Home Assistant on the panel. The
+key closes that: Home Assistant 2026.11 and later sets it when you add the panel.
+
 It takes the Home Assistant Companion app's fields: `message`, `title` and `data`. Home Assistant
 makes every ESPHome action field required, so all three are always there. `title` may be empty, and
 `data` is a JSON object, or `{}` for none.
@@ -131,7 +135,7 @@ Home Assistant actions" option. Listen for it in *Developer tools → Events* to
 | `low` | A card when the screen is on; folds into the list after 10 s | none | Waits for the screen to wake |
 | `normal` | A card; folds into the list after 15 s | chime | Waits for the screen to wake |
 | `high` | A card marked *Important*, until answered | chime | Wakes it, at full brightness also at night |
-| `critical` | The alert screen, until answered or dismissed | the alert, repeated for up to 2 minutes | Wakes it, at full brightness also at night |
+| `critical` | The alert screen, until answered or dismissed | the alert, every 4 s for about 2 minutes (the last one may end 1.45 s past) | Wakes it, at full brightness also at night |
 
 The sounds are made by the app from sine tones
 ([`NotificationSounds.kt`](../app/kiosk/src/main/java/dev/glassworks/notifications/NotificationSounds.kt),
@@ -172,7 +176,10 @@ No doorbell pane: your doorbell is in Home Assistant already, and a dashboard do
 2. Import the blueprint
    [`blueprints/automation/glassworks/doorbell-panels.yaml`](../blueprints/automation/glassworks/doorbell-panels.yaml)
    (*Settings → Automations & scenes → Blueprints → Import*, with the file's GitHub address). Pick the
-   doorbell, the panels' notify actions, the camera and the view. When it rings, every panel rings,
+   doorbell, the camera and the view, and type each panel's notify action: `esphome.` plus the
+   panel's ESPHome name with `-` as `_`, plus `_notify`. The S1's name is `s1-panel`, so it is
+   `esphome.s1_panel_notify`; a second panel you named `hall-panel` is `esphome.hall_panel_notify`.
+   Home Assistant has no selector that picks one action, so they are typed. When it rings, every panel rings,
    shows the camera's picture and opens the view; each goes back to its dashboard after the timeout.
 3. Make *Done* run a script that clears `doorbell` on every panel, so the others stop too. The
    blueprint's file has that script at the end, to copy.

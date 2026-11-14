@@ -18,7 +18,10 @@ blueprint:
             - domain: binary_sensor
     panels:
       name: The panels' notify actions
-      description: One per panel, e.g. esphome.s1_panel_notify (Developer tools → Actions lists them; search for "_notify").
+      description: >-
+        One per panel: esphome., the panel's ESPHome name with - as _, then _notify. The S1's name is
+        s1-panel, so esphome.s1_panel_notify; a panel named hall-panel is esphome.hall_panel_notify.
+        Developer tools → Actions lists them (search for "_notify").
       selector:
         text:
           multiple: true
