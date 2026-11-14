@@ -47,7 +47,7 @@ A **pane** is a feature: the Music Assistant player, voice, timers, the radio. T
 (`dev.glassworks.pane`) is the contract between the two.
 
 It lives inside the S1 app for now. It becomes its own Gradle module (`:glassworks-pane-api`) in
-[migration step 6](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/21). The API will
+[migration step 6](https://github.com/GlassworksHQ/glassworks/issues/21). The API will
 change until Glassworks v1.
 
 ## What's in it

@@ -1,7 +1,7 @@
 # Releasing the kiosk app
 
 Panels update themselves from GitHub Releases: the app lists
-`https://api.github.com/repos/GlassworksHQ/aqara-s1-unleashed/releases`, picks its own newest release
+`https://api.github.com/repos/GlassworksHQ/glassworks/releases`, picks its own newest release
 and shows the result in Home Assistant as **update.s1_panel_app_update** (on a panel added before #63;
 newer ones start with `glassworks_panel_`, [Names](esphome.md#names))
 ([esphome.md](esphome.md#app-updates)). A release is built and published by
@@ -15,6 +15,15 @@ newer ones start with `glassworks_panel_`, [Names](esphome.md#names))
 Every release **must be signed with the same key**. Android only installs an update signed with the
 key of the installed app, and the app refuses anything else before trying. Lose the key and every
 panel needs a manual reinstall, which clears its settings.
+
+### The repo name
+
+The repo started as `aguilaair/aqara-s1-unleashed`, moved to `GlassworksHQ/aqara-s1-unleashed`, and
+was renamed to `GlassworksHQ/glassworks` on 2026-11-13. Panels on 0.4.3 and older ask
+`aguilaair/aqara-s1-unleashed`, the name built into them, and reach the releases through GitHub's
+redirects. A redirect only lasts while no repo exists at the old name, so **never create or reuse
+either old name**, not even as an empty placeholder: it would cut off updates for every panel that
+hasn't moved past 0.4.3.
 
 ## 1. Create the release key (once)
 
@@ -72,13 +81,13 @@ from the file or from a prompt, so nothing ends up in your shell history:
 ```sh
 cd ~/secure
 # The keystore, base64-encoded, from the file:
-base64 < s1kiosk-release.jks | gh secret set S1_KEYSTORE_B64 --env release-signing --repo GlassworksHQ/aqara-s1-unleashed
+base64 < s1kiosk-release.jks | gh secret set S1_KEYSTORE_B64 --env release-signing --repo GlassworksHQ/glassworks
 # Passwords: gh prompts for them ("Paste your secret"); the same password twice for PKCS12.
-gh secret set S1_KEYSTORE_PASSWORD --env release-signing --repo GlassworksHQ/aqara-s1-unleashed
-gh secret set S1_KEY_PASSWORD --env release-signing --repo GlassworksHQ/aqara-s1-unleashed
+gh secret set S1_KEYSTORE_PASSWORD --env release-signing --repo GlassworksHQ/glassworks
+gh secret set S1_KEY_PASSWORD --env release-signing --repo GlassworksHQ/glassworks
 # The alias is not secret:
-gh secret set S1_KEY_ALIAS --env release-signing --repo GlassworksHQ/aqara-s1-unleashed --body s1kiosk
-gh secret list --env release-signing --repo GlassworksHQ/aqara-s1-unleashed
+gh secret set S1_KEY_ALIAS --env release-signing --repo GlassworksHQ/glassworks --body s1kiosk
+gh secret list --env release-signing --repo GlassworksHQ/glassworks
 ```
 
 The workflow uses only these four secrets, the radio bundle key below, the optional `VERCEL_DEPLOY_HOOK`
@@ -115,7 +124,7 @@ openssl pkey -in ~/secure/s1kiosk-radio-bundle-ed25519.pem -pubout -outform DER 
   > tools/root/s1kiosk_bundle.pub
 # The secret: an environment secret of the `radio-signing` environment (Settings -> Environments;
 # create the environment first), so only the release workflow's signing job can read it:
-gh secret set S1_RADIO_BUNDLE_KEY --env radio-signing --repo GlassworksHQ/aqara-s1-unleashed \
+gh secret set S1_RADIO_BUNDLE_KEY --env radio-signing --repo GlassworksHQ/glassworks \
   < ~/secure/s1kiosk-radio-bundle-ed25519.pem
 ```
 
@@ -142,7 +151,7 @@ The boot image's signature checker is one of them since the radio bundle loader:
 
 ```sh
 tools/root/build-verify.sh      # reproducible; must print sha256 6aa0dd83…9f80 (the lock's pin)
-gh release upload installer-files-3 tools/root/out/s1kiosk_verify --repo GlassworksHQ/aqara-s1-unleashed
+gh release upload installer-files-3 tools/root/out/s1kiosk_verify --repo GlassworksHQ/glassworks
 ```
 
 (Create the `installer-files-3` release first if it doesn't exist, e.g. as a copy of
@@ -215,7 +224,7 @@ it a one-sentence summary. The release fails early if the section is missing.
 git switch main && git pull
 git tag -a v1.0.0 -m "S1 Kiosk 1.0.0"
 git push origin v1.0.0
-gh run watch --repo GlassworksHQ/aqara-s1-unleashed   # or the Actions tab
+gh run watch --repo GlassworksHQ/glassworks   # or the Actions tab
 ```
 
 The workflow then:

@@ -973,7 +973,7 @@ Assistant:
   then exit at once to restart, so the write is lost and voice stays on. In s1v7 (131f6da,
   2026-11-13) every switch was lost: the "panes off" samples ran Assist and Sendspin, and Assist read
   −0.4% of a core against
-  [#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)'s 37%. So the runner also
+  [#105](https://github.com/GlassworksHQ/glassworks/issues/105)'s 37%. So the runner also
   mutes the microphone (`mic_muted`) for "off" states, which the kiosk applies live, and stops after
   two tries at `voice_enabled`. When voice stayed on, Assist's share is its running cost only (the
   wake word, recorder and inference; [idle-cpu.md](../frames/aqara-s1-plus/research/idle-cpu.md) step 7), not the code and
@@ -1015,7 +1015,7 @@ Assistant:
   band and the shared "off" set's, so the panes differ only when an "on" set is the noisier. A
   run with the warm-up has three warm ones. Whether it brings the S1 near ±10 MB is for the next
   run on the panel (after #181).
-- **Not switched**: since [#67](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/67) every
+- **Not switched**: since [#67](https://github.com/GlassworksHQ/glassworks/issues/67) every
   pane has an on/off, but two aren't measured on their own (`not_switched` in `budgets.json`). The
   radio's on/off is its mode, which Clarity leaves as it is, so the panel's Zigbee or Thread network
   stays up; its processes are measured where they run. Timers come only with voice, so they are inside
@@ -1188,7 +1188,7 @@ report's grade, and that `grade.ts` (run under node) equals Python's.
 
 ### How #68 uses it
 
-[#68](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/68) is the report of APK size and RAM
+[#68](https://github.com/GlassworksHQ/glassworks/issues/68) is the report of APK size and RAM
 per frame and pane, with budgets. Its two halves come from different places:
 
 - **RAM comes from this test, on the device** (see [RAM](#ram) for why not an emulator). The
@@ -1201,7 +1201,7 @@ per frame and pane, with budgets. Its two halves come from different places:
   `--apk` still adds sizes to a device report.
 - **Panes** use the ids from the code (`assist`, `sendspin`, `radio`, `wall-base`, `timers`,
   `time-zone`, `diagnostics`). Only `assist` and `sendspin` can be switched today; the others wait on
-  [#67](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/67).
+  [#67](https://github.com/GlassworksHQ/glassworks/issues/67).
 
 ## Page log lines
 
@@ -1274,7 +1274,7 @@ Restart, process start to the start view usable: **11.7 s** (11.6 to 13.0 s), po
 2.9 s (detail). Medians of 3 runs. Scrolling holds back every view and open the view holds back
 typical and heavy. Taps and the live changes are good everywhere except heavy's changes (fluid).
 The panel ran with the wake word using about 37% of a core
-([#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)); the move to microWakeWord
+([#105](https://github.com/GlassworksHQ/glassworks/issues/105)); the move to microWakeWord
 (#181) needs a re-measure. s1v7's pane numbers are not valid (see [RAM](#ram)); s1p1 and s1p3 below
 are.
 
@@ -1288,7 +1288,7 @@ above), so Assist is off by its microphone mute: its running cost, not the model
 | s1p3, 3 runs (9 samples) | **+36.3% of a core** (±1.2) | +5.2 MB, within ±31.6 | +1.9%, within ±2.9 | +0.3 MB, within ±31.6 |
 | s1p1, 1 run (smoke) | +36.5% | +21.3 MB | +3.5% | +50.1 MB (`:boot`, see [RAM](#ram)) |
 
-Assist's CPU matches [#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)'s 37%
+Assist's CPU matches [#105](https://github.com/GlassworksHQ/glassworks/issues/105)'s 37%
 (the wake word's model). Neither pane's PSS is measurable at this tolerance, so these runs can't say
 whether either fits its 48 MB budget. Read with the noise band and `:boot` apart, the same samples
 give ±37.4 MB for both, and ±10.2 MB (Assist) and ±10.4 MB (Sendspin) without the cold first sample ([RAM](#ram)). The app at idle on the typical
@@ -1345,7 +1345,7 @@ What the earlier runs on the S1 (2026-11-12, kiosk 0.4.3, GeckoView 159, Android
   from a full run's at a band's edge (47 against 78 frames at 16 boxes), so read ladder counts from a
   full run's median.
 - Its idle samples found the app's main process using about 40% of one core with nothing changing on
-  screen ([#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)).
+  screen ([#105](https://github.com/GlassworksHQ/glassworks/issues/105)).
 - **smoke5** (80df5ab, one run, before protocol 1) showed the swipes work (`scrolled_px` 2646, 3248
   and 3324; SurfaceFlinger valid on every page; restart 2487 ms) and an order bias that decided the
   letter (E). Light, always first and right after the kiosk's dashboard, scrolled at 42.7 fps (poor)
