@@ -247,7 +247,7 @@
     return Array.from((layout && layout.cards) || []).slice(0, C.HEAD_CARDS).map((c) => ({ rendered: rendered(c) }));
   }
 
-  async function usable(index) {
+  async function firstScreenDrawn(index) {
     let st = { last: "", stable: 0, done: false }, ts = 0, onScreen = [];
     while (!st.done) {
       ts = await frame();
@@ -262,17 +262,21 @@
         onScreen: onScreen.map(([r, i]) => ({ rendered: rendered(all[i]), top: r.top })),
       }, st, C.HEAD_CARDS);
     }
-    // Clarity v2: the animation frames from the draw to usable, for the blocking time (S.frameBlocking).
+    return { rendered_tick_ms: r1(ts), first_screen_cards: onScreen.length, head_cards: C.HEAD_CARDS };
+  }
+
+  // After the draw: the main thread free, and (Clarity v2) the animation frames until then, for the
+  // blocking time (S.frameBlocking).
+  async function freeAfter(drawn) {
     const marks = [];
     let watching = true;
     const mark = (t) => { if (!watching) return; marks.push(t); requestAnimationFrame(mark); };
     requestAnimationFrame(mark);
     const free = await freeFrom();
     watching = false;
-    const b = S.frameBlocking(marks, ts, free.start);
-    return { rendered_tick_ms: r1(ts), first_screen_cards: onScreen.length, head_cards: C.HEAD_CARDS,
-             interactive_ms: r1(free.start), busy_ms: free.busy,
-             blocking_ms: b && b.blocking_ms, long_frames: b && b.long_frames, longest_frame_ms: b && b.longest_ms };
+    const b = S.frameBlocking(marks, drawn.rendered_tick_ms, free.start);
+    return Object.assign({}, drawn, { interactive_ms: r1(free.start), busy_ms: free.busy,
+      blocking_ms: b && b.blocking_ms, long_frames: b && b.long_frames, longest_frame_ms: b && b.longest_ms });
   }
 
   function nodeCount(root) {
@@ -292,7 +296,12 @@
 
   // nav: the navigation's start on the page's clock (0 for the frontend's own load).
   async function reportUsable(nav, first) {
-    const u = await usable(C.VIEWS.indexOf(V.tier));
+    const drawn = await firstScreenDrawn(C.VIEWS.indexOf(V.tier));
+    // Clarity v2: the draw on its own line, as it happens, so a view that is drawn but never free
+    // still has its open (the runner keeps it as `drawn`; refdash replaces it once free).
+    log({ t: "drawn", tier: V.tier, protocol: C.PROTOCOL, clarity: C.CLARITY, nav_ms: r1(nav), usable: drawn,
+          origin_epoch_ms: Math.round(performance.timeOrigin), epoch_ms: Date.now() });
+    const u = await freeAfter(drawn);
     const navEntry = performance.getEntriesByType("navigation")[0] || {};
     const fcp = performance.getEntriesByName("first-contentful-paint")[0];
     log({

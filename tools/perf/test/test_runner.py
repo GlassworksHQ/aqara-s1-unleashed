@@ -871,6 +871,23 @@ class Restart(unittest.TestCase):
         rep = self.build(self.last_out)
         self.assertEqual(rep["graded"]["reference"]["tiers"]["typical"]["timed_out_tasks"], ["blocking", "camera", "open", "scroll", "tap", "updates"])
 
+    def test_a_view_drawn_but_never_free_keeps_its_open_and_blocks_for_the_deadline(self):
+        """#264's verifier: rubric 2 times the open to the draw, so a view that draws fast and is never
+        free gets its real open; its blocking takes the deadline, and usable isn't measured."""
+        p, c, _ = self.run_short(90, FAKE_NEVER_FREE="typical", GW_PERF_VIEW_DEADLINE_S="5", GW_PERF_STAGE_IDLE_S="60",
+                                 GW_PERF_RECOVER_LAUNCH_S="1")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["timed_out"], ["typical"])
+        self.assertEqual(c["tiers"]["typical"]["timed_out_after"], "usable")
+        self.assertNotIn("page", c["tiers"]["typical"])
+        self.assertEqual(c["tiers"]["typical"]["drawn"]["usable"]["head_cards"], 10)
+        self.assertTrue(c["tiers"]["heavy"]["done"])
+        t = self.build(self.last_out)["graded"]["reference"]["tiers"]["typical"]
+        self.assertEqual(t["timed_out_tasks"], ["blocking", "camera", "scroll", "tap", "updates"])
+        self.assertLess(t["load_ms"]["median"], 1000)             # drawn 200 ms after the navigation (and its frame)
+        self.assertEqual(t["blocking_ms"]["median"], c["tiers"]["typical"]["timed_out_s"] * 1000)
+        self.assertIsNone((t.get("usable_ms") or {}).get("median"))
+
     def test_the_screen_is_kept_awake_while_views_open_but_not_while_live(self):
         p, c, log = self.run_short(120, FAKE_SLOW_VIEW="2.5", GW_PERF_KEEP_AWAKE_S="0.7")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])

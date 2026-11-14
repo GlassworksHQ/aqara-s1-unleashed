@@ -331,7 +331,7 @@ def refdash(nonce, url):
     def gw(obj):
         # FAKE_STAGE_DELAY (protocol 8): a slow view that keeps going: this long before each line
         # after it is usable, so the whole view outlasts the usable deadline but no stage stops.
-        if obj.get("t") not in ("refdash",) and os.environ.get("FAKE_STAGE_DELAY") and tier == os.environ.get("FAKE_STAGE_VIEW", tier):
+        if obj.get("t") not in ("refdash", "drawn") and os.environ.get("FAKE_STAGE_DELAY") and tier == os.environ.get("FAKE_STAGE_VIEW", tier):
             time.sleep(float(os.environ["FAKE_STAGE_DELAY"]))
         page_log(dict(obj, nonce=nonce, run=1), split=not os.environ.get("FAKE_NO_SPLIT"))
 
@@ -360,7 +360,14 @@ def refdash(nonce, url):
     save("last_nonce.json", nonce)
     if foreign == "after":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
-    time.sleep(0.7)
+    time.sleep(0.5)
+    # Clarity v2: the draw on its own line first (200 ms after the navigation), then refdash once free.
+    gw({"t": "drawn", "tier": tier, "protocol": PROTOCOL, "clarity": CLARITY, "nav_ms": round(nav, 1),
+        "usable": {"rendered_tick_ms": round(nav + 200, 1), "first_screen_cards": 14, "head_cards": 10},
+        "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000})
+    if os.environ.get("FAKE_NEVER_FREE") == tier:
+        return                 # drawn, but the main thread never free: no refdash
+    time.sleep(0.2)
     gw({"t": "refdash", "tier": tier, "protocol": PROTOCOL, "clarity": CLARITY, "frontend": "20261028.5", "nodes": 1458, "cards": 50,
         "cards_rendered": 47, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
         "fcp_ms": None, "lcp_ms": None, "load_ms": None, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000,

@@ -487,6 +487,11 @@ def tier_run(tier, entry, presents_ms):
     """One reference dashboard in one run: open the view (load), live updates (frames), tap (INP),
     scroll (frames while swiping)."""
     page, step = entry.get("page"), entry.get("step")
+    if page is None and entry.get("timed_out_s") and entry.get("drawn"):
+        # Clarity v2: drawn, but never free within the deadline. The open stands (rubric 2 times it to
+        # the draw); blocking takes the deadline (timed_out) and usable isn't measured.
+        page = entry["drawn"]
+        entry = dict(entry, page=page)
     proto, clarity = page_version(page)
     out = {"tier": tier, "css": page and page.get("css"), "dpr": page and page.get("dpr"),
            "protocol": proto, "clarity": clarity}
@@ -509,7 +514,8 @@ def tier_run(tier, entry, presents_ms):
             out["load_ms"] = round(when - nav0)
             out["first_screen_cards"] = page["usable"].get("first_screen_cards")
             free_at, _ = usable_on_screen(page, presents_ms)
-            out["usable_ms"] = round(free_at - nav0) if free_at is not None else None
+            free = page["usable"].get("interactive_ms") is not None
+            out["usable_ms"] = round(free_at - nav0) if free and free_at is not None else None
         # Rubric 2: the main thread's blocking from the draw to usable (the page's frameBlocking);
         # none from a page before protocol 2.
         out["blocking_ms"] = page["usable"].get("blocking_ms")

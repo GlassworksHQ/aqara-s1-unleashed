@@ -161,6 +161,9 @@ test("HA's frontend plays the fake's cameras over WebRTC through the TURN relay,
     assert.equal(typeof o.usable.blocking_ms, "number", `no blocking_ms: ${JSON.stringify(o.usable)}`);
     assert.ok(o.usable.blocking_ms >= 0 && Number.isInteger(o.usable.long_frames) && o.usable.longest_frame_ms > 0);
     assert.ok(o.usable.rendered_tick_ms <= o.usable.interactive_ms);
+    // The draw was logged on its own line first, with the same frame (so a view never free keeps its open).
+    const d = page.lines.findIndex((l) => l.t === "drawn" && l.tier === o.tier && l.usable.rendered_tick_ms === o.usable.rendered_tick_ms);
+    assert.ok(d >= 0 && d < page.lines.indexOf(o), `no drawn line before ${o.tier}'s refdash`);
   }
   const s = rtc.streams[0];
   assert.equal(s.path, "web_rtc");

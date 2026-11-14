@@ -518,4 +518,12 @@ test("frameBlocking: each frame interval past 50 ms counts, as TBT counts a long
   // The edges count: nothing drawn between draw and usable for 400 ms is 350 ms of blocking.
   assert.equal(S.frameBlocking([], 1000, 1400).blocking_ms, 350);
   assert.equal(S.frameBlocking([1], null, 2), null);
+  assert.equal(S.frameBlocking([1], 1, null), null);
+  // Free in the frame it was drawn (a zero window): no blocking, and frames outside it don't count.
+  assert.deepEqual(S.frameBlocking([900, 1100], 1000, 1000), { blocking_ms: 0, long_frames: 0, longest_ms: 0 });
+  // Free before the draw (clocks crossed): no window to measure, not 0.
+  assert.equal(S.frameBlocking([1016], 1000, 999), null);
+  // Exactly 50 ms isn't long (TBT counts past 50); 50.5 ms is, by 0.5.
+  assert.equal(S.frameBlocking([], 1000, 1050).long_frames, 0);
+  assert.deepEqual(S.frameBlocking([], 1000, 1050.5), { blocking_ms: 0.5, long_frames: 1, longest_ms: 50.5 });
 });

@@ -313,8 +313,10 @@ it: a view tab, or a navigate action on a card. Both end in HA's `navigate()`
 (`hui-root.ts` `_selectView` L1289–L1347: the old view's element comes out of `#view`, the new
 view's `hui-view` goes in, cached if it was shown before in this load; its cards are built when it is
 first shown). The harness calls that same pair, so the frontend can't tell it from a tab. Each view
-is shown once per run, so none comes from the cache. Open the view runs from the navigation to
-usable. The frontend's cold load is the restart's, and is graded there.
+is shown once per run, so none comes from the cache. Since rubric 2, open the view runs from the
+navigation to the first screen drawn, and the wait from there to usable is graded as blocking
+([Usable](#usable)); rubric 1 ran the open to usable. The frontend's cold load is the restart's, and
+is graded there.
 
 Protocol 4 as first written (8c0027b, smoke9) loaded the whole frontend for each reference
 dashboard and called that "open the view". That counted the cold load twice (it is the restart too),
@@ -351,6 +353,24 @@ Interactive", the part of each task past 50 ms), measured on frames: Gecko has n
 driver's frames ahead of ordinary tasks (s1rtc4's heavy: its timers waited 140 s while frames came
 5 to 8 a second), so a frame comes late by the length of the task that held it, not by a queue of
 short ones. Usable itself stays in the report as `usable_ms`, not graded.
+
+It is TBT's shape on frames, not TBT itself, and it differs in three ways (#264's verifier,
+2026-11-14, in Chrome, where both can be read):
+- **It counts rendering.** A frame is late whatever held the main thread: script, style, layout or
+  paint. Chrome's TBT counts tasks, and leaves out paint: a page that only repaints a blur measured
+  683 ms of frame blocking against a TBT of 0. Kept on purpose (root decision, 2026-11-14): rendering
+  on the main thread delays a tap as much as script does. So on a rendering-bound page this is the
+  stricter of the two.
+- **It is as fine as a frame.** For script tasks it tracks Chrome's TBT within about one vsync per
+  long frame (a little under). A task of 50 to 67 ms can fall inside one frame interval and be
+  missed.
+- **A frame that isn't drawn counts.** The browser stops animation frames for a page that can't be
+  seen, so a system dialog over the page would count as blocking. The runner already refuses runs
+  with the screen off, and the reference views have nothing that opens a dialog.
+
+Drawn and usable are logged as they happen, each on its own line (protocol 2: a `drawn` line, then
+`refdash` once free). So a view that is drawn but never free keeps its open time (see "A view the
+panel can't finish", below).
 
 #### Live camera streams (#174, protocol 5)
 
@@ -751,9 +771,11 @@ nothing else:
 
 1. What it measured stands.
 2. What it didn't is measured as failing, not as missing: "didn't finish" is itself the
-   measurement, as a camera that never shows a frame fails rather than goes unmeasured. Open and tap
-   count as the time it ran (`timed_out_s`, at least the deadline when it was never usable), and
-   scroll, live updates and the cameras get a `{"timed_out": true}` record, which every grader
+   measurement, as a camera that never shows a frame fails rather than goes unmeasured. Tap counts
+   as the time it ran (`timed_out_s`, at least the deadline when it was never usable). So does
+   blocking (rubric 2) when the main thread was never free, and so does open when the view was never
+   drawn; a view drawn but never free keeps its real open (its `drawn` line), and its usable isn't
+   measured. Scroll, live updates and the cameras get a `{"timed_out": true}` record, which every grader
    (grade.py, grade.ts) puts below the lowest bar. So a timeout doesn't make the grade provisional;
    report.md names it in the detail, and the report's and summary's `timed_out_runs` count it per
    page.
@@ -776,9 +798,10 @@ None of this moves a threshold.
 thread is free: every probe (a `setTimeout(0)`) runs within 50 ms, for 500 ms. On s1rtc4's heavy
 the first screen was drawn 1.1 to 1.3 s after the navigation, and the main thread was free after 43
 to 46 s; its live updates then drew 5 to 8 frames a second. So the wait is the frontend's own work,
-not a starved callback of the harness's: a tap in that time waits as the probes do. Each view's
-`drawn_ms` and `busy_ms` (the longest a probe waited, each second of the wait) are detail, and
-report.md says when the two are more than 5 s apart.
+not a starved callback of the harness's: a tap in that time waits as the probes do. Since rubric 2
+that wait is graded, as blocking ([Usable](#usable)); `drawn_ms`, `usable_ms` and `busy_ms` (the
+longest a probe waited, each second of the wait) are detail, and report.md says when drawn and usable
+are more than 5 s apart.
 
 **Checking Clarity against the screen** (debugging only). `tools/perf/debug/screencam_moments.py`
 lists, for a view in a run, when it was opened, drawn, usable, each camera's first frame and each
@@ -976,7 +999,8 @@ dashboards stand in for it.
 
 Each measurement gets a band, as in Core Web Vitals: **good**, **needs improvement** or **poor**.
 The thresholds live in one file, `tools/perf/page/rubric.json`. `grade.py` grades from it, and the
-animation test page reads it to stop its ladder. The sources were checked on 2026-11-12.
+animation test page reads it to stop its ladder. The sources were checked on 2026-11-12, and the
+Total Blocking Time row's on 2026-11-14.
 
 | Measurement | Good | Poor | Source |
 |---|---|---|---|
@@ -985,7 +1009,7 @@ animation test page reads it to stop its ladder. The sources were checked on 202
 | Frozen frames (over 700 ms) | 0% (**a project choice**) | > 0.1% | [Android vitals](https://developer.android.com/topic/performance/vitals/render): frozen frames take longer than 700 ms; Play Console "excessive frozen frames" is more than 0.1% |
 | INP: worst tap to next paint | ≤ 200 ms | > 500 ms | [Core Web Vitals INP](https://web.dev/articles/inp): good at or below 200 ms, poor above 500 ms |
 | Open the view, navigation to the first screen drawn | ≤ 2.5 s | > 4 s | [Core Web Vitals LCP](https://web.dev/articles/lcp): "Good LCP values are 2.5 seconds or less, poor values are greater than 4.0 seconds". Since rubric 2 the open ends at the paint, as LCP's does; rubric 1 ran it to usable (drawn and the main thread free). See the note below the table |
-| Blocking after the open, from the first screen drawn to usable | ≤ 200 ms | > 600 ms | [Lighthouse Total Blocking Time](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time), mobile: "0–200" green (fast), "200–600" orange (moderate), "Over 600" red (slow) (read 2026-11-14; the page gives no update date). Measured on animation frames, not tasks (Gecko has no Long Tasks API; [Usable](#usable)) |
+| Blocking after the open, from the first screen drawn to usable | ≤ 200 ms | > 600 ms | [Lighthouse Total Blocking Time](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time), mobile: "0–200" green (fast), "200–600" orange (moderate), "Over 600" red (slow) (page last updated 2019-10-09, read 2026-11-14). Measured on animation frames, not tasks (Gecko has no Long Tasks API; [Usable](#usable)) |
 | Restart, process start to a usable dashboard | ≤ 2.5 s (**a project choice**: LCP's bound) | ≥ 5 s | [Android vitals](https://developer.android.com/topic/performance/vitals/launch-time) counts a cold start that "takes 5 seconds or longer" as excessive (vitals apply it to TTID) |
 
 **LCP's bands are lenient for an in-app navigation.** They are for a page load, network included.
@@ -1461,7 +1485,7 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | Key | What |
 |---|---|
 | `schema` | `"glassworks.perf/4"`. A field that changes meaning gets a new version (`/4`, 2026-11-12: `grade.bands` carries scroll and live-update levels, rubric v5) |
-| `clarity` | Clarity's version: `1` for v1; `null` for a report from before v1 (pre-release), which the site shows as "re-measure". See [Versions](#versions) |
+| `clarity` | Clarity's version: `2` now (`1` for v1); `null` for a report from before v1 (pre-release), which the site shows as "re-measure". See [Versions](#versions) |
 | `protocol_version` | The measurement protocol the pages ran (`null` if the runs disagree). See [Protocol and rubric versions](#protocol-and-rubric-versions) |
 | `measured_on` | The run's date (UTC, from the computer that ran it) |
 | `runs_attempted` | Graded runs attempted (`plan.json`), the count each band is over |
@@ -1473,7 +1497,7 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (the graded views' streams only; over 200 ms, one update interval, is provisional), `stream_late_detail_max_ms` (the views that aren't graded: the HLS copies and a warm-up; detail, a line in report.md, never provisional: #205, s1rtc8's one 2 s burst on typical-hls). Each change belongs to the view open when it was sent. `null` without the log, which is provisional |
 | `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`, `cpu_app_pct_of_core`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb` (`null` under two samples a side), `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`, `verified`, `excluded`, `boot_samples_on` and `boot_samples_off` (samples `:boot` ran in, left out of the share), `boot_pss_kb` (its median PSS, or `null`), and `off_by: "mute"` when Assist was off by its mute alone; or `id`, `method` and `error` when no sample ran as asked), `screen_off_samples` (idle samples the screen went off in, left out), `panes_waiting` (`id`, `waiting_on`, `note`; empty since #67, kept because this version only adds fields), `panes_not_switched` (`id`, `why`, `note`: a pane not measured on its own, and why), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `tolerance_kb`, `measurable` (three samples a side and a tolerance at most a quarter of the budget), `ok` (`null` when not measurable: read it as unknown, not as over)). See [RAM](#ram) |
 | `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts: the kiosk's own page never finished loading in a graded run; graded runs failed or are missing; the restart or a task was measured in fewer runs than attempted; a page's live changes rest on a loose clock tie; no swipe ran during the live updates; scrolling rests on rAF only; the fake Home Assistant's log is missing, or it didn't know or failed a command, or sent a graded view's change late; page lines didn't parse or never arrived whole (`bad_page_lines`); swipes were answered with no scroll step back (`lost_scroll_steps`); "measured with a pre-release version of Clarity (protocol N): re-measure"; the pages ran another protocol; "<page>: N camera run(s) whose stalls couldn't be measured (no freeze counts from the receiver, or no frames to measure gaps over): n/a, not measured"; the viewport couldn't be checked |
-| `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms`, `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `camera_runs` (each run's worst stream and its `path`, with each stream as `detail`, and as detail `fetches` (the HLS fetch times) and `media` (the decoders the view got, from logcat)), `camera_levels` (per run) and `camera_level` (graded), `camera_fallback` (protocol 6, detail: `path` `hls`, `runs` (each run's worst HLS stream on the view's HLS copy, with its `view`, `media` and `error`), `levels` and `level` as the camera bars would give them; `null` on a page without streams), `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
+| `graded` | `reference`: `start_ms`, `restart_to` (`usable` since protocol 4, else `engine-ready`), `engine_ready_ms` (detail), `start_errors`, `engine_uris`, `android_ttid_ms` (not graded), `launch`, `own_page_states`, `orders` (each run's page order), `warmups`, `protocols`, `bad_page_lines` (page lines that didn't parse or never arrived whole), `lost_scroll_steps` (swipes answered with no scroll step back), `errors`, `runs`, `graded_runs`, `per_run` (each with its `order` and `between`, whether the screen was still before each page opened), and `tiers` with, per page: `inp_ms`, `load_ms` (rubric 2: to the first screen drawn), `blocking_ms` (rubric 2: from the draw to usable, graded), `usable_ms` (detail), `load_errors`, `paint_to_screen_ms`, `scroll` (p95, jank, frozen, fps, n), `scroll_levels` (per run) and `scroll_level` (graded), `scroll_bands` and `scroll_band` (the 60 fps rule, detail), `scroll_runs` (each run's frame stats), `scroll_sources`, `scroll_limited_by`, `scroll_raf_only` (per run), `sf_swipes`, `swipes_moved`, `swipes_at_edge` (left out), `swipes_during_updates` (per run), `scroll_errors`, `scrolled_px`, `first_scroll_ms`, `sf_valid` (per run), `latency_p95_ms` and `latency_median_ms` (change to screen), `updates_levels` (per run) and `updates_level` (graded), `updates_runs` (each run's latency and change frames), `updates` and `updates_bands` (pacing of the frames that had a change to draw, detail), `updates_all_p95_ms` (every frame of the pacing stretch, detail), `updates_errors`, `camera_runs` (each run's worst stream and its `path`, with each stream as `detail`, and as detail `fetches` (the HLS fetch times) and `media` (the decoders the view got, from logcat)), `camera_levels` (per run) and `camera_level` (graded), `camera_fallback` (protocol 6, detail: `path` `hls`, `runs` (each run's worst HLS stream on the view's HLS copy, with its `view`, `media` and `error`), `levels` and `level` as the camera bars would give them; `null` on a page without streams), `state_ticks`, `positions` and `by_position` (the page's results at each place in the order), `fcp_ms`, `nodes`, `cards`, `viewport` |
 | `detail` | `synthetic`, the animation test page: `ladder` (per family: `held_60fps`, `held_30fps`, `…_at_top`), `steps_without_sf`, `screen_off_runs` (left out of the rest), `scroll`, `scroll_moved`, `js_burst_ms`, `js_band`, `js_checksum_ok`, `page_lcp_ms`, `page_lcp_from`, `per_run` |
 | `real_use` | Not graded. Your dashboard: `app_start_to_dashboard_ms`, `android_ttid_ms`, `launch`, `stop_to_dashboard_ms`, `dashboard_load_ms`, `dashboard_page_stop_ms`, `settle_how`, `errors`, `screen_off_samples`, `per_run`. Then `idle`, `peak`, `memory` (`idle`, `peak`, `budget`) and `panes` |
 
@@ -1495,7 +1519,7 @@ from real use, and nothing device-unique.
 |---|---|
 | `schema` | `"glassworks.perf-summary/2"` |
 | `test` | The test's name, `"Clarity"` (`rubric.json` `name`), so a summary says what measured it |
-| `clarity` | Clarity's version, `1`. Without it the summary is pre-release: `gradeSummary` returns `re-measure` ([Versions](#versions)) |
+| `clarity` | Clarity's version, `2` (`1` for v1, which v2's rules re-measure). Without it the summary is pre-release: `gradeSummary` returns `re-measure` ([Versions](#versions)) |
 | `protocol_version` | How it was measured. A site grades it only with a rubric for the same protocol |
 | `report_schema` | The report it came from, `"glassworks.perf/4"` |
 | `measured_on` | The run's date, `YYYY-MM-DD` (UTC) |
@@ -1503,7 +1527,7 @@ from real use, and nothing device-unique.
 | `app_version` | The kiosk's version name |
 | `viewport` | `css` (CSS px), `dpr` (device pixel ratio), `default_dpr` (density / 160) |
 | `runs` | `attempted`, `graded` |
-| `pages` | Per page (`light`, `typical-nocam`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams; a run's record is `{"timed_out": true}` with the numbers `null` when the page didn't finish before its streams were measured), `timed_out_runs` (protocol 7: in how many runs the page didn't finish within the runner's deadline; their unmeasured tasks are in the runs as failing: `open_ms` and `inp_ms` at the deadline, `{"timed_out": true}` records for `scroll`, `updates` and `camera`), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
+| `pages` | Per page (`light`, `typical-nocam`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median; rubric 2: to the first screen drawn), `blocking_ms` (median, rubric 2), `usable_ms` (median, detail), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams; a run's record is `{"timed_out": true}` with the numbers `null` when the page didn't finish before its streams were measured), `timed_out_runs` (protocol 7: in how many runs the page didn't finish within the runner's deadline; their unmeasured tasks are in the runs as failing: `open_ms` and `inp_ms` at the deadline, `{"timed_out": true}` records for `scroll`, `updates` and `camera`), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`, `blocking`, `camera`) |
 | `restart_ms` | Process start to a usable reference dashboard (median; to engine ready before protocol 4) |
 | `gaps` | Measurement facts that leave it short: "1 of 3 graded runs failed or are missing", "heavy: scrolling rests on rAF only in 1 run(s)…". Empty when complete |
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |
@@ -1654,7 +1678,8 @@ load) and `t`:
 
 | `t` | Fields |
 |---|---|
-| `refdash` | A reference view, usable: `tier` (the view: `start` for the restart page, or `light`, `typical`, `heavy`), `protocol`, `clarity` (v1: `1`), `frontend` (HA's frontend release), `nodes`, `cards` (the view's cards), `cards_rendered` (how many HA had built when it was usable), `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (the frontend's own load: the restart page only, else `null`), `nav_ms` (the navigation to the view; 0 for the frontend's own load), `video_caps` (`mse_h264`, `native_hls`, `rvfc`, `webrtc`: which camera player paths the engine offers), `usable` (`rendered_tick_ms`, the frame in which it was drawn; `first_screen_cards`; `head_cards`, the 10 head cards it waited for; `interactive_ms`, when the main thread's free stretch began; `busy_ms`, protocol 8, the longest a probe waited each second until then) (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
+| `drawn` | Protocol 2: a reference view's first screen drawn, logged at once: `tier`, `protocol`, `clarity`, `nav_ms`, `usable` (`rendered_tick_ms`, `first_screen_cards`, `head_cards`, as in `refdash`), `origin_epoch_ms`, `epoch_ms`. The runner keeps it as the view's `drawn`; `refdash` follows once the main thread is free |
+| `refdash` | A reference view, usable: `tier` (the view: `start` for the restart page, or `light`, `typical`, `heavy`), `protocol`, `clarity` (`2`; v1: `1`), `frontend` (HA's frontend release), `nodes`, `cards` (the view's cards), `cards_rendered` (how many HA had built when it was usable), `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (the frontend's own load: the restart page only, else `null`), `nav_ms` (the navigation to the view; 0 for the frontend's own load), `video_caps` (`mse_h264`, `native_hls`, `rvfc`, `webrtc`: which camera player paths the engine offers), `usable` (`rendered_tick_ms`, the frame in which it was drawn; `first_screen_cards`; `head_cards`, the 10 head cards it waited for; `interactive_ms`, when the main thread's free stretch began; `busy_ms`, protocol 8, the longest a probe waited each second until then; protocol 2: `blocking_ms`, the frames' time past 50 ms from the draw to usable, `long_frames`, how many frames were over 50 ms, and `longest_frame_ms`) (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
 | `warmup` | `stage`, `n`. The page goes live; the runner wakes the screen and stops polling SurfaceFlinger |
 | `measure` | `stage`, `n`. A window starts. For `updates`, the live check: `moving`, `offscreen`, `targets`, `update_every_ms` |
 | `step` | `stage` (`updates`, `scroll`, or a ladder family), `n`, `window_ms` (the window's length on the page's clock), `raf` (frame stats). For `updates`: `t0` (the window's start on the page's clock), `pacing_ms` (the stretch `raf_times` covers), `from` (`sent`: the changes start when the fake sent them), `stream_at_ms` (when the harness asked for the stream), `raf_times` and `changes` (`[sent, arrived, transition ms, kind, tick]`: every change the fake sent up to the window's end, from its schedule; `arrived` and `tick` are `null` for one that hadn't reached the page when the window was logged; kind 0 a sensor value, 2 an on/off change (1, the clock, was protocol 3's); tick, the animation frame it was drawn in), all ms after `t0`. For `scroll`: `scrolled_px`, `hit_edge`, `changes_during`, `first_scroll_ms`, `raf_intervals`. The runner reads SurfaceFlinger |
