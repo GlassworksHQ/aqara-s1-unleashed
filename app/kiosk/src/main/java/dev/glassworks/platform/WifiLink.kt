@@ -21,8 +21,10 @@ data class WifiLink(val ssid: String?, val rssi: Int?, val linkSpeedMbps: Int?, 
         fun of(context: Context, platform: PlatformApi = Platform): WifiLink? {
             val cm = context.getSystemService(ConnectivityManager::class.java) ?: return null
             @Suppress("DEPRECATION") // allNetworks: the active network can be another one (Ethernet) while Wi-Fi is up too.
-            val network = (listOfNotNull(cm.activeNetwork) + cm.allNetworks)
-                .firstOrNull { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true } ?: return null
+            // A VPN over Wi-Fi carries TRANSPORT_WIFI too, with the tunnel's details: the physical network is the link.
+            val network = (listOfNotNull(cm.activeNetwork) + cm.allNetworks).firstOrNull { n ->
+                cm.getNetworkCapabilities(n)?.let { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) && !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) } == true
+            } ?: return null
             val info = platform.wifiInfo(cm.getNetworkCapabilities(network), context.applicationContext.getSystemService(WifiManager::class.java))
             return WifiLink(
                 ssid = info?.ssid?.trim('"')?.takeIf { it.isNotEmpty() && it != WifiManager.UNKNOWN_SSID },

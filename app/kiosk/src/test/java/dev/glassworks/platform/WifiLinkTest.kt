@@ -109,6 +109,35 @@ class WifiLinkTest {
         assertEquals(300, sample.wifiLinkSpeed)
     }
 
+    /** The active network is a VPN over Wi-Fi (both transports, the tunnel's address): the link is the physical one. */
+    @Config(sdk = [34])
+    @Test fun aVpnOverWifiIsNotTheLink() {
+        fun address(ip: String, prefix: Int): LinkProperties = LinkProperties().also { lp ->
+            val a = ReflectionHelpers.callConstructor(LinkAddress::class.java,
+                ClassParameter.from(InetAddress::class.java, InetAddress.getByName(ip)), ClassParameter.from(Int::class.java, prefix))
+            ReflectionHelpers.callInstanceMethod<Any>(lp, "addLinkAddress", ClassParameter.from(LinkAddress::class.java, a))
+        }
+        val wifiType = ShadowNetworkInfo.newInstance(NetworkInfo.DetailedState.CONNECTED, ConnectivityManager.TYPE_WIFI, 0, true, NetworkInfo.State.CONNECTED)
+        // Robolectric reports netId 1 as active for a Wi-Fi-type active network: the VPN takes that slot.
+        val vpn = ShadowNetwork.newInstance(1)
+        cm.addNetwork(vpn, wifiType)
+        cm.setActiveNetworkInfo(wifiType)
+        cm.setNetworkCapabilities(vpn, ShadowNetworkCapabilities.newInstance().also { c ->
+            shadowOf(c).addTransportType(NetworkCapabilities.TRANSPORT_VPN)
+            shadowOf(c).addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+        })
+        cm.setLinkProperties(vpn, address("198.51.100.2", 32))
+        val physical = ShadowNetwork.newInstance(3)
+        cm.addNetwork(physical, ShadowNetworkInfo.newInstance(NetworkInfo.DetailedState.CONNECTED, ConnectivityManager.TYPE_WIFI, 0, true, NetworkInfo.State.CONNECTED))
+        cm.setNetworkCapabilities(physical, ShadowNetworkCapabilities.newInstance().also { c ->
+            shadowOf(c).addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            shadowOf(c).setTransportInfo(wifiInfo("Example-WiFi", -58, 200))
+        })
+        cm.setLinkProperties(physical, address("192.0.2.40", 24))
+        assertEquals("the VPN is the active network", vpn, app.getSystemService(ConnectivityManager::class.java).activeNetwork)
+        assertEquals(WifiLink(ssid = "Example-WiFi", rssi = -58, linkSpeedMbps = 200, ipv4 = "192.0.2.40"), WifiLink.of(app))
+    }
+
     @Config(sdk = [34])
     @Test fun noWifiNetworkIsNotConnected() {
         network(NetworkCapabilities.TRANSPORT_CELLULAR)
