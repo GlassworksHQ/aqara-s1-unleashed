@@ -5,7 +5,8 @@
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
  * Changes: package; with no credentials, or a username without a password, every request is refused
  * (upstream let everyone in), so the stream has no default password; start() binds before it counts as
- * running, so a port clash can be retried; client counts are reported in order from one thread. */
+ * running, so a port clash can be retried; client counts are reported in order from one thread; stop()
+ * copies its connection and session sets without racing a connection that ends. */
 
 package dev.glassworks.camera.onvif
 
@@ -82,8 +83,10 @@ class RtspServer(
         if (!running.compareAndSet(true, false)) return
         try { serverSocket?.close() } catch (_: Exception) {}
         serverSocket = null
-        connections.toList().forEach { it.close() }
-        sessions.values.toList().forEach { endSession(it) }
+        // Glassworks: ArrayList, not toList(): toList() reads the size, then iterates, and a connection
+        // that ends in between made it throw.
+        ArrayList(connections).forEach { it.close() }
+        ArrayList(sessions.values).forEach { endSession(it) }
         try { rtpSocket?.close() } catch (_: Exception) {}
         try { rtcpSocket?.close() } catch (_: Exception) {}
         rtpSocket = null; rtcpSocket = null

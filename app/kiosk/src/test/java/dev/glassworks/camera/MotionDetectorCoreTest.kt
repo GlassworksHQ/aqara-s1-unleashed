@@ -145,4 +145,15 @@ class MotionDetectorCoreTest {
             }
         }
     }
+
+    @Test fun aResetDropsTheLightingPause() {
+        val events = mutableListOf<Boolean>()
+        val d = MotionDetectorCore(onMotion = { events += it })
+        d.processGrid(flat(40.0), 0)
+        d.processGrid(flat(120.0), 200) // a lamp: re-seed and a 5-frame pause
+        d.reset()                       // the camera is lost and comes back
+        d.processGrid(flat(120.0), 400) // seeds
+        for (i in 3..4) d.processGrid(withBlob(120.0, i * 4, 8, 6, 220.0), i * 200L)
+        assertEquals("someone in the first frames after a restart is seen", listOf(true), events)
+    }
 }

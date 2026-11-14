@@ -4,7 +4,8 @@
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
  * Changes: package; the socket is closed when joining the multicast group fails (upstream leaked one
- * on every retry); the socket factory and the join can be replaced in tests. */
+ * on every retry); stop() interrupts the worker and waits for it, and a worker closes only its own
+ * socket; the socket factory and the join can be replaced in tests. */
 
 package dev.glassworks.camera.onvif
 
@@ -75,17 +76,20 @@ internal class OnvifDiscovery(
         try { sendMulticast(buildAnnounce(bye = true)) } catch (_: Exception) {}
         try { socket?.close() } catch (_: Exception) {}
         socket = null
-        try { thread?.join(1000) } catch (_: Exception) {}
+        // Glassworks: interrupt the retry wait and wait for the worker, so a start() right after can't
+        // run beside it.
+        thread?.let { t -> t.interrupt(); try { t.join(5_000) } catch (_: InterruptedException) {} }
         thread = null
     }
 
     private fun loop() {
         val group = InetAddress.getByName(GROUP)
         while (running) {
+            var own: MulticastSocket? = null
             try {
                 // MulticastSocket(port) sets SO_REUSEADDR before binding; the unbound
                 // MulticastSocket(null) + bind() path throws "port out of range:-1" on Android.
-                val s = newSocket(port).apply {
+                val s = newSocket(port).also { own = it }.apply {
                     soTimeout = 2000
                     timeToLive = 4
                 }
@@ -108,11 +112,12 @@ internal class OnvifDiscovery(
             } catch (e: Exception) {
                 if (running) {
                     onLog("WS-Discovery error: ${e.message}; retrying")
-                    try { Thread.sleep(3000) } catch (_: InterruptedException) {}
+                    try { Thread.sleep(3000) } catch (_: InterruptedException) { return }
                 }
             } finally {
-                try { socket?.close() } catch (_: Exception) {}
-                socket = null
+                // Glassworks: only this worker's own socket, never one a newer worker published.
+                try { own?.close() } catch (_: Exception) {}
+                if (socket === own) socket = null
             }
         }
     }

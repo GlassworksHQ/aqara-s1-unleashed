@@ -3,7 +3,7 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 90f9f80f (upstream); a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package; a test with a generated avcC stream whose 357-byte NAL's length prefix reads as a
+ * Changes: package; an IDR before both parameter sets is dropped; a test with a generated avcC stream whose 357-byte NAL's length prefix reads as a
  * start code. */
 
 package dev.glassworks.camera.onvif
@@ -94,10 +94,10 @@ class H264BitstreamTest {
         val cache = H264ParameterSetCache()
         cache.prepare(annexB(sps), false)
 
-        val accessUnit = cache.prepare(annexB(idr), true)!!
-
-        assertFalse(accessUnit.isKeyframe)
-        assertEquals(listOf(5), nalTypes(accessUnit.bytes))
+        // Glassworks: dropped. Passed on, RtspServer would see its IDR and release a waiting client.
+        assertNull(cache.prepare(annexB(idr), true))
+        cache.prepare(annexB(pps), false)
+        assertTrue("once both sets are in, the next IDR goes out", cache.prepare(annexB(idr), true)!!.isKeyframe)
     }
 
     @Test

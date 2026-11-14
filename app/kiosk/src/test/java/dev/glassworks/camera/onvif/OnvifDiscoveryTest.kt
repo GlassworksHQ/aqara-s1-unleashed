@@ -32,4 +32,21 @@ class OnvifDiscoveryTest {
         assertTrue(made.isNotEmpty())
         assertTrue("every socket from a failed join is closed", made.all { it.isClosed })
     }
+
+    @Test fun stopEndsTheWorkerEvenInItsRetryWait() {
+        val workers = CopyOnWriteArrayList<Thread>()
+        val tried = CountDownLatch(1)
+        val d = OnvifDiscovery(
+            endpointUuid = { "urn:uuid:00000000-0000-0000-0000-000000000000" },
+            xaddr = { "http://192.0.2.41:8000/onvif/device_service" },
+            scopes = { emptyList() },
+            newSocket = { MulticastSocket(0) },
+            join = { _, _ -> workers += Thread.currentThread(); tried.countDown(); throw SocketException("no multicast here") },
+        )
+        d.start()
+        assertTrue(tried.await(5, TimeUnit.SECONDS))
+        Thread.sleep(200) // in the 3 s retry wait
+        d.stop()
+        assertTrue("the worker is gone when stop() returns, so a restart can't run beside it", workers.none { it.isAlive })
+    }
 }

@@ -5,7 +5,7 @@
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
  * Changes: package; a frame smaller than the grid ends motion (upstream kept it); cell bounds are
  * spread over the whole frame, so sizes that don't divide by 48x27 are sampled to the edges (the same
- * samples as upstream when they divide). */
+ * samples as upstream when they divide); reset() also clears the lighting pause. */
 
 package dev.glassworks.camera
 
@@ -53,7 +53,8 @@ class MotionDetectorCore(
         private set
 
     fun reset() {
-        seeded = false; positives = 0
+        // Glassworks: a new start also drops a lighting pause left from before.
+        seeded = false; positives = 0; cooldown = 0
         if (active) { active = false; onMotion(false) }
     }
 

@@ -4,7 +4,8 @@
  * 90f9f80f (upstream); a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
  * Changes: package; with a length-size hint from avcC, a clean length-prefixed parse wins over the
- * Annex-B reading (a 4-byte length 00 00 01 xx also reads as a start code). */
+ * Annex-B reading (a 4-byte length 00 00 01 xx also reads as a start code); an IDR without both
+ * parameter sets is dropped rather than passed on unmarked. */
 
 package dev.glassworks.camera.onvif
 
@@ -214,8 +215,9 @@ internal class H264ParameterSetCache {
         if (!keyframeFlag && !isIdr) return AccessUnit(normalized.bytes, false)
 
         if (!hasCompleteParameters()) {
-            // Keep newly connected clients waiting rather than accepting an undecodable IDR.
-            return AccessUnit(normalized.bytes, false)
+            // Glassworks: dropped, not passed on as a non-key frame. RtspServer finds the IDR in it again
+            // and would release a waiting client with a frame it can't decode.
+            return null
         }
 
         val nals = ArrayList<ByteArray>(ranges.size + sps.size + pps.size)
