@@ -281,7 +281,7 @@ class CausesNeedEvidence(unittest.TestCase):
 
 def current(rep):
     """A fixture run as if it ran this rubric's protocol: s1cam3 ran protocol 5, and since #202 the
-    rubric is for protocol 6, which these tests aren't about."""
+    rubric is for a later protocol, which these tests aren't about."""
     rep["graded"]["reference"]["protocols"] = [G.PROTOCOL_VERSION]
     return rep
 

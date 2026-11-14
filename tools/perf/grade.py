@@ -249,7 +249,15 @@ def grade_summary(summary):
     g["provisional"] = bool(g["missing"] or summary.get("gaps"))
     g["status"] = "graded"
     g["limits"] = next_limits(g)
+    # The camera video's path (protocol 7): letters from different transports aren't comparable, so
+    # it goes with the letter, and over adb a caveat for heavy's cameras. Never changes the letter.
+    t = summary.get("webrtc_transport") or {}
+    g["transport"] = t.get("transport")
+    g["transport_caveat"] = TRANSPORT_CAVEAT if t.get("possibly_limited") else None
     return g
+
+
+TRANSPORT_CAVEAT = "heavy's cameras went through the test's adb link and may be limited by it, not by the panel"
 
 
 def memory_budget(memory, budget):

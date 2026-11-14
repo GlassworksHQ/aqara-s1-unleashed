@@ -115,7 +115,11 @@ const say = (o) => fetch('/r', {method: 'POST', body: JSON.stringify(o)});
 } catch (e) { say({err: String(e)}); } })();
 </script>`;
 
-test("Gecko gets a relay candidate from the fake's TURN relay and plays its WebRTC stream", { timeout: 300000 }, async (t) => {
+// adb: the relay through a stand-in for adb reverse (the test's own path). lan-udp: no relay, UDP
+// between Firefox and the peer, as on a LAN (#202, option B): Gecko hides its host candidates behind
+// mDNS names, so the peer must learn them from Gecko's checks (peer-reflexive).
+for (const transport of ["adb", "lan-udp"]) {
+test(`Gecko plays the fake's WebRTC stream over ${transport}`, { timeout: 300000 }, async (t) => {
   const ff = firefox();
   const ffmpeg = spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" }).stdout || "";
   const why = !ff ? "no Firefox (FIREFOX=)" : !ffmpeg.includes("libx264") ? "no ffmpeg with libx264" : null;
@@ -130,8 +134,8 @@ test("Gecko gets a relay candidate from the fake's TURN relay and plays its WebR
 
   const dir = mkdtempSync(join(tmpdir(), "gw-gecko-"));
   const port = await freePort(), base = `http://127.0.0.1:${port}`;
-  const fake = spawn(py, [join(PERF, "fakeha.py"), "--port", String(port), "--log", join(dir, "fakeha.jsonl")],
-                     { stdio: ["ignore", "pipe", "pipe"] });
+  const fake = spawn(py, [join(PERF, "fakeha.py"), "--port", String(port), "--log", join(dir, "fakeha.jsonl"),
+                          "--webrtc-transport", transport], { stdio: ["ignore", "pipe", "pipe"] });
   let banner = "", fakeErr = "";
   fake.stdout.on("data", (d) => { banner += d; });
   fake.stderr.on("data", (d) => { fakeErr += d; });
@@ -150,11 +154,16 @@ test("Gecko gets a relay candidate from the fake's TURN relay and plays its WebR
   const cam = "camera.clarity_cam_1";
   const cfgId = ha.send({ type: "camera/webrtc/get_client_config", entity_id: cam });
   const cfg = (await ha.next((m) => m.id === cfgId)).result.configuration;
-  assert.match(cfg.iceServers[0].urls, /^turn:localhost:\d+\?transport=tcp$/);
-  const relayPort = Number(/:(\d+)\?/.exec(cfg.iceServers[0].urls)[1]);
-  const adb = await adbReverse(relayPort);
-  t.after(() => adb.close());
-  const pageCfg = { ...cfg, iceServers: [{ ...cfg.iceServers[0], urls: `turn:localhost:${adb.address().port}?transport=tcp` }] };
+  let pageCfg = cfg;
+  if (transport === "adb") {
+    assert.match(cfg.iceServers[0].urls, /^turn:localhost:\d+\?transport=tcp$/);
+    const relayPort = Number(/:(\d+)\?/.exec(cfg.iceServers[0].urls)[1]);
+    const adb = await adbReverse(relayPort);
+    t.after(() => adb.close());
+    pageCfg = { ...cfg, iceServers: [{ ...cfg.iceServers[0], urls: `turn:localhost:${adb.address().port}?transport=tcp` }] };
+  } else {
+    assert.deepEqual(cfg, { iceServers: [] });
+  }
 
   let offerId = null, session = null;
   const pendingCands = [], page = [];
@@ -194,6 +203,16 @@ test("Gecko gets a relay candidate from the fake's TURN relay and plays its WebR
 
   const h264 = await until("Firefox's offer", () => page.find((p) => "h264" in p || p.err), 90000);
   assert.equal(h264.err, undefined, h264.err);
+  if (transport === "lan-udp") {
+    if (!h264.h264) return t.skip("this Firefox offers no H.264: nothing to play over UDP");
+    const played = await until("frames over UDP", () => page.find((p) => p.ice === "connected" && p.decoded >= 30 || p.answer), 60000);
+    assert.equal(played.answer, undefined, JSON.stringify(played.answer));
+    t.diagnostic(`over lan-udp: ICE ${played.ice}, ${played.decoded} frames decoded`);
+    const log = readFileSync(join(dir, "fakeha.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    assert.deepEqual(log.filter((e) => e.turn_connected), [], "the relay was used");
+    assert.ok(log.some((e) => e.webrtc_ice === "completed"));
+    return;
+  }
   const relay = await until("a relay candidate", () => page.find((p) => / typ relay /.test(p.cand || "")), 30000);
   // Not loopback: Gecko drops those.
   const addr = relay.cand.split(" ")[4];
@@ -219,6 +238,7 @@ test("Gecko gets a relay candidate from the fake's TURN relay and plays its WebR
   assert.ok(log.some((e) => e.webrtc_ice === "completed"));
   assert.deepEqual(log.filter((e) => e.webrtc_error || e.turn_refused), []);
 });
+}
 
 // Whole GWPERF lines from the page's console (stats.js consoleLines splits long ones into parts).
 function pageLines() {

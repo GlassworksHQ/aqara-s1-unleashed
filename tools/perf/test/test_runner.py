@@ -119,6 +119,17 @@ class Runner(unittest.TestCase):
         self.assertEqual(r["real_use"]["idle"]["samples"], 1)        # the reference dashboard's samples aren't real use
         self.assertEqual({p["id"] for p in r["real_use"]["panes"]}, {"radio"})
 
+    def test_the_camera_videos_path_was_asked_and_recorded(self):
+        """Protocol 7 (#202, option B): run.sh asked the panel (UDP, then TCP; this fake panel reaches
+        nothing), fell back to adb, and the report says so beside the cameras."""
+        with open(os.path.join(self.state, "lan_checks.json")) as f:
+            self.assertEqual(json.load(f), ["udp", "tcp"])
+        t = self.rep["webrtc_transport"]
+        self.assertEqual((t["transport"], t["chosen_by"]), ("adb", "auto"))
+        self.assertTrue(t["limited"])
+        with open(os.path.join(self.out, "report.md")) as f:
+            self.assertIn("Camera video through the test's adb link (USB)", f.read())
+
     def test_the_hls_copies_come_after_the_graded_views(self):
         """#202: run.sh opens the camera pages' HLS copies after each run's graded views, without
         swipes; they're detail beside the graded WebRTC cameras and never in the grade."""

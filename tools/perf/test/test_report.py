@@ -560,6 +560,39 @@ class CameraDetail(unittest.TestCase):
                          "a camera never showed a frame")
 
 
+class Transport(unittest.TestCase):
+    """Protocol 7 (#202, option B): report.json carries how the camera video went, and report.md says
+    it beside the camera results; over adb, heavy's camera result is marked as possibly the link's."""
+
+    def write(self, transport, chosen_by="auto", reason="r"):
+        d = tempfile.mkdtemp()
+        with open(os.path.join(d, "transport.json"), "w") as f:
+            json.dump({"transport": transport, "chosen_by": chosen_by, "reason": reason, "checks": {}}, f)
+        return d
+
+    def test_the_record_and_its_words(self):
+        heavy = {"tiers": {"heavy": {"camera_runs": [{"first_frame_ms": 600}]}}}
+        adb = R.webrtc_transport(self.write("adb", reason="the panel couldn't reach this computer over the LAN"), heavy)
+        self.assertEqual((adb["transport"], adb["chosen_by"]), ("adb", "auto"))
+        self.assertIn("may be the link's, not the panel's", adb["limited"])
+        line = R.transport_line({"webrtc_transport": adb})[0]
+        self.assertTrue(line.startswith("Camera video through the test's adb link (USB): the panel couldn't reach"))
+        self.assertIn("**Possibly limited by the test:**", line)
+        lan = R.webrtc_transport(self.write("lan-udp", reason="the panel reached this computer over UDP"), heavy)
+        self.assertIsNone(lan["limited"])
+        self.assertEqual(R.transport_line({"webrtc_transport": lan}),
+                         ["Camera video over the LAN (UDP), as in a real home: the panel reached this computer over UDP."])
+        flag = R.webrtc_transport(self.write("lan-turn", "flag", "set with --webrtc-transport"), heavy)
+        self.assertEqual(R.transport_line({"webrtc_transport": flag}),
+                         ["Camera video over the LAN (TCP, through the test's relay): set with --webrtc-transport."])
+        # Before protocol 7 (no transport.json), or no reference part: nothing.
+        self.assertIsNone(R.webrtc_transport(tempfile.mkdtemp(), heavy))
+        self.assertIsNone(R.webrtc_transport(self.write("adb"), None))
+        self.assertEqual(R.transport_line({"webrtc_transport": None}), [])
+        # Over adb without heavy cameras measured: nothing to caveat.
+        self.assertIsNone(R.webrtc_transport(self.write("adb"), {"tiers": {"heavy": {}}})["limited"])
+
+
 class CameraFallback(unittest.TestCase):
     """#202: the graded camera task is the WebRTC path's; HLS, on the camera pages' copies, is
     measured as detail and never moves the level or the letter."""

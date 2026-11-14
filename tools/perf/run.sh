@@ -24,13 +24,17 @@
 # Usage: tools/perf/run.sh --frame aqara-s1-plus [--name "Aqara S1 Plus"] [--serial S] [--runs 3] [--out DIR]
 #          --restore-dashboard URL|auto [--pane-ram assist=on,sendspin=on,mic=on]
 #          [--skip-synthetic] [--skip-reference] [--skip-real-use] [--taps 10] [--quick] [--apk FILE]...
-#          [--webrtc-transport adb|lan-turn|lan-udp]   # lan-*: a diagnostic for a panel on this network, not a grade
+#          [--webrtc-transport auto|adb|lan-turn|lan-udp]   # the camera video's path; auto (default) asks the panel
+#
+# Camera video (protocol 7, #202): with --webrtc-transport auto, lanprobe.py first has the panel send one
+# UDP datagram and open one TCP connection to this computer's LAN address (two `toybox nc` over adb
+# shell: connections from the panel, nothing written on it), and picks lan-udp, lan-turn or adb.
 #        tools/perf/run.sh --frame ID --out DIR --idle-only LABEL   # one idle sample (pane diffs)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ADB="${ADB:-adb}"
-FRAME="" NAME="" RUNS=3 OUT="" PORT=8089 TURN_PORT="" WEBRTC_TRANSPORT=adb PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
+FRAME="" NAME="" RUNS=3 OUT="" PORT=8089 TURN_PORT="" WEBRTC_TRANSPORT=auto PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
 SYNTH=1 REF=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=() RESTORE="" PANE_RAM=""
 # Waits, in seconds. Only the off-device test (test/test_runner.py) shortens them.
 IDLE_SETTLE="${GW_PERF_IDLE_SETTLE:-30}" IDLE_WINDOW="${GW_PERF_IDLE_WINDOW:-15}"
@@ -250,6 +254,15 @@ if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
     FAKE_PY=$(python3 "$HERE/webrtcenv.py") || { echo "the fake's WebRTC peer needs Python 3.11+ and its venv (webrtcenv.py)" >&2; exit 2; }
   fi
   FAKE_PY="${FAKE_PY:-python3}"
+  # The camera video's path (lanprobe.py: lan-udp, lan-turn or adb), before the fake takes the port;
+  # report.py reads transport.json. Without cameras (the animation page alone) it stays adb.
+  if [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
+    WEBRTC_TRANSPORT=$("$FAKE_PY" "$HERE/lanprobe.py" --port "$TURN_PORT" --out "$OUT" --transport "$WEBRTC_TRANSPORT") \
+      || { echo "lanprobe.py failed" >&2; exit 2; }
+    log "camera video over $WEBRTC_TRANSPORT ($(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["reason"])' "$OUT/transport.json"))"
+  elif [ "$WEBRTC_TRANSPORT" = auto ]; then
+    WEBRTC_TRANSPORT=adb
+  fi
   # Something else on the ports (an earlier run's fake left behind) would answer for ours.
   if curl -s -o /dev/null --connect-timeout 1 --max-time 3 "http://127.0.0.1:$PORT/manifest.json"; then
     echo "port $PORT is already in use (an earlier run's fake Home Assistant?); stop it or use --port" >&2

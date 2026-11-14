@@ -1255,6 +1255,7 @@ def build(run_dir, apks=(), budgets=None):
         "apk": apk_sizes(apks),
         "ram": reference_ram(ref_idles, raw_refs, package, budgets, device.get("mem_total_kb")),
         "fake_ha": fake_log,
+        "webrtc_transport": webrtc_transport(run_dir, graded.get("reference")),
         "grade": grade,
         "graded": graded,
         "detail": detail,
@@ -1263,6 +1264,40 @@ def build(run_dir, apks=(), budgets=None):
     }
     rep["notes"] = N.notes(rep)
     return rep
+
+
+def webrtc_transport(run_dir, ref):
+    """How the graded cameras' WebRTC video reached the panel (protocol 7, #202): lanprobe.py's choice
+    in transport.json (transport: lan-udp, lan-turn or adb; chosen_by: auto or flag; reason). Over adb,
+    `limited` says heavy's camera result may be the test's USB link's, not the panel's (#202's smokes
+    4 and 5). None before protocol 7, or without the reference part."""
+    path = os.path.join(run_dir, "transport.json")
+    if not ref or not os.path.exists(path):
+        return None
+    with open(path) as f:
+        t = json.load(f)
+    out = {k: t.get(k) for k in ("transport", "chosen_by", "reason")}
+    heavy_cams = bool(((ref.get("tiers") or {}).get("heavy") or {}).get("camera_runs"))
+    out["limited"] = ("heavy's camera video went through the test's adb link (USB), which on the S1 couldn't carry "
+                      "four streams; heavy's camera result may be the link's, not the panel's"
+                      if t.get("transport") == "adb" and heavy_cams else None)
+    return out
+
+
+TRANSPORT_WORDS = {"lan-udp": "over the LAN (UDP), as in a real home", "lan-turn": "over the LAN (TCP, through the test's relay)",
+                   "adb": "through the test's adb link (USB)"}
+
+
+def transport_line(rep):
+    """report.md, beside the camera results: the path the video took, why, and over adb the caveat."""
+    t = rep.get("webrtc_transport")
+    if not t:
+        return []
+    line = (f"Camera video {TRANSPORT_WORDS.get(t['transport'], t['transport'])}: {t['reason']}"
+            + (" (chosen with --webrtc-transport)." if t.get("chosen_by") == "flag" and not t["reason"].startswith("set ") else "."))
+    if t.get("limited"):
+        line += f" **Possibly limited by the test:** {t['limited']}."
+    return [line]
 
 
 def read_thermal(path):
@@ -1452,6 +1487,7 @@ def markdown(rep):
                 + (f" ({vp['reason']})" if vp.get("reason") else "") + "."]
         if ref["start_errors"]:
             out.append(f"Restart not measured in {len(ref['start_errors'])} run(s) ({'; '.join(sorted(set(ref['start_errors'])))}).")
+        out += transport_line(rep)
         out += camera_detail(ref)
         for t, s_ in ref["tiers"].items():
             for what in ("scroll", "updates", "load"):

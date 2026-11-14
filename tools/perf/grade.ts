@@ -54,6 +54,7 @@ export interface PageSummary {
 
 export interface Summary {
   protocol_version?: number | null;
+  webrtc_transport?: { transport?: string | null; chosen_by?: string | null; reason?: string | null; possibly_limited?: boolean } | null;
   pages?: Record<string, PageSummary>;
   restart_ms?: number | null;
   gaps?: string[];
@@ -77,7 +78,13 @@ export interface Grade {
   levels?: Record<string, Level>;
   start?: { value: number | null; band: Band | null };
   limits?: { page: string; needs: string; tasks: string[] }[];
+  /** Protocol 7: the camera video's path (lan-udp, lan-turn, adb). Letters over different paths aren't comparable. */
+  transport?: string | null;
+  /** Over adb: heavy's cameras may be limited by the test's link. Never changes the letter. */
+  transport_caveat?: string | null;
 }
+
+export const TRANSPORT_CAVEAT = "heavy's cameras went through the test's adb link and may be limited by it, not by the panel";
 
 const ORDER: Record<Band, number> = { good: 0, "needs-improvement": 1, poor: 2 };
 
@@ -266,5 +273,7 @@ export function gradeSummary(summary: Summary, rubric: Rubric): Grade {
   const g = gradeBands(tiers, start, rubric);
   g.provisional = (g.missing || []).length > 0 || (summary.gaps || []).length > 0;
   g.limits = nextLimits(g, rubric);
+  g.transport = summary.webrtc_transport?.transport ?? null;
+  g.transport_caveat = summary.webrtc_transport?.possibly_limited ? TRANSPORT_CAVEAT : null;
   return g;
 }

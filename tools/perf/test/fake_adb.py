@@ -45,6 +45,22 @@ def shell(cmd):
              "ro.board.platform": "testsoc", "ro.hardware": "testhw"}
     if cmd.startswith("getprop "):
         return props.get(cmd.split()[1], "")
+    m = re.search(r"echo (\w+);? .*toybox nc( -u)? .*?(\d+\.\d+\.\d+\.\d+) (\d+)$", cmd)
+    if m:
+        # lanprobe.py's checks (#202): the panel reaches this computer over the LAN as FAKE_LAN says
+        # (udp: both; tcp: TCP only; unset: neither), and then really sends the token there.
+        token, udp, addr, port = m.group(1), bool(m.group(2)), m.group(3), int(m.group(4))
+        save("lan_checks.json", state("lan_checks.json", []) + ["udp" if udp else "tcp"])
+        lan = os.environ.get("FAKE_LAN", "")
+        if (udp and lan == "udp") or (not udp and lan in ("udp", "tcp")):
+            import socket
+            if udp:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.sendto((token + "\n").encode(), (addr, port))
+            else:
+                with socket.create_connection((addr, port), timeout=2) as s:
+                    s.sendall((token + "\n").encode())
+        return ""
     if cmd.startswith("am start"):
         u = re.search(r"--es url '([^']+)'", cmd)
         if u and (os.environ.get("FAKE_RESTORE_FAILS") and "127.0.0.1" not in u.group(1)

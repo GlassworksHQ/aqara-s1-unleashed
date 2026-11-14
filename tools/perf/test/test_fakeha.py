@@ -374,7 +374,7 @@ class FakeHA(unittest.TestCase):
         self.assertNotIn("{{", html)
         status, _, js, cache = self.http("GET", m.group(1))
         self.assertIn("window.GW_CLARITY = ", js.decode())
-        self.assertIn('"PROTOCOL": 6', js.decode())
+        self.assertIn('"PROTOCOL": 7', js.decode())
         self.assertIn('"HEAD_CARDS": 10', js.decode())
 
     def test_the_harness_is_never_cached_at_a_fixed_url(self):

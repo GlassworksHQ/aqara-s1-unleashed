@@ -21,7 +21,8 @@ import summary as S  # noqa: E402
 import test_report as T  # noqa: E402
 
 SUMMARY_KEYS = {"schema", "test", "protocol_version", "report_schema", "measured_on", "frame", "app_version", "viewport",
-                "runs", "pages", "restart_ms", "gaps", "not_comparable", "report", "complete", "ram", "apk", "notes"}
+                "runs", "pages", "restart_ms", "gaps", "not_comparable", "report", "complete", "ram", "apk", "notes",
+                "webrtc_transport"}
 PAGE_KEYS = {"inp_ms", "open_ms", "scroll", "updates", "camera", "runs"}
 GRADE_KEYS = ("grade", "meaning", "levels", "bands", "capped_by_start", "missing", "provisional", "start")
 
@@ -247,6 +248,21 @@ class Parity(unittest.TestCase):
                 for k in GRADE_KEYS + ("limits", "why"):
                     if k in py:
                         self.assertEqual(ts[k], py[k], k)
+
+    def test_the_transport_goes_with_the_letter_in_both_and_never_changes_it(self):
+        """Protocol 7 (#202, option B): the camera video's path is in the summary, and both graders pass
+        it on with the letter (results over different paths aren't comparable); over adb, a caveat."""
+        rep = dict(self.reps["B"], webrtc_transport={"transport": "adb", "chosen_by": "auto", "reason": "no LAN",
+                                                     "limited": "heavy's camera video went through adb"})
+        s = S.summarise(rep, allow_provisional=True)
+        self.assertEqual(s["webrtc_transport"], {"transport": "adb", "chosen_by": "auto", "reason": "no LAN", "possibly_limited": True})
+        lan = dict(s, webrtc_transport={"transport": "lan-udp", "chosen_by": "auto", "reason": "LAN", "possibly_limited": False})
+        for summ, want in ((s, ("adb", G.TRANSPORT_CAVEAT)), (lan, ("lan-udp", None)), (dict(s, webrtc_transport=None), (None, None))):
+            py, ts = G.grade_summary(summ), ts_grades([summ])[0]
+            self.assertEqual((py["transport"], py["transport_caveat"]), want)
+            self.assertEqual((ts["transport"], ts["transport_caveat"]), want)
+            self.assertEqual(py["grade"], G.grade_summary(self.sums["B"])["grade"])     # the letter doesn't move
+        self.assertIsNone(self.sums["B"]["webrtc_transport"])                           # a run without transport.json
 
     def test_another_protocol_is_re_measured_in_both(self):
         for v in (G.PROTOCOL_VERSION + 1, None):

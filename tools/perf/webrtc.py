@@ -119,10 +119,9 @@ def _install_pion_liveness():
     aioice.ice.Connection._gw_pion = True
 
 
-# How the panel reaches the peer. `adb` is the test's: TURN over TCP through adb reverse, the same on
-# any network. The other two are diagnostics only (#202, smoke 5: did heavy's video stall in adb?),
-# for a panel on this computer's network: `lan-turn`, the same relay over TCP to this computer's
-# address over Wi-Fi, and `lan-udp`, no relay, UDP between the panel and the peer as a real setup.
+# How the panel reaches the peer (protocol 7, #202 option B; lanprobe.py picks): `lan-udp`, no relay,
+# UDP between the panel and the peer on the LAN as a real setup; `lan-turn`, the relay over TCP to this
+# computer's address; `adb`, TURN over TCP through adb reverse, the fallback on any network.
 TRANSPORTS = ("adb", "lan-turn", "lan-udp")
 
 

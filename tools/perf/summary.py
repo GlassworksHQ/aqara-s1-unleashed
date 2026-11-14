@@ -152,7 +152,18 @@ def measurements(rep, report_url="report.json"):
         "ram": ram_summary(rep.get("ram")),
         "apk": [{"file": x["file"], "abis": x["abis"], "bytes": x["bytes"]} for x in rep.get("apk") or []] or None,
         "notes": notes_summary(rep),
+        # Protocol 7 (#202): how the cameras' WebRTC video reached the panel (lan-udp, lan-turn or adb),
+        # who chose it, and whether heavy's camera result may be the test's link's (adb). Results over
+        # different transports aren't comparable; grade_summary passes it on. None before protocol 7.
+        "webrtc_transport": transport_summary(rep.get("webrtc_transport")),
     }
+
+
+def transport_summary(t):
+    if not t:
+        return None
+    return {"transport": t.get("transport"), "chosen_by": t.get("chosen_by"), "reason": t.get("reason"),
+            "possibly_limited": bool(t.get("limited"))}
 
 
 def summarise(rep, report_url="report.json", allow_provisional=False):

@@ -193,6 +193,43 @@ adb. That isn't tested yet: a connection test from the panel isn't a read-only s
 relay: UDP between panel and Mac, as a real setup) take adb out of the video's path, for a
 comparison only; the graded path stays `adb`.
 
+**The decision: option B** (the maintainer, 2026-11-13). Camera video goes over the LAN when the
+panel can reach the computer, UDP first, and through adb otherwise; the run records which (protocol 7,
+`tools/perf/lanprobe.py`, docs/perf.md). Ping from the Mac to the panel's wlan0: 3 of 3, about 7 ms
+(the root, 2026-11-13). 
+
+**Smoke 6: the video waits inside adb, not in Gecko** (verified; the root's run at f27b5db with
+`transportwatch.py --logcat`, 2026-11-13; read from `fakeha.jsonl`, `transport.jsonl`,
+`refstart-1.json` and `logcat.txt`):
+
+| Where | Heavy, all 230 s | Read from |
+|---|---|---|
+| The relay on the Mac, queued toward the panel | 0 kB every second; each stream sent steadily at its own rate (45 to 60 kB/s, all of it) | relay `seconds` |
+| Gecko's sockets on the panel, received but not read | at most 16 kB | `/proc/net/tcp` rx_queue, uid of the kiosk |
+| Gecko's sockets, written but not taken by adbd | at most 120 B | the kiosk's tx_queue, adbd's rx_queue (at most 136 B) |
+| adbd's sockets toward Gecko | at most 18 kB | adbd's tx_queue |
+| The peer's checks, round trip | median 2.3 to 2.6 s, up to 12.8 s; 15 to 20 of about 60 unanswered | relay `checks` |
+
+So Gecko read what reached it at once, and its answers left it at once. Yet the round trip took
+seconds, and Gecko received only 305 to 548 of the 885 or so frames each stream was sent in the
+window. Its own ICE said "disconnected" at 67 to 76 s and "failed" at 91 to 101 s. Every queue that
+can be read stayed small at 1 s sampling. So the seconds pass between the relay's socket on the Mac
+and adbd's sockets on the panel: in the adb server on the Mac, the USB link, or adbd's own buffers.
+Not Gecko.
+
+- adbd had 12 to 25% of a core during heavy. The panel's kiosk processes used about 3 of its 4 cores
+  at times: main up to 111%, the tab 122%, the GPU process 70%. So adbd is busy but isn't starved to a
+  stop.
+- Gecko's ICE disconnects came within a second of the taps' starts (the first three taps at 66.5,
+  71.2 and 75.4 s). Each `adb shell input tap` took 3.0 to 4.1 s on the panel and goes over the same
+  adbd and USB link.
+- Java GC pauses stayed under 0.3 ms; nothing else in logcat points at the panel.
+- A confound: the watcher's own adb commands (one each second, and a thread sample of about 5 s each)
+  share the link. Smoke 5, run without the watcher, failed the same way.
+
+This is the test's link, not the panel: a real setup's video doesn't go through adb. It supports
+option B. Over the LAN (UDP), adb carries only the page's commands and the runner's taps.
+
 **The counts now** (`stats.js` `webrtcWindow`): the page samples every connection that carries a
 camera's video once a second. Each receiver (connection, stats id, SSRC) counts only its own
 increments: one first seen after the window's start counts from 0, a counter that goes back counts

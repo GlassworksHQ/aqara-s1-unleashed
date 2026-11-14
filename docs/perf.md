@@ -542,7 +542,39 @@ aiortc on your computer (`tools/perf/webrtc.py`). It sends `camera.py`'s H.264 a
 bitstream as the HLS segments, remuxed to Annex B, never re-encoded, its access units at 15 fps from
 an IDR. The answer offers H.264 only.
 
-**How the panel reaches it.** `adb reverse` forwards TCP, and WebRTC's media is UDP. The choice:
+**How the panel reaches it: over the LAN when it can (protocol 7, the maintainer's option B, 2026-11-13).**
+Real setups carry WebRTC video over the LAN, UDP between the browser and go2rtc. Through `adb reverse`
+the S1's heavy view stalled: four relayed streams share one USB link with the frontend's websocket
+on a busy panel (#202's smokes 4 and 5; [the research note](../frames/aqara-s1-plus/research/webrtc-camera.md)).
+So before the graded part, run.sh asks the panel whether it can reach the computer
+(`tools/perf/lanprobe.py`, run under the fake's Python, before the fake starts):
+
+| Order | Check | If it works | Transport |
+|---|---|---|---|
+| 1 | the panel sends one UDP datagram with a random token to the computer's media address, port `--port + 1` | the computer received the token | **`lan-udp`**: no relay; the browser and the peer pair over UDP on the LAN, as a real setup does |
+| 2 | the panel opens one TCP connection there and sends a token | the computer received it | `lan-turn`: the same relay, over TCP to the computer's address |
+| 3 | (neither, or the computer has no LAN address) | | `adb`: TURN over TCP through adb reverse, as before |
+
+**What it does on the panel:** two `toybox nc` commands over `adb shell`, as adb's shell user: one UDP
+datagram and one TCP connection, both from the panel to this computer only. They are connections
+from the panel; nothing on the panel is written or changed. It records no addresses.
+
+UDP comes first because it is the real path: no TCP head-of-line blocking, no relay in the media's
+way. TCP to the relay is only for a network that drops UDP from the panel but passes TCP (the
+computer's firewall decides per program, and the check runs under the fake's own Python, so it
+answers for the fake). Over `lan-udp` the browser has no ICE servers; Gecko hides its own addresses
+behind mDNS names, and the peer learns them from Gecko's checks as peer-reflexive candidates
+(verified in Firefox, `test/webrtc.gecko.test.mjs`, 2026-11-13).
+
+`--webrtc-transport adb|lan-turn|lan-udp` sets it instead (`auto` is the default). report.json and the
+summary record it (`webrtc_transport`: `transport`, `chosen_by`, `reason`), and report.md says it
+beside the camera results. Over `adb`, heavy's camera result is marked as possibly the test's link's,
+not the panel's. **Results over different transports aren't comparable**: the summary carries it,
+and `gradeSummary` (grade.ts and grade.py) returns it with the letter (`transport`, and over adb
+`transport_caveat`), so a site can keep them apart. It never changes a letter or a threshold.
+
+The adb path, as designed first (still the fallback). `adb reverse` forwards TCP, and WebRTC's media
+is UDP. The choice then:
 
 | Option | Through adb reverse? | Needs the LAN? | Verdict |
 |---|---|---|---|
@@ -634,10 +666,8 @@ To find where it waits:
   each thread's CPU in the kiosk and adbd every few seconds, and logcat if asked. Its sampling costs
   the panel a few percent of a core (adbd 3.6% at idle, with it).
 - refstart's `gestures_sent`: when each tap and swipe went over adb, and how long `input` took.
-- `run.sh --webrtc-transport lan-turn|lan-udp`: the camera media without adb reverse, for a panel on
-  this computer's network: the same relay over TCP to this computer's address, or no relay (UDP, as a
-  real setup on a LAN). A comparison only, never a grade: the network is the tester's. `adb` is the
-  default and the graded path.
+- `run.sh --webrtc-transport adb|lan-turn|lan-udp`: one path, forced, to compare with what `auto`
+  picked (since protocol 7 the graded path is `auto`'s choice; see "How the panel reaches it").
 
 **When the peer gives a connection up: as go2rtc does** (since #202's fifth round, 2026-11-13).
 Real setups answer the frontend's offer with go2rtc. HA 2026.11.0 pins go2rtc 1.9.15
@@ -1269,6 +1299,7 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | `apk` | One entry per APK given with `--apk`: `abis`, `bytes`, `parts_bytes` (dex, native, assets, resources, other) |
 | `notes` | What's good and what holds it back, in words ([The notes](#the-notes-whats-good-what-holds-it-back)): `good` and `limits` (a sentence each, or `null`), `causes` (the likely cause and memory, each a sentence, either may be missing), `text` (the paragraph), `rubric` (the rubric version it judged by) |
 | `thermal` | Each stage's thermal zones from `thermal.tsv`, in order: `phase`, `zones` (°C) |
+| `webrtc_transport` | Protocol 7: `transport` (`lan-udp`, `lan-turn`, `adb`), `chosen_by` (`auto`, `flag`), `reason` (lanprobe.py's), `limited` (over adb with heavy's cameras measured: why heavy's camera result may be the link's; else `null`). `null` before protocol 7 |
 | `fake_ha` | What the fake Home Assistant's log (`fakeha.jsonl`) says: `commands` (the frontend sent), `unknown` and `failed` (per command; any makes the grade provisional), `stream_sent`, `stream_late_max_ms` (over 200 ms, one update interval, is provisional). `null` without the log, which is provisional for protocol 4 |
 | `ram` | Not graded. RAM on the reference dashboards (`null` if none was sampled): `reference_idle` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `main_kb`, `device_used_pct`, `cpu_app_pct_of_core`), `graded_peak` (`samples`, `app_pss_kb`, `by_role_pss_kb`, `app_rss_hwm_kb`, `mem_available_min_kb`), `panes` (each: `id`, `method` `on-alone`, `samples_on`, `samples_off`, `pss_kb`, `pss_tolerance_kb` (`null` under two samples a side), `pss_measurable`, `by_role_pss_kb`, `cpu_pct_of_core`, `cpu_tolerance_pct`, `cpu_measurable`, `verified`, `excluded`, `boot_samples_on` and `boot_samples_off` (samples `:boot` ran in, left out of the share), `boot_pss_kb` (its median PSS, or `null`), and `off_by: "mute"` when Assist was off by its mute alone; or `id`, `method` and `error` when no sample ran as asked), `screen_off_samples` (idle samples the screen went off in, left out), `panes_waiting` (`id`, `waiting_on`, `note`), `budget` (the frame's `ram` checks) and `pane_budget` (per pane: `value_kb`, `budget_kb`, `tolerance_kb`, `measurable` (three samples a side and a tolerance at most a quarter of the budget), `ok` (`null` when not measurable: read it as unknown, not as over)). See [RAM](#ram) |
 | `grade` | `grade` (`null` when refused), `meaning`, `headline`, `levels` (per page: `premium`, `good`, `fluid` or `null`), `bands` (per page: `tap` and `load` bands, `scroll` and `updates` levels), `start`, `capped_by_start`, `viewport` (`state`, `reason`), `refused`, `provisional`, `provisional_reasons`, `missing`, `rubric_version`. Computed from `graded` only. `provisional_reasons` are measurement facts: the kiosk's own page never finished loading in a graded run; graded runs failed or are missing; the restart or a task was measured in fewer runs than attempted; a page's live changes rest on a loose clock tie; no swipe ran during the live updates; scrolling rests on rAF only; the fake Home Assistant's log is missing, or it didn't know or failed a command, or sent a change late; page lines didn't parse or never arrived whole (`bad_page_lines`); swipes were answered with no scroll step back (`lost_scroll_steps`); the pages ran another protocol; the viewport couldn't be checked |
@@ -1310,6 +1341,7 @@ from real use, and nothing device-unique.
 | `ram` | Not graded; `null` if not measured. In kB: `idle_app_pss_kb` and `idle_by_process_pss_kb` (medians at idle on the typical reference dashboard), `peak_app_pss_kb` and `peak_by_process_pss_kb` (the peak during the graded tasks), `panes` (each: `id`, `pss_kb`, `tolerance_kb` (`null` under two samples a side), `measurable`, `runs`, `budget_kb` and `budget_ok` (the frame's pane budget and whether the share is within it; `null` without a budget, or when the tolerance is too wide to tell), `budget_measurable` (`false` under three samples a side or with a tolerance over a quarter of the budget; `null` without one; read a null `budget_ok` as unknown, not as over), and `off_by` when the report has it. Only panes whose every sample was checked against the kiosk's log (`verified`) are listed: one with no number, or from a run before that check (such as s1v7), isn't), `panes_waiting` (pane ids), `budget_ok` (`true`, `false` or `null`) |
 | `apk` | Not graded; `null` if no APK was given. Per APK: `file`, `abis`, `bytes` |
 | `notes` | The report's `notes` (`good`, `limits`, `causes`, `text`, `rubric`). Show them only when `rubric` is the site's rubric version: they judge tasks by that rubric |
+| `webrtc_transport` | Protocol 7: the camera video's path, `transport` (`lan-udp`, `lan-turn` or `adb`), `chosen_by` (`auto` or `flag`), `reason`, and `possibly_limited` (over adb, heavy's camera result may be the test's link's). Letters over different transports aren't comparable; `gradeSummary` returns `transport` and `transport_caveat` with the letter. `null` before protocol 7 |
 
 The levels need each run's measurements (each run gets a level, then the median level is taken), which
 is why the summary carries `runs` and not only medians. Medians are kept for display. Fields are only
@@ -1346,7 +1378,10 @@ protocol 3, the S1's A included, is now "re-measure". Protocol 5 (#174, 2026-11-
 streams to typical and heavy (and the start view), and the camera task (rubric v6). Protocol 6
 (#202, 2026-11-13) plays those cameras over WebRTC, as HA with go2rtc does, and grades that; encodes
 the video without B-frames; and opens the camera views' HLS copies after each run's graded views, as
-detail (rubric v7, the same rules). Every protocol 5 summary is now "re-measure".
+detail (rubric v7, the same rules). Protocol 7 (#202 option B, 2026-11-13) sends that video over the
+LAN when the panel can reach the computer (UDP first, then TCP to the relay) and through adb reverse
+otherwise, and records which (rubric v8, the same rules). Every protocol 5 and 6 summary is now
+"re-measure"; protocol 6 ran only in #202's smokes.
 
 ### Showing the grade
 
