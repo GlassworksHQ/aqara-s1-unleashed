@@ -68,7 +68,7 @@ class PanePagesMockups {
 
     private val ctx = PaneContext(
         app, KioskPrefs(app)::paneFile,
-        DeviceIdentity("s1-panel", "Glassworks Panel", "02:00:00:00:00:01", "2026.10.2", "x", "Aqara", "Panel Hub S1 Plus", 0),
+        DeviceIdentity("aqara-s1-plus-000001", "Aqara S1 Plus", "02:00:00:00:00:01", "2026.10.2", "x", "Aqara", "Panel Hub S1 Plus", 0),
         publishStates = {}, emit = {}, entitiesChanged = {}, sendEvent = { _, _ -> },
     )
 

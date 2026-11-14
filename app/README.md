@@ -50,7 +50,7 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   set up (offline for 30 s, HA unknown, HA never added the panel within 2 min of startup, or HA's
   login page with no refresh token), never on a working panel. See
   [docs/onboarding.md](../docs/onboarding.md#setup-screen-).
-- **Dashboard select** in HA (`select.s1_panel_dashboard`): Default + your Lovelace dashboards,
+- **Dashboard select** in HA (`select.<device>_dashboard`): Default + your Lovelace dashboards,
   listed by the HA frontend on the panel.
 - **Sign in with your phone**: if HA shows its login page, the panel covers it with a QR code for
   `http://<panel-ip>:8099/signin`. Signing in on the phone gives the panel a refresh token (HA OAuth /
@@ -246,13 +246,13 @@ while the screen is off, and talking to it wakes the screen. See [docs/esphome.m
 
 ```sh
 tools/voice/fetch-models.sh            # optional: downloads the microWakeWord models on the host and adb-pushes them
-# HA: the panel is auto-discovered (Settings -> Devices & services -> ESPHome "Glassworks Panel" -> Add), or
+# HA: the panel is auto-discovered (Settings -> Devices & services -> ESPHome "Aqara S1 Plus" -> Add), or
 #     Add integration -> ESPHome -> <panel IP>, port 6053
 ```
 
 Entity ids look like `light.s1_panel_screen`, `select.s1_panel_screen_mode`,
-`media_player.s1_panel_speaker` on a panel added before #63; newer ones start with `glassworks_panel_`
-([Names](../docs/esphome.md#names)). Pick the wake word and the Assist pipeline on the device page.
+`media_player.s1_panel_speaker` on a panel added before #63. One added before #260 has `glassworks_panel_*`,
+and a newer one starts with the device's name, `aqara_s1_plus_` on a new S1 ([Names](../docs/esphome.md#names)). Pick the wake word and the Assist pipeline on the device page.
 Encryption is automatic: a panel without a key lets HA 2026.11+ provision one when you add it
 (ESPHome dynamic encryption key). You can also set a key by hand with
 `--es api_key <base64 32 bytes> --ez api_encryption true`. Keys are never logged. Tune the mic with

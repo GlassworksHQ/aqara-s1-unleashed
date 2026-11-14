@@ -110,7 +110,7 @@ S1 Kiosk is installed and made the home screen. Then, from the same page:
   USB and isn't stored on your computer. A panel that already has Wi-Fi keeps it.
 - **Home Assistant.** The address is found on your network. *Sign in* opens the panel's sign-in
   page, the same one its QR code points to, so your login goes from Home Assistant straight to the
-  panel. Then click **Add** on the discovered *Glassworks Panel* in *Settings → Devices & services*.
+  panel. Then click **Add** on the discovered *Aqara S1 Plus* in *Settings → Devices & services*.
 - **Radio.** Choose what the Zigbee/Thread radio does. You can change it any time in Home Assistant.
 - **Panel settings.** Language, time zone, 12- or 24-hour clock, and optionally Simple Keyboard
   (Apache-2.0) instead of Aqara's keyboard. The time zone is also kept from then on: see

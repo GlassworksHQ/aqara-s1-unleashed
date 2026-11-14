@@ -2,8 +2,10 @@
 
 Every panel serves a Manage page at `http://<panel>:8099/` once it's set up. Open it from Home
 Assistant (the panel's device page, **Visit**) or type the address: the panel's IP address
-(`http://192.0.2.40:8099/`) or `http://s1-panel.local:8099/`. Other names for it, such as one your
-router gives it (`panel.lan`) or a name with a trailing dot, get "Open this page with the panel's
+(`http://192.0.2.40:8099/`). Its ESPHome name ([names](esphome.md#names)) is not a host name you can
+open: the panel's mDNS advert points at Android's own host name, and nothing publishes `<name>.local`.
+Other names for it, such as one your router gives it (`panel.lan`) or a name with a trailing dot, get
+"Open this page with the panel's
 address": the page only answers to its own addresses and names (see below). It shows how the panel is doing,
 keeps a log, and runs the everyday actions. It's part of the Glassworks core, so every frame has it.
 
@@ -69,7 +71,7 @@ manage a panel. Whether other users get a say is open (#124).
   connections.
 - If the panel can't draw the code (the app may not draw over other apps), the page says so instead
   of waiting for a code that never shows.
-- The page answers only to the panel's own addresses and names (its IP addresses, `s1-panel.local`,
+- The page answers only to the panel's own addresses and names (its IP addresses, its ESPHome name as `.local`,
   its Android host name), so another name pointed at it (DNS rebinding, or a spoofed `.local` answer)
   gets nothing.
 - No scripts, no outside files, and a strict Content-Security-Policy.

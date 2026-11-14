@@ -34,7 +34,7 @@ import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupScreen
 import dev.glassworks.pane.SetupStep
 import sh.edm.s1kiosk.auth.OAuth
-import sh.edm.s1kiosk.esphome.PanelDevice
+import sh.edm.s1kiosk.frame.AqaraS1Plus
 import sh.edm.s1kiosk.ui.Glass
 import sh.edm.s1kiosk.ui.GroupedRail
 import sh.edm.s1kiosk.ui.Glass.Companion.AMBER
@@ -68,6 +68,8 @@ class SetupOverlay(
      * None: no Panes group.
      */
     private val setupPanes: List<SetupPane> = emptyList(),
+    /** What Home Assistant shows for the panel (`Frame.friendlyName()`), on the HA step. */
+    private val haName: String = AqaraS1Plus.DISPLAY_NAME,
 ) : FrameLayout(context) {
 
     private val choices = setupPanes.map { it.choice }
@@ -515,7 +517,7 @@ class SetupOverlay(
             cardBody.text = SpannableStringBuilder().apply {
                 append("As ")
                 val start = length
-                append(PanelDevice.FRIENDLY_NAME)
+                append(haName)
                 setSpan(ForegroundColorSpan(TX), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 append(", under ESPHome.")
             }
@@ -538,7 +540,7 @@ class SetupOverlay(
         cardBody.text = SpannableStringBuilder().apply {
             append("Settings → Devices & services → ")
             val start = length
-            append(PanelDevice.FRIENDLY_NAME)
+            append(haName)
             setSpan(ForegroundColorSpan(TX), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             append(" → Add")
         }

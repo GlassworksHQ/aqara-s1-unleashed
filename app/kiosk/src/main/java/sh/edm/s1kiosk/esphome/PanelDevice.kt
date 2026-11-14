@@ -5,6 +5,8 @@ import sh.edm.esphome.android.EspHomeMdns
 import dev.glassworks.bluetoothproxy.BluetoothProxyDefinition
 import dev.glassworks.diagnostics.DiagnosticsPane
 import dev.glassworks.frame.Frame
+import dev.glassworks.frame.friendlyName
+import dev.glassworks.frame.nodeName
 import dev.glassworks.pane.EntityRegistry
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
@@ -99,20 +101,10 @@ class PanelDevice internal constructor(
         init { EspHomeLog.tag = ESPHOME_LOG_TAG }
 
         /**
-         * The ESPHome node name. Home Assistant's config entry keeps it (`device_name`), the mDNS service
-         * is named after it, and HA up to 2025.11 makes new entity ids from it (`s1_panel_*`). Never
-         * change it. From HA 2025.12 new entity ids take the device's name as HA shows it
-         * ([FRIENDLY_NAME], or the user's own), and from 2026.8 the area's name can come first.
+         * The product's name, on the panel's own pages (the QR pages, Manage). Home Assistant gets the
+         * device's own names instead ([dev.glassworks.frame.DeviceName], #260).
          */
-        const val NAME = "s1-panel"
-
-        /**
-         * What Home Assistant calls the panel (#63), from DeviceInfo and the mDNS `friendly_name`. HA's
-         * device registry takes it on every connect unless someone renamed the device there. Entity ids
-         * already registered never change: their unique ids are `<mac>/<device_id>/<domain>/<entity name>`
-         * (aioesphomeapi `build_unique_id` v3), with no device name in them.
-         */
-        const val FRIENDLY_NAME = "Glassworks Panel"
+        const val PRODUCT_NAME = "Glassworks Panel"
         /** Reported ESPHome version (recent, so HA doesn't treat the device as outdated). */
         const val ESPHOME_VERSION = "2026.10.2"
         /** Same flags as an ESPHome voice_assistant with a media player (Voice PE): no SPEAKER. */
@@ -140,6 +132,9 @@ class PanelDevice internal constructor(
     private val noiseKeys = NoiseKeys(prefs.noiseKeyStore)
     /** Read by the API server on its connection threads; replaced when voice is turned on or off. */
     @Volatile private lateinit var identity: DeviceIdentity
+
+    /** The node name it announces, or null before it has started. The Manage page allows it as a Host header (`<name>.local`). */
+    val nodeName: String? get() = if (::identity.isInitialized) identity.name else null
     private lateinit var entities: List<ApiEntity>
     private lateinit var coreEntities: List<ApiEntity>
     private val voicePlayer = ExoAudioPlayer(context, "voice", AudioAttributes.USAGE_ASSISTANT)
@@ -211,10 +206,13 @@ class PanelDevice internal constructor(
     /** esphome-main. Each step checks [stopped], so a [stop] during startup leaves nothing running. */
     internal fun startInternal() {
         if (synchronized(lifecycle) { stopped }) return
+        val mac = stableMac()
+        val name = frame.nodeName(mac) ?: run { EspHomeLog.w("No ESPHome node name for MAC '$mac': the device isn't announced"); return }
+        // HA keys its entry and entity unique ids by the MAC, so a new node name keeps both (docs/esphome.md#names).
         val id = DeviceIdentity(
-            name = NAME,
-            friendlyName = FRIENDLY_NAME,
-            macAddress = stableMac(),
+            name = name,
+            friendlyName = frame.friendlyName(),
+            macAddress = mac,
             esphomeVersion = ESPHOME_VERSION,
             compilationTime = "S1 Kiosk ${BuildConfig.VERSION_NAME}",
             manufacturer = "Aqara",

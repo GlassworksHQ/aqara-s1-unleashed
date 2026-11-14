@@ -29,7 +29,7 @@ class PanelDeviceEntitiesChangedTest {
         try {
             device.initEntities(
                 DeviceIdentity(
-                    name = PanelDevice.NAME, friendlyName = PanelDevice.FRIENDLY_NAME, macAddress = "02:00:00:00:00:01",
+                    name = "aqara-s1-plus-000001", friendlyName = "Aqara S1 Plus", macAddress = "02:00:00:00:00:01",
                     esphomeVersion = PanelDevice.ESPHOME_VERSION, compilationTime = "test", manufacturer = "Aqara",
                     model = "test", voiceFeatures = PanelDevice.VOICE_FEATURES,
                 ),

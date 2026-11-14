@@ -17,6 +17,8 @@ import java.util.concurrent.ScheduledExecutorService
 class AqaraS1Plus : Frame {
     override val board = "aqara-s1-plus"
 
+    override val displayName = DISPLAY_NAME
+
     override val bootRest = BOOT_REST
 
     override val presence = Vi5300Presence()
@@ -62,6 +64,9 @@ class AqaraS1Plus : Frame {
     override fun wifiSettingsIntents() = super.wifiSettingsIntents() + LUMI_SETTINGS
 
     companion object {
+        /** frame.json's `name` (PanelNameTest checks it). */
+        const val DISPLAY_NAME = "Aqara S1 Plus"
+
         private val LUMI_SETTINGS: Intent get() = Intent("lumi.settings.SETTINGS").setPackage("com.lumi.settings")
 
         /**

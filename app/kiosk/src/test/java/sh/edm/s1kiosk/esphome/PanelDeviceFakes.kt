@@ -143,6 +143,9 @@ internal class RecordingMdns : MdnsAdvertiser {
     /** Every registration that took effect, in order. */
     val starts = ArrayList<Start>()
 
+    /** The identity each registration in [starts] announced. */
+    val identities = ArrayList<DeviceIdentity>()
+
     /** "start" and "stop", in the order [PanelDevice] called them. */
     val calls = ArrayList<String>()
 
@@ -159,6 +162,7 @@ internal class RecordingMdns : MdnsAdvertiser {
         if (registered) return
         registered = true
         starts += Start(port, encrypted, provisionable)
+        identities += identity
         onStart?.invoke()
     }
 

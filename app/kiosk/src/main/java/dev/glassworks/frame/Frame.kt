@@ -24,6 +24,13 @@ interface Frame {
     /** The `board` TXT record in the device's mDNS advert. Home Assistant shows it. Never change it for a frame. */
     val board: String
 
+    /**
+     * The device's name, as `name` in frames/<id>/design/frame.json ("Aqara S1 Plus"). Home Assistant
+     * shows it, and [board] starts the ESPHome node name ([DeviceName]). Null on a frame that stands for
+     * many devices (generic-android): each one then goes by its own model.
+     */
+    val displayName: String? get() = null
+
     /** Whether someone is near, for the screen policy. Null when the device has no sensor for it. */
     val presence: PresenceSource?
 
