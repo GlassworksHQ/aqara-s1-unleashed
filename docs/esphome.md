@@ -224,7 +224,7 @@ So on a panel HA already has:
 | button `Start Wi-Fi setup (Bluetooth)` | `improv_ble` | starts Improv over Bluetooth on demand ([onboarding.md](onboarding.md)) |
 | switch `Hide HA header` | `hide_ha_header` | header + sidebar, applied live |
 | media_player `Speaker` | `speaker` | play/pause/stop, volume, mute, play media, announce; formats: mp3 (default + announcement) |
-| switch `Music Assistant player (Sendspin)` | `sendspin` | the native Sendspin player ([sendspin.md](sendspin.md)), default on; off sends `client/goodbye` `user_request` |
+| switch `Music Assistant player (Sendspin)` | `sendspin` | the native Sendspin player ([sendspin.md](sendspin.md)), default on; off sends `client/goodbye` `user_request`; encrypted connection only ([Panes on and off](#panes-on-and-off)) |
 | text_sensor `Music Assistant player status` | `sendspin_status` | diagnostic; e.g. `ready, paired with Music Assistant (…)`, `playing from …: Artist – Title`, `waiting for pairing or approval by …`, `off` |
 | switch `Mute microphone` | `mute_microphone` | releases the microphone entirely |
 | switch `Wake sound` | `wake_sound` | short two-tone chime when the wake word is detected (default on) |
@@ -259,11 +259,15 @@ Plus `Block Aqara cloud` and `Aqara cloud daemon` ([below](#aqara-cloud)), the w
 
 ### Panes on and off
 
-Each pane has a config switch that turns it on or off while the panel runs (#67). The settings menu
-(the switch at the top of the pane's page), setup's Panes step and the adb extras set the same
-setting. A pane that is off keeps its entities, with no state where it has none to give, so the
-entity list doesn't change. Each switch is a config entity, off in Home Assistant until you turn it
-on on the device page ([Categories and defaults](#categories-and-defaults)): people set them once.
+Each pane has a config switch that turns it on or off while the panel runs (#67), with two
+exceptions: the radio, whose on/off is `Radio mode` (`Off`), and the timers, which come with voice and
+have no switch of their own. The settings menu (the switch at the top of the pane's page), setup's
+Panes step and the adb extras set the same setting. A pane that is off keeps its entities, with no
+state where it has none to give, so the entity list doesn't change. Each switch is a config entity,
+off in Home Assistant until you turn it on on the device page
+([Categories and defaults](#categories-and-defaults)): people set them once. Only an encrypted
+connection with the panel's key may change one, as for `Time zone`: turned on, a pane can open the
+microphone or a port.
 
 | Entity | object_id | Pane | adb extra | Enabled in HA by default |
 |---|---|---|---|---|

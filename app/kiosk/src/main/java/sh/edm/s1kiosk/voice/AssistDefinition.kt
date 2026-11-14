@@ -14,7 +14,7 @@ class AssistDefinition(file: SharedPreferences) : PaneDefinition {
     // PanelDevice starts and stops the assistant live, and gives Home Assistant its voice features again.
     override val switch = PaneSwitch(
         file, VoicePrefs.KEY_ENABLED, default = true, title = "Voice", detail = "Assist and timers",
-        objectId = "voice", icon = "mdi:microphone-message", inSetup = true,
+        objectId = "voice", icon = "mdi:microphone-message", inSetup = true, voiceAssistant = true,
     )
 
     override val extras = listOf(

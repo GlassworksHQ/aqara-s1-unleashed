@@ -31,6 +31,11 @@ class PaneSwitch(
     val icon: String = "",
     /** The pane has a card on setup's Panes step. */
     val inSetup: Boolean = false,
+    /**
+     * The pane is the device's voice assistant: while it is off, the device info offers Home Assistant
+     * no voice features, so the switch changes what Home Assistant reads at connect.
+     */
+    val voiceAssistant: Boolean = false,
 ) {
     /** Cheap, any thread. */
     var on: Boolean
@@ -46,10 +51,11 @@ class PaneSwitch(
 
     /**
      * A config switch, off in Home Assistant until someone turns it on there: people set it once (#132,
-     * #208). Every connection may use it, as every other pane setting.
+     * #208). Only an authenticated connection may change it: turned on, a pane can open the microphone
+     * or a port, which nobody on the LAN should do to a panel without a key.
      */
     fun entity() = SwitchEntity(
         objectId, entityName, icon, EntityCategory.CONFIG, disabledByDefault = true,
         get = { on }, set = { on = it },
-    )
+    ).apply { authOnly = true }
 }

@@ -348,9 +348,11 @@ The default is on for the S1's panes, as before the switch.
   when it is turned off does it on its own `SettingChanged`.
 - **From one switch the core makes:** the switch at the top of the pane's settings page, its card on
   setup's Panes step (`inSetup`), a Home Assistant config switch (`objectId`, always off by default
-  in HA: people set it once, #132, #208), and the adb extra `--ez <key> true|false`.
-- **Voice** is the one pane the device info names: its switch sets the voice features Home Assistant
-  reads, so turning it on or off asks Home Assistant to reconnect.
+  in HA: people set it once, #132, #208; `authOnly`, since turned on a pane can open the microphone
+  or a port), and the adb extra `--ez <key> true|false`.
+- **A voice assistant pane** says so on its switch (`voiceAssistant`): the shell offers Home Assistant
+  voice features only while that switch is on, so turning it on or off asks Home Assistant to
+  reconnect. The shell names no pane for this.
 
 | Pane | Key | HA switch | Setup card |
 |---|---|---|---|

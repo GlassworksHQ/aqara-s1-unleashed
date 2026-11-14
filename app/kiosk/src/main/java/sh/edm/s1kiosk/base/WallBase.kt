@@ -26,7 +26,16 @@ import java.util.concurrent.TimeUnit
  *
  * The only write is [setRelay] (from Home Assistant).
  */
-class WallBase(context: Context, initial: BaseLayout, private val listener: Listener, config: Config) {
+class WallBase internal constructor(
+    context: Context,
+    initial: BaseLayout,
+    private val listener: Listener,
+    config: Config,
+    /** Makes the link for a config. A test passes one whose close is slow. */
+    private val newLink: ((Config, ScheduledExecutorService, BaseLink.Listener) -> BaseLink)?,
+) {
+    constructor(context: Context, initial: BaseLayout, listener: Listener, config: Config) :
+        this(context, initial, listener, config, null)
 
     interface Listener {
         /** Some value changed: publish states. */
@@ -48,6 +57,8 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
 
     companion object {
         private const val TAG = "S1Base"
+        /** How long a new link waits for the old one to close its port. */
+        private const val CLOSE_WAIT_S = 30L
         private const val DOCK_INTERVAL_MS = 60_000L
         private const val NO_REPLY_MS = 15_000L
         private const val MIN_DOCK_READ_GAP_MS = 2_000L
@@ -71,19 +82,36 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
 
     private fun now() = SystemClock.elapsedRealtime()
 
-    /** Starts the link with [c]: the config wanted now, which may have changed while the base was stopped. */
+    /**
+     * Starts the link with [c]: the config wanted now, which may have changed while the base was stopped.
+     * After a [stop] whose close isn't done yet, the new link opens only once the old one has closed its
+     * port (on the new thread, waiting up to [CLOSE_WAIT_S]).
+     */
     fun start(c: Config = config) {
         config = c
-        if (exec.isShutdown) exec = newThread()
+        val old = exec
+        if (old.isShutdown) {
+            exec = newThread()
+            exec.execute {
+                if (!old.awaitTermination(CLOSE_WAIT_S, TimeUnit.SECONDS)) Log.w(TAG, "the old wall base link still closes after $CLOSE_WAIT_S s; opening anyway")
+            }
+        }
         exec.execute { startLink() }
         exec.scheduleWithFixedDelay({ safe("tick") { tick() } }, 1, 1, TimeUnit.SECONDS)
     }
 
+    /**
+     * Closes the link. Waits up to 3 s for it; a slower close goes on to its end on the "s1-base" thread
+     * (shutdown, not shutdownNow: the close isn't cut off), and [start] waits for it.
+     */
     fun stop() {
+        val e = exec
         try {
-            exec.submit { link?.stop(); link = null }.get(3, TimeUnit.SECONDS)
+            e.submit { link?.stop(); link = null }.get(3, TimeUnit.SECONDS)
+        } catch (_: java.util.concurrent.TimeoutException) {
+            Log.w(TAG, "the wall base link takes more than 3 s to close; it goes on closing")
         } catch (_: Exception) {}
-        exec.shutdownNow()
+        e.shutdown()
     }
 
     /** Swap the link (blocking until the old one closed its port). The tracker and its values stay. */
@@ -135,8 +163,10 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
     }
 
     private fun startLink() {
+        // Never two links: one already open (start twice) closes its port first.
+        link?.let { it.stop(); link = null }
         val c = config
-        val l: BaseLink = when (c.backend) {
+        val l: BaseLink = newLink?.invoke(c, exec, LinkListener()) ?: when (c.backend) {
             BaseBackend.LOCALSERVICE -> LocalServiceLink(ctx, exec, LinkListener())
             BaseBackend.UART -> {
                 val sp = ctx.getSharedPreferences(ENERGY_PREFS, Context.MODE_PRIVATE)

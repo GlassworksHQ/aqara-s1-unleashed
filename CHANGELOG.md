@@ -8,6 +8,10 @@ below as the release notes.
 ## [Unreleased]
 
 ### Changed
+- **Turning a pane on or off from Home Assistant needs the panel's key.** The pane switches, the
+  *Music Assistant player (Sendspin)* switch included, only answer an encrypted connection, as *Time
+  zone* does. Home Assistant 2026.11 and later sets the key when you add the panel. On a panel without
+  one, use the panel's settings.
 - **The wake word uses far less CPU.** The panel now listens with microWakeWord, the engine Home
   Assistant Voice PE uses, instead of openWakeWord. On the S1, the microphone's thread went from
   about 37% of a core to about 4%. Your wake word stays as it was (Hey Jarvis, Alexa or Hey

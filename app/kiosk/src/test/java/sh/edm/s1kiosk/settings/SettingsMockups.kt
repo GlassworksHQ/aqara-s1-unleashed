@@ -89,7 +89,7 @@ class SettingsMockups {
         shot("settings-13-radio-on", menu(radioRunning = true, facts = coordinator), "radio")
         shot("settings-14-radio-off-asks", menu(radioRunning = true, facts = coordinator), "radio") { it.previewConfirm("radio") }
         shot("settings-15-pane-cant-run", menu(radioRunning = true, extra = listOf(cantRun)), "example")
-        shot("settings-17-rail-panes-open", menu(radioRunning = true), "voice") // the whole rail, About above Done
+        shot("settings-17-rail-panes-open", menu(radioRunning = true), "voice") // the Panes group open: six panes, Log and About below them (the rail scrolls)
         // #67: the panes that had no on/off: the switch at the top right, and #163's "no settings yet" page.
         shot("settings-18-wall-base", menu(radioRunning = true), "wall-base")
         shot("settings-19-time-zone", menu(radioRunning = true), "time-zone")

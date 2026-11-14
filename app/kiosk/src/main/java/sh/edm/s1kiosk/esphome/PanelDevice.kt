@@ -114,8 +114,6 @@ class PanelDevice internal constructor(
         /** Same flags as an ESPHome voice_assistant with a media player (Voice PE): no SPEAKER. */
         const val VOICE_FEATURES = VoiceFeature.VOICE_ASSISTANT or VoiceFeature.API_AUDIO or
             VoiceFeature.TIMERS or VoiceFeature.ANNOUNCE or VoiceFeature.START_CONVERSATION
-        /** The voice assistant's pane id ([AssistPane]), whose switch sets [VOICE_FEATURES]. */
-        private const val ASSIST = "assist"
         private val MAC_RE = Regex("^([0-9A-F]{2}:){5}[0-9A-F]{2}$")
     }
 
@@ -415,8 +413,8 @@ class PanelDevice internal constructor(
 
     private fun isOn(pane: Pane) = switches[pane.id]?.on != false
 
-    /** The voice assistant's features for Home Assistant: none while its pane is off. */
-    private fun voiceFeatures() = if (switches[ASSIST]?.on != false) VOICE_FEATURES else 0
+    /** The voice assistant's features for Home Assistant: none while its pane ([PaneSwitch.voiceAssistant]) is off. */
+    private fun voiceFeatures() = if (switches.values.firstOrNull { it.voiceAssistant }?.on != false) VOICE_FEATURES else 0
 
     /**
      * esphome-main: starts each pane that was turned on and stops each that was turned off (#67), and

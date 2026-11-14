@@ -42,6 +42,13 @@ class PaneSwitchesTest {
         assertEquals("Music Assistant player (Sendspin)", s[1].name)
         assertEquals(List(5) { true }, s.map { it.disabledByDefault })
         assertEquals(setOf(sh.edm.esphome.EntityCategory.CONFIG), s.map { it.category }.toSet())
+        // #210 verifier: turned on, a pane opens the microphone or a port; a keyless LAN client may not.
+        assertEquals("only an authenticated connection changes a pane's on/off", List(5) { true }, s.map { it.authOnly })
+    }
+
+    /** The device info's voice features follow the voice pane's switch, which says so: the shell names no pane. */
+    @Test fun onlyTheVoicePaneSetsTheVoiceFeatures() {
+        assertEquals(listOf("assist"), definitions.filter { it.switch?.voiceAssistant == true }.map { it.id })
     }
 
     @Test fun everyPaneIsOnUntilTurnedOff() {
