@@ -693,7 +693,8 @@ class SetupOverlay(
     }
 
     /**
-     * The Panes step: one card per [PaneChoice], two to a row. It only chooses which panes are on: a
+     * The Panes step: one card per [PaneChoice], two to a row, three from five cards on ([panesPerRow],
+     * #121) so Continue stays on the screen. It only chooses which panes are on: a
      * pane that is on is set up in its own steps after this one. What the person sets stays here; Continue
      * applies every card, each within [BUDGET_MS].
      */
@@ -715,13 +716,17 @@ class SetupOverlay(
 
         val view = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            choices.chunked(2).forEachIndexed { r, pair ->
+            val perRow = panesPerRow(choices.size)
+            choices.chunked(perRow).forEachIndexed { r, row ->
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
-                    pair.forEachIndexed { k, c ->
-                        addView(card(r * 2 + k, c), LinearLayout.LayoutParams(0, px(68f), 1f).apply { if (k > 0) marginStart = px(11f) })
+                    row.forEachIndexed { k, c ->
+                        val i = r * perRow + k
+                        // Two rows of three fit the card's room (173 dp, measured): 80 dp each.
+                        val view = if (perRow == 2) card(i, c) else stackedCard(i, c)
+                        addView(view, LinearLayout.LayoutParams(0, px(if (perRow == 2) 68f else 80f), 1f).apply { if (k > 0) marginStart = px(11f) })
                     }
-                    if (pair.size == 1) addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply { marginStart = px(11f) })
+                    repeat(perRow - row.size) { addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply { marginStart = px(11f) }) }
                 }, LinearLayout.LayoutParams(-1, -2).apply { if (r > 0) topMargin = px(11f) })
             }
         }
@@ -746,6 +751,30 @@ class SetupOverlay(
                         LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(5f) })
                 }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = px(10f) })
                 addView(t)
+                isClickable = true
+                setOnClickListener { t.performClick() }
+            }
+        }
+
+        /**
+         * A card at three to a row (#121): too narrow for the name, the line and the switch side by side,
+         * so the name takes the card's width and the line (up to two lines) sits beside the switch.
+         */
+        private fun stackedCard(i: Int, c: PaneChoice): View {
+            val t = g.toggle(false) { v -> if (!applying) on[i] = v; sync() }
+            toggles += t
+            return LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                background = g.surface(19f, Glass.S1)
+                setPadding(px(13f), px(10f), px(12f), px(10f))
+                addView(g.text(15.5f, TX, Inter.MEDIUM).apply { text = c.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END })
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(g.text(13.5f, MU).apply { text = c.detail; maxLines = 2; ellipsize = TextUtils.TruncateAt.END },
+                        LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = px(8f) })
+                    addView(t)
+                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(4f) })
                 isClickable = true
                 setOnClickListener { t.performClick() }
             }
@@ -857,6 +886,9 @@ class SetupOverlay(
 
     companion object {
         private val GROUPS = mapOf(SetupFlow.HA to "Home Assistant", SetupFlow.PANES to "Panes")
+
+        /** Cards per row on the Panes step: three from five cards on, so three rows never push Continue off the card (#121). */
+        internal fun panesPerRow(cards: Int) = if (cards >= 5) 3 else 2
 
         /** Continue on Panes waits this long for every card in all (the radio's Off waits for its helper). */
         const val BUDGET_MS = 30_000L
