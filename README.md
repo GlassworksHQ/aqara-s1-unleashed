@@ -36,13 +36,15 @@ everything about it is on its frame page.
 
 - **[Install it from your browser with Kiln →](https://kiln.glassworks.dev/aqara-s1-plus)** You
   need one USB cable and Chrome or Edge. Kiln backs the panel up first, and undo is built in.
+  Kiln hasn't yet done a full install on a real panel. The tested path is the earlier installer,
+  [s1.edm.sh](https://s1.edm.sh/), which runs the same recipe.
 - **[The Aqara S1 Plus frame page](frames/aqara-s1-plus/README.md)**: what you get, what works
   today, the radio, updates, known issues, undo and the FAQ.
 
 Already running S1 Kiosk? New versions still arrive in Home Assistant under *Settings → Updates*.
 
 Jump to:
-<a id="install"></a>[Install](frames/aqara-s1-plus/README.md#install) ·
+<a id="install"></a><a id="what-you-need"></a><a id="the-web-installer-recommended"></a><a id="the-command-line"></a>[Install](frames/aqara-s1-plus/README.md#install) ·
 <a id="why"></a><a id="what-you-get"></a>[Features](frames/aqara-s1-plus/README.md#what-you-get) ·
 <a id="status"></a>[Status](frames/aqara-s1-plus/README.md#status) ·
 <a id="the-radio"></a>[Radio](frames/aqara-s1-plus/README.md#the-radio) ·
@@ -91,7 +93,7 @@ A pane is a feature the panel can run or leave out. These are the panes today:
 - **Diagnostics**: CPU, temperature, RAM, storage, Wi-Fi and uptime as entities.
 - **Bluetooth proxy**: the panel listens for Bluetooth devices and passes them to Home Assistant.
 
-Each frame's README lists the panes it runs. The [pane API](app/kiosk/src/main/java/dev/glassworks/README.md)
+Each frame's README rates the panes its `frame.json` lists. The [pane API](app/kiosk/src/main/java/dev/glassworks/README.md)
 says how to write one, and [What makes a pane](app/kiosk/src/main/java/dev/glassworks/README.md#what-makes-a-pane)
 says which features qualify.
 
