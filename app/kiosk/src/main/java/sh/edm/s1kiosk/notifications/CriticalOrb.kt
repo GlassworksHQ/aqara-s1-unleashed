@@ -7,7 +7,8 @@ import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.Paint
 import android.os.SystemClock
-import android.view.Choreographer
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewOutlineProvider
@@ -27,8 +28,9 @@ import kotlin.math.sin
  * the core and glow pulse in step with them, while it [run]s. The same layers ([OrbArt]), sizes and
  * motion as the timer's, in rose because a critical alert is a status.
  *
- * Its own frame loop (Choreographer), as TimerDoneView's: [start] when the alert shows, [stop] when it
- * goes. While the screen is off no frames come, and the loop picks up when it turns on. Main thread.
+ * Its own loop, a main-thread tick every [FRAME_MS] (about 60 fps): [start] when the alert shows,
+ * [stop] when it goes. Not Choreographer as TimerDoneView: a Choreographer loop's next frame is always
+ * due at once under Robolectric's paused looper, so every test that showed the alert hung. Main thread.
  */
 class CriticalOrb(context: Context) : FrameLayout(context) {
     private val dp = resources.displayMetrics.density
@@ -58,11 +60,14 @@ class CriticalOrb(context: Context) : FrameLayout(context) {
         private set
 
     private var startedAt = 0L
-    private var looping = false
     private var baked = false
-    private val frame = Choreographer.FrameCallback {
-        looping = false
-        if (running) { render(SystemClock.uptimeMillis()); loop() }
+    private val main = Handler(Looper.getMainLooper())
+    private val frame = object : Runnable {
+        override fun run() {
+            if (!running) return
+            render(SystemClock.uptimeMillis())
+            main.postDelayed(this, FRAME_MS)
+        }
     }
 
     init {
@@ -84,24 +89,17 @@ class CriticalOrb(context: Context) : FrameLayout(context) {
         startedAt = SystemClock.uptimeMillis()
         bake()
         render(startedAt)
-        loop()
+        main.postDelayed(frame, FRAME_MS)
     }
 
     fun stop() {
         running = false
-        Choreographer.getInstance().removeFrameCallback(frame)
-        looping = false
+        main.removeCallbacks(frame)
     }
 
     override fun onDetachedFromWindow() {
         stop()
         super.onDetachedFromWindow()
-    }
-
-    private fun loop() {
-        if (looping || !running) return
-        looping = true
-        Choreographer.getInstance().postFrameCallback(frame)
     }
 
     /** As TimerDoneView.render, at full visibility: the pulse and the two ripples, half a period apart. */
@@ -146,6 +144,7 @@ class CriticalOrb(context: Context) : FrameLayout(context) {
     companion object {
         /** As the timer-done stage: a ripple every 1.5 s. */
         const val RIPPLE_MS = 1500f
+        const val FRAME_MS = 16L
         val ROSE = Color.parseColor("#fb7185")
     }
 }
