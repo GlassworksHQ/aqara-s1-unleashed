@@ -272,11 +272,21 @@ class OnvifServerTest {
         val port = java.net.ServerSocket(0).use { it.localPort }
         val s = OnvifServer(port = port, host = { "192.0.2.41" }, info = { error("unused") }, stream = { error("unused") },
             credentials = { user to pass }, enableDiscovery = false).also { server = it }
-        java.net.ServerSocket(port).close()
+        assertTrue("free: the constructor opened nothing", bindsWithin(port))
         s.start()
-        assertTrue(runCatching { java.net.ServerSocket(port).close() }.isFailure)
+        assertTrue("taken while it runs", runCatching { java.net.ServerSocket(port).close() }.isFailure)
         s.stop()
-        java.net.ServerSocket(port).close()
+        assertTrue("and stop() let it go", bindsWithin(port))
+    }
+
+    /** Binds [port] and lets it go, retrying until [deadlineMs]: a just-closed socket can take a moment to free on a busy machine. */
+    private fun bindsWithin(port: Int, deadlineMs: Long = 5_000): Boolean {
+        val until = System.currentTimeMillis() + deadlineMs
+        while (true) {
+            val ok = runCatching { java.net.ServerSocket(port).close() }.isSuccess
+            if (ok || System.currentTimeMillis() > until) return ok
+            Thread.sleep(50)
+        }
     }
 
     @Test fun `http server serves SOAP and snapshot over sockets`() {

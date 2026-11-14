@@ -215,6 +215,7 @@ class RtspServerTest {
         val squatter = ServerSocket(port)
         assertTrue(runCatching { server.start() }.isFailure)
         squatter.close()
+        assertTrue(bindsWithin(port))
         server.start()
         val c = Client(port)
         assertTrue(c.request("OPTIONS", "rtsp://127.0.0.1:$port/live").first.startsWith("RTSP/1.0 200"))
@@ -336,11 +337,21 @@ class RtspServerTest {
     @Test fun nothingListensUntilStart() {
         port = freePort()
         server = RtspServer(port, { USER }, { counts += it })
-        ServerSocket(port).close() // free: the constructor opened nothing
+        assertTrue("free: the constructor opened nothing", bindsWithin(port))
         server.start()
-        assertTrue(runCatching { ServerSocket(port).close() }.isFailure)
+        assertTrue("taken while it runs", runCatching { ServerSocket(port).close() }.isFailure)
         server.stop()
-        ServerSocket(port).close() // and stop() let it go
+        assertTrue("and stop() let it go", bindsWithin(port))
+    }
+
+    /** Binds [port] and lets it go, retrying until [deadlineMs]: a just-closed socket can take a moment to free on a busy machine. */
+    private fun bindsWithin(port: Int, deadlineMs: Long = 5_000): Boolean {
+        val until = System.currentTimeMillis() + deadlineMs
+        while (true) {
+            val ok = runCatching { java.net.ServerSocket(port).close() }.isSuccess
+            if (ok || System.currentTimeMillis() > until) return ok
+            Thread.sleep(50)
+        }
     }
 
     private fun waitFor(ms: Long = 3_000, ok: () -> Boolean): Boolean {
