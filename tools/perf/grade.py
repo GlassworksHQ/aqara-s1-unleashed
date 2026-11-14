@@ -134,7 +134,12 @@ def camera_level(run):
     if run.get("first_frame_ms") is None or run.get("shown_pct") is None:
         return BELOW
     if run.get("stalls_reported") is False:
-        return None                     # its receiver reported no freezes: stalls n/a, not measured
+        # Stalls n/a (no freeze counts, or counts that left part of the window out): not measured,
+        # unless the first frame and frames shown already fail every level, as no stalls could lift.
+        if not any(run["first_frame_ms"] <= lv["first_frame_max_ms"] and run["shown_pct"] >= lv["shown_min_pct"]
+                   for lv in CAMERA_LEVELS):
+            return BELOW
+        return None
     for lv in CAMERA_LEVELS:
         if run["first_frame_ms"] > lv["first_frame_max_ms"] or run["shown_pct"] < lv["shown_min_pct"]:
             continue

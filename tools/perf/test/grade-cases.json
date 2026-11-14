@@ -4833,6 +4833,39 @@
     "stall_total_ms": null
    },
    "level": null
+  },
+  {
+   "name": "stalls n/a but the first frame after 4 s (#255): no stalls could lift it, slow",
+   "run": {
+    "stalls_reported": false,
+    "first_frame_ms": 4001,
+    "shown_pct": 99.0,
+    "max_gap_ms": null,
+    "stall_total_ms": null
+   },
+   "level": "slow"
+  },
+  {
+   "name": "stalls n/a but 84.9% shown (#255): slow",
+   "run": {
+    "stalls_reported": false,
+    "first_frame_ms": 1200,
+    "shown_pct": 84.9,
+    "max_gap_ms": null,
+    "stall_total_ms": null
+   },
+   "level": "slow"
+  },
+  {
+   "name": "stalls n/a, first frame at 4 s and 85% shown: fluid still possible, not measured",
+   "run": {
+    "stalls_reported": false,
+    "first_frame_ms": 4000,
+    "shown_pct": 85.0,
+    "max_gap_ms": null,
+    "stall_total_ms": null
+   },
+   "level": null
   }
  ]
 }

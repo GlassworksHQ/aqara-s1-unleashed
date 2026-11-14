@@ -154,7 +154,12 @@ export function cameraLevel(run: CameraRun | null | undefined, rubric: Rubric): 
   if (!run) return null;
   if (run.timed_out) return rubric.grade.below;
   if (run.first_frame_ms === null || run.first_frame_ms === undefined || run.shown_pct === null || run.shown_pct === undefined) return rubric.grade.below;
-  if (run.stalls_reported === false) return null;   // its receiver reported no freezes: stalls n/a, not measured
+  if (run.stalls_reported === false) {
+    // Stalls n/a (no freeze counts, or counts that left part of the window out): not measured,
+    // unless the first frame and frames shown already fail every level, as no stalls could lift.
+    const ff = run.first_frame_ms, shown = run.shown_pct;
+    return rubric.grade.camera_levels.some((lv) => ff <= lv.first_frame_max_ms && shown >= lv.shown_min_pct) ? null : rubric.grade.below;
+  }
   for (const lv of rubric.grade.camera_levels) {
     if (run.first_frame_ms > lv.first_frame_max_ms || run.shown_pct < lv.shown_min_pct) continue;
     if (lv.max_gap_max_ms !== undefined && (run.max_gap_ms === null || run.max_gap_ms === undefined || run.max_gap_ms > lv.max_gap_max_ms)) continue;

@@ -414,7 +414,12 @@ hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
   `statsWaitMs`, 10 s, at the window's end), so a late answer counts nothing past the time its
   counts were taken, and frames shown are over that same span (`clock`: `stats`, or `asked` when a
   sample has no timestamp). A receiver that reports no `freezeCount` has stalls and gaps `n/a`
-  (`stalls_reported` false), never 0: that run's camera level isn't measured, and the report says so.
+  (`stalls_reported` false), never 0. So does a stream whose counts leave more than 500 ms of the
+  window out (`uncovered_ms`; the longest gap "good" allows): a busy page answers `getStats` late,
+  and the counts end at the last answer back, so a stall after it would go unseen (#255; on
+  s1rtc9's heavy the counts covered 5.8 to 24.7 s of 30). Such a run's camera level isn't measured,
+  and the report says so, unless its first frame or frames shown already fail every level: then
+  it is `slow`, as no stall could lift it.
 - **Gaps and stalls over HLS (the fallback, not graded)**: gaps over 500 ms between frames
   presented by `requestVideoFrameCallback`, the longest and their sum, and the `waiting` events.
 

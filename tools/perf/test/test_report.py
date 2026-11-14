@@ -597,6 +597,60 @@ class StallsNotReported(unittest.TestCase):
         self.assertEqual(R.camera_run(line, "typical")["stalls_reported"], False)
 
 
+class ReceiverSpanShort(unittest.TestCase):
+    """#255's review: on a busy page getStats answers late, and the receiver's counts end at the last
+    answer. Stalls after it are unknown, not 0, so a stream whose counts leave more than 500 ms of the
+    window out has stalls n/a, and that run's camera level is not measured."""
+
+    def line(self, spans):
+        line = camera_line("heavy")
+        line["window_ms"] = 30043
+        for st, span in zip(line["streams"], spans):
+            st.update(span_ms=span, source="webrtc+rvfc", gaps_source="webrtc (bound)", max_gap_ms=216.9)
+        return line
+
+    def test_a_short_span_is_not_measured(self):
+        # s1rtc9, heavy run 2: three streams' counts covered 6821 ms of 30043.
+        run = R.camera_run(self.line([6821, 6821, 6821, 24465]), "heavy")
+        self.assertEqual((run["stall_total_ms"], run["max_gap_ms"], run["stalls_reported"]), (None, None, False))
+        self.assertEqual(run["uncovered_ms"], 23222.0)
+        self.assertIsNone(G.camera_level(run))
+        self.assertEqual(run["first_frame_ms"], 600.0)     # what was measured stays
+
+    def test_the_bar_is_the_longest_gap_good_allows(self):
+        self.assertEqual(R.CAMERA_UNCOVERED_MAX_MS, 500)
+        ok = R.camera_run(self.line([29543] * 4), "heavy")             # 500 ms left out: covered
+        self.assertNotIn("stalls_reported", ok)
+        self.assertNotIn("uncovered_ms", ok)
+        self.assertEqual(G.camera_level(ok), "good")
+        one = R.camera_run(self.line([29543, 29543, 29542, 29543]), "heavy")   # 501 ms: not
+        self.assertIs(one["stalls_reported"], False)
+        self.assertEqual(one["uncovered_ms"], 501.0)
+        # A span past the window (the reports' clock against the page's): covered.
+        self.assertNotIn("stalls_reported", R.camera_run(self.line([30050] * 4), "heavy"))
+
+    def test_hls_has_no_span_and_is_unaffected(self):
+        run = R.camera_run(camera_line("heavy", path="hls"), "heavy")
+        self.assertNotIn("stalls_reported", run)
+
+    def test_the_report_says_why(self):
+        heavy = {"inp_ms": None, "scroll_bands": [], "updates_runs": [], "load_ms": None,
+                 "camera_runs": [R.camera_run(self.line([6821, 6821, 6821, 24465]), "heavy")]}
+        ref = {"graded_runs": 1, "tiers": {"heavy": heavy}}
+        reasons = R.coverage_reasons(ref, 1)
+        self.assertTrue(any("left up to 23.2 s of the window out" in x for x in reasons), reasons)
+        self.assertFalse(any("no freeze counts" in x for x in reasons), reasons)
+        self.assertIn("its stalls weren't measured in 1 of 1 run(s)", R.task_phrase("camera", ref["tiers"]["heavy"]))
+        # s1rtc9's heavy: the first frame after 4 s already fails every level, so the run is slow and
+        # the short span leaves nothing open: no reason, not provisional for it.
+        late = self.line([6821, 6821, 6821, 24465])
+        for st in late["streams"]:
+            st["first_frame_ms"] = 7083.4
+        heavy["camera_runs"] = [R.camera_run(late, "heavy")]
+        self.assertEqual(G.camera_level(heavy["camera_runs"][0]), "slow")
+        self.assertEqual(R.coverage_reasons(ref, 1), [])
+
+
 class CameraDetail(unittest.TestCase):
     """Detail for the camera task (smoke-cam1, 2026-11-13): which decoders a view got and where its
     segments were late, so a slow camera can be told apart: the decoder, the link or the page."""

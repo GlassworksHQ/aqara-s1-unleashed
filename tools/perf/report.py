@@ -290,6 +290,11 @@ def change_to_screen(step, page, period=None):
             "max_ms": xs[-1], "skipped": skipped}, None
 
 
+# The most of a camera's window its receiver counts may leave out: the longest gap "good" allows
+# (rubric.json camera_levels, 500 ms). A longer stretch could hold a stall the counts never saw.
+CAMERA_UNCOVERED_MAX_MS = min(lv["max_gap_max_ms"] for lv in G.CAMERA_LEVELS if "max_gap_max_ms" in lv)
+
+
 def camera_run(line, tier):
     """One run's live cameras (#174), from the harness's camera line: the worst stream's first frame
     (from the navigation, so it includes building the view), share of frames shown, longest gap and stalls (gaps over 500 ms) added
@@ -304,6 +309,12 @@ def camera_run(line, tier):
     # reported no freeze counts (stall_total_ms null), or there was no span to measure gaps over (one
     # sample, nothing decoded: max_gap_ms null). Both are n/a, never 0.
     unreported = [s for s in played if s.get("stall_total_ms") is None or s.get("max_gap_ms") is None]
+    # Streams whose receiver counts cover less of the window than a stall can hide in (#255): a busy
+    # page answers getStats late, and the counts end at the last answer back by statsWaitMs. What
+    # came after it is unknown, not stall-free, so these stalls and gaps are n/a too.
+    window = line.get("window_ms")
+    short = [s for s in played if s.get("span_ms") is not None and window and window - s["span_ms"] > CAMERA_UNCOVERED_MAX_MS]
+    unreported += [s for s in short if s not in unreported]
     whole = len(played) == len(streams) and len(streams) >= (line.get("expected") or 0)
     return {
         # The path the frontend played the graded streams on: web_rtc since protocol 6, hls before
@@ -316,6 +327,8 @@ def camera_run(line, tier):
         "max_gap_ms": max(s["max_gap_ms"] for s in played) if whole and played and not unreported else None,
         "stall_total_ms": max(s["stall_total_ms"] for s in played) if whole and played and not unreported else None,
         **({"stalls_reported": False} if whole and played and unreported else {}),
+        # The most of the window a stream's receiver counts left out, when over the bar (detail).
+        **({"uncovered_ms": round(max(window - s["span_ms"] for s in short), 1)} if whole and short else {}),
         "streams": len(streams), "expected": line.get("expected"), "window_ms": line.get("window_ms"),
         "detail": [{k: s.get(k) for k in ("w", "h", "first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms", "stall_presented",
                                             "frames", "decoded", "dropped", "waiting", "source", "webrtc", "others",
@@ -849,8 +862,10 @@ def task_phrase(task, s_):
             return "a camera never showed a frame"
         shown = statistics.median(r["shown_pct"] for r in runs if r.get("shown_pct") is not None)
         failed = len(runs) - len(ff)
+        na = sum(1 for r in runs if r.get("stalls_reported") is False)
         return (f"a camera takes {statistics.median(ff) / 1000:.1f} s to show its first frame and shows {shown:.0f}% of its frames"
-                + (f" ({failed} of {len(runs)} run(s) had a stream that showed no frame)" if failed else ""))
+                + (f" ({failed} of {len(runs)} run(s) had a stream that showed no frame)" if failed else "")
+                + (f"; its stalls weren't measured in {na} of {len(runs)} run(s)" if na else ""))
     if med("load_ms") is not None:
         return f"the view takes {med('load_ms') / 1000:.1f} s to open"
     return "opening the view wasn't measured"
@@ -1289,7 +1304,15 @@ def coverage_reasons(ref, attempted):
         short = [f"{task} {n} of {attempted}" for task, n in got.items() if 0 < n < attempted]
         if short:
             out.append(f"{t}: measured in fewer runs than attempted ({', '.join(short)})")
-        na = sum(1 for c in (s_ or {}).get("camera_runs") or [] if c.get("stalls_reported") is False)
+        # Runs whose stalls are n/a and whose level that leaves open (a first frame or frames shown that
+        # already fail every level decide it: grade.camera_level).
+        open_ = [c for c in (s_ or {}).get("camera_runs") or [] if c.get("stalls_reported") is False and G.camera_level(c) is None]
+        short = [c for c in open_ if c.get("uncovered_ms") is not None]
+        na = len(open_) - len(short)
+        if short:
+            worst = max(c["uncovered_ms"] for c in short)
+            out.append(f"{t}: {len(short)} camera run(s) whose receiver counts left up to {worst / 1000:.1f} s of the "
+                       "window out (getStats answered late): stalls n/a, not measured")
         if na:
             out.append(f"{t}: {na} camera run(s) whose stalls couldn't be measured (no freeze counts from the receiver, "
                        "or no frames to measure gaps over): n/a, not measured")
