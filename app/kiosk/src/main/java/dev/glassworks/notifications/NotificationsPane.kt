@@ -45,7 +45,7 @@ class NotificationsPane(
     private val haBase: () -> String?,
     private val now: () -> Long,
 ) : Pane {
-    override val id = ID
+    override val id = "notifications" // ID; tools/size reads this literal
 
     private val lock = Any()
     private var center: NotificationCenter? = null

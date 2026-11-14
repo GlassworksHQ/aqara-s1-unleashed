@@ -50,6 +50,13 @@
       "state": "pane:diagnostics",
       "ram_pss_max_kb": 16384,
       "size_max_bytes": 100000
+    },
+    "notifications": {
+      "switch": "notifications_enabled",
+      "state": "pane:notifications",
+      "ram_pss_max_kb": 16384,
+      "size_max_bytes": 100000,
+      "note": "off by default; 0.04 MB on 2026-11-13 (#118). Its 16 MB RAM budget was set before it was measured"
     }
   }
 }
