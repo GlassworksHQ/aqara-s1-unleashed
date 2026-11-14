@@ -44,7 +44,7 @@ A Glassworks **frame**: the device definition for the Generic Android. Its data 
 
 ## Status
 
-**Status: planned.** It needs Android 8.0 or newer: S1 Kiosk's `minSdk` is 26.
+**Status: planned.** It needs Android 8.0 or newer: S1 Kiosk's `minSdk` is 26. S1 Kiosk runs as this frame on any device that isn't an Aqara S1 (`Build.HARDWARE` other than `sun50iw10p1`). It names itself after the device, and runs the panes the device's features allow. Not yet run on a device.
 
 The Clarity badge shows its Clarity grade ([docs/perf.md](../../docs/perf.md)) once one is published; none is yet.
 
@@ -67,7 +67,7 @@ It will install as a normal app. It doesn't install from Kiln yet.
 |---|---|---|
 | Assist | Depends on the device | Needs a microphone. |
 | Timers | Depends on the device | Needs Assist. |
-| Sendspin | Planned |  |
+| Sendspin | Depends on the device | Needs a speaker. |
 | Zigbee and Thread radio | No | No supported radio. |
 | Time zone | No | Worked out: only on the S1 (`aqara-s1-plus`). |
 | Diagnostics | Planned | Worked out: needs no special hardware. |

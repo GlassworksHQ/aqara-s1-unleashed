@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.radio
 
+import dev.glassworks.frame.Capability
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -72,6 +73,7 @@ class RadioDefinition(
 ) : PaneDefinition {
 
     override val id = "radio"
+    override val requires = setOf(Capability.SILABS_RADIO)
 
     private val main by lazy { Handler(Looper.getMainLooper()) }
 

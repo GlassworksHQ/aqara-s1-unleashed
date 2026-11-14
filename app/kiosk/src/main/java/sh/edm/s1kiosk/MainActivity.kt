@@ -753,7 +753,7 @@ class MainActivity : Activity() {
     private fun showSettings() {
         // Resolved once per opening: the model is made again on each refresh tick (#235 N4).
         val frame = glassworks.frame
-        deviceSettingsLink = if (frame.systemSettings(this) == null) null else SettingsItem.Link(SettingsMenu.AQARA_TITLE, SettingsMenu.AQARA_DETAIL) { c ->
+        deviceSettingsLink = if (frame.systemSettings(this) == null) null else SettingsItem.Link(SettingsMenu.deviceSettingsTitle(frame), SettingsMenu.AQARA_DETAIL) { c ->
             if (!frame.openSystemSettings(c)) Toast.makeText(c, "No settings app on this panel", Toast.LENGTH_LONG).show()
         }
         settingsOverlay.reload = ::settingsModel

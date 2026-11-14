@@ -14,16 +14,16 @@ import org.junit.Test
 class DeviceNameTest {
     private val hostname = Regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 
-    private fun generic(model: String, mac: String = "02:00:00:a1:b2:c3") = DeviceName.node("generic-android", null, model, mac)!!
+    private fun generic(model: String, mac: String = "02:00:00:a1:b2:c3") = DeviceName.node(NamedBy.MODEL, "generic-android", model, mac)!!
 
     @Test fun aKnownFrameIsItsIdAndItsName() {
-        assertEquals("aqara-s1-plus-a1b2c3", DeviceName.node("aqara-s1-plus", "Aqara S1 Plus", "QUAD-CORE R818 EVB2", "02:00:00:A1:B2:C3"))
-        assertEquals("Aqara S1 Plus", DeviceName.friendly("Aqara S1 Plus", "QUAD-CORE R818 EVB2"))
+        assertEquals("aqara-s1-plus-a1b2c3", DeviceName.node(NamedBy.FRAME, "aqara-s1-plus", "QUAD-CORE R818 EVB2", "02:00:00:A1:B2:C3"))
+        assertEquals("Aqara S1 Plus", DeviceName.friendly(NamedBy.FRAME, "Aqara S1 Plus", "QUAD-CORE R818 EVB2"))
     }
 
     @Test fun aFrameForManyDevicesGoesByTheModel() {
         assertEquals("pixel-tablet-a1b2c3", generic("Pixel Tablet"))
-        assertEquals("Pixel Tablet", DeviceName.friendly(null, "Pixel Tablet"))
+        assertEquals("Pixel Tablet", DeviceName.friendly(NamedBy.MODEL, null, "Pixel Tablet"))
     }
 
     @Test fun twoDevicesGetTwoNames() {
@@ -31,7 +31,7 @@ class DeviceNameTest {
         assertEquals(
             "the suffix is the MAC's last three bytes, lowercase",
             listOf("aqara-s1-plus-445566", "aqara-s1-plus-ddeeff"),
-            listOf("02:11:22:44:55:66", "AA:BB:CC:DD:EE:FF").map { DeviceName.node("aqara-s1-plus", "Aqara S1 Plus", "x", it) },
+            listOf("02:11:22:44:55:66", "AA:BB:CC:DD:EE:FF").map { DeviceName.node(NamedBy.FRAME, "aqara-s1-plus", "x", it) },
         )
     }
 
@@ -40,7 +40,7 @@ class DeviceNameTest {
         assertEquals("galaxy-tab-a-a1b2c3", generic("  Galaxy Tab Ä  "))
         assertEquals("sm-x710-a1b2c3", generic("SM_X710"))
         assertEquals("nothing usable is still a name", "android-a1b2c3", generic("平板电脑"))
-        assertEquals("Android", DeviceName.friendly(null, "  "))
+        assertEquals("Android", DeviceName.friendly(NamedBy.MODEL, null, "  "))
     }
 
     @Test fun aLongModelIsCutTo63Characters() {
@@ -55,8 +55,19 @@ class DeviceNameTest {
         }
     }
 
+    @Test fun aFrameForManyDevicesKeepsNamingByModelWithADisplayName() {
+        assertEquals("pixel-tablet-a1b2c3", DeviceName.node(NamedBy.MODEL, "generic-android", "Pixel Tablet", "02:00:00:a1:b2:c3"))
+        assertEquals("Pixel Tablet", DeviceName.friendly(NamedBy.MODEL, "Generic Android", "Pixel Tablet"))
+    }
+
+    @Test fun aBlankDisplayNameFallsBackToTheModel() {
+        assertEquals("Panel Hub", DeviceName.friendly(NamedBy.FRAME, "  ", "Panel Hub"))
+        assertEquals("Panel Hub", DeviceName.friendly(NamedBy.FRAME, null, "Panel Hub"))
+        assertEquals("the node name still says the frame", "aqara-s1-plus-a1b2c3", DeviceName.node(NamedBy.FRAME, "aqara-s1-plus", "Panel Hub", "02:00:00:a1:b2:c3"))
+    }
+
     @Test fun noMacNoName() {
-        assertNull(DeviceName.node("aqara-s1-plus", "Aqara S1 Plus", "x", ""))
-        assertNull(DeviceName.node("aqara-s1-plus", "Aqara S1 Plus", "x", "02:00:00:a1:b2"))
+        assertNull(DeviceName.node(NamedBy.FRAME, "aqara-s1-plus", "x", ""))
+        assertNull(DeviceName.node(NamedBy.FRAME, "aqara-s1-plus", "x", "02:00:00:a1:b2"))
     }
 }

@@ -24,12 +24,20 @@ interface Frame {
     /** The `board` TXT record in the device's mDNS advert. Home Assistant shows it. Never change it for a frame. */
     val board: String
 
+    /** How its devices name themselves to Home Assistant ([DeviceName]). */
+    val namedBy: NamedBy
+
     /**
-     * The device's name, as `name` in frames/<id>/design/frame.json ("Aqara S1 Plus"). Home Assistant
-     * shows it, and [board] starts the ESPHome node name ([DeviceName]). Null on a frame that stands for
-     * many devices (generic-android): each one then goes by its own model.
+     * The frame's own name, as `name` in frames/<id>/design/frame.json ("Aqara S1 Plus"). Home Assistant
+     * shows it for a frame [NamedBy.FRAME]; null or blank there, the device's model stands in.
      */
     val displayName: String? get() = null
+
+    /** Who makes the device and what they call it, for Home Assistant's device page, Music Assistant and Improv. */
+    val hardware: Hardware
+
+    /** The hardware panes can use, as frame.json's `provides`. A pane that [dev.glassworks.pane.PaneDefinition.requires] more can't run. */
+    val provides: Set<Capability>
 
     /** Whether someone is near, for the screen policy. Null when the device has no sensor for it. */
     val presence: PresenceSource?
@@ -83,6 +91,17 @@ fun Frame.openSystemSettings(context: Context): Boolean {
     val i = systemSettings(context) ?: return false
     return runCatching { context.startActivity(i) }.isSuccess
 }
+
+/**
+ * [FRAME]: every device on the frame is the same product, so it goes by the frame: `aqara-s1-plus-a1b2c3`,
+ * "Aqara S1 Plus". [MODEL]: the frame stands for many devices (generic-android), so each goes by its own
+ * model: `pixel-tablet-a1b2c3`, "Pixel Tablet". Explicit, so a display name added to such a frame later
+ * doesn't rename every device on it.
+ */
+enum class NamedBy { FRAME, MODEL }
+
+/** [manufacturer] ("Aqara"), [model] ("Panel Hub S1 Plus") and [chip] ("Allwinner A133", or the board's name where Android gives no chip). */
+class Hardware(val manufacturer: String, val model: String, val chip: String)
 
 /**
  * A boot animation's last frame: a drawable resource, drawn at [left], [top] screen px on flat night,

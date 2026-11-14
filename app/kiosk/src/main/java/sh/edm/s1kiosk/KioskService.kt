@@ -53,7 +53,7 @@ class KioskService : Service() {
         )
         promote()
         glassworks.screen.start(this)
-        wifiScanner = glassworks.frame.screenOffWifiScanner(this) { main.post { if (wifiScanner != null) promote() } }.also { it.start() }
+        wifiScanner = glassworks.s1?.screenOffWifiScanner(this) { main.post { if (wifiScanner != null) promote() } }?.also { it.start() }
         glassworks.voiceState = if (KioskPrefs(this).voice.enabled) "idle" else "off"
         glassworks.voiceUi = VoiceUi(glassworks.voiceState)
         glassworks.voiceCancel = { device?.cancelVoice() }
@@ -82,7 +82,7 @@ class KioskService : Service() {
         }
         ImprovController.init(this) // Improv Wi-Fi via BLE (provisioning mode; see improv/)
         // The web installer, over adb (docs/onboarding.md): Wi-Fi via Improv Serial, then HA + radio.
-        ImprovSerialServer.start()
+        ImprovSerialServer.start(glassworks.frame)
         SetupChannelServer.start(this, glassworks)
         Log.i("S1Kiosk", "KioskService started")
     }

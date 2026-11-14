@@ -4,7 +4,14 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import dev.glassworks.frame.BootRest
+import dev.glassworks.frame.Capability.BLUETOOTH_LE
+import dev.glassworks.frame.Capability.MICROPHONE
+import dev.glassworks.frame.Capability.S1_WALL_BASE
+import dev.glassworks.frame.Capability.SILABS_RADIO
+import dev.glassworks.frame.Capability.SPEAKER
 import dev.glassworks.frame.Frame
+import dev.glassworks.frame.Hardware
+import dev.glassworks.frame.NamedBy
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PaneDefinition
 import sh.edm.s1kiosk.KioskPrefs
@@ -13,11 +20,17 @@ import sh.edm.s1kiosk.base.WallBasePane
 import sh.edm.s1kiosk.base.WallBasePrefs
 import java.util.concurrent.ScheduledExecutorService
 
-/** The Aqara Panel Hub S1 Plus, the frame this app is built for. */
+/** The Aqara Panel Hub S1 Plus, the frame this app is built for. Chosen on its hardware only ([orElse]). */
 class AqaraS1Plus : Frame {
     override val board = "aqara-s1-plus"
 
+    override val namedBy = NamedBy.FRAME
+
     override val displayName = DISPLAY_NAME
+
+    override val hardware = Hardware("Aqara", "Panel Hub S1 Plus", "Allwinner A133")
+
+    override val provides = setOf(MICROPHONE, SPEAKER, SILABS_RADIO, S1_WALL_BASE, BLUETOOTH_LE)
 
     override val bootRest = BOOT_REST
 
@@ -66,6 +79,17 @@ class AqaraS1Plus : Frame {
     companion object {
         /** frame.json's `name` (PanelNameTest checks it). */
         const val DISPLAY_NAME = "Aqara S1 Plus"
+
+        /**
+         * `Build.HARDWARE` on the S1's A133 (read 2026-11-14), the S1 frame's only check. Its other build
+         * properties don't tell it apart either: model "QUAD-CORE R818 EVB2", maker "Allwinner",
+         * `ro.product.board` exdroid, device peony-perf1, name peony_evb2, `ro.board.platform` peony are all
+         * Allwinner A133 SDK defaults. Accepted for v1: another A133 board on those defaults takes the S1 frame.
+         */
+        const val HARDWARE = "sun50iw10p1"
+
+        /** The frame for the device the app runs on: the S1's on its hardware, else [generic]. */
+        fun orElse(hardware: String, generic: () -> Frame): Frame = if (hardware == HARDWARE) AqaraS1Plus() else generic()
 
         private val LUMI_SETTINGS: Intent get() = Intent("lumi.settings.SETTINGS").setPackage("com.lumi.settings")
 

@@ -1,8 +1,8 @@
 package sh.edm.s1kiosk.improv
 
+import dev.glassworks.frame.Frame
 import sh.edm.improv.*
 import android.util.Log
-import sh.edm.s1kiosk.BuildConfig
 import sh.edm.s1kiosk.InstallerGlue
 import sh.edm.s1kiosk.auth.OAuth
 import java.io.OutputStream
@@ -20,17 +20,16 @@ object ImprovSerialServer {
     /** Abstract socket name (adb: `localabstract:s1kiosk_improv`). */
     const val SOCKET = "s1kiosk_improv"
     private const val TAG = "S1Kiosk.ImprovSerial"
-    private const val FIRMWARE = "S1 Kiosk"
-    private const val CHIP = "Allwinner A133"
-    private const val DEVICE_NAME = "Glassworks Panel"
     /** The client waits 20 s for a scan; Wi-Fi may have to be turned on first. */
     private const val SCAN_WAIT_MS = 15_000L
 
     private var server: ImprovAdbServer? = null
 
-    fun start() {
+    /** [frame]: the device it speaks for ([ImprovIdentity.serial]). */
+    fun start(frame: Frame) {
         if (server != null) return
-        server = ImprovAdbServer(SOCKET, TAG) { output -> Effects(output) }.also { it.start() }
+        val info = ImprovIdentity.serial(frame)
+        server = ImprovAdbServer(SOCKET, TAG) { output -> Effects(output, info) }.also { it.start() }
     }
 
     fun stop() {
@@ -38,14 +37,14 @@ object ImprovSerialServer {
         server = null
     }
 
-    private class Effects(private val out: OutputStream) : ImprovSerialSession.Effects {
+    private class Effects(private val out: OutputStream, private val info: List<String>) : ImprovSerialSession.Effects {
         override fun send(packet: ByteArray) = synchronized(out) { out.write(packet); out.flush() }
 
         override fun online(): Boolean = InstallerGlue.wlanIpv4() != null
 
         override fun redirectUrl(): String = redirectFor(InstallerGlue.wlanIpv4())
 
-        override fun info(): ByteArray = ImprovSerial.info(FIRMWARE, BuildConfig.VERSION_NAME, CHIP, DEVICE_NAME)
+        override fun info(): ByteArray = info.let { (firmware, version, chip, name) -> ImprovSerial.info(firmware, version, chip, name) }
 
         override fun scan(): List<SerialNetwork> {
             val got = AtomicReference<List<ScannedNetwork>>(emptyList())

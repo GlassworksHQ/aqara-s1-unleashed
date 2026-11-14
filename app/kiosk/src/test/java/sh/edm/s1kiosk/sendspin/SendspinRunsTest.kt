@@ -167,7 +167,7 @@ class SendspinRunsTest {
     /** Lazy, so a test can choose its sinks ([realSinks]) before the player makes one. */
     private val player by lazy {
         SendspinPlayer(
-            app, prefs, { null }, "02:00:00:00:00:01",
+            app, prefs, { null }, DEVICE,
             connect = { _, _, hooks ->
                 val first = conns.isEmpty() && firstConnectThread == null
                 if (first && holdFirstConnect) {
@@ -507,6 +507,9 @@ class SendspinRunsTest {
 
     private companion object {
         val READY = SendspinSession.Status(SendspinSession.Phase.READY, serverName = "Music Assistant", paired = true)
+        val DEVICE = sh.edm.esphome.DeviceIdentity(
+            "aqara-s1-plus-000001", "Aqara S1 Plus", "02:00:00:00:00:01", "2026.10.2", "S1 Kiosk test", "Aqara", "Panel Hub S1 Plus (S1 Kiosk)", 0,
+        )
 
         fun CountDownLatch.awaitIgnoringInterrupts() {
             while (true) try { await(); return } catch (_: InterruptedException) {}

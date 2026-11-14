@@ -4,6 +4,7 @@
 
 package dev.glassworks.bluetoothproxy
 
+import dev.glassworks.frame.Capability
 import android.content.SharedPreferences
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PaneDefinition
@@ -25,6 +26,7 @@ class BluetoothProxyDefinition(
     private val page: ((SettingsItem.NativeHost, BluetoothProxyModel) -> SettingsItem.NativeView)? = null,
 ) : PaneDefinition, BluetoothProxyModel {
     override val id = "bluetooth-proxy"
+    override val requires = setOf(Capability.BLUETOOTH_LE)
 
     override val switch = PaneSwitch(
         file, BluetoothProxyPrefs.KEY_ENABLED, default = BluetoothProxyPrefs.DEFAULT_ENABLED, title = TITLE, detail = "For BLE sensors",

@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.sendspin
 
+import sh.edm.esphome.DeviceIdentity
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
@@ -176,7 +177,8 @@ class SendspinPlayer(
     context: Context,
     private val prefs: SendspinPrefs,
     private val haBase: () -> String?,
-    private val macAddress: String,
+    /** The device as Home Assistant knows it: Music Assistant shows the player under its friendly name. */
+    private val device: DeviceIdentity,
     private val onStatusChanged: () -> Unit = {},
     val store: SsStore = PrefsSsStore(context),
     private val connect: (url: String, hello: SsHelloInfo, hooks: SsPlayerHooks) -> SsConnection =
@@ -215,12 +217,12 @@ class SendspinPlayer(
         else listOf(SsFormat.PCM_48K_STEREO_16)
 
     /** Built per connection: the formats can change between connections. */
-    private fun hello() = SsHelloInfo(
-        name = "Glassworks Panel",
-        productName = "Panel Hub S1 Plus (S1 Kiosk)",
-        manufacturer = "Aqara",
+    internal fun hello() = SsHelloInfo(
+        name = device.friendlyName,
+        productName = device.model,
+        manufacturer = device.manufacturer,
         softwareVersion = "S1 Kiosk ${BuildConfig.VERSION_NAME}",
-        macAddress = macAddress.lowercase().takeIf { MAC_RE.matches(it) },
+        macAddress = device.macAddress.lowercase().takeIf { MAC_RE.matches(it) },
         formats = offeredFormats(),
         bufferCapacity = BUFFER_CAPACITY,
     )

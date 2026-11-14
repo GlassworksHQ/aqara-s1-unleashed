@@ -5,6 +5,7 @@
 package dev.glassworks.pane
 
 import android.content.Intent
+import dev.glassworks.frame.Capability
 
 /**
  * What the core knows about a pane for the whole process, also while the pane isn't running: the
@@ -15,6 +16,9 @@ import android.content.Intent
 interface PaneDefinition {
     /** The [Pane.id] of the pane this describes. */
     val id: String
+
+    /** The hardware it needs, as its pane.json's `requires`. On a frame without all of it, the pane is [CantRun]. */
+    val requires: Set<Capability> get() = emptySet()
 
     /**
      * What first-boot setup waits for, in order. The person answers them on the Panes step, with the
@@ -47,6 +51,29 @@ interface PaneDefinition {
 
     /** Intent extras (`adb shell am start … --ez sendspin_flac false`) that change this pane's settings. Its [switch] has its own. */
     val extras: List<IntentExtra> get() = emptyList()
+}
+
+/**
+ * [definition] on a frame without the hardware it [PaneDefinition.requires] (#23, #235): one page that says
+ * why ([reason]) and nothing that could start it, so no on/off, setup card, setup step or extra. The shell
+ * builds no [Pane] for it.
+ */
+class CantRun(private val definition: PaneDefinition, private val reason: String) : PaneDefinition {
+    override val id get() = definition.id
+    override val requires get() = definition.requires
+
+    override fun settings(running: Pane?): List<SettingsSection> {
+        val own = definition.settings(null).firstOrNull()
+        val title = own?.title ?: definition.switch?.title ?: id
+        val needs = "Needs ${requires.joinToString(" and ") { it.noun }}."
+        return listOf(SettingsSection(id, title, listOf(SettingsItem.Note { needs }), own?.heading ?: title, unavailable = { reason }))
+    }
+
+    companion object {
+        /** [definition] as it is on a frame that [provides] what it needs, else [CantRun] with the first thing missing. */
+        fun unless(definition: PaneDefinition, provides: Set<Capability>): PaneDefinition =
+            (definition.requires - provides).firstOrNull()?.let { CantRun(definition, it.missing) } ?: definition
+    }
 }
 
 /** Every intent extra of [this] panes: each [PaneDefinition.switch]'s (`--ez voice_enabled false`), then the pane's own. */

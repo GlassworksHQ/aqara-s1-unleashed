@@ -1,5 +1,8 @@
 package sh.edm.s1kiosk.settings
 
+import dev.glassworks.frame.Frame
+import sh.edm.s1kiosk.frame.AqaraS1Plus
+
 /**
  * How the kiosk settings menu ([KioskSettingsOverlay]) is asked for, and texts it shows. Pure, for tests.
  * What is in it: [CoreSettings] and the panes' definitions.
@@ -22,4 +25,9 @@ object SettingsMenu {
     /** The device's own settings app, last on the Screen page, quieter than the rest (#63). */
     const val AQARA_TITLE = "Aqara's own settings"
     const val AQARA_DETAIL = ""
+    /** The same link on a device that isn't an S1: the system's Settings app. */
+    const val ANDROID_TITLE = "Android settings"
+
+    /** The link's name on [frame]. */
+    fun deviceSettingsTitle(frame: Frame): String = if (frame is AqaraS1Plus) AQARA_TITLE else ANDROID_TITLE
 }
