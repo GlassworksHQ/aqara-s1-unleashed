@@ -2,7 +2,8 @@
 """Check that every glassworks.dev brand image the docs use is live.
 
 Usage: tools/check-brand-images.py [files...]   (default: every *.md git tracks)
-Collects each https://www.glassworks.dev/brand/<file> in the Markdown (src, srcset, ![](...)) and
+Collects each glassworks.dev/brand/<file> in the Markdown (src, srcset, ![](...); http or https, with
+or without www., which the site redirects to https://www.) and
 asks the site for it (HEAD, read-only). Exits 1 and lists every image that is missing (HTTP 404/410)
 with the files that use it: a README must not point at a banner or badge that isn't deployed yet
 (docs/branding.md, "A new library needs its banner first"). If the site can't be reached at all, it
@@ -18,8 +19,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-URL = re.compile(r'https://www\.glassworks\.dev/brand/[A-Za-z0-9._-]+')
+URL = re.compile(r'https?://(?:www\.)?glassworks\.dev/brand/[A-Za-z0-9._-]+')
 MISSING = {404, 410}
+TRIES = 3
 
 
 def markdown_files(args):
@@ -30,10 +32,10 @@ def markdown_files(args):
 
 
 def status(url):
-    """(HTTP status, None), or (None, why) if the site couldn't be reached after three tries."""
+    """(HTTP status, None), or (None, why) if the site couldn't be reached after [TRIES] tries."""
     req = urllib.request.Request(url, method='HEAD', headers={'User-Agent': 'glassworks-ci-brand-check'})
     why = ''
-    for attempt in range(3):
+    for attempt in range(TRIES):
         try:
             with urllib.request.urlopen(req, timeout=15) as r:
                 return r.status, None
@@ -43,7 +45,8 @@ def status(url):
             why = f'HTTP {e.code}'
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             why = str(getattr(e, 'reason', e))
-        time.sleep(2 * (attempt + 1))
+        if attempt < TRIES - 1:
+            time.sleep(2 * (attempt + 1))
     return None, why
 
 

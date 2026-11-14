@@ -94,19 +94,25 @@ class DiagnosticsPane internal constructor(
     private var costMs = 0L
     private var task: ScheduledFuture<*>? = null
 
+    /** The device thread. Again after [stop] too: the pane can be turned off and on (#67). */
     override fun start() {
         restartReason = exitReasonText(probe.lastExitReason())
+        prev = null
         synchronized(this) {
             task?.cancel(false)
             task = device.scheduleWithFixedDelay({ runCatching { tick() }.onFailure { EspHomeLog.w("diagnostics: sample failed", it) } }, 0, PERIOD_S, TimeUnit.SECONDS)
         }
     }
 
+    /** Stops sampling. Its entities have no state until it starts again. */
     override fun stop() {
         synchronized(this) {
             task?.cancel(false)
             task = null
         }
+        values.clear()
+        restartReason = null
+        ctx.publishStates()
     }
 
     /** Takes one sample and publishes what moved past its band. Device thread. */

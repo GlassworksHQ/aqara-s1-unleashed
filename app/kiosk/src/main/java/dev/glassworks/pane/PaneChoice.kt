@@ -15,8 +15,6 @@ class PaneChoice(
     val detail: String,
     /** On now. Cheap, main thread. */
     val on: () -> Boolean,
-    /** A change only takes effect when the app starts again: setup restarts it when it is done. */
-    val restartsApp: Boolean = false,
     /**
      * Applies the switch. Runs off the main thread and may block. Called on every Continue, also when
      * nothing changed. Turning a pane on only says so: its own steps configure it. Null when it worked,

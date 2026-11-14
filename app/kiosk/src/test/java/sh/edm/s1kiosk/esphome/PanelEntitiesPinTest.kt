@@ -48,7 +48,15 @@ class PanelEntitiesPinTest {
     /** Voice off keeps the same entities: Home Assistant would drop the voice ones otherwise. */
     @Test fun voiceOffKeepsTheSameEntities() {
         if (System.getProperty("s1.regenGolden") == "true") return
-        KioskPrefs(RuntimeEnvironment.getApplication()).voice.enabled = false
+        KioskPrefs(RuntimeEnvironment.getApplication()).paneFile("assist").edit().putBoolean("voice_enabled", false).commit()
+        assertEquals(javaClass.getResourceAsStream("/$GOLDEN")?.bufferedReader()?.readText(), describe(realEntityList()))
+    }
+
+    /** Every pane off keeps the same entities (#67): an off pane's entities stay, and its switch with them. */
+    @Test fun everyPaneOffKeepsTheSameEntities() {
+        if (System.getProperty("s1.regenGolden") == "true") return
+        val app = RuntimeEnvironment.getApplication()
+        GlassworksRuntime(AqaraS1Plus()).paneDefinitions(app).forEach { it.switch?.on = false }
         assertEquals(javaClass.getResourceAsStream("/$GOLDEN")?.bufferedReader()?.readText(), describe(realEntityList()))
     }
 

@@ -22,8 +22,14 @@ interface PaneDefinition {
      */
     val setupSteps: List<SetupStep> get() = emptyList()
 
-    /** The pane's card on setup's Panes step, or null to leave it off. */
-    val setupChoice: PaneChoice? get() = null
+    /**
+     * The pane's on/off that the core keeps (#67): the shell runs the pane only while it is on. Null for a
+     * pane that is always on, or that keeps its own on/off (the radio's is its mode, in [setupChoice]).
+     */
+    val switch: PaneSwitch? get() = null
+
+    /** The pane's card on setup's Panes step, or null to leave it off. By default its [switch]'s, when that has one. */
+    val setupChoice: PaneChoice? get() = switch?.takeIf { it.inSetup }?.choice()
 
     /**
      * The pane's sections in the settings menu, as they are now. Called each time the menu opens, so a
@@ -32,9 +38,12 @@ interface PaneDefinition {
      */
     fun settings(): List<SettingsSection> = emptyList()
 
-    /** Intent extras (`adb shell am start … --ez voice_enabled false`) that change this pane's settings. */
+    /** Intent extras (`adb shell am start … --ez sendspin_flac false`) that change this pane's settings. Its [switch] has its own. */
     val extras: List<IntentExtra> get() = emptyList()
 }
+
+/** Every intent extra of [this] panes: each [PaneDefinition.switch]'s (`--ez voice_enabled false`), then the pane's own. */
+fun List<PaneDefinition>.intentExtras(): List<IntentExtra> = flatMap { listOfNotNull(it.switch?.extra()) + it.extras }
 
 /**
  * One adb intent extra that changes a setting. [apply] reads it from an intent if it is there and

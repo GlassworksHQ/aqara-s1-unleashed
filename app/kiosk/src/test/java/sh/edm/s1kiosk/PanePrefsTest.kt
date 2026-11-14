@@ -2,6 +2,8 @@ package sh.edm.s1kiosk
 
 import sh.edm.s1kiosk.frame.AqaraCloud
 import sh.edm.s1kiosk.frame.AqaraS1Plus
+import sh.edm.s1kiosk.frame.TimeZonePrefs
+import dev.glassworks.diagnostics.DiagnosticsPrefs
 import android.app.Application
 import android.content.SharedPreferences
 import dev.glassworks.pane.Pane
@@ -53,6 +55,7 @@ class PanePrefsTest {
     /** The prefs class of each namespace, built over a file. */
     private val owners: Map<String, (SharedPreferences) -> Any> = mapOf(
         "sendspin" to ::SendspinPrefs, "assist" to ::VoicePrefs, "wall-base" to ::WallBasePrefs, "radio" to ::RadioPrefs,
+        "time-zone" to ::TimeZonePrefs, "diagnostics" to ::DiagnosticsPrefs,
     )
 
     @After fun tearDown() {
@@ -76,7 +79,7 @@ class PanePrefsTest {
     }
 
     @Test fun eachPaneUsesOnlyItsOwnNamespaceAndKeys() {
-        kiosk.sendspin.enabled = false
+        kiosk.paneFile("sendspin").edit().putBoolean(SendspinPrefs.KEY_ENABLED, false).commit()
         for (pane in panes()) {
             val ns = pane.id
             val asked = HashMap(asked)
@@ -108,14 +111,14 @@ class PanePrefsTest {
     /** Builds each pane and drives it through what reads and writes settings; yields it before the next. */
     private fun panes() = sequence {
         yield(drive(SendspinPane(ctx, haBase = { null }), SendspinPrefs.KEY_FLAC))
-        yield(drive(assist(), VoicePrefs.KEY_MIC_GAIN))
+        yield(drive(assist(), VoicePrefs.KEY_MIC_GAIN, start = false))
         yield(drive(WallBasePane(ctx, WallBase.Config(BaseBackend.LOCALSERVICE), device, AqaraCloud()), start = false))
         yield(drive(RadioPane(ctx, GlassworksRuntime(AqaraS1Plus()), panelIp = { null }), start = false))
         yield(drive(TimersPane(ctx, GlassworksRuntime(AqaraS1Plus()).screen, schedule = { _, _ -> device.submit {} }, play = {}, silence = {})))
     }
 
     private fun assist() = AssistPane(
-        ctx, voiceEnabled = false,
+        ctx,
         player = object : UrlPlayer {
             override fun play(urls: List<String>, onDone: (Boolean) -> Unit) {}
             override fun stop() {}
@@ -127,7 +130,7 @@ class PanePrefsTest {
             override fun resume() {}
         },
         resolveUrl = { it }, wakeChime = {}, onVoiceEvent = {},
-        createInput = { _, _, _ -> error("voice is off") },
+        createInput = { _, _, _ -> error("not started here") },
     )
 
     private fun drive(pane: Pane, changed: String? = null, start: Boolean = true): Pane {

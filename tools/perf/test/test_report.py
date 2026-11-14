@@ -1463,7 +1463,7 @@ class PaneOnAlone(unittest.TestCase):
 
     def test_the_reference_samples_arent_real_use_and_real_use_labels_arent_panes(self):
         budgets = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15},
-                   "panes": {"assist": {"switch": "voice_enabled", "ram_pss_max_kb": 20_000}, "radio": {"waiting_on": "#67"}}}
+                   "panes": {"assist": {"switch": "voice_enabled", "ram_pss_max_kb": 20_000}, "radio": {"not_switched": "its mode"}}}
         ram = R.reference_ram({"ref-idle": [ram_idle("ref-idle", 300_000)],
                                "ref-panes-off": [ram_idle("ref-panes-off", v) for v in (100_000, 100_500, 101_000)],
                                "ref-assist-on": [ram_idle("ref-assist-on", v) for v in (130_000, 130_500, 131_000)]},
@@ -1472,7 +1472,9 @@ class PaneOnAlone(unittest.TestCase):
         self.assertEqual(ram["graded_peak"]["app_pss_kb"], 540_000)
         self.assertEqual(ram["graded_peak"]["by_role_pss_kb"], {"gpu": 200_000, "main": 340_000})
         self.assertEqual(ram["pane_budget"]["assist"]["ok"], False)          # 30 MB against 20 MB, three samples each
-        self.assertEqual(ram["panes_waiting"], [{"id": "radio", "waiting_on": "#67"}])
+        self.assertEqual(ram["panes_not_switched"], [{"id": "radio", "why": "its mode"}])
+        self.assertEqual(ram["panes_waiting"], [])                            # kept in glassworks.perf/4, empty since #67
+        self.assertIn("Not measured on their own: radio (its mode).", "\n".join(R.ram_markdown(ram)))
         self.assertTrue(ram["budget"]["ok"])
         self.assertIsNone(R.reference_ram({}, [], "sh.edm.s1kiosk", budgets, 2_000_000))
         # F6: a run that failed may have stopped mid-page; its samples aren't the peak.
@@ -1482,7 +1484,7 @@ class PaneOnAlone(unittest.TestCase):
 
 
 S1_PANES = {"assist": {"switch": "voice_enabled", "mute": "mic_muted", "state": "mic"},
-            "sendspin": {"switch": "sendspin_enabled", "state": "sendspin"}, "radio": {"waiting_on": "#67"}}
+            "sendspin": {"switch": "sendspin_enabled", "state": "sendspin"}, "radio": {"not_switched": "its mode"}}
 
 
 def ran(sample, voice, sendspin, mic, screen_off=None):
@@ -1515,6 +1517,16 @@ class PanesAsAsked(unittest.TestCase):
         self.assertFalse(R.sample_matches(ran(x, True, False, True), "ref-panes-off", S1_PANES))
         self.assertFalse(R.sample_matches(ran(x, False, False, False, screen_off=[12.5]), "ref-panes-off", S1_PANES))
         self.assertIsNone(R.sample_matches(x, "ref-panes-off", S1_PANES))                            # not recorded
+
+    def test_a_pane_the_sample_didnt_record_leaves_it_unverified(self):
+        """#210 review: a run from before a pane's switch (#67) has no `pane:<id>` in its log. Its
+        samples still count, but the share isn't marked verified."""
+        x = ram_idle("ref-panes-off", 100_000)
+        panes = dict(S1_PANES, **{"wall-base": {"switch": "wall_base_enabled", "state": "pane:wall-base"}})
+        self.assertIsNone(R.sample_matches(ran(x, True, False, False), "ref-panes-off", panes))
+        recorded = dict(ran(x, True, False, False)["panes_state"], **{"pane:wall-base": False})
+        self.assertTrue(R.sample_matches(dict(x, panes_state=recorded), "ref-panes-off", panes))
+        self.assertFalse(R.sample_matches(dict(x, panes_state=dict(recorded, **{"pane:wall-base": True})), "ref-panes-off", panes))
 
     def test_samples_that_ran_something_else_are_left_out(self):
         idles = {"ref-panes-off": [ran(ram_idle("ref-panes-off", 100_000), False, False, False),

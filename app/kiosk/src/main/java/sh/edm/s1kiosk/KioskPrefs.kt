@@ -4,11 +4,13 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Base64
+import dev.glassworks.diagnostics.DiagnosticsPrefs
 import dev.glassworks.screen.ScreenSettings
 import sh.edm.s1kiosk.auth.OAuth
 import sh.edm.s1kiosk.auth.StoredAuth
 import sh.edm.esphome.NoiseKeyStore
 import sh.edm.s1kiosk.base.WallBasePrefs
+import sh.edm.s1kiosk.frame.TimeZonePrefs
 import sh.edm.s1kiosk.radio.RadioPrefs
 import sh.edm.s1kiosk.sendspin.SendspinPrefs
 import sh.edm.s1kiosk.voice.VoicePrefs
@@ -32,6 +34,8 @@ class KioskPrefs(private val context: Context) : ScreenSettings {
     val voice = VoicePrefs(paneFile("assist"))
     val wallBase = WallBasePrefs(paneFile("wall-base"))
     val radio = RadioPrefs(paneFile("radio"))
+    val timeZone = TimeZonePrefs(paneFile("time-zone"))
+    val diagnostics = DiagnosticsPrefs(paneFile("diagnostics"))
 
     fun registerListener(l: SharedPreferences.OnSharedPreferenceChangeListener) =
         sp.registerOnSharedPreferenceChangeListener(l)
@@ -116,18 +120,20 @@ class KioskPrefs(private val context: Context) : ScreenSettings {
      * 0 = automatic (use the display density, 1.5 on the S1 Plus). Never change `wm density`
      * instead: on this panel it breaks GeckoView's surface sizing until reboot.
      */
+    // commit(), not apply(), for the three settings the app restarts for (#185): an async write can be
+    // lost with the process, as for urlSetting.
     var zoom: Float
         get() = sp.getFloat(KEY_ZOOM, 0f)
-        set(v) = sp.edit().putFloat(KEY_ZOOM, v).apply()
+        set(v) { sp.edit().putFloat(KEY_ZOOM, v).commit() }
 
     /** Extra hosts (comma separated) to treat as secure contexts, besides the dashboard host. */
     var extraSecureHosts: String
         get() = sp.getString(KEY_SECURE_HOSTS, "") ?: ""
-        set(v) = sp.edit().putString(KEY_SECURE_HOSTS, v.trim()).apply()
+        set(v) { sp.edit().putString(KEY_SECURE_HOSTS, v.trim()).commit() }
 
     var remoteDebugging: Boolean
         get() = sp.getBoolean(KEY_REMOTE_DEBUG, BuildConfig.DEBUG)
-        set(v) = sp.edit().putBoolean(KEY_REMOTE_DEBUG, v).apply()
+        set(v) { sp.edit().putBoolean(KEY_REMOTE_DEBUG, v).commit() }
 
     // ---- HA page tweaks (applied by the built-in web extension)
 
@@ -256,7 +262,10 @@ class KioskPrefs(private val context: Context) : ScreenSettings {
          * The settings file of each pane, by pane id. Every pane's settings stay in `kiosk.xml`, where
          * they were before panes: panels update in place, so no stored value may move.
          */
-        val PANE_FILES = mapOf("sendspin" to "kiosk", "assist" to "kiosk", "wall-base" to "kiosk", "radio" to "kiosk")
+        val PANE_FILES = mapOf(
+            "sendspin" to "kiosk", "assist" to "kiosk", "wall-base" to "kiosk", "radio" to "kiosk",
+            "time-zone" to "kiosk", "diagnostics" to "kiosk",
+        )
 
         /** Decodes a base64 API key; null unless it is exactly 32 bytes. */
         fun decodeApiKey(b64: String): ByteArray? = try {

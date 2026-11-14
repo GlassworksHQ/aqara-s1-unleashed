@@ -52,7 +52,7 @@ class SetupMockups {
     private fun facts(mode: RadioMode, status: String, thread: ThreadRouterState? = null) =
         RadioFollowUp.Facts(mode, status, HelperFacts(true, 4), ZigbeeStack.AQARA, if (thread != null) false else null, thread, ha, ip)
 
-    /** The app's panes: voice and music on, the radio as [radio] (its follow-up open when [followUp]). */
+    /** The app's panes: voice, music and the wall base on, the radio as [radio] (its follow-up open when [followUp]). */
     private fun panes(a: Context, radio: RadioFollowUp.Facts?, followUp: Boolean = false): List<SetupPane> {
         val def: RadioDefinition = radioDefinition(a, FixedReadout(radio, mode = radio?.mode ?: RadioMode.OFF, haBase = ha, panelIp = ip))
         def.followUpOpen = followUp
@@ -60,6 +60,7 @@ class SetupMockups {
             SetupPane(PaneChoice("Voice", "Assist and timers", on = { true }, apply = { null }), emptyList()),
             SetupPane(PaneChoice("Music", "A Sendspin speaker", on = { true }, apply = { null }), emptyList()),
             SetupPane(def.setupChoice, def.setupSteps),
+            SetupPane(PaneChoice("Wall base", "The S1's wired base", on = { true }, apply = { null }), emptyList()),
         )
     }
 

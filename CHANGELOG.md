@@ -8,6 +8,10 @@ below as the release notes.
 ## [Unreleased]
 
 ### Changed
+- **Turning a pane on or off from Home Assistant needs the panel's key.** The pane switches, the
+  *Music Assistant player (Sendspin)* switch included, only answer an encrypted connection, as *Time
+  zone* does. Home Assistant 2026.11 and later sets the key when you add the panel. On a panel without
+  one, use the panel's settings.
 - **The project moved to [GlassworksHQ/glassworks](https://github.com/GlassworksHQ/glassworks).**
   Panels now check for updates there directly. Older versions keep updating through GitHub's
   redirect, so nothing needs doing on your panel.
@@ -66,6 +70,12 @@ below as the release notes.
   Diagnostic section.
 
 ### Added
+- **Turn any pane off, and back on, without a restart.** Voice, music, the wall base, the time zone
+  and diagnostics each have an on/off: at the top of the pane's page in the panel's settings, in
+  Home Assistant (new switches Voice, Wall base, Keep time zone and Diagnostics, off on the device
+  page until you turn them on there), and with adb. A pane that is off stops its work and comes
+  back when you turn it on. Voice no longer restarts the app. The wall base now has its card on
+  setup's Panes step. The radio's on/off stays its mode.
 - **Kiln shows what the panel is doing while S1 Kiosk goes in.** On kiln.glassworks.dev the app's
   install now lists each step as the panel goes through it: S1 Kiosk and the on-screen keyboard
   going in, the home screen, your settings, and the first start. When it updates an app that's
@@ -93,6 +103,10 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **A pane you turn off stays off after a restart.** Turning voice or music off, then restarting
+  the app at once, could bring the pane back on: the setting was saved after the app had gone.
+  Zoom, secure hosts and remote debugging, which restart the app, could lose their change the same
+  way. They are now saved before the app restarts.
 - **One stuck connection no longer freezes the panel's entities in Home Assistant.** If a client
   stopped reading (a Home Assistant that hangs, or a connection that is half gone), states, action
   replies and keepalive pings for every other client waited behind it, for minutes, until the panel

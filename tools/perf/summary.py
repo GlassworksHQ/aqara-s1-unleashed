@@ -109,6 +109,7 @@ def ram_summary(ram):
                    **({"off_by": p["off_by"]} if p.get("off_by") else {})}
                   for p in ram.get("panes") or [] if not p.get("error") and p.get("verified") is True],
         "panes_waiting": [p["id"] for p in ram.get("panes_waiting") or []],
+        "panes_not_switched": [p["id"] for p in ram.get("panes_not_switched") or []],
         "budget_ok": (ram.get("budget") or {}).get("ok"),
     }
 

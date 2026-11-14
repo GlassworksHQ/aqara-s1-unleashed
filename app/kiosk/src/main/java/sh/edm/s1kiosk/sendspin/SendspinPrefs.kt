@@ -8,10 +8,8 @@ import android.content.SharedPreferences
  */
 class SendspinPrefs(private val sp: SharedPreferences) {
 
-    /** Run the native Sendspin player (ESPHome switch "Music Assistant player (Sendspin)"). */
-    var enabled: Boolean
-        get() = sp.getBoolean(KEY_ENABLED, true)
-        set(v) = sp.edit().putBoolean(KEY_ENABLED, v).apply()
+    /** Run the native Sendspin player ([SendspinDefinition.switch] writes it). */
+    val enabled: Boolean get() = sp.getBoolean(KEY_ENABLED, true)
 
     /** `auto` (mDNS `_sendspin-server._tcp`, else `ws://<HA host>:8927/sendspin`) or a host[:port][/path] / ws:// URL. */
     var server: String

@@ -3,6 +3,7 @@ package sh.edm.s1kiosk
 import android.app.Application
 import android.content.Intent
 import dev.glassworks.pane.applyFrom
+import dev.glassworks.pane.intentExtras
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -13,13 +14,13 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import sh.edm.s1kiosk.frame.AqaraS1Plus
 
-/** The panes' adb extras (app/README.md), now from their definitions instead of MainActivity. */
+/** The panes' adb extras (app/README.md): each pane's on/off (#67), then its own, from their definitions. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class PaneExtrasTest {
 
     private val app get() = RuntimeEnvironment.getApplication()
-    private val extras by lazy { GlassworksRuntime(AqaraS1Plus()).paneDefinitions(app).flatMap { it.extras } }
+    private val extras by lazy { GlassworksRuntime(AqaraS1Plus()).paneDefinitions(app).intentExtras() }
 
     @Test
     fun theSameExtrasAsBefore() {
@@ -27,7 +28,7 @@ class PaneExtrasTest {
             listOf(
                 "voice_enabled", "wake_model", "wake_threshold", "mic_gain", "mic_muted",
                 "sendspin_enabled", "sendspin_server", "sendspin_unpaired_access", "sendspin_flac",
-                "base_backend", "base_transport",
+                "wall_base_enabled", "base_backend", "base_transport", "time_zone_enabled", "diagnostics_enabled",
             ),
             extras.map { it.name },
         )
@@ -56,9 +57,14 @@ class PaneExtrasTest {
     }
 
     @Test
-    fun voiceOnOrOffRestartsTheApp() {
-        assertTrue(extras.applyFrom(Intent().putExtra("voice_enabled", false)))
-        assertFalse(KioskPrefs(app).voice.enabled)
+    fun everyPaneTurnsOffAndOnWithoutARestart() {
+        val p = KioskPrefs(app)
+        val flags = { listOf(p.voice.enabled, p.sendspin.enabled, p.wallBase.enabled, p.timeZone.enabled, p.diagnostics.enabled) }
+        val all = listOf("voice_enabled", "sendspin_enabled", "wall_base_enabled", "time_zone_enabled", "diagnostics_enabled")
+        assertFalse("applied live", extras.applyFrom(Intent().apply { all.forEach { putExtra(it, false) } }))
+        assertEquals(List(5) { false }, flags())
+        assertFalse(extras.applyFrom(Intent().apply { all.forEach { putExtra(it, true) } }))
+        assertEquals(List(5) { true }, flags())
     }
 
     @Test
