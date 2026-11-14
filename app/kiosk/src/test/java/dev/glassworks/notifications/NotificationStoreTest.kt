@@ -119,4 +119,23 @@ class NotificationStoreTest {
         assertEquals(listOf("n2"), p.dropped.map { it.notification.title })
         assertFalse(store.list().any { it.notification.title == "n2" })
     }
+
+    @Test
+    fun aDroppedPageDoesNotTakeTheScreen() {
+        val one = NotificationStore({ t }, max = 1)
+        val fire = one.post(n("fire", p = Priority.CRITICAL, url = "http://ha/fire"), false).entry
+        val p = one.post(n("door", url = "http://ha/door"), false)
+        assertEquals(listOf("door"), p.dropped.map { it.notification.title })
+        assertEquals(fire, one.page())
+    }
+
+    @Test
+    fun anOverdueEntryDoesNotTakeAPlace() {
+        val one = NotificationStore({ t }, max = 1)
+        one.post(n("fire", p = Priority.CRITICAL, timeout = 1), false)
+        t += 1_000
+        val p = one.post(n("washer"), false)
+        assertTrue(p.dropped.isEmpty())
+        assertEquals(listOf("washer"), one.list().map { it.notification.title })
+    }
 }

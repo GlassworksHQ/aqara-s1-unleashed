@@ -76,20 +76,23 @@ class NotificationStore(private val now: () -> Long, val max: Int = 20) {
     fun post(n: Notification, doNotDisturb: Boolean): Posted {
         val replaced = n.tag?.let { t -> entries.firstOrNull { it.notification.tag == t } }
         if (replaced != null) entries.remove(replaced)
-        val e = Entry(nextId++, n, now(), Delivery.of(n.priority, doNotDisturb))
-        // A full-screen page takes the screen: an older page stays in the list, without the screen.
-        if (n.url != null && !e.held) {
-            for (i in entries.indices) {
-                val o = entries[i]
-                if (o.notification.url != null && !o.held) entries[i] = o.copy(held = true)
-            }
-        }
+        // Overdue entries are gone already: they must not take a place from the new one.
+        val t = now()
+        entries.removeAll { e -> e.expiresAt?.let { it <= t } == true }
+        val e = Entry(nextId++, n, t, Delivery.of(n.priority, doNotDisturb))
         entries.add(0, e)
         val dropped = ArrayList<Entry>()
         while (entries.size > max) {
             val victim = entries.lastOrNull { it.notification.priority != Priority.CRITICAL } ?: entries.last()
             entries.remove(victim)
             dropped += victim
+        }
+        // A full-screen page takes the screen, if it stayed: an older page stays in the list, without the screen.
+        if (n.url != null && !e.held && e !in dropped) {
+            for (i in entries.indices) {
+                val o = entries[i]
+                if (o !== e && o.notification.url != null && !o.held) entries[i] = o.copy(held = true)
+            }
         }
         return Posted(e, replaced, dropped)
     }
@@ -144,6 +147,12 @@ class NotificationStore(private val now: () -> Long, val max: Int = 20) {
     /** When the next timeout falls, or null for none. */
     @Synchronized
     fun nextExpiry(): Long? = entries.mapNotNull { it.expiresAt }.minOrNull()
+
+    /** What the panel shows, read in one step: the cards, the open page and the whole list. */
+    data class Snapshot(val cards: List<Entry>, val page: Entry?, val list: List<Entry>)
+
+    @Synchronized
+    fun snapshot(): Snapshot = Snapshot(cards(), page(), list())
 
     /** Every entry, newest first. */
     @Synchronized

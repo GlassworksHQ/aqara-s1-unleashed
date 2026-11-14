@@ -153,4 +153,15 @@ class NotificationCenterTest {
         assertEquals(600, sizes.size)
         assertEquals("each render shows at least as many as the one before", sizes.sorted(), sizes.toList())
     }
+
+    @Test
+    fun aTimeoutFiringAfterCloseDoesNothing() {
+        center.handle("m", "door", """{"timeout":30}""")
+        val fire = timers.last().second
+        val before = renders
+        center.close()
+        t = 30_000; fire()
+        assertEquals(before, renders)
+        assertEquals("the entry wasn't touched", listOf("door"), cards.map { it.notification.title })
+    }
 }

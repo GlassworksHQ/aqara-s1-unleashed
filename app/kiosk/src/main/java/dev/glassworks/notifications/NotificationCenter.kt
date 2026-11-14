@@ -106,7 +106,10 @@ class NotificationCenter(
         if (store.show(id) != null) changed()
     }
 
-    /** Stops the timeout timer. Nothing is scheduled after this; the store keeps its entries. */
+    /**
+     * Stops the timeout timer. Nothing is scheduled after this, and a timeout already firing does
+     * nothing; the store keeps its entries.
+     */
     fun close(): Unit = synchronized(lock) {
         closed = true
         timer?.cancel(false)
@@ -116,17 +119,24 @@ class NotificationCenter(
     /** Takes the snapshot and renders it under one lock, so an older snapshot never lands after a newer one. */
     private fun changed(): Unit = synchronized(lock) {
         store.expire()
+        val s = store.snapshot()
         try {
-            out.render(store.cards(), store.page(), store.list())
+            out.render(s.cards, s.page, s.list)
         } finally {
             reschedule()
         }
     }
 
+    /** A timeout fell. Under the lock, so it can't run past [close], and does nothing after it. */
+    private fun timedOut(): Unit = synchronized(lock) {
+        if (closed) return
+        if (store.expire().isNotEmpty()) changed() else reschedule()
+    }
+
     private fun reschedule(): Unit = synchronized(lock) {
         timer?.cancel(false)
         timer = if (closed) null else store.nextExpiry()?.let { at ->
-            schedule((at - now()).coerceAtLeast(0)) { if (store.expire().isNotEmpty()) changed() else reschedule() }
+            schedule((at - now()).coerceAtLeast(0)) { timedOut() }
         }
     }
 }
