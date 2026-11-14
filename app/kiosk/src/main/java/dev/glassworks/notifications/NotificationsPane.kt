@@ -33,10 +33,12 @@ interface NotificationScreen {
  *   is up, and at most [HOLD_MAX_MS]: a notification nobody answers doesn't keep a bedroom lit all night.
  * - The critical alert repeats every [ALERT_REPEAT_MS] while a critical one is up. No new repeat
  *   starts after [ALERT_MAX_MS], so the last one can end up to one sound (1.45 s) past it.
- * - Sounds claim the speaker ([PanelEvent.SpeakerClaimed]), so music goes quiet meanwhile. One claim
+ * - Sounds claim the speaker ([PanelEvent.SpeakerClaimed]), so music goes quiet meanwhile. The claim
+ *   and its release are emitted under the pane's lock, in the order they happen. One claim
  *   covers overlapping sounds, and it is let go when the newest sound ends, when the alert is
  *   silenced or the pane stops, or at the latest [RELEASE_SLACK_MS] after the sound should have
- *   ended: a sound cut short (`TtsPlayer.cancel`) never calls back.
+ *   ended: a sound cut short (`TtsPlayer.cancel`) never calls back. [stop] lets the speaker go and
+ *   silences the alert, but a chime or doorbell already playing ends by itself (at most 3 s).
  *
  * [play] plays one sound and calls back when it ended; [silence] cuts it.
  */
@@ -111,19 +113,21 @@ class NotificationsPane(
     }
 
     private fun sound(s: Sound) {
-        val (gen, first) = synchronized(lock) {
+        // Claim, emit and arm the fallback in one step under the lock, and release the same way: the
+        // emits then reach the other panes in the order the claim changed, so a release can't land
+        // between a claim and its emit and leave the music ducked with nothing to let it go (#228, N1).
+        val gen = synchronized(lock) {
             claimTimer?.cancel(false)
-            val first = !claimed
-            claimed = true
-            ++claimGen to first
-        }
-        if (first) ctx.emit(PanelEvent.SpeakerClaimed(true))
-        synchronized(lock) {
-            if (gen == claimGen) {
-                val ms = (NotificationSounds.seconds(s) * 1000).toLong() + RELEASE_SLACK_MS
-                claimTimer = schedule(ms) { releaseSpeaker(gen) }
+            if (!claimed) {
+                claimed = true
+                ctx.emit(PanelEvent.SpeakerClaimed(true))
             }
+            val g = ++claimGen
+            val ms = (NotificationSounds.seconds(s) * 1000).toLong() + RELEASE_SLACK_MS
+            claimTimer = schedule(ms) { releaseSpeaker(g) }
+            g
         }
+        // Released already before it starts (dismissed meanwhile): it plays unducked, and its end is ignored.
         play(s) { releaseSpeaker(gen) }
     }
 
@@ -131,16 +135,13 @@ class NotificationsPane(
      * Lets go of the speaker: for [gen], only if no newer sound took the claim since (an older sound's
      * end, delivered while a newer one plays, must not bring the music back under it); null: now.
      */
-    private fun releaseSpeaker(gen: Int? = null) {
-        val release = synchronized(lock) {
-            if (!claimed || (gen != null && gen != claimGen)) return@synchronized false
-            claimed = false
-            claimGen++
-            claimTimer?.cancel(false)
-            claimTimer = null
-            true
-        }
-        if (release) ctx.emit(PanelEvent.SpeakerClaimed(false))
+    private fun releaseSpeaker(gen: Int? = null) = synchronized(lock) {
+        if (!claimed || (gen != null && gen != claimGen)) return@synchronized
+        claimed = false
+        claimGen++
+        claimTimer?.cancel(false)
+        claimTimer = null
+        ctx.emit(PanelEvent.SpeakerClaimed(false))
     }
 
     override fun start() {

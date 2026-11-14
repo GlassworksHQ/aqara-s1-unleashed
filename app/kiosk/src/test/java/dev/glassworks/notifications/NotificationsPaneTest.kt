@@ -34,7 +34,9 @@ class NotificationsPaneTest {
     private val prefs = NotificationsPrefs(app.getSharedPreferences("notifications-test", Context.MODE_PRIVATE))
     private val hub = NotificationsHub()
     private val fired = mutableListOf<HomeAssistantEvent>()
-    private val events = mutableListOf<PanelEvent>()
+    private val events = java.util.Collections.synchronizedList(mutableListOf<PanelEvent>())
+    /** Runs before an event is recorded, on the emitting thread: a test forces an interleaving with it. */
+    private var onEmit: ((PanelEvent) -> Unit)? = null
     private var published = 0
     private val screen = mutableListOf<String>()
     private val played = mutableListOf<Sound>()
@@ -50,7 +52,7 @@ class NotificationsPaneTest {
         PaneContext(
             app, { error("no prefs") },
             DeviceIdentity("test", "Test", "02:00:00:00:00:01", "x", "x", "x", "x", 0),
-            publishStates = { published++ }, emit = { events += it }, entitiesChanged = {}, sendEvent = { _, _ -> },
+            publishStates = { published++ }, emit = { e -> onEmit?.invoke(e); events += e }, entitiesChanged = {}, sendEvent = { _, _ -> },
             fireEvent = { fired += it },
         ),
         prefs, hub,
@@ -292,5 +294,39 @@ class NotificationsPaneTest {
         assertFalse("still nothing while off", hub.state.doNotDisturb)
         pane.start()
         assertTrue("back on: the pill comes back", hub.state.doNotDisturb)
+    }
+
+    /**
+     * Verifier N1: a release on another thread that lands while a sound claims the speaker (render's
+     * silenced path, via a dismiss or a timeout) must come after the claim's emit, never before it: the
+     * music must not end up ducked with nothing left to let it go.
+     */
+    @Test
+    fun aReleaseDuringTheClaimComesAfterIt() {
+        holdDone = true
+        pane.start()
+        val release = NotificationsPane::class.java.getDeclaredMethod("releaseSpeaker", Integer::class.java).apply { isAccessible = true }
+        var other: Thread? = null
+        onEmit = { e ->
+            if (e == PanelEvent.SpeakerClaimed(true) && other == null) {
+                other = Thread { release.invoke(pane, null) }.apply { start(); join(300) }
+            }
+        }
+        notify("Washer done")
+        other!!.join(5_000)
+        assertEquals("claimed, then let go: the music comes back", listOf(true, false), claims)
+        pending.forEach { it() }
+        assertEquals("the sound's own end changes nothing after", listOf(true, false), claims)
+    }
+
+    /** Verifier N3: a wake that doesn't ask to pass night dimming is a plain wake, not a hold. */
+    @Test
+    fun aPlainWakeIsNotAHold() {
+        pane.start()
+        val outputs = NotificationsPane::class.java.getDeclaredField("outputs").apply { isAccessible = true }.get(pane) as NotificationOutputs
+        outputs.wake(overNight = false)
+        assertEquals(listOf("wake"), screen)
+        outputs.wake(overNight = true)
+        assertEquals(listOf("wake", "hold"), screen)
     }
 }
