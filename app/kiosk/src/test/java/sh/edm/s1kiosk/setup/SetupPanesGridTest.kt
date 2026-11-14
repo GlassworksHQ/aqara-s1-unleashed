@@ -84,6 +84,15 @@ class SetupPanesGridTest {
         }
     }
 
+    /** An odd count leaves one card on the last row: it must keep its height, not shrink to its spacer's. */
+    @Test fun everyCardIsAtLeastItsMinimumHeight() {
+        for (n in 1..8) {
+            val s = step(n)
+            val min = (68 * s.resources.displayMetrics.density).toInt()
+            for ((t, _) in names.take(n)) assertTrue("$n panes: $t is ${card(s, t).height} px tall", card(s, t).height >= min)
+        }
+    }
+
     @Test fun twoCardsToARowEachAsTallAsItsRow() {
         val s = step(8)
         for (r in names.chunked(2)) assertEquals(r.toString(), card(s, r[0].first).height, card(s, r[1].first).height)

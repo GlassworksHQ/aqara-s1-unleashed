@@ -752,7 +752,9 @@ class SetupOverlay(
                         pair.forEachIndexed { k, c ->
                             addView(card(r * 2 + k, c), LinearLayout.LayoutParams(0, -1, 1f).apply { if (k > 0) marginStart = px(CARD_GAP_DP) })
                         }
-                        if (pair.size == 1) addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply { marginStart = px(CARD_GAP_DP) })
+                        // Match-parent like the cards: a row's height comes only from children that aren't,
+                        // so a 1 px spacer squashed a last row's lone card to 1 px.
+                        if (pair.size == 1) addView(View(context), LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = px(CARD_GAP_DP) })
                     }, LinearLayout.LayoutParams(-1, -2).apply { if (r > 0) topMargin = px(CARD_GAP_DP) })
                 }
             }, FrameLayout.LayoutParams(-1, -2))
