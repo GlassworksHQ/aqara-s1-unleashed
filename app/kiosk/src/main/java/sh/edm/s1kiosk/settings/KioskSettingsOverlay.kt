@@ -333,9 +333,12 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         else -> null
     }
 
-    /** [items] as rows; [divided]: a hairline above each row, as drawn. */
+    /** [items] as rows; [divided]: a hairline above each row, as drawn, but not right under a status line or tiles. */
     private fun addItems(items: List<SettingsItem>, divided: Boolean) {
+        var after: SettingsItem? = null
         for (i in items) {
+            val under = after
+            after = i
             if (i is SettingsItem.Group) {
                 rows.addView(g.label(i.title), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(26f); bottomMargin = px(4f) })
                 addItems(i.items, divided = true)
@@ -347,7 +350,9 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
                 is SettingsItem.Tiles -> { rows.addView(tiles(i), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f); bottomMargin = px(6f) }); continue }
                 else -> {}
             }
-            if (divided) rows.addView(View(context).apply { setBackgroundColor(BD) }, LinearLayout.LayoutParams(-1, px(1f).coerceAtLeast(1)))
+            if (divided && under !is SettingsItem.Status && under !is SettingsItem.Tiles) {
+                rows.addView(View(context).apply { setBackgroundColor(BD) }, LinearLayout.LayoutParams(-1, px(1f).coerceAtLeast(1)))
+            }
             rows.addView(item(i), LinearLayout.LayoutParams(-1, -2))
         }
     }
