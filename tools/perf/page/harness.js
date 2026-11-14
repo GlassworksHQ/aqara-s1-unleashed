@@ -262,9 +262,17 @@
         onScreen: onScreen.map(([r, i]) => ({ rendered: rendered(all[i]), top: r.top })),
       }, st, C.HEAD_CARDS);
     }
+    // Clarity v2: the animation frames from the draw to usable, for the blocking time (S.frameBlocking).
+    const marks = [];
+    let watching = true;
+    const mark = (t) => { if (!watching) return; marks.push(t); requestAnimationFrame(mark); };
+    requestAnimationFrame(mark);
     const free = await freeFrom();
+    watching = false;
+    const b = S.frameBlocking(marks, ts, free.start);
     return { rendered_tick_ms: r1(ts), first_screen_cards: onScreen.length, head_cards: C.HEAD_CARDS,
-             interactive_ms: r1(free.start), busy_ms: free.busy };
+             interactive_ms: r1(free.start), busy_ms: free.busy,
+             blocking_ms: b && b.blocking_ms, long_frames: b && b.long_frames, longest_frame_ms: b && b.longest_ms };
   }
 
   function nodeCount(root) {

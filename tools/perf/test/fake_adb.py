@@ -368,7 +368,7 @@ def refdash(nonce, url):
         # free 20 ms after that.
         "nav_ms": round(nav, 1), "video_caps": {"mse_h264": True, "native_hls": "", "rvfc": True},
         "usable": {"rendered_tick_ms": round(nav + 200, 1), "first_screen_cards": 14, "head_cards": 10,
-                   "interactive_ms": round(nav + 220, 1)}})
+                   "interactive_ms": round(nav + 220, 1), "blocking_ms": 0.0, "long_frames": 0, "longest_frame_ms": 16.7}})
     time.sleep(1.0)
     if os.environ.get("FAKE_HANG") == tier:
         return                 # as smoke10's heavy: usable, then nothing more (no done)
@@ -500,7 +500,8 @@ def dashboard():
                   "cards_rendered": 20, "css": [960, 480],
                   "dpr": float(os.environ.get("FAKE_DPR", "1.5")), "scroll_height": 1936, "fcp_ms": 120, "lcp_ms": 120,
                   "load_ms": 100, "nav_ms": 0,
-                  "usable": {"rendered_tick_ms": 400.0, "first_screen_cards": 13, "head_cards": 10, "interactive_ms": 410.0},
+                  "usable": {"rendered_tick_ms": 400.0, "first_screen_cards": 13, "head_cards": 10, "interactive_ms": 410.0,
+                             "blocking_ms": 0.0, "long_frames": 0, "longest_frame_ms": 16.7},
                   "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000, "run": 1, "nonce": ""}, record=False)
         line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
         time.sleep(0.2)

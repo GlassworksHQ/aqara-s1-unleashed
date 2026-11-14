@@ -25,6 +25,7 @@ _CAM = {lv["level"]: lv for lv in G.RULES["camera_levels"]}
 SCROLL_FPS = _LEVEL["fluid"]["fps_min"]
 SCROLL_P95_MS = _LEVEL["fluid"]["p95_max_ms"]
 UPDATE_MS = _UPD["fluid"]["latency_p95_max_ms"]
+BLOCKING_MS = G.METRICS["blocking_ms"]["poor_above"]   # fluid accepts good and needs-improvement
 TAP_MS = G.METRICS["inp_ms"]["good_max"]          # fluid accepts a good tap only
 OPEN_MS = G.METRICS["load_ms"]["poor_above"]       # fluid accepts good and needs-improvement
 CAM_FIRST_MS = _CAM["fluid"]["first_frame_max_ms"]
@@ -121,6 +122,9 @@ def _limit(task, t):
     if task == "updates" and _med(t.get("latency_p95_ms")) is not None:
         v = _med(t["latency_p95_ms"])
         return v / UPDATE_MS, f"takes {_time(v)} to show a change"
+    if task == "blocking" and _med(t.get("blocking_ms")) is not None:
+        v = _med(t["blocking_ms"])
+        return v / BLOCKING_MS, f"blocks for {_time(v)} after it is drawn"
     if task == "tap" and _med(t.get("inp_ms")) is not None:
         v = _med(t["inp_ms"])
         return v / TAP_MS, f"takes {_time(v)} to answer a tap"

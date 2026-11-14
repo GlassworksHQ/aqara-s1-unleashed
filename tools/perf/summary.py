@@ -52,6 +52,10 @@ def page_summary(s):
     return {
         "inp_ms": _med(s.get("inp_ms")),
         "open_ms": _med(s.get("load_ms")),
+        # Rubric 2: open_ms is navigation to the first screen drawn; blocking_ms the main thread's
+        # blocking from then to usable (graded); usable_ms when it was usable (rubric 1's open; detail).
+        "blocking_ms": _med(s.get("blocking_ms")),
+        "usable_ms": _med(s.get("usable_ms")),
         "scroll": {"fps": _med(sc.get("fps"), 1), "p95_ms": _med(sc.get("p95_ms"), 2),
                    "scrolled_px": _med(s.get("scrolled_px")), "sf_valid": s.get("sf_valid") or [],
                    "during_updates": s.get("swipes_during_updates") or [],
@@ -70,6 +74,7 @@ def page_summary(s):
         "timed_out_runs": s.get("timed_out_runs") or 0,
         "runs": {"tap": _n(s.get("inp_ms")), "scroll": len(s.get("scroll_runs") or []),
                  "updates": len(s.get("updates_runs") or []), "open": _n(s.get("load_ms")),
+                 "blocking": _n(s.get("blocking_ms")),
                  "camera": len(s.get("camera_runs") or [])},
     }
 

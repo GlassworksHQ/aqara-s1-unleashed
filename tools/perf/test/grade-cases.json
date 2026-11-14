@@ -1,6 +1,6 @@
 {
  "_comment": "Shared grade cases (MIT): every scroll level, live-update level, page level and letter boundary from test_grade.py, with the answer. grade.py (test_grade.py) and grade.ts (grade.test.mjs) must both give it. Regenerate only on purpose, with the rubric and the docs.",
- "rubric_version": 1,
+ "rubric_version": 2,
  "bands": [
   {
    "metric": "frame_p95_ms",
@@ -135,6 +135,26 @@
   {
    "metric": "start_ms",
    "value": 5000,
+   "band": "poor"
+  },
+  {
+   "metric": "blocking_ms",
+   "value": 200,
+   "band": "good"
+  },
+  {
+   "metric": "blocking_ms",
+   "value": 201,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "blocking_ms",
+   "value": 600,
+   "band": "needs-improvement"
+  },
+  {
+   "metric": "blocking_ms",
+   "value": 601,
    "band": "poor"
   }
  ],
@@ -515,27 +535,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -554,28 +578,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -595,27 +623,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 3000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -634,28 +666,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "needs-improvement",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -675,27 +711,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 5000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -714,28 +754,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "poor",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -763,27 +807,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -802,28 +850,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -851,27 +903,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 3000,
      "scroll_level": "good",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -890,28 +946,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
       "load": "needs-improvement",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -939,27 +999,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -978,28 +1042,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -1027,27 +1095,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -1066,28 +1138,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -1115,27 +1191,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "good",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -1154,28 +1234,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "good",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -1203,27 +1287,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "fluid",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -1242,28 +1330,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "fluid",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -1291,27 +1383,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
      "updates_level": "fluid",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -1330,28 +1426,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "fluid",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -1379,27 +1479,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "slow",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -1418,28 +1522,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "slow",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -1467,27 +1575,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": null,
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -1506,28 +1618,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": null,
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -1557,27 +1673,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 300,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -1596,28 +1716,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "needs-improvement",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -1645,27 +1769,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 600,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -1684,28 +1812,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "poor",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -1733,27 +1865,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": null,
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -1772,28 +1908,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": null,
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -1823,27 +1963,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -1862,28 +2006,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -1903,27 +2051,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -1942,28 +2094,32 @@
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -1983,27 +2139,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -2022,28 +2182,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -2071,27 +2235,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "good",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -2110,28 +2278,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "good",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -2159,27 +2331,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 300,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -2198,28 +2374,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "needs-improvement",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -2247,27 +2427,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -2286,28 +2470,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -2335,27 +2523,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -2374,28 +2566,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -2423,27 +2619,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -2462,28 +2662,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -2511,27 +2715,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -2550,28 +2758,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -2599,27 +2811,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -2638,28 +2854,32 @@
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -2687,27 +2907,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -2726,28 +2950,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -2775,27 +3003,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -2814,28 +3046,32 @@
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -2863,27 +3099,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -2902,28 +3142,32 @@
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -2951,27 +3195,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "fluid",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -2990,28 +3238,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "fluid",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -3039,27 +3291,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
      "updates_level": "good",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -3078,28 +3334,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "good",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -3128,27 +3388,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 300,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 300,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -3167,28 +3431,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "needs-improvement",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "needs-improvement",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -3216,27 +3484,31 @@
      "inp_ms": 100,
      "load_ms": 5000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -3255,28 +3527,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "poor",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -3304,27 +3580,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 4999,
@@ -3343,28 +3623,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -3384,27 +3668,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 5000,
@@ -3423,28 +3711,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": true,
@@ -3464,27 +3756,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 5000,
@@ -3503,28 +3799,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": true,
@@ -3544,27 +3844,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 6000,
@@ -3583,28 +3887,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -3632,27 +3940,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 5000,
@@ -3671,28 +3983,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -3720,27 +4036,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 5000,
@@ -3759,28 +4079,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": true,
@@ -3800,20 +4124,23 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -3832,28 +4159,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": null,
       "scroll": null,
       "updates": null,
       "load": null,
-      "camera": null
+      "camera": null,
+      "blocking": null
      }
     },
     "capped_by_start": false,
@@ -3862,7 +4193,8 @@
      "heavy.scroll",
      "heavy.updates",
      "heavy.load",
-     "heavy.camera"
+     "heavy.camera",
+     "heavy.blocking"
     ],
     "provisional": true,
     "start": {
@@ -3878,7 +4210,8 @@
        "scroll",
        "updates",
        "load",
-       "camera"
+       "camera",
+       "blocking"
       ]
      }
     ]
@@ -3903,28 +4236,32 @@
       "scroll": null,
       "updates": null,
       "load": null,
-      "camera": "none"
+      "camera": "none",
+      "blocking": null
      },
      "typical-nocam": {
       "tap": null,
       "scroll": null,
       "updates": null,
       "load": null,
-      "camera": "none"
+      "camera": "none",
+      "blocking": null
      },
      "typical": {
       "tap": null,
       "scroll": null,
       "updates": null,
       "load": null,
-      "camera": null
+      "camera": null,
+      "blocking": null
      },
      "heavy": {
       "tap": null,
       "scroll": null,
       "updates": null,
       "load": null,
-      "camera": null
+      "camera": null,
+      "blocking": null
      }
     },
     "capped_by_start": false,
@@ -3933,20 +4270,24 @@
      "light.scroll",
      "light.updates",
      "light.load",
+     "light.blocking",
      "typical-nocam.tap",
      "typical-nocam.scroll",
      "typical-nocam.updates",
      "typical-nocam.load",
+     "typical-nocam.blocking",
      "typical.tap",
      "typical.scroll",
      "typical.updates",
      "typical.load",
      "typical.camera",
+     "typical.blocking",
      "heavy.tap",
      "heavy.scroll",
      "heavy.updates",
      "heavy.load",
      "heavy.camera",
+     "heavy.blocking",
      "start"
     ],
     "provisional": true,
@@ -3962,7 +4303,8 @@
        "tap",
        "scroll",
        "updates",
-       "load"
+       "load",
+       "blocking"
       ]
      }
     ]
@@ -3976,27 +4318,31 @@
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "fluid"
+     "camera_level": "fluid",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -4028,27 +4374,31 @@
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "slow"
+     "camera_level": "slow",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -4080,27 +4430,31 @@
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": null
+     "camera_level": null,
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -4134,27 +4488,31 @@
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "slow"
+     "camera_level": "slow",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -4178,27 +4536,31 @@
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "fluid"
+     "camera_level": "fluid",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "fluid"
+     "camera_level": "fluid",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -4230,27 +4592,31 @@
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -4273,27 +4639,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
      "updates_level": "premium",
-     "camera_level": "slow"
+     "camera_level": "slow",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -4312,28 +4682,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "slow"
+      "camera": "slow",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -4362,27 +4736,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "good",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -4401,28 +4779,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "good",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -4450,27 +4832,31 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
      "updates_level": "premium",
-     "camera_level": "fluid"
+     "camera_level": "fluid",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -4489,28 +4875,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "fluid"
+      "camera": "fluid",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -4539,21 +4929,24 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
      "updates_level": "premium",
-     "camera_level": "fluid"
+     "camera_level": "fluid",
+     "blocking_ms": 100
     },
     "heavy": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
-     "camera_level": "good"
+     "camera_level": "good",
+     "blocking_ms": 100
     }
    },
    "start_ms": 1000,
@@ -4572,28 +4965,32 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": null,
       "scroll": null,
       "updates": null,
       "load": null,
-      "camera": "none"
+      "camera": "none",
+      "blocking": null
      },
      "typical": {
       "tap": "good",
       "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "fluid"
+      "camera": "fluid",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -4601,7 +4998,8 @@
      "typical-nocam.tap",
      "typical-nocam.scroll",
      "typical-nocam.updates",
-     "typical-nocam.load"
+     "typical-nocam.load",
+     "typical-nocam.blocking"
     ],
     "provisional": true,
     "start": {
@@ -4616,7 +5014,8 @@
        "tap",
        "scroll",
        "updates",
-       "load"
+       "load",
+       "blocking"
       ]
      }
     ]
@@ -4629,19 +5028,118 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
-     "updates_level": "premium"
+     "updates_level": "premium",
+     "blocking_ms": 100
     },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
+     "camera_level": "good",
+     "blocking_ms": 100
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "camera_level": "good",
+     "blocking_ms": 100
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "D",
+    "meaning": "a good wall panel for light dashboards",
+    "levels": {
+     "light": "premium",
+     "typical-nocam": null,
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none",
+      "blocking": "good"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none",
+      "blocking": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good",
+      "blocking": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good",
+      "blocking": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "typical-nocam",
+      "needs": "fluid",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rubric 2: typical without a camera drawn in 1 s but blocking 900 ms after it (poor): not fluid, so D",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "blocking_ms": 100
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "fluid",
+     "updates_level": "premium",
+     "blocking_ms": 900
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "blocking_ms": 100,
      "camera_level": "good"
     },
     "heavy": {
@@ -4649,6 +5147,7 @@
      "load_ms": 1000,
      "scroll_level": "slow",
      "updates_level": "premium",
+     "blocking_ms": 100,
      "camera_level": "good"
     }
    },
@@ -4668,28 +5167,225 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "good"
      },
      "typical-nocam": {
       "tap": "good",
-      "scroll": "slow",
+      "scroll": "fluid",
       "updates": "premium",
       "load": "good",
-      "camera": "none"
+      "camera": "none",
+      "blocking": "poor"
      },
      "typical": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
      },
      "heavy": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
       "load": "good",
-      "camera": "good"
+      "camera": "good",
+      "blocking": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "typical-nocam",
+      "needs": "fluid",
+      "tasks": [
+       "blocking"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rubric 2: the same blocking 400 ms (needs improvement): fluid, so C",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "blocking_ms": 100
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "fluid",
+     "updates_level": "premium",
+     "blocking_ms": 400
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "blocking_ms": 100,
+     "camera_level": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "blocking_ms": 100,
+     "camera_level": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards without a camera",
+    "levels": {
+     "light": "premium",
+     "typical-nocam": "fluid",
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none",
+      "blocking": "good"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "fluid",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none",
+      "blocking": "needs-improvement"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good",
+      "blocking": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good",
+      "blocking": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "typical",
+      "needs": "good",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rubric 2: drawn in 1 s, usable much later: open is the draw, so good (blocking good)",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "blocking_ms": 150
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "blocking_ms": 100,
+     "camera_level": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "blocking_ms": 100,
+     "camera_level": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "blocking_ms": 100,
+     "camera_level": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "D",
+    "meaning": "a good wall panel for light dashboards",
+    "levels": {
+     "light": "premium",
+     "typical-nocam": null,
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none",
+      "blocking": "good"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none",
+      "blocking": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good",
+      "blocking": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good",
+      "blocking": "good"
      }
     },
     "capped_by_start": false,
@@ -4705,6 +5401,201 @@
       "needs": "fluid",
       "tasks": [
        "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rubric 2: blocking not measured: missing, provisional",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "blocking_ms": null
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "blocking_ms": 100,
+     "camera_level": "good"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "blocking_ms": 100,
+     "camera_level": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "blocking_ms": 100,
+     "camera_level": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "E",
+    "meaning": "not a good wall panel, even for light dashboards",
+    "levels": {
+     "light": null,
+     "typical-nocam": null,
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none",
+      "blocking": null
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none",
+      "blocking": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good",
+      "blocking": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good",
+      "blocking": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [
+     "light.blocking"
+    ],
+    "provisional": true,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "light",
+      "needs": "fluid",
+      "tasks": [
+       "blocking"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rubric 2: heavy good but blocking poor: not A",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "blocking_ms": 100
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium",
+     "blocking_ms": 100
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "good",
+     "updates_level": "premium",
+     "blocking_ms": 100,
+     "camera_level": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "good",
+     "updates_level": "good",
+     "blocking_ms": 700,
+     "camera_level": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
+    "levels": {
+     "light": "premium",
+     "typical-nocam": "premium",
+     "typical": "good",
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none",
+      "blocking": "good"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none",
+      "blocking": "good"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good",
+      "blocking": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "good",
+      "load": "good",
+      "camera": "good",
+      "blocking": "poor"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "good",
+      "tasks": [
+       "blocking"
       ]
      }
     ]

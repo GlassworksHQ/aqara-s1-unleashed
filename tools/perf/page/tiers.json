@@ -1,8 +1,8 @@
 {
  "_comment": "Clarity reference dashboards (MIT): the counts, the first screen, the update stream and the phases. The one source for the fake Home Assistant (dashboards.py), the in-page harness and the node tests. Project choices, fixed before any frame was graded under them; change one only on purpose, with the docs and the tests, never to move a frame's letter.",
- "_CLARITY": "Clarity's version (the maintainer, 2026-11-14): v1, measured with protocol 1 and graded with rubric 1. Every page line carries it (refdash `clarity`), so a line from before the reset (pre-release protocols 1 to 8) can't pass for v1.",
- "CLARITY": 1,
- "PROTOCOL": 1,
+ "_CLARITY": "Clarity's version: v2 (rubric 2, 2026-11-14), measured with protocol 2 (which adds the blocking time from the first screen drawn to usable) and graded with rubric 2; v1 was protocol 1 and rubric 1. Every page line carries it (refdash `clarity`), so a line from before the reset (pre-release protocols 1 to 8) can't pass for v1.",
+ "CLARITY": 2,
+ "PROTOCOL": 2,
  "ORDER": [
   "light",
   "typical-nocam",

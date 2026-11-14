@@ -23,7 +23,7 @@ import test_report as T  # noqa: E402
 SUMMARY_KEYS = {"schema", "test", "clarity", "protocol_version", "report_schema", "measured_on", "frame", "app_version", "viewport",
                 "runs", "pages", "restart_ms", "gaps", "not_comparable", "report", "complete", "ram", "apk", "notes",
                 "webrtc_transport"}
-PAGE_KEYS = {"inp_ms", "open_ms", "scroll", "updates", "camera", "runs", "timed_out_runs"}
+PAGE_KEYS = {"inp_ms", "open_ms", "blocking_ms", "usable_ms", "scroll", "updates", "camera", "runs", "timed_out_runs"}
 GRADE_KEYS = ("grade", "meaning", "levels", "bands", "capped_by_start", "missing", "provisional", "start")
 
 
@@ -41,7 +41,7 @@ def fixture(variant):
             run["tiers"]["light"]["swipes"] = [T.swipe(30.0, i, T.late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["typical"]["swipes"] = [T.swipe(40.0, i, T.late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["typical-nocam"]["swipes"] = [T.swipe(70.0, i, T.late(60, 45, 66.67)) for i in range(3)]
-            run["tiers"]["light"]["page"]["fcp_ms"] = 900
+            run["tiers"]["light"]["page"]["usable"]["first_screen_cards"] = 5     # light's open not measured
         elif variant == "capped":
             run["proc_mono"], run["engine_mono"] = 20.0, 26.0
         elif variant == "zoom":
@@ -116,7 +116,8 @@ class Export(unittest.TestCase):
         self.assertEqual(s["report"], "reports/aqara-s1-plus.json")
         heavy = s["pages"]["heavy"]
         self.assertEqual(set(heavy), PAGE_KEYS)
-        self.assertEqual((heavy["inp_ms"], heavy["open_ms"]), (150, 400))
+        self.assertEqual((heavy["inp_ms"], heavy["open_ms"]), (150, 200))      # rubric 2: open is the first screen drawn
+        self.assertEqual((heavy["blocking_ms"], heavy["usable_ms"]), (40, 300))
         self.assertEqual(heavy["camera"]["runs"][0], {"first_frame_ms": 600.0, "shown_pct": 100.0, "max_gap_ms": 70.0, "stall_total_ms": 0.0})
         self.assertEqual(heavy["runs"]["camera"], 3)
         self.assertEqual(s["pages"]["light"]["camera"], {"runs": [], "path": None, "fallback": None})
@@ -129,7 +130,7 @@ class Export(unittest.TestCase):
         self.assertEqual(heavy["scroll"]["sf_valid"], [True, True, True])
         self.assertEqual((heavy["scroll"]["swipes_moved"], heavy["scroll"]["swipes_at_edge"]), (9, 0))
         self.assertEqual(len(heavy["scroll"]["runs"]), 3)
-        self.assertEqual(heavy["runs"], {"tap": 3, "scroll": 3, "updates": 3, "open": 3, "camera": 3})
+        self.assertEqual(heavy["runs"], {"tap": 3, "scroll": 3, "updates": 3, "open": 3, "blocking": 3, "camera": 3})
 
     def test_ram_and_apk_are_carried_and_dont_change_the_grade(self):
         """#68: the summary may carry RAM (reference dashboards) and APK sizes; neither is graded."""
@@ -308,7 +309,7 @@ class Parity(unittest.TestCase):
                 self.assertEqual((ts["status"], ts["why"]), (py["status"], py["why"]))
         s = {k: v for k, v in self.sums["B"].items() if k != "clarity"}             # an old summary: no key at all
         self.assertEqual((G.grade_summary(s)["status"], ts_grades([s])[0]["status"]), ("re-measure", "re-measure"))
-        self.assertEqual((self.sums["B"]["clarity"], self.sums["B"]["protocol_version"]), (1, 1))
+        self.assertEqual((self.sums["B"]["clarity"], self.sums["B"]["protocol_version"]), (G.CLARITY, G.PROTOCOL_VERSION))
 
     def test_not_comparable_wins_over_a_missing_protocol_in_both(self):
         """--skip-reference: nothing measured, so no protocol either. Both say why, not "re-measure"."""

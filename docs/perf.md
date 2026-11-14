@@ -341,6 +341,17 @@ Usable is when HA has drawn the view and would answer a touch at once. Two parts
 On the screen, usable is the first frame SurfaceFlinger presented that can carry the drawn frame (one
 refresh after it, less 3 ms for the clock mapping), and never before the main thread was free.
 
+**What rubric 2 grades from this** (Clarity v2). *Open the view* is the navigation to part 1, the
+first screen drawn, on screen: the paint LCP itself times. Part 2 is graded as its own task,
+*blocking*: from the draw to usable, each animation frame's time past 50 ms, added up
+(`stats.js` `frameBlocking`, recorded as `usable.blocking_ms`). That is Lighthouse's Total Blocking
+Time ("adding the blocking portion of all long tasks between First Contentful Paint and Time to
+Interactive", the part of each task past 50 ms), measured on frames: Gecko has no Long Tasks API
+([bug 1348405](https://bugzil.la/1348405)) and no Long Animation Frames, and it runs the refresh
+driver's frames ahead of ordinary tasks (s1rtc4's heavy: its timers waited 140 s while frames came
+5 to 8 a second), so a frame comes late by the length of the task that held it, not by a queue of
+short ones. Usable itself stays in the report as `usable_ms`, not graded.
+
 #### Live camera streams (#174, protocol 5)
 
 Camera streams are a normal part of a wall panel's dashboard (the maintainer, 2026-11-13), so the
@@ -914,7 +925,8 @@ gets an error, which the frontend handles as it would from HA, and the fake logs
 | Tap | INP: the worst of 10 taps on the toggle, taken while the live updates run. Event Timing gives the delay, the handler time and the time to the next paint. Taps under 16 ms aren't reported by Event Timing; they count as 16 ms | Each page |
 | Scroll | Real swipes (`input swipe`), while the live updates run. A swipe's window runs from its first scroll event until 400 ms with no scroll event, the fling included, capped at 100 refreshes. A swipe that reached the end of the page anyway (`hit_edge`) is left out and counted: it stops early, so its window is mostly the flick's slow start. All of a run's other swipes are pooled: rAF over every swipe, SurfaceFlinger over the swipes whose history it kept (decided swipe by swipe). The frames are the worse of the two, judged on the run's scroll level (average fps over the swipes and p95; see [The grade](#the-grade)), and the page takes the median level. A run in which SurfaceFlinger kept no swipe rests on rAF only, which can't see frames the compositor dropped: the report says so and the grade is provisional. `scrolled_px` proves the page moved: a page that didn't move is "not measured". Each swipe logs how many state changes (sensor values and on/off changes, not the clock) ran during it (`changes_during`); a page where none did is provisional | Each page; SurfaceFlinger |
 | Live updates | **Change to screen**: per change, from when the fake sent it (from the stream's schedule; see [Change to screen](#change-to-screen)) to the first frame on screen that can show it. The harness notes when each change reached the page (before HA's own listener), when HA changed the card, and the next animation frame (the frame the change is drawn in); that frame can reach the screen one refresh later at the earliest, so the first SurfaceFlinger present after that is taken (frames presented sooner were already on their way). A change with no frame by the window's end counts as the time from it to the window's end, which is conservative: it may show later still (one less than 250 ms from the end isn't counted). A change that never reached the page in the window counts the same way. One SurfaceFlinger's history doesn't reach isn't counted, and if fewer than half are counted the run isn't. The two clocks are tied by the page's log line to within a few ms, so a value can be a refresh off; the bars are 100 and 200 ms. Each run's level is from the p95 over the window's changes; the page takes the median level. **Frame pacing** over the frames that had a change to draw (a rAF interval counts when it overlaps a change, from when it was due to when it ran plus its transition) decides only the premium level (A+) and is reported. A **live check** at the window's start logs whether the toggle and everything that changes are on screen, and the change log proves the updates ran. If something was off screen or there were no targets, the updates aren't graded (and, if off screen, the taps neither). Since protocol 4 the change log is the fake's schedule, so updates that didn't arrive are never a reason to skip the window: they count | Each view; SurfaceFlinger |
-| Open the view | From the navigation to the view (HA's `navigate()`, as a view tab calls it, in the frontend that is already loaded) to **usable**: the view's head and every card on its first screen drawn, and the main thread free (see [Open the view](#open-the-view-a-navigation-in-the-loaded-frontend) and [Usable](#usable)). The times come from the page's own clock, tied to logcat's by its log line. If the view never says it was usable, or no frame reached the screen after it, it is "not measured", never 0. (Protocols 1 to 3, and protocol 4 as first written, loaded the whole page for each dashboard) | Each view; SurfaceFlinger |
+| Open the view | From the navigation to the view (HA's `navigate()`, as a view tab calls it, in the frontend that is already loaded) to the view's head and every card on its first screen **drawn**, on screen (rubric 2; rubric 1 ran to usable: drawn and the main thread free; see [Open the view](#open-the-view-a-navigation-in-the-loaded-frontend) and [Usable](#usable)). The times come from the page's own clock, tied to logcat's by its log line. If the view never says it was usable, or no frame reached the screen after it, it is "not measured", never 0. (Protocols 1 to 3, and protocol 4 as first written, loaded the whole page for each dashboard) | Each view; SurfaceFlinger |
+| Blocking after the open | Rubric 2: from the first screen drawn to usable (the main thread free for 500 ms), each animation frame's time past 50 ms, added up: Total Blocking Time measured on frames ([Usable](#usable)). A view that never became usable within the runner's deadline blocks for all of it | Each view's page |
 | Restart | From the app's process start (`Start proc` in logcat) to the reference dashboard's start view being **usable**, as for open the view: the kiosk comes back to it by itself, because the graded part points its dashboard setting there. This is HA's cold load: the app, the websocket, the registries, every card type's code and the first view. Once per run, for the whole frame. The engine being ready (GeckoView's own first page, `about:blank`) is reported, not graded (`engine_ready_ms`). See [Restart: back to a usable dashboard](#restart-back-to-a-usable-dashboard) | logcat; the restart page |
 
 Each graded run is one restart back to the start view, then the four reference views in the run's
@@ -972,7 +984,8 @@ animation test page reads it to stop its ladder. The sources were checked on 202
 | Jank rate (frames over 16.7 ms) | ≤ 5% | > 50% | Poor: [Play Console](https://support.google.com/googleplay/android-developer/answer/9844486) "excessive slow frames", more than 50% of frames over 16 ms. Good: the same as a p95 within budget |
 | Frozen frames (over 700 ms) | 0% (**a project choice**) | > 0.1% | [Android vitals](https://developer.android.com/topic/performance/vitals/render): frozen frames take longer than 700 ms; Play Console "excessive frozen frames" is more than 0.1% |
 | INP: worst tap to next paint | ≤ 200 ms | > 500 ms | [Core Web Vitals INP](https://web.dev/articles/inp): good at or below 200 ms, poor above 500 ms |
-| Open the view, navigation to usable | ≤ 2.5 s | > 4 s | [Core Web Vitals LCP](https://web.dev/articles/lcp): "Good LCP values are 2.5 seconds or less, poor values are greater than 4.0 seconds". Usable needs every first-screen card drawn and the main thread free, so it is at or after the largest paint. See the note below the table |
+| Open the view, navigation to the first screen drawn | ≤ 2.5 s | > 4 s | [Core Web Vitals LCP](https://web.dev/articles/lcp): "Good LCP values are 2.5 seconds or less, poor values are greater than 4.0 seconds". Since rubric 2 the open ends at the paint, as LCP's does; rubric 1 ran it to usable (drawn and the main thread free). See the note below the table |
+| Blocking after the open, from the first screen drawn to usable | ≤ 200 ms | > 600 ms | [Lighthouse Total Blocking Time](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time), mobile: "0–200" green (fast), "200–600" orange (moderate), "Over 600" red (slow) (read 2026-11-14; the page gives no update date). Measured on animation frames, not tasks (Gecko has no Long Tasks API; [Usable](#usable)) |
 | Restart, process start to a usable dashboard | ≤ 2.5 s (**a project choice**: LCP's bound) | ≥ 5 s | [Android vitals](https://developer.android.com/topic/performance/vitals/launch-time) counts a cold start that "takes 5 seconds or longer" as excessive (vitals apply it to TTID) |
 
 **LCP's bands are lenient for an in-app navigation.** They are for a page load, network included.
@@ -1012,7 +1025,8 @@ the two middles for an even count):
 | Scroll | the 60 fps rule: frames band good (p95 ≤ 17.17 ms, ≤ 5% late, nothing frozen) | average ≥ 50 fps over the swipes, and p95 ≤ 50 ms | average ≥ 30 fps, and p95 ≤ 67 ms |
 | Live updates | good, and the frames that had a change to draw hold the 60 fps bar | 95% of changes on screen within 100 ms | within 200 ms |
 | Tap | INP good (≤ 200 ms) | INP good | INP good |
-| Open the view | ≤ 2.5 s, or up to 4 s | the same | the same |
+| Open the view (the first screen drawn) | ≤ 2.5 s, or up to 4 s | the same | the same |
+| Blocking after it (rubric 2) | ≤ 200 ms, or up to 600 ms | the same | the same |
 | Cameras (typical and heavy only; over WebRTC since protocol 6) | as good | first frame within 2 s, at least 95% of frames shown, no gap over 500 ms | first frame within 4 s, at least 85% shown, stalls under 1 s in all |
 
 Below fluid, a measured scroll, live-update or camera level is `slow`. Over WebRTC (graded) a
@@ -1547,6 +1561,18 @@ v10 and v11 (2026-11-13) split typical into typical without and with its camera 
 add one page.
 
 ### Versions
+
+**Clarity v2 (2026-11-14): protocol 2, rubric 2.** Rubric 1 graded "open the view" (the navigation
+to *usable*: the first screen drawn **and** the main thread free) against LCP's bands. LCP is a
+paint metric, so applying its 2.5 s and 4 s to drawn-and-free was stricter than the standard it
+cites: on s1rtc9's typical-nocam the first screen was drawn after a median of 953 ms, but long
+tasks after the draw held usable to 4852 ms. Rubric 2 grades the paint against LCP's bands and the
+main thread's blocking after it against TBT's (above, [Usable](#usable)). The maintainer decided it
+on 2026-11-14 to put each standard on the quantity it measures, before rubric 2's letter for any
+frame was known; no threshold moved, and the ladder keeps its shape. Protocol 2 records the frames
+from the draw to usable (`usable.blocking_ms`), which protocol 1 didn't, so a v1 result (clarity 1)
+can't be graded by rubric 2: `gradeSummary` returns `re-measure` ("measured with Clarity v1; these
+rules are Clarity v2's"), and report.py makes it provisional.
 
 **Clarity v1 is the first release (2026-11-14): protocol 1, rubric 1.** Nobody outside the project
 had used Clarity, so the maintainer reset the numbers. Every protocol and rubric number in this page's
