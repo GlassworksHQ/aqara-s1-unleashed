@@ -482,4 +482,20 @@ class SettingsOverlayTest {
         Mockup.idle()
         assertEquals("the old pane's views are let go of", setOf("a-run2"), o.keptNatives)
     }
+
+    @Test
+    fun aPaneTurnedBackOnFromHomeAssistantRedrawsItsPageAndLeavesTheFold() {
+        // #235 verifier N6.
+        val off = mutableSetOf("b")
+        val o = panes(off)
+        o.previewSection("b")
+        Mockup.idle()
+        assertTrue(shown(o, "b is off"))
+        assertTrue(shown(o, "Off · 1"))
+        off -= "b"
+        o.refresh()
+        Mockup.idle()
+        assertTrue("the page is the pane's own again", shown(o, "b is on"))
+        assertFalse("nothing left to fold", shown(o, "Off · 1"))
+    }
 }
