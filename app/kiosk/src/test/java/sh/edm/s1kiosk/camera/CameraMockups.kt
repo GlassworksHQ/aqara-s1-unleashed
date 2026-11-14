@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.view.View
 import android.widget.FrameLayout
 import dev.glassworks.camera.CameraDefinition
+import dev.glassworks.camera.CameraFacts
 import dev.glassworks.camera.CameraPane
 import dev.glassworks.camera.CameraPrefs
 import dev.glassworks.camera.CameraPresence
@@ -96,6 +97,7 @@ class CameraMockups {
         val camera = Camera()
         var now = 0L
         val egress = FrameEgress({ now }, { _, _ -> }, wall = { 0L }) {}
+        val stream = Stream(watching)
         val pane: CameraPane
 
         init {
@@ -106,8 +108,13 @@ class CameraMockups {
                     app, prefs = { file }, DeviceIdentity("panel", "Hallway panel", "02:00:00:00:00:01", "x", "x", "x", "x", 0),
                     publishStates = {}, emit = {}, entitiesChanged = {}, sendEvent = { _, _ -> },
                 ),
-                def.prefs, camera, { byteArrayOf(1) }, Stream(watching), egress,
+                def.prefs, camera, { byteArrayOf(1) }, stream, egress,
                 permitted = { allowed }, ownSensor = { false }, toScreen = { _, _ -> }, exec = exec,
+                // The front camera: presence asks 5 frames a second, the stream 15 (CameraHub on a device).
+                facts = object : CameraFacts {
+                    override val lens = CameraFacts.Lens.FRONT
+                    override fun frameRate() = if (stream.on) 15 else if (camera.sink != null) 5 else 0
+                },
                 presenceFactory = { source, onMotion, onProblem ->
                     CameraPresence(source, { def.prefs.sensitivity }, clock = { now }, post = { it.run() }, after = { _, _ -> }, onProblem = onProblem, onMotion = onMotion)
                 },

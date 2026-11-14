@@ -59,11 +59,13 @@ class CameraDefinition(
             return listOf(SettingsSection(id, TITLE, listOf(SettingsItem.Note { NO_CAMERA_NOTE }), unavailable = { NO_CAMERA }))
         }
         val pane = running as? CameraReadout
-        fun read() = pane?.reading() ?: CameraReading(
+        // Once per page: the address asks the network, and the rows below read [read] every couple of seconds.
+        val address = pane?.address()
+        fun read() = (pane?.reading() ?: CameraReading(
             prefs.use, prefs.privacy, prefs.onvif && prefs.policy.stillsMayLeave, prefs.signIn != null, running = false,
             problem = null, detecting = false, near = null, nearSince = null, leaving = false, lastStill = null,
-            streaming = false, watchers = emptyList(), address = null,
-        )
+            streaming = false, watchers = emptyList(),
+        )).copy(address = address)
         val use = pickers?.let { p -> usePickerItem(p) } ?: SettingsItem.Choice(
             "Camera use", { prefs.use.name },
             { listOf(CameraUse.PRESENCE.name to CameraPrefs.USE_PRESENCE, CameraUse.PRESENCE_AND_SNAPSHOTS.name to CameraPrefs.USE_SNAPSHOTS) },
@@ -83,11 +85,14 @@ class CameraDefinition(
                         SettingsItem.Switch("Camera privacy", CameraPage.PRIVACY_DETAIL, { prefs.privacy }) { on, done -> prefs.privacy = on; done(null) },
                     )),
                     SettingsItem.Group("ONVIF stream", listOf(
-                        SettingsItem.Switch("Stream over ONVIF and RTSP", CameraPage.streamDetail(prefs.use), { prefs.onvif && prefs.policy.stillsMayLeave }) { on, done ->
-                            // Refused in Presence only, as from Home Assistant (the approved design).
-                            if (on && !prefs.policy.stillsMayLeave) done(CameraPage.NEEDS_SNAPSHOTS) else { prefs.onvif = on; done(null) }
+                        // Its line follows privacy and the use: a different line draws the page again (the
+                        // overlay's shape has it), so a card tapped above it updates the switch too.
+                        SettingsItem.Switch("Stream over ONVIF and RTSP", CameraPage.streamDetail(prefs.privacy, prefs.use), { prefs.onvif && prefs.policy.stillsMayLeave }) { on, done ->
+                            // Refused under privacy and in Presence only, as from Home Assistant (the approved design).
+                            val no = CameraPage.streamRefusal(prefs.privacy, prefs.use)
+                            if (on && no != null) done(no) else { prefs.onvif = on; done(null) }
                         },
-                        SettingsItem.Info({ "Sign-in" }, { CameraPage.signIn(prefs.signIn != null) }),
+                        SettingsItem.Info({ "Sign-in" }, { CameraPage.signIn(prefs.signIn != null) }, fixable = { prefs.signIn == null }),
                         SettingsItem.Info({ "Address" }, { CameraPage.address(read().address) }),
                         SettingsItem.Info({ "Stream" }, { CameraPage.stream(read()) }),
                         SettingsItem.Info({ "ONVIF device" }, { CameraPage.device(read()) }),

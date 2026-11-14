@@ -63,10 +63,9 @@ internal class CameraSetupStep(
             } else {
                 card.primary(ALLOW) {
                     keep()
-                    if (!host.preview) {
-                        asked = true
-                        (context as? Activity)?.requestPermissions(arrayOf(Manifest.permission.CAMERA), REQUEST_CODE)
-                    }
+                    // A preview walks on to the refusal without asking Android, so it can be seen too.
+                    asked = true
+                    if (!host.preview) (context as? Activity)?.requestPermissions(arrayOf(Manifest.permission.CAMERA), REQUEST_CODE)
                     host.redraw()
                 }
             }

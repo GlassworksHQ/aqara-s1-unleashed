@@ -45,7 +45,7 @@ class CameraHub(
     private val width: Int = WIDTH,
     private val height: Int = HEIGHT,
     private val log: (String) -> Unit = { Log.i(TAG, it) },
-) : FrameSource, StillCamera, EncoderInput {
+) : FrameSource, StillCamera, EncoderInput, CameraFacts {
     private val app = context.applicationContext
     private val manager = app.getSystemService(Context.CAMERA_SERVICE) as CameraManager
     private val thread = HandlerThread("glassworks-camera").apply { start() }
@@ -150,6 +150,7 @@ class CameraHub(
     // ------------------------------------------------------------------ the hub's thread
 
     private fun settle() {
+        noteRate()
         if (released) return
         if (!wanted) { closeCamera(); return }
         if (device == null) { if (!opening) openCamera(); return }
@@ -216,6 +217,32 @@ class CameraHub(
     }
 
     override val streamFps: Int get() = announcedFps(streamRange)
+
+    /** Which camera the hub opens, for the page (#117's Camera tile): read once, like [streamRange]. */
+    override val lens: CameraFacts.Lens? by lazy {
+        try {
+            cameraId()?.let { id ->
+                when (manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING)) {
+                    CameraCharacteristics.LENS_FACING_FRONT -> CameraFacts.Lens.FRONT
+                    CameraCharacteristics.LENS_FACING_BACK -> CameraFacts.Lens.BACK
+                    else -> CameraFacts.Lens.EXTERNAL
+                }
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** The rate asked of the camera now, set by the hub's thread on every change ([noteRate]). */
+    @Volatile private var rate: Int? = 0
+
+    override fun frameRate(): Int? = rate
+
+    /** While streaming, the encoder's rate when the camera is asked for one, else its own (null); else presence's. 0: nothing asks. */
+    private fun noteRate() {
+        val presence = sinks.maxOfOrNull { it.fps }?.let { Math.round(it) } ?: 0
+        rate = if (encoder != null) streamFps.takeIf { it > 0 } else presence
+    }
 
     private fun pickCamera(): String? {
         val id = cameraId() ?: return null

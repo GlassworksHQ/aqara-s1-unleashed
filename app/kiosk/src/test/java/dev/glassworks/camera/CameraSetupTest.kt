@@ -157,4 +157,70 @@ class CameraSetupTest {
         use.save(CameraUse.PRESENCE_AND_SNAPSHOTS.name) {}
         assertEquals(CameraUse.PRESENCE_AND_SNAPSHOTS, def.prefs.use)
     }
+
+    @Test fun aPreviewsTurnTheCameraOffChangesNothing() {
+        val r = Rig()
+        r.def.switch.on = true
+        val activity = Robolectric.buildActivity(android.app.Activity::class.java).setup().get()
+        val screen = r.def.setupSteps.single().screen(activity, r.host(preview = true))
+        val card = Card()
+        screen.bind(card, entered = true)
+        card.primary!!() // Allow: a preview walks on to the refusal without asking Android
+        screen.bind(card, entered = false)
+        assertNull(shadowOf(activity).lastRequestedPermission)
+        card.secondary!!()
+        assertTrue("the pane stays on", r.def.switch.on)
+        assertEquals(1, r.next)
+    }
+
+    @Test fun presenceOnlyClearsTheStreamAndSnapshotsDoesntBringItBack() {
+        val r = Rig(allowed = true)
+        r.def.prefs.use = CameraUse.PRESENCE_AND_SNAPSHOTS
+        r.def.prefs.onvif = true
+        r.def.prefs.use = CameraUse.PRESENCE
+        assertFalse(r.def.prefs.onvif)
+        r.def.prefs.use = CameraUse.PRESENCE_AND_SNAPSHOTS
+        assertFalse("the ports open only with a tap", r.def.prefs.onvif)
+    }
+
+    @Test fun underPrivacyTheStreamIsRefusedForPrivacy() {
+        val r = Rig(allowed = true)
+        r.def.switch.on = true
+        r.def.prefs.use = CameraUse.PRESENCE_AND_SNAPSHOTS
+        r.def.prefs.privacy = true
+        val stream = paneSections(listOf(r.def)).single().items.filterIsInstance<SettingsItem.Group>().single { it.title == "ONVIF stream" }.items
+            .filterIsInstance<SettingsItem.Switch>().single()
+        assertEquals(CameraPage.PRIVACY_ON, stream.detail)
+        var why: String? = null
+        stream.save(true) { why = it }
+        assertEquals(CameraPage.PRIVACY_ON, why)
+        assertFalse(r.def.prefs.onvif)
+    }
+
+    @Test fun anUnsetSignInIsAmberOnThePage() {
+        val r = Rig(allowed = true)
+        r.def.switch.on = true
+        val signIn = paneSections(listOf(r.def)).single().items.filterIsInstance<SettingsItem.Group>().single { it.title == "ONVIF stream" }.items
+            .filterIsInstance<SettingsItem.Info>().single { it.title() == "Sign-in" }
+        assertTrue(signIn.fixable())
+        r.def.prefs.signIn = "viewer" to "made-up-pass"
+        assertFalse(signIn.fixable())
+        assertEquals("Set", signIn.detail())
+    }
+
+    @Test fun theAddressIsReadOncePerPage() {
+        var asked = 0
+        val readout = object : CameraReadout {
+            override fun reading() = CameraReading(CameraUse.PRESENCE, false, false, false, true, null, true, true, 1L, false, null, true, emptyList())
+            override fun address(): StreamAddress { asked++; return StreamAddress("192.0.2.41", 8554, 8000) }
+        }
+        val pane = object : dev.glassworks.pane.Pane, CameraReadout by readout { override val id = "camera" }
+        val r = Rig(allowed = true)
+        r.def.switch.on = true
+        val items = paneSections(listOf(r.def)) { pane }.single().items.filterIsInstance<SettingsItem.Group>().single { it.title == "ONVIF stream" }.items
+            .filterIsInstance<SettingsItem.Info>()
+        repeat(3) { items.forEach { it.detail() } }
+        assertEquals(1, asked)
+        assertTrue(items.single { it.title() == "Stream" }.detail().startsWith("rtsp://192.0.2.41:8554/live"))
+    }
 }

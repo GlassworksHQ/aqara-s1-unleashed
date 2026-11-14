@@ -42,6 +42,8 @@ class CameraPane(
     private val exec: ScheduledExecutorService,
     /** Called when nothing may use the camera any more (privacy, no permission, the pane stopping): [CameraHub.idle]. */
     private val release: () -> Unit = {},
+    /** Which camera and its rate, for the page: [CameraHub]. */
+    private val facts: CameraFacts? = null,
     private val presenceFactory: (FrameSource, onMotion: (Boolean) -> Unit, onProblem: (String) -> Unit) -> CameraPresence =
         { source, onMotion, onProblem -> CameraPresence(source, { prefs.sensitivity }, onProblem = onProblem, onMotion = onMotion) },
 ) : Pane, CameraReadout {
@@ -79,9 +81,12 @@ class CameraPane(
             use = p.use, privacy = p.privacy, onvif = p.onvif && p.stillsMayLeave, signedIn = prefs.signIn != null,
             running = running, problem = problem, detecting = plan.detect, near = near, nearSince = nearSince,
             leaving = egress.leaving, lastStill = egress.lastStillAt, streaming = open,
-            watchers = if (open) stream.watchers() else emptyList(), address = stream.address(),
+            watchers = if (open) stream.watchers() else emptyList(),
+            lens = facts?.lens, frameRate = facts?.frameRate() ?: 0,
         )
     }
+
+    override fun address(): StreamAddress? = stream.address()
 
     override fun entities(): List<ApiEntity> = listOf(
         snapshotCamera(stills, ::stillPolicy, egress),

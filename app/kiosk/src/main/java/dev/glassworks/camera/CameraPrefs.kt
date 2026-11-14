@@ -17,7 +17,12 @@ class CameraPrefs(private val sp: SharedPreferences) {
 
     var use: CameraUse
         get() = when (sp.getString(KEY_USE, null)) { USE_SNAPSHOTS -> CameraUse.PRESENCE_AND_SNAPSHOTS; else -> CameraUse.PRESENCE }
-        set(v) { sp.edit().putString(KEY_USE, if (v == CameraUse.PRESENCE_AND_SNAPSHOTS) USE_SNAPSHOTS else USE_PRESENCE).apply() }
+        set(v) {
+            // Presence only clears the stream switch, so going back to snapshots doesn't open the ports without a tap.
+            sp.edit().putString(KEY_USE, if (v == CameraUse.PRESENCE_AND_SNAPSHOTS) USE_SNAPSHOTS else USE_PRESENCE)
+                .apply { if (v == CameraUse.PRESENCE) putBoolean(KEY_ONVIF, false) }
+                .apply()
+        }
 
     /** Someone picked the camera's use (setup's Camera step, the page, Home Assistant): until then it is Presence only by default. */
     val useChosen: Boolean get() = sp.contains(KEY_USE)

@@ -25,7 +25,7 @@ interface StreamOutput {
     /** The panel's address and the stream's two URLs, for the camera's page; null without an address. */
     fun address(): StreamAddress? = null
 
-    /** The addresses watching now: empty while the stream is off. */
+    /** The address of each session watching now (one per session): empty while the stream is off. */
     fun watchers(): List<String> = emptyList()
 }
 

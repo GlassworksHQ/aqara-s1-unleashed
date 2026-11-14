@@ -341,6 +341,7 @@ class PanelDevice internal constructor(
             toScreen = runtime.presence::offer,
             exec = exec,
             release = hub::idle,
+            facts = hub,
         ).also { pane = it }
     }
 

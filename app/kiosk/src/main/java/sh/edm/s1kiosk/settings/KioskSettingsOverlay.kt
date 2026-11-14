@@ -217,7 +217,10 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             // the device started): draw it again from the new model. Otherwise only its values move.
             if (s == null || shape(s) != builtShape) {
                 if (s == null) current = next.sections.firstOrNull()?.id
+                // The same page drawn again stays where the person had scrolled it.
+                val y = if (s != null) scroll.scrollY else 0
                 build()
+                if (y > 0) scroll.post { scroll.scrollTo(0, y) }
                 return
             }
         }
@@ -237,6 +240,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             when (i) {
                 is SettingsItem.Group -> listOf("group ${i.title}") + of(i.items)
                 is SettingsItem.Native -> listOf("native ${i.key}")
+                // A switch's line can say why it is refused (the camera's stream): a new line draws the page again.
+                is SettingsItem.Switch -> listOf("Switch ${i.title} ${i.detail}")
                 else -> listOf("${i::class.simpleName} ${titleOf(i).orEmpty()}")
             }
         }
@@ -438,6 +443,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             name.text = i.title()
             val v = i.detail()
             if (value.text != v) value.text = v
+            value.setTextColor(if (i.fixable()) AMBER else MU)
             value.visibility = if (v.isEmpty()) View.GONE else View.VISIBLE
         }
         bind()
@@ -559,8 +565,11 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
 
     private fun toggleRow(i: SettingsItem.Switch): View {
         lateinit var t: Glass.Toggle
+        var saving = false
         fun apply(on: Boolean) {
+            saving = true
             save({ done -> i.save(on, done) }) { why ->
+                saving = false
                 if (why != null) { t.checked = !on; showProblem(why) }
                 else {
                     problem.visibility = View.GONE // what went wrong before is over
@@ -573,6 +582,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             if (ask == null) apply(on)
             else { t.checked = !on; sheet.confirm(ask) { t.checked = on; apply(on) } }
         }
+        // Changed elsewhere while the page is open (Home Assistant, a card above it): follow, unless a change is on its way.
+        live += { if (!saving && !sheet.isOpen) i.value().let { v -> if (t.checked != v) t.checked = v } }
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL

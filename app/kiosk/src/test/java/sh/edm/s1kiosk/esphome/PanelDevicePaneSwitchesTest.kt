@@ -253,4 +253,13 @@ class PanelDevicePaneSwitchesTest {
 
         override fun close() = s.close()
     }
+
+    @Test fun onAFrameWithoutACameraTheCameraPaneNeverRunsNorLightsThePill() {
+        // Robolectric's device has no camera, as the S1.
+        set("camera", true)
+        assertEquals(emptyList<Any>(), device.paneList().filter { it.id == "camera" })
+        assertEquals(false, runtime.cameraLeaving)
+        assertEquals(null, runtime.onCameraLeaving)
+        set("camera", false)
+    }
 }
