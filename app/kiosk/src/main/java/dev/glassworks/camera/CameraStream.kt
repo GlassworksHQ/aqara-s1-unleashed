@@ -95,7 +95,8 @@ class CameraStream(
             log("stream failed to start: ${e.javaClass.simpleName}: ${e.message}")
             try { r.stop() } catch (_: Exception) {}
             try { o.stop() } catch (_: Exception) {}
-            runCatching { ve.close() }; viewers = null
+            try { ve.close() } catch (x: Exception) { log("encoder release failed: ${x.javaClass.simpleName}") }
+            viewers = null
             releaseMulticast()
             this.signIn = null
             false
@@ -110,7 +111,8 @@ class CameraStream(
 
     /** Each part on its own: a throwing encoder release must not leave the ports open or the multicast lock held. */
     private fun stopLocked() {
-        runCatching { viewers?.close() }; viewers = null
+        try { viewers?.close() } catch (e: Exception) { log("encoder release failed: ${e.javaClass.simpleName}") }
+        viewers = null
         rtsp?.let { r -> try { r.stop() } catch (_: Exception) {} ; log("stream off") }
         try { onvif?.stop() } catch (_: Exception) {}
         rtsp = null; onvif = null; signIn = null

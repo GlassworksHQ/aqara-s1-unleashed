@@ -46,7 +46,7 @@ class CameraStreamTest {
 
     @Test fun aThrowingEncoderReleaseStillClosesThePortsAndTheMulticastLock() {
         val rtsp = freePort()
-        val onvif = freePort()
+        val onvif = generateSequence { freePort() }.first { it != rtsp }
         val made = CountDownLatch(1)
         val encoder = object : StreamEncoder {
             override val surface: Surface? = null

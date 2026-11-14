@@ -101,8 +101,11 @@ internal class ViewerEncoder(
             try {
                 e.release()
             } finally {
-                viewing?.close(); viewing = null
-                if (interrupted) Thread.currentThread().interrupt()
+                try {
+                    viewing?.close(); viewing = null
+                } finally {
+                    if (interrupted) Thread.currentThread().interrupt()
+                }
             }
         }
     }

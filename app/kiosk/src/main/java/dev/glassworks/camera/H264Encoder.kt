@@ -69,10 +69,13 @@ class H264Encoder(
         if (Thread.currentThread() !== drain) { // from onFailure, it is this thread
             try { drain.join(1_000) } catch (_: InterruptedException) { interrupted = true }
         }
-        try { codec.stop() } catch (_: Exception) {}
-        try { codec.release() } catch (_: Exception) {}
-        surface.release()
-        if (interrupted) Thread.currentThread().interrupt()
+        try {
+            try { codec.stop() } catch (_: Exception) {}
+            try { codec.release() } catch (_: Exception) {}
+            surface.release()
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt()
+        }
     }
 
     private fun drainLoop() {
