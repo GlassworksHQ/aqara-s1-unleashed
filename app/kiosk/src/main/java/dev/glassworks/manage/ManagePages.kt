@@ -80,7 +80,8 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
         fun item(path: String, title: String, chip: String = "", grey: Boolean = false) =
             """<a class="ni${if (path == current) " on" else ""}${if (grey) " grey" else ""}" href="${esc(path)}"${if (path == current) " aria-current=\"page\"" else ""}><span class="nt">${esc(title)}</span>$chip</a>"""
         fun pane(p: PaneRow) = item("/" + p.id, p.title, chip(p.state), grey = p.state.kind == PaneState.Kind.CANT_RUN)
-        val core = s.sections.filter { it.id in CORE_PANEL }
+        // The core's own sections: every one that isn't a pane's or a page of its own (Log, About).
+        val core = s.sections.filter { sec -> s.panes.none { it.sectionId == sec.id } && sec.id !in OWN_PAGES }
         // As the panel's rail (#243): each pane's chip after its name; panes that are off fold under "Off · N".
         val (off, on) = s.panes.partition { it.state.kind == PaneState.Kind.OFF }
         val panes = on.joinToString("") { pane(it) } + if (off.isEmpty()) "" else
@@ -214,7 +215,7 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
             is SettingsItem.Link -> row(item.title, item.detail, right = ON_THE_PANEL, dim = item.detail.isEmpty())
             is SettingsItem.Group -> """<div class="grp"><div class="gl">${esc(item.title)}</div>${items(v, path, section, item.items, "$prefix${item.title}/")}</div>"""
             // A view only the panel can draw: say so, rather than drop the row.
-            is SettingsItem.Native -> row(nativeTitle(section), "Shown on the panel's own settings", right = ON_THE_PANEL)
+            is SettingsItem.Native -> row(item.title.ifEmpty { nativeTitle(section) }, "Shown on the panel's own settings", right = ON_THE_PANEL)
             is SettingsItem.Status -> """<div class="st"><i class="dot ${if (runCatching { item.ok() }.getOrDefault(false)) "ok" else "off"}"></i><span>${esc(safe { item.text() })}</span></div>"""
             is SettingsItem.States -> {
                 val list = runCatching { item.rows() }.getOrDefault(emptyList())
@@ -386,8 +387,8 @@ ${ownCard(v, s, "log")}<section class="card logs">$rows</section>"""
     }
 
     companion object {
-        /** The core's own sections that sit under "Panel" in the nav. */
-        val CORE_PANEL = setOf("dashboard", "screen", "network")
+        /** Sections drawn on a page of their own under "System" in the nav, not under "Panel". */
+        val OWN_PAGES = setOf("log", "security", "about")
 
         /** A pane's on/off on the page of a browser signed in with the panel's code. */
         const val NEEDS_HA = "Turning a pane on or off needs a Home Assistant sign-in. Sign out, then continue with Home Assistant."

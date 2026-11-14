@@ -21,6 +21,7 @@ import dev.glassworks.pane.SettingsSection
 import dev.glassworks.pane.chipWord
 import dev.glassworks.pane.ChipTone
 import dev.glassworks.pane.chipTone
+import dev.glassworks.pane.PaneState
 import dev.glassworks.pane.SettingsChange
 import dev.glassworks.pane.SettingsChange.couldNot
 import dev.glassworks.pane.SettingsChange.hhmm
@@ -314,14 +315,14 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     private fun bindRail() {
         val m = model ?: return
         nav.bind(m.sections.map { s ->
-            val why = s.unavailable()
             val pane = s.id in m.panes
-            // Every pane's chip after its name, the Manage page's state and word (#243). Status colours mean status only.
+            // Every pane's state from paneState, as the Manage page's nav (#243): its chip after its name, Off
+            // folds (off wins over can't run), Can't run greys. Status colours mean status only.
             val state = if (pane) paneState(s) else null
             GroupedRail.Row(
                 s.id, s.title, group = if (pane) PANES else null,
-                dim = why != null,
-                off = why == null && s.master?.value() == false,
+                dim = state?.kind == PaneState.Kind.CANT_RUN,
+                off = state?.kind == PaneState.Kind.OFF,
                 chip = state?.chipWord?.let { word ->
                     GroupedRail.Chip(word, when (state.chipTone) { ChipTone.OK -> Glass.GREEN; ChipTone.PROBLEM -> ROSE; ChipTone.QUIET -> FA })
                 },

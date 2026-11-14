@@ -109,6 +109,10 @@ class PanelManageParityTest {
             val path = "/" + sec.id
             val page = b.get(path).text()
             fun onPanel(text: String) = runCatching { Mockup.label(o, text) }.isSuccess
+            val nav = page.substringAfter("<aside class=\"side\"").substringBefore("</aside>")
+            assertTrue("${sec.id}: the web nav links it, as the rail does", nav.contains("href=\"/${sec.id}\""))
+            val keys = SettingsChange.changeable(sec).map { it.first }
+            assertEquals("${sec.id}: each changeable item's key (its titles) is unique on its page", keys.size, keys.toSet().size)
             assertTrue("${sec.id}: no row takes the code dialog's backdrop class", Regex("""class="[^"]*\bdim\b""").find(page) == null)
             assertTrue("${sec.id}: the heading", onPanel(sec.heading) && page.contains(esc(sec.heading)))
             sec.master?.takeIf { sec.unavailable() == null }?.let {
@@ -131,7 +135,7 @@ class PanelManageParityTest {
             // Each change goes through the item's own save: its value now, sent back, saves and changes nothing.
             for ((key, item) in SettingsChange.changeable(sec)) {
                 if (key == SettingsChange.MASTER && sec.unavailable() != null) continue
-                // A sign-in has no value to send back (write-only): ManageSettingsTest posts one.
+                // A sign-in's password is shown on request only, so it has no value here to send back: ManageSettingsTest posts one.
                 if (item is SettingsItem.SignIn) continue
                 val before = current(item)
                 val r = b.post("/settings", mapOf("csrf" to b.csrf(), "section" to sec.id, "key" to key, "confirmed" to "1") + before)

@@ -170,7 +170,7 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
             is SettingsItem.Note -> listOf(v(i.text))
             is SettingsItem.Group -> listOf("${i.title}:") + itemLines(i.items).map { "  $it" }
             is SettingsItem.Choice -> listOf("${i.title}: ${v(i.value)}")
-            // Write-only: whether one is set, never what.
+            // Its password is shown on request only (Show), never here: whether one is set.
             is SettingsItem.SignIn -> listOf("${i.title}: ${v { i.shown(i.isSet()) }}")
             is SettingsItem.Status -> listOf(v(i.text))
             is SettingsItem.States -> listOf("${i.title}:") + runCatching { i.rows() }.getOrDefault(emptyList()).map { "  ${it.name}: ${it.value}" }

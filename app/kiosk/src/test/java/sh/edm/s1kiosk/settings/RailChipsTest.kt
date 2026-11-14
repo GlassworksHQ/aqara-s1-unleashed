@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -32,6 +33,24 @@ class RailChipsTest {
         o.show(model(a))
         Mockup.idle()
         return o
+    }
+
+    /** #253 verifier: a pane that is off and can't run folds under "Off", as on the Manage page (paneState: off wins). */
+    @Test
+    fun aPaneThatIsOffAndCantRunFoldsAsOnTheWeb() {
+        fun master(on: Boolean) = SettingsItem.Switch("x", "", { on }) { _, d -> d(null) }
+        val o = open { _ ->
+            KioskSettingsOverlay.Model(listOf(
+                SettingsSection("radio", "Radio", listOf(SettingsItem.Note { "" }), master = master(true)),
+                SettingsSection("bluetooth-proxy", "Bluetooth proxy", listOf(SettingsItem.Note { "" }), master = master(false), unavailable = { "it has no Bluetooth LE" }),
+            ), "0.4.3", setOf("radio", "bluetooth-proxy"))
+        }
+        o.previewSection("radio")
+        Mockup.idle()
+        assertTrue("folded under Off", runCatching { Mockup.label(o, "Off · 1") }.isSuccess)
+        val chips = generateSequence(listOf<View>(o)) { l -> l.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null } }
+            .flatten().filter { it.contentDescription?.startsWith("status ") == true && it.isShown }.map { it.contentDescription.toString() }.toList()
+        assertFalse("not greyed among the panes that run", "status Can't run" in chips)
     }
 
     @Test

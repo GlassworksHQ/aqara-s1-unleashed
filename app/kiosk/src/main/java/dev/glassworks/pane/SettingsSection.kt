@@ -273,7 +273,12 @@ sealed interface SettingsItem {
      * once with [create] and keeps it while the activity lives. A section with a native item is drawn
      * without its own card: native views bring their surfaces, and its other items go in [Group]s.
      */
-    class Native(val key: String, val create: (NativeHost) -> NativeView) : SettingsItem
+    class Native(
+        val key: String,
+        /** What the view is, in words, for a surface that can't draw it (the Manage page's "On the panel" row). */
+        val title: String = "",
+        val create: (NativeHost) -> NativeView,
+    ) : SettingsItem
 
     /** What the menu offers a [Native] view. Main thread. */
     interface NativeHost {

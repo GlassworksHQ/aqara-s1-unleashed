@@ -34,8 +34,9 @@ value, a time or a choice from its dialog. The panel checks each value as its ow
 slider's range, a duration's choices), so the page can't set anything the panel wouldn't. A change
 that only takes effect when the app starts again says so and offers **Restart now**. A switch that
 asks first on the panel (turning the radio off) asks here too. The panel's menu, if it's open, shows
-the new value within a couple of seconds, and the page shows a change made on the panel when you
-reload it. Each change goes in the Log with who made it.
+the new value within a couple of seconds. The page doesn't follow the panel on its own: its values,
+the sliders' included, are the ones from when it was drawn, so reload it to see a change made on the
+panel or in Home Assistant. Each change goes in the Log with who made it.
 
 A sign-in (a camera stream's user name and password, which the panel makes for you) says Set or Not
 set. Open it and press **Show** to read the password, to type it into Protect, Home Assistant's ONVIF
@@ -121,6 +122,11 @@ manage a panel. Whether other users get a say is open (#124).
 - **A camera password you show.** **Show** on a camera's sign-in sends its password to your browser
   over the same plain HTTP, as the page sends everything else. Only a Home Assistant sign-in can ask,
   and the Log records who did. To keep it off the network, read it on the panel's own screen instead.
+  The page with the password isn't cached, but a browser's Back button can still show it again from
+  memory: close the tab when you're done.
+- **Nothing limits how often a signed-in browser changes settings.** Each change needs the session and
+  its form token, and goes in the Log, but there is no rate limit on them: a signed-in browser (or
+  someone holding its cookie) can change settings as fast as it likes.
 - **Nothing stops someone on your network from using up the codes.** Anyone who can reach the panel
   can ask for codes without signing in. After 6 in 10 minutes the panel shows no more, so for up to 10
   minutes nobody can sign in with the code (signing in with Home Assistant still works). The Log says

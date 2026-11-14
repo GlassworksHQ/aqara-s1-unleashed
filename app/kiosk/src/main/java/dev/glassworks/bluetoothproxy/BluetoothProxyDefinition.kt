@@ -52,7 +52,7 @@ class BluetoothProxyDefinition(
     override fun settings() = listOf(
         SettingsSection(
             id, TITLE,
-            items = listOf(page?.let { p -> SettingsItem.Native(id) { host -> p(host, this) } } ?: SettingsItem.Note { phase().entityText ?: "Off" }),
+            items = listOf(page?.let { p -> SettingsItem.Native(id, "Devices and Allow") { host -> p(host, this) } } ?: SettingsItem.Note { phase().entityText ?: "Off" }),
             unavailable = { if (radio.unavailable() == ScanFailure.NO_BLE) "it has no Bluetooth LE" else null },
         ),
     )

@@ -81,7 +81,9 @@ class SettingsChangeTest {
         assertEquals("Use times like 22:00, from 00:00 to 23:59.", change(t, "22:60-07:00"))
         assertNull(change(t, "9:30-7:00"))
         assertNull(change(t, ""))
-        assertEquals(listOf("09:30-07:00", ""), saved)
+        assertNull("a crafted minute snaps to the 30-minute steps", change(t, "22:14-06:46"))
+        assertNull("23:50 rounds over midnight", change(t, "23:50-07:00"))
+        assertEquals(listOf("09:30-07:00", "", "22:00-07:00", "00:00-07:00"), saved)
     }
 
     @Test fun whatOnlyShowsCantBeChangedAndASaveThatThrowsIsAnAnswer() {

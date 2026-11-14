@@ -104,7 +104,9 @@ object SettingsChange {
                 }
                 is SettingsItem.TimeRange -> {
                     if (v.isNotEmpty() && parseRange(v) == null) return done("Use times like 22:00, from 00:00 to 23:59.")
-                    item.save(parseRange(v)?.let { (a, b) -> "${hhmm(a)}-${hhmm(b)}" }.orEmpty(), done)
+                    // On the item's steps, as the panel's pickers give them (a form can send any minute).
+                    fun step(m: Int) = if (item.stepMin <= 0) m else Math.floorMod(((m + item.stepMin / 2) / item.stepMin) * item.stepMin, 24 * 60)
+                    item.save(parseRange(v)?.let { (a, b) -> "${hhmm(step(a))}-${hhmm(step(b))}" }.orEmpty(), done)
                 }
                 is SettingsItem.Choice -> {
                     if (item.options().none { it.first == v }) return done(PICK)
