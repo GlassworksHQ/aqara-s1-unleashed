@@ -33,6 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import camera  # noqa: E402
 import dashboards as D  # noqa: E402
+CLARITY = D
 import hafrontend  # noqa: E402
 import webrtc  # noqa: E402
 
@@ -303,7 +304,7 @@ class Conn:
     def handle(self, m):
         mid, t = m.get("id"), m.get("type")
         self.hub.record({"t": time.time(), "type": t, "keys": sorted(m), "msg": m})
-        h = HANDLERS.get(t)
+        h = getattr(D, "HANDLERS", {}).get(t) or HANDLERS.get(t)     # a home may add its own commands
         if h is None:
             self.hub.unknown.add(t)
             self.hub.record({"t": time.time(), "unknown": t, "msg": m})
@@ -367,8 +368,15 @@ def _camera_stream(c, m):
     c.result(m["id"], {"url": f"/api/hls/{token}/master_playlist.m3u8"})
 
 
+def _stream_types(cam):
+    """What camera/capabilities offers: Clarity's per camera (dashboards.py CAMERA_STREAM_TYPES); a
+    home without that list (the showcase) offers HLS, as before #202."""
+    types = getattr(D, "CAMERA_STREAM_TYPES", None)
+    return ["hls"] if types is None else types.get(cam)
+
+
 def _camera_capabilities(c, m):
-    types = D.CAMERA_STREAM_TYPES.get(m.get("entity_id"))
+    types = _stream_types(m.get("entity_id"))
     if types is None:
         return c.result(m["id"], None, success=False, error={"code": "not_found", "message": "Camera not found"})
     c.result(m["id"], {"frontend_stream_types": types, "two_way_audio": False})
@@ -379,7 +387,7 @@ def _webrtc(error_code):
     offer web_rtc gets error_code."""
     def wrap(f):
         def handler(c, m):
-            types = D.CAMERA_STREAM_TYPES.get(m.get("entity_id"))
+            types = _stream_types(m.get("entity_id"))
             if types is None:
                 return c.result(m["id"], None, success=False, error={"code": "not_found", "message": "Camera not found"})
             if "web_rtc" not in types:
@@ -433,24 +441,29 @@ def _const(value):
     return lambda c, m: c.result(m["id"], value() if callable(value) else value)
 
 
+def _home(name):
+    """The home's own answer (dashboards.py, or serve()'s home), looked up when asked."""
+    return lambda c, m: _const(getattr(D, name))(c, m)
+
+
 HANDLERS = {
     "supported_features": _const(None),
     "subscribe_events": _sub_events,
     "subscribe_entities": _sub_entities,
     "unsubscribe_events": _unsub,
-    "get_config": _const(D.config),
-    "get_services": _const(D.services),
-    "get_panels": _const(D.panels),
+    "get_config": _home("config"),
+    "get_services": _home("services"),
+    "get_panels": _home("panels"),
     "get_states": lambda c, m: c.result(m["id"], list(D.state_objects(c.hub.states))),
-    "auth/current_user": _const(D.USER),
+    "auth/current_user": _home("USER"),
     "frontend/get_themes": _const({"themes": {}, "default_theme": "default", "default_dark_theme": None}),
     "frontend/subscribe_user_data": lambda c, m: (c.result(m["id"]), c.event(m["id"], {"value": None})),
     "frontend/subscribe_system_data": lambda c, m: (c.result(m["id"]), c.event(m["id"], {"value": None})),
     "frontend/get_user_data": _const({"value": None}),
-    "frontend/get_translations": _const({"resources": {}}),
+    "frontend/get_translations": lambda c, m: c.result(m["id"], {"resources": D.translations(m.get("category"))}),
     "lovelace/config": lambda c, m: c.result(m["id"], D.lovelace(m.get("url_path"))),
     "lovelace/resources": _const([]),
-    "lovelace/dashboards/list": _const(D.dashboards_list),
+    "lovelace/dashboards/list": _home("dashboards_list"),
     "config/entity_registry/list_for_display": _const(lambda: {"entity_categories": {"0": "config", "1": "diagnostic"},
                                                                 "entities": []}),
     "config/device_registry/list": _const([]),
@@ -555,8 +568,9 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/hls/"):
             return self.hls(path)
         if path.startswith("/api/camera_proxy/"):
-            # The camera's still (the card's poster): a generated picture.
-            return self.send_bytes(200, D.asset("picture-0.png")[1], "image/png")
+            # The camera's still (the card's poster): the home's own if it has one, else a generated picture.
+            still = D.asset(f"still-{path[len('/api/camera_proxy/'):]}.png") or D.asset("picture-0.png")
+            return self.send_bytes(200, still[1], still[0])
         if path == "/clarity/cancel":
             # The runner, before each restart: a view that was cut short leaves no command, no stream
             # and no changed state behind, as /clarity/still would have.
@@ -706,18 +720,21 @@ def harness_url():
     return f"/clarity/harness-{hashlib.sha256(D.asset('harness.js')[1]).hexdigest()[:16]}.js"
 
 
-def serve(port, log_path=None, harness=True, turn_port=None, transport="adb"):
+def serve(port, log_path=None, harness=True, turn_port=None, transport="adb", home=None):
     """turn_port: where the WebRTC relay listens (0: any free port; None: port + 1). The panel reaches
-    it through adb reverse, as it reaches `port`."""
+    it through adb reverse, as it reaches `port`. `home`: a module like dashboards.py to serve instead
+    of Clarity's (tools/showcase/home.py); the WebRTC peer serves Clarity's cameras only."""
+    global D
+    D = home or CLARITY
     front = hafrontend.root()
     Handler.front = os.path.realpath(front)
     Handler.harness = harness_url()
     Handler.index = render_index(front, Handler.harness if harness else None)
     Handler.hub = hub = Hub(open(log_path, "a") if log_path else None)
     threading.Thread(target=hub.ws_seconds, daemon=True).start()
-    if webrtc.available():
+    if webrtc.available() and D is CLARITY:
         hub.webrtc = webrtc.WebRTC((port + 1 if port else 0) if turn_port is None else turn_port, camera.annexb,
-                                   D.TIERS["CAMERA"]["fps"], record=hub.record, transport=transport)
+                                   camera.FPS, record=hub.record, transport=transport)
         hub.turn_port = hub.webrtc.turn_port
         hub.record({"t": time.time(), "webrtc_transport": transport, "media": hub.webrtc.addr})
     # The frontend fetches dozens of modules at once; the default backlog (5) resets connections.
