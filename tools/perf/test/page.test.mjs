@@ -102,6 +102,9 @@ test("each reference dashboard has at least everything the one below it has", ()
 
 test("the pages' protocol is the one rubric.json's rules are for", () => {
   assert.equal(T.PROTOCOL, rubric.protocol_version);
+  // Clarity v1 (2026-11-14): the pages and the rules carry the same version marker.
+  assert.equal(T.CLARITY, rubric.clarity);
+  assert.deepEqual([T.CLARITY, T.PROTOCOL, rubric.version], [1, 1, 1]);
 });
 
 test("page lines fit the 1023 bytes the S1 keeps of a console line (smoke7)", () => {

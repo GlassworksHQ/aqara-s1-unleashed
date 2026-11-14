@@ -477,7 +477,7 @@ def tier_entry(tier, inp, scroll_missed=0, updates_missed=0, load_ms=200, fcp_ms
     after it; three swipes of 60 frames follow."""
     nav = NAV[tier]
     return {"nonce": tier,
-            "page": {"t": "refdash", "tier": tier, "protocol": G.PROTOCOL_VERSION, "nodes": 1458, "cards": CARDS[tier], "css": [960, 480], "dpr": dpr,
+            "page": {"t": "refdash", "tier": tier, "protocol": G.PROTOCOL_VERSION, "clarity": G.CLARITY, "nodes": 1458, "cards": CARDS[tier], "css": [960, 480], "dpr": dpr,
                      "fcp_ms": fcp_ms, "load_ms": load_ms,
                      "origin_epoch_ms": 1e12 + nav * 1000, "epoch_ms": 1e12 + nav * 1000 + 1000, "mono": nav + 1.0},
             "live_mono": nav + 3.0,
@@ -1096,15 +1096,47 @@ class Build(unittest.TestCase):
         self.assertNotIn("Every task holds", g["headline"])
         self.assertIn("Provisional", g["headline"])
 
-    def test_old_protocol_data_says_re_measure_to_publish(self):
+    def build_with(self, **page):
         for k in (1, 2, 3):
             run = refstart(k, 100)
             for t in run["tiers"].values():
-                t["page"]["protocol"] = 1
+                t["page"].update(page)
+                if page.get("clarity", 0) is None:
+                    del t["page"]["clarity"]
             self.write(f"refstart-{k}.json", run)
-        g = R.build(self.dir)["grade"]
-        self.assertEqual(g["grade"], "B")
-        self.assertIn("Re-measure to publish: the site shows no letter for these pages.", g["headline"])
+        return R.build(self.dir)
+
+    def test_pre_release_data_says_re_measure_and_is_never_v1(self):
+        """Clarity v1 (2026-11-14) starts its numbers again, so a page line without `clarity` is
+        pre-release whatever its protocol: provisional here, "re-measure" on the site."""
+        for proto in (7, 4, 1):                       # 1: pre-release protocol 1, which v1's number repeats
+            with self.subTest(protocol=proto):
+                rep = self.build_with(protocol=proto, clarity=None)
+                g = rep["grade"]
+                self.assertEqual(g["grade"], "B")                                   # kept for the record
+                self.assertTrue(g["provisional"])
+                self.assertIn(f"measured with a pre-release version of Clarity (protocol {proto}): re-measure", g["provisional_reasons"])
+                self.assertIn("Re-measure to publish: the site shows no letter for these pages.", g["headline"])
+                self.assertIsNone(rep["clarity"])
+                s = S.summarise(rep, allow_provisional=True)
+                self.assertIsNone(s["clarity"])
+                self.assertEqual(G.grade_summary(s)["status"], "re-measure")
+
+    def test_v1s_release_candidate_reads_as_v1(self):
+        """Pre-release protocol 8 (#205's s1rtc5, before the lines carried `clarity`) is v1's measurement."""
+        rep = self.build_with(protocol=8, clarity=None)
+        self.assertEqual((rep["clarity"], rep["protocol_version"]), (G.CLARITY, G.PROTOCOL_VERSION))
+        self.assertFalse(any("pre-release" in r for r in rep["grade"].get("provisional_reasons") or []))
+        self.assertEqual(G.grade_summary(S.summarise(rep, allow_provisional=True))["status"], "graded")
+
+    def test_v1_with_another_protocol_number_is_another_protocol(self):
+        rep = self.build_with(protocol=G.PROTOCOL_VERSION + 1, clarity=G.CLARITY)
+        self.assertIn(f"the pages ran protocol {G.PROTOCOL_VERSION + 1}; this rubric is for protocol {G.PROTOCOL_VERSION}",
+                      rep["grade"]["provisional_reasons"])
+        self.assertIsNone(rep["clarity"])
+
+    def test_v1_is_v1(self):
+        self.assertEqual((self.rep["clarity"], self.rep["protocol_version"]), (1, 1))
 
     def test_js_band_is_reported_but_not_graded(self):
         self.assertEqual(self.rep["detail"]["synthetic"]["js_burst_ms"]["median"], 10.0)

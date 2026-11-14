@@ -19,6 +19,7 @@ export interface Rule { good_max: number; poor_above?: number; poor_at?: number 
 export interface Rubric {
   name: string;           // "Clarity": show a grade as `${name} ${grade}`
   version: number;
+  clarity: number;        // Clarity's version: 1 from 2026-11-14; a summary without it is pre-release
   protocol_version: number;
   metrics: Record<string, Rule>;
   grade: {
@@ -54,6 +55,7 @@ export interface PageSummary {
 }
 
 export interface Summary {
+  clarity?: number | null;
   protocol_version?: number | null;
   webrtc_transport?: { transport?: string | null; chosen_by?: string | null; reason?: string | null; possibly_limited?: boolean } | null;
   pages?: Record<string, PageSummary>;
@@ -262,13 +264,18 @@ export function summaryInputs(summary: Summary, rubric: Rubric): [Record<string,
  * The letter for a summary, at render time. status:
  * - "graded": show the letter (and "provisional" when it is set: something wasn't measured, or the
  *   summary lists gaps);
- * - "re-measure": the summary was measured with another protocol than these rules are for; show
- *   "re-measure", not a letter;
+ * - "re-measure": the summary was measured with a pre-release version of Clarity (no `clarity: 1`)
+ *   or another protocol than these rules are for; show "re-measure", not a letter;
  * - "not-comparable": the measurement says why (e.g. not at the default zoom); show no letter.
  */
 export function gradeSummary(summary: Summary, rubric: Rubric): Grade {
   // Not comparable first: it says why there is nothing to grade, whatever the protocol.
   if (summary.not_comparable) return { status: "not-comparable", grade: null, meaning: null, why: summary.not_comparable };
+  if (summary.clarity !== rubric.clarity) {
+    // Before v1 (pre-release protocols 1 to 8): the numbers can repeat, so the marker decides.
+    return { status: "re-measure", grade: null, meaning: null,
+             why: `measured with a pre-release version of Clarity (protocol ${summary.protocol_version ?? "unknown"}): re-measure` };
+  }
   if (summary.protocol_version !== rubric.protocol_version) {
     return { status: "re-measure", grade: null, meaning: null,
              why: `measured with protocol ${summary.protocol_version ?? "unknown"}, these rules are for protocol ${rubric.protocol_version}` };

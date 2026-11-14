@@ -288,7 +288,7 @@
     const navEntry = performance.getEntriesByType("navigation")[0] || {};
     const fcp = performance.getEntriesByName("first-contentful-paint")[0];
     log({
-      t: "refdash", tier: V.tier, protocol: C.PROTOCOL, frontend: C.FRONTEND, nodes: nodeCount(document),
+      t: "refdash", tier: V.tier, protocol: C.PROTOCOL, clarity: C.CLARITY, frontend: C.FRONTEND, nodes: nodeCount(document),
       // The view's cards (dashboards.py) and how many HA had built when it was usable.
       cards: C.CARDS[V.tier], cards_rendered: cards().length,
       css: [innerWidth, innerHeight], dpr: devicePixelRatio, scroll_height: document.documentElement.scrollHeight,

@@ -323,16 +323,19 @@ def provisional_sentence(rep):
     g = rep.get("grade") or {}
     if not g.get("provisional"):
         return None
-    protocols = (((rep.get("graded") or {}).get("reference") or {}).get("protocols")) or []
-    other = [p for p in protocols if p != G.PROTOCOL_VERSION]
+    ref = (rep.get("graded") or {}).get("reference") or {}
+    protocols = ref.get("protocols") or []
+    # A report from before Clarity v1 (2026-11-14) has no `clarity`: pre-release, whatever its
+    # protocol's number (they start again from 1 in v1).
+    pre = bool(protocols) and None in (ref.get("clarity") or [None])
+    other = protocols if pre else [p for p in protocols if p != G.PROTOCOL_VERSION]
     missing = list(g.get("missing") or [])
     parts = []
     if other:
-        older = all(isinstance(p, int) and p < G.PROTOCOL_VERSION for p in other)
-        clause = f"measured with {'an older' if older else 'another'} version of the test"
+        clause = f"measured with a {'pre-release' if pre else 'different'} version of {G.NAME}"
         cams = [m for m in missing if m.endswith(".camera")]
-        if older and cams:
-            # Cameras came with protocol 5 (#174): an older run has none to measure.
+        if pre and cams and all(isinstance(p, int) and p < 5 for p in protocols):
+            # Cameras came with pre-release protocol 5 (#174): an older run has none to measure.
             clause += ", without cameras"
             missing = [m for m in missing if m not in cams]
         parts.append(clause)

@@ -20,7 +20,7 @@ import report as R  # noqa: E402
 import summary as S  # noqa: E402
 import test_report as T  # noqa: E402
 
-SUMMARY_KEYS = {"schema", "test", "protocol_version", "report_schema", "measured_on", "frame", "app_version", "viewport",
+SUMMARY_KEYS = {"schema", "test", "clarity", "protocol_version", "report_schema", "measured_on", "frame", "app_version", "viewport",
                 "runs", "pages", "restart_ms", "gaps", "not_comparable", "report", "complete", "ram", "apk", "notes",
                 "webrtc_transport"}
 PAGE_KEYS = {"inp_ms", "open_ms", "scroll", "updates", "camera", "runs", "timed_out_runs"}
@@ -281,6 +281,19 @@ class Parity(unittest.TestCase):
                 self.assertEqual((py["status"], py["grade"]), ("re-measure", None))
                 self.assertEqual((ts["status"], ts["grade"], ts["why"]), ("re-measure", None, py["why"]))
         self.assertIn("measured with protocol unknown", G.grade_summary(dict(self.sums["B"], protocol_version=None))["why"])
+
+    def test_a_pre_release_summary_is_re_measured_in_both(self):
+        """Clarity v1 (2026-11-14): a summary without `clarity: 1` is pre-release, even at protocol 1."""
+        for extra in ({"clarity": None}, {"clarity": None, "protocol_version": 7}):
+            with self.subTest(**{k: str(v) for k, v in extra.items()}):
+                s = dict(self.sums["B"], **extra)
+                ts, py = ts_grades([s])[0], G.grade_summary(s)
+                self.assertEqual((py["status"], py["grade"]), ("re-measure", None))
+                self.assertIn("measured with a pre-release version of Clarity", py["why"])
+                self.assertEqual((ts["status"], ts["why"]), (py["status"], py["why"]))
+        s = {k: v for k, v in self.sums["B"].items() if k != "clarity"}             # an old summary: no key at all
+        self.assertEqual((G.grade_summary(s)["status"], ts_grades([s])[0]["status"]), ("re-measure", "re-measure"))
+        self.assertEqual((self.sums["B"]["clarity"], self.sums["B"]["protocol_version"]), (1, 1))
 
     def test_not_comparable_wins_over_a_missing_protocol_in_both(self):
         """--skip-reference: nothing measured, so no protocol either. Both say why, not "re-measure"."""

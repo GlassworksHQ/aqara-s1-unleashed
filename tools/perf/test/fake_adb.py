@@ -207,7 +207,8 @@ LOCK = threading.Lock()
 PAGE_TAG, PAGE_LINE_BYTES = "Isolated Web Content", 1023
 # The pages' protocol, read from the pages themselves, so the fake can't fall behind them.
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "page", "tiers.json")) as _f:
-    PROTOCOL = json.load(_f)["PROTOCOL"]
+    _T = json.load(_f)
+    PROTOCOL, CLARITY = _T["PROTOCOL"], _T["CLARITY"]
 PAGE_LINE_MAX = 900     # stats.js LINE_MAX: longer lines are split, as the page does
 
 
@@ -343,7 +344,7 @@ def refdash(nonce, url):
     if foreign == "after":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     time.sleep(0.7)
-    gw({"t": "refdash", "tier": tier, "protocol": PROTOCOL, "frontend": "20261028.5", "nodes": 1458, "cards": 50,
+    gw({"t": "refdash", "tier": tier, "protocol": PROTOCOL, "clarity": CLARITY, "frontend": "20261028.5", "nodes": 1458, "cards": 50,
         "cards_rendered": 47, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
         "fcp_ms": None, "lcp_ms": None, "load_ms": None, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000,
         # Protocol 4: navigation at `nav`; the view's first screen rendered 200 ms later, the main thread
@@ -477,7 +478,7 @@ def dashboard():
             line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
             time.sleep(float(os.environ["FAKE_RESTART_SLOW"]))
         time.sleep(0.5)
-        page_log({"t": "refdash", "tier": "start", "protocol": PROTOCOL, "frontend": "20261028.5", "nodes": 1082, "cards": 22,
+        page_log({"t": "refdash", "tier": "start", "protocol": PROTOCOL, "clarity": CLARITY, "frontend": "20261028.5", "nodes": 1082, "cards": 22,
                   "cards_rendered": 20, "css": [960, 480],
                   "dpr": float(os.environ.get("FAKE_DPR", "1.5")), "scroll_height": 1936, "fcp_ms": 120, "lcp_ms": 120,
                   "load_ms": 100, "nav_ms": 0,

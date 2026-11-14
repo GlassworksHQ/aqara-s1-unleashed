@@ -138,6 +138,8 @@ def measurements(rep, report_url="report.json"):
     return {
         "schema": SCHEMA,
         "test": G.NAME,
+        # Clarity's version: 1 from 2026-11-14; None for a pre-release report (grade.ts: re-measure).
+        "clarity": rep.get("clarity"),
         "protocol_version": rep.get("protocol_version"),
         "report_schema": rep["schema"],
         "measured_on": rep.get("measured_on"),

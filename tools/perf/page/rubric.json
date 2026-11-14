@@ -2,9 +2,11 @@
  "_comment": "The perf rubric: the bands' thresholds and the letter rules. The single source for tools/perf/grade.py, tools/perf/grade.ts (the site computes the letter from a summary with it) and the test page (perf.js, to stop the ladder). docs/perf.md cites each source. Change on purpose, with the docs and the tests (test/grade-cases.json).",
  "name": "Clarity",
  "_name": "The perf test's name, as in \"Clarity A\" or \"a frame's Clarity grade\" (the maintainer, 2026-11-13). The report headline, the summary and grade.ts take it from here, so a rename is one change. File paths keep tools/perf and docs/perf.md.",
- "version": 11,
- "protocol_version": 8,
- "_protocol": "The measurement protocol these rules apply to (tools/perf/page/tiers.json PROTOCOL): the pages, the swipes, the update rate, the windows and how the runner reads them. A summary from another protocol can't be graded with this file: re-measure. Protocol 4 (2026-11-13): Home Assistant's real frontend on a fake HA, restart and open the view to a usable dashboard. Protocol 5 (#174): live camera streams on typical (one 720p) and heavy (one 720p, three 360p), played by HA's HLS player while every task runs, and the camera task. Protocol 6 (#202): the cameras are HA's with go2rtc, so the frontend plays them over WebRTC (relayed over TCP through adb reverse) and the camera task grades the WebRTC stream; the video has no B-frames on either path; HLS is measured as a fallback on copies of typical and heavy (detail, not graded). Protocol 7 (#202, option B): the WebRTC video goes over the LAN when the panel can reach the computer (UDP first, then TCP to the relay), else through adb reverse; the run records which, and results over different transports aren't comparable. The same rules (rubric v8). Protocol 8 (#202, s1rtc4): each task gets its own budget, so a slow view still gets every task tried: the camera window is a fixed 30 s from the view going live (it ran to the end of the taps before), the harness's own waits are paced by frames, which a busy main thread delays less than its timers, the taps wait 5 s each, and the runner's per-view deadline covers only a view that never became usable; a WebRTC camera's stalls come from its receiver's own counts (getStats: freezes, pauses and time with nothing decoded), not from the page's frame callbacks, which a busy main thread starves while the compositor goes on showing frames. The same rules (rubric v9). Rubric v10 (the maintainer, 2026-11-13, #205): the same thresholds, a new ladder step. Typical is measured twice per run, with its camera (typical) and without (typical-nocam, a still picture in the camera card's place); C needs the camera-free typical fluid, B the camera typical good; each letter adds one page, so B no longer asks anything of heavy. Rubric v11 (2026-11-13, before any v10 result): B drops heavy fluid. A report without typical-nocam is provisional under v10 (not measured).",
+ "clarity": 1,
+ "_clarity": "Clarity v1 (the maintainer, 2026-11-14): the first release. A summary or report without `clarity: 1` was measured with a pre-release version (protocols 1 to 8, rubrics 1 to 11, before 2026-11-14): re-measure. Pre-release protocol 8 is v1's release candidate (#205, s1rtc5): the same measurement, so report.py reads its lines as v1.",
+ "version": 1,
+ "protocol_version": 1,
+ "_protocol": "The measurement protocol these rules apply to (tools/perf/page/tiers.json PROTOCOL): the pages, the swipes, the update rate, the windows and how the runner reads them. A summary from another protocol can't be graded with this file: re-measure. Protocol 1 (Clarity v1, 2026-11-14): Home Assistant's real frontend on a fake HA; a restart, then light, typical without its camera, typical with it, and heavy, each opened in the loaded frontend; live updates, taps and swipes on each; live cameras played over WebRTC, as HA with go2rtc does (over the LAN when the panel can reach the computer, else through adb reverse, and the run records which), graded on the receiver's own counts over a fixed 30 s window, with HLS copies as detail; each task its own budget. Its history (pre-release protocols 1 to 8 and rubrics 1 to 11, #158, #174, #202, #205) is in docs/perf.md, \"Versions\".",
  "one_frame_ms": 16.667,
  "vsync_slack_ms": 0.5,
  "metrics": {
@@ -26,7 +28,7 @@
   "load_ms": {
    "good_max": 2500,
    "poor_above": 4000,
-   "source": "Core Web Vitals LCP bounds (good <= 2.5 s, poor > 4 s), applied to opening each reference view (protocol 4): from HA's navigate() in the loaded frontend to usable (every head card and every card on the screen drawn, stable for 2 frames, then the main thread free for 500 ms). Usable is at or after the largest paint, so this is stricter than LCP. Lenient for a view switch (docs/perf.md, Open the view)"
+   "source": "Core Web Vitals LCP bounds (good <= 2.5 s, poor > 4 s), applied to opening each reference view (pre-release protocol 4): from HA's navigate() in the loaded frontend to usable (every head card and every card on the screen drawn, stable for 2 frames, then the main thread free for 500 ms). Usable is at or after the largest paint, so this is stricter than LCP. Lenient for a view switch (docs/perf.md, Open the view)"
   },
   "inp_ms": {
    "good_max": 200,
@@ -36,7 +38,7 @@
   "start_ms": {
    "good_max": 2500,
    "poor_at": 5000,
-   "source": "the restart (protocol 4): app process start to the reference dashboard's start view being usable, the kiosk having been pointed at it (before protocol 4: to engine ready, GeckoView's own first PageStart). poor: Android vitals' excessive cold start bound (>= 5 s), which vitals apply to TTID. good <= 2.5 s: project choice (LCP's bound)"
+   "source": "the restart (pre-release protocol 4): app process start to the reference dashboard's start view being usable, the kiosk having been pointed at it (before pre-release protocol 4: to engine ready, GeckoView's own first PageStart). poor: Android vitals' excessive cold start bound (>= 5 s), which vitals apply to TTID. good <= 2.5 s: project choice (LCP's bound)"
   }
  },
  "js_burst_ms": {
@@ -104,7 +106,7 @@
    "typical",
    "heavy"
   ],
-  "_camera": "Live camera streams (#174), played over WebRTC since protocol 6 (#202), on the pages in camera_pages; a page without streams is `none`, which every level accepts. Per run, the worst stream counts: its first frame, timed from the navigation, so it includes building the view; the share of its frames shown over the camera window (30 s from the view going live, since protocol 8: frames / 15 fps x the time), its longest gap between frames and its stalls added up. Over WebRTC (protocol 8) the frames, gaps and stalls are the receiver's own (getStats: framesDecoded; freezes, by libwebrtc's rule a gap of at least 3x the mean or the mean + 150 ms, at their full length; pauses; time in which nothing was decoded); without a freeze the longest gap is that rule's bound. Over HLS (the fallback, not graded) they are the video element's frame callbacks, with gaps over 500 ms as stalls. A stream that never showed a frame fails. Bars from #174's proposal, to be calibrated on the S1 before they're final.",
+  "_camera": "Live camera streams, played over WebRTC (#174, #202), on the pages in camera_pages; a page without streams is `none`, which every level accepts. Per run, the worst stream counts: its first frame, timed from the navigation, so it includes building the view; the share of its frames shown over the camera window (30 s from the view going live: frames / 15 fps x the time), its longest gap between frames and its stalls added up. Over WebRTC the frames, gaps and stalls are the receiver's own (getStats: framesDecoded; freezes, by libwebrtc's rule a gap of at least 3x the mean or the mean + 150 ms, at their full length; pauses; time in which nothing was decoded); without a freeze the longest gap is that rule's bound. Over HLS (the fallback, not graded) they are the video element's frame callbacks, with gaps over 500 ms as stalls. A stream that never showed a frame fails. Bars from #174's proposal, to be calibrated on the S1 before they're final.",
   "camera_levels": [
    {
     "level": "good",
@@ -219,7 +221,7 @@
     "needs": {
      "typical": "good"
     },
-    "_comment": "typical with its camera playing, good (#205). Each letter adds one page: D light, C typical without a camera, B typical with one, A heavy (the root's decision, 2026-11-13; heavy left B)"
+    "_comment": "typical with its camera playing, good. Each letter adds one page: D light, C typical without a camera, B typical with one, A heavy (2026-11-13)"
    },
    {
     "letter": "C",
@@ -227,7 +229,7 @@
     "needs": {
      "typical-nocam": "fluid"
     },
-    "_comment": "typical without its camera (a still picture in its place): the camera's cost is B's to judge (the maintainer, 2026-11-13, #205)"
+    "_comment": "typical without its camera (a still picture in its place): the camera's cost is B's to judge (the maintainer, 2026-11-13)"
    },
    {
     "letter": "D",

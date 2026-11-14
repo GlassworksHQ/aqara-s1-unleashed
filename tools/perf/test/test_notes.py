@@ -34,15 +34,15 @@ S1V7 = (
     "Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger "
     "dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 4.8 s to open. The likely "
     "limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the "
-    "page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: measured with an older "
-    "version of the test, without cameras.")
+    "page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: measured with a pre-release "
+    "version of Clarity, without cameras.")
 
 SMOKE11 = (
     "Light dashboards feel good: taps and opening a view are quick, and scrolling and live updates are fluid. "
     "Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 5.2 s to open, and "
     "heavy takes 230 ms to answer a tap. The likely limit is the browser's main thread: it stays busy (46% of a "
     "core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (748 of 988 "
-    "MB). Provisional: measured with an older version of the test, without cameras.")
+    "MB). Provisional: measured with a pre-release version of Clarity, without cameras.")
 
 
 def fast():
@@ -287,7 +287,7 @@ class CausesNeedEvidence(unittest.TestCase):
 def current(rep):
     """A fixture run as if it ran this rubric's protocol: s1cam3 ran protocol 5, and since #202 the
     rubric is for a later protocol, which these tests aren't about."""
-    rep["graded"]["reference"]["protocols"] = [G.PROTOCOL_VERSION]
+    rep["graded"]["reference"].update(protocols=[G.PROTOCOL_VERSION], clarity=[G.CLARITY])
     return rep
 
 
@@ -296,7 +296,7 @@ class Provisional(unittest.TestCase):
 
     def test_an_older_protocol_without_cameras(self):
         rep = run("s1v7")
-        self.assertEqual(N.provisional_sentence(rep), "Provisional: measured with an older version of the test, without cameras.")
+        self.assertEqual(N.provisional_sentence(rep), "Provisional: measured with a pre-release version of Clarity, without cameras.")
         self.assertNotIn("rubric is for protocol", N.notes(rep)["text"])
         self.assertIn("the pages ran protocol 4; this rubric is for protocol 5", rep["grade"]["provisional_reasons"])
 
@@ -308,12 +308,18 @@ class Provisional(unittest.TestCase):
         rep = run("s1v7")
         rep["grade"]["provisional_reasons"].append("1 of 3 graded runs failed or are missing")
         self.assertEqual(N.provisional_sentence(rep),
-                         "Provisional: measured with an older version of the test, without cameras, and 1 thing wasn't measured fully.")
+                         "Provisional: measured with a pre-release version of Clarity, without cameras, and 1 thing wasn't measured fully.")
 
     def test_a_newer_protocol_is_another_version(self):
         rep = run("s1v7")
-        rep["graded"]["reference"]["protocols"] = [G.PROTOCOL_VERSION + 1]
-        self.assertEqual(N.provisional_sentence(rep), "Provisional: measured with another version of the test, and 2 things weren't measured fully.")
+        rep["graded"]["reference"].update(protocols=[G.PROTOCOL_VERSION + 1], clarity=[G.CLARITY])
+        self.assertEqual(N.provisional_sentence(rep), "Provisional: measured with a different version of Clarity, and 2 things weren't measured fully.")
+
+    def test_a_pre_release_protocol_with_v1s_number_is_still_pre_release(self):
+        """Clarity v1 (2026-11-14) starts its numbers again: pre-release protocol 1 isn't v1's."""
+        rep = run("s1v7")
+        rep["graded"]["reference"]["protocols"] = [G.PROTOCOL_VERSION]
+        self.assertIn("a pre-release version of Clarity", N.provisional_sentence(rep))
 
     def test_not_provisional_says_nothing(self):
         self.assertIsNone(N.provisional_sentence(run("s1cam3")))
@@ -373,7 +379,7 @@ class InTheReport(unittest.TestCase):
         md = R.markdown(dict(rep, detail={"synthetic": None}, real_use=None, apk=[]))
         self.assertEqual(md.count("Provisional"), 1, md[:1500])
         self.assertIn(S1V7.split(" Provisional:")[0], md)
-        self.assertIn("Provisional: measured with an older version", N.notes(rep)["text"])     # the summary keeps it
+        self.assertIn("Provisional: measured with a pre-release version", N.notes(rep)["text"])     # the summary keeps it
 
     def test_under_the_headline_and_in_the_summary(self):
         rep = run("s1cam3")

@@ -11,6 +11,9 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "page", "rubr
     RUBRIC = json.load(_f)
 
 RUBRIC_VERSION = RUBRIC["version"]
+# Clarity's version (v1 from 2026-11-14). A report or summary without it is pre-release: re-measure.
+CLARITY = RUBRIC["clarity"]
+PRE_RELEASE = "measured with a pre-release version of Clarity"
 NAME = RUBRIC["name"]          # "Clarity": the test's name, kept in rubric.json only
 GOOD, NI, POOR = "good", "needs-improvement", "poor"
 ORDER = {GOOD: 0, NI: 1, POOR: 2}
@@ -242,11 +245,15 @@ def protocol_name(v):
 
 def grade_summary(summary):
     """The letter from a summary (glassworks.perf-summary/2), as the site computes it with grade.ts.
-    status: graded, re-measure (another protocol: these rules don't apply) or not-comparable (the
+    status: graded, re-measure (pre-release, or another protocol: these rules don't apply) or not-comparable (the
     measurement says why, e.g. not at the default zoom)."""
     # Not comparable first: it says why there is nothing to grade, whatever the protocol.
     if summary.get("not_comparable"):
         return {"status": "not-comparable", "grade": None, "meaning": None, "why": summary["not_comparable"]}
+    if summary.get("clarity") != CLARITY:
+        # Before v1 (pre-release protocols 1 to 8): the numbers can repeat, so the marker decides.
+        return {"status": "re-measure", "grade": None, "meaning": None,
+                "why": f"{PRE_RELEASE} (protocol {protocol_name(summary.get('protocol_version'))}): re-measure"}
     if summary.get("protocol_version") != PROTOCOL_VERSION:
         return {"status": "re-measure", "grade": None, "meaning": None,
                 "why": f"measured with protocol {protocol_name(summary.get('protocol_version'))}, "

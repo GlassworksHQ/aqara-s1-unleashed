@@ -445,12 +445,37 @@ def scroll_frames(swipes):
             "first_scroll_ms": statistics.median(firsts) if firsts else None}
 
 
+# Pre-release protocol 8 was Clarity v1's release candidate (#205: s1rtc5 ran it on 2026-11-13): the
+# same measurement as v1's protocol 1, before its lines carried `clarity`. Its lines read as v1.
+RC_PROTOCOL = 8
+
+
+def page_version(page):
+    """(protocol, clarity) of a view's page line: v1's say `clarity: 1`; v1's release candidate
+    (RC_PROTOCOL, no marker) reads as v1; any other line without the marker is pre-release
+    (clarity None, its protocol as it said), whatever its number: pre-release protocols 1 to 8 reuse
+    the numbers v1 starts again from."""
+    if not page:
+        return None, None
+    if page.get("clarity") is not None:
+        return page.get("protocol"), page["clarity"]
+    if page.get("protocol") == RC_PROTOCOL:
+        return G.PROTOCOL_VERSION, G.CLARITY
+    return page.get("protocol"), None
+
+
+def is_v1(ref):
+    """Every page of the graded runs ran this rubric's protocol, in this Clarity version."""
+    return bool(ref) and ref.get("protocols") == [G.PROTOCOL_VERSION] and ref.get("clarity") == [G.CLARITY]
+
+
 def tier_run(tier, entry, presents_ms):
     """One reference dashboard in one run: open the view (load), live updates (frames), tap (INP),
     scroll (frames while swiping)."""
     page, step = entry.get("page"), entry.get("step")
+    proto, clarity = page_version(page)
     out = {"tier": tier, "css": page and page.get("css"), "dpr": page and page.get("dpr"),
-           "protocol": page and page.get("protocol")}
+           "protocol": proto, "clarity": clarity}
     if entry.get("timed_out_s") and not entry.get("error"):
         return dict(timed_out(tier, tier_run(tier, dict(entry, timed_out_s=None), presents_ms) if page else out,
                               entry["timed_out_s"]), timed_out_after=entry.get("timed_out_after"))
@@ -734,6 +759,9 @@ def reference_summary(all_runs):
         # The protocol of every page that reported; a page that was lost says nothing about it.
         "protocols": sorted({x.get("protocol") for r in runs for x in r["tiers"].values()
                              if not x.get("error") and not (x.get("timed_out_s") and x.get("protocol") is None)}, key=str),
+        # And their Clarity version: [1] for v1; None for a page from before v1 (pre-release).
+        "clarity": sorted({x.get("clarity") for r in runs for x in r["tiers"].values()
+                           if not x.get("error") and not (x.get("timed_out_s") and x.get("protocol") is None)}, key=str),
         "warmups": [r.get("warmup") for r in runs],
         "tiers": tiers,
         "errors": [r["error"] for r in all_runs if r.get("error")],
@@ -1271,7 +1299,8 @@ def build(run_dir, apks=(), budgets=None):
         reasons.append("the kiosk's own page never finished loading in a graded run (Home Assistant down?)")
     reasons += coverage_reasons(ref, attempted)
     fake_log = fake_ha_log(os.path.join(run_dir, "fakeha.jsonl"))
-    reasons += fake_ha_reasons(fake_log, bool(ref) and G.PROTOCOL_VERSION in (ref.get("protocols") or []))
+    # The fake's log exists since pre-release protocol 4, and in v1.
+    reasons += fake_ha_reasons(fake_log, is_v1(ref) or any(isinstance(p, int) and p >= 4 for p in (ref or {}).get("protocols") or []))
     if ref and ref.get("bad_page_lines"):
         reasons.append(f"{ref['bad_page_lines']} page line(s) didn't parse or never arrived whole (cut off in logcat?)")
     if ref and ref.get("lost_scroll_steps"):
@@ -1279,9 +1308,13 @@ def build(run_dir, apks=(), budgets=None):
         reasons.append(f"{ref['lost_scroll_steps']} swipe(s) answered with no scroll step back")
     # Only the graded runs' pages count; a run that failed has none (smoke7 printed "protocol " with
     # nothing after it). A page that didn't say reads as "unknown", as in grade.ts.
-    if ref and ref["protocols"] and ref["protocols"] != [G.PROTOCOL_VERSION]:
-        reasons.append(f"the pages ran protocol {', '.join(G.protocol_name(p) for p in ref['protocols'])}; "
-                       f"this rubric is for protocol {G.PROTOCOL_VERSION}")
+    if ref and ref["protocols"] and not is_v1(ref):
+        if None in (ref.get("clarity") or [None]):
+            # Before v1 (2026-11-14): never graded as v1, whatever its protocol's number.
+            reasons.append(f"{G.PRE_RELEASE} (protocol {', '.join(G.protocol_name(p) for p in ref['protocols'])}): re-measure")
+        else:
+            reasons.append(f"the pages ran protocol {', '.join(G.protocol_name(p) for p in ref['protocols'])}; "
+                           f"this rubric is for protocol {G.PROTOCOL_VERSION}")
     vp_state, vp_reason = viewport_check(ref, device) if ref else ("unknown", None)
     grade["viewport"] = {"state": vp_state, "reason": vp_reason}
     if vp_state == "refused":
@@ -1299,7 +1332,7 @@ def build(run_dir, apks=(), budgets=None):
         grade["provisional_reasons"] = reasons
     name = device.get("frame_name") or device["frame"]
     grade["headline"] = headline(name, grade, graded["reference"])
-    if grade["grade"] and ref and ref["protocols"] and ref["protocols"] != [G.PROTOCOL_VERSION]:
+    if grade["grade"] and ref and ref["protocols"] and not is_v1(ref):
         # The report still gives the letter (for the record); the site won't, for these pages.
         grade["headline"] += " Re-measure to publish: the site shows no letter for these pages."
 
@@ -1319,6 +1352,9 @@ def build(run_dir, apks=(), budgets=None):
     rep = {
         "schema": SCHEMA,
         "protocol_version": (ref["protocols"][0] if ref and len(ref["protocols"]) == 1 else None),
+        # Clarity's version (v1 from 2026-11-14); None for a report from before it, which the site
+        # shows as "re-measure".
+        "clarity": G.CLARITY if is_v1(ref) else None,
         "measured_on": device.get("measured_on"),
         "runs_attempted": attempted,
         "frame": {"id": device["frame"], "name": name,

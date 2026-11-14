@@ -1,13 +1,15 @@
 {
  "_comment": "Clarity reference dashboards (MIT): the counts, the first screen, the update stream and the phases. The one source for the fake Home Assistant (dashboards.py), the in-page harness and the node tests. Project choices, fixed before any frame was graded under them; change one only on purpose, with the docs and the tests, never to move a frame's letter.",
- "PROTOCOL": 8,
+ "_CLARITY": "Clarity's version (the maintainer, 2026-11-14): v1, measured with protocol 1 and graded with rubric 1. Every page line carries it (refdash `clarity`), so a line from before the reset (pre-release protocols 1 to 8) can't pass for v1.",
+ "CLARITY": 1,
+ "PROTOCOL": 1,
  "ORDER": [
   "light",
   "typical-nocam",
   "typical",
   "heavy"
  ],
- "_PLAIN": "Views without their cameras (the maintainer, 2026-11-13, #205): a copy of a view whose camera cards are still pictures in the same places (the cameras took picture cards' places in protocol 5), so the view's cards and layout are the same and only the live video is gone. typical-nocam grades C (typical without a camera); typical, with its camera, grades B. Graded like any view.",
+ "_PLAIN": "Views without their cameras (the maintainer, 2026-11-13, #205): a copy of a view whose camera cards are still pictures in the same places (the cameras took picture cards' places in pre-release protocol 5), so the view's cards and layout are the same and only the live video is gone. typical-nocam grades C (typical without a camera); typical, with its camera, grades B. Graded like any view.",
  "PLAIN": {
   "typical-nocam": "typical"
  },
@@ -18,7 +20,7 @@
   "histories": 1,
   "pictures": 1
  },
- "_CAMERAS": "Live camera cards (#174), right after the head: HA's picture-entity card with camera_view live. Light has none; typical one 720p; heavy one 720p and a grid of three 360p (a main stream and sub-streams). They take the place of picture cards, so the card counts stay. The start view has one 360p camera, so the cold load brings in the camera player's code, as it does every other lazy card type. Protocol 6 (#202): these cameras are HA's with go2rtc, as real setups are: camera/capabilities offers web_rtc and hls, the frontend plays WebRTC, and the camera task grades that stream (CAMERA path).",
+ "_CAMERAS": "Live camera cards (#174), right after the head: HA's picture-entity card with camera_view live. Light has none; typical one 720p; heavy one 720p and a grid of three 360p (a main stream and sub-streams). They take the place of picture cards, so the card counts stay. The start view has one 360p camera, so the cold load brings in the camera player's code, as it does every other lazy card type. Pre-release protocol 6 (#202): these cameras are HA's with go2rtc, as real setups are: camera/capabilities offers web_rtc and hls, the frontend plays WebRTC, and the camera task grades that stream (CAMERA path).",
  "CAMERAS": {
   "start": [
    "360p"
@@ -42,7 +44,7 @@
   "typical-hls": "typical",
   "heavy-hls": "heavy"
  },
- "_CAMERA": "The streams' timing. Protocol 7 (#202, smoke 7) follows HA 2026.11.0's defaults: a camera doesn't preload its stream (camera/prefs.py preload_stream False), so HLS starts when the frontend asks (no pre-roll), and the master playlist answers once two segments are made (stream/hls.py HlsMasterPlaylistView). Before, the fake served 4 s of segments at once, so HA's HLS players started before WebRTC and took the panel's hardware decoders.",
+ "_CAMERA": "The streams' timing. Pre-release protocol 7 (#202, smoke 7) follows HA 2026.11.0's defaults: a camera doesn't preload its stream (camera/prefs.py preload_stream False), so HLS starts when the frontend asks (no pre-roll), and the master playlist answers once two segments are made (stream/hls.py HlsMasterPlaylistView). Before, the fake served 4 s of segments at once, so HA's HLS players started before WebRTC and took the panel's hardware decoders.",
  "CAMERA": {
   "fps": 15,
   "segmentS": 1,

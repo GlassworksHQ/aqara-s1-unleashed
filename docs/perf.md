@@ -27,9 +27,8 @@ fixed dashboard on which every wall-panel task still feels good**:
 Typical is measured twice in each run: without a camera (`typical-nocam`) and with one (`typical`).
 A live camera costs a panel more than anything else on a dashboard, and many homes have none, so C
 asks only for the camera-free typical, and B for typical with its camera playing (the maintainer,
-2026-11-13, rubric v10). Each letter adds one page: D light, C typical without a camera, B typical
-with one, A and A+ heavy (rubric v11: B no longer asks heavy to be fluid; decided before any v10
-result). The thresholds didn't move; only the ladder's steps did.
+2026-11-13). Each letter adds one page: D light, C typical without a camera, B typical with one, A
+and A+ heavy. The thresholds are those of the pre-release rubrics; only the ladder's steps changed.
 
 The report opens with one line such as "Aqara S1 Plus: Clarity C, a good wall panel for typical dashboards without a camera.
 Held back by large dashboards: scrolling averages 41.5 fps (p95 50 ms)." (an example of the
@@ -378,8 +377,7 @@ hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
 **What is measured.** For each stream, by the harness, on the views with streams:
 - **First frame**: from the navigation to the stream's first presented frame
   (`requestVideoFrameCallback`, or `loadeddata` without it).
-- **Frames shown**: over the camera window, a fixed 30 s from the view going live (protocol 8,
-  `CAMERA.windowMs`; the updates window and the taps run in it, with the cameras on screen, and the
+- **Frames shown**: over the camera window, a fixed 30 s from the view going live (`CAMERA.windowMs`; the updates window and the taps run in it, with the cameras on screen, and the
   swipes come after it), the frames the decoder presented against 15 fps × the time:
   over WebRTC the receiver's `framesDecoded` (`getStats`: the frames the decoder handed to the
   renderer; its `framesDropped` are frames that never came out of the decoder, so they aren't
@@ -393,7 +391,7 @@ hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
   measured with the streams playing. (`requestVideoFrameCallback` can fire once for two frames that
   land in one rendering update: in Chrome, 60 callbacks for 77 decoded frames. So it is used for the
   first frame and the gaps only.)
-- **Gaps and stalls over WebRTC (graded, protocol 8)**: the receiver's own, from `getStats` samples
+- **Gaps and stalls over WebRTC (graded)**: the receiver's own, from `getStats` samples
   about once a second (`stats.js` `webrtcWindow`). Per interval between two samples: if no receiver
   decoded a frame, the whole interval is a stall; otherwise each receiver's new freezes and pauses
   are stalls at their full length, less the time with nothing decoded just before, which they cover
@@ -408,7 +406,7 @@ hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
 - **Gaps and stalls over HLS (the fallback, not graded)**: gaps over 500 ms between frames
   presented by `requestVideoFrameCallback`, the longest and their sum, and the `waiting` events.
 
-**Why the receiver's and not the page's frame callbacks** (protocol 8; #202, s1rtc4). On the S1's
+**Why the receiver's and not the page's frame callbacks** (#202, s1rtc4). On the S1's
 heavy view the page's frame callbacks ran 127 times in a 147 s window: 132 s of "stalls", with no
 gap over 4.8 s. In the same window the receiver decoded 2198 frames (99.3% of 15 fps) with 2
 freezes, 0.49 s in all, and the compositor presented 1866 frames inside the callbacks' "stalls"
@@ -695,7 +693,7 @@ showed one meanwhile.
   (`liveness` or `remote`).
 
 **A view the panel can't finish** (#202: smoke 7, s1rtc3, s1rtc4). Each task has its own budget
-(protocol 8), so a slow view still gets every task tried:
+so a slow view still gets every task tried:
 
 | Task | Budget |
 |---|---|
@@ -994,7 +992,7 @@ the two middles for an even count):
 | Cameras (typical and heavy only; over WebRTC since protocol 6) | as good | first frame within 2 s, at least 95% of frames shown, no gap over 500 ms | first frame within 4 s, at least 85% shown, stalls under 1 s in all |
 
 Below fluid, a measured scroll, live-update or camera level is `slow`. Over WebRTC (graded) a
-camera's gaps and stalls are the receiver's own counts (protocol 8, "What is measured"). Over HLS
+camera's gaps and stalls are the receiver's own counts ("What is measured"). Over HLS
 they come from `requestVideoFrameCallback`, which a busy main thread delays while the compositor
 goes on showing frames, so there a stall can be the page's, not the stream's; each stream's
 `stall_presented` (detail) is the cross-check: the frames rVFC's `presentedFrames` says were shown
@@ -1017,11 +1015,9 @@ updates that make scrolling stutter cost the page its scroll level.
 | D | Light fluid |
 | E | None of the above |
 
-Rubric v10 (the maintainer, 2026-11-13, #205) added the camera-free typical and moved C onto it;
-rubric v11 (the same day, before any v10 result) made each letter add one page, so B asks only for
-typical with its camera good, no longer for heavy fluid. A report without `typical-nocam` (from
-before v10) is provisional under v10: that page is "not measured", and its grade is the first letter
-the other pages reach (B still stands on typical with its camera).
+The camera-free typical and these steps came in pre-release rubrics 10 and 11 (the maintainer,
+2026-11-13, #205), before any result under them. A report without `typical-nocam` has that page
+"not measured", and is pre-release anyway (see "Versions").
 
 The scale is A+, A, B, C, D, E (a user decision on 2026-11-12; an earlier draft of v5 had premium as
 a label on an A). A+ needs only heavy, like A; when light or typical weren't measured, the grade is
@@ -1060,7 +1056,7 @@ is 83; the test caps it at 85), plus one when the grade is provisional:
    doesn't reach a level, the sentence says what the camera costs, with its worst limit: "Typical
    dashboards feel good without a camera: …; with one, it shows 40% of its camera's frames." That
    limit isn't quoted again in the next sentence. Pages read as "typical" (without a camera) and
-   "typical with a camera"; a report from before rubric v10 keeps "typical" for its one typical.
+   "typical with a camera"; a pre-release report keeps "typical" for its one typical.
 2. **What holds it back**, in one sentence, at most three limits. Each failing task is quoted
    once, with one rounded number, on the lightest page it fails on, and ranked by how far that
    number is past its fluid bar (rubric.json: scroll 30 fps and 67 ms, a change 200 ms, a tap
@@ -1086,9 +1082,9 @@ is 83; the test caps it at 85), plus one when the grade is provisional:
    "Memory is a limit" with the budget it misses; or only the peak ("The app's memory peaks at X
    of Y MB") when available memory wasn't read.
 5. **Provisional**, only when the grade is: one plain clause from the run's protocols and what is
-   missing, not the reasons' wording. A run of an older protocol reads "measured with an older
-   version of the test" (", without cameras" when its camera tasks are missing, since cameras came
-   with protocol 5); every other reason and missing task is counted ("2 things weren't measured
+   missing, not the reasons' wording. A run from before Clarity v1 reads "measured with a
+   pre-release version of Clarity" (", without cameras" when its camera tasks are missing, since
+   cameras came with pre-release protocol 5); every other reason and missing task is counted ("2 things weren't measured
    fully"). The report keeps the reasons in full (`grade.provisional_reasons`). report.md leaves
    this clause out under its headline, which already gives the reasons.
 
@@ -1099,8 +1095,8 @@ the report's rubric, so `notes.rubric` names its version. On the S1:
 | Run | Notes |
 |---|---|
 | s1cam3 (protocol 5, 3 runs) | Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger dashboards slow down: typical scrolls at 25 fps and takes 6.6 s to open, and heavy takes 0.7 s to show a change. The likely limit is the browser's main thread: it stays busy (97% of a core on typical with a camera playing), so cameras get video late even though the hardware decoder keeps up. Memory isn't the limit (889 of 988 MB). |
-| s1v7 (protocol 4, provisional under the protocol 5 rubric) | Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 4.8 s to open. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: measured with an older version of the test, without cameras. |
-| smoke11 (protocol 4, 1 run, provisional) | Light dashboards feel good: taps and opening a view are quick, and scrolling and live updates are fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 5.2 s to open, and heavy takes 230 ms to answer a tap. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (748 of 988 MB). Provisional: measured with an older version of the test, without cameras. |
+| s1v7 (protocol 4, provisional under the protocol 5 rubric) | Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 4.8 s to open. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (743 of 988 MB). Provisional: measured with a pre-release version of Clarity, without cameras. |
+| smoke11 (protocol 4, 1 run, provisional) | Light dashboards feel good: taps and opening a view are quick, and scrolling and live updates are fluid. Bigger dashboards slow down: typical scrolls unevenly (slowest frames 80 ms) and takes 5.2 s to open, and heavy takes 230 ms to answer a tap. The likely limit is the browser's main thread: it stays busy (46% of a core on typical with nothing touched), and the page draws too few frames. Memory isn't the limit (748 of 988 MB). Provisional: measured with a pre-release version of Clarity, without cameras. |
 
 The task levels (`scroll_levels`, `update_levels`), the page levels, the letters (A+ first) and the
 restart cap live in `tools/perf/page/rubric.json` (`grade`), next to the thresholds.
@@ -1425,6 +1421,7 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | Key | What |
 |---|---|
 | `schema` | `"glassworks.perf/4"`. A field that changes meaning gets a new version (`/4`, 2026-11-12: `grade.bands` carries scroll and live-update levels, rubric v5) |
+| `clarity` | Clarity's version: `1` for v1; `null` for a report from before v1 (pre-release), which the site shows as "re-measure". See [Versions](#versions) |
 | `protocol_version` | The measurement protocol the pages ran (`null` if the runs disagree). See [Protocol and rubric versions](#protocol-and-rubric-versions) |
 | `measured_on` | The run's date (UTC, from the computer that ran it) |
 | `runs_attempted` | Graded runs attempted (`plan.json`), the count each band is over |
@@ -1458,6 +1455,7 @@ from real use, and nothing device-unique.
 |---|---|
 | `schema` | `"glassworks.perf-summary/2"` |
 | `test` | The test's name, `"Clarity"` (`rubric.json` `name`), so a summary says what measured it |
+| `clarity` | Clarity's version, `1`. Without it the summary is pre-release: `gradeSummary` returns `re-measure` ([Versions](#versions)) |
 | `protocol_version` | How it was measured. A site grades it only with a rubric for the same protocol |
 | `report_schema` | The report it came from, `"glassworks.perf/4"` |
 | `measured_on` | The run's date, `YYYY-MM-DD` (UTC) |
@@ -1465,7 +1463,7 @@ from real use, and nothing device-unique.
 | `app_version` | The kiosk's version name |
 | `viewport` | `css` (CSS px), `dpr` (device pixel ratio), `default_dpr` (density / 160) |
 | `runs` | `attempted`, `graded` |
-| `pages` | Per page (`light`, `typical-nocam` since rubric v10, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams; a run's record is `{"timed_out": true}` with the numbers `null` when the page didn't finish before its streams were measured), `timed_out_runs` (protocol 7: in how many runs the page didn't finish within the runner's deadline; their unmeasured tasks are in the runs as failing: `open_ms` and `inp_ms` at the deadline, `{"timed_out": true}` records for `scroll`, `updates` and `camera`), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
+| `pages` | Per page (`light`, `typical-nocam`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams; a run's record is `{"timed_out": true}` with the numbers `null` when the page didn't finish before its streams were measured), `timed_out_runs` (protocol 7: in how many runs the page didn't finish within the runner's deadline; their unmeasured tasks are in the runs as failing: `open_ms` and `inp_ms` at the deadline, `{"timed_out": true}` records for `scroll`, `updates` and `camera`), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
 | `restart_ms` | Process start to a usable reference dashboard (median; to engine ready before protocol 4) |
 | `gaps` | Measurement facts that leave it short: "1 of 3 graded runs failed or are missing", "heavy: scrolling rests on rAF only in 1 run(s)…". Empty when complete |
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |
@@ -1518,8 +1516,28 @@ gives each task its own budget, so a slow view still gets every task tried, and 
 camera's gaps and stalls on the receiver's counts (rubric v9, the same rules): the camera window is a
 fixed 30 s from the view going live; the harness's own waits are paced by animation frames, which a
 busy main thread delays less than its timers; the taps wait 5 s each; and the runner's per-view
-deadline covers only a view that never became usable ("A view the panel can't finish"). Every
-protocol 5 to 7 summary is now "re-measure"; protocols 6 and 7 ran only in #202's runs.
+deadline covers only a view that never became usable ("A view the panel can't finish"). Rubric
+v10 and v11 (2026-11-13) split typical into typical without and with its camera and made each letter
+add one page.
+
+### Versions
+
+**Clarity v1 is the first release (2026-11-14): protocol 1, rubric 1.** Nobody outside the project
+had used Clarity, so the maintainer reset the numbers. Every protocol and rubric number in this page's
+history (protocols 1 to 8, rubrics 1 to 11, before 2026-11-14) is **pre-release**, and its results
+aren't comparable with v1's.
+
+- Each page line, report and summary of v1 says `clarity: 1` (the harness's `refdash` line,
+  report.json and the summary). One without it was measured with a pre-release version: report.py
+  makes it provisional ("measured with a pre-release version of Clarity (protocol N): re-measure"),
+  the notes say so, and `gradeSummary` returns `re-measure`, never a v1 letter. The marker decides,
+  not the number, because v1's protocol 1 repeats a pre-release number.
+- Pre-release protocol 8 was v1's release candidate: the same measurement, run once on the S1
+  (s1rtc5, #205, 2026-11-13) before its lines carried the marker. report.py reads its lines as v1,
+  so its report.json is rebuilt as v1 without re-measuring: `tools/perf/report.py <run-dir>`, then
+  `tools/perf/summary.py <run-dir>/report.json <out>`.
+- A later version will raise `clarity` with a change that makes earlier results incomparable, and
+  `protocol_version` and the rubric's `version` with each change to the measurement or the rules.
 
 ### Showing the grade
 
@@ -1582,7 +1600,7 @@ load) and `t`:
 
 | `t` | Fields |
 |---|---|
-| `refdash` | A reference view, usable: `tier` (the view: `start` for the restart page, or `light`, `typical`, `heavy`), `protocol`, `frontend` (HA's frontend release), `nodes`, `cards` (the view's cards), `cards_rendered` (how many HA had built when it was usable), `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (the frontend's own load: the restart page only, else `null`), `nav_ms` (the navigation to the view; 0 for the frontend's own load), `video_caps` (`mse_h264`, `native_hls`, `rvfc`, `webrtc`: which camera player paths the engine offers), `usable` (`rendered_tick_ms`, the frame in which it was drawn; `first_screen_cards`; `head_cards`, the 10 head cards it waited for; `interactive_ms`, when the main thread's free stretch began; `busy_ms`, protocol 8, the longest a probe waited each second until then) (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
+| `refdash` | A reference view, usable: `tier` (the view: `start` for the restart page, or `light`, `typical`, `heavy`), `protocol`, `clarity` (v1: `1`), `frontend` (HA's frontend release), `nodes`, `cards` (the view's cards), `cards_rendered` (how many HA had built when it was usable), `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (the frontend's own load: the restart page only, else `null`), `nav_ms` (the navigation to the view; 0 for the frontend's own load), `video_caps` (`mse_h264`, `native_hls`, `rvfc`, `webrtc`: which camera player paths the engine offers), `usable` (`rendered_tick_ms`, the frame in which it was drawn; `first_screen_cards`; `head_cards`, the 10 head cards it waited for; `interactive_ms`, when the main thread's free stretch began; `busy_ms`, protocol 8, the longest a probe waited each second until then) (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
 | `warmup` | `stage`, `n`. The page goes live; the runner wakes the screen and stops polling SurfaceFlinger |
 | `measure` | `stage`, `n`. A window starts. For `updates`, the live check: `moving`, `offscreen`, `targets`, `update_every_ms` |
 | `step` | `stage` (`updates`, `scroll`, or a ladder family), `n`, `window_ms` (the window's length on the page's clock), `raf` (frame stats). For `updates`: `t0` (the window's start on the page's clock), `pacing_ms` (the stretch `raf_times` covers), `from` (`sent`: the changes start when the fake sent them), `stream_at_ms` (when the harness asked for the stream), `raf_times` and `changes` (`[sent, arrived, transition ms, kind, tick]`: every change the fake sent up to the window's end, from its schedule; `arrived` and `tick` are `null` for one that hadn't reached the page when the window was logged; kind 0 a sensor value, 2 an on/off change (1, the clock, was protocol 3's); tick, the animation frame it was drawn in), all ms after `t0`. For `scroll`: `scrolled_px`, `hit_edge`, `changes_during`, `first_scroll_ms`, `raf_intervals`. The runner reads SurfaceFlinger |
