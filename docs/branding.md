@@ -80,9 +80,9 @@ has no hue of its own: a frame is hardware, the bottom plate of the stack.
    `banner-frame-<id>`.
 
 The frame's README also carries its Clarity badge, `https://www.glassworks.dev/frames/<id>/clarity-on-dark.svg`
-and `-on-light.svg`. The site draws it at build time from the frame's `design/clarity.json` (none
-exists yet, so it reads "not measured"), and `tools/check-brand-images.py` doesn't check it: that tool covers
-`/brand/` images only.
+and `-on-light.svg`. The site draws it at build time from the frame's published summary,
+`clarity/clarity.json` (beside its report, [docs/perf.md](perf.md#published-results); until a frame has one, it
+reads "not measured"), and `tools/check-brand-images.py` doesn't check it: that tool covers `/brand/` images only.
 
 ## Colour, in short
 

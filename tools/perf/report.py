@@ -2,6 +2,13 @@
 """Build report.json and report.md from a tools/perf run directory (MIT). Offline; no adb.
 
     python3 tools/perf/report.py <run-dir> [--apk app.apk ...] [--budgets frames/<id>/budgets.json]
+                                 [--out DIR] [--app-version LABEL]
+
+--out writes report.json and report.md there instead of into the run directory (a published copy,
+e.g. frames/<id>/clarity/; the run's own files stay as they are). --app-version shows LABEL as the
+app's version, in place of the version the device reported (e.g. "pre-v1" for a build before the
+app's first release): report.md, report.json and the APK sizes show it as given, and nothing in the
+grade reads it.
 
 The report schema (glassworks.perf/4) is documented in docs/perf.md.
 """
@@ -1852,17 +1859,35 @@ def main():
     ap.add_argument("--apk", action="append", default=[])
     ap.add_argument("--budgets", default=None, help="a frame's budgets file; default frames/<id>/budgets.json, else tools/perf/budgets.json")
     ap.add_argument("--keep-apk", action="store_true", help="keep the apk sizes of the existing report.json (run.sh --idle-only)")
+    ap.add_argument("--out", default=None, help="write report.json and report.md here (default: the run directory)")
+    ap.add_argument("--app-version", default=None, help="show this label as the app's version (never graded)")
     a = ap.parse_args()
     rep = build(a.run_dir, a.apk, a.budgets)
     old = os.path.join(a.run_dir, "report.json")
     if a.keep_apk and not a.apk and os.path.exists(old):
         rep["apk"] = read_json(old).get("apk", [])
-    with open(os.path.join(a.run_dir, "report.json"), "w") as f:
+    if a.app_version:
+        label_app_version(rep, a.app_version)
+    out = a.out or a.run_dir
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, "report.json"), "w") as f:
         json.dump(rep, f, indent=1)
+        f.write("\n")
     md = markdown(rep)
-    with open(os.path.join(a.run_dir, "report.md"), "w") as f:
+    with open(os.path.join(out, "report.md"), "w") as f:
         f.write(md)
     print(md)
+
+
+def label_app_version(rep, label):
+    """The app's version as given (--app-version), in place of the device's: the frame's app, and the
+    APK sizes' file names (a test build's carry its commit). Only labels: the grade reads none of it,
+    and the summary's app_version is this label."""
+    app = rep["frame"]["app"]
+    app.update(version_name=label, version_code=None, version_label="given")
+    for x in rep.get("apk") or []:
+        x["file"] = f"{app.get('package', 'app')}-{label}.apk"
+    return rep
 
 
 if __name__ == "__main__":

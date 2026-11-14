@@ -1567,6 +1567,30 @@ aren't comparable with v1's.
 - A later version will raise `clarity` with a change that makes earlier results incomparable, and
   `protocol_version` and the rubric's `version` with each change to the measurement or the rules.
 
+### Published results
+
+A frame's published result lives in its folder, `frames/<id>/clarity/`, generated from the run's
+files and never edited by hand:
+
+| File | What |
+|---|---|
+| `report.md` | The report, as report.md is for any run (the site links to it on GitHub) |
+| `report.json` | The full report (`glassworks.perf/4`) |
+| `clarity.json` | The summary (`glassworks.perf-summary/2`), which the site grades with `grade.ts`; its `report` is report.md's GitHub URL |
+
+```sh
+python3 tools/perf/report.py <run-dir> --keep-apk --out frames/<id>/clarity --app-version <label>
+python3 tools/perf/summary.py frames/<id>/clarity/report.json frames/<id>/clarity/clarity.json \
+    --report-url https://github.com/GlassworksHQ/glassworks/blob/main/frames/<id>/clarity/report.md
+```
+
+`--out` leaves the run directory as it was. `--app-version` shows a label in place of the version
+the device reported (report.md, report.json, the summary's `app_version` and the APK sizes' names),
+for an app before its first release; nothing in the grade reads it. Before committing, check the
+files for anything device-unique (serial, MACs, addresses other than RFC 5737, HA URLs, tokens):
+the report and summary are built to carry none, but a run directory's other files do. The S1's is
+[frames/aqara-s1-plus/clarity/](../frames/aqara-s1-plus/clarity/report.md).
+
 ### Showing the grade
 
 The site computes the letter **at render time** from the frame's summary and `rubric.json`, with
@@ -1662,6 +1686,13 @@ Frame statistics are defined once, in `tools/perf/page/stats.js` and `tools/perf
 `tools/perf/test/stats-cases.json` pins both to the same answers.
 
 ## Example: Aqara S1 Plus
+
+**Clarity v1: D** (s1rtc9, eb9c7af, 3 of 3 runs, protocol 1, rubric 1, the S1 Kiosk build before
+its first release (`pre-v1`), camera video over the LAN (`lan-udp`), 2026-11-14; not provisional):
+"a good wall panel for light dashboards. Held back by typical dashboards: the view takes 4.9 s to
+open." The published report is [frames/aqara-s1-plus/clarity/report.md](../frames/aqara-s1-plus/clarity/report.md),
+and its summary [clarity.json](../frames/aqara-s1-plus/clarity/clarity.json). The results below
+are pre-release (see [Versions](#versions)) and not comparable with it.
 
 **Protocol 5: D** (s1cam3, cbc2be6, 3 of 3 runs, rubric v6, S1 Kiosk 0.4.3, `thread_router`,
 2026-11-13; not provisional): protocol 4's views with live camera streams. Typical's 720p stream
