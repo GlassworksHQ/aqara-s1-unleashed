@@ -27,8 +27,11 @@ internal class TimeZoneView(
     private val host: SettingsItem.NativeHost,
     private val pane: TimeZonePane,
     private val choices: TimeZoneChoices,
-    /** Runs the match of Home Assistant's zone, which reads a year of offsets: never on the main thread (the pane's own thread). */
-    private val background: (Runnable) -> Unit,
+    /**
+     * Runs the match of Home Assistant's zone, which reads a year of offsets: never on the main thread (the
+     * pane's own thread). False when it couldn't take the work.
+     */
+    private val background: (Runnable) -> Boolean,
 ) : SettingsItem.NativeView {
     private val context: Context = host.context
     private val g = Glass(context)
@@ -69,7 +72,7 @@ internal class TimeZoneView(
         haCache?.let { (k, v) -> if (k == key) return v }
         if (matching != key) {
             matching = key
-            background {
+            val queued = background {
                 val started = SystemClock.elapsedRealtimeNanos()
                 val found = runCatching { choices.homeAssistant(rule, zone, Instant.now()) }.getOrNull()
                 // The panel run records this (#235).
@@ -83,6 +86,8 @@ internal class TimeZoneView(
                     fillHomeAssistant?.invoke()
                 }
             }
+            // Refused (the pane's thread had stopped): the next refresh tries again (#235 verifier).
+            if (!queued) matching = null
         }
         return null
     }

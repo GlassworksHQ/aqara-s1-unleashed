@@ -95,6 +95,15 @@ class PosixTimeZoneTest {
         assertEquals("UTC−04:00 · Home Assistant's clock; the panel keeps its zone", ha.line(Instant.parse("2027-07-15T12:00:00Z")))
     }
 
+    @Test fun useItOffersACityNeverAPosixStyleName() {
+        // The root's panel run on 6ca175e: HA's America/Los_Angeles rule was offered as "like PST8PDT".
+        val ha = TimeZoneChoices(ids).homeAssistant("PST8PDT,M3.2.0,M11.1.0", "Europe/Madrid", from) as TimeZoneChoices.HomeAssistantZone.Like
+        assertTrue(ha.zone, ha.zone.startsWith("America/"))
+        // Only POSIX-style names keep the clock: nothing is offered.
+        assertEquals(TimeZoneChoices.HomeAssistantZone.Elsewhere("PST8PDT,M3.2.0,M11.1.0"),
+            TimeZoneChoices(listOf("PST8PDT", "Europe/Madrid")).homeAssistant("PST8PDT,M3.2.0,M11.1.0", "Europe/Madrid", from))
+    }
+
     @Test fun anOldAliasIsListedOnceByItsCurrentName() {
         val icu = mapOf("Asia/Calcutta" to "Asia/Kolkata")
         val choices = TimeZoneChoices(listOf("Asia/Calcutta", "Asia/Kolkata", "Asia/Tokyo")) { icu[it] ?: it }

@@ -29,6 +29,9 @@ class TimeZoneViewTest {
 
     private val root by lazy { android.widget.FrameLayout(Mockup.activity()) }
 
+    /** The pane's thread refuses work (it stopped). */
+    private var refuse = false
+
     /** A Madrid panel whose HA has Madrid's rule, and its page; the match waits in [queued]. */
     private fun page(queued: MutableList<Runnable>): TimeZoneView {
         TimeZone.setDefault(TimeZone.getTimeZone("Europe/Madrid"))
@@ -50,7 +53,7 @@ class TimeZoneViewTest {
             override fun reveal(field: View) {}
             override fun hideKeyboard() {}
         }
-        val view = TimeZoneView(host, pane, TimeZoneChoices(TimeZone.getAvailableIDs().toList())) { queued += it }
+        val view = TimeZoneView(host, pane, TimeZoneChoices(TimeZone.getAvailableIDs().toList())) { if (refuse) false else { queued += it; true } }
         root.addView(view.view)
         Mockup.show(root)
         return view
@@ -82,6 +85,20 @@ class TimeZoneViewTest {
         queued.single().run()
         shadowOf(Looper.getMainLooper()).idle()
         assertTrue(shownIn(root, "The same as the panel's"))
+    }
+
+    @Test fun aRefusedMatchIsTriedAgainOnTheNextRefresh() {
+        // #235 verifier: a refused post left the match pending, and the row never came.
+        val queued = ArrayList<Runnable>()
+        val view = page(queued)
+        refuse = true
+        view.refresh()
+        refuse = false
+        view.refresh()
+        assertEquals("asked again", 1, queued.size)
+        queued.single().run()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(shown(view, "${TimeZoneChoices.offset("Europe/Madrid", java.time.Instant.now())} · the same as the panel's"))
     }
 
     private fun shown(v: TimeZoneView, text: String) = shownIn(v.view, text)

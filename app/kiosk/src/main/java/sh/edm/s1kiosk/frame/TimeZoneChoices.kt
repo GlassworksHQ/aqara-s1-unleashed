@@ -59,8 +59,10 @@ class TimeZoneChoices(
         // The panel's zone may be an old alias of one in the list (Europe/Belfast is Europe/London).
         val here = canonical(current)
         if (here in like) return HomeAssistantZone.Same(here)
-        if (tz.fixed || like.isEmpty()) return HomeAssistantZone.Elsewhere(rule)
-        val pick = like.minWith(
+        // A city, never a POSIX-style name (PST8PDT, EST5EDT): the root's panel run was offered PST8PDT.
+        val cities = like.filter { regionOf(it) in REGIONS }
+        if (tz.fixed || cities.isEmpty()) return HomeAssistantZone.Elsewhere(rule)
+        val pick = cities.minWith(
             compareBy<String>({ regionOf(it) != regionOf(here) }, { REGIONS.indexOf(regionOf(it)).let { i -> if (i < 0) REGIONS.size else i } }, { it }),
         )
         return HomeAssistantZone.Like(pick)

@@ -43,7 +43,8 @@ object DiagnosticsPage {
     /** The line under the tiles: what the lines are, why the app last restarted and the web content processes. */
     fun footer(restartReason: String?, contentProcesses: Int?): String = listOfNotNull(
         "Lines show the last hour.",
-        restartReason?.let { "Last app restart: $it." },
+        // Android 10 can't say why (ApplicationExitInfo is Android 11): leave it out rather than say "unknown".
+        restartReason?.takeIf { it != "unknown" }?.let { "Last app restart: $it." },
         contentProcesses?.let { "Web content processes: $it." },
     ).joinToString(" ")
 
