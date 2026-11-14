@@ -76,9 +76,9 @@ class TimeZonePaneTest {
     /** #212: the settings page picks a zone, or Home Assistant's once it said, the way HA's time_zone does. */
     @Test fun thePagePicksAZoneAndKnowsHomeAssistants() {
         turn(true)
-        assertEquals(null, pane.homeAssistantZone)
-        pane.onEvent(PanelEvent.HomeAssistantTimeZone("Europe/Berlin"))
-        assertEquals("Europe/Berlin", pane.homeAssistantZone)
+        assertEquals(null, pane.homeAssistantRule)
+        pane.onEvent(PanelEvent.HomeAssistantTimeZone("CET-1CEST,M3.5.0,M10.5.0/3"))
+        assertEquals("CET-1CEST,M3.5.0,M10.5.0/3", pane.homeAssistantRule)
         assertEquals(null, pane.keep("Europe/Berlin"))
         assertEquals("Europe/Berlin", pane.kept)
         assertEquals("Europe/Berlin", props.get(TimeZoneKeeper.PROP))

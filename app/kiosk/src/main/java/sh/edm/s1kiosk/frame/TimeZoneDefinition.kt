@@ -23,7 +23,9 @@ class TimeZoneDefinition(file: SharedPreferences) : PaneDefinition {
     override fun settings(running: Pane?): List<SettingsSection> {
         val p = running as? TimeZonePane ?: return emptyList()
         return listOf(SettingsSection(id, "Time zone", listOf(
-            SettingsItem.Native("time-zone-${System.identityHashCode(p)}") { host -> TimeZoneView(host, p, TimeZone.getAvailableIDs().toList()) },
+            SettingsItem.Native("time-zone-${System.identityHashCode(p)}") { host ->
+                TimeZoneView(host, p, TimeZoneChoices(TimeZone.getAvailableIDs().toList()) { id -> android.icu.util.TimeZone.getCanonicalID(id) ?: id })
+            },
         )))
     }
 }

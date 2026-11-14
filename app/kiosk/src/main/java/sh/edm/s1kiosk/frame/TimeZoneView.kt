@@ -21,11 +21,10 @@ import java.util.TimeZone
  * one tap, then regions on the left and their cities on the right, each with its offset and time now.
  * Nothing is typed, so no keyboard hides the list. Main thread.
  */
-internal class TimeZoneView(private val host: SettingsItem.NativeHost, private val pane: TimeZonePane, ids: Collection<String>) : SettingsItem.NativeView {
+internal class TimeZoneView(private val host: SettingsItem.NativeHost, private val pane: TimeZonePane, private val choices: TimeZoneChoices) : SettingsItem.NativeView {
     private val context: Context = host.context
     private val g = Glass(context)
     private fun px(v: Float) = g.px(v)
-    private val choices = TimeZoneChoices(ids)
 
     private val zoneValue = g.text(15f, Glass.MU)
     private val keptTitle = g.text(16.5f, Glass.TX)
@@ -47,15 +46,25 @@ internal class TimeZoneView(private val host: SettingsItem.NativeHost, private v
     /** The zone the panel shows now: the one it keeps, else the system's. */
     private fun current() = pane.kept.ifEmpty { TimeZone.getDefault().id }
 
+    private var haCache: Pair<Pair<String, String>, TimeZoneChoices.HomeAssistantZone?>? = null
+
+    /** Home Assistant's zone matched to the panel's zones; worked out once per rule and zone, not on every refresh. */
+    private fun homeAssistant(): TimeZoneChoices.HomeAssistantZone? {
+        val rule = pane.homeAssistantRule ?: return null
+        val key = rule to current()
+        haCache?.let { (k, v) -> if (k == key) return v }
+        return choices.homeAssistant(rule, current(), Instant.now()).also { haCache = key to it }
+    }
+
     override fun refresh() {
         val now = Instant.now()
         zoneValue.text = TimeZoneChoices.line(current(), now)
         val (title, line) = TimeZoneChoices.kept(pane.status)
         keptTitle.text = title
         keptValue.text = line
-        val ha = pane.homeAssistantZone
+        val ha = homeAssistant()
         haRow.visibility = if (ha == null) View.GONE else View.VISIBLE
-        haValue.text = ha?.let { "$it · ${if (it == current()) "the same" else "not the panel's"}" }.orEmpty()
+        haValue.text = ha?.let { if (it.same) "${it.offset} · the same as the panel's" else "${it.offset} · like ${it.zone}, not the panel's" }.orEmpty()
     }
 
     private fun row(title: TextView, value: TextView, chevron: Boolean) = LinearLayout(context).apply {
@@ -164,18 +173,21 @@ internal class TimeZoneView(private val host: SettingsItem.NativeHost, private v
                 addView(g.plain("Cancel").apply { setOnClickListener { close() } }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(14f) })
                 addView(g.primary("Save").apply { setPadding(px(26f), px(10f), px(26f), px(10f)); setOnClickListener { keep(chosen) } })
             })
-            pane.homeAssistantZone?.let { ha ->
+            // Home Assistant sends a rule, not a name: "Use it" keeps a zone here with the same clock, and says which.
+            homeAssistant()?.let { ha ->
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     background = g.surface(16f)
                     setPadding(px(16f), px(10f), px(10f), px(10f))
+                    minimumHeight = px(62f)
                     addView(LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
-                        addView(g.text(15.5f, Glass.TX).apply { text = "Home Assistant's: $ha" })
-                        addView(g.text(13.5f, Glass.MU).apply { text = "${TimeZoneChoices.offset(ha, now)} · ${TimeZoneChoices.clock(ha, now)} now" })
+                        addView(g.text(15.5f, Glass.TX).apply { text = "Home Assistant's clock: ${ha.offset}" })
+                        val clock = TimeZoneChoices.clock(ha.zone, now)
+                        addView(g.text(13.5f, Glass.MU).apply { text = if (ha.same) "The same as the panel's · $clock now" else "Keeps ${ha.zone} · $clock now" })
                     }, LinearLayout.LayoutParams(0, -2, 1f))
-                    addView(g.ghost("Use it").apply { setPadding(px(18f), px(8f), px(18f), px(8f)); setOnClickListener { keep(ha) } })
+                    if (!ha.same) addView(g.ghost("Use it").apply { setPadding(px(18f), px(8f), px(18f), px(8f)); setOnClickListener { keep(ha.zone) } })
                 }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14f) })
             }
             addView(why, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })

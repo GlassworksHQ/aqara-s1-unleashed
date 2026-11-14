@@ -36,8 +36,8 @@ class TimeZonePane(
 
     override fun entities(): List<ApiEntity> = entities
 
-    /** Home Assistant's own zone, once it answered the panel's time request; null until then. For the settings page (#212). */
-    @Volatile var homeAssistantZone: String? = null
+    /** Home Assistant's zone as a POSIX rule, once it answered the panel's time request; null until then. For the settings page (#212). */
+    @Volatile var homeAssistantRule: String? = null
         private set
 
     /** The zone the panel keeps, "" for none. */
@@ -59,7 +59,7 @@ class TimeZonePane(
     override fun stop() = keeper.stop()
 
     override fun onEvent(event: PanelEvent) {
-        if (event is PanelEvent.HomeAssistantTimeZone) homeAssistantZone = event.zone
+        if (event is PanelEvent.HomeAssistantTimeZone) homeAssistantRule = event.posix
         // The core has stopped the pane already; stop() alone also runs when the app stops, which keeps the zone.
         if (event is PanelEvent.SettingChanged && event.key == TimeZonePrefs.KEY_ENABLED && !prefs.enabled) {
             keeper.release().takeIf { it.isNotEmpty() }?.let { prefs.kept = it }

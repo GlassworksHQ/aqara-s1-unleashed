@@ -116,8 +116,8 @@ class PanePagesMockups {
         return p
     }
 
-    /** Europe/Madrid, kept by the root helper, and Home Assistant's the same. */
-    private fun timeZone(): TimeZonePane {
+    /** Europe/Madrid, kept by the root helper; Home Assistant's clock as the POSIX rule it sends ([haRule]). */
+    private fun timeZone(haRule: String = "CET-1CEST,M3.5.0,M10.5.0/3"): TimeZonePane {
         TimeZone.setDefault(TimeZone.getTimeZone("Europe/Madrid"))
         val props = object : SysProps {
             val values = mutableMapOf(TimeZoneKeeper.PROP to "Europe/Madrid", TimeZoneKeeper.PROP_STATUS to "ok Europe/Madrid")
@@ -126,7 +126,7 @@ class PanePagesMockups {
         }
         val p = TimeZonePane(ctx, TimeZonePrefs(KioskPrefs(app).paneFile("time-zone")), TimeZoneKeeper(props, inline = true))
         p.start()
-        p.onEvent(PanelEvent.HomeAssistantTimeZone("Europe/Madrid"))
+        p.onEvent(PanelEvent.HomeAssistantTimeZone(haRule))
         return p
     }
 
@@ -208,6 +208,11 @@ class PanePagesMockups {
         shot("212-04-time-zone", menu(listOf(tz)), "time-zone")
         shot("212-05-time-zone-picker", menu(listOf(tz)), "time-zone") { o ->
             (o.previewNative("time-zone-${System.identityHashCode(tz)}") as TimeZoneView).open()
+        }
+        // Home Assistant on another clock than the panel's: "Use it" keeps a zone with HA's clock.
+        val london = timeZone("GMT0BST,M3.5.0/1,M10.5.0")
+        shot("212-05b-time-zone-picker-use-it", menu(listOf(london)), "time-zone") { o ->
+            (o.previewNative("time-zone-${System.identityHashCode(london)}") as TimeZoneView).open()
         }
     }
 }

@@ -9,7 +9,11 @@ import java.util.Locale
  * The time zone picker's lists and words (#212): regions, then their cities, and plain UTC offsets.
  * Picked, never typed. Pure, for tests: [ids] are the zones the panel knows.
  */
-class TimeZoneChoices(ids: Collection<String>) {
+class TimeZoneChoices(
+    ids: Collection<String>,
+    /** A zone's current name for an old alias (`Europe/Belfast` is `Europe/London`); the app's is ICU's. */
+    private val canonical: (String) -> String = { it },
+) {
     private val known = ids.toSet()
 
     /** The regions that have zones here, in [REGIONS] order, then [UTC] for the plain offsets. */
@@ -30,6 +34,23 @@ class TimeZoneChoices(ids: Collection<String>) {
 
     /** The region a zone is listed under: its first part, or [UTC] for the plain ones. */
     fun regionOf(zone: String): String = regions.firstOrNull { zone.startsWith("$it/") } ?: UTC
+
+    /**
+     * Home Assistant's time zone, from the POSIX rule it sends ([PosixTimeZone]): its offset now,
+     * whether the panel's [current] zone keeps the same clock all year, and the zone "Use it" keeps,
+     * one in [current]'s region first. Null when the rule can't be read or no zone here keeps its clock.
+     */
+    fun homeAssistant(rule: String, current: String, now: Instant): HomeAssistantZone? {
+        val like = PosixTimeZone.parse(rule)?.zonesLike(known, now).orEmpty().map(canonical).distinct()
+        if (like.isEmpty()) return null
+        val pick = if (current in like) current else like.minWith(
+            compareBy<String>({ regionOf(it) != regionOf(current) }, { REGIONS.indexOf(regionOf(it)).let { i -> if (i < 0) REGIONS.size else i } }, { it }),
+        )
+        return HomeAssistantZone(offset(pick, now), current in like, pick)
+    }
+
+    /** See [homeAssistant]. */
+    data class HomeAssistantZone(val offset: String, val same: Boolean, val zone: String)
 
     companion object {
         const val UTC = "UTC"

@@ -198,9 +198,10 @@ class ApiServer(
     @Volatile var onStatesSubscribed: ((clientInfo: String, remote: InetAddress?, authenticated: Boolean) -> Unit)? = null
 
     /**
-     * Called (on a connection thread) with Home Assistant's time zone, an IANA id like `Europe/Madrid`.
-     * The server asks for the time (`GetTimeRequest`) once an authenticated client subscribes to states,
-     * and Home Assistant's answer carries its zone (`GetTimeResponse.timezone`).
+     * Called (on a connection thread) with Home Assistant's time zone. The server asks for the time
+     * (`GetTimeRequest`) once an authenticated client subscribes to states, and Home Assistant's answer
+     * carries its zone (`GetTimeResponse.timezone`) as a POSIX `TZ` rule, like
+     * `CET-1CEST,M3.5.0,M10.5.0/3`: aioesphomeapi turns HA's IANA zone into one.
      */
     @Volatile var onTimeZone: ((String) -> Unit)? = null
 
