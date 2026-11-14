@@ -18,7 +18,7 @@ lightly tested end to end. Nothing below is implemented unless marked ✅.
    through adb, see [From the web installer](#from-the-web-installer-improv-serial--setup-channel-over-adb-)).
    Without it, a fresh or reset panel gets Wi-Fi through **Improv via BLE**, with an on-screen
    picker as fallback.
-2. **HA finds it.** "New device discovered: Glassworks Panel" appears in HA → click **Add**. HA generates
+2. **HA finds it.** "New device discovered: Aqara S1 Plus" appears in HA → click **Add**. HA generates
    and pushes the encryption key itself.
 3. **Sign in with your phone.** The panel shows a QR code. Scan it, sign in to HA on the phone (normal
    HA login, password manager works), done. The panel never shows a login form.

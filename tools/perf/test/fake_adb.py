@@ -112,7 +112,7 @@ def shell(cmd):
         s = state("settings.json", {})
         voice = s.get("voice_enabled", "true") == "true"
         t = now()
-        out = [f"{t - 5:10.3f}  31236  31237 I S1ESPHome: ESPHome device 's1-panel' mac 00:00:00:00:00:00, voice={'true' if voice else 'false'}"]
+        out = [f"{t - 5:10.3f}  31236  31237 I S1ESPHome: ESPHome device 'aqara-s1-plus-000000' mac 00:00:00:00:00:00, voice={'true' if voice else 'false'}"]
         if s.get("sendspin_enabled", "true") == "true":
             out.append(f"{t - 4.9:10.3f}  31236  31237 I S1Sendspin: Sendspin player starting (client id test)")
         for pane in ("wall-base", "time-zone", "diagnostics"):   # #67: the kiosk says what each switch is

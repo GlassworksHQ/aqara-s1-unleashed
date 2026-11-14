@@ -130,6 +130,12 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **Each panel has its own name in Home Assistant, so a second one can be added.** Every panel used
+  to call itself `s1-panel`, and adding a second device made Home Assistant offer to replace the
+  first. Now the S1 announces itself as "Aqara S1 Plus", with a node name such as
+  `aqara-s1-plus-a1b2c3` that ends in part of its MAC. A panel you already added stays in place with
+  all its entity ids. Home Assistant shows "Aqara S1 Plus" after the update, unless you renamed it.
+  The Manage page answers at the new name, such as `http://aqara-s1-plus-a1b2c3.local:8099/`.
 - **A pane you turn off stays off after a restart.** Turning voice or music off, then restarting
   the app at once, could bring the pane back on: the setting was saved after the app had gone.
   Zoom, secure hosts and remote debugging, which restart the app, could lose their change the same
