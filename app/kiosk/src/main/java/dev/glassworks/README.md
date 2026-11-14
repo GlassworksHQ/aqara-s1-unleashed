@@ -62,7 +62,7 @@ change until Glassworks v1.
 | `PaneSwitch` | A pane's on/off (#67): a flag in the pane's own settings file. The shell runs the pane only while it is on. The settings switch, the setup card, the Home Assistant switch and the adb extra all come from it. |
 | `SetupStep` | Something first-boot setup waits for from a pane: state plus setup channel requests. |
 | `PaneChoice` | A pane's card on setup's Panes step: a title, a line and a switch. |
-| `SettingsSection` | A section of the settings: typed items (`SettingsItem`) the panel's menu draws, and the Manage page (#33) will. `settingsOrder` places them. |
+| `SettingsSection` | A section of the settings: typed items (`SettingsItem`) that the panel's menu and the Manage page both draw and change (#242). `settingsOrder` places them; `SettingsChange` checks and applies a change for both. |
 | `ScreenPolicy` | (`dev.glassworks.screen`) Wake on approach, idle off, the night window and its timeout, the brightness curve and the screen mode. It reads the frame's `PresenceSource` and `LightSource` and the app's `ScreenSettings`. One per process, on `GlassworksRuntime.screen`. |
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
 | `DiagnosticsPane` | (`dev.glassworks.diagnostics`) The panel's health as diagnostic entities: CPU, temperature, RAM, storage, Wi-Fi, uptime, the last restart reason. A core pane, so every frame has it. The entities are in [docs/esphome.md](../../../../../../../docs/esphome.md#diagnostics). |
@@ -326,6 +326,15 @@ reports a problem in words. An item that only takes effect when the app starts a
 name in the list. `Native` is the one panel-only item: a view for what has no typed item yet (the
 radio's modes and card). A browser can't draw it, so new sections should not need it.
 
+**One way to change a setting (#242).** The panel's menu and the Manage page change an item through
+`SettingsChange.change(item, raw, done)`: it checks the value as the panel's control limits it (a
+number for a `NUMBER` text, the slider's range snapped to its step, one of a duration's choices or a
+choice's option ids, `on`/`off`, `HH:MM-HH:MM`) and then calls the item's own `save`. Put a setting's
+limits in its item (`min`, `max`, `step`, `choices`, `options`, `enabled`), not in a view, so a
+browser can't send what the panel wouldn't take. An item's key on a page is its title, under its
+groups' titles (`Who may connect/IP addresses …`), or `on` for the section's `master`: keep titles
+unique within a section.
+
 **Order.** `settingsOrder` puts the core's Dashboard, Screen and Network first, then the panes'
 sections in definition order (Voice, Music, Radio, Wall base, Time zone), then Log, Security and
 About: the Manage page's nav (#33). A section without items is left out. The panel's menu draws them
@@ -409,13 +418,24 @@ on the same port as the QR-code sign-in pages. The core has the whole page; a fr
 | `manage.ManageLog`, `LogcatTail`, `Redact` | The 7-day log across reboots, fed from the app's own logcat, and the redaction for it and the diagnostics file |
 | `manage.ManageHost` | What the frame supplies: `status()` (`PanelStatus`: tiles, `PaneRow`s with a `PaneState`, the settings sections), `actions`, `diagnostics()` |
 
-The settings sections are the ones the panel's menu draws (`paneSections`, `settingsOrder`), and
-they show read-only: `Text`, `Switch`, `Info` and `Note` show their values; `Slider`, `Duration` and
-`TimeRange` show their value in words; `Link` and `Native` say "On the panel". A pane's row
+The settings sections are the ones the panel's menu draws, from the frame's one model (the S1's is
+`S1Settings.model`), and the Manage page draws each page as the menu does (#242): the heading with
+"Panes ›", the `master` switch at top right, the items in the same order and words. A `Switch` and a
+`Slider` change in their row; a `Text`, `Duration`, `TimeRange` or `Choice` opens its sheet as a
+dialog. Each change is a POST to `/settings` (CSRF token, `Origin` check) with the section, the item's
+key and the value, applied with `SettingsChange.change` on the thread `ManageHost.onMain` gives (the
+main thread on Android), so a change from the browser takes the panel's own path. A `Switch` that
+asks first on the panel asks here too. A pane's `master` needs a Home Assistant sign-in: in Home
+Assistant it is an `authOnly` switch. `Link` and `Native` say "On the panel". A pane's row
 (`manage.paneRow`) takes its name and on/off from its section: the title, `unavailable` for Can't run,
-the `master` switch (#67) for Off. A pane that is off shows its state and nothing else: no settings,
-no links. The frame adds only what a running pane is doing. Editing in a browser needs a typed value
-and action model instead of closures and views; that is phase 2.
+the `master` switch (#67) for Off; its chip is `chipWord` and `chipTone`, as on the rail. Off panes
+fold under "Off · N" in the nav, as in the rail. `PanelManageParityTest` walks every item the menu
+draws and fails when one is missing on the Manage page, or changeable on one side only.
+
+**One look (#243).** `dev.glassworks.brand.Tokens` holds glassworks.dev's colours, the chip, the
+switch, corners and the settings row: the panel's `Glass` and the pages' CSS (`PageShell.TOKENS`,
+`ManagePages.MANAGE_CSS`) read it, and `TokensTest` pins it to the brand's
+`kiln/packages/brand/src/tokens.css`.
 
 ## Android versions
 

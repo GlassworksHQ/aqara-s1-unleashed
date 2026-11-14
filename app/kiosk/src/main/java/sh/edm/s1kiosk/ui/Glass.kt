@@ -12,6 +12,7 @@ import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.TextView
+import dev.glassworks.brand.Tokens
 
 /**
  * The panel's own screens on the Glassworks brand (glassworks.dev/brand, #63): always night, sky to
@@ -99,7 +100,7 @@ class Glass(val context: Context) {
             setOnClickListener { checked = !checked; onChange(checked) }
         }
 
-        override fun onMeasure(w: Int, h: Int) = setMeasuredDimension((52 * dp).toInt(), (30 * dp).toInt())
+        override fun onMeasure(w: Int, h: Int) = setMeasuredDimension((Tokens.Toggle.W * dp).toInt(), (Tokens.Toggle.H * dp).toInt())
 
         override fun onDraw(c: Canvas) {
             val w = width.toFloat(); val h = height.toFloat()
@@ -118,7 +119,7 @@ class Glass(val context: Context) {
             }
             paint.style = Paint.Style.FILL
             paint.color = if (checked) Color.WHITE else MU
-            val knob = h / 2 - 4 * dp
+            val knob = h / 2 - Tokens.Toggle.KNOB_INSET * dp
             c.drawCircle(if (checked) w - h / 2 else h / 2, h / 2, knob, paint)
         }
     }
@@ -155,20 +156,21 @@ class Glass(val context: Context) {
     }
 
     companion object {
-        val BG = Color.parseColor("#0a0b0f")
-        /** Glass on night: cards (rgba 255 .045), tiles and buttons (.08), hairlines (.07). */
-        val S1 = Color.argb((0.045f * 255).toInt(), 255, 255, 255)
-        val S2 = Color.argb((0.08f * 255).toInt(), 255, 255, 255)
-        val BD = Color.argb((0.07f * 255).toInt(), 255, 255, 255)
-        val TX = Color.parseColor("#f4f4f5")
-        val MU = Color.parseColor("#a1a1aa")
-        val FA = Color.parseColor("#63636b")
-        val PRIMARY = Color.parseColor("#f4f4f5")
-        val SKY = Color.parseColor("#38bdf8")
-        val INDIGO = Color.parseColor("#818cf8")
-        val VIOLET = Color.parseColor("#a78bfa")
-        val GREEN = Color.parseColor("#34d399")
-        val AMBER = Color.parseColor("#fbbf24")
-        val ROSE = Color.parseColor("#fb7185")
+        // The brand's screen ink and glass, from the one source the Manage page reads too ([Tokens], #243).
+        val BG = Tokens.Screen.bg.argb
+        /** Glass on night: cards ([Tokens.Screen.glass]), tiles and buttons (raised), hairlines (edge). */
+        val S1 = Tokens.Screen.glass.argb
+        val S2 = Tokens.Screen.raised.argb
+        val BD = Tokens.Screen.edge.argb
+        val TX = Tokens.Screen.fg.argb
+        val MU = Tokens.Screen.muted.argb
+        val FA = Tokens.Screen.faint.argb
+        val PRIMARY = Tokens.Screen.fg.argb
+        val SKY = Tokens.SKY.argb
+        val INDIGO = Tokens.INDIGO.argb
+        val VIOLET = Tokens.VIOLET.argb
+        val GREEN = Tokens.GREEN.argb
+        val AMBER = Tokens.AMBER.argb
+        val ROSE = Tokens.ROSE.argb
     }
 }

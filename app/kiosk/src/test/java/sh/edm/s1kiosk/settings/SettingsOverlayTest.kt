@@ -60,6 +60,28 @@ class SettingsOverlayTest {
         level.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null }
     }.flatten().filterIsInstance<EditText>().firstOrNull { it.isShown }
 
+    /** #242: a change made on the Manage page (or in Home Assistant) shows on the open menu at its next refresh. */
+    @Test
+    fun rowsFollowAChangeMadeElsewhere() {
+        prefs.idleOffSec = 120
+        prefs.autoBrightness = true
+        val o = open()
+        o.reload = { MenuFixture.model(o.context, radioDefinition(o.context, FixedReadout(null, running = true))) }
+        o.previewSection("screen")
+        Mockup.idle()
+        assertTrue(shown(o, "After 2 minutes"))
+        prefs.idleOffSec = 300
+        prefs.autoBrightness = false
+        o.refresh()
+        Mockup.idle()
+        assertTrue("the duration's row follows", shown(o, "After 5 minutes"))
+        assertFalse(shown(o, "After 2 minutes"))
+        val toggle = generateSequence(listOf<View>(row(o, "Brightness"))) { level ->
+            level.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null }
+        }.flatten().filterIsInstance<sh.edm.s1kiosk.ui.Glass.Toggle>().single()
+        assertFalse("the switch follows", toggle.checked)
+    }
+
     @Test
     fun aSwitchAppliesWhenTapped() {
         val o = open()
