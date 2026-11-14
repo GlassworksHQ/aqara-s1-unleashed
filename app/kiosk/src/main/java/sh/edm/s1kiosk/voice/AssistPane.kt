@@ -121,23 +121,39 @@ class AssistPane(
      * unless that pick reads "no wake word": the old word is no longer active, so the first read turns
      * it to no_wake_word, and only a second read takes the panel's word (esphome/select.py
      * async_satellite_config_updated, read 2026-11-14; the root's panel run saw no_wake_word after one).
-     * So Home Assistant is asked to connect again twice: now, and once more after its first read.
+     * So Home Assistant is asked to connect again twice: now, and once more after its next read. Only
+     * within [REREAD_WINDOW_MS] of the pick: a read much later (HA was down) is HA's own and buys nothing.
      */
     fun useWakeWord(id: String) {
         if (id == prefs.wakeWord) return
         prefs.wakeWord = id
+        rereadUntil = clock() + REREAD_WINDOW_MS
         rereads.set(2)
         ctx.entitiesChanged()
     }
 
-    /** Home Assistant's configuration reads still to come after a word picked on the panel ([useWakeWord]). */
+    /**
+     * Configuration reads by Home Assistant still to count after a word picked on the panel ([useWakeWord]):
+     * any read, the first one after the pick included, whatever started it.
+     */
     private val rereads = AtomicInteger(0)
 
-    /** How long after Home Assistant's first read it is asked to connect again: time for it to apply the read. */
+    /** Until when ([clock]) a read still counts toward the second reconnect. */
+    @Volatile private var rereadUntil = 0L
+
+    /** `SystemClock.elapsedRealtime`; a test moves it. */
+    internal var clock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
+
+    /**
+     * How long after Home Assistant's read it is asked to connect again: time for it to apply the read.
+     * Empirical: 2 s worked in the root's panel run on 2026-11-14, the only evidence; HA applies the read
+     * at once in its event loop (esphome/select.py), so it is a margin, not a measured need.
+     */
     internal var rereadDelayMs = 2_000L
 
-    /** After a read: the first of two asks for the second ([useWakeWord]). Any thread. */
+    /** After a read: the first of two, within the window, asks for the second ([useWakeWord]). Any thread. */
     private fun configurationRead() {
+        if (rereads.get() > 0 && clock() > rereadUntil) { rereads.set(0); return }
         if (rereads.get() > 0 && rereads.decrementAndGet() == 1) {
             val w = watchdog
             if (w == null) ctx.entitiesChanged()
@@ -239,7 +255,10 @@ class AssistPane(
         try { onVoiceEvent(e) } catch (t: Throwable) { EspHomeLog.w("voice listener failed", t) }
     }
 
-    private companion object {
+    internal companion object {
         const val IDLE = "Idle"
+
+        /** How long after the panel's pick Home Assistant's reads still count ([useWakeWord]). Internal for tests. */
+        internal const val REREAD_WINDOW_MS = 30_000L
     }
 }

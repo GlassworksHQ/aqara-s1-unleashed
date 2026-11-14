@@ -133,6 +133,26 @@ class AssistPaneTest {
     }
 
     @Test
+    fun aReadLongAfterThePickBuysNoReconnect() {
+        // #235 verifier: HA was down for minutes; its read on coming back is its own, not the pick's.
+        prefs.wakeWord = "hey_jarvis"
+        val p = started()
+        p.rereadDelayMs = 0
+        var now = 1_000L
+        p.clock = { now }
+        val server = sh.edm.esphome.ApiServer(0, { identity }, emptyList(), psk = null)
+        p.bind(server)
+        val before = reconnects
+        p.useWakeWord("okay_nabu")
+        assertEquals(1, reconnects - before)
+        now += AssistPane.REREAD_WINDOW_MS + 1
+        server.voice!!.configuration()
+        server.voice!!.configuration()
+        Thread.sleep(100)
+        assertEquals("past the window: no second reconnect", 1, reconnects - before)
+    }
+
+    @Test
     fun thePageSeesTheSatellitesStateAndTheTimers() {
         val p = started()
         assertEquals("Idle", p.satellite)

@@ -88,7 +88,9 @@ class DiagnosticsPane internal constructor(
         private set
 
     /** Why the app last restarted, in words, or null while the pane doesn't run. */
-    val lastRestartReason: String? get() = restartReason
+    /** Why the app last restarted, as `ApplicationExitInfo.REASON_*`, or null when Android can't say (before 11). */
+    @Volatile var lastExitReason: Int? = null
+        private set
 
     /** Each metric's reading in the last sample; absent when that sample had none (Wi-Fi gone). */
     private val now = ConcurrentHashMap<String, Float>()
@@ -119,7 +121,8 @@ class DiagnosticsPane internal constructor(
 
     /** The device thread. Again after [stop] too: the pane can be turned off and on (#67). */
     override fun start() {
-        restartReason = exitReasonText(probe.lastExitReason())
+        lastExitReason = probe.lastExitReason()
+        restartReason = exitReasonText(lastExitReason)
         prev = null
         synchronized(this) {
             task?.cancel(false)
@@ -135,6 +138,7 @@ class DiagnosticsPane internal constructor(
         }
         values.clear()
         restartReason = null
+        lastExitReason = null
         lastSample = null
         now.clear()
         synchronized(hour) { hour.clear() }

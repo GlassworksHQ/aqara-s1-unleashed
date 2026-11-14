@@ -60,4 +60,27 @@ class RailChipsTest {
             assertTrue("the chip stays inside its row", right <= rail)
         }
     }
+
+    @Test
+    fun aChipKeepsItsWordBesideADetail() {
+        // #235 verifier: a row with a detail too (setup's) must not squeeze the chip either.
+        val a = Mockup.activity()
+        val rail = sh.edm.s1kiosk.ui.GroupedRail(a)
+        val width = (216 * a.resources.displayMetrics.density).toInt()
+        a.setContentView(android.widget.FrameLayout(a).apply { addView(rail, android.widget.FrameLayout.LayoutParams(width, -2)) })
+        rail.bind(listOf(
+            sh.edm.s1kiosk.ui.GroupedRail.Row("bt", "Bluetooth proxy", group = "panes", detail = "Beta",
+                chip = sh.edm.s1kiosk.ui.GroupedRail.Chip("Can't run", sh.edm.s1kiosk.ui.Glass.FA)),
+            sh.edm.s1kiosk.ui.GroupedRail.Row("r", "Radio", group = "panes"),
+        ), mapOf("panes" to "Panes"), "r")
+        // The rail's own width, not the panel's.
+        rail.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        rail.layout(0, 0, width, rail.measuredHeight)
+        val chip = generateSequence(listOf<View>(rail)) { l -> l.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null } }
+            .flatten().single { it.contentDescription == "status Can't run" } as ViewGroup
+        val word = chip.getChildAt(1) as android.widget.TextView
+        assertTrue("${word.width} px for ${word.paint.measureText("Can't run")}",
+            word.width - word.paddingLeft - word.paddingRight >= kotlin.math.ceil(word.paint.measureText("Can't run")).toInt())
+        assertEquals("the word itself is not shortened", null, word.layout?.getEllipsisCount(0)?.takeIf { it > 0 })
+    }
 }
