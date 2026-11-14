@@ -62,7 +62,7 @@ Details and sources: [onboarding.md](onboarding.md#2-adoption--encryption-esphom
 |---|---|
 | name / friendly name | `aqara-s1-plus-a1b2c3` / `Aqara S1 Plus`: what the device is, and the end of its MAC (see [Names](#names)). Before #260: `s1-panel` / `Glassworks Panel` |
 | MAC (unique id in HA) | the Wi-Fi MAC of `wlan0` if readable, else a locally administered MAC derived from the chip serial (SHA-256 of `ro.serialno`), else a random one; persisted in prefs (`device_mac`). The first two come out the same after a reinstall, so HA keeps the same device |
-| manufacturer / model | `Aqara` / `Panel Hub S1 Plus (S1 Kiosk)` |
+| manufacturer / model | The frame's: `Aqara` / `Panel Hub S1 Plus (S1 Kiosk)` on the S1. Elsewhere the device's own (`Build.MANUFACTURER` / `Build.MODEL`): `Google` / `Pixel Tablet (S1 Kiosk)` |
 | esphome_version / compilation_time | `2026.10.2` / `S1 Kiosk <app version>` (HA shows "2026.10.2 (S1 Kiosk 0.1.0)") |
 | API version | 1.20 (as ESPHome 2026.10/11); `DeviceCapabilitiesRequest` is answered |
 | Sendspin | `DeviceCapabilitiesResponse.sendspin` = `{feature_flags: PAIRING_TOKEN, client_id}`; `SendspinPairingTokenRequest` (159) → `SendspinPairingTokenResponse` (160), token only over Noise with a key ([sendspin.md](sendspin.md#esphome-hand-off-how-ha-gives-ma-the-token)) |
@@ -85,12 +85,13 @@ conflict" dialog.
 | The frame | Node name (`device_name`, mDNS) | Friendly name (the device page) |
 |---|---|---|
 | One device (the S1) | The frame's id and the suffix: `aqara-s1-plus-a1b2c3` | The frame's name: "Aqara S1 Plus" |
-| Many devices (generic-android, planned) | The model as a host name and the suffix: `pixel-tablet-a1b2c3` | The model: "Pixel Tablet" |
+| Many devices (generic-android: any device that isn't an S1) | The model as a host name and the suffix: `pixel-tablet-a1b2c3` | The model: "Pixel Tablet" |
 
 The node name is lowercase `a-z0-9-` and at most 63 characters. It is the same on every start and after
 an update, because the MAC is kept in prefs (`device_mac`). The code is `dev.glassworks.frame.DeviceName`,
-and `DeviceNameTest` and `PanelNameTest` test it. The app has only the S1 frame today, so any device
-that runs it announces itself as `aqara-s1-plus-…` until the generic frame exists.
+and `DeviceNameTest`, `PanelNameTest` and `GenericFrameTest` test it. The app picks the S1 frame only on the
+S1's hardware (`Build.HARDWARE` `sun50iw10p1`) and the generic one everywhere else. The Music Assistant
+player and Improv use the same friendly name.
 
 **After updating** a panel that HA already has (read 2026-11-14 from home-assistant/core 2026.11.0,
 `esphome/manager.py` and `esphome/config_flow.py`, and aioesphomeapi 46.25.0; the dev HA runs

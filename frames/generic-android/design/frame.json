@@ -55,7 +55,8 @@
       "note": "Needs Assist."
     },
     "sendspin": {
-      "support": "planned"
+      "support": "depends",
+      "note": "Needs a speaker."
     },
     "radio": {
       "support": "no",
