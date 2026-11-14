@@ -118,12 +118,16 @@ class WallBase internal constructor(
 
     /** Swap the link (blocking until the old one closed its port). The tracker and its values stay. */
     fun reconfigure(c: Config) {
+        val e = exec
         try {
-            exec.submit {
+            e.submit {
                 if (c == config && link != null) return@submit
                 Log.i(TAG, "wall base backend ${link?.describe ?: "-"} -> ${c.backend.pref} ${if (c.backend == BaseBackend.UART) c.transport else ""}")
-                link?.stop()
+                val l = link
                 link = null
+                l?.stop()
+                // Stopped meanwhile (a slow close outlasted the waits): a later start owns the config and the link.
+                if (e.isShutdown) return@submit
                 config = c
                 startLink()
             }.get(5, TimeUnit.SECONDS)
