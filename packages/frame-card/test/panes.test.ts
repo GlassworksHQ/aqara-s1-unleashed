@@ -91,7 +91,7 @@ describe('the real frames', () => {
   it('rate every pane, explicitly or worked out', () => {
     expect(support('aqara-s1-plus')).toEqual({
       assist: ['beta', false], diagnostics: ['alpha', true], radio: ['beta', false], sendspin: ['beta', false],
-      timers: ['beta', false], 'time-zone': ['beta', true], 'wall-base': ['beta', false],
+      timers: ['beta', false], 'time-zone': ['beta', true], 'wall-base': ['alpha', false],
     });
     expect(support('lululemon-mirror')).toMatchObject({ diagnostics: ['planned', true], 'time-zone': ['no', true], 'wall-base': ['no', false] });
     expect(support('generic-android')).toMatchObject({ diagnostics: ['planned', true], 'time-zone': ['no', true], 'wall-base': ['no', false] });

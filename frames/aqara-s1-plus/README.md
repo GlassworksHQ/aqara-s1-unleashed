@@ -84,7 +84,7 @@ Without root, the app can install over adb on its own, but you lose the radio mo
 | Zigbee and Thread radio | Beta | Zigbee coordinator or router, and Thread. |
 | Time zone | Beta | Worked out: needs no special hardware. |
 | Diagnostics | Alpha | Worked out: needs no special hardware. Not yet checked on a panel. |
-| Wall base | Beta | The driver passes against an emulator that Aqara's own `bracket_cli` accepts. It has not yet been tried on a real base ([base-protocol.md](research/base-protocol.md), [bases.md](research/bases.md)). |
+| Wall base | Alpha | The driver passes against an emulator that Aqara's own `bracket_cli` accepts. It has not yet been tried on a real base ([base-protocol.md](research/base-protocol.md), [bases.md](research/bases.md)). |
 
 "Worked out" means `frame.json` doesn't rate the pane; its support comes from what the pane needs and what the frame has ([how](../README.md#the-panes-a-frame-runs)).
 

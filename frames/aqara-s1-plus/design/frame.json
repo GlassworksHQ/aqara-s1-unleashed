@@ -91,7 +91,7 @@
       "note": "Zigbee coordinator or router, and Thread."
     },
     "wall-base": {
-      "support": "beta"
+      "support": "alpha"
     }
   },
   "install": {

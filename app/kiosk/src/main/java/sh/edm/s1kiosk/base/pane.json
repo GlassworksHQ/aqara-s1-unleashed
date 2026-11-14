@@ -5,7 +5,7 @@
   "requires": [
     "s1-wall-base"
   ],
-  "status": "beta",
+  "status": "alpha",
   "frame": "aqara-s1-plus",
   "docs": "docs/esphome.md#wall-base-entities"
 }
