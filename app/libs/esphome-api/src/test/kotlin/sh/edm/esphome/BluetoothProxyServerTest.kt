@@ -185,6 +185,28 @@ class BluetoothProxyServerTest {
         }
     }
 
+    /**
+     * A panel Home Assistant hasn't provisioned yet: encryption on, no key, so it accepts plaintext and
+     * zero-PSK clients. None of them is authenticated, so none may listen (verifier N3 on #226).
+     */
+    @Test fun anUnprovisionedPanelRefusesTheSubscription() {
+        val unprovisioned = ApiServer(0, { identity }, emptyList(), keys = NoiseKeys(MemoryKeyStore()), bindAddress = InetAddress.getLoopbackAddress())
+        unprovisioned.bluetooth = object : BluetoothProxyHandler {
+            override val featureFlags = handler.featureFlags
+            override fun onSubscribed(subscribed: Boolean) { calls += subscribed }
+        }
+        unprovisioned.start()
+        try {
+            PlainClient(unprovisioned.localPort).use { c ->
+                c.send(Msg.DEVICE_INFO_REQUEST)
+                assertTrue("the key can still be provisioned", c.await(Msg.DEVICE_INFO_RESPONSE).bool(26))
+                c.subscribe()
+                assertEquals("refused: the proxy heard of no subscriber", emptyList<Boolean>(), calls)
+                assertFalse(unprovisioned.sendBluetoothAdvertisements(listOf(advertisement(1))))
+            }
+        } finally { unprovisioned.stop() }
+    }
+
     @Test fun theNewestSubscriberWinsAndTheProxyStopsWhenItLeaves() {
         start()
         val stale = PlainClient(server.localPort)
