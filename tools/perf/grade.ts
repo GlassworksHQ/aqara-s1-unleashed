@@ -43,7 +43,7 @@ export interface FrameRun { timed_out?: boolean; p95_ms?: number | null; jank_pc
 export interface UpdateRun { timed_out?: boolean; latency_n?: number | null; latency_median_ms?: number | null; latency_p95_ms?: number | null; frames?: FrameRun | null }
 
 /** One run's live camera streams (#174), the worst stream's numbers. */
-export interface CameraRun { timed_out?: boolean; stalls_reported?: boolean; first_frame_ms?: number | null; shown_pct?: number | null; max_gap_ms?: number | null; stall_total_ms?: number | null }
+export interface CameraRun { timed_out?: boolean; stalls_reported?: boolean; uncovered_ms?: number | null; first_frame_ms?: number | null; shown_pct?: number | null; max_gap_ms?: number | null; stall_total_ms?: number | null }
 
 export interface PageSummary {
   inp_ms?: number | null;
@@ -154,11 +154,20 @@ export function cameraLevel(run: CameraRun | null | undefined, rubric: Rubric): 
   if (!run) return null;
   if (run.timed_out) return rubric.grade.below;
   if (run.first_frame_ms === null || run.first_frame_ms === undefined || run.shown_pct === null || run.shown_pct === undefined) return rubric.grade.below;
-  if (run.stalls_reported === false) return null;   // its receiver reported no freezes: stalls n/a, not measured
+  if (run.stalls_reported === false) {
+    // Stalls n/a (no freeze counts, or counts that left part of the window out): not measured,
+    // unless the first frame and frames shown already fail every level, as no stalls could lift.
+    const ff = run.first_frame_ms, shown = run.shown_pct;
+    return rubric.grade.camera_levels.some((lv) => ff <= lv.first_frame_max_ms && shown >= lv.shown_min_pct) ? null : rubric.grade.below;
+  }
   for (const lv of rubric.grade.camera_levels) {
     if (run.first_frame_ms > lv.first_frame_max_ms || run.shown_pct < lv.shown_min_pct) continue;
     if (lv.max_gap_max_ms !== undefined && (run.max_gap_ms === null || run.max_gap_ms === undefined || run.max_gap_ms > lv.max_gap_max_ms)) continue;
-    if (lv.stall_total_max_ms !== undefined && (run.stall_total_ms === null || run.stall_total_ms === undefined || run.stall_total_ms >= lv.stall_total_max_ms)) continue;
+    if (lv.stall_total_max_ms !== undefined) {
+      if (run.stall_total_ms === null || run.stall_total_ms === undefined || run.stall_total_ms >= lv.stall_total_max_ms) continue;
+      // Under the bar as counted, maybe not in what the counts left out (#265): open.
+      if (run.stall_total_ms + (run.uncovered_ms ?? 0) >= lv.stall_total_max_ms) return null;
+    }
     return lv.level;
   }
   return rubric.grade.below;

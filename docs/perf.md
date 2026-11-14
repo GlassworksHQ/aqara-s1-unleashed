@@ -414,7 +414,15 @@ hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
   `statsWaitMs`, 10 s, at the window's end), so a late answer counts nothing past the time its
   counts were taken, and frames shown are over that same span (`clock`: `stats`, or `asked` when a
   sample has no timestamp). A receiver that reports no `freezeCount` has stalls and gaps `n/a`
-  (`stalls_reported` false), never 0: that run's camera level isn't measured, and the report says so.
+  (`stalls_reported` false), never 0. So does a stream whose counts leave more than 500 ms of the
+  window out (`uncovered_ms`; the longest gap "good" allows): a busy page answers `getStats` late,
+  and the counts end at the last answer back, so a stall after it would go unseen (#255; on
+  s1rtc9's heavy the counts covered 5.8 to 24.7 s of 30). Such a run's camera level isn't measured,
+  and the report says so, unless its first frame or frames shown already fail every level: then
+  it is `slow`, as no stall could lift it. When the counts leave out 500 ms or less their stalls
+  count, but they can be under-read by up to that much, so "fluid" holds its 1 s bar against the stalls
+  plus what was left out: 600 ms of stalls with 400 ms left out is not measured, with 399 ms it is
+  fluid. report.md's camera cell says in how many runs the stalls were n/a or the level open.
 - **Gaps and stalls over HLS (the fallback, not graded)**: gaps over 500 ms between frames
   presented by `requestVideoFrameCallback`, the longest and their sum, and the `waiting` events.
 
@@ -1489,7 +1497,7 @@ from real use, and nothing device-unique.
 | `app_version` | The kiosk's version name |
 | `viewport` | `css` (CSS px), `dpr` (device pixel ratio), `default_dpr` (density / 160) |
 | `runs` | `attempted`, `graded` |
-| `pages` | Per page (`light`, `typical-nocam`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams; a run's record is `{"timed_out": true}` with the numbers `null` when the page didn't finish before its streams were measured), `timed_out_runs` (protocol 7: in how many runs the page didn't finish within the runner's deadline; their unmeasured tasks are in the runs as failing: `open_ms` and `inp_ms` at the deadline, `{"timed_out": true}` records for `scroll`, `updates` and `camera`), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
+| `pages` | Per page (`light`, `typical-nocam`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`, and over WebRTC `uncovered_ms` (the most of the window its receiver counts left out), with `stalls_reported` false when the stalls are n/a; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams; a run's record is `{"timed_out": true}` with the numbers `null` when the page didn't finish before its streams were measured), `timed_out_runs` (protocol 7: in how many runs the page didn't finish within the runner's deadline; their unmeasured tasks are in the runs as failing: `open_ms` and `inp_ms` at the deadline, `{"timed_out": true}` records for `scroll`, `updates` and `camera`), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
 | `restart_ms` | Process start to a usable reference dashboard (median; to engine ready before protocol 4) |
 | `gaps` | Measurement facts that leave it short: "1 of 3 graded runs failed or are missing", "heavy: scrolling rests on rAF only in 1 run(s)…". Empty when complete |
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |

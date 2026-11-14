@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -595,6 +596,96 @@ class StallsNotReported(unittest.TestCase):
         line = camera_line("typical")
         line["streams"][0].update(max_gap_ms=None)
         self.assertEqual(R.camera_run(line, "typical")["stalls_reported"], False)
+
+
+class ReceiverSpanShort(unittest.TestCase):
+    """#255's review: on a busy page getStats answers late, and the receiver's counts end at the last
+    answer. Stalls after it are unknown, not 0, so a stream whose counts leave more than 500 ms of the
+    window out has stalls n/a, and that run's camera level is not measured."""
+
+    def line(self, spans):
+        line = camera_line("heavy")
+        line["window_ms"] = 30043
+        for st, span in zip(line["streams"], spans):
+            st.update(span_ms=span, source="webrtc+rvfc", gaps_source="webrtc (bound)", max_gap_ms=216.9)
+        return line
+
+    def test_a_short_span_is_not_measured(self):
+        # s1rtc9, heavy run 2: three streams' counts covered 6821 ms of 30043.
+        run = R.camera_run(self.line([6821, 6821, 6821, 24465]), "heavy")
+        self.assertEqual((run["stall_total_ms"], run["max_gap_ms"], run["stalls_reported"]), (None, None, False))
+        self.assertEqual(run["uncovered_ms"], 23222.0)
+        self.assertIsNone(G.camera_level(run))
+        self.assertEqual(run["first_frame_ms"], 600.0)     # what was measured stays
+
+    def test_the_bar_is_the_longest_gap_good_allows(self):
+        self.assertEqual(R.CAMERA_UNCOVERED_MAX_MS, 500)
+        ok = R.camera_run(self.line([29543] * 4), "heavy")             # 500 ms left out: covered
+        self.assertNotIn("stalls_reported", ok)
+        self.assertEqual(ok["uncovered_ms"], 500.0)                    # recorded: the fluid bar reads it
+        self.assertEqual(G.camera_level(ok), "good")
+        one = R.camera_run(self.line([29543, 29543, 29542, 29543]), "heavy")   # 501 ms: not
+        self.assertIs(one["stalls_reported"], False)
+        self.assertEqual(one["uncovered_ms"], 501.0)
+        # A span past the window (the reports' clock against the page's): covered, nothing left out.
+        past = R.camera_run(self.line([30050] * 4), "heavy")
+        self.assertNotIn("stalls_reported", past)
+        self.assertEqual(past["uncovered_ms"], 0.0)
+
+    def test_hls_has_no_span_and_is_unaffected(self):
+        run = R.camera_run(camera_line("heavy", path="hls"), "heavy")
+        self.assertNotIn("stalls_reported", run)
+        self.assertNotIn("uncovered_ms", run)
+
+    def test_the_fluid_total_counts_what_was_left_out(self):
+        """#265's verifier: 600 ms of stalls with 400 ms left out could be 1 s (the fluid bar): open,
+        with the reason in the report and in report.md's cell; 399 ms left out stays fluid."""
+        def run(left):
+            line = self.line([30043 - left] * 4)
+            for st in line["streams"]:
+                st.update(stall_total_ms=600.0, max_gap_ms=600.0)
+            return R.camera_run(line, "heavy")
+        self.assertEqual(G.camera_level(run(399)), "fluid")
+        edge = run(400)
+        self.assertNotIn("stalls_reported", edge)                       # measured; the level is what's open
+        self.assertIsNone(G.camera_level(edge))
+        heavy = {"inp_ms": None, "scroll_bands": [], "updates_runs": [], "load_ms": None, "camera_runs": [edge, run(0)]}
+        reasons = R.coverage_reasons({"graded_runs": 2, "tiers": {"heavy": heavy}}, 2)
+        self.assertTrue(any("could reach the fluid bar" in x for x in reasons), reasons)
+        self.assertIn("the level not measured in 1 of 2 run(s)", R.camera_cell(heavy, {"camera": None}))
+
+    def test_a_rubric_without_a_good_camera_gap_fails_clearly(self):
+        with mock.patch.object(G, "CAMERA_LEVELS", [lv for lv in G.CAMERA_LEVELS if lv["level"] != "good"]):
+            self.assertRaisesRegex(RuntimeError, "'good' level with max_gap_max_ms", R._good_max_gap_ms)
+
+    def test_report_md_says_when_stalls_are_na_in_some_runs(self):
+        """#265's verifier: s1rtc9's typical read "stalls 0 ms, n=2" with run 3 n/a."""
+        typical = {"camera_runs": [R.camera_run(self.line([30043] * 4), "heavy"),
+                                   R.camera_run(self.line([6821] * 4), "heavy")]}
+        cell = R.camera_cell(typical, {"camera": "good"})
+        self.assertIn("stalls n/a in 1 of 2 run(s)", cell)
+        self.assertIn("the level not measured in 1 of 2 run(s)", cell)
+        # Every run n/a: the cell's own "stalls n/a" says it, no "in 2 of 2" after it (#265's delta verifier).
+        every = R.camera_cell({"camera_runs": [R.camera_run(self.line([6821] * 4), "heavy")] * 2}, {"camera": None})
+        self.assertIn("stalls n/a", every)
+        self.assertNotIn("of 2 run(s)", every)
+
+    def test_the_report_says_why(self):
+        heavy = {"inp_ms": None, "scroll_bands": [], "updates_runs": [], "load_ms": None,
+                 "camera_runs": [R.camera_run(self.line([6821, 6821, 6821, 24465]), "heavy")]}
+        ref = {"graded_runs": 1, "tiers": {"heavy": heavy}}
+        reasons = R.coverage_reasons(ref, 1)
+        self.assertTrue(any("left up to 23.2 s of the window out" in x for x in reasons), reasons)
+        self.assertFalse(any("no freeze counts" in x for x in reasons), reasons)
+        self.assertIn("its stalls weren't measured in 1 of 1 run(s)", R.task_phrase("camera", ref["tiers"]["heavy"]))
+        # s1rtc9's heavy: the first frame after 4 s already fails every level, so the run is slow and
+        # the short span leaves nothing open: no reason, not provisional for it.
+        late = self.line([6821, 6821, 6821, 24465])
+        for st in late["streams"]:
+            st["first_frame_ms"] = 7083.4
+        heavy["camera_runs"] = [R.camera_run(late, "heavy")]
+        self.assertEqual(G.camera_level(heavy["camera_runs"][0]), "slow")
+        self.assertEqual(R.coverage_reasons(ref, 1), [])
 
 
 class CameraDetail(unittest.TestCase):

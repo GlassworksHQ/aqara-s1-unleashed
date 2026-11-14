@@ -78,7 +78,10 @@ def camera_summary(s):
     keys = ("first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms")
     runs = s.get("camera_runs") or []
     tag = lambda r: dict({"timed_out": True} if r.get("timed_out") else {},  # noqa: E731
-                         **({"stalls_reported": False} if r.get("stalls_reported") is False else {}))
+                         **({"stalls_reported": False} if r.get("stalls_reported") is False else {}),
+                         # #265: what the receiver's counts left out of the window (the graders hold
+                         # the fluid total bar against stalls + it); WebRTC runs only.
+                         **({"uncovered_ms": r["uncovered_ms"]} if r.get("uncovered_ms") is not None else {}))
     fb, paths = s.get("camera_fallback"), {r.get("path") or "hls" for r in runs}
     return {"runs": [dict({k: r.get(k) for k in keys}, **tag(r)) for r in runs],
             "path": paths.pop() if len(paths) == 1 else None,
