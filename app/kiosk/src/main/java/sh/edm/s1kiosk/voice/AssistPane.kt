@@ -105,6 +105,26 @@ class AssistPane(
         ),
     )
 
+    /** The Assist satellite's state in Home Assistant's words (Idle, Listening, Processing, Responding), for the settings page (#212). */
+    @Volatile var satellite: String = IDLE
+        private set
+
+    /** The timers running or paused now, as last reported. */
+    @Volatile var timers: List<PanelTimer> = emptyList()
+        private set
+
+    /**
+     * A wake word picked on the panel's settings page (#212). Home Assistant reads the satellite's wake
+     * words only when the satellite is set up, which it does again on each reconnect
+     * (esphome/manager.py on_disconnect unloads the assist_satellite platform), so it is asked to
+     * reconnect; its wake word select then shows the panel's choice.
+     */
+    fun useWakeWord(id: String) {
+        if (id == prefs.wakeWord) return
+        prefs.wakeWord = id
+        ctx.entitiesChanged()
+    }
+
     /** Hands Home Assistant's voice requests to the controller. Called again if the server restarts. */
     override fun bind(server: ApiServer) {
         this.server = server
@@ -149,11 +169,13 @@ class AssistPane(
         // The server outlives the pane (voice turned off, or the panel stopping): take the stopped controller back.
         server?.let { if (it.voice === controller) it.voice = null }
         controller = null
+        satellite = IDLE
         // No voice, no timer reports: the board would stand still.
         if (running) ctx.emit(PanelEvent.TimersChanged(emptyList()))
     }
 
     override fun onEvent(event: PanelEvent) {
+        if (event is PanelEvent.TimersChanged) timers = event.timers
         if (event !is PanelEvent.SettingChanged) return
         val engine = input ?: return
         when (event.key) {
@@ -174,6 +196,13 @@ class AssistPane(
 
     internal fun dispatch(e: VoiceEvent) {
         if (e is VoiceEvent.WakeDetected && prefs.wakeSound) wakeChime()
+        satellite = when (e) {
+            is VoiceEvent.WakeDetected, is VoiceEvent.Listening -> "Listening"
+            is VoiceEvent.Thinking -> "Processing"
+            is VoiceEvent.Speaking -> "Responding"
+            is VoiceEvent.Idle, is VoiceEvent.Error -> IDLE
+            else -> satellite
+        }
         // Pause music while the assistant listens and talks, resume afterwards.
         when (e) {
             is VoiceEvent.WakeDetected, is VoiceEvent.Listening, is VoiceEvent.Speaking -> {
@@ -187,5 +216,9 @@ class AssistPane(
             else -> Unit
         }
         try { onVoiceEvent(e) } catch (t: Throwable) { EspHomeLog.w("voice listener failed", t) }
+    }
+
+    private companion object {
+        const val IDLE = "Idle"
     }
 }

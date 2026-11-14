@@ -31,6 +31,10 @@ import sh.edm.s1kiosk.frame.TimeZonePrefs
 import sh.edm.s1kiosk.frame.TimeZoneView
 import sh.edm.s1kiosk.radio.SysProps
 import dev.glassworks.pane.PanelEvent
+import dev.glassworks.pane.PanelTimer
+import sh.edm.s1kiosk.esphome.UrlPlayer
+import sh.edm.s1kiosk.voice.AssistPane
+import sh.edm.s1kiosk.voice.SpeakerMedia
 import java.util.TimeZone
 import sh.edm.s1kiosk.radio.FixedReadout
 import sh.edm.s1kiosk.radio.HelperFacts
@@ -123,6 +127,19 @@ class PanePagesMockups {
         return p
     }
 
+    /** Listening for Okay Nabu, with one timer running. */
+    private fun voice(): AssistPane {
+        KioskPrefs(app).voice.apply { wakeWord = "okay_nabu"; micMuted = false; micGain = 1.5f; wakeSound = true; overlay = true }
+        val p = AssistPane(
+            ctx,
+            player = object : UrlPlayer { override fun play(urls: List<String>, onDone: (Boolean) -> Unit) {}; override fun stop() {} },
+            speaker = object : SpeakerMedia { override val playing = false; override val announcing = false; override fun pause() {}; override fun resume() {} },
+            resolveUrl = { it }, wakeChime = {}, onVoiceEvent = {}, createInput = { _, _, _ -> error("not started in the mock-ups") },
+        )
+        p.onEvent(PanelEvent.TimersChanged(listOf(PanelTimer("1", "Pasta", 900, 360, true))))
+        return p
+    }
+
     private fun menu(running: List<Pane>): KioskSettingsOverlay {
         val o = Mockup.show(KioskSettingsOverlay(Mockup.activity()))
         KioskPrefs(app).apply { urlSetting = "http://homeassistant.local:8123/lovelace/panel" }
@@ -150,6 +167,11 @@ class PanePagesMockups {
         shot("212-01-diagnostics", menu(listOf(diagnostics())), "diagnostics")
         shot("212-02-wall-base", menu(listOf(wallBase())), "wall-base")
         shot("212-03-wall-base-none", menu(listOf(wallBase(attached = false))), "wall-base")
+        shot("212-08-voice", menu(listOf(voice())), "assist")
+        shot("212-09-voice-scrolled", menu(listOf(voice())), "assist") { o ->
+            Mockup.layout(o)
+            o.previewScrollTo(Mockup.label(o, "Timers running"), alignBottom = true)
+        }
         val tz = timeZone()
         shot("212-04-time-zone", menu(listOf(tz)), "time-zone")
         shot("212-05-time-zone-picker", menu(listOf(tz)), "time-zone") { o ->

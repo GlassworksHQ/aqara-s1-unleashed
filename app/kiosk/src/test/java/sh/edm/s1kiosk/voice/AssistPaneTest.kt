@@ -46,7 +46,7 @@ class AssistPaneTest {
                 name = "test", friendlyName = "Test", macAddress = "02:00:00:00:00:01", esphomeVersion = "x",
                 compilationTime = "x", manufacturer = "x", model = "x", voiceFeatures = 0,
             ),
-            publishStates = {}, emit = { events += it }, entitiesChanged = {}, sendEvent = { _, _ -> },
+            publishStates = {}, emit = { events += it }, entitiesChanged = { reconnects++ }, sendEvent = { _, _ -> },
         ),
         player = object : UrlPlayer {
             override fun play(urls: List<String>, onDone: (Boolean) -> Unit) {}
@@ -59,6 +59,7 @@ class AssistPaneTest {
         createInput = { cfg, model, onModel -> created = Triple(cfg, model, onModel); input },
     )
 
+    private var reconnects = 0
     private val panes = ArrayList<AssistPane>()
     private fun started() = pane().also { panes += it; it.start() }
 
@@ -68,6 +69,35 @@ class AssistPaneTest {
     }
 
     @After fun tearDown() = panes.forEach { it.stop() }
+
+    // ---- the settings page (#212)
+
+    @Test
+    fun aWakeWordPickedOnThePanelMakesHomeAssistantReadTheConfigAgain() {
+        prefs.wakeWord = "hey_jarvis"
+        val p = pane()
+        p.useWakeWord("okay_nabu")
+        assertEquals("okay_nabu", prefs.wakeWord)
+        assertEquals("Home Assistant reconnects, so it sets the satellite up and reads the wake words", 1, reconnects)
+        p.useWakeWord("okay_nabu")
+        assertEquals("the same word: nothing to read again", 1, reconnects)
+    }
+
+    @Test
+    fun thePageSeesTheSatellitesStateAndTheTimers() {
+        val p = started()
+        assertEquals("Idle", p.satellite)
+        p.dispatch(VoiceEvent.Listening)
+        assertEquals("Listening", p.satellite)
+        p.dispatch(VoiceEvent.Speaking)
+        assertEquals("Responding", p.satellite)
+        p.dispatch(VoiceEvent.Idle)
+        assertEquals("Idle", p.satellite)
+        val pasta = dev.glassworks.pane.PanelTimer("1", "Pasta", 900, 360, true)
+        p.onEvent(PanelEvent.TimersChanged(listOf(pasta)))
+        assertEquals(listOf(pasta), p.timers)
+        assertEquals("1 · Pasta, 6 min left", AssistDefinition.timers(p.timers))
+    }
 
     // ---- the speaker
 
