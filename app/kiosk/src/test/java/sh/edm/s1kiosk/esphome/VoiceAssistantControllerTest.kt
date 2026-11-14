@@ -79,7 +79,20 @@ class VoiceAssistantControllerTest {
      * start: the last word is Idle, so the speaker is released and paused music resumes.
      */
     @Test
-    fun aCloseRacingAPlaybackStartEndsIdle() {
+    fun aCloseRacingAPlaybackStartEndsIdle() = racePlaybackStart({ it.close() })
+
+    /**
+     * #210 review: the person cancels while an announcement's playback is starting, then voice is turned
+     * off. The cancel waits for the start, then stops it; nothing is left playing with the speaker claimed.
+     */
+    @Test
+    fun aCancelRacingAPlaybackStartEndsIdle() = racePlaybackStart({ it.cancel() }, { it.close() })
+
+    /**
+     * Pauses an announcement's playback effect in its first event, after the controller's lock was
+     * released, runs each of [actions] on its own thread in turn, then lets the effect go on.
+     */
+    private fun racePlaybackStart(vararg actions: (VoiceAssistantController) -> Unit) {
         val log = java.util.Collections.synchronizedList(ArrayList<String>())
         val inReply = java.util.concurrent.CountDownLatch(1)
         val release = java.util.concurrent.CountDownLatch(1)
@@ -95,7 +108,6 @@ class VoiceAssistantControllerTest {
                 override fun setActive(ids: List<String>) {}
             },
             emit = { e ->
-                // The effect pauses in its first event, after the lock was released.
                 if (e is VoiceEvent.Reply) { inReply.countDown(); release.await(5, java.util.concurrent.TimeUnit.SECONDS) }
                 log += e.javaClass.simpleName
             },
@@ -104,11 +116,17 @@ class VoiceAssistantControllerTest {
         c.onSubscribe(true)
         val announcer = Thread { c.onAnnounce("http://ha/a.mp3", "Dinner is ready", "", startConversation = false) }.apply { start() }
         assertTrue(inReply.await(5, java.util.concurrent.TimeUnit.SECONDS))
-        val closer = Thread { c.close() }.apply { start() }
-        val end = System.currentTimeMillis() + 2_000
-        while (closer.isAlive && closer.state != Thread.State.BLOCKED && System.currentTimeMillis() < end) Thread.sleep(5)
+        val threads = actions.map { a ->
+            Thread { a(c) }.apply {
+                start()
+                // In turn: each has run to its end, or waits for the playback start.
+                val end = System.currentTimeMillis() + 2_000
+                while (isAlive && state != Thread.State.BLOCKED && System.currentTimeMillis() < end) Thread.sleep(5)
+            }
+        }
         release.countDown()
-        announcer.join(5_000); closer.join(5_000)
+        announcer.join(5_000)
+        threads.forEach { it.join(5_000) }
         val last = log.lastOrNull { it == "Idle" || it == "Speaking" }
         assertEquals("the voice run ends Idle: $log", "Idle", last)
         if ("play" in log) assertTrue("a playback that started is stopped: $log", log.lastIndexOf("stop") > log.indexOf("play"))

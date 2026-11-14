@@ -79,8 +79,8 @@ class VoiceAssistantController(
     /** The voice pane stopped ([close]): no new run starts, also from a wake word already on its way. */
     private var closed = false
     /**
-     * Held while playback starts ([startPlayback]) and while [close] runs, so a playback effect collected
-     * before the close either starts first, and the close stops it, or sees the close and starts nothing.
+     * Held while playback starts ([startPlayback]) and while [cancel] and [close] run, so a playback effect
+     * collected before them either starts first, and they stop it, or sees them and starts nothing.
      */
     private val playbackStart = Any()
     private val timers = LinkedHashMap<String, Timer>()
@@ -174,7 +174,8 @@ class VoiceAssistantController(
      * esphome `request_stop()`. Late events of the cancelled run are ignored. Returns true if
      * something was running.
      */
-    fun cancel(): Boolean {
+    fun cancel(): Boolean = synchronized(playbackStart) {
+        // After a playback start in progress: it either started, and is stopped here, or saw the cancel.
         var cancelled = false
         locked {
             when (state) {
@@ -195,7 +196,7 @@ class VoiceAssistantController(
             setState(State.IDLE)
             add { emit(VoiceEvent.Idle) }
         }
-        return cancelled
+        cancelled
     }
 
     /**
@@ -203,9 +204,9 @@ class VoiceAssistantController(
      * current one ends as [cancel] ends it, so its Idle resumes the music and lets go of the speaker.
      * Unlike [cancel], which the person uses between runs, this controller takes no run again.
      */
-    fun close(): Boolean = synchronized(playbackStart) {
+    fun close(): Boolean {
         locked { closed = true }
-        cancel()
+        return cancel() // waits for a playback start in progress, as every cancel does
     }
 
     /** Called about once a second: watchdogs. */
