@@ -8,7 +8,10 @@
 # the S1 only with the maintainer's OK (#244 plan C, frames/aqara-s1-plus/research/view-open.md).
 # Not covered: a loop killed with SIGKILL can't put the ceiling back, so it stays pinned until the
 # next reboot (sysfs is RAM, so a reboot clears it). If the first read of the ceiling fails or isn't
-# a number, the loop writes nothing and logs why.
+# a number, the loop writes nothing and logs why; if a temperature read fails, it stops and restores.
+# One pin at a time: `start` takes the lock directory /data/local/tmp/gw244-pin.lock and the loop
+# removes it once it has restored the ceiling. After a SIGKILL or a reboot the lock stays: check the
+# ceiling, then remove it by hand (`rmdir /data/local/tmp/gw244-pin.lock`, as root).
 # --su: a root shell that reads its script from stdin; `su 0` (Magisk) by default. Check:
 # `adb shell 'echo id | su 0'` prints uid=0(root).
 #
@@ -33,12 +36,13 @@ case $CMD in
     read -r -d '' LOOP <<SH
 M=/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq
 read -r was < \$M
-case "\$was" in ''|*[!0-9]*) echo "abort: could not read the ceiling (\$was)" > $D/gw244-pin.log; exit 1 ;; esac
+case "\$was" in ''|*[!0-9]*) echo "abort: could not read the ceiling (\$was)" > $D/gw244-pin.log; rmdir $D/gw244-pin.lock; exit 1 ;; esac
 end=\$((\$(date +%s) + $MINUTES * 60)); why=time
 echo "start \$(date +%s) pin=$KHZ was=\$was max_c=$MAX_C" > $D/gw244-pin.log
 while [ \$(date +%s) -lt \$end ]; do
   [ -e $D/gw244-pin.stop ] && { why=stopfile; break; }
-  read -r t < /sys/class/thermal/thermal_zone0/temp
+  read -r t 2>/dev/null < /sys/class/thermal/thermal_zone0/temp || t=
+  case "\$t" in ''|*[!0-9]*) why=sensor:\$t; break ;; esac
   [ \$t -gt $((MAX_C * 1000)) ] && { why=hot:\$t; break; }
   echo $KHZ > \$M
   sleep 1
@@ -46,8 +50,9 @@ done
 echo \$was > \$M
 read -r now < \$M
 echo "end \$(date +%s) \$why restored=\$now" >> $D/gw244-pin.log
+rmdir $D/gw244-pin.lock
 SH
-    asroot "rm -f $D/gw244-pin.stop; echo $(printf '%s\n' "$LOOP" | base64 | tr -d '\n') | base64 -d > $D/gw244-pin.sh; nohup sh $D/gw244-pin.sh > /dev/null 2>&1 &"
+    asroot "mkdir $D/gw244-pin.lock 2>/dev/null || { echo 'refused: a pin is already running ($D/gw244-pin.lock exists)'; exit 1; }; rm -f $D/gw244-pin.stop; echo $(printf '%s\n' "$LOOP" | base64 | tr -d '\n') | base64 -d > $D/gw244-pin.sh; nohup sh $D/gw244-pin.sh > /dev/null 2>&1 &"
     sleep 2
     asroot "cat $D/gw244-pin.log; cat /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq"
     ;;

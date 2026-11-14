@@ -288,7 +288,7 @@ reach that thread (the wake word, priorities, memory, layout and paint prefs) or
 | The four cores share one cpufreq policy and ran at 1.2 GHz under full load during a Clarity run, at about 55 °C | verified 2026-11-14 01:3x (30 samples while heavy loaded) |
 | With the screen on and idle, at 39 to 41 °C, the ceiling was 1.512 GHz | verified 2026-11-14 03:12 to 03:20 (about 1000 samples by the root, plus short traces) |
 | [idle-cpu.md](idle-cpu.md) saw 1.2 GHz with the screen on and 1.512 GHz with it off | verified 2026-11-12, temperatures not recorded |
-| No reading has ever shown 1.608 GHz, the SoC's top step (`scaling_available_frequencies`, `cpuinfo_max_freq`) | verified (every reading above) |
+| 1.608 GHz, the SoC's top step (`scaling_available_frequencies`, `cpuinfo_max_freq`), is rare: 13 of 1600 samples in step 8's run, none inside a view open, and none in the idle readings | verified (step 8 and the readings above) |
 | The kernel's thermal cooling didn't cause the 1.2 GHz: cooling state 0 at 55 °C, first passive trip 70 °C | verified (one reading). A softer step below the trip, in the HAL or a vendor service, isn't ruled out |
 | What switches between 1.2 and 1.512 GHz: temperature, load, the screen, or the HAL's scene on app restarts | unknown; plan 1's trace logs the clock, the three thermal zones, the cooling state and (as root) the ceiling and governor across a whole Clarity run |
 | Allwinner's power HAL (`power.peony.so`) writes `policy0/scaling_max_freq` by scene, and `1200000` and `1512000` are its two ceilings | read (strings only, not the code) |
@@ -333,7 +333,7 @@ it reaches panels if its services can do it (no reflash), else the boot patch. C
 - **Power.** 1.608 GHz most likely needs a higher operating voltage than 1.2 GHz (the kernel's
   operating points weren't read), and power then rises faster than the clock. The wall base's power budget, and the S1's own supply margin, aren't known. The panel
   never sleeps, so idle power matters as much as peak.
-- **Why the HAL drops to 1.2 GHz, and never uses 1.608 GHz, is unknown.** It may be heat, a supply
+- **Why the HAL drops to 1.2 GHz, and almost never uses 1.608 GHz, is unknown.** It may be heat, a supply
   limit or a measured lifetime.
 - **It hides the app's own cost.** A faster clock makes every CPU use cheaper, so app regressions
   show later. Clarity records the maximum clock, not the one each run ran at; that would need adding

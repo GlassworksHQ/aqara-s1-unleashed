@@ -16,6 +16,8 @@ f = s.makefile("rb")
 def read():
     n = b""
     while (c := f.read(1)) != b":":
+        if not c:
+            raise EOFError("Firefox closed the Marionette connection")
         n += c
     return json.loads(f.read(int(n)))
 

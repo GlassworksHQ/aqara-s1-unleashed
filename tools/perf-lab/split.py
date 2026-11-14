@@ -35,6 +35,10 @@ t0 = line["origin_epoch_ms"] + line["nav_ms"]
 td = line["origin_epoch_ms"] + u["rendered_tick_ms"]
 t1 = line["origin_epoch_ms"] + u["interactive_ms"]
 
+# threadCPUDelta's unit differs by platform (sampleUnits in each process's meta): µs on macOS,
+# ns on Linux and Android, CPU cycles on Windows, which can't be turned into time.
+MS_PER_UNIT = {"µs": 1e-3, "us": 1e-3, "ns": 1e-6, "ms": 1.0}
+
 P = json.load(open(prof_path))
 cats = P["meta"]["categories"]
 rows, main = [], None
@@ -44,14 +48,22 @@ for pr in [P] + P.get("processes", []):
     for th in pr["threads"]:
         sch = th["samples"]["schema"]
         ci = sch.get("threadCPUDelta")
-        data = [(base + d[sch["time"]], d[sch["stack"]], d[ci] if ci is not None else None)
+        # Rows drop trailing fields they have no value for, so a CPU column can be missing per row.
+        data = [(base + d[sch["time"]], d[sch["stack"]], d[ci] if ci is not None and ci < len(d) else None)
                 for d in th["samples"]["data"] if t0 <= base + d[sch["time"]] <= t1]
-        cpu = sum(d for _, _, d in data if d)
+        cpu = sum(d for _, _, d in data if d) * MS_PER_UNIT.get(unit, float("nan"))
         rows.append((cpu, th["name"], th.get("processType"), th.get("pid"), len(data), unit))
         if th["name"] == "GeckoMain" and th.get("processType") == "tab" and data and (main is None or cpu > main[0]):
             main = (cpu, th, data, unit)
 
 _, th, data, unit = main
+if unit not in MS_PER_UNIT:
+    sys.exit(f"threadCPUDelta is in '{unit}', which this script can't turn into time")
+missing = sum(1 for _, _, d in data if d is None)
+by_samples = missing > 0
+if by_samples:
+    print(f"warning: {missing} of {len(data)} main-thread samples have no CPU delta; "
+          "splitting by sample count, not CPU time", file=sys.stderr)
 st, ft, strs = th["stackTable"], th["frameTable"], th["stringTable"]
 ss, fs = st["schema"], ft["schema"]
 
@@ -76,7 +88,7 @@ def leaf(stack):
 
 split, sub, leaves, phase = (collections.Counter() for _ in range(4))
 for t, stack, d in data:
-    w = d if d is not None else 1
+    w = 1 if by_samples else d * MS_PER_UNIT[unit]
     c, s = category(stack) if stack is not None else ("Other", "")
     split[c] += w
     sub[(c, s)] += w
@@ -87,16 +99,16 @@ pct = lambda v: 100 * v / tot  # noqa: E731
 slow_js = sum(v for (c, s), v in sub.items() if c == "JavaScript" and ("nterpreter" in s or "Compile" in s))
 
 if brief:
-    print(f"main_cpu={tot / 1000:.0f}ms js={pct(split['JavaScript']):.0f}% interp+compile={pct(slow_js):.0f}% "
+    print(f"main_cpu={'n/a' if by_samples else f'{tot:.0f}ms'} js={pct(split['JavaScript']):.0f}% interp+compile={pct(slow_js):.0f}% "
           f"dom={pct(split['DOM']):.0f}% layout={pct(split['Layout']):.0f}% graphics={pct(split['Graphics']):.0f}%")
     sys.exit()
 print(f"{view}: drawn {u['rendered_tick_ms'] - line['nav_ms']:.0f} ms, usable {u['interactive_ms'] - line['nav_ms']:.0f} ms "
       f"after the navigation; busy_ms {u['busy_ms']}")
-print(f"threads in the window ({t1 - t0:.0f} ms), CPU in {unit}:")
+print(f"threads in the window ({t1 - t0:.0f} ms), CPU in ms:")
 for cpu, name, ptype, pid, n, unit_ in sorted(rows, reverse=True)[:8]:
     if n:
-        print(f"  {ptype or '?':8} {pid:>7} {name:20} {cpu:12.0f}")
-print(f"content main thread: {tot / 1000:.0f} ms of CPU")
+        print(f"  {ptype or '?':8} {pid:>7} {name:20} {cpu:10.1f}")
+print(f"content main thread: {len(data)} samples" if by_samples else f"content main thread: {tot:.0f} ms of CPU")
 for k, v in split.most_common():
     print(f"  {k:14} {pct(v):5.1f}%")
 print("by subcategory:")

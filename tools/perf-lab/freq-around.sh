@@ -8,17 +8,19 @@
 #   tools/perf-lab/freq-around.sh SERIAL LABEL 'ACTION' [BEFORE_S=2] [AFTER_S=4]
 #
 # Prints "LABEL <seconds from the action> <kHz>" per sample, then a count per frequency before and
-# after. ACTION "" samples with nothing done (the control).
+# after. ACTION "" samples with nothing done (the control). The action runs in the background, so
+# sampling goes on while it runs (an `am start -W` blocks for seconds); its own output goes to stderr.
 set -u
-SERIAL=$1 LABEL=$2 ACTION=$3 BEFORE=${4:-2} AFTER=${5:-4}
+SERIAL=$1 LABEL=$2 ACTION=${3:-:} BEFORE=${4:-2} AFTER=${5:-4}
 ADB=${ADB:-$HOME/Library/Android/sdk/platform-tools/adb}
 "$ADB" -s "$SERIAL" shell "
 F=/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq
 s() { n=\$1; while [ \$n -gt 0 ]; do read -r u x < /proc/uptime; read -r f < \$F; echo \"S \$u \$f\"; sleep 0.05; n=\$((n - 1)); done; }
 s $((BEFORE * 20))
 read -r u x < /proc/uptime; echo \"A \$u\"
-$ACTION
+$ACTION >&2 &
 s $((AFTER * 20))
+wait
 " | awk -v L="$LABEL" '
   $1 == "A" { a = $2; next }
   $1 == "S" { t[NR] = $2; f[NR] = $3; n = NR }

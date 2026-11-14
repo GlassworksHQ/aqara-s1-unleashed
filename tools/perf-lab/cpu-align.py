@@ -25,6 +25,8 @@ if timeline:
     k = sys.argv.index("--timeline") + 1
     if k < len(sys.argv) and sys.argv[k].replace(".", "").isdigit():
         BIN = float(sys.argv[k])
+    if not (0 < BIN < float("inf")):
+        sys.exit(f"--timeline needs a bin above 0 s, not {sys.argv[k]}")
 HZ = 100
 
 
@@ -41,6 +43,12 @@ def jiffies(stat):
     return int(f[11]) + int(f[12])  # utime + stime (fields 14 and 15)
 
 
+def keep(sample):
+    """Only samples whose aggregate CPU line arrived: a trace cut mid-sample has none."""
+    if sample is not None and sample.total > 0:
+        samples.append(sample)
+
+
 samples, offset, cur, cpu_temp_prop = [], None, None, set()
 for line in open(trace, errors="replace"):
     kind, _, rest = line.rstrip("\n").partition(" ")
@@ -50,8 +58,7 @@ for line in open(trace, errors="replace"):
     elif kind == "G":
         cpu_temp_prop.add(rest.strip())
     elif kind == "U":
-        if cur:
-            samples.append(cur)
+        keep(cur)
         cur = Sample(float(rest))
     elif cur is None:
         continue
@@ -69,14 +76,25 @@ for line in open(trace, errors="replace"):
     elif kind in ("P", "M", "H"):
         head, _, stat = rest.partition("|")
         ident, name = head.split(" ", 1)
-        key = {"P": name, "M": name + " [main thread]", "H": "  thread " + name}[kind]
+        # The pid (or tid) is part of the key: a process that restarted between two samples is a new
+        # one, and its counters must not be subtracted from the old one's.
+        key = ({"P": name, "M": name + " [main thread]", "H": "  thread " + name}[kind], ident)
         try:
             cur.jiffies[key] = jiffies(stat)
         except (IndexError, ValueError):
             pass
-if cur:
-    samples.append(cur)
+keep(cur)
 times = [s.up for s in samples]
+
+
+def shares(a, b, dt):
+    """Each process's (and thread's) share of one core between two samples, by name; only the
+    ones with the same pid at both ends."""
+    out = collections.defaultdict(float)
+    for key in b.jiffies:
+        if key in a.jiffies:
+            out[key[0]] += 100 * (b.jiffies[key] - a.jiffies[key]) / HZ / dt
+    return out
 
 
 def window(t0, t1):
@@ -88,7 +106,7 @@ def window(t0, t1):
     return {
         "dt": dt,
         "busy": 100 * (b.busy - a.busy) / max(1, b.total - a.total),
-        "shares": {k: 100 * (b.jiffies[k] - a.jiffies[k]) / HZ / dt for k in b.jiffies if k in a.jiffies},
+        "shares": shares(a, b, dt),
         "freqs": collections.Counter(s.freq for s in span),
         "cpu_c": [s.temps[0] for s in span if s.temps],
         "cooling": collections.Counter(s.cooling for s in span if s.cooling is not None),
