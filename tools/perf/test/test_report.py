@@ -1383,6 +1383,27 @@ class FakeLog(unittest.TestCase):
         # smoke10's 92 ms isn't a reason: each change is timed from when it was actually sent.
         self.assertEqual(R.fake_ha_reasons(self.log({"t": 4, "stream": "S", "k": 2, "late_ms": 92.0}), True), [])
 
+    def test_only_a_graded_views_late_stream_makes_it_provisional(self):
+        """s1rtc8: one 2 s burst of late sends, all on typical-hls (an HLS copy, not graded), made the
+        graded result provisional. Each send belongs to the view open then; a copy's or a warm-up's
+        lateness is detail. Only which streams the check reads changes, not its 200 ms."""
+        log = self.log({"t": 2, "open": {"view": "light", "nonce": "a1"}}, {"t": 3, "stream": "S", "k": 1, "late_ms": 40.0},
+                       {"t": 4, "open": {"view": "typical-hls", "nonce": "a2"}}, {"t": 5, "stream": "S", "k": 1, "late_ms": 1952.0},
+                       {"t": 6, "open": {"view": "light", "nonce": "a3", "warmup": "1"}}, {"t": 7, "stream": "F", "k": 1, "late_ms": 900.0})
+        self.assertEqual((log["stream_late_max_ms"], log["stream_late_detail_max_ms"], log["stream_sent"]), (40.0, 1952.0, 4))  # and the fixture's own
+        self.assertEqual(R.fake_ha_reasons(log, True), [])
+        # A whole run: the copy's burst is a line in report.md, and the grade isn't provisional for it.
+        b = Build()
+        b.setUp()
+        write_fake_log(b.dir, [{"t": 2, "open": {"view": "typical-hls", "nonce": "a2"}},
+                               {"t": 5, "stream": "S", "k": 1, "late_ms": 1952.0}])
+        rep = R.build(b.dir)
+        self.assertFalse(any("late" in r for r in rep["grade"].get("provisional_reasons") or []))
+        self.assertIn("The fake Home Assistant sent a live change 1952 ms late during a view that isn't graded", R.markdown(rep))
+        # The same burst on a graded view is a reason, as before.
+        log = self.log({"t": 2, "open": {"view": "heavy", "nonce": "b1"}}, {"t": 3, "stream": "S", "k": 1, "late_ms": 1952.0})
+        self.assertIn("the fake Home Assistant sent a live change 1952 ms late (more than 200 ms)", R.fake_ha_reasons(log, True))
+
     def test_protocol_4_without_the_log_is_provisional(self):
         self.assertEqual(R.fake_ha_reasons(None, True), ["the fake Home Assistant's log (fakeha.jsonl) is missing"])
         self.assertEqual(R.fake_ha_reasons(None, False), [])

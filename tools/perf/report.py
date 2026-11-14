@@ -1203,10 +1203,16 @@ STREAM_LATE_MS = 200
 def fake_ha_log(path):
     """What fakeha.jsonl (run.sh --log) says about the fake Home Assistant: the commands the frontend
     sent, any it didn't know or that failed (the frontend then got an error HA wouldn't send), and how
-    late the fake itself sent the stream's changes. None without the file (runs before 2026-11-13)."""
+    late the fake itself sent the stream's changes. None without the file (runs before 2026-11-13).
+
+    Each change belongs to the view open when it was sent (the last `open` before it in the log): a
+    graded view's lateness is `stream_late_max_ms`, which the validity check reads; an ungraded
+    view's (the HLS copies, a warm-up) is `stream_late_detail_max_ms`, detail (#205, s1rtc8: one 2 s
+    burst on typical-hls made the graded result provisional)."""
     if not os.path.exists(path):
         return None
-    commands, unknown, failed, late = 0, {}, {}, []
+    commands, unknown, failed, late, detail = 0, {}, {}, [], []
+    view = None
     with open(path) as f:
         for line in f:
             try:
@@ -1219,10 +1225,15 @@ def fake_ha_log(path):
                 unknown[e["unknown"]] = unknown.get(e["unknown"], 0) + 1
             if "failed" in e:
                 failed[e["failed"]] = failed.get(e["failed"], 0) + 1
+            if "open" in e:
+                cmd = e["open"] or {}
+                view = "warmup" if str(cmd.get("warmup", "0")) not in ("0", "") else cmd.get("view")
             if "stream" in e:
-                late.append(e.get("late_ms") or 0)
-    return {"commands": commands, "unknown": unknown, "failed": failed, "stream_sent": len(late),
-            "stream_late_max_ms": max(late) if late else None}
+                # Before any view opened (nothing should stream then), it counts as graded.
+                (late if view is None or view in G.TIERS else detail).append(e.get("late_ms") or 0)
+    return {"commands": commands, "unknown": unknown, "failed": failed, "stream_sent": len(late) + len(detail),
+            "stream_late_max_ms": max(late) if late else None,
+            "stream_late_detail_max_ms": max(detail) if detail else None}
 
 
 def fake_ha_reasons(log, protocol4):
@@ -1627,6 +1638,11 @@ def markdown(rep):
                        f"for {int(STAGE_IDLE_S)} s), measured as failing what they didn't get to (not \"not measured\"): "
                        + "; ".join(f"{t} in run {k} ({', '.join((ref['tiers'].get(t) or {}).get('timed_out_tasks') or []) or 'nothing left'})"
                                    for k, t in ref["timed_out"]) + ".")
+        detail_late = (rep.get("fake_ha") or {}).get("stream_late_detail_max_ms")
+        if (detail_late or 0) > STREAM_LATE_MS:
+            # Not a reason for "provisional": no graded view's stream was late (#205).
+            out.append(f"The fake Home Assistant sent a live change {detail_late:.0f} ms late during a view that isn't "
+                       "graded (an HLS copy or a warm-up; detail: this computer was busy then).")
         out += transport_line(rep)
         out += camera_detail(ref)
         for t, s_ in ref["tiers"].items():
