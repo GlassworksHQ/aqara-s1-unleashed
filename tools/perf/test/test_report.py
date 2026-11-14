@@ -312,6 +312,7 @@ class ReferenceLoad(unittest.TestCase):
 
     def run_with(self, **page):
         run = refstart(1, 100)
+        del run["tiers"]["light"]["page"]["usable"]       # a page before protocol 4: its own load event
         run["tiers"]["light"]["page"].update(page)
         return R.reference_run(run)["tiers"]["light"]
 
@@ -332,6 +333,7 @@ class ReferenceLoad(unittest.TestCase):
 
     def with_frames(self, fcp_ms, load_ms, rel_frames):
         run = refstart(1, 100)
+        del run["tiers"]["light"]["page"]["usable"]
         run["tiers"]["light"]["page"].update(fcp_ms=fcp_ms, load_ms=load_ms)
         run["presents_mono_ms"] = [NAV["light"] * 1000 + d for d in rel_frames]
         return R.reference_run(run)["tiers"]["light"]
@@ -472,13 +474,16 @@ def updates_step(nav, missed=0, slow=33.333, idle_slow=0, changes=CHANGES, windo
                                    else sorted(w0 + c[1] + present_after for c in changes))}}
 
 
-def tier_entry(tier, inp, scroll_missed=0, updates_missed=0, load_ms=200, fcp_ms=150, dpr=1.5):
+def tier_entry(tier, inp, scroll_missed=0, updates_missed=0, load_ms=200, fcp_ms=150, dpr=1.5, blocking_ms=40.0):
     """One reference dashboard in a graded run. Its page logs 1 s after navigation and goes live 3 s
-    after it; three swipes of 60 frames follow."""
+    after it; three swipes of 60 frames follow. Its first screen is drawn 150 ms after navigation (on
+    screen at 200 ms), its main thread free at 300 ms, and it blocks for `blocking_ms` in between."""
     nav = NAV[tier]
     return {"nonce": tier,
             "page": {"t": "refdash", "tier": tier, "protocol": G.PROTOCOL_VERSION, "clarity": G.CLARITY, "nodes": 1458, "cards": CARDS[tier], "css": [960, 480], "dpr": dpr,
-                     "fcp_ms": fcp_ms, "load_ms": load_ms,
+                     "fcp_ms": fcp_ms, "load_ms": load_ms, "nav_ms": 0.0,
+                     "usable": {"rendered_tick_ms": 150.0, "first_screen_cards": 14, "head_cards": 10, "interactive_ms": 300.0,
+                                "blocking_ms": blocking_ms, "long_frames": 1, "longest_frame_ms": 90.0},
                      "origin_epoch_ms": 1e12 + nav * 1000, "epoch_ms": 1e12 + nav * 1000 + 1000, "mono": nav + 1.0},
             "live_mono": nav + 3.0,
             "measure": {"t": "measure", "stage": "updates", "moving": 12, "offscreen": 0, "targets": 10, "update_every_ms": 200},
@@ -530,11 +535,35 @@ class TimedOut(unittest.TestCase):
         run = R.tier_run("heavy", {"nonce": "ab12", "swipes": [], "timed_out_s": 300}, [])
         self.assertNotIn("error", run)
         self.assertEqual((run["load_ms"], run["inp_ms"]), (300000, 300000))
-        self.assertEqual(run["timed_out_tasks"], ["open", "tap", "scroll", "updates", "camera"])
+        self.assertEqual(run["timed_out_tasks"], ["open", "tap", "blocking", "scroll", "updates", "camera"])
         self.assertEqual(G.scroll_level(run["scroll"]), G.BELOW)
         self.assertEqual(G.update_level(run["updates_run"]), G.BELOW)
         self.assertEqual(G.camera_level(run["camera_run"]), G.BELOW)
         self.assertIsNone(R.tier_run("light", {"nonce": "ab12", "swipes": [], "timed_out_s": 300}, [])["camera_run"])  # no streams
+
+    def drawn_only(self, tier, drawn_tier=None):
+        """A view drawn 150 ms after its navigation (on screen at 200 ms) whose main thread was never
+        free: the runner has its `drawn` line and no `refdash`."""
+        nav = NAV[tier]
+        drawn = {"t": "drawn", "tier": drawn_tier or tier, "protocol": G.PROTOCOL_VERSION, "clarity": G.CLARITY, "nav_ms": 0.0,
+                 "usable": {"rendered_tick_ms": 150.0, "first_screen_cards": 14, "head_cards": 10},
+                 "origin_epoch_ms": 1e12 + nav * 1000, "epoch_ms": 1e12 + nav * 1000 + 150, "mono": nav + 0.15}
+        return {"nonce": tier, "drawn": drawn, "swipes": [], "timed_out_s": 300}
+
+    def test_a_view_drawn_but_never_free_keeps_its_open(self):
+        """Rubric 2 (#264's verifiers): the open is the draw, so it stands; blocking takes the deadline
+        and usable isn't measured."""
+        run = R.tier_run("typical", self.drawn_only("typical"), load_frames())
+        self.assertNotIn("error", run)
+        self.assertEqual((run["load_ms"], run["drawn_ms"], run["blocking_ms"], run["inp_ms"]), (200, 150, 300000, 300000))
+        self.assertIsNone(run["usable_ms"])
+        self.assertEqual(run["timed_out_tasks"], ["tap", "blocking", "scroll", "updates", "camera"])
+        self.assertEqual(G.band(run["load_ms"], G.METRICS["load_ms"]), "good")
+
+    def test_a_drawn_line_of_another_view_is_not_this_ones(self):
+        run = R.tier_run("typical", self.drawn_only("typical", drawn_tier="heavy"), load_frames())
+        self.assertEqual(run["load_ms"], 300000)
+        self.assertIn("open", run["timed_out_tasks"])
 
     def test_report_md_says_the_view_didnt_finish(self):
         ok = R.camera_run(camera_line("typical"), "typical")
@@ -842,13 +871,15 @@ class Build(unittest.TestCase):
         self.assertEqual(t["light"]["updates_band"], "good")
         self.assertEqual(t["light"]["scrolled_px"]["median"], 2100)   # three swipes of 700 px
         self.assertEqual(t["light"]["cards"], [20])
-        self.assertEqual(t["light"]["load_ms"]["median"], 400)        # navigation -> last paint at 0.4 s
+        self.assertEqual(t["light"]["load_ms"]["median"], 200)        # rubric 2: navigation -> first screen drawn, on screen at 0.2 s
+        self.assertEqual(t["light"]["usable_ms"]["median"], 300)      # usable (rubric 1's open): the main thread free at 0.3 s
+        self.assertEqual(t["light"]["blocking_ms"]["median"], 40)
 
     def test_headline_grade(self):
         g = self.rep["grade"]
         self.assertEqual(g["grade"], "B")
         self.assertEqual(g["levels"], {"light": "premium", "typical-nocam": "premium", "typical": "premium", "heavy": "fluid"})
-        self.assertEqual(g["bands"]["heavy"], {"tap": "good", "scroll": "fluid", "updates": "premium", "load": "good", "camera": "good"})
+        self.assertEqual(g["bands"]["heavy"], {"tap": "good", "scroll": "fluid", "updates": "premium", "load": "good", "camera": "good", "blocking": "good"})
         self.assertEqual(g["bands"]["light"]["camera"], "none")              # no streams on light (#174)
         heavy = self.rep["graded"]["reference"]["tiers"]["heavy"]
         self.assertEqual(heavy["camera_levels"], ["good", "good", "good"])
@@ -869,7 +900,7 @@ class Build(unittest.TestCase):
             run["tiers"]["light"]["swipes"] = [swipe(30.0, i, late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["typical"]["swipes"] = [swipe(40.0, i, late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["typical-nocam"]["swipes"] = [swipe(70.0, i, late(60, 45, 66.67)) for i in range(3)]
-            run["tiers"]["light"]["page"]["fcp_ms"] = 900      # its first paint never reached the screen
+            run["tiers"]["light"]["page"]["usable"]["first_screen_cards"] = 5   # not all of its first screen drawn: not measured
             self.write(f"refstart-{k}.json", run)
         g = R.build(self.dir)["grade"]
         self.assertEqual(g["grade"], "E")
@@ -1177,13 +1208,14 @@ class Build(unittest.TestCase):
     def test_v1s_release_candidate_reads_as_v1(self):
         """Pre-release protocol 8 (#205's s1rtc5, before the lines carried `clarity`) is v1's measurement,
         but only its own lines, which carry the round's usable.busy_ms (the one bypass of the marker)."""
-        self.assertEqual(R.page_version({"protocol": 8, "usable": {"busy_ms": [12, 0]}}), (G.PROTOCOL_VERSION, G.CLARITY))
+        self.assertEqual(R.page_version({"protocol": 8, "usable": {"busy_ms": [12, 0]}}), (1, 1))      # v1's
         self.assertEqual(R.page_version({"protocol": 8, "usable": {"interactive_ms": 1}}), (8, None))
         self.assertEqual(R.page_version({"protocol": 8}), (8, None))
         self.assertEqual(R.page_version({"protocol": 1, "clarity": 1}), (1, 1))
         self.assertEqual(R.page_version({"protocol": 1}), (1, None))          # pre-release protocol 1
-        self.assertTrue(R.is_v1({"protocols": [1], "clarity": [1]}))
-        self.assertFalse(R.is_v1({"protocols": [1], "clarity": [None]}))
+        self.assertTrue(R.is_current({"protocols": [G.PROTOCOL_VERSION], "clarity": [G.CLARITY]}))
+        self.assertFalse(R.is_current({"protocols": [1], "clarity": [1]}))                      # v1 under rubric 2
+        self.assertFalse(R.is_current({"protocols": [G.PROTOCOL_VERSION], "clarity": [None]}))
         rep = self.build_with(protocol=8, clarity=None)                       # the fixture's lines have no busy_ms
         self.assertIsNone(rep["clarity"])
         self.assertIn("measured with a pre-release version of Clarity (protocol 8): re-measure", rep["grade"]["provisional_reasons"])
@@ -1192,10 +1224,27 @@ class Build(unittest.TestCase):
         rep = self.build_with(protocol=G.PROTOCOL_VERSION + 1, clarity=G.CLARITY)
         self.assertIn(f"the pages ran protocol {G.PROTOCOL_VERSION + 1}; this rubric is for protocol {G.PROTOCOL_VERSION}",
                       rep["grade"]["provisional_reasons"])
-        self.assertIsNone(rep["clarity"])
+        self.assertEqual(rep["clarity"], G.CLARITY)          # as the pages recorded it; the protocol says the rest
 
-    def test_v1_is_v1(self):
-        self.assertEqual((self.rep["clarity"], self.rep["protocol_version"]), (1, 1))
+    def test_a_v1_run_rebuilt_keeps_its_clarity(self):
+        """#264's CodeRabbit: a marked v1 run rebuilt by v2's code says clarity 1, not null, and is
+        re-measured (never graded by v2's rules), in the report and in both graders from its summary."""
+        rep = self.build_with(protocol=1, clarity=1)
+        self.assertEqual((rep["clarity"], rep["protocol_version"]), (1, 1))
+        why = "measured with Clarity v1; these rules are Clarity v2's: re-measure"
+        self.assertIn(why, rep["grade"]["provisional_reasons"])
+        s = S.summarise(rep, allow_provisional=True)
+        self.assertEqual((s["clarity"], s["protocol_version"]), (1, 1))
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("gw_test_summary", os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_summary.py"))
+        ts_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ts_mod)
+        for g in (G.grade_summary(s), ts_mod.ts_grades([s])[0]):
+            self.assertEqual((g["status"], g["grade"], g["why"]), ("re-measure", None, why))
+
+    def test_this_clarity_is_this_clarity(self):
+        self.assertEqual((self.rep["clarity"], self.rep["protocol_version"]), (G.CLARITY, G.PROTOCOL_VERSION))
+        self.assertEqual((G.CLARITY, G.PROTOCOL_VERSION), (2, 2))
 
     def test_js_band_is_reported_but_not_graded(self):
         self.assertEqual(self.rep["detail"]["synthetic"]["js_burst_ms"]["median"], 10.0)

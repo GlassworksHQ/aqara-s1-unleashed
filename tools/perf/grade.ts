@@ -3,7 +3,7 @@
  *
  * The letter is derived, so it is computed where it is shown: the marketing site (and later the
  * shared frame package, #114) imports this module with a frame's summary (tools/perf/summary.py,
- * glassworks.perf-summary/2) and tools/perf/page/rubric.json. tools/perf/grade.py computes the same
+ * glassworks.perf-summary/3) and tools/perf/page/rubric.json. tools/perf/grade.py computes the same
  * letter from the same two files; test/grade-cases.json and test/test_grade.py's parity test keep
  * them equal. rubric.json is the single source of the thresholds and the letter rules: don't copy a
  * rule into this file.
@@ -48,6 +48,7 @@ export interface CameraRun { timed_out?: boolean; stalls_reported?: boolean; fir
 export interface PageSummary {
   inp_ms?: number | null;
   open_ms?: number | null;
+  blocking_ms?: number | null;   // rubric 2: the main thread's blocking from the first screen drawn to usable
   scroll?: { runs?: FrameRun[] } & Record<string, unknown>;
   updates?: { runs?: UpdateRun[] } & Record<string, unknown>;
   camera?: { runs?: CameraRun[] } & Record<string, unknown>;
@@ -64,7 +65,7 @@ export interface Summary {
   not_comparable?: string | null;
 }
 
-export interface TierInputs { inp_ms?: number | null; load_ms?: number | null; scroll_level?: string | null; updates_level?: string | null; camera_level?: string | null }
+export interface TierInputs { inp_ms?: number | null; load_ms?: number | null; blocking_ms?: number | null; scroll_level?: string | null; updates_level?: string | null; camera_level?: string | null }
 /** Per task: a band (tap, updates, load) or, for scroll, its level. */
 export type Bands = Record<string, string | null>;
 
@@ -180,6 +181,7 @@ export function tierBands(tier: TierInputs | undefined, rubric: Rubric, page?: s
     updates: t.updates_level ?? null,
     load: band(t.load_ms, rubric.metrics.load_ms),
     camera: page !== undefined && rubric.grade.camera_pages.includes(page) ? (t.camera_level ?? null) : "none",
+    blocking: band(t.blocking_ms, rubric.metrics.blocking_ms),
   };
 }
 
@@ -253,6 +255,7 @@ export function summaryInputs(summary: Summary, rubric: Rubric): [Record<string,
     tiers[t] = {
       inp_ms: p.inp_ms ?? null,
       load_ms: p.open_ms ?? null,
+      blocking_ms: p.blocking_ms ?? null,
       scroll_level: medianLevel((p.scroll?.runs || []).map((r) => scrollLevel(r, rubric)), rubric),
       updates_level: medianLevel((p.updates?.runs || []).map((r) => updateLevel(r, rubric)), rubric),
       camera_level: medianLevel((p.camera?.runs || []).map((r) => cameraLevel(r, rubric)), rubric),
@@ -273,9 +276,12 @@ export function gradeSummary(summary: Summary, rubric: Rubric): Grade {
   // Not comparable first: it says why there is nothing to grade, whatever the protocol.
   if (summary.not_comparable) return { status: "not-comparable", grade: null, meaning: null, why: summary.not_comparable };
   if (summary.clarity !== rubric.clarity) {
-    // Before v1 (pre-release protocols 1 to 8): the numbers can repeat, so the marker decides.
-    return { status: "re-measure", grade: null, meaning: null,
-             why: `measured with a pre-release version of Clarity (protocol ${summary.protocol_version ?? "unknown"}): re-measure` };
+    // Before v1 (pre-release protocols 1 to 8): the numbers can repeat, so the marker decides. A
+    // summary of another Clarity version (v1 under rubric 2) is graded only by its own rules.
+    const why = summary.clarity === null || summary.clarity === undefined
+      ? `measured with a pre-release version of Clarity (protocol ${summary.protocol_version ?? "unknown"}): re-measure`
+      : `measured with Clarity v${summary.clarity}; these rules are Clarity v${rubric.clarity}'s: re-measure`;
+    return { status: "re-measure", grade: null, meaning: null, why };
   }
   if (summary.protocol_version !== rubric.protocol_version) {
     return { status: "re-measure", grade: null, meaning: null,

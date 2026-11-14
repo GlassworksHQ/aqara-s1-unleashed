@@ -41,6 +41,13 @@ test("another protocol is re-measured, not graded", () => {
   assert.equal(g.grade, null);
 });
 
+test("a Clarity v1 summary is re-measured under v2's rules, and says so", () => {
+  assert.equal(rubric.clarity, 2);
+  const g = G.gradeSummary({ clarity: 1, protocol_version: 1, pages: {} }, rubric);
+  assert.deepEqual([g.status, g.grade], ["re-measure", null]);
+  assert.equal(g.why, "measured with Clarity v1; these rules are Clarity v2's: re-measure");
+});
+
 test("a measurement that isn't comparable shows no letter", () => {
   const g = G.gradeSummary({ protocol_version: rubric.protocol_version, pages: {}, not_comparable: "not the default zoom" }, rubric);
   assert.deepEqual([g.status, g.grade], ["not-comparable", null]);

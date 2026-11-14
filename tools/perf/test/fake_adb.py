@@ -37,6 +37,11 @@ def save(name, value):
     os.replace(tmp, path)
 
 
+# When each reference view's first screen is drawn after its navigation, in ms: each its own, inside
+# the frames paint() puts on screen (0.15 to 0.5 s).
+DRAWN_AFTER_MS = {"light": 180, "typical-nocam": 190, "typical": 210, "heavy": 230}
+
+
 def paint(start, end):
     save("paint.json", state("paint.json", []) + [[start, end]])
 
@@ -331,7 +336,7 @@ def refdash(nonce, url):
     def gw(obj):
         # FAKE_STAGE_DELAY (protocol 8): a slow view that keeps going: this long before each line
         # after it is usable, so the whole view outlasts the usable deadline but no stage stops.
-        if obj.get("t") not in ("refdash",) and os.environ.get("FAKE_STAGE_DELAY") and tier == os.environ.get("FAKE_STAGE_VIEW", tier):
+        if obj.get("t") not in ("refdash", "drawn") and os.environ.get("FAKE_STAGE_DELAY") and tier == os.environ.get("FAKE_STAGE_VIEW", tier):
             time.sleep(float(os.environ["FAKE_STAGE_DELAY"]))
         page_log(dict(obj, nonce=nonce, run=1), split=not os.environ.get("FAKE_NO_SPLIT"))
 
@@ -360,15 +365,24 @@ def refdash(nonce, url):
     save("last_nonce.json", nonce)
     if foreign == "after":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
-    time.sleep(0.7)
+    time.sleep(0.5)
+    # Clarity v2: the draw on its own line first, then refdash once free. Each view draws at its own
+    # time after the navigation, so a draw stored on the wrong view shows (#264's delta verifier).
+    drawn_after = DRAWN_AFTER_MS.get(page, 200)
+    gw({"t": "drawn", "tier": tier, "protocol": PROTOCOL, "clarity": CLARITY, "nav_ms": round(nav, 1),
+        "usable": {"rendered_tick_ms": round(nav + drawn_after, 1), "first_screen_cards": 14, "head_cards": 10},
+        "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000})
+    if os.environ.get("FAKE_NEVER_FREE") == tier:
+        return                 # drawn, but the main thread never free: no refdash
+    time.sleep(0.2)
     gw({"t": "refdash", "tier": tier, "protocol": PROTOCOL, "clarity": CLARITY, "frontend": "20261028.5", "nodes": 1458, "cards": 50,
         "cards_rendered": 47, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
         "fcp_ms": None, "lcp_ms": None, "load_ms": None, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000,
-        # Protocol 4: navigation at `nav`; the view's first screen rendered 200 ms later, the main thread
-        # free 20 ms after that.
+        # Protocol 4: navigation at `nav`; the view's first screen rendered DRAWN_AFTER_MS later, the
+        # main thread free 20 ms after that.
         "nav_ms": round(nav, 1), "video_caps": {"mse_h264": True, "native_hls": "", "rvfc": True},
-        "usable": {"rendered_tick_ms": round(nav + 200, 1), "first_screen_cards": 14, "head_cards": 10,
-                   "interactive_ms": round(nav + 220, 1)}})
+        "usable": {"rendered_tick_ms": round(nav + drawn_after, 1), "first_screen_cards": 14, "head_cards": 10,
+                   "interactive_ms": round(nav + drawn_after + 20, 1), "blocking_ms": 0.0, "long_frames": 0, "longest_frame_ms": 16.7}})
     time.sleep(1.0)
     if os.environ.get("FAKE_HANG") == tier:
         return                 # as smoke10's heavy: usable, then nothing more (no done)
@@ -500,7 +514,8 @@ def dashboard():
                   "cards_rendered": 20, "css": [960, 480],
                   "dpr": float(os.environ.get("FAKE_DPR", "1.5")), "scroll_height": 1936, "fcp_ms": 120, "lcp_ms": 120,
                   "load_ms": 100, "nav_ms": 0,
-                  "usable": {"rendered_tick_ms": 400.0, "first_screen_cards": 13, "head_cards": 10, "interactive_ms": 410.0},
+                  "usable": {"rendered_tick_ms": 400.0, "first_screen_cards": 13, "head_cards": 10, "interactive_ms": 410.0,
+                             "blocking_ms": 0.0, "long_frames": 0, "longest_frame_ms": 16.7},
                   "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000, "run": 1, "nonce": ""}, record=False)
         line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
         time.sleep(0.2)

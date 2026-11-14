@@ -2,11 +2,11 @@
  "_comment": "The perf rubric: the bands' thresholds and the letter rules. The single source for tools/perf/grade.py, tools/perf/grade.ts (the site computes the letter from a summary with it) and the test page (perf.js, to stop the ladder). docs/perf.md cites each source. Change on purpose, with the docs and the tests (test/grade-cases.json).",
  "name": "Clarity",
  "_name": "The perf test's name, as in \"Clarity A\" or \"a frame's Clarity grade\" (the maintainer, 2026-11-13). The report headline, the summary and grade.ts take it from here, so a rename is one change. File paths keep tools/perf and docs/perf.md.",
- "clarity": 1,
- "_clarity": "Clarity v1 (the maintainer, 2026-11-14): the first release. A summary or report without `clarity: 1` was measured with a pre-release version (protocols 1 to 8, rubrics 1 to 11, before 2026-11-14): re-measure. Pre-release protocol 8 is v1's release candidate (#205, s1rtc5): the same measurement, so report.py reads its lines as v1.",
- "version": 1,
- "protocol_version": 1,
- "_protocol": "The measurement protocol these rules apply to (tools/perf/page/tiers.json PROTOCOL): the pages, the swipes, the update rate, the windows and how the runner reads them. A summary from another protocol can't be graded with this file: re-measure. Protocol 1 (Clarity v1, 2026-11-14): Home Assistant's real frontend on a fake HA; a restart, then light, typical without its camera, typical with it, and heavy, each opened in the loaded frontend; live updates, taps and swipes on each; live cameras played over WebRTC, as HA with go2rtc does (over the LAN when the panel can reach the computer, else through adb reverse, and the run records which), graded on the receiver's own counts over a fixed 30 s window, with HLS copies as detail; each task its own budget. Its history (pre-release protocols 1 to 8 and rubrics 1 to 11, #158, #174, #202, #205) is in docs/perf.md, \"Versions\".",
+ "clarity": 2,
+ "_clarity": "Clarity's version: v2 from rubric 2 (2026-11-14). Clarity v1 (protocol 1, rubric 1, 2026-11-14) was the first release; a v1 report or summary is graded only by v1's rules: re-measure under these. One without `clarity` was measured with a pre-release version (protocols 1 to 8, rubrics 1 to 11, before 2026-11-14): re-measure. Pre-release protocol 8 was v1's release candidate (#205, s1rtc5), so report.py reads its lines as v1.",
+ "version": 2,
+ "protocol_version": 2,
+ "_protocol": "The measurement protocol these rules apply to (tools/perf/page/tiers.json PROTOCOL): the pages, the swipes, the update rate, the windows and how the runner reads them. A summary from another protocol can't be graded with this file: re-measure. Protocol 2 (Clarity v2, 2026-11-14) is protocol 1 plus the blocking time: the animation frames from each view's first screen drawn to usable. Protocol 1 (Clarity v1, 2026-11-14): Home Assistant's real frontend on a fake HA; a restart, then light, typical without its camera, typical with it, and heavy, each opened in the loaded frontend; live updates, taps and swipes on each; live cameras played over WebRTC, as HA with go2rtc does (over the LAN when the panel can reach the computer, else through adb reverse, and the run records which), graded on the receiver's own counts over a fixed 30 s window, with HLS copies as detail; each task its own budget. Its history (pre-release protocols 1 to 8 and rubrics 1 to 11, #158, #174, #202, #205) is in docs/perf.md, \"Versions\".",
  "one_frame_ms": 16.667,
  "vsync_slack_ms": 0.5,
  "metrics": {
@@ -28,7 +28,7 @@
   "load_ms": {
    "good_max": 2500,
    "poor_above": 4000,
-   "source": "Core Web Vitals LCP bounds (good <= 2.5 s, poor > 4 s), applied to opening each reference view (pre-release protocol 4): from HA's navigate() in the loaded frontend to usable (every head card and every card on the screen drawn, stable for 2 frames, then the main thread free for 500 ms). Usable is at or after the largest paint, so this is stricter than LCP. Lenient for a view switch (docs/perf.md, Open the view)"
+   "source": "Core Web Vitals LCP bounds (good <= 2.5 s, poor > 4 s), applied to opening each reference view: since rubric 2, from HA's navigate() in the loaded frontend to the first screen drawn (every head card and every card on the screen rendered, stable for 2 frames, on screen), the paint LCP itself times. Rubric 1 ran to usable (drawn and the main thread free), stricter than LCP's paint; the main thread's work after the draw is now its own task, blocking_ms. Lenient for a view switch (docs/perf.md, Open the view)"
   },
   "inp_ms": {
    "good_max": 200,
@@ -39,6 +39,11 @@
    "good_max": 2500,
    "poor_at": 5000,
    "source": "the restart (pre-release protocol 4): app process start to the reference dashboard's start view being usable, the kiosk having been pointed at it (before pre-release protocol 4: to engine ready, GeckoView's own first PageStart). poor: Android vitals' excessive cold start bound (>= 5 s), which vitals apply to TTID. good <= 2.5 s: project choice (LCP's bound)"
+  },
+  "blocking_ms": {
+   "good_max": 200,
+   "poor_above": 600,
+   "source": "Lighthouse's Total Blocking Time bands for mobile (good 0-200 ms, poor above 600 ms; developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time, read 2026-11-14), applied since rubric 2 to the main thread's blocking from each view's first screen drawn to usable (its main thread free for 500 ms): TBT's window is FCP to TTI. Gecko has no Long Tasks API (bugzil.la/1348405), so each animation frame's time past 50 ms counts, as a long animation frame's (stats.js frameBlocking). Graded as open is: good or needs-improvement passes every level, poor fails"
   }
  },
  "js_burst_ms": {
@@ -59,7 +64,8 @@
    "scroll": "scroll_levels",
    "updates": "update_levels",
    "load": "load_ms",
-   "camera": "camera_levels"
+   "camera": "camera_levels",
+   "blocking": "blocking_ms"
   },
   "scroll_levels": [
    {
@@ -144,6 +150,10 @@
      "camera": [
       "good",
       "none"
+     ],
+     "blocking": [
+      "good",
+      "needs-improvement"
      ]
     }
    },
@@ -168,6 +178,10 @@
      "camera": [
       "good",
       "none"
+     ],
+     "blocking": [
+      "good",
+      "needs-improvement"
      ]
     }
    },
@@ -195,6 +209,10 @@
       "good",
       "fluid",
       "none"
+     ],
+     "blocking": [
+      "good",
+      "needs-improvement"
      ]
     }
    }

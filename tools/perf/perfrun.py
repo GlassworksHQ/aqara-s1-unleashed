@@ -685,6 +685,11 @@ def cmd_coldstart(dev, a):
         st["line_at"], st["last_line"] = time.time(), t
         if t == "refdash":
             entry["page"] = pl
+        elif t == "drawn":
+            # Clarity v2: the first screen drawn, before the main thread is free. Kept apart from
+            # `page` (usable), which the deadlines go by; the report reads it for a view that never
+            # became usable.
+            entry["drawn"] = pl
         elif t == "warmup":
             entry["live_mono"] = rec["mono"]
             paused.set()  # no dumpsys while frames are measured, taps are timed or the page scrolls

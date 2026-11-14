@@ -354,6 +354,30 @@
     };
   }
 
+  // Rubric 2's blocking time (Clarity v2): the main thread's blocking after a view is drawn, from the
+  // animation frames between `start` (the first screen drawn) and `end` (usable: the main thread
+  // free). Lighthouse's Total Blocking Time adds, over long tasks between FCP and TTI, each task's
+  // time past 50 ms; Gecko has no Long Tasks API (bugzil.la/1348405) and no Long Animation Frames.
+  // Gecko runs the refresh driver's frames ahead of ordinary tasks, so a frame comes late by the
+  // length of the task that was running, not by a queue of short ones: each interval between
+  // frames past 50 ms is that much blocking, as a long animation frame's is. The edges count from
+  // `start` to the first frame and from the last frame to `end`. {blocking_ms, long_frames,
+  // longest_ms}, or null without a span.
+  function frameBlocking(times, start, end) {
+    if (start === null || end === null || end < start) return null;
+    const pts = [start].concat((times || []).filter((t) => t > start && t < end), [end]);
+    let blocking = 0, n = 0, longest = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const gap = pts[i] - pts[i - 1];
+      longest = Math.max(longest, gap);
+      if (gap > 50) {
+        blocking += gap - 50;
+        n++;
+      }
+    }
+    return { blocking_ms: round2(blocking), long_frames: n, longest_ms: round2(longest) };
+  }
+
   // A wait of `ms` that ends at the first of a timer and an animation frame past the time (protocol
   // 8, #202: on the S1's heavy view a 30 s wait checked by a timer took 140 s, the timers queued
   // behind the frontend's work while frames, which Gecko runs first, kept coming). The timer still
@@ -394,7 +418,7 @@
 
   const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines,
                 skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps, webrtcWindow, shownFrames,
-                pacedSleep };
+                pacedSleep, frameBlocking };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWStats = api;
 })(this);

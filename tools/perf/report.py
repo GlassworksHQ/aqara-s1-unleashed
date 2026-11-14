@@ -183,7 +183,7 @@ def first_paint_on_screen(presents_ms, fcp_ms, live_ms):
     return next((t for t in sorted(presents_ms) if fcp_ms - PAINT_SLACK_MS <= t <= live_ms), None)
 
 
-def usable_on_screen(page, presents_ms, period=None):
+def usable_on_screen(page, presents_ms, period=None, free=True):
     """Protocol 4: when HA's real frontend was usable, on logcat's clock (ms), or (None, why). The
     harness logs the animation frame in which every first-screen card had rendered and the moment
     a posted task ran within 50 ms (the main thread free). Usable is the first frame SurfaceFlinger
@@ -200,8 +200,12 @@ def usable_on_screen(page, presents_ms, period=None):
     shown = next((t for t in sorted(presents_ms) if t >= earliest), None)
     if shown is None:
         return None, "no frame on screen after the dashboard rendered"
-    free = P.page_to_mono_ms(page, u["interactive_ms"]) if u.get("interactive_ms") is not None else shown
-    return max(shown, free), None
+    if not free:
+        # Rubric 2's open: the first screen drawn, on screen (the paint LCP times), not waiting for
+        # the main thread to be free; that wait is its own task (blocking_ms).
+        return shown, None
+    at = P.page_to_mono_ms(page, u["interactive_ms"]) if u.get("interactive_ms") is not None else shown
+    return max(shown, at), None
 
 
 def change_frames(step, period=None):
@@ -469,13 +473,19 @@ def page_version(page):
     if page.get("protocol") == RC_PROTOCOL and (page.get("usable") or {}).get("busy_ms") is not None:
         # The one bypass of the marker, and only for the release candidate's own lines: they carry
         # `usable.busy_ms`, which the harness added with it (#205 round 10). An earlier line that said
-        # protocol 8 (none ran outside #205's branch) stays pre-release.
-        return G.PROTOCOL_VERSION, G.CLARITY
+        # protocol 8 (none ran outside #205's branch) stays pre-release. It is v1's (protocol 1).
+        return 1, 1
     return page.get("protocol"), None
 
 
-def is_v1(ref):
-    """Every page of the graded runs ran this rubric's protocol, in this Clarity version."""
+def recorded_clarity(ref):
+    """The one Clarity version every graded page recorded, or None (pre-release, or mixed)."""
+    cl = (ref or {}).get("clarity") or []
+    return cl[0] if len(cl) == 1 else None
+
+
+def is_current(ref):
+    """Every page of the graded runs ran this rubric's protocol, in this Clarity version (v2 now)."""
     return bool(ref) and ref.get("protocols") == [G.PROTOCOL_VERSION] and ref.get("clarity") == [G.CLARITY]
 
 
@@ -483,6 +493,11 @@ def tier_run(tier, entry, presents_ms):
     """One reference dashboard in one run: open the view (load), live updates (frames), tap (INP),
     scroll (frames while swiping)."""
     page, step = entry.get("page"), entry.get("step")
+    if page is None and entry.get("timed_out_s") and (entry.get("drawn") or {}).get("tier") == tier:
+        # Clarity v2: drawn, but never free within the deadline. The open stands (rubric 2 times it to
+        # the draw); blocking takes the deadline (timed_out) and usable isn't measured.
+        page = entry["drawn"]
+        entry = dict(entry, page=page)
     proto, clarity = page_version(page)
     out = {"tier": tier, "css": page and page.get("css"), "dpr": page and page.get("dpr"),
            "protocol": proto, "clarity": clarity}
@@ -495,13 +510,22 @@ def tier_run(tier, entry, presents_ms):
     no_step = not step
     step = step or {}
     if page.get("usable") is not None:
-        # Protocol 4: open the view = navigation start to a usable dashboard (usable_on_screen).
-        when, why = usable_on_screen(page, presents_ms)
+        # Rubric 2: open the view = navigation start to the first screen drawn, on screen; usable
+        # (drawn and the main thread free, rubric 1's open) is detail, `usable_ms`.
+        nav0 = P.page_to_mono_ms(page, page.get("nav_ms") or 0)
+        when, why = usable_on_screen(page, presents_ms, free=False)
         if why:
             out["load_error"] = why
         else:
-            out["load_ms"] = round(when - P.page_to_mono_ms(page, page.get("nav_ms") or 0))
+            out["load_ms"] = round(when - nav0)
             out["first_screen_cards"] = page["usable"].get("first_screen_cards")
+            free_at, _ = usable_on_screen(page, presents_ms)
+            free = page["usable"].get("interactive_ms") is not None
+            out["usable_ms"] = round(free_at - nav0) if free and free_at is not None else None
+        # Rubric 2: the main thread's blocking from the draw to usable (the page's frameBlocking);
+        # none from a page before protocol 2.
+        out["blocking_ms"] = page["usable"].get("blocking_ms")
+        out["long_frames"] = page["usable"].get("long_frames")
         # Detail (#202): when the first screen was drawn, and how long the main thread's probes
         # waited each second until it was free (the usable time waits for that).
         u = page["usable"]
@@ -570,12 +594,14 @@ def tier_run(tier, entry, presents_ms):
 
 def timed_out(tier, out, deadline_s):
     """A view that didn't finish within the runner's deadline (#202): what it measured stands, and each
-    task it didn't measure in this run is measured as failed, not missing: it didn't finish. Open and
-    tap take the deadline as their value (nothing answered within it); scroll, live updates and the
-    cameras a `timed_out` record, which the graders read as below fluid."""
+    task it didn't measure in this run is measured as failed, not missing: it didn't finish. Tap takes
+    the deadline as its value (nothing answered within it), and so do blocking when the main thread
+    was never free and open when the view was never drawn (rubric 2: a view drawn but never free
+    keeps its open, from its `drawn` line); scroll, live updates and the cameras a `timed_out` record,
+    which the graders read as below fluid."""
     out = {k: v for k, v in out.items() if k != "error"}
     for k in ("inp_ms", "input_method", "fcp_ms", "nodes", "cards", "load_ms", "updates", "latency", "arrivals",
-              "camera_run", "updates_run", "scroll"):
+              "camera_run", "updates_run", "scroll", "blocking_ms"):
         out.setdefault(k, None)                  # a view that timed out before it was usable reported none
     ms = round(deadline_s * 1000)
     out["timed_out_s"] = deadline_s
@@ -586,6 +612,10 @@ def timed_out(tier, out, deadline_s):
     if out.get("inp_ms") is None:
         out["inp_ms"] = ms
         out["timed_out_tasks"].append("tap")
+    if out.get("blocking_ms") is None:
+        # Never free within the deadline: blocked for the whole of it (rubric 2).
+        out["blocking_ms"] = ms
+        out["timed_out_tasks"].append("blocking")
     if not out.get("scroll"):
         out.update(scroll={"timed_out": True, "p95_ms": None, "jank_pct": None, "frozen_pct": None, "fps": None, "n": 0},
                    scroll_error=None, scroll_source="timed out")
@@ -696,6 +726,10 @@ def reference_summary(all_runs):
             "input_method": sorted({x["input_method"] for x in rs if x["input_method"]}),
             "load_ms": P.spread([x.get("load_ms") for x in rs]),
             "load_errors": [x["load_error"] for x in rs if x.get("load_error")],
+            # Rubric 2: the main thread's blocking from the draw to usable (graded), and usable itself
+            # (rubric 1's open; detail).
+            "blocking_ms": P.spread([x.get("blocking_ms") for x in rs]),
+            "usable_ms": P.spread([x.get("usable_ms") for x in rs]),
             # Detail (#202): the first screen drawn, from the navigation; `load_ms` waits for the main
             # thread to be free as well.
             "drawn_ms": P.spread([x.get("drawn_ms") for x in rs]),
@@ -796,7 +830,7 @@ def grade_inputs(graded):
     own Home Assistant."""
     ref = graded.get("reference") or {}
     med = lambda x: x and x["median"]  # noqa: E731
-    tiers = {t: {"inp_ms": med(s["inp_ms"]), "load_ms": med(s["load_ms"]),
+    tiers = {t: {"inp_ms": med(s["inp_ms"]), "load_ms": med(s["load_ms"]), "blocking_ms": med(s.get("blocking_ms")),
                  "scroll_level": s["scroll_level"], "updates_level": s["updates_level"],
                  "camera_level": s.get("camera_level")}
              for t, s in (ref.get("tiers") or {}).items()}
@@ -1283,7 +1317,8 @@ def coverage_reasons(ref, attempted):
         got = {"tap": s_ and (s_["inp_ms"] or {}).get("n", 0) or 0,
                "scroll": s_ and len(s_["scroll_bands"]) or 0,
                "updates": s_ and len(s_["updates_runs"]) or 0,
-               "load": s_ and (s_["load_ms"] or {}).get("n", 0) or 0}
+               "load": s_ and (s_["load_ms"] or {}).get("n", 0) or 0,
+               "blocking": s_ and (s_.get("blocking_ms") or {}).get("n", 0) or 0}
         if t in G.CAMERA_PAGES:
             got["camera"] = s_ and len(s_.get("camera_runs") or []) or 0
         short = [f"{task} {n} of {attempted}" for task, n in got.items() if 0 < n < attempted]
@@ -1337,7 +1372,7 @@ def build(run_dir, apks=(), budgets=None):
     reasons += coverage_reasons(ref, attempted)
     fake_log = fake_ha_log(os.path.join(run_dir, "fakeha.jsonl"))
     # The fake's log exists since pre-release protocol 4, and in v1.
-    reasons += fake_ha_reasons(fake_log, is_v1(ref) or any(isinstance(p, int) and p >= 4 for p in (ref or {}).get("protocols") or []))
+    reasons += fake_ha_reasons(fake_log, is_current(ref) or any(isinstance(p, int) and p >= 4 for p in (ref or {}).get("protocols") or []))
     if ref and ref.get("bad_page_lines"):
         reasons.append(f"{ref['bad_page_lines']} page line(s) didn't parse or never arrived whole (cut off in logcat?)")
     if ref and ref.get("lost_scroll_steps"):
@@ -1345,10 +1380,13 @@ def build(run_dir, apks=(), budgets=None):
         reasons.append(f"{ref['lost_scroll_steps']} swipe(s) answered with no scroll step back")
     # Only the graded runs' pages count; a run that failed has none (smoke7 printed "protocol " with
     # nothing after it). A page that didn't say reads as "unknown", as in grade.ts.
-    if ref and ref["protocols"] and not is_v1(ref):
+    if ref and ref["protocols"] and not is_current(ref):
         if None in (ref.get("clarity") or [None]):
             # Before v1 (2026-11-14): never graded as v1, whatever its protocol's number.
             reasons.append(f"{G.PRE_RELEASE} (protocol {', '.join(G.protocol_name(p) for p in ref['protocols'])}): re-measure")
+        elif recorded_clarity(ref) not in (None, G.CLARITY):
+            # Another Clarity version (v1 under rubric 2): its own rules only, as grade.py says.
+            reasons.append(f"measured with Clarity v{recorded_clarity(ref)}; these rules are Clarity v{G.CLARITY}'s: re-measure")
         else:
             reasons.append(f"the pages ran protocol {', '.join(G.protocol_name(p) for p in ref['protocols'])}; "
                            f"this rubric is for protocol {G.PROTOCOL_VERSION}")
@@ -1369,7 +1407,7 @@ def build(run_dir, apks=(), budgets=None):
         grade["provisional_reasons"] = reasons
     name = device.get("frame_name") or device["frame"]
     grade["headline"] = headline(name, grade, graded["reference"])
-    if grade["grade"] and ref and ref["protocols"] and not is_v1(ref):
+    if grade["grade"] and ref and ref["protocols"] and not is_current(ref):
         # The report still gives the letter (for the record); the site won't, for these pages.
         grade["headline"] += " Re-measure to publish: the site shows no letter for these pages."
 
@@ -1389,9 +1427,10 @@ def build(run_dir, apks=(), budgets=None):
     rep = {
         "schema": SCHEMA,
         "protocol_version": (ref["protocols"][0] if ref and len(ref["protocols"]) == 1 else None),
-        # Clarity's version (v1 from 2026-11-14); None for a report from before it, which the site
-        # shows as "re-measure".
-        "clarity": G.CLARITY if is_v1(ref) else None,
+        # The Clarity version the pages ran (v1 from 2026-11-14), as they recorded it: a v1 run rebuilt
+        # by v2's code stays 1 (then re-measured, never graded by v2's rules). None for a report from
+        # before v1, or pages of mixed versions; the site shows those as "re-measure".
+        "clarity": recorded_clarity(ref),
         "measured_on": device.get("measured_on"),
         "runs_attempted": attempted,
         "frame": {"id": device["frame"], "name": name,
@@ -1630,15 +1669,16 @@ def markdown(rep):
     if ref:
         out += ["Each page's tasks (median of runs; scroll and live-update levels are the median of each run's level). "
                 "A page is good when scrolling averages at least 50 fps (p95 at most 50 ms), 95% of live changes "
-                "show within 100 ms, taps within 200 ms and the view opens within 4 s; fluid at 30 fps (scroll p95 at "
+                "show within 100 ms, taps within 200 ms, the view is drawn within 4 s and its main thread blocks for at "
+                "most 600 ms after that; fluid at 30 fps (scroll p95 at "
                 "most 67 ms) and changes within 200 ms; premium when scrolling and the live changes also hold 60 fps (A+ on heavy). "
                 "Live-update pacing is detail, not graded.", "",
-                "| Page | Level | Tap (INP) | Scroll | Live updates | Open the view | Cameras | Holds it back |",
-                "|---|---|---|---|---|---|---|---|"]
+                "| Page | Level | Tap (INP) | Scroll | Live updates | Open the view (drawn) | Blocking after it | Cameras | Holds it back |",
+                "|---|---|---|---|---|---|---|---|---|"]
         for t in G.TIERS:
             s_, b = ref["tiers"].get(t), g["bands"].get(t) or {}
             if not s_:
-                out.append(f"| {t} | not measured | | | | | | |")
+                out.append(f"| {t} | not measured | | | | | | | |")
                 continue
             lvl = g["levels"].get(t)
             up = {None: "fluid", "fluid": "good", "good": "premium"}
@@ -1649,7 +1689,9 @@ def markdown(rep):
                 f"| {fmt(s_['inp_ms'], ' ms')}, {band_cell(b['tap'])} "
                 f"| {fmt(s_['scroll']['fps'], ' fps')}, p95 {fmt(s_['scroll']['p95_ms'], ' ms')}, {b['scroll'] or 'n/a'} "
                 f"| {fmt(s_['latency_p95_ms'], ' ms')} to show (p95), {b['updates'] or 'n/a'}; pacing p95 {fmt(s_['updates']['p95_ms'], ' ms')} "
-                f"| {fmt(s_['load_ms'], ' ms')}, {band_cell(b['load'])} | {camera_cell(s_, b)} | {held} |")
+                f"| {fmt(s_['load_ms'], ' ms')}, {band_cell(b['load'])} "
+                f"| {fmt(s_.get('blocking_ms'), ' ms')}, {band_cell(b.get('blocking'))} (usable at {fmt(s_.get('usable_ms'), ' ms')}) "
+                f"| {camera_cell(s_, b)} | {held} |")
         vp = g.get("viewport") or {}
         seen = sorted({str(v) for s_ in ref["tiers"].values() for v in s_["viewport"]})
         to = "a usable reference dashboard" if ref.get("restart_to") == "usable" else "engine ready"

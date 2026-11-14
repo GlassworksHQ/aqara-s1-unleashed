@@ -27,15 +27,23 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import grade as G  # noqa: E402
 import notes as N  # noqa: E402
 
-SCHEMA = "glassworks.perf-summary/2"
+SCHEMA = "glassworks.perf-summary/3"
 
 
 def _med(spread, digits=None):
-    """The median of a {median, min, max, n} spread; None if not measured."""
+    """The median of a {median, min, max, n} spread, rounded for display; None if not measured."""
     if not spread or spread.get("median") is None:
         return None
     v = spread["median"]
     return round(v) if digits is None else round(v, digits)
+
+
+def _graded(spread):
+    """A graded median, exactly as the report graded it (/3): rounding could carry it across a band's
+    edge (a blocking median of 600.4 ms is poor, 600 isn't)."""
+    if not spread or spread.get("median") is None:
+        return None
+    return spread["median"]
 
 
 def _n(spread):
@@ -50,8 +58,14 @@ def page_summary(s):
     """One reference dashboard's measurements."""
     sc, up = s.get("scroll") or {}, s.get("updates") or {}
     return {
-        "inp_ms": _med(s.get("inp_ms")),
-        "open_ms": _med(s.get("load_ms")),
+        # The graded medians unrounded (/3), so a summary bands them as the report did.
+        "inp_ms": _graded(s.get("inp_ms")),
+        # Rubric 2 (/3): open_ms is navigation to the first screen drawn (/2: to usable); blocking_ms
+        # the main thread's blocking from then to usable (graded); usable_ms when it was usable
+        # (rubric 1's open; detail).
+        "open_ms": _graded(s.get("load_ms")),
+        "blocking_ms": _graded(s.get("blocking_ms")),
+        "usable_ms": _med(s.get("usable_ms")),
         "scroll": {"fps": _med(sc.get("fps"), 1), "p95_ms": _med(sc.get("p95_ms"), 2),
                    "scrolled_px": _med(s.get("scrolled_px")), "sf_valid": s.get("sf_valid") or [],
                    "during_updates": s.get("swipes_during_updates") or [],
@@ -66,10 +80,12 @@ def page_summary(s):
         # the same page's cameras over HLS (detail, not graded; null before protocol 6).
         "camera": camera_summary(s),
         # Runs in which this page didn't finish within the runner's deadline (#202): its unmeasured
-        # tasks are in the runs as failing (`timed_out` records; open and tap at the deadline).
+        # tasks are in the runs as failing (`timed_out` records; tap at the deadline, blocking at it
+        # when the main thread was never free, open at it only when the view was never drawn).
         "timed_out_runs": s.get("timed_out_runs") or 0,
         "runs": {"tap": _n(s.get("inp_ms")), "scroll": len(s.get("scroll_runs") or []),
                  "updates": len(s.get("updates_runs") or []), "open": _n(s.get("load_ms")),
+                 "blocking": _n(s.get("blocking_ms")),
                  "camera": len(s.get("camera_runs") or [])},
     }
 
@@ -150,7 +166,7 @@ def measurements(rep, report_url="report.json"):
                      "dpr": seen[0][1] if len(seen) == 1 else None, "default_dpr": default_dpr},
         "runs": {"attempted": rep.get("runs_attempted") or ref.get("runs", 0), "graded": ref.get("graded_runs", 0)},
         "pages": {t: page_summary(tiers[t]) for t in G.TIERS if t in tiers},
-        "restart_ms": _med(ref.get("start_ms")),
+        "restart_ms": _graded(ref.get("start_ms")),
         # Measurement facts, not grade states: what is short, and why the numbers can't be compared.
         "gaps": list(g.get("provisional_reasons") or []),
         # Not comparable: not at the default zoom, or nothing was measured to grade (--skip-reference).

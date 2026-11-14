@@ -104,7 +104,7 @@ test("the pages' protocol is the one rubric.json's rules are for", () => {
   assert.equal(T.PROTOCOL, rubric.protocol_version);
   // Clarity v1 (2026-11-14): the pages and the rules carry the same version marker.
   assert.equal(T.CLARITY, rubric.clarity);
-  assert.deepEqual([T.CLARITY, T.PROTOCOL, rubric.version], [1, 1, 1]);
+  assert.deepEqual([T.CLARITY, T.PROTOCOL, rubric.version], [2, 2, 2]);
 });
 
 test("page lines fit the 1023 bytes the S1 keeps of a console line (smoke7)", () => {
@@ -504,4 +504,26 @@ test("webrtcWindow: a receiver without freeze counts has stalls n/a, not 0", () 
   assert.equal(w.stall_ms, null);
   assert.equal(w.max_gap_ms, null);
   assert.equal(w.max_gap_bound, false);
+});
+
+// ---- rubric 2 (Clarity v2): the main thread's blocking from the first screen drawn to usable
+
+test("frameBlocking: each frame interval past 50 ms counts, as TBT counts a long task's", () => {
+  // Drawn at 1000, usable at 1480: frames 16 ms apart, but one 300 ms late (250 blocking) and one
+  // 120 ms late (70 blocking).
+  const b = S.frameBlocking([1016, 1032, 1332, 1348, 1468], 1000, 1480);
+  assert.deepEqual(b, { blocking_ms: 320, long_frames: 2, longest_ms: 300 });
+  // Short frames only: none.
+  assert.equal(S.frameBlocking([1016.7, 1033.4, 1050.1], 1000, 1060).blocking_ms, 0);
+  // The edges count: nothing drawn between draw and usable for 400 ms is 350 ms of blocking.
+  assert.equal(S.frameBlocking([], 1000, 1400).blocking_ms, 350);
+  assert.equal(S.frameBlocking([1], null, 2), null);
+  assert.equal(S.frameBlocking([1], 1, null), null);
+  // Free in the frame it was drawn (a zero window): no blocking, and frames outside it don't count.
+  assert.deepEqual(S.frameBlocking([900, 1100], 1000, 1000), { blocking_ms: 0, long_frames: 0, longest_ms: 0 });
+  // Free before the draw (clocks crossed): no window to measure, not 0.
+  assert.equal(S.frameBlocking([1016], 1000, 999), null);
+  // Exactly 50 ms isn't long (TBT counts past 50); 50.5 ms is, by 0.5.
+  assert.equal(S.frameBlocking([], 1000, 1050).long_frames, 0);
+  assert.deepEqual(S.frameBlocking([], 1000, 1050.5), { blocking_ms: 0.5, long_frames: 1, longest_ms: 50.5 });
 });

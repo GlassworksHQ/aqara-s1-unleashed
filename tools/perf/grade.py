@@ -162,20 +162,22 @@ def tier_bands(tier, page=None):
         "updates": tier.get("updates_level"),
         "load": band(tier.get("load_ms"), METRICS["load_ms"]),
         "camera": tier.get("camera_level") if page in CAMERA_PAGES else NO_CAMERA,
+        # Rubric 2: the main thread's blocking from the first screen drawn to usable (TBT's bands).
+        "blocking": band(tier.get("blocking_ms"), METRICS["blocking_ms"]),
     }
 
 
 def page_level(bands):
     """"smooth", "fluid" or None: the best level whose every task passes."""
     for level in LEVEL_ORDER:
-        if all(bands[task] in ok for task, ok in LEVELS[level].items()):
+        if all(bands.get(task) in ok for task, ok in LEVELS[level].items()):
             return level
     return None
 
 
 def limits(bands, level):
     """The tasks that keep a page from `level`."""
-    return [task for task, ok in LEVELS[level].items() if bands[task] not in ok]
+    return [task for task, ok in LEVELS[level].items() if bands.get(task) not in ok]
 
 
 def grade(tiers, start_ms):
@@ -233,7 +235,7 @@ def summary_inputs(summary):
         p = (summary.get("pages") or {}).get(t)
         if not p:
             continue
-        tiers[t] = {"inp_ms": p.get("inp_ms"), "load_ms": p.get("open_ms"),
+        tiers[t] = {"inp_ms": p.get("inp_ms"), "load_ms": p.get("open_ms"), "blocking_ms": p.get("blocking_ms"),
                     "scroll_level": median_level(scroll_level(r) for r in (p.get("scroll") or {}).get("runs") or []),
                     "updates_level": median_level(update_level(r) for r in (p.get("updates") or {}).get("runs") or []),
                     "camera_level": median_level(camera_level(r) for r in (p.get("camera") or {}).get("runs") or [])}
@@ -246,16 +248,19 @@ def protocol_name(v):
 
 
 def grade_summary(summary):
-    """The letter from a summary (glassworks.perf-summary/2), as the site computes it with grade.ts.
+    """The letter from a summary (glassworks.perf-summary/3), as the site computes it with grade.ts.
     status: graded, re-measure (pre-release, or another protocol: these rules don't apply) or not-comparable (the
     measurement says why, e.g. not at the default zoom)."""
     # Not comparable first: it says why there is nothing to grade, whatever the protocol.
     if summary.get("not_comparable"):
         return {"status": "not-comparable", "grade": None, "meaning": None, "why": summary["not_comparable"]}
     if summary.get("clarity") != CLARITY:
-        # Before v1 (pre-release protocols 1 to 8): the numbers can repeat, so the marker decides.
-        return {"status": "re-measure", "grade": None, "meaning": None,
-                "why": f"{PRE_RELEASE} (protocol {protocol_name(summary.get('protocol_version'))}): re-measure"}
+        # Before v1 (pre-release protocols 1 to 8): the numbers can repeat, so the marker decides. A
+        # summary of another Clarity version (v1 under rubric 2) is graded only by its own rules.
+        why = (f"{PRE_RELEASE} (protocol {protocol_name(summary.get('protocol_version'))}): re-measure"
+               if summary.get("clarity") is None else
+               f"measured with Clarity v{summary['clarity']}; these rules are Clarity v{CLARITY}'s: re-measure")
+        return {"status": "re-measure", "grade": None, "meaning": None, "why": why}
     if summary.get("protocol_version") != PROTOCOL_VERSION:
         return {"status": "re-measure", "grade": None, "meaning": None,
                 "why": f"measured with protocol {protocol_name(summary.get('protocol_version'))}, "

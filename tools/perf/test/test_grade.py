@@ -45,12 +45,14 @@ class Thresholds(unittest.TestCase):
 
 INP = {"good": 100, "ni": 300, "poor": 600}
 LOAD = {"good": 1000, "ni": 3000, "poor": 5000}
+BLOCKING = {"good": 100, "ni": 400, "poor": 900}            # rubric 2: Lighthouse's mobile TBT bands (200, 600)
 
 
-def page(tap="good", scroll="premium", updates="premium", load="good", camera="good"):
+def page(tap="good", scroll="premium", updates="premium", load="good", camera="good", blocking="good"):
     """One page's grade inputs: tap and load as values, scroll, live updates and camera as median run
     levels (camera counts only on the pages with streams)."""
     return {"inp_ms": INP[tap] if tap else None, "load_ms": LOAD[load] if load else None,
+            "blocking_ms": BLOCKING[blocking] if blocking else None,
             "scroll_level": scroll, "updates_level": updates, "camera_level": camera}
 
 
@@ -216,7 +218,7 @@ class Letter(unittest.TestCase):
         g = G.grade(pages(heavy="drop"), 1000)
         self.assertEqual(g["grade"], "B")                                  # B asks nothing of heavy (rubric v11)
         self.assertTrue(g["provisional"])
-        self.assertEqual(g["missing"], ["heavy.tap", "heavy.scroll", "heavy.updates", "heavy.load", "heavy.camera"])
+        self.assertEqual(g["missing"], ["heavy.tap", "heavy.scroll", "heavy.updates", "heavy.load", "heavy.camera", "heavy.blocking"])
 
     def test_nothing_measured_is_e_and_provisional(self):
         g = G.grade({}, None)
