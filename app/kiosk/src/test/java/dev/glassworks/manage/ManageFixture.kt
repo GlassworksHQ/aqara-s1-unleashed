@@ -58,7 +58,7 @@ class ManageFixture(
         override fun checkForUpdates(): String? { ran += "update"; return null }
     }
 
-    val status = PanelStatus(
+    var status = PanelStatus(
         name = "Glassworks Panel", frame = "S1 Plus", version = "0.9.2", uptimeMs = 3 * 86_400_000L + 4 * 3_600_000L,
         haBase = "http://192.0.2.10:8123",
         tiles = listOf(

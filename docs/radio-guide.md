@@ -9,9 +9,14 @@ You need the panel's root helper (installed by the [web installer](install.md)) 
 *Off*. The panel shows up in Home Assistant as an ESPHome device, and all of the controls below are on
 that device's page.
 
+Home Assistant adds every radio control except **Radio status** turned off, because you set them
+once. Turn on the ones you need on the device page first ([how](esphome.md#categories-and-defaults)),
+or use the panel's own settings menu ([below](#on-the-panel)), which needs nothing turned on. A panel
+that Home Assistant already had before this change keeps its controls as they were.
+
 ## Pick a mode
 
-Set **Radio mode** on the panel's device page:
+Set **Radio mode** on the panel's device page (turn it on first, as above), or on the panel:
 
 | Mode | What the panel becomes | Status |
 |---|---|---|
@@ -38,17 +43,17 @@ on this radio (Home Assistant dropped that kind of sharing too).
 
 The kiosk settings menu (tap the top-left corner five times) has a **Radio** section:
 
-- the same roles as **Radio mode**, as a row of tiles: Zigbee roles in blue, Thread roles in violet,
-  the one that is on with a green dot (amber while it starts, red if it failed), β for experimental.
-  Tap another tile to see what it does, then *Turn on*; switching asks first, because it restarts the
-  radio;
-- under the tiles, what to do next for the role that is on, with a QR code your phone can scan to open
+- the radio's switch at the top right: off turns the radio off (it asks first), on shows the roles;
+- the same roles as **Radio mode**, technology first: **Zigbee** (Coordinator, Repeater β) and
+  **Thread** (Border router, Repeater β), the one that is on lit. Tap another to switch; it asks
+  first, because it restarts the radio;
+- under them, what to do next for the role that is on, with a QR code your phone can scan to open
   the right page in Home Assistant (shown once the panel knows Home Assistant's address), and the role's
   own buttons: **Zigbee stack**, **Join / Leave Zigbee network**, **Leave Thread network**. Leaving a
   network asks first. *How does this work?* has the longer explanation;
 - who may connect ([below](#who-may-connect)).
 
-The setup screen's radio step shows a short version, with the same QR codes, after you apply a mode. The
+During setup you pick the mode on the Panes step; this section is where you find what to do next. The
 buttons do exactly what the Home Assistant controls of the same name do. In Home Assistant they only
 work over the panel's encrypted connection; on the panel, being there is what allows them, as for the
 "who may connect" field.
@@ -104,7 +109,7 @@ be a second border router in your existing network, but for now that takes joini
 
 1. Set **Radio mode** to *Thread border router*.
 2. In Home Assistant, add the **OpenThread Border Router** integration with the URL
-   `http://<panel IP>:8081`. On the panel, the setup screen and the settings menu show this URL and a
+   `http://<panel IP>:8081`. On the panel, the settings menu's Radio section shows this URL and a
    QR code that opens the integration's setup in Home Assistant on your phone.
 
 Tested so far, both after Wi-Fi dropped and after a restart:

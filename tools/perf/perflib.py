@@ -1,4 +1,4 @@
-"""Parsers and statistics for the Glassworks perf test (MIT). Pure functions, no adb.
+"""Parsers and statistics for Clarity, the Glassworks perf test (MIT). Pure functions, no adb.
 
 frame_stats() is the same definition as page/stats.js; test/stats-cases.json pins both.
 """
@@ -59,6 +59,25 @@ def spread(values):
     if not xs:
         return None
     return {"median": _r2(statistics.median(xs)), "min": _r2(min(xs)), "max": _r2(max(xs)), "n": len(xs)}
+
+
+# d2(n): the expected range of n normal samples in standard deviations (the control-chart constant).
+D2 = {2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534, 7: 2.704}
+
+
+def noise_band(xs):
+    """Twice an estimate of one sample's standard deviation (#186), or None under two samples.
+    Up to seven samples: the range / d2(n), since the median absolute deviation of three samples is
+    the smaller of two gaps and is 0 when two agree, and at five it still averages only 1.64 σ. From
+    eight: 1.4826 × the median absolute deviation (about 1.8 σ there), so one odd sample doesn't set
+    it. Both estimate σ, so the band doesn't grow with more samples.
+    test_report.NoiseBand checks it by simulation."""
+    if len(xs) < 2:
+        return None
+    if len(xs) in D2:
+        return 2 * (max(xs) - min(xs)) / D2[len(xs)]
+    m = statistics.median(xs)
+    return 2 * 1.4826 * statistics.median(abs(x - m) for x in xs)
 
 
 # ---- SurfaceFlinger `dumpsys SurfaceFlinger --latency <layer>`
@@ -276,3 +295,39 @@ def cpu_percent(before, after, ncpu):
             d = after["procs"][name] - j0
             procs[name] = _r2(100 * d / dt * ncpu)
     return {"device_busy_pct": _r2(100 * (busy1 - busy0) / dt), "procs_pct_of_core": procs}
+
+
+# ---- what the kiosk started with (the S1's panes), from its log. Read-only.
+
+ESPHOME_START_RE = re.compile(r"ESPHome device .*\bvoice=(true|false)")
+# Each pane with a switch, at start and when it is turned on or off (#67).
+PANE_SWITCH_RE = re.compile(r"\bPane ([a-z0-9-]+) (on|off)$")
+
+
+def pane_state(logcat_text):
+    """The panes the kiosk's current process runs, from its log (`logcat -d`): `voice` (the ESPHome
+    line it logs at start, `voice=`), `sendspin` (its player started after that line), `mic` (the
+    wake word's microphone open: voice on, opened, not muted since) and `pane:<id>` for each pane the
+    kiosk says is on or off (#67). None when the log has no start line (it rotated, or the kiosk
+    hasn't started). Reads the lines only; keeps nothing of them."""
+    lines = logcat_text.splitlines()
+    idx = None
+    for i, line in enumerate(lines):
+        if ESPHOME_START_RE.search(line):
+            idx = i
+    if idx is None:
+        return {"voice": None, "sendspin": None, "mic": None}
+    voice = ESPHOME_START_RE.search(lines[idx]).group(1) == "true"
+    sendspin, mic = False, False
+    switched = {}
+    for line in lines[idx + 1:]:
+        m = PANE_SWITCH_RE.search(line)
+        if m:
+            switched["pane:" + m.group(1)] = m.group(2) == "on"
+        elif "Sendspin player starting" in line:
+            sendspin = True
+        elif "Microphone open" in line or "Microphone unmuted" in line:
+            mic = True
+        elif "Microphone muted" in line:
+            mic = False
+    return {"voice": voice, "sendspin": sendspin, "mic": voice and mic, **switched}

@@ -34,7 +34,7 @@ class RadioPane(
 
     private val entities: List<ApiEntity> = listOf(
         SelectEntity(
-            "radio_mode", "Radio mode", "mdi:zigbee", options = RadioMode.LABELS,
+            "radio_mode", "Radio mode", "mdi:zigbee", disabledByDefault = true, options = RadioMode.LABELS,
             get = { radio.mode.label }, set = { radio.request(it) },
         ),
         TextSensorEntity(
@@ -43,7 +43,7 @@ class RadioPane(
         ),
         // Who may reach the radio's network services (EZSP :6638, OTBR REST :8081); empty = Home Assistant only.
         TextEntity(
-            "radio_allowed_clients", "Radio allowed clients", "mdi:shield-lock-outline", maxLength = RadioAllow.MAX_LEN,
+            "radio_allowed_clients", "Radio allowed clients", "mdi:shield-lock-outline", disabledByDefault = true, maxLength = RadioAllow.MAX_LEN,
             get = { radio.allowedClients() },
             set = { v ->
                 radio.setAllowedClients(v)?.let { Log.w(RadioController.TAG, "Radio allowed clients: $it") }
@@ -53,32 +53,32 @@ class RadioPane(
         // Zigbee stack behind the coordinator mode (helper v4): Aqara's (EZSP 12) or Silicon Labs' (EZSP 18,
         // for Zigbee2MQTT; the panel downloads it from Silicon Labs). docs/radio.md "Zigbee stack".
         SelectEntity(
-            "zigbee_stack", "Zigbee stack", "mdi:layers-outline", options = ZigbeeStack.LABELS,
+            "zigbee_stack", "Zigbee stack", "mdi:layers-outline", disabledByDefault = true, options = ZigbeeStack.LABELS,
             get = { radio.zigbeeStack.label }, set = { radio.setZigbeeStack(it) },
         ).apply { authOnly = true },
-        TextSensorEntity("radio_helper", "Radio helper", "mdi:shield-check-outline", EntityCategory.DIAGNOSTIC, get = { radio.helperStatusText() }),
+        TextSensorEntity("radio_helper", "Radio helper", "mdi:shield-check-outline", EntityCategory.DIAGNOSTIC, disabledByDefault = true, get = { radio.helperStatusText() }),
         // Radio firmware (helper v4): never automatic. Pick an image (armed for 2 minutes), then press Flash.
-        TextSensorEntity("radio_firmware", "Radio firmware", "mdi:chip", EntityCategory.DIAGNOSTIC, get = { radio.firmwareText() }),
+        TextSensorEntity("radio_firmware", "Radio firmware", "mdi:chip", EntityCategory.DIAGNOSTIC, disabledByDefault = true, get = { radio.firmwareText() }),
         SelectEntity(
-            "radio_firmware_image", "Radio firmware image", "mdi:chip", options = RadioFirmware.OPTIONS,
+            "radio_firmware_image", "Radio firmware image", "mdi:chip", disabledByDefault = true, options = RadioFirmware.OPTIONS,
             get = { radio.firmwareSelected() }, set = { radio.firmwareSelect(it) },
         ).apply { authOnly = true },
-        ButtonEntity("radio_firmware_flash", "Flash radio firmware", "mdi:flash-alert", EntityCategory.CONFIG, press = { radio.firmwareFlash() })
+        ButtonEntity("radio_firmware_flash", "Flash radio firmware", "mdi:flash-alert", EntityCategory.CONFIG, disabledByDefault = true, press = { radio.firmwareFlash() })
             .apply { authOnly = true },
         // Zigbee router: join/leave the network that has permit-join open (docs/radio.md "Zigbee router").
-        ButtonEntity("zigbee_router_join", "Join Zigbee network", "mdi:zigbee", EntityCategory.CONFIG, press = { radio.routerJoin() }),
-        ButtonEntity("zigbee_router_leave", "Leave Zigbee network", "mdi:link-variant-off", EntityCategory.CONFIG, press = { radio.routerLeave() }),
+        ButtonEntity("zigbee_router_join", "Join Zigbee network", "mdi:zigbee", EntityCategory.CONFIG, disabledByDefault = true, press = { radio.routerJoin() }),
+        ButtonEntity("zigbee_router_leave", "Leave Zigbee network", "mdi:link-variant-off", EntityCategory.CONFIG, disabledByDefault = true, press = { radio.routerLeave() }),
         // Forget the Thread network (helper v4, any mode): deletes the dataset (network key) and router settings.
-        ButtonEntity("thread_leave", "Leave Thread network", "mdi:link-variant-off", EntityCategory.CONFIG, press = { radio.threadLeave() })
+        ButtonEntity("thread_leave", "Leave Thread network", "mdi:link-variant-off", EntityCategory.CONFIG, disabledByDefault = true, press = { radio.threadLeave() })
             .apply { authOnly = true },
         // Join HA's preferred Thread network without copying the dataset (auth/ThreadJoin): the panel's
         // own sign-in if it's an administrator, else the panel shows a QR code for a one-off admin sign-in.
         ButtonEntity("thread_join_ha", "Join Home Assistant's Thread network", "mdi:qrcode-scan", EntityCategory.CONFIG,
-            press = { HaAuth.threadJoin.start() })
+            disabledByDefault = true, press = { HaAuth.threadJoin.start() })
             .apply { authOnly = true },
         TextSensorEntity(
             "thread_join", "Thread join", "mdi:transit-connection-variant", EntityCategory.DIAGNOSTIC,
-            get = { ThreadJoin.describe(HaAuth.threadJoin.state) },
+            disabledByDefault = true, get = { ThreadJoin.describe(HaAuth.threadJoin.state) },
         ),
         // Thread router: write-only. The dataset is a secret (it holds the network key): the state is
         // always empty, it goes to the root helper and is never logged or echoed back.
@@ -86,7 +86,7 @@ class RadioPane(
             // Pattern: hex plus the invisible characters a copy carries (spaces, line breaks, no-break and
             // zero-width spaces), which setThreadDataset drops. 255 is Home Assistant's cap for any text
             // entity (MAX_LENGTH_STATE_STATE); longer datasets go in through the panel's settings menu.
-            "thread_dataset", "Thread dataset", "mdi:key-chain", maxLength = 255, pattern = ThreadDataset.PATTERN, mode = 1,
+            "thread_dataset", "Thread dataset", "mdi:key-chain", disabledByDefault = true, maxLength = 255, pattern = ThreadDataset.PATTERN, mode = 1,
             get = { "" },
             set = { v ->
                 if (v.isNotEmpty()) radio.setThreadDataset(v)?.let { Log.w(RadioController.TAG, it) }
@@ -136,7 +136,7 @@ class RadioPane(
                 stackStore = prefs,
                 bundle = RadioBundle(ShellProps, AssetBundleSource(app.assets), app.filesDir, log = { Log.i(RadioController.TAG, it) }),
                 zigbeedFetcher = { dest, progress ->
-                    SisdkZigbeed.fetch(dest, app.cacheDir, "s1-kiosk/${BuildConfig.VERSION_NAME} (+https://github.com/GlassworksHQ/aqara-s1-unleashed)", progress)
+                    SisdkZigbeed.fetch(dest, app.cacheDir, "s1-kiosk/${BuildConfig.VERSION_NAME} (+https://github.com/GlassworksHQ/glassworks)", progress)
                 },
             )
         }

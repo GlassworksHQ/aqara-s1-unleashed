@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Aqara's cloud link on the stock firmware is the native gateway daemon `ha_master` (an init
  * service, so `pm disable-user` can't touch it). It is the only process that talks to the internet
- * (Aqara AIoT cloud, incl. location-based weather) — see docs/research/debloat.md.
+ * (Aqara AIoT cloud, incl. location-based weather) — see frames/aqara-s1-plus/research/debloat.md.
  *
  * Stopping it is just `setprop ctl.stop ha_master`. This firmware runs SELinux permissive, so the
  * app's own uid may control init services (verified on device); no root needed. Not persistent by
@@ -21,14 +21,27 @@ import java.util.concurrent.TimeUnit
  *
  * The S1 frame holds the one instance and hands it to the wall base pane it builds ([AqaraS1Plus.panes]).
  */
-class AqaraCloud {
+class AqaraCloud(
+    /** Runs `getprop`/`setprop` and returns the output. A test plays init with it. */
+    private val run: (List<String>) -> String = ::shell,
+) {
     private companion object {
         const val TAG = "S1Kiosk.AqaraCloud"
         const val SERVICE = "ha_master"
+
+        fun shell(cmd: List<String>): String = try {
+            val p = ProcessBuilder(cmd).redirectErrorStream(true).start()
+            val out = p.inputStream.bufferedReader().readText().trim()
+            p.waitFor(3, TimeUnit.SECONDS)
+            out
+        } catch (e: Exception) {
+            Log.w(TAG, "${cmd.joinToString(" ")} failed: ${e.message}")
+            ""
+        }
     }
 
     /** init's view of the daemon: "running", "stopped", "restarting", or "" if unknown. */
-    fun daemonState(): String = run("getprop", "init.svc.$SERVICE")
+    fun daemonState(): String = run(listOf("getprop", "init.svc.$SERVICE"))
 
     /**
      * Why the wall base UART is not free (ha_master holds it while it runs), or null when it is.
@@ -45,7 +58,7 @@ class AqaraCloud {
     fun setDaemon(running: Boolean): Boolean {
         val want = if (running) "running" else "stopped"
         if (daemonState() == want) return true
-        run("setprop", if (running) "ctl.start" else "ctl.stop", SERVICE)
+        run(listOf("setprop", if (running) "ctl.start" else "ctl.stop", SERVICE))
         for (i in 0 until 20) {
             if (daemonState() == want) {
                 Log.i(TAG, "$SERVICE -> $want")
@@ -55,15 +68,5 @@ class AqaraCloud {
         }
         Log.w(TAG, "$SERVICE did not reach '$want' (now '${daemonState()}')")
         return false
-    }
-
-    private fun run(vararg cmd: String): String = try {
-        val p = ProcessBuilder(*cmd).redirectErrorStream(true).start()
-        val out = p.inputStream.bufferedReader().readText().trim()
-        p.waitFor(3, TimeUnit.SECONDS)
-        out
-    } catch (e: Exception) {
-        Log.w(TAG, "${cmd.joinToString(" ")} failed: ${e.message}")
-        ""
     }
 }

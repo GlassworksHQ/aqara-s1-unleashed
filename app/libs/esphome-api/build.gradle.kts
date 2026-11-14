@@ -3,6 +3,7 @@
 plugins {
     `java-library`
     id("org.jetbrains.kotlin.jvm")
+    id("com.toasttab.expediter") version "0.2.0"
 }
 
 java {
@@ -23,4 +24,16 @@ dependencies {
     testImplementation("org.json:json:20250517")
 }
 
-// EspHomeKeepaliveTest runs the real aioesphomeapi client when ESPHOME_PYTHON is set (see the test).
+// The library runs on Android 6 (API 23), and lint can't check a JVM module. `expedite` checks our
+// classes, and the dependency classes they reach, against API 23's (Gummy Bears, with D8's
+// backports). kotlin-stdlib's jdk8 classes are skipped: the stdlib loads them only on a JDK, never on
+// Android. `test` runs it, so CI does.
+expediter {
+    platform { android { sdk = 23 } }
+    ignore { callerStartsWith("kotlin/internal/jdk8/", "kotlin/time/jdk8/") }
+    failOnIssues = true
+}
+tasks.named("test") { dependsOn("expedite") }
+
+// EspHomeKeepaliveTest and EspHomeActionsCameraTest run the real aioesphomeapi client when ESPHOME_PYTHON is
+// set (see the tests).

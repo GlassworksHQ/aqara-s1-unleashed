@@ -1,4 +1,4 @@
-"""The Glassworks perf rubric (MIT). docs/perf.md explains each row and links its source.
+"""Clarity's rubric (MIT): the grade of the Glassworks perf test. docs/perf.md explains each row and links its source.
 
 Bands follow Core Web Vitals: good, needs-improvement, poor. Thresholds come from published
 guidelines and do not depend on any frame's own numbers. Change them only on purpose, with the
@@ -11,6 +11,7 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "page", "rubr
     RUBRIC = json.load(_f)
 
 RUBRIC_VERSION = RUBRIC["version"]
+NAME = RUBRIC["name"]          # "Clarity": the test's name, kept in rubric.json only
 GOOD, NI, POOR = "good", "needs-improvement", "poor"
 ORDER = {GOOD: 0, NI: 1, POOR: 2}
 
@@ -30,6 +31,9 @@ SCROLL_LEVELS = RULES["scroll_levels"]
 # 200 ms; premium adds the 60 fps bar on the frames that had a change to draw.
 UPDATE_LEVELS = RULES["update_levels"]
 BELOW = RULES["below"]
+CAMERA_LEVELS = RULES["camera_levels"]
+CAMERA_PAGES = RULES["camera_pages"]
+NO_CAMERA = "none"            # a page without streams: every level accepts it
 TASK_ORDER = [lv["level"] for lv in SCROLL_LEVELS] + [BELOW]
 SCROLL_ORDER = TASK_ORDER
 
@@ -112,21 +116,41 @@ def update_level(run):
     return BELOW
 
 
+def camera_level(run):
+    """One run's camera level from its worst stream (#174): first frame, frames shown, the longest gap
+    and the gaps over 500 ms added up; "slow" when a stream showed no frame; None when the run has no
+    camera record."""
+    if not run:
+        return None
+    if run.get("first_frame_ms") is None or run.get("shown_pct") is None:
+        return BELOW
+    for lv in CAMERA_LEVELS:
+        if run["first_frame_ms"] > lv["first_frame_max_ms"] or run["shown_pct"] < lv["shown_min_pct"]:
+            continue
+        if "max_gap_max_ms" in lv and (run.get("max_gap_ms") is None or run["max_gap_ms"] > lv["max_gap_max_ms"]):
+            continue
+        if "stall_total_max_ms" in lv and (run.get("stall_total_ms") is None or run["stall_total_ms"] >= lv["stall_total_max_ms"]):
+            continue
+        return lv["level"]
+    return BELOW
+
+
 def median_level(levels):
     """The middle level of several runs (the worse of the two middles for an even count)."""
     ls = sorted((l for l in levels if l), key=TASK_ORDER.index)
     return ls[len(ls) // 2] if ls else None
 
 
-def tier_bands(tier):
+def tier_bands(tier, page=None):
     """The band of each task on one page (None when it wasn't measured). Frames bands come from the
-    caller as the median of each run's band."""
+    caller as the median of each run's band. The camera task is `none` on a page without streams."""
     tier = tier or {}
     return {
         "tap": band(tier.get("inp_ms"), METRICS["inp_ms"]),
         "scroll": tier.get("scroll_level"),
         "updates": tier.get("updates_level"),
         "load": band(tier.get("load_ms"), METRICS["load_ms"]),
+        "camera": tier.get("camera_level") if page in CAMERA_PAGES else NO_CAMERA,
     }
 
 
@@ -144,11 +168,11 @@ def limits(bands, level):
 
 
 def grade(tiers, start_ms):
-    """tiers: {light|typical|heavy: {"inp_ms", "load_ms", "scroll_level", "updates_level"}}; start_ms:
-    process start to engine ready. Returns the letter, its plain meaning, each page's bands and
-    level, and what is missing. A missing measurement fails whatever needs it, and the grade is then
-    provisional."""
-    bands = {t: tier_bands((tiers or {}).get(t)) for t in TIERS}
+    """tiers: {light|typical|heavy: {"inp_ms", "load_ms", "scroll_level", "updates_level", "camera_level"}};
+    start_ms: the restart, process start to the start view usable (protocol 4; engine ready before
+    it). Returns the letter, its plain meaning, each page's bands and level, and what is missing. A
+    missing measurement fails whatever needs it, and the grade is then provisional."""
+    bands = {t: tier_bands((tiers or {}).get(t), t) for t in TIERS}
     levels = {t: page_level(bands[t]) for t in TIERS}
     start = band(start_ms, METRICS["start_ms"])
     missing = [f"{t}.{m}" for t in TIERS for m, b in bands[t].items() if b is None] + ([] if start else ["start"])
@@ -200,7 +224,8 @@ def summary_inputs(summary):
             continue
         tiers[t] = {"inp_ms": p.get("inp_ms"), "load_ms": p.get("open_ms"),
                     "scroll_level": median_level(scroll_level(r) for r in (p.get("scroll") or {}).get("runs") or []),
-                    "updates_level": median_level(update_level(r) for r in (p.get("updates") or {}).get("runs") or [])}
+                    "updates_level": median_level(update_level(r) for r in (p.get("updates") or {}).get("runs") or []),
+                    "camera_level": median_level(camera_level(r) for r in (p.get("camera") or {}).get("runs") or [])}
     return tiers, summary.get("restart_ms")
 
 
@@ -229,7 +254,7 @@ def grade_summary(summary):
 
 def memory_budget(memory, budget):
     """#68-style budget check. memory: app_pss_peak_kb, mem_total_kb, mem_available_min_kb.
-    budget: app_pss_max_pct_of_ram, device_available_min_pct (tools/perf/budgets.json).
+    budget: app_pss_max_pct_of_ram, device_available_min_pct (the `ram` of frames/<id>/budgets.json).
     ok is None unless every budgeted value was measured."""
     total = memory.get("mem_total_kb")
     if not total:
@@ -248,6 +273,32 @@ def memory_budget(memory, budget):
     return {"budget": budget, "checks": checks, "ok": ok}
 
 
-def frame_budget(budgets, frame_id):
-    """The default budget with the frame's override on top, so an override may name one key."""
-    return dict(budgets["default"], **budgets.get("frames", {}).get(frame_id, {}))
+def frame_budget(default, frame=None):
+    """A frame's budgets: its `ram` keys over the default's (so a frame may name one key), and its own
+    `panes` (a frame's panes are its own; the default has none)."""
+    frame = frame or {}
+    return {"ram": dict(default.get("ram") or {}, **(frame.get("ram") or {})),
+            "panes": frame.get("panes") or default.get("panes") or {}}
+
+
+# A pane's share is checked against its budget only with this many samples on each side and a
+# tolerance at most this part of the budget (#186). The tolerance is about 2 σ of one sample, not a
+# confidence interval, so "ok" means the share is under the budget by this test's noise, no more.
+PANE_TOLERANCE_MAX_OF_BUDGET = 0.25
+PANE_BUDGET_MIN_SAMPLES = 3
+
+
+def pane_budgets(panes, budgets):
+    """Each measured pane's PSS against its budget (ram_pss_max_kb). ok is None when the pane has no
+    budget, wasn't measured, or can't be told (measurable false: too few samples, or too wide a
+    tolerance)."""
+    out = {}
+    for p in panes:
+        cap = (budgets.get(p["id"]) or {}).get("ram_pss_max_kb")
+        tol = p.get("pss_tolerance_kb")
+        n = min(p.get("samples_on") or 0, p.get("samples_off") or 0)
+        measurable = None if cap is None else (tol is not None and n >= PANE_BUDGET_MIN_SAMPLES
+                                               and tol <= PANE_TOLERANCE_MAX_OF_BUDGET * cap)
+        out[p["id"]] = {"value_kb": p.get("pss_kb"), "budget_kb": cap, "tolerance_kb": tol, "measurable": measurable,
+                        "ok": None if cap is None or p.get("pss_kb") is None or measurable is False else p["pss_kb"] <= cap}
+    return out

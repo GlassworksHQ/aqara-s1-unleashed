@@ -26,9 +26,6 @@ import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Action
 import sh.edm.s1kiosk.radio.ui.RadioFollowUp.Request
 import sh.edm.s1kiosk.settings.KioskSettingsOverlay
 import sh.edm.s1kiosk.settings.MenuFixture
-import sh.edm.s1kiosk.setup.SetupFlow
-import sh.edm.s1kiosk.setup.SetupOverlay
-import sh.edm.s1kiosk.setup.WifiSetupStatus
 import sh.edm.s1kiosk.ui.Inter
 import sh.edm.s1kiosk.ui.Mockup
 import java.io.File
@@ -86,6 +83,7 @@ class RadioMockups {
         a.setContentView(o, ViewGroup.LayoutParams(-1, -1))
         val radio = radioDefinition(a, FixedReadout(f, allowedNow = if (f.mode == RadioMode.OFF) null else "192.0.2.20"))
         o.show(MenuFixture.model(a, radio, status = "screen on · presence near"))
+        o.previewSection("radio")
         idle()
         val target = prepare(o)
         layout(o)
@@ -113,8 +111,8 @@ class RadioMockups {
         save(name, o)
     }
 
-    /** The Radio section's top (its label, the tiles). */
-    private fun section(o: KioskSettingsOverlay): View = Mockup.label(o, "Radio").parent as View
+    /** The Radio page's top (its chips). */
+    private fun section(o: KioskSettingsOverlay): View = radio(o).section.tiles
     private fun radio(o: KioskSettingsOverlay) = o.previewNative("radio") as RadioSettingsView
     private fun panel(o: KioskSettingsOverlay): View = radio(o).section.panel
 
@@ -137,6 +135,11 @@ class RadioMockups {
         shot("07-thread-router-waiting-for-dataset", waitingThread) { section(it) }
         shot("08-thread-router-advanced-open", waitingThread, bottom = true) { o -> radio(o).section.previewOpen(dataset = true); panel(o) }
         shot("09-thread-router-joined", threadRouter) { section(it) }
+        shot("09b-thread-router-leave", threadRouter, bottom = true) { o ->
+            // The active card's Leave (the Off block has one too, hidden): a ghost, not rose.
+            generateSequence(listOf<View>(o)) { l -> l.flatMap { v -> (v as? android.view.ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null } }
+                .flatten().filterIsInstance<android.widget.TextView>().first { it.text.toString() == "Leave Thread network" && it.isShown }
+        }
         shot("10-how-does-this-work-open", coordinator, bottom = true) { o -> radio(o).section.previewOpen(more = true); panel(o) }
         shot("11-confirm-switch", coordinator) { o ->
             radio(o).previewDialog.show(RadioFollowUp.ask(Request.Mode(RadioMode.THREAD_ROUTER), coordinator)!!) {}
@@ -159,45 +162,6 @@ class RadioMockups {
             section(o)
         }
         shot("16-error", facts(RadioMode.THREAD, "error Thread border router: otbr-agent not installed (/data/s1kiosk/radio or bundle)", stored = false)) { section(it) }
-
-        // 17: what the step shows right after Apply (no dataset yet); 19-22: the other modes and the
-        // longest Thread line, to check that nothing in the step card ever clips.
-        val child = ThreadRouterState(true, "child", "Example-Net")
-        for ((name, f) in listOf(
-            "17-setup-thread-router" to threadRouter.copy(
-                status = "ok Thread router (repeater): no dataset yet", thread = ThreadRouterState(false, null, null),
-            ),
-            "18-setup-thread-border-router" to border,
-            "19-setup-coordinator" to coordinator,
-            "20-setup-coordinator-silicon-labs" to coordinatorSilabs,
-            "21-setup-zigbee-router" to router,
-            "22-setup-thread-router-child" to threadRouter.copy(thread = child),
-        )) {
-            val s = setup(f, RadioStep.Applied(f.mode, true, f.status))
-            idle()
-            save(name, s)
-        }
-        // The setup step's choice itself: the role icons in their technology's colour
-        val s = setup(off, applied = null)
-        idle()
-        save("23-setup-choose-role", s)
-    }
-
-    /** The setup screen on the radio step, [f] in effect, after [applied]. */
-    private fun setup(f: RadioFollowUp.Facts, applied: RadioStep.Applied?): SetupOverlay {
-        val a = Robolectric.buildActivity(Activity::class.java).setup().get()
-        val radio = radioDefinition(a, FixedReadout(f))
-        val s = SetupOverlay(a, radio.setupSteps)
-        a.setContentView(s, ViewGroup.LayoutParams(-1, -1))
-        (s.previewScreen("radio") as RadioSetupScreen).previewApplied(applied)
-        s.render(
-            SetupOverlay.Model(
-                step = "radio", done = setOf(SetupFlow.WIFI, SetupFlow.HA),
-                wifi = WifiSetupStatus.Snapshot(WifiSetupStatus.State.CONNECTED, "Example-WiFi"),
-                haUrl = ha, haSource = "mdns", panelIp = ip, signedIn = false,
-            ),
-        )
-        return s
     }
 
     private companion object {

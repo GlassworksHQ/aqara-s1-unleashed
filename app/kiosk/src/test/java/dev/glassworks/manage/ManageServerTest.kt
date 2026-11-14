@@ -408,4 +408,18 @@ class ManageServerTest {
         assertTrue(radio.contains("socket://192.0.2.40:6638"))
         assertNotNull(Regex("Needs the wall base attached").find(b.get("/").text()))
     }
+
+    @Test fun aPaneThatIsOffShowsNoSettingsOrLinks() {
+        f.status = f.status.copy(panes = f.status.panes.map {
+            if (it.id == "radio") it.copy(state = dev.glassworks.pane.PaneState(dev.glassworks.pane.PaneState.Kind.OFF, "Turned off")) else it
+        })
+        val b = f.Browser()
+        b.signInWithHa()
+        val radio = b.get("/radio").text()
+        assertTrue(radio.contains("Turned off"))
+        assertTrue(radio.contains(ManagePages.TURNED_OFF))
+        assertFalse("no Thread join while the radio is off", radio.contains("href=\"/thread\""))
+        assertFalse("no settings while it is off", radio.contains("socket://192.0.2.40:6638"))
+        assertFalse(radio.contains("Change these on the panel"))
+    }
 }

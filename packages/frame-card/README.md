@@ -49,7 +49,7 @@ Kiln was the first to use it, and #114 moved it here, so there is one copy.
 | `FrameCardBody` | The card's contents: the model that rises and floats on hover, the name and stage, the summary, the three install tags. Props: `f`, the frame; `idPrefix`, ids for the summary and tags (for `aria-describedby`); `as`, `h2`, `h3` or `h4` to make the name a heading; `expected`, which tells screen readers the install tags are expected, not tested. `expected` is on by default for a frame that doesn't ship yet (`!ships(status)`). It is hidden text at the start of the tags, so it is read in a link's name and in Kiln's `aria-describedby`; an `aria-label` there would hide the tags themselves. Without `as` the text is all spans, so it fits inside a button. Use `as` only in a link or another block |
 | `frameCardClass`, `useTilt()` | For the card's outer element, which is the caller's (Kiln: a radio item; the site: a link). The class lifts the card on hover and doesn't underline a link's text; the hook leans the model toward a mouse pointer |
 | `StatusPill` | The stage pill, as on the status badges |
-| `DeviceModel` | The 3D mockup alone: the body's sides as SVG behind a CSS-3D front glass with an example dashboard. Props: `id`, `model`, `label`, and `aspect`, the stage's width / height. It is 2 (2:1, as on the cards) by default; a portrait frame's own page can ask for a taller stage, e.g. `0.8` |
+| `DeviceModel` | The 3D mockup alone: the body's sides as SVG behind a CSS-3D front glass. Props: `id`, `model`, `label`, `aspect`, the stage's width / height, and `screen`. `aspect` is 2 (2:1, as on the cards) by default; a portrait frame's own page can ask for a taller stage, e.g. `0.8`. `screen` is the URL of the frame's render for the glass; without it, an example dashboard |
 | `geometry()` | The projection `DeviceModel` draws, as plain data. Pure, so tests can call it |
 | `FrameDesign`, `FrameModel`, `Stage`, `Support`, `RatingKey`, `cardTags()`, `STAGE_TEXT`, `ships()`, `RATING_KEYS`, `PANE_IDS` | The `frame.json` types and the card's words for them. `ships()` takes a frame's `Stage` or a pane's `Support`: true for alpha, beta and stable, false for the rest, including `depends`, `unknown` and `no` |
 
@@ -77,6 +77,19 @@ A frame's own page can draw the mockup alone, on a taller stage for a portrait f
 <DeviceModel id={`${f.id}-hero`} model={f.model} label={`${f.name} running Glassworks`} aspect={f.model.body.height > f.model.body.width ? 0.8 : 2} />
 ```
 
+**The render.** Each `frame.json` names its screen's render (`render`, a `.webp` next to it; see
+[frames/README.md](../../frames/README.md#the-render)). The card can't resolve that path itself,
+because only the caller's bundler knows the file's URL. Import the file and pass its URL as `screen`
+to `FrameCardBody` or `DeviceModel`. Without `screen`, the card draws the example dashboard as before.
+An image import is `{ src }` under Next.js and a plain string under Vite (and so in Vitest), so take
+the URL from either. Kiln does it in `kiln/apps/kiln/src/frames/catalog.ts`:
+
+```tsx
+import s1Render from '…/frames/aqara-s1-plus/design/render.webp';
+const url = (m: string | { src: string }) => (typeof m === 'string' ? m : m.src);
+<FrameCardBody f={f} screen={url(s1Render)} />
+```
+
 The source is TypeScript and CSS modules, not built. Next.js compiles it like the app's own code.
 
 ## How glassworks.dev takes it
@@ -87,7 +100,7 @@ should come at the same commit, so the card never draws data it wasn't written f
 **Recommended: a git submodule at a pinned commit.** For example, in the site's repo:
 
 ```sh
-git submodule add https://github.com/GlassworksHQ/aqara-s1-unleashed vendor/s1-unleashed
+git submodule add https://github.com/GlassworksHQ/glassworks vendor/s1-unleashed
 git -C vendor/s1-unleashed checkout <commit>
 pnpm add @glassworks/frame-card@link:vendor/s1-unleashed/packages/frame-card
 ```
@@ -106,7 +119,7 @@ compile it: `transpilePackages: ['@glassworks/frame-card']`. Untested on glasswo
 | Way | For | Against |
 |---|---|---|
 | Git submodule at a commit (recommended) | One pin for code and data; no publish step | Vercel and contributors fetch the whole repo; `git submodule update --init` after cloning |
-| pnpm git dependency at a commit, `github:GlassworksHQ/aqara-s1-unleashed#<commit>&path:/packages/frame-card` | A normal dependency; only this folder lands in `node_modules` | It brings no `frame.json`, so the data needs a second way in and a second pin that can drift; Next needs `transpilePackages` for TypeScript in `node_modules` |
+| pnpm git dependency at a commit, `github:GlassworksHQ/glassworks#<commit>&path:/packages/frame-card` | A normal dependency; only this folder lands in `node_modules` | It brings no `frame.json`, so the data needs a second way in and a second pin that can drift; Next needs `transpilePackages` for TypeScript in `node_modules` |
 | Publishing to npm | Versioned like any library | A release pipeline and a version per change, too much while frames live in this repo |
 
 When frames move to their own repos (#35), the site points at each frame's released `frame.json`

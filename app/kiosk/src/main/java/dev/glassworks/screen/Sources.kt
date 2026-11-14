@@ -14,8 +14,11 @@ interface PresenceSource {
     /** Stops reporting. [start] may run again. */
     fun stop(context: Context)
 
-    /** Sets how far away still counts as near. 0 or less leaves the device's own setting alone. */
-    fun setRange(context: Context, metres: Float) {}
+    /**
+     * Sets how far away still counts as near. 0 or less leaves the device's own setting alone. Null when
+     * it took, else why not, in words for the person at the panel.
+     */
+    fun setRange(context: Context, metres: Float): String? = null
 }
 
 /** Ambient light for [ScreenPolicy]'s brightness curve. */

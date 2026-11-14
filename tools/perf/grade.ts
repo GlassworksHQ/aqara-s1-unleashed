@@ -1,4 +1,5 @@
-/* Glassworks perf grade (MIT): the letter, computed from a perf summary and rubric.json.
+/* Clarity grade (MIT): the letter of the Glassworks perf test, computed from a summary and
+ * rubric.json. Show it as `${rubric.name} ${grade}` ("Clarity A"); the name lives in rubric.json.
  *
  * The letter is derived, so it is computed where it is shown: the marketing site (and later the
  * shared frame package, #114) imports this module with a frame's summary (tools/perf/summary.py,
@@ -16,6 +17,7 @@ export type Level = string | null;
 export interface Rule { good_max: number; poor_above?: number; poor_at?: number }
 
 export interface Rubric {
+  name: string;           // "Clarity": show a grade as `${name} ${grade}`
   version: number;
   protocol_version: number;
   metrics: Record<string, Rule>;
@@ -24,6 +26,8 @@ export interface Rubric {
     tasks: Record<string, string>;
     scroll_levels: { level: string; frames_band?: Band[]; fps_min?: number; p95_max_ms?: number }[];
     update_levels: { level: string; latency_p95_max_ms: number; frames_band?: Band[] }[];
+    camera_pages: string[];
+    camera_levels: { level: string; first_frame_max_ms: number; shown_min_pct: number; max_gap_max_ms?: number; stall_total_max_ms?: number }[];
     below: string;
     levels: { level: string; accepts: Record<string, string[]> }[];
     letters: { letter: string; meaning: string; needs: Record<string, string> }[];
@@ -37,11 +41,15 @@ export interface FrameRun { p95_ms?: number | null; jank_pct?: number | null; fr
 /** One run's live updates: change to screen, and the frames that had a change to draw. */
 export interface UpdateRun { latency_n?: number | null; latency_median_ms?: number | null; latency_p95_ms?: number | null; frames?: FrameRun | null }
 
+/** One run's live camera streams (#174), the worst stream's numbers. */
+export interface CameraRun { first_frame_ms?: number | null; shown_pct?: number | null; max_gap_ms?: number | null; stall_total_ms?: number | null }
+
 export interface PageSummary {
   inp_ms?: number | null;
   open_ms?: number | null;
   scroll?: { runs?: FrameRun[] } & Record<string, unknown>;
   updates?: { runs?: UpdateRun[] } & Record<string, unknown>;
+  camera?: { runs?: CameraRun[] } & Record<string, unknown>;
 }
 
 export interface Summary {
@@ -52,7 +60,7 @@ export interface Summary {
   not_comparable?: string | null;
 }
 
-export interface TierInputs { inp_ms?: number | null; load_ms?: number | null; scroll_level?: string | null; updates_level?: string | null }
+export interface TierInputs { inp_ms?: number | null; load_ms?: number | null; scroll_level?: string | null; updates_level?: string | null; camera_level?: string | null }
 /** Per task: a band (tap, updates, load) or, for scroll, its level. */
 export type Bands = Record<string, string | null>;
 
@@ -128,6 +136,20 @@ export function updateLevel(run: UpdateRun | null | undefined, rubric: Rubric): 
   return rubric.grade.below;
 }
 
+/** One run's camera level from its worst stream: first frame, frames shown, the longest gap and the
+ * gaps over 500 ms added up; `below` when a stream showed no frame; null without a camera record. */
+export function cameraLevel(run: CameraRun | null | undefined, rubric: Rubric): string | null {
+  if (!run) return null;
+  if (run.first_frame_ms === null || run.first_frame_ms === undefined || run.shown_pct === null || run.shown_pct === undefined) return rubric.grade.below;
+  for (const lv of rubric.grade.camera_levels) {
+    if (run.first_frame_ms > lv.first_frame_max_ms || run.shown_pct < lv.shown_min_pct) continue;
+    if (lv.max_gap_max_ms !== undefined && (run.max_gap_ms === null || run.max_gap_ms === undefined || run.max_gap_ms > lv.max_gap_max_ms)) continue;
+    if (lv.stall_total_max_ms !== undefined && (run.stall_total_ms === null || run.stall_total_ms === undefined || run.stall_total_ms >= lv.stall_total_max_ms)) continue;
+    return lv.level;
+  }
+  return rubric.grade.below;
+}
+
 /** The middle scroll level of several runs, the worse of the two middles for an even count. */
 export function medianLevel(levels: (string | null)[], rubric: Rubric): string | null {
   const order = rubric.grade.scroll_levels.map((l) => l.level).concat([rubric.grade.below]);
@@ -135,13 +157,15 @@ export function medianLevel(levels: (string | null)[], rubric: Rubric): string |
   return ls.length ? ls[Math.floor(ls.length / 2)] : null;
 }
 
-export function tierBands(tier: TierInputs | undefined, rubric: Rubric): Bands {
+/** Each task's band on one page. The camera task is `none` on a page without streams. */
+export function tierBands(tier: TierInputs | undefined, rubric: Rubric, page?: string): Bands {
   const t = tier || {};
   return {
     tap: band(t.inp_ms, rubric.metrics.inp_ms),
     scroll: t.scroll_level ?? null,
     updates: t.updates_level ?? null,
     load: band(t.load_ms, rubric.metrics.load_ms),
+    camera: page !== undefined && rubric.grade.camera_pages.includes(page) ? (t.camera_level ?? null) : "none",
   };
 }
 
@@ -170,7 +194,7 @@ export function gradeBands(tiers: Record<string, TierInputs>, startMs: number | 
   const bands: Record<string, Bands> = {};
   const levels: Record<string, Level> = {};
   for (const t of R.pages) {
-    bands[t] = tierBands((tiers || {})[t], rubric);
+    bands[t] = tierBands((tiers || {})[t], rubric, t);
     levels[t] = pageLevel(bands[t], rubric);
   }
   const start = band(startMs, rubric.metrics.start_ms);
@@ -217,6 +241,7 @@ export function summaryInputs(summary: Summary, rubric: Rubric): [Record<string,
       load_ms: p.open_ms ?? null,
       scroll_level: medianLevel((p.scroll?.runs || []).map((r) => scrollLevel(r, rubric)), rubric),
       updates_level: medianLevel((p.updates?.runs || []).map((r) => updateLevel(r, rubric)), rubric),
+      camera_level: medianLevel((p.camera?.runs || []).map((r) => cameraLevel(r, rubric)), rubric),
     };
   }
   return [tiers, summary.restart_ms ?? null];

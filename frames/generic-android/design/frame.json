@@ -1,9 +1,11 @@
 {
   "id": "generic-android",
   "name": "Generic Android",
+  "brand": "Generic",
   "aka": "Tablets, old phones, other Android panels",
   "status": "planned",
   "summary": "Core plus the panes that need no special hardware. No root.",
+  "tagline": "Any Android device, as an app. No root.",
   "model": {
     "body": {
       "shape": "rect",
@@ -23,6 +25,8 @@
     "finish": "glass",
     "mount": "wall"
   },
+  "render": "render.webp",
+  "abis": ["arm64-v8a", "armeabi-v7a"],
   "specs": [
     {
       "label": "Radio",

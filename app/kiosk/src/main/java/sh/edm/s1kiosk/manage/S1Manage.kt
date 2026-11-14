@@ -20,12 +20,15 @@ import dev.glassworks.manage.ManageHost
 import dev.glassworks.manage.ManageLog
 import dev.glassworks.manage.ManageServer
 import dev.glassworks.manage.PaneRow
+import dev.glassworks.manage.paneRow
 import dev.glassworks.manage.PanelActions
 import dev.glassworks.manage.PanelStatus
 import dev.glassworks.manage.SessionStore
 import dev.glassworks.manage.Tile
 import dev.glassworks.pane.PaneState
 import dev.glassworks.pane.SettingsItem
+import dev.glassworks.pane.SettingsSection
+import dev.glassworks.pane.paneSections
 import dev.glassworks.pane.settingsOrder
 import dev.glassworks.web.HttpRequest
 import dev.glassworks.web.HttpResponse
@@ -49,6 +52,7 @@ import sh.edm.s1kiosk.esphome.PanelDevice
 import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.settings.CoreSettings
 import sh.edm.s1kiosk.update.UpdateManager
+import sh.edm.s1kiosk.voice.WakeWords
 import java.io.File
 import java.io.IOException
 import java.net.NetworkInterface
@@ -65,8 +69,10 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
     val log = ManageLog(File(dir, "log"))
     private val tail = LogcatTail(log, ::logSource) { Log.w(TAG, it) }
 
+    private val host = Host()
+
     val server = ManageServer(
-        host = Host(),
+        host = host,
         haBase = { prefs.haBase },
         setUp = { HaAuth.signedIn },
         sessions = SessionStore(File(dir, "sessions.json")),
@@ -81,6 +87,9 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
 
     fun http(port: Int) = HttpServer(port, server::handle, log = { Log.d(TAG, it) })
 
+    /** What the Manage page shows now; tests read it. */
+    internal fun status(): PanelStatus = host.status()
+
     fun startLog() = tail.start()
 
     fun stopLog() = tail.stop()
@@ -94,7 +103,9 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
             val defs = runtime.paneDefinitions(app)
             val core = CoreSettings(prefs, BuildConfig.VERSION_NAME, status = { runtime.screen.statusLine() },
                 deviceSettings = null, licences = SettingsItem.Link(CoreSettings.LICENCES_TITLE, CoreSettings.LICENCES_DETAIL) {})
-            val sections = settingsOrder(core.sections(), defs.flatMap { runCatching { it.settings() }.getOrDefault(emptyList()) })
+            // The panes' sections as the panel's menu has them, each with its on/off (#67) as the master.
+            val panes = defs.flatMap { d -> runCatching { paneSections(listOf(d)) }.onFailure { Log.w(TAG, "${d.id}'s settings failed", it) }.getOrDefault(emptyList()) }
+            val sections = settingsOrder(core.sections(), panes)
             return PanelStatus(
                 name = name,
                 frame = "S1 Plus",
@@ -102,7 +113,7 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
                 uptimeMs = SystemClock.elapsedRealtime(),
                 haBase = prefs.haBase,
                 tiles = listOf(haTile(), wifiTile(), engineTile(), memoryTile()),
-                panes = defs.map { d -> paneRow(d.id, sections.firstOrNull { it.id == d.id }?.id) },
+                panes = defs.map { d -> s1PaneRow(d.id, panes.firstOrNull { it.id == d.id }) },
                 sections = sections.filter { it.id != "about" },
                 about = listOf(
                     "Glassworks Panel" to "S1 Kiosk ${BuildConfig.VERSION_NAME}",
@@ -110,7 +121,7 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
                     "Android" to Build.VERSION.RELEASE,
                     "Engine" to runtime.engine.name.ifEmpty { "Unknown" },
                     "Licence" to "MIT, with the Glassworks core under MPL-2.0",
-                    "Source" to "github.com/GlassworksHQ/aqara-s1-unleashed",
+                    "Source" to "github.com/GlassworksHQ/glassworks",
                 ),
             )
         }
@@ -145,6 +156,9 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
         when (i) {
             is SettingsItem.Text -> listOf("${i.title}: ${v(i.value)}")
             is SettingsItem.Switch -> listOf("${i.title}: ${v(i.value)}")
+            is SettingsItem.Slider -> listOf("${i.title}: ${v { i.shown(i.value()) }}")
+            is SettingsItem.Duration -> listOf("${i.title}: ${v { i.shown(i.value()) }}")
+            is SettingsItem.TimeRange -> listOf("${i.title}: ${v { i.shown(i.value()) }}")
             is SettingsItem.Info -> listOf("${v(i.title)}: ${v(i.detail)}")
             is SettingsItem.Note -> listOf(v(i.text))
             is SettingsItem.Group -> listOf("${i.title}:") + itemLines(i.items).map { "  $it" }
@@ -189,19 +203,15 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
         return Tile("Memory", "${gb(mi.totalMem - mi.availMem)} of ${gb(mi.totalMem)} GB", "Free ${gb(mi.availMem)} GB", null)
     }
 
-    /** The panes' names and states. They move into each PaneDefinition with the per-pane switch (#67). */
-    private fun paneRow(id: String, sectionId: String?): PaneRow {
-        val title = TITLES[id] ?: id.replace('-', ' ').replaceFirstChar { it.uppercase() }
-        val state = when (id) {
-            "assist" -> if (prefs.voice.enabled) PaneState(PaneState.Kind.RUNNING, "Wake word “${wakeWord(prefs.voice.wakeModel)}” · Assist")
-                else PaneState(PaneState.Kind.OFF, "Turned off")
-            "sendspin" -> if (prefs.sendspin.enabled) PaneState(PaneState.Kind.RUNNING, "Sendspin · Music Assistant")
-                else PaneState(PaneState.Kind.OFF, "Turned off")
-            "radio" -> radioState()
-            else -> PaneState.UNKNOWN
+    /** A pane's row ([paneRow]): what the S1 can say about a running Voice, Music and Radio. */
+    private fun s1PaneRow(id: String, section: SettingsSection?): PaneRow = when (id) {
+        "assist" -> paneRow(id, section) {
+            val w = prefs.voice.wakeWord
+            PaneState(PaneState.Kind.RUNNING, if (w.isEmpty()) "No wake word · Assist" else "Wake word “${WakeWords.parse(w)?.phrase ?: w}” · Assist")
         }
-        val links = if (id == "radio") listOf("Share Home Assistant's Thread network (start it on the panel first)" to ThreadJoin.PATH) else emptyList()
-        return PaneRow(id, title, state, sectionId, links)
+        "sendspin" -> paneRow(id, section) { PaneState(PaneState.Kind.RUNNING, "Sendspin · Music Assistant") }
+        "radio" -> paneRow(id, section, listOf("Share Home Assistant's Thread network (start it on the panel first)" to ThreadJoin.PATH)) { radioState() }
+        else -> paneRow(id, section)
     }
 
     private fun radioState(): PaneState {
@@ -212,10 +222,6 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
         val problem = status.startsWith("error") || status.contains("failed", ignoreCase = true)
         return PaneState(if (problem) PaneState.Kind.PROBLEM else PaneState.Kind.RUNNING, listOf(mode.label, status).filter { it.isNotEmpty() }.joinToString(" · "))
     }
-
-    private fun wakeWord(model: String) =
-        model.substringAfterLast('/').substringBefore('.').split('_', '-').filter { it.isNotEmpty() && !it.startsWith("v") }
-            .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }.ifEmpty { "Okay Nabu" }
 
     private inner class Actions : PanelActions {
         private val main = Handler(Looper.getMainLooper())
@@ -327,6 +333,5 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
             tag == "S1Kiosk" || tag.startsWith("S1Kiosk.") -> "App"
             else -> null
         }
-        private val TITLES = mapOf("assist" to "Voice", "sendspin" to "Music", "radio" to "Radio", "wall-base" to "Wall base")
     }
 }

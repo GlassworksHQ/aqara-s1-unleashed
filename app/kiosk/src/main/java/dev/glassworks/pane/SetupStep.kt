@@ -9,15 +9,17 @@ import android.view.View
 import org.json.JSONObject
 
 /**
- * One step a pane adds to first-boot setup. A step is state ([done], [channelState]) plus the requests
- * that complete it ([ops]), so the installer can finish it over the setup channel without the screen.
- * The screen draws it through [screen]. One instance per process ([PaneDefinition.setupSteps]).
+ * Something first-boot setup waits for from a pane, and the screen that answers it. A step is state
+ * ([done], [channelState]) plus the requests that complete it ([ops]), so the installer can finish it
+ * over the setup channel without the screen. On the panel it is a sub-step under Panes, shown while
+ * the pane's [PaneChoice] is on, and drawn through [screen]. One instance per process
+ * ([PaneDefinition.setupSteps]).
  */
 interface SetupStep {
     /** Short and stable: the setup channel's namespace for [ops], and `--es setup_step <id>`. */
     val id: String
 
-    /** Its row on the setup screen. */
+    /** Its row under Panes in the setup rail ("Radio"). */
     val title: String
 
     /** Why the setup screen shows while this step isn't done, for the log. */
@@ -25,9 +27,6 @@ interface SetupStep {
 
     /** Nothing more to ask. Cheap and safe from any thread: the screen asks every couple of seconds. */
     fun done(): Boolean
-
-    /** The line under [title] on the setup screen, as the screen shows the step ([done] or not). */
-    fun detail(done: Boolean): String
 
     /** This step's part of the setup channel's state, under [id]. Null leaves it out. No secrets. */
     fun channelState(): JSONObject? = null

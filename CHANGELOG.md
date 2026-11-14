@@ -8,10 +8,49 @@ below as the release notes.
 ## [Unreleased]
 
 ### Changed
+- **Turning a pane on or off from Home Assistant needs the panel's key.** The pane switches, the
+  *Music Assistant player (Sendspin)* switch included, only answer an encrypted connection, as *Time
+  zone* does. Home Assistant 2026.11 and later sets the key when you add the panel. On a panel without
+  one, use the panel's settings.
+- **The project moved to [GlassworksHQ/glassworks](https://github.com/GlassworksHQ/glassworks).**
+  Panels now check for updates there directly. Older versions keep updating through GitHub's
+  redirect, so nothing needs doing on your panel.
+- **The wake word uses far less CPU.** The panel now listens with microWakeWord, the engine Home
+  Assistant Voice PE uses, instead of openWakeWord. On the S1, the microphone's thread went from
+  about 37% of a core to about 4%. Your wake word stays as it was (Hey Jarvis, Alexa or Hey
+  Mycroft), and Okay Nabu is new. The panel downloads the new models itself once. *Wake word
+  threshold* now means the new engine's cutoff: each word starts at its own (0.9 to 0.97), lower
+  is more sensitive, and a threshold you set for openWakeWord doesn't carry over. The old
+  openWakeWord words stay in the list as "(openWakeWord)" for this release.
+- **Kiln's panel cards show a real Home Assistant dashboard.** Each device on kiln.glassworks.dev now
+  shows the same made-up home, drawn by Home Assistant's own frontend and filling that device's
+  screen: the clock and weather, nine rooms and areas with thermostats, lights, music and TV, two
+  cameras, a shopping list, the alarm and the day's graphs. Before, it was a sketch with a fixed date. The
+  Mirror's is portrait.
 - **A new boot screen.** The power-on logo and the boot animation now show the Glassworks mark:
   three glass plates drop into place, the top one lights up from sky to violet, and "Glassworks" and
   "On Aqara S1 Plus" fade in. While the panel finishes starting, the stack floats and the top plate
   breathes. It reaches a panel when you run the installer again.
+- **New connecting and setup screens.** They use the Glassworks look: the glass stack tells you what
+  is happening. Light rises through it while the panel connects, the plates dim when there is no
+  network, and the top one turns red and dashed when Home Assistant doesn't answer, with a countdown
+  to the next try. The connecting screen starts on the boot animation's last frame and the stack
+  settles from there, so power-on is one continuous picture. It stays until Home Assistant has drawn
+  the dashboard, so Home Assistant's white loading page no longer flashes in between. Setup goes
+  Wi-Fi, Home Assistant (add it, then sign in), Panes, Done. On Panes you choose what the panel
+  does: voice, music and the Zigbee / Thread radio. A pane you turn on then asks what it needs: the
+  radio asks Zigbee or Thread and the role, then shows what to do in Home Assistant, where a Thread
+  router can join Home Assistant's Thread network. A step that is already done says so with
+  Continue, and the list on the left opens a step you've done.
+- **Settings apply as you change them.** The settings menu has the new look: one section at a time,
+  each setting with its value under it. A switch takes effect when you tap it, and a value when you
+  save it. There is no *Save & restart* any more; the few changes that need the app to restart (the
+  dashboard's address, zoom, secure hosts) say so and offer *Restart now*. The list on the left is
+  the same as setup's: Dashboard, Screen, then your panes (Voice, Music, Radio) under Panes, then
+  Log and About. Each pane has its on/off at the top right of its page; turning the radio off asks
+  first. The radio's roles are picked as in setup, Zigbee or Thread first. On the Screen page the
+  presence range is a slider, and the idle times and the night window are picked, not typed. About
+  shows the version; the screen and sensor line moved to Log.
 - **The panel is called Glassworks Panel, in Home Assistant too.** A panel you already added keeps all
   its entity ids, so automations and dashboards keep working; Home Assistant shows the device under
   the new name after the update, unless you renamed it yourself. On Home Assistant 2025.12 or later,
@@ -21,11 +60,22 @@ below as the release notes.
 - **New pages on your phone when you scan the panel's code.** Signing in and sharing your Thread
   network open a short page first that says what happens, then *Continue to Home Assistant*. They
   follow your phone's light or dark mode.
-- **The settings menu lists Panel before Radio.** Its sections now follow the order the coming Manage
-  page uses: Home Assistant & dashboard, Panel, then each feature's own section (Radio), then About.
-  Nothing in the sections changed.
+- **A shorter entity list in Home Assistant.** When Home Assistant adds a panel, it now turns on 15 of
+  its 63 entities, down from 55: presence, light level, the screen, the speaker, screen mode, mute,
+  reload and restart, app updates, IP address, radio status and four health values (plus a wall
+  base's relays, buttons, power, energy and protection). Settings you set once, the radio's controls
+  and the troubleshooting sensors are created turned off. To use one, turn it on from the panel's
+  device page in Home Assistant; many settings are also in the panel's settings menu. A panel Home
+  Assistant already has keeps its entities as they were; only *Base protection* moves to the
+  Diagnostic section.
 
 ### Added
+- **Turn any pane off, and back on, without a restart.** Voice, music, the wall base, the time zone
+  and diagnostics each have an on/off: at the top of the pane's page in the panel's settings, in
+  Home Assistant (new switches Voice, Wall base, Keep time zone and Diagnostics, off on the device
+  page until you turn them on there), and with adb. A pane that is off stops its work and comes
+  back when you turn it on. Voice no longer restarts the app. The wall base now has its card on
+  setup's Panes step. The radio's on/off stays its mode.
 - **A Manage page for the panel, in your browser.** Open the panel's device page in Home Assistant
   and click *Visit*, or go to `http://<panel>:8099/`. Sign in with a Home Assistant administrator, or
   with a code the panel shows when Home Assistant is down. It shows how the panel is doing and which
@@ -59,6 +109,17 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **A pane you turn off stays off after a restart.** Turning voice or music off, then restarting
+  the app at once, could bring the pane back on: the setting was saved after the app had gone.
+  Zoom, secure hosts and remote debugging, which restart the app, could lose their change the same
+  way. They are now saved before the app restarts.
+- **One stuck connection no longer freezes the panel's entities in Home Assistant.** If a client
+  stopped reading (a Home Assistant that hangs, or a connection that is half gone), states, action
+  replies and keepalive pings for every other client waited behind it, for minutes, until the panel
+  gave up on the stuck one. Now only that client waits, until the panel drops it.
+- **Keeping the radio Off in Kiln finishes the panel's radio step.** A fresh panel installed with
+  Kiln no longer asks *Radio* again on its own screen when you left the radio Off. Choosing the mode
+  the radio already runs doesn't restart it. Needs the S1 Kiosk release with this fix.
 - **Kiln's Done always offers your backup.** After an install, Done shows the backup's download even
   when set-up ran after leaving and coming back to the wizard, or after a reload. Before, it could
   show no download, and the backup was only in that browser. When a browser blocks site storage,
@@ -126,9 +187,6 @@ below as the release notes.
   all the way to the screen edges.
 
 ### Changed
-- **The project moved to [GlassworksHQ/aqara-s1-unleashed](https://github.com/GlassworksHQ/aqara-s1-unleashed).**
-  Panels now check for updates there directly. Older versions keep updating through GitHub's
-  redirect, so nothing needs doing on your panel.
 - **Updates are found among the repo's other releases.** The panel now picks its own newest release
   (tag `v1.2.3` or `aqara-s1-plus-v1.2.3`) instead of whatever release is newest, so releases of
   other devices and libraries in the same repo can't hide an update.
@@ -383,11 +441,11 @@ below as the release notes.
 - Panels running a development build need a one-time reinstall to switch to release builds (Android
   won't update an app across signing keys). That resets the app's settings.
 
-[Unreleased]: https://github.com/aguilaair/aqara-s1-unleashed/compare/v0.4.3...HEAD
-[0.4.3]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.3
-[0.4.2]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.2
-[0.4.1]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.1
-[0.4.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.4.0
-[0.3.1]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.1
-[0.3.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.3.0
-[0.2.0]: https://github.com/aguilaair/aqara-s1-unleashed/releases/tag/v0.2.0
+[Unreleased]: https://github.com/GlassworksHQ/glassworks/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.4.3
+[0.4.2]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.4.2
+[0.4.1]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.4.1
+[0.4.0]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.4.0
+[0.3.1]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.3.1
+[0.3.0]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.3.0
+[0.2.0]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.2.0

@@ -20,9 +20,9 @@ import report as R  # noqa: E402
 import summary as S  # noqa: E402
 import test_report as T  # noqa: E402
 
-SUMMARY_KEYS = {"schema", "protocol_version", "report_schema", "measured_on", "frame", "app_version", "viewport",
-                "runs", "pages", "restart_ms", "gaps", "not_comparable", "report", "complete"}
-PAGE_KEYS = {"inp_ms", "open_ms", "scroll", "updates", "runs"}
+SUMMARY_KEYS = {"schema", "test", "protocol_version", "report_schema", "measured_on", "frame", "app_version", "viewport",
+                "runs", "pages", "restart_ms", "gaps", "not_comparable", "report", "complete", "ram", "apk", "notes"}
+PAGE_KEYS = {"inp_ms", "open_ms", "scroll", "updates", "camera", "runs"}
 GRADE_KEYS = ("grade", "meaning", "levels", "bands", "capped_by_start", "missing", "provisional", "start")
 
 
@@ -100,6 +100,7 @@ class Export(unittest.TestCase):
         self.assertEqual(json.loads(json.dumps(s)), s)
         self.assertEqual(set(s), SUMMARY_KEYS)
         self.assertEqual(s["schema"], "glassworks.perf-summary/2")
+        self.assertEqual(s["test"], "Clarity")                     # the name, from rubric.json
         self.assertEqual((s["protocol_version"], s["report_schema"]), (G.PROTOCOL_VERSION, "glassworks.perf/4"))
         self.assertEqual(s["measured_on"], "2026-11-12")
         self.assertEqual(s["frame"], {"id": "test-frame", "name": "test-frame"})
@@ -112,11 +113,62 @@ class Export(unittest.TestCase):
         heavy = s["pages"]["heavy"]
         self.assertEqual(set(heavy), PAGE_KEYS)
         self.assertEqual((heavy["inp_ms"], heavy["open_ms"]), (150, 400))
+        self.assertEqual(heavy["camera"]["runs"][0], {"first_frame_ms": 600.0, "shown_pct": 100.0, "max_gap_ms": 70.0, "stall_total_ms": 0.0})
+        self.assertEqual(heavy["runs"]["camera"], 3)
+        self.assertEqual(s["pages"]["light"]["camera"], {"runs": []})
         self.assertEqual((heavy["scroll"]["fps"], heavy["scroll"]["p95_ms"], heavy["scroll"]["scrolled_px"]), (45.0, 33.33, 2100))
         self.assertEqual(heavy["scroll"]["sf_valid"], [True, True, True])
         self.assertEqual((heavy["scroll"]["swipes_moved"], heavy["scroll"]["swipes_at_edge"]), (9, 0))
         self.assertEqual(len(heavy["scroll"]["runs"]), 3)
-        self.assertEqual(heavy["runs"], {"tap": 3, "scroll": 3, "updates": 3, "open": 3})
+        self.assertEqual(heavy["runs"], {"tap": 3, "scroll": 3, "updates": 3, "open": 3, "camera": 3})
+
+    def test_ram_and_apk_are_carried_and_dont_change_the_grade(self):
+        """#68: the summary may carry RAM (reference dashboards) and APK sizes; neither is graded."""
+        import test_report as TR
+        budgets = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15},
+                   "panes": {"assist": {"switch": "voice_enabled", "ram_pss_max_kb": 49152}, "radio": {"not_switched": "its mode"}}}
+        # Samples checked against the kiosk's log (panes_state), as since 2026-11-13.
+        ram = R.reference_ram({"ref-idle": [TR.ram_idle("ref-idle", 300_000)] * 2,
+                               "ref-panes-off": [TR.ran(TR.ram_idle("ref-panes-off", 100_000), False, False, False)],
+                               "ref-assist-on": [TR.ran(TR.ram_idle("ref-assist-on", 130_000), True, False, True)]},
+                              [{"memory": [TR.ram_idle("x", 340_000)]}], "sh.edm.s1kiosk", budgets, 2_000_000)
+        rep = dict(self.reps["B"], ram=ram, apk=[{"file": "s1-kiosk.apk", "abis": ["armeabi-v7a"], "bytes": 90_000_000, "parts_bytes": {}}])
+        s = S.summarise(rep)
+        self.assertEqual(s["ram"], {"idle_app_pss_kb": 500_000, "idle_by_process_pss_kb": {"gpu": 200_000, "main": 300_000},
+                                    "peak_app_pss_kb": 540_000, "peak_by_process_pss_kb": {"gpu": 200_000, "main": 340_000},
+                                    # One sample a side: no tolerance, so no claim (s1p1 read ±0.0 MB and "ok").
+                                    "panes": [{"id": "assist", "pss_kb": 30_000, "tolerance_kb": None, "measurable": False, "runs": 1,
+                                               "budget_kb": 49152, "budget_ok": None, "budget_measurable": False}],
+                                    "panes_waiting": [], "panes_not_switched": ["radio"], "budget_ok": True})
+        self.assertEqual(s["apk"], [{"file": "s1-kiosk.apk", "abis": ["armeabi-v7a"], "bytes": 90_000_000}])
+        plain = S.summarise(self.reps["B"])
+        self.assertEqual((plain["ram"], plain["apk"]), (None, None))
+        self.assertEqual(G.grade_summary(s), G.grade_summary(plain))
+        self.assertEqual(ts_grades([s]), ts_grades([plain]))
+
+    def test_a_budget_the_tolerance_cant_check_isnt_ok(self):
+        """#186: s1p3 exported budget_ok true for a ±31.6 MB share against a 48 MB budget."""
+        ram = {"panes": [{"id": "assist", "pss_kb": 5_300, "pss_tolerance_kb": 32_400, "pss_measurable": False,
+                          "samples_on": 3, "samples_off": 3, "verified": True,
+                          "cpu_pct_of_core": 36.3, "cpu_tolerance_pct": 1.2, "cpu_measurable": True}]}
+        ram["pane_budget"] = G.pane_budgets(ram["panes"], {"assist": {"ram_pss_max_kb": 49152}})
+        p = S.ram_summary(ram)["panes"][0]
+        self.assertEqual((p["budget_ok"], p["budget_measurable"]), (None, False))
+        self.assertIn("48 MB, not measurable", "\n".join(R.ram_markdown(ram)))
+
+    def test_unverified_panes_arent_exported(self):
+        """The verifier's note 14: s1v7's panes (no log check; the kiosk lost the switches) read
+        measurable and within budget in the report. The summary leaves them out."""
+        import test_report as TR
+        budgets = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15},
+                   "panes": {"assist": {"switch": "voice_enabled", "ram_pss_max_kb": 49152}}}
+        ram = R.reference_ram({"ref-panes-off": [TR.ram_idle("ref-panes-off", 100_000)],
+                               "ref-assist-on": [TR.ram_idle("ref-assist-on", 130_000)]},
+                              [], "sh.edm.s1kiosk", budgets, 2_000_000)
+        self.assertEqual(ram["panes"][0]["verified"], False)
+        self.assertEqual(S.ram_summary(ram)["panes"], [])
+        del ram["panes"][0]["verified"]                  # a report from before the field existed
+        self.assertEqual(S.ram_summary(ram)["panes"], [])
 
     def test_measurements_only_never_the_letter(self):
         text = json.dumps(S.summarise(self.reps["B"]))

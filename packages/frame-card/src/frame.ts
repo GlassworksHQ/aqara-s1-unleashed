@@ -26,24 +26,35 @@ export type Support = Stage | 'depends' | 'unknown' | 'no';
 export const RATING_KEYS = ['difficulty', 'reversible', 'modifiesAndroid', 'root', 'opensDevice', 'vendorApps', 'wipes', 'backup', 'updates'] as const;
 export type RatingKey = (typeof RATING_KEYS)[number];
 export const PANE_IDS = ['assist', 'timers', 'sendspin', 'radio', 'sensors', 'base'] as const;
+/** Android's ABI names (`Build.SUPPORTED_ABIS`) */
+export const ABIS = ['armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'] as const;
+export type Abi = (typeof ABIS)[number];
 
 export interface FrameDesign {
   id: string;
   name: string;
+  /** the maker's part of `name`, set light in the frame's banner; the rest of `name` is bold. `name` starts with it and a space */
+  brand?: string;
   aka?: string;
   status: Stage;
   /** one sentence: why this device */
   summary: string;
+  /** the banner's line under `frames/<id>`, at most 50 characters (glassworks.dev scripts/brand/frame.mjs draws it) */
+  tagline?: string;
   project?: { name: string; href: string };
   /** Kiln's route for the frame, once it installs from Kiln */
   kiln?: string;
   model: FrameModel;
   /** the recovery-mode drawing data, a path next to frame.json */
   recovery?: string;
+  /** the screen's render, a `.webp` next to frame.json (tools/showcase/render.mjs); DeviceModel's `screen` */
+  render?: string;
   /** the screen in px, as Android's boot animation sees it (branding/boot reads it) */
   display?: { width: number; height: number };
   /** the boot branding's format limits (branding/boot/target.py) */
   boot?: { androidApi?: number; splash?: 'allwinner-boot-resource'; zipBudget?: number };
+  /** what the device's userspace runs, preferred first; the app's release builds every frame's (#98). Optional so code that builds a FrameDesign without it still compiles */
+  abis?: Abi[];
   specs: { label: string; value: string }[];
   panes: Record<(typeof PANE_IDS)[number], { support: Support; note?: string }>;
   /** href: where it installs from, only for a frame without `kiln` */

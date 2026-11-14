@@ -12,13 +12,13 @@
 
 ## Checklist
 
-- [ ] Fits [Glassworks Principles](https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/docs/principles.md): HA is the brain, ESPHome is the wire, nothing to install in HA
+- [ ] Fits [Glassworks Principles](https://github.com/GlassworksHQ/glassworks/blob/main/docs/principles.md): HA is the brain, ESPHome is the wire, nothing to install in HA
 - [ ] `CHANGELOG.md` has a line under **[Unreleased]**, if people running a panel will notice it
 - [ ] Docs updated (`README.md` status table, `docs/`), if behaviour or entities changed
 - [ ] Nothing logs tokens, keys, Wi-Fi passwords or Thread datasets
 - [ ] Changes to the boot patch, root helper or radio say so above; they need a real panel
 - [ ] UI changes have screenshots below (before and after for a changed screen)
-- [ ] Hardware or reverse-engineering findings are written up in `docs/research/`, dead ends included
+- [ ] Hardware or reverse-engineering findings are written up in `frames/<id>/research/` (or `docs/research/` if general), dead ends included
 
 ## Screenshots
 

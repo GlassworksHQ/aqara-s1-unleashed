@@ -100,10 +100,13 @@ interface VoiceAssistantHandler {
 }
 
 /**
- * ESPHome native API server (TCP, default port 6053). One reader thread per connection; writes are
- * serialized per connection. Message handling follows esphome `api_connection.cpp`: Hello,
- * DeviceInfo, DeviceCapabilities, ListEntities, SubscribeStates, commands, Ping, Disconnect and the
- * voice assistant messages. Unknown messages are ignored, as ESPHome does.
+ * ESPHome native API server (TCP, default port 6053). Each connection has a reader thread and a
+ * writer thread with its own queue ([MAX_QUEUED_BYTES]), so a client that stops reading holds up only
+ * itself: its states wait as the newest per entity, and once its other messages fill the queue it is
+ * dropped. Message handling follows esphome `api_connection.cpp`: Hello,
+ * DeviceInfo, DeviceCapabilities, ListEntities, SubscribeStates, commands, actions ([ApiAction]),
+ * camera images ([CameraEntity]), Ping, Disconnect and the voice assistant messages. Unknown messages
+ * are ignored, as ESPHome does.
  *
  * Encryption follows an ESPHome build with `api: encryption:` but no YAML key ([NoiseKeys]):
  * without a key the server accepts plaintext and zero-PSK Noise clients and lets Home Assistant
@@ -143,6 +146,15 @@ class ApiServer(
         const val UNRESPONSIVE_MS = 150_000L // ESPHome: KEEPALIVE_TIMEOUT_MS * 5 / 2
         /** ESPHome activates a newly saved PSK 100 ms after answering (api_server.cpp update_noise_psk_). */
         const val KEY_ACTIVATION_DELAY_MS = 100L
+        /** Action calls waiting for the action thread; more are refused, so a client can't fill the memory. */
+        const val MAX_PENDING_ACTIONS = 32
+        /** A camera stream runs this long after the last stream request (ESPHome api_connection.cpp `CAMERA_STOP_STREAM`). */
+        const val CAMERA_STREAM_MS = 5_000L
+        /**
+         * Messages other than states that may wait for one client before it is dropped. Room for the
+         * voice pre-roll (2 s of 16 kHz audio, 64 KiB) and several seconds of audio after it.
+         */
+        internal const val MAX_QUEUED_BYTES = 512 * 1024
     }
 
     @Volatile var voice: VoiceAssistantHandler? = null
@@ -186,7 +198,15 @@ class ApiServer(
     @Volatile var unresponsiveMs = UNRESPONSIVE_MS
     /** The keepalive's time source, in ms; tests drive it by hand. */
     @Volatile internal var clock: () -> Long = System::currentTimeMillis
+    /** Makes the listening socket; a test passes one whose sockets it can hold mid-write. Set before [start]. */
+    @Volatile internal var newServerSocket: () -> ServerSocket = { ServerSocket() }
+    /** Called on the sending thread for each frame a send has queued, before it returns; a test holds a caller there. */
+    @Volatile internal var onQueued: ((type: Int) -> Unit)? = null
     private var keepaliveTimer: java.util.concurrent.ScheduledExecutorService? = null
+    /** Runs [ApiAction] handlers, one at a time, off the connections' reader threads. */
+    @Volatile private var actionThread: java.util.concurrent.ExecutorService? = null
+    /** [CAMERA_STREAM_MS]; shorter in tests. Set before [start]. */
+    @Volatile internal var cameraStreamMs = CAMERA_STREAM_MS
     @Volatile private var voiceConn: Connection? = null
 
     private val stateLock = Any()
@@ -235,7 +255,7 @@ class ApiServer(
 
     @Throws(IOException::class)
     fun start() {
-        val ss = ServerSocket()
+        val ss = newServerSocket()
         ss.reuseAddress = true
         ss.bind(InetSocketAddress(bindAddress, port))
         serverSocket = ss
@@ -245,6 +265,10 @@ class ApiServer(
         keepaliveTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
             Thread(r, "esphome-keepalive").apply { isDaemon = true }
         }.also { it.scheduleWithFixedDelay({ keepaliveTick() }, tick, tick, java.util.concurrent.TimeUnit.MILLISECONDS) }
+        actionThread = java.util.concurrent.ThreadPoolExecutor(
+            1, 1, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
+            java.util.concurrent.ArrayBlockingQueue(MAX_PENDING_ACTIONS),
+        ) { r -> Thread(r, "esphome-actions").apply { isDaemon = true } }
         EspHomeLog.i("API server listening on ${ss.localPort} (${modeName()})")
     }
 
@@ -301,7 +325,7 @@ class ApiServer(
                         c.close()
                     }
                 } else if (idle > keepaliveMs) {
-                    // Set first: an answer read before send() returns must still clear it.
+                    // Set first: the writer may send the ping, and the reader handle its answer, before send() returns.
                     c.pingSent = true
                     if (!c.send(listOf(Frame(Msg.PING_REQUEST, ByteArray(0))))) c.pingSent = false
                 }
@@ -312,6 +336,8 @@ class ApiServer(
     fun stop() {
         keepaliveTimer?.shutdownNow()
         keepaliveTimer = null
+        actionThread?.shutdownNow()
+        actionThread = null
         running = false
         try { serverSocket?.close() } catch (_: IOException) {}
         serverSocket = null
@@ -335,18 +361,18 @@ class ApiServer(
     fun publishStates() {
         // Sent under the lock so a connection that is subscribing can't get updates out of order.
         synchronized(stateLock) {
-            val changed = ArrayList<Frame>()
+            val changed = ArrayList<Pair<Int, Frame>>()
             for (e in entities) {
                 if (e is EventEntity) continue
                 val st = safeState(e) ?: continue
                 val prev = lastStates[e.key]
                 if (prev == null || !prev.contentEquals(st)) {
                     lastStates[e.key] = st
-                    changed += Frame(e.stateType, st)
+                    changed += e.key to Frame(e.stateType, st)
                 }
             }
             if (changed.isEmpty()) return
-            for (c in connections) if (c.subscribedStates) c.send(changed)
+            for (c in connections) if (c.subscribedStates) c.sendStates(changed)
         }
     }
 
@@ -364,7 +390,7 @@ class ApiServer(
     }
 
     private inner class Connection(val id: Int, private val socket: Socket) {
-        private val writeLock = Any()
+        private val outbox = Outbox(MAX_QUEUED_BYTES)
         private lateinit var transport: FrameTransport
         @Volatile var subscribedStates = false
         @Volatile var isOpen = true
@@ -375,11 +401,16 @@ class ApiServer(
         /** Set when the key changed: only the disconnect handshake is processed from now on. */
         @Volatile private var retired = false
         private val remote = socket.remoteSocketAddress?.toString() ?: "?"
-        /** Handshake done: the keepalive applies from now on. */
+        /** Handshake done and the writer running: messages can be sent, and the keepalive applies. */
         @Volatile var ready = false
         /** When the last frame arrived from the client; [pingSent]: we pinged since then. */
         @Volatile var lastRead = 0L
         @Volatile var pingSent = false
+        private val camera = CameraFeed("esphome-camera-$id", cameraStreamMs, ::visibleCameras) { send(listOf(it), wait = true) }
+
+        private fun visibleCameras(): List<CameraEntity> =
+            if (!subscribedStates) emptyList()
+            else entities.filterIsInstance<CameraEntity>().filter { !it.authOnly || authenticated }
 
         fun run() {
             try {
@@ -413,6 +444,7 @@ class ApiServer(
                     return
                 }
                 authenticated = k != null && active != null && transport is NoiseTransport
+                Thread(::writeLoop, "esphome-write-$id").apply { isDaemon = true; start() }
                 lastRead = clock(); ready = true
                 while (isOpen) {
                     val f = transport.read() ?: break
@@ -433,19 +465,51 @@ class ApiServer(
             }
         }
 
-        fun send(frames: List<Frame>): Boolean {
-            if (!isOpen || !::transport.isInitialized) return false
-            return try {
-                synchronized(writeLock) { transport.write(frames) }
-                true
+        private fun writeLoop() {
+            try {
+                while (true) {
+                    transport.write(outbox.take() ?: return)
+                    outbox.written()
+                }
             } catch (e: IOException) {
-                EspHomeLog.w("[$id] write failed: ${e.message}")
+                if (isOpen) EspHomeLog.w("[$id] write failed: ${e.message}")
                 close()
-                false
+            } catch (e: Exception) {
+                EspHomeLog.w("[$id] writer error", e)
+                close()
             }
         }
 
+        /**
+         * Queues [frames] for the writer; with [wait], returns once they are written (only on this
+         * connection's own threads). False if the connection is closed, or was full and is now closed.
+         */
+        fun send(frames: List<Frame>, wait: Boolean = false): Boolean {
+            if (!isOpen || !ready) return false
+            if (if (wait) outbox.offerAndWait(frames) else outbox.offer(frames)) {
+                onQueued?.let { queued -> frames.forEach { queued(it.type) } }
+                return true
+            }
+            if (isOpen) {
+                EspHomeLog.w("[$id] $remote is not reading: ${MAX_QUEUED_BYTES / 1024} KiB waiting to be sent; closing")
+                close()
+            }
+            return false
+        }
+
+        /** (entity key, state) pairs; each replaces that entity's state if one is still waiting. */
+        fun sendStates(states: List<Pair<Int, Frame>>) {
+            if (!isOpen || !ready) return
+            for ((key, f) in states) outbox.offerState(key, f)
+        }
+
         private fun reply(type: Int, w: ProtoWriter = ProtoWriter()) = send(listOf(Frame(type, w.toByteArray())))
+
+        /** Answers, and closes once the answer is written (the client waits for it before it closes). */
+        private fun replyAndClose(type: Int) {
+            send(listOf(Frame(type, ByteArray(0))), wait = true)
+            close()
+        }
 
         /** Server-initiated disconnect (entity set changed): ask, then close after the ack or 2 s. */
         fun requestDisconnect() {
@@ -476,6 +540,8 @@ class ApiServer(
         fun close() {
             if (!isOpen) return
             isOpen = false
+            outbox.close()
+            camera.close()
             try { socket.close() } catch (_: IOException) {}
             connections -= this
             if (voiceConn === this) {
@@ -489,7 +555,7 @@ class ApiServer(
             val m = ProtoMessage(f.data)
             if (retired) {
                 when (f.type) {
-                    Msg.DISCONNECT_REQUEST -> { reply(Msg.DISCONNECT_RESPONSE); close() }
+                    Msg.DISCONNECT_REQUEST -> replyAndClose(Msg.DISCONNECT_RESPONSE)
                     Msg.DISCONNECT_RESPONSE -> close()
                 }
                 return
@@ -509,7 +575,7 @@ class ApiServer(
                     )
                 }
                 Msg.AUTHENTICATION_REQUEST -> Unit // password auth was removed in ESPHome 2026.1; no reply
-                Msg.DISCONNECT_REQUEST -> { reply(Msg.DISCONNECT_RESPONSE); close() }
+                Msg.DISCONNECT_REQUEST -> replyAndClose(Msg.DISCONNECT_RESPONSE)
                 Msg.DISCONNECT_RESPONSE -> close()
                 Msg.PING_REQUEST -> reply(Msg.PING_RESPONSE)
                 Msg.NOISE_ENCRYPTION_SET_KEY_REQUEST -> {
@@ -518,7 +584,8 @@ class ApiServer(
                     val r = k?.handleSetKey(m.bytes(1)) ?: SetKeyResult(false, false, "encryption not supported")
                     val how = if (transport is NoiseTransport) "Noise" else "plaintext (deprecated by ESPHome)"
                     EspHomeLog.i("[$id] NoiseEncryptionSetKeyRequest over $how: ${r.message}")
-                    reply(Msg.NOISE_ENCRYPTION_SET_KEY_RESPONSE, ProtoWriter().bool(1, r.success))
+                    // Written before the key activates: activation closes every connection and drops what still waits.
+                    send(listOf(Frame(Msg.NOISE_ENCRYPTION_SET_KEY_RESPONSE, ProtoWriter().bool(1, r.success).toByteArray())), wait = true)
                     if (r.activate) scheduleActivation()
                 }
                 Msg.PING_RESPONSE, Msg.GET_TIME_RESPONSE -> Unit
@@ -542,14 +609,46 @@ class ApiServer(
                     } else if (e.authOnly && !authenticated) {
                         EspHomeLog.w("[$id] command for ${e.objectId} refused: only from an authenticated (encrypted, provisioned) connection")
                         // the client may already show the new value: send it the unchanged state back
-                        safeState(e)?.let { st -> if (subscribedStates) send(listOf(Frame(e.stateType, st))) }
+                        safeState(e)?.let { st -> if (subscribedStates) sendStates(listOf(e.key to Frame(e.stateType, st))) }
                     } else {
                         EspHomeLog.i("[$id] command for ${e.objectId}")
                         try { e.command(m) } catch (t: Throwable) { EspHomeLog.w("command ${e.objectId} failed", t) }
                         onCommand?.invoke()
                     }
                 }
+                Msg.EXECUTE_SERVICE_REQUEST -> executeAction(m)
+                Msg.CAMERA_IMAGE_REQUEST -> camera.request(single = m.bool(1), stream = m.bool(2))
                 else -> handleVoice(f.type, m)
+            }
+        }
+
+        /**
+         * `ExecuteServiceRequest`: the handler runs on [actionThread]. Home Assistant waits for an
+         * `ExecuteServiceResponse` only when it sent a call_id (every [ActionResponse] but NONE).
+         */
+        private fun executeAction(m: ProtoMessage) {
+            val callId = m.uint32(3)
+            fun fail(why: String) {
+                EspHomeLog.w("[$id] action call refused: $why")
+                if (callId != 0) reply(Msg.EXECUTE_SERVICE_RESPONSE, ProtoWriter().uint32(1, callId).string(3, why))
+            }
+            val action = byKey[m.fixed32(1)] as? ApiAction ?: return fail("unknown action key ${m.fixed32(1)}")
+            if (action.authOnly && !authenticated) {
+                return fail("${action.name} only runs over an encrypted connection with the device's key")
+            }
+            val call = try { action.decode(m) } catch (e: IllegalArgumentException) {
+                return fail(e.message ?: "bad arguments")
+            } catch (e: ProtoException) {
+                return fail("bad arguments: ${e.message}")
+            }
+            EspHomeLog.i("[$id] action ${action.name}")
+            val run = Runnable {
+                val response = action.execute(call, callId)
+                if (callId != 0) reply(Msg.EXECUTE_SERVICE_RESPONSE, response)
+                try { onCommand?.invoke() } catch (t: Throwable) { EspHomeLog.w("onCommand failed", t) }
+            }
+            try { actionThread?.execute(run) ?: fail("server stopped") } catch (e: java.util.concurrent.RejectedExecutionException) {
+                fail("busy: $MAX_PENDING_ACTIONS calls already waiting")
             }
         }
 
@@ -589,11 +688,11 @@ class ApiServer(
                 lastStates[e.key] = st
                 if (prev != null && !prev.contentEquals(st)) {
                     connections.filter { it !== this && it.subscribedStates }
-                        .forEach { it.send(listOf(Frame(e.stateType, st))) }
+                        .forEach { it.sendStates(listOf(e.key to Frame(e.stateType, st))) }
                 }
-                Frame(e.stateType, st)
+                e.key to Frame(e.stateType, st)
             }
-            send(frames)
+            sendStates(frames)
             subscribedStates = true
         }
 

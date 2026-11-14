@@ -7,6 +7,7 @@ import dev.glassworks.frame.Frame
 import dev.glassworks.pane.EntityRegistry
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
+import dev.glassworks.pane.PaneSwitch
 import dev.glassworks.pane.PanelEvent
 import dev.glassworks.pane.forEachPane
 import dev.glassworks.pane.stopAll
@@ -125,14 +126,19 @@ class PanelDevice internal constructor(
     /** Typed as the interface. The device-only parts come in through [Frame.panes]. */
     private val frame: Frame = runtime.frame
     private val screen = runtime.screen
-    private val voiceEnabled = prefs.voice.enabled
+    /** Each pane's on/off, by pane id ([dev.glassworks.pane.PaneDefinition.switch]). A pane with none always runs. */
+    private val switches: Map<String, PaneSwitch> =
+        runtime.paneDefinitions(ctx).mapNotNull { d -> d.switch?.let { d.id to it } }.toMap()
+    /** The ids of the panes started now. esphome-main. */
+    private val started = HashSet<String>()
 
     private var server: ApiServer? = null
     /** Guards [stopped] and the hand-over of [server] between [startServer] and [stop]. */
     private val lifecycle = Any()
     private var stopped = false
     private val noiseKeys = NoiseKeys(prefs.noiseKeyStore)
-    private lateinit var identity: DeviceIdentity
+    /** Read by the API server on its connection threads; replaced when voice is turned on or off. */
+    @Volatile private lateinit var identity: DeviceIdentity
     private lateinit var entities: List<ApiEntity>
     private lateinit var coreEntities: List<ApiEntity>
     private val voicePlayer = ExoAudioPlayer(context, "voice", AudioAttributes.USAGE_ASSISTANT)
@@ -209,11 +215,11 @@ class PanelDevice internal constructor(
             compilationTime = "S1 Kiosk ${BuildConfig.VERSION_NAME}",
             manufacturer = "Aqara",
             model = "Panel Hub S1 Plus (S1 Kiosk)",
-            voiceFeatures = if (voiceEnabled) VOICE_FEATURES else 0,
+            voiceFeatures = voiceFeatures(),
             // Home Assistant's "Visit" link on the device page opens the Manage page (#33).
             webserverPort = OAuth.SIGNIN_PORT,
         )
-        EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${voiceEnabled}")
+        EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${id.voiceFeatures != 0}")
         if (!unlessStopped { initEntities(id); acquireLocks() }) return
         applyVolume()
         mediaPlayer.onStateChanged = { exec.execute { server?.publishStates() } }
@@ -222,7 +228,8 @@ class PanelDevice internal constructor(
             exec.execute { server?.publishStates() }
         }
 
-        panes.forEachPane("start") { pane -> unlessStopped { pane.start() } }
+        for ((pane, s) in switches) EspHomeLog.i("Pane $pane ${if (s.on) "on" else "off"}")
+        panes.forEachPane("start") { pane -> unlessStopped { if (isOn(pane)) { pane.start(); started += pane.id } } }
         if (!unlessStopped { updates.start() }) return
         startServer()
         unlessStopped {
@@ -233,6 +240,11 @@ class PanelDevice internal constructor(
             exec.scheduleWithFixedDelay({ checkDashboards() }, 2, 2, TimeUnit.SECONDS)
             exec.scheduleWithFixedDelay({ server?.publishStates() }, 5, 5, TimeUnit.SECONDS)
         }
+        // A switch changed after its pane started and before the listener above: no event came for it. And
+        // each pane that is off hears its own switch once, so it puts back what it undoes outside the app
+        // (Aqara's daemon, the time zone the root helper keeps) after a restart too.
+        val off = panes.filter { !isOn(it) }.mapNotNull { switches[it.id]?.key }
+        for (key in (applySwitches() + off).distinct()) emit(PanelEvent.SettingChanged(key))
     }
 
     /**
@@ -250,7 +262,6 @@ class PanelDevice internal constructor(
         )
         val assistPane = AssistPane(
             paneContext,
-            voiceEnabled,
             player = voicePlayer,
             speaker = speakerMedia,
             resolveUrl = ::resolveUrl,
@@ -259,22 +270,21 @@ class PanelDevice internal constructor(
             createInput = { cfg, model, onModelChanged -> VoiceEngine(ctx, cfg, model, onModelChanged) },
         )
         assist = assistPane
-        panes = listOfNotNull(
+        panes = listOf(
             SendspinPane(paneContext, haBase = { prefs.haBase }),
             assistPane,
-            // Timers only come from the voice assistant.
-            if (voiceEnabled) {
-                TimersPane(
-                    paneContext,
-                    screen,
-                    schedule = { ms, action -> exec.schedule({ action() }, ms, TimeUnit.MILLISECONDS) },
-                    play = { chimes().chime() },
-                    silence = { synchronized(this) { chimePlayer }?.cancel() },
-                )
-            } else null,
+            // Timers only come from the voice assistant: without it the pane has nothing to do.
+            TimersPane(
+                paneContext,
+                screen,
+                schedule = { ms, action -> exec.schedule({ action() }, ms, TimeUnit.MILLISECONDS) },
+                play = { chimes().chime() },
+                silence = { synchronized(this) { chimePlayer }?.cancel() },
+            ),
         ) + frame.panes(paneContext, exec) + RadioPane(paneContext, runtime, panelIp = ::ipAddress) +
             DiagnosticsPane(paneContext, frame.cpuThermalZone, runtime.engine::isContentProcess, exec)
-        coreEntities = buildEntities()
+        // Every pane's on/off, also while the pane is off.
+        coreEntities = buildEntities() + switches.values.map { it.entity() }
         appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
         dashboardRebuild = StableChange(dashboardOptions(appliedDashboards))
         entities = assemble()
@@ -296,7 +306,7 @@ class PanelDevice internal constructor(
 
     /** Fixed object_id (so the key never changes); only the options change between rebuilds. */
     private fun dashboardSelect(options: List<String>) = SelectEntity(
-        "dashboard", "Dashboard", "mdi:view-dashboard", options = options,
+        "dashboard", "Dashboard", "mdi:view-dashboard", disabledByDefault = true, options = options,
         get = { currentDashboardOption(appliedDashboards) },
         set = { option ->
             val url = DashboardOptions.urlFor(option, prefs.urlSetting, prefs.haBase, prefs.haUrl, appliedDashboards)
@@ -400,8 +410,45 @@ class PanelDevice internal constructor(
             "api_encryption", "api_key" -> onApiKeyPrefChanged()
             "speaker_volume", "speaker_muted" -> applyVolume()
         }
+        // Before the event, so a pane that hears its own switch is already started or stopped.
+        if (switches.values.any { it.key == key }) applySwitches()
         emit(PanelEvent.SettingChanged(key))
         server?.publishStates()
+    }
+
+    private fun isOn(pane: Pane) = switches[pane.id]?.on != false
+
+    /** The voice assistant's features for Home Assistant: none while its pane ([PaneSwitch.voiceAssistant]) is off. */
+    private fun voiceFeatures() = if (switches.values.firstOrNull { it.voiceAssistant }?.on != false) VOICE_FEATURES else 0
+
+    /**
+     * esphome-main: starts each pane that was turned on and stops each that was turned off (#67), and
+     * returns their switches' keys. When voice changed, the device info changes too, and Home Assistant
+     * reconnects to read it.
+     */
+    private fun applySwitches(): List<String> {
+        val changed = ArrayList<String>()
+        for (pane in panes) {
+            val on = isOn(pane)
+            if (on == (pane.id in started)) continue
+            if (on) {
+                // Recorded only once start() returned: a pane that failed to start is tried again on the next change.
+                if (!unlessStopped { listOf(pane).forEachPane("start") { it.start(); started += pane.id } }) return changed
+            } else {
+                started -= pane.id
+                listOf(pane).forEachPane("stop") { it.stop() }
+            }
+            switches[pane.id]?.let { changed += it.key }
+            EspHomeLog.i("Pane ${pane.id} ${if (on) "on" else "off"}")
+        }
+        val features = voiceFeatures()
+        if (features != identity.voiceFeatures) {
+            identity = identity.copy(voiceFeatures = features)
+            runtime.voiceState = if (features != 0) "idle" else "off"
+            EspHomeLog.i("voice=${features != 0}: Home Assistant reconnects to read the voice features")
+            rebuildEntities()
+        }
+        return changed
     }
 
     /** The chime player, made on first use (from the ESPHome, voice or main thread). */
@@ -462,7 +509,7 @@ class PanelDevice internal constructor(
         ),
         SwitchEntity(
             "auto_brightness", "Auto brightness", "mdi:brightness-auto", EntityCategory.CONFIG,
-            get = { prefs.autoBrightness },
+            disabledByDefault = true, get = { prefs.autoBrightness },
             set = { prefs.autoBrightness = it; ui { screen.refreshBrightness() } },
         ),
         BinarySensorEntity("presence", "Presence", deviceClass = "occupancy", get = { screen.near }),
@@ -475,49 +522,49 @@ class PanelDevice internal constructor(
             get = { prefs.screenMode }, set = { prefs.screenMode = it },
         ),
         NumberEntity(
-            "idle_timeout", "Idle timeout", "mdi:timer-outline", min = 0f, max = 3600f, step = 5f,
+            "idle_timeout", "Idle timeout", "mdi:timer-outline", disabledByDefault = true, min = 0f, max = 3600f, step = 5f,
             unit = "s", mode = 1, deviceClass = "duration",
             get = { prefs.idleOffSec.toFloat() }, set = { prefs.idleOffSec = it.toInt() },
         ),
         NumberEntity(
-            "night_idle_timeout", "Night idle timeout", "mdi:timer-sand", min = 0f, max = 3600f, step = 5f,
+            "night_idle_timeout", "Night idle timeout", "mdi:timer-sand", disabledByDefault = true, min = 0f, max = 3600f, step = 5f,
             unit = "s", mode = 1, deviceClass = "duration",
             get = { prefs.nightIdleOffSec.toFloat() }, set = { prefs.nightIdleOffSec = it.toInt() },
         ),
         TextEntity(
-            "night_window", "Night window", "mdi:weather-night", maxLength = 11,
+            "night_window", "Night window", "mdi:weather-night", disabledByDefault = true, maxLength = 11,
             pattern = "^$|^[0-9]{1,2}:[0-9]{2}-[0-9]{1,2}:[0-9]{2}$",
             get = { prefs.nightWindow }, set = { prefs.nightWindow = it },
         ),
         NumberEntity(
-            "presence_range", "Presence range", "mdi:signal-distance-variant", min = 0f, max = 2.5f, step = 0.1f,
+            "presence_range", "Presence range", "mdi:signal-distance-variant", disabledByDefault = true, min = 0f, max = 2.5f, step = 0.1f,
             unit = "m", mode = 2, deviceClass = "distance",
             get = { prefs.presenceRangeM }, set = { prefs.presenceRangeM = it; ui { screen.applyPresenceRange() } },
         ),
         // --- kiosk
         TextEntity(
-            "dashboard_url", "Dashboard URL", "mdi:web", minLength = 1, maxLength = 255,
+            "dashboard_url", "Dashboard URL", "mdi:web", disabledByDefault = true, minLength = 1, maxLength = 255,
             get = { prefs.urlSetting }, set = { url -> toActivity { putExtra("url", url) } },
         ),
         NumberEntity(
-            "zoom", "Zoom", "mdi:magnify-plus-outline", min = 0f, max = 3f, step = 0.05f, mode = 1,
+            "zoom", "Zoom", "mdi:magnify-plus-outline", disabledByDefault = true, min = 0f, max = 3f, step = 0.05f, mode = 1,
             get = { prefs.zoom },
             set = { z -> if (kotlin.math.abs(z - prefs.zoom) > 0.001f) toActivity { putExtra("zoom", z) } },
         ),
         ButtonEntity("reload_dashboard", "Reload dashboard", "mdi:refresh", press = { toActivity { putExtra("reload", true) } }),
         ButtonEntity("open_settings", "Open device settings", "mdi:cog", EntityCategory.CONFIG,
-            press = { toActivity { putExtra("open_settings", true) } }),
+            disabledByDefault = true, press = { toActivity { putExtra("open_settings", true) } }),
         ButtonEntity(
             "restart_app", "Restart app", "mdi:restart", EntityCategory.CONFIG, deviceClass = "restart",
             press = { toActivity { putExtra("restart", true) } },
         ),
         ButtonEntity(
             "improv_ble", "Start Wi-Fi setup (Bluetooth)", "mdi:bluetooth-settings", EntityCategory.CONFIG,
-            press = { ui { sh.edm.s1kiosk.improv.ImprovController.startOnDemand("Home Assistant button") } },
+            disabledByDefault = true, press = { ui { sh.edm.s1kiosk.improv.ImprovController.startOnDemand("Home Assistant button") } },
         ),
         SwitchEntity(
             "hide_ha_header", "Hide HA header", "mdi:page-layout-header", EntityCategory.CONFIG,
-            get = { prefs.hideHeader },
+            disabledByDefault = true, get = { prefs.hideHeader },
             set = { v -> toActivity { putExtra("hide_header", v); putExtra("hide_sidebar", v) } },
         ),
         // --- audio
@@ -548,7 +595,7 @@ class PanelDevice internal constructor(
         TextSensorEntity("ip_address", "IP address", "mdi:ip-network", EntityCategory.DIAGNOSTIC, get = ::ipAddress),
         TextSensorEntity(
             "app_version", "App version", "mdi:new-box", EntityCategory.DIAGNOSTIC,
-            get = { BuildConfig.VERSION_NAME },
+            disabledByDefault = true, get = { BuildConfig.VERSION_NAME },
         ),
         // --- app updates (GitHub Releases; update/UpdateManager.kt)
         UpdateEntity(
@@ -557,20 +604,20 @@ class PanelDevice internal constructor(
         ),
         TextSensorEntity(
             "update_status", "Update status", "mdi:update", EntityCategory.DIAGNOSTIC,
-            get = { updates.statusText() },
+            disabledByDefault = true, get = { updates.statusText() },
         ),
         // --- Home Assistant sign-in (docs/onboarding.md)
         TextSensorEntity(
             "home_assistant_url", "Home Assistant URL", "mdi:home-assistant", EntityCategory.DIAGNOSTIC,
-            get = { prefs.haBase ?: "" },
+            disabledByDefault = true, get = { prefs.haBase ?: "" },
         ),
         TextSensorEntity(
             "signed_in", "Signed in", "mdi:account-key", EntityCategory.DIAGNOSTIC,
-            get = { if (HaAuth.signedIn) "yes" else "no" },
+            disabledByDefault = true, get = { if (HaAuth.signedIn) "yes" else "no" },
         ),
         ButtonEntity(
             "sign_out", "Sign out", "mdi:logout", EntityCategory.CONFIG,
-            press = {
+            disabledByDefault = true, press = {
                 // The activity shows the sign-in screen through its HaAuth listener.
                 HaAuth.signOut("Home Assistant button") { exec.execute { server?.publishStates() } }
             },

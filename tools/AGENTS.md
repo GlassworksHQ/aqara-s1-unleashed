@@ -14,7 +14,10 @@ change the boot path.
 | `install/` | `fel-install.sh` (FEL → backup → patch → flash → verify), `fb-read-partition.sh`, the `--undo` path | Has off-device tests in `install/test/` |
 | `root/` | Init services baked into `boot` via Magisk `overlay.d`: first boot, update, bundle, netwatch, branding; `s1kiosk_verify` (C) | Runs as root under permissive SELinux |
 | `radio/` | Root helper `s1kiosk_radio.sh` (contract v4), the otbr/zigbeed builds, the bundle maker | Tests: `radio/test/run.sh` |
-| `perf/` | `run.sh`: the performance test and grade for any frame; `summary.py` exports a frame's measurements, `grade.ts` computes the letter from them ([docs/perf.md](../docs/perf.md)); `threadcpu.py`: per-thread CPU of the app over a window, read-only ([idle-cpu.md](../docs/research/idle-cpu.md)) | Opens a test page and restarts the app; never changes a setting |
+| `perf/` | `run.sh`: Clarity, the performance test and grade for any frame; `summary.py` exports a frame's measurements, `grade.ts` computes the letter from them ([docs/perf.md](../docs/perf.md)); `threadcpu.py`: per-thread CPU of the app over a window, read-only ([idle-cpu.md](../frames/aqara-s1-plus/research/idle-cpu.md)) | Opens test pages and restarts the app; points the dashboard setting at its fake Home Assistant for the graded part (and turns panes off and on with `--pane-ram`), then puts them back |
+| `release/` | `frame-abis.sh`: the ABIs the release builds, from every frame's `abis` (#98); `check-update-compat.sh`; `changelog-section.sh` | `frame-abis.sh` needs `jq` (GitHub's runners and macOS 15+ have it; else `brew install jq` or `apt install jq`) |
+| `showcase/` | `render.mjs`: each frame's card render (`frames/<id>/design/render.webp`), HA's real frontend drawing `home.py`'s made-up home from Clarity's fake Home Assistant in headless Chrome ([frames/README.md](../frames/README.md#the-render)) | Writes only `frames/*/design/render.webp` (or `--out <dir>`); the fake HA listens on 127.0.0.1, Chrome runs with a throwaway profile. Needs Chrome and Node 22+ |
+| `size/` | `apksize.py`: the APK's size per frame and per pane, the change and the frame's size budget, for CI ([docs/size.md](../docs/size.md)) | Reads APKs only |
 | `bracket/` | The wall base emulator and the proof script | |
 | `esp32-uart-bridge/` | ESP32-S3 USB↔UART bridge for the debug console | |
 
@@ -26,7 +29,7 @@ change the boot path.
 - **Threat model:** SELinux is permissive, so any app may set properties or start init services.
   Services take no input except files owned by the kiosk's uid, which they check. They don't follow
   symlinks (`s1kiosk_verify --copy`), and they report through `sys.s1kiosk.*.status`. Don't add an
-  input path that skips those checks. Read [`../docs/research/root.md`](../docs/research/root.md) first.
+  input path that skips those checks. Read [`../frames/aqara-s1-plus/research/root.md`](../frames/aqara-s1-plus/research/root.md) first.
 - Helper fixes reach panels through the **signed radio bundle**, not by reflashing `boot`. A change
   that needs a new boot image is a much bigger deal, because every user reruns the installer. Say
   which of the two your change needs.

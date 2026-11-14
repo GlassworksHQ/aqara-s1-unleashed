@@ -269,39 +269,82 @@ class GeckoBehaviourPinTest {
 
     @Test
     fun `page start shows the connecting screen with the host`() = harness().use { h ->
-        h.content.onFirstContentfulPaint(h.session)
+        h.send(h.connect(dash), org.json.JSONObject("""{"type":"ready","why":"frontend"}"""), replies = 0)
         h.advance(1_000)
         assertFalse(h.loading.isShowing)
         h.progress.onPageStart(h.session, "about:blank")
         assertFalse(h.loading.isShowing)
         h.progress.onPageStart(h.session, dash)
-        assertEquals(listOf("S1 Unleashed", "Connecting to Home Assistant", "192.0.2.10"), h.loadingTexts())
+        assertEquals(listOf("Glassworks", "Connecting to Home Assistant · 192.0.2.10"), h.loadingTexts())
     }
 
     @Test
-    fun `first contentful paint hides the loading screen`() = harness().use { h ->
+    fun `first contentful paint keeps the connecting screen up`() = harness().use { h ->
+        // #63 round 2: Home Assistant's first paint is its own white launch screen; hiding then flashed it.
         assertTrue(h.loading.isShowing)
         h.content.onFirstContentfulPaint(h.session)
-        h.idle()
+        h.advance(5_000)
+        assertTrue(h.loading.isShowing)
+    }
+
+    @Test
+    fun `the page saying it's drawn hides the connecting screen, a frame doesn't`() = harness().use { h ->
+        h.progress.onPageStart(h.session, dash)
+        h.progress.onPageStop(h.session, true)
+        h.send(h.connect("$dash/frame", topLevel = false), org.json.JSONObject("""{"type":"ready","why":"page"}"""), replies = 0)
+        h.advance(500)
+        assertTrue(h.loading.isShowing)
+        h.send(h.connect(dash), org.json.JSONObject("""{"type":"ready","why":"frontend/loaded"}"""), replies = 0)
+        h.advance(500)
+        assertFalse(h.loading.isShowing)
+        // Round 4 panel run: the log says why the screen went, one line per reason.
+        assertTrue(h.logs("S1Kiosk").toString(), h.logs("S1Kiosk").any { it.startsWith("Connecting screen hidden: ready, frontend/loaded") })
+        assertTrue(h.logs("S1Kiosk").any { it.startsWith("A frame said ready (page): ignored") })
+    }
+
+    @Test
+    fun `while Home Assistant's frontend is still loading the connecting screen waits up to 45 s`() = harness().use { h ->
+        // Verifier 6d0f2cd7: a cold load on the S1 can outlast 15 s; showing the page then flashes HA's white launch screen.
+        h.progress.onPageStart(h.session, dash)
+        h.send(h.connect(dash), org.json.JSONObject("""{"type":"launch"}"""), replies = 0)
+        h.progress.onPageStop(h.session, true)
+        h.advance(sh.edm.s1kiosk.MainActivity.READY_FALLBACK_MS + 1_000)
+        assertTrue(h.loading.isShowing)
+        h.advance(sh.edm.s1kiosk.MainActivity.LAUNCH_FALLBACK_MS - sh.edm.s1kiosk.MainActivity.READY_FALLBACK_MS - 1_000)
+        assertFalse(h.loading.isShowing)
+        assertTrue(h.logs("S1Kiosk").any { it.startsWith("Home Assistant's launch screen is up") })
+        assertTrue(h.logs("S1Kiosk").any { it.startsWith("Connecting screen hidden: fallback 45 s, the frontend still loading") })
+    }
+
+    @Test
+    fun `a frame's launch word doesn't hold the connecting screen`() = harness().use { h ->
+        h.progress.onPageStart(h.session, dash)
+        h.send(h.connect("$dash/frame", topLevel = false), org.json.JSONObject("""{"type":"launch"}"""), replies = 0)
+        h.progress.onPageStop(h.session, true)
+        h.advance(sh.edm.s1kiosk.MainActivity.READY_FALLBACK_MS)
         assertFalse(h.loading.isShowing)
     }
 
     @Test
-    fun `a page that loaded hides the loading screen after 1500 ms`() = harness().use { h ->
+    fun `a page that never says it's drawn hides the connecting screen after 15 s`() = harness().use { h ->
         h.progress.onPageStart(h.session, dash)
         h.progress.onPageStop(h.session, true)
-        h.advance(1_499)
+        h.advance(sh.edm.s1kiosk.MainActivity.READY_FALLBACK_MS - 1)
         assertTrue(h.loading.isShowing)
         h.advance(1)
         assertFalse(h.loading.isShowing)
+        assertTrue(h.logs("S1Kiosk").any { it.startsWith("Connecting screen hidden: fallback 15 s, no word from the page") })
     }
 
     @Test
     fun `a failed load says so and retries the dashboard after 10 s`() = harness().use { h ->
         h.progress.onPageStart(h.session, dash)
         h.progress.onPageStop(h.session, false)
-        assertEquals(listOf("S1 Unleashed", "Can't reach Home Assistant", "Retrying every few seconds…"), h.loadingTexts())
-        assertEquals(emptyList<String>(), h.eventsDuring { h.advance(8_999) })
+        val stopped = android.os.SystemClock.uptimeMillis()
+        assertEquals(listOf("Glassworks", "Can't reach Home Assistant · Trying again in 10 s · 192.0.2.10"), h.loadingTexts())
+        // 10 s after the failed load (the connecting screen's animations can carry the clock a frame or two).
+        val left = 10_000 - (android.os.SystemClock.uptimeMillis() - stopped)
+        assertEquals(emptyList<String>(), h.eventsDuring { h.advance(left - 1) })
         assertEquals(listOf("s1.load $dash"), h.eventsDuring { h.advance(1) })
     }
 

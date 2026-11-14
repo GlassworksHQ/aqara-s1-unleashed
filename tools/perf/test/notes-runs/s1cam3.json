@@ -1,0 +1,1654 @@
+{
+ "fake_ha": {
+  "commands": 751,
+  "failed": {},
+  "stream_late_max_ms": 192.1,
+  "stream_sent": 2467,
+  "unknown": {}
+ },
+ "frame": {
+  "app": {
+   "apk_bytes": 101075082,
+   "geckoview": null,
+   "package": "sh.edm.s1kiosk",
+   "version_code": "403",
+   "version_name": "0.4.3"
+  },
+  "device": {
+   "abi": "armeabi-v7a",
+   "abilist": [
+    "armeabi-v7a",
+    "armeabi"
+   ],
+   "android": "10",
+   "api": 29,
+   "cpu": {
+    "cores": 4,
+    "max_mhz": [
+     1608
+    ],
+    "parts": [
+     "0xd03"
+    ]
+   },
+   "display": {
+    "density": "240",
+    "px": [
+     1440,
+     720
+    ],
+    "vsync_ms": null
+   },
+   "loadavg": [
+    "1.72",
+    "1.75",
+    "1.78"
+   ],
+   "manufacturer": "Allwinner",
+   "mem_total_kb": 2023196,
+   "model": "QUAD-CORE R818 EVB2",
+   "soc": "peony",
+   "thermal_c": {
+    "cpu_thermal_zone": 41.835,
+    "ddr_thermal_zone": 41.433,
+    "gpu_thermal_zone": 40.696
+   }
+  },
+  "id": "aqara-s1-plus",
+  "name": "Aqara S1 Plus"
+ },
+ "grade": {
+  "bands": {
+   "heavy": {
+    "camera": "slow",
+    "load": "poor",
+    "scroll": "slow",
+    "tap": "needs-improvement",
+    "updates": "slow"
+   },
+   "light": {
+    "camera": "none",
+    "load": "good",
+    "scroll": "fluid",
+    "tap": "good",
+    "updates": "good"
+   },
+   "typical": {
+    "camera": "slow",
+    "load": "poor",
+    "scroll": "slow",
+    "tap": "good",
+    "updates": "fluid"
+   }
+  },
+  "capped_by_start": false,
+  "grade": "D",
+  "headline": "Aqara S1 Plus: Clarity D, a good wall panel for light dashboards. Held back by typical dashboards: scrolling averages 25.0 fps (p95 117 ms); the view takes 6.6 s to open; a camera takes 4.2 s to show its first frame and shows 100% of its frames.",
+  "levels": {
+   "heavy": null,
+   "light": "fluid",
+   "typical": null
+  },
+  "meaning": "a good wall panel for light dashboards",
+  "missing": [],
+  "provisional": false,
+  "rubric_version": 6,
+  "start": {
+   "band": "poor",
+   "value": 11971.0
+  },
+  "viewport": {
+   "reason": null,
+   "state": "ok"
+  }
+ },
+ "graded": {
+  "reference": {
+   "android_ttid_ms": {
+    "max": 1098.0,
+    "median": 990.0,
+    "min": 956.0,
+    "n": 3
+   },
+   "bad_page_lines": 0,
+   "engine_ready_ms": {
+    "max": 2813.0,
+    "median": 2606.0,
+    "min": 2582.0,
+    "n": 3
+   },
+   "engine_uris": [
+    "about:blank"
+   ],
+   "errors": [],
+   "graded_runs": 3,
+   "launch": [
+    "relaunched-by-system"
+   ],
+   "lost_scroll_steps": 0,
+   "orders": [
+    [
+     "light",
+     "typical",
+     "heavy"
+    ],
+    [
+     "typical",
+     "heavy",
+     "light"
+    ],
+    [
+     "heavy",
+     "light",
+     "typical"
+    ]
+   ],
+   "own_page_states": [
+    "reference"
+   ],
+   "protocols": [
+    5
+   ],
+   "restart_to": "usable",
+   "runs": 3,
+   "start_errors": [],
+   "start_ms": {
+    "max": 13181.0,
+    "median": 11971.0,
+    "min": 11451.0,
+    "n": 3
+   },
+   "tiers": {
+    "heavy": {
+     "by_position": {
+      "1": [
+       {
+        "inp_ms": 352,
+        "latency_p95_ms": 1077.8,
+        "load_ms": 37971,
+        "scroll_fps": 4.52,
+        "scroll_level": "slow",
+        "scroll_p95_ms": 383.33,
+        "updates_level": "slow"
+       }
+      ],
+      "2": [
+       {
+        "inp_ms": 288,
+        "latency_p95_ms": 738.7,
+        "load_ms": 35286,
+        "scroll_fps": 5.71,
+        "scroll_level": "slow",
+        "scroll_p95_ms": 333.33,
+        "updates_level": "slow"
+       }
+      ],
+      "3": [
+       {
+        "inp_ms": 288,
+        "latency_p95_ms": 637.8,
+        "load_ms": 35690,
+        "scroll_fps": 5.68,
+        "scroll_level": "slow",
+        "scroll_p95_ms": 350.0,
+        "updates_level": "slow"
+       }
+      ]
+     },
+     "camera_level": "slow",
+     "camera_levels": [
+      "slow",
+      "slow",
+      "slow"
+     ],
+     "camera_runs": [
+      {
+       "detail": [
+        {
+         "decoded": 197,
+         "dropped": 0,
+         "first_frame_ms": 2618.5,
+         "frames": 197,
+         "h": 720,
+         "max_gap_ms": 4661.1,
+         "shown_pct": 37.5,
+         "source": "quality+rvfc",
+         "stall_presented": 72,
+         "stall_total_ms": 25705.1,
+         "w": 1280,
+         "waiting": 10
+        },
+        {
+         "decoded": 234,
+         "dropped": 0,
+         "first_frame_ms": 3550.7,
+         "frames": 234,
+         "h": 360,
+         "max_gap_ms": 5643.2,
+         "shown_pct": 44.5,
+         "source": "quality+rvfc",
+         "stall_presented": 114,
+         "stall_total_ms": 25555.3,
+         "w": 640,
+         "waiting": 12
+        },
+        {
+         "decoded": 269,
+         "dropped": 0,
+         "first_frame_ms": 3550.7,
+         "frames": 269,
+         "h": 360,
+         "max_gap_ms": 4145.1,
+         "shown_pct": 51.2,
+         "source": "quality+rvfc",
+         "stall_presented": 146,
+         "stall_total_ms": 24038.3,
+         "w": 640,
+         "waiting": 15
+        },
+        {
+         "decoded": 169,
+         "dropped": 0,
+         "first_frame_ms": 3550.7,
+         "frames": 169,
+         "h": 360,
+         "max_gap_ms": 6808.5,
+         "shown_pct": 32.2,
+         "source": "quality+rvfc",
+         "stall_presented": 65,
+         "stall_total_ms": 27219.9,
+         "w": 640,
+         "waiting": 9
+        }
+       ],
+       "expected": 4,
+       "fetches": {
+        "playlist": {
+         "n": 218,
+         "queued_ms": {
+          "max": 191,
+          "median": 33,
+          "p95": 124
+         },
+         "total_ms": {
+          "max": 198,
+          "median": 41,
+          "p95": 137
+         },
+         "wait_ms": {
+          "max": 45,
+          "median": 6,
+          "p95": 21
+         }
+        },
+        "segment": {
+         "arrival_gap_max_ms": 3742,
+         "kb": 8470,
+         "n": 185,
+         "queued_ms": {
+          "max": 111,
+          "median": 25,
+          "p95": 93
+         },
+         "total_ms": {
+          "max": 151,
+          "median": 44,
+          "p95": 114
+         },
+         "wait_ms": {
+          "max": 58,
+          "median": 12,
+          "p95": 52
+         }
+        },
+        "streams": 4
+       },
+       "first_frame_ms": 3550.7,
+       "max_gap_ms": 6808.5,
+       "media": {
+        "codecs": [
+         "OMX.allwinner.video.decoder.avc",
+         "OMX.allwinner.video.decoder.avc",
+         "OMX.allwinner.video.decoder.avc",
+         "OMX.allwinner.video.decoder.avc"
+        ],
+        "eos": 97,
+        "flushes": 243
+       },
+       "shown_pct": 32.2,
+       "stall_total_ms": 27219.9,
+       "streams": 4,
+       "window_ms": 35034
+      },
+      {
+       "detail": [
+        {
+         "decoded": 199,
+         "dropped": 0,
+         "first_frame_ms": 3110.4,
+         "frames": 199,
+         "h": 720,
+         "max_gap_ms": 4661.2,
+         "shown_pct": 42,
+         "source": "quality+rvfc",
+         "stall_presented": 113,
+         "stall_total_ms": 24670.8,
+         "w": 1280,
+         "waiting": 10
+        },
+        {
+         "decoded": 211,
+         "dropped": 0,
+         "first_frame_ms": 3110.4,
+         "frames": 211,
+         "h": 360,
+         "max_gap_ms": 7740.9,
+         "shown_pct": 44.5,
+         "source": "quality+rvfc",
+         "stall_presented": 117,
+         "stall_total_ms": 24104.7,
+         "w": 640,
+         "waiting": 13
+        },
+        {
+         "decoded": 218,
+         "dropped": 0,
+         "first_frame_ms": 3010.5,
+         "frames": 218,
+         "h": 360,
+         "max_gap_ms": 6858.6,
+         "shown_pct": 46,
+         "source": "quality+rvfc",
+         "stall_presented": 133,
+         "stall_total_ms": 23555.4,
+         "w": 640,
+         "waiting": 13
+        },
+        {
+         "decoded": 208,
+         "dropped": 0,
+         "first_frame_ms": 4358.9,
+         "frames": 208,
+         "h": 360,
+         "max_gap_ms": 5993,
+         "shown_pct": 43.9,
+         "source": "quality+rvfc",
+         "stall_presented": 100,
+         "stall_total_ms": 23006,
+         "w": 640,
+         "waiting": 9
+        }
+       ],
+       "expected": 4,
+       "fetches": {
+        "playlist": {
+         "n": 104,
+         "queued_ms": {
+          "max": 146,
+          "median": 35,
+          "p95": 118
+         },
+         "total_ms": {
+          "max": 186,
+          "median": 47,
+          "p95": 136
+         },
+         "wait_ms": {
+          "max": 29,
+          "median": 4,
+          "p95": 21
+         }
+        },
+        "segment": {
+         "arrival_gap_max_ms": 4331,
+         "kb": 4013,
+         "n": 88,
+         "queued_ms": {
+          "max": 198,
+          "median": 37,
+          "p95": 137
+         },
+         "total_ms": {
+          "max": 215,
+          "median": 52,
+          "p95": 153
+         },
+         "wait_ms": {
+          "max": 52,
+          "median": 12,
+          "p95": 27
+         }
+        },
+        "streams": 4
+       },
+       "first_frame_ms": 4358.9,
+       "max_gap_ms": 7740.9,
+       "media": {
+        "codecs": [
+         "OMX.allwinner.video.decoder.avc",
+         "OMX.allwinner.video.decoder.avc",
+         "OMX.allwinner.video.decoder.avc",
+         "OMX.allwinner.video.decoder.avc"
+        ],
+        "eos": 107,
+        "flushes": 241
+       },
+       "shown_pct": 42,
+       "stall_total_ms": 24670.8,
+       "streams": 4,
+       "window_ms": 31581
+      },
+      {
+       "detail": [
+        {
+         "decoded": 186,
+         "dropped": 0,
+         "first_frame_ms": 3721,
+         "frames": 186,
+         "h": 720,
+         "max_gap_ms": 6658.8,
+         "shown_pct": 37.2,
+         "source": "quality+rvfc",
+         "stall_presented": 105,
+         "stall_total_ms": 26089.6,
+         "w": 1280,
+         "waiting": 14
+        },
+        {
+         "decoded": 176,
+         "dropped": 0,
+         "first_frame_ms": 3721,
+         "frames": 176,
+         "h": 360,
+         "max_gap_ms": 4844.3,
+         "shown_pct": 35.2,
+         "source": "quality+rvfc",
+         "stall_presented": 93,
+         "stall_total_ms": 26622.3,
+         "w": 640,
+         "waiting": 14
+        },
+        {
+         "decoded": 195,
+         "dropped": 0,
+         "first_frame_ms": 3721,
+         "frames": 195,
+         "h": 360,
+         "max_gap_ms": 7324.7,
+         "shown_pct": 39,
+         "source": "quality+rvfc",
+         "stall_presented": 112,
+         "stall_total_ms": 26622.3,
+         "w": 640,
+         "waiting": 13
+        },
+        {
+         "decoded": 198,
+         "dropped": 0,
+         "first_frame_ms": 3721,
+         "frames": 198,
+         "h": 360,
+         "max_gap_ms": 4611.2,
+         "shown_pct": 39.6,
+         "source": "quality+rvfc",
+         "stall_presented": 104,
+         "stall_total_ms": 25989.7,
+         "w": 640,
+         "waiting": 10
+        }
+       ],
+       "expected": 4,
+       "fetches": {
+        "playlist": {
+         "n": 111,
+         "queued_ms": {
+          "max": 222,
+          "median": 36,
+          "p95": 123
+         },
+         "total_ms": {
+          "max": 226,
+          "median": 44,
+          "p95": 148
+         },
+         "wait_ms": {
+          "max": 51,
+          "median": 5,
+          "p95": 26
+         }
+        },
+        "segment": {
+         "arrival_gap_max_ms": 2798,
+         "kb": 4027,
+         "n": 88,
+         "queued_ms": {
+          "max": 220,
+          "median": 38,
+          "p95": 137
+         },
+         "total_ms": {
+          "max": 232,
+          "median": 52,
+          "p95": 162
+         },
+         "wait_ms": {
+          "max": 61,
+          "median": 10,
+          "p95": 43
+         }
+        },
+        "streams": 4
+       },
+       "first_frame_ms": 3721,
+       "max_gap_ms": 7324.7,
+       "media": {
+        "codecs": [
+         "OMX.allwinner.video.decoder.avc",
+         "OMX.allwinner.video.decoder.avc",
+         "OMX.allwinner.video.decoder.avc",
+         "OMX.allwinner.video.decoder.avc"
+        ],
+        "eos": 103,
+        "flushes": 263
+       },
+       "shown_pct": 35.2,
+       "stall_total_ms": 26622.3,
+       "streams": 4,
+       "window_ms": 33312
+      }
+     ],
+     "cards": [
+      120
+     ],
+     "clock_rtt_ms": [
+      20,
+      12,
+      30
+     ],
+     "fcp_ms": null,
+     "first_scroll_ms": {
+      "max": 166.0,
+      "median": 132.0,
+      "min": 131.0,
+      "n": 3
+     },
+     "inp_ms": {
+      "max": 352.0,
+      "median": 288.0,
+      "min": 288.0,
+      "n": 3
+     },
+     "input_method": [
+      "event-timing"
+     ],
+     "latency_median_ms": {
+      "max": 762.7,
+      "median": 602.2,
+      "min": 372.8,
+      "n": 3
+     },
+     "latency_p95_ms": {
+      "max": 1077.8,
+      "median": 738.7,
+      "min": 637.8,
+      "n": 3
+     },
+     "load_errors": [],
+     "load_ms": {
+      "max": 37971.0,
+      "median": 35690.0,
+      "min": 35286.0,
+      "n": 3
+     },
+     "nodes": [
+      8393,
+      8394
+     ],
+     "paint_to_screen_ms": null,
+     "positions": [
+      3,
+      2,
+      1
+     ],
+     "scroll": {
+      "fps": {
+       "max": 5.71,
+       "median": 5.68,
+       "min": 4.52,
+       "n": 3
+      },
+      "frozen_pct": {
+       "max": 0.0,
+       "median": 0.0,
+       "min": 0.0,
+       "n": 3
+      },
+      "jank_pct": {
+       "max": 100.0,
+       "median": 100.0,
+       "min": 100.0,
+       "n": 3
+      },
+      "n": {
+       "max": 27.0,
+       "median": 24.0,
+       "min": 23.0,
+       "n": 3
+      },
+      "p95_ms": {
+       "max": 383.33,
+       "median": 350.0,
+       "min": 333.33,
+       "n": 3
+      }
+     },
+     "scroll_band": "poor",
+     "scroll_bands": [
+      "poor",
+      "poor",
+      "poor"
+     ],
+     "scroll_errors": [],
+     "scroll_level": "slow",
+     "scroll_levels": [
+      "slow",
+      "slow",
+      "slow"
+     ],
+     "scroll_limited_by": [
+      "main-thread"
+     ],
+     "scroll_raf_only": [
+      false,
+      false,
+      false
+     ],
+     "scroll_sources": [
+      "raf"
+     ],
+     "scrolled_px": {
+      "max": 3323.0,
+      "median": 3277.0,
+      "min": 3165.0,
+      "n": 3
+     },
+     "sf_swipes": 18,
+     "sf_valid": [
+      true,
+      true,
+      true
+     ],
+     "swipes_at_edge": 0,
+     "swipes_during_updates": [
+      6,
+      6,
+      6
+     ],
+     "swipes_moved": 18,
+     "updates": {
+      "fps": {
+       "max": 5.37,
+       "median": 4.76,
+       "min": 4.71,
+       "n": 3
+      },
+      "frozen_pct": {
+       "max": 0.0,
+       "median": 0.0,
+       "min": 0.0,
+       "n": 3
+      },
+      "jank_pct": {
+       "max": 100.0,
+       "median": 100.0,
+       "min": 100.0,
+       "n": 3
+      },
+      "n": {
+       "max": 11.0,
+       "median": 8.0,
+       "min": 8.0,
+       "n": 3
+      },
+      "p95_ms": {
+       "max": 333.33,
+       "median": 300.0,
+       "min": 266.67,
+       "n": 3
+      }
+     },
+     "updates_all_p95_ms": {
+      "max": 333.34,
+      "median": 300.01,
+      "min": 266.67,
+      "n": 3
+     },
+     "updates_band": "poor",
+     "updates_bands": [
+      "poor",
+      "poor",
+      "poor"
+     ],
+     "updates_errors": [],
+     "updates_level": "slow",
+     "updates_levels": [
+      "slow",
+      "slow",
+      "slow"
+     ],
+     "viewport": [
+      [
+       [
+        960,
+        480
+       ],
+       1.5
+      ]
+     ]
+    },
+    "light": {
+     "by_position": {
+      "1": [
+       {
+        "inp_ms": 112,
+        "latency_p95_ms": 84.8,
+        "load_ms": 1467,
+        "scroll_fps": 40.57,
+        "scroll_level": "fluid",
+        "scroll_p95_ms": 50.0,
+        "updates_level": "good"
+       }
+      ],
+      "2": [
+       {
+        "inp_ms": 120,
+        "latency_p95_ms": 95.6,
+        "load_ms": 1990,
+        "scroll_fps": 39.87,
+        "scroll_level": "fluid",
+        "scroll_p95_ms": 66.67,
+        "updates_level": "good"
+       }
+      ],
+      "3": [
+       {
+        "inp_ms": 160,
+        "latency_p95_ms": 102.7,
+        "load_ms": 2377,
+        "scroll_fps": 42.87,
+        "scroll_level": "fluid",
+        "scroll_p95_ms": 50.0,
+        "updates_level": "fluid"
+       }
+      ]
+     },
+     "camera_level": null,
+     "camera_levels": [],
+     "camera_runs": [],
+     "cards": [
+      20
+     ],
+     "clock_rtt_ms": [
+      10,
+      6,
+      8
+     ],
+     "fcp_ms": null,
+     "first_scroll_ms": {
+      "max": 38.0,
+      "median": 34.0,
+      "min": 28.0,
+      "n": 3
+     },
+     "inp_ms": {
+      "max": 160.0,
+      "median": 120.0,
+      "min": 112.0,
+      "n": 3
+     },
+     "input_method": [
+      "event-timing"
+     ],
+     "latency_median_ms": {
+      "max": 79.6,
+      "median": 75.7,
+      "min": 69.7,
+      "n": 3
+     },
+     "latency_p95_ms": {
+      "max": 102.7,
+      "median": 95.6,
+      "min": 84.8,
+      "n": 3
+     },
+     "load_errors": [],
+     "load_ms": {
+      "max": 2377.0,
+      "median": 1990.0,
+      "min": 1467.0,
+      "n": 3
+     },
+     "nodes": [
+      1100,
+      1101
+     ],
+     "paint_to_screen_ms": null,
+     "positions": [
+      1,
+      3,
+      2
+     ],
+     "scroll": {
+      "fps": {
+       "max": 42.87,
+       "median": 40.57,
+       "min": 39.87,
+       "n": 3
+      },
+      "frozen_pct": {
+       "max": 0.0,
+       "median": 0.0,
+       "min": 0.0,
+       "n": 3
+      },
+      "jank_pct": {
+       "max": 26.39,
+       "median": 25.36,
+       "min": 24.11,
+       "n": 3
+      },
+      "n": {
+       "max": 224.0,
+       "median": 216.0,
+       "min": 209.0,
+       "n": 3
+      },
+      "p95_ms": {
+       "max": 66.67,
+       "median": 50.0,
+       "min": 50.0,
+       "n": 3
+      }
+     },
+     "scroll_band": "poor",
+     "scroll_bands": [
+      "poor",
+      "poor",
+      "poor"
+     ],
+     "scroll_errors": [],
+     "scroll_level": "fluid",
+     "scroll_levels": [
+      "fluid",
+      "fluid",
+      "fluid"
+     ],
+     "scroll_limited_by": [
+      "main-thread"
+     ],
+     "scroll_raf_only": [
+      false,
+      false,
+      false
+     ],
+     "scroll_sources": [
+      "raf"
+     ],
+     "scrolled_px": {
+      "max": 3366.0,
+      "median": 3352.0,
+      "min": 3309.0,
+      "n": 3
+     },
+     "sf_swipes": 18,
+     "sf_valid": [
+      true,
+      true,
+      true
+     ],
+     "swipes_at_edge": 0,
+     "swipes_during_updates": [
+      6,
+      6,
+      6
+     ],
+     "swipes_moved": 18,
+     "updates": {
+      "fps": {
+       "max": 39.05,
+       "median": 38.23,
+       "min": 36.55,
+       "n": 3
+      },
+      "frozen_pct": {
+       "max": 0.0,
+       "median": 0.0,
+       "min": 0.0,
+       "n": 3
+      },
+      "jank_pct": {
+       "max": 35.71,
+       "median": 35.71,
+       "min": 30.77,
+       "n": 3
+      },
+      "n": {
+       "max": 14.0,
+       "median": 14.0,
+       "min": 13.0,
+       "n": 3
+      },
+      "p95_ms": {
+       "max": 66.67,
+       "median": 66.67,
+       "min": 66.67,
+       "n": 3
+      }
+     },
+     "updates_all_p95_ms": {
+      "max": 33.33,
+      "median": 33.33,
+      "min": 33.33,
+      "n": 3
+     },
+     "updates_band": "poor",
+     "updates_bands": [
+      "poor",
+      "poor",
+      "poor"
+     ],
+     "updates_errors": [],
+     "updates_level": "good",
+     "updates_levels": [
+      "good",
+      "fluid",
+      "good"
+     ],
+     "viewport": [
+      [
+       [
+        960,
+        480
+       ],
+       1.5
+      ]
+     ]
+    },
+    "typical": {
+     "by_position": {
+      "1": [
+       {
+        "inp_ms": 232,
+        "latency_p95_ms": 99.7,
+        "load_ms": 7130,
+        "scroll_fps": 22.96,
+        "scroll_level": "slow",
+        "scroll_p95_ms": 116.67,
+        "updates_level": "good"
+       }
+      ],
+      "2": [
+       {
+        "inp_ms": 184,
+        "latency_p95_ms": 126.2,
+        "load_ms": 6594,
+        "scroll_fps": 25.64,
+        "scroll_level": "slow",
+        "scroll_p95_ms": 100.0,
+        "updates_level": "fluid"
+       }
+      ],
+      "3": [
+       {
+        "inp_ms": 184,
+        "latency_p95_ms": 111.6,
+        "load_ms": 6493,
+        "scroll_fps": 24.96,
+        "scroll_level": "slow",
+        "scroll_p95_ms": 116.67,
+        "updates_level": "fluid"
+       }
+      ]
+     },
+     "camera_level": "slow",
+     "camera_levels": [
+      "slow",
+      "slow",
+      "fluid"
+     ],
+     "camera_runs": [
+      {
+       "detail": [
+        {
+         "decoded": 365,
+         "dropped": 0,
+         "first_frame_ms": 4198.2,
+         "frames": 365,
+         "h": 720,
+         "max_gap_ms": 266.3,
+         "shown_pct": 100,
+         "source": "quality+rvfc",
+         "stall_presented": 0,
+         "stall_total_ms": 0,
+         "w": 1280,
+         "waiting": 0
+        }
+       ],
+       "expected": 1,
+       "fetches": {
+        "playlist": {
+         "n": 48,
+         "queued_ms": {
+          "max": 24,
+          "median": 8,
+          "p95": 21
+         },
+         "total_ms": {
+          "max": 30,
+          "median": 15,
+          "p95": 29
+         },
+         "wait_ms": {
+          "max": 15,
+          "median": 4,
+          "p95": 14
+         }
+        },
+        "segment": {
+         "arrival_gap_max_ms": 1146,
+         "kb": 2712,
+         "n": 48,
+         "queued_ms": {
+          "max": 38,
+          "median": 8,
+          "p95": 26
+         },
+         "total_ms": {
+          "max": 68,
+          "median": 20,
+          "p95": 56
+         },
+         "wait_ms": {
+          "max": 34,
+          "median": 10,
+          "p95": 21
+         }
+        },
+        "streams": 1
+       },
+       "first_frame_ms": 4198.2,
+       "max_gap_ms": 266.3,
+       "media": {
+        "codecs": [
+         "OMX.allwinner.video.decoder.avc"
+        ],
+        "eos": 1,
+        "flushes": 2
+       },
+       "shown_pct": 100,
+       "stall_total_ms": 0,
+       "streams": 1,
+       "window_ms": 24097
+      },
+      {
+       "detail": [
+        {
+         "decoded": 360,
+         "dropped": 0,
+         "first_frame_ms": 4705.8,
+         "frames": 360,
+         "h": 720,
+         "max_gap_ms": 266.4,
+         "shown_pct": 99.8,
+         "source": "quality+rvfc",
+         "stall_presented": 0,
+         "stall_total_ms": 0,
+         "w": 1280,
+         "waiting": 0
+        }
+       ],
+       "expected": 1,
+       "fetches": {
+        "playlist": {
+         "n": 24,
+         "queued_ms": {
+          "max": 31,
+          "median": 8,
+          "p95": 22
+         },
+         "total_ms": {
+          "max": 33,
+          "median": 13,
+          "p95": 33
+         },
+         "wait_ms": {
+          "max": 10,
+          "median": 3,
+          "p95": 10
+         }
+        },
+        "segment": {
+         "arrival_gap_max_ms": 1206,
+         "kb": 1356,
+         "n": 24,
+         "queued_ms": {
+          "max": 31,
+          "median": 11,
+          "p95": 21
+         },
+         "total_ms": {
+          "max": 66,
+          "median": 24,
+          "p95": 45
+         },
+         "wait_ms": {
+          "max": 22,
+          "median": 11,
+          "p95": 19
+         }
+        },
+        "streams": 1
+       },
+       "first_frame_ms": 4705.8,
+       "max_gap_ms": 266.4,
+       "media": {
+        "codecs": [
+         "OMX.allwinner.video.decoder.avc"
+        ],
+        "eos": 1,
+        "flushes": 3
+       },
+       "shown_pct": 99.8,
+       "stall_total_ms": 0,
+       "streams": 1,
+       "window_ms": 24038
+      },
+      {
+       "detail": [
+        {
+         "decoded": 362,
+         "dropped": 0,
+         "first_frame_ms": 3767,
+         "frames": 362,
+         "h": 720,
+         "max_gap_ms": 199.8,
+         "shown_pct": 100,
+         "source": "quality+rvfc",
+         "stall_presented": 0,
+         "stall_total_ms": 0,
+         "w": 1280,
+         "waiting": 0
+        }
+       ],
+       "expected": 1,
+       "fetches": {
+        "playlist": {
+         "n": 48,
+         "queued_ms": {
+          "max": 31,
+          "median": 9,
+          "p95": 26
+         },
+         "total_ms": {
+          "max": 35,
+          "median": 16,
+          "p95": 34
+         },
+         "wait_ms": {
+          "max": 18,
+          "median": 3,
+          "p95": 15
+         }
+        },
+        "segment": {
+         "arrival_gap_max_ms": 1254,
+         "kb": 2712,
+         "n": 48,
+         "queued_ms": {
+          "max": 67,
+          "median": 10,
+          "p95": 25
+         },
+         "total_ms": {
+          "max": 117,
+          "median": 25,
+          "p95": 58
+         },
+         "wait_ms": {
+          "max": 49,
+          "median": 10,
+          "p95": 43
+         }
+        },
+        "streams": 1
+       },
+       "first_frame_ms": 3767,
+       "max_gap_ms": 199.8,
+       "media": {
+        "codecs": [
+         "OMX.allwinner.video.decoder.avc"
+        ],
+        "eos": 0,
+        "flushes": 1
+       },
+       "shown_pct": 100,
+       "stall_total_ms": 0,
+       "streams": 1,
+       "window_ms": 23815
+      }
+     ],
+     "cards": [
+      50
+     ],
+     "clock_rtt_ms": [
+      8,
+      10,
+      9
+     ],
+     "fcp_ms": null,
+     "first_scroll_ms": {
+      "max": 56.0,
+      "median": 42.0,
+      "min": 39.5,
+      "n": 3
+     },
+     "inp_ms": {
+      "max": 232.0,
+      "median": 184.0,
+      "min": 184.0,
+      "n": 3
+     },
+     "input_method": [
+      "event-timing"
+     ],
+     "latency_median_ms": {
+      "max": 84.4,
+      "median": 83.6,
+      "min": 62.0,
+      "n": 3
+     },
+     "latency_p95_ms": {
+      "max": 126.2,
+      "median": 111.6,
+      "min": 99.7,
+      "n": 3
+     },
+     "load_errors": [],
+     "load_ms": {
+      "max": 7130.0,
+      "median": 6594.0,
+      "min": 6493.0,
+      "n": 3
+     },
+     "nodes": [
+      2843,
+      2844
+     ],
+     "paint_to_screen_ms": null,
+     "positions": [
+      2,
+      1,
+      3
+     ],
+     "scroll": {
+      "fps": {
+       "max": 25.64,
+       "median": 24.96,
+       "min": 22.96,
+       "n": 3
+      },
+      "frozen_pct": {
+       "max": 0.0,
+       "median": 0.0,
+       "min": 0.0,
+       "n": 3
+      },
+      "jank_pct": {
+       "max": 55.14,
+       "median": 50.38,
+       "min": 47.69,
+       "n": 3
+      },
+      "n": {
+       "max": 131.0,
+       "median": 130.0,
+       "min": 107.0,
+       "n": 3
+      },
+      "p95_ms": {
+       "max": 116.67,
+       "median": 116.67,
+       "min": 100.0,
+       "n": 3
+      }
+     },
+     "scroll_band": "poor",
+     "scroll_bands": [
+      "poor",
+      "poor",
+      "poor"
+     ],
+     "scroll_errors": [],
+     "scroll_level": "slow",
+     "scroll_levels": [
+      "slow",
+      "slow",
+      "slow"
+     ],
+     "scroll_limited_by": [
+      "main-thread"
+     ],
+     "scroll_raf_only": [
+      false,
+      false,
+      false
+     ],
+     "scroll_sources": [
+      "raf"
+     ],
+     "scrolled_px": {
+      "max": 3300.0,
+      "median": 3252.0,
+      "min": 3047.0,
+      "n": 3
+     },
+     "sf_swipes": 18,
+     "sf_valid": [
+      true,
+      true,
+      true
+     ],
+     "swipes_at_edge": 0,
+     "swipes_during_updates": [
+      6,
+      6,
+      6
+     ],
+     "swipes_moved": 18,
+     "updates": {
+      "fps": {
+       "max": 31.34,
+       "median": 30.05,
+       "min": 25.19,
+       "n": 3
+      },
+      "frozen_pct": {
+       "max": 0.0,
+       "median": 0.0,
+       "min": 0.0,
+       "n": 3
+      },
+      "jank_pct": {
+       "max": 69.23,
+       "median": 60.0,
+       "min": 58.33,
+       "n": 3
+      },
+      "n": {
+       "max": 15.0,
+       "median": 13.0,
+       "min": 12.0,
+       "n": 3
+      },
+      "p95_ms": {
+       "max": 116.67,
+       "median": 100.0,
+       "min": 100.0,
+       "n": 3
+      }
+     },
+     "updates_all_p95_ms": {
+      "max": 50.0,
+      "median": 33.33,
+      "min": 33.33,
+      "n": 3
+     },
+     "updates_band": "poor",
+     "updates_bands": [
+      "poor",
+      "poor",
+      "poor"
+     ],
+     "updates_errors": [],
+     "updates_level": "fluid",
+     "updates_levels": [
+      "fluid",
+      "good",
+      "fluid"
+     ],
+     "viewport": [
+      [
+       [
+        960,
+        480
+       ],
+       1.5
+      ]
+     ]
+    }
+   },
+   "warmups": [
+    null,
+    null,
+    null
+   ]
+  }
+ },
+ "measured_on": "2026-11-13",
+ "protocol_version": 5,
+ "ram": {
+  "budget": {
+   "budget": {
+    "app_pss_max_pct_of_ram": 50,
+    "device_available_min_pct": 15
+   },
+   "checks": {
+    "app_pss_peak": {
+     "budget_kb": 1011598,
+     "ok": true,
+     "value_kb": 910346
+    },
+    "device_available_min": {
+     "budget_kb": 303479,
+     "ok": true,
+     "value_kb": 722212
+    }
+   },
+   "ok": true
+  },
+  "graded_peak": {
+   "app_pss_kb": 910346,
+   "app_rss_hwm_kb": 1346804,
+   "by_role_pss_kb": {
+    "crashhelper": 7247,
+    "gpu": 273817,
+    "main": 216591,
+    "media": 43930,
+    "tab": 357348,
+    "utility": 15609
+   },
+   "mem_available_min_kb": 722212,
+   "samples": 9
+  },
+  "pane_budget": {},
+  "panes": [],
+  "panes_waiting": [
+   {
+    "id": "diagnostics",
+    "waiting_on": "#67"
+   },
+   {
+    "id": "radio",
+    "note": "its processes run outside the app and are measured in place",
+    "waiting_on": "#67"
+   },
+   {
+    "id": "time-zone",
+    "waiting_on": "#67"
+   },
+   {
+    "id": "timers",
+    "note": "comes only with the voice assistant, so it is inside assist's share",
+    "waiting_on": "#67"
+   },
+   {
+    "id": "wall-base",
+    "waiting_on": "#67"
+   }
+  ],
+  "reference_idle": {
+   "app_pss_kb": {
+    "max": 871575.0,
+    "median": 870600.0,
+    "min": 868183.0,
+    "n": 3
+   },
+   "by_role_pss_kb": {
+    "crashhelper": {
+     "max": 7249.0,
+     "median": 7083.0,
+     "min": 7020.0,
+     "n": 3
+    },
+    "gpu": {
+     "max": 241794.0,
+     "median": 237938.0,
+     "min": 214223.0,
+     "n": 3
+    },
+    "main": {
+     "max": 217213.0,
+     "median": 216307.0,
+     "min": 213195.0,
+     "n": 3
+    },
+    "media": {
+     "max": 30304.0,
+     "median": 28327.0,
+     "min": 28134.0,
+     "n": 3
+    },
+    "tab": {
+     "max": 384960.0,
+     "median": 369261.0,
+     "min": 360973.0,
+     "n": 3
+    },
+    "utility": {
+     "max": 15605.0,
+     "median": 15403.0,
+     "min": 15369.0,
+     "n": 3
+    }
+   },
+   "cpu_app_pct_of_core": {
+    "max": 113.22,
+    "median": 96.88,
+    "min": 91.69,
+    "n": 3
+   },
+   "device_used_pct": {
+    "max": 63.92,
+    "median": 63.78,
+    "min": 62.8,
+    "n": 3
+   },
+   "main_kb": {
+    "code_kb": {
+     "max": 18448.0,
+     "median": 18252.0,
+     "min": 17968.0,
+     "n": 3
+    },
+    "graphics_kb": {
+     "max": 29936.0,
+     "median": 29935.0,
+     "min": 29935.0,
+     "n": 3
+    },
+    "java_heap_kb": {
+     "max": 12076.0,
+     "median": 11708.0,
+     "min": 9980.0,
+     "n": 3
+    },
+    "native_heap_kb": {
+     "max": 25204.0,
+     "median": 24976.0,
+     "min": 24496.0,
+     "n": 3
+    },
+    "private_other_kb": {
+     "max": 106996.0,
+     "median": 105552.0,
+     "min": 100320.0,
+     "n": 3
+    },
+    "stack_kb": {
+     "max": 32.0,
+     "median": 32.0,
+     "min": 32.0,
+     "n": 3
+    },
+    "system_kb": {
+     "max": 26970.0,
+     "median": 26836.0,
+     "min": 26768.0,
+     "n": 3
+    },
+    "total_pss_kb": {
+     "max": 218340.0,
+     "median": 217419.0,
+     "min": 210693.0,
+     "n": 3
+    }
+   },
+   "samples": 3
+  },
+  "screen_off_samples": []
+ },
+ "runs_attempted": 3,
+ "schema": "glassworks.perf/4",
+ "thermal": [
+  {
+   "phase": "start",
+   "zones": {
+    "cpu_thermal_zone": 41.8,
+    "ddr_thermal_zone": 41.4,
+    "gpu_thermal_zone": 40.7
+   }
+  },
+  {
+   "phase": "refstart-1",
+   "zones": {
+    "cpu_thermal_zone": 48.9,
+    "ddr_thermal_zone": 46.9,
+    "gpu_thermal_zone": 46.3
+   }
+  },
+  {
+   "phase": "refstart-2",
+   "zones": {
+    "cpu_thermal_zone": 56.4,
+    "ddr_thermal_zone": 53.4,
+    "gpu_thermal_zone": 53.2
+   }
+  },
+  {
+   "phase": "refstart-3",
+   "zones": {
+    "cpu_thermal_zone": 53.0,
+    "ddr_thermal_zone": 52.8,
+    "gpu_thermal_zone": 52.8
+   }
+  },
+  {
+   "phase": "end",
+   "zones": {
+    "cpu_thermal_zone": 63.2,
+    "ddr_thermal_zone": 62.3,
+    "gpu_thermal_zone": 58.0
+   }
+  }
+ ]
+}

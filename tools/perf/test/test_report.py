@@ -11,6 +11,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 import grade as G  # noqa: E402
 import perflib as P  # noqa: E402
+import statistics  # noqa: E402
 import report as R  # noqa: E402
 import summary as S  # noqa: E402
 
@@ -481,7 +482,93 @@ def tier_entry(tier, inp, scroll_missed=0, updates_missed=0, load_ms=200, fcp_ms
             "measure": {"t": "measure", "stage": "updates", "moving": 12, "offscreen": 0, "targets": 10, "update_every_ms": 200},
             "step": updates_step(nav, updates_missed),
             "input": {"t": "input", "method": "event-timing", "taps": 10, "inp_ms": inp},
+            "camera": camera_line(tier),
             "swipes": [swipe(nav, i, late(60, scroll_missed)) for i in range(3)]}
+
+
+class CameraStreamsAll(unittest.TestCase):
+    """The camera task counts every stream the view shows: heavy with 3 of its 4 streams playing (one
+    never showed a frame, or wasn't found at all) fails it, though the 3 played well (#182's verifier)."""
+
+    def test_three_of_four_fail(self):
+        played = R.camera_run(camera_line("heavy"), "heavy")
+        self.assertEqual(G.camera_level(played), "good")
+        dead = camera_line("heavy")
+        dead["streams"][3].update(first_frame_ms=None, shown_pct=None, frames=0, decoded=0)
+        run = R.camera_run(dead, "heavy")
+        self.assertIsNone(run["first_frame_ms"])
+        self.assertEqual(G.camera_level(run), G.BELOW)
+        missing = camera_line("heavy")
+        missing["streams"] = missing["streams"][:3]
+        missing["found"] = 3
+        run = R.camera_run(missing, "heavy")
+        self.assertEqual((run["streams"], run["expected"]), (3, 4))
+        self.assertEqual(G.camera_level(run), G.BELOW)
+
+
+class CameraFailedRuns(unittest.TestCase):
+    """CodeRabbit on cbc2be6: the numbers are from the runs whose streams all played, and a run with a
+    stream that showed no frame was hidden whenever another run played. Both outputs say how many."""
+
+    def test_a_failed_run_is_said(self):
+        ok = R.camera_run(camera_line("typical"), "typical")
+        dead = camera_line("typical")
+        dead["streams"][0].update(first_frame_ms=None, shown_pct=None)
+        s_ = {"camera_runs": [ok, R.camera_run(dead, "typical"), ok]}
+        self.assertIn("1 of 3 run(s) had a stream that showed no frame", R.camera_cell(s_, {"camera": "slow"}))
+        self.assertIn("(1 of 3 run(s) had a stream that showed no frame)", R.task_phrase("camera", s_))
+        self.assertNotIn("showed no frame", R.camera_cell({"camera_runs": [ok, ok]}, {"camera": "good"}))
+
+
+class CameraDetail(unittest.TestCase):
+    """Detail for the camera task (smoke-cam1, 2026-11-13): which decoders a view got and where its
+    segments were late, so a slow camera can be told apart: the decoder, the link or the page."""
+
+    def test_the_decoders_and_fetches_reach_report_md(self):
+        fetches = {"segment": {"n": 120, "queued_ms": {"median": 2, "p95": 900, "max": 1500},
+                               "wait_ms": {"median": 10, "p95": 40, "max": 80},
+                               "total_ms": {"median": 30, "p95": 1100, "max": 2000}, "kb": 4000, "arrival_gap_max_ms": 5200},
+                   "playlist": {"n": 130, "queued_ms": None, "wait_ms": None, "total_ms": None}, "streams": 4}
+        line = dict(camera_line("heavy"), fetches=fetches)
+        c = {"proc_mono": 20.0, "tiers": {"heavy": dict(tier_entry("heavy", 100), camera=line)},
+             "media": {"heavy": {"codecs": ["OMX.allwinner.video.decoder.avc"] * 4, "flushes": 117, "eos": 43}}}
+        run = R.reference_run(c)["tiers"]["heavy"]["camera_run"]
+        self.assertEqual((run["fetches"]["segment"]["n"], run["media"]["flushes"]), (120, 117))
+        ref = {"tiers": {"heavy": {"camera_runs": [run]}}}
+        md = R.camera_detail(ref)
+        self.assertEqual(md, ["heavy cameras, run 1 (detail): decoders 4 (OMX.allwinner.video.decoder.avc), 117 flushes, "
+                              "43 drains; 120 segments, fetch p95 1100 ms (queued p95 900 ms), longest gap between a "
+                              "stream's segments 5200 ms."])
+        self.assertEqual(R.camera_detail({"tiers": {"heavy": {"camera_runs": [dict(run, media=None, fetches=None)]}}}), [])
+
+    def test_frames_presented_inside_the_stalls_are_said(self):
+        line = camera_line("heavy", stall=2500.0, max_gap=1200.0)
+        for k, st in enumerate(line["streams"]):
+            st["stall_presented"] = 30 if k == 0 else 0
+        run = R.camera_run(line, "heavy")
+        self.assertEqual(run["detail"][0]["stall_presented"], 30)
+        self.assertEqual(run["stall_total_ms"], 2500.0)               # graded as before
+        self.assertEqual(R.camera_detail({"tiers": {"heavy": {"camera_runs": [run]}}}),
+                         ["heavy cameras, run 1 (detail): 30 frames presented inside the stalls (the callbacks', not the stream's)."])
+
+    def test_the_headline_names_the_camera_not_the_view_again(self):
+        """smoke-cam1's headline read "the view takes 6.6 s to open" twice: camera had no phrase of its
+        own and fell through to the open-the-view one."""
+        s_ = {"load_ms": {"median": 6620}, "camera_runs": [{"first_frame_ms": 4405.1, "shown_pct": 100.0}]}
+        self.assertEqual(R.task_phrase("camera", s_), "a camera takes 4.4 s to show its first frame and shows 100% of its frames")
+        self.assertEqual(R.task_phrase("camera", {"camera_runs": [{"first_frame_ms": None, "shown_pct": None}]}),
+                         "a camera never showed a frame")
+
+
+def camera_line(tier, first_ms=600.0, shown=100.0, max_gap=70.0, stall=0.0):
+    """The harness's camera line (#174) for a view with streams: each plays at once and in full."""
+    n = {"typical": 1, "heavy": 4}.get(tier, 0)
+    if not n:
+        return None
+    return {"t": "camera", "stage": tier, "window_ms": 20000, "fps": 15, "expected": n, "found": n,
+            "streams": [{"found": True, "w": 1280 if i == 0 else 640, "h": 720 if i == 0 else 360, "first_frame_ms": first_ms,
+                         "shown_pct": shown, "max_gap_ms": max_gap, "stall_total_ms": stall, "frames": 300, "decoded": 300,
+                         "dropped": 0, "waiting": 0, "source": "quality+rvfc"} for i in range(n)]}
 
 
 def load_frames():
@@ -512,6 +599,14 @@ def idle(label, run, app_pss, cpu_app):
             "device_mem": {"mem_total_kb": 2_000_000, "mem_available_kb": 900_000}}
 
 
+def write_fake_log(d, extra=()):
+    """fakeha.jsonl as run.sh leaves it: the frontend's commands, the stream sent on time."""
+    with open(os.path.join(d, "fakeha.jsonl"), "w") as f:
+        for e in [{"t": 1.0, "type": "auth/current_user", "keys": ["id", "type"], "msg": {"id": 1, "type": "auth/current_user"}},
+                  {"t": 1.1, "stream": "S", "k": 1, "late_ms": 0.4}, *extra]:
+            f.write(json.dumps(e) + "\n")
+
+
 class Build(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -532,6 +627,7 @@ class Build(unittest.TestCase):
             self.write(f"idle-all-on-{k}.json", idle("all-on", k, on, 10.0 + k * 0.1))
             self.write(f"idle-sendspin-off-{k}.json", idle("sendspin-off", k, off, 8.0))
         self.write("idle-assist-off-1.json", idle("assist-off", 1, 600_500, 10.1))
+        write_fake_log(self.dir)
         self.rep = R.build(self.dir)
 
     def write(self, name, obj):
@@ -577,11 +673,15 @@ class Build(unittest.TestCase):
         g = self.rep["grade"]
         self.assertEqual(g["grade"], "B")
         self.assertEqual(g["levels"], {"light": "premium", "typical": "premium", "heavy": "fluid"})
-        self.assertEqual(g["bands"]["heavy"], {"tap": "good", "scroll": "fluid", "updates": "premium", "load": "good"})
+        self.assertEqual(g["bands"]["heavy"], {"tap": "good", "scroll": "fluid", "updates": "premium", "load": "good", "camera": "good"})
+        self.assertEqual(g["bands"]["light"]["camera"], "none")              # no streams on light (#174)
+        heavy = self.rep["graded"]["reference"]["tiers"]["heavy"]
+        self.assertEqual(heavy["camera_levels"], ["good", "good", "good"])
+        self.assertEqual(heavy["camera_runs"][0]["detail"][1]["w"], 640)
         self.assertEqual(g["start"], {"value": 800, "band": "good"})   # process 20.0 s -> engine 20.7 to 20.9 s
         self.assertEqual(g["viewport"], {"state": "ok", "reason": None})
         self.assertFalse(g["provisional"])
-        self.assertEqual(g["headline"], "test-frame: B, a good wall panel for typical dashboards; large ones stay fluid. "
+        self.assertEqual(g["headline"], "test-frame: Clarity B, a good wall panel for typical dashboards; large ones stay fluid. "
                                         "Held back by large dashboards: scrolling averages 45.0 fps (p95 33 ms).")
         self.assertEqual(self.rep["graded"]["reference"]["android_ttid_ms"]["median"], 111)   # reported, not graded
         self.assertEqual(self.rep["real_use"]["dashboard_load_ms"]["median"], 3400)            # not graded either
@@ -597,7 +697,7 @@ class Build(unittest.TestCase):
             self.write(f"refstart-{k}.json", run)
         g = R.build(self.dir)["grade"]
         self.assertEqual(g["grade"], "E")
-        self.assertEqual(g["headline"], "test-frame: E, not a good wall panel, even for light dashboards. Held back by "
+        self.assertEqual(g["headline"], "test-frame: Clarity E, not a good wall panel, even for light dashboards. Held back by "
                                         "light dashboards: scrolling averages 18.5 fps (p95 67 ms); opening the "
                                         "view wasn't measured. Provisional: not everything was measured.")
         self.assertNotIn("53 fps", g["headline"])
@@ -606,7 +706,7 @@ class Build(unittest.TestCase):
         for k in (1, 2, 3):
             self.write(f"refstart-{k}.json", refstart(k, 100, heavy_missed=0))
         g = R.build(self.dir)["grade"]
-        self.assertEqual(g["headline"], "test-frame: A+, premium. Every task holds 60 fps on large dashboards.")
+        self.assertEqual(g["headline"], "test-frame: Clarity A+, premium. Every task holds 60 fps on large dashboards.")
 
     def test_an_a_short_of_premium_says_what_is_short(self):
         """Heavy scrolls at the good rule (54.5 fps, p95 33 ms) but 10% of its frames are late: an A,
@@ -615,7 +715,7 @@ class Build(unittest.TestCase):
             self.write(f"refstart-{k}.json", refstart(k, 100, heavy_missed=6))
         g = R.build(self.dir)["grade"]
         self.assertEqual(g["grade"], "A")
-        self.assertEqual(g["headline"], "test-frame: A, a good wall panel even for large dashboards. Short of A+ "
+        self.assertEqual(g["headline"], "test-frame: Clarity A, a good wall panel even for large dashboards. Short of A+ "
                                         "on large dashboards: scrolling averages 54.5 fps (p95 33 ms).")
 
     def test_the_measured_update_level_reaches_the_grade(self):
@@ -708,7 +808,7 @@ class Build(unittest.TestCase):
         self.assertIsNone(g["grade"])
         self.assertEqual(g["viewport"]["state"], "refused")
         self.assertIn("expected 1.5 (density 240 / 160)", g["refused"])
-        self.assertTrue(g["headline"].startswith("test-frame: not graded."))
+        self.assertTrue(g["headline"].startswith("test-frame: no Clarity grade."))
 
     def test_an_unknown_density_makes_it_provisional(self):
         with open(os.path.join(self.dir, "device.json")) as f:
@@ -846,7 +946,7 @@ class Build(unittest.TestCase):
         g = rep["grade"]
         self.assertIsNone(g["grade"])
         self.assertEqual(g["refused"], "the reference dashboards weren't measured")
-        self.assertTrue(g["headline"].startswith("test-frame: not graded."))
+        self.assertTrue(g["headline"].startswith("test-frame: no Clarity grade."))
         s = S.summarise(rep, allow_provisional=True)
         self.assertEqual(s["not_comparable"], "the reference dashboards weren't measured")
         self.assertEqual(G.grade_summary(s)["status"], "not-comparable")
@@ -903,6 +1003,13 @@ class Build(unittest.TestCase):
         self.assertFalse(panes["assist"]["pss_measurable"])   # inside the 2 MB spread of the all-on runs
         self.assertEqual(panes["radio"]["method"], "process")
         self.assertEqual(panes["radio"]["pss_kb"], 2500)
+
+    def test_pane_diffs_leave_out_a_sample_the_screen_went_off_in(self):
+        self.write("idle-all-on-9.json", dict(idle("all-on", 9, 900_000, 1.0), screen_off=[12.0]))
+        self.write("idle-sendspin-off-9.json", dict(idle("sendspin-off", 9, 100_000, 1.0), screen_off=[12.0]))
+        panes = {p["id"]: p for p in R.build(self.dir)["real_use"]["panes"]}
+        self.assertEqual((panes["sendspin"]["pss_kb"], panes["sendspin"]["samples_on"], panes["sendspin"]["samples_off"]),
+                         (41_000, 3, 3))
 
     def test_a_sample_without_app_processes_is_not_zero_memory(self):
         empty = idle("all-on", 9, 600_000, 10.0)
@@ -985,7 +1092,7 @@ class Build(unittest.TestCase):
 
     def test_markdown_renders(self):
         md = R.markdown(self.rep)
-        self.assertIn("**test-frame: B, a good wall panel for typical dashboards; large ones stay fluid.", md)
+        self.assertIn("**test-frame: Clarity B, a good wall panel for typical dashboards; large ones stay fluid.", md)
         self.assertIn("| heavy (120 cards) | fluid |", md)
         self.assertIn("| scroll |", md)                                 # what holds heavy back from smooth
         self.assertIn("Restart, app process to engine ready: 800 ms (700 to 900, n=3)", md)
@@ -1004,6 +1111,361 @@ class Build(unittest.TestCase):
         out = R.apk_sizes([apk])
         self.assertEqual(out[0]["abis"], ["armeabi-v7a"])
         self.assertEqual(out[0]["parts_bytes"]["native"], 300)
+
+
+
+class Usable(unittest.TestCase):
+    """Protocol 4: open the view and restart end at the first frame on screen that can carry the
+    render in which every first-screen card was drawn, and never before the main thread was free."""
+    # The page's clock: navigation start is at 98 000 ms on logcat's.
+    page = {"mono": 100.0, "epoch_ms": 1_000_000.0, "origin_epoch_ms": 998_000.0,
+            "usable": {"rendered_tick_ms": 1500.0, "first_screen_cards": 13, "interactive_ms": 1510.0}}
+
+    def test_the_first_frame_that_can_carry_the_render(self):
+        # Rendered at 99 500: a frame presented sooner than a refresh later (less 3 ms) was already on its way.
+        when, why = R.usable_on_screen(self.page, [99_505, 99_510, 99_520, 99_540])
+        self.assertEqual((when, why), (99_520, None))
+
+    def test_never_before_the_main_thread_is_free(self):
+        page = dict(self.page, usable=dict(self.page["usable"], interactive_ms=1600.0))
+        self.assertEqual(R.usable_on_screen(page, [99_520]), (99_600, None))
+
+    def test_the_restart_ends_on_the_start_view(self):
+        """The kiosk was pointed at the start view; coming back to any other view isn't the restart."""
+        run = lambda tier: R.reference_run({"proc_mono": 90.0, "restart_page": dict(self.page, tier=tier),  # noqa: E731
+                                            "presents_mono_ms": [99_520]})
+        self.assertEqual((run("start")["start_ms"], run("start")["start_error"]), (9520, None))
+        self.assertIsNone(run("light")["start_ms"])
+        self.assertIn("the 'light' view, not 'start'", run("light")["start_error"])
+
+    def test_a_restart_measured_in_fewer_runs_is_provisional(self):
+        ref = {"graded_runs": 3, "start_ms": {"n": 2}, "tiers": {}}
+        self.assertIn("restart: measured in fewer runs than attempted (2 of 3)", R.coverage_reasons(ref, 3))
+        self.assertEqual(R.coverage_reasons(dict(ref, start_ms={"n": 3}), 3), [])
+
+    def test_not_measured_without_a_frame_or_a_usable_line(self):
+        self.assertEqual(R.usable_on_screen(self.page, [99_505])[1], "no frame on screen after the dashboard rendered")
+        self.assertEqual(R.usable_on_screen(dict(self.page, usable=None), [99_520])[1], "the page didn't report when it was usable")
+
+
+class SentToScreen(unittest.TestCase):
+    """Protocol 4: change to screen runs from when the fake sent the change, so a main thread too busy
+    to read it counts; one it never read in the window counts as not shown by the window's end."""
+    page = {"mono": 100.0, "epoch_ms": 1_000_000.0, "origin_epoch_ms": 998_000.0}     # page t -> 98 000 + t
+
+    def step(self, changes):
+        # Window t0 = 1000 on the page's clock: 99 000 to 103 000 on logcat's; a frame every 16.7 ms.
+        pres = [99_000 + 16.7 * i for i in range(240)]
+        return {"t0": 1000.0, "window_ms": 4000, "from": "sent", "changes": changes, "raf_times": [16.7 * i for i in range(240)],
+                "sf": {"presents_ms": pres, "period_ms": 16.7, "window_ms": [99_000, 103_000], "oldest_ms": 98_000}}
+
+    def test_waiting_for_the_main_thread_counts(self):
+        # Sent at 100, read at 900 (the main thread was busy), drawn in the frame at 910.
+        lat, why = R.change_to_screen(self.step([[100.0, 900.0, 0, 0, 910.0]]), self.page)
+        self.assertIsNone(why)
+        self.assertGreaterEqual(lat["max_ms"], 800 + 16.7 - 3)
+
+    def test_one_never_read_counts_to_the_windows_end(self):
+        lat, _ = R.change_to_screen(self.step([[100.0, 110.0, 0, 0, 120.0], [1000.0, None, 0, 0, None]]), self.page)
+        self.assertEqual(lat["n"], 2)
+        self.assertEqual(lat["max_ms"], 3000.0)                         # 103 000 - 100 000
+        a = R.arrivals(self.step([[100.0, 110.0, 0, 0, 120.0], [1000.0, None, 0, 0, None]]))
+        self.assertEqual((a["sent"], a["arrived"], a["wait_max_ms"]), (2, 1, 10.0))
+
+    def test_it_is_never_skipped_for_updates_that_didnt_arrive(self):
+        """smoke9's heavy: "only 17 of 20 state updates ran" made the page n/a. In protocol 4 the
+        schedule says what was sent; the rest is the panel's to answer for."""
+        why, _ = R.live_check_failed({"offscreen": 0, "moving": 8, "targets": 12, "update_every_ms": 200},
+                                     self.step([[100.0 * k, None, 0, 0, None] for k in range(1, 20)]))
+        self.assertIsNone(why)
+
+
+class FakeLog(unittest.TestCase):
+    """F5: the report reads the fake Home Assistant's log and is provisional on anything wrong."""
+
+    def log(self, *entries):
+        d = tempfile.mkdtemp()
+        write_fake_log(d, entries)
+        return R.fake_ha_log(os.path.join(d, "fakeha.jsonl"))
+
+    def test_a_clean_log(self):
+        log = self.log()
+        self.assertEqual((log["commands"], log["unknown"], log["failed"]), (1, {}, {}))
+        self.assertEqual(R.fake_ha_reasons(log, True), [])
+
+    def test_unknown_failed_or_late(self):
+        log = self.log({"t": 2, "unknown": "energy/get_prefs", "msg": {}}, {"t": 3, "failed": "history/stream", "error": "x"},
+                       {"t": 4, "stream": "S", "k": 2, "late_ms": 250.0})
+        reasons = R.fake_ha_reasons(log, True)
+        self.assertEqual(len(reasons), 3)
+        self.assertIn("energy/get_prefs (1)", reasons[0])
+        self.assertIn("history/stream (1)", reasons[1])
+        self.assertIn("250 ms late", reasons[2])
+        # smoke10's 92 ms isn't a reason: each change is timed from when it was actually sent.
+        self.assertEqual(R.fake_ha_reasons(self.log({"t": 4, "stream": "S", "k": 2, "late_ms": 92.0}), True), [])
+
+    def test_protocol_4_without_the_log_is_provisional(self):
+        self.assertEqual(R.fake_ha_reasons(None, True), ["the fake Home Assistant's log (fakeha.jsonl) is missing"])
+        self.assertEqual(R.fake_ha_reasons(None, False), [])
+
+    def test_a_budgets_file_that_isnt_there_is_an_error(self):
+        """F9: --budgets naming a missing file must not fall back to the defaults silently."""
+        with self.assertRaises(SystemExit):
+            R.load_budgets("aqara-s1-plus", "/nonexistent/budgets.json")
+        self.assertIn("assist", R.load_budgets("aqara-s1-plus")["panes"])       # the frame's own file
+
+    def test_the_head_must_be_on_the_first_screen(self):
+        page = dict(Usable.page, usable=dict(Usable.page["usable"], first_screen_cards=8, head_cards=10))
+        self.assertIn("fewer than the 10 head cards", R.usable_on_screen(page, [99_520])[1])
+
+
+def ram_idle(label, main_kb, cpu=1.0):
+    pkg = "sh.edm.s1kiosk"
+    return {"label": label, "window_s": 15,
+            "processes": {pkg: {"pid": 1, "role": "main", "pss_kb": main_kb, "rss_peak_kb": main_kb},
+                          pkg + ":gpu_process": {"pid": 2, "role": "gpu", "pss_kb": 200_000, "rss_peak_kb": 250_000}},
+            "device_mem": {"mem_total_kb": 2_000_000, "mem_available_kb": 900_000},
+            "cpu": {"procs_pct_of_core": {pkg: cpu}, "device_busy_pct": 10}}
+
+
+def with_boot(sample, boot_kb=29_000):
+    s = dict(sample, processes=dict(sample["processes"]))
+    s["processes"]["sh.edm.s1kiosk:boot"] = {"pid": 3, "role": "boot", "pss_kb": boot_kb, "rss_peak_kb": boot_kb}
+    return s
+
+
+class NoiseBand(unittest.TestCase):
+    """docs/perf.md's claims for perflib.noise_band, by simulation (seeded, normal noise, σ = 1)."""
+
+    def sim(self, n, draws=4000):
+        import random
+        rnd = random.Random(186)
+        bands, low, false = [], 0, 0
+        for _ in range(draws):
+            a, b = [rnd.gauss(0, 1) for _ in range(n)], [rnd.gauss(0, 1) for _ in range(n)]
+            ba, bb = P.noise_band(a), P.noise_band(b)
+            bands.append(ba)
+            low += ba < 0.2
+            false += abs(statistics.median(a) - statistics.median(b)) > max(ba, bb)
+        return statistics.mean(bands), low / draws, false / draws
+
+    def test_three_samples(self):
+        mean, low, false = self.sim(3)
+        self.assertAlmostEqual(mean, 2.0, delta=0.1)       # about 2 σ of one sample
+        self.assertLess(low, 0.02)                         # it rarely collapses (the MAD: 11 %)
+        self.assertLess(false, 0.06)                       # a zero difference reads measurable about 3.5 % of the time
+
+    def test_five_samples(self):
+        """The verifier on #196: the MAD at five averaged 1.64 σ (5% false "measurable");
+        range / d2 runs through seven."""
+        mean, low, false = self.sim(5)
+        self.assertAlmostEqual(mean, 2.0, delta=0.1)
+        self.assertLess(false, 0.03)
+
+    def test_it_doesnt_grow_with_more_samples(self):
+        self.assertLess(self.sim(9)[0], self.sim(3)[0])
+
+    def test_under_two_samples_there_is_none(self):
+        self.assertIsNone(P.noise_band([1.0]))
+        self.assertGreater(P.noise_band([100, 100, 130]), 0)
+
+
+class PaneOnAlone(unittest.TestCase):
+    """#68: a pane's share is the median of its on-alone samples less the median of the all-off ones;
+    the tolerance is the larger noise band (2 × 1.4826 × MAD) of the two sets (#186)."""
+
+    def test_share_and_tolerance(self):
+        idles = {"ref-panes-off": [ram_idle("ref-panes-off", v) for v in (100_000, 104_000, 101_000)],
+                 "ref-assist-on": [ram_idle("ref-assist-on", v) for v in (131_000, 130_000, 136_000)],
+                 "ref-sendspin-on": [ram_idle("ref-sendspin-on", v) for v in (102_000, 103_000, 101_000)]}
+        panes = {p["id"]: p for p in R.pane_on_alone(idles, "sh.edm.s1kiosk")}
+        self.assertEqual(panes["assist"]["pss_kb"], 30_000)                  # 331 000 - 301 000
+        self.assertEqual(panes["assist"]["pss_tolerance_kb"], 7_088)         # 2 × 6 000 / d2(3); the on set is the noisier
+        self.assertTrue(panes["assist"]["pss_measurable"])
+        self.assertEqual(panes["sendspin"]["pss_kb"], 1_000)
+        self.assertFalse(panes["sendspin"]["pss_measurable"])                # inside the off set's 4 725
+        self.assertEqual(panes["assist"]["by_role_pss_kb"], {"gpu": 0, "main": 30_000})
+        self.assertEqual((panes["assist"]["boot_samples_on"], panes["assist"]["boot_pss_kb"]), (0, None))
+
+    def test_one_odd_sample_doesnt_set_the_tolerance_of_many(self):
+        """#186: max - min only grows with n. From five samples the band is the MAD's, so ten samples
+        with one 28 MB off stay near three samples' band, not the 30 MB range."""
+        three = [100_000, 101_000, 102_000]
+        ten = three * 3 + [130_000]
+        def tol(off):
+            idles = {"ref-panes-off": [ram_idle("ref-panes-off", v) for v in off],
+                     "ref-assist-on": [ram_idle("ref-assist-on", v + 30_000) for v in three]}
+            return R.pane_on_alone(idles, "sh.edm.s1kiosk")[0]["pss_tolerance_kb"]
+        self.assertEqual(tol(three), 2_363)                                  # 2 × 2 000 / d2(3)
+        self.assertEqual(tol(ten), 2_965)                                    # 2 × 1.4826 × MAD 1 000
+
+    def test_two_agreeing_samples_and_an_odd_one_dont_give_zero(self):
+        """The verifier on #196: the MAD of three samples is the smaller gap, so 100, 100, 130 gave 0."""
+        idles = {"ref-panes-off": [ram_idle("ref-panes-off", v) for v in (100_000, 100_000, 130_000)],
+                 "ref-assist-on": [ram_idle("ref-assist-on", v) for v in (110_000, 110_000, 110_000)]}
+        p = R.pane_on_alone(idles, "sh.edm.s1kiosk")[0]
+        self.assertEqual(p["pss_tolerance_kb"], 35_440)                      # 2 × 30 000 / d2(3)
+        self.assertFalse(p["pss_measurable"])
+
+    def test_one_sample_a_side_has_no_tolerance(self):
+        """s1p1 (n=1) read ±0.0 MB, measurable, budget ok: no evidence for any of it."""
+        idles = {"ref-panes-off": [ram_idle("ref-panes-off", 100_000)], "ref-assist-on": [ram_idle("ref-assist-on", 130_000)] * 3}
+        p = R.pane_on_alone(idles, "sh.edm.s1kiosk")[0]
+        self.assertEqual((p["pss_tolerance_kb"], p["pss_measurable"], p["cpu_tolerance_pct"], p["cpu_measurable"]),
+                         (None, False, None, False))
+        b = G.pane_budgets([p], {"assist": {"ram_pss_max_kb": 49152}})["assist"]
+        self.assertEqual((b["measurable"], b["ok"]), (False, None))
+        md = "\n".join(R.ram_markdown({"panes": [p], "pane_budget": {"assist": b | {"budget_kb": 49152}}}))
+        row = next(l for l in md.splitlines() if l.startswith("| assist |"))
+        # The verifier on #196: the row said "not measurable" three times, and "one sample" at 3 on.
+        self.assertEqual(row, "| assist | +29.3 MB | none: under 2 samples a side (n=3 on, 1 off) | 48 MB, not measurable "
+                              "| +0.0 % of a core |")
+        self.assertNotIn("within tolerance", md)
+
+    def test_boot_is_reported_apart_from_the_share(self):
+        """#186: `:boot` (29 MB) ran in 1 of 3 Sendspin samples in s1p3 and made its tolerance ±22 MB."""
+        off = [ram_idle("ref-panes-off", v) for v in (100_000, 101_000, 102_000)]
+        on = [ram_idle("ref-sendspin-on", 110_000)] + [with_boot(ram_idle("ref-sendspin-on", v)) for v in (111_000, 112_000)]
+        p = R.pane_on_alone({"ref-panes-off": off, "ref-sendspin-on": on}, "sh.edm.s1kiosk")[0]
+        # With :boot in two of three, it moves the median: counted, the share would read +39 MB.
+        self.assertEqual((p["pss_kb"], p["pss_tolerance_kb"]), (10_000, 2_363))
+        self.assertEqual((p["boot_samples_on"], p["boot_samples_off"], p["boot_pss_kb"]), (2, 0, 29_000))
+        self.assertNotIn("boot", p["by_role_pss_kb"])
+        md = "\n".join(R.ram_markdown({"panes": [p], "pane_budget": {}}))
+        self.assertIn("`:boot` (28.3 MB) ran in 2 of 3 on and 0 of 3 off sample(s)", md)
+
+    def test_nothing_without_the_all_off_samples(self):
+        self.assertEqual(R.pane_on_alone({"ref-assist-on": [ram_idle("ref-assist-on", 1)]}, "sh.edm.s1kiosk"), [])
+
+    def test_the_reference_samples_arent_real_use_and_real_use_labels_arent_panes(self):
+        budgets = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15},
+                   "panes": {"assist": {"switch": "voice_enabled", "ram_pss_max_kb": 20_000}, "radio": {"not_switched": "its mode"}}}
+        ram = R.reference_ram({"ref-idle": [ram_idle("ref-idle", 300_000)],
+                               "ref-panes-off": [ram_idle("ref-panes-off", v) for v in (100_000, 100_500, 101_000)],
+                               "ref-assist-on": [ram_idle("ref-assist-on", v) for v in (130_000, 130_500, 131_000)]},
+                              [{"memory": [ram_idle("x", 320_000), ram_idle("x", 340_000)]}], "sh.edm.s1kiosk", budgets, 2_000_000)
+        self.assertEqual(ram["reference_idle"]["app_pss_kb"]["median"], 500_000)
+        self.assertEqual(ram["graded_peak"]["app_pss_kb"], 540_000)
+        self.assertEqual(ram["graded_peak"]["by_role_pss_kb"], {"gpu": 200_000, "main": 340_000})
+        self.assertEqual(ram["pane_budget"]["assist"]["ok"], False)          # 30 MB against 20 MB, three samples each
+        self.assertEqual(ram["panes_not_switched"], [{"id": "radio", "why": "its mode"}])
+        self.assertEqual(ram["panes_waiting"], [])                            # kept in glassworks.perf/4, empty since #67
+        self.assertIn("Not measured on their own: radio (its mode).", "\n".join(R.ram_markdown(ram)))
+        self.assertTrue(ram["budget"]["ok"])
+        self.assertIsNone(R.reference_ram({}, [], "sh.edm.s1kiosk", budgets, 2_000_000))
+        # F6: a run that failed may have stopped mid-page; its samples aren't the peak.
+        ram = R.reference_ram({}, [{"memory": [ram_idle("x", 320_000)]}, {"error": "x", "memory": [ram_idle("x", 900_000)]}],
+                              "sh.edm.s1kiosk", budgets, 2_000_000)
+        self.assertEqual((ram["graded_peak"]["samples"], ram["graded_peak"]["app_pss_kb"]), (1, 520_000))
+
+
+S1_PANES = {"assist": {"switch": "voice_enabled", "mute": "mic_muted", "state": "mic"},
+            "sendspin": {"switch": "sendspin_enabled", "state": "sendspin"}, "radio": {"not_switched": "its mode"}}
+
+
+def ran(sample, voice, sendspin, mic, screen_off=None):
+    return dict(sample, panes_state={"voice": voice, "sendspin": sendspin, "mic": mic}, screen_off=screen_off)
+
+
+class PanesAsAsked(unittest.TestCase):
+    """s1v7: S1 Kiosk 0.4.3 lost the voice and Sendspin switches, so the "panes off" samples ran
+    both, and Assist read -0.4 % of a core. Only samples whose kiosk log shows what their label says
+    count, and the report says when Assist was off by its microphone mute alone."""
+
+    LOG = ("11-13 00:00:01.000  100  100 I S1ESPHome: ESPHome device 'panel' mac 00:00:00:00:00:00, voice=true\n"
+           "11-13 00:00:02.000  100  100 I S1Sendspin: Sendspin player starting\n"
+           "11-13 00:00:03.000  100  100 I S1Voice: Microphone open: source=VOICE_RECOGNITION\n")
+
+    def test_the_kiosk_log_gives_what_ran(self):
+        self.assertEqual(P.pane_state(self.LOG), {"voice": True, "sendspin": True, "mic": True})
+        muted = self.LOG + "11-13 00:00:04.000  100  100 I S1Voice: Microphone muted (released)\n"
+        self.assertEqual(P.pane_state(muted), {"voice": True, "sendspin": True, "mic": False})
+        # A later start (the app restarted) is the one that counts: nothing after it ran yet.
+        restarted = self.LOG + "11-13 00:00:09.000  200  200 I S1ESPHome: ESPHome device 'panel' mac 00:00:00:00:00:00, voice=false\n"
+        self.assertEqual(P.pane_state(restarted), {"voice": False, "sendspin": False, "mic": False})
+        self.assertIsNone(P.pane_state("nothing from the kiosk")["voice"])
+
+    def test_a_sample_counts_when_it_ran_its_label(self):
+        x = ram_idle("ref-assist-on", 1)
+        self.assertTrue(R.sample_matches(ran(x, True, False, True), "ref-assist-on", S1_PANES))
+        self.assertFalse(R.sample_matches(ran(x, True, True, True), "ref-assist-on", S1_PANES))      # Sendspin too
+        self.assertTrue(R.sample_matches(ran(x, True, False, False), "ref-panes-off", S1_PANES))     # off by its mute
+        self.assertFalse(R.sample_matches(ran(x, True, False, True), "ref-panes-off", S1_PANES))
+        self.assertFalse(R.sample_matches(ran(x, False, False, False, screen_off=[12.5]), "ref-panes-off", S1_PANES))
+        self.assertIsNone(R.sample_matches(x, "ref-panes-off", S1_PANES))                            # not recorded
+
+    def test_a_pane_the_sample_didnt_record_leaves_it_unverified(self):
+        """#210 review: a run from before a pane's switch (#67) has no `pane:<id>` in its log. Its
+        samples still count, but the share isn't marked verified."""
+        x = ram_idle("ref-panes-off", 100_000)
+        panes = dict(S1_PANES, **{"wall-base": {"switch": "wall_base_enabled", "state": "pane:wall-base"}})
+        self.assertIsNone(R.sample_matches(ran(x, True, False, False), "ref-panes-off", panes))
+        recorded = dict(ran(x, True, False, False)["panes_state"], **{"pane:wall-base": False})
+        self.assertTrue(R.sample_matches(dict(x, panes_state=recorded), "ref-panes-off", panes))
+        self.assertFalse(R.sample_matches(dict(x, panes_state=dict(recorded, **{"pane:wall-base": True})), "ref-panes-off", panes))
+
+    def test_samples_that_ran_something_else_are_left_out(self):
+        idles = {"ref-panes-off": [ran(ram_idle("ref-panes-off", 100_000), False, False, False),
+                                   ran(ram_idle("ref-panes-off", 150_000), True, True, True)],   # s1v7's off
+                 "ref-assist-on": [ran(ram_idle("ref-assist-on", 130_000), True, False, True)],
+                 "ref-sendspin-on": [ran(ram_idle("ref-sendspin-on", 110_000), True, True, True)]}
+        panes = {p["id"]: p for p in R.pane_on_alone(idles, PKG, S1_PANES)}
+        self.assertEqual((panes["assist"]["pss_kb"], panes["assist"]["excluded"]), (30_000, 1))
+        self.assertTrue(panes["assist"]["verified"])
+        self.assertNotIn("off_by", panes["assist"])
+        self.assertIn("didn't run sendspin on by itself", panes["sendspin"]["error"])
+        self.assertNotIn("pss_kb", panes["sendspin"])
+
+    def test_every_off_sample_wrong_is_an_error_not_a_number(self):
+        idles = {"ref-panes-off": [ran(ram_idle("ref-panes-off", 150_000), True, True, True)] * 2,
+                 "ref-assist-on": [ran(ram_idle("ref-assist-on", 150_000), True, False, True)]}
+        panes = R.pane_on_alone(idles, PKG, S1_PANES)
+        self.assertEqual([p["id"] for p in panes], ["assist", "sendspin"])
+        self.assertTrue(all("panes-off" in p["error"] for p in panes))
+        md = "\n".join(R.ram_markdown({"panes": panes, "pane_budget": {}}))
+        self.assertIn("| assist | not measured:", md)
+        # The export leaves it out instead of failing on it.
+        self.assertEqual(S.ram_summary({"panes": panes})["panes"], [])
+
+    def test_assist_off_by_its_mute_is_labelled(self):
+        idles = {"ref-panes-off": [ran(ram_idle("ref-panes-off", 100_000), True, False, False)],
+                 "ref-assist-on": [ran(ram_idle("ref-assist-on", 101_000), True, False, True)]}
+        panes = R.pane_on_alone(idles, PKG, S1_PANES)
+        self.assertEqual(panes[0]["off_by"], "mute")
+        self.assertIn("off by its microphone mute only", "\n".join(R.ram_markdown({"panes": panes, "pane_budget": {}})))
+        self.assertEqual(S.ram_summary({"panes": panes})["panes"][0]["off_by"], "mute")
+
+    def test_samples_from_before_the_log_was_read_say_so(self):
+        idles = {"ref-panes-off": [ram_idle("ref-panes-off", 100_000)], "ref-assist-on": [ram_idle("ref-assist-on", 130_000)]}
+        panes = R.pane_on_alone(idles, PKG, S1_PANES)
+        self.assertFalse(panes[0]["verified"])
+        self.assertIn("not checked", "\n".join(R.ram_markdown({"panes": panes, "pane_budget": {}})))
+
+
+class ScreenOff(unittest.TestCase):
+    """s1v7: the screen went off for 0.14 s at the end of a reference idle window. A sample, or a
+    synthetic run, the screen went off in isn't the panel at work: it is listed and left out."""
+
+    def test_an_idle_sample_with_the_screen_off_is_left_out(self):
+        budgets = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15}, "panes": {}}
+        off = dict(ram_idle("ref-idle", 900_000), run=3, screen_off=[14.86])
+        ram = R.reference_ram({"ref-idle": [dict(ram_idle("ref-idle", 300_000), run=1), off]}, [], PKG, budgets, 2_000_000)
+        self.assertEqual(ram["reference_idle"]["samples"], 1)
+        self.assertEqual(ram["screen_off_samples"], ["ref-idle-3"])
+        self.assertIn("The screen went off in ref-idle-3", "\n".join(R.ram_markdown(ram)))
+
+    def test_a_real_use_sample_with_the_screen_off_is_left_out(self):
+        on = dict(ram_idle("all-on", 300_000), run=1)
+        r = R.real_use_summary([], {"all-on": [on, dict(on, run=2, screen_off=[3.0])]}, PKG)
+        self.assertEqual((r["idle"]["samples"], r["screen_off_samples"]), (1, ["all-on-2"]))
+
+    def test_a_synthetic_run_with_the_screen_off_is_left_out(self):
+        good, bad = synthetic_lines(1, 9.0), synthetic_lines(2, 90.0) + [{"t": "screen_off", "mono": 12.0}]
+        runs = [R.synthetic_run(good), R.synthetic_run(bad)]
+        self.assertEqual([r["screen_off"] for r in runs], [False, True])
+        s = R.synthetic_summary(runs)
+        self.assertEqual((s["runs"], s["screen_off_runs"]), (1, 1))
+        self.assertEqual(s["js_burst_ms"]["median"], 9.0)
 
 
 if __name__ == "__main__":

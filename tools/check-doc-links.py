@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Check that relative links and #anchors in README.md and docs/**/*.md resolve.
+"""Check that relative links and #anchors in README.md, docs/**/*.md and frames/**/*.md resolve.
 
-Usage: tools/check-doc-links.py [files...]   (default: README.md and docs/**/*.md)
+Usage: tools/check-doc-links.py [files...]   (default: README.md, docs/**/*.md and frames/**/*.md)
 Exits 1 and lists each broken link. External (http/https/mailto) links are not fetched.
 Anchors follow GitHub's heading slugs, plus explicit <a name/id="..."> tags.
 """
@@ -71,7 +71,11 @@ def check(path):
 
 
 def main(argv):
-    files = [Path(a).resolve() for a in argv] or [ROOT / 'README.md', *sorted((ROOT / 'docs').rglob('*.md'))]
+    files = [Path(a).resolve() for a in argv] or [
+        ROOT / 'README.md',
+        *sorted((ROOT / 'docs').rglob('*.md')),
+        *sorted(p for p in (ROOT / 'frames').rglob('*.md') if 'node_modules' not in p.parts),
+    ]
     failures = 0
     for f in files:
         for b in check(f):

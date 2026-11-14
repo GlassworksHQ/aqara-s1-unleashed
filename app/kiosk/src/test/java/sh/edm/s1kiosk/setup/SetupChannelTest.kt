@@ -1,7 +1,5 @@
 package sh.edm.s1kiosk.setup
 
-import android.content.Context
-import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupOp
 import dev.glassworks.pane.SetupStep
 import org.json.JSONObject
@@ -52,7 +50,6 @@ class SetupChannelTest {
             override val title = "Radio"
             override val reason = "radio mode not chosen"
             override fun done() = false
-            override fun detail(done: Boolean) = ""
             override fun channelState() = RadioDefinition.channelJson(radio.mode, radio.status, radio.helper, radio.allowed)
             override val ops = mapOf(
                 "set_mode" to SetupOp { r ->
@@ -69,7 +66,7 @@ class SetupChannelTest {
                 },
             )
             override val legacyOps = mapOf("set_radio" to "set_mode", "set_radio_allow" to "set_allow")
-            override fun screen(context: Context, host: SetupHost) = throw UnsupportedOperationException()
+            override fun screen(context: android.content.Context, host: dev.glassworks.pane.SetupHost) = throw UnsupportedOperationException()
         }
 
         fun channel() = SetupChannel(this, listOf(step))

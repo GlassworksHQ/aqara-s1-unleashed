@@ -3,8 +3,10 @@ package sh.edm.s1kiosk.frame
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import dev.glassworks.frame.BootRest
 import dev.glassworks.frame.Frame
 import dev.glassworks.pane.PaneContext
+import dev.glassworks.pane.PaneDefinition
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.base.WallBaseDefinition
 import sh.edm.s1kiosk.base.WallBasePane
@@ -14,6 +16,8 @@ import java.util.concurrent.ScheduledExecutorService
 /** The Aqara Panel Hub S1 Plus, the frame this app is built for. */
 class AqaraS1Plus : Frame {
     override val board = "aqara-s1-plus"
+
+    override val bootRest = BOOT_REST
 
     override val presence = Vi5300Presence()
 
@@ -26,12 +30,15 @@ class AqaraS1Plus : Frame {
 
     /** The time zone that Aqara resets at every boot and the root helper puts back, and the wall base. */
     override fun panes(ctx: PaneContext, device: ScheduledExecutorService) = listOf(
-        TimeZonePane(ctx),
+        TimeZonePane(ctx, TimeZonePrefs(ctx.prefs("time-zone"))),
         WallBasePane(ctx, WallBasePane.wantedConfig(WallBasePrefs(ctx.prefs("wall-base")), aqaraCloud), device, aqaraCloud),
     )
 
-    /** The wall base's adb extras. The time zone has nothing to set. */
-    override fun paneDefinitions(context: Context) = listOf(WallBaseDefinition(WallBasePrefs(KioskPrefs(context).paneFile("wall-base"))))
+    /** The wall base's on/off and adb extras, and the time zone's on/off. */
+    override fun paneDefinitions(context: Context): List<PaneDefinition> {
+        val prefs = KioskPrefs(context)
+        return listOf(WallBaseDefinition(prefs.paneFile("wall-base")), TimeZoneDefinition(prefs.paneFile("time-zone")))
+    }
 
     val rootUpdates = RootUpdateInstaller()
 
@@ -54,7 +61,13 @@ class AqaraS1Plus : Frame {
     /** No Android Settings app on its firmware: Aqara's own one has Network -> WLAN. */
     override fun wifiSettingsIntents() = super.wifiSettingsIntents() + LUMI_SETTINGS
 
-    private companion object {
-        val LUMI_SETTINGS: Intent get() = Intent("lumi.settings.SETTINGS").setPackage("com.lumi.settings")
+    companion object {
+        private val LUMI_SETTINGS: Intent get() = Intent("lumi.settings.SETTINGS").setPackage("com.lumi.settings")
+
+        /**
+         * branding/glass-tile/bootanimation.zip's last frame (part2) and its trim offset (BootRestTest
+         * checks both). The boot splash reads it before the user is unlocked, without the runtime.
+         */
+        val BOOT_REST = BootRest(sh.edm.s1kiosk.R.drawable.boot_rest, 554, 189, "On Aqara S1 Plus")
     }
 }

@@ -53,18 +53,17 @@ interface SpeakerMedia {
  * and talks ([PanelEvent.SpeakerClaimed]) and reports voice timers as [PanelEvent.TimersChanged] and
  * [PanelEvent.TimerFinished].
  *
- * The pane always has its entities, also when [voiceEnabled] is false, because the panel has always
- * shown them. Without voice it starts no microphone and no controller.
+ * The core starts it only while voice is on (its switch, [AssistDefinition.switch]), and may stop and start
+ * it again while the panel runs. Its entities stay while it is off, because the panel has always shown them.
  *
  * The core keeps the speaker. It hands over [player] (the voice channel, shared with announcements),
  * [speaker] (the music to pause), [resolveUrl] and [wakeChime] (the chime player is shared with timers).
- * [createInput] makes the microphone and wake word engine from the config, the stored model and a
- * callback that stores the model the user picks. [onVoiceEvent] is how the voice overlay hears about
+ * [createInput] makes the microphone and wake word engine from the config, the stored wake word id and
+ * a callback that stores the word the user picks. [onVoiceEvent] is how the voice overlay hears about
  * every event.
  */
 class AssistPane(
     private val ctx: PaneContext,
-    private val voiceEnabled: Boolean,
     private val player: UrlPlayer,
     private val speaker: SpeakerMedia,
     private val resolveUrl: (String) -> String,
@@ -89,19 +88,20 @@ class AssistPane(
         ),
         SwitchEntity(
             "wake_sound", "Wake sound", "mdi:bell-ring-outline", EntityCategory.CONFIG,
-            get = { prefs.wakeSound }, set = { prefs.wakeSound = it },
+            disabledByDefault = true, get = { prefs.wakeSound }, set = { prefs.wakeSound = it },
         ),
         SwitchEntity(
             "voice_overlay", "Voice overlay", "mdi:message-badge-outline", EntityCategory.CONFIG,
-            get = { prefs.overlay }, set = { prefs.overlay = it },
+            disabledByDefault = true, get = { prefs.overlay }, set = { prefs.overlay = it },
         ),
         NumberEntity(
-            "mic_gain", "Mic gain", "mdi:microphone-plus", min = 0.5f, max = 4f, step = 0.1f, unit = "x",
+            "mic_gain", "Mic gain", "mdi:microphone-plus", disabledByDefault = true, min = 0.5f, max = 4f, step = 0.1f, unit = "x",
             get = { prefs.micGain }, set = { prefs.micGain = it },
         ),
+        // microWakeWord's cutoffs go up to 0.97 (WakeWords.MICRO), openWakeWord's default is 0.5.
         NumberEntity(
-            "wake_word_threshold", "Wake word threshold", "mdi:account-voice", min = 0.1f, max = 0.95f, step = 0.05f,
-            get = { prefs.wakeThreshold }, set = { prefs.wakeThreshold = it },
+            "wake_word_threshold", "Wake word threshold", "mdi:account-voice", disabledByDefault = true, min = 0.1f, max = 0.99f, step = 0.01f,
+            get = { prefs.threshold }, set = { prefs.threshold = it },
         ),
     )
 
@@ -112,9 +112,8 @@ class AssistPane(
     }
 
     override fun start() {
-        if (!voiceEnabled) return
-        val cfg = VoiceConfig(threshold = prefs.wakeThreshold, micGain = prefs.micGain)
-        val engine = createInput(cfg, prefs.wakeModel) { model -> prefs.wakeModel = model }
+        val cfg = VoiceConfig(threshold = prefs.threshold, micGain = prefs.micGain)
+        val engine = createInput(cfg, prefs.wakeWord) { id -> prefs.wakeWord = id }
         engine.onError = { msg -> dispatch(VoiceEvent.Error(msg, local = true)) }
         val c = VoiceAssistantController(
             send = { type, payload -> server?.sendVoice(type, payload) ?: false },
@@ -130,6 +129,8 @@ class AssistPane(
         )
         engine.controller = c
         controller = c
+        // Started again while the server runs (voice turned on): bind() has run already.
+        server?.voice = c
         input = engine
         engine.start(muted = prefs.micMuted)
         watchdog = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "assist-watchdog").apply { isDaemon = true } }
@@ -137,14 +138,19 @@ class AssistPane(
     }
 
     override fun stop() {
+        val running = controller != null
+        // Turned off mid-run: end the run, so its Idle resumes the music and lets go of the speaker. Closed,
+        // not only cancelled: a wake word on its way from the microphone can't start a new run.
+        controller?.close()
         watchdog?.shutdownNow()
         watchdog = null
         input?.stop()
         input = null
-        // The server outlives the panes by a moment while the panel stops: take the stopped controller back.
+        // The server outlives the pane (voice turned off, or the panel stopping): take the stopped controller back.
         server?.let { if (it.voice === controller) it.voice = null }
         controller = null
-        server = null
+        // No voice, no timer reports: the board would stand still.
+        if (running) ctx.emit(PanelEvent.TimersChanged(emptyList()))
     }
 
     override fun onEvent(event: PanelEvent) {
@@ -153,8 +159,11 @@ class AssistPane(
         when (event.key) {
             VoicePrefs.KEY_MIC_MUTED -> engine.setMuted(prefs.micMuted)
             VoicePrefs.KEY_MIC_GAIN -> engine.setGain(prefs.micGain)
-            VoicePrefs.KEY_WAKE_THRESHOLD -> engine.threshold = prefs.wakeThreshold
-            VoicePrefs.KEY_WAKE_MODEL -> engine.setActive(listOfNotNull(prefs.wakeModel.takeIf { it.isNotEmpty() }?.let(TfliteWakeWord::modelName)))
+            VoicePrefs.KEY_WAKE_THRESHOLD, VoicePrefs.KEY_WAKE_CUTOFF -> engine.threshold = prefs.threshold
+            VoicePrefs.KEY_WAKE_WORD -> {
+                engine.setActive(listOfNotNull(prefs.wakeWord.ifEmpty { null }))
+                engine.threshold = prefs.threshold
+            }
         }
     }
 

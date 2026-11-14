@@ -1,6 +1,6 @@
 'use client';
 // A frame's 3D mockup, as on glassworks.dev (`DeviceModel.tsx`, fbfd364): the front glass is one CSS-3D
-// plane with an example dashboard; the body's sides, any parts and a floor shadow are geometry.ts's
+// plane with the frame's render (or an example dashboard); the body's sides, any parts and a floor shadow are geometry.ts's
 // projection of the frame's model, drawn as SVG behind the glass. Light moves, glass doesn't.
 import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import type { FrameModel } from './frame';
@@ -12,8 +12,11 @@ const PAINT_VARS = {
   '--dev-glass': PAINT.glass, '--dev-mirror-a': PAINT.mirrorA, '--dev-mirror-b': PAINT.mirrorB, '--dev-mirror-c': PAINT.mirrorC,
 } as CSSProperties;
 
-/** `aspect` is the stage's width / height: 2 by default, as on Kiln's cards; a taller stage, e.g. 0.8, suits a portrait frame's own page. */
-export function DeviceModel({ id, model, label, aspect = 2 }: { id: string; model: FrameModel; label: string; aspect?: number }) {
+/**
+ * `aspect` is the stage's width / height: 2 by default, as on Kiln's cards; a taller stage, e.g. 0.8, suits a portrait frame's own page.
+ * `screen` is the URL of the frame's render (frame.json `render`) to show on the glass; without it, an example dashboard.
+ */
+export function DeviceModel({ id, model, label, aspect = 2, screen }: { id: string; model: FrameModel; label: string; aspect?: number; screen?: string }) {
   const stage = useRef<HTMLDivElement>(null);
   const g = useMemo(() => geometry(model, aspect), [model, aspect]);
   // --u = 1% of the stage width, for the depth and perspective lengths
@@ -45,7 +48,7 @@ export function DeviceModel({ id, model, label, aspect = 2 }: { id: string; mode
         </svg>
         <div className={s.device} aria-hidden="true">
           <div className={s.front}>
-            <div className={s.screen}><Dashboard layout={g.layout} /></div>
+            <div className={s.screen}>{screen ? <img className={s.render} src={screen} alt="" /> : <Dashboard layout={g.layout} />}</div>
             <div className={s.glare} />
           </div>
         </div>

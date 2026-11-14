@@ -18,10 +18,10 @@ A new library in `libs/` or a new pane needs a branded README header: see
   (`setprop persist.s1kiosk.radio_mode …`, `setprop ctl.start s1kiosk_update`), and must keep working
   on a panel without the patched boot image. Check the `sys.s1kiosk.*` capability properties before
   you use a service. The contracts are in [`../docs/radio.md`](../docs/radio.md#root-helper-contract-v4)
-  and [`../docs/research/root.md`](../docs/research/root.md).
+  and [`../frames/aqara-s1-plus/research/root.md`](../frames/aqara-s1-plus/research/root.md).
 - Aqara's own services (`ha_master`, the system manager's DND rule) fight the kiosk. See
-  [`../docs/research/debloat.md`](../docs/research/debloat.md) and
-  [`screen-policy.md`](../docs/research/screen-policy.md) before you debug a screen that turns off,
+  [`../frames/aqara-s1-plus/research/debloat.md`](../frames/aqara-s1-plus/research/debloat.md) and
+  [`screen-policy.md`](../frames/aqara-s1-plus/research/screen-policy.md) before you debug a screen that turns off,
   Wi-Fi drops or radio conflicts.
 
 ## Build and test
@@ -29,8 +29,11 @@ A new library in `libs/` or a new pane needs a branded README header: see
 - JDK 21 and the Android SDK platform `android-37.2`. GeckoView forces the toolchain (AGP 9, Kotlin
   2.4); don't downgrade it.
 - `./gradlew test` runs the JVM tests for every module. Some tests talk to Python reference
-  implementations in `src/test/resources/` (`aioesphomeapi`, a Sendspin server, openWakeWord). Keep
+  implementations in `src/test/resources/` (`aioesphomeapi`, a Sendspin server, openWakeWord, microWakeWord on LiteRT). Keep
   those passing rather than skipping them.
+- `./gradlew test` needs `jq` on the `PATH`: `ApkAbiListsTest` runs `tools/release/frame-abis.sh`,
+  which reads every frame's `abis` with it. GitHub's runners and macOS 15+ have it; else
+  `brew install jq` or `apt install jq`.
 - Put protocol logic (ESPHome, Improv, EZSP/ASH, the wall base, Sendspin, FLAC) in plain Kotlin
   that a JVM test can drive, and keep the Android glue thin. `app/libs/esphome-api` must stay free of
   Android imports.
@@ -60,8 +63,8 @@ Every UI change needs screenshots in the PR, before and after (see [`../AGENTS.m
 
 - **On the panel:** `adb shell input keyevent KEYCODE_WAKEUP`, put the screen in the state, then
   `adb exec-out screencap -p > after.png`. The intent extras help you get there:
-  `--ez show_setup true --es setup_step wifi|ha|signin|done` (or a pane's step id, e.g. `radio`),
-  `--ez show_signin true`, `--ez settings true`.
+  `--ez show_setup true --es setup_step wifi|ha|signin|panes|done` (a pane's step id, e.g. `radio`,
+  opens that pane's step), `--ez show_signin true`, `--ez settings true`.
 - **Without a panel:** the Robolectric mockups render the real views at the panel's size with the
   Inter font: `./gradlew :kiosk:testDebugUnitTest --tests '*Mockups*' -Ps1MockupDir=/tmp/shots`.
   When you add a view or a state, add it to `RadioMockups`/`TimerMockups` or a new `*Mockups` class,

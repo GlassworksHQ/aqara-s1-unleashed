@@ -24,7 +24,8 @@ import java.io.File
  * It builds the real list through [PanelDevice.initEntities], the same code the device runs at start,
  * with no wall base, the LocalService wall base backend and no dashboards, and compares it with `panel-entities.golden.txt`: one line per
  * entity, sorted by object id (order does not matter to Home Assistant). Fields: object id, key,
- * class, name, icon, device class, category, authOnly, select options.
+ * class, name, icon, device class, category, authOnly, select options, and `disabledByDefault` last
+ * when Home Assistant should add the entity turned off.
  *
  * When a change to the list is on purpose, regenerate the file and commit it with the change:
  * `./gradlew :kiosk:testDebugUnitTest --tests '*PanelEntitiesPinTest*' -Ps1RegenGolden=true`.
@@ -47,7 +48,15 @@ class PanelEntitiesPinTest {
     /** Voice off keeps the same entities: Home Assistant would drop the voice ones otherwise. */
     @Test fun voiceOffKeepsTheSameEntities() {
         if (System.getProperty("s1.regenGolden") == "true") return
-        KioskPrefs(RuntimeEnvironment.getApplication()).voice.enabled = false
+        KioskPrefs(RuntimeEnvironment.getApplication()).paneFile("assist").edit().putBoolean("voice_enabled", false).commit()
+        assertEquals(javaClass.getResourceAsStream("/$GOLDEN")?.bufferedReader()?.readText(), describe(realEntityList()))
+    }
+
+    /** Every pane off keeps the same entities (#67): an off pane's entities stay, and its switch with them. */
+    @Test fun everyPaneOffKeepsTheSameEntities() {
+        if (System.getProperty("s1.regenGolden") == "true") return
+        val app = RuntimeEnvironment.getApplication()
+        GlassworksRuntime(AqaraS1Plus()).paneDefinitions(app).forEach { it.switch?.on = false }
         assertEquals(javaClass.getResourceAsStream("/$GOLDEN")?.bufferedReader()?.readText(), describe(realEntityList()))
     }
 
@@ -79,7 +88,7 @@ class PanelEntitiesPinTest {
         val fields = listOf(
             e.objectId, e.key.toString(), e.javaClass.simpleName, e.name, e.icon, field(e, "deviceClass") ?: "",
             e.category.name, "authOnly=${e.authOnly}", "options=" + (field(e, "options") ?: ""),
-        )
+        ) + listOfNotNull("disabledByDefault".takeIf { e.disabledByDefault })
         fields.joinToString("|") + "\n"
     }
 

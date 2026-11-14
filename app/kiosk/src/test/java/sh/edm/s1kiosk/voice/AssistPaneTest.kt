@@ -39,7 +39,7 @@ class AssistPaneTest {
     private val input = FakeInput()
     private var created: Triple<VoiceConfig, String, (String) -> Unit>? = null
 
-    private fun pane(voiceEnabled: Boolean = true, onVoiceEvent: (VoiceEvent) -> Unit = { heard += it }) = AssistPane(
+    private fun pane(onVoiceEvent: (VoiceEvent) -> Unit = { heard += it }) = AssistPane(
         ctx = PaneContext(
             app, KioskPrefs(app)::paneFile,
             DeviceIdentity(
@@ -48,7 +48,6 @@ class AssistPaneTest {
             ),
             publishStates = {}, emit = { events += it }, entitiesChanged = {}, sendEvent = { _, _ -> },
         ),
-        voiceEnabled = voiceEnabled,
         player = object : UrlPlayer {
             override fun play(urls: List<String>, onDone: (Boolean) -> Unit) {}
             override fun stop() {}
@@ -61,7 +60,7 @@ class AssistPaneTest {
     )
 
     private val panes = ArrayList<AssistPane>()
-    private fun started(voiceEnabled: Boolean = true) = pane(voiceEnabled).also { panes += it; it.start() }
+    private fun started() = pane().also { panes += it; it.start() }
 
     @Before fun setUp() {
         prefs.micMuted = false
@@ -175,21 +174,34 @@ class AssistPaneTest {
         p.onEvent(PanelEvent.SettingChanged("mic_muted"))
         prefs.micGain = 2.5f
         p.onEvent(PanelEvent.SettingChanged("mic_gain"))
-        prefs.wakeThreshold = 0.7f
-        p.onEvent(PanelEvent.SettingChanged("wake_threshold"))
-        prefs.wakeModel = "hey_jarvis.tflite"
-        p.onEvent(PanelEvent.SettingChanged("wake_model"))
+        prefs.wakeCutoff = 0.8f
+        p.onEvent(PanelEvent.SettingChanged("wake_cutoff"))
+        assertEquals(0.8f, input.threshold)
+        prefs.wakeWord = "alexa"
+        p.onEvent(PanelEvent.SettingChanged("wake_word"))
         assertEquals(listOf(true), input.muted)
         assertEquals(listOf(2.5f), input.gains)
-        assertEquals(0.7f, input.threshold)
-        assertEquals(listOf(listOf("hey_jarvis")), input.active)
+        assertEquals(listOf(listOf("alexa")), input.active)
+        assertEquals("a new word starts at its own cutoff", 0.9f, input.threshold)
     }
 
     @Test
-    fun clearingTheWakeModelDeactivatesEveryWakeWord() {
+    fun aLegacyWordUsesOpenWakeWordsThreshold() {
         val p = started()
-        prefs.wakeModel = ""
-        p.onEvent(PanelEvent.SettingChanged("wake_model"))
+        prefs.wakeThreshold = 0.6f
+        prefs.wakeWord = "hey_jarvis_v0.1"
+        p.onEvent(PanelEvent.SettingChanged("wake_word"))
+        assertEquals(0.6f, input.threshold)
+        prefs.wakeThreshold = 0.7f
+        p.onEvent(PanelEvent.SettingChanged("wake_threshold"))
+        assertEquals(0.7f, input.threshold)
+    }
+
+    @Test
+    fun clearingTheWakeWordDeactivatesEveryWakeWord() {
+        val p = started()
+        prefs.wakeWord = ""
+        p.onEvent(PanelEvent.SettingChanged("wake_word"))
         assertEquals(listOf(emptyList<String>()), input.active)
     }
 
@@ -207,23 +219,71 @@ class AssistPaneTest {
     @Test
     fun startBuildsTheEngineFromTheStoredSettingsAndStartsItMutedOrNot() {
         prefs.micGain = 1.5f
-        prefs.wakeThreshold = 0.6f
-        prefs.wakeModel = "alexa.tflite"
+        prefs.wakeWord = "alexa"
+        prefs.wakeCutoff = 0.85f
         prefs.micMuted = true
         started()
-        val (cfg, model, _) = created!!
+        val (cfg, word, _) = created!!
         assertEquals(1.5f, cfg.micGain)
-        assertEquals(0.6f, cfg.threshold)
-        assertEquals("alexa.tflite", model)
+        assertEquals(0.85f, cfg.threshold)
+        assertEquals("alexa", word)
         assertEquals(listOf(true), input.starts)
         assertNotNull(input.controller)
     }
 
     @Test
-    fun thePickedWakeModelIsStored() {
+    fun thePickedWakeWordIsStored() {
         started()
-        created!!.third("hey_jarvis.tflite")
-        assertEquals("hey_jarvis.tflite", prefs.wakeModel)
+        created!!.third("okay_nabu")
+        assertEquals("okay_nabu", prefs.wakeWord)
+    }
+
+    // ---- update from openWakeWord (0.4)
+
+    private fun savedBy04(model: String?, threshold: Float?) {
+        val sp = app.getSharedPreferences("kiosk", 0).edit()
+        if (model != null) sp.putString("wake_model", model)
+        if (threshold != null) sp.putFloat("wake_threshold", threshold)
+        sp.apply()
+    }
+
+    @Test
+    fun theWordSavedBy04MovesToItsMicroWakeWordModelAtItsOwnCutoff() {
+        for ((saved, id, cutoff) in listOf(
+            Triple("hey_jarvis_v0.1.tflite", "hey_jarvis", 0.97f),
+            Triple("alexa_v0.1.tflite", "alexa", 0.9f),
+            Triple("hey_mycroft_v0.1.tflite", "hey_mycroft", 0.95f),
+        )) {
+            app.getSharedPreferences("kiosk", 0).edit().clear().commit()
+            savedBy04(saved, 0.6f)
+            created = null
+            started()
+            assertEquals(saved, id, created!!.second)
+            assertEquals("the 0.4 threshold was on openWakeWord's scale", cutoff, created!!.first.threshold)
+            assertEquals(saved, saved, app.getSharedPreferences("kiosk", 0).getString("wake_model", null))
+        }
+    }
+
+    @Test
+    fun aNewPanelListensForHeyJarvis() {
+        started()
+        assertEquals("hey_jarvis", created!!.second)
+        assertEquals(0.97f, created!!.first.threshold)
+    }
+
+    @Test
+    fun aCustomOpenWakeWordModelSavedBy04StaysOnOpenWakeWord() {
+        savedBy04("my_word_v2.tflite", 0.6f)
+        started()
+        assertEquals("my_word_v2", created!!.second)
+        assertEquals(0.6f, created!!.first.threshold)
+    }
+
+    @Test
+    fun noWakeWordSavedBy04StaysOff() {
+        savedBy04("", null)
+        started()
+        assertEquals("", created!!.second)
     }
 
     @Test
@@ -240,9 +300,78 @@ class AssistPaneTest {
         assertEquals(PanelEvent.SpeakerClaimed(false), events.single())
     }
 
+    /**
+     * #210 review: voice turned off in the middle of a run ends the run. Its Idle resumes the music it
+     * paused and lets go of the speaker; nothing else would, with the watchdog gone.
+     */
     @Test
-    fun withVoiceOffTheEntitiesStayAndNothingRuns() {
-        val p = started(voiceEnabled = false)
+    fun turnedOffMidRunItResumesTheMusicAndLetsGoOfTheSpeaker() {
+        val p = started()
+        val server = ApiServer(0, { identity }, emptyList(), null as sh.edm.esphome.NoiseKeys?, java.net.InetAddress.getLoopbackAddress())
+        p.bind(server)
+        server.start()
+        try {
+            java.net.Socket(java.net.InetAddress.getLoopbackAddress(), server.localPort).use { s ->
+                // As Home Assistant: hello, then subscribe to the voice assistant.
+                val out = s.getOutputStream()
+                out.write(frame(sh.edm.esphome.Msg.HELLO_REQUEST, ProtoWriter().string(1, "Home Assistant 2026.11.0").uint32(2, 1).uint32(3, 10).toByteArray()))
+                out.write(frame(sh.edm.esphome.Msg.SUBSCRIBE_VOICE_ASSISTANT_REQUEST, ProtoWriter().bool(1, true).toByteArray()))
+                out.flush()
+                val c = input.controller!!
+                val end = System.currentTimeMillis() + 5_000
+                while (!c.isSubscribed && System.currentTimeMillis() < end) Thread.sleep(10)
+                assertTrue("Home Assistant subscribed", c.isSubscribed)
+                speaker.playing = true
+                assertTrue("a run started", c.onWakeWord("hey jarvis"))
+                assertEquals(1, speaker.pauses)
+                assertEquals(PanelEvent.SpeakerClaimed(true), events.last { it is PanelEvent.SpeakerClaimed })
+
+                p.stop() // voice turned off while it listens
+
+                assertEquals("the music plays again", 1, speaker.resumes)
+                assertEquals(PanelEvent.SpeakerClaimed(false), events.last { it is PanelEvent.SpeakerClaimed })
+            }
+        } finally {
+            server.stop()
+        }
+    }
+
+    private val identity = DeviceIdentity(
+        name = "test", friendlyName = "Test", macAddress = "02:00:00:00:00:01", esphomeVersion = "x",
+        compilationTime = "x", manufacturer = "x", model = "x", voiceFeatures = 0,
+    )
+
+    private fun frame(type: Int, payload: ByteArray): ByteArray {
+        val o = java.io.ByteArrayOutputStream()
+        fun varint(v: Int) { var x = v; while (x >= 0x80) { o.write((x and 0x7F) or 0x80); x = x ushr 7 }; o.write(x) }
+        o.write(0); varint(payload.size); varint(type); o.write(payload)
+        return o.toByteArray()
+    }
+
+    @Test
+    fun turnedOffAndOnAgainItTakesTheServerAndClearsTheTimers() {
+        val p = started()
+        val server = ApiServer(0, { error("unused") }, emptyList(), null as ByteArray?)
+        p.bind(server)
+        val first = server.voice
+        assertNotNull(first)
+        p.stop() // voice turned off while the server runs
+        assertNull(server.voice)
+        assertEquals("the board stops showing timers nobody reports", PanelEvent.TimersChanged(emptyList()), events.last())
+        created = null
+        events.clear()
+        p.start() // and on again: no bind() this time
+        assertNotNull("a new engine", created)
+        assertNotNull(server.voice)
+        assertTrue("a new controller", server.voice !== first)
+        p.stop()
+        p.stop() // the panel stopping too: nothing more to clear
+        assertEquals(listOf(PanelEvent.TimersChanged(emptyList())), events)
+    }
+
+    @Test
+    fun neverStartedTheEntitiesStayAndNothingRuns() {
+        val p = pane().also { panes += it }
         assertNull(created)
         assertEquals(
             listOf("mute_microphone", "wake_sound", "voice_overlay", "mic_gain", "wake_word_threshold"),
@@ -266,7 +395,8 @@ class AssistPaneTest {
         e.getValue("mic_gain").command(ProtoMessage(ProtoWriter().float(2, 3f).toByteArray()))
         assertEquals(3f, prefs.micGain)
         e.getValue("wake_word_threshold").command(ProtoMessage(ProtoWriter().float(2, 0.8f).toByteArray()))
-        assertEquals(0.8f, prefs.wakeThreshold)
+        assertEquals(0.8f, prefs.threshold)
+        assertEquals("a microWakeWord word's cutoff, not openWakeWord's threshold", 0.5f, prefs.wakeThreshold)
     }
 
     @Test

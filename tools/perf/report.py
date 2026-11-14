@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build report.json and report.md from a tools/perf run directory (MIT). Offline; no adb.
 
-    python3 tools/perf/report.py <run-dir> [--apk app.apk ...] [--budgets tools/perf/budgets.json]
+    python3 tools/perf/report.py <run-dir> [--apk app.apk ...] [--budgets frames/<id>/budgets.json]
 
 The report schema (glassworks.perf/4) is documented in docs/perf.md.
 """
@@ -16,9 +16,14 @@ import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import grade as G  # noqa: E402
+import notes as N  # noqa: E402
 import perflib as P  # noqa: E402
 
 SCHEMA = "glassworks.perf/4"
+HERE = os.path.dirname(os.path.abspath(__file__))
+# Idle samples on Clarity's reference dashboard carry this prefix (run.sh): `ref-idle` after each
+# graded run, `ref-panes-off` and `ref-<pane>-on` for the panes. They aren't real use.
+REF_LABEL = "ref-"
 SETTLE_GAP_MS = 750
 # The page's times reach logcat's clock through its log line, which logcat stamps a few ms late
 # (nav start mapped 11 to 23 ms before PageStart on the S1, 2026-11-12). The frame that shows the
@@ -107,6 +112,8 @@ def synthetic_run(lines):
         "js": js and {"median_ms": js["median_ms"], "p95_ms": js["p95_ms"],
                       "checksum_ok": js["checksum"] == js["expected"]},
         "complete": any(l["t"] == "done" for l in lines),
+        # The screen went off while the page ran (perfrun.py synthetic): its frames aren't the panel's at work.
+        "screen_off": any(l["t"] == "screen_off" for l in lines),
     }
 
 
@@ -115,7 +122,10 @@ def geckoview_version(ua):
     return m.group(1) if m else None
 
 
-def synthetic_summary(runs):
+def synthetic_summary(all_runs):
+    # A run the screen went off in is listed (per_run) but left out of the medians.
+    runs = [r for r in all_runs if not r.get("screen_off")]
+
     def sp(f):
         return P.spread([f(r) for r in runs])
 
@@ -129,6 +139,7 @@ def synthetic_summary(runs):
                 ladder[fam][k + "_at_top"] = all(x[k] == x["top_step"] for x in fam_runs)
     return {
         "runs": len(runs),
+        "screen_off_runs": len(all_runs) - len(runs),
         "complete_runs": sum(1 for r in runs if r["complete"]),
         "ladder": ladder,
         "steps_without_sf": sum(1 for r in runs for f in r["ladder"].values() for st in f["steps"] if not st["sf_valid"]),
@@ -167,6 +178,27 @@ def first_paint_on_screen(presents_ms, fcp_ms, live_ms):
     return next((t for t in sorted(presents_ms) if fcp_ms - PAINT_SLACK_MS <= t <= live_ms), None)
 
 
+def usable_on_screen(page, presents_ms, period=None):
+    """Protocol 4: when HA's real frontend was usable, on logcat's clock (ms), or (None, why). The
+    harness logs the animation frame in which every first-screen card had rendered and the moment
+    a posted task ran within 50 ms (the main thread free). Usable is the first frame SurfaceFlinger
+    presented that can carry that render (one refresh after its frame at the earliest), and never
+    before the main thread was free."""
+    u = (page or {}).get("usable")
+    if not u or u.get("rendered_tick_ms") is None:
+        return None, "the page didn't report when it was usable"
+    if u.get("head_cards") is not None and (u.get("first_screen_cards") or 0) < u["head_cards"]:
+        # F1: every view's head (10 cards) is on its first screen; fewer means it wasn't all drawn.
+        return None, f"usable with {u.get('first_screen_cards')} cards on the first screen, fewer than the {u['head_cards']} head cards"
+    period = period or P.BUDGET_MS
+    earliest = P.page_to_mono_ms(page, u["rendered_tick_ms"]) + period - PRESENT_SLACK_MS
+    shown = next((t for t in sorted(presents_ms) if t >= earliest), None)
+    if shown is None:
+        return None, "no frame on screen after the dashboard rendered"
+    free = P.page_to_mono_ms(page, u["interactive_ms"]) if u.get("interactive_ms") is not None else shown
+    return max(shown, free), None
+
+
 def change_frames(step, period=None):
     """The live-update frames that had a change to draw. A change is due at a fixed time, runs when the
     main thread gets to it, and its transition lasts d ms (HA's 180 ms on a tile; 0 for text). A rAF
@@ -181,7 +213,9 @@ def change_frames(step, period=None):
     if not chg:
         return None, "nothing changed during the window"
     ts = sorted(times)
-    spans = [(c[0], c[1] + c[2]) for c in chg]
+    # A change that never arrived (protocol 4: the main thread didn't get to it) spans to the end.
+    end = ts[-1] if ts else 0
+    spans = [(c[0], (c[1] if c[1] is not None else end) + c[2]) for c in chg]
     xs = [b - a for a, b in zip(ts, ts[1:]) if any(due < b and end >= a for due, end in spans)]
     return P.frame_stats(xs, period), None
 
@@ -196,8 +230,11 @@ PRESENT_SLACK_MS = 3
 
 
 def change_to_screen(step, page, period=None):
-    """The graded live-updates measure (rubric v5): per change, from when the page applied it (ran)
-    to the first frame on screen that can show it. The change is drawn in the next animation frame
+    """The graded live-updates measure (rubric v5): per change, from when it started (protocol 4,
+    `from: sent`: when the fake Home Assistant sent it, from the stream's schedule; before, when the
+    page applied it) to the first frame on screen that can show it. On HA's frontend the page reads a
+    change on its main thread, so a busy main thread holds it back before anything is drawn: that
+    wait counts. A change that hadn't arrived when the window was logged has no frame either. The change is drawn in the next animation frame
     (tick), which reaches the screen one refresh later at the earliest; presents before that are
     frames already on their way. A change with no frame by the window's end, at least NO_FRAME_MS
     after it, counts as the time to the window's end (conservative).
@@ -214,21 +251,29 @@ def change_to_screen(step, page, period=None):
     end = (sf.get("window_ms") or [None, None])[1]
     raf = sorted(step.get("raf_times") or [])
     out, skipped = [], 0
+    sent_mode = step.get("from") == "sent"
     for c in step["changes"]:
-        ran = c[1]
-        if ran < 0:
-            continue                      # applied before the window; its transition ran into it
-        tick = c[4] if len(c) > 4 and c[4] is not None else next((r for r in raf if r > ran), None)
-        m_ran = P.page_to_mono_ms(page, step["t0"] + ran)
-        if tick is None or (oldest is not None and m_ran < oldest):
+        start, ran = (c[0] if sent_mode else c[1]), c[1]
+        if start < 0:
+            continue                      # before the window; its transition ran into it
+        m_start = P.page_to_mono_ms(page, step["t0"] + start)
+        if oldest is not None and m_start < oldest:
             skipped += 1
             continue
-        earliest = max(P.page_to_mono_ms(page, step["t0"] + tick) + period - PRESENT_SLACK_MS, m_ran)
-        nxt = next((t for t in pres if t >= earliest), None)
+        if ran is None:
+            nxt = None                    # it never reached the page in the window: no frame shows it
+        else:
+            tick = c[4] if len(c) > 4 and c[4] is not None else next((r for r in raf if r > ran), None)
+            if tick is None and not sent_mode:
+                skipped += 1
+                continue
+            m_ran = P.page_to_mono_ms(page, step["t0"] + ran)
+            nxt = None if tick is None else next(
+                (t for t in pres if t >= max(P.page_to_mono_ms(page, step["t0"] + tick) + period - PRESENT_SLACK_MS, m_ran)), None)
         if nxt is not None:
-            out.append(round(nxt - m_ran, 1))
-        elif end is not None and end - m_ran >= NO_FRAME_MS:
-            out.append(round(end - m_ran, 1))
+            out.append(round(nxt - m_start, 1))
+        elif end is not None and end - m_start >= NO_FRAME_MS:
+            out.append(round(end - m_start, 1))
         else:
             skipped += 1                  # too close to the window's end to tell
     if not out:
@@ -238,6 +283,48 @@ def change_to_screen(step, page, period=None):
     xs = sorted(out)
     return {"n": len(xs), "median_ms": P.nearest_rank(xs, 0.5), "p95_ms": P.nearest_rank(xs, 0.95),
             "max_ms": xs[-1], "skipped": skipped}, None
+
+
+def camera_run(line, tier):
+    """One run's live cameras (#174), from the harness's camera line: the worst stream's first frame
+    (from the navigation, so it includes building the view), share of frames shown, longest gap and stalls (gaps over 500 ms) added
+    up, and each stream as detail. A stream that never showed a frame makes the run's first frame
+    and shown None, which fails the task (it was measured: the panel didn't play it). None on a view
+    without streams, or when the line never came (then the task isn't measured)."""
+    if tier not in G.CAMERA_PAGES or not line:
+        return None
+    streams = line.get("streams") or []
+    played = [s for s in streams if s.get("first_frame_ms") is not None and s.get("shown_pct") is not None]
+    whole = len(played) == len(streams) and len(streams) >= (line.get("expected") or 0)
+    return {
+        "first_frame_ms": max(s["first_frame_ms"] for s in played) if whole and played else None,
+        "shown_pct": min(s["shown_pct"] for s in played) if whole and played else None,
+        "max_gap_ms": max((s.get("max_gap_ms") or 0) for s in played) if whole and played else None,
+        "stall_total_ms": max((s.get("stall_total_ms") or 0) for s in played) if whole and played else None,
+        "streams": len(streams), "expected": line.get("expected"), "window_ms": line.get("window_ms"),
+        "detail": [{k: s.get(k) for k in ("w", "h", "first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms", "stall_presented",
+                                            "frames", "decoded", "dropped", "waiting", "source")} for s in streams],
+        # Detail, not graded: the streams' HLS fetches in the window (stats.js hlsFetches), and the
+        # decoders the view got (reference_run adds `media`, from logcat).
+        "fetches": line.get("fetches"),
+    }
+
+
+def arrivals(step):
+    """Protocol 4 detail: of the changes the fake sent in the window, how many reached the page's main
+    thread before the window was logged, and how long they waited to (from sent to read). A long wait
+    is HA's main thread busy; the change-to-screen latency includes it. None before protocol 4."""
+    if step.get("from") != "sent":
+        return None
+    win = step.get("window_ms") or 0
+    sent = [c for c in step.get("changes") or [] if 0 <= c[0] <= win]
+    waits = sorted(c[1] - c[0] for c in sent if c[1] is not None)
+    return {"sent": len(sent), "arrived": len(waits),
+            "wait_p95_ms": round(P.nearest_rank(waits, 0.95), 1) if waits else None,
+            "wait_max_ms": round(waits[-1], 1) if waits else None,
+            # The page's clock tied to the fake's to within half this; None: not tied (the send times
+            # are then when the harness asked for the stream, so too early: against the panel).
+            "clock_rtt_ms": step.get("clock_rtt_ms")}
 
 
 def state_ticks(step):
@@ -258,6 +345,10 @@ def live_check_failed(check, step=None):
     if not check.get("targets"):
         return "nothing on the page to update (0 targets)", False
     every = check.get("update_every_ms")
+    if step is not None and step.get("from") == "sent":
+        # Protocol 4: every change the fake sent is in the log, from its schedule, whether or not the
+        # page got to it; one it never got to counts as not shown. Nothing here is a reason to skip.
+        return None, False
     if step is not None and every:
         expected = int((step.get("window_ms") or 0) // every)
         ran = state_ticks(step)
@@ -329,7 +420,15 @@ def tier_run(tier, entry, presents_ms):
     # A lost updates step (smoke7: cut off in logcat) leaves only the live updates unmeasured.
     no_step = not step
     step = step or {}
-    if not page.get("load_ms") or not page.get("fcp_ms"):
+    if page.get("usable") is not None:
+        # Protocol 4: open the view = navigation start to a usable dashboard (usable_on_screen).
+        when, why = usable_on_screen(page, presents_ms)
+        if why:
+            out["load_error"] = why
+        else:
+            out["load_ms"] = round(when - P.page_to_mono_ms(page, page.get("nav_ms") or 0))
+            out["first_screen_cards"] = page["usable"].get("first_screen_cards")
+    elif not page.get("load_ms") or not page.get("fcp_ms"):
         out["load_error"] = "no load event or first paint reported"
     else:
         nav = P.page_to_mono_ms(page, 0)
@@ -359,9 +458,11 @@ def tier_run(tier, entry, presents_ms):
     out["updates"] = pacing
     lat, why = change_to_screen(step, page, period)
     out["latency"] = lat
+    out["arrivals"] = arrivals(step)
     out["updates_run"] = None if lat is None else {
         "latency_n": lat["n"], "latency_median_ms": lat["median_ms"], "latency_p95_ms": lat["p95_ms"],
-        "frames": frame_facts(pacing) if pacing else None}
+        "frames": frame_facts(pacing) if pacing else None,
+        **({"sent": out["arrivals"]["sent"], "arrived": out["arrivals"]["arrived"]} if out["arrivals"] else {})}
     if why:
         out["updates_error"] = why
     why, voids_taps = live_check_failed(entry.get("measure") or {}, step)
@@ -370,6 +471,7 @@ def tier_run(tier, entry, presents_ms):
         why = "the page's updates step never arrived"
     if why:
         out.update(updates=None, latency=None, updates_run=None, updates_error=why)
+    out["camera_run"] = camera_run(entry.get("camera"), tier)
     inp = entry.get("input") or {}
     out.update(inp_ms=None if voids_taps or not inp.get("taps") else inp.get("inp_ms"), input_method=inp.get("method"),
                fcp_ms=page.get("fcp_ms"), nodes=page.get("nodes"), cards=page.get("cards"))
@@ -386,13 +488,33 @@ def tier_run(tier, entry, presents_ms):
 
 
 def reference_run(c):
-    """One graded run: restart (process start to engine ready, both stamped on the device, so the
-    harness's adb round trips aren't in it), then each reference dashboard."""
+    """One graded run: restart (protocol 4: process start to the reference dashboard the kiosk comes
+    back to being usable; before it, to engine ready), then each reference dashboard."""
     base = {"ttid_ms": c.get("ttid_ms"), "launch": c.get("launch"), "own_page_state": c.get("own_page_state"),
             "own_page_loads": c.get("own_page_loads"), "engine_uri": c.get("engine_uri")}
     proc, engine = c.get("proc_mono"), c.get("engine_mono")
     start, start_error = None, None
-    if proc is None or engine is None:
+    base["engine_ready_ms"] = round((engine - proc) * 1000) if proc is not None and engine is not None else None
+    restart_page = c.get("restart_page")
+    base["restart_to"] = "usable" if c.get("protocol_restart") or restart_page is not None else "engine-ready"
+    if base["restart_to"] == "usable":
+        # Protocol 4: restart = process start to the kiosk's own page (the reference dashboard it was
+        # pointed at) being usable on screen. Engine ready stays as detail.
+        if proc is None:
+            start_error = "no process start in logcat"
+        elif restart_page is None:
+            start_error = c.get("restart_page_error") or "the kiosk didn't come back to a reference dashboard"
+        elif restart_page.get("tier") != "start":
+            # The restart ends on the start view, the one the kiosk was pointed at: any other view
+            # (a stale setting, a page the kiosk restored) isn't the cold load this times.
+            start_error = f"the kiosk came back to the {restart_page.get('tier')!r} view, not 'start'"
+        else:
+            when, why = usable_on_screen(restart_page, c.get("presents_mono_ms") or [])
+            if why:
+                start_error = why
+            else:
+                start = round(when - proc * 1000)
+    elif proc is None or engine is None:
         start_error = "no process start or engine ready in logcat"
     elif c.get("engine_uri") not in (None, "about:blank"):
         # Engine ready is GeckoView's own first page; any other first page may already wait on the network.
@@ -400,6 +522,9 @@ def reference_run(c):
     else:
         start = round((engine - proc) * 1000)
     tiers = {t: tier_run(t, e, c.get("presents_mono_ms") or []) for t, e in (c.get("tiers") or {}).items()}
+    for t, r in tiers.items():
+        if r.get("camera_run") is not None:
+            r["camera_run"]["media"] = (c.get("media") or {}).get(t)
     base["bad_page_lines"] = c.get("bad_page_lines") or 0
     base["lost_scroll_steps"] = sum((e.get("lost_scroll_steps") or 0) for e in (c.get("tiers") or {}).values())
     order = c.get("order") or list(c.get("tiers") or {})
@@ -478,6 +603,9 @@ def reference_summary(all_runs):
             # The grade's updates: change to screen, each run's level, then the median level.
             "latency_p95_ms": P.spread([(x.get("latency") or {}).get("p95_ms") for x in rs]),
             "latency_median_ms": P.spread([(x.get("latency") or {}).get("median_ms") for x in rs]),
+            "camera_runs": [x["camera_run"] for x in rs if x.get("camera_run")],
+            "camera_levels": [G.camera_level(x["camera_run"]) for x in rs if x.get("camera_run")],
+            "camera_level": G.median_level(G.camera_level(x["camera_run"]) for x in rs if x.get("camera_run")),
             "updates_levels": [G.update_level(x["updates_run"]) for x in rs if x.get("updates_run")],
             "updates_level": G.median_level(G.update_level(x["updates_run"]) for x in rs if x.get("updates_run")),
             "swipes_during_updates": [x.get("swipes_during_updates") for x in rs if x.get("scroll")],
@@ -486,6 +614,8 @@ def reference_summary(all_runs):
             # The same page at each place in the order (the runs rotate it), so an order effect shows.
             "by_position": by_position(rs),
             "fcp_ms": P.spread([x["fcp_ms"] for x in rs]),
+            "clock_rtt_ms": [(x.get("arrivals") or {}).get("clock_rtt_ms") for x in rs if x.get("arrivals")],
+            "arrivals": [x.get("arrivals") for x in rs if x.get("arrivals")],
             "nodes": sorted({x["nodes"] for x in rs if x.get("nodes")}),
             "cards": sorted({x["cards"] for x in rs if x.get("cards")}),
             "viewport": sorted({(tuple(x["css"]) if x.get("css") else None, x.get("dpr")) for x in rs}, key=str),
@@ -499,6 +629,9 @@ def reference_summary(all_runs):
         # Android's TTID: the first frame of the launched activity, which on a kiosk is its own
         # loading screen. Reported, not graded.
         "android_ttid_ms": P.spread([r["ttid_ms"] for r in runs]),
+        "engine_ready_ms": P.spread([r.get("engine_ready_ms") for r in runs]),
+        # Protocol 4: the restart ends at a usable reference dashboard (the kiosk was pointed at it).
+        "restart_to": "usable" if any(r.get("restart_to") == "usable" for r in all_runs) else "engine-ready",
         "launch": sorted({r["launch"] for r in runs if r.get("launch")}),
         "own_page_states": sorted({r["own_page_state"] for r in runs if r.get("own_page_state")}),
         "orders": [r.get("order") for r in runs],
@@ -519,7 +652,8 @@ def grade_inputs(graded):
     ref = graded.get("reference") or {}
     med = lambda x: x and x["median"]  # noqa: E731
     tiers = {t: {"inp_ms": med(s["inp_ms"]), "load_ms": med(s["load_ms"]),
-                 "scroll_level": s["scroll_level"], "updates_level": s["updates_level"]}
+                 "scroll_level": s["scroll_level"], "updates_level": s["updates_level"],
+                 "camera_level": s.get("camera_level")}
              for t, s in (ref.get("tiers") or {}).items()}
     return tiers, med(ref.get("start_ms"))
 
@@ -560,6 +694,18 @@ def task_phrase(task, s_):
         if med("latency_p95_ms") is None:
             return "live updates weren't measured"
         return f"a change takes {med('latency_p95_ms'):.0f} ms to show (p95)"
+    if task == "camera":
+        # Each run's worst stream (camera_run); the median of the runs, as the level is.
+        runs = (s_ or {}).get("camera_runs") or []
+        if not runs:
+            return "the cameras weren't measured"
+        ff = [r["first_frame_ms"] for r in runs if r.get("first_frame_ms") is not None]
+        if not ff:
+            return "a camera never showed a frame"
+        shown = statistics.median(r["shown_pct"] for r in runs if r.get("shown_pct") is not None)
+        failed = len(runs) - len(ff)
+        return (f"a camera takes {statistics.median(ff) / 1000:.1f} s to show its first frame and shows {shown:.0f}% of its frames"
+                + (f" ({failed} of {len(runs)} run(s) had a stream that showed no frame)" if failed else ""))
     if med("load_ms") is not None:
         return f"the view takes {med('load_ms') / 1000:.1f} s to open"
     return "opening the view wasn't measured"
@@ -576,9 +722,9 @@ def headline(name, g, ref):
     scrolling averages 41.5 fps (p95 50 ms).' The second sentence names the tasks that keep it
     from the next letter up, so it never reads against the letter."""
     if g["grade"] is None:
-        return f"{name}: not graded. {g['refused']}."
+        return f"{name}: no {G.NAME} grade. {g['refused']}."
     hb = held_back(g, ref)
-    out = f"{name}: {g['grade']}, {g['meaning']}."
+    out = f"{name}: {G.NAME} {g['grade']}, {g['meaning']}."
     if g["grade"] == G.LETTER_ORDER[0] and not g["missing"]:
         # Only when everything was measured: A+ needs only heavy, and it isn't absolute without the rest.
         out += " Every task holds 60 fps on large dashboards."
@@ -663,6 +809,9 @@ def idle_frames(idle):
 
 
 def real_use_summary(cold, idles, package):
+    # A sample the screen went off in isn't the panel at work: listed, and left out.
+    off = sorted(f"{i['label']}-{i['run']}" for runs in idles.values() for i in runs if i.get("screen_off"))
+    idles = {k: [i for i in v if not i.get("screen_off")] for k, v in idles.items()}
     on = idles.get("all-on", [])
     mems = [app_memory(i) for i in on]
     cpus = [app_cpu(i, package) for i in on]
@@ -677,6 +826,7 @@ def real_use_summary(cold, idles, package):
         "settle_how": sorted({c["settle"] for c in cold if c.get("settle")}),
         "launch": sorted({c["launch"] for c in cold if c.get("launch")}),
         "errors": [c["error"] for c in cold if c.get("error")],
+        "screen_off_samples": off,
         "idle": {
             "samples": len(on),
             "app_pss_kb": P.spread([m["app_pss_kb"] for m in mems]),
@@ -699,7 +849,9 @@ def real_use_summary(cold, idles, package):
 
 
 def pane_diffs(idles, package):
-    """Each `<pane>-off` label against the all-on samples. A delta inside the all-on range is noise."""
+    """Each `<pane>-off` label against the all-on samples. A delta inside the all-on range is noise.
+    A sample the screen went off in is left out (real_use_summary lists it)."""
+    idles = {k: [i for i in v if not i.get("screen_off")] for k, v in idles.items()}
     on = [i for i in idles.get("all-on", []) if app_memory(i)["app_pss_kb"] is not None]
     if not on:
         return []
@@ -722,6 +874,158 @@ def pane_diffs(idles, package):
             "cpu_measurable": abs(d_cpu) > max(on_cpu) - min(on_cpu),
         })
     return out
+
+
+# ---- RAM on the reference dashboard (#68)
+
+def _valid(samples):
+    return [i for i in samples if app_memory(i)["app_pss_kb"] is not None]
+
+
+def sample_matches(sample, label, panes):
+    """Whether an idle sample ran what its label says, from the kiosk's log (panes_state): True,
+    False, or None when the sample didn't record it (runs before 2026-11-13: unverified). The screen
+    going off in the sample's window also makes it False: its CPU isn't the panel's at work."""
+    if sample.get("screen_off"):
+        return False
+    st = sample.get("panes_state")
+    if not st or st.get("voice") is None:
+        return None
+    on = label[len(REF_LABEL):-3] if label.endswith("-on") else None
+    unrecorded = False
+    for pid, p in panes.items():
+        if not p.get("state"):
+            continue
+        ran_it = st.get(p["state"])
+        if ran_it is None:
+            # A run from before the pane's switch (#67): it counts, but isn't checked for this pane.
+            unrecorded = True
+        elif ran_it != (pid == on):
+            return False
+    return None if unrecorded else True
+
+
+def _without_boot(m):
+    return m["app_pss_kb"] - m["by_role"].get("boot", {}).get("pss_kb", 0)
+
+
+def pane_on_alone(ref_idles, package, panes=None):
+    """Each switchable pane on by itself (`ref-<pane>-on`) against every pane off (`ref-panes-off`),
+    on the same reference dashboard: the difference of the medians. The tolerance is the larger of
+    the two sets' noise bands (perflib.noise_band); a difference inside it is noise. Only samples that
+    ran what their label says count (sample_matches); without that record a result is `verified:
+    false`, and with none left it is an error, not a number (s1v7: the kiosk lost every switch).
+    The direct-boot home activity's process (`:boot`, about 29 MB on the S1) isn't a pane and comes
+    and goes between samples (#186), so the share leaves it out and gives how often it ran."""
+    panes = {k: v for k, v in (panes or {}).items() if v.get("switch")}
+    checked = {lab: [(i, sample_matches(i, lab, panes)) for i in _valid(runs)] for lab, runs in ref_idles.items()}
+    off = [i for i, ok in checked.get("ref-panes-off", []) if ok is not False]
+    off_bad = sum(1 for _, ok in checked.get("ref-panes-off", []) if ok is False)
+    off_verified = all(ok for _, ok in checked.get("ref-panes-off", []) if ok is not False)
+    if not off:
+        if off_bad:
+            return [{"id": pid, "method": "on-alone", "error": f"the kiosk didn't run every pane off in {off_bad} panes-off sample(s)"}
+                    for pid in sorted(panes)]
+        return []
+    # Assist off by its microphone mute alone (the kiosk kept voice on): its running cost only.
+    muted_only = any((i.get("panes_state") or {}).get("voice") for i in off)
+    off_m = [app_memory(i) for i in off]
+    off_pss = [_without_boot(m) for m in off_m]
+    off_cpu = [app_cpu(i, package)["app_pct_of_core"] for i in off]
+    out = []
+    for label, pairs in sorted(checked.items()):
+        if not (label.startswith(REF_LABEL) and label.endswith("-on")) or not pairs:
+            continue
+        runs = [i for i, ok in pairs if ok is not False]
+        bad = sum(1 for _, ok in pairs if ok is False)
+        if not runs:
+            out.append({"id": label[len(REF_LABEL):-3], "method": "on-alone",
+                        "error": f"the kiosk didn't run {label[len(REF_LABEL):-3]} on by itself in {bad} sample(s)"})
+            continue
+        on_m = [app_memory(i) for i in runs]
+        on_pss = [_without_boot(m) for m in on_m]
+        on_cpu = [app_cpu(i, package)["app_pct_of_core"] for i in runs]
+        d = statistics.median(on_pss) - statistics.median(off_pss)
+        # Under two samples on either side there is no spread to read: no tolerance, not measurable.
+        bands = [P.noise_band(off_pss), P.noise_band(on_pss)]
+        tol = None if None in bands else round(max(bands))
+        roles = sorted({r for m in on_m + off_m for r in m["by_role"]} - {"boot"})
+        boot = [m["by_role"]["boot"]["pss_kb"] for m in on_m + off_m if "boot" in m["by_role"]]
+        d_cpu = statistics.median(on_cpu) - statistics.median(off_cpu)
+        cpu_bands = [P.noise_band(off_cpu), P.noise_band(on_cpu)]
+        cpu_tol = None if None in cpu_bands else max(cpu_bands)
+        out.append({
+            "id": label[len(REF_LABEL):-3], "method": "on-alone", "samples_on": len(runs), "samples_off": len(off),
+            "pss_kb": round(d), "pss_tolerance_kb": tol, "pss_measurable": tol is not None and abs(d) > tol,
+            "boot_samples_on": sum(1 for m in on_m if "boot" in m["by_role"]),
+            "boot_samples_off": sum(1 for m in off_m if "boot" in m["by_role"]),
+            "boot_pss_kb": round(statistics.median(boot)) if boot else None,
+            "by_role_pss_kb": {r: round(statistics.median([m["by_role"].get(r, {}).get("pss_kb", 0) for m in on_m])
+                                        - statistics.median([m["by_role"].get(r, {}).get("pss_kb", 0) for m in off_m])) for r in roles},
+            "cpu_pct_of_core": round(d_cpu, 2), "cpu_tolerance_pct": None if cpu_tol is None else round(cpu_tol, 2),
+            "cpu_measurable": cpu_tol is not None and abs(d_cpu) > cpu_tol,
+            "verified": off_verified and all(ok for _, ok in pairs if ok is not False),
+            "excluded": bad + off_bad,
+            **({"off_by": "mute"} if muted_only and label == "ref-assist-on" else {}),
+        })
+    return out
+
+
+def reference_ram(ref_idles, refstarts, package, budgets, mem_total_kb):
+    """RAM on Clarity's reference dashboards, per process: at idle on the typical dashboard after each
+    graded run (`ref-idle`), and the largest sample taken between the graded pages (the peak during
+    the graded tasks). Then each switchable pane's share, and the frame's budgets. Not graded."""
+    # A sample the screen went off in (perfrun.py idle: screen_off) isn't the panel at work: left out.
+    idle = [i for i in _valid(ref_idles.get("ref-idle", [])) if not i.get("screen_off")]
+    # Only graded runs that finished: a run that failed may have stopped mid-page (F6).
+    between = [s for r in refstarts if not r.get("error") for s in r.get("memory") or []]
+    between = [s for s in between if app_memory(s)["app_pss_kb"] is not None]
+    if not idle and not between and not ref_idles:
+        return None
+    im = [app_memory(i) for i in idle]
+    bm = [app_memory(s) for s in between]
+    roles = sorted({r for m in im + bm for r in m["by_role"]})
+    out = {
+        "reference_idle": {
+            "samples": len(im),
+            "app_pss_kb": P.spread([m["app_pss_kb"] for m in im]),
+            "by_role_pss_kb": {r: P.spread([m["by_role"].get(r, {}).get("pss_kb") for m in im]) for r in roles},
+            "main_kb": {k: P.spread([m["main"].get(k) for m in im]) for k in sorted({k for m in im for k in m["main"]})},
+            "device_used_pct": P.spread([100 - 100 * m["mem_available_kb"] / m["mem_total_kb"] for m in im
+                                         if m["mem_total_kb"] and m["mem_available_kb"] is not None]),
+            "cpu_app_pct_of_core": P.spread([app_cpu(i, package)["app_pct_of_core"] for i in idle if i.get("cpu")]),
+        } if im else None,
+        "graded_peak": {
+            "samples": len(bm),
+            "app_pss_kb": max(m["app_pss_kb"] for m in bm),
+            "by_role_pss_kb": {r: max(m["by_role"].get(r, {}).get("pss_kb", 0) for m in bm) for r in roles},
+            # Each process's peak RSS since it started (VmHWM), summed: catches a peak between two samples.
+            "app_rss_hwm_kb": max(sum(r["rss_peak_kb"] for r in m["by_role"].values()) for m in bm),
+            "mem_available_min_kb": min((m["mem_available_kb"] for m in bm if m["mem_available_kb"] is not None), default=None),
+        } if bm else None,
+        "panes": pane_on_alone(ref_idles, package, budgets["panes"]),
+        "screen_off_samples": sorted(f"{i['label']}-{i['run']}" for runs in ref_idles.values() for i in runs if i.get("screen_off")),
+        # Kept in glassworks.perf/4, where fields are only added: no frame's pane waits on a switch since #67.
+        "panes_waiting": [{"id": k, "waiting_on": v["waiting_on"], **({"note": v["note"]} if v.get("note") else {})}
+                          for k, v in sorted(budgets["panes"].items()) if v.get("waiting_on")],
+        "panes_not_switched": [{"id": k, "why": v["not_switched"], **({"note": v["note"]} if v.get("note") else {})}
+                               for k, v in sorted(budgets["panes"].items()) if v.get("not_switched")],
+    }
+    peak = out["graded_peak"] or {}
+    avail = [m["mem_available_kb"] for m in im + bm if m["mem_available_kb"] is not None]
+    out["budget"] = G.memory_budget({"app_pss_peak_kb": peak.get("app_pss_kb"), "mem_total_kb": mem_total_kb,
+                                     "mem_available_min_kb": min(avail) if avail else None}, budgets["ram"])
+    out["pane_budget"] = G.pane_budgets(out["panes"], budgets["panes"])
+    return out
+
+
+def load_budgets(frame_id, path=None):
+    """The frame's budgets (frames/<id>/budgets.json, or `path`) over the default (tools/perf/budgets.json)."""
+    default = read_json(os.path.join(HERE, "budgets.json"))
+    if path and not os.path.exists(path):
+        raise SystemExit(f"--budgets {path}: no such file")       # F9: never fall back silently
+    own = path or os.path.join(HERE, "..", "..", "frames", frame_id, "budgets.json")
+    return G.frame_budget(default, read_json(own) if os.path.exists(own) else None)
 
 
 # ---- APK size
@@ -755,6 +1059,55 @@ def apk_sizes(paths):
 
 # ---- assemble
 
+# The page's clock is tied to the fake's by the shortest of 12 round trips; one longer than this
+# leaves the send times uncertain by more than half of it (20 ms: a fifth of the 100 ms bar).
+CLOCK_RTT_MS = 40
+# Each change is timed from when the fake actually sent it (its lateness is in its context id), so a
+# late send doesn't count against the panel. More than one update interval late and the stream's own
+# rhythm (5 a second) wasn't what the protocol says.
+STREAM_LATE_MS = 200
+
+
+def fake_ha_log(path):
+    """What fakeha.jsonl (run.sh --log) says about the fake Home Assistant: the commands the frontend
+    sent, any it didn't know or that failed (the frontend then got an error HA wouldn't send), and how
+    late the fake itself sent the stream's changes. None without the file (runs before 2026-11-13)."""
+    if not os.path.exists(path):
+        return None
+    commands, unknown, failed, late = 0, {}, {}, []
+    with open(path) as f:
+        for line in f:
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            if "type" in e and "msg" in e:
+                commands += 1
+            if "unknown" in e:
+                unknown[e["unknown"]] = unknown.get(e["unknown"], 0) + 1
+            if "failed" in e:
+                failed[e["failed"]] = failed.get(e["failed"], 0) + 1
+            if "stream" in e:
+                late.append(e.get("late_ms") or 0)
+    return {"commands": commands, "unknown": unknown, "failed": failed, "stream_sent": len(late),
+            "stream_late_max_ms": max(late) if late else None}
+
+
+def fake_ha_reasons(log, protocol4):
+    """Provisional reasons from the fake's log. Protocol 4 needs it: without it nobody can tell."""
+    if log is None:
+        return ["the fake Home Assistant's log (fakeha.jsonl) is missing"] if protocol4 else []
+    out = []
+    if log["unknown"]:
+        out.append("the fake Home Assistant didn't know command(s) the frontend sent: "
+                   + ", ".join(f"{k} ({n})" for k, n in sorted(log["unknown"].items())))
+    if log["failed"]:
+        out.append("command(s) failed in the fake Home Assistant: " + ", ".join(f"{k} ({n})" for k, n in sorted(log["failed"].items())))
+    if (log["stream_late_max_ms"] or 0) > STREAM_LATE_MS:
+        out.append(f"the fake Home Assistant sent a live change {log['stream_late_max_ms']:.0f} ms late (more than {STREAM_LATE_MS} ms)")
+    return out
+
+
 def coverage_reasons(ref, attempted):
     """Why the grade is short of data: each band is over the runs attempted, not only those that
     finished. A run that failed, a page that didn't finish, a task not measured, or a scroll that rests
@@ -764,15 +1117,23 @@ def coverage_reasons(ref, attempted):
     out = []
     if ref["graded_runs"] < attempted:
         out.append(f"{attempted - ref['graded_runs']} of {attempted} graded runs failed or are missing")
+    n_start = (ref.get("start_ms") or {}).get("n", 0) or 0
+    if 0 < n_start < attempted:
+        out.append(f"restart: measured in fewer runs than attempted ({n_start} of {attempted})")
     for t in G.TIERS:
         s_ = ref["tiers"].get(t)
         got = {"tap": s_ and (s_["inp_ms"] or {}).get("n", 0) or 0,
                "scroll": s_ and len(s_["scroll_bands"]) or 0,
                "updates": s_ and len(s_["updates_runs"]) or 0,
                "load": s_ and (s_["load_ms"] or {}).get("n", 0) or 0}
+        if t in G.CAMERA_PAGES:
+            got["camera"] = s_ and len(s_.get("camera_runs") or []) or 0
         short = [f"{task} {n} of {attempted}" for task, n in got.items() if 0 < n < attempted]
         if short:
             out.append(f"{t}: measured in fewer runs than attempted ({', '.join(short)})")
+        rtts = (s_ or {}).get("clock_rtt_ms") or []
+        if any(r is None or r > CLOCK_RTT_MS for r in rtts):
+            out.append(f"{t}: the live changes' send times rest on a clock tie looser than ±{CLOCK_RTT_MS // 2} ms in some run")
         during = [d for d in (s_ or {}).get("swipes_during_updates") or [] if d is not None]
         if during and not any(during):
             out.append(f"{t}: no swipe ran while the live updates did, so scroll wasn't measured during updates")
@@ -787,14 +1148,18 @@ def build(run_dir, apks=(), budgets=None):
     package = device["app"]["package"]
     files = lambda pat: sorted(glob.glob(os.path.join(run_dir, pat)))  # noqa: E731
     syn = [synthetic_run(read_jsonl(p)) for p in files("synthetic-*.jsonl")]
-    refs = [reference_run(read_json(p)) for p in files("refstart-*.json")]
+    raw_refs = [read_json(p) for p in files("refstart-*.json")]
+    refs = [reference_run(c) for c in raw_refs]
     plan = read_json(os.path.join(run_dir, "plan.json")) if os.path.exists(os.path.join(run_dir, "plan.json")) else {}
     attempted = max(len(refs), plan.get("runs") or 0) if refs or plan.get("runs") else 0
     cold = [coldstart_run(read_json(p)) for p in files("coldstart-*.json")]
-    idles = {}
+    idles, ref_idles = {}, {}
     for p in files("idle-*.json"):
         i = read_json(p)
-        idles.setdefault(i["label"], []).append(i)
+        (ref_idles if i["label"].startswith(REF_LABEL) else idles).setdefault(i["label"], []).append(i)
+    if not isinstance(budgets, dict):
+        # A path (--budgets) or nothing: the frame's own file over the default.
+        budgets = load_budgets(device["frame"], budgets)
 
     graded = {"reference": reference_summary(refs) if refs else None}
     tiers, start = grade_inputs(graded)
@@ -808,8 +1173,10 @@ def build(run_dir, apks=(), budgets=None):
         # painting (a clock card) is normal and changes nothing.
         reasons.append("the kiosk's own page never finished loading in a graded run (Home Assistant down?)")
     reasons += coverage_reasons(ref, attempted)
+    fake_log = fake_ha_log(os.path.join(run_dir, "fakeha.jsonl"))
+    reasons += fake_ha_reasons(fake_log, bool(ref) and G.PROTOCOL_VERSION in (ref.get("protocols") or []))
     if ref and ref.get("bad_page_lines"):
-        reasons.append(f"{ref['bad_page_lines']} page line(s) didn't parse (cut off in logcat?)")
+        reasons.append(f"{ref['bad_page_lines']} page line(s) didn't parse or never arrived whole (cut off in logcat?)")
     if ref and ref.get("lost_scroll_steps"):
         # A swipe whose step never came isn't in the pool, so the scroll level rests on fewer swipes.
         reasons.append(f"{ref['lost_scroll_steps']} swipe(s) answered with no scroll step back")
@@ -846,14 +1213,13 @@ def build(run_dir, apks=(), budgets=None):
     r = real_use_summary(cold, idles, package) if (cold or idles) else None
     real_use = None
     if r:
-        budgets = budgets or {"default": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15}, "frames": {}}
         memory = {"idle": r["idle"], "peak": r["peak"], "budget": G.memory_budget(
             {"app_pss_peak_kb": r["peak"]["app_pss_kb"], "mem_total_kb": device["mem_total_kb"],
-             "mem_available_min_kb": r["peak"]["mem_available_min_kb"]}, G.frame_budget(budgets, device["frame"]))}
+             "mem_available_min_kb": r["peak"]["mem_available_min_kb"]}, budgets["ram"])}
         real_use = dict(r, per_run=cold, memory=memory, panes=pane_diffs(idles, package) + radio_pane(r))
 
     gv = next((geckoview_version(x["ua"]) for x in syn if x["ua"]), None)
-    return {
+    rep = {
         "schema": SCHEMA,
         "protocol_version": (ref["protocols"][0] if ref and len(ref["protocols"]) == 1 else None),
         "measured_on": device.get("measured_on"),
@@ -862,11 +1228,28 @@ def build(run_dir, apks=(), budgets=None):
                   "device": {k: v for k, v in device.items() if k not in ("frame", "frame_name", "app", "measured_on")},
                   "app": dict(device["app"], geckoview=gv)},
         "apk": apk_sizes(apks),
+        "ram": reference_ram(ref_idles, raw_refs, package, budgets, device.get("mem_total_kb")),
+        "fake_ha": fake_log,
         "grade": grade,
         "graded": graded,
         "detail": detail,
         "real_use": real_use,
+        "thermal": read_thermal(os.path.join(run_dir, "thermal.tsv")),
     }
+    rep["notes"] = N.notes(rep)
+    return rep
+
+
+def read_thermal(path):
+    """thermal.tsv (run.sh): each stage's thermal zones in °C, in the order they were logged."""
+    if not os.path.exists(path):
+        return []
+    out = []
+    with open(path) as f:
+        for line in f:
+            phase, _, zones = line.rstrip("\n").partition("\t")
+            out.append({"phase": phase, "zones": {k: float(v) for k, _, v in (z.partition("=") for z in zones.split()) if v}})
+    return out
 
 
 def radio_pane(r):
@@ -903,16 +1286,68 @@ def device_line(dev, app):
     return ", ".join(p for p in parts if p) + "."
 
 
+def camera_detail(ref):
+    """report.md: per camera page and run, the decoders it got and where its segments were late
+    (detail, not graded)."""
+    out = []
+    for t, s_ in ref["tiers"].items():
+        for k, c in enumerate(s_.get("camera_runs") or [], 1):
+            m, f = c.get("media"), c.get("fetches")
+            pres = sum(s.get("stall_presented") or 0 for s in c.get("detail") or [])
+            if not m and not f and not pres:
+                continue
+            parts = []
+            if m:
+                names = sorted(set(m["codecs"]))
+                parts.append(f"decoders {len(m['codecs'])} ({', '.join(names) or 'none logged'}), "
+                             f"{m['flushes']} flushes, {m['eos']} drains")
+            if pres:
+                # rVFC's presentedFrames moved during the stalls: the callbacks stalled, the compositor didn't.
+                parts.append(f"{pres} frames presented inside the stalls (the callbacks', not the stream's)")
+            if f:
+                sg = f.get("segment") or {}
+                p95 = lambda x: "n/a" if not x else f"{x['p95']:.0f} ms"  # noqa: E731
+                parts.append(f"{sg.get('n', 0)} segments, fetch p95 {p95(sg.get('total_ms'))} (queued p95 "
+                             f"{p95(sg.get('queued_ms'))}), longest gap between a stream's segments "
+                             + ("n/a" if sg.get("arrival_gap_max_ms") is None else f"{sg['arrival_gap_max_ms']:.0f} ms"))
+            out.append(f"{t} cameras, run {k} (detail): " + "; ".join(parts) + ".")
+    return out
+
+
+def camera_cell(s_, b):
+    """The page's live cameras in report.md: the worst stream's first frame, frames shown and stalls
+    (median of runs), and the level; `none` on a page without streams."""
+    if b.get("camera") == G.NO_CAMERA:
+        return "none"
+    runs = s_.get("camera_runs") or []
+    if not runs:
+        return "not measured"
+    med = lambda k: P.spread([r.get(k) for r in runs])  # noqa: E731
+    ff = med("first_frame_ms")
+    if ff is None:
+        return f"a stream showed no frame, {b.get('camera') or 'n/a'}"
+    # The numbers are the runs whose streams all played; say how many didn't (they make the level).
+    failed = sum(1 for r in runs if r.get("first_frame_ms") is None)
+    note = f", {failed} of {len(runs)} run(s) had a stream that showed no frame" if failed else ""
+    return (f"first frame {fmt(ff, ' ms')}, {fmt(med('shown_pct'), ' %')} shown, stalls {fmt(med('stall_total_ms'), ' ms')}, "
+            f"{b.get('camera') or 'n/a'}{note}")
+
+
 def band_cell(b):
     return b or "n/a"
+
+
+def notes_md(n):
+    """The notes under the headline, which already says why the grade is provisional or refused."""
+    return " ".join(x for x in [n["good"], n["limits"]] + n["causes"] if x)
 
 
 def markdown(rep):
     g = rep["grade"]
     dev = rep["frame"]["device"]
     app = rep["frame"]["app"]
-    out = [f"# Perf report: {rep['frame']['name']}", "", device_line(dev, app), "",
-           f"**{g['headline']}**", "",
+    out = [f"# {G.NAME} report: {rep['frame']['name']}", "", device_line(dev, app), "",
+           f"**{g['headline']}**", "", notes_md(rep.get("notes") or N.notes(rep)), "",
            "The grade comes only from the three reference dashboards this test ships (light, typical, heavy), "
            "so it doesn't depend on your Home Assistant. Background load (panes, the radio, heat) still reaches it.", ""]
     ref = rep["graded"]["reference"]
@@ -922,12 +1357,12 @@ def markdown(rep):
                 "show within 100 ms, taps within 200 ms and the view opens within 4 s; fluid at 30 fps (scroll p95 at "
                 "most 67 ms) and changes within 200 ms; premium when scrolling and the live changes also hold 60 fps (A+ on heavy). "
                 "Live-update pacing is detail, not graded.", "",
-                "| Page | Level | Tap (INP) | Scroll | Live updates | Open the view | Holds it back |",
-                "|---|---|---|---|---|---|---|"]
+                "| Page | Level | Tap (INP) | Scroll | Live updates | Open the view | Cameras | Holds it back |",
+                "|---|---|---|---|---|---|---|---|"]
         for t in G.TIERS:
             s_, b = ref["tiers"].get(t), g["bands"][t]
             if not s_:
-                out.append(f"| {t} | not measured | | | | | |")
+                out.append(f"| {t} | not measured | | | | | | |")
                 continue
             lvl = g["levels"][t]
             up = {None: "fluid", "fluid": "good", "good": "premium"}
@@ -938,16 +1373,19 @@ def markdown(rep):
                 f"| {fmt(s_['inp_ms'], ' ms')}, {band_cell(b['tap'])} "
                 f"| {fmt(s_['scroll']['fps'], ' fps')}, p95 {fmt(s_['scroll']['p95_ms'], ' ms')}, {b['scroll'] or 'n/a'} "
                 f"| {fmt(s_['latency_p95_ms'], ' ms')} to show (p95), {b['updates'] or 'n/a'}; pacing p95 {fmt(s_['updates']['p95_ms'], ' ms')} "
-                f"| {fmt(s_['load_ms'], ' ms')}, {band_cell(b['load'])} | {held} |")
+                f"| {fmt(s_['load_ms'], ' ms')}, {band_cell(b['load'])} | {camera_cell(s_, b)} | {held} |")
         vp = g.get("viewport") or {}
         seen = sorted({str(v) for s_ in ref["tiers"].values() for v in s_["viewport"]})
-        out += ["", f"Restart, app process to engine ready: {fmt(ref['start_ms'], ' ms')} ({band_cell(g['start']['band'])}; "
+        to = "a usable reference dashboard" if ref.get("restart_to") == "usable" else "engine ready"
+        out += ["", f"Restart, app process to {to}: {fmt(ref['start_ms'], ' ms')} ({band_cell(g['start']['band'])}; "
                     f"{', '.join(ref['launch']) or 'n/a'}; first page {', '.join(ref['engine_uris']) or 'n/a'}). "
-                    f"Android's TTID {fmt(ref['android_ttid_ms'], ' ms')}: the first frame of the kiosk's loading screen; not graded.",
+                    + (f"Engine ready {fmt(ref.get('engine_ready_ms'), ' ms')}, not graded. " if to != "engine ready" else "")
+                    + f"Android's TTID {fmt(ref['android_ttid_ms'], ' ms')}: the first frame of the kiosk's loading screen; not graded.",
                 f"Viewport (CSS px, device pixel ratio): {', '.join(seen) or 'n/a'}; zoom check: {vp.get('state', 'n/a')}"
                 + (f" ({vp['reason']})" if vp.get("reason") else "") + "."]
         if ref["start_errors"]:
             out.append(f"Restart not measured in {len(ref['start_errors'])} run(s) ({'; '.join(sorted(set(ref['start_errors'])))}).")
+        out += camera_detail(ref)
         for t, s_ in ref["tiers"].items():
             for what in ("scroll", "updates", "load"):
                 errs = s_[f"{what}_errors"]
@@ -984,6 +1422,7 @@ def markdown(rep):
                         f"{fmt_n(x['latency_p95_ms'], ' ms')} ({x['updates_level'] or 'n/a'}), opens in {fmt_n(x['load_ms'], ' ms')}"
                         for x in bp.get(pos, [])) or "")
                 out.append(f"| {t} | " + " | ".join(cells) + " |")
+    out += ram_markdown(rep.get("ram"))
     s = rep["detail"]["synthetic"]
     if s:
         out += ["", "## Detail: animations it can handle (test page, not graded)", "",
@@ -997,6 +1436,8 @@ def markdown(rep):
                 f"Test page {'/'.join(x.upper() for x in s['page_lcp_from']) or 'LCP'} {fmt(s['page_lcp_ms'], ' ms')}."]
         if s["steps_without_sf"]:
             out.append(f"{s['steps_without_sf']} step(s) had no complete SurfaceFlinger history and use rAF only.")
+        if s.get("screen_off_runs"):
+            out.append(f"The screen went off in {s['screen_off_runs']} run(s); they are left out of these numbers.")
     r = rep["real_use"]
     if r and (r["idle"]["samples"] or r["per_run"]):
         i = r["idle"]
@@ -1005,7 +1446,8 @@ def markdown(rep):
                 f"App process start to dashboard load {fmt(r['app_start_to_dashboard_ms'], ' ms')} ({', '.join(r['launch']) or 'n/a'}). "
                 f"Dashboard load {fmt(r['dashboard_load_ms'], ' ms')} ({', '.join(r['settle_how']) or 'n/a'}); "
                 f"its load event {fmt(r['dashboard_page_stop_ms'], ' ms')}; force-stop to a settled dashboard "
-                f"{fmt(r['stop_to_dashboard_ms'], ' ms')}." + (f" Failed cold starts: {len(r['errors'])}." if r["errors"] else ""),
+                f"{fmt(r['stop_to_dashboard_ms'], ' ms')}." + (f" Failed cold starts: {len(r['errors'])}." if r["errors"] else "")
+                + (f" The screen went off in {', '.join(r['screen_off_samples'])}; left out." if r.get("screen_off_samples") else ""),
                 f"Idle: app PSS {fmt(i['app_pss_kb'], ' MB', 1024)}, device RAM in use {fmt(i['device_used_pct'], ' %')}, "
                 f"app CPU {fmt(i['cpu_app_pct_of_core'], ' % of a core')}, device busy {fmt(i['cpu_device_busy_pct'], ' %')}, "
                 f"{fmt(i['frames']['presented_fps'], ' frames/s')} presented."]
@@ -1026,14 +1468,92 @@ def markdown(rep):
     return "\n".join(out) + "\n"
 
 
+def noise_word(measurable, tol):
+    """A share's suffix: nothing when measurable or when there is no tolerance (its cell says why)."""
+    return "" if measurable or tol is None else " (within tolerance)"
+
+
+def tol_cell(p):
+    n = f"n={p['samples_on']} on, {p['samples_off']} off"
+    return f"none: under 2 samples a side ({n})" if p["pss_tolerance_kb"] is None else f"±{p['pss_tolerance_kb'] / 1024:.1f} MB ({n})"
+
+
+def budget_word(ok):
+    return "ok" if ok else "over" if ok is False else "n/a"
+
+
+def ram_markdown(ram):
+    """RAM on Clarity's reference dashboards (#68): per process at idle, the peak during the graded
+    tasks, each switchable pane's share, and the frame's budgets."""
+    if not ram:
+        return []
+    out = ["", "## RAM on the reference dashboards (not graded)", "",
+           "PSS per process, from `dumpsys meminfo`: at idle on the typical reference dashboard after each "
+           "graded run, and between the graded pages (the largest of those is the peak during the graded tasks).", ""]
+    idle, peak = ram.get("reference_idle"), ram.get("graded_peak")
+    roles = sorted(set((idle or {}).get("by_role_pss_kb", {})) | set((peak or {}).get("by_role_pss_kb", {})))
+    if idle or peak:
+        out += ["| Process | Idle (median of runs) | Peak during the graded tasks |", "|---|---|---|"]
+        for r in roles:
+            pk = (peak or {}).get("by_role_pss_kb", {}).get(r)
+            pk = "n/a" if pk is None else f"{pk / 1024:.0f} MB"
+            out.append(f"| {r} | {fmt((idle or {}).get('by_role_pss_kb', {}).get(r), ' MB', 1024)} | {pk} |")
+        peak_app = "n/a" if not peak else f"{peak['app_pss_kb'] / 1024:.0f} MB"
+        out.append(f"| app, all processes | {fmt((idle or {}).get('app_pss_kb'), ' MB', 1024)} | {peak_app} |")
+        if peak:
+            out += ["", f"Peak RSS of the app's processes since they started (VmHWM, summed): {peak['app_rss_hwm_kb'] / 1024:.0f} MB, "
+                        f"from {peak['samples']} sample(s) between pages."]
+    b = ram.get("budget")
+    if b:
+        out += ["", "Budgets (frames/<id>/budgets.json):"]
+        for k, c in b["checks"].items():
+            val = "n/a" if c["value_kb"] is None else f"{c['value_kb'] / 1024:.0f} MB"
+            out.append(f"- {k}: {val} against {c['budget_kb'] / 1024:.0f} MB: {budget_word(c['ok'])}")
+    if ram.get("panes"):
+        out += ["", "Each pane on by itself against every pane off, on the typical reference dashboard (median of runs; "
+                    "the tolerance is twice the noisier set's estimated standard deviation; `:boot` left out). Only samples "
+                    "whose kiosk log shows what their label says count. A budget is checked only with at least "
+                    f"{G.PANE_BUDGET_MIN_SAMPLES} samples each side and a tolerance at most "
+                    f"{G.PANE_TOLERANCE_MAX_OF_BUDGET:.0%} of it:", "",
+                "| Pane | PSS | Tolerance | Budget | CPU |", "|---|---|---|---|---|"]
+        notes = []
+        for p in ram["panes"]:
+            if p.get("error"):
+                out.append(f"| {p['id']} | not measured: {p['error']} | | | |")
+                continue
+            if p.get("off_by") == "mute":
+                notes.append(f"{p['id']}: the kiosk kept voice on in every sample, so it is off by its microphone mute only. "
+                             "This is its running cost (the wake word), not its whole cost (the code it loads).")
+            if p.get("verified") is False:
+                notes.append(f"{p['id']}: not checked (samples from before the kiosk's log was read); it may not have been off.")
+            if p.get("excluded"):
+                notes.append(f"{p['id']}: {p['excluded']} sample(s) left out, the kiosk didn't run what their label says.")
+            if p.get("boot_samples_on") or p.get("boot_samples_off"):
+                notes.append(f"{p['id']}: `:boot` ({p['boot_pss_kb'] / 1024:.1f} MB) ran in {p['boot_samples_on']} of "
+                             f"{p['samples_on']} on and {p['boot_samples_off']} of {p['samples_off']} off sample(s); "
+                             "it isn't a pane, so the share leaves it out.")
+            pb = (ram.get("pane_budget") or {}).get(p["id"]) or {}
+            word = "not measurable" if pb.get("measurable") is False else budget_word(pb.get("ok"))
+            cap = "none" if pb.get("budget_kb") is None else f"{pb['budget_kb'] / 1024:.0f} MB, {word}"
+            out.append(f"| {p['id']} | {p['pss_kb'] / 1024:+.1f} MB{noise_word(p['pss_measurable'], p['pss_tolerance_kb'])} "
+                       f"| {tol_cell(p)} | {cap} "
+                       f"| {p['cpu_pct_of_core']:+.1f} % of a core{noise_word(p['cpu_measurable'], p['cpu_tolerance_pct'])} |")
+        out += [""] + [f"- {n}" for n in notes] if notes else []
+    if ram.get("screen_off_samples"):
+        out += ["", "The screen went off in " + ", ".join(ram["screen_off_samples"]) + "; those samples are left out."]
+    if ram.get("panes_not_switched"):
+        out += ["", "Not measured on their own: " + "; ".join(f"{p['id']} ({p['why']})" for p in ram["panes_not_switched"]) + "."]
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("run_dir")
     ap.add_argument("--apk", action="append", default=[])
-    ap.add_argument("--budgets", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "budgets.json"))
+    ap.add_argument("--budgets", default=None, help="a frame's budgets file; default frames/<id>/budgets.json, else tools/perf/budgets.json")
     ap.add_argument("--keep-apk", action="store_true", help="keep the apk sizes of the existing report.json (run.sh --idle-only)")
     a = ap.parse_args()
-    rep = build(a.run_dir, a.apk, read_json(a.budgets))
+    rep = build(a.run_dir, a.apk, a.budgets)
     old = os.path.join(a.run_dir, "report.json")
     if a.keep_apk and not a.apk and os.path.exists(old):
         rep["apk"] = read_json(old).get("apk", [])

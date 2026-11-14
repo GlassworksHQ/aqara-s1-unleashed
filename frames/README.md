@@ -36,13 +36,17 @@ describes the device's look in millimetres"). Kiln's picker reads it, and glassw
 |---|---|
 | `id` | The frame's id, the same as its folder (and Kiln's route, `/<id>`) |
 | `name` | The product's name, e.g. `Aqara S1 Plus` |
+| `brand` | Optional. The maker's part of `name` (`Aqara`), set light in the frame's banner; the rest of `name` is bold. `name` must start with it and a space |
 | `aka` | Optional. Other names it is sold under |
 | `status` | `planned`, `development`, `alpha`, `beta` or `stable` (the status badges) |
 | `summary` | One sentence on why this device |
+| `tagline` | Optional. The frame's banner's line under `frames/<id>`, at most 50 characters. glassworks.dev's `pnpm brand` draws the banner and fails if it doesn't fit |
 | `project` | Optional. `{ name, href }` of the frame's own project |
 | `kiln` | Optional. Kiln's route, once the frame installs from Kiln |
 | `model` | The device's look in mm, for the 3D mockup (below) |
 | `recovery` | Optional. The recovery drawing data's file, next to this one |
+| `render` | The screen's render, a `.webp` next to this one: Home Assistant's real frontend drawing the shared showcase dashboard at the frame's screen size ([below](#the-render)) |
+| `abis` | The ABIs the device's userspace runs, preferred first, as Android names them (`armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`). The app's release builds one APK for every ABI some frame lists (below) |
 | `display` | `{ width, height }`: the screen in pixels, as Android's boot animation sees it. With `name`, it is all the [boot generator](../branding/boot/README.md) needs |
 | `boot` | Optional. The boot branding's limits: `androidApi` (the API level; 25+ gets trimmed frames), `splash` (the bootloader splash format, `allwinner-boot-resource`), `zipBudget` (the largest `bootanimation.zip`, bytes) |
 | `specs` | Hardware rows: `{ label, value }`. Labels: `Size`, `SoC`, `Android`, `Screen`, `Radio`, `Presence`, `Audio`, `Extras`, `Mount`, `Root` |
@@ -71,14 +75,70 @@ same as the site's for both frames to within 0.001 of a stage unit (checked 2026
 supplied SVGs from glassworks.dev/brand ([docs/branding.md](../docs/branding.md)); nothing here
 redraws them.
 
-`frame.json` here is the hand-written start of the generated `frame.json` in #35: the Gradle task that
-writes `frame.json` takes its catalog and `model` fields from this file, and adds the generated ones
-(package name, ABIs (#98), capabilities). It differs from decisions.md's sketch in two names: the
-renderer needs side colours (`sides`) where the sketch has `color.body`, and the screen is placed with
-`top` where the sketch has `offset`.
+`frame.json` is written by hand, and the build reads it; nothing generates it (maintainer, 2026-11-13,
+#98). It differs from decisions.md's sketch in two names: the renderer needs side colours (`sides`)
+where the sketch has `color.body`, and the screen is placed with `top` where the sketch has `offset`.
+
+### `abis`
+
+What the device runs, not what its release ships. The release builds the union of every frame's
+`abis`, in frame-id order (`tools/release/frame-abis.sh`, and `app/kiosk/build.gradle.kts` the same
+way), so today: `armeabi-v7a` and `arm64-v8a`. `ApkAbiListsTest` checks that the app's update check
+(`ApkAbi`) knows exactly that list.
+
+| Frame | `abis` | From |
+|---|---|---|
+| `aqara-s1-plus` | `armeabi-v7a` | The panel's 32-bit userspace (`ro.product.cpu.abilist` = `armeabi-v7a,armeabi`, read on a panel 2026-11-12) |
+| `lululemon-mirror` | `arm64-v8a`, `armeabi-v7a` | The community image's `ro.product.cpu.abilist` (`arm64-v8a,armeabi-v7a,armeabi`, read from its `system.img` 2026-11-12). Not read on a stock unit ([mirror-abis.md](lululemon-mirror/research/mirror-abis.md)) |
+| `generic-android` | `arm64-v8a`, `armeabi-v7a` | The ARM tablets and phones it targets. No x86 APK is built |
+
+### The render
+
+Every frame's card shows the same dashboard (maintainer, #144), so the renders are comparable:
+`render.webp`, made by `node tools/showcase/render.mjs [frame-id ...]`.
+
+- **What it shows.** The showcase home ([`tools/showcase/home.py`](../tools/showcase/home.py)): a
+  made-up house in the evening, on HA's sections view. Nine sections: a clock, the weather with its
+  forecast and the day's temperature; the living room (thermostat, lights, speaker with album art);
+  the front garden (camera, lock, lights, garage door, scenes); energy (the week's use, today's
+  power); the kitchen (lights, appliances, a shopping list); the bedroom (thermostat, light, blinds);
+  air (humidity, CO₂, PM2.5, the purifier); security (a driveway camera, the alarm, the vacuum);
+  media (the TV with its show's still, the kitchen radio, the soundbar and more). The two camera
+  stills are CC0 photos from Wikimedia Commons, graded to dusk, with nothing readable and no faces
+  ([`tools/showcase/photos/`](../tools/showcase/photos/README.md)); the TV still and the album art are
+  drawn by `home.py`.
+  The clock shows a time and no date; the graphs cover today only, so their axes name no day.
+- **Full screens.** Every section is 10 grid rows tall (`SECTION_ROWS`, tested), so each row of
+  sections ends level and no column stops early. For each landscape frame the script picks the zoom,
+  from density 0.6 to 1.1, so the screen's bottom edge falls just under a row of sections: as many
+  whole rows as fit. The Mirror's zoom is set by hand (`PINNED` in `render.mjs`) to three columns of
+  three sections: a fit can't hold three columns there, because the number of columns changes with
+  the density it tries. Every render fails if the bottom edge cuts a row, a shown row ends unevenly
+  (by its lowest card, more than 4 px), or the Mirror isn't three by three.
+- **How.** It serves that home from Clarity's fake Home Assistant with the frontend build Clarity
+  pins ([`tools/perf/hafrontend.py`](../tools/perf/hafrontend.py)), and opens it in headless Chrome as
+  the kiosk shows it: no header, no sidebar, HA's default theme in dark mode. The page's clock is held
+  at the home's `NOW` (19:30 UTC). A frame without one screen size (`generic-android`) is drawn at
+  1920×1200, a common 10" tablet.
+- **Same bytes every run.** All data and pictures are seeded, and Chrome rasters on one thread
+  (`--num-raster-threads=1` and friends; without them a few edges changed from run to run). Checked
+  with two runs on 2026-11-13, Chrome 157.
+
+Redo the renders when HA's look changes, i.e. when Clarity's pinned frontend moves. **A new frame needs
+its render too**: run `node tools/showcase/render.mjs <id>` and add `"render": "render.webp"` to its
+`frame.json` (Kiln's `frame-designs.test.ts` fails without it). That needs Chrome (or `CHROME=<path>`),
+Node 22+ and python3; the first run fetches the pinned frontend from PyPI (117 MB, checked by SHA-256)
+into `~/.cache/glassworks-perf`. Kiln's `catalog.ts` then imports the new file.
+
+| Frame | Size | Density | Shown | File |
+|---|---|---|---|---|
+| `aqara-s1-plus` | 1440×720 | 0.989 (fitted) | 1 row of 4 sections | 42.4 KiB |
+| `lululemon-mirror` | 1080×1920 | 0.94 (pinned) | 3 rows of 3 | 77.5 KiB |
+| `generic-android` | 1920×1200 | 0.867 (fitted) | 2 rows of 4 (the ninth section is below the edge) | 73.4 KiB |
 
 `kiln/apps/kiln/test/frame-designs.test.ts` checks every `design/frame.json`: Kiln lists it, every
-rating and pane is there, `recovery` exists, and the mockup draws without NaN.
+rating and pane is there, `recovery` exists, the render is a WebP at the screen's size, and the mockup
+draws without NaN.
 
 ## What came from glassworks.dev
 

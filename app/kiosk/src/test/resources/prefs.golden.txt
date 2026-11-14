@@ -11,6 +11,7 @@ kiosk|base_transport|String|""
 kiosk|block_aqara_cloud|Boolean|true
 kiosk|dashboards|String|""
 kiosk|device_mac|String|""
+kiosk|diagnostics_enabled|Boolean|true
 kiosk|ha_seen|Boolean|false
 kiosk|ha_url|String|""
 kiosk|ha_url_source|String|""
@@ -45,13 +46,18 @@ kiosk|setup_radio_done|Boolean|false
 kiosk|setup_radio_migrated|Boolean|false
 kiosk|speaker_muted|Boolean|false
 kiosk|speaker_volume|Float|1.0
+kiosk|time_zone_enabled|Boolean|true
+kiosk|time_zone_kept|String|""
 kiosk|url|String|null
 kiosk|voice_enabled|Boolean|true
 kiosk|voice_overlay|Boolean|true
+kiosk|wake_cutoff|Float|0.97
 kiosk|wake_model|String|"hey_jarvis_v0.1.tflite"
 kiosk|wake_on_approach|Boolean|true
 kiosk|wake_sound|Boolean|true
 kiosk|wake_threshold|Float|0.5
+kiosk|wake_word|String|null
+kiosk|wall_base_enabled|Boolean|true
 kiosk|wifi_seen|Boolean|false
 kiosk|zoom|Float|0.0
 s1base|uart_energy_wh|Float|0.0

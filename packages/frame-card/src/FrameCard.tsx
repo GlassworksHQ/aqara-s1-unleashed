@@ -69,15 +69,17 @@ export function useTilt<T extends HTMLElement>() {
  * `as` makes the name a heading (`h2`…`h4`); leave it out inside a button. `expected` (by default, a
  * frame that doesn't ship yet) tells screen readers the tags are expected, not tested. It is hidden
  * text, not an aria-label, so it joins the tags in a link's name and in Kiln's aria-describedby.
+ * `screen` is the URL the caller's bundler gives the frame's `render` file; without it, the model shows an
+ * example dashboard.
  */
-export function FrameCardBody({ f, idPrefix, as: Name = 'span', expected = !ships(f.status) }: {
-  f: FrameDesign; idPrefix?: string; as?: 'span' | 'h2' | 'h3' | 'h4'; expected?: boolean;
+export function FrameCardBody({ f, idPrefix, as: Name = 'span', expected = !ships(f.status), screen }: {
+  f: FrameDesign; idPrefix?: string; as?: 'span' | 'h2' | 'h3' | 'h4'; expected?: boolean; screen?: string;
 }) {
   const Box = Name === 'span' ? 'span' : 'div';
   return (
     <>
       <span className={s.model}>
-        <span className={s.float}><span className={s.bob}><DeviceModel id={f.id} model={f.model} label={`${f.name} running Glassworks`} /></span></span>
+        <span className={s.float}><span className={s.bob}><DeviceModel id={f.id} model={f.model} label={`${f.name} running Glassworks`} screen={screen} /></span></span>
         <span className={s.shadow} aria-hidden="true" />
       </span>
       <Box className={s.text}>

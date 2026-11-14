@@ -1,8 +1,9 @@
 # Releasing the kiosk app
 
 Panels update themselves from GitHub Releases: the app lists
-`https://api.github.com/repos/GlassworksHQ/aqara-s1-unleashed/releases`, picks its own newest release
-and shows the result in Home Assistant as **update.s1_panel_app_update**
+`https://api.github.com/repos/GlassworksHQ/glassworks/releases`, picks its own newest release
+and shows the result in Home Assistant as **update.s1_panel_app_update** (on a panel added before #63;
+newer ones start with `glassworks_panel_`, [Names](esphome.md#names))
 ([esphome.md](esphome.md#app-updates)). A release is built and published by
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) when you push a `v*` or
 `aqara-s1-plus-v*` tag. It holds one APK per ABI, each with its `.sha256` (see [ABIs](#abis)):
@@ -14,6 +15,15 @@ and shows the result in Home Assistant as **update.s1_panel_app_update**
 Every release **must be signed with the same key**. Android only installs an update signed with the
 key of the installed app, and the app refuses anything else before trying. Lose the key and every
 panel needs a manual reinstall, which clears its settings.
+
+### The repo name
+
+The repo started as `aguilaair/aqara-s1-unleashed`, moved to `GlassworksHQ/aqara-s1-unleashed`, and
+was renamed to `GlassworksHQ/glassworks` on 2026-11-13. Panels on 0.4.3 and older ask
+`aguilaair/aqara-s1-unleashed`, the name built into them, and reach the releases through GitHub's
+redirects. A redirect only lasts while no repo exists at the old name, so **never create or reuse
+either old name**, not even as an empty placeholder: it would cut off updates for every panel that
+hasn't moved past 0.4.3.
 
 ## 1. Create the release key (once)
 
@@ -71,13 +81,13 @@ from the file or from a prompt, so nothing ends up in your shell history:
 ```sh
 cd ~/secure
 # The keystore, base64-encoded, from the file:
-base64 < s1kiosk-release.jks | gh secret set S1_KEYSTORE_B64 --env release-signing --repo GlassworksHQ/aqara-s1-unleashed
+base64 < s1kiosk-release.jks | gh secret set S1_KEYSTORE_B64 --env release-signing --repo GlassworksHQ/glassworks
 # Passwords: gh prompts for them ("Paste your secret"); the same password twice for PKCS12.
-gh secret set S1_KEYSTORE_PASSWORD --env release-signing --repo GlassworksHQ/aqara-s1-unleashed
-gh secret set S1_KEY_PASSWORD --env release-signing --repo GlassworksHQ/aqara-s1-unleashed
+gh secret set S1_KEYSTORE_PASSWORD --env release-signing --repo GlassworksHQ/glassworks
+gh secret set S1_KEY_PASSWORD --env release-signing --repo GlassworksHQ/glassworks
 # The alias is not secret:
-gh secret set S1_KEY_ALIAS --env release-signing --repo GlassworksHQ/aqara-s1-unleashed --body s1kiosk
-gh secret list --env release-signing --repo GlassworksHQ/aqara-s1-unleashed
+gh secret set S1_KEY_ALIAS --env release-signing --repo GlassworksHQ/glassworks --body s1kiosk
+gh secret list --env release-signing --repo GlassworksHQ/glassworks
 ```
 
 The workflow uses only these four secrets, the radio bundle key below, the optional `VERCEL_DEPLOY_HOOK`
@@ -114,7 +124,7 @@ openssl pkey -in ~/secure/s1kiosk-radio-bundle-ed25519.pem -pubout -outform DER 
   > tools/root/s1kiosk_bundle.pub
 # The secret: an environment secret of the `radio-signing` environment (Settings -> Environments;
 # create the environment first), so only the release workflow's signing job can read it:
-gh secret set S1_RADIO_BUNDLE_KEY --env radio-signing --repo GlassworksHQ/aqara-s1-unleashed \
+gh secret set S1_RADIO_BUNDLE_KEY --env radio-signing --repo GlassworksHQ/glassworks \
   < ~/secure/s1kiosk-radio-bundle-ed25519.pem
 ```
 
@@ -141,7 +151,7 @@ The boot image's signature checker is one of them since the radio bundle loader:
 
 ```sh
 tools/root/build-verify.sh      # reproducible; must print sha256 6aa0dd83…9f80 (the lock's pin)
-gh release upload installer-files-3 tools/root/out/s1kiosk_verify --repo GlassworksHQ/aqara-s1-unleashed
+gh release upload installer-files-3 tools/root/out/s1kiosk_verify --repo GlassworksHQ/glassworks
 ```
 
 (Create the `installer-files-3` release first if it doesn't exist, e.g. as a copy of
@@ -158,8 +168,11 @@ ignore them anyway.
 ### ABIs
 
 The app is built once per ABI, because each GeckoView AAR is for one ABI and carries its own classes
-and `omni.ja`, so two cannot go into one APK. `-Ps1Abi=<abi>` (or `S1_ABI`) picks it, and without it
-the build is `armeabi-v7a`, the S1's:
+and `omni.ja`, so two cannot go into one APK. The release builds one APK for every ABI that some
+frame's device runs: each frame lists its ABIs in `abis` in `frames/<id>/design/frame.json`
+([frames/README.md](../frames/README.md#designframejson)). `tools/release/frame-abis.sh` prints that
+list for the workflows. `-Ps1Abi=<abi>` (or `S1_ABI`) picks the ABI; without it the build is the S1's
+first ABI, `armeabi-v7a`:
 
 ```sh
 ./gradlew :kiosk:assembleRelease                      # armeabi-v7a
@@ -169,7 +182,7 @@ the build is `armeabi-v7a`, the S1's:
 | ABI | Release asset | Radio bundle | Who runs it |
 |---|---|---|---|
 | `armeabi-v7a` | `s1-kiosk-<version>.apk` | yes | the S1 (32-bit userspace), other 32-bit devices |
-| `arm64-v8a` | `s1-kiosk-arm64-v8a-<version>.apk` | no (the bundle is the S1's root side) | arm64 tablets, the arm64 emulator |
+| `arm64-v8a` | `s1-kiosk-arm64-v8a-<version>.apk` | no (the bundle is the S1's root side) | arm64 tablets (generic-android), the arm64 emulator. The Mirror (Android 6) is planned: the app needs API 26, so it waits for the legacy APK (#198) |
 
 - **Every ABI's APK has the same versionCode**, `major*10000 + minor*100 + patch`. Store schemes put
   the ABI in the versionCode because a store must choose between APKs. Here the app chooses: it
@@ -189,8 +202,9 @@ the build is `armeabi-v7a`, the S1's:
   `gh release create`, so a release has all of them unless an upload fails partway. Keep it that
   way, or make the app prefer the ABI it is running.
 - A device whose ABIs the app is not built for (x86_64) gets no offer, and the update entity says why.
-- Adding an ABI means adding it to `s1Abis` in `app/kiosk/build.gradle.kts`, to `ApkAbi`, and to
-  `ABIS` in both workflows. `ApkAbiListsTest` fails if they disagree.
+- Adding an ABI means adding it to a frame's `abis`, to `ApkAbi`, to `apk_name` in both workflows
+  if its name differs, and an upload step in `test-build.yml`. Gradle and the workflows' loops take
+  the list from the frames. `ApkAbiListsTest` fails if the app and the frames disagree.
 
 **Tags, now that the repo will hold other frames and libraries (Glassworks).** Each of them releases
 under its own tag prefix, and this app's is `aqara-s1-plus-` (the board id it reports, since other S1
@@ -210,7 +224,7 @@ it a one-sentence summary. The release fails early if the section is missing.
 git switch main && git pull
 git tag -a v1.0.0 -m "S1 Kiosk 1.0.0"
 git push origin v1.0.0
-gh run watch --repo GlassworksHQ/aqara-s1-unleashed   # or the Actions tab
+gh run watch --repo GlassworksHQ/glassworks   # or the Actions tab
 ```
 
 The workflow then:
@@ -220,7 +234,11 @@ The workflow then:
    image and Ubuntu snapshot; it must reproduce `tools/radio/sisdk-runtime.sha256`; never Silicon Labs'
    zigbeed itself), then signs the radio bundle in the `sign-bundle` job (environment `radio-signing`,
    main only, every input checked against committed hashes; `tools/radio/make-bundle.py --app-version`,
-   version = the versionCode, checked against `tools/root/s1kiosk_bundle.pub`);
+   version = the versionCode, checked against `tools/root/s1kiosk_bundle.pub`). PR CI catches most drift
+   before a tag does. The `size` job in `pr.yml` caches the runtime under a key made from the script,
+   `tools/radio/sisdk/` and the hash file. When one of them changes, it rebuilds from scratch and checks
+   the hashes. On a cache hit, it only checks the cached files against the hashes. So drift outside the
+   repo (the Ubuntu snapshot, the cpc-daemon tag) still shows first in this fresh release build;
 3. builds `:kiosk:assembleRelease` with `S1_VERSION=1.0.0` once per ABI, the `armeabi-v7a` one with
    the bundle as APK assets. The build fails if a key is missing (`S1_REQUIRE_RELEASE_SIGNING=true`);
 4. runs `apksigner verify --print-certs` on each APK, so the certificate fingerprint is in the log,

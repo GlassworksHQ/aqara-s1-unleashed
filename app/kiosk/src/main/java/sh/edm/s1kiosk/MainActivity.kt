@@ -24,7 +24,8 @@ import dev.glassworks.engine.PageHost
 import dev.glassworks.engine.PagePort
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.applyFrom
-import dev.glassworks.pane.saveAll
+import dev.glassworks.pane.intentExtras
+import dev.glassworks.pane.paneSections
 import dev.glassworks.pane.settingsOrder
 import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.auth.FrontendUrls
@@ -40,6 +41,7 @@ import sh.edm.s1kiosk.settings.SettingsMenu
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.setup.LoadingOverlay
 import sh.edm.s1kiosk.setup.OfflineText
+import sh.edm.s1kiosk.setup.holdingPanes
 import sh.edm.s1kiosk.setup.PaneStepFacts
 import sh.edm.s1kiosk.setup.SetupFlow
 import sh.edm.s1kiosk.setup.SetupInputs
@@ -71,7 +73,9 @@ class MainActivity : Activity() {
 
     /** The panes' definitions: their setup steps, settings sections and adb extras. */
     private val panes by lazy { glassworks.paneDefinitions(this) }
-    private val paneSteps by lazy { glassworks.setupSteps(this) }
+    /** The panes on setup's Panes step, each with its steps (only usable ones). */
+    private val setupPanes by lazy { glassworks.setupPanes(this) }
+    private val paneSteps by lazy { setupPanes.flatMap { it.steps } }
 
     /** "Sign in on this panel instead" was chosen: don't cover HA's login page again (this process). */
     private var usePanelLogin = false
@@ -176,28 +180,26 @@ class MainActivity : Activity() {
         // full-screen window); until it is ready the loading screen draws 8-bit gradients.
         val real = android.graphics.Point().also { @Suppress("DEPRECATION") windowManager.defaultDisplay.getRealSize(it) }
         Backdrop.prewarm(maxOf(real.x, real.y), minOf(real.x, real.y))
-        loadingOverlay = LoadingOverlay(this)
+        loadingOverlay = LoadingOverlay(this, glassworks.frame.bootRest).apply { onAction = ::openWifiSettings }
         voiceOverlay = VoiceOverlay(this).apply {
             onCancel = { glassworks.voiceCancel?.invoke() }
             onShowingChanged = { timerOverlay.voiceShowing(it) } // a timer set by voice flies out of the orb
         }
         timerOverlay = TimerOverlay(this)
-        setupOverlay = SetupOverlay(this, paneSteps).apply {
+        setupOverlay = SetupOverlay(this, setupPanes).apply {
             onUsePanel = ::onUsePanelLogin
             onManualUrl = ::onManualHaUrl
             onChooseNetwork = ::openWifiSettings
             onSkipHa = ::onSkipHaSetup
             onClosePreview = ::closeSetupPreview
             onImprovAction = ::onImprovAction
-            onStepDone = { if (setupPreview) closeSetupPreview() else refreshSetup() }
+            onPanesDone = { if (!setupPreview) refreshSetup() }
+            onStepDone = { refreshSetup() }
         }
         threadJoinOverlay = sh.edm.s1kiosk.setup.ThreadJoinOverlay(this).apply {
             onClose = { HaAuth.threadJoin.disarm(); hide() }
         }
-        settingsOverlay = KioskSettingsOverlay(this).apply {
-            onSave = ::saveSettings
-            onReload = { hide(); loadDashboard() }
-        }
+        settingsOverlay = KioskSettingsOverlay(this).apply { onRestart = ::restartProcess }
         // Improv-aware from the start: KioskService (which registers the provider) starts after this.
         wifiStatus = ImprovWifiStatus(this)
         root = android.widget.FrameLayout(this)
@@ -214,8 +216,11 @@ class MainActivity : Activity() {
         // The launch backdrop (res/drawable/launch_backdrop.xml) covers the cold start; once our own
         // views have drawn, a plain colour behind them costs the GPU nothing on every later frame.
         window.decorView.post { window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0xFF0A0B0F.toInt())) }
-        // Visible from the first frame: the dashboard's first paint or the setup screen replaces it.
-        loadingOverlay.show("Starting up", if (hasNetwork()) "Connecting to Home Assistant…" else "Reconnecting to Wi-Fi…")
+        // Visible from the first frame: the page saying it is drawn ("ready", content.js) or the setup screen replaces it.
+        loadingOverlay.show(
+            if (hasNetwork()) LoadingOverlay.State.Connecting(LoadingOverlay.CONNECTING, dashboardHost())
+            else LoadingOverlay.State.Connecting(OfflineText.CONNECTING_TITLE, OfflineText.CONNECTING_DETAIL, host = false),
+        )
         HaAuth.addListener(authListener)
         HaAuth.threadJoin.addListener(threadJoinListener)
         // Recreated while the QR code was up: show it again (posted, so a newer update still wins).
@@ -286,7 +291,7 @@ class MainActivity : Activity() {
         val now = SystemClock.elapsedRealtime()
         if (w.online) offlineSince = 0L else if (offlineSince == 0L) offlineSince = now
         if (w.online && !w.ethernet && !prefs.wifiSeen) prefs.wifiSeen = true
-        val steps = paneSteps.map { PaneStepFacts(it.id, it.done(), it.reason) }
+        val steps = paneSteps.map { PaneStepFacts(it.id, it.done(), it.reason, wanted = setupOverlay.wanted(it.id)) }
         return SetupInputs(
             online = w.online,
             offlineForMs = if (w.online) 0L else now - offlineSince,
@@ -302,6 +307,8 @@ class MainActivity : Activity() {
             usePanelLogin = usePanelLogin,
             showing = setupOverlay.isShowing && !setupPreview,
             paneSteps = steps,
+            panesChosen = setupOverlay.panesChosen,
+            dashboardLoaded = currentUrl.let { u -> u != null && FrontendUrls.sameOrigin(u, prefs.haBase) && !FrontendUrls.isAuthorizePage(u, prefs.haBase) },
             improv = ImprovController.setupFacts,
             installer = ImprovController.installerWifi,
             neverSetUp = SetupState.neverSetUp(
@@ -315,14 +322,19 @@ class MainActivity : Activity() {
     /** Re-evaluates the setup screen; cheap, called on every relevant change and every 2 s. */
     private fun refreshSetup() {
         if (!::setupOverlay.isInitialized) return
-        val d = SetupState.decide(setupInputs())
+        // Panes applying or refused: keep it up until Continue works (a pane's step can look done mid-way).
+        // Panes holds while it applies or after a refusal, but never over a lost Wi-Fi: that step comes
+        // first, and Panes again once the panel is back on.
+        val d = SetupState.decide(setupInputs()).holdingPanes(setupOverlay.holdsPanes)
         if (setupPreview) {
             val forced = setupPreviewStep
             // A forced step: every step before it shows as done.
             val m = if (forced == null) setupModel(d, d.step, d.done, preview = true)
-            else setupModel(d, forced, SetupFlow.ids(paneSteps.map { it.id }).takeWhile { it != forced }.toSet(), preview = true)
+            // A forced step: every step before it shows as done, and so does any step that really is.
+            else setupModel(d, forced, previewFlow().takeWhile { it != forced }.toSet() + d.done, preview = true)
             if (m.step == SetupFlow.DONE) {
-                if (setupOverlay.model?.step != SetupFlow.DONE) setupOverlay.finish(m) { setupPreview = false; setupPreviewStep = null }
+                // A preview holds Done until it is closed (closeSetupPreview); nothing loads behind it.
+                if (setupOverlay.model?.step != SetupFlow.DONE) setupOverlay.finish(m) {}
             } else {
                 setupOverlay.render(m)
             }
@@ -358,6 +370,9 @@ class MainActivity : Activity() {
         ImprovController.refreshUi()
     }
 
+    /** Every step a preview can show: all the panes' steps, as if every pane were on. */
+    private fun previewFlow() = SetupFlow.ids(setupPanes.isNotEmpty(), paneSteps.map { it.id })
+
     private fun setupModel(d: sh.edm.s1kiosk.setup.SetupDecision, step: String, done: Set<String>, preview: Boolean) =
         SetupOverlay.Model(
             step = step,
@@ -382,11 +397,11 @@ class MainActivity : Activity() {
         if (!onDashboard && !justLoaded) loadDashboard()
     }
 
-    /** `--ez show_setup true [--es setup_step wifi|ha|radio|signin|done]`, `--ez show_signin true` (= signin). */
+    /** `--ez show_setup true [--es setup_step wifi|ha|panes|signin|done]`, `--ez show_signin true` (= signin). */
     private fun applySetupPreview(intent: Intent) {
         val asked = intent.getStringExtra("setup_step")
-        val step = SetupFlow.parse(asked, paneSteps.map { it.id })
-        if (asked != null && step == null) Log.e(TAG, "setup_step '$asked' is not a step: ${SetupFlow.ids(paneSteps.map { it.id })}")
+        val step = SetupFlow.parse(asked, setupPanes.isNotEmpty(), paneSteps.map { it.id })
+        if (asked != null && step == null) Log.e(TAG, "setup_step '$asked' is not a step: ${previewFlow()}")
         when {
             intent.getBooleanExtra("show_signin", false) -> startSetupPreview(SetupFlow.SIGNIN)
             intent.hasExtra("show_setup") && !intent.getBooleanExtra("show_setup", false) -> closeSetupPreview()
@@ -409,7 +424,36 @@ class MainActivity : Activity() {
         refreshSetup() // shows the real screen again if the panel isn't set up
     }
 
-    private val hideLoading = Runnable { loadingOverlay.hide() }
+    /**
+     * The fallback when the page never says it's drawn: hide the connecting screen 15 s after the page
+     * loaded, or up to 45 s when Home Assistant's frontend said it is still loading (a cold load on the
+     * S1), so its white launch screen doesn't show early.
+     */
+    private val hideLoading: Runnable = object : Runnable {
+        override fun run() {
+            val waited = SystemClock.uptimeMillis() - pageStoppedAt
+            if (frontendLoading && waited < LAUNCH_FALLBACK_MS) handler.postDelayed(this, LAUNCH_FALLBACK_MS - waited)
+            else hideConnecting(if (frontendLoading) "fallback 45 s, the frontend still loading" else "fallback 15 s, no word from the page")
+        }
+    }
+
+    /** When the current page started loading, for the log. */
+    private var pageStartedAt = 0L
+
+    /** Hides the connecting screen, and says why in the log (one line per reason, for panel runs). */
+    private fun hideConnecting(reason: String) {
+        if (!loadingOverlay.isShowing) return
+        val since = if (pageStartedAt > 0) " (${SystemClock.uptimeMillis() - pageStartedAt} ms after the page started)" else ""
+        Log.i(TAG, "Connecting screen hidden: $reason$since")
+        loadingOverlay.hide()
+    }
+    /** Home Assistant's launch screen is up on this page (content.js "launch"), and no "ready" yet. */
+    private var frontendLoading = false
+    /** When the fallback was last armed (first paint or page stop). */
+    private var pageStoppedAt = 0L
+
+    /** The host the dashboard loads from, for the connecting screen ("" before one is known). */
+    private fun dashboardHost(): String = (currentUrl ?: prefs.url).takeIf { it.startsWith("http") }?.let { Uri.parse(it).host }.orEmpty()
 
     private fun hasNetwork(): Boolean {
         val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return true
@@ -423,7 +467,10 @@ class MainActivity : Activity() {
     private fun showOffline() {
         val t = OfflineText.decide(offlineFacts(), ImprovController.BOOT_GRACE_MS)
         offlineShown = true
-        loadingOverlay.show(t.title, t.detail)
+        loadingOverlay.show(
+            if (t.connecting) LoadingOverlay.State.Connecting(t.title, t.detail, host = false)
+            else LoadingOverlay.State.Offline(t.title, t.detail, OfflineText.SETUP_ACTION),
+        )
     }
 
     /** Every setup tick while the no-network text is up: network back -> load now; else keep the text current. */
@@ -605,8 +652,8 @@ class MainActivity : Activity() {
             prefs.presenceRangeM = intent.getFloatExtra("presence_range_m", 0f)
             glassworks.screen.applyPresenceRange()
         }
-        // The panes' own extras (voice, Sendspin, the wall base, ...): their definitions.
-        if (panes.flatMap { it.extras }.applyFrom(intent)) needsRestart = true
+        // The panes' extras (their on/off, then their own settings): their definitions.
+        if (panes.intentExtras().applyFrom(intent)) needsRestart = true
         intent.getStringExtra("api_key")?.let { key ->
             if (KioskPrefs.decodeApiKey(key) != null) prefs.apiKey = key
             else Log.w(TAG, "api_key must be base64 of exactly 32 bytes; ignored")
@@ -711,28 +758,19 @@ class MainActivity : Activity() {
                 if (!frame.openSystemSettings(c)) Toast.makeText(c, "No settings app on this panel", Toast.LENGTH_LONG).show()
             },
             licences = SettingsItem.Link(CoreSettings.LICENCES_TITLE, CoreSettings.LICENCES_DETAIL) { Licences.show(this) },
+            live = CoreSettings.Live(
+                fullScreen = ::pushConfig,
+                presenceRange = { glassworks.screen.applyPresenceRange() },
+                brightness = { glassworks.screen.refreshBrightness() },
+            ),
         )
+        // Each pane's section with its on/off at the top right; Voice and Music have only that for now.
+        val paneSections = paneSections(panes)
         settingsOverlay.show(
-            KioskSettingsOverlay.Model(settingsOrder(core.sections(), panes.flatMap { it.settings() }), BuildConfig.VERSION_NAME),
+            KioskSettingsOverlay.Model(settingsOrder(core.sections(), paneSections), BuildConfig.VERSION_NAME, paneSections.map { it.id }.toSet()),
         )
         handler.removeCallbacks(settingsTick)
         handler.postDelayed(settingsTick, 500)
-    }
-
-    /**
-     * "Save & restart": every field's save, in order, then the process restart that applies them. A save
-     * that went wrong (the radio's allow-list) keeps its old value: its message gets time to be read first.
-     */
-    private fun saveSettings(changes: List<(done: (String?) -> Unit) -> Unit>) {
-        saveAll(changes) { problems ->
-            handler.post {
-                if (problems.isEmpty()) restartProcess()
-                else {
-                    Toast.makeText(this, problems.joinToString("\n"), Toast.LENGTH_LONG).show()
-                    handler.postDelayed({ restartProcess() }, 3500)
-                }
-            }
-        }
     }
 
     private var restartWaitingSince = 0L
@@ -768,7 +806,9 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (::settingsOverlay.isInitialized && settingsOverlay.isShowing) { settingsOverlay.hide(); return }
+        // The topmost layer only: the menu's own (a picker, a dialog, then the menu), then a setup preview.
+        if (::settingsOverlay.isInitialized && settingsOverlay.isShowing) { settingsOverlay.back(); return }
+        if (setupPreview) { closeSetupPreview(); return }
         page?.goBack()
     }
 
@@ -805,8 +845,14 @@ class MainActivity : Activity() {
             }
         }
 
+        // Not the end of the connecting screen: Home Assistant's first paint is its own white launch
+        // screen. The page says when it's drawn ("ready", content.js); this only arms the fallback.
         override fun onFirstPaint() {
-            handler.post { loadingOverlay.hide() }
+            handler.post {
+                handler.removeCallbacks(hideLoading)
+                pageStoppedAt = SystemClock.uptimeMillis()
+                handler.postDelayed(hideLoading, READY_FALLBACK_MS)
+            }
         }
 
         override fun onContentGone(killed: Boolean) {
@@ -839,17 +885,22 @@ class MainActivity : Activity() {
         override fun onPageStart(url: String) {
             handler.removeCallbacks(retryLoad)
             handler.removeCallbacks(hideLoading)
+            frontendLoading = false
+            pageStartedAt = SystemClock.uptimeMillis()
             offlineShown = false
-            if (url.startsWith("http")) loadingOverlay.show("Connecting to Home Assistant", Uri.parse(url).host ?: "")
+            if (url.startsWith("http")) loadingOverlay.show(LoadingOverlay.State.Connecting(LoadingOverlay.CONNECTING, Uri.parse(url).host ?: ""))
         }
 
         override fun onPageStop(success: Boolean) {
             if (success) {
-                handler.postDelayed(hideLoading, 1500) // in case first-contentful-paint was missed
+                // In case the page never says it's ready (no web extension, a frontend that fails).
+                handler.removeCallbacks(hideLoading)
+                pageStoppedAt = SystemClock.uptimeMillis()
+                handler.postDelayed(hideLoading, READY_FALLBACK_MS)
             } else {
                 if (hasNetwork()) {
                     offlineShown = false
-                    loadingOverlay.show("Can't reach Home Assistant", "Retrying every few seconds…")
+                    loadingOverlay.show(LoadingOverlay.State.Unreachable(dashboardHost(), SystemClock.elapsedRealtime() + RETRY_MS))
                 } else {
                     showOffline() // "Connecting to Wi-Fi…" after a reboot, the setup hint when there's nothing to wait for
                 }
@@ -895,6 +946,11 @@ class MainActivity : Activity() {
      */
     private fun onPortRequest(m: JSONObject, port: PagePort) {
         if (m.optString("type") == "dashboards") { onDashboards(m, port); return }
+        if (m.optString("type") == "ready") { onPageReady(port, m.optString("why")); return }
+        if (m.optString("type") == "launch") {
+            if (port.topLevel) handler.post { frontendLoading = true; Log.i(TAG, "Home Assistant's launch screen is up: waiting for it to go") }
+            return
+        }
         val id = m.optInt("id", -1)
         if (id < 0) return
         fun reply(o: JSONObject?) {
@@ -908,6 +964,20 @@ class MainActivity : Activity() {
             "getExternalAuth" -> externalAuth(m, port, ::reply)
             "revokeExternalAuth" -> revokeExternalAuth(port, ::reply)
             else -> reply(null)
+        }
+    }
+
+    /**
+     * `{type: "ready"}` from content.js: the top-level page is drawn (Home Assistant removed its own
+     * launch screen), so the connecting screen cross-fades into it and the frontend's white splash never
+     * shows (#63 round 2). A frame's word doesn't count.
+     */
+    private fun onPageReady(sender: PagePort, why: String) {
+        if (!sender.topLevel) { Log.i(TAG, "A frame said ready ($why): ignored"); return }
+        handler.post {
+            frontendLoading = false
+            handler.removeCallbacks(hideLoading)
+            hideConnecting("ready, ${why.ifEmpty { "page" }}")
         }
     }
 
@@ -985,6 +1055,10 @@ class MainActivity : Activity() {
         private const val REQ_STARTUP = 1
         private const val REQ_GECKO = 2
         private const val RETRY_MS = 10_000L
+        /** The connecting screen waits this long after the page loaded for the page to say it's drawn. */
+        internal const val READY_FALLBACK_MS = 15_000L
+        /** ... and this long while Home Assistant's frontend says it is still loading. */
+        internal const val LAUNCH_FALLBACK_MS = 45_000L
         private const val SETUP_TICK_MS = 2_000L
         private const val SETTINGS_TICK_MS = 2_000L
     }

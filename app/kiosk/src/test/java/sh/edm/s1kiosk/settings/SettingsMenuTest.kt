@@ -4,7 +4,6 @@ import android.app.Application
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsPlace
 import dev.glassworks.pane.SettingsSection
-import dev.glassworks.pane.saveAll
 import dev.glassworks.pane.settingsOrder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,7 +21,6 @@ import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.radio.ZigbeeStack
 import sh.edm.s1kiosk.radio.radioDefinition
 import sh.edm.s1kiosk.radio.ui.RadioFollowUp
-import sh.edm.s1kiosk.ui.Mockup
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
@@ -44,6 +42,9 @@ class SettingsMenuTest {
         when (i) {
             is SettingsItem.Text -> listOf(i.title)
             is SettingsItem.Switch -> listOf(i.title)
+            is SettingsItem.Slider -> listOf(i.title)
+            is SettingsItem.Duration -> listOf(i.title)
+            is SettingsItem.TimeRange -> listOf(i.title)
             is SettingsItem.Link -> listOf(i.title)
             is SettingsItem.Note -> listOf("note")
             is SettingsItem.Info -> listOf("info")
@@ -84,8 +85,24 @@ class SettingsMenuTest {
 
     @Test
     fun theS1sSectionsInOrder() {
-        assertEquals(listOf("dashboard", "screen", "radio", "about"), menu().map { it.id })
-        assertEquals(listOf("Home Assistant & dashboard", "Panel", "Radio", "About"), menu().map { it.title })
+        assertEquals(listOf("dashboard", "screen", "voice", "sendspin", "radio", "log", "about"), menu().map { it.id })
+        assertEquals(listOf("Dashboard", "Screen", "Voice", "Music", "Radio", "Log", "About"), menu().map { it.title })
+        assertEquals("Zigbee / Thread radio", menu().first { it.id == "radio" }.heading)
+    }
+
+    @Test
+    fun everyPaneHasItsOnOff() {
+        // #63 round 2: a pane's on/off is its section's, at the top right. Voice and Music have nothing
+        // else yet and say so; the radio gives its own, which asks before turning off.
+        val m = menu().associateBy { it.id }
+        assertEquals("Voice", m.getValue("voice").master!!.title)
+        assertFalse("voice turns on and off live (#67)", m.getValue("voice").master!!.restartsApp)
+        assertEquals(listOf("note"), titles(m.getValue("voice").items))
+        assertEquals(dev.glassworks.pane.NO_SETTINGS, (m.getValue("sendspin").items[0] as SettingsItem.Note).text())
+        assertEquals(null, m.getValue("dashboard").master)
+        val radio = m.getValue("radio").master!!
+        assertFalse(radio.value()) // the fixture's radio is off
+        assertEquals(null, radio.confirm(true)) // on only shows the roles
     }
 
     @Test
@@ -100,17 +117,27 @@ class SettingsMenuTest {
     }
 
     @Test
-    fun theSettingsAsBefore() {
+    fun theSectionsAsDrawn() {
         val m = menu().associate { it.id to titles(it.items) }
-        assertEquals(listOf("Dashboard URL", "Zoom (1.0 – 2.0)", "Extra secure-context hosts", "Hide Home Assistant's header & sidebar"), m["dashboard"])
+        assertEquals(listOf("Home Assistant", "Full screen", "Zoom", "Secure hosts"), m["dashboard"])
         assertEquals(
             listOf(
-                "Screen follows presence", "Screen off after idle (s, 0 = never)", "At night: off after (s)", "Night window",
-                "Presence range (m, 0.1 – 2.5)", "Auto brightness", SettingsMenu.AQARA_TITLE,
+                "Wake when someone's near", "Presence range", "Turn off when idle", "At night", "At night, turn off after",
+                "Brightness", SettingsMenu.AQARA_TITLE,
             ),
             m["screen"],
         )
         assertEquals(listOf("info", CoreSettings.LICENCES_TITLE), m["about"])
+        assertEquals(listOf("info"), m["log"]) // the screen and sensor line moved here from About
+    }
+
+    @Test
+    fun aboutHasNoDebugLine() {
+        val about = menu().first { it.id == "about" }.items[0] as SettingsItem.Info
+        assertEquals("S1 Kiosk 0.4.3", about.title())
+        assertEquals("", about.detail())
+        val log = menu().first { it.id == "log" }.items[0] as SettingsItem.Info
+        assertEquals("screen on", log.detail())
     }
 
     @Test
@@ -122,8 +149,8 @@ class SettingsMenuTest {
 
     @Test
     fun aqaraEntryText() {
-        assertEquals("Panel settings (Aqara)", SettingsMenu.AQARA_TITLE)
-        assertEquals("Wi-Fi, sound, display, updates, factory reset", SettingsMenu.AQARA_DETAIL)
+        assertEquals("Aqara's own settings", SettingsMenu.AQARA_TITLE)
+        assertEquals("", SettingsMenu.AQARA_DETAIL)
     }
 
     @Test
@@ -135,82 +162,117 @@ class SettingsMenuTest {
     }
 
     @Test
-    fun shortFieldsPairUp() {
-        val m = menu().associate { it.id to it.items }
-        fun rows(id: String) = SettingsMenu.rows(m.getValue(id)).map { r -> titles(r) }
-        assertEquals(
-            listOf(listOf("Dashboard URL"), listOf("Zoom (1.0 – 2.0)", "Extra secure-context hosts"), listOf("Hide Home Assistant's header & sidebar")),
-            rows("dashboard"),
-        )
-        assertEquals(
-            listOf(
-                listOf("Screen follows presence"), listOf("Screen off after idle (s, 0 = never)", "At night: off after (s)"),
-                listOf("Night window", "Presence range (m, 0.1 – 2.5)"), listOf("Auto brightness"), listOf(SettingsMenu.AQARA_TITLE),
-            ),
-            rows("screen"),
-        )
-        // not adjacent: no pair
-        val d = m.getValue("dashboard")
-        assertEquals(listOf(1, 1, 1), SettingsMenu.rows(listOf(d[1], d[0], d[2])).map { it.size })
-    }
-
-    @Test
-    fun aDisabledFieldIsNotSaved() {
-        // The radio's allow-list shows "" and is disabled without its service: saving it could wipe the list
-        // if the service started while the menu was open.
-        Mockup.interFromSources()
-        fun saves(running: Boolean): Int {
-            val o = Mockup.show(KioskSettingsOverlay(Mockup.activity()))
-            o.show(MenuFixture.model(app, radioDefinition(app, FixedReadout(if (running) off else null, running = running))))
-            return o.current().size
-        }
-        assertEquals(11, saves(running = true)) // 4 dashboard + 6 screen + the allow-list
-        assertEquals(10, saves(running = false))
-    }
-
-    @Test
-    fun saveAndRestartWritesWhatTheMenuShows() {
+    fun eachSettingWritesWhatItSays() {
         val prefs = KioskPrefs(app)
-        val changes = ArrayList<(done: (String?) -> Unit) -> Unit>()
-        val typed = mapOf(
-            "Dashboard URL" to " ", "Zoom (1.0 – 2.0)" to "1.5", "Extra secure-context hosts" to "ha.local",
-            "Screen off after idle (s, 0 = never)" to "x", "At night: off after (s)" to "30", "Night window" to "23:00-06:00",
-            "Presence range (m, 0.1 – 2.5)" to "",
-        )
-        for (s in menu()) for (i in s.items) when (i) {
-            is SettingsItem.Text -> typed[i.title]?.let { v -> changes += { done -> i.save(v, done) } }
-            is SettingsItem.Switch -> changes += { done -> i.save(i.title == "Auto brightness", done) }
+        val typed = mapOf("Home Assistant" to " ", "Zoom" to "1.5", "Secure hosts" to "ha.local")
+        val problems = ArrayList<String?>()
+        for (s in menu().filter { it.id == "dashboard" || it.id == "screen" }) for (i in s.items) when (i) {
+            is SettingsItem.Text -> typed[i.title]?.let { v -> i.save(v) { problems += it } }
+            is SettingsItem.Switch -> i.save(i.title == "Brightness") { problems += it }
+            is SettingsItem.Slider -> i.save(2.1f) { problems += it }
+            is SettingsItem.Duration -> i.save(if (i.title == "Turn off when idle") 300 else 30) { problems += it }
+            is SettingsItem.TimeRange -> i.save("23:00-06:00") { problems += it }
             else -> {}
         }
-        var problems: List<String>? = null
-        saveAll(changes) { problems = it }
-        assertEquals(emptyList<String>(), problems)
+        assertEquals(List(10) { null }, problems)
         assertEquals(KioskPrefs.AUTO, prefs.urlSetting) // blank = auto
         assertEquals(1.5f, prefs.zoom)
         assertEquals("ha.local", prefs.extraSecureHosts)
         assertFalse(prefs.hideHeader); assertFalse(prefs.hideSidebar) // one switch for both
         assertEquals("always", prefs.screenMode)
-        assertEquals(120, prefs.idleOffSec) // not a number: the default
+        assertEquals(300, prefs.idleOffSec)
         assertEquals(30, prefs.nightIdleOffSec)
         assertEquals("23:00-06:00", prefs.nightWindow)
-        assertEquals(0f, prefs.presenceRangeM)
+        assertEquals(2.1f, prefs.presenceRangeM)
         assertTrue(prefs.autoBrightness)
     }
 
     @Test
-    fun savesRunInOrderAndCollectProblems() {
-        val log = ArrayList<String>()
-        var later: (() -> Unit)? = null
-        var problems: List<String>? = null
-        saveAll(listOf(
-            { done -> log += "a"; done(null) },
-            { done -> log += "b"; later = { done("Radio allow-list not changed: no") } }, // answers later (the radio thread)
-            { done -> log += "c"; done(null) },
-        )) { problems = it }
-        assertEquals(listOf("a", "b"), log)
-        assertEquals(null, problems) // waits for the slow one
-        later!!()
-        assertEquals(listOf("a", "b", "c"), log)
-        assertEquals(listOf("Radio allow-list not changed: no"), problems)
+    fun theScreenPageIsPickedNotTyped() {
+        // #63 round 2: a slider for the presence range, durations from a list with their units, the night
+        // window from steps. Nothing on the page opens the keyboard.
+        val screen = menu().first { it.id == "screen" }.items
+        assertTrue(screen.none { it is SettingsItem.Text })
+        val range = screen.filterIsInstance<SettingsItem.Slider>().single()
+        assertEquals(0f, range.min); assertEquals(CoreSettings.RANGE_MAX_M, range.max); assertEquals(0.1f, range.step)
+        assertEquals("The sensor's own setting", range.shown(0f))
+        assertEquals("Up to 2.1 m", range.shown(2.1f))
+        val idle = screen.filterIsInstance<SettingsItem.Duration>().first()
+        assertEquals(listOf("After 30 s", "After 1 minute", "After 2 minutes", "After 5 minutes", "After 10 minutes", "After 30 minutes", "Never"), idle.choices.map(idle.shown))
+    }
+
+    private fun screen(live: CoreSettings.Live = CoreSettings.Live()) =
+        MenuFixture.model(app, radioDefinition(app, FixedReadout(off)), live = live).sections.first { it.id == "screen" }.items
+
+    @Test
+    fun wakeWhenSomeonesNearIsTheWholePresencePolicy() {
+        // CodeRabbit on #163: with wake_on_approach off, the switch read on and couldn't wake the screen.
+        // On means 0.4.3's "Screen follows presence": the presence screen mode and waking on approach.
+        val prefs = KioskPrefs(app)
+        prefs.screenMode = "presence"; prefs.wakeOnApproach = false
+        val wake = screen().filterIsInstance<SettingsItem.Switch>().first { it.title == "Wake when someone's near" }
+        assertFalse(wake.value())
+        wake.save(true) {}
+        assertEquals("presence", prefs.screenMode); assertTrue(prefs.wakeOnApproach)
+        assertTrue(wake.value())
+        wake.save(false) {}
+        assertEquals("always", prefs.screenMode) // stays on, as 0.4.3's switch did
+        assertFalse(wake.value())
+    }
+
+    @Test
+    fun rangeZeroPromisesNoDistance() {
+        // CodeRabbit on #163: 0 leaves the sensor's threshold alone, which may not be 1.5 m.
+        val prefs = KioskPrefs(app)
+        prefs.presenceRangeM = 0f
+        val items = screen()
+        assertEquals("The sensor's own setting", items.filterIsInstance<SettingsItem.Slider>().single().shown(0f))
+        assertEquals("Uses the presence sensor", items.filterIsInstance<SettingsItem.Switch>().first().detail)
+        prefs.presenceRangeM = 2.1f
+        assertEquals("Uses the presence sensor · up to 2.1 m", screen().filterIsInstance<SettingsItem.Switch>().first().detail)
+    }
+
+    @Test
+    fun aNewNightWindowAppliesToTheBrightnessAtOnce() {
+        // CodeRabbit on #163: the night cap only changed with the next light reading.
+        var refreshed = 0
+        screen(CoreSettings.Live(brightness = { refreshed++ })).filterIsInstance<SettingsItem.TimeRange>().single().save("23:00-06:00") {}
+        assertEquals(1, refreshed)
+    }
+
+    @Test
+    fun aRangeTheSensorRefusesIsSaidAndNotKept() {
+        // F5: the sensor's range needs a permission; without it the slider says so and the old value stays.
+        val prefs = KioskPrefs(app)
+        prefs.presenceRangeM = 1.2f
+        val radio = radioDefinition(app, FixedReadout(off))
+        val screen = MenuFixture.model(app, radio, live = CoreSettings.Live(presenceRange = { "no permission" })).sections.first { it.id == "screen" }
+        var why: String? = null
+        screen.items.filterIsInstance<SettingsItem.Slider>().single().save(2f) { why = it }
+        assertEquals("no permission", why)
+        assertEquals(1.2f, prefs.presenceRangeM)
+    }
+
+    @Test
+    fun onlyWhatGeckoReadsAtStartAsksForARestart() {
+        // The same ones whose adb extras restart the app: the dashboard's address, zoom, secure hosts.
+        val restarts = menu().flatMap { it.items }.mapNotNull { i ->
+            when (i) {
+                is SettingsItem.Text -> i.title.takeIf { i.restartsApp }
+                is SettingsItem.Switch -> i.title.takeIf { i.restartsApp }
+                else -> null
+            }
+        }
+        assertEquals(listOf("Home Assistant", "Zoom", "Secure hosts"), restarts)
+    }
+
+    @Test
+    fun rowsSayTheValueInWords() {
+        assertEquals("After 2 minutes", CoreSettings.afterIdle(120))
+        assertEquals("After 1 minute", CoreSettings.afterIdle(60))
+        assertEquals("After 45 s", CoreSettings.afterIdle(45))
+        assertEquals("Never", CoreSettings.afterIdle(0))
+        assertEquals("1.25", CoreSettings.number(1.25f))
+        assertEquals("2", CoreSettings.number(2f))
     }
 }

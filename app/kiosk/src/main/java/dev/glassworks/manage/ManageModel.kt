@@ -21,6 +21,26 @@ data class Tile(val label: String, val value: String, val detail: String, val to
  */
 data class PaneRow(val id: String, val title: String, val state: PaneState, val sectionId: String?, val links: List<Pair<String, String>> = emptyList())
 
+/**
+ * A pane's row from its settings section, the one the panel's menu draws ([dev.glassworks.pane.paneSections]):
+ * the section's title, Can't run while [SettingsSection.unavailable] says why, Off while its on/off (#67,
+ * [SettingsSection.master]) is off. Otherwise [running] says what the pane is doing ("Wake word …"); when the
+ * frame can't say, the row reads On with the switch's line under it. No section: the id in words, state unknown.
+ */
+fun paneRow(id: String, section: SettingsSection?, links: List<Pair<String, String>> = emptyList(), running: () -> PaneState? = { null }): PaneRow {
+    val title = section?.title ?: id.replace('-', ' ').replaceFirstChar { it.uppercase() }
+    val on = section?.master?.let { m -> runCatching { m.value() }.getOrNull() }
+    val unavailable = section?.let { runCatching { it.unavailable() }.getOrNull() }
+    val state = when {
+        unavailable != null -> PaneState(PaneState.Kind.CANT_RUN, unavailable)
+        on == false -> PaneState(PaneState.Kind.OFF, "Turned off")
+        else -> runCatching(running).getOrNull()
+            ?: if (on == true) PaneState(PaneState.Kind.RUNNING, section.master?.detail.orEmpty(), chip = "On") else PaneState.UNKNOWN
+    }
+    // A pane that is off offers nothing to do until it is on again.
+    return PaneRow(id, title, state, section?.id, if (state.kind == PaneState.Kind.OFF) emptyList() else links)
+}
+
 /** Everything the Manage page shows about the panel now. Read on each page load, off the main thread. */
 data class PanelStatus(
     /** "Glassworks Panel". */

@@ -3,8 +3,8 @@
 The kiosk app makes the panel look like **one ESPHome device** to Home Assistant. HA's built-in
 **ESPHome** integration connects to it over the ESPHome native API (TCP port **6053**) and gets:
 
-- an **Assist satellite** with an on-device wake word (openWakeWord on TFLite), like Home Assistant
-  Voice PE: wake word select, pipeline select, VAD sensitivity, announcements, timers;
+- an **Assist satellite** with an on-device wake word (microWakeWord on TFLite, as Home Assistant
+  Voice PE runs it), like Voice PE: wake word select, pipeline select, VAD sensitivity, announcements, timers;
 - a **media player** (`media_player.s1_panel_speaker`) for TTS, announcements and audio;
 - the **screen** as a light, the presence and light sensors, and the kiosk/screen settings;
 - the switch for the panel's native **Music Assistant player** (Sendspin, [sendspin.md](sendspin.md)),
@@ -22,12 +22,14 @@ keeps working while the screen is off. Logs: `adb logcat -s S1ESPHome S1Voice`.
 
 ## Add it to Home Assistant
 
-1. Install the app ([install.md](install.md)). The panel downloads the wake word models itself
-   (`voice/ModelFetcher.kt`): `melspectrogram.tflite`, `embedding_model.tflite`, `hey_jarvis_v0.1`,
-   `alexa_v0.1` and `hey_mycroft_v0.1` from the openWakeWord **v0.5.1** GitHub release, each checked
-   against a pinned SHA-256, into `/sdcard/Android/data/sh.edm.s1kiosk/files/models/`. `tools/install.sh`
-   also pushes them over adb (`tools/voice/fetch-models.sh`, which downloads and checks the same files;
-   `--no-models` skips it). Without models the API still works; the engine retries loading every 30 s.
+1. Install the app ([install.md](install.md)). The panel downloads the wake word models itself the
+   first time it needs one (`voice/ModelFetcher.kt`): the four official microWakeWord models
+   (`okay_nabu`, `hey_jarvis`, `alexa`, `hey_mycroft`) from
+   [esphome/micro-wake-word-models](https://github.com/esphome/micro-wake-word-models) at a pinned
+   commit, each checked against a pinned SHA-256, into
+   `/sdcard/Android/data/sh.edm.s1kiosk/files/models/micro/`. `tools/install.sh` also pushes them
+   over adb (`tools/voice/fetch-models.sh`, which downloads and checks the same files; `--no-models`
+   skips it). Without models the API still works; the engine retries loading every 30 s.
 2. **Discovery**: the panel advertises `s1-panel._esphomelib._tcp` over mDNS. If mDNS reaches HA,
    **Settings → Devices & services** shows a discovered **ESPHome** device "Glassworks Panel". Click
    **Add**.
@@ -64,7 +66,7 @@ Details and sources: [onboarding.md](onboarding.md#2-adoption--encryption-esphom
 | esphome_version / compilation_time | `2026.10.2` / `S1 Kiosk <app version>` (HA shows "2026.10.2 (S1 Kiosk 0.1.0)") |
 | API version | 1.20 (as ESPHome 2026.10/11); `DeviceCapabilitiesRequest` is answered |
 | Sendspin | `DeviceCapabilitiesResponse.sendspin` = `{feature_flags: PAIRING_TOKEN, client_id}`; `SendspinPairingTokenRequest` (159) → `SendspinPairingTokenResponse` (160), token only over Noise with a key ([sendspin.md](sendspin.md#esphome-hand-off-how-ha-gives-ma-the-token)) |
-| voice_assistant_feature_flags | 61 = VOICE_ASSISTANT 1 + API_AUDIO 4 + TIMERS 8 + ANNOUNCE 16 + START_CONVERSATION 32 (0 when `voice_enabled` is false) |
+| voice_assistant_feature_flags | 61 = VOICE_ASSISTANT 1 + API_AUDIO 4 + TIMERS 8 + ANNOUNCE 16 + START_CONVERSATION 32 (0 when `voice_enabled` is false). Voice turned on or off while the panel runs changes it, and the panel asks Home Assistant to reconnect so it reads it again (#67) |
 
 ## Entities
 
@@ -101,6 +103,107 @@ Where a new entity's id comes from depends on Home Assistant's version:
 The node name `s1-panel` never changes (`PanelDevice.NAME`, `PanelNameTest`): HA's config entry keeps
 it (`device_name`), the mDNS service is named after it, and HA up to 2025.11 makes new entity ids from it.
 
+### Categories and defaults
+
+Each entity has a category and a default, following the rule in
+[the pane rules](../app/kiosk/src/main/java/dev/glassworks/README.md#entities). An entity is enabled
+when HA first adds it only if people reach for it day to day. When HA adds a panel, 15 entities
+are on (22 with a two-channel switch base). The rest are created turned off. To turn one on, open
+**Settings → Devices & services → ESPHome → Glassworks Panel**, select *+N entities not shown*,
+open the entity, and turn on *Enabled*.
+
+| Entity | object_id | Pane | Category | Default | Why |
+|---|---|---|---|---|---|
+| Presence | `presence` | core | none | on | Automations |
+| Illuminance | `illuminance` | core | none | on | Automations |
+| Screen | `screen` | core | none | on | Dashboards and automations |
+| Speaker | `speaker` | core | none | on | Dashboards, Music Assistant, announcements |
+| Reload dashboard | `reload_dashboard` | core | none | on | Used often |
+| Restart app | `restart_app` | core | config | on | Used often |
+| Screen mode | `screen_mode` | core | config | on | Automations (night, away) |
+| App update | `app_update` | core | config | on | HA shows updates only while it is on |
+| IP address | `ip_address` | core | diagnostic | on | People check it |
+| Auto brightness | `auto_brightness` | core | config | off | Set once |
+| Idle timeout | `idle_timeout` | core | config | off | Set once |
+| Night idle timeout | `night_idle_timeout` | core | config | off | Set once |
+| Night window | `night_window` | core | config | off | Set once |
+| Presence range | `presence_range` | core | config | off | Set once, for the room |
+| Zoom | `zoom` | core | config | off | Set once |
+| Dashboard | `dashboard` | core | config | off | Set once. Turn it on to pick a dashboard; the panel has no picker of its own yet |
+| Dashboard URL | `dashboard_url` | core | config | off | Set once |
+| Hide HA header | `hide_ha_header` | core | config | off | Set once |
+| Open device settings | `open_settings` | core | config | off | Rare; you can open the menu on the panel |
+| Start Wi-Fi setup (Bluetooth) | `improv_ble` | core | config | off | Only when the panel changes network |
+| Sign out | `sign_out` | core | config | off | Rare |
+| App version | `app_version` | core | diagnostic | off | *App update* shows the version |
+| Update status | `update_status` | core | diagnostic | off | *App update* shows progress; for troubleshooting |
+| Home Assistant URL | `home_assistant_url` | core | diagnostic | off | Troubleshooting |
+| Signed in | `signed_in` | core | diagnostic | off | Troubleshooting |
+| CPU usage, CPU temperature, Wi-Fi signal, Uptime | `cpu_usage`, `cpu_temperature`, `wifi_signal`, `uptime` | diagnostics | diagnostic | on | The few health values people check ([Diagnostics](#diagnostics)) |
+| Diagnostics | `diagnostics` | diagnostics | config | off | Set once: the pane's on/off |
+| App CPU usage, RAM available, App RAM, Storage free, Wi-Fi link speed, App uptime, Web content processes, Last restart reason | `app_cpu_usage`, `memory_available`, `app_memory`, `storage_free`, `wifi_link_speed`, `app_uptime`, `web_content_processes`, `last_restart_reason` | diagnostics | diagnostic | off | Troubleshooting (unchanged since #142) |
+| Voice | `voice` | voice | config | off | Set once: the pane's on/off ([Panes on and off](#panes-on-and-off)) |
+| Mute microphone | `mute_microphone` | voice | config | on | Privacy, toggled day to day |
+| Wake sound | `wake_sound` | voice | config | off | Set once |
+| Voice overlay | `voice_overlay` | voice | config | off | Set once |
+| Mic gain | `mic_gain` | voice | config | off | Set once |
+| Wake word threshold | `wake_word_threshold` | voice | config | off | Set once |
+| Music Assistant player (Sendspin) | `sendspin` | music | config | off | Set once |
+| Music Assistant player status | `sendspin_status` | music | diagnostic | off | Troubleshooting |
+| Radio status | `radio_status` | radio | diagnostic | on | People check it when they use the radio |
+| Radio mode | `radio_mode` | radio | config | off | Set once |
+| Zigbee stack | `zigbee_stack` | radio | config | off | Set once |
+| Radio allowed clients | `radio_allowed_clients` | radio | config | off | Set once |
+| Radio firmware image, Flash radio firmware | `radio_firmware_image`, `radio_firmware_flash` | radio | config | off | Rare, and risky |
+| Join / Leave Zigbee network | `zigbee_router_join`, `zigbee_router_leave` | radio | config | off | Once per network |
+| Join Home Assistant's Thread network, Leave Thread network | `thread_join_ha`, `thread_leave` | radio | config | off | Once per network |
+| Thread dataset | `thread_dataset` | radio | config | off | Once per network |
+| Thread join | `thread_join` | radio | diagnostic | off | Only during a join |
+| Radio helper, Radio firmware | `radio_helper`, `radio_firmware` | radio | diagnostic | off | Troubleshooting |
+| Keep time zone | `keep_time_zone` | time zone | config | off | Set once: the pane's on/off |
+| Time zone | `time_zone` | time zone | config | off | Set once |
+| Time zone status | `time_zone_status` | time zone | diagnostic | off | Troubleshooting |
+| Wall base | `wall_base` | wall base | config | off | Set once: the pane's on/off |
+| Block Aqara cloud | `block_aqara_cloud` | wall base | config | off | Set once |
+| Aqara cloud daemon | `aqara_cloud` | wall base | diagnostic | off | Troubleshooting |
+| Base | `base` | wall base | diagnostic | off | Troubleshooting; the base's own entities show what is mounted |
+| Base firmware | `base_firmware` | wall base | diagnostic | off | Troubleshooting |
+| Base relay N, Base button N, Base power, Base energy | `base_relay_N`, `base_button_N`, `base_power`, `base_energy` | wall base | none | on | The reason to mount a base |
+| Base protection | `base_protection` | wall base | diagnostic | on | Overheat and overload; people automate on it. It had no category before #132 |
+
+HA adds its own voice entities (*Assist satellite*, *Assist pipeline*, *Wake word*, *Finished speaking
+detection*). The panel doesn't send those, so their defaults are HA's.
+
+The pin goldens (`panel-entities*.golden.txt`) end a line with `disabledByDefault` when the entity is
+off by default, so a review shows every new entity's default.
+
+#### A panel that HA already has
+
+HA reads `disabled_by_default` only when it first registers an entity. Read 2026-11-13 from
+home-assistant/core 2026.11.1:
+
+- `esphome/entity.py`:616 turns `disabled_by_default` into `entity_registry_enabled_default`, and
+  :623-626 maps `entity_category`. Both are read again on every listing.
+- `helpers/entity_platform.py`:1108-1109 makes that `disabled_by=INTEGRATION`, and passes it with the
+  category to `async_get_or_create`.
+- `helpers/entity_registry.py`:1650-1666: for an entity already in the registry, `async_get_or_create`
+  updates the category, the name and the icon but not `disabled_by`. Its docstring (:1634) says
+  `disabled_by` "does not affect an existing entity".
+- An entity HA deleted and later sees again gets back the enabled state it had before
+  (`entity_registry.py`:1694, :1836).
+
+So on a panel HA already has:
+
+| What | After the update |
+|---|---|
+| Entities that were on | Stay on, with the same entity id, area and name |
+| Entities you turned off | Stay off |
+| Category | Follows the panel: *Base protection* moves to the device page's *Diagnostic* section. No other category changes |
+| Entities that appear later (a new pane, a wall base mounted after the update) | Get the new default when HA first sees them |
+| Removing the panel from HA and adding it back | Each entity gets back the state it had, while HA still remembers the deleted entities |
+
+### What each entity does
+
 | Entity | object_id | What it does |
 |---|---|---|
 | light `Screen` | `screen` | on → wake the screen, off → screen off (`ScreenPolicy.wake/sleep`); brightness sets a fixed brightness and turns *Auto brightness* off |
@@ -121,13 +224,13 @@ it (`device_name`), the mDNS service is named after it, and HA up to 2025.11 mak
 | button `Start Wi-Fi setup (Bluetooth)` | `improv_ble` | starts Improv over Bluetooth on demand ([onboarding.md](onboarding.md)) |
 | switch `Hide HA header` | `hide_ha_header` | header + sidebar, applied live |
 | media_player `Speaker` | `speaker` | play/pause/stop, volume, mute, play media, announce; formats: mp3 (default + announcement) |
-| switch `Music Assistant player (Sendspin)` | `sendspin` | the native Sendspin player ([sendspin.md](sendspin.md)), default on; off sends `client/goodbye` `user_request` |
+| switch `Music Assistant player (Sendspin)` | `sendspin` | the native Sendspin player ([sendspin.md](sendspin.md)), default on; off sends `client/goodbye` `user_request`; encrypted connection only ([Panes on and off](#panes-on-and-off)) |
 | text_sensor `Music Assistant player status` | `sendspin_status` | diagnostic; e.g. `ready, paired with Music Assistant (…)`, `playing from …: Artist – Title`, `waiting for pairing or approval by …`, `off` |
 | switch `Mute microphone` | `mute_microphone` | releases the microphone entirely |
 | switch `Wake sound` | `wake_sound` | short two-tone chime when the wake word is detected (default on) |
 | switch `Voice overlay` | `voice_overlay` | Full-screen overlay during voice runs: an orb that follows the voice, what was heard and the reply; tap anywhere to cancel the run (default on) |
 | number `Mic gain` | `mic_gain` | 0.5–4× |
-| number `Wake word threshold` | `wake_word_threshold` | 0.1–0.95 (default 0.5) |
+| number `Wake word threshold` | `wake_word_threshold` | 0.10–0.99. For a microWakeWord word, the probability cutoff for the mean of the model's last 5 outputs; it starts at the model's own (Okay Nabu and Hey Jarvis 0.97, Mycroft 0.95, Alexa 0.9) and goes back to it when you pick another word. Lower is more sensitive. For a legacy openWakeWord word, openWakeWord's score threshold (default 0.5), as before |
 | select `Radio mode` | `radio_mode` | `Off` (default), `Zigbee coordinator (TCP)`, `Zigbee router (repeater)`, `Thread border router`, `Thread router (repeater)` ([radio.md](radio.md); before 0.4.3 the repeaters were `Zigbee router` / `Thread router`, still accepted when sent); without the root helper only `Off` applies, other choices are refused and snap back |
 | text_sensor `Radio status` | `radio_status` | diagnostic; e.g. `Off: Aqara's radio services stopped, radio idle. …`, or the root helper's `ok zigbee_tcp: EZSP on tcp:6638`, plus who may connect and the ZHA / Zigbee2MQTT settings |
 | text `Radio allowed clients` | `radio_allowed_clients` | who may reach the radio's ports besides Home Assistant: addresses or CIDRs, `any`, or empty = Home Assistant only ([radio-guide.md](radio-guide.md#who-may-connect)) |
@@ -153,6 +256,37 @@ it (`device_name`), the mDNS service is named after it, and HA up to 2025.11 mak
 
 Plus `Block Aqara cloud` and `Aqara cloud daemon` ([below](#aqara-cloud)), the wall base entities, and the entities HA adds itself for a voice device: `assist_satellite.s1_panel_assist_satellite`,
 *Assist pipeline* and *Wake word* selects (two of each), *Finished speaking detection*.
+
+### Panes on and off
+
+Each pane has a config switch that turns it on or off while the panel runs (#67), with two
+exceptions: the radio, whose on/off is `Radio mode` (`Off`), and the timers, which come with voice and
+have no switch of their own. The settings menu (the switch at the top of the pane's page), setup's
+Panes step and the adb extras set the same setting. A pane that is off keeps its entities, with no
+state where it has none to give, so the entity list doesn't change. Each switch is a config entity,
+off in Home Assistant until you turn it on on the device page
+([Categories and defaults](#categories-and-defaults)): people set them once. Only an encrypted
+connection with the panel's key may change one, as for `Time zone`: turned on, a pane can open the
+microphone or a port.
+
+| Entity | object_id | Pane | adb extra | Enabled in HA by default |
+|---|---|---|---|---|
+| switch `Voice` | `voice` | the voice assistant and timers | `voice_enabled` | no |
+| switch `Music Assistant player (Sendspin)` | `sendspin` | Sendspin (the same entity as before) | `sendspin_enabled` | no |
+| switch `Wall base` | `wall_base` | the wall base driver; off closes the port, and Aqara's daemon may run again unless `Block Aqara cloud` is on | `wall_base_enabled` | no |
+| switch `Keep time zone` | `keep_time_zone` | the time zone; off sets the zone to keep to `(off)`, so the root helper keeps none and adopts none ([radio.md](radio.md#root-helper-contract-v4)), and on keeps the same zone again. *Time zone status* says `off` only once the helper has let go | `time_zone_enabled` | no |
+| switch `Diagnostics` | `diagnostics` | the diagnostic sensors; off stops the sampling | `diagnostics_enabled` | no |
+
+The radio's on/off is `Radio mode` (`Off`). Voice on or off changes the voice features in the device
+info, so the panel asks Home Assistant to reconnect, as it does when the entity list changes. For those
+few seconds every entity of the panel is unavailable (on the dev panel, 2026-11-14: 2 to 8 s, the screen,
+presence and speaker together). Then:
+
+- The **speaker** (`media_player`) is the panel's, not voice's: it stays, and Home Assistant can play on
+  it with Voice off.
+- The **Assist satellite** and HA's own voice entities (*Assist pipeline*, *Wake word*, *Finished
+  speaking detection*) go away while Voice is off, because the panel has no voice features then. They
+  come back when Voice is on.
 
 ### Diagnostics
 
@@ -188,7 +322,7 @@ asks Android. It runs no shell commands and needs no root.
 ### Wall base entities
 
 Built from the detected base, through the app's own UART driver (default) or the stock LocalService
-([research/bases.md](research/bases.md#implementation-s1-kiosk)); both backends produce the same entities.
+([frames/aqara-s1-plus/research/bases.md](../frames/aqara-s1-plus/research/bases.md#implementation-s1-kiosk)); both backends produce the same entities.
 Only *Base* is always present; the rest exist only while a matching base is detected.
 
 | Entity | object_id | When | What it does |
@@ -198,7 +332,7 @@ Only *Base* is always present; the rest exist only while a matching base is dete
 | switch `Base relay N` | `base_relay_1`..`3` | switch base, per channel | writes `4.N.85` = 0/1. UART: the ack (else a re-read) confirms it; LocalService: re-reads |
 | sensor `Base power` (W, power, measurement) | `base_power` | switch base | `0.12.85` |
 | sensor `Base energy` (total_increasing, no unit) | `base_energy` | switch base | `0.13.85`. UART: integrated in the app from power, Wh (as libha_bracket does); LocalService: ha_master's value |
-| text_sensor `Base protection` | `base_protection` | switch base | `8.0.2014`: `normal`, `over_temperature`, `over_load`, `over_temperature_error`, `over_load_error`, `over_temperature_removed`, `over_load_removed` |
+| text_sensor `Base protection` (diagnostic) | `base_protection` | switch base | `8.0.2014`: `normal`, `over_temperature`, `over_load`, `over_temperature_error`, `over_load_error`, `over_temperature_removed`, `over_load_removed` |
 | event `Base button N` (button) | `base_button_1`..`3` | switch base, per channel | `13.N.85` clicks (LocalService only; the UART protocol has no click frames); event types `single`, `double`, `triple`, `long`, `release`, `unknown` (mapping unverified, raw value logged) |
 
 On a panel added before #63 the entity ids are `switch.s1_panel_base_relay_1`,
@@ -238,7 +372,7 @@ poll as a safety net.
   a blank version after an offline start). After a check: `latest_version`, `release_url`, and
   `release_summary` (the release notes, cut to HA's 255 characters). A status line goes on top of
   the summary when there is one, e.g. a failed install.
-- **Check:** `GET https://api.github.com/repos/GlassworksHQ/aqara-s1-unleashed/releases?per_page=30`, then
+- **Check:** `GET https://api.github.com/repos/GlassworksHQ/glassworks/releases?per_page=30`, then
   the newest release whose tag is `v<version>` or `aqara-s1-plus-v<version>`. Other frames' and
   libraries' releases in the same repo are skipped; a refused newer release is reported, and the
   newest acceptable one is still offered.
@@ -266,7 +400,7 @@ poll as a safety net.
      in the installed version, panels on 0.4.0 or older update once by hand
      ([install.md](install.md#updating)).
   4. The verified file becomes `files/update/pending.apk`, and the root update service installs it
-     ([research/root.md](research/root.md)). On success the app is replaced and restarted, and the
+     ([frames/aqara-s1-plus/research/root.md](../frames/aqara-s1-plus/research/root.md)). On success the app is replaced and restarted, and the
      new version reports the result in *Update status*.
   5. Boot images from before the service (`sys.s1kiosk.update.version` unset) use a
      PackageInstaller session instead. Android then asks for confirmation on the panel's screen,
@@ -285,8 +419,8 @@ connection, TTS is played from a URL. Checked against esphome `voice_assistant.c
 | Direction | Message | What we do |
 |---|---|---|
 | HA → panel | `SubscribeVoiceAssistantRequest` | This connection receives voice messages. |
-| HA → panel | `VoiceAssistantConfigurationRequest` | Reply with every `*.tflite` wake model on the panel (not mel/embedding), e.g. `hey_jarvis_v0.1` → "Hey Jarvis", the active one, max 1. |
-| HA → panel | `VoiceAssistantSetConfiguration` | Switch the wake model live, persist it (`wake_model`); empty list = no wake word. |
+| HA → panel | `VoiceAssistantConfigurationRequest` | Reply with the four microWakeWord words (`okay_nabu` → "Okay Nabu", …), then any legacy openWakeWord model already on the panel (`hey_jarvis_v0.1` → "Hey Jarvis (openWakeWord)"), the active one, max 1. |
+| HA → panel | `VoiceAssistantSetConfiguration` | Switch the wake word live, persist its id (`wake_word`); empty list = no wake word. |
 | panel → HA | `VoiceAssistantRequest{start, flags=USE_VAD, wake_word_phrase, conversation_id}` | On a local detection. `USE_WAKE_WORD` is not set, so HA starts at STT. |
 | HA → panel | `VoiceAssistantResponse{port=0}` | Start streaming; audio captured since the wake word (≤ 2 s) is sent first. |
 | panel → HA | `VoiceAssistantAudio{data}` | 16 kHz s16le mono, 2560-byte (80 ms) chunks. |
@@ -316,6 +450,41 @@ The microphone has one consumer, `VoiceEngine`: every 80 ms frame goes through t
 Detections only count while idle and 3 s after the previous one. Safety caps: 15 s maximum stream,
 10 s for HA to answer a start request, 60 s waiting for a response.
 
+A detection reports the word of the model that fired: while a newly picked word loads, the old one
+keeps listening as itself. If the new word can't load (no network for its model), the old model
+stops, the panel shows the error, and it retries every 30 s.
+
+**What HA does with the wake word select.** HA's select (`homeassistant/components/esphome/select.py`,
+2026.11.1) restores its last state, but on every connection it only reads the panel's configuration
+and shows the active word; it never sends its restored value back. Only picking a word (a person, an
+automation, a scene or a script calling `select.select_option`) sends one. Options are matched by
+name, so a restored "Hey Jarvis" from 0.4 now means the microWakeWord `hey_jarvis`; the legacy ones
+are named "… (openWakeWord)" so the two never share a name.
+
+**Updating from 0.4 (openWakeWord).** The word 0.4 saved (`wake_model`, e.g. `hey_jarvis_v0.1.tflite`)
+moves to the microWakeWord model of the same word (`wake_word` = `hey_jarvis`) with no user action. Its
+openWakeWord threshold doesn't carry over, because the scales differ: the word starts at its model's
+cutoff. `wake_model` and `wake_threshold` are only read, so a downgrade to 0.4 finds its own settings.
+A custom openWakeWord model stays on openWakeWord. The openWakeWord models already on the panel stay
+selectable for this release as "<word> (openWakeWord)"; a later release removes them and their
+CC BY-NC-SA models.
+
+### microWakeWord parameters
+
+The engine runs ESPHome's microWakeWord v2 streaming models (`MicroWakeWord.kt`), as
+pymicro-wakeword and ESPHome's `micro_wake_word` do:
+
+| Parameter | Value |
+|---|---|
+| Front end | `MicroFrontend.kt`, a port of TFLite Micro's audio microfrontend: 30 ms Hann window every 10 ms, 512-point 16-bit fixed-point FFT (kissfft), 40 mel channels 125–7500 Hz, noise reduction (smoothing bits 10, even 0.025, odd 0.06, min 0.05), PCAN (strength 0.95, offset 80, gain bits 21), log scale (shift 6) |
+| Model input | int8 `[1, 3, 40]`: three 10 ms feature rows, so one inference per 30 ms. `round(value × 0.0390625 / scale + zero_point)`, half to even, clamped to int8 (scale 0.10196, zero point −128 for all four) |
+| Model output | uint8 `[1, 1]`, × 1/256; the model keeps its own streaming state (resource variables) |
+| Score | mean of the last `sliding_window_size` outputs (5 for all four), 0 until there are 5; per 80 ms microphone frame, the best mean in that frame |
+| Detection | score ≥ the threshold entity (default: the manifest's `probability_cutoff`), then 3 s before the next one. This is pymicro-wakeword's comparison, not ESPHome's: ESPHome fires when the sum of the 5 raw outputs is above `int(cutoff × 255) × 5`, so at the same cutoff the panel needs about 1.1 more per output (sum 1242 instead of 1236 at 0.97, 1216/1211 at 0.95, 1152/1146 at 0.9), about 0.5% stricter than Voice PE |
+| Models | `okay_nabu`, `hey_jarvis`, `alexa`, `hey_mycroft` from esphome/micro-wake-word-models `models/v2` at `40ff33f`, SHA-256 in `WakeWords.kt` |
+
+The research note is [research/microwakeword.md](research/microwakeword.md).
+
 ### Timers on screen
 
 Timers live in Home Assistant; the panel only shows what HA's timer events say, so pausing,
@@ -340,9 +509,9 @@ cancelling or adding time is done by voice ("pause the pasta timer"). Code: `Tim
   running. A tap anywhere dismisses it and stops the remaining chimes; otherwise it closes 60 s after
   the last timer finished. It shows even when the timers were hidden.
 
-### openWakeWord parameters
+### openWakeWord parameters (legacy)
 
-The code is a port of `AudioFeatures` (`openwakeword/utils.py`) and `Model.predict`
+Kept for one release as the fallback. The code is a port of `AudioFeatures` (`openwakeword/utils.py`) and `Model.predict`
 (`openwakeword/model.py`), fed exact 1280-sample frames:
 
 | Parameter | Value |
@@ -452,6 +621,13 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   entity's state machine.
 - `VoiceAssistantControllerTest`: pre-roll, "never mind" runs, pipeline errors, the max-stream
   cap, continue-conversation.
+- `MicroFrontendTest`: compares `MicroFrontend` with pymicro-features (the TFLite Micro frontend's C
+  code) on synthesised speech and a synthetic signal (fixtures made by `tools/voice/mww_reference.py`).
+- `MicroDetectorTest`: strides, quantization and the sliding window. `MicroWakeWordClipTest` runs
+  the four real models (LiteRT) behind the Kotlin pipeline over the clip: each fires in its own word
+  only. Skipped without `MWW_PYTHON`; CI's `wake-word` job runs it with LiteRT from
+  `app/kiosk/mww-test-requirements.txt` and fails if it skipped.
+- `WakeWordCatalogTest`, `AssistPaneTest`: the words HA is offered, the 0.4 migration, the threshold.
 - `OwwFeaturesTest`: compares the Kotlin feature buffering with openWakeWord's own
   `AudioFeatures` code, run with deterministic fake models (fixture made by
   `tools/voice/oww_reference.py`).
@@ -461,11 +637,14 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 ## Licensing
 
 - The ESPHome API and voice code is MIT, like the rest of the app. The openWakeWord feature pipeline is
-  re-implemented from the Apache-2.0 upstream.
+  re-implemented from the Apache-2.0 upstream. `MicroFrontend.kt` is a port of TFLite Micro's audio
+  microfrontend (Apache-2.0) and kissfft (BSD-3-Clause), and keeps those licences.
+- **The microWakeWord models are Apache-2.0** (esphome/micro-wake-word-models). They are downloaded
+  by the panel, not shipped.
 - TensorFlow Lite (`org.tensorflow:tensorflow-lite:2.16.1`) is Apache-2.0.
 - **The openWakeWord pre-trained models are CC BY-NC-SA 4.0** (non-commercial, share-alike).
-  That's why they are **not bundled** in the APK or the repo. Each user downloads them with
-  `fetch-models.sh`. Don't ship them in a commercial product. Custom-trained models carry
+  That's why they are **not bundled** in the APK or the repo. They are only used as the legacy
+  fallback; `fetch-models.sh --openwakeword` downloads them. Don't ship them in a commercial product. Custom-trained models carry
   whatever license you give them.
 - BouncyCastle (`org.bouncycastle:bcprov-jdk18on`) is MIT-style (Bouncy Castle licence).
 
@@ -479,8 +658,8 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 - The mDNS SRV target is the Android hostname, not `s1-panel.local`; HA uses the IP it discovered and
   replaces the name with `DeviceInfoResponse.name` once connected.
 - No `SPEAKER` flag: TTS is fetched by URL, not streamed as PCM over the API.
-- One wake word at a time (`max_active_wake_words = 1`); HA's custom (microWakeWord) wake words
-  are ignored.
+- One wake word at a time (`max_active_wake_words = 1`); wake word models HA offers for download
+  are ignored (the panel has the four official ones).
 - No acoustic echo cancellation / barge-in: detections are ignored while listening or speaking.
 - Shared microphone with GeckoView: if the dashboard's in-browser Assist uses the mic at the same
   time, one of the two captures may get silence. *Mute microphone* releases it.
@@ -497,7 +676,8 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 
 - switch `Block Aqara cloud` (`block_aqara_cloud`, default on): stops Aqara's cloud daemon `ha_master`.
   With the UART wall-base backend (default) it is always stopped; with the LocalService backend it is
-  kept while a base is attached. See [research/debloat.md](research/debloat.md).
+  kept only while a switch base is attached (or before the base check has read the dock). With no base,
+  blocking wins and it stays stopped. With the wall base pane off, only this switch counts. See [frames/aqara-s1-plus/research/debloat.md](../frames/aqara-s1-plus/research/debloat.md).
 - text_sensor `Aqara cloud daemon` (`aqara_cloud`): `blocked`, `running`,
   `stopped (UART wall base backend owns /dev/ttyS3)`, `running (needed by the wall base, LocalService
   backend)`, or `error (…)`.

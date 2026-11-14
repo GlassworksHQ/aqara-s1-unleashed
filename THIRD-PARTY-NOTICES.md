@@ -66,6 +66,19 @@ versions are the ones Gradle resolves.
 - **XZ for Java** 1.10: `org.tukaani:xz:1.10`. 0BSD. https://github.com/tukaani-project/xz-java
   (tag `v1.10`).
 
+### Code ported into the app
+
+- **TensorFlow Lite Micro audio microfrontend** (`tensorflow/lite/experimental/microfrontend/lib`:
+  window, fft, filterbank, noise reduction, PCAN gain control, log scale). Apache-2.0, Copyright 2018
+  The TensorFlow Authors. Ported to Kotlin in
+  `app/kiosk/src/main/java/sh/edm/s1kiosk/voice/MicroFrontend.kt`, which stays under Apache-2.0 and
+  says what changed. Ported from the copy in https://github.com/rhasspy/pymicro-features (tag
+  `v2.0.2`, commit `96bd69cfad79aa67697e176570d3dd87052c3def`), the same code as
+  https://github.com/tensorflow/tflite-micro.
+- **kissfft** (the 16-bit fixed-point `kiss_fft` and `kiss_fftr` the microfrontend uses).
+  BSD-3-Clause, Copyright (c) 2003-2010 Mark Borgerding. Ported in the same file, from the same copy.
+  https://github.com/mborgerding/kissfft
+
 ### Kotlin and AndroidX
 
 Apache-2.0. Kotlin is Copyright JetBrains s.r.o. and Kotlin Programming Language contributors
@@ -144,7 +157,7 @@ so they could never run. Passkey sign-in is therefore not available in the kiosk
     `e1d6480102fed30739fead0faee463101f892c8f` (SHA-256
     `29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031`)
   - Used by the app's own screens: voice overlay, timers, settings menu, setup and loading screens.
-- No machine-learning models are bundled by the app. The openWakeWord models are downloaded by the
+- No machine-learning models are bundled by the app. The wake word models are downloaded by the
   panel at runtime (section 5). GeckoView's `omni.ja` has its own assets, such as the Liberation fonts
   used by its PDF viewer (SIL OFL 1.1). Those are listed in `about:license`.
 - Release APKs also carry the radio bundle in `assets/radio-bundle/` (section 2).
@@ -152,6 +165,10 @@ so they could never run. Passkey sign-in is therefore not available in the kiosk
 ### Not in the APK
 
 - JUnit 4.13.2 (EPL-1.0) and org.json 20250517 (Public Domain) are used only by the unit tests.
+- `app/kiosk/src/test/resources/mww_clip.wav` (a unit test fixture, not in the APK): speech
+  synthesised with Piper's `en_US-kristin-medium` voice (https://huggingface.co/rhasspy/piper-voices,
+  MIT; trained from scratch on public-domain LibriVox recordings) by `tools/voice/mww_reference.py`.
+  No recording of a person.
 
 ---
 
@@ -346,6 +363,22 @@ file, its `package.json` licence and author are given. What it adds:
   Authors (https://github.com/JetBrains/JetBrainsMono)". Fetched from Google Fonts at build time.
 - The Glassworks tokens, mark, and Kiln's favicon and app icon (`kiln/packages/brand`) are Glassworks' own, from
   https://github.com/GlassworksHQ/glassworks.dev.
+- **The device renders** (`frames/<id>/design/render.webp`, on the frame cards): screenshots of the
+  **Home Assistant frontend** 20261028.5 (Apache-2.0, Copyright Home Assistant contributors,
+  https://github.com/home-assistant/frontend) drawing a made-up dashboard, made by
+  `tools/showcase/render.mjs`. The TV still and the album art in them are drawn by
+  `tools/showcase/home.py` (this project's, MIT). The two camera stills are photos from Wikimedia
+  Commons, both **CC0 1.0** (public domain), cropped, graded to dusk, resized and, for the first, a sign post blurred
+  (`tools/showcase/photos/`, with `make.py` and a README):
+  - `front-garden.jpg`: "Aigantighe Art Gallery - 06 - House and driveway", David Nind, 2019,
+    https://commons.wikimedia.org/wiki/File:Aigantighe_Art_Gallery_-_06_-_House_and_driveway.jpg
+  - `driveway.jpg`: "Driveway - 30 May 2026", Aethonatic,
+    https://commons.wikimedia.org/wiki/File:Driveway_-_30_May_2026.jpg
+
+  The images show the frontend's own look, with the **Material Design Icons** it bundles (`@mdi/js`, Apache-2.0, Copyright Pictogrammers, https://github.com/Templarian/MaterialDesign)
+  and text in the **Roboto** font it serves (Google). Only rendered pixels are kept: no code, icon file
+  or font file from the frontend is in the images or in Kiln. The frontend's licence was read from its
+  wheel's `METADATA` (`License-Expression: Apache-2.0`) on 2026-11-13. [`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt).
 
 Not shipped, by the build's traces:
 
@@ -370,8 +403,28 @@ here, and `semver` (ISC) needs `LICENSES/ISC.txt`.
   (`SiliconLabs/simplicity_sdk` `v2025.6.3`, `debian-bookworm.zip`) only when the Silicon Labs Zigbee
   stack is chosen, and checks its SHA-256. `tools/radio/make-bundle.py` refuses to package it, and the
   release workflow fails if an APK contains it.
-- **openWakeWord models** (CC-BY-NC-SA-4.0). The panel downloads them from the official v0.5.1
-  release (https://github.com/dscripka/openWakeWord) and checks their SHA-256.
+- **microWakeWord models** (Apache-2.0, Copyright Kevin Ahrendt): `okay_nabu`, `hey_jarvis`,
+  `alexa`, `hey_mycroft` from https://github.com/esphome/micro-wake-word-models (`models/v2` at commit
+  `40ff33f57f8fc6ad71a75ef085abbf742495b225`). The panel downloads them itself and checks their
+  SHA-256.
+- **openWakeWord models** (CC-BY-NC-SA-4.0), the legacy wake word engine kept for one release. The
+  panel downloads them from the official v0.5.1 release (https://github.com/dscripka/openWakeWord)
+  and checks their SHA-256. 0.4 and earlier fetched them; a new panel doesn't, unless a legacy word
+  is picked.
+- **Home Assistant frontend** (`home-assistant-frontend` 20261028.5, the build HA 2026.11 serves):
+  Apache-2.0 ([`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt)), Copyright Home Assistant
+  contributors, https://github.com/home-assistant/frontend (tag `20261028.5`). Clarity, the perf test
+  in `tools/perf`, downloads the wheel from PyPI on the computer that runs the test, checks its
+  SHA-256 (`df2af7a4…4258730`, `tools/perf/hafrontend.py`), and serves it to the panel under test,
+  from that computer. Its files are served as they are, except its `index.html` template, which is
+  filled in with the test's harness script added first (`tools/perf/fakeha.py`). The project neither
+  ships nor hosts it. `tools/showcase/render.mjs` serves the same build the same way to a headless
+  Chrome on that computer, to make the device renders (section 4); only those screenshots are kept.
+- **FFmpeg with libx264** (GPL-2.0-or-later as built with libx264). Clarity's camera streams
+  (`tools/perf/camera.py`) run the ffmpeg already on the computer that runs the test, to encode its
+  built-in test pattern into the test's HLS segments. Those segments are test data, served to the panel
+  under test from that computer. Nothing from ffmpeg or libx264, and none of the segments, ships in
+  the app, the bundle or the repo.
 - **Aqara/Lumi firmware.** None is included. The installer's partition backup stays with the owner. On
   the panel, the radio helper uses Aqara's own `cpcd` and stock radio firmware where they already are.
 
@@ -388,4 +441,4 @@ here, and `semver` (ISC) needs `LICENSES/ISC.txt`.
 | GNU C Library, `sisdk/lib/` | LGPL-2.1-or-later | radio bundle | The Ubuntu source packages named in `sisdk/NOTICE.txt` (Ubuntu snapshot `20261101T000000Z`, see `tools/radio/build-sisdk-runtime.sh`). The libraries can be replaced: the bundle loads them from that directory. |
 | libstdc++, libgcc_s | GPL-3.0-or-later WITH GCC-exception-3.1 | installer, radio bundle | The Ubuntu GCC cross source packages: `gcc-11-cross` for the static copies in `otbr-agent`/`ot-ctl`, and those named in `sisdk/NOTICE.txt` for `sisdk/lib/`. All are on https://launchpad.net/ubuntu |
 
-Questions about source: open an issue at https://github.com/GlassworksHQ/aqara-s1-unleashed/issues.
+Questions about source: open an issue at https://github.com/GlassworksHQ/glassworks/issues.

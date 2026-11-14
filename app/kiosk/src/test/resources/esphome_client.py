@@ -70,6 +70,7 @@ async def plaintext(port):
     entities, _ = await cli.list_entities_services()
     by_id = {e.object_id: e for e in entities}
     R["entities"] = sorted(f"{type(e).__name__}:{e.object_id}:{e.name}" for e in entities)
+    R["entity_flags"] = {e.object_id: f"{str(e.disabled_by_default).lower()}/{int(e.entity_category)}" for e in entities}
     check(by_id["screen"].supported_color_modes == [3], "light color modes")
     check(by_id["screen_mode"].options == ["presence", "always"], "select options")
     check(abs(by_id["presence_range"].max_value - 2.5) < 1e-6, "number max")

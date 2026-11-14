@@ -28,6 +28,15 @@ object RadioStep {
         val repeater: Boolean = false,
     )
 
+    /** A mode as the picker names it, technology then role: "Thread repeater", "Zigbee coordinator". */
+    fun shortName(m: RadioMode): String = when (m) {
+        RadioMode.ZIGBEE_TCP -> "Zigbee coordinator"
+        RadioMode.ZIGBEE_ROUTER -> "Zigbee repeater"
+        RadioMode.THREAD -> "Thread border router"
+        RadioMode.THREAD_ROUTER -> "Thread repeater"
+        else -> OPTIONS.firstOrNull { it.mode == m }?.title ?: m.label
+    }
+
     val OPTIONS: List<Option> = listOf(
         Option(RadioMode.OFF, "Off", "The radio stays idle. Choose this if unsure."),
         Option(

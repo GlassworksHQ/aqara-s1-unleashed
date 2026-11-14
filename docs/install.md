@@ -173,7 +173,7 @@ software from before the first releases, Android asks on the panel's screen). De
 - **On v0.4.0 or older, update by hand once.** Those versions can't install an update from Home
   Assistant: it always fails with "the APK is not signed". Plug the panel in, open the installer,
   choose **Already installed? Finish setting it up** (`#/resume`) and let it update S1 Kiosk. Or
-  download the APK from the [latest release](https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/latest)
+  download the APK from the [latest release](https://github.com/GlassworksHQ/glassworks/releases/latest)
   and run `adb install -r s1-kiosk-<version>.apk`. From v0.4.1 on, updates from Home Assistant work.
 - **The boot software** (the patched `boot` with the root helper) is not updated by the app. Since
   v0.4.0 the radio side updates with the app instead, but only on a panel with that version's boot
@@ -210,7 +210,7 @@ tools/install.sh --url http://homeassistant.local:8123 \
 - Already have adb on a panel? `tools/install.sh` alone sets up the app without root. You only
   get the radio modes with the root helper from `fel-install.sh`.
 
-How each step works, and why: [research/root.md](research/root.md) and [research/fel.md](research/fel.md).
+How each step works, and why: [frames/aqara-s1-plus/research/root.md](../frames/aqara-s1-plus/research/root.md) and [frames/aqara-s1-plus/research/fel.md](../frames/aqara-s1-plus/research/fel.md).
 
 ## Switching a development build to a release
 
@@ -236,7 +236,7 @@ plan without changing anything.
 
 - **Root** here means that adb's shell can run `su`. That is only the case with a development boot
   image (`DEV_SU_HOURS`) or a Magisk policy for the adb shell, see
-  [research/root.md](research/root.md#persistent-root-magisk--the-s1-kiosk-root-helper). A normal
+  [frames/aqara-s1-plus/research/root.md](../frames/aqara-s1-plus/research/root.md#persistent-root-magisk--the-s1-kiosk-root-helper). A normal
   install doesn't give adb root. The installer checks with `su -c id`.
 - The Wi-Fi password is never written to a file, a log or the screen. A network that S1 Kiosk didn't
   save, for example one set up in Aqara's settings, is not affected.
@@ -256,7 +256,8 @@ within seconds after boot, and whenever it changes later.
 
 - The installer records your choice (`persist.s1kiosk.timezone`) along with setting it.
 - To change it later: the panel's ESPHome device in Home Assistant, Configuration, **Time zone**: an id
-  like `Europe/Berlin` or `America/New_York`. It only accepts zones the panel knows, and only from Home
+  like `Europe/Berlin` or `America/New_York`. HA adds it turned off, so turn it on first
+  ([how](esphome.md#categories-and-defaults)). It only accepts zones the panel knows, and only from Home
   Assistant's encrypted connection. **Time zone status** (Diagnostic) says whether the zone is being
   kept.
 - Panels set up before this: on their first boot with the new helper it keeps the zone that is in place
@@ -328,7 +329,7 @@ fastboot reboot
 | The browser lists no `1f3a:efe8` device | The panel isn't in FEL. Unplug it, hold the board button (not the case button), plug in, and hold for 10 s. Try another cable or port, preferably directly on the computer rather than through a hub. |
 | Windows: the device shows but won't open | The Zadig step: `1f3a:efe8` needs **WinUSB**. |
 | Linux: "access denied" | The udev rule, then unplug and replug. |
-| "Unknown hardware" | The installer stopped before writing anything. That panel isn't a layout it knows; please [open an issue](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues). |
+| "Unknown hardware" | The installer stopped before writing anything. That panel isn't a layout it knows; please [open an issue](https://github.com/GlassworksHQ/glassworks/issues). |
 | A read-back didn't match | The installer stops and doesn't restart the panel. Retry, or restore from your backup with *Undo*. FEL is always available. |
 | `adb` or another tool already holds the panel | Run `adb kill-server` and close other flashing tools. |
-| The screen turns off at night | That's the kiosk's night mode, which you can tune in Home Assistant. With `install.sh --keep-dnd`, Aqara's own Do Not Disturb (22:00–07:00) also forces it off; see [research/screen-policy.md](research/screen-policy.md). |
+| The screen turns off at night | That's the kiosk's night mode, which you can tune in Home Assistant. With `install.sh --keep-dnd`, Aqara's own Do Not Disturb (22:00–07:00) also forces it off; see [frames/aqara-s1-plus/research/screen-policy.md](../frames/aqara-s1-plus/research/screen-policy.md). |

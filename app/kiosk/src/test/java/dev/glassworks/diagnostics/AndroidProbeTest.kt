@@ -73,7 +73,7 @@ class AndroidProbeTest {
         assertEquals(512L shl 20, probe().sample().memoryAvailableBytes)
     }
 
-    /** A framework restart (docs/research/framework-restart.md): the binder call throws, as getMemoryInfo rethrows it. */
+    /** A framework restart (frames/aqara-s1-plus/research/framework-restart.md): the binder call throws, as getMemoryInfo rethrows it. */
     @Implements(ActivityManager::class)
     class DeadSystemActivityManager : ShadowActivityManager() {
         @Implementation

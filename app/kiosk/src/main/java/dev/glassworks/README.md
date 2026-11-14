@@ -47,7 +47,7 @@ A **pane** is a feature: the Music Assistant player, voice, timers, the radio. T
 (`dev.glassworks.pane`) is the contract between the two.
 
 It lives inside the S1 app for now. It becomes its own Gradle module (`:glassworks-pane-api`) in
-[migration step 6](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/21). The API will
+[migration step 6](https://github.com/GlassworksHQ/glassworks/issues/21). The API will
 change until Glassworks v1.
 
 ## What's in it
@@ -58,8 +58,10 @@ change until Glassworks v1.
 | `PaneContext` | What the core gives a pane: the app context, `prefs(namespace)` for its settings, the device identity, `publishStates()`, `emit()`, `entitiesChanged()` and `sendEvent()`. |
 | `PanelEvent` | Things that happen on the panel: a setting changed, voice took the speaker, a timer changed or finished, Home Assistant subscribed. A pane raises one with `PaneContext.emit`. |
 | `EntityRegistry` | Builds the device's entity list from the core's entities and every pane's, and refuses two entities with the same object id. |
-| `PaneDefinition` | What the core knows about a pane for the whole process, also while it isn't running: its setup steps, settings sections and adb extras. |
-| `SetupStep` | One step of first-boot setup: state plus setup channel requests, and how the setup screen draws it (`SetupScreen`, `SetupCard`). |
+| `PaneDefinition` | What the core knows about a pane for the whole process, also while it isn't running: its on/off, setup steps, settings sections and adb extras. |
+| `PaneSwitch` | A pane's on/off (#67): a flag in the pane's own settings file. The shell runs the pane only while it is on. The settings switch, the setup card, the Home Assistant switch and the adb extra all come from it. |
+| `SetupStep` | Something first-boot setup waits for from a pane: state plus setup channel requests. |
+| `PaneChoice` | A pane's card on setup's Panes step: a title, a line and a switch. |
 | `SettingsSection` | A section of the settings: typed items (`SettingsItem`) the panel's menu draws, and the Manage page (#33) will. `settingsOrder` places them. |
 | `ScreenPolicy` | (`dev.glassworks.screen`) Wake on approach, idle off, the night window and its timeout, the brightness curve and the screen mode. It reads the frame's `PresenceSource` and `LightSource` and the app's `ScreenSettings`. One per process, on `GlassworksRuntime.screen`. |
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
@@ -144,9 +146,34 @@ The ESPHome device is an API, not the settings screen. Keep the list a person se
 - A pane adds at most a handful of uncategorised entities.
 - **Enabled by default only if people reach for it day to day.** "Restart app" is on: people use
   it. "Radio mode" is off: you set it once. Everything else gets `disabledByDefault = true`. HA
-  creates it, leaves it off and doesn't record it. Anyone can turn it on from the device page, and
+  creates it and leaves it off, so it doesn't show on the device's cards. Anyone can turn it on from the device page, and
   the panel's settings menu and Manage page can always change it.
-- A pane that's off adds nothing to the list a person sees (#67).
+- A pane that's off keeps its entities for now, with no state where it has none to give (#67), so
+  the list doesn't change. Whether an off pane should remove them waits on a panel test of what Home
+  Assistant then does with them (#67, #132).
+
+How to apply it in code:
+
+1. Pick the category from the table: what people look at or automate on gets none, settings get
+   `EntityCategory.CONFIG`, health and versions get `EntityCategory.DIAGNOSTIC`.
+2. Pass `disabledByDefault = true` to the entity's constructor unless people use it day to day. A
+   setting you change once, a one-off action (join, flash, sign out) and a value only troubleshooting
+   needs are off. An update entity stays on: HA shows updates only while it is on.
+3. Regenerate the pin goldens. A line ends with `disabledByDefault` when the entity is off, so the
+   review shows the choice.
+
+HA uses `disabledByDefault` only when it first registers the entity. Changing it later doesn't
+change a panel HA already has; changing the category does
+([esphome.md](../../../../../../../docs/esphome.md#a-panel-that-ha-already-has)). Decide it when you
+add the entity.
+
+**A pane's own on/off switch (#67)** is a `SwitchEntity` with `EntityCategory.CONFIG` and
+`disabledByDefault = true`: you set it once, from the panel's settings or the device page. It stays
+in the list while the pane is off, so turning the pane back on doesn't need HA to list the panel's
+entities again.
+
+Every S1 entity, with its category, default and reason:
+[esphome.md](../../../../../../../docs/esphome.md#categories-and-defaults).
 
 ### Example: the camera pane
 
@@ -245,37 +272,98 @@ process. The app makes the core's (`GlassworksRuntime.paneDefinitions`), and the
 
 | Member | What it is |
 |---|---|
-| `setupSteps` | Steps for first-boot setup. They come after Wi-Fi and Home Assistant and before Sign in, in definition order. |
+| `switch` | The pane's on/off, a `PaneSwitch`, or null for a pane that always runs or keeps its own (the radio's is its mode). See [On and off](#on-and-off). |
+| `setupSteps` | What first-boot setup waits for from the pane, while it is on. Each is its own step under Panes, after the person chose the panes. |
+| `setupChoice` | The pane's card on the Panes step, or null. By default the switch's, when it is `inSetup`. A pane with `setupSteps` needs one. |
 | `settings()` | The pane's settings sections, as they are now. Called each time the menu opens. |
-| `extras` | adb intent extras for its settings (`IntentExtra.bool`, `float`, `string`). `restartsApp` for a setting read only at start. |
+| `extras` | adb intent extras for its settings (`IntentExtra.bool`, `float`, `string`). `restartsApp` for a setting read only at start. The switch's extra comes on its own (`intentExtras()`). |
 
 **A setup step is state plus requests.** `done()` says whether the step is answered; `channelState()`
 is its part of the setup channel's state, under the step's id; `ops` are the requests that answer
 it, on the wire as `<step id>.<op>`. That way the installer can finish every step without the
 screen, and the setup screen is one more client. `SetupChannelStepsTest` fails if a step has no
-requests that finish it. `screen()` draws the step: the setup screen gives the step's `SetupScreen`
-a `SetupCard` (title, body, a status line, a QR code, the step's own view, two buttons) and a
-`SetupHost` (`preview`, `redraw()`, `next()`). The radio's step is
+requests that finish it. The radio's step is
 [`RadioDefinition`](../../sh/edm/s1kiosk/radio/RadioDefinition.kt). Its `radio.set_mode` accepts
 only the ids the step offers (`RadioStep.OPTIONS`, the state's `radio.options`). Any other mode is
-refused, so a mode only appears to the installer once the step offers it.
+refused, so a mode only appears to the installer once the step offers it. Asking for the mode in
+effect, running or on its way, answers the step and leaves the radio alone, and the state's
+`radio.answered` says whether the step is answered. Kiln uses both for a fresh panel kept on Off.
 
 **A step id is the step's own.** `GlassworksRuntime.setupSteps` gathers the steps through
 `SetupFlow.usable`. It leaves out, with an error in the `S1Kiosk` log, a step whose id is a core
-step (`wifi`, `ha`, `signin`, `done`) or a setup-channel state key (`ip`, `ha`), or an earlier step's,
+step (`wifi`, `ha`, `panes`, `signin`, `done`) or a setup-channel state key (`ip`, `ha`), or an earlier step's,
 and a step whose request names are already taken. A bad step costs only itself: the app still
 starts and the channel still answers. `FramePanesTest` checks a frame's step and section with a
 fake frame.
 
-**A settings section is data.** Items are `Text`, `Switch`, `Link`, `Note`, `Info` and `Group`, each
-with its value and a `save(value, done)`. "Save & restart" saves every item in order and waits for
-each `done`, so a save can finish on another thread (the radio's allow-list) or report a problem in
-words. `Native` is the one panel-only item: a view for what has no typed item yet (the radio's role
-tiles). A browser can't draw it, so new sections should not need it.
+**On the panel, panes are a group.** The setup screen's Panes step only chooses: one card per
+`setupChoice` in definition order, a title, a line under it and a switch. Continue calls every card's
+`apply(on)` off the main thread, each within 30 s; it returns null or why not, in words. Then each
+pane that is on has its steps under Panes, in order. A step draws its own card: `title` names its row in the rail,
+and `screen(context, host)` returns a `SetupScreen` that fills a `SetupCard` (title, body, content,
+status, primary and secondary buttons) and calls `host.next()` when it is answered. The shell names
+no pane. `GlassworksRuntime.setupPanes` pairs each choice with its steps and leaves out a pane with
+steps but no card, with an error in the log: the person could never turn it on or off.
+
+**A settings section is data.** Items are `Text`, `Switch`, `Slider`, `Duration`, `TimeRange`, `Link`,
+`Note`, `Info` and `Group`, each with its value and a `save(value, done)`. A slider, a duration (picked
+from its choices, with units) and a daily window are never typed (#63 round 2), so a browser can draw
+the same controls. A `Switch` can ask first (`confirm` gives a `Confirm`: the question, what it costs,
+the button's word). Each change applies on its own, as the person makes it
+(#63): there is no "Save & restart". `done` can come from another thread (the radio's allow-list) and
+reports a problem in words. An item that only takes effect when the app starts again sets
+`restartsApp`; the menu then says so and offers *Restart now*. A `Text` says its value in words with
+`shown` ("After 2 minutes"). A section's `heading` is its page's title when it says more than its
+name in the list. `Native` is the one panel-only item: a view for what has no typed item yet (the
+radio's modes and card). A browser can't draw it, so new sections should not need it.
 
 **Order.** `settingsOrder` puts the core's Dashboard, Screen and Network first, then the panes'
 sections in definition order (Voice, Music, Radio, Wall base, Time zone), then Log, Security and
-About: the Manage page's nav (#33). A section without items is left out.
+About: the Manage page's nav (#33). A section without items is left out. The panel's menu draws them
+in the same rail as setup (`ui/GroupedRail`): the panes' sections under a Panes group that opens while
+one of them is picked.
+
+**A pane's section has its on/off.** `paneSections` gives each pane's section a `master`, the
+switch at the top right of its page, made from the pane's setup card (`setupChoice`), else from its
+`switch`, unless the pane gives its own (the radio's asks before turning off). A pane with an on/off
+and no section of its own gets a section that says so (Voice, Music, Wall base, Time zone,
+Diagnostics). A section's `status` is its dot in the nav (green, amber,
+rose: status only), and `unavailable` says, in a few words, why the pane can't run on this panel: the
+nav greys it with "Can't run" and its page says why, without a switch.
+
+## On and off
+
+Every pane the person may turn off has a `PaneSwitch` on its definition (#67): a flag under its own
+key, in its own settings file, saved with `commit()` so a restart right after can't lose it (#185).
+The default is on for the S1's panes, as before the switch.
+
+- **The shell runs a pane only while it is on.** It builds every pane, so an off pane's entities
+  stay, but starts only the ones that are on. When a switch's key changes, it starts or stops that
+  pane on the device thread, then raises `SettingChanged` for the key, so a pane that has work to
+  undo outside the app (the time zone, Aqara's daemon) hears its own switch after `stop`. At start,
+  once it listens to the settings, the shell applies the switches again and raises `SettingChanged`
+  for each pane that is off, so such a pane puts that work right after a restart too.
+- **A pane can start again after `stop`.** Make the threads in `start`, not in the constructor, and
+  let `stop` free them. `stop` also runs when the app stops, so a pane that must undo something only
+  when it is turned off does it on its own `SettingChanged`.
+- **From one switch the core makes:** the switch at the top of the pane's settings page, its card on
+  setup's Panes step (`inSetup`), a Home Assistant config switch (`objectId`, always off by default
+  in HA: people set it once, #132, #208; `authOnly`, since turned on a pane can open the microphone
+  or a port), and the adb extra `--ez <key> true|false`.
+- **A voice assistant pane** says so on its switch (`voiceAssistant`): the shell offers Home Assistant
+  voice features only while that switch is on, so turning it on or off asks Home Assistant to
+  reconnect. The shell names no pane for this.
+
+| Pane | Key | HA switch | Setup card |
+|---|---|---|---|
+| Voice (`assist`) | `voice_enabled` | `voice` | yes |
+| Music (`sendspin`) | `sendspin_enabled` | `sendspin` (the entity it always had) | yes |
+| Wall base (`wall-base`) | `wall_base_enabled` | `wall_base` | yes |
+| Time zone (`time-zone`) | `time_zone_enabled` | `keep_time_zone` | no |
+| Diagnostics (`diagnostics`) | `diagnostics_enabled` | `diagnostics` | no |
+
+The radio has no `PaneSwitch`: its on/off is its mode (`Off`), and its card and settings switch are
+its own. Timers have none either: they come only from voice.
 
 ## The Manage page
 
@@ -359,7 +447,8 @@ GeckoView allows one runtime per process, so `GlassworksRuntime` holds the one e
 ## Threads
 
 The core calls a pane from more than one thread. `start` runs on the device thread, `stop` runs
-from the service, and `onEvent` runs on whichever thread the event happened. A pane guards its own
+from the service when the panel stops and on the device thread when the pane is turned off, and
+`onEvent` runs on whichever thread the event happened. A pane guards its own
 state. `publishStates()` is safe from any thread, including while the panel stops.
 
 A pane that throws in `bind`, `start`, `stop` or `onEvent` is logged (`pane <id> failed in <step>`)

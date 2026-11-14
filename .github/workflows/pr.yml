@@ -3,13 +3,24 @@
 # release.yml makes releases.
 #
 #   app      every module's JVM unit tests, an unsigned release build, and
-#            tools/release/check-update-compat.sh (the APK still updates panels in place)
-#   web      the npm workspaces from the repo root (job id kept, as branch protection names it):
+#            tools/release/check-update-compat.sh (the APK still updates panels in place). When app/
+#            changes, also the ESPHome keepalive test against the real aioesphomeapi client
+#   libs-api23  the libraries' lint (NewApi) and their androidTest checks on an API 23 emulator:
+#            esphome-api, esphome-api-android and improv run on Android 6 (#151)
+#   wake-word  MicroWakeWordClipTest: the four real microWakeWord models (LiteRT in a hash-locked
+#            Python venv) behind the Kotlin pipeline, over a synthesised clip (#184). Only when app/
+#            or this file changes
+#   web     the npm workspaces from the repo root (job id kept, as branch protection names it):
 #            Kiln, its packages, the frame recipes and packages/*: typecheck, tests, both builds
 #   scripts  tools/install.sh's off-device tests, the perf test's rubric, report and grade
-#            (tools/perf), and the docs' relative links
+#            (tools/perf), the docs' relative links, and that every glassworks.dev brand image the
+#            Markdown uses is live (a 404 fails; an unreachable site only warns)
 #   root     the root side (radio helper, bundle checks, s1kiosk_verify) in a 32-bit ARM container
 #            under QEMU. Slow, so it runs only when tools/root, tools/radio or this file changes
+#   size     builds the release APKs (one per frame ABI) of this branch and of its base, splits them into the
+#            engine, the core, each pane and the shared libraries (tools/size/apksize.py), shows the
+#            change and fails over the frame's size budget (frames/<id>/budgets.json). The report is
+#            the job summary, and size-comment.yml posts it on the PR (docs/size.md)
 #   branding rebuilds the S1's boot animation and splash (branding/boot/generate.py) in a pinned
 #            Python image and fails if the committed files differ. A few minutes, so it runs only
 #            when branding/boot, branding/glass-tile, branding/bootlogos.json, the S1's frame.json
@@ -51,6 +62,11 @@ jobs:
       - name: Android SDK platform
         run: sdkmanager --install "platforms;android-37.2"
 
+      # ContentScriptReadyTest runs the web extension's content.js under node; on CI it fails without it.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
       - name: Unit tests
         working-directory: app
         run: ./gradlew --no-daemon test
@@ -61,6 +77,168 @@ jobs:
 
       - name: Still updates panels in place
         run: tools/release/check-update-compat.sh app/kiosk/build/outputs/apk/release/kiosk-release-unsigned.apk
+
+      # EspHomeKeepaliveTest (#180) and EspHomeActionsCameraTest (#120) against the real aioesphomeapi
+      # client. They skip without ESPHOME_PYTHON, so this step fails if one skipped. About 30 s (venv
+      # from hashed wheels, then those tests only), and only when app/ or this file changed. The kiosk's EspHomeApiTest uses the same
+      # client but isn't here yet. It failed once in two CI runs (#184).
+      - name: aioesphomeapi tests needed?
+        id: esphome
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        # Fails closed: without a base commit to compare with, or when git fails, the tests run.
+        run: |
+          if [ -n "$BASE" ] && git fetch -q --depth=1 origin "$BASE" 2>/dev/null \
+             && changed=$(git diff --name-only "$BASE" HEAD -- app .github/workflows/pr.yml) && [ -z "$changed" ]; then
+            echo "Nothing under app/ changed; skipping the aioesphomeapi tests."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: steps.esphome.outputs.run == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: Keepalive, actions and camera tests (real aioesphomeapi client)
+        if: steps.esphome.outputs.run == 'true'
+        working-directory: app
+        run: |
+          python -m venv "$RUNNER_TEMP/esphome-venv"
+          "$RUNNER_TEMP/esphome-venv/bin/pip" install --quiet --require-hashes --only-binary :all: \
+            -r libs/esphome-api/test-requirements.txt
+          results=libs/esphome-api/build/test-results/test
+          reports="$results/TEST-sh.edm.esphome.EspHomeKeepaliveTest.xml $results/TEST-sh.edm.esphome.EspHomeActionsCameraTest.xml"
+          # --rerun: Gradle doesn't see ESPHOME_PYTHON, and the Unit tests step left the task up to date.
+          # On a failure, the report's message holds the Python client's output.
+          ESPHOME_PYTHON="$RUNNER_TEMP/esphome-venv/bin/python" ./gradlew --no-daemon --continue \
+            :esphome-api:test --tests sh.edm.esphome.EspHomeKeepaliveTest \
+            --tests sh.edm.esphome.EspHomeActionsCameraTest --rerun \
+            || { cat $reports; exit 1; }
+          for report in $reports; do
+            grep -q '<testsuite [^>]* skipped="0"' "$report" || { echo "::error::$report: a test skipped"; exit 1; }
+          done
+
+  libs-api23:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
+      - name: Android SDK platform
+        run: sdkmanager --install "platforms;android-37.2"
+      - name: Lint (NewApi at minSdk 23)
+        working-directory: app
+        run: ./gradlew --no-daemon :esphome-api-android:lintDebug :improv:lintDebug
+      - name: Build the androidTest APKs
+        working-directory: app
+        run: ./gradlew --no-daemon :esphome-api-android:assembleDebugAndroidTest :improv:assembleDebugAndroidTest
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: androidTest on an API 23 emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 23
+          arch: x86_64
+          target: default
+          disable-animations: true
+          working-directory: app
+          script: ./gradlew --no-daemon :esphome-api-android:connectedDebugAndroidTest :improv:connectedDebugAndroidTest
+
+  # MicroWakeWordClipTest (#181, #184): each official microWakeWord model, run by LiteRT over a pipe to
+  # Python, must fire in its own word only and score within 0.01 of pymicro-wakeword. It skips without
+  # MWW_PYTHON, so this job fails if it skipped. The models come from raw.githubusercontent.com at
+  # the commit WakeWords.kt pins, checked against its SHA-256s, and are cached by that commit.
+  wake-word:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Changed?
+        id: changed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        # Fails closed: without a base commit to compare with, or when git fails, the test runs.
+        run: |
+          if [ -n "$BASE" ] && git fetch -q --depth=1 origin "$BASE" 2>/dev/null \
+             && changed=$(git diff --name-only "$BASE" HEAD -- app .github/workflows/pr.yml) && [ -z "$changed" ]; then
+            echo "Nothing under app/ changed; skipping the wake word test."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Same toolchain as the app job.
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        if: steps.changed.outputs.run == 'true'
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        if: steps.changed.outputs.run == 'true'
+        with:
+          packages: platform-tools
+
+      - name: Android SDK platform
+        if: steps.changed.outputs.run == 'true'
+        run: sdkmanager --install "platforms;android-37.2"
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: steps.changed.outputs.run == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: LiteRT venv (hashed wheels)
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          python -m venv "$RUNNER_TEMP/mww-venv"
+          "$RUNNER_TEMP/mww-venv/bin/pip" install --quiet --require-hashes --only-binary :all: \
+            -r app/kiosk/mww-test-requirements.txt
+
+      - name: Models commit
+        id: models
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          commit=$(sed -n 's/.*const val MODELS_COMMIT = "\([0-9a-f]\{40\}\)".*/\1/p' \
+            app/kiosk/src/main/java/sh/edm/s1kiosk/voice/WakeWords.kt)
+          [ -n "$commit" ] || { echo "::error::no MODELS_COMMIT in WakeWords.kt"; exit 1; }
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      # The test checks every file's SHA-256 (ModelFetcher) and fetches again on a mismatch.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: steps.changed.outputs.run == 'true'
+        with:
+          path: ~/.cache/s1kiosk/microwakeword-${{ steps.models.outputs.commit }}
+          key: microwakeword-${{ steps.models.outputs.commit }}
+
+      - name: MicroWakeWordClipTest (real models)
+        if: steps.changed.outputs.run == 'true'
+        working-directory: app
+        run: |
+          report=kiosk/build/test-results/testDebugUnitTest/TEST-sh.edm.s1kiosk.voice.MicroWakeWordClipTest.xml
+          # --rerun: Gradle doesn't see MWW_PYTHON, so a cached result must not stand in for a run.
+          MWW_PYTHON="$RUNNER_TEMP/mww-venv/bin/python" ./gradlew --no-daemon \
+            :kiosk:testDebugUnitTest --tests sh.edm.s1kiosk.voice.MicroWakeWordClipTest --rerun \
+            || { cat "$report"; exit 1; }
+          grep -q '<testsuite [^>]* skipped="0"' "$report" || { echo "::error::$report: the test skipped"; exit 1; }
 
   web:
     runs-on: ubuntu-24.04
@@ -94,14 +272,21 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+      # Clarity's camera streams are made with ffmpeg; a test checks it makes the same bytes twice.
+      - name: ffmpeg
+        run: sudo apt-get -qq update && sudo apt-get -qq install -y --no-install-recommends ffmpeg > /dev/null
       - name: Perf test rubric, report, grade and page statistics
         run: |
           python3 -m unittest discover -s tools/perf/test -v
           node --test tools/perf/test/page.test.mjs tools/perf/test/grade.test.mjs
+      - name: APK size tool
+        run: python3 -m unittest discover -s tools/size/test -v
       - name: Boot generator targets and layout
         run: python3 -m unittest discover -s branding/boot/test -v
       - name: Docs links
         run: python3 tools/check-doc-links.py
+      - name: Brand images are live on glassworks.dev
+        run: python3 tools/check-brand-images.py
 
   root:
     runs-on: ubuntu-24.04
@@ -145,6 +330,129 @@ jobs:
       - name: Root-side tests
         if: steps.changed.outputs.run == 'true'
         run: tools/radio/test/run.sh
+
+  size:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90   # two ABIs on two commits, plus the radio bundle's sisdk build on a cache miss
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # Same toolchain as the app job and release.yml.
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
+
+      - name: Android SDK platform
+        run: sdkmanager --install "platforms;android-37.2"
+
+      # The release's armeabi-v7a APK carries the signed radio bundle (release.yml), so this one does
+      # too: the same files, signed with a throwaway key (tools/size/radio-bundle.sh, docs/size.md).
+      # The sisdk runtime is reproducible and checked against tools/radio/sisdk-runtime.sha256 either
+      # way; the cache only saves rebuilding it.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/sisdk-cache
+          key: sisdk-${{ hashFiles('tools/radio/build-sisdk-runtime.sh', 'tools/radio/sisdk-runtime.sha256', 'tools/radio/sisdk/**') }}
+
+      - name: Radio bundle, as the release builds it
+        run: SISDK_DIR="$HOME/sisdk-cache" tools/size/radio-bundle.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bundle-head"
+
+      - name: ABIs, one APK each as the release builds them (every frame's abis, tools/release/frame-abis.sh)
+        run: |
+          abis="$(tools/release/frame-abis.sh)"
+          echo "ABIS=$abis" >> "$GITHUB_ENV"
+
+      - name: Release APKs of this branch
+        working-directory: app
+        run: |
+          mkdir -p "$RUNNER_TEMP/apk" "$RUNNER_TEMP/size"
+          for abi in $ABIS; do
+            bundle="$RUNNER_TEMP/bundle-head"; [ "$abi" = armeabi-v7a ] || bundle=""   # as release.yml
+            S1_RADIO_BUNDLE_ASSETS="$bundle" ./gradlew --no-daemon :kiosk:assembleRelease -Ps1Abi="$abi"
+            cp kiosk/build/outputs/apk/release/kiosk-release-unsigned.apk "$RUNNER_TEMP/apk/head-$abi.apk"
+          done
+
+      # The base: the PR's base commit, or the commit before a push. Without one, or for an ABI it
+      # doesn't build, the report says so (base_missing) and the budget is still checked.
+      - name: Release APKs of the base
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          missing="$RUNNER_TEMP/size/base-missing"; : > "$missing"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "No base commit ($BASE); no change column."
+            for abi in $ABIS; do echo "$abi=no-base-commit"; done > "$missing"
+            exit 0
+          fi
+          git worktree add -q "$RUNNER_TEMP/base" "$BASE"
+          # The base's own bundle when its inputs differ (this script, on the base's files).
+          bundle="$RUNNER_TEMP/bundle-head"
+          if ! git diff --quiet "$BASE" HEAD -- tools/radio kiln/assets.lock.json; then
+            bundle="$RUNNER_TEMP/bundle-base"
+            SISDK_DIR="$RUNNER_TEMP/sisdk-base" tools/size/radio-bundle.sh "$RUNNER_TEMP/base" "$bundle" || bundle=""
+          fi
+          cd "$RUNNER_TEMP/base/app"
+          for abi in $ABIS; do
+            b="$bundle"; [ "$abi" = armeabi-v7a ] || b=""
+            if [ "$abi" = armeabi-v7a ] && [ -z "$bundle" ]; then
+              echo "The base's radio bundle didn't build; no change column for $abi."
+              echo "$abi=base-build-failed" >> "$missing"; continue
+            fi
+            if S1_RADIO_BUNDLE_ASSETS="$b" ./gradlew --no-daemon :kiosk:assembleRelease -Ps1Abi="$abi"; then
+              cp kiosk/build/outputs/apk/release/kiosk-release-unsigned.apk "$RUNNER_TEMP/apk/base-$abi.apk"
+            else
+              echo "The base didn't build for $abi; no change column for it."
+              echo "$abi=base-build-failed" >> "$missing"
+            fi
+          done
+
+      - name: Size, change and budget
+        run: |
+          args=""
+          for abi in $ABIS; do
+            args="$args --apk $abi=$RUNNER_TEMP/apk/head-$abi.apk"
+            [ -f "$RUNNER_TEMP/apk/base-$abi.apk" ] && args="$args --base-apk $abi=$RUNNER_TEMP/apk/base-$abi.apk"
+          done
+          while IFS= read -r m; do [ -n "$m" ] && args="$args --base-missing $m"; done < "$RUNNER_TEMP/size/base-missing"
+          base_budgets="$RUNNER_TEMP/base/frames/aqara-s1-plus/budgets.json"
+          [ -f "$base_budgets" ] && args="$args --base-budgets $base_budgets"
+          # shellcheck disable=SC2086 # $args is a list of options
+          python3 tools/size/apksize.py report --frame aqara-s1-plus $args \
+            --json "$RUNNER_TEMP/size/size.json" --md "$RUNNER_TEMP/size/size.md"
+
+      - name: Job summary
+        if: always()
+        run: |
+          [ -f "$RUNNER_TEMP/size/size.md" ] && cat "$RUNNER_TEMP/size/size.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+      # For size-comment.yml: the numbers and which PR they are for. It renders the comment itself.
+      - name: Which PR
+        if: always() && github.event_name == 'pull_request'
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/size"
+          printf '{"pr": %d, "head_sha": "%s"}\n' "$PR" "$HEAD_SHA" > "$RUNNER_TEMP/size/pr.json"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always() && github.event_name == 'pull_request'
+        with:
+          name: apk-size
+          path: |
+            ${{ runner.temp }}/size/size.json
+            ${{ runner.temp }}/size/pr.json
+          retention-days: 7
+          if-no-files-found: ignore
 
   branding:
     runs-on: ubuntu-24.04

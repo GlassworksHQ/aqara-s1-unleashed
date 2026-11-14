@@ -160,11 +160,15 @@ jobs:
       contents: write # create the release and upload its assets (GITHUB_TOKEN only)
     env:
       VERSION: ${{ needs.inputs.outputs.version }}
-      ABIS: armeabi-v7a arm64-v8a   # the same list as app/kiosk/build.gradle.kts s1Abis and Releases.kt ApkAbi
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
+
+      - name: ABIs, one APK each (every frame's abis, tools/release/frame-abis.sh)
+        run: |
+          abis="$(tools/release/frame-abis.sh)"
+          echo "ABIS=$abis" >> "$GITHUB_ENV"
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:

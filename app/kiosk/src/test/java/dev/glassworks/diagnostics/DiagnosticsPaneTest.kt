@@ -118,6 +118,28 @@ class DiagnosticsPaneTest {
         assertNull("Wi-Fi gone is unknown, not the last value", value(p, "wifi_signal"))
     }
 
+    /** #67: turned off, its entities have no state; turned on, CPU starts again from a fresh first sample. */
+    @Test fun offClearsTheValuesAndOnStartsAfresh() {
+        val p = pane()
+        samples += sample(0, CpuTimes(1000, 800), ticks = 100)
+        samples += sample(60_000, CpuTimes(1400, 1100), ticks = 220)
+        repeat(2) { p.tick() }
+        assertEquals(25f, value(p, "cpu_usage"))
+        val before = published
+        p.stop()
+        assertNull(value(p, "cpu_usage"))
+        assertNull(value(p, "uptime"))
+        assertEquals("Home Assistant hears it", before + 1, published)
+        samples += sample(600_000, CpuTimes(9000, 1100), ticks = 220)
+        p.start() // its first sample runs on the device thread at once
+        val sampled = CountDownLatch(1)
+        exec.schedule({ sampled.countDown() }, 0, TimeUnit.MILLISECONDS)
+        assertTrue(sampled.await(5, TimeUnit.SECONDS))
+        assertNull("no CPU across the time it was off", value(p, "cpu_usage"))
+        assertEquals(48f, value(p, "cpu_temperature"))
+        p.stop()
+    }
+
     @Test fun startReadsTheRestartReasonAndSamplesRightAway() {
         val p = pane()
         val sampled = CountDownLatch(1)

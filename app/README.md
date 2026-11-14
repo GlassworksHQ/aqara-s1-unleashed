@@ -44,8 +44,9 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
 - Full-screen immersive `GeckoView`, landscape, `FLAG_KEEP_SCREEN_ON`.
 - Loads a configurable URL. The default `auto` finds Home Assistant (mDNS `_home-assistant._tcp`,
   or the address of HA's ESPHome connection) and loads its default dashboard. A saved URL is kept.
-- **First-boot setup screen** (native, in the dashboard's style): Wi-Fi → Add to Home Assistant →
-  Sign in → Done, with checks; it moves on by itself. It only appears when the panel is really not
+- **First-boot setup screen** (native, in the Glassworks look): Wi-Fi → Home Assistant (add it, sign
+  in) → Panes (choose which, then each pane's own steps, such as the radio's role) → Done; it moves on
+  by itself, and a step that is done says so with Continue. It only appears when the panel is really not
   set up (offline for 30 s, HA unknown, HA never added the panel within 2 min of startup, or HA's
   login page with no refresh token), never on a working panel. See
   [docs/onboarding.md](../docs/onboarding.md#setup-screen-).
@@ -63,12 +64,15 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   Verified on the panel: `getUserMedia({audio:true})` returns a live 48 kHz track.
 - HOME + LAUNCHER intent filters (can be the default launcher), `BootReceiver`
   (`BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`).
-- Back button navigates inside the page and never leaves the kiosk.
+- Back closes the topmost layer (a settings picker, the settings menu, a setup preview), else navigates
+  inside the page, and never leaves the kiosk.
 - If the page fails to load (HA restarting, Wi-Fi not up yet), it retries every 10 s.
   Crashed or killed content processes are restarted.
-- Hidden settings: **tap the top-left corner 5 times within 3 s** (or `--ez settings true`) to set the
-  URL, zoom, secure hosts, kiosk/screen options, open Android settings, or reload. The dialog also shows
-  live sensor status.
+- Hidden settings: **tap the top-left corner 5 times within 3 s** (or `--ez settings true`) for the
+  settings menu (#63): Dashboard (address, full screen, zoom, secure hosts), Screen (presence, idle and
+  night times, brightness, Aqara's own settings), each pane under Panes with its on/off, Log (the live
+  screen and sensor line) and About. Changes apply as you make them; the few that need a restart offer
+  one.
 - **Kiosk mode for HA**: a built-in Gecko web extension (`assets/extension/`) hides the HA dashboard
   header and the sidebar. Add `?kiosk=0` to the URL to show them for one page; while you're editing a
   dashboard they're left visible.
@@ -76,13 +80,13 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   [docs/sensors.md](../docs/sensors.md)): wake on approach (VI5300 ToF), off after idle, a night window
   with a shorter timeout and lower brightness cap, auto-brightness from the MK6212 light sensor. Runs in
   a foreground `KioskService`, so it works while the screen is off. It replaces Aqara's DND
-  screen-off ([docs/research/screen-policy.md](../docs/research/screen-policy.md)).
+  screen-off ([frames/aqara-s1-plus/research/screen-policy.md](../frames/aqara-s1-plus/research/screen-policy.md)).
 - **Home Assistant integration as an ESPHome device** (native API, voice assistant, screen and kiosk
   controls), see below and [docs/esphome.md](../docs/esphome.md).
 - **Wall base (relay base) without Aqara's daemon**: the app speaks the base's UART protocol on
   `/dev/ttyS3` itself (relays, power, energy, protection), so `ha_master` and Aqara's cloud stay stopped.
   The LocalService path through `ha_master` remains as a fallback (`base_backend`). See
-  [docs/research/bases.md](../docs/research/bases.md) and [docs/research/base-protocol.md](../docs/research/base-protocol.md).
+  [frames/aqara-s1-plus/research/bases.md](../frames/aqara-s1-plus/research/bases.md) and [frames/aqara-s1-plus/research/base-protocol.md](../frames/aqara-s1-plus/research/base-protocol.md).
 - **Native Music Assistant player (Sendspin)**: MA sees the panel as its own player "Glassworks Panel" and plays
   to it in sync with your other Sendspin speakers (groupable). It pairs automatically: HA hands MA the
   panel's pairing token over the ESPHome API. See below and [docs/sendspin.md](../docs/sendspin.md).
@@ -147,7 +151,7 @@ followed by `adb uninstall sh.edm.s1kiosk` (an active device admin can't be unin
 A="adb shell am start -n sh.edm.s1kiosk/.MainActivity"
 $A --es url http://homeassistant.local:8123/my-dashboard   # set + persist the URL ("auto" = discover HA)
 $A --ez show_setup true    # preview the setup screen at its live step (changes nothing)
-$A --ez show_setup true --es setup_step wifi   # ... or a given step: wifi|ha|signin|done
+$A --ez show_setup true --es setup_step wifi   # ... or a given step: wifi|ha|signin|panes|radio|done
 $A --ez show_setup false   # close the preview
 $A --ez show_signin true   # preview the QR sign-in step (doesn't touch the session)
 $A --es open http://192.168.1.100:8123/profile/general      # navigate once (not persisted)
@@ -162,8 +166,10 @@ $A --ei idle_off_sec 120 --ei night_idle_off_sec 20 --es night_window 22:00-07:0
 $A --ef presence_range_m 1.0   # VI5300 range (needs WRITE_SECURE_SETTINGS)
 $A --es screen off         # or on
 $A --ez restart true       # restart the app process
-$A --es wake_model alexa_v0.1.tflite --ef wake_threshold 0.6 --ef mic_gain 2.0 --ez mic_muted false
+$A --es wake_model okay_nabu --ef wake_threshold 0.9 --ef mic_gain 2.0 --ez mic_muted false  # wake word id (an old *.tflite name maps to its microWakeWord model); the threshold of that word
 $A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # manual ESPHome API key (HA normally provisions one)
+$A --ez voice_enabled false           # each pane on/off, applied live (default on): voice_enabled, sendspin_enabled,
+                                      #   wall_base_enabled, time_zone_enabled, diagnostics_enabled
 $A --ez sendspin_enabled false        # Music Assistant player (Sendspin) off/on (default on)
 $A --es sendspin_server 192.168.1.100 # Sendspin server: auto (default: mDNS, else <HA host>:8927) or host[:port][/path] / ws://
 $A --ez sendspin_unpaired_access true # let a server play without pairing (guest mode; default off)
@@ -214,31 +220,45 @@ player under `S1Sendspin` (with a `sync:` line every 10 s while playing). The Wi
 starts while the screen is off log under `S1Kiosk.Wifi`. None of them log tokens or keys. Page
 console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).
 
+The connecting screen stays up until the page says it has drawn. `S1Kiosk` logs one line when it
+goes, with the reason: `Connecting screen hidden: ready, frontend/loaded` (Home Assistant's frontend
+removed its launch screen and a frame was painted after it), `ready, removed` (the same, for a
+frontend that doesn't send frontend/loaded), `ready, page` (a page without a launch screen), or the
+fallbacks `fallback 15 s, no word from the page` and `fallback 45 s, the frontend still loading`.
+`Home Assistant's launch screen is up` marks the page reporting that it's still loading. Whatever the
+timing, HA's launch screen never shows white: content.js styles it, and the page under it, with the
+night background from `document_start`, hides its logo and attribution, and keeps its info box readable
+(HA writes why a start failed there). The style is scoped with `:has` and removed once the launch screen
+goes; not with `?kiosk=0` or `?edit=1`.
+
 > If the screen is blank/white and `innerWidth` is 0, the **display is off**. Gecko drops its
 > surface while the screen sleeps. Check `adb shell dumpsys power | grep mWakefulness`.
-> See [docs/research/screen-policy.md](../docs/research/screen-policy.md) for why the panel turns itself off.
+> See [frames/aqara-s1-plus/research/screen-policy.md](../frames/aqara-s1-plus/research/screen-policy.md) for why the panel turns itself off.
 
 ## Home Assistant: ESPHome device + voice assistant
 
 The app exposes the panel to Home Assistant as **one ESPHome device** over the ESPHome native API
 (TCP **6053**, advertised as `_esphomelib._tcp`): an Assist satellite with an **on-device wake word**
-(openWakeWord on TFLite, default "Hey Jarvis"), a media player, the screen as a light, presence and
+(microWakeWord on TFLite, default "Hey Jarvis"; the openWakeWord models stay selectable for one release), a media player, the screen as a light, presence and
 illuminance sensors, and the kiosk/screen settings. It runs in `KioskService`, so it keeps listening
 while the screen is off, and talking to it wakes the screen. See [docs/esphome.md](../docs/esphome.md).
 
 ```sh
-tools/voice/fetch-models.sh            # downloads the openWakeWord models on the host and adb-pushes them
+tools/voice/fetch-models.sh            # optional: downloads the microWakeWord models on the host and adb-pushes them
 # HA: the panel is auto-discovered (Settings -> Devices & services -> ESPHome "Glassworks Panel" -> Add), or
 #     Add integration -> ESPHome -> <panel IP>, port 6053
 ```
 
 Entity ids look like `light.s1_panel_screen`, `select.s1_panel_screen_mode`,
-`media_player.s1_panel_speaker`; pick the wake word and the Assist pipeline on the device page.
+`media_player.s1_panel_speaker` on a panel added before #63; newer ones start with `glassworks_panel_`
+([Names](../docs/esphome.md#names)). Pick the wake word and the Assist pipeline on the device page.
 Encryption is automatic: a panel without a key lets HA 2026.11+ provision one when you add it
 (ESPHome dynamic encryption key). You can also set a key by hand with
 `--es api_key <base64 32 bytes> --ez api_encryption true`. Keys are never logged. Tune the mic with
-`--ef mic_gain 2.0` / `--ef wake_threshold 0.6`, or turn the voice assistant off with
-`--ez voice_enabled false` (the API and the other entities stay).
+`--ef mic_gain 2.0` / `--ef wake_threshold 0.9`, or turn the voice assistant off with
+`--ez voice_enabled false`, the Voice switch in the settings, or the `voice` switch in Home Assistant
+(the API and the other entities stay). It turns off and on without a restart: Home Assistant
+reconnects to read the panel's voice features again.
 
 Not yet tested on the panel. The previous Wyoming satellite was verified there (HA connected,
 `announce` TTS played, wake-word inference used about 40% of one core); remove its Wyoming entry

@@ -4,6 +4,7 @@
 
 package dev.glassworks.manage
 
+import dev.glassworks.pane.NO_SETTINGS
 import dev.glassworks.pane.PaneState
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
@@ -127,19 +128,28 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
         return frame(s, "/", "Overview", v, main, notice)
     }
 
-    /** A settings section, or a pane with its sections, read-only for now (phase 2 makes them editable). */
+    /**
+     * A settings section, or a pane with its sections, read-only for now (phase 2 makes them editable). A
+     * pane that is off ([PaneState.Kind.OFF], from its section's on/off) shows its state and how to turn
+     * it on, and none of its settings or links: they do nothing while it is off.
+     */
     fun section(s: PanelStatus, v: Viewer, path: String, title: String, intro: String?, state: PaneState?, sections: List<SettingsSection>,
                 links: List<Pair<String, String>> = emptyList()): String {
-        val cards = sections.joinToString("") { sec ->
-            val heading = if (sections.size > 1 || sec.title != title) """<div class="lh"><b>${esc(sec.title)}</b></div>""" else ""
+        val off = state?.kind == PaneState.Kind.OFF
+        val shown = if (off) emptyList() else sections.filter { it.hasSettings() }
+        val cards = shown.joinToString("") { sec ->
+            val heading = if (shown.size > 1 || sec.title != title) """<div class="lh"><b>${esc(sec.title)}</b></div>""" else ""
             """<section class="card list">$heading${items(sec.items)}</section>"""
         }
         val stateCard = state?.takeIf { it.kind != PaneState.Kind.UNKNOWN }?.let {
             """<section class="card list"><div class="row static"><div><b>${esc(title)}</b><span>${esc(it.detail)}</span></div>${chip(it)}</div></section>"""
         }.orEmpty()
-        val note = if (sections.isNotEmpty()) """<p class="foot">Change these on the panel for now. The Manage page will change them too.</p>"""
-        else """<p class="foot">This pane has no settings of its own yet. Its entities are in Home Assistant.</p>"""
-        val more = if (links.isEmpty()) "" else """<section class="card list">${links.joinToString("") { (label, href) ->
+        val note = when {
+            off -> """<p class="foot">${esc(TURNED_OFF)}</p>"""
+            shown.isNotEmpty() -> """<p class="foot">Change these on the panel for now. The Manage page will change them too.</p>"""
+            else -> """<p class="foot">${esc(NO_SETTINGS)}</p>"""
+        }
+        val more = if (off || links.isEmpty()) "" else """<section class="card list">${links.joinToString("") { (label, href) ->
             """<a class="row" href="${esc(href)}"><div><b>${esc(label)}</b></div><i class="chev" aria-hidden="true">›</i></a>""" }}</section>"""
         val main = """<h1 class="ph">${esc(title)}</h1>${intro?.let { """<p class="sub">${esc(it)}</p>""" }.orEmpty()}$stateCard$cards$more$note"""
         return frame(s, path, title, v, main)
@@ -149,6 +159,9 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
         when (item) {
             is SettingsItem.Text -> row(item.title, item.hint.takeIf { it.isNotEmpty() && it != safe { item.value() } }, safe { item.value() }.ifEmpty { "Not set" })
             is SettingsItem.Switch -> row(item.title, item.detail.ifEmpty { null }, if (safe { item.value() } == "true") "On" else "Off")
+            is SettingsItem.Slider -> row(item.title, null, safe { item.shown(item.value()) })
+            is SettingsItem.Duration -> row(item.title, null, safe { item.shown(item.value()) })
+            is SettingsItem.TimeRange -> row(item.title, null, safe { item.shown(item.value()) })
             is SettingsItem.Info -> row(safe { item.title() }, null, safe { item.detail() })
             is SettingsItem.Note -> """<div class="row static"><div><span>${esc(safe { item.text() })}</span></div></div>"""
             is SettingsItem.Link -> row(item.title, item.detail.ifEmpty { null }, "On the panel")
@@ -157,6 +170,9 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
             is SettingsItem.Native -> row(nativeTitle(item.key), "Shown on the panel's own settings", "On the panel")
         }
     }
+
+    /** Not only the core's "no settings" note, which a pane with just an on/off gets ([dev.glassworks.pane.paneSections]). */
+    private fun SettingsSection.hasSettings() = items.any { it !is SettingsItem.Note || safe { it.text() } != NO_SETTINGS }
 
     private fun nativeTitle(key: String) = key.split('-', '_', '.').joinToString(" ").replaceFirstChar { it.uppercase() }
 
@@ -234,6 +250,9 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
     companion object {
         /** The core's own sections that sit under "Panel" in the nav. */
         val CORE_PANEL = setOf("dashboard", "screen", "network")
+
+        /** The foot of an off pane's page. */
+        const val TURNED_OFF = "This pane is off. Turn it on at the top of its page in the panel's settings."
 
         /** `up 3 days, 4 h`, `up 5 h, 12 min`, `up 3 min`. */
         fun duration(ms: Long): String {
