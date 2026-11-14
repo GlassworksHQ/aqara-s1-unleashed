@@ -10,6 +10,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import sh.edm.esphome.EntityCategory
+import sh.edm.esphome.ProtoMessage
+import sh.edm.esphome.ProtoWriter
 
 class SnapshotsTest {
 
@@ -101,5 +104,26 @@ class SnapshotsTest {
         assertTrue(e.leaving)
         advance(6_000)
         assertFalse(e.leaving)
+    }
+
+    @Test fun theStreamRunsOnlyWithItsSwitchInPresenceAndSnapshotsWithPrivacyOff() {
+        val on = CameraPolicy(privacy = false, use = CameraUse.PRESENCE_AND_SNAPSHOTS, onvif = true)
+        assertTrue(on.streamMayRun)
+        assertFalse("off by default", CameraPolicy(false, CameraUse.PRESENCE_AND_SNAPSHOTS).streamMayRun)
+        assertFalse("refused in Presence only", on.copy(use = CameraUse.PRESENCE).streamMayRun)
+        assertFalse("privacy wins", on.copy(privacy = true).streamMayRun)
+    }
+
+    @Test fun sensitivityIsAOneToTenSettingOffInHomeAssistant() {
+        var level = 5
+        val e = sensitivityEntity({ level }, { level = it })
+        assertEquals("camera_sensitivity", e.objectId)
+        assertEquals(EntityCategory.CONFIG, e.category)
+        assertTrue(e.disabledByDefault)
+        assertEquals(5f, ProtoMessage(e.state().toByteArray()).float(2))
+        fun send(v: Float) = e.command(ProtoMessage(ProtoWriter().float(2, v).toByteArray()))
+        send(7.6f); assertEquals(8, level)
+        send(42f); assertEquals(10, level)
+        send(-3f); assertEquals(1, level)
     }
 }

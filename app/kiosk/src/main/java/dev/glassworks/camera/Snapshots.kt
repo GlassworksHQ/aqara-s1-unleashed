@@ -5,6 +5,8 @@
 package dev.glassworks.camera
 
 import sh.edm.esphome.CameraEntity
+import sh.edm.esphome.EntityCategory
+import sh.edm.esphome.NumberEntity
 
 /** What the camera may do (#117). The pane's select in Home Assistant and its two cards on the panel. */
 enum class CameraUse {
@@ -20,9 +22,17 @@ data class CameraPolicy(
     /** Camera privacy: the camera stays closed. */
     val privacy: Boolean,
     val use: CameraUse,
+    /** The `onvif_stream` switch. Off by default. */
+    val onvif: Boolean = false,
 ) {
     /** Whether a still may go to Home Assistant now. */
     val stillsMayLeave: Boolean get() = !privacy && use == CameraUse.PRESENCE_AND_SNAPSHOTS
+
+    /**
+     * Whether the RTSP and ONVIF servers may run: only with the switch on, and never in Presence only
+     * (the approved design refuses the switch there). They also need a sign-in from the Manage page.
+     */
+    val streamMayRun: Boolean get() = onvif && stillsMayLeave
 }
 
 /** A JPEG of what the camera sees now, or null when there is none. Blocks for at most a second or so. */
@@ -111,3 +121,13 @@ internal fun stillGate(still: StillCamera, policy: () -> CameraPolicy, egress: F
 
 /** The more-info dialog's stream: enough to see who is there, not video. */
 const val SNAPSHOT_FPS = 2f
+
+/**
+ * `camera_sensitivity`: how much of the picture has to change to count as someone there, 1 (least) to
+ * 10 (most). A setting, so off in Home Assistant until someone turns it on; the panel's page has it too.
+ */
+fun sensitivityEntity(get: () -> Int, set: (Int) -> Unit): NumberEntity = NumberEntity(
+    "camera_sensitivity", "Camera sensitivity", icon = "mdi:motion-sensor", category = EntityCategory.CONFIG,
+    disabledByDefault = true, min = 1f, max = 10f, step = 1f, mode = 2,
+    get = { get().toFloat() }, set = { set(Math.round(it).coerceIn(1, 10)) },
+)
