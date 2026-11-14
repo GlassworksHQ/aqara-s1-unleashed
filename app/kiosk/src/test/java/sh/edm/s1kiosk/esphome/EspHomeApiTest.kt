@@ -138,6 +138,9 @@ class EspHomeApiTest {
         // Only a Noise connection with the provisioned key counts as authenticated (radio firewall).
         val noiseSubscribed = Collections.synchronizedList(ArrayList<String>())
         noise.onStatesSubscribed = { info, addr, authenticated -> noiseSubscribed += "$info|${addr?.hostAddress}|$authenticated" }
+        val zones = Collections.synchronizedList(ArrayList<String>())
+        noise.onTimeZone = { zones += it }
+        plain.onTimeZone = { zones += "plaintext: $it" }
         noise.sendspin = sendspin
         noise.onCommand = { noise.publishStates() }
         // Unprovisioned (no key yet), with a persistent store, as on a fresh panel.
@@ -239,6 +242,7 @@ class EspHomeApiTest {
                 subscribed.isNotEmpty() && subscribed.all { it == "Home Assistant test|false" })
             assertTrue("Noise subscription is authenticated: $noiseSubscribed",
                 noiseSubscribed.isNotEmpty() && noiseSubscribed.all { it == "Home Assistant test|127.0.0.1|true" })
+            assertEquals("Home Assistant's zone, from the authenticated client only", listOf("Europe/Madrid"), zones.toList())
 
             assertEquals("[\"hey_jarvis_v0.1\"]", r.getJSONArray("active_before").toString())
             assertEquals("[\"alexa_v0.1\"]", r.getJSONArray("active_after").toString())
