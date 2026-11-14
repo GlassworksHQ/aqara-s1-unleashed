@@ -138,4 +138,12 @@ class NotificationStoreTest {
         assertTrue(p.dropped.isEmpty())
         assertEquals(listOf("washer"), one.list().map { it.notification.title })
     }
+
+    /** Verifier carry-over, decided: a held one has no fold time, so opened from the list it stays until closed. */
+    @Test
+    fun aHeldOneStaysOnceOpened() {
+        for (p in listOf(Priority.LOW, Priority.NORMAL, Priority.HIGH)) assertNull(Delivery.of(p, doNotDisturb = true).foldAfterS)
+        val e = store.post(n("quiet"), doNotDisturb = true).entry
+        assertNull(store.show(e.id)!!.delivery.foldAfterS)
+    }
 }

@@ -15,7 +15,7 @@ import kotlin.math.sin
  * | Sound | What it is | Length |
  * |---|---|---|
  * | chime | two soft bell notes, high then lower | 0.9 s |
- * | doorbell | "ding-dong" (E5 then C5), twice | 2.6 s |
+ * | doorbell | "ding-dong" (E5 then C5), twice | 3.0 s |
  * | alert | three pairs of short bright beeps; the pane repeats it while a critical one is up | 1.4 s |
  */
 object NotificationSounds {
@@ -28,7 +28,7 @@ object NotificationSounds {
     fun pcm(sound: Sound): Pcm? = when (sound) {
         Sound.NONE -> null
         Sound.CHIME -> render(1.0, listOf(Note(0.0, 1318.5, 0.55, 0.22), Note(0.18, 1046.5, 0.7, 0.22)))
-        Sound.DOORBELL -> render(2.7, listOf(
+        Sound.DOORBELL -> render(3.0, listOf(
             Note(0.0, 659.3, 0.9, 0.32), Note(0.55, 523.3, 1.1, 0.32),
             Note(1.35, 659.3, 0.9, 0.32), Note(1.9, 523.3, 1.1, 0.32),
         ))

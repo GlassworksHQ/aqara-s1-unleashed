@@ -75,10 +75,13 @@ class NotificationCenter(
         when (val c = NotifyRequest.parse(message, title, data, haBase())) {
             is NotifyCommand.Clear -> if (store.clear(c.tag) != null) changed()
             is NotifyCommand.Post -> {
-                val d = store.post(c.notification, doNotDisturb()).entry.delivery
+                val p = store.post(c.notification, doNotDisturb())
+                val d = p.entry.delivery
+                // Dropped at once to stay under the store's limit: it isn't on the panel, so it makes no noise.
+                val kept = p.entry !in p.dropped
                 try {
-                    if (d.wake) out.wake(d.overNight)
-                    if (d.sound && c.notification.sound != Sound.NONE) out.play(c.notification.sound)
+                    if (kept && d.wake) out.wake(d.overNight)
+                    if (kept && d.sound && c.notification.sound != Sound.NONE) out.play(c.notification.sound)
                 } finally {
                     changed()
                 }
