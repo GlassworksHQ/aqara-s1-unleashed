@@ -70,6 +70,7 @@ class OnvifServer(
         private const val MAX_QUEUED = 200
         private const val DEFAULT_SUB_MS = 10 * 60_000L
         private const val MAX_PULL_WAIT_MS = 60_000L
+        private const val REFUSAL_LOG_MS = 60_000L
         private const val TOPIC_DIALECT = "http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet"
         private const val TOPIC_CELL = "tns1:RuleEngine/CellMotionDetector/Motion"
         private const val TOPIC_ALARM = "tns1:VideoSource/MotionAlarm"
@@ -288,7 +289,9 @@ class OnvifServer(
         if (action != "PullMessages") onLog("ONVIF $action from $who")
 
         if (action !in UNAUTHENTICATED) {
-            when (checkAuth(header, method, rawPath, headers)) {
+            val auth = checkAuth(header, method, rawPath, headers)
+            if (auth != AuthResult.OK) refused(who, action, auth)
+            when (auth) {
                 AuthResult.OK -> {}
                 AuthResult.MISSING -> return unauthorized(
                     "application/soap+xml; charset=utf-8",
@@ -317,6 +320,25 @@ class OnvifServer(
     }
 
     private fun fault(code: String, msg: String) = "FAULT:$code|$msg"
+
+    /** When each client's refusal was last logged. */
+    private val refusalsLogged = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /**
+     * Glassworks: says when a client's sign-in is refused, at most once a minute per client, never with the
+     * username or password. Home Assistant's ONVIF integration answers a refused PullMessages by renewing
+     * and re-creating its subscription every 0.75 s (the tablet run on 2026-11-14, with an entry that kept
+     * an older app's sign-in); without this line the log showed only those Renew and Create calls.
+     */
+    private fun refused(who: String, action: String, why: AuthResult) {
+        val now = System.currentTimeMillis()
+        val last = refusalsLogged[who]
+        if (last != null && now - last < REFUSAL_LOG_MS) return
+        refusalsLogged[who] = now
+        if (refusalsLogged.size > 64) refusalsLogged.entries.removeIf { now - it.value >= REFUSAL_LOG_MS }
+        val reason = if (why == AuthResult.MISSING) "no sign-in sent, or none is set on the panel" else "the sign-in doesn't match the stream's"
+        onLog("ONVIF $action from $who refused: $reason (said once a minute per client)")
+    }
 
     private fun soapFault(code: String, msg: String, status: Int) =
         HttpResponse(status, OnvifXml.fault(code, msg, sender = status < 500).toByteArray(Charsets.UTF_8))

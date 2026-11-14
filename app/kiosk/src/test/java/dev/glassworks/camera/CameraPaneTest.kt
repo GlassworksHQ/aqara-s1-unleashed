@@ -231,4 +231,22 @@ class CameraPaneTest {
         r.changed("speaker_volume")
         assertEquals(1, r.camera.opens)
     }
+
+    @Test fun theOnvifMotionGoesOffWhenPresenceClears() {
+        val r = Rig()
+        r.prefs.use = CameraUse.PRESENCE_AND_SNAPSHOTS
+        r.prefs.onvif = true
+        r.prefs.signIn = "viewer" to "s3cret"
+        r.pane.start()
+        r.someoneWalksIn()
+        val presence = r.pane.entities().filterIsInstance<BinarySensorEntity>().single()
+        assertEquals(true, ProtoMessage(presence.state().toByteArray()).bool(2))
+        // Nobody moves for longer than presence waits (8 s): still frames, as an empty room gives.
+        repeat(50) {
+            r.now += 200
+            r.camera.sink!!.frame(LumaFrame(96, 54, 96, ByteArray(96 * 54) { 60 }))
+        }
+        assertEquals("camera_presence clears", false, ProtoMessage(presence.state().toByteArray()).bool(2))
+        assertEquals("the ONVIF motion follows it, on then off", listOf(true, false), r.stream.motion)
+    }
 }
