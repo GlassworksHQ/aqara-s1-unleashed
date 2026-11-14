@@ -6,7 +6,8 @@
 #            tools/release/check-update-compat.sh (the APK still updates panels in place). When app/
 #            changes, also the ESPHome keepalive test against the real aioesphomeapi client
 #   libs-api23  the libraries' lint (NewApi) and their androidTest checks on an API 23 emulator:
-#            esphome-api, esphome-api-android and improv run on Android 6 (#151)
+#            esphome-api, esphome-api-android and improv run on Android 6 (#151); bluetooth-proxy is
+#            linted only (an emulator has no Bluetooth to scan with)
 #   wake-word  MicroWakeWordClipTest: the four real microWakeWord models (LiteRT in a hash-locked
 #            Python venv) behind the Kotlin pipeline, over a synthesised clip (#184). Only when app/
 #            or this file changes
@@ -77,7 +78,7 @@ jobs:
       - name: Still updates panels in place
         run: tools/release/check-update-compat.sh app/kiosk/build/outputs/apk/release/kiosk-release-unsigned.apk
 
-      # EspHomeKeepaliveTest (#180) and EspHomeActionsCameraTest (#120) against the real aioesphomeapi
+      # EspHomeKeepaliveTest (#180), EspHomeActionsCameraTest (#120) and BluetoothProxyHomeAssistantTest (#121) against the real aioesphomeapi
       # client. They skip without ESPHOME_PYTHON, so this step fails if one skipped. About 30 s (venv
       # from hashed wheels, then those tests only), and only when app/ or this file changed. The kiosk's EspHomeApiTest uses the same
       # client but isn't here yet. It failed once in two CI runs (#184).
@@ -100,7 +101,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Keepalive, actions and camera tests (real aioesphomeapi client)
+      - name: Keepalive, actions, camera and Bluetooth proxy tests (real aioesphomeapi client)
         if: steps.esphome.outputs.run == 'true'
         working-directory: app
         run: |
@@ -108,12 +109,14 @@ jobs:
           "$RUNNER_TEMP/esphome-venv/bin/pip" install --quiet --require-hashes --only-binary :all: \
             -r libs/esphome-api/test-requirements.txt
           results=libs/esphome-api/build/test-results/test
-          reports="$results/TEST-sh.edm.esphome.EspHomeKeepaliveTest.xml $results/TEST-sh.edm.esphome.EspHomeActionsCameraTest.xml"
+          reports="$results/TEST-sh.edm.esphome.EspHomeKeepaliveTest.xml $results/TEST-sh.edm.esphome.EspHomeActionsCameraTest.xml
+            libs/bluetooth-proxy/build/test-results/testDebugUnitTest/TEST-sh.edm.bluetoothproxy.BluetoothProxyHomeAssistantTest.xml"
           # --rerun: Gradle doesn't see ESPHOME_PYTHON, and the Unit tests step left the task up to date.
           # On a failure, the report's message holds the Python client's output.
           ESPHOME_PYTHON="$RUNNER_TEMP/esphome-venv/bin/python" ./gradlew --no-daemon --continue \
             :esphome-api:test --tests sh.edm.esphome.EspHomeKeepaliveTest \
             --tests sh.edm.esphome.EspHomeActionsCameraTest --rerun \
+            :bluetooth-proxy:testDebugUnitTest --tests sh.edm.bluetoothproxy.BluetoothProxyHomeAssistantTest --rerun \
             || { cat $reports; exit 1; }
           for report in $reports; do
             grep -q '<testsuite [^>]* skipped="0"' "$report" || { echo "::error::$report: a test skipped"; exit 1; }
@@ -138,7 +141,7 @@ jobs:
         run: sdkmanager --install "platforms;android-37.2"
       - name: Lint (NewApi at minSdk 23)
         working-directory: app
-        run: ./gradlew --no-daemon :esphome-api-android:lintDebug :improv:lintDebug
+        run: ./gradlew --no-daemon :esphome-api-android:lintDebug :improv:lintDebug :bluetooth-proxy:lintDebug
       - name: Build the androidTest APKs
         working-directory: app
         run: ./gradlew --no-daemon :esphome-api-android:assembleDebugAndroidTest :improv:assembleDebugAndroidTest
