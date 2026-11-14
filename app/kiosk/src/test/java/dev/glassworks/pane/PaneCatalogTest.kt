@@ -77,6 +77,9 @@ class PaneCatalogTest {
         // Pane as a type argument isn't a supertype
         assertTrue(!implementsPane("class Holder : Container<Foo, Pane>() {"))
         assertTrue(implementsPane("class J : Container<Foo, Bar>(), Pane {"))
+        // a function type's arrow inside the type arguments or the constructor isn't a bracket
+        assertTrue(implementsPane("class K : Container<(Int) -> Unit>(), Pane {"))
+        assertTrue(implementsPane("class L(val f: (Int) -> Unit) : Pane {"))
     }
 
     @Test
@@ -172,6 +175,7 @@ internal fun implementsPane(text: String): Boolean {
         while (i < text.length) {
             val past = skipLiteral(i)
             if (past != i) { i = past; continue }
+            if (text.startsWith("->", i)) { i += 2; continue } // a function type's arrow isn't a bracket
             when (text[i]) { open -> depth++; close -> if (--depth == 0) return i + 1 }
             i++
         }
@@ -187,6 +191,7 @@ internal fun implementsPane(text: String): Boolean {
         while (i < text.length) {
             val past = skipLiteral(i)
             if (past != i) { i = past; continue }
+            if (text.startsWith("->", i)) { i += 2; continue } // a function type's arrow isn't a bracket
             val c = text[i]
             if (depth == 0 && c == '{') break
             when (c) { '<', '(' -> depth++; '>', ')' -> depth--; ',' -> if (depth == 0) { parts += text.substring(start, i); start = i + 1 } }
