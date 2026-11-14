@@ -229,7 +229,9 @@ class TurnConn(asyncio.Protocol):
                     return
                 payload, self.buf = self.buf[4:4 + n], self.buf[size:]
                 peer = self.chan.get(num)
-                if peer and self.relay:
+                # Checked again on every packet, as Send and from_peer are: a channel bound while a
+                # peer was live mustn't reach its port after that session closed (#205's verifier).
+                if peer and self.relay and self.server.is_peer(peer):
                     self.relay.sendto(payload, peer)
                     self.to_peer += 1
                     self.answer_seen(payload)
