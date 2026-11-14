@@ -135,6 +135,10 @@ below as the release notes.
   first. Now the S1 announces itself as "Aqara S1 Plus", with a node name such as
   `aqara-s1-plus-a1b2c3` that ends in part of its MAC. A panel you already added stays in place with
   all its entity ids. Home Assistant shows "Aqara S1 Plus" after the update, unless you renamed it.
+- **The screen stays on after Home Assistant wakes it.** After the panel had gone dark on its own,
+  a wake that wasn't a touch (Home Assistant's screen switch, a timer, voice, Wi-Fi setup) turned the
+  screen off again after about 20 seconds. Now it stays on until the panel's idle timeout, as after
+  a touch.
 - **A pane you turn off stays off after a restart.** Turning voice or music off, then restarting
   the app at once, could bring the pane back on: the setting was saved after the app had gone.
   Zoom, secure hosts and remote debugging, which restart the app, could lose their change the same

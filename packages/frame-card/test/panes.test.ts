@@ -70,6 +70,13 @@ describe('a frame and a pane', () => {
     expect(s).toEqual({ support: 'alpha', note: 'n', derived: false });
   });
 
+  it('reads only the frame\'s own ratings, not Object.prototype\'s', () => {
+    // panes is a plain object: without the own-key check, a pane id like 'constructor' would "find" a rating
+    const s = paneSupport(f({ panes: {} }), pane({ id: 'constructor' }));
+    expect(s.derived).toBe(true);
+    expect(s.support).toBe('beta');
+  });
+
   it('reads a rating under the old alias (base for wall-base)', () => {
     const s = paneSupport(f({ panes: { base: { support: 'no', note: 'S1 only.' } } }), pane({ id: 'wall-base', frame: 'aqara-s1-plus' }));
     expect(s).toEqual({ support: 'no', note: 'S1 only.', derived: false });

@@ -41,7 +41,7 @@ sources actually say about later revisions, and can a buyer tell them apart by s
 | Claim | Evidence | Grade |
 |---|---|---|
 | Later revisions use an NXP i.MX8 (i.MX8M Mini) board | repairman29 `supported-devices.md`; Onemoremichael `nxp.md` | read, 2026-11-13; no hardware |
-| On it, only hardware-assisted (JTAG) access has been reported | Onemoremichael `nxp.md` | read, 2026-11-13; no hardware |
+| On them, only hardware-assisted (JTAG) access has been reported | Onemoremichael `nxp.md` | read, 2026-11-13; no hardware |
 | They are not a target for this frame | Different SoC, bootloader, Android and trust chain (repairman29); the frame is built for MSM8916 | Our decision |
 | 40 vs 43 inches is a panel change; the source doesn't say whether the board changed with it | olm3ca `README.md` | read, 2026-11-13 |
 | Size, year and branding don't identify the board | Onemoremichael `panels.md`; olm3ca | read, 2026-11-13 |
