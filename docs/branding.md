@@ -79,6 +79,11 @@ has no hue of its own: a frame is hardware, the bottom plate of the stack.
 3. Once that is deployed, put the banner at the top of the frame's README, with the file name
    `banner-frame-<id>`.
 
+The frame's README also carries its Clarity badge, `https://www.glassworks.dev/frames/<id>/clarity-on-dark.svg`
+and `-on-light.svg`. The site draws it at build time from the frame's `design/clarity.json` (none
+yet reads "not measured"), and `tools/check-brand-images.py` doesn't check it: that tool covers
+`/brand/` images only.
+
 ## Colour, in short
 
 The full palette is on [/brand#colour](https://www.glassworks.dev/brand#colour). These four rules
