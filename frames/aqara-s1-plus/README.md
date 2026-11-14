@@ -106,7 +106,8 @@ announcements, with a calm full-screen overlay while you talk.
 
 The Clarity badge shows its Clarity grade ([docs/perf.md](../../docs/perf.md)) once one is published; none is yet.
 
-What works today. "Verified" means tested on a real panel in a real home.
+What works on `main`, as of 2026-11-14. The latest release is v0.4.3, and rows marked New come with
+the next one. "Verified" means tested on a real panel in a real home.
 
 | Feature | Status |
 |---|---|
