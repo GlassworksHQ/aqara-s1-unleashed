@@ -61,11 +61,7 @@
       "support": "no",
       "note": "No supported radio."
     },
-    "sensors": {
-      "support": "depends",
-      "note": "Needs a proximity or light sensor."
-    },
-    "base": {
+    "wall-base": {
       "support": "no",
       "note": "S1 only."
     }

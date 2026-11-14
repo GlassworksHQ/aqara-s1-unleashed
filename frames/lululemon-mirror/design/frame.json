@@ -266,6 +266,7 @@
       "value": "Leans on the wall on its stand, or mounts flat on the wall"
     }
   ],
+  "provides": ["microphone", "speaker"],
   "panes": {
     "assist": {
       "support": "planned",
@@ -283,11 +284,7 @@
       "support": "no",
       "note": "No Zigbee or Thread radio."
     },
-    "sensors": {
-      "support": "unknown",
-      "note": "Presence would come from the camera."
-    },
-    "base": {
+    "wall-base": {
       "support": "no",
       "note": "S1 only."
     }

@@ -10,7 +10,8 @@ import s1Json from '../../../frames/aqara-s1-plus/design/frame.json';
 import { DeviceModel, FrameCardBody, ships, type FrameDesign, type Support } from '../src';
 
 const s1 = s1Json as FrameDesign;
-const mirror = mirrorJson as FrameDesign;
+// JSON imports widen the stand's [x, y, z] tuples to number[], so the cast goes through unknown
+const mirror = mirrorJson as unknown as FrameDesign;
 
 /** The declarations of each rule in FrameCard.module.css whose selector is exactly `selector`. */
 const cssRules = (selector: string) => {

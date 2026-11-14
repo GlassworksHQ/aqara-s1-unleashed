@@ -75,6 +75,7 @@
       "value": "FEL, then a patched boot image"
     }
   ],
+  "provides": ["microphone", "speaker", "silabs-radio", "s1-wall-base"],
   "panes": {
     "assist": {
       "support": "beta"
@@ -89,11 +90,7 @@
       "support": "beta",
       "note": "Zigbee coordinator or router, and Thread."
     },
-    "sensors": {
-      "support": "beta",
-      "note": "Presence from the time-of-flight sensor."
-    },
-    "base": {
+    "wall-base": {
       "support": "beta"
     }
   },
