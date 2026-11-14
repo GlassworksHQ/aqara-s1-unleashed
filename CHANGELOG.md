@@ -130,6 +130,10 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **The Manage page shows the right uptime, Wi-Fi and version.** "Up" next to the app's version is
+  now how long the app has run, not the device. Wi-Fi reads "Connected" while it is, also on newer
+  Android that hides the network's name from the app; Home Assistant's Wi-Fi signal and link speed
+  read the same link. A test build says so next to its version ("0.4.3 · test build 28c157d").
 - **A pane you turn off stays off after a restart.** Turning voice or music off, then restarting
   the app at once, could bring the pane back on: the setting was saved after the app had gone.
   Zoom, secure hosts and remote debugging, which restart the app, could lose their change the same
