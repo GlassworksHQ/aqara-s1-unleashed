@@ -19,7 +19,7 @@ fixed dashboard on which every wall-panel task still feels good**:
 |---|---|
 | A+ | Premium: an A where every task on large dashboards also holds 60 fps |
 | A | A good wall panel even for large dashboards |
-| B | A good wall panel for typical dashboards, with a camera; large ones stay fluid |
+| B | A good wall panel for typical dashboards, with a camera |
 | C | A good wall panel for typical dashboards without a camera |
 | D | A good wall panel for light dashboards |
 | E | Not a good wall panel, even for light dashboards |
@@ -27,7 +27,9 @@ fixed dashboard on which every wall-panel task still feels good**:
 Typical is measured twice in each run: without a camera (`typical-nocam`) and with one (`typical`).
 A live camera costs a panel more than anything else on a dashboard, and many homes have none, so C
 asks only for the camera-free typical, and B for typical with its camera playing (the maintainer,
-2026-11-13, rubric v10). The thresholds didn't move; only the ladder's steps did.
+2026-11-13, rubric v10). Each letter adds one page: D light, C typical without a camera, B typical
+with one, A and A+ heavy (rubric v11: B no longer asks heavy to be fluid; decided before any v10
+result). The thresholds didn't move; only the ladder's steps did.
 
 The report opens with one line such as "Aqara S1 Plus: Clarity C, a good wall panel for typical dashboards without a camera.
 Held back by large dashboards: scrolling averages 41.5 fps (p95 50 ms)." (an example of the
@@ -1010,13 +1012,14 @@ updates that make scrolling stutter cost the page its scroll level.
 |---|---|
 | A+ | Heavy premium: every task there holds 60 fps (the headline reads "A+, premium") |
 | A | Heavy good |
-| B | Typical (with its camera) good and Heavy fluid |
+| B | Typical (with its camera) good |
 | C | Typical without a camera (`typical-nocam`) fluid |
 | D | Light fluid |
 | E | None of the above |
 
-Rubric v10 (the maintainer, 2026-11-13, #205) added the camera-free typical and moved C onto it; B
-asks what it asked before, on typical with its camera. A report without `typical-nocam` (from
+Rubric v10 (the maintainer, 2026-11-13, #205) added the camera-free typical and moved C onto it;
+rubric v11 (the same day, before any v10 result) made each letter add one page, so B asks only for
+typical with its camera good, no longer for heavy fluid. A report without `typical-nocam` (from
 before v10) is provisional under v10: that page is "not measured", and its grade is the first letter
 the other pages reach (B still stands on typical with its camera).
 

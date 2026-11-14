@@ -1,6 +1,6 @@
 {
  "_comment": "Shared grade cases (MIT): every scroll level, live-update level, page level and letter boundary from test_grade.py, with the answer. grade.py (test_grade.py) and grade.ts (grade.test.mjs) must both give it. Regenerate only on purpose, with the rubric and the docs.",
- "rubric_version": 10,
+ "rubric_version": 11,
  "bands": [
   {
    "metric": "frame_p95_ms",
@@ -700,8 +700,8 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards without a camera",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -748,7 +748,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "load"
       ]
@@ -965,7 +965,7 @@
    "start_ms": 1000,
    "expect": {
     "grade": "B",
-    "meaning": "a good wall panel for typical dashboards, with a camera; large ones stay fluid",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -1052,8 +1052,8 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards without a camera",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -1100,7 +1100,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "scroll"
       ]
@@ -1229,7 +1229,7 @@
    "start_ms": 1000,
    "expect": {
     "grade": "B",
-    "meaning": "a good wall panel for typical dashboards, with a camera; large ones stay fluid",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -1317,7 +1317,7 @@
    "start_ms": 1000,
    "expect": {
     "grade": "B",
-    "meaning": "a good wall panel for typical dashboards, with a camera; large ones stay fluid",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -1404,8 +1404,8 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards without a camera",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -1452,7 +1452,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "updates"
       ]
@@ -1492,8 +1492,8 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards without a camera",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -1542,7 +1542,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "updates"
       ]
@@ -1582,8 +1582,8 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards without a camera",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -1630,7 +1630,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "tap"
       ]
@@ -1670,8 +1670,8 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards without a camera",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -1718,7 +1718,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "tap"
       ]
@@ -1758,8 +1758,8 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards without a camera",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -1808,7 +1808,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "scroll"
       ]
@@ -2184,8 +2184,8 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards without a camera",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -2232,7 +2232,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "tap"
       ]
@@ -2273,7 +2273,7 @@
    "start_ms": 1000,
    "expect": {
     "grade": "B",
-    "meaning": "a good wall panel for typical dashboards, with a camera; large ones stay fluid",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "good",
@@ -2360,8 +2360,8 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards without a camera",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "good",
@@ -2408,7 +2408,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "scroll"
       ]
@@ -2585,13 +2585,6 @@
      {
       "page": "typical",
       "needs": "good",
-      "tasks": [
-       "scroll"
-      ]
-     },
-     {
-      "page": "heavy",
-      "needs": "fluid",
       "tasks": [
        "scroll"
       ]
@@ -2984,7 +2977,7 @@
    "start_ms": 1000,
    "expect": {
     "grade": "B",
-    "meaning": "a good wall panel for typical dashboards, with a camera; large ones stay fluid",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -3716,13 +3709,6 @@
       "tasks": [
        "scroll"
       ]
-     },
-     {
-      "page": "heavy",
-      "needs": "fluid",
-      "tasks": [
-       "scroll"
-      ]
      }
     ]
    }
@@ -3832,8 +3818,8 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards without a camera",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -3886,7 +3872,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "tap",
        "scroll",
@@ -4035,7 +4021,7 @@
    }
   },
   {
-   "name": "camera: heavy's streams below fluid: heavy fails, typical decides (C)",
+   "name": "camera: heavy's streams below fluid: heavy fails, typical decides (B since rubric v11)",
    "tiers": {
     "light": {
      "inp_ms": 100,
@@ -4067,7 +4053,7 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
+    "grade": "B",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -4078,7 +4064,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "camera"
       ]
@@ -4087,7 +4073,7 @@
    }
   },
   {
-   "name": "camera: heavy's streams not measured: missing, C",
+   "name": "camera: heavy's streams not measured: missing, B (rubric v11)",
    "tiers": {
     "light": {
      "inp_ms": 100,
@@ -4119,7 +4105,7 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
+    "grade": "B",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",
@@ -4132,7 +4118,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "camera"
       ]
@@ -4365,13 +4351,6 @@
        "scroll",
        "camera"
       ]
-     },
-     {
-      "page": "heavy",
-      "needs": "fluid",
-      "tasks": [
-       "scroll"
-      ]
      }
     ]
    }
@@ -4409,7 +4388,7 @@
    "start_ms": 1000,
    "expect": {
     "grade": "B",
-    "meaning": "a good wall panel for typical dashboards, with a camera; large ones stay fluid",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
      "typical-nocam": "premium",

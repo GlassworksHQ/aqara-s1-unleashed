@@ -804,7 +804,7 @@ class Build(unittest.TestCase):
         self.assertEqual(g["start"], {"value": 800, "band": "good"})   # process 20.0 s -> engine 20.7 to 20.9 s
         self.assertEqual(g["viewport"], {"state": "ok", "reason": None})
         self.assertFalse(g["provisional"])
-        self.assertEqual(g["headline"], "test-frame: Clarity B, a good wall panel for typical dashboards, with a camera; large ones stay fluid. "
+        self.assertEqual(g["headline"], "test-frame: Clarity B, a good wall panel for typical dashboards, with a camera. "
                                         "Held back by large dashboards: scrolling averages 45.0 fps (p95 33 ms).")
         self.assertEqual(self.rep["graded"]["reference"]["android_ttid_ms"]["median"], 111)   # reported, not graded
         self.assertEqual(self.rep["real_use"]["dashboard_load_ms"]["median"], 3400)            # not graded either
@@ -1216,7 +1216,7 @@ class Build(unittest.TestCase):
 
     def test_markdown_renders(self):
         md = R.markdown(self.rep)
-        self.assertIn("**test-frame: Clarity B, a good wall panel for typical dashboards, with a camera; large ones stay fluid.", md)
+        self.assertIn("**test-frame: Clarity B, a good wall panel for typical dashboards, with a camera.", md)
         self.assertIn("| heavy (120 cards) | fluid |", md)
         self.assertIn("| scroll |", md)                                 # what holds heavy back from smooth
         self.assertIn("Restart, app process to engine ready: 800 ms (700 to 900, n=3)", md)
