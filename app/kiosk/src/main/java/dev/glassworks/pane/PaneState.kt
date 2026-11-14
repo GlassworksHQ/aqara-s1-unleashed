@@ -31,7 +31,7 @@ fun paneState(section: SettingsSection?, running: () -> PaneState? = { section?.
         on == false -> PaneState(PaneState.Kind.OFF, "Turned off")
         unavailable != null -> PaneState(PaneState.Kind.CANT_RUN, unavailable)
         else -> runCatching(running).getOrNull()
-            ?: if (on == true) PaneState(PaneState.Kind.RUNNING, section.master?.detail.orEmpty(), chip = "On") else PaneState.UNKNOWN
+            ?: if (on == true) PaneState(PaneState.Kind.RUNNING, section.master.detail, chip = "On") else PaneState.UNKNOWN
     }
 }
 

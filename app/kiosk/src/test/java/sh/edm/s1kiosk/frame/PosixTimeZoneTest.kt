@@ -69,12 +69,14 @@ class PosixTimeZoneTest {
     }
 
     @Test fun aFixedOffsetNeverOffersAZoneThePanelDoesntKeep() {
-        // #235 verifier N3: HA sends Casablanca as <+00>0. Africa/Abidjan keeps +00 all year, an hour off
-        // Casablanca most of it, so nothing is offered: HA's clock, and the panel keeps its zone.
+        // #235 verifier N3: HA sends Casablanca as <+00>0, and Africa/Abidjan keeps +00 all year, an hour off
+        // Casablanca most of it. So a fixed rule offers no zone: HA's clock, and the panel keeps its zone.
+        // Lisbon stands in for Casablanca here: +00 in November like the rule, +01 in summer, and every tz
+        // data agrees on it (JDKs encode Morocco differently; CI's and a Mac's disagreed).
         val choices = TimeZoneChoices(ids)
-        val casablanca = choices.homeAssistant("<+00>0", "Africa/Casablanca", from)
-        assertEquals(TimeZoneChoices.HomeAssistantZone.Elsewhere(0), casablanca)
-        assertEquals("UTC+00:00 · Home Assistant's clock; the panel keeps its zone", casablanca!!.line(from))
+        val lisbon = choices.homeAssistant("<+00>0", "Europe/Lisbon", from)
+        assertEquals("the same offset today is not the same clock", TimeZoneChoices.HomeAssistantZone.Elsewhere(0), lisbon)
+        assertEquals("UTC+00:00 · Home Assistant's clock; the panel keeps its zone", lisbon!!.line(from))
         // A fixed offset the panel's zone keeps all year is the same; another one is never offered either.
         assertEquals(TimeZoneChoices.HomeAssistantZone.Same("Asia/Kolkata"), choices.homeAssistant("<+0530>-5:30", "Asia/Kolkata", from))
         assertEquals(TimeZoneChoices.HomeAssistantZone.Elsewhere(19_800), choices.homeAssistant("<+0530>-5:30", "Europe/Madrid", from))
