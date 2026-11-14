@@ -131,6 +131,8 @@ class CameraPresence(
     init { require(fps > 0f) { "fps must be positive" } }
 
     private val lock = Any()
+    /** One frame at a time in [detector], also while an old session's last frame overlaps a new one. Never taken under [lock]. */
+    private val detecting = Any()
     private var session: Session? = null
 
     override fun start(context: Context, onReading: (near: Boolean, raw: Float) -> Unit) {
@@ -189,7 +191,7 @@ class CameraPresence(
                 fails
             }
             val score = try {
-                detector.score(frame)
+                synchronized(detecting) { detector.score(frame) }
             } catch (e: Exception) {
                 fail("the detector failed: ${e.javaClass.simpleName}")
                 return
@@ -207,12 +209,18 @@ class CameraPresence(
 
         /** Far, and why, once until a frame is scored again. */
         fun fail(why: String) {
-            val first = synchronized(lock) {
-                if (closed) return
-                fails++
-                filter.reset()
-                (!failing).also { failing = true }
-            }
+            val first = synchronized(lock) { if (closed) return else failLocked() }
+            report(first, why)
+        }
+
+        /** The failure itself, under [lock]. True when it's the first since a frame was scored. */
+        private fun failLocked(): Boolean {
+            fails++
+            filter.reset()
+            return (!failing).also { failing = true }
+        }
+
+        private fun report(first: Boolean, why: String) {
             post {
                 if (!isOpen()) return@post
                 if (first) onProblem(why)
@@ -220,13 +228,21 @@ class CameraPresence(
             }
         }
 
+        // The freshness check and the failure happen under one lock, so a frame that arrives meanwhile
+        // isn't invalidated by a stale verdict.
         private fun checkStale() {
-            val idle = synchronized(lock) {
+            val (idle, first) = synchronized(lock) {
                 watching = false
                 if (closed) return
-                (clock() - lastFrameMs).also { if (it < STALE_MS) { watching = true; after(STALE_MS - it, ::checkStale) } }
+                val idle = clock() - lastFrameMs
+                if (idle < STALE_MS) {
+                    watching = true
+                    after(STALE_MS - idle, ::checkStale)
+                    return
+                }
+                idle to failLocked()
             }
-            if (idle >= STALE_MS) fail("no frames for ${idle / 1000} s")
+            report(first, "no frames for ${idle / 1000} s")
         }
 
         private fun isOpen() = synchronized(lock) { !closed }

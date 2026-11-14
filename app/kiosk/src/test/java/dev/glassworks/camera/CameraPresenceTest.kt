@@ -306,6 +306,35 @@ class CameraPresenceTest {
         assertEquals(listOf(false to -1f), readings)
     }
 
+    @Test fun anOldSessionsLastFrameAndANewSessionsFirstNeverShareTheDetector() {
+        val cam = FakeCamera()
+        val inside = java.util.concurrent.atomic.AtomicInteger()
+        var most = 0
+        val firstIn = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        var calls = 0
+        val detector = PersonDetector {
+            most = maxOf(most, inside.incrementAndGet())
+            if (++calls == 1) { firstIn.countDown(); release.await() }
+            inside.decrementAndGet()
+            0f
+        }
+        var now = 0L
+        val p = CameraPresence(cam, detector, clock = { now }, post = { it.run() }, after = { _, _ -> })
+        p.start(ctx) { _, _ -> }
+        val oldSink = cam.sink!!
+        val old = Thread { oldSink.frame(blank) }.apply { start() }
+        assertTrue(firstIn.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        p.start(ctx) { _, _ -> } // closes the old session while its frame is in the detector
+        val newSink = cam.sink!!
+        val fresh = Thread { newSink.frame(blank) }.apply { start() }
+        fresh.join(300) // it waits for the old call rather than running beside it
+        release.countDown()
+        old.join(5_000); fresh.join(5_000)
+        assertEquals(2, calls)
+        assertEquals("one frame at a time in the detector", 1, most)
+    }
+
     @Test fun aRangeIsRefusedInWordsAndZeroIsFine() {
         val p = CameraPresence(FakeCamera(), { 0f }, post = { it.run() }, after = { _, _ -> })
         assertNull(p.setRange(ctx, 0f))
