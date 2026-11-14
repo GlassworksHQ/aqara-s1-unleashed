@@ -59,7 +59,7 @@ own GeckoView, loaded the way the kiosk loads your dashboard.
 
 You need adb, Python 3.11 or later, ffmpeg with libx264 (for the camera streams; it runs only on your
 computer) and the kiosk installed on the device. The first run makes a Python venv for the fake's
-WebRTC camera (aiortc, about 93 MB, from `tools/perf/webrtc-requirements.txt`, every wheel's hash
+WebRTC camera (aiortc, about 93 MB on macOS (measured 2026-11-14), from `tools/perf/webrtc-requirements.txt`, every wheel's hash
 checked) in `~/.cache/glassworks-perf`. The computer needs an IPv4 address that isn't loopback (any
 network interface that is up; the camera's packets never leave the computer). Let the device idle for 10 minutes
 first, with the screen on, at normal room temperature, and the kiosk's zoom at its default ("auto").
@@ -406,7 +406,14 @@ hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
   pause or run with nothing decoded (two in one interval count as their sum, an upper bound).
   Without any, every gap was under the freeze rule, and the longest gap is that rule's bound for
   the window's mean interval (217 ms at 15 fps; `gaps_source` `webrtc (bound)`). Each stream's
-  `stalls_at` says where they were.
+  `stalls_at` says where they were. One outage a receiver reports as both a freeze and a pause in
+  the same interval counts once, the longer of the two; different receivers add up. The intervals
+  run on the inbound reports' own `timestamp`s (Gecko reads the counts on its call thread right
+  after the ask, `RTCRtpReceiver.cpp`; a busy main thread delays only the answer, by up to
+  `statsWaitMs`, 10 s, at the window's end), so a late answer counts nothing past the time its
+  counts were taken, and frames shown are over that same span (`clock`: `stats`, or `asked` when a
+  sample has no timestamp). A receiver that reports no `freezeCount` has stalls and gaps `n/a`
+  (`stalls_reported` false), never 0: that run's camera level isn't measured, and the report says so.
 - **Gaps and stalls over HLS (the fallback, not graded)**: gaps over 500 ms between frames
   presented by `requestVideoFrameCallback`, the longest and their sum, and the `waiting` events.
 
@@ -737,9 +744,11 @@ nothing else:
 Before, the whole run waited out its 900 s and was dropped (smoke 7); then the run's later views
 weren't opened (s1rtc3); then heavy, usable after 43 s and still working, ran out of a 300 s
 per-view deadline before its swipes (s1rtc4). The runner also sends the kiosk's wake intent during a
-live view once nothing has touched the panel for 30 s (`live_wakes`): normal views tap or swipe
-every few seconds, but a page stuck on a busy panel can outlast the kiosk's idle timeout, and with
-the screen off nothing measured is the panel's. A graded run may take up to 1800 s (`--timeout`).
+live view once nothing has touched the panel for 10 s (`live_wakes`; it was 30 s until s1rtc5, whose
+heavy lost the screen at night 16 to 20 s after its last tap), and Android's wake key through each
+restart (`restart_wakes`): see "The screen stays on". A page stuck on a busy panel can outlast the
+kiosk's idle timeout (20 s at night on the S1), and with the screen off nothing measured is the
+panel's. A graded run may take up to 1800 s (`--timeout`).
 None of this moves a threshold.
 
 **Drawn long before usable** (detail). A view is usable when its first screen is drawn and its main
@@ -1537,7 +1546,9 @@ aren't comparable with v1's.
   the notes say so, and `gradeSummary` returns `re-measure`, never a v1 letter. The marker decides,
   not the number, because v1's protocol 1 repeats a pre-release number.
 - Pre-release protocol 8 was v1's release candidate: the same measurement, run once on the S1
-  (s1rtc5, #205, 2026-11-13) before its lines carried the marker. report.py reads its lines as v1,
+  (s1rtc5, #205, 2026-11-13) before its lines carried the marker. report.py reads its lines as v1
+  (the one bypass of the marker, and only for lines that carry the round's `usable.busy_ms`, which
+  no earlier protocol 8 line has),
   so its report.json is rebuilt as v1 without re-measuring: `tools/perf/report.py <run-dir>`, then
   `tools/perf/summary.py <run-dir>/report.json <out>`.
 - A later version will raise `clarity` with a change that makes earlier results incomparable, and

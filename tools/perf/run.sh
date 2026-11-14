@@ -250,7 +250,7 @@ if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
     python3 "$HERE/camera.py" >/dev/null || { echo "Clarity's camera streams need ffmpeg with libx264 (camera.py)" >&2; exit 2; }
   fi
   # Protocol 6 (#202): the fake answers HA's WebRTC offers with aiortc, from a venv of
-  # webrtc-requirements.txt (hashes checked, wheels only; made once, about 60 MB).
+  # webrtc-requirements.txt (hashes checked, wheels only; made once, about 93 MB on macOS, 2026-11-14).
   # The animation test page alone plays no camera: plain python3 then.
   FAKE_PY="${GW_PERF_FAKE_PYTHON:-}"
   if [ -z "$FAKE_PY" ] && { [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; }; then
@@ -313,7 +313,7 @@ if [ "$REF" = 1 ]; then
   sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'http://127.0.0.1:$PORT/clarity-ref/start'" >/dev/null
   sleep "$SWITCH_SETTLE"
   for k in $(seq 1 "$RUNS"); do
-    log "graded run $k/$RUNS: restart to the reference dashboard, then the three reference dashboards"
+    log "graded run $k/$RUNS: restart to the reference dashboard, then the four reference dashboards"
     thermal "refstart-$k"
     # Protocol 6: then the camera pages' HLS copies, the fallback (detail, not graded).
     if run refstart --run "$k" --settle "$COLD_SETTLE" --url "http://127.0.0.1:$PORT" \
