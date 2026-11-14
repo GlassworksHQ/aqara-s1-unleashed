@@ -25,7 +25,7 @@ internal class CameraSetupStep(
     private val granted: () -> Boolean,
     private val pickers: CameraUsePickers?,
 ) : SetupStep {
-    override val id = "camera"
+    override val id = CameraPane.ID // the pane's own id: setup's rail and `--es setup_step camera`
     override val title = "Camera"
     override val reason = "the camera's use isn't picked, or Android hasn't allowed the camera"
 
