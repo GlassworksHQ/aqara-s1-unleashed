@@ -62,12 +62,27 @@ def page_summary(s):
         "updates": {"latency_p95_ms": _med(s.get("latency_p95_ms"), 1), "latency_median_ms": _med(s.get("latency_median_ms"), 1),
                     "pacing_p95_ms": _med(up.get("p95_ms"), 2), "runs": s.get("updates_runs") or []},
         # Live cameras (#174), on the pages with streams: each run's worst stream (graded per run).
-        "camera": {"runs": [{k: r.get(k) for k in ("first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms")}
-                            for r in s.get("camera_runs") or []]},
+        # Protocol 6 (#202): `path`, what the graded streams played over (web_rtc), and `fallback`,
+        # the same page's cameras over HLS (detail, not graded; null before protocol 6).
+        "camera": camera_summary(s),
+        # Runs in which this page didn't finish within the runner's deadline (#202): its unmeasured
+        # tasks are in the runs as failing (`timed_out` records; open and tap at the deadline).
+        "timed_out_runs": s.get("timed_out_runs") or 0,
         "runs": {"tap": _n(s.get("inp_ms")), "scroll": len(s.get("scroll_runs") or []),
                  "updates": len(s.get("updates_runs") or []), "open": _n(s.get("load_ms")),
                  "camera": len(s.get("camera_runs") or [])},
     }
+
+
+def camera_summary(s):
+    keys = ("first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms")
+    runs = s.get("camera_runs") or []
+    tag = lambda r: dict({"timed_out": True} if r.get("timed_out") else {},  # noqa: E731
+                         **({"stalls_reported": False} if r.get("stalls_reported") is False else {}))
+    fb, paths = s.get("camera_fallback"), {r.get("path") or "hls" for r in runs}
+    return {"runs": [dict({k: r.get(k) for k in keys}, **tag(r)) for r in runs],
+            "path": paths.pop() if len(paths) == 1 else None,
+            "fallback": fb and {"path": fb["path"], "runs": [{k: r.get(k) for k in keys} for r in fb["runs"]]}}
 
 
 def ram_summary(ram):
@@ -124,6 +139,8 @@ def measurements(rep, report_url="report.json"):
     return {
         "schema": SCHEMA,
         "test": G.NAME,
+        # Clarity's version: 1 from 2026-11-14; None for a pre-release report (grade.ts: re-measure).
+        "clarity": rep.get("clarity"),
         "protocol_version": rep.get("protocol_version"),
         "report_schema": rep["schema"],
         "measured_on": rep.get("measured_on"),
@@ -143,7 +160,18 @@ def measurements(rep, report_url="report.json"):
         "ram": ram_summary(rep.get("ram")),
         "apk": [{"file": x["file"], "abis": x["abis"], "bytes": x["bytes"]} for x in rep.get("apk") or []] or None,
         "notes": notes_summary(rep),
+        # Protocol 7 (#202): how the cameras' WebRTC video reached the panel (lan-udp, lan-turn or adb),
+        # who chose it, and whether heavy's camera result may be the test's link's (adb). Results over
+        # different transports aren't comparable; grade_summary passes it on. None before protocol 7.
+        "webrtc_transport": transport_summary(rep.get("webrtc_transport")),
     }
+
+
+def transport_summary(t):
+    if not t:
+        return None
+    return {"transport": t.get("transport"), "chosen_by": t.get("chosen_by"), "reason": t.get("reason"),
+            "possibly_limited": bool(t.get("limited"))}
 
 
 def summarise(rep, report_url="report.json", allow_provisional=False):

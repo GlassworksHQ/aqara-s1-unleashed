@@ -40,11 +40,34 @@ def now():
 
 
 def shell(cmd):
+    if os.environ.get("FAKE_SCREEN_SLEEP_S") and ("KEYCODE_WAKEUP" in cmd or "--es screen on" in cmd
+                                                   or cmd.startswith(("input swipe", "input tap"))):
+        save("awake_at.json", time.time())       # what keeps the fake screen on (a wake, a touch)
+        save("asleep.json", False)
+        if "KEYCODE_WAKEUP" in cmd:
+            save("nudges.json", state("nudges.json", 0) + 1)
+            return ""
     props = {"ro.product.manufacturer": "Example", "ro.product.model": "Test Panel", "ro.build.version.release": "10",
              "ro.build.version.sdk": "29", "ro.product.cpu.abi": "armeabi-v7a", "ro.product.cpu.abilist": "armeabi-v7a,armeabi",
              "ro.board.platform": "testsoc", "ro.hardware": "testhw"}
     if cmd.startswith("getprop "):
         return props.get(cmd.split()[1], "")
+    m = re.search(r"echo (\w+);? .*toybox nc( -u)? .*?(\d+\.\d+\.\d+\.\d+) (\d+)$", cmd)
+    if m:
+        # lanprobe.py's checks (#202): the panel reaches this computer over the LAN as FAKE_LAN says
+        # (udp: both; tcp: TCP only; unset: neither), and then really sends the token there.
+        token, udp, addr, port = m.group(1), bool(m.group(2)), m.group(3), int(m.group(4))
+        save("lan_checks.json", state("lan_checks.json", []) + ["udp" if udp else "tcp"])
+        lan = os.environ.get("FAKE_LAN", "")
+        if (udp and lan == "udp") or (not udp and lan in ("udp", "tcp")):
+            import socket
+            if udp:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.sendto((token + "\n").encode(), (addr, port))
+            else:
+                with socket.create_connection((addr, port), timeout=2) as s:
+                    s.sendall((token + "\n").encode())
+        return ""
     if cmd.startswith("am start"):
         u = re.search(r"--es url '([^']+)'", cmd)
         if u and (os.environ.get("FAKE_RESTORE_FAILS") and "127.0.0.1" not in u.group(1)
@@ -191,7 +214,8 @@ LOCK = threading.Lock()
 PAGE_TAG, PAGE_LINE_BYTES = "Isolated Web Content", 1023
 # The pages' protocol, read from the pages themselves, so the fake can't fall behind them.
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "page", "tiers.json")) as _f:
-    PROTOCOL = json.load(_f)["PROTOCOL"]
+    _T = json.load(_f)
+    PROTOCOL, CLARITY = _T["PROTOCOL"], _T["CLARITY"]
 PAGE_LINE_MAX = 900     # stats.js LINE_MAX: longer lines are split, as the page does
 
 
@@ -283,7 +307,9 @@ def page(nonce):
 def refdash(nonce, url):
     """A reference dashboard: it loads (first paint 150 ms, load event 120 ms), stays still, goes live
     (state updates), one window of frames, the taps, then swipes where it asks, done."""
-    tier = re.search(r"/clarity-ref/(\w+)", url).group(1)
+    tier = re.search(r"/clarity-ref/([\w-]+)", url).group(1)
+    # Protocol 6: a camera page's HLS copy (tiers.json FALLBACK) plays over HLS; the rest over WebRTC.
+    page, path = (tier[:-4], "hls") if tier.endswith("-hls") else (tier, "web_rtc")
     taps = int(re.search(r"taps=(\d+)", url).group(1))
     m = re.search(r"swipes=(\d+)", url)
     swipes = int(m.group(1)) if m else int(os.environ.get("FAKE_SWIPES", "2"))
@@ -293,10 +319,16 @@ def refdash(nonce, url):
     dpr = float(os.environ.get("FAKE_DPR", "1.5"))
 
     def gw(obj):
+        # FAKE_STAGE_DELAY (protocol 8): a slow view that keeps going: this long before each line
+        # after it is usable, so the whole view outlasts the usable deadline but no stage stops.
+        if obj.get("t") not in ("refdash",) and os.environ.get("FAKE_STAGE_DELAY") and tier == os.environ.get("FAKE_STAGE_VIEW", tier):
+            time.sleep(float(os.environ["FAKE_STAGE_DELAY"]))
         page_log(dict(obj, nonce=nonce, run=1), split=not os.environ.get("FAKE_NO_SPLIT"))
 
     # FAKE_SLOW_VIEW: the view takes this long to be usable (the runner keeps the screen awake).
     time.sleep(float(os.environ.get("FAKE_SLOW_VIEW", "0")))
+    if os.environ.get("FAKE_NEVER_USABLE") == tier:
+        return                 # never usable: not a line
     if os.environ.get("FAKE_SCREEN_OFF") == tier:
         # As smoke10: the kiosk's idle timeout turns the screen off while the view opens.
         line("PowerManagerService", "Going to sleep due to device_admin (uid 1000)...", pid=1919)
@@ -319,7 +351,7 @@ def refdash(nonce, url):
     if foreign == "after":
         line("GeckoSession", "handleMessage GeckoView:PageStart uri=http://192.0.2.10:8123/lovelace?external_auth=1")
     time.sleep(0.7)
-    gw({"t": "refdash", "tier": tier, "protocol": PROTOCOL, "frontend": "20261028.5", "nodes": 1458, "cards": 50,
+    gw({"t": "refdash", "tier": tier, "protocol": PROTOCOL, "clarity": CLARITY, "frontend": "20261028.5", "nodes": 1458, "cards": 50,
         "cards_rendered": 47, "css": [960, 480], "dpr": dpr, "scroll_height": 2635,
         "fcp_ms": None, "lcp_ms": None, "load_ms": None, "origin_epoch_ms": origin, "epoch_ms": time.time() * 1000,
         # Protocol 4: navigation at `nav`; the view's first screen rendered 200 ms later, the main thread
@@ -332,6 +364,8 @@ def refdash(nonce, url):
         return                 # as smoke10's heavy: usable, then nothing more (no done)
     mark(f"page warmup {tier}")
     gw({"t": "warmup", "stage": "updates", "n": 1})
+    if os.environ.get("FAKE_HANG_LIVE") == tier:
+        return                 # as smoke 7's heavy (#202): live, then too slow to say anything more
     time.sleep(0.3)
     gw({"t": "measure", "stage": "updates", "n": 1, "moving": 12, "offscreen": 0, "targets": 10, "update_every_ms": 200,
         "animations": 0, "animations_expected": 0})
@@ -358,25 +392,32 @@ def refdash(nonce, url):
             time.sleep(0.1)
         gw({"t": "input", "stage": tier, "method": "event-timing", "taps": state("taps.json", 0) - before,
             "values": [16, 48], "inp_ms": 48})
-    n = {"typical": 1, "heavy": 4}.get(tier, 0)
+    n = {"typical": 1, "heavy": 4}.get(page, 0)
     if n:
         # #174: the view's live cameras, from going live to the first swipe. FAKE_NO_VIDEO: none plays.
         dead = os.environ.get("FAKE_NO_VIDEO") == tier
-        # As the S1 logs them (2026-11-13): a hardware decoder per stream from the media process, and on
-        # heavy the Allwinner decoder's flushes and drains when a stream runs out of data.
-        for _ in range(0 if dead else n):
+        # As the S1 logs them (2026-11-13): over HLS, a hardware decoder per stream from the media
+        # process, and on heavy the Allwinner decoder's flushes and drains when a stream runs out of
+        # data. Over WebRTC, nothing: Gecko decodes it in software (#202, step 0).
+        for _ in range(0 if dead or path == "web_rtc" else n):
             line("MediaCodec", "[OMX.allwinner.video.decoder.avc] setting surface generation to 17119233", pid=16718)
-        if tier == "heavy" and not dead:
+        if tier == "heavy-hls" and not dead:
             line("omx_vdec_aw", "<__anFlush:1043>: decoder flush", pid=1774)
             line("omx_vdec_aw", "<__anFlush:1043>: decoder flush", pid=1774)
             line("omx_vdec", "<doSubmit:2004>: found eos flag in input data", pid=1774)
-        gw({"t": "camera", "stage": tier, "window_ms": 5000, "fps": 15, "expected": n, "found": n,
+        webrtc = {"inbound": True, "frames_received": 75, "frames_decoded": 75, "frames_dropped": 0, "freezes": 0, "freeze_s": 0,
+                  "decoder": None, "power_efficient": None, "codec": "video/H264",
+                  "candidate": {"local": "relay", "relay": "tcp", "protocol": "udp"}}
+        gw({"t": "camera", "stage": tier, "path": path, "window_ms": 5000, "t0_ms": 9000.0, "nav_ms": 5000.0, "fps": 15,
+            "expected": n, "found": n,
             "streams": [{"found": True, "w": 0 if dead else (1280 if i == 0 else 640), "h": 0 if dead else (720 if i == 0 else 360),
                          "first_frame_ms": None if dead else 640.0, "shown_pct": None if dead else 100.0,
                          "max_gap_ms": None if dead else 70.0, "stall_total_ms": None if dead else 0.0,
                          "stall_presented": None if dead else 0,
                          "frames": 0 if dead else 75, "decoded": 0 if dead else 75, "dropped": 0, "waiting": 0,
-                         "source": "quality+rvfc"} for i in range(n)],
+                         "source": "quality+rvfc", "path": path,
+                         **({"webrtc": None if dead else webrtc, "others": [{"path": "hls", "first_frame_ms": 420.0, "connected": False}]}
+                            if path == "web_rtc" else {"others": []})} for i in range(n)],
             # The segments' fetch times (stats.js hlsFetches). Heavy's whole line is longer than a
             # logcat line (1023 bytes), so it goes out in parts, as the page's does.
             "fetches": {"segment": {"n": 5 * n, "queued_ms": {"median": 1.2, "p95": 3.4, "max": 4.1},
@@ -445,7 +486,7 @@ def dashboard():
             line("GeckoSession", "handleMessage GeckoView:PageStop uri=null")
             time.sleep(float(os.environ["FAKE_RESTART_SLOW"]))
         time.sleep(0.5)
-        page_log({"t": "refdash", "tier": "start", "protocol": PROTOCOL, "frontend": "20261028.5", "nodes": 1082, "cards": 22,
+        page_log({"t": "refdash", "tier": "start", "protocol": PROTOCOL, "clarity": CLARITY, "frontend": "20261028.5", "nodes": 1082, "cards": 22,
                   "cards_rendered": 20, "css": [960, 480],
                   "dpr": float(os.environ.get("FAKE_DPR", "1.5")), "scroll_height": 1936, "fcp_ms": 120, "lcp_ms": 120,
                   "load_ms": 100, "nav_ms": 0,
@@ -496,12 +537,24 @@ def take_commands(base):
         save("refnonce.json", [cmd["nonce"], f"/clarity-ref/{cmd['view']}?{urllib.parse.urlencode(q)}"])
 
 
+def screen_timeout(after_s):
+    """As the S1 at night: the screen goes off after_s seconds after the last wake or touch."""
+    save("awake_at.json", state("awake_at.json") or time.time())
+    while True:
+        time.sleep(0.1)
+        if not state("asleep.json") and time.time() - (state("awake_at.json") or 0) > after_s:
+            save("asleep.json", True)
+            line("PowerManagerService", "Going to sleep due to timeout (uid 1000)...", pid=1919)
+
+
 def logcat():
     print("    1.000  1  1 I old: line from before", flush=True)
     if os.environ.get("FAKE_HA_URL"):
         threading.Thread(target=take_commands, args=(os.environ["FAKE_HA_URL"],), daemon=True).start()
     if os.environ.get("FAKE_LOGCAT_NOISE"):
         threading.Thread(target=noise, args=(float(os.environ["FAKE_LOGCAT_NOISE"]),), daemon=True).start()
+    if os.environ.get("FAKE_SCREEN_SLEEP_S"):
+        threading.Thread(target=screen_timeout, args=(float(os.environ["FAKE_SCREEN_SLEEP_S"]),), daemon=True).start()
     end = now() + 60
     while now() < end:
         if state("nonce.json"):

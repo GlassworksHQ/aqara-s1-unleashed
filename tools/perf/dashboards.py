@@ -1,7 +1,7 @@
 """Clarity's fixed home (MIT): the entities, their states and history, HA's config, panels and
 services, and the reference dashboard as a real Lovelace config, for the fake Home Assistant
 (fakeha.py): one dashboard whose views are the start view (where the kiosk comes back to after a
-restart) and the three reference tiers. Everything is seeded, so every run serves the same home.
+restart), the four reference views (light, typical without and with its camera, heavy) and the HLS copies. Everything is seeded, so every run serves the same home.
 
 The counts are in page/tiers.json, the one source the harness reads too.
 """
@@ -17,9 +17,17 @@ with open(os.path.join(HERE, "page", "tiers.json")) as _f:
     TIERS = json.load(_f)
 DASHBOARD = TIERS["DASHBOARD"]
 # The camera entities and the stream each serves (camera.py PROFILES): one main stream, sub-streams.
+# clarity_cam_* are HA's cameras with go2rtc (WebRTC and HLS, #202); clarity_hls_* the same streams
+# from a camera with HLS only, for the fallback views (tiers.json FALLBACK).
 CAMERA_PROFILES = {"camera.clarity_cam_0": "720p", "camera.clarity_cam_1": "360p", "camera.clarity_cam_2": "360p",
-                   "camera.clarity_cam_3": "360p"}
-VIEWS = ["start"] + TIERS["ORDER"]          # view index 0 is the start view
+                   "camera.clarity_cam_3": "360p", "camera.clarity_hls_0": "720p", "camera.clarity_hls_1": "360p",
+                   "camera.clarity_hls_2": "360p", "camera.clarity_hls_3": "360p"}
+# What camera/capabilities offers for each (HA core camera_capabilities: a camera with a WebRTC
+# provider offers both; one with only the stream integration, HLS).
+CAMERA_STREAM_TYPES = {c: ["hls"] if ".clarity_hls_" in c else ["hls", "web_rtc"] for c in CAMERA_PROFILES}
+FALLBACK = TIERS["FALLBACK"]                # the HLS copy of a view -> the view
+PLAIN = TIERS.get("PLAIN", {})              # a view without its cameras -> the view (#205)
+VIEWS = ["start"] + TIERS["ORDER"] + list(FALLBACK)          # view index 0 is the start view
 SEED = 89
 START = 1_794_500_000.0          # a fixed epoch for every last_changed (2026-11-13)
 # The fixed home's size: enough for the heavy dashboard's ~370 entities with room to spare, and a
@@ -95,7 +103,7 @@ def states():
             add(*_onoff(d, i, rnd))
     for cam, profile in CAMERA_PROFILES.items():
         # HA's camera entity with the STREAM feature (CameraEntityFeature.STREAM = 2): the frontend
-        # then asks camera/capabilities and plays what it offers (HLS here, as HA's stream integration).
+        # then asks camera/capabilities and plays what it offers (CAMERA_STREAM_TYPES).
         add(cam, "streaming", {"friendly_name": f"Camera {profile}", "access_token": f"clarity-{cam.split('.')[1]}",
                                "entity_picture": f"/api/camera_proxy/{cam}?token=clarity-{cam.split('.')[1]}",
                                "frontend_stream_type": "hls", "supported_features": 2})
@@ -190,14 +198,16 @@ def head_cards():
 
 def camera_cards(view):
     """The view's live camera cards (tiers.json CAMERAS), right after the head: a picture-entity card
-    per stream, and a list of streams is a grid of them."""
-    used = {"720p": iter(["camera.clarity_cam_0"]), "360p": iter(["camera.clarity_cam_1", "camera.clarity_cam_2", "camera.clarity_cam_3"])}
+    per stream, and a list of streams is a grid of them. A fallback view's are the HLS-only cameras."""
+    kind = "hls" if view in FALLBACK else "cam"
+    used = {"720p": iter([f"camera.clarity_{kind}_0"]),
+            "360p": iter([f"camera.clarity_{kind}_{i}" for i in (1, 2, 3)])}
 
     def card(profile):
         return {"type": "picture-entity", "entity": next(used[profile]), "camera_view": "live",
                 "show_name": False, "show_state": False}
     out = []
-    for item in TIERS["CAMERAS"][view]:
+    for item in TIERS["CAMERAS"][FALLBACK.get(view, view)]:
         if isinstance(item, list):
             out.append({"type": "grid", "columns": len(item), "square": False, "cards": [card(p) for p in item]})
         else:
@@ -210,11 +220,19 @@ def view_spec(view):
     if view == "start":
         st = TIERS["START"]
         return dict(TIERS["TIERS"][st["base"]], **{k: v for k, v in st.items() if k != "base"})
-    return TIERS["TIERS"][view]
+    return TIERS["TIERS"][FALLBACK.get(view, PLAIN.get(view, view))]
+
+
+def plain_pictures(view):
+    """A view without its cameras (tiers.json PLAIN): a still picture in each camera card's place,
+    after the view's own pictures, so the cards and the layout stay the same."""
+    n = sum(len(x) if isinstance(x, list) else 1 for x in TIERS["CAMERAS"][PLAIN[view]])
+    first = view_spec(view)["pictures"]
+    return [{"type": "picture", "image": f"/clarity/picture-{first + i}.png"} for i in range(n)]
 
 
 def lovelace(url_path):
-    """The one reference dashboard: its views are the start view and the three reference tiers, each
+    """The one reference dashboard: its views are the start view, the four reference views and the HLS copies, each
     at its own path (/clarity-ref/<view>). Opening a view is HA's own navigation within it."""
     if url_path != DASHBOARD:
         return {"views": [{"title": "Home", "cards": []}]}
@@ -242,7 +260,7 @@ def view_cards(view):
              {"type": "tile", "entity": "light.living_room", "tap_action": {"action": "toggle"}}]
     first += [{"type": "tile", "entity": e} for e in hd["tiles"]]
     first.append({"type": "entities", "title": "Energy", "entities": hd["rows"]})
-    first += camera_cards(view)
+    first += plain_pictures(view) if view in PLAIN else camera_cards(view)
     deck = []
     for e in take(["sensor", "light", "switch", "binary_sensor"], spec["tiles"] - 1 - len(hd["tiles"])):
         deck.append({"type": "tile", "entity": e})

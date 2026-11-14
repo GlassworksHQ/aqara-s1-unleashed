@@ -54,8 +54,14 @@ def page(tap="good", scroll="premium", updates="premium", load="good", camera="g
             "scroll_level": scroll, "updates_level": updates, "camera_level": camera}
 
 
-def pages(light=None, typical=None, heavy=None):
-    return {t: p for t, p in (("light", light or page()), ("typical", typical or page()), ("heavy", heavy or page())) if p != "drop"}
+def pages(light=None, typical=None, heavy=None, nocam=None):
+    """Rubric v10 (#205): typical without its camera is a page too; by default typical's numbers,
+    with no camera task (the page has none)."""
+    typical = typical or page()
+    if nocam is None and typical != "drop":
+        nocam = dict(typical, camera_level=None)
+    return {t: p for t, p in (("light", light or page()), ("typical-nocam", nocam or page()), ("typical", typical),
+                              ("heavy", heavy or page())) if p != "drop"}
 
 
 PREMIUM, GOOD_, FLUID = page(), page(scroll="good"), page(scroll="fluid")
@@ -168,9 +174,9 @@ class Letter(unittest.TestCase):
         ("heavy premium, light and typical slow: A+ needs only heavy", pages(light=NEITHER, typical=NEITHER), "A+"),
         ("heavy good", pages(heavy=GOOD_), "A"),
         ("heavy premium scroll, live updates only good: A", pages(heavy=page(updates="good")), "A"),
-        ("heavy premium but a slow tap: heavy fails every level, typical decides", pages(heavy=page(tap="ni")), "C"),
+        ("heavy premium but a slow tap: heavy fails every level, typical decides", pages(heavy=page(tap="ni")), "B"),
         ("heavy fluid, typical good", pages(typical=GOOD_, heavy=FLUID), "B"),
-        ("heavy below fluid, typical good", pages(typical=GOOD_, heavy=NEITHER), "C"),
+        ("heavy below fluid, typical good: B asks nothing of heavy (rubric v11)", pages(typical=GOOD_, heavy=NEITHER), "B"),
         ("typical fluid, heavy fluid", pages(typical=FLUID, heavy=FLUID), "C"),
         ("typical fluid", pages(typical=FLUID, heavy=NEITHER), "C"),
         ("typical below fluid, light fluid", pages(light=FLUID, typical=NEITHER, heavy=NEITHER), "D"),
@@ -208,7 +214,7 @@ class Letter(unittest.TestCase):
 
     def test_a_missing_page_fails_what_needs_it_and_is_provisional(self):
         g = G.grade(pages(heavy="drop"), 1000)
-        self.assertEqual(g["grade"], "C")
+        self.assertEqual(g["grade"], "B")                                  # B asks nothing of heavy (rubric v11)
         self.assertTrue(g["provisional"])
         self.assertEqual(g["missing"], ["heavy.tap", "heavy.scroll", "heavy.updates", "heavy.load", "heavy.camera"])
 

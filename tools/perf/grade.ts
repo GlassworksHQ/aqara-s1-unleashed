@@ -19,6 +19,7 @@ export interface Rule { good_max: number; poor_above?: number; poor_at?: number 
 export interface Rubric {
   name: string;           // "Clarity": show a grade as `${name} ${grade}`
   version: number;
+  clarity: number;        // Clarity's version: 1 from 2026-11-14; a summary without it is pre-release
   protocol_version: number;
   metrics: Record<string, Rule>;
   grade: {
@@ -36,13 +37,13 @@ export interface Rubric {
   };
 }
 
-export interface FrameRun { p95_ms?: number | null; jank_pct?: number | null; frozen_pct?: number | null; fps?: number | null; n?: number | null }
+export interface FrameRun { timed_out?: boolean; p95_ms?: number | null; jank_pct?: number | null; frozen_pct?: number | null; fps?: number | null; n?: number | null }
 
 /** One run's live updates: change to screen, and the frames that had a change to draw. */
-export interface UpdateRun { latency_n?: number | null; latency_median_ms?: number | null; latency_p95_ms?: number | null; frames?: FrameRun | null }
+export interface UpdateRun { timed_out?: boolean; latency_n?: number | null; latency_median_ms?: number | null; latency_p95_ms?: number | null; frames?: FrameRun | null }
 
 /** One run's live camera streams (#174), the worst stream's numbers. */
-export interface CameraRun { first_frame_ms?: number | null; shown_pct?: number | null; max_gap_ms?: number | null; stall_total_ms?: number | null }
+export interface CameraRun { timed_out?: boolean; stalls_reported?: boolean; first_frame_ms?: number | null; shown_pct?: number | null; max_gap_ms?: number | null; stall_total_ms?: number | null }
 
 export interface PageSummary {
   inp_ms?: number | null;
@@ -50,10 +51,13 @@ export interface PageSummary {
   scroll?: { runs?: FrameRun[] } & Record<string, unknown>;
   updates?: { runs?: UpdateRun[] } & Record<string, unknown>;
   camera?: { runs?: CameraRun[] } & Record<string, unknown>;
+  timed_out_runs?: number;     // runs in which the page didn't finish within the runner's deadline (#202)
 }
 
 export interface Summary {
+  clarity?: number | null;
   protocol_version?: number | null;
+  webrtc_transport?: { transport?: string | null; chosen_by?: string | null; reason?: string | null; possibly_limited?: boolean } | null;
   pages?: Record<string, PageSummary>;
   restart_ms?: number | null;
   gaps?: string[];
@@ -77,7 +81,13 @@ export interface Grade {
   levels?: Record<string, Level>;
   start?: { value: number | null; band: Band | null };
   limits?: { page: string; needs: string; tasks: string[] }[];
+  /** Protocol 7: the camera video's path (lan-udp, lan-turn, adb). Letters over different paths aren't comparable. */
+  transport?: string | null;
+  /** Over adb: heavy's cameras may be limited by the test's link. Never changes the letter. */
+  transport_caveat?: string | null;
 }
+
+export const TRANSPORT_CAVEAT = "heavy's cameras went through the test's adb link and may be limited by it, not by the panel";
 
 const ORDER: Record<Band, number> = { good: 0, "needs-improvement": 1, poor: 2 };
 
@@ -109,6 +119,7 @@ export function medianBand(bands: (Band | null)[]): Band | null {
 /** One run's scroll level: the first of rubric.json's scroll_levels whose rule holds, or
  * `below` (measured, below fluid); null when it wasn't measured. */
 export function scrollLevel(st: FrameRun | null | undefined, rubric: Rubric): string | null {
+  if (st && st.timed_out) return rubric.grade.below;     // the view didn't finish: measured, failed
   if (!st || !st.n) return null;
   for (const lv of rubric.grade.scroll_levels) {
     if (lv.frames_band) {
@@ -124,6 +135,7 @@ export function scrollLevel(st: FrameRun | null | undefined, rubric: Rubric): st
 /** One run's live-updates level from its change-to-screen p95 (and, for premium, the frames that had
  * a change to draw), or `below`; null when it wasn't measured. */
 export function updateLevel(run: UpdateRun | null | undefined, rubric: Rubric): string | null {
+  if (run && run.timed_out) return rubric.grade.below;
   if (!run || !run.latency_n || run.latency_p95_ms === null || run.latency_p95_ms === undefined) return null;
   for (const lv of rubric.grade.update_levels) {
     if (run.latency_p95_ms > lv.latency_p95_max_ms) continue;
@@ -140,7 +152,9 @@ export function updateLevel(run: UpdateRun | null | undefined, rubric: Rubric): 
  * gaps over 500 ms added up; `below` when a stream showed no frame; null without a camera record. */
 export function cameraLevel(run: CameraRun | null | undefined, rubric: Rubric): string | null {
   if (!run) return null;
+  if (run.timed_out) return rubric.grade.below;
   if (run.first_frame_ms === null || run.first_frame_ms === undefined || run.shown_pct === null || run.shown_pct === undefined) return rubric.grade.below;
+  if (run.stalls_reported === false) return null;   // its receiver reported no freezes: stalls n/a, not measured
   for (const lv of rubric.grade.camera_levels) {
     if (run.first_frame_ms > lv.first_frame_max_ms || run.shown_pct < lv.shown_min_pct) continue;
     if (lv.max_gap_max_ms !== undefined && (run.max_gap_ms === null || run.max_gap_ms === undefined || run.max_gap_ms > lv.max_gap_max_ms)) continue;
@@ -251,13 +265,18 @@ export function summaryInputs(summary: Summary, rubric: Rubric): [Record<string,
  * The letter for a summary, at render time. status:
  * - "graded": show the letter (and "provisional" when it is set: something wasn't measured, or the
  *   summary lists gaps);
- * - "re-measure": the summary was measured with another protocol than these rules are for; show
- *   "re-measure", not a letter;
+ * - "re-measure": the summary was measured with a pre-release version of Clarity (no `clarity: 1`)
+ *   or another protocol than these rules are for; show "re-measure", not a letter;
  * - "not-comparable": the measurement says why (e.g. not at the default zoom); show no letter.
  */
 export function gradeSummary(summary: Summary, rubric: Rubric): Grade {
   // Not comparable first: it says why there is nothing to grade, whatever the protocol.
   if (summary.not_comparable) return { status: "not-comparable", grade: null, meaning: null, why: summary.not_comparable };
+  if (summary.clarity !== rubric.clarity) {
+    // Before v1 (pre-release protocols 1 to 8): the numbers can repeat, so the marker decides.
+    return { status: "re-measure", grade: null, meaning: null,
+             why: `measured with a pre-release version of Clarity (protocol ${summary.protocol_version ?? "unknown"}): re-measure` };
+  }
   if (summary.protocol_version !== rubric.protocol_version) {
     return { status: "re-measure", grade: null, meaning: null,
              why: `measured with protocol ${summary.protocol_version ?? "unknown"}, these rules are for protocol ${rubric.protocol_version}` };
@@ -266,5 +285,7 @@ export function gradeSummary(summary: Summary, rubric: Rubric): Grade {
   const g = gradeBands(tiers, start, rubric);
   g.provisional = (g.missing || []).length > 0 || (summary.gaps || []).length > 0;
   g.limits = nextLimits(g, rubric);
+  g.transport = summary.webrtc_transport?.transport ?? null;
+  g.transport_caveat = summary.webrtc_transport?.possibly_limited ? TRANSPORT_CAVEAT : null;
   return g;
 }

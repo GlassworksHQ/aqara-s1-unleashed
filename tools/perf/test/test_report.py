@@ -419,8 +419,10 @@ def synthetic_lines(run, js_ms):
     return lines
 
 
-NAV = {"light": 30.0, "typical": 40.0, "heavy": 50.0}   # when each reference dashboard starts, s
-CARDS = {"light": 20, "typical": 50, "heavy": 120}
+# When each reference dashboard starts, s; typical without its camera (rubric v10) after heavy, so no
+# two views' frames meet.
+NAV = {"light": 30.0, "typical": 40.0, "heavy": 50.0, "typical-nocam": 70.0}
+CARDS = {"light": 20, "typical": 50, "heavy": 120, "typical-nocam": 50}
 
 
 def swipe(nav, i, intervals, moved=True, sf=True):
@@ -475,7 +477,7 @@ def tier_entry(tier, inp, scroll_missed=0, updates_missed=0, load_ms=200, fcp_ms
     after it; three swipes of 60 frames follow."""
     nav = NAV[tier]
     return {"nonce": tier,
-            "page": {"t": "refdash", "tier": tier, "protocol": G.PROTOCOL_VERSION, "nodes": 1458, "cards": CARDS[tier], "css": [960, 480], "dpr": dpr,
+            "page": {"t": "refdash", "tier": tier, "protocol": G.PROTOCOL_VERSION, "clarity": G.CLARITY, "nodes": 1458, "cards": CARDS[tier], "css": [960, 480], "dpr": dpr,
                      "fcp_ms": fcp_ms, "load_ms": load_ms,
                      "origin_epoch_ms": 1e12 + nav * 1000, "epoch_ms": 1e12 + nav * 1000 + 1000, "mono": nav + 1.0},
             "live_mono": nav + 3.0,
@@ -520,6 +522,49 @@ class CameraFailedRuns(unittest.TestCase):
         self.assertNotIn("showed no frame", R.camera_cell({"camera_runs": [ok, ok]}, {"camera": "good"}))
 
 
+class TimedOut(unittest.TestCase):
+    """#202, s1rtc3: a view that didn't finish within the runner's deadline fails its own unmeasured
+    tasks, measured: open and tap at the deadline, the rest below the lowest bar. Not missing."""
+
+    def test_a_view_that_never_became_usable_fails_every_task(self):
+        run = R.tier_run("heavy", {"nonce": "ab12", "swipes": [], "timed_out_s": 300}, [])
+        self.assertNotIn("error", run)
+        self.assertEqual((run["load_ms"], run["inp_ms"]), (300000, 300000))
+        self.assertEqual(run["timed_out_tasks"], ["open", "tap", "scroll", "updates", "camera"])
+        self.assertEqual(G.scroll_level(run["scroll"]), G.BELOW)
+        self.assertEqual(G.update_level(run["updates_run"]), G.BELOW)
+        self.assertEqual(G.camera_level(run["camera_run"]), G.BELOW)
+        self.assertIsNone(R.tier_run("light", {"nonce": "ab12", "swipes": [], "timed_out_s": 300}, [])["camera_run"])  # no streams
+
+    def test_report_md_says_the_view_didnt_finish(self):
+        ok = R.camera_run(camera_line("typical"), "typical")
+        late = R.tier_run("typical", {"nonce": "ab12", "swipes": [], "timed_out_s": 300}, [])["camera_run"]
+        cell = R.camera_cell({"camera_runs": [ok, late, ok]}, {"camera": "slow"})
+        self.assertIn("the view didn't finish in 1 of 3 run(s)", cell)
+        self.assertNotIn("showed no frame", cell)
+        self.assertEqual(R.camera_cell({"camera_runs": [late]}, {"camera": "slow"}), "the view didn't finish in 1 of 1 run(s), slow")
+
+
+class StallsNotReported(unittest.TestCase):
+    """#205's verifier: a receiver that reports no freezeCount has stalls n/a, never 0 (which would
+    pass the bars), and that run's camera level is not measured."""
+
+    def test_na_not_zero(self):
+        line = camera_line("typical")
+        for st in line["streams"]:
+            st.update(stall_total_ms=None, max_gap_ms=None, gaps_source="webrtc (no freeze counts: n/a)")
+        run = R.camera_run(line, "typical")
+        self.assertEqual((run["stall_total_ms"], run["max_gap_ms"], run["stalls_reported"]), (None, None, False))
+        self.assertIsNone(G.camera_level(run))
+        ok = R.camera_run(camera_line("typical"), "typical")
+        self.assertNotIn("stalls_reported", ok)
+        self.assertEqual(G.camera_level(ok), "good")
+        # No span to measure gaps over (one sample, nothing decoded): max_gap null, also n/a.
+        line = camera_line("typical")
+        line["streams"][0].update(max_gap_ms=None)
+        self.assertEqual(R.camera_run(line, "typical")["stalls_reported"], False)
+
+
 class CameraDetail(unittest.TestCase):
     """Detail for the camera task (smoke-cam1, 2026-11-13): which decoders a view got and where its
     segments were late, so a slow camera can be told apart: the decoder, the link or the page."""
@@ -560,12 +605,105 @@ class CameraDetail(unittest.TestCase):
                          "a camera never showed a frame")
 
 
-def camera_line(tier, first_ms=600.0, shown=100.0, max_gap=70.0, stall=0.0):
-    """The harness's camera line (#174) for a view with streams: each plays at once and in full."""
+class Transport(unittest.TestCase):
+    """Protocol 7 (#202, option B): report.json carries how the camera video went, and report.md says
+    it beside the camera results; over adb, heavy's camera result is marked as possibly the link's."""
+
+    def write(self, transport, chosen_by="auto", reason="r"):
+        d = tempfile.mkdtemp()
+        with open(os.path.join(d, "transport.json"), "w") as f:
+            json.dump({"transport": transport, "chosen_by": chosen_by, "reason": reason, "checks": {}}, f)
+        return d
+
+    def test_the_record_and_its_words(self):
+        heavy = {"tiers": {"heavy": {"camera_runs": [{"first_frame_ms": 600}]}}}
+        adb = R.webrtc_transport(self.write("adb", reason="the panel couldn't reach this computer over the LAN"), heavy)
+        self.assertEqual((adb["transport"], adb["chosen_by"]), ("adb", "auto"))
+        self.assertIn("may be the link's, not the panel's", adb["limited"])
+        line = R.transport_line({"webrtc_transport": adb})[0]
+        self.assertTrue(line.startswith("Camera video through the test's adb link (USB): the panel couldn't reach"))
+        self.assertIn("**Possibly limited by the test:**", line)
+        lan = R.webrtc_transport(self.write("lan-udp", reason="the panel reached this computer over UDP"), heavy)
+        self.assertIsNone(lan["limited"])
+        self.assertEqual(R.transport_line({"webrtc_transport": lan}),
+                         ["Camera video over the LAN (UDP), as in a real home: the panel reached this computer over UDP."])
+        flag = R.webrtc_transport(self.write("lan-turn", "flag", "set with --webrtc-transport"), heavy)
+        self.assertEqual(R.transport_line({"webrtc_transport": flag}),
+                         ["Camera video over the LAN (TCP, through the test's relay): set with --webrtc-transport."])
+        # Before protocol 7 (no transport.json), or no reference part: nothing.
+        self.assertIsNone(R.webrtc_transport(tempfile.mkdtemp(), heavy))
+        self.assertIsNone(R.webrtc_transport(self.write("adb"), None))
+        self.assertEqual(R.transport_line({"webrtc_transport": None}), [])
+        # Over adb without heavy cameras measured: nothing to caveat.
+        self.assertIsNone(R.webrtc_transport(self.write("adb"), {"tiers": {"heavy": {}}})["limited"])
+
+
+class CameraFallback(unittest.TestCase):
+    """#202: the graded camera task is the WebRTC path's; HLS, on the camera pages' copies, is
+    measured as detail and never moves the level or the letter."""
+
+    def test_the_fallback_is_detail_beside_the_graded_path(self):
+        runs = [R.reference_run(refstart(k, 100)) for k in (1, 2, 3)]
+        ref = R.reference_summary(runs)
+        heavy = ref["tiers"]["heavy"]
+        self.assertEqual({r["path"] for r in heavy["camera_runs"]}, {"web_rtc"})
+        self.assertEqual(heavy["camera_level"], "good")
+        fb = heavy["camera_fallback"]
+        self.assertEqual((fb["path"], fb["level"], fb["levels"]), ("hls", G.BELOW, [G.BELOW] * 3))
+        self.assertEqual([(r["view"], r["shown_pct"]) for r in fb["runs"]], [("heavy-hls", 35.0)] * 3)
+        self.assertEqual(ref["tiers"]["typical"]["camera_fallback"]["level"], "good")
+        self.assertIsNone(ref["tiers"]["light"]["camera_fallback"])
+        # The same runs without the copies grade the same: the fallback is never in the grade.
+        bare = [R.reference_run(dict(refstart(k, 100), fallback={})) for k in (1, 2, 3)]
+        self.assertEqual(G.grade(*R.grade_inputs({"reference": ref})),
+                         G.grade(*R.grade_inputs({"reference": R.reference_summary(bare)})))
+        md = R.camera_detail(ref)
+        self.assertIn("heavy cameras over HLS, the fallback (detail, not graded; slow by the camera bars): run 1: first frame "
+                      "3700 ms, 35 % shown, stalls 26600 ms, slow", "\n".join(md))
+
+    def test_a_failed_copy_fails_only_itself(self):
+        c = dict(refstart(1, 100), fallback={"heavy-hls": {"error": "heavy-hls didn't finish within 900 s"}},
+                 fallback_error="heavy-hls didn't finish within 900 s")
+        run = R.reference_run(c)
+        self.assertIsNone(run["error"])
+        self.assertEqual(run["camera_fallback"]["heavy"]["error"], "heavy-hls didn't finish within 900 s")
+        self.assertIsNone(run["camera_fallback"]["heavy"]["first_frame_ms"])
+
+    def test_webrtc_detail_names_the_decoder_and_the_relay(self):
+        line = camera_line("typical")
+        line["streams"][0]["webrtc"] = {"inbound": True, "frames_decoded": 290, "frames_dropped": 3, "freezes": 1, "freeze_s": 0.6,
+                                        "decoder": "libvpx", "power_efficient": False,
+                                        "candidate": {"local": "relay", "relay": "tcp", "protocol": "udp"}}
+        run = R.camera_run(line, "typical")
+        self.assertEqual(R.webrtc_detail(run), "decoder libvpx (software), 290 frames decoded, 3 dropped, 1 freezes (0.6 s), "
+                                               "candidate relay/tcp")
+        self.assertEqual(R.webrtc_detail(R.camera_run(camera_line("typical", path="hls"), "typical")), "")
+        # A camera that needed another session (the S1's heavy, smoke3): said, with its time without video.
+        again = camera_line("typical")
+        again["streams"][0]["webrtc"] = {"inbound": True, "frames_decoded": 200, "sessions": 1, "no_video_ms": 31000,
+                                         "connections": [{"n": 3, "made_ms": 900, "offers": 2, "ice": [[2000, "connected"], [33000, "failed"]]}]}
+        self.assertTrue(R.webrtc_detail(R.camera_run(again, "typical")).endswith(
+            "1 of 1 streams needed another WebRTC session (no video for 31.0 s in all)"))
+        # Counters the browser didn't report read n/a, never 0; a partial sum says so.
+        bare = camera_line("heavy")
+        for k, st in enumerate(bare["streams"]):
+            st["webrtc"] = {"inbound": True, "frames_decoded": 100, "frames_dropped": None if k else 2,
+                            "freezes": None, "freeze_s": None, "decoder": None, "power_efficient": None, "candidate": None}
+        self.assertEqual(R.webrtc_detail(R.camera_run(bare, "heavy")),
+                         "decoder not reported, 400 frames decoded, 2 (from 1 of 4 streams) dropped, n/a freezes (n/a s), candidate n/a")
+        # Protocol 5's lines don't name a path: HLS was the only one.
+        old = camera_line("typical")
+        del old["path"]
+        self.assertEqual(R.camera_run(old, "typical")["path"], "hls")
+
+
+def camera_line(tier, first_ms=600.0, shown=100.0, max_gap=70.0, stall=0.0, path="web_rtc"):
+    """The harness's camera line (#174) for a view with streams: each plays at once and in full, over
+    WebRTC (protocol 6) unless `path` says otherwise."""
     n = {"typical": 1, "heavy": 4}.get(tier, 0)
     if not n:
         return None
-    return {"t": "camera", "stage": tier, "window_ms": 20000, "fps": 15, "expected": n, "found": n,
+    return {"t": "camera", "stage": tier, "path": path, "window_ms": 20000, "fps": 15, "expected": n, "found": n,
             "streams": [{"found": True, "w": 1280 if i == 0 else 640, "h": 720 if i == 0 else 360, "first_frame_ms": first_ms,
                          "shown_pct": shown, "max_gap_ms": max_gap, "stall_total_ms": stall, "frames": 300, "decoded": 300,
                          "dropped": 0, "waiting": 0, "source": "quality+rvfc"} for i in range(n)]}
@@ -583,7 +721,12 @@ def refstart(k, inp, heavy_missed=20):
             "engine_uri": "about:blank", "own_page_start_mono": 23.0, "own_page_stop_mono": 26.0, "own_page_loads": 1,
             "own_page_state": "finished-still",
             "tiers": {"light": tier_entry("light", inp), "typical": tier_entry("typical", inp),
+                      "typical-nocam": tier_entry("typical-nocam", inp),
                       "heavy": tier_entry("heavy", inp, scroll_missed=heavy_missed)},
+            # Protocol 6: the camera pages' HLS copies after them (#202, detail); heavy's starves.
+            "fallback": {"typical-hls": {"done": True, "camera": camera_line("typical", path="hls")},
+                         "heavy-hls": {"done": True, "camera": camera_line("heavy", first_ms=3700.0, shown=35.0,
+                                                                            max_gap=4600.0, stall=26600.0, path="hls")}},
             "presents_mono_ms": load_frames()}
 
 
@@ -672,7 +815,7 @@ class Build(unittest.TestCase):
     def test_headline_grade(self):
         g = self.rep["grade"]
         self.assertEqual(g["grade"], "B")
-        self.assertEqual(g["levels"], {"light": "premium", "typical": "premium", "heavy": "fluid"})
+        self.assertEqual(g["levels"], {"light": "premium", "typical-nocam": "premium", "typical": "premium", "heavy": "fluid"})
         self.assertEqual(g["bands"]["heavy"], {"tap": "good", "scroll": "fluid", "updates": "premium", "load": "good", "camera": "good"})
         self.assertEqual(g["bands"]["light"]["camera"], "none")              # no streams on light (#174)
         heavy = self.rep["graded"]["reference"]["tiers"]["heavy"]
@@ -681,7 +824,7 @@ class Build(unittest.TestCase):
         self.assertEqual(g["start"], {"value": 800, "band": "good"})   # process 20.0 s -> engine 20.7 to 20.9 s
         self.assertEqual(g["viewport"], {"state": "ok", "reason": None})
         self.assertFalse(g["provisional"])
-        self.assertEqual(g["headline"], "test-frame: Clarity B, a good wall panel for typical dashboards; large ones stay fluid. "
+        self.assertEqual(g["headline"], "test-frame: Clarity B, a good wall panel for typical dashboards, with a camera. "
                                         "Held back by large dashboards: scrolling averages 45.0 fps (p95 33 ms).")
         self.assertEqual(self.rep["graded"]["reference"]["android_ttid_ms"]["median"], 111)   # reported, not graded
         self.assertEqual(self.rep["real_use"]["dashboard_load_ms"]["median"], 3400)            # not graded either
@@ -693,6 +836,7 @@ class Build(unittest.TestCase):
             run = refstart(k, 100)                              # large: about 45 fps, fluid
             run["tiers"]["light"]["swipes"] = [swipe(30.0, i, late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["typical"]["swipes"] = [swipe(40.0, i, late(60, 45, 66.67)) for i in range(3)]
+            run["tiers"]["typical-nocam"]["swipes"] = [swipe(70.0, i, late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["light"]["page"]["fcp_ms"] = 900      # its first paint never reached the screen
             self.write(f"refstart-{k}.json", run)
         g = R.build(self.dir)["grade"]
@@ -972,15 +1116,54 @@ class Build(unittest.TestCase):
         self.assertNotIn("Every task holds", g["headline"])
         self.assertIn("Provisional", g["headline"])
 
-    def test_old_protocol_data_says_re_measure_to_publish(self):
+    def build_with(self, **page):
         for k in (1, 2, 3):
             run = refstart(k, 100)
             for t in run["tiers"].values():
-                t["page"]["protocol"] = 1
+                t["page"].update(page)
+                if page.get("clarity", 0) is None:
+                    del t["page"]["clarity"]
             self.write(f"refstart-{k}.json", run)
-        g = R.build(self.dir)["grade"]
-        self.assertEqual(g["grade"], "B")
-        self.assertIn("Re-measure to publish: the site shows no letter for these pages.", g["headline"])
+        return R.build(self.dir)
+
+    def test_pre_release_data_says_re_measure_and_is_never_v1(self):
+        """Clarity v1 (2026-11-14) starts its numbers again, so a page line without `clarity` is
+        pre-release whatever its protocol: provisional here, "re-measure" on the site."""
+        for proto in (7, 4, 1):                       # 1: pre-release protocol 1, which v1's number repeats
+            with self.subTest(protocol=proto):
+                rep = self.build_with(protocol=proto, clarity=None)
+                g = rep["grade"]
+                self.assertEqual(g["grade"], "B")                                   # kept for the record
+                self.assertTrue(g["provisional"])
+                self.assertIn(f"measured with a pre-release version of Clarity (protocol {proto}): re-measure", g["provisional_reasons"])
+                self.assertIn("Re-measure to publish: the site shows no letter for these pages.", g["headline"])
+                self.assertIsNone(rep["clarity"])
+                s = S.summarise(rep, allow_provisional=True)
+                self.assertIsNone(s["clarity"])
+                self.assertEqual(G.grade_summary(s)["status"], "re-measure")
+
+    def test_v1s_release_candidate_reads_as_v1(self):
+        """Pre-release protocol 8 (#205's s1rtc5, before the lines carried `clarity`) is v1's measurement,
+        but only its own lines, which carry the round's usable.busy_ms (the one bypass of the marker)."""
+        self.assertEqual(R.page_version({"protocol": 8, "usable": {"busy_ms": [12, 0]}}), (G.PROTOCOL_VERSION, G.CLARITY))
+        self.assertEqual(R.page_version({"protocol": 8, "usable": {"interactive_ms": 1}}), (8, None))
+        self.assertEqual(R.page_version({"protocol": 8}), (8, None))
+        self.assertEqual(R.page_version({"protocol": 1, "clarity": 1}), (1, 1))
+        self.assertEqual(R.page_version({"protocol": 1}), (1, None))          # pre-release protocol 1
+        self.assertTrue(R.is_v1({"protocols": [1], "clarity": [1]}))
+        self.assertFalse(R.is_v1({"protocols": [1], "clarity": [None]}))
+        rep = self.build_with(protocol=8, clarity=None)                       # the fixture's lines have no busy_ms
+        self.assertIsNone(rep["clarity"])
+        self.assertIn("measured with a pre-release version of Clarity (protocol 8): re-measure", rep["grade"]["provisional_reasons"])
+
+    def test_v1_with_another_protocol_number_is_another_protocol(self):
+        rep = self.build_with(protocol=G.PROTOCOL_VERSION + 1, clarity=G.CLARITY)
+        self.assertIn(f"the pages ran protocol {G.PROTOCOL_VERSION + 1}; this rubric is for protocol {G.PROTOCOL_VERSION}",
+                      rep["grade"]["provisional_reasons"])
+        self.assertIsNone(rep["clarity"])
+
+    def test_v1_is_v1(self):
+        self.assertEqual((self.rep["clarity"], self.rep["protocol_version"]), (1, 1))
 
     def test_js_band_is_reported_but_not_graded(self):
         self.assertEqual(self.rep["detail"]["synthetic"]["js_burst_ms"]["median"], 10.0)
@@ -1092,7 +1275,7 @@ class Build(unittest.TestCase):
 
     def test_markdown_renders(self):
         md = R.markdown(self.rep)
-        self.assertIn("**test-frame: Clarity B, a good wall panel for typical dashboards; large ones stay fluid.", md)
+        self.assertIn("**test-frame: Clarity B, a good wall panel for typical dashboards, with a camera.", md)
         self.assertIn("| heavy (120 cards) | fluid |", md)
         self.assertIn("| scroll |", md)                                 # what holds heavy back from smooth
         self.assertIn("Restart, app process to engine ready: 800 ms (700 to 900, n=3)", md)
@@ -1203,6 +1386,27 @@ class FakeLog(unittest.TestCase):
         self.assertIn("250 ms late", reasons[2])
         # smoke10's 92 ms isn't a reason: each change is timed from when it was actually sent.
         self.assertEqual(R.fake_ha_reasons(self.log({"t": 4, "stream": "S", "k": 2, "late_ms": 92.0}), True), [])
+
+    def test_only_a_graded_views_late_stream_makes_it_provisional(self):
+        """s1rtc8: one 2 s burst of late sends, all on typical-hls (an HLS copy, not graded), made the
+        graded result provisional. Each send belongs to the view open then; a copy's or a warm-up's
+        lateness is detail. Only which streams the check reads changes, not its 200 ms."""
+        log = self.log({"t": 2, "open": {"view": "light", "nonce": "a1"}}, {"t": 3, "stream": "S", "k": 1, "late_ms": 40.0},
+                       {"t": 4, "open": {"view": "typical-hls", "nonce": "a2"}}, {"t": 5, "stream": "S", "k": 1, "late_ms": 1952.0},
+                       {"t": 6, "open": {"view": "light", "nonce": "a3", "warmup": "1"}}, {"t": 7, "stream": "F", "k": 1, "late_ms": 900.0})
+        self.assertEqual((log["stream_late_max_ms"], log["stream_late_detail_max_ms"], log["stream_sent"]), (40.0, 1952.0, 4))  # and the fixture's own
+        self.assertEqual(R.fake_ha_reasons(log, True), [])
+        # A whole run: the copy's burst is a line in report.md, and the grade isn't provisional for it.
+        b = Build()
+        b.setUp()
+        write_fake_log(b.dir, [{"t": 2, "open": {"view": "typical-hls", "nonce": "a2"}},
+                               {"t": 5, "stream": "S", "k": 1, "late_ms": 1952.0}])
+        rep = R.build(b.dir)
+        self.assertFalse(any("late" in r for r in rep["grade"].get("provisional_reasons") or []))
+        self.assertIn("The fake Home Assistant sent a live change 1952 ms late during a view that isn't graded", R.markdown(rep))
+        # The same burst on a graded view is a reason, as before.
+        log = self.log({"t": 2, "open": {"view": "heavy", "nonce": "b1"}}, {"t": 3, "stream": "S", "k": 1, "late_ms": 1952.0})
+        self.assertIn("the fake Home Assistant sent a live change 1952 ms late (more than 200 ms)", R.fake_ha_reasons(log, True))
 
     def test_protocol_4_without_the_log_is_provisional(self):
         self.assertEqual(R.fake_ha_reasons(None, True), ["the fake Home Assistant's log (fakeha.jsonl) is missing"])
