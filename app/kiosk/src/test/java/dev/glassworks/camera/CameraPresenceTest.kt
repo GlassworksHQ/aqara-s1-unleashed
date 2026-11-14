@@ -279,11 +279,31 @@ class CameraPresenceTest {
         val timers = Timers()
         val readings = mutableListOf<Pair<Boolean, Float>>()
         // The detector takes longer than STALE_MS: the watchdog fires while it runs.
-        val p = CameraPresence(cam, { timers.runDue(CameraPresence.STALE_MS + 1); 0.9f }, filter = PresenceFilter(enterHits = 1),
+        val scores = ArrayDeque(listOf<() -> Float>({ timers.runDue(CameraPresence.STALE_MS + 1); 0.9f }, { 0f }))
+        val p = CameraPresence(cam, { scores.removeFirst()() }, filter = PresenceFilter(enterHits = 1, holdMs = 60_000),
             clock = { timers.now }, post = { it.run() }, after = timers::after)
         p.start(ctx) { near, raw -> readings += near to raw }
         cam.sink!!.frame(blank)
         assertEquals("the late hit doesn't bring near back", listOf(false to -1f), readings)
+        timers.now += 500; cam.sink!!.frame(blank)
+        assertEquals("nor does it linger in the filter", false to 0f, readings.last())
+    }
+
+    @Test fun aFailPostedBetweenScoringAndDeliveryStaysTheLastWord() {
+        val cam = FakeCamera()
+        val queue = mutableListOf<Runnable>()
+        var lostFirst = true
+        val readings = mutableListOf<Pair<Boolean, Float>>()
+        val p = CameraPresence(cam, { 0.9f }, filter = PresenceFilter(enterHits = 1), clock = { 0L }, after = { _, _ -> },
+            post = { r ->
+                // The camera is lost after the score passed its check but before its reading is posted.
+                if (lostFirst) { lostFirst = false; cam.sink!!.lost("gone") }
+                queue += r
+            })
+        p.start(ctx) { near, raw -> readings += near to raw }
+        cam.sink!!.frame(blank)
+        queue.forEach { it.run() }
+        assertEquals(listOf(false to -1f), readings)
     }
 
     @Test fun aRangeIsRefusedInWordsAndZeroIsFine() {

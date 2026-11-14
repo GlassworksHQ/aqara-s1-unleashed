@@ -199,7 +199,8 @@ class CameraPresence(
                 failing = false
                 filter.update(score, now)
             }
-            post { if (isOpen()) onReading(near, score) }
+            // Checked again on delivery: a fail() that slipped in before this post must stay the last word.
+            post { if (synchronized(lock) { !closed && fails == epoch }) onReading(near, score) }
         }
 
         override fun lost(why: String) = fail("the camera stopped: $why")
