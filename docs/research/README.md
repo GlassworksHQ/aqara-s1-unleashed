@@ -223,6 +223,8 @@ This page is the index of every note. Notes about one device live with its frame
 | [TEMPLATE.md](TEMPLATE.md) | Start a new note from this |
 | [microwakeword.md](microwakeword.md) | Replacing openWakeWord with microWakeWord: the Kotlin port of TFLite Micro's audio frontend, the models, test speech, and what is left for the panel |
 | [ha-esphome-actions-events.md](ha-esphome-actions-events.md) | What a notification can carry over ESPHome each way: why `notify` takes one JSON `data` argument, and why a tapped button goes to HA as a bus event, not an event entity (#118) |
+| [camera-presence.md](camera-presence.md) | Which detector wakes the screen from a camera: ML Kit ruled out, the TFLite Micro person model picked, and its CPU estimated from the S1's TFLite numbers (#117) |
+| [onvif-rtsp.md](onvif-rtsp.md) | What HA's ONVIF integration and UniFi Protect need from a camera, and which RTSP and ONVIF libraries we could build on (#117) |
 
 ### Aqara S1 Plus ([`frames/aqara-s1-plus/research/`](../../frames/aqara-s1-plus/research/))
 
