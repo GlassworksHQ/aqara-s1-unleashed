@@ -227,7 +227,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     /** The shape the open page was drawn from ([shape]). */
     private var builtShape: List<Any?> = emptyList()
 
-    /** What a page is made of: its master's value, whether it can run, and its items' kinds and names. */
+    /** What a page is made of: what it reads ([SettingsSection.source]), its master's value, whether it can run, and its items' kinds and names. */
     private fun shape(s: SettingsSection): List<Any?> {
         fun of(items: List<SettingsItem>): List<Any?> = items.flatMap { i ->
             when (i) {
@@ -236,7 +236,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
                 else -> listOf("${i::class.simpleName} ${titleOf(i).orEmpty()}")
             }
         }
-        return listOf(s.master?.value(), s.unavailable() != null) + of(s.items)
+        return listOf(s.source, s.master?.value(), s.unavailable() != null) + of(s.items)
     }
 
     /** The page's read-only rows ([SettingsItem.States]) that read their values again on [refresh]. */

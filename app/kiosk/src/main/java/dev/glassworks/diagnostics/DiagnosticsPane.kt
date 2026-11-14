@@ -77,8 +77,11 @@ class DiagnosticsPane internal constructor(
 
     @Volatile private var restartReason: String? = null
 
-    /** Each metric's values, oldest first, as sampled: the settings page's last hour (#212). */
-    private val hour = HashMap<String, ArrayDeque<Float>>()
+    /**
+     * Each metric's readings with their sample's `elapsedMs`, oldest first: the settings page's last hour
+     * (#212). Kept by time, not by count, so a reading that went away for an hour leaves no old line.
+     */
+    private val hour = HashMap<String, ArrayDeque<Pair<Long, Float>>>()
 
     /** The last sample, for the settings page. Null until the first, and again once stopped. */
     @Volatile var lastSample: Sample? = null
@@ -93,8 +96,8 @@ class DiagnosticsPane internal constructor(
     /** [objectId]'s reading in the last sample, or null when it had none. Any thread. */
     fun current(objectId: String): Float? = now[objectId]
 
-    /** [objectId]'s values over the last hour, oldest first, at most [HOUR_SAMPLES]. Any thread. */
-    fun lastHour(objectId: String): List<Float> = synchronized(hour) { hour[objectId]?.toList().orEmpty() }
+    /** [objectId]'s readings over the hour before the last sample, oldest first. Any thread. */
+    fun lastHour(objectId: String): List<Float> = synchronized(hour) { hour[objectId]?.map { it.second }.orEmpty() }
 
     private val entities = metrics.map { m ->
         SensorEntity(
@@ -146,10 +149,10 @@ class DiagnosticsPane internal constructor(
         for (m in metrics) {
             val sampled = m.value(prev, cur)?.let { roundTo(it, m.accuracy) }
             if (sampled == null) now.remove(m.objectId) else now[m.objectId] = sampled
-            if (sampled != null) synchronized(hour) {
+            synchronized(hour) {
                 val h = hour.getOrPut(m.objectId) { ArrayDeque(HOUR_SAMPLES) }
-                if (h.size == HOUR_SAMPLES) h.removeFirst()
-                h.addLast(sampled)
+                if (sampled != null) h.addLast(cur.elapsedMs to sampled)
+                while (h.isNotEmpty() && h.first().first <= cur.elapsedMs - HOUR_MS) h.removeFirst()
             }
             val old = values[m.objectId]
             val new = settle(old, sampled, m.band)
@@ -169,8 +172,9 @@ class DiagnosticsPane internal constructor(
 
     companion object {
         private const val PERIOD_S = 60L
-        /** An hour of samples, one every [PERIOD_S]: about 60 floats per metric. */
+        /** An hour of samples, one every [PERIOD_S]: about 60 readings per metric. */
         const val HOUR_SAMPLES = 60
+        private const val HOUR_MS = HOUR_SAMPLES * PERIOD_S * 1000
         private const val MIB = 1024f * 1024f
         private const val GIB = MIB * 1024f
 

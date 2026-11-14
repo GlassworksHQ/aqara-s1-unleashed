@@ -40,6 +40,24 @@ class MusicPageTest {
         assertEquals(null, answered)
     }
 
+    @Test fun volumeChangesLandInTheOrderTheyWereMade() {
+        // CodeRabbit on #235: a thread per change could let an earlier volume land last.
+        val app = RuntimeEnvironment.getApplication()
+        val ctx = PaneContext(
+            app, KioskPrefs(app)::paneFile,
+            DeviceIdentity("test", "Test", "02:00:00:00:00:01", "x", "x", "x", "x", 0),
+            publishStates = {}, emit = {}, entitiesChanged = {}, sendEvent = { _, _ -> },
+        )
+        val pane = SendspinPane(ctx, haBase = { null })
+        val volume = SendspinDefinition(KioskPrefs(app).paneFile("sendspin")).settings(pane).single().items.filterIsInstance<SettingsItem.Slider>().single()
+        val answered = java.util.Collections.synchronizedList(ArrayList<Int>())
+        val all = java.util.concurrent.CountDownLatch(50)
+        repeat(50) { n -> volume.save(n.toFloat()) { answered += n; all.countDown() } }
+        assertEquals(true, all.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals((0 until 50).toList(), answered.toList())
+        assertEquals(49, pane.player.volume)
+    }
+
     @Test fun theStatusLine() {
         assertEquals("Connected to Music Assistant · 192.0.2.30",
             SendspinDefinition.status(Status(Phase.PLAYING, serverName = "Music Assistant"), "ws://192.0.2.30:8927/sendspin"))

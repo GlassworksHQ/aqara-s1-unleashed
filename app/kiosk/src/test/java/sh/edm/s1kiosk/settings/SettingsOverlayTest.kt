@@ -436,4 +436,20 @@ class SettingsOverlayTest {
             .flatten().filterIsInstance<sh.edm.s1kiosk.ui.GlassSlider>().single() }
         assertEquals(25f, slider.value, 0f)
     }
+
+    @Test
+    fun aPageIsDrawnFromThePaneThatRunsNow() {
+        // CodeRabbit on #235: after a device restart the tiles kept reading the stopped pane.
+        class Run(val reading: String)
+        var running = Run("23 % (stopped pane)")
+        fun model() = running.let { r ->
+            KioskSettingsOverlay.Model(listOf(SettingsSection("diagnostics", "Diagnostics", listOf(SettingsItem.Info({ "CPU" }, { r.reading })), source = r)), "0.4.3", setOf("diagnostics"))
+        }
+        val o = open(model = { model() }).apply { reload = ::model }
+        assertTrue(shown(o, "23 % (stopped pane)"))
+        running = Run("9 % (new pane)")
+        o.refresh()
+        Mockup.idle()
+        assertTrue(shown(o, "9 % (new pane)"))
+    }
 }

@@ -35,6 +35,10 @@ class PosixTimeZoneTest {
         assertTrue("no summer time there", "Africa/Lagos" !in like)
         assertTrue("America/New_York" in PosixTimeZone.parse("EST5EDT,M3.2.0,M11.1.0")!!.zonesLike(ids, from))
         assertTrue("UTC" in PosixTimeZone.parse("UTC0")!!.zonesLike(ids, from))
+        // CodeRabbit on #235: the days are compared at noon UTC, whatever time [from] has. At 01:30 UTC on the
+        // last Sunday of March this rule (summer from 03:00) and Madrid's (from 02:00) differ; at noon they agree.
+        val lateChange = PosixTimeZone.parse("CET-1CEST,M3.5.0/3,M10.5.0/3")!!
+        assertTrue("Europe/Madrid" in lateChange.zonesLike(listOf("Europe/Madrid"), Instant.parse("2026-03-29T01:30:00Z")))
     }
 
     @Test fun whatIsntARuleIsNull() {
@@ -61,5 +65,7 @@ class PosixTimeZoneTest {
         // An old alias is named by its current zone.
         val aliases = TimeZoneChoices(listOf("Europe/Belfast", "Europe/London")) { if (it == "Europe/Belfast") "Europe/London" else it }
         assertEquals("Europe/London", aliases.homeAssistant("GMT0BST,M3.5.0/1,M10.5.0", "Europe/Madrid", from)!!.zone)
+        // CodeRabbit on #235: a panel kept on the alias has Home Assistant's clock already.
+        assertEquals(TimeZoneChoices.HomeAssistantZone(true, "Europe/Belfast"), aliases.homeAssistant("GMT0BST,M3.5.0/1,M10.5.0", "Europe/Belfast", from))
     }
 }

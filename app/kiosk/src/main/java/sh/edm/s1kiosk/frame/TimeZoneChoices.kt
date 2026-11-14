@@ -44,10 +44,13 @@ class TimeZoneChoices(
     fun homeAssistant(rule: String, current: String, now: Instant): HomeAssistantZone? {
         val like = PosixTimeZone.parse(rule)?.zonesLike(known, now).orEmpty().map(canonical).distinct()
         if (like.isEmpty()) return null
-        val pick = if (current in like) current else like.minWith(
-            compareBy<String>({ regionOf(it) != regionOf(current) }, { REGIONS.indexOf(regionOf(it)).let { i -> if (i < 0) REGIONS.size else i } }, { it }),
+        // The panel's zone may be an old alias of one in the list (Europe/Belfast is Europe/London).
+        val here = canonical(current)
+        if (here in like) return HomeAssistantZone(true, current)
+        val pick = like.minWith(
+            compareBy<String>({ regionOf(it) != regionOf(here) }, { REGIONS.indexOf(regionOf(it)).let { i -> if (i < 0) REGIONS.size else i } }, { it }),
         )
-        return HomeAssistantZone(current in like, pick)
+        return HomeAssistantZone(false, pick)
     }
 
     /** See [homeAssistant]. */

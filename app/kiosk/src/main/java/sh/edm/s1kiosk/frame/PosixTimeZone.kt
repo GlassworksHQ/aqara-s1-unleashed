@@ -41,11 +41,12 @@ class PosixTimeZone private constructor(
      * [from]. Zones that differ only in the hour of a change are alike enough to pick from.
      */
     fun zonesLike(ids: Collection<String>, from: Instant): List<String> {
-        val days = (0 until 366).map { from.plusSeconds(it * 86_400L) }
+        val noon = from.atOffset(ZoneOffset.UTC).toLocalDate().atTime(12, 0).toInstant(ZoneOffset.UTC)
+        val days = (0 until 366).map { noon.plusSeconds(it * 86_400L) }
         val want = days.map { offsetAt(it) }
         // Today's offset first: it leaves a few dozen zones of the panel's ~600 for the whole year.
         return ids.mapNotNull { id -> runCatching { ZoneId.of(id).rules }.getOrNull()?.let { id to it } }
-            .filter { (_, rules) -> rules.getOffset(from) == want[0] }
+            .filter { (_, rules) -> rules.getOffset(days[0]) == want[0] }
             .filter { (_, rules) -> days.indices.all { rules.getOffset(days[it]) == want[it] } }
             .map { it.first }
     }

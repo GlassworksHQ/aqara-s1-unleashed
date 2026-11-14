@@ -32,6 +32,11 @@ class SettingsSection(
     val status: () -> SettingsStatus? = { null },
     /** Why the pane can't run here, or null: the nav greys it and the page says why. */
     val unavailable: () -> String? = { null },
+    /**
+     * What its items read, when that can be replaced while the menu is open: a pane's running [Pane],
+     * which the shell builds again when the device restarts. Another one draws the page again.
+     */
+    val source: Any? = null,
 )
 
 /** A section's dot in the nav, after its name. Status colours mean status only: green, amber, rose. */
@@ -58,14 +63,13 @@ fun paneSections(definitions: List<PaneDefinition>, running: (String) -> Pane? =
     val own = if (off != null) emptyList() else d.settings(pane)
     when {
         own.isNotEmpty() -> own.mapIndexed { i, s ->
-            if (i > 0 || s.master != null || master == null) s
-            else SettingsSection(s.id, s.title, s.items, s.heading, master, s.status, s.unavailable)
+            SettingsSection(s.id, s.title, s.items, s.heading, if (i > 0 || s.master != null) s.master else master, s.status, s.unavailable, source = pane)
         }
         choice != null -> listOf(SettingsSection(
             d.id, choice.title,
             listOfNotNull(off?.let { s -> SettingsItem.Note { s.offNote } }, inHomeAssistant(pane, on = off == null))
                 .ifEmpty { listOf(SettingsItem.Note { NOT_RUNNING }) },
-            master = master,
+            master = master, source = pane,
         ))
         else -> emptyList()
     }
