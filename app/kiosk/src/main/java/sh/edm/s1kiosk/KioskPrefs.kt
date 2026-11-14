@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Base64
+import dev.glassworks.bluetoothproxy.BluetoothProxyPrefs
 import dev.glassworks.diagnostics.DiagnosticsPrefs
 import dev.glassworks.screen.ScreenSettings
 import sh.edm.s1kiosk.auth.OAuth
@@ -36,6 +37,7 @@ class KioskPrefs(private val context: Context) : ScreenSettings {
     val radio = RadioPrefs(paneFile("radio"))
     val timeZone = TimeZonePrefs(paneFile("time-zone"))
     val diagnostics = DiagnosticsPrefs(paneFile("diagnostics"))
+    val bluetoothProxy = BluetoothProxyPrefs(paneFile("bluetooth-proxy"))
 
     fun registerListener(l: SharedPreferences.OnSharedPreferenceChangeListener) =
         sp.registerOnSharedPreferenceChangeListener(l)
