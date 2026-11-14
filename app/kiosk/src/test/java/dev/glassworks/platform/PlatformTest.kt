@@ -30,6 +30,8 @@ class PlatformTest {
         Triple("hasSettingsPanel", 29) { it.hasSettingsPanel },
         Triple("hasFontBuilder", 29) { it.hasFontBuilder },
         Triple("hasWindowInsetsController", 30) { it.hasWindowInsetsController },
+        Triple("hasInsetsIgnoringVisibility", 30) { it.hasInsetsIgnoringVisibility },
+        Triple("hasPrivacyIndicatorBounds", 31) { it.hasPrivacyIndicatorBounds },
         Triple("hasApplicationExitInfo", 30) { it.hasApplicationExitInfo },
         Triple("foregroundServiceTypesNeedTheirPermission", 34) { it.foregroundServiceTypesNeedTheirPermission },
     )

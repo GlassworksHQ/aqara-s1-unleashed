@@ -21,6 +21,18 @@ interface StreamOutput {
     fun stop()
     /** Motion from the panel's detector, for the ONVIF events. */
     fun setMotion(active: Boolean)
+
+    /** The panel's address and the stream's two URLs, for the camera's page; null without an address. */
+    fun address(): StreamAddress? = null
+
+    /** The addresses watching now: empty while the stream is off. */
+    fun watchers(): List<String> = emptyList()
+}
+
+/** Where to find the stream: the panel's [host], the RTSP [stream] URL and the ONVIF [device] service. No credentials, ever. */
+data class StreamAddress(val host: String, val rtspPort: Int, val onvifPort: Int) {
+    val stream get() = "rtsp://$host:$rtspPort/live"
+    val device get() = "http://$host:$onvifPort/onvif/device_service"
 }
 
 /** Who the camera says it is to ONVIF clients. */
@@ -108,6 +120,10 @@ class CameraStream(
     override fun setMotion(active: Boolean) {
         synchronized(lock) { onvif }?.setMotion(active)
     }
+
+    override fun address(): StreamAddress? = host()?.let { StreamAddress(it, rtspPort, onvifPort) }
+
+    override fun watchers(): List<String> = synchronized(lock) { rtsp }?.watchers() ?: emptyList()
 
     /** Each part on its own: a throwing encoder release must not leave the ports open or the multicast lock held. */
     private fun stopLocked() {

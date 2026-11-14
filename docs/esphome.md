@@ -409,9 +409,16 @@ the video of a session, and a client that signs in with Basic auth or WS-Securit
 the password in a form they can read. Turn it on only on a network you trust, and give it a password
 you use nowhere else ([the limits](research/onvif-rtsp.md#result)).
 
-The camera's settings and the stream's sign-in are set from adb until the Manage page edits settings
-(#178), through an activity only `adb shell` may start (another app on a tablet could otherwise turn
-privacy off or open the stream):
+On the panel, *Settings → Camera* shows how the camera is doing, what it may do (Presence only or
+Presence + snapshots), Camera privacy and the stream switch, the panel's address with the stream's
+RTSP and ONVIF URLs (never a password), and who watches now. First-boot setup has a Camera step under
+Panes that picks the use and asks Android for the camera. While images leave the panel (a still to
+Home Assistant, the stream to a viewer), a green "● Camera" pill shows at the top right, under
+Android's own camera dot.
+
+The stream's sign-in is set from adb until the Manage page edits settings (#178), as are the
+camera's settings without the panel's screen, through an activity only `adb shell` may start
+(another app on a tablet could otherwise turn privacy off or open the stream):
 `adb shell am start -n sh.edm.s1kiosk/.CameraAdbActivity --es camera_use snapshots --ez onvif_stream true --es camera_stream_sign_in 'user:password'`.
 There is no default password: without one, the stream doesn't start and both servers refuse every
 request. The pane's on/off is the usual `--ez camera_enabled true` on the main activity.

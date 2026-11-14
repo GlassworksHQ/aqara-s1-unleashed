@@ -39,6 +39,15 @@ class SnapshotsTest {
         assertEquals(listOf(true, false), changes)
     }
 
+    @Test fun thePageKnowsWhenTheLastStillLeft() {
+        var wall = 1_000L
+        val e = FrameEgress({ now }, { _, _ -> }, holdMs = 6_000, wall = { wall }) {}
+        assertEquals(null, e.lastStillAt)
+        e.still()
+        wall = 5_000L
+        assertEquals(1_000L, e.lastStillAt)
+    }
+
     @Test fun anOpenStreamKeepsItOnPastTheHold() {
         val s = egress.stream()
         egress.still()

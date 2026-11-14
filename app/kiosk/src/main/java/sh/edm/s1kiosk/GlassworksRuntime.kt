@@ -86,7 +86,11 @@ class GlassworksRuntime(
                 setUpBefore = { SetupState.setUpBefore(prefs.haBase != null, prefs.haSeen, prefs.apiEncryption, prefs.haSetupSkipped) },
                 readout = RadioDefinition.AppReadout(this, prefs.radio) { prefs.haBase },
             )
-            val camera = CameraDefinition(prefs.paneFile("camera"), app.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY))
+            val camera = CameraDefinition(
+                prefs.paneFile("camera"), app.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY),
+                granted = { app.checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED },
+                pickers = { c -> sh.edm.s1kiosk.camera.CameraUseCards(c) },
+            )
             val bluetoothProxy = BluetoothProxyDefinition(prefs.paneFile("bluetooth-proxy"), AndroidProxyRadio(app), ::BluetoothProxyPage)
             listOf(AssistDefinition(prefs.paneFile("assist")), SendspinDefinition(prefs.paneFile("sendspin"), settingsWorker::execute), radio, bluetoothProxy) +
                 paneFrame.paneDefinitions(app) + camera + DiagnosticsDefinition(prefs.paneFile("diagnostics"))

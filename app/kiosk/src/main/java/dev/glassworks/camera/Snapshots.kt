@@ -51,6 +51,8 @@ class FrameEgress(
     private val clock: () -> Long,
     private val after: (delayMs: Long, Runnable) -> Unit,
     private val holdMs: Long = HOLD_MS,
+    /** The time of day for [lastStillAt]: `System.currentTimeMillis`. */
+    private val wall: () -> Long = System::currentTimeMillis,
     private val onChange: (leaving: Boolean) -> Unit,
 ) {
     private val lock = Any()
@@ -60,8 +62,13 @@ class FrameEgress(
 
     val leaving: Boolean get() = synchronized(lock) { shown }
 
+    /** When the last still left ([wall] time), or null for none since the app started: the camera's page says so. */
+    @Volatile var lastStillAt: Long? = null
+        private set
+
     /** A still just left. */
     fun still() {
+        lastStillAt = wall()
         synchronized(lock) { stillUntil = clock() + holdMs }
         after(holdMs) { settle() }
         settle()

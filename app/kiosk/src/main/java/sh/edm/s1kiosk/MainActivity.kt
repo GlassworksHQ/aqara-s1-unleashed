@@ -61,6 +61,7 @@ class MainActivity : Activity() {
     private lateinit var loadingOverlay: LoadingOverlay
     private lateinit var settingsOverlay: KioskSettingsOverlay
     private lateinit var voiceOverlay: VoiceOverlay
+    private lateinit var cameraPill: sh.edm.s1kiosk.camera.CameraPill
     private lateinit var timerOverlay: TimerOverlay
     private lateinit var threadJoinOverlay: sh.edm.s1kiosk.setup.ThreadJoinOverlay
     private lateinit var setupOverlay: SetupOverlay
@@ -200,6 +201,7 @@ class MainActivity : Activity() {
             onClose = { HaAuth.threadJoin.disarm(); hide() }
         }
         settingsOverlay = KioskSettingsOverlay(this).apply { onRestart = ::restartProcess }
+        cameraPill = sh.edm.s1kiosk.camera.CameraPill(this)
         // Improv-aware from the start: KioskService (which registers the provider) starts after this.
         wifiStatus = ImprovWifiStatus(this)
         root = android.widget.FrameLayout(this)
@@ -211,7 +213,8 @@ class MainActivity : Activity() {
             addView(timerOverlay, timerOverlay.layoutParams())
             addView(voiceOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
             addView(settingsOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // 24 dp
-            addView(threadJoinOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // 26 dp: above everything
+            addView(threadJoinOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // 26 dp
+            addView(cameraPill, cameraPill.layoutParams()) // 30 dp: the camera's privacy indicator is never covered
         })
         // The launch backdrop (res/drawable/launch_backdrop.xml) covers the cold start; once our own
         // views have drawn, a plain colour behind them costs the GPU nothing on every later frame.
@@ -244,6 +247,9 @@ class MainActivity : Activity() {
             timerOverlay.refresh()
         }
         glassworks.onVoiceUi = { voiceOverlay.update(glassworks.voiceUi, prefs.voice.overlay) }
+        // Images leaving the panel (#117): the pill follows, on the main thread (PanelDevice posts each change).
+        glassworks.onCameraLeaving = { cameraPill.show(glassworks.cameraLeaving) }
+        cameraPill.show(glassworks.cameraLeaving)
         glassworks.commandSink = { applyIntent(it, fromNewIntent = true) }
         startSession()
         intent?.let { i -> handler.post { applySetupPreview(i) } }
@@ -1051,6 +1057,7 @@ class MainActivity : Activity() {
         glassworks.screen.onBrightness = null
         glassworks.screen.onStateChanged = null
         glassworks.onVoiceUi = null
+        glassworks.onCameraLeaving = null
         glassworks.commandSink = null
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()

@@ -499,7 +499,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         val dot = View(context)
         val words = g.text(15f, MU)
         fun bind() {
-            dot.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (i.ok()) Glass.GREEN else FA) }
+            dot.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (i.problem()) ROSE else if (i.ok()) Glass.GREEN else FA) }
             words.text = i.text()
         }
         bind()

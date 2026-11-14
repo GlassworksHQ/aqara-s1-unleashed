@@ -19,6 +19,9 @@ class CameraPrefs(private val sp: SharedPreferences) {
         get() = when (sp.getString(KEY_USE, null)) { USE_SNAPSHOTS -> CameraUse.PRESENCE_AND_SNAPSHOTS; else -> CameraUse.PRESENCE }
         set(v) { sp.edit().putString(KEY_USE, if (v == CameraUse.PRESENCE_AND_SNAPSHOTS) USE_SNAPSHOTS else USE_PRESENCE).apply() }
 
+    /** Someone picked the camera's use (setup's Camera step, the page, Home Assistant): until then it is Presence only by default. */
+    val useChosen: Boolean get() = sp.contains(KEY_USE)
+
     var privacy: Boolean
         get() = sp.getBoolean(KEY_PRIVACY, false)
         set(v) { sp.edit().putBoolean(KEY_PRIVACY, v).apply() }
