@@ -1,11 +1,13 @@
 # Install crash loop: why the kiosk can crash-loop for minutes after an install (#248)
 
-**Status (2026-11-14): cause found, fix untested.** The loop is a bug in Android 10's ActivityManager,
-not dex2oat. One of the counters in its process list (the LRU list) drops to -1, so every new kiosk
-process fails to attach and is started again at once. It stops only when `system_server` crashes on
-the same bug and the framework restarts. dex2oat is a bystander: the loop takes its CPU, which is
-why it seemed to run for 11 minutes. A watchdog that restarts the framework as soon as the counter
-goes below 0 is drafted but has not run on a panel.
+**Status (2026-11-14): cause found and reproduced; fix in review, its armed run pending.** The loop
+is a bug in Android 10's ActivityManager, not dex2oat. One of the counters in its process list (the
+LRU list) drops by one with every kiosk force-stop. At -1, every new process fails to attach and is
+started again at once. It stops only when `system_server` crashes on the same bug and the framework
+restarts. dex2oat is a bystander: the loop takes its CPU, which is why it seemed to run for 11
+minutes. On the dev panel the loop came back on purpose at the 15th force-stop, and a dry-run
+watchdog caught it 4 s in. The watchdog now runs inside `s1kiosk_netwatch`. Its armed mode has not
+run on a panel yet.
 
 Device: Aqara Panel Hub S1 Plus, Android 10 (security patch 2020-09-05), armeabi-v7a,
 `ro.config.low_ram=true`. S1 Kiosk: main test build `5d0a0d2` (the panel's baseline) and test builds
@@ -159,6 +161,59 @@ installed or changed for this note.
    earlier (`attachBaseContext`) must skip `SecurityException … when publishing content providers`,
    because the app can't fix that and restarting faster only adds to the loop.
 
+9. **Reproduced on the dev panel, with the watchdog in dry-run mode** (2026-11-14 09:06–09:32,
+   verified; run by the root thread from the #248 panel plan)
+
+   Setup: S1 Kiosk main test build `5d0a0d2` (hash `4a9d4a76…`), radio `thread_router`. A sampler on
+   the computer read the LRU header every 2 s. The draft watchdog ran on the panel as root in dry-run
+   mode, every 10 s. Then `am force-stop sh.edm.s1kiosk` every ~40 s, letting the home app relaunch
+   the kiosk each time.
+   ```
+   $ adb shell 'dumpsys activity processes' | grep 'Process LRU list'    # before each force-stop
+   stop 1 before:   Process LRU list (sorted by oom_adj, 23 total, non-act at 9, non-svc at 9):
+   stop 2 before:   Process LRU list (sorted by oom_adj, 24 total, non-act at 11, non-svc at 11):
+   …
+   stop 15 before:  Process LRU list (sorted by oom_adj, 24 total, non-act at 24, non-svc at 24):
+   ```
+   The start (`total - non-act`), from the 2 s samples:
+
+   | Time | After | Total | Activity start | Service start |
+   |---|---|---|---|---|
+   | 09:06:21 | (before) | 23 | 14 | 14 |
+   | 09:06:26 | stop 1 | 20 | 13 | 13 |
+   | 09:07:06 – 09:15:16 | stops 2–14 | 18–21 | 12, 11, … 0 (one less at each stop) | the same |
+   | 09:15:57 | stop 15 | 18 | **-1** | **-1** |
+   | 09:17:24 – 09:17:38 | framework restart | 1 → 27 | = total | = total |
+   | 09:19:37 | | 27 | 24 | 24 |
+
+   Every kiosk force-stop moved both starts down by exactly one, 15 times out of 15. Between stops
+   they didn't move. After a framework restart the starts begin at the list's size.
+
+   The watchdog's trace:
+   ```
+   09:15:50 total=24 act=0 svc=0
+   09:16:01 LRU start below 0 (total=18 act=-1 svc=-1), read 1
+   09:16:11 LRU start below 0 (total=18 act=-1 svc=-1), read 2
+   09:16:11 would restart the framework (dry run)
+   …  (dumpsys kept answering every 10 s through the loop)
+   09:17:24 no LRU header (framework down?)
+   ```
+   The loop, from the events buffer (`am_proc_start … bind-fail`) and the crash buffer:
+
+   | | |
+   |---|---|
+   | First `bind-fail` start | 09:15:59.355 (the start read -1 at 09:15:57) |
+   | Ended by | `FATAL EXCEPTION IN SYSTEM PROCESS: ActivityManager`, `Index: -1, Size: 18` at 09:17:16.720; `Exit zygote` at 09:17:17.156 |
+   | Length | ~78 s |
+   | `bind-fail` starts | 1040 for the kiosk (~13 a second), and 11 for Aqara's own apps (`com.lumi.systemmanager.logService`, `com.lumi.settings`, `…aqaraGesture`): no new app process could start |
+   | Kiosk crashes (`Unable to find app for caller`) | 1040 |
+   | Afterwards | kiosk resumed, the same APK hash, radio `thread_router`; LRU 27 total, starts 24 |
+
+   Armed, the watchdog would have killed `system_server` at 09:16:11, 66 s before it crashed by
+   itself. `tools/install/install-churn.py` found no rows in these dumps: the loop's stack traces
+   overwrote the `system` buffer (it began at 09:16:13), so the force-stop lines were gone. The
+   `events` buffer kept the loop itself.
+
 ## Result
 
 | Claim | Evidence |
@@ -172,49 +227,60 @@ installed or changed for this note.
 | Each install kills 10–12 kiosk processes: two force-stops, with a cold start that has no future in between | attempt 2 |
 | `dumpsys activity processes` shows the broken state exactly, in ~70 ms | attempt 6 |
 | The update service installs the same way as `adb install` | attempt 7 |
+| Each kiosk force-stop moves both starts down by exactly one; the loop starts at the force-stop that takes them from 0 to -1 | attempt 9 (15 of 15) |
+| While the starts are below 0, no new app process can start, not only the kiosk | attempt 9 |
+| The header check sees the broken state within one read, and `dumpsys` keeps answering during the loop | attempt 9 |
 
 What can be done, best first:
 
-1. **Restart the framework as soon as the counter breaks (untested).** A small root loop reads the
-   header every 10–15 s. If a start is below 0 twice in a row, it kills `system_server`, at most once
-   per 10 minutes. That is what ends the loop anyway, only sooner and every time: one framework
-   restart (about a minute in framework-restart.md) instead of a loop of up to 11 minutes. Init brings zygote and the framework back. The radio helper
-   is a separate init service, so it should keep running (untested). It needs the boot image (a new init service next to
-   `s1kiosk_netwatch`), so it reaches panels only when they run the installer again. The other route
-   is a loop in the radio helper, which ships in the signed radio bundle, but that puts a framework
-   watchdog in the radio's code.
+1. **Restart the framework as soon as the counter breaks (built; armed run pending).**
+   `s1kiosk_netwatch.sh` reads the header every 15 s (`dumpsys activity processes sh.edm.s1kiosk`,
+   ~35 ms). If a start is below 0 on two reads in a row, it kills `system_server`, at most once per
+   10 minutes. That is what ends the loop anyway, only sooner and every time: 15–30 s of loop and one
+   framework restart, instead of up to 11 minutes. Init brings zygote and the framework back. The
+   radio helper is a separate init service, so it should keep running (to be checked in the armed
+   run). It lives in netwatch so the boot image's file list stays the same for the CLI and Kiln. It
+   still needs a new boot image, so it reaches panels only when they run the installer again.
 2. **Kill fewer kiosk processes per update.** Each death is another chance to move the counter. The
    cold start between the two force-stops is wasted. Fewer GeckoView processes (GPU process, crash
    helper, content processes) would mean fewer deaths per restart. That changes the engine
    and needs a Clarity run.
-3. **Report the update correctly when the framework restarts mid-install.** If `system_server` dies
-   while `pm install` waits, the service reports `error: pm install: …` even though the package was
-   committed. It should check `versionCode` again after `sys.boot_completed` before it reports.
+3. **Report the update correctly when the framework restarts mid-install (built).** If
+   `system_server` dies while `pm install` waits, pm fails even though the package may be committed.
+   `s1kiosk_update.sh` now notes `system_server`'s PID before the install. If pm fails and that PID
+   changed, it waits up to 5 minutes for PackageManager, then makes its usual checks (versionCode
+   went up, nothing else changed). Its status is also cut to 91 bytes, the most a property holds;
+   a longer one was refused by `setprop` and left the status at `running`.
 4. **Not worth doing for this bug:** a cheaper `pm.dexopt.install`, a real baseline profile, or
    holding off the kiosk's relaunch until dexopt ends. The system relaunches the home app on its own,
    and none of these touches the counter.
 
 ## How to reproduce
 
-The panel plan for #248 (kept with the root's notes, not in the repo) has the full steps. In short,
-on a panel with the baseline build installed:
+This is what attempt 9 did. The panel plan for #248 (kept with the root's notes, not in the repo) has
+every command. In short, on a panel with the kiosk running:
 
 1. Read the counters (read-only): `adb shell 'dumpsys activity processes' | grep 'Process LRU list'`.
-2. Reinstall the same APK over itself, `adb install -r <baseline.apk>`, which writes `/data/app`.
-   Read the counters again after each install. Repeat until a start is below 0, or for a fixed
-   number of installs.
-3. Save `adb shell 'logcat -d -b all -v time'` and run `tools/install/install-churn.py` on it.
+   The activity start is `total - non-act`.
+2. `adb shell am force-stop sh.edm.s1kiosk`, wait ~40 s for the home app to bring it back, and read
+   the counters again. Each force-stop takes one off. Repeat until the start is below 0: that many
+   force-stops from a fresh framework (~24 on the S1). This stops and starts the app only.
+3. Save `adb shell 'logcat -d -b events -v time'` straight away: the loop overwrites the other
+   buffers in seconds.
 
-A loop ends in a framework restart (~1 min). There is nothing to undo, because the same APK is
-installed. Check the app version and the radio mode afterwards.
+The loop ends in a framework restart by itself (78 s in attempt 9). Nothing is installed, so there is
+nothing to undo. Check that the kiosk is back and the radio mode is unchanged afterwards.
 
 ## Open questions
 
-- Which order of removals takes a start from 0 to -1? The process at index 0 is `system_server`'s
-  own record, which is never removed. Logging the header after every kiosk force-stop would show
-  how fast the starts drift down. That's the first step of the panel plan.
-- How fast does a panel in normal use drift? Real panels restart the kiosk far less often than the
-  dev panel (14 installs and 16 force-stops between 03:08 and 06:23 here). Sampling the header every hour for a
-  day would answer it.
+- Which removal takes a start from 0 to -1? The process at index 0 is `system_server`'s own record,
+  which is never removed. Attempt 9 shows that it happens, at the force-stop after the start reached
+  0, but not which process it was.
+- How fast does a panel in normal use drift? A framework restart leaves about 24 force-stops of
+  headroom, and an update uses two. Kiosk crashes and Clarity's app restarts count too. Between 06:23
+  and 08:49 on 2026-11-14 the dev panel lost more than its counted force-stops explain. With the
+  watchdog in place, `sys.s1kiosk.am.status` shows the starts on any panel.
+- Could the watchdog restart the framework before the loop instead, for example at night once the
+  start is down to 2? That would trade the 15–30 s of loop for a planned restart.
 - Is killing `system_server` safe while `pm install` is committing? The bug's own crash does the same
   at random times, but the watchdog should wait for dexopt to finish if it can.

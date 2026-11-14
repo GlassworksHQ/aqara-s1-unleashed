@@ -3,7 +3,8 @@
 # /repo is the checkout (read-only). Builds an Android-like layout with mocks, then tests:
 #   s1kiosk_verify + make-bundle.py, s1kiosk_bundle.sh (install, --check, every refusal),
 #   the helper's loader (bundle helper, fallback, quick-exit marking, dev override),
-#   the helper v4 (off, firmware flashing + rollback + request guards, GBL checks, Zigbee stack).
+#   the helper v4 (off, firmware flashing + rollback + request guards, GBL checks, Zigbee stack),
+#   s1kiosk_update.sh (incl. a framework restart mid-install) and netwatch's ActivityManager check (#248).
 set -uo pipefail
 R=/repo; T=/t; TB=/tb
 PASS=0; FAILS=0
@@ -41,7 +42,17 @@ EOF
 w "$T/bin/pm" <<'EOF'
 #!/bin/sh
 case "$1" in
-  install) cat > /dev/null; echo 30300 > /t/pm-version; echo Success; exit 0 ;;
+  install) cat > /dev/null
+    # /t/pm-mode: fail = pm refuses; restart(-noup) = system_server dies mid-install (#248), with
+    # (without) the package committed first. The fake system_server is /t/bin/system_server.
+    case "$(cat /t/pm-mode 2>/dev/null)" in
+      fail) echo "Failure [INSTALL_FAILED_TEST]"; exit 1 ;;
+      restart|restart-noup)
+        [ "$(cat /t/pm-mode)" = restart ] && echo 30300 > /t/pm-version
+        pkill -x system_server; (system_server 2000 >/dev/null 2>&1 &)
+        echo "Exception occurred while executing: android.os.DeadObjectException"; exit 1 ;;
+    esac
+    echo 30300 > /t/pm-version; echo Success; exit 0 ;;
 esac
 echo "package:sh.edm.s1kiosk.other versionCode:1 uid:10077"
 echo "package:sh.edm.s1kiosk versionCode:$(cat /t/pm-version 2>/dev/null || echo 30200) uid:10050"
@@ -566,6 +577,61 @@ rm -f "$APP/files/update/pending.apk"; mkfifo "$APP/files/update/pending.apk"; c
 timeout 30 /system/bin/sh "$TB/s1kiosk_update.sh" >/dev/null 2>&1
 check "update service: a FIFO is refused, no hang" test $? != 124
 check "...with an error status" has "$(prop sys.s1kiosk.update.status)" "error"
+# A framework restart in the middle of the install (#248): pm fails, but the update may have gone in.
+cp /bin/sleep "$T/bin/system_server"
+upd() { # pm-mode: stage the APK, run the service, print its status
+  pkill -x system_server; (system_server 2000 >/dev/null 2>&1 &); sleep 0.2
+  rm -f "$APP/files/update/pending.apk"; printf 'PK-apk' > "$APP/files/update/pending.apk"; chown 10050 "$APP/files/update/pending.apk"
+  echo 30200 > "$T/pm-version"; echo "$1" > "$T/pm-mode"
+  S1U_RESTART_WAIT=10 timeout 60 /system/bin/sh "$TB/s1kiosk_update.sh" >/dev/null 2>&1
+  prop sys.s1kiosk.update.status
+}
+check "pm fails, framework still up: an error, pm's reason" has "$(upd fail)" "error: pm install: Failure [INSTALL_FAILED_TEST]"
+check "framework restarted mid-install, package committed: ok" has "$(upd restart)" "ok: sh.edm.s1kiosk 30200 -> 30300"
+check "framework restarted, package not committed: an error that says so" has "$(upd restart-noup)" "error: framework restarted mid-install, not updated; pm install: Exc"
+check "...cut to what a property holds" test "$(prop sys.s1kiosk.update.status | wc -c)" -le 91
+rm -f "$T/pm-mode"; pkill -x system_server
+
+# --------------------------------------------------------------- ActivityManager watchdog (#248)
+echo "--- s1kiosk_netwatch.sh: ActivityManager"
+cp "$R/tools/root/s1kiosk_netwatch.sh" "$TB/"
+# dumpsys prints /t/lru (one "total non-act non-svc" line) as Android 10's header; none = no answer
+w "$T/bin/dumpsys" <<'EOF2'
+#!/bin/sh
+[ "$1 $2" = "activity processes" ] || exit 1
+[ -s /t/lru ] || exit 1
+read -r n a s < /t/lru
+echo "ACTIVITY MANAGER RUNNING PROCESSES (dumpsys activity processes)"
+echo "  Process LRU list (sorted by oom_adj, $n total, non-act at $a, non-svc at $s):"
+EOF2
+amw() { # lru-line loops: run the watchdog for <loops> checks with a fresh system_server; print its pid
+  pkill -x system_server; (system_server 2000 >/dev/null 2>&1 &); sleep 0.2
+  rm -f "$T/props/sys.s1kiosk.am.status" "$T/props/sys.s1kiosk.am.restarts"
+  if [ -n "$1" ]; then echo "$1" > "$T/lru"; else : > "$T/lru"; fi
+  pidof system_server > "$T/ss-pid"
+  S1N_ONCE=$2 S1N_SLEEP=0 timeout 60 /system/bin/sh "$TB/s1kiosk_netwatch.sh" >/dev/null 2>&1
+}
+alive() { kill -0 "$(cat "$T/ss-pid")" 2>/dev/null; }
+amw "27 3 3" 3
+check "healthy LRU starts: reported" test "$(prop sys.s1kiosk.am.status)" = "ok 24 24 of 27"
+check "...system_server left alone" alive
+amw "18 19 19" 1
+check "one broken read: counted" has "$(prop sys.s1kiosk.am.status)" "broken: LRU starts -1 -1 of 18 (1/2)"
+check "...but nothing killed yet" alive
+amw "18 19 19" 2
+check "two broken reads in a row: framework restarted" sh -c '! kill -0 "$(cat /t/ss-pid)" 2>/dev/null'
+check "...status says so" has "$(prop sys.s1kiosk.am.status)" "restarted the framework at uptime"
+check "...and counts it" has "$(prop sys.s1kiosk.am.restarts)" "1 "
+amw "18 18 19" 4
+check "only the service start broken also counts, and one restart per cooldown" has "$(prop sys.s1kiosk.am.restarts)" "1 "
+check "...the rest waits for the cooldown" has "$(prop sys.s1kiosk.am.status)" "in the cooldown"
+amw "" 2
+check "no answer from dumpsys: nothing killed" alive
+check "...and said" test "$(prop sys.s1kiosk.am.status)" = "no answer from dumpsys"
+(system_server 2000 >/dev/null 2>&1 &); sleep 0.2
+echo "18 19 19" > "$T/lru"; S1N_ONCE=2 S1N_SLEEP=0 timeout 60 /system/bin/sh "$TB/s1kiosk_netwatch.sh" >/dev/null 2>&1
+check "two system_server pids: nobody is killed" test "$(pidof system_server | wc -w)" = 2
+pkill -x system_server; rm -f "$T/lru" "$T/bin/dumpsys"
 
 # ---------------------------------------------------------------------------------- time zone
 echo "--- time zone"

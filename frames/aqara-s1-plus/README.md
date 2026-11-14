@@ -106,6 +106,7 @@ What we found on this device, and how ([all notes](../../docs/research/README.md
 - [idle-cpu.md](research/idle-cpu.md): Why the kiosk uses ~40% of a core at idle: the wake word's embedding model, per-thread numbers, and the options (#105)
 - [bluetooth.md](research/bluetooth.md): The panel's Bluetooth (RTL8821CS, shared with Wi-Fi), Android 10's scan rules from AOSP, and what HA needs from an ESPHome Bluetooth proxy (#121)
 - [view-open.md](research/view-open.md): Where typical's 4.7 s view open goes: HA's JavaScript on one Gecko thread at 1.5 GHz; the app candidates tried on the panel (none helped), and what's left upstream (#244)
+- [install-crash-loop.md](research/install-crash-loop.md): Why the kiosk crash-looped after installs: Android 10's ActivityManager LRU bug (one step per kiosk force-stop), not dex2oat; the netwatch check that restarts the framework (#248)
 
 ## Files
 
