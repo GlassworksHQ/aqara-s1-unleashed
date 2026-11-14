@@ -21,7 +21,10 @@ export const REPO = join(HERE, '../../..');
 const SOURCES = join(REPO, 'app/kiosk/src/main/java');
 export const OUT = join(HERE, '../src/panes.generated.ts');
 
-/** Every pane, general panes first and then frame panes, each by id. */
+/* shipping stages first, then the rest, as the frame catalog orders frames */
+const ORDER = { stable: 0, beta: 1, alpha: 2, development: 3, planned: 4 };
+
+/** Every pane: general panes first, then frame panes; within each, by stage and then by name. */
 export function readPanes(repo = REPO) {
   const root = join(repo, 'app/kiosk/src/main/java');
   const files = readdirSync(root, { recursive: true })
@@ -34,7 +37,7 @@ export function readPanes(repo = REPO) {
       const icon = readFileSync(join(dir, 'icon.svg'), 'utf8').trim();
       return { ...data, icon, source: relative(repo, dir).split('\\').join('/') };
     })
-    .sort((a, b) => (a.frame ? 1 : 0) - (b.frame ? 1 : 0) || a.id.localeCompare(b.id, 'en'));
+    .sort((a, b) => (a.frame ? 1 : 0) - (b.frame ? 1 : 0) || ORDER[a.status] - ORDER[b.status] || a.name.localeCompare(b.name, 'en'));
 }
 
 export function render(panes) {

@@ -64,7 +64,8 @@ code in `app/kiosk/src/main/java`. After you add or change one, run:
 npm run panes -w @glassworks/frame-card
 ```
 
-`test/panes.test.ts` fails when the generated file is stale. The icons are 24 × 24, stroked with
+`test/panes.test.ts` fails when the generated file is stale. `PANES` lists general panes first, then
+frame panes, each by stage (stable first) and then by name, as the frame catalog orders frames. The icons are 24 × 24, stroked with
 `currentColor` at 1.6 with round caps and joins, and have no fills or colours. A page draws one by
 putting `icon` in an element whose `color` it sets.
 

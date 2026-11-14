@@ -17,28 +17,6 @@ export const PANE_FILES: readonly PaneInfo[] = [
     "source": "app/kiosk/src/main/java/sh/edm/s1kiosk/voice"
   },
   {
-    "id": "diagnostics",
-    "name": "Diagnostics",
-    "does": "CPU, temperature, RAM, storage, Wi-Fi and uptime in Home Assistant.",
-    "requires": [],
-    "status": "alpha",
-    "docs": "docs/esphome.md#diagnostics",
-    "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"6\" width=\"20\" height=\"12\" rx=\"3.5\"/><path d=\"M5.5 12h3l1.5-3 3 6 1.5-3h4\"/></svg>",
-    "source": "app/kiosk/src/main/java/dev/glassworks/diagnostics"
-  },
-  {
-    "id": "radio",
-    "name": "Zigbee / Thread radio",
-    "does": "Zigbee coordinator or router, Thread border router.",
-    "requires": [
-      "silabs-radio"
-    ],
-    "status": "beta",
-    "docs": "docs/radio.md",
-    "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"2\"/><path d=\"M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14\"/></svg>",
-    "source": "app/kiosk/src/main/java/sh/edm/s1kiosk/radio"
-  },
-  {
     "id": "sendspin",
     "name": "Sendspin",
     "does": "Synced Music Assistant player.",
@@ -62,6 +40,28 @@ export const PANE_FILES: readonly PaneInfo[] = [
     "docs": "docs/esphome.md#timers-on-screen",
     "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"13.5\" r=\"7.5\"/><path d=\"M12 13.5V9.5M9.5 2.5h5\"/></svg>",
     "source": "app/kiosk/src/main/java/sh/edm/s1kiosk/timers"
+  },
+  {
+    "id": "radio",
+    "name": "Zigbee / Thread radio",
+    "does": "Zigbee coordinator or router, Thread border router.",
+    "requires": [
+      "silabs-radio"
+    ],
+    "status": "beta",
+    "docs": "docs/radio.md",
+    "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"2\"/><path d=\"M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14\"/></svg>",
+    "source": "app/kiosk/src/main/java/sh/edm/s1kiosk/radio"
+  },
+  {
+    "id": "diagnostics",
+    "name": "Diagnostics",
+    "does": "CPU, temperature, RAM, storage, Wi-Fi and uptime in Home Assistant.",
+    "requires": [],
+    "status": "alpha",
+    "docs": "docs/esphome.md#diagnostics",
+    "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"6\" width=\"20\" height=\"12\" rx=\"3.5\"/><path d=\"M5.5 12h3l1.5-3 3 6 1.5-3h4\"/></svg>",
+    "source": "app/kiosk/src/main/java/dev/glassworks/diagnostics"
   },
   {
     "id": "time-zone",
