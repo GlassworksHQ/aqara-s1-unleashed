@@ -1,6 +1,7 @@
 package sh.edm.s1kiosk.manage
 
 import dev.glassworks.manage.ManageFixture
+import dev.glassworks.manage.text
 import dev.glassworks.manage.LogEntry
 import dev.glassworks.manage.PaneRow
 import dev.glassworks.pane.NOT_RUNNING
@@ -80,6 +81,16 @@ class ManagePageMockups {
         save("10b-qr-done-signed-in", b.get("/callback"))
         save("10c-qr-sign-in-signed-in", b.get("/signin"))
         save("10d-qr-sign-in", anon.get("/signin"))
+
+        // #243: a long HA user name in the nav's foot (made up). The phone's menu, open, shows the same foot.
+        f.user = dev.glassworks.manage.HaUser("Alexandra Montgomery-Fitzgerald", isAdmin = true)
+        val long = f.Browser()
+        long.signInWithHa()
+        val page = long.get("/")
+        save("12-long-name", page)
+        save("12b-long-name-menu", HttpResponse(page.status, page.headers,
+            page.text().replace("<details class=\"menu\">", "<details class=\"menu\" open>").toByteArray()))
+        f.user = dev.glassworks.manage.HaUser("Alex", isAdmin = true)
 
         // #67: every pane has its on/off. Music off; Time zone and Diagnostics have only their switch.
         val on = SettingsItem.Switch("Time zone", "Keeps the zone Aqara resets at boot", { true }) { _, d -> d(null) }

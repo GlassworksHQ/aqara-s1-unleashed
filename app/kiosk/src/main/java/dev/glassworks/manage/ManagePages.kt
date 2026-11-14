@@ -81,7 +81,7 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
             (if (core.isNotEmpty()) """<h3>Panel</h3>${core.joinToString("") { item("/" + it.id, it.title) }}""" else "") +
             (if (s.panes.isNotEmpty()) "<h3>Panes</h3>$panes" else "") +
             """<h3>System</h3>${item("/log", "Log")}${item("/security", "Security")}${item("/about", "About")}</nav>
-<form class="who" method="post" action="/manage/signout">${csrf(viewer)}<span><i class="dot ok"></i>Signed in · ${esc(viewer.who)}</span><button type="submit">Sign out</button></form>"""
+<form class="who" method="post" action="/manage/signout">${csrf(viewer)}<span><i class="dot ok"></i><span class="nm" title="${esc(viewer.who)}">Signed in · ${esc(viewer.who)}</span></span><button type="submit">Sign out</button></form>"""
     }
 
     private fun frame(s: PanelStatus, current: String, title: String, viewer: Viewer, main: String, notice: String? = null): String {
@@ -290,7 +290,8 @@ nav{display:flex;flex-direction:column;gap:2px;flex:1}nav h3{margin:20px 12px 6p
 .ni{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:12px;text-decoration:none;font-size:16px;border:1px solid transparent}
 .ni:hover{background:var(--hover)}.ni.on{background:var(--glass);border-color:var(--edge)}.ni.grey{color:var(--faint)}
 .who{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--edge);margin-top:18px;padding:16px 12px 0;font-size:14px;color:var(--muted)}
-.who span{display:flex;align-items:center;gap:8px}.who button{background:none;border:0;color:var(--muted);font:inherit;cursor:pointer;padding:0}.who button:hover{color:var(--fg)}
+.who>span{display:flex;align-items:center;gap:8px;min-width:0}.who .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who button{background:none;border:0;color:var(--muted);font:inherit;cursor:pointer;padding:0;white-space:nowrap;flex:none}.who button:hover{color:var(--fg)}
 .top{display:none}
 .main{margin-left:280px;padding:40px 56px 64px;max-width:1336px}
 .card{background:var(--glass);border:1px solid var(--edge);border-radius:22px;margin-bottom:18px}
