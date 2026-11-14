@@ -153,7 +153,8 @@ and `PaneCatalogTest` in the app fails if a pane has no file or a file has no pa
 A frame's rating of a pane is the one in its `panes`, if it gives one. Otherwise `paneSupport()` works
 it out, and says why:
 
-1. A frame pane (`frame`) runs on its own frame only: "Only on the aqara-s1-plus frame."
+1. A frame pane (`frame`) runs on its own frame only: "Only on the aqara-s1-plus frame.", or with the optional
+   `frameName` lookup the caller passes, "Only on the Aqara S1 Plus."
 2. A pane that needs nothing special runs at its own status, or is `planned` while the frame doesn't ship.
 3. A frame without `provides` can't say: `depends`, "Needs a microphone."
 4. A frame that lacks something the pane needs can't run it: `no`, "Needs a microphone."
