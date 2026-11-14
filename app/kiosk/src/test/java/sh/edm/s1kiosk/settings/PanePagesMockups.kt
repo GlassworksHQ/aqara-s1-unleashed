@@ -148,7 +148,7 @@ class PanePagesMockups {
         val p = SendspinPane(ctx, haBase = { "http://homeassistant.local:8123" })
         p.player.setVolume(40)
         p.player.status = SendspinSession.Status(SendspinSession.Phase.PLAYING, serverName = "Music Assistant", paired = true, codec = "flac")
-        p.player.lastUrl = "ws://192.0.2.30:8927/sendspin"
+        p.player.activeUrl = "ws://192.0.2.30:8927/sendspin"
         p.player.nowPlaying = "Claude Debussy – Clair de lune"
         return p
     }

@@ -9,12 +9,14 @@ import java.util.Locale
 
 /**
  * The diagnostics pane's settings page (#212): six tiles, three to a row, with each one's last hour. Pure,
- * for tests: [hour] is [DiagnosticsPane.lastHour], [sample] its last sample, [nowElapsedMs] the clock now.
+ * for tests: [current] is [DiagnosticsPane.current], [hour] is [DiagnosticsPane.lastHour], [sample] its
+ * last sample, [nowElapsedMs] the clock now. A value is the last sample's, so a reading that went away
+ * shows "—" while its line keeps the hour.
  */
 object DiagnosticsPage {
     /** CPU, temperature (when the frame has it), RAM, Wi-Fi, storage and uptime. */
-    fun tiles(hour: (String) -> List<Float>, sample: Sample?, nowElapsedMs: Long, hasTemperature: Boolean): List<SettingsItem.Tile> {
-        fun last(id: String) = hour(id).lastOrNull()
+    fun tiles(current: (String) -> Float?, hour: (String) -> List<Float>, sample: Sample?, nowElapsedMs: Long, hasTemperature: Boolean): List<SettingsItem.Tile> {
+        fun last(id: String) = current(id)
         val rssi = last("wifi_signal")
         val free = sample?.storageFreeBytes
         val total = sample?.storageTotalBytes?.takeIf { it > 0 }

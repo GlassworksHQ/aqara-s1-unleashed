@@ -43,6 +43,8 @@ class WallBaseDefinition(file: SharedPreferences) : PaneDefinition {
             if (layout.kind == BaseKind.SWITCH && layout.channels.isNotEmpty()) {
                 SettingsItem.Native("wall-base-relays-${System.identityHashCode(p)}-${layout.channels}") { host -> RelaysView(host.context, p, layout.channels) }
             } else null,
+            // What the tiles and cards don't show (Aqara's cloud), so the page has all Home Assistant has.
+            inHomeAssistant(p, only = { !it.objectId.startsWith(BaseEntities.BASE) }),
         )
         return listOf(SettingsSection(id, "Wall base", items))
     }

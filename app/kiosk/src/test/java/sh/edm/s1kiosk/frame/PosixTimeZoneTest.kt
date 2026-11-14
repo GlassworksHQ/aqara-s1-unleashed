@@ -41,16 +41,23 @@ class PosixTimeZoneTest {
         assertNull(PosixTimeZone.parse("Europe/Madrid"))
         assertNull(PosixTimeZone.parse(""))
         assertNull(PosixTimeZone.parse("CET-1CEST,M13.5.0,M10.5.0"))
+        // CodeRabbit on #235: these parsed, then threw when matched. No clock is 25 h off UTC.
+        assertNull(PosixTimeZone.parse("UTC25"))
+        assertNull(PosixTimeZone.parse("CET-1CEST-20,M3.5.0,M10.5.0/3"))
+        assertNull(TimeZoneChoices(ids).homeAssistant("UTC25", "Europe/Madrid", from))
     }
 
     @Test fun usingItKeepsAZoneInThePanelsRegion() {
         val choices = TimeZoneChoices(ids)
         val same = choices.homeAssistant("CET-1CEST,M3.5.0,M10.5.0/3", "Europe/Madrid", from)!!
-        assertEquals(TimeZoneChoices.HomeAssistantZone("UTC+01:00", true, "Europe/Madrid"), same)
+        assertEquals(TimeZoneChoices.HomeAssistantZone(true, "Europe/Madrid"), same)
         val other = choices.homeAssistant("GMT0BST,M3.5.0/1,M10.5.0", "Europe/Madrid", from)!!
         assertEquals(false, other.same)
         assertEquals("Europe", choices.regionOf(other.zone))
         assertNull(choices.homeAssistant("not a rule", "Europe/Madrid", from))
+        // CodeRabbit on #235: the line's offset is read when shown, so it follows summer time while the page stays open.
+        assertEquals("UTC+01:00 · the same as the panel's", same.line(from))
+        assertEquals("UTC+02:00 · the same as the panel's", same.line(Instant.parse("2027-07-01T12:00:00Z")))
         // An old alias is named by its current zone.
         val aliases = TimeZoneChoices(listOf("Europe/Belfast", "Europe/London")) { if (it == "Europe/Belfast") "Europe/London" else it }
         assertEquals("Europe/London", aliases.homeAssistant("GMT0BST,M3.5.0/1,M10.5.0", "Europe/Madrid", from)!!.zone)

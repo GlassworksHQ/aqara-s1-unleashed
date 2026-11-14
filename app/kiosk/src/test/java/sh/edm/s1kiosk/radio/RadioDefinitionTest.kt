@@ -178,6 +178,18 @@ class RadioDefinitionTest {
     }
 
     @Test
+    fun aRouterHostThatFailedIsAProblemInTheNav() {
+        // CodeRabbit on #163: the helper says ok while its router host fails; the card said Error, the nav green.
+        fun status(mode: RadioMode, text: String) = radioDefinition(app, FixedReadout(
+            RadioFollowUp.Facts(mode, text, HelperFacts(true, 4), ZigbeeStack.AQARA, null, null, "http://homeassistant.local:8123", "192.0.2.10"),
+        )).settings().single().status()
+        assertEquals(dev.glassworks.pane.SettingsStatus.PROBLEM, status(RadioMode.ZIGBEE_ROUTER, "ok Zigbee router (repeater): router host error: no answer"))
+        assertEquals(dev.glassworks.pane.SettingsStatus.OK, status(RadioMode.ZIGBEE_TCP, "ok Zigbee coordinator (TCP): listening on :6638"))
+        assertEquals(dev.glassworks.pane.SettingsStatus.WORKING, status(RadioMode.ZIGBEE_TCP, "applying Zigbee coordinator (TCP)…"))
+        assertEquals(null, status(RadioMode.OFF, "ok Off: Aqara radio services stopped"))
+    }
+
+    @Test
     fun theRadiosFirmwareAndHelperAreOnItsPageButNotWhoIsConnected() {
         // #212: "Connected now" waits for the root helper to report the live peer (#217).
         val pane = object : dev.glassworks.pane.Pane {

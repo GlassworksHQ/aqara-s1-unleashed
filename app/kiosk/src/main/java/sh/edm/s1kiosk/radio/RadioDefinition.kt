@@ -9,6 +9,7 @@ import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
+import dev.glassworks.pane.SettingsStatus
 import dev.glassworks.pane.PaneChoice
 import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupOp
@@ -303,7 +304,8 @@ class RadioDefinition(
 
     /**
      * The settings menu's Radio section: on/off at the top right (asks before Off), the roles (design C)
-     * and the panel, then who may connect. Without the root helper the radio can't run, and the nav says so.
+     * and the panel, then who may connect. Its dot, after its name, follows the radio's status; without the
+     * root helper the radio can't run, and the nav says so.
      */
     override fun settings(): List<SettingsSection> {
         val running = readout.running()
@@ -322,6 +324,7 @@ class RadioDefinition(
         ) else listOf(allow, allowedNow) // nothing to drive without the controller: no picker or card
         return listOf(SettingsSection(
             id, "Radio", items, heading = "Zigbee / Thread radio", master = master(),
+            status = ::settingsStatus,
             // The radio thread's cached facts: this runs on the main thread whenever the menu draws, and
             // helperInstalled() can spawn getprop. Unknown until the radio's first refresh: not "can't run".
             unavailable = { if (readout.controller()?.helperShownIfKnown()?.installed == false) NO_HELPER else null },
@@ -340,7 +343,7 @@ class RadioDefinition(
             entities[objectId]?.let { e -> SettingsItem.Info({ title }, { e.shownState() ?: dev.glassworks.pane.UNKNOWN }) }
         }
         if (rows.isEmpty()) return own
-        return own.map { s -> SettingsSection(s.id, s.title, s.items + SettingsItem.Group("The radio", rows), s.heading, s.master, s.unavailable) }
+        return own.map { s -> SettingsSection(s.id, s.title, s.items + SettingsItem.Group("The radio", rows), s.heading, s.master, s.status, s.unavailable) }
     }
 
     /** The section's on/off: on shows the roles; off asks first, then turns the radio off (settings' log source). */
@@ -358,6 +361,21 @@ class RadioDefinition(
         val pending = readout.controller()?.requestPending == true
         if (on || (readout.mode() == RadioMode.OFF && !pending)) done(null)
         else Thread({ done(setModeFrom(RadioMode.OFF.id, "settings menu")) }, "s1-radio-off").apply { isDaemon = true; start() }
+    }
+
+    /**
+     * The nav's dot, the same health the radio's card shows (RadioFollowUp.health): green when the role
+     * runs or has joined, amber while it starts or waits, rose when it failed (also a Zigbee router whose
+     * router host failed under an `ok` helper); none when off.
+     */
+    private fun settingsStatus(): SettingsStatus? {
+        val f = readout.facts() ?: return null
+        return when (RadioFollowUp.health(f)) {
+            RadioFollowUp.Health.OFF -> null
+            RadioFollowUp.Health.RUNNING, RadioFollowUp.Health.JOINED -> SettingsStatus.OK
+            RadioFollowUp.Health.STARTING, RadioFollowUp.Health.WAITING -> SettingsStatus.WORKING
+            RadioFollowUp.Health.ERROR -> SettingsStatus.PROBLEM
+        }
     }
 
     /** A new allow-list: the old list stays on an error; otherwise done once the radio thread handed it to the helper. */

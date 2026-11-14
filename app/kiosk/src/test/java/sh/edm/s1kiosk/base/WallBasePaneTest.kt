@@ -60,6 +60,15 @@ class WallBasePaneTest {
         assertEquals(listOf("block_aqara_cloud", "aqara_cloud", "base"), shellList().map { it.objectId })
     }
 
+    @Test fun theSettingsPageOfAMountedBaseStillListsTheCloudEntities() {
+        // CodeRabbit on #235: mounting a base dropped Block Aqara cloud and the daemon from the page.
+        pane.tracker.apply(mapOf(BaseRes.DOCK_CLASS to 0x0100F110, BaseRes.CHANNEL_COUNT to 2, BaseRes.RELAY_MASK to 3), 0)
+        pane.baseListener.onLayout(pane.tracker.current()!!)
+        val items = WallBaseDefinition(KioskPrefs(app).paneFile("wall-base")).settings(pane).single().items
+        val ha = items.filterIsInstance<dev.glassworks.pane.SettingsItem.States>().single()
+        assertEquals("the base's own are its tiles and cards", listOf("Block Aqara cloud", "Aqara cloud daemon"), ha.rows().map { it.name })
+    }
+
     @Test fun aNewLayoutAsksTheShellToRebuildWithItsEntities() {
         pane.baseListener.onLayout(twoChannels)
 

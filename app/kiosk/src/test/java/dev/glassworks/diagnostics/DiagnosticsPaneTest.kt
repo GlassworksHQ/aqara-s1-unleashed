@@ -80,7 +80,13 @@ class DiagnosticsPaneTest {
         // Every sample, also the ones within the band Home Assistant doesn't get.
         assertEquals(DiagnosticsPane.HOUR_SAMPLES, p.lastHour("memory_available").size)
         assertEquals(sample(64 * 60_000L, CpuTimes(0, 0), 0).elapsedMs, p.lastSample!!.elapsedMs)
+        assertEquals(104f, p.current("cpu_temperature"))
+        samples += sample(65 * 60_000L, CpuTimes(9000, 5000), ticks = 200, temperature = 50f, rssi = null)
+        p.tick()
+        assertEquals("Wi-Fi gone: no reading now", null, p.current("wifi_signal"))
+        assertEquals("its hour stays for the line", DiagnosticsPane.HOUR_SAMPLES, p.lastHour("wifi_signal").size)
         p.stop()
+        assertEquals(null, p.current("cpu_temperature"))
         assertEquals(emptyList<Float>(), p.lastHour("cpu_temperature"))
         assertEquals(null, p.lastSample)
     }

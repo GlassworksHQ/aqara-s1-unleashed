@@ -3,6 +3,8 @@ package sh.edm.s1kiosk.frame
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.os.SystemClock
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -53,7 +55,12 @@ internal class TimeZoneView(private val host: SettingsItem.NativeHost, private v
         val rule = pane.homeAssistantRule ?: return null
         val key = rule to current()
         haCache?.let { (k, v) -> if (k == key) return v }
-        return choices.homeAssistant(rule, current(), Instant.now()).also { haCache = key to it }
+        val started = SystemClock.elapsedRealtimeNanos()
+        return choices.homeAssistant(rule, current(), Instant.now()).also {
+            haCache = key to it
+            // On the main thread: the panel run checks this stays under a frame (16 ms).
+            Log.i(TimeZoneKeeper.TAG, "matched Home Assistant's zone in ${(SystemClock.elapsedRealtimeNanos() - started) / 1_000_000} ms: ${it?.zone ?: "none"}")
+        }
     }
 
     override fun refresh() {
@@ -64,7 +71,7 @@ internal class TimeZoneView(private val host: SettingsItem.NativeHost, private v
         keptValue.text = line
         val ha = homeAssistant()
         haRow.visibility = if (ha == null) View.GONE else View.VISIBLE
-        haValue.text = ha?.let { if (it.same) "${it.offset} · the same as the panel's" else "${it.offset} · like ${it.zone}, not the panel's" }.orEmpty()
+        haValue.text = ha?.line(now).orEmpty()
     }
 
     private fun row(title: TextView, value: TextView, chevron: Boolean) = LinearLayout(context).apply {
@@ -183,7 +190,7 @@ internal class TimeZoneView(private val host: SettingsItem.NativeHost, private v
                     minimumHeight = px(62f)
                     addView(LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
-                        addView(g.text(15.5f, Glass.TX).apply { text = "Home Assistant's clock: ${ha.offset}" })
+                        addView(g.text(15.5f, Glass.TX).apply { text = "Home Assistant's clock: ${TimeZoneChoices.offset(ha.zone, now)}" })
                         val clock = TimeZoneChoices.clock(ha.zone, now)
                         addView(g.text(13.5f, Glass.MU).apply { text = if (ha.same) "The same as the panel's · $clock now" else "Keeps ${ha.zone} · $clock now" })
                     }, LinearLayout.LayoutParams(0, -2, 1f))

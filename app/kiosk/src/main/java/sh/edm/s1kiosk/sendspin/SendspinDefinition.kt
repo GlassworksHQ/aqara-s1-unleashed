@@ -11,7 +11,14 @@ import dev.glassworks.pane.inHomeAssistant
 import java.net.URI
 
 /** The Sendspin player ([SendspinPane]) for the whole process: its on/off and adb extras (app/README.md). [file] is its settings file. */
-class SendspinDefinition(file: SharedPreferences) : PaneDefinition {
+class SendspinDefinition(
+    file: SharedPreferences,
+    /**
+     * Runs the page's volume change: it writes to Music Assistant's socket, which the main thread must
+     * not do. A test runs it by hand.
+     */
+    private val background: (Runnable) -> Unit = { Thread(it, "s1-sendspin-volume").apply { isDaemon = true }.start() },
+) : PaneDefinition {
     override val id = "sendspin"
 
     private val prefs = SendspinPrefs(file)
@@ -31,7 +38,9 @@ class SendspinDefinition(file: SharedPreferences) : PaneDefinition {
         return listOf(SettingsSection(id, "Music", listOfNotNull(
             SettingsItem.Status(text = { status(player.status, player.serverUrl) }, ok = { connected(player.status.phase) }),
             SettingsItem.Info({ "Now playing" }, { player.nowPlayingText ?: "Nothing" }),
-            SettingsItem.Slider("Volume", { player.volume.toFloat() }, 0f, 100f, 1f, { "${it.toInt()} %" }) { v, done -> player.setVolume(v.toInt()); done(null) },
+            SettingsItem.Slider("Volume", { player.volume.toFloat() }, 0f, 100f, 1f, { "${it.toInt()} %" }) { v, done ->
+                background { player.setVolume(v.toInt()); done(null) }
+            },
             SettingsItem.Info({ "Audio" }, { audio(player.status) }),
             inHomeAssistant(p),
         )))

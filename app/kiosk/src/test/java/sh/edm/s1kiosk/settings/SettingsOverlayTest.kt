@@ -370,4 +370,70 @@ class SettingsOverlayTest {
         assertEquals("hey_jarvis", word)
         assertTrue(shown(o, "Hey Jarvis"))
     }
+
+    @Test
+    fun aStatusDotFollowsTheNameSoNamesLineUp() {
+        // Maintainer, 2026-11-13: "Radio ●", not "● Radio".
+        val o = open(model = { _ ->
+            KioskSettingsOverlay.Model(listOf(
+                SettingsSection("voice", "Voice", listOf(SettingsItem.Note { "" })),
+                SettingsSection("radio", "Radio", listOf(SettingsItem.Note { "" }), status = { dev.glassworks.pane.SettingsStatus.OK }),
+            ), "0.4.3", setOf("voice", "radio"))
+        })
+        o.previewSection("voice")
+        Mockup.layout(o)
+        val radio = Mockup.label(o, "Radio")
+        val voice = Mockup.label(o, "Voice")
+        val row = radio.parent as ViewGroup
+        assertEquals("the name first, then its dot", listOf(radio as View, row.findViewsWithText("status").single()), List(2) { row.getChildAt(it) })
+        fun x(v: View) = IntArray(2).also { v.getLocationInWindow(it) }[0]
+        assertEquals("every name starts at the same x", x(voice), x(radio))
+    }
+
+    @Test
+    fun aPaneTurnedOffFromHomeAssistantChangesItsOpenPage() {
+        // CodeRabbit on #235: the switch followed, the page kept the pane's controls.
+        val off = mutableSetOf<String>()
+        val o = panes(off)
+        o.previewSection("b")
+        Mockup.idle()
+        assertTrue(shown(o, "b is on"))
+        off += "b"
+        o.refresh()
+        Mockup.idle()
+        assertTrue(shown(o, "b is off"))
+        assertTrue(shown(o, "Off · 1"))
+    }
+
+    @Test
+    fun aPageWhoseItemsChangeWhileOpenIsDrawnAgain() {
+        // CodeRabbit on #235: a base mounted while the page was open kept the "no base" card.
+        var attached = false
+        fun model() = KioskSettingsOverlay.Model(listOf(SettingsSection("wall-base", "Wall base",
+            if (attached) listOf(SettingsItem.Info({ "Relay 1" }, { "On" })) else listOf(SettingsItem.Note { "No base connected" }),
+        )), "0.4.3", setOf("wall-base"))
+        val o = open(model = { model() }).apply { reload = ::model }
+        assertTrue(shown(o, "No base connected"))
+        o.refresh()
+        assertTrue("the same shape: not drawn again", shown(o, "No base connected"))
+        attached = true
+        o.refresh()
+        Mockup.idle()
+        assertTrue(shown(o, "Relay 1"))
+        assertFalse(shown(o, "No base connected"))
+    }
+
+    @Test
+    fun aSliderFollowsAValueChangedElsewhere() {
+        // CodeRabbit on #235: Home Assistant set the volume, the open page kept the old one.
+        var volume = 40f
+        val o = one(listOf(SettingsItem.Slider("Volume", { volume }, 0f, 100f, 1f, { "${it.toInt()} %" }) { v, done -> volume = v; done(null) }))
+        assertTrue(shown(o, "40 %"))
+        volume = 25f
+        o.refresh()
+        assertTrue(shown(o, "25 %"))
+        val slider = Mockup.label(o, "Volume").let { generateSequence(listOf<View>(o)) { l -> l.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null } }
+            .flatten().filterIsInstance<sh.edm.s1kiosk.ui.GlassSlider>().single() }
+        assertEquals(25f, slider.value, 0f)
+    }
 }

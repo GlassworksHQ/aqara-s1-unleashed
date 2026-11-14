@@ -51,6 +51,9 @@ class PosixTimeZone private constructor(
     }
 
     companion object {
+        /** The widest offset a clock can have (`ZoneOffset`'s range): a rule past it is not a zone. */
+        private const val MAX_OFFSET_S = 18 * 3600
+
         /** [tz] parsed, or null when it isn't a rule this understands. */
         fun parse(tz: String): PosixTimeZone? = runCatching { Parser(tz.trim()).zone() }.getOrNull()
     }
@@ -61,9 +64,11 @@ class PosixTimeZone private constructor(
         fun zone(): PosixTimeZone {
             name()
             val std = -offset()
+            require(kotlin.math.abs(std) <= MAX_OFFSET_S)
             if (i == s.length) return PosixTimeZone(std, null, null, null)
             name()
             val dst = if (i < s.length && s[i] != ',') -offset() else std + 3600
+            require(kotlin.math.abs(dst) <= MAX_OFFSET_S)
             expect(',')
             val start = rule()
             expect(',')

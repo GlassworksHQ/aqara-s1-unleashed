@@ -28,9 +28,14 @@ class SettingsSection(
      * pane's setup card ([PaneChoice]) unless the pane gives its own (the radio asks before turning off).
      */
     val master: SettingsItem.Switch? = null,
+    /** The dot after its name in the nav: how the pane is doing now, or null for none. */
+    val status: () -> SettingsStatus? = { null },
     /** Why the pane can't run here, or null: the nav greys it and the page says why. */
     val unavailable: () -> String? = { null },
 )
+
+/** A section's dot in the nav, after its name. Status colours mean status only: green, amber, rose. */
+enum class SettingsStatus { OK, WORKING, PROBLEM }
 
 /**
  * The panes' sections as every settings surface shows them (#63, #33, #67, #212): each pane's own, with
@@ -54,7 +59,7 @@ fun paneSections(definitions: List<PaneDefinition>, running: (String) -> Pane? =
     when {
         own.isNotEmpty() -> own.mapIndexed { i, s ->
             if (i > 0 || s.master != null || master == null) s
-            else SettingsSection(s.id, s.title, s.items, s.heading, master, s.unavailable)
+            else SettingsSection(s.id, s.title, s.items, s.heading, master, s.status, s.unavailable)
         }
         choice != null -> listOf(SettingsSection(
             d.id, choice.title,
@@ -72,10 +77,12 @@ fun paneSections(definitions: List<PaneDefinition>, running: (String) -> Pane? =
  * state and are left out. Null when the pane isn't built or has no such entity.
  */
 fun inHomeAssistant(pane: Pane?, on: Boolean = true, only: (ApiEntity) -> Boolean = { true }): SettingsItem.States? {
-    val entities = pane?.entities().orEmpty().filter { it !is ButtonEntity && it !is EventEntity && only(it) }
-    if (entities.isEmpty()) return null
+    if (pane == null) return null
+    // Read again with the rows: a pane's list can change while the page is open (a wall base mounted).
+    fun shown() = pane.entities().filter { it !is ButtonEntity && it !is EventEntity && only(it) }
+    if (shown().isEmpty()) return null
     return SettingsItem.States(IN_HOME_ASSISTANT, rows = {
-        entities.map { e -> SettingsItem.StateRow(e.name, if (on) e.shownState() ?: UNKNOWN else UNAVAILABLE, e.disabledByDefault) }
+        shown().map { e -> SettingsItem.StateRow(e.name, if (on) e.shownState() ?: UNKNOWN else UNAVAILABLE, e.disabledByDefault) }
     })
 }
 

@@ -17,6 +17,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
+import dev.glassworks.pane.SettingsStatus
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.ui.Glass
 import sh.edm.s1kiosk.ui.Glass.Companion.AMBER
@@ -38,7 +39,9 @@ import java.util.Locale
  * same as setup's): the core's Dashboard, Screen and Network, then a Panes group with each pane's
  * section, then Log, Security and About, in the order [Model.sections] has them
  * (dev.glassworks.pane.settingsOrder, #33's nav), and Done. A pane that can't run is greyed; panes that
- * are off fold under "Off · N" at the end of the group (#212). No pane has a dot in the rail. Right: the section that is picked, in a glass card: a pane's on/off at top right
+ * are off fold under "Off · N" at the end of the group (#212). A pane's status dot follows its name, so
+ * every name starts at the same x. Right: the section that is picked, in a glass card: a pane's on/off
+ * at top right
  * ([SettingsSection.master]), then its rows, each a name with its value under it. A switch applies when
  * tapped, a slider when let go, a duration or a time window when picked, a typed value on Save. A change
  * that only takes effect at start shows #33's banner with Restart now.
@@ -204,10 +207,36 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     /** While the menu is open (MainActivity, every couple of seconds): native views, live rows and the rail read their state again. */
     fun refresh() {
         if (!isShowing) return
+        if (!sheet.isOpen && !masterBusy) reload?.invoke()?.let { next ->
+            model = next
+            val s = next.sections.firstOrNull { it.id == current }
+            // The page changed under the person (a base mounted, the pane turned off from Home Assistant,
+            // the device started): draw it again from the new model. Otherwise only its values move.
+            if (s == null || shape(s) != builtShape) {
+                if (s == null) current = next.sections.firstOrNull()?.id
+                build()
+                return
+            }
+        }
         natives.values.forEach { it.refresh() }
         live.forEach { it() }
         bindRail()
         bindMaster()
+    }
+
+    /** The shape the open page was drawn from ([shape]). */
+    private var builtShape: List<Any?> = emptyList()
+
+    /** What a page is made of: its master's value, whether it can run, and its items' kinds and names. */
+    private fun shape(s: SettingsSection): List<Any?> {
+        fun of(items: List<SettingsItem>): List<Any?> = items.flatMap { i ->
+            when (i) {
+                is SettingsItem.Group -> listOf("group ${i.title}") + of(i.items)
+                is SettingsItem.Native -> listOf("native ${i.key}")
+                else -> listOf("${i::class.simpleName} ${titleOf(i).orEmpty()}")
+            }
+        }
+        return listOf(s.master?.value(), s.unavailable() != null) + of(s.items)
     }
 
     /** The page's read-only rows ([SettingsItem.States]) that read their values again on [refresh]. */
@@ -250,6 +279,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         val m = model ?: return
         bindRail()
         val s = m.sections.firstOrNull { it.id == current } ?: return
+        builtShape = shape(s)
         crumb.visibility = if (s.id in m.panes) View.VISIBLE else View.GONE
         title.text = s.heading
         val why = s.unavailable()
@@ -270,10 +300,12 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         val m = model ?: return
         nav.bind(m.sections.map { s ->
             val why = s.unavailable()
+            val status = s.status().takeIf { why == null }
             GroupedRail.Row(
                 s.id, s.title, group = if (s.id in m.panes) PANES else null,
                 dim = why != null, detail = if (why != null) "Can't run" else null,
                 off = why == null && s.master?.value() == false,
+                badge = when (status) { null -> null; SettingsStatus.OK -> Glass.GREEN; SettingsStatus.WORKING -> AMBER; SettingsStatus.PROBLEM -> ROSE },
             )
         }, mapOf(PANES to "Panes"), current)
     }
@@ -539,6 +571,11 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
                     else problem.visibility = View.GONE
                 }
             }
+        }
+        // A value changed elsewhere (Home Assistant set the volume) moves the slider too, unless it is held.
+        live += {
+            val v = i.value()
+            if (!slider.dragging && v != slider.value) { slider.value = v; shown.text = i.shown(v) }
         }
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL

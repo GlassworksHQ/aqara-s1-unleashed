@@ -36,9 +36,10 @@ class TimeZoneChoices(
     fun regionOf(zone: String): String = regions.firstOrNull { zone.startsWith("$it/") } ?: UTC
 
     /**
-     * Home Assistant's time zone, from the POSIX rule it sends ([PosixTimeZone]): its offset now,
-     * whether the panel's [current] zone keeps the same clock all year, and the zone "Use it" keeps,
-     * one in [current]'s region first. Null when the rule can't be read or no zone here keeps its clock.
+     * Home Assistant's time zone, from the POSIX rule it sends ([PosixTimeZone]): whether the panel's
+     * [current] zone keeps the same clock all year, and the zone "Use it" keeps, one in [current]'s region
+     * first. Null when the rule can't be read or no zone here keeps its clock. Its offset changes with
+     * summer time, so it is read from [HomeAssistantZone.zone] when it is shown ([offset]).
      */
     fun homeAssistant(rule: String, current: String, now: Instant): HomeAssistantZone? {
         val like = PosixTimeZone.parse(rule)?.zonesLike(known, now).orEmpty().map(canonical).distinct()
@@ -46,11 +47,17 @@ class TimeZoneChoices(
         val pick = if (current in like) current else like.minWith(
             compareBy<String>({ regionOf(it) != regionOf(current) }, { REGIONS.indexOf(regionOf(it)).let { i -> if (i < 0) REGIONS.size else i } }, { it }),
         )
-        return HomeAssistantZone(offset(pick, now), current in like, pick)
+        return HomeAssistantZone(current in like, pick)
     }
 
     /** See [homeAssistant]. */
-    data class HomeAssistantZone(val offset: String, val same: Boolean, val zone: String)
+    data class HomeAssistantZone(val same: Boolean, val zone: String) {
+        /** The page's line at [now]: `UTC+01:00 · the same as the panel's`. The offset is read then, so it follows summer time. */
+        fun line(now: Instant): String {
+            val o = offset(zone, now)
+            return if (same) "$o · the same as the panel's" else "$o · like $zone, not the panel's"
+        }
+    }
 
     companion object {
         const val UTC = "UTC"

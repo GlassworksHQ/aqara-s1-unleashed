@@ -19,7 +19,7 @@ class DiagnosticsPageTest {
     private val now = (3L * 24 + 4) * 3_600_000L + 120_000L
 
     @Test fun sixTilesWithTheirLastHour() {
-        val t = DiagnosticsPage.tiles({ hour[it].orEmpty() }, sample.copy(appStartElapsedMs = now - (2 * 60 + 10) * 60_000L), now, hasTemperature = true)
+        val t = DiagnosticsPage.tiles({ hour[it]?.lastOrNull() }, { hour[it].orEmpty() }, sample.copy(appStartElapsedMs = now - (2 * 60 + 10) * 60_000L), now, hasTemperature = true)
         assertEquals(listOf("CPU", "Temperature", "RAM", "Wi-Fi", "Storage", "Uptime"), t.map { it.name })
         assertEquals(listOf("23", "51.5", "612", "−58", "4.12", "3 d 4 h"), t.map { it.value })
         assertEquals(listOf("App 9 %", "CPU", "App 214 MiB", "Good · 72 Mbit/s", "of 5.6 GiB", "App 2 h 10 min"), t.map { it.detail })
@@ -29,10 +29,19 @@ class DiagnosticsPageTest {
     }
 
     @Test fun beforeTheFirstSampleTheTilesSayNothingYet() {
-        val t = DiagnosticsPage.tiles({ emptyList() }, null, now, hasTemperature = false)
+        val t = DiagnosticsPage.tiles({ null }, { emptyList() }, null, now, hasTemperature = false)
         assertEquals(listOf("CPU", "RAM", "Wi-Fi", "Storage", "Uptime"), t.map { it.name })
         assertEquals(listOf("—", "—", "—", "—"), t.take(4).map { it.value })
         assertEquals(null, t[3].meter)
+    }
+
+    @Test fun aReadingThatWentAwayShowsNothingButKeepsItsLine() {
+        // CodeRabbit on #235: Wi-Fi dropped, yet the tile kept the hour's last -58 and "Good".
+        val t = DiagnosticsPage.tiles({ id -> if (id == "wifi_signal") null else hour[id]?.lastOrNull() }, { hour[it].orEmpty() }, sample, now, hasTemperature = true)
+        val wifi = t.first { it.name == "Wi-Fi" }
+        assertEquals("—", wifi.value)
+        assertEquals("72 Mbit/s", wifi.detail)
+        assertEquals(listOf(-57f, -58f), wifi.history)
     }
 
     @Test fun theFooterAndTheWords() {

@@ -26,7 +26,7 @@ class DiagnosticsDefinition(file: SharedPreferences) : PaneDefinition {
     override fun settings(running: Pane?): List<SettingsSection> {
         val p = running as? DiagnosticsPane ?: return emptyList()
         return listOf(SettingsSection(id, "Diagnostics", listOf(
-            SettingsItem.Tiles(3) { DiagnosticsPage.tiles(p::lastHour, p.lastSample, SystemClock.elapsedRealtime(), p.hasTemperature) },
+            SettingsItem.Tiles(3) { DiagnosticsPage.tiles(p::current, p::lastHour, p.lastSample, SystemClock.elapsedRealtime(), p.hasTemperature) },
             SettingsItem.Note { DiagnosticsPage.footer(p.lastRestartReason, p.lastSample?.contentProcesses) },
         )))
     }

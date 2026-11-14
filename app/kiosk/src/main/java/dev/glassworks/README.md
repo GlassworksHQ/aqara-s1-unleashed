@@ -314,7 +314,9 @@ steps but no card, with an error in the log: the person could never turn it on o
 `Status` (the line under a page's heading), `Tiles` (readings with their last hour, #212) and `States`
 (entities as Home Assistant shows them). A slider, a duration (picked from its choices, with units), a
 choice and a daily window are never typed (#63 round 2), so a browser can draw the same controls.
-`Info`, `Status`, `Tiles` and `States` are read again every couple of seconds while the page is open. A `Switch` can ask first (`confirm` gives a `Confirm`: the question, what it costs,
+`Info`, `Status`, `Tiles`, `States` and a `Slider` not being dragged are read again every couple of
+seconds while the page is open. If the page itself changes (a base mounted, the pane turned off from
+Home Assistant, the device started), the menu draws it again from the definitions. A `Switch` can ask first (`confirm` gives a `Confirm`: the question, what it costs,
 the button's word). Each change applies on its own, as the person makes it
 (#63): there is no "Save & restart". `done` can come from another thread (the radio's allow-list) and
 reports a problem in words. An item that only takes effect when the app starts again sets
@@ -328,8 +330,8 @@ sections in definition order (Voice, Music, Radio, Wall base, Time zone), then L
 About: the Manage page's nav (#33). A section without items is left out. The panel's menu draws them
 in the same rail as setup (`ui/GroupedRail`): the panes' sections under a Panes group that opens while
 one of them is picked. Panes whose `master` is off fold under "Off · N" at the end of the group
-(#212); the fold opens while one of them is picked. No pane has a dot in the rail, so every name starts
-in line.
+(#212); the fold opens while one of them is picked. A section's `status` is a dot after its name
+("Radio ●": green, amber, rose, status only), so every name starts at the same x.
 
 **A pane's section has its on/off.** `paneSections` gives each pane's section a `master`, the
 switch at the top right of its page, made from the pane's setup card (`setupChoice`), else from its

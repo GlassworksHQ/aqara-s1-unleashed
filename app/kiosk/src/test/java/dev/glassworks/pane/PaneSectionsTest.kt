@@ -26,8 +26,10 @@ class PaneSectionsTest {
     private val pane = object : Pane {
         override val id = "lamp"
         var watts: Float? = 12.4f
-        override fun entities() = listOf(
+        var extra = false
+        override fun entities() = listOfNotNull(
             SensorEntity("lamp_power", "Lamp power", unit = "W", accuracy = 1, get = { watts }),
+            if (extra) TextSensorEntity("lamp_relay", "Lamp relay", get = { "on" }) else null,
             TextSensorEntity("lamp_firmware", "Lamp firmware", category = EntityCategory.DIAGNOSTIC, disabledByDefault = true, get = { "1.2" }),
             ButtonEntity("lamp_reset", "Reset lamp", press = {}),
             EventEntity("lamp_button", "Lamp button", eventTypes = listOf("single")),
@@ -59,6 +61,13 @@ class PaneSectionsTest {
         assertEquals(UNKNOWN, rows(s).first().second)
         pane.watts = 3f
         assertEquals("3.0 W", rows(s).first().second)
+    }
+
+    @Test fun entitiesThePaneAddsWhileThePageIsOpenShowUp() {
+        // CodeRabbit on #235: a base mounted while the page was open kept the old list.
+        val s = paneSections(listOf(definition())) { pane }.single()
+        pane.extra = true
+        assertEquals(listOf("Lamp power", "Lamp relay", "Lamp firmware"), rows(s).map { it.first })
     }
 
     @Test fun anOffPaneSaysWhatOffMeansAndItsEntitiesAreUnavailable() {

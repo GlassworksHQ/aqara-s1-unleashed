@@ -87,6 +87,12 @@ class DiagnosticsPane internal constructor(
     /** Why the app last restarted, in words, or null while the pane doesn't run. */
     val lastRestartReason: String? get() = restartReason
 
+    /** Each metric's reading in the last sample; absent when that sample had none (Wi-Fi gone). */
+    private val now = ConcurrentHashMap<String, Float>()
+
+    /** [objectId]'s reading in the last sample, or null when it had none. Any thread. */
+    fun current(objectId: String): Float? = now[objectId]
+
     /** [objectId]'s values over the last hour, oldest first, at most [HOUR_SAMPLES]. Any thread. */
     fun lastHour(objectId: String): List<Float> = synchronized(hour) { hour[objectId]?.toList().orEmpty() }
 
@@ -127,6 +133,7 @@ class DiagnosticsPane internal constructor(
         values.clear()
         restartReason = null
         lastSample = null
+        now.clear()
         synchronized(hour) { hour.clear() }
         ctx.publishStates()
     }
@@ -138,6 +145,7 @@ class DiagnosticsPane internal constructor(
         var changed = false
         for (m in metrics) {
             val sampled = m.value(prev, cur)?.let { roundTo(it, m.accuracy) }
+            if (sampled == null) now.remove(m.objectId) else now[m.objectId] = sampled
             if (sampled != null) synchronized(hour) {
                 val h = hour.getOrPut(m.objectId) { ArrayDeque(HOUR_SAMPLES) }
                 if (h.size == HOUR_SAMPLES) h.removeFirst()

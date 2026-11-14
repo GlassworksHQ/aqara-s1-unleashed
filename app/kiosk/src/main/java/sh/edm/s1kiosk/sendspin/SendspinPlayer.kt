@@ -200,7 +200,9 @@ class SendspinPlayer(
     @Volatile var status: SendspinSession.Status = SendspinSession.Status(SendspinSession.Phase.CLOSED); internal set
     /** True once the client has started since boot (ESPHome reports the client id only then). */
     @Volatile var started = false; private set
-    @Volatile internal var lastUrl: String? = null
+    @Volatile private var lastUrl: String? = null
+    /** The server of the session that runs now, or null: what the settings page names (#212). Set internally by the mock-ups too. */
+    @Volatile internal var activeUrl: String? = null
     @Volatile internal var nowPlaying: String? = null
     /** Why FLAC is no longer offered this run (decoder failures), or null. */
     @Volatile private var flacFailure: String? = null
@@ -317,6 +319,7 @@ class SendspinPlayer(
         r.netCallback?.let { cb -> runCatching { ctx.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) } }
         var interrupted = session?.let { closeOffThisThread(it, reason) } ?: false
         session = null
+        activeUrl = null
         synchronized(wake) { wake.notifyAll() }
         // The connection thread is not joined: it may sit in mDNS discovery or a socket read, and
         // once the run is no longer current it can't reach the next one.
@@ -399,11 +402,12 @@ class SendspinPlayer(
             }
             val s = connect(url, hello(), r.hooks)
             // stop() closes the session it finds; a session published after that must not run.
-            if (!ifCurrent(r) { session = s }) return
+            if (!ifCurrent(r) { session = s; activeUrl = url }) return
             SsLog.i("Connecting to $url")
             val res = s.run()
             val stillCurrent = ifCurrent(r) {
                 session = null
+                activeUrl = null
                 status = s.status()
                 if (res.established) lastUrl = url else if (url == lastUrl) lastUrl = null
             }
@@ -583,8 +587,8 @@ class SendspinPlayer(
     val volume: Int get() = store.volume
     /** What plays now (`artist – title`), or null; for the settings page (#212). */
     val nowPlayingText: String? get() = nowPlaying
-    /** The server it is connected to, or last was. */
-    val serverUrl: String? get() = lastUrl
+    /** The server of the session that runs now, or null between sessions. */
+    val serverUrl: String? get() = activeUrl
     val muted: Boolean get() = store.muted
     /** Tests: whether the current run's scheduler is playing a stream. */
     internal val outputActive: Boolean get() = current?.scheduler?.isActive == true
