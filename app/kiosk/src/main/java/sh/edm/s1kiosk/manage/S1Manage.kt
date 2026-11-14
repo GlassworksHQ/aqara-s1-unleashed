@@ -5,7 +5,6 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -29,6 +28,7 @@ import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
 import dev.glassworks.pane.paneSections
 import dev.glassworks.pane.settingsOrder
+import dev.glassworks.platform.WifiLink
 import dev.glassworks.web.HttpRequest
 import dev.glassworks.web.HttpResponse
 import dev.glassworks.web.HttpServer
@@ -50,6 +50,7 @@ import sh.edm.s1kiosk.auth.WsHaSocket
 import sh.edm.s1kiosk.esphome.PanelDevice
 import sh.edm.s1kiosk.settings.CoreSettings
 import sh.edm.s1kiosk.setup.SetupState
+import sh.edm.s1kiosk.update.AppVersion
 import sh.edm.s1kiosk.update.UpdateManager
 import java.io.File
 import java.io.IOException
@@ -61,7 +62,11 @@ import java.util.Locale
  * ([SignInServer]) behind it, what the page shows about this panel, and its actions. Made by
  * [HaAuth.startServer], which owns the port.
  */
-class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn: SignInServer, tokens: HaTokenClient, private val prefs: KioskPrefs) {
+class S1Manage(
+    context: Context, private val runtime: GlassworksRuntime, signIn: SignInServer, tokens: HaTokenClient, private val prefs: KioskPrefs,
+    /** The version the page shows ([AppVersion.shown]); a test passes a test build's. */
+    private val version: String = AppVersion.shown,
+) {
     private val app = context.applicationContext
     private val dir = File(app.filesDir, "manage")
     val log = ManageLog(File(dir, "log"))
@@ -101,7 +106,7 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
 
         override fun status(): PanelStatus {
             val defs = runtime.paneDefinitions(app)
-            val core = CoreSettings(prefs, BuildConfig.VERSION_NAME, status = { runtime.screen.statusLine() },
+            val core = CoreSettings(prefs, version, status = { runtime.screen.statusLine() },
                 deviceSettings = null, licences = SettingsItem.Link(CoreSettings.LICENCES_TITLE, CoreSettings.LICENCES_DETAIL) {})
             // The panes' sections as the panel's menu has them, each with its on/off (#67) as the master.
             val panes = defs.flatMap { d -> runCatching { paneSections(listOf(d), runtime::runningPane) }.onFailure { Log.w(TAG, "${d.id}'s settings failed", it) }.getOrDefault(emptyList()) }
@@ -109,14 +114,15 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
             return PanelStatus(
                 name = name,
                 frame = "S1 Plus",
-                version = BuildConfig.VERSION_NAME,
-                uptimeMs = SystemClock.elapsedRealtime(),
+                version = version,
+                // The app's, as the line it sits on is the app's: the device's is in the diagnostics (#263).
+                uptimeMs = SystemClock.elapsedRealtime() - android.os.Process.getStartElapsedRealtime(),
                 haBase = prefs.haBase,
                 tiles = listOf(haTile(), wifiTile(), engineTile(), memoryTile()),
                 panes = defs.map { d -> s1PaneRow(d.id, panes.firstOrNull { it.id == d.id }) },
                 sections = sections.filter { it.id != "about" },
                 about = listOf(
-                    "Glassworks Panel" to "S1 Kiosk ${BuildConfig.VERSION_NAME}",
+                    "Glassworks Panel" to "S1 Kiosk $version",
                     "Frame" to "Aqara Panel Hub S1 Plus",
                     "Android" to Build.VERSION.RELEASE,
                     "Engine" to runtime.engine.name.ifEmpty { "Unknown" },
@@ -130,7 +136,7 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
             val s = status()
             appendLine("Version: S1 Kiosk ${s.version} (${BuildConfig.VERSION_CODE})")
             appendLine("Frame: ${runtime.frame.board}, Android ${Build.VERSION.RELEASE}, ${Build.MODEL}")
-            appendLine("Up: ${s.uptimeMs / 1000} s; app up ${(SystemClock.elapsedRealtime() - android.os.Process.getStartElapsedRealtime()) / 1000} s")
+            appendLine("Device up: ${SystemClock.elapsedRealtime() / 1000} s; app up ${s.uptimeMs / 1000} s")
             appendLine("Home Assistant: ${s.haBase ?: "none"}; panel signed in: ${HaAuth.signedIn}; added: ${prefs.haSeen}")
             for (t in s.tiles) appendLine("${t.label}: ${t.value} (${t.detail})")
             appendLine()
@@ -184,13 +190,15 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
         else Tile("Home Assistant", value, host, if (connected) Tile.Tone.OK else if (prefs.haSeen) Tile.Tone.PROBLEM else Tile.Tone.OFF)
     }
 
-    @Suppress("DEPRECATION")
     private fun wifiTile(): Tile {
-        val info = runCatching { app.getSystemService(WifiManager::class.java)?.connectionInfo }.getOrNull()
-        if (info == null || info.networkId == -1) return Tile("Wi-Fi", "Not connected", "", Tile.Tone.PROBLEM)
-        val ssid = info.ssid?.trim('"')?.takeIf { it.isNotEmpty() && it != "<unknown ssid>" } ?: "Connected"
-        val ip = info.ipAddress.let { a -> if (a == 0) null else "${a and 255}.${a shr 8 and 255}.${a shr 16 and 255}.${a shr 24 and 255}" }
-        return Tile("Wi-Fi", ssid, listOfNotNull("${info.rssi} dBm".replace('-', '−'), ip).joinToString(" · "), Tile.Tone.OK)
+        val link = try {
+            WifiLink.of(app)
+        } catch (e: RuntimeException) {
+            // The query failed, which says nothing about the link: not "Not connected".
+            Log.w(TAG, "can't read the Wi-Fi link", e)
+            return Tile("Wi-Fi", "Unknown", "", null)
+        } ?: return Tile("Wi-Fi", "Not connected", "", Tile.Tone.PROBLEM)
+        return Tile("Wi-Fi", link.ssid ?: "Connected", listOfNotNull(link.rssi?.let { "$it dBm".replace('-', '−') }, link.ipv4).joinToString(" · "), Tile.Tone.OK)
     }
 
     private fun engineTile(): Tile {

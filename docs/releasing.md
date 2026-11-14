@@ -301,7 +301,9 @@ gh run download <run-id> -n s1-kiosk-test-arm64-v8a-<sha>    # arm64-v8a, its ow
 variant with the release key, once per ABI. It takes the latest release's version, or the one in the branch name
 (Android refuses to install a lower versionCode, so a panel on an unreleased version needs that). The
 APK then installs over the panel's app, HA's update entity offers nothing, and the next real release
-replaces it. It carries **no
+replaces it. The build also gets its commit (`S1_TEST_BUILD`, a `BuildConfig` field): the Manage page
+and the settings' About say "0.4.3 · test build 28c157d", while versionName and versionCode stay the
+release's. It carries **no
 radio bundle**, so the panel's root side stays as it is. The artifact is kept for 3 days, and since
 the repo is public, any signed-in GitHub user can download it. To go back to the release, install
 its APK from the release page with `adb install -r`. Delete the `test-build/` branch when you're

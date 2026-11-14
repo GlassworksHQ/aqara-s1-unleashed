@@ -6,7 +6,6 @@ package dev.glassworks.diagnostics
 
 import android.app.ActivityManager
 import android.content.Context
-import android.net.wifi.WifiManager
 import android.os.Environment
 import android.os.Process
 import android.os.StatFs
@@ -14,6 +13,8 @@ import android.os.SystemClock
 import android.system.Os
 import android.system.OsConstants
 import dev.glassworks.platform.Platform
+import dev.glassworks.platform.WifiLink
+import sh.edm.esphome.EspHomeLog
 import java.io.File
 
 /** Where the pane gets its readings. */
@@ -37,7 +38,6 @@ class AndroidProbe(
     private val thermal: File = File("/sys/class/thermal"),
 ) : Probe {
     private val am = context.getSystemService(ActivityManager::class.java)
-    private val wifi = context.applicationContext.getSystemService(WifiManager::class.java)
     private val ticksPerSecond = Os.sysconf(OsConstants._SC_CLK_TCK)
     private val cpus = Os.sysconf(OsConstants._SC_NPROCESSORS_CONF).toInt()
     private val temperature by lazy { cpuThermalZone?.let { findThermalZone(thermal, it) } }
@@ -46,8 +46,8 @@ class AndroidProbe(
         // Android 5.1 and later list only this app's own processes.
         val processes = runCatching { am?.runningAppProcesses }.getOrNull().orEmpty()
         val pids = processes.map { it.pid }
-        @Suppress("DEPRECATION") // Its replacement, NetworkCapabilities.transportInfo, is Android 12.
-        val wifiInfo = runCatching { wifi?.connectionInfo }.getOrNull()
+        // A failed query leaves the Wi-Fi sensors unknown, not "not connected".
+        val wifi = runCatching { WifiLink.of(context) }.onFailure { EspHomeLog.w("diagnostics: can't read the Wi-Fi link", it) }.getOrNull()
         return Sample(
             elapsedMs = SystemClock.elapsedRealtime(),
             wallMs = System.currentTimeMillis(),
@@ -60,9 +60,8 @@ class AndroidProbe(
             memoryAvailableBytes = runCatching { am?.let { ActivityManager.MemoryInfo().also(it::getMemoryInfo).availMem } }.getOrNull(),
             appPssBytes = totalOrNull(pids.map { read(File(proc, "$it/smaps_rollup"))?.let(::parsePss) }),
             storageFreeBytes = runCatching { StatFs(Environment.getDataDirectory().path).availableBytes }.getOrNull(),
-            // -127 is WifiInfo.INVALID_RSSI and -1 an unknown link speed. Both mean Wi-Fi is not connected.
-            wifiRssi = wifiInfo?.rssi?.takeIf { it in -126..-1 },
-            wifiLinkSpeed = wifiInfo?.linkSpeed?.takeIf { it > 0 },
+            wifiRssi = wifi?.rssi,
+            wifiLinkSpeed = wifi?.linkSpeedMbps,
             appStartElapsedMs = Process.getStartElapsedRealtime(),
             storageTotalBytes = runCatching { StatFs(Environment.getDataDirectory().path).totalBytes }.getOrNull(),
         )

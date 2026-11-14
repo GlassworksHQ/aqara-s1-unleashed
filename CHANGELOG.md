@@ -130,6 +130,10 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **The Manage page shows the right uptime, Wi-Fi and version.** "Up" next to the app's version is
+  now how long the app has run, not the device. Wi-Fi reads "Connected" while it is, also on newer
+  Android that hides the network's name from the app; Home Assistant's Wi-Fi signal and link speed
+  read the same link. A test build says so next to its version ("0.4.3 · test build 28c157d").
 - **The screen stays on after Home Assistant wakes it.** After the panel had gone dark on its own,
   a wake that wasn't a touch (Home Assistant's screen switch, a timer, voice, Wi-Fi setup) turned the
   screen off again after about 20 seconds. Now it stays on until the panel's idle timeout, as after
