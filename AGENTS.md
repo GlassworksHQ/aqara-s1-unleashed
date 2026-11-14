@@ -144,6 +144,7 @@ header from the example in the table, then change the name, the tagline and the 
 
 | The README is for | Header | Copy it from |
 |---|---|---|
+| The repository's front page (the root `README.md`) | `banner-glassworks`, centred title and tagline, then the status and roadmap badges | [README.md](README.md) |
 | A library: something another project could use on its own (`app/libs/*`, `packages/*`, or such a package in `kiln/packages/`) | `banner-library-<name>`, centred title and tagline, then the MIT, status and roadmap badges | [improv](app/libs/improv/README.md) |
 | The Glassworks core or a pane | `banner-core` or `banner-pane`, title and tagline, then the part badge, licence, status and roadmap badges | [core](app/kiosk/src/main/java/dev/glassworks/README.md) |
 | Kiln | `banner-kiln`, title and tagline, then the Kiln, MIT, status and roadmap badges | [Kiln](kiln/apps/kiln/README.md) |
@@ -153,7 +154,8 @@ header from the example in the table, then change the name, the tagline and the 
 | A Glassworks spec in `docs/` that every frame follows (e.g. the perf grade) | The core badge alone, under the title | [principles.md](docs/principles.md) (its part badges) |
 
 Not every README gets one: research notes, scripts in `tools/*` (the doc they serve carries the badge), the old S1 installer in `kiln/src`
-and S1's own branding stay plain. The root README stays S1-branded until the rebrand.
+and S1's own branding stay plain. The S1's own detail (status, install, radio, FAQ) lives in
+[its frame README](frames/aqara-s1-plus/README.md), not the root one.
 
 - **A new library needs its banner first.** If `banner-library-<name>` isn't on
   [/brand#banners](https://www.glassworks.dev/brand#banners), add the library to glassworks.dev
