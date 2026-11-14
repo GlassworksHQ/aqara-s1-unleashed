@@ -32,7 +32,7 @@ image follows GitHub's theme.
 | A pane | **Pane badge** (`badge-pane-on-*.svg`) | The pane's README |
 | [Clarity](perf.md), the perf test and grade every frame follows | **Core badge** (`badge-core-on-*.svg`) alone, under the title. No banner | `docs/perf.md`. Its tools in `tools/perf` stay plain, like every dev tool |
 | The installer (`kiln/`, `tools/install.sh`) | **Kiln badge** (`badge-kiln-on-*.svg`) | Kiln's README. The S1 installer is still S1-branded until it moves into Kiln |
-| A frame (`frames/<id>/`) | **Frame banner** (`banner-frame-<id>-on-*.svg`), then the Built on Glassworks, status and roadmap badges | Top of `frames/<id>/README.md`. glassworks.dev draws it from the frame's `frame.json` (see [Adding a frame banner](#adding-a-frame-banner)) |
+| A frame (`frames/<id>/`) | **Frame banner** (`banner-frame-<id>-on-*.svg`), then the Built on Glassworks badge, the Kiln badge if Kiln installs it, and the status, roadmap and Clarity badges | Top of `frames/<id>/README.md`. glassworks.dev draws it from the frame's `frame.json` (see [Adding a frame banner](#adding-a-frame-banner)) |
 
 Device-specific code lives in the frame, so it doesn't get a badge of its own.
 

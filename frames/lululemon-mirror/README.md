@@ -1,0 +1,90 @@
+<p align="center">
+  <a href="https://www.glassworks.dev/frames/lululemon-mirror">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/banner-frame-lululemon-mirror-on-dark.svg">
+      <img alt="lululemon Studio Mirror, a Glassworks frame" src="https://www.glassworks.dev/brand/banner-frame-lululemon-mirror-on-light.svg" width="640">
+    </picture>
+  </a>
+</p>
+
+<h1 align="center">lululemon Studio Mirror</h1>
+
+<p align="center">
+  <b>A 40-inch mirror with Android behind it.</b><br>
+  A full-length mirror with a 40-inch portrait screen behind it. The original version takes a new Android image over fastboot.<br>
+  Originally sold as Mirror, by Mirror.co.
+</p>
+
+<p align="center">
+  <a href="https://www.glassworks.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-on-dark.svg">
+      <img alt="Built on Glassworks" src="https://www.glassworks.dev/brand/badge-on-light.svg" height="30">
+    </picture>
+  </a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-status-under-development-on-dark.svg">
+    <img alt="Status: under development" src="https://www.glassworks.dev/brand/badge-status-under-development-on-light.svg" height="30">
+  </picture>
+  <a href="https://github.com/orgs/GlassworksHQ/projects/1">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-roadmap-on-dark.svg">
+      <img alt="Roadmap" src="https://www.glassworks.dev/brand/badge-roadmap-on-light.svg" height="30">
+    </picture>
+  </a>
+  <a href="https://www.glassworks.dev/frames/lululemon-mirror">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/frames/lululemon-mirror/clarity-on-dark.svg">
+      <img alt="Clarity grade" src="https://www.glassworks.dev/frames/lululemon-mirror/clarity-on-light.svg" height="30">
+    </picture>
+  </a>
+</p>
+
+A Glassworks **frame**: the device definition for the lululemon Studio Mirror. Its data is in [`design/frame.json`](design/frame.json) (format: [frames/README.md](../README.md)), and [glassworks.dev/frames/lululemon-mirror](https://www.glassworks.dev/frames/lululemon-mirror) shows it.
+
+## Status
+
+**Status: planned.** Only the original version works: a Qualcomm board, stock software 1.x and a screen of about 40 inches. The later version (software 5.x, about 43 inches, a blue button on the top edge) has a locked NXP board.
+
+The Clarity badge above is its performance grade ([docs/perf.md](../../docs/perf.md)), worked out on glassworks.dev from its measurements.
+
+## Hardware
+
+| | |
+|---|---|
+| Size | About 1336 × 536 × 43 mm (40-inch version, from reviews) |
+| SoC | Qualcomm MSM8916 |
+| Android | 6.0.1 (stock software 1.x) |
+| Screen | 40-inch 1080p, portrait, behind a two-way mirror |
+| Presence | 5 MP front camera |
+| Audio | Microphone and stereo speakers |
+| Mount | Leans on the wall on its stand, or mounts flat on the wall |
+
+## Install
+
+It installs by flashing system and userdata over fastboot from a computer. It doesn't install from Kiln yet.
+
+Check before flashing: fastboot must report MSM8916 and the expected partition sizes. If anything differs, stop.
+
+## Panes
+
+| Pane | Support | Note |
+|---|---|---|
+| Assist | Planned | It has a microphone. |
+| Timers | Planned | Needs Assist. |
+| Sendspin | Planned | It has stereo speakers. |
+| Zigbee and Thread radio | No | No Zigbee or Thread radio. |
+| Presence and light | Not checked | Presence would come from the camera. |
+| Wall base | No | S1 only. |
+
+## Research notes
+
+What we found on this device, and how ([all notes](../../docs/research/README.md#the-research-notes)):
+
+- [mirror-android.md](research/mirror-android.md): Can the lululemon Mirror run Android 8+ for the current GeckoView? The signed boot image blocks it; the kexec idea, the paths, blobs and read-only probes (desk research, #39)
+- [mirror-abis.md](research/mirror-abis.md): Which ABIs the Mirror's userspace runs: 64-bit in the community image, stock untested (#98)
+
+## Files
+
+- [`design/frame.json`](design/frame.json): the catalog data and the 3D model, and the boot branding's target
+- [`research/`](research/): the notes above
