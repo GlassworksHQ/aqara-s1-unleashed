@@ -22,18 +22,21 @@ class NotificationCenterTest {
     private var page: NotificationStore.Entry? = null
     private var renders = 0
     private val timers = mutableListOf<Pair<Long, () -> Unit>>()
+    private val futures = mutableListOf<CompletableFuture<Unit>>()
+    private var playFails = false
+    private var reportFails = false
 
     private val out = object : NotificationOutputs {
         override fun render(cards: List<NotificationStore.Entry>, page: NotificationStore.Entry?, list: List<NotificationStore.Entry>) {
             this@NotificationCenterTest.cards = cards; this@NotificationCenterTest.page = page; renders++
         }
         override fun wake(overNight: Boolean) { woke += overNight }
-        override fun play(sound: Sound) { played += sound }
+        override fun play(sound: Sound) { if (playFails) error("no speaker"); played += sound }
     }
 
     private val center = NotificationCenter(
-        NotificationStore({ t }), out, { reports += it }, { dnd }, { "http://homeassistant.local:8123" }, { t },
-        { delay, action -> timers += delay to action; CompletableFuture<Unit>() as Future<*> },
+        NotificationStore({ t }), out, { if (reportFails) error("offline"); reports += it }, { dnd }, { "http://homeassistant.local:8123" }, { t },
+        { delay, action -> timers += delay to action; CompletableFuture<Unit>().also { futures += it } as Future<*> },
     )
 
     @Test
@@ -103,5 +106,51 @@ class NotificationCenterTest {
         assertThrows(IllegalArgumentException::class.java) { center.handle("m", "t", """{"url":"https://example.com/"}""") }
         assertEquals(0, renders)
         assertTrue(played.isEmpty())
+    }
+
+    @Test
+    fun aFailingSoundStillShowsTheCard() {
+        playFails = true
+        assertThrows(IllegalStateException::class.java) { center.handle("m", "washer", "") }
+        assertEquals(listOf("washer"), cards.map { it.notification.title })
+    }
+
+    @Test
+    fun aFailingReportStillClosesTheCard() {
+        center.handle("m", "door", """{"actions":[{"action":"open_gate","title":"Open"}]}""")
+        reportFails = true
+        assertThrows(IllegalStateException::class.java) { center.tapAction(cards.single().id, "open_gate") }
+        assertTrue(cards.isEmpty())
+    }
+
+    @Test
+    fun closeStopsTheTimer() {
+        center.handle("m", "door", """{"timeout":30}""")
+        center.close()
+        assertTrue(futures.last().isCancelled)
+        val before = timers.size
+        center.handle("m", "garage", """{"timeout":30}""")
+        assertEquals("nothing is scheduled after close", before, timers.size)
+    }
+
+    @Test
+    fun rendersArriveInTheOrderTheChangesHappened() {
+        val sizes = java.util.Collections.synchronizedList(mutableListOf<Int>())
+        val c = NotificationCenter(
+            NotificationStore({ 0L }, max = 1000),
+            object : NotificationOutputs {
+                override fun render(cards: List<NotificationStore.Entry>, page: NotificationStore.Entry?, list: List<NotificationStore.Entry>) {
+                    sizes += list.size
+                    Thread.yield()
+                }
+                override fun wake(overNight: Boolean) {}
+                override fun play(sound: Sound) {}
+            },
+            {}, { false }, { null }, { 0L }, { _, _ -> CompletableFuture<Unit>() },
+        )
+        val threads = (1..4).map { k -> Thread { repeat(150) { c.handle("m", "t$k-$it", "") } } }
+        threads.forEach { it.start() }; threads.forEach { it.join() }
+        assertEquals(600, sizes.size)
+        assertEquals("each render shows at least as many as the one before", sizes.sorted(), sizes.toList())
     }
 }

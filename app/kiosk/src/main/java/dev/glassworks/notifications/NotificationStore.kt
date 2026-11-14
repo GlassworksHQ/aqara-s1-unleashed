@@ -7,24 +7,37 @@ package dev.glassworks.notifications
 /**
  * What the panel does with a notification when it arrives (#118).
  *
- * | Priority | Shows | Sound | Wakes the screen | Over night dimming |
- * |---|---|---|---|---|
- * | low | when the screen is next on | no | no | no |
- * | normal | when the screen is next on | yes | no | no |
- * | high | at once | yes | yes | yes |
- * | critical | at once | yes | yes | yes |
+ * | Priority | Shows | Sound | Wakes the screen | Over night dimming | Card folds into the list |
+ * |---|---|---|---|---|---|
+ * | low | when the screen is next on | no | no | no | after 10 s on screen |
+ * | normal | when the screen is next on | yes | no | no | after 15 s on screen |
+ * | high | at once | yes | yes | yes | no: stays until answered |
+ * | critical | at once | yes | yes | yes | no: stays until answered |
  *
  * Do not disturb holds everything but critical: it goes to the list, silent, and the screen stays
  * as it is.
  */
-data class Delivery(val held: Boolean, val sound: Boolean, val wake: Boolean, val overNight: Boolean) {
+data class Delivery(
+    val held: Boolean,
+    val sound: Boolean,
+    val wake: Boolean,
+    val overNight: Boolean,
+    /**
+     * Seconds the card stays over the dashboard while the screen is on, before it folds into the list.
+     * Null: it stays until it is answered, dismissed, cleared or times out.
+     */
+    val foldAfterS: Int? = null,
+) {
     companion object {
+        const val FOLD_LOW_S = 10
+        const val FOLD_NORMAL_S = 15
+
         fun of(priority: Priority, doNotDisturb: Boolean): Delivery = when {
             priority == Priority.CRITICAL -> Delivery(held = false, sound = true, wake = true, overNight = true)
             doNotDisturb -> Delivery(held = true, sound = false, wake = false, overNight = false)
             priority == Priority.HIGH -> Delivery(held = false, sound = true, wake = true, overNight = true)
-            priority == Priority.NORMAL -> Delivery(held = false, sound = true, wake = false, overNight = false)
-            else -> Delivery(held = false, sound = false, wake = false, overNight = false)
+            priority == Priority.NORMAL -> Delivery(held = false, sound = true, wake = false, overNight = false, foldAfterS = FOLD_NORMAL_S)
+            else -> Delivery(held = false, sound = false, wake = false, overNight = false, foldAfterS = FOLD_LOW_S)
         }
     }
 }
@@ -102,17 +115,21 @@ class NotificationStore(private val now: () -> Long, val max: Int = 20) {
         return e
     }
 
+    /** What [act] did: the action tapped, the notification's tag, and whether it closed. */
+    data class Acted(val action: NotificationAction, val tag: String?, val closed: Boolean)
+
     /**
-     * A tap on [actionId] of entry [id]: the action, and whether the entry closed ([Notification.sticky]
-     * keeps it). Null when there is no such entry or action.
+     * A tap on [actionId] of entry [id], in one step: the entry can't be replaced or cleared between
+     * finding it and reading its tag. It closes unless [Notification.sticky]. Null when there is no
+     * such entry or action.
      */
     @Synchronized
-    fun act(id: Long, actionId: String): Pair<NotificationAction, Boolean>? {
+    fun act(id: Long, actionId: String): Acted? {
         val e = entries.firstOrNull { it.id == id } ?: return null
         val a = e.notification.actions.firstOrNull { it.id == actionId } ?: return null
         val closes = !e.notification.sticky
         if (closes) entries.remove(e)
-        return a to closes
+        return Acted(a, e.notification.tag, closes)
     }
 
     /** Removes and returns every entry whose timeout has passed. */

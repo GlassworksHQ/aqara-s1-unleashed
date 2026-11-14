@@ -21,8 +21,8 @@ class NotificationStoreTest {
     @Test
     fun deliveryRules() {
         fun d(p: Priority, dnd: Boolean) = Delivery.of(p, dnd)
-        assertEquals(Delivery(held = false, sound = false, wake = false, overNight = false), d(Priority.LOW, false))
-        assertEquals(Delivery(held = false, sound = true, wake = false, overNight = false), d(Priority.NORMAL, false))
+        assertEquals(Delivery(held = false, sound = false, wake = false, overNight = false, foldAfterS = 10), d(Priority.LOW, false))
+        assertEquals(Delivery(held = false, sound = true, wake = false, overNight = false, foldAfterS = 15), d(Priority.NORMAL, false))
         assertEquals(Delivery(held = false, sound = true, wake = true, overNight = true), d(Priority.HIGH, false))
         assertEquals(Delivery(held = false, sound = true, wake = true, overNight = true), d(Priority.CRITICAL, false))
         for (p in listOf(Priority.LOW, Priority.NORMAL, Priority.HIGH)) {
@@ -101,10 +101,10 @@ class NotificationStoreTest {
 
     @Test
     fun anActionClosesUnlessSticky() {
-        val a = store.post(n("a"), false).entry
+        val a = store.post(n("a", tag = "door"), false).entry
         val s = store.post(n("s", sticky = true), false).entry
-        assertEquals(NotificationAction("ok", "OK") to true, store.act(a.id, "ok"))
-        assertEquals(NotificationAction("ok", "OK") to false, store.act(s.id, "ok"))
+        assertEquals(NotificationStore.Acted(NotificationAction("ok", "OK"), "door", closed = true), store.act(a.id, "ok"))
+        assertEquals(NotificationStore.Acted(NotificationAction("ok", "OK"), null, closed = false), store.act(s.id, "ok"))
         assertNull(store.act(s.id, "nope"))
         assertNull(store.act(a.id, "ok"))
         assertEquals(listOf(s.id), store.list().map { it.id })

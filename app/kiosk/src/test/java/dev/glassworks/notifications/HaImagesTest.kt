@@ -39,6 +39,11 @@ class HaImagesTest {
                     x.responseHeaders.add("Content-Type", "text/html")
                     x.sendResponseHeaders(200, b.size.toLong()); x.responseBody.write(b)
                 }
+                "/logo.svg" -> {
+                    val b = "<svg xmlns='http://www.w3.org/2000/svg'/>".toByteArray()
+                    x.responseHeaders.add("Content-Type", "image/svg+xml")
+                    x.sendResponseHeaders(200, b.size.toLong()); x.responseBody.write(b)
+                }
                 "/big.jpg" -> {
                     x.responseHeaders.add("Content-Type", "image/jpeg")
                     x.sendResponseHeaders(200, 0); x.responseBody.write(ByteArray(64 * 1024))
@@ -80,6 +85,7 @@ class HaImagesTest {
     @Test
     fun onlyPicturesAndNotTooLarge() {
         assertTrue((images().fetch("$base/page") as ImageFetch.Failed).reason.contains("not a picture"))
+        assertTrue("no SVG", (images().fetch("$base/logo.svg") as ImageFetch.Failed).reason.contains("image/svg+xml"))
         assertTrue((images(max = 1024).fetch("$base/big.jpg") as ImageFetch.Failed).reason.contains("larger"))
     }
 

@@ -37,7 +37,7 @@ fun interface HttpGet {
  *
  * - Only URLs on [haBase] ([HaUrls]), checked again here, so the token never goes to another host.
  * - No redirects: a redirect could carry the token elsewhere.
- * - Only `image/…`, at most [maxBytes].
+ * - Only JPEG, PNG, WebP and GIF ([TYPES]), at most [maxBytes].
  *
  * [token] gives an access token, or null when the panel isn't signed in; it may block. Never logs
  * the token.
@@ -63,7 +63,7 @@ class HaImages(
             r.status in 300..399 -> ImageFetch.Failed("Home Assistant answered with a redirect")
             r.status != 200 -> ImageFetch.Failed("Home Assistant answered ${r.status}")
             r.tooLarge -> ImageFetch.Failed("the picture is larger than ${maxBytes / 1024 / 1024} MiB")
-            type == null || !type.startsWith("image/") -> ImageFetch.Failed("not a picture (${type ?: "no type"})")
+            type == null || type !in TYPES -> ImageFetch.Failed("not a picture the panel shows (${type ?: "no type"})")
             else -> ImageFetch.Ok(r.body, type)
         }
     }
@@ -71,6 +71,9 @@ class HaImages(
     companion object {
         /** A camera snapshot is well under this; the S1 has little RAM to spare. */
         const val MAX_BYTES = 4 * 1024 * 1024
+
+        /** Bitmaps Android decodes. No SVG: it's a document, not a picture, and can carry scripts and links. */
+        val TYPES = setOf("image/jpeg", "image/png", "image/webp", "image/gif")
     }
 }
 
