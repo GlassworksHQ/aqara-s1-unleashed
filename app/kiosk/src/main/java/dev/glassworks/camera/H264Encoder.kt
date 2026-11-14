@@ -59,13 +59,20 @@ class H264Encoder(
         try { codec.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) }) } catch (_: Exception) {}
     }
 
-    /** Stops the encoder and frees it. Take [surface] out of the camera session first. */
+    /**
+     * Stops the encoder and frees it. Take [surface] out of the camera session first. An interrupted
+     * wait for the drain thread still frees the codec and the surface, then sets the interrupt again.
+     */
     override fun release() {
         running = false
-        if (Thread.currentThread() !== drain) drain.join(1_000) // from onFailure, it is this thread
+        var interrupted = false
+        if (Thread.currentThread() !== drain) { // from onFailure, it is this thread
+            try { drain.join(1_000) } catch (_: InterruptedException) { interrupted = true }
+        }
         try { codec.stop() } catch (_: Exception) {}
         try { codec.release() } catch (_: Exception) {}
         surface.release()
+        if (interrupted) Thread.currentThread().interrupt()
     }
 
     private fun drainLoop() {

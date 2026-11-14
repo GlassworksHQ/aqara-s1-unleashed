@@ -199,7 +199,11 @@ class CameraHub(
             ?: ids.firstOrNull()
     }
 
-    /** The range the camera is asked for while streaming ([fpsRangeFor]); read once, before the camera opens if the stream asks first. */
+    /**
+     * The range the camera is asked for while streaming ([fpsRangeFor]). Read once and kept: the first
+     * reader may be the stream's start ([streamFps], off the hub's thread, before the camera opens) or
+     * [pickCamera] on the hub's thread; `lazy` makes that safe, and the camera's ranges don't change.
+     */
     private val streamRange: IntRange? by lazy {
         try {
             cameraId()?.let { id ->

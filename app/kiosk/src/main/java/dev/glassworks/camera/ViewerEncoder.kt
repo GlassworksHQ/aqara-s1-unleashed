@@ -85,21 +85,24 @@ internal class ViewerEncoder(
 
     /**
      * The camera stops drawing into it first, then it is released. Whatever the detach or the release
-     * throws, the encoder is released and the indicator's hold let go: an interrupted wait for the camera
-     * keeps the thread's interrupt and goes on.
+     * throws, the encoder is released and the indicator's hold let go. An interrupted wait for the camera
+     * goes on, and the thread's interrupt is set again only after the release: set during it, the
+     * encoder's own waits ([H264Encoder.release] joins its thread) would fail at once and skip the rest.
      */
     private fun stop() {
         val e = current ?: return
         current = null
+        var interrupted = false
         try {
             input.setEncoder(null)
         } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
+            interrupted = true
         } finally {
             try {
                 e.release()
             } finally {
                 viewing?.close(); viewing = null
+                if (interrupted) Thread.currentThread().interrupt()
             }
         }
     }

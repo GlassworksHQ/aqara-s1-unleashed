@@ -39,6 +39,12 @@ class PaneSwitchesTest {
         assertEquals(listOf(dev.glassworks.camera.CameraDefinition.NO_CAMERA_OFF_NOTE), camera.items.map { (it as SettingsItem.Note).text() })
     }
 
+    @Test fun withACameraTheOffPageSaysTheCameraStaysClosed() {
+        val withCamera = dev.glassworks.camera.CameraDefinition(KioskPrefs(app).paneFile("camera"), hasCamera = true)
+        val page = paneSections(listOf(withCamera)).single()
+        assertEquals(listOf(dev.glassworks.camera.CameraDefinition.OFF_NOTE), page.items.map { (it as SettingsItem.Note).text() })
+    }
+
     @Test fun setupsPanesStepHasTheCardsOfTheDesign() {
         // A panel with Bluetooth LE, as the S1: without it the Bluetooth proxy has no card.
         org.robolectric.Shadows.shadowOf(app.packageManager).setSystemFeature(android.content.pm.PackageManager.FEATURE_BLUETOOTH_LE, true)

@@ -20,7 +20,12 @@ class ViewerEncoderTest {
         var keyFrames = 0
         var released = false
         override fun requestKeyFrame() { keyFrames++ }
-        override fun release() { released = true; events += "release $n"; if (releaseThrows) throw IllegalStateException("codec") }
+        /** Like [H264Encoder.release]: it waits for its drain thread, which fails at once on a thread already interrupted. */
+        override fun release() {
+            Thread { Thread.sleep(5) }.apply { start() }.join(1_000)
+            released = true; events += "release $n"
+            if (releaseThrows) throw IllegalStateException("codec")
+        }
         override fun toString() = "encoder $n"
     }
 

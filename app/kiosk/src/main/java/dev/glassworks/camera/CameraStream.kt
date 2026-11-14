@@ -43,6 +43,10 @@ class CameraStream(
     private val encoders: EncoderFactory = EncoderFactory { au, failed ->
         H264Encoder(CameraHub.WIDTH, CameraHub.HEIGHT, onAccessUnit = au, onFailure = failed)
     },
+    /** Tests use free ports and no WS-Discovery. */
+    private val rtspPort: Int = RTSP_PORT,
+    private val onvifPort: Int = ONVIF_PORT,
+    private val discovery: Boolean = true,
 ) : StreamOutput {
     private val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     private val lock = Any()
@@ -61,7 +65,7 @@ class CameraStream(
         val name = identity().name
         var ve: ViewerEncoder? = null
         val r = RtspServer(
-            RTSP_PORT, { this.signIn }, { n -> ve?.viewers(n); if (n > 0) log("streaming to $n") },
+            rtspPort, { this.signIn }, { n -> ve?.viewers(n); if (n > 0) log("streaming to $n") },
             onLog = { log("RTSP: $it") }, name = name, fps = hub.streamFps,
         )
         ve = ViewerEncoder(
@@ -69,14 +73,15 @@ class CameraStream(
             clock = android.os.SystemClock::elapsedRealtime, after = { ms, go -> main.postDelayed(go, ms) }, log = log,
         )
         val o = OnvifServer(
-            port = ONVIF_PORT,
+            port = onvifPort,
             host = { host() ?: "0.0.0.0" },
             info = { identity().let { OnvifDeviceInfo(Build.MANUFACTURER, Build.MODEL, it.firmware, onvifMac(it.panelMac).replace(":", ""), Build.DEVICE, onvifMac(it.panelMac), it.name) } },
-            stream = { OnvifStreamInfo("rtsp://${host() ?: "0.0.0.0"}:$RTSP_PORT/live", CameraHub.WIDTH, CameraHub.HEIGHT, H264Encoder.FPS, H264Encoder.bitrateFor(CameraHub.WIDTH, CameraHub.HEIGHT) / 1000) },
+            stream = { OnvifStreamInfo("rtsp://${host() ?: "0.0.0.0"}:$rtspPort/live", CameraHub.WIDTH, CameraHub.HEIGHT, H264Encoder.FPS, H264Encoder.bitrateFor(CameraHub.WIDTH, CameraHub.HEIGHT) / 1000) },
             credentials = { this.signIn },
             snapshot = snapshot,
             onLog = { log("ONVIF: $it") },
             name = name,
+            enableDiscovery = discovery,
         )
         return try {
             multicast = wifi.createMulticastLock("glassworks-onvif").apply { setReferenceCounted(false); acquire() }
@@ -84,13 +89,13 @@ class CameraStream(
             r.start()
             o.start()
             rtsp = r; onvif = o
-            log("stream on: RTSP :$RTSP_PORT, ONVIF :$ONVIF_PORT")
+            log("stream on: RTSP :$rtspPort, ONVIF :$onvifPort")
             true
         } catch (e: Exception) {
             log("stream failed to start: ${e.javaClass.simpleName}: ${e.message}")
             try { r.stop() } catch (_: Exception) {}
             try { o.stop() } catch (_: Exception) {}
-            ve.close(); viewers = null
+            runCatching { ve.close() }; viewers = null
             releaseMulticast()
             this.signIn = null
             false
@@ -103,8 +108,9 @@ class CameraStream(
         synchronized(lock) { onvif }?.setMotion(active)
     }
 
+    /** Each part on its own: a throwing encoder release must not leave the ports open or the multicast lock held. */
     private fun stopLocked() {
-        viewers?.close(); viewers = null
+        runCatching { viewers?.close() }; viewers = null
         rtsp?.let { r -> try { r.stop() } catch (_: Exception) {} ; log("stream off") }
         try { onvif?.stop() } catch (_: Exception) {}
         rtsp = null; onvif = null; signIn = null
