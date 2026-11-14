@@ -147,7 +147,8 @@ class FakeHA(unittest.TestCase):
         cfg, _ = ws.call({"type": "lovelace/config", "url_path": "clarity-ref", "force": False})
         # One dashboard: the start view (where a restart lands), then the three reference views.
         self.assertEqual([(v["path"], len(v["cards"])) for v in cfg["result"]["views"]],
-                         [("start", 23), ("light", 20), ("typical", 50), ("heavy", 120), ("typical-hls", 50), ("heavy-hls", 120)])
+                         [("start", 23), ("light", 20), ("typical-nocam", 50), ("typical", 50), ("heavy", 120), ("typical-hls", 50),
+                          ("heavy-hls", 120)])
         res, ev = ws.call({"type": "subscribe_entities"})
         self.assertIn("light.living_room", ev[0]["event"]["a"])
         self.assertEqual(set(ev[0]["event"]["a"]["sensor.clarity_0"]), {"s", "a", "c", "lc", "lu"})

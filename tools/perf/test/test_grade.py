@@ -54,8 +54,14 @@ def page(tap="good", scroll="premium", updates="premium", load="good", camera="g
             "scroll_level": scroll, "updates_level": updates, "camera_level": camera}
 
 
-def pages(light=None, typical=None, heavy=None):
-    return {t: p for t, p in (("light", light or page()), ("typical", typical or page()), ("heavy", heavy or page())) if p != "drop"}
+def pages(light=None, typical=None, heavy=None, nocam=None):
+    """Rubric v10 (#205): typical without its camera is a page too; by default typical's numbers,
+    with no camera task (the page has none)."""
+    typical = typical or page()
+    if nocam is None and typical != "drop":
+        nocam = dict(typical, camera_level=None)
+    return {t: p for t, p in (("light", light or page()), ("typical-nocam", nocam or page()), ("typical", typical),
+                              ("heavy", heavy or page())) if p != "drop"}
 
 
 PREMIUM, GOOD_, FLUID = page(), page(scroll="good"), page(scroll="fluid")

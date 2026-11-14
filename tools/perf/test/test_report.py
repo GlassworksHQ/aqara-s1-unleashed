@@ -419,8 +419,10 @@ def synthetic_lines(run, js_ms):
     return lines
 
 
-NAV = {"light": 30.0, "typical": 40.0, "heavy": 50.0}   # when each reference dashboard starts, s
-CARDS = {"light": 20, "typical": 50, "heavy": 120}
+# When each reference dashboard starts, s; typical without its camera (rubric v10) after heavy, so no
+# two views' frames meet.
+NAV = {"light": 30.0, "typical": 40.0, "heavy": 50.0, "typical-nocam": 70.0}
+CARDS = {"light": 20, "typical": 50, "heavy": 120, "typical-nocam": 50}
 
 
 def swipe(nav, i, intervals, moved=True, sf=True):
@@ -699,6 +701,7 @@ def refstart(k, inp, heavy_missed=20):
             "engine_uri": "about:blank", "own_page_start_mono": 23.0, "own_page_stop_mono": 26.0, "own_page_loads": 1,
             "own_page_state": "finished-still",
             "tiers": {"light": tier_entry("light", inp), "typical": tier_entry("typical", inp),
+                      "typical-nocam": tier_entry("typical-nocam", inp),
                       "heavy": tier_entry("heavy", inp, scroll_missed=heavy_missed)},
             # Protocol 6: the camera pages' HLS copies after them (#202, detail); heavy's starves.
             "fallback": {"typical-hls": {"done": True, "camera": camera_line("typical", path="hls")},
@@ -792,7 +795,7 @@ class Build(unittest.TestCase):
     def test_headline_grade(self):
         g = self.rep["grade"]
         self.assertEqual(g["grade"], "B")
-        self.assertEqual(g["levels"], {"light": "premium", "typical": "premium", "heavy": "fluid"})
+        self.assertEqual(g["levels"], {"light": "premium", "typical-nocam": "premium", "typical": "premium", "heavy": "fluid"})
         self.assertEqual(g["bands"]["heavy"], {"tap": "good", "scroll": "fluid", "updates": "premium", "load": "good", "camera": "good"})
         self.assertEqual(g["bands"]["light"]["camera"], "none")              # no streams on light (#174)
         heavy = self.rep["graded"]["reference"]["tiers"]["heavy"]
@@ -801,7 +804,7 @@ class Build(unittest.TestCase):
         self.assertEqual(g["start"], {"value": 800, "band": "good"})   # process 20.0 s -> engine 20.7 to 20.9 s
         self.assertEqual(g["viewport"], {"state": "ok", "reason": None})
         self.assertFalse(g["provisional"])
-        self.assertEqual(g["headline"], "test-frame: Clarity B, a good wall panel for typical dashboards; large ones stay fluid. "
+        self.assertEqual(g["headline"], "test-frame: Clarity B, a good wall panel for typical dashboards, with a camera; large ones stay fluid. "
                                         "Held back by large dashboards: scrolling averages 45.0 fps (p95 33 ms).")
         self.assertEqual(self.rep["graded"]["reference"]["android_ttid_ms"]["median"], 111)   # reported, not graded
         self.assertEqual(self.rep["real_use"]["dashboard_load_ms"]["median"], 3400)            # not graded either
@@ -813,6 +816,7 @@ class Build(unittest.TestCase):
             run = refstart(k, 100)                              # large: about 45 fps, fluid
             run["tiers"]["light"]["swipes"] = [swipe(30.0, i, late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["typical"]["swipes"] = [swipe(40.0, i, late(60, 45, 66.67)) for i in range(3)]
+            run["tiers"]["typical-nocam"]["swipes"] = [swipe(70.0, i, late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["light"]["page"]["fcp_ms"] = 900      # its first paint never reached the screen
             self.write(f"refstart-{k}.json", run)
         g = R.build(self.dir)["grade"]
@@ -1212,7 +1216,7 @@ class Build(unittest.TestCase):
 
     def test_markdown_renders(self):
         md = R.markdown(self.rep)
-        self.assertIn("**test-frame: Clarity B, a good wall panel for typical dashboards; large ones stay fluid.", md)
+        self.assertIn("**test-frame: Clarity B, a good wall panel for typical dashboards, with a camera; large ones stay fluid.", md)
         self.assertIn("| heavy (120 cards) | fluid |", md)
         self.assertIn("| scroll |", md)                                 # what holds heavy back from smooth
         self.assertIn("Restart, app process to engine ready: 800 ms (700 to 900, n=3)", md)

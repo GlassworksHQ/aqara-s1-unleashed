@@ -64,16 +64,19 @@ test("the measured window leaves SurfaceFlinger's history room for the read afte
 // page/tiers.json: the one source for the fake HA (dashboards.py) and the harness.
 const T = JSON.parse(readFileSync(new URL("../page/tiers.json", import.meta.url)));
 // A camera card, or a grid of them, is one card (#174).
-T.cardCount = (t) => { const s = T.TIERS[t]; return s.tiles + s.entities + s.glances + s.longLists + s.sensors + s.histories + s.pictures + 1 + T.CAMERAS[t].length; };
+// A view without its cameras (PLAIN, rubric v10) has its base view's counts, a still picture per camera.
+const base = (t) => (T.PLAIN || {})[t] || t;
+T.cardCount = (t) => { const s = T.TIERS[base(t)]; return s.tiles + s.entities + s.glances + s.longLists + s.sensors + s.histories + s.pictures + 1 + T.CAMERAS[base(t)].length; };
 
-test("the three reference dashboards are fixed: light, typical, heavy", () => {
-  assert.deepEqual(T.ORDER, ["light", "typical", "heavy"]);
+test("the reference dashboards are fixed: light, typical without and with its camera, heavy", () => {
+  assert.deepEqual(T.ORDER, ["light", "typical-nocam", "typical", "heavy"]);
+  assert.deepEqual(T.PLAIN, { "typical-nocam": "typical" });
   assert.deepEqual(T.TIERS.light, { tiles: 12, entities: 4, glances: 1, rows: 5, longLists: 0, longRows: 0, sensors: 2, histories: 0, pictures: 0 });
   assert.deepEqual(T.TIERS.typical, { tiles: 26, entities: 11, glances: 2, rows: 6, longLists: 0, longRows: 0, sensors: 6, histories: 2, pictures: 1 });
   assert.deepEqual(T.TIERS.heavy, { tiles: 50, entities: 22, glances: 4, rows: 8, longLists: 4, longRows: 20, sensors: 16, histories: 8, pictures: 13 });
   // #174: the camera cards take pictures' places. Light none; typical one 720p; heavy one 720p and a
   // grid of three 360p (a main stream and sub-streams), at 15 fps.
-  assert.deepEqual(T.CAMERAS, { start: ["360p"], light: [], typical: ["720p"], heavy: ["720p", ["360p", "360p", "360p"]] });
+  assert.deepEqual(T.CAMERAS, { start: ["360p"], light: [], typical: ["720p"], "typical-nocam": [], heavy: ["720p", ["360p", "360p", "360p"]] });
   assert.equal(T.CAMERA.fps, 15);
   assert.equal(T.GLANCE_ENTITIES, 5);
   assert.deepEqual(T.LIVE, { updatesPerS: 5, flipEveryMs: 2000, clockEveryMs: 1000, tileTransitionMs: 180 });
@@ -82,13 +85,13 @@ test("the three reference dashboards are fixed: light, typical, heavy", () => {
 test("every page has the same first screen, so every page gets the same update stream", () => {
   assert.deepEqual(T.HEAD, { sensorTiles: 4, switchTiles: 3, rows: 5 });
   for (const t of T.ORDER) {
-    assert.ok(T.TIERS[t].tiles >= 1 + T.HEAD.sensorTiles + T.HEAD.switchTiles, `${t} has the toggle and the head's tiles`);
-    assert.ok(T.TIERS[t].entities >= 1, `${t} has the head's entities card`);
+    assert.ok(T.TIERS[base(t)].tiles >= 1 + T.HEAD.sensorTiles + T.HEAD.switchTiles, `${t} has the toggle and the head's tiles`);
+    assert.ok(T.TIERS[base(t)].entities >= 1, `${t} has the head's entities card`);
   }
 });
 
 test("about 20, 50 and 120 cards", () => {
-  assert.deepEqual(T.ORDER.map(T.cardCount), [20, 50, 120]);
+  assert.deepEqual(T.ORDER.map(T.cardCount), [20, 50, 50, 120]);
 });
 
 test("each reference dashboard has at least everything the one below it has", () => {
@@ -438,4 +441,25 @@ test("webrtcWindow: two samples a moment apart (the window's end) aren't a gap",
   const w = S.webrtcWindow([steady(0, 0), steady(1000, 15), steady(1000.4, 15)]);
   assert.equal(w.stall_ms, 0);
   assert.equal(w.max_gap_bound, true);
+});
+
+test("pacedSleep: a wait ends on the first frame past its time when the timers are held back", async () => {
+  // s1rtc4's heavy: the page's timers queued behind the frontend's work, its frames kept coming.
+  let t = 0;
+  const frames = [];
+  const env = { now: () => t, setTimeout: () => {}, requestAnimationFrame: (f) => frames.push(f) };
+  let done = false;
+  S.pacedSleep(1000, env).then(() => { done = true; });
+  for (let k = 0; k < 8 && !done; k++) {         // a frame every 200 ms; the timer never fires
+    t += 200;
+    frames.splice(0).forEach((f) => f());
+    await Promise.resolve();
+  }
+  assert.equal(done, true);
+  assert.equal(t, 1000);
+  // No frames (a hidden page): the timer ends it.
+  let fired = null;
+  const quiet = { now: () => 0, setTimeout: (f, ms) => { fired = ms; f(); }, requestAnimationFrame: () => {} };
+  await S.pacedSleep(500, quiet);
+  assert.equal(fired, 500);
 });

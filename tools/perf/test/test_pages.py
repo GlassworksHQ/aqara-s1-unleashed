@@ -123,9 +123,16 @@ class FixedHome(unittest.TestCase):
     """dashboards.py: real Lovelace configs with HA's own card types, the counts of page/tiers.json."""
 
     def test_counts_and_card_types(self):
-        want = {"start": 23, "light": 20, "typical": 50, "heavy": 120}
+        want = {"start": 23, "light": 20, "typical-nocam": 50, "typical": 50, "heavy": 120}
         views = {v["path"]: v["cards"] for v in D.lovelace(D.DASHBOARD)["views"]}
-        self.assertEqual(list(views), ["start", "light", "typical", "heavy", "typical-hls", "heavy-hls"])
+        self.assertEqual(list(views), ["start", "light", "typical-nocam", "typical", "heavy", "typical-hls", "heavy-hls"])
+        # Rubric v10 (#205): typical without its camera is typical card for card, a still picture where
+        # the camera was.
+        diff = [(a, b) for a, b in zip(views["typical"], views["typical-nocam"]) if a != b]
+        self.assertEqual(len(diff), 1)
+        self.assertEqual((diff[0][0]["type"], diff[0][0]["camera_view"]), ("picture-entity", "live"))
+        self.assertEqual(diff[0][1], {"type": "picture", "image": "/clarity/picture-1.png"})
+        self.assertNotIn("picture-entity", {c["type"] for c in views["typical-nocam"]})
         for tier, n in want.items():
             with self.subTest(tier):
                 self.assertEqual(len(views[tier]), n)

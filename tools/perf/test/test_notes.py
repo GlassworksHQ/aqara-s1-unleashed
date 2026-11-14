@@ -14,6 +14,11 @@ import report as R  # noqa: E402
 import summary as S  # noqa: E402
 
 
+def pages(rep):
+    """The pages a fixture report has (the real runs predate rubric v10's typical-nocam)."""
+    return [p for p in G.TIERS if p in rep["graded"]["reference"]["tiers"]]
+
+
 def run(name):
     with open(os.path.join(HERE, "notes-runs", name + ".json")) as f:
         return json.load(f)
@@ -43,12 +48,12 @@ SMOKE11 = (
 def fast():
     """A fast frame: every task good on every page, a quick restart, cool, within its memory."""
     rep = run("s1cam3")
-    for p in G.TIERS:
+    for p in pages(rep):
         rep["grade"]["bands"][p] = {"tap": "good", "scroll": "premium", "updates": "good", "load": "good",
                                     "camera": "none" if p == "light" else "good"}
         rep["graded"]["reference"]["tiers"][p]["scroll_limited_by"] = ["main-thread"]
     rep["grade"].update(start={"value": 2500.0, "band": "good"}, missing=[], provisional=False,
-                        levels={p: "premium" for p in G.TIERS})
+                        levels={p: "premium" for p in pages(rep)})
     rep["thermal"] = [{"phase": "refstart-1", "zones": {"cpu_thermal_zone": 41.0}}]
     return rep
 
@@ -161,7 +166,7 @@ class Shapes(unittest.TestCase):
 
     def test_without_a_level_the_closest_page(self):
         rep = run("s1cam3")
-        rep["grade"]["levels"] = {p: None for p in G.TIERS}
+        rep["grade"]["levels"] = {p: None for p in pages(rep)}
         self.assertTrue(N.notes(rep)["good"].startswith("Light dashboards come closest:"))
 
     def test_a_refused_grade_says_why_and_nothing_else(self):
@@ -172,8 +177,8 @@ class Shapes(unittest.TestCase):
 
     def test_nothing_good(self):
         rep = run("s1cam3")
-        rep["grade"]["levels"] = {p: None for p in G.TIERS}
-        for p in G.TIERS:
+        rep["grade"]["levels"] = {p: None for p in pages(rep)}
+        for p in pages(rep):
             rep["grade"]["bands"][p] = {k: "slow" if k in ("scroll", "updates", "camera") else "poor" for k in G.TASKS}
         n = N.notes(rep)
         self.assertIsNone(n["good"])
@@ -187,7 +192,7 @@ class CausesNeedEvidence(unittest.TestCase):
         return N.cause_sentence(rep) or ""
 
     def no_main(self, rep):
-        for p in G.TIERS:
+        for p in pages(rep):
             rep["graded"]["reference"]["tiers"][p]["scroll_limited_by"] = ["equal"]
         return rep
 
@@ -312,6 +317,38 @@ class Provisional(unittest.TestCase):
 
     def test_not_provisional_says_nothing(self):
         self.assertIsNone(N.provisional_sentence(run("s1cam3")))
+
+
+class TypicalWithoutACamera(unittest.TestCase):
+    """Rubric v10 (#205): typical is measured without its camera (C) and with it (B)."""
+
+    def rep(self):
+        import copy
+        rep = fast()
+        tiers = rep["graded"]["reference"]["tiers"]
+        tiers["typical-nocam"] = copy.deepcopy(tiers["typical"])
+        tiers["typical-nocam"]["camera_runs"] = []
+        for p in ("light", "typical-nocam", "typical", "heavy"):
+            rep["grade"]["bands"][p] = {"tap": "good", "scroll": "fluid", "updates": "good", "load": "good",
+                                        "camera": "none" if p in ("light", "typical-nocam") else "good"}
+        # Heavy and typical with its camera fail on the camera: 40% of its frames shown.
+        for p in ("typical", "heavy"):
+            rep["grade"]["bands"][p]["camera"] = "slow"
+            tiers[p]["camera_levels"] = ["slow"] * 3
+            tiers[p]["camera_runs"] = [{"first_frame_ms": 1500, "shown_pct": 40.0, "stall_total_ms": 200}] * 3
+        rep["grade"]["levels"] = {"light": "fluid", "typical-nocam": "fluid", "typical": None, "heavy": None}
+        return rep
+
+    def test_typical_feels_good_without_a_camera_and_says_what_one_costs(self):
+        n = N.notes(self.rep())
+        self.assertEqual(n["good"], "Typical dashboards feel good without a camera: taps, live updates and opening a view "
+                                    "are quick, and scrolling is fluid; with one, it shows 40% of its camera's frames.")
+        # The camera page's limit isn't said twice; heavy's still is.
+        self.assertEqual(n["limits"], "Bigger dashboards slow down: heavy shows 40% of its camera's frames.")
+
+    def test_a_report_from_before_v10_keeps_typical_s_name(self):
+        rep = run("s1v7")
+        self.assertNotIn("with a camera", N.notes(rep)["text"])
 
 
 class InTheReport(unittest.TestCase):

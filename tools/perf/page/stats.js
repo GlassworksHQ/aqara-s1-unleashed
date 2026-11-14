@@ -316,6 +316,22 @@
     };
   }
 
+  // A wait of `ms` that ends at the first of a timer and an animation frame past the time (protocol
+  // 8, #202: on the S1's heavy view a 30 s wait checked by a timer took 140 s, the timers queued
+  // behind the frontend's work while frames, which Gecko runs first, kept coming). The timer still
+  // ends it when no frame comes (a hidden page draws none). `env`: now, setTimeout,
+  // requestAnimationFrame (the page's own; a test's fakes).
+  function pacedSleep(ms, env) {
+    return new Promise((resolve) => {
+      const end = env.now() + ms;
+      let over = false;
+      const finish = () => { if (!over) { over = true; resolve(); } };
+      env.setTimeout(finish, ms);
+      const tick = () => { if (over) return; if (env.now() >= end) finish(); else env.requestAnimationFrame(tick); };
+      env.requestAnimationFrame(tick);
+    });
+  }
+
   // A stream's frames shown over the window, from the best count the engine gives, and which:
   // - "webrtc": the WebRTC receiver's framesDecoded: frames the decoder handed to the renderer. Its
   //   framesDropped are frames that never came out of the decoder (the frame buffer's drops, and
@@ -339,7 +355,8 @@
   }
 
   const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines,
-                skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps, webrtcWindow, shownFrames };
+                skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps, webrtcWindow, shownFrames,
+                pacedSleep };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWStats = api;
 })(this);

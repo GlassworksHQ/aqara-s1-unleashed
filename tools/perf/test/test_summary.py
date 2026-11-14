@@ -40,6 +40,7 @@ def fixture(variant):
         elif variant == "E":           # smoke5's shape
             run["tiers"]["light"]["swipes"] = [T.swipe(30.0, i, T.late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["typical"]["swipes"] = [T.swipe(40.0, i, T.late(60, 45, 66.67)) for i in range(3)]
+            run["tiers"]["typical-nocam"]["swipes"] = [T.swipe(70.0, i, T.late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["light"]["page"]["fcp_ms"] = 900
         elif variant == "capped":
             run["proc_mono"], run["engine_mono"] = 20.0, 26.0
@@ -51,6 +52,8 @@ def fixture(variant):
             run["tiers"]["heavy"]["swipes"] = [T.swipe(50.0, i, T.late(60, 6)) for i in range(3)]   # good, not premium
         elif variant == "raf-only":
             run["tiers"]["heavy"]["swipes"] = [T.swipe(50.0, i, T.late(60, 20), sf=False) for i in range(3)]
+        elif variant == "pre-v10":      # a report without typical-nocam: C's page is missing, provisional
+            del run["tiers"]["typical-nocam"]
         elif variant == "even":         # two runs: the worse middle band
             if k == 3:
                 continue
@@ -66,7 +69,7 @@ def fixture(variant):
     return rep
 
 
-VARIANTS = ["B", "A", "premium", "E", "capped", "zoom", "raf-only", "even", "missing-run"]
+VARIANTS = ["B", "A", "premium", "E", "capped", "zoom", "raf-only", "even", "missing-run", "pre-v10"]
 
 
 def ts_grades(summaries):
@@ -228,6 +231,11 @@ class Parity(unittest.TestCase):
         self.assertEqual(letters["capped"], "C")
         self.assertIsNone(letters["zoom"])
         self.assertTrue(self.reps["raf-only"]["grade"]["provisional"])
+        # Rubric v10 (#205): without typical-nocam, B still stands on typical with its camera, and the
+        # grade is provisional: the camera-free typical wasn't measured.
+        g = self.reps["pre-v10"]["grade"]
+        self.assertEqual((g["grade"], g["provisional"]), ("B", True))
+        self.assertIn("typical-nocam.scroll", g["missing"])
 
     def test_python_from_the_summary_equals_the_report(self):
         for v in VARIANTS:

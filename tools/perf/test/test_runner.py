@@ -96,16 +96,16 @@ class Runner(unittest.TestCase):
         self.assertEqual(g["viewport"]["state"], "ok")
         ref = r["graded"]["reference"]
         self.assertEqual(ref["errors"], [])
-        self.assertEqual(set(ref["tiers"]), {"light", "typical", "heavy"})
+        self.assertEqual(set(ref["tiers"]), {"light", "typical-nocam", "typical", "heavy"})
         self.assertEqual(ref["engine_uris"], ["about:blank"])
         self.assertEqual(ref["own_page_states"], ["reference"])        # the kiosk came back to the fake HA
         self.assertGreater(ref["start_ms"]["median"], 0)                  # restart: process start to usable
         self.assertEqual(ref["restart_to"], "usable")
         self.assertEqual(ref["engine_ready_ms"]["n"], 1)                  # kept as detail
-        self.assertEqual(ref["orders"], [["light", "typical", "heavy"]])
+        self.assertEqual(ref["orders"], [["light", "typical-nocam", "typical", "heavy"]])
         # After the restart page and each page, the HLS copies included (#202).
-        self.assertEqual(ref["per_run"][0]["between"], ["still"] * 5)
-        for t in ("light", "typical", "heavy"):
+        self.assertEqual(ref["per_run"][0]["between"], ["still"] * 6)
+        for t in ("light", "typical-nocam", "typical", "heavy"):
             s = ref["tiers"][t]
             self.assertIsNotNone(s["load_ms"], t)
             self.assertIsNotNone(s["inp_ms"], t)
@@ -136,7 +136,7 @@ class Runner(unittest.TestCase):
         """#202: run.sh opens the camera pages' HLS copies after each run's graded views, without
         swipes; they're detail beside the graded WebRTC cameras and never in the grade."""
         with open(os.path.join(self.state, "opened.json")) as f:
-            self.assertEqual(json.load(f), ["light", "typical", "heavy", "typical-hls", "heavy-hls"])
+            self.assertEqual(json.load(f), ["light", "typical-nocam", "typical", "heavy", "typical-hls", "heavy-hls"])
         with open(os.path.join(self.out, "refstart-1.json")) as f:
             c = json.load(f)
         self.assertEqual(sorted(c["fallback"]), ["heavy-hls", "typical-hls"])
@@ -146,7 +146,7 @@ class Runner(unittest.TestCase):
         self.assertEqual({g[2] for g in sent}, {"tap", "swipe"})
         self.assertTrue(all(isinstance(g[1], float) and g[3] >= 0 for g in sent))
         self.assertEqual(sum(1 for g in sent if g[0] == "heavy" and g[2] == "tap"), 2)
-        self.assertEqual(c["order"], ["light", "typical", "heavy"])
+        self.assertEqual(c["order"], ["light", "typical-nocam", "typical", "heavy"])
         ref = self.rep["graded"]["reference"]
         for t in ("typical", "heavy"):
             self.assertEqual({r["path"] for r in ref["tiers"][t]["camera_runs"]}, {"web_rtc"}, t)
@@ -166,11 +166,11 @@ class Runner(unittest.TestCase):
         self.assertEqual(ram["reference_idle"]["samples"], 1)
         self.assertEqual(ram["reference_idle"]["app_pss_kb"]["median"], 570000)
         self.assertEqual(set(ram["reference_idle"]["by_role_pss_kb"]), {"main", "gpu", "tab"})
-        self.assertEqual(ram["graded_peak"]["samples"], 3)
+        self.assertEqual(ram["graded_peak"]["samples"], 4)
         self.assertEqual(ram["graded_peak"]["app_pss_kb"], 570000)
         self.assertEqual(ram["graded_peak"]["app_rss_hwm_kb"], 900000)      # VmHWM of the three processes
         with open(os.path.join(self.out, "refstart-1.json")) as f:
-            self.assertEqual([m["after"] for m in json.load(f)["memory"]], ["light", "typical", "heavy"])
+            self.assertEqual([m["after"] for m in json.load(f)["memory"]], ["light", "typical-nocam", "typical", "heavy"])
         self.assertTrue(ram["budget"]["ok"])
         self.assertEqual((ram["panes"], ram["panes_waiting"]), ([], []))       # test-frame has no panes
         with open(os.path.join(self.out, "report.md")) as f:
@@ -196,8 +196,8 @@ class Runner(unittest.TestCase):
         inputs = sorted({c for c in shell if c.startswith("input ")})
         # Taps on the toggle and swipes where the page asked, with its coordinates: nothing else.
         self.assertEqual(inputs, ["input keyevent KEYCODE_WAKEUP", "input swipe 720 612 720 108 300", "input tap 720 360"])
-        self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 10)    # 2 on each page and HLS copy (#202)
-        self.assertEqual(sum(1 for c in shell if c.startswith("input swipe ")), 6)            # 2 on each page; none on a copy
+        self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 12)    # 2 on each page and HLS copy (#202)
+        self.assertEqual(sum(1 for c in shell if c.startswith("input swipe ")), 8)            # 2 on each page; none on a copy
         forbidden = re.compile(r"(^|[;&|]\s*)(settings|svc|cmd|setprop|am broadcast|pm (?!path\b))|--ez ")   # no pane is switched without --pane-ram
         self.assertEqual([c for c in shell if forbidden.search(c)], [])
         extras = {m for c in shell for m in re.findall(r"--e\w \w+", c)}
@@ -209,7 +209,7 @@ class Runner(unittest.TestCase):
         self.assertTrue(opens[0].startswith("http://127.0.0.1:18089/clarity/page/index.html?"), opens[0])
         self.assertEqual(opens[1], "http://127.0.0.1:18089/clarity-ref/typical")       # the idle sample's page, no nonce
         views = [c.split()[1:4:2] for c in self.commands if c.startswith("view ")]
-        self.assertEqual(views, [["light", "taps=2"], ["typical", "taps=2"], ["heavy", "taps=2"],
+        self.assertEqual(views, [["light", "taps=2"], ["typical-nocam", "taps=2"], ["typical", "taps=2"], ["heavy", "taps=2"],
                                  ["typical-hls", "taps=2"], ["heavy-hls", "taps=2"]])
 
     def test_no_gesture_without_the_current_pages_request(self):
@@ -319,7 +319,7 @@ class HomeRelaunch(unittest.TestCase):
             c = json.load(f)
         self.assertEqual(c["launch"], "relaunched-by-system")
         self.assertEqual(c["own_page_state"], "finished-still")
-        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
+        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical", "typical-nocam"])
         self.assertTrue(all("step" in e and "page" in e for e in c["tiers"].values()))
         self.assertGreater(c["engine_mono"], c["proc_mono"])
 
@@ -422,16 +422,16 @@ class LongLines(unittest.TestCase):
         p, c = refstart(tmp, FAKE_NO_SPLIT="1")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertIsNone(c["error"])
-        self.assertEqual(c["missing_steps"], ["light", "typical", "heavy"])
+        self.assertEqual(c["missing_steps"], ["light", "typical-nocam", "typical", "heavy"])
         # Each page's updates step, and the camera lines: since protocol 6 (#202) even typical's one
         # stream carries its WebRTC receiver's counts, so it is longer than a logcat line too.
-        self.assertEqual(c["bad_page_lines"], 5)
+        self.assertEqual(c["bad_page_lines"], 6)
         self.assertNotIn("camera", c["tiers"]["heavy"])
         self.assertNotIn("camera", c["tiers"]["typical"])
         with open(os.path.join(tmp, "device.json"), "w") as f:
             json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
         rep = report.build(tmp)
-        self.assertIn("5 page line(s) didn't parse or never arrived whole (cut off in logcat?)", rep["grade"]["provisional_reasons"])
+        self.assertIn("6 page line(s) didn't parse or never arrived whole (cut off in logcat?)", rep["grade"]["provisional_reasons"])
         t = rep["graded"]["reference"]["tiers"]["light"]
         self.assertIsNotNone(t["scroll"])
         self.assertEqual(t["updates_errors"], ["the page's updates step never arrived"])
@@ -442,21 +442,21 @@ class LongLines(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         p, c = refstart(tmp, FAKE_DROP_LAST_PART="1")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
-        self.assertEqual(c["missing_steps"], ["light", "typical", "heavy"])
-        self.assertEqual(c["bad_page_lines"], 3)                         # each page's
-        self.assertEqual([e["lost_lines"] for e in c["tiers"].values()], [1, 1, 1])
+        self.assertEqual(c["missing_steps"], ["light", "typical-nocam", "typical", "heavy"])
+        self.assertEqual(c["bad_page_lines"], 4)                         # each page's
+        self.assertEqual([e["lost_lines"] for e in c["tiers"].values()], [1, 1, 1, 1])
 
     def test_a_lost_scroll_step_is_counted_and_makes_it_provisional(self):
         """A swipe answered with no scroll step back would leave 5 of 6 swipes pooled, unremarked."""
         tmp = tempfile.mkdtemp()
         p, c = refstart(tmp, FAKE_DROP_SCROLL_STEP="1")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
-        self.assertEqual([e["lost_scroll_steps"] for e in c["tiers"].values()], [1, 1, 1])
+        self.assertEqual([e["lost_scroll_steps"] for e in c["tiers"].values()], [1, 1, 1, 1])
         self.assertEqual(c["bad_page_lines"], 0)                         # nothing cut: the line never came
         with open(os.path.join(tmp, "device.json"), "w") as f:
             json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
         g = report.build(tmp)["grade"]
-        self.assertIn("3 swipe(s) answered with no scroll step back", g["provisional_reasons"])
+        self.assertIn("4 swipe(s) answered with no scroll step back", g["provisional_reasons"])
 
     def test_page_lines_joins_parts_and_counts_what_doesnt_parse(self):
         pl = perfrun.P.PageLines()
@@ -504,7 +504,7 @@ class NonceGate(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertEqual(unasked(tmp), [])
         with open(os.path.join(tmp, "state", "swipes.json")) as f:
-            self.assertEqual(json.load(f), 6)                 # 2 on each graded page, none on the warm-up
+            self.assertEqual(json.load(f), 8)                 # 2 on each graded page, none on the warm-up
         self.assertIsNone(c["error"])
 
 
@@ -577,16 +577,16 @@ class Order(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         p, c = refstart(tmp, run=2)
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
-        self.assertEqual(c["order"], ["typical", "heavy", "light"])
-        self.assertEqual(self.opened(tmp), ["typical", "heavy", "light"])
+        self.assertEqual(c["order"], ["typical-nocam", "typical", "heavy", "light"])
+        self.assertEqual(self.opened(tmp), ["typical-nocam", "typical", "heavy", "light"])
         self.assertIsNotNone(c["restart_page"])
-        self.assertEqual(len(c["between"]), 3)
+        self.assertEqual(len(c["between"]), 4)
 
     def test_run_3(self):
         tmp = tempfile.mkdtemp()
         p, c = refstart(tmp, run=3)
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
-        self.assertEqual(self.opened(tmp), ["heavy", "light", "typical"])
+        self.assertEqual(self.opened(tmp), ["typical", "heavy", "light", "typical-nocam"])
 
 
 class Restart(unittest.TestCase):
@@ -626,7 +626,7 @@ class Restart(unittest.TestCase):
         p, c = refstart(tmp, FAKE_NO_RESTART_DONE="1")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertTrue(c["restart_done_missing"])
-        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
+        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical", "typical-nocam"])
         self.assertIsNone(self.build(tmp)["graded"]["reference"]["per_run"][0]["start_error"])
 
     def run_short(self, timeout, fallback="", **env):
@@ -666,7 +666,7 @@ class Restart(unittest.TestCase):
         self.assertIsNone(c["error"])
         self.assertEqual(c["fallback_error"], "heavy-hls didn't finish within 40 s")
         self.assertTrue(c["fallback"]["typical-hls"]["done"])
-        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
+        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical", "typical-nocam"])
         self.assertTrue(all(e.get("done") for e in c["tiers"].values()))
         self.assertEqual(c["fallback"]["heavy-hls"]["error"], "the screen went off during this view")
 
@@ -718,7 +718,7 @@ class Restart(unittest.TestCase):
         self.assertTrue(c["fallback"]["typical-hls"].get("done"))
         # The order: typical's open, the stop, the relaunch, then heavy's open.
         order = [x for x in log if x.startswith(("view ", "shell am force-stop", "shell am start -W -n"))]
-        i = next(k for k, x in enumerate(order) if x.startswith("view typical"))
+        i = next(k for k, x in enumerate(order) if x.startswith("view typical "))
         self.assertTrue(order[i + 1].startswith("shell am force-stop"), order)
         self.assertTrue(order[i + 2].startswith("shell am start -W -n"), order)
         self.assertTrue(order[i + 3].startswith("view heavy"), order)
@@ -847,7 +847,7 @@ class NoisyLogcat(unittest.TestCase):
     def test_unrelated_lines_twice_a_second(self):
         p, c = refstart(tempfile.mkdtemp(), FAKE_LOGCAT_NOISE="0.5")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
-        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
+        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical", "typical-nocam"])
 
     def test_unrelated_lines_twenty_a_second(self):
         p, c = refstart(tempfile.mkdtemp(), FAKE_LOGCAT_NOISE="0.05")

@@ -26,6 +26,7 @@ CAMERA_PROFILES = {"camera.clarity_cam_0": "720p", "camera.clarity_cam_1": "360p
 # provider offers both; one with only the stream integration, HLS).
 CAMERA_STREAM_TYPES = {c: ["hls"] if ".clarity_hls_" in c else ["hls", "web_rtc"] for c in CAMERA_PROFILES}
 FALLBACK = TIERS["FALLBACK"]                # the HLS copy of a view -> the view
+PLAIN = TIERS.get("PLAIN", {})              # a view without its cameras -> the view (#205)
 VIEWS = ["start"] + TIERS["ORDER"] + list(FALLBACK)          # view index 0 is the start view
 SEED = 89
 START = 1_794_500_000.0          # a fixed epoch for every last_changed (2026-11-13)
@@ -219,7 +220,15 @@ def view_spec(view):
     if view == "start":
         st = TIERS["START"]
         return dict(TIERS["TIERS"][st["base"]], **{k: v for k, v in st.items() if k != "base"})
-    return TIERS["TIERS"][FALLBACK.get(view, view)]
+    return TIERS["TIERS"][FALLBACK.get(view, PLAIN.get(view, view))]
+
+
+def plain_pictures(view):
+    """A view without its cameras (tiers.json PLAIN): a still picture in each camera card's place,
+    after the view's own pictures, so the cards and the layout stay the same."""
+    n = sum(len(x) if isinstance(x, list) else 1 for x in TIERS["CAMERAS"][PLAIN[view]])
+    first = view_spec(view)["pictures"]
+    return [{"type": "picture", "image": f"/clarity/picture-{first + i}.png"} for i in range(n)]
 
 
 def lovelace(url_path):
@@ -251,7 +260,7 @@ def view_cards(view):
              {"type": "tile", "entity": "light.living_room", "tap_action": {"action": "toggle"}}]
     first += [{"type": "tile", "entity": e} for e in hd["tiles"]]
     first.append({"type": "entities", "title": "Energy", "entities": hd["rows"]})
-    first += camera_cards(view)
+    first += plain_pictures(view) if view in PLAIN else camera_cards(view)
     deck = []
     for e in take(["sensor", "light", "switch", "binary_sensor"], spec["tiles"] - 1 - len(hd["tiles"])):
         deck.append({"type": "tile", "entity": e})

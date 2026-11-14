@@ -19,12 +19,17 @@ fixed dashboard on which every wall-panel task still feels good**:
 |---|---|
 | A+ | Premium: an A where every task on large dashboards also holds 60 fps |
 | A | A good wall panel even for large dashboards |
-| B | A good wall panel for typical dashboards; large ones stay fluid |
-| C | A good wall panel for typical dashboards |
+| B | A good wall panel for typical dashboards, with a camera; large ones stay fluid |
+| C | A good wall panel for typical dashboards without a camera |
 | D | A good wall panel for light dashboards |
 | E | Not a good wall panel, even for light dashboards |
 
-The report opens with one line such as "Aqara S1 Plus: Clarity C, a good wall panel for typical dashboards.
+Typical is measured twice in each run: without a camera (`typical-nocam`) and with one (`typical`).
+A live camera costs a panel more than anything else on a dashboard, and many homes have none, so C
+asks only for the camera-free typical, and B for typical with its camera playing (the maintainer,
+2026-11-13, rubric v10). The thresholds didn't move; only the ladder's steps did.
+
+The report opens with one line such as "Aqara S1 Plus: Clarity C, a good wall panel for typical dashboards without a camera.
 Held back by large dashboards: scrolling averages 41.5 fps (p95 50 ms)." (an example of the
 format, not a measured result). The second sentence names the tasks that keep the frame from the
 next letter up. A table under it shows each page's tasks.
@@ -84,8 +89,9 @@ The first run fetches HA's frontend (117 MB, once) into `~/.cache/glassworks-per
 SHA-256 (`tools/perf/hafrontend.py`). A full run with `--runs 3` should take about 40 minutes, and
 `--pane-ram` adds about 10. Those are estimates from the step timings, not yet timed on a device
 under protocol 4. A graded run is a restart back to the reference dashboard's start view, then the
-three reference views, each opened in the loaded frontend as a view tab opens it, with 10 taps and
-6 swipes each, then an idle sample on the typical view.
+four reference views (light, typical without and with its camera, heavy), each opened in the loaded
+frontend as a view tab opens it, with 10 taps and 6 swipes each, then an idle sample on the typical
+view.
 
 For the site, export the frame's summary from the finished report:
 
@@ -885,8 +891,11 @@ gets an error, which the frontend handles as it would from HA, and the fake logs
 | Open the view | From the navigation to the view (HA's `navigate()`, as a view tab calls it, in the frontend that is already loaded) to **usable**: the view's head and every card on its first screen drawn, and the main thread free (see [Open the view](#open-the-view-a-navigation-in-the-loaded-frontend) and [Usable](#usable)). The times come from the page's own clock, tied to logcat's by its log line. If the view never says it was usable, or no frame reached the screen after it, it is "not measured", never 0. (Protocols 1 to 3, and protocol 4 as first written, loaded the whole page for each dashboard) | Each view; SurfaceFlinger |
 | Restart | From the app's process start (`Start proc` in logcat) to the reference dashboard's start view being **usable**, as for open the view: the kiosk comes back to it by itself, because the graded part points its dashboard setting there. This is HA's cold load: the app, the websocket, the registries, every card type's code and the first view. Once per run, for the whole frame. The engine being ready (GeckoView's own first page, `about:blank`) is reported, not graded (`engine_ready_ms`). See [Restart: back to a usable dashboard](#restart-back-to-a-usable-dashboard) | logcat; the restart page |
 
-Each graded run is one restart back to the start view, then the three reference views in the run's
-order. The first view opens once the restart page has said it was usable and the screen has been
+Each graded run is one restart back to the start view, then the four reference views in the run's
+order (`tiers.json` `ORDER`: light, typical-nocam, typical, heavy; run k starts k − 1 views in).
+`typical-nocam` is typical card for card, with a still picture (`picture` card) where its camera
+card was (`tiers.json` `PLAIN`), as the cameras took picture cards' places in protocol 5: the same
+cards and layout, without the live video. The first view opens once the restart page has said it was usable and the screen has been
 still for 2 s, never on HA's load event, which comes seconds earlier. If its `done` line is lost, the runner goes on 10 s after its usable line. If the
 kiosk doesn't come back to a reference dashboard (another page loads, or none says it was usable),
 the restart is "not measured" ("the kiosk didn't come back to a reference dashboard") and that
@@ -998,10 +1007,15 @@ updates that make scrolling stutter cost the page its scroll level.
 |---|---|
 | A+ | Heavy premium: every task there holds 60 fps (the headline reads "A+, premium") |
 | A | Heavy good |
-| B | Typical good and Heavy fluid |
-| C | Typical fluid |
+| B | Typical (with its camera) good and Heavy fluid |
+| C | Typical without a camera (`typical-nocam`) fluid |
 | D | Light fluid |
 | E | None of the above |
+
+Rubric v10 (the maintainer, 2026-11-13, #205) added the camera-free typical and moved C onto it; B
+asks what it asked before, on typical with its camera. A report without `typical-nocam` (from
+before v10) is provisional under v10: that page is "not measured", and its grade is the first letter
+the other pages reach (B still stands on typical with its camera).
 
 The scale is A+, A, B, C, D, E (a user decision on 2026-11-12; an earlier draft of v5 had premium as
 a label on an A). A+ needs only heavy, like A; when light or typical weren't measured, the grade is
@@ -1036,7 +1050,11 @@ is 83; the test caps it at 85), plus one when the grade is provisional:
 
 1. **What's good**, in one sentence: the heaviest page that reaches a level, and what is quick,
    smooth or fluid there ("Light dashboards feel good: …"). Without a level, the page with the most
-   good or fluid tasks ("… come closest").
+   good or fluid tasks ("… come closest"). When it is typical without a camera and typical with one
+   doesn't reach a level, the sentence says what the camera costs, with its worst limit: "Typical
+   dashboards feel good without a camera: …; with one, it shows 40% of its camera's frames." That
+   limit isn't quoted again in the next sentence. Pages read as "typical" (without a camera) and
+   "typical with a camera"; a report from before rubric v10 keeps "typical" for its one typical.
 2. **What holds it back**, in one sentence, at most three limits. Each failing task is quoted
    once, with one rounded number, on the lightest page it fails on, and ranked by how far that
    number is past its fluid bar (rubric.json: scroll 30 fps and 67 ms, a change 200 ms, a tap
@@ -1434,7 +1452,7 @@ from real use, and nothing device-unique.
 | `app_version` | The kiosk's version name |
 | `viewport` | `css` (CSS px), `dpr` (device pixel ratio), `default_dpr` (density / 160) |
 | `runs` | `attempted`, `graded` |
-| `pages` | Per page (`light`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams; a run's record is `{"timed_out": true}` with the numbers `null` when the page didn't finish before its streams were measured), `timed_out_runs` (protocol 7: in how many runs the page didn't finish within the runner's deadline; their unmeasured tasks are in the runs as failing: `open_ms` and `inp_ms` at the deadline, `{"timed_out": true}` records for `scroll`, `updates` and `camera`), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
+| `pages` | Per page (`light`, `typical-nocam` since rubric v10, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams; a run's record is `{"timed_out": true}` with the numbers `null` when the page didn't finish before its streams were measured), `timed_out_runs` (protocol 7: in how many runs the page didn't finish within the runner's deadline; their unmeasured tasks are in the runs as failing: `open_ms` and `inp_ms` at the deadline, `{"timed_out": true}` records for `scroll`, `updates` and `camera`), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
 | `restart_ms` | Process start to a usable reference dashboard (median; to engine ready before protocol 4) |
 | `gaps` | Measurement facts that leave it short: "1 of 3 graded runs failed or are missing", "heavy: scrolling rests on rAF only in 1 run(s)…". Empty when complete |
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |

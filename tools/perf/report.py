@@ -771,7 +771,7 @@ def viewport_check(ref, device):
     return "ok", None
 
 
-LABEL = {"light": "light", "typical": "typical", "heavy": "large"}
+LABEL = {"light": "light", "typical-nocam": "typical", "typical": "typical (with a camera)", "heavy": "large"}
 
 
 def task_phrase(task, s_):
@@ -826,7 +826,9 @@ def headline(name, g, ref):
     lead = "Short of A+ on" if g["grade"] == G.LETTER_ORDER[1] else "Held back by"
     for t, phrases in hb:
         if phrases:
-            out += f" {lead} {LABEL[t]} dashboards: " + "; ".join(phrases) + "."
+            # "typical dashboards", "typical dashboards with a camera" (rubric v10, #205).
+            label = "typical dashboards with a camera" if t == "typical" else f"{LABEL.get(t, t)} dashboards"
+            out += f" {lead} {label}: " + "; ".join(phrases) + "."
     if g["capped_by_start"]:
         out += f" A slow restart ({g['start']['value'] / 1000:.1f} s) caps it at {G.START_CAP}."
     if g["provisional"]:
@@ -1518,7 +1520,8 @@ def markdown(rep):
     app = rep["frame"]["app"]
     out = [f"# {G.NAME} report: {rep['frame']['name']}", "", device_line(dev, app), "",
            f"**{g['headline']}**", "", notes_md(rep.get("notes") or N.notes(rep)), "",
-           "The grade comes only from the three reference dashboards this test ships (light, typical, heavy), "
+           "The grade comes only from the reference dashboards this test ships (light, typical without and with a "
+           "camera, heavy), "
            "so it doesn't depend on your Home Assistant. Background load (panes, the radio, heat) still reaches it.", ""]
     ref = rep["graded"]["reference"]
     if ref:
@@ -1530,11 +1533,11 @@ def markdown(rep):
                 "| Page | Level | Tap (INP) | Scroll | Live updates | Open the view | Cameras | Holds it back |",
                 "|---|---|---|---|---|---|---|---|"]
         for t in G.TIERS:
-            s_, b = ref["tiers"].get(t), g["bands"][t]
+            s_, b = ref["tiers"].get(t), g["bands"].get(t) or {}
             if not s_:
                 out.append(f"| {t} | not measured | | | | | | |")
                 continue
-            lvl = g["levels"][t]
+            lvl = g["levels"].get(t)
             up = {None: "fluid", "fluid": "good", "good": "premium"}
             target = up.get(lvl)
             held = ", ".join(G.limits(b, target)) if target else ""

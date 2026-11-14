@@ -22,14 +22,8 @@
   // after 140 s: the page's timers wait behind the frontend's queue, while the refresh driver's
   // frames come first (5 to 8 a second there). The timer still ends a wait when no frame comes (a
   // hidden page draws none).
-  const sleep = (ms) => new Promise((r) => {
-    const end = performance.now() + ms;
-    let over = false;
-    const finish = () => { if (!over) { over = true; r(); } };
-    setTimeout(finish, ms);
-    const tick = () => { if (over) return; if (performance.now() >= end) finish(); else requestAnimationFrame(tick); };
-    requestAnimationFrame(tick);
-  });
+  const sleep = (ms) => S.pacedSleep(ms, { now: () => performance.now(), setTimeout: (f, t) => setTimeout(f, t),
+                                           requestAnimationFrame: (f) => requestAnimationFrame(f) });
   // A promise, or after `ms` (the harness's own clock) undefined: for answers a busy page may hold.
   const within = (p, ms) => Promise.race([p, sleep(ms).then(() => undefined)]);
   const frame = () => new Promise((r) => requestAnimationFrame(r));

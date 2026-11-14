@@ -345,8 +345,8 @@ def cmd_coldstart(dev, a):
     each reference view (--tiers; --warmup-tier adds one, not graded) through the fake Home
     Assistant (--url): the harness, in the frontend that is already loaded, navigates to it as HA's
     view tabs do. It follows each view's lines: taps and swipes where the view asks. The order turns
-    by one view each run (run 1: light, typical, heavy; run 2: typical, heavy, light; run 3: heavy,
-    light, typical), so no view always comes first. Each opens only once the screen has been still
+    by one view each run (tiers.json ORDER: run 1 light, typical-nocam, typical, heavy; run 2 from
+    typical-nocam; run 3 from typical), so no view always comes first. Each opens only once the screen has been still
     for --between-quiet seconds (the view before stops its updates when it is done). After the first
     open, any page load is an error: a view switch loads no page. Without a restart page (the kiosk
     came back to its own dashboard), it waits for that page as protocols 1 to 3 did.
@@ -956,7 +956,9 @@ def main():
     ap.add_argument("--timeout", type=float, default=None, help="seconds; default 1200 (synthetic), 120 (coldstart)")
     ap.add_argument("--radio-procs", default="otbr-agent,cpcd,zigbeed")
     ap.add_argument("--own-page-wait", type=float, default=30, help="refstart: seconds to wait for the kiosk's own page")
-    ap.add_argument("--tiers", default="light,typical,heavy", help="refstart: reference dashboards; run k starts k-1 pages in")
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "page", "tiers.json")) as f:
+        order = ",".join(json.load(f)["ORDER"])
+    ap.add_argument("--tiers", default=order, help="refstart: reference dashboards (tiers.json ORDER); run k starts k-1 pages in")
     ap.add_argument("--fallback", default="", help="refstart: views opened after the graded ones, measured as detail "
                     "(protocol 6: typical-hls,heavy-hls, the cameras over HLS)")
     ap.add_argument("--warmup-tier", default="", help="refstart: a warm-up page opened first and not graded (protocol 4: none; the restart page is the warm-up)")

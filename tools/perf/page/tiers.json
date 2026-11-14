@@ -3,9 +3,14 @@
  "PROTOCOL": 8,
  "ORDER": [
   "light",
+  "typical-nocam",
   "typical",
   "heavy"
  ],
+ "_PLAIN": "Views without their cameras (the maintainer, 2026-11-13, #205): a copy of a view whose camera cards are still pictures in the same places (the cameras took picture cards' places in protocol 5), so the view's cards and layout are the same and only the live video is gone. typical-nocam grades C (typical without a camera); typical, with its camera, grades B. Graded like any view.",
+ "PLAIN": {
+  "typical-nocam": "typical"
+ },
  "DASHBOARD": "clarity-ref",
  "_START": "The view the kiosk is pointed at and comes back to after a restart: the light view's cards plus one history graph and one picture, so the cold load brings in the code of every card type HA loads lazily (create-card-element.ts) and opening a view later measures the view, not a first download.",
  "START": {
@@ -22,6 +27,7 @@
   "typical": [
    "720p"
   ],
+  "typical-nocam": [],
   "heavy": [
    "720p",
    [
