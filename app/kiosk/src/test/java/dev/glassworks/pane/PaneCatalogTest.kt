@@ -89,8 +89,8 @@ class PaneCatalogTest {
     @Test
     fun theScanFindsTheKnownPanes() {
         // the scans must keep working: if a refactor hides the panes from them, this fails before the real checks pass vacuously
-        assertTrue(paneClassIds.toString(), paneClassIds.containsAll(listOf("assist", "timers", "sendspin", "radio", "wall-base", "time-zone", "diagnostics")))
-        assertTrue(definitionIds.toString(), definitionIds.containsAll(listOf("assist", "sendspin", "radio", "wall-base", "time-zone", "diagnostics")))
+        assertTrue(paneClassIds.toString(), paneClassIds.containsAll(listOf("assist", "timers", "sendspin", "radio", "wall-base", "time-zone", "diagnostics", "bluetooth-proxy")))
+        assertTrue(definitionIds.toString(), definitionIds.containsAll(listOf("assist", "sendspin", "radio", "wall-base", "time-zone", "diagnostics", "bluetooth-proxy")))
     }
 
     @Test
