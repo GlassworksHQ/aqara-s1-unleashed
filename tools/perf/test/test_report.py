@@ -560,6 +560,15 @@ class CpuClock(unittest.TestCase):
         self.assertEqual((ref["tiers"]["heavy"]["cpu_mhz"]["min"], ref["tiers"]["heavy"]["cpu_mhz"]["max"]), (1008.0, 1608.0))
         self.assertIsNone(ref["tiers"]["typical"]["cpu_mhz"])
         self.assertEqual(ref["cpu_max_mhz"], 1608.0)
+        self.assertEqual([c["median"] for c in ref["tiers"]["heavy"]["cpu_mhz_by_core"]], [1200.0, 1200.0, 1008.0, 1608.0])
+        # report.md: the interval the run used, and each core when they differ (big.LITTLE).
+        for r in runs:
+            r["cpu_clock_s"] = 5.0
+        ref = R.reference_summary(runs)
+        clocks = [(t, s_["cpu_mhz"]) for t, s_ in ref["tiers"].items() if (s_.get("cpu_mhz") or {}).get("median") is not None]
+        line = R.cpu_clock_line(ref, clocks, ref["cpu_max_mhz"], ref["cpu_clock_s"])
+        self.assertEqual(line, "CPU clock while each view was open (detail, every core, every 5 s): light 1200 MHz (1200 to 1200); "
+                               "heavy core 0 1200, core 1 1200, core 2 1008, core 3 1608 MHz (medians); the CPU's top clock is 1608 MHz.")
         # And without samples (a run from before): nothing.
         self.assertIsNone(R.reference_summary([R.reference_run(refstart(1, 100))])["cpu_max_mhz"])
 

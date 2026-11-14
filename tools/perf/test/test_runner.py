@@ -357,6 +357,13 @@ class CpuClock(unittest.TestCase):
         self.assertLessEqual(views, {"light", "typical-nocam", "typical", "heavy"})
         self.assertTrue(views, c.get("cpu_khz"))
         self.assertTrue(all(k == [1200000] * 4 for _, _, k in c["cpu_khz"]))
+        self.assertEqual(c["cpu_clock_s"], 0.3)
+        self.assertNotIn("thread_errors", c)                   # the sampler starts after the run's state exists
+        # Only while a view is open, not after its done line: the runner then waits 1.5 s more before it
+        # stops (break_after), and the old rule went on sampling the last view through it.
+        last = c["order"][-1]
+        swipe_end = max(t for v, t, kind, _ in c["gestures_sent"] if v == last)
+        self.assertLess(max(t for v, t, _ in c["cpu_khz"] if v == last), swipe_end + 1.2)
         with open(os.path.join(tmp, "state", "..", "state", "commands.log")) as f:
             log = f.read()
         self.assertIn("cpufreq/scaling_cur_freq", log)
