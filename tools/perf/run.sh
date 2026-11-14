@@ -24,12 +24,13 @@
 # Usage: tools/perf/run.sh --frame aqara-s1-plus [--name "Aqara S1 Plus"] [--serial S] [--runs 3] [--out DIR]
 #          --restore-dashboard URL|auto [--pane-ram assist=on,sendspin=on,mic=on]
 #          [--skip-synthetic] [--skip-reference] [--skip-real-use] [--taps 10] [--quick] [--apk FILE]...
+#          [--webrtc-transport adb|lan-turn|lan-udp]   # lan-*: a diagnostic for a panel on this network, not a grade
 #        tools/perf/run.sh --frame ID --out DIR --idle-only LABEL   # one idle sample (pane diffs)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ADB="${ADB:-adb}"
-FRAME="" NAME="" RUNS=3 OUT="" PORT=8089 TURN_PORT="" PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
+FRAME="" NAME="" RUNS=3 OUT="" PORT=8089 TURN_PORT="" WEBRTC_TRANSPORT=adb PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
 SYNTH=1 REF=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=() RESTORE="" PANE_RAM=""
 # Waits, in seconds. Only the off-device test (test/test_runner.py) shortens them.
 IDLE_SETTLE="${GW_PERF_IDLE_SETTLE:-30}" IDLE_WINDOW="${GW_PERF_IDLE_WINDOW:-15}"
@@ -55,6 +56,7 @@ while [ $# -gt 0 ]; do
     --apk) APKS+=(--apk "$2"); shift 2 ;;
     --restore-dashboard) RESTORE="$2"; shift 2 ;;
     --pane-ram) PANE_RAM="$2"; shift 2 ;;
+    --webrtc-transport) WEBRTC_TRANSPORT="$2"; shift 2 ;;
     -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -258,7 +260,8 @@ if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
     exit 2
   fi
   # fakeha.jsonl: every command the frontend sent, and the stream's sends (report.py checks them).
-  "$FAKE_PY" "$HERE/fakeha.py" --port "$PORT" --turn-port "$TURN_PORT" --log "$OUT/fakeha.jsonl" >"$OUT/server.log" 2>&1 &
+  "$FAKE_PY" "$HERE/fakeha.py" --port "$PORT" --turn-port "$TURN_PORT" --webrtc-transport "$WEBRTC_TRANSPORT" \
+    --log "$OUT/fakeha.jsonl" >"$OUT/server.log" 2>&1 &
   SERVER_PID=$!
   for _ in $(seq 1 60); do curl -s -o /dev/null --connect-timeout 1 --max-time 3 "http://127.0.0.1:$PORT/manifest.json" && break; sleep 0.5; done
   kill -0 "$SERVER_PID" 2>/dev/null || { echo "the fake Home Assistant didn't start; see $OUT/server.log" >&2; exit 2; }

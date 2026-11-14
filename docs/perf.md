@@ -623,6 +623,22 @@ showed one meanwhile.
   are `webrtc_liveness` (disconnected, connected, failed), and an ICE loss is `lost` with `reason`
   (`liveness` or `remote`).
 
+**Where the video waits** (diagnostics, #202's sixth round). On the S1's heavy view the panel
+stopped receiving video for tens of seconds ([the research note](../frames/aqara-s1-plus/research/webrtc-camera.md)).
+To find where it waits:
+- `fakeha.jsonl`: each relay connection's `seconds` (each second: seconds since it opened, kB down
+  and up, datagrams down and up so far, and kB queued on this computer toward the panel), and
+  `ws_second` (the frontend websockets' kB and messages each way, and the longest blocked send).
+- `tools/perf/transportwatch.py --out DIR [--logcat]`, beside run.sh, read-only: the panel's TCP
+  sockets on the fake's ports each second (`rx_queue` on the kiosk's socket is data not yet read),
+  each thread's CPU in the kiosk and adbd every few seconds, and logcat if asked. Its sampling costs
+  the panel a few percent of a core (adbd 3.6% at idle, with it).
+- refstart's `gestures_sent`: when each tap and swipe went over adb, and how long `input` took.
+- `run.sh --webrtc-transport lan-turn|lan-udp`: the camera media without adb reverse, for a panel on
+  this computer's network: the same relay over TCP to this computer's address, or no relay (UDP, as a
+  real setup on a LAN). A comparison only, never a grade: the network is the tester's. `adb` is the
+  default and the graded path.
+
 **When the peer gives a connection up: as go2rtc does** (since #202's fifth round, 2026-11-13).
 Real setups answer the frontend's offer with go2rtc. HA 2026.11.0 pins go2rtc 1.9.15
 (`homeassistant/components/go2rtc/const.py`, and its Dockerfile), which uses pion/webrtc v4.2.25 and

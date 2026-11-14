@@ -128,6 +128,11 @@ class Runner(unittest.TestCase):
             c = json.load(f)
         self.assertEqual(sorted(c["fallback"]), ["heavy-hls", "typical-hls"])
         self.assertEqual(c["fallback"]["heavy-hls"]["swipes"], [])
+        # Each gesture's time on this computer's clock and how long `input` took (#202, smoke 5).
+        sent = c["gestures_sent"]
+        self.assertEqual({g[2] for g in sent}, {"tap", "swipe"})
+        self.assertTrue(all(isinstance(g[1], float) and g[3] >= 0 for g in sent))
+        self.assertEqual(sum(1 for g in sent if g[0] == "heavy" and g[2] == "tap"), 2)
         self.assertEqual(c["order"], ["light", "typical", "heavy"])
         ref = self.rep["graded"]["reference"]
         for t in ("typical", "heavy"):

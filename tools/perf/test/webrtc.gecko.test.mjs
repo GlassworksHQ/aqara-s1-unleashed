@@ -144,7 +144,7 @@ test("Gecko gets a relay candidate from the fake's TURN relay and plays its WebR
     if (!t.passed && fakeErr) t.diagnostic(`the fake's stderr:\n${fakeErr.slice(-3000)}`);
     rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
   });
-  await until("the fake", () => banner.includes("WebRTC relay on"), 60000);
+  await until("the fake", () => banner.includes("WebRTC over"), 60000);
 
   const ha = await haSocket(base);
   const cam = "camera.clarity_cam_1";
@@ -272,7 +272,7 @@ test("in Gecko, the harness grades a WebRTC camera's frames shown from the recei
     fake.kill();
     rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
   });
-  await until("the fake", () => banner.includes("WebRTC relay on"), 60000);
+  await until("the fake", () => banner.includes("WebRTC over"), 60000);
 
   mkdirSync(profile);
   writeFileSync(join(profile, "user.js"), ['user_pref("browser.shell.checkDefaultBrowser", false);',

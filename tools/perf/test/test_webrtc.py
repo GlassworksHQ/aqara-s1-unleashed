@@ -109,6 +109,16 @@ class Turn(unittest.TestCase):
             if want == webrtc.stun.Class.ERROR:
                 self.assertEqual(r.attributes["ERROR-CODE"][0], 403)
 
+    def test_the_diagnostic_transports(self):
+        """#202, smoke 5: lan-turn is the same relay over this computer's network; lan-udp has no relay,
+        as a real setup on a LAN. adb stays the test's."""
+        lan = webrtc.client_config(8090, "lan-turn", "192.0.2.7")["configuration"]
+        self.assertEqual((lan["iceServers"][0]["urls"], lan["iceTransportPolicy"]), ("turn:192.0.2.7:8090?transport=tcp", "relay"))
+        self.assertEqual(webrtc.client_config(8090, "lan-udp", "192.0.2.7"), {"configuration": {"iceServers": []}})
+        self.assertEqual(webrtc.client_config(8090), webrtc.client_config(8090, "adb", "192.0.2.7"))
+        with self.assertRaises(ValueError):
+            webrtc.WebRTC(0, camera.annexb, 15, transport="usb")
+
     def test_the_browser_gets_the_relay_over_tcp_and_relay_only(self):
         c = webrtc.client_config(8090)["configuration"]
         # A name, not 127.0.0.1: Gecko never connects to a TURN server at a loopback IP.
@@ -237,6 +247,16 @@ class Session(unittest.TestCase):
         checks = used[0]["checks"]
         self.assertGreaterEqual(checks["answered"], 1)
         self.assertLess(checks["median_ms"], 500)
+        # Once a second (#202, smoke 5): the relay's totals each way and its backlog toward the
+        # browser; the websocket's traffic.
+        secs = used[0]["seconds"]
+        self.assertGreaterEqual(len(secs), 2)
+        self.assertEqual(len(secs[0]), 6)
+        self.assertGreater(secs[-1][1], secs[0][1])                  # kB down grew: the video flowed
+        self.assertTrue(all(row[5] >= 0 for row in secs))
+        with open(self.log) as f:
+            ws = [json.loads(line) for line in f if '"ws_second"' in line]
+        self.assertTrue([e for e in ws if e["t"] >= since and e["down_msgs"] >= 1 and "send_ms_max" in e])
         # This client closed its connection first: the peer lost it from the browser's side, not by consent.
         mine = [e for e in log if e["t"] >= since]
         self.assertEqual({e.get("reason") for e in mine if e.get("lost")}, {"remote"})
@@ -316,6 +336,52 @@ class Session(unittest.TestCase):
         self.assertEqual([e.get("webrtc_liveness") for e in log if "webrtc_liveness" in e], [])
         closed = [e for e in log if e.get("turn_closed") and e["to_peer"]]
         self.assertTrue(closed and closed[0]["checks"]["over_500_ms"] >= 1, closed)       # the answers were late
+
+
+class LanUdp(unittest.TestCase):
+    """The lan-udp diagnostic: no relay; the browser and the peer pair host candidates over UDP, as
+    a real setup on a LAN does."""
+
+    def test_a_browser_plays_without_the_relay(self):
+        need()
+        from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
+        for prof, size in (("720p", "1280x720"), ("360p", "640x360")):
+            if not os.path.exists(os.path.join(STUB_CAMERA, prof, "stream.h264")):
+                make_stream(os.path.join(STUB_CAMERA, prof, "x"), size)
+                os.replace(os.path.join(STUB_CAMERA, prof, "x", "stream.h264"), os.path.join(STUB_CAMERA, prof, "stream.h264"))
+        log = []
+        svc = webrtc.WebRTC(0, camera.annexb, 15, record=log.append, transport="lan-udp")
+        conf = webrtc.client_config(svc.turn_port, svc.transport, svc.addr)["configuration"]
+
+        async def play():
+            pc = RTCPeerConnection(RTCConfiguration(iceServers=conf["iceServers"]))
+            pc.addTransceiver("video", direction="recvonly")
+            got = asyncio.get_running_loop().create_future()
+
+            @pc.on("track")
+            def on_track(track):
+                async def pull():
+                    await track.recv()
+                    if not got.done():
+                        got.set_result(True)
+                asyncio.ensure_future(pull())
+            await pc.setLocalDescription(await pc.createOffer())
+            q = asyncio.Queue()
+            loop = asyncio.get_running_loop()
+            svc.offer("lan1", "camera.clarity_cam_1", "360p", pc.localDescription.sdp,
+                      lambda ev: loop.call_soon_threadsafe(q.put_nowait, ev))
+            ev = await asyncio.wait_for(q.get(), 10)
+            self.assertEqual(ev["type"], "answer", ev)
+            await pc.setRemoteDescription(RTCSessionDescription(ev["answer"], "answer"))
+            await asyncio.wait_for(got, 10)
+            pair = [v for v in (await pc.getStats()).values() if v.type == "transport"]
+            await pc.close()
+            return pair
+
+        self.assertTrue(asyncio.run(play()))
+        self.assertFalse([e for e in log if e.get("turn_connected")])          # the relay wasn't used
+        self.assertTrue([e for e in log if e.get("webrtc_ice") == "completed"])
+
 
 if __name__ == "__main__":
     unittest.main()

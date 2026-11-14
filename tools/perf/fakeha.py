@@ -111,6 +111,30 @@ class Hub:
         self.cmd, self.cmd_cv = None, threading.Condition()
         # The WebRTC peer and its TURN relay (webrtc.py), when aiortc is here (serve() starts it).
         self.webrtc, self.turn_port, self.webrtc_n = None, None, 0
+        # The frontend websockets' traffic each second (#202, smoke 5): bytes and messages each way,
+        # and the longest a send to the panel blocked (its TCP path through adb backing up).
+        self.ws_lock, self.ws_io = threading.Lock(), None
+
+    def ws_note(self, down=0, up=0, send_ms=0.0):
+        with self.ws_lock:
+            io = self.ws_io = self.ws_io or {"down_kb": 0.0, "down_msgs": 0, "up_kb": 0.0, "up_msgs": 0, "send_ms_max": 0.0}
+            if down:
+                io["down_kb"] += down / 1024
+                io["down_msgs"] += 1
+                io["send_ms_max"] = max(io["send_ms_max"], send_ms)
+            if up:
+                io["up_kb"] += up / 1024
+                io["up_msgs"] += 1
+
+    def ws_seconds(self):
+        """Logs the websockets' traffic once a second, while there is any."""
+        while True:
+            time.sleep(1)
+            with self.ws_lock:
+                io, self.ws_io = self.ws_io, None
+            if io:
+                self.record(dict({"t": time.time(), "ws_second": True},
+                                 **{k: round(v, 1) if isinstance(v, float) else v for k, v in io.items()}))
 
     def new_webrtc_session(self):
         """A WebRTC session id, as HA's ULIDs look, but counted."""
@@ -229,7 +253,9 @@ class Conn:
     def send(self, msg):
         data = ws_frame(json.dumps(msg, separators=(",", ":")).encode())
         with self.send_lock:
+            t0 = time.monotonic()
             self.sock.sendall(data)
+            self.hub.ws_note(down=len(data), send_ms=(time.monotonic() - t0) * 1000)
 
     def result(self, mid, result=None, success=True, error=None):
         msg = {"id": mid, "type": "result", "success": success}
@@ -257,6 +283,7 @@ class Conn:
         try:
             while True:
                 op, data = ws_read(self.sock)
+                self.hub.ws_note(up=len(data))
                 if op == 8:
                     return
                 if op == 9:
@@ -365,7 +392,8 @@ def _webrtc(error_code):
 
 @_webrtc("webrtc_get_client_config_failed")
 def _webrtc_client_config(c, m):
-    c.result(m["id"], webrtc.client_config(c.hub.turn_port))
+    w = c.hub.webrtc
+    c.result(m["id"], webrtc.client_config(c.hub.turn_port, w.transport if w else "adb", w.addr if w else None))
 
 
 @_webrtc("webrtc_offer_failed")
@@ -678,7 +706,7 @@ def harness_url():
     return f"/clarity/harness-{hashlib.sha256(D.asset('harness.js')[1]).hexdigest()[:16]}.js"
 
 
-def serve(port, log_path=None, harness=True, turn_port=None):
+def serve(port, log_path=None, harness=True, turn_port=None, transport="adb"):
     """turn_port: where the WebRTC relay listens (0: any free port; None: port + 1). The panel reaches
     it through adb reverse, as it reaches `port`."""
     front = hafrontend.root()
@@ -686,10 +714,12 @@ def serve(port, log_path=None, harness=True, turn_port=None):
     Handler.harness = harness_url()
     Handler.index = render_index(front, Handler.harness if harness else None)
     Handler.hub = hub = Hub(open(log_path, "a") if log_path else None)
+    threading.Thread(target=hub.ws_seconds, daemon=True).start()
     if webrtc.available():
         hub.webrtc = webrtc.WebRTC((port + 1 if port else 0) if turn_port is None else turn_port, camera.annexb,
-                                   D.TIERS["CAMERA"]["fps"], record=hub.record)
+                                   D.TIERS["CAMERA"]["fps"], record=hub.record, transport=transport)
         hub.turn_port = hub.webrtc.turn_port
+        hub.record({"t": time.time(), "webrtc_transport": transport, "media": hub.webrtc.addr})
     # The frontend fetches dozens of modules at once; the default backlog (5) resets connections.
     ThreadingHTTPServer.request_queue_size = 256
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
@@ -703,9 +733,13 @@ def main():
     ap.add_argument("--log", help="append every websocket command to this file (JSON lines)")
     ap.add_argument("--no-harness", action="store_true", help="serve HA's index.html without Clarity's harness")
     ap.add_argument("--turn-port", type=int, help="the WebRTC relay's port (default: --port + 1)")
+    ap.add_argument("--webrtc-transport", default="adb", choices=webrtc.TRANSPORTS,
+                    help="adb (the test's); lan-turn and lan-udp are diagnostics for a panel on this network")
     a = ap.parse_args()
-    srv = serve(a.port, a.log, not a.no_harness, a.turn_port)
-    turn = (f"WebRTC relay on 127.0.0.1:{Handler.hub.turn_port}, media on {Handler.hub.webrtc.addr}" if Handler.hub.webrtc
+    srv = serve(a.port, a.log, not a.no_harness, a.turn_port, a.webrtc_transport)
+    w = Handler.hub.webrtc
+    turn = (f"WebRTC over {w.transport}, relay on {w.addr if w.transport == 'lan-turn' else '127.0.0.1'}:{Handler.hub.turn_port}, "
+            f"media on {w.addr}" if w
             else "no WebRTC (aiortc isn't here: tools/perf/webrtc-requirements.txt)")
     print(f"fake Home Assistant {HA_VERSION}, frontend {hafrontend.VERSION}, on http://127.0.0.1:{a.port}; {turn}", flush=True)
     srv.serve_forever()

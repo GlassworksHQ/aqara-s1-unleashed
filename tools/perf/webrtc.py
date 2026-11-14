@@ -119,11 +119,22 @@ def _install_pion_liveness():
     aioice.ice.Connection._gw_pion = True
 
 
-def client_config(turn_port):
+# How the panel reaches the peer. `adb` is the test's: TURN over TCP through adb reverse, the same on
+# any network. The other two are diagnostics only (#202, smoke 5: did heavy's video stall in adb?),
+# for a panel on this computer's network: `lan-turn`, the same relay over TCP to this computer's
+# address over Wi-Fi, and `lan-udp`, no relay, UDP between the panel and the peer as a real setup.
+TRANSPORTS = ("adb", "lan-turn", "lan-udp")
+
+
+def client_config(turn_port, transport="adb", addr=None):
     """camera/webrtc/get_client_config's result. HA sends only iceServers (webrtc-models'
     RTCConfiguration); the relay-only policy is the fake's one addition, so a browser on the same
-    network as this computer can't pair its own address and skip the relay."""
-    return {"configuration": {"iceServers": [{"urls": f"turn:localhost:{turn_port}?transport=tcp",
+    network as this computer can't pair its own address and skip the relay. `lan-udp` gives no
+    servers, as HA would on a LAN (it adds public STUN servers, which a LAN doesn't need)."""
+    if transport == "lan-udp":
+        return {"configuration": {"iceServers": []}}
+    host = addr if transport == "lan-turn" else "localhost"
+    return {"configuration": {"iceServers": [{"urls": f"turn:{host}:{turn_port}?transport=tcp",
                                               "username": TURN_USER, "credential": TURN_PASSWORD}],
                               "iceTransportPolicy": "relay"}}
 
@@ -165,6 +176,11 @@ class TurnConn(asyncio.Protocol):
     def __init__(self, server):
         self.server, self.buf, self.relay, self.perms, self.chan, self.peer_chan = server, b"", None, set(), {}, {}
         self.to_peer = self.from_peer_n = 0        # datagrams relayed each way (logged when it closes)
+        # Bytes over the TCP connection each way, and once a second (WebRTC._seconds) those totals
+        # with the bytes still queued toward the browser (#202, smoke 5): where the video waits, on
+        # this computer (adb not taking it) or on the panel (its /proc/net/tcp rx_queue).
+        self.down_bytes = self.up_bytes = 0
+        self.born, self.seconds = time.time(), []
         # The peer's ICE checks (its keepalives once connected, PION_ICE) on their way to the
         # browser, by transaction id, and how long each answer took through the browser.
         self.checks, self.check_rtt, self.late = {}, [], []
@@ -192,6 +208,9 @@ class TurnConn(asyncio.Protocol):
         self.server.record({"t": time.time(), "turn_closed": list(self.client), "to_peer": self.to_peer,
                             "from_peer": self.from_peer_n, "permissions": sorted(self.perms),
                             "channels": len(self.chan),
+                            # Each second: [s since opened, kB down, kB up, datagrams down, up, kB queued
+                            # here toward the browser] (totals so far, except queued).
+                            "seconds": self.seconds if self.to_peer or self.from_peer_n else [],
                             # The peer's checks through the browser: answered (round trip, ms), over
                             # 500 ms (late for aiortc: the first 20, with when), and never answered.
                             "checks": {"answered": len(rtt), "unanswered": len(self.checks),
@@ -200,6 +219,7 @@ class TurnConn(asyncio.Protocol):
                                        "over_500_ms": sum(1 for x in rtt if x > 500), "late": self.late}})
 
     def data_received(self, data):
+        self.up_bytes += len(data)
         self.buf += data
         while len(self.buf) >= 4:
             if self.buf[0] & 0xC0 == 0x40:                    # ChannelData, padded to 4 over TCP
@@ -229,7 +249,18 @@ class TurnConn(asyncio.Protocol):
                            {k.replace("_", "-"): v for k, v in attrs.items()})
         if auth:
             out.add_message_integrity(TURN_KEY)
-        self.tr.write(bytes(out))
+        self.write(bytes(out))
+
+    def write(self, data):
+        self.down_bytes += len(data)
+        self.tr.write(data)
+
+    def second(self):
+        """One sample of this connection: seconds since it opened, kB down and up so far, datagrams
+        each way so far, and kB queued here toward the browser now."""
+        queued = self.tr.get_write_buffer_size() if not self.tr.is_closing() else 0
+        self.seconds.append([round(time.time() - self.born, 1), round(self.down_bytes / 1024, 1),
+                             round(self.up_bytes / 1024, 1), self.from_peer_n, self.to_peer, round(queued / 1024, 1)])
 
     def stun(self, m):
         M = stun.Method
@@ -303,11 +334,11 @@ class TurnConn(asyncio.Protocol):
             self.checks[data[8:20]] = time.monotonic()
         num = self.peer_chan.get(addr)
         if num is not None:
-            self.tr.write(struct.pack("!HH", num, len(data)) + data + bytes(-len(data) % 4))
+            self.write(struct.pack("!HH", num, len(data)) + data + bytes(-len(data) % 4))
         else:
             ind = stun.Message(stun.Method.DATA, stun.Class.INDICATION,
                                attributes={"XOR-PEER-ADDRESS": addr, "DATA": data})
-            self.tr.write(bytes(ind))
+            self.write(bytes(ind))
 
 
 class _Relay(asyncio.DatagramProtocol):
@@ -321,9 +352,12 @@ class _Relay(asyncio.DatagramProtocol):
 # ---- the service: an asyncio loop in its own thread, called from the fake's request threads
 
 class WebRTC:
-    def __init__(self, turn_port, streams, fps, record=lambda e: None):
+    def __init__(self, turn_port, streams, fps, record=lambda e: None, transport="adb"):
         """streams(profile): the path of its Annex B stream (camera.annexb); record: the fake's log."""
         self.turn_port, self.streams, self.fps, self.record = turn_port, streams, fps, record
+        if transport not in TRANSPORTS:
+            raise ValueError(f"transport {transport!r} isn't one of {', '.join(TRANSPORTS)}")
+        self.transport = transport
         self.sessions, self.aus = {}, {}
         # The peer's only candidate is the media address: aioice's own list would add every
         # interface (and leaves loopback out).
@@ -350,9 +384,17 @@ class WebRTC:
     async def _listen(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("127.0.0.1", self.turn_port))
+        # adb reverse reaches loopback; lan-turn comes over the network to the media address.
+        sock.bind((self.addr if self.transport == "lan-turn" else "127.0.0.1", self.turn_port))
         self.turn_port = sock.getsockname()[1]
         self.turn = await self.loop.create_server(lambda: TurnConn(self), sock=sock)
+        asyncio.ensure_future(self._seconds())
+
+    async def _seconds(self):
+        while True:
+            await asyncio.sleep(1)
+            for conn in list(self.conns):
+                conn.second()
 
     def offer(self, session_id, entity_id, profile, sdp, send):
         """Answers an offer as go2rtc does through HA: send({type: answer}) or send({type: error})."""

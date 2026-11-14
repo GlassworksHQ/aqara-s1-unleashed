@@ -111,7 +111,7 @@ test("HA's frontend plays the fake's cameras over WebRTC through the TURN relay,
 
   let banner = "";
   fake.stdout.on("data", (d) => { banner += d; });
-  await until("the fake", () => banner.includes("WebRTC relay on"), 60000);
+  await until("the fake", () => banner.includes("WebRTC over"), 60000);
   let err = "";
   browser.stderr.on("data", (d) => { err += d; });
   const wsUrl = await until("Chrome's DevTools", () => (/DevTools listening on (ws:\S+)/.exec(err) || [])[1], 30000);

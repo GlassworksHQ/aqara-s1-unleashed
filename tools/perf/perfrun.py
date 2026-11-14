@@ -423,7 +423,12 @@ def cmd_coldstart(dev, a):
         for i in range(n):
             if not st["current"] or st["current"][1] != nonce:
                 return
+            t0 = time.time()
             dev.sh(cmd)
+            # When each gesture went over adb and how long `input` took on the panel, on this
+            # computer's clock (fakeha.jsonl's): #202, smoke 5's heavy stalled during the taps.
+            res.setdefault("gestures_sent", []).append([st["current"][0], round(t0, 3), cmd.split()[1],
+                                                         round(time.time() - t0, 3)])
             if i + 1 < n:
                 time.sleep(gap)
 

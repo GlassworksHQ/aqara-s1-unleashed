@@ -86,6 +86,7 @@ got no relay candidate from the test's TURN relay on loopback. Why, and the fix,
 | 2, about 20:49 UTC | a718f9c | allocated, no candidate | the allocation said the browser was on loopback (adb reverse) |
 | 3, later that evening | 5ae5884 | **connected**: 22 relay candidates from the panel, ICE completed 11 of 11 | heavy's counts broke (below) |
 | 4, later still | 3c1e1da | connected; counts sound | every heavy session lost ICE by aiortc's consent check, while the panel's answers were only late (below) |
+| 5, later still | 88f7d8f | connected; peer as go2rtc | heavy still re-made all 4 sessions: the panel stopped getting video (below); typical 99.2% shown |
 
 Smoke 3, typical (verified): first frame 6.3 s from the navigation, 99.6% shown (the receiver's own
 counts), 367 frames decoded, no freeze.
@@ -153,6 +154,44 @@ numbers and sources in [docs/perf.md](../../../docs/perf.md). The round trips st
 so `framesDecoded − framesDropped` subtracted frames that weren't in `framesDecoded`. Frames shown over
 WebRTC are now `framesDecoded`; the sources are in docs/perf.md. Typical changes little (356 decoded,
 2 dropped).
+
+**Smoke 5: the panel stopped getting video first** (verified, the root's run at 88f7d8f; read from
+`fakeha.jsonl` and the page's camera line, times from heavy's navigation):
+
+| | When | Evidence |
+|---|---|---|
+| Heavy usable | 41 s | the page's `refdash` |
+| The live phase, then the taps | 45 to 104 s | taps from 52 s; the runner sends each as `adb shell input tap` |
+| Gecko's ICE "disconnected", all 4 cameras | 64, 71, 71, 76 s | `webrtc.connections[].ice`: nothing received from the Mac for some seconds |
+| Gecko's ICE "failed"; HA's player restarts ICE | 91 to 98 s | the same; new offers at about 99 to 101 s (the fake's clock) |
+| The Mac's peer: "disconnected", then "failed" | 10 s and 36 s after the new offers | `webrtc_liveness`: these are the sessions Gecko had just left, not a second silence |
+
+So the Mac→panel direction dried up first, for all four streams at once, while the fake kept sending
+the live updates on time (`late_ms` about 10 ms each second) and the panel's few websocket commands
+kept arriving. The streams' own counts fit late bursts: 0 packets lost and 0 NACKs (TCP), a jitter
+buffer of 600 to 710 ms, and about half the frames received dropped before decoding. The check
+round trips (median 2.2 to 4.7 s, up to 11 s, a few unanswered) measure the same queue: a check goes
+down to the panel and back.
+
+Where the video waited isn't known yet: on the Mac (adb not taking it), in adb, or on the panel
+(Gecko not reading). Two candidates fit: the adb path (one USB link carrying four relayed streams,
+about 3 Mbit/s, the websocket and HLS), and a panel so busy that adbd or Gecko's network thread falls
+behind (heavy keeps the panel's CPU near full, and each `input tap` starts a Java process on it).
+The tools for the next run:
+- the relay logs, each second, each connection's bytes and datagrams both ways and how much it holds
+  queued toward the panel (`seconds` in `turn_closed`); the fake logs the websocket's traffic each
+  second and its longest blocked send (`ws_second`);
+- `tools/perf/transportwatch.py` samples the panel read-only: each second the TCP sockets on the
+  fake's ports with their send and receive queues (`/proc/net/tcp`: a large `rx_queue` on the kiosk's
+  socket is data Gecko hasn't read), and every few seconds each thread's CPU in the kiosk and adbd;
+- the runner logs when each tap and swipe went out and how long `input` took (`gestures_sent`).
+
+**The LAN path, as a diagnostic.** The panel's routing table (`/proc/net/route`, read 2026-11-13) has
+`wlan0` on 192.168.1.0/24, the Mac's subnet (192.168.1.102), so it can likely reach the Mac without
+adb. That isn't tested yet: a connection test from the panel isn't a read-only step. run.sh's
+`--webrtc-transport lan-turn` (the same relay over TCP to the Mac's address) and `lan-udp` (no
+relay: UDP between panel and Mac, as a real setup) take adb out of the video's path, for a
+comparison only; the graded path stays `adb`.
 
 **The counts now** (`stats.js` `webrtcWindow`): the page samples every connection that carries a
 camera's video once a second. Each receiver (connection, stats id, SSRC) counts only its own
