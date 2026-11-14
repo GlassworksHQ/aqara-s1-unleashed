@@ -2,7 +2,7 @@
 
 ## Where to ask
 
-- **Questions, ideas and frame bring-up** (porting Glassworks to a new device): [Discussions](https://github.com/GlassworksHQ/aqara-s1-unleashed/discussions). Answers there stay searchable for the next person.
+- **Questions, ideas and frame bring-up** (porting Glassworks to a new device): [Discussions](https://github.com/GlassworksHQ/glassworks/discussions). Answers there stay searchable for the next person.
 - **Bugs and hardware reports:** an issue, from the templates below.
 - **Security problems:** privately, as [SECURITY.md](SECURITY.md) says. Not in Discussions or an issue.
 

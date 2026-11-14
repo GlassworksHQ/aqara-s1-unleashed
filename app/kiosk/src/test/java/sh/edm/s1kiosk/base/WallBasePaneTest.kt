@@ -3,6 +3,7 @@ package sh.edm.s1kiosk.base
 import android.app.Application
 import dev.glassworks.pane.EntityRegistry
 import dev.glassworks.pane.PaneContext
+import dev.glassworks.pane.PanelEvent
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -18,6 +19,7 @@ import sh.edm.esphome.EventEntity
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.frame.AqaraCloud
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
@@ -99,4 +101,82 @@ class WallBasePaneTest {
             restarted.stop()
         }
     }
+
+    /** init's ha_master as the pane sees it: `getprop init.svc.ha_master` and `setprop ctl.start|ctl.stop`. */
+    private class FakeInit(var state: String = "running") {
+        val cloud = AqaraCloud { cmd ->
+            when {
+                cmd[0] == "getprop" -> state
+                cmd[1] == "ctl.start" -> { state = "running"; "" }
+                else -> { state = "stopped"; "" }
+            }
+        }
+    }
+
+    private fun paneWith(config: WallBase.Config, init: FakeInit) = WallBasePane(
+        PaneContext(
+            app, KioskPrefs(app)::paneFile,
+            DeviceIdentity(
+                name = "test", friendlyName = "Test", macAddress = "02:00:00:00:00:01", esphomeVersion = "x",
+                compilationTime = "x", manufacturer = "x", model = "x", voiceFeatures = 0,
+            ),
+            publishStates = {}, emit = {}, entitiesChanged = {}, sendEvent = { _, _ -> },
+        ),
+        config, device, init.cloud,
+    )
+
+    /** What the shell does when the switch changes: the pane started or stopped, then it hears its own key. */
+    private fun turn(p: WallBasePane, on: Boolean) {
+        switch.on = on
+        if (on) p.start() else p.stop()
+        p.onEvent(PanelEvent.SettingChanged(WallBasePrefs.KEY_ENABLED))
+        device.submit {}.get(5, TimeUnit.SECONDS)
+    }
+
+    /** #210 review: a backend and transport chosen while the base is off are the ones it starts with. */
+    @Test fun aBackendChosenWhileOffIsTheOneItStartsWith() {
+        val p = paneWith(WallBase.Config(BaseBackend.LOCALSERVICE), FakeInit())
+        try {
+            p.start()
+            turn(p, false)
+            prefs.backend = "uart"
+            prefs.transport = "tcp:127.0.0.1:1" // the emulator's, nothing listening: the link only retries
+            p.onEvent(PanelEvent.SettingChanged(WallBasePrefs.KEY_BACKEND))
+            p.onEvent(PanelEvent.SettingChanged(WallBasePrefs.KEY_TRANSPORT))
+            device.submit {}.get(5, TimeUnit.SECONDS)
+            turn(p, true)
+            assertEquals(BaseBackend.UART to "tcp:127.0.0.1:1", p.config.backend to p.config.transport)
+        } finally {
+            p.stop()
+            switch.on = true
+            prefs.backend = "auto"
+            prefs.transport = ""
+        }
+    }
+
+    private fun turnedOffAfterUart(blocked: Boolean): String {
+        val init = FakeInit()
+        prefs.blockAqaraCloud = blocked
+        // The emulator's transport, nothing listening: the link only retries.
+        val p = paneWith(WallBase.Config(BaseBackend.UART, "tcp:127.0.0.1:1"), init)
+        try {
+            p.start()
+            assertEquals("the UART link owns the port: ha_master stopped", "stopped", init.state)
+            // What the shell does when the switch goes off: the pane stopped, then it hears its own key.
+            switch.on = false
+            p.stop()
+            p.onEvent(PanelEvent.SettingChanged(WallBasePrefs.KEY_ENABLED))
+            device.submit {}.get(5, TimeUnit.SECONDS)
+            return init.state
+        } finally {
+            p.stop()
+            switch.on = true
+        }
+    }
+
+    private val switch get() = WallBaseDefinition(KioskPrefs(app).paneFile("wall-base")).switch
+
+    @Test fun turnedOffItLetsAqarasDaemonHaveThePortAgain() = assertEquals("running", turnedOffAfterUart(blocked = false))
+
+    @Test fun turnedOffItKeepsAqarasDaemonBlocked() = assertEquals("stopped", turnedOffAfterUart(blocked = true))
 }

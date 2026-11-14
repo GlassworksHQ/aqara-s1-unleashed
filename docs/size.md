@@ -13,7 +13,7 @@ Every pull request builds the release APKs, one per ABI, and splits each into it
 (GeckoView), the core, each pane, and the libraries more than one of them use. It shows how each part
 changed against the base branch, and fails when an APK or a pane is over the frame's size budget,
 unless the same pull request raises that budget. This is the size half of
-[#68](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/68); RAM is the other half, measured
+[#68](https://github.com/GlassworksHQ/glassworks/issues/68); RAM is the other half, measured
 on the device by [Clarity](perf.md#ram).
 
 ## What it reports

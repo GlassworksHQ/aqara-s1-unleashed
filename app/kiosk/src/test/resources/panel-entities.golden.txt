@@ -11,12 +11,14 @@ cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|a
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|disabledByDefault
 dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|disabledByDefault
+diagnostics|-377449481|SwitchEntity|Diagnostics|mdi:stethoscope||CONFIG|authOnly=true|options=|disabledByDefault
 hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|disabledByDefault
 home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|disabledByDefault
 idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|disabledByDefault
 illuminance|-1763685258|SensorEntity|Illuminance||illuminance|NONE|authOnly=false|options=
 improv_ble|874008966|ButtonEntity|Start Wi-Fi setup (Bluetooth)|mdi:bluetooth-settings||CONFIG|authOnly=false|options=|disabledByDefault
 ip_address|339278791|TextSensorEntity|IP address|mdi:ip-network||DIAGNOSTIC|authOnly=false|options=
+keep_time_zone|-552930949|SwitchEntity|Keep time zone|mdi:map-clock-outline||CONFIG|authOnly=true|options=|disabledByDefault
 last_restart_reason|8212602|TextSensorEntity|Last restart reason|mdi:restart-alert||DIAGNOSTIC|authOnly=false|options=|disabledByDefault
 memory_available|-647501798|SensorEntity|RAM available|mdi:memory|data_size|DIAGNOSTIC|authOnly=false|options=|disabledByDefault
 mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=false|options=|disabledByDefault
@@ -37,7 +39,7 @@ reload_dashboard|-266218945|ButtonEntity|Reload dashboard|mdi:refresh||NONE|auth
 restart_app|-559280840|ButtonEntity|Restart app|mdi:restart|restart|CONFIG|authOnly=false|options=
 screen|1438993425|BrightnessLightEntity|Screen|mdi:tablet-dashboard||NONE|authOnly=false|options=
 screen_mode|462157713|SelectEntity|Screen mode|mdi:monitor-eye||CONFIG|authOnly=false|options=presence,always
-sendspin|733565411|SwitchEntity|Music Assistant player (Sendspin)|mdi:speaker-wireless||CONFIG|authOnly=false|options=|disabledByDefault
+sendspin|733565411|SwitchEntity|Music Assistant player (Sendspin)|mdi:speaker-wireless||CONFIG|authOnly=true|options=|disabledByDefault
 sendspin_status|-669526114|TextSensorEntity|Music Assistant player status|mdi:speaker-wireless||DIAGNOSTIC|authOnly=false|options=|disabledByDefault
 sign_out|1452185499|ButtonEntity|Sign out|mdi:logout||CONFIG|authOnly=false|options=|disabledByDefault
 signed_in|188034881|TextSensorEntity|Signed in|mdi:account-key||DIAGNOSTIC|authOnly=false|options=|disabledByDefault
@@ -51,9 +53,11 @@ time_zone|-1564830261|TextEntity|Time zone|mdi:map-clock||CONFIG|authOnly=true|o
 time_zone_status|-1288740378|TextSensorEntity|Time zone status|mdi:clock-check-outline||DIAGNOSTIC|authOnly=false|options=|disabledByDefault
 update_status|971991635|TextSensorEntity|Update status|mdi:update||DIAGNOSTIC|authOnly=false|options=|disabledByDefault
 uptime|-54133543|SensorEntity|Uptime||timestamp|DIAGNOSTIC|authOnly=false|options=
+voice|2140916217|SwitchEntity|Voice|mdi:microphone-message||CONFIG|authOnly=true|options=|disabledByDefault
 voice_overlay|1110557810|SwitchEntity|Voice overlay|mdi:message-badge-outline||CONFIG|authOnly=false|options=|disabledByDefault
 wake_sound|-735348603|SwitchEntity|Wake sound|mdi:bell-ring-outline||CONFIG|authOnly=false|options=|disabledByDefault
 wake_word_threshold|949390898|NumberEntity|Wake word threshold|mdi:account-voice||CONFIG|authOnly=false|options=|disabledByDefault
+wall_base|1607671203|SwitchEntity|Wall base|mdi:light-switch||CONFIG|authOnly=true|options=|disabledByDefault
 web_content_processes|-1448158443|SensorEntity|Web content processes|mdi:tab||DIAGNOSTIC|authOnly=false|options=|disabledByDefault
 wifi_link_speed|-1394914523|SensorEntity|Wi-Fi link speed|mdi:speedometer|data_rate|DIAGNOSTIC|authOnly=false|options=|disabledByDefault
 wifi_signal|-548641703|SensorEntity|Wi-Fi signal||signal_strength|DIAGNOSTIC|authOnly=false|options=

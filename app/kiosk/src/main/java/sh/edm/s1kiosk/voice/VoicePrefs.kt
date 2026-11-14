@@ -12,10 +12,8 @@ import android.content.SharedPreferences
  */
 class VoicePrefs(private val sp: SharedPreferences) {
 
-    /** Voice on or off. The shell reads it once per process: a change restarts the app. */
-    var enabled: Boolean
-        get() = sp.getBoolean(KEY_ENABLED, true)
-        set(v) = sp.edit().putBoolean(KEY_ENABLED, v).apply()
+    /** Voice on or off ([AssistDefinition.switch] writes it). */
+    val enabled: Boolean get() = sp.getBoolean(KEY_ENABLED, true)
 
     /**
      * The openWakeWord model file S1 Kiosk 0.4 and earlier saved, e.g. `hey_jarvis_v0.1.tflite`.

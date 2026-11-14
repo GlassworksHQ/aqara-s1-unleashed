@@ -8,6 +8,9 @@ import android.content.SharedPreferences
  */
 class WallBasePrefs(private val sp: SharedPreferences) {
 
+    /** The pane is on ([WallBaseDefinition.switch] writes it). */
+    val enabled: Boolean get() = sp.getBoolean(KEY_ENABLED, true)
+
     /**
      * Stop Aqara's cloud daemon (ha_master). With the UART wall-base backend it is never needed;
      * with the LocalService backend it is kept while a base is attached. See AqaraCloud.
@@ -32,6 +35,7 @@ class WallBasePrefs(private val sp: SharedPreferences) {
         set(v) = sp.edit().putString("base_layout", v).apply()
 
     companion object {
+        const val KEY_ENABLED = "wall_base_enabled"
         const val KEY_BLOCK_AQARA_CLOUD = "block_aqara_cloud"
         const val KEY_BACKEND = "base_backend"
         const val KEY_TRANSPORT = "base_transport"

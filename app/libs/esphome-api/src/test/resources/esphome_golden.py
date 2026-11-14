@@ -27,3 +27,6 @@ print("image_empty", p.CameraImageResponse(key=fnv("porch"), done=True).Serializ
 print("resp_ok", p.ExecuteServiceResponse(call_id=7, success=True, response_data=b'{"a":1}').SerializeToString().hex())
 print("resp_err", p.ExecuteServiceResponse(call_id=7, error_message="no").SerializeToString().hex())
 print("req_cam", p.CameraImageRequest(stream=True).SerializeToString().hex())
+e = p.HomeassistantActionRequest(service="esphome.notification_action", is_event=True)
+e.data.add(key="action", value="open_gate"); e.data.add(key="tag", value="doorbell")
+print("ha_event", e.SerializeToString().hex())

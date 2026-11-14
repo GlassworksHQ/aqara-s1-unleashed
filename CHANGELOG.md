@@ -8,6 +8,13 @@ below as the release notes.
 ## [Unreleased]
 
 ### Changed
+- **Turning a pane on or off from Home Assistant needs the panel's key.** The pane switches, the
+  *Music Assistant player (Sendspin)* switch included, only answer an encrypted connection, as *Time
+  zone* does. Home Assistant 2026.11 and later sets the key when you add the panel. On a panel without
+  one, use the panel's settings.
+- **The project moved to [GlassworksHQ/glassworks](https://github.com/GlassworksHQ/glassworks).**
+  Panels now check for updates there directly. Older versions keep updating through GitHub's
+  redirect, so nothing needs doing on your panel.
 - **The wake word uses far less CPU.** The panel now listens with microWakeWord, the engine Home
   Assistant Voice PE uses, instead of openWakeWord. On the S1, the microphone's thread went from
   about 37% of a core to about 4%. Your wake word stays as it was (Hey Jarvis, Alexa or Hey
@@ -63,6 +70,12 @@ below as the release notes.
   Diagnostic section.
 
 ### Added
+- **Turn any pane off, and back on, without a restart.** Voice, music, the wall base, the time zone
+  and diagnostics each have an on/off: at the top of the pane's page in the panel's settings, in
+  Home Assistant (new switches Voice, Wall base, Keep time zone and Diagnostics, off on the device
+  page until you turn them on there), and with adb. A pane that is off stops its work and comes
+  back when you turn it on. Voice no longer restarts the app. The wall base now has its card on
+  setup's Panes step. The radio's on/off stays its mode.
 - **Kiln shows what the panel is doing while S1 Kiosk goes in.** On kiln.glassworks.dev the app's
   install now lists each step as the panel goes through it: S1 Kiosk and the on-screen keyboard
   going in, the home screen, your settings, and the first start. When it updates an app that's
@@ -90,6 +103,14 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **A pane you turn off stays off after a restart.** Turning voice or music off, then restarting
+  the app at once, could bring the pane back on: the setting was saved after the app had gone.
+  Zoom, secure hosts and remote debugging, which restart the app, could lose their change the same
+  way. They are now saved before the app restarts.
+- **One stuck connection no longer freezes the panel's entities in Home Assistant.** If a client
+  stopped reading (a Home Assistant that hangs, or a connection that is half gone), states, action
+  replies and keepalive pings for every other client waited behind it, for minutes, until the panel
+  gave up on the stuck one. Now only that client waits, until the panel drops it.
 - **Keeping the radio Off in Kiln finishes the panel's radio step.** A fresh panel installed with
   Kiln no longer asks *Radio* again on its own screen when you left the radio Off. Choosing the mode
   the radio already runs doesn't restart it. Needs the S1 Kiosk release with this fix.
@@ -160,9 +181,6 @@ below as the release notes.
   all the way to the screen edges.
 
 ### Changed
-- **The project moved to [GlassworksHQ/aqara-s1-unleashed](https://github.com/GlassworksHQ/aqara-s1-unleashed).**
-  Panels now check for updates there directly. Older versions keep updating through GitHub's
-  redirect, so nothing needs doing on your panel.
 - **Updates are found among the repo's other releases.** The panel now picks its own newest release
   (tag `v1.2.3` or `aqara-s1-plus-v1.2.3`) instead of whatever release is newest, so releases of
   other devices and libraries in the same repo can't hide an update.
@@ -417,11 +435,11 @@ below as the release notes.
 - Panels running a development build need a one-time reinstall to switch to release builds (Android
   won't update an app across signing keys). That resets the app's settings.
 
-[Unreleased]: https://github.com/GlassworksHQ/aqara-s1-unleashed/compare/v0.4.3...HEAD
-[0.4.3]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.3
-[0.4.2]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.2
-[0.4.1]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.1
-[0.4.0]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.0
-[0.3.1]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.3.1
-[0.3.0]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.3.0
-[0.2.0]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.2.0
+[Unreleased]: https://github.com/GlassworksHQ/glassworks/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.4.3
+[0.4.2]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.4.2
+[0.4.1]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.4.1
+[0.4.0]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.4.0
+[0.3.1]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.3.1
+[0.3.0]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.3.0
+[0.2.0]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.2.0

@@ -380,7 +380,7 @@ def markdown(rep):
             out.append(f"| {label(key)} | | | | | gone | {signed(-base[key]['total'])} |")
     out += ["", "Sizes are bytes as stored in the APK; the dex files are shared out by apkanalyzer's per-class "
                 "sizes. A pane's row has its own code and the libraries only it uses. "
-                "[How this is measured](https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/docs/size.md)."]
+                "[How this is measured](https://github.com/GlassworksHQ/glassworks/blob/main/docs/size.md)."]
     return "\n".join(out) + "\n"
 
 

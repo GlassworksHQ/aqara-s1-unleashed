@@ -56,4 +56,35 @@ class TimeZoneKeeperTest {
         k.refresh()
         assertTrue(k.statusText(), k.statusText().contains("needs the root helper v4"))
     }
+
+    /**
+     * #210 review: a zone write already running when the pane is turned off lands before release()
+     * clears it. setprop finishes even when its thread is interrupted, so stop() waits for it.
+     */
+    @Test
+    fun turnedOffWhileAZoneIsWrittenTheZoneIsStillReleased() {
+        val writing = java.util.concurrent.CountDownLatch(1)
+        val props = object : SysProps {
+            val p = java.util.concurrent.ConcurrentHashMap(mapOf(RadioHelper.PROP_VERSION to "4"))
+            override fun get(name: String) = p[name] ?: ""
+            override fun set(name: String, value: String) {
+                if (value.isNotEmpty() && value != TimeZoneKeeper.OFF) {
+                    writing.countDown()
+                    // Like a setprop child: an interrupt doesn't stop it, it lands 300 ms later.
+                    val end = System.nanoTime() + 300_000_000
+                    while (System.nanoTime() < end) try { Thread.sleep(10) } catch (_: InterruptedException) {}
+                }
+                p[name] = value
+            }
+            override fun sleep(ms: Long) {}
+        }
+        val k = TimeZoneKeeper(props, zones = { zones }, log = {})
+        k.start()
+        assertNull(k.set("Europe/Berlin"))
+        assertTrue(writing.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        k.stop()
+        k.release()
+        Thread.sleep(500)
+        assertEquals("the helper keeps no zone", TimeZoneKeeper.OFF, props.p[TimeZoneKeeper.PROP])
+    }
 }

@@ -6,6 +6,7 @@ import android.provider.Settings
 import dev.glassworks.frame.BootRest
 import dev.glassworks.frame.Frame
 import dev.glassworks.pane.PaneContext
+import dev.glassworks.pane.PaneDefinition
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.base.WallBaseDefinition
 import sh.edm.s1kiosk.base.WallBasePane
@@ -29,12 +30,15 @@ class AqaraS1Plus : Frame {
 
     /** The time zone that Aqara resets at every boot and the root helper puts back, and the wall base. */
     override fun panes(ctx: PaneContext, device: ScheduledExecutorService) = listOf(
-        TimeZonePane(ctx),
+        TimeZonePane(ctx, TimeZonePrefs(ctx.prefs("time-zone"))),
         WallBasePane(ctx, WallBasePane.wantedConfig(WallBasePrefs(ctx.prefs("wall-base")), aqaraCloud), device, aqaraCloud),
     )
 
-    /** The wall base's adb extras. The time zone has nothing to set. */
-    override fun paneDefinitions(context: Context) = listOf(WallBaseDefinition(WallBasePrefs(KioskPrefs(context).paneFile("wall-base"))))
+    /** The wall base's on/off and adb extras, and the time zone's on/off. */
+    override fun paneDefinitions(context: Context): List<PaneDefinition> {
+        val prefs = KioskPrefs(context)
+        return listOf(WallBaseDefinition(prefs.paneFile("wall-base")), TimeZoneDefinition(prefs.paneFile("time-zone")))
+    }
 
     val rootUpdates = RootUpdateInstaller()
 

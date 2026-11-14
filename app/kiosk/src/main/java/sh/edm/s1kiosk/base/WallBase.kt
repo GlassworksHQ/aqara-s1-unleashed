@@ -26,7 +26,18 @@ import java.util.concurrent.TimeUnit
  *
  * The only write is [setRelay] (from Home Assistant).
  */
-class WallBase(context: Context, initial: BaseLayout, private val listener: Listener, config: Config) {
+class WallBase internal constructor(
+    context: Context,
+    initial: BaseLayout,
+    private val listener: Listener,
+    config: Config,
+    /** Makes the link for a config. A test passes one whose close is slow. */
+    private val newLink: ((Config, ScheduledExecutorService, BaseLink.Listener) -> BaseLink)?,
+    /** How long a new link waits for the old one to close its port before it opens anyway. */
+    private val closeWaitMs: Long = 30_000,
+) {
+    constructor(context: Context, initial: BaseLayout, listener: Listener, config: Config) :
+        this(context, initial, listener, config, null)
 
     interface Listener {
         /** Some value changed: publish states. */
@@ -56,10 +67,11 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
     }
 
     private val ctx = context.applicationContext
-    private val exec: ScheduledExecutorService =
-        Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "s1-base").apply { isDaemon = true } }
+    /** The "s1-base" thread. A new one for each [start] after a [stop]: the pane can be turned off and on (#67). */
+    @Volatile private var exec: ScheduledExecutorService = newThread()
     val tracker = BaseTracker(initial)
-    private var link: BaseLink? = null
+    /** The open link. Two "s1-base" threads can touch it at a hand-over: volatile. */
+    @Volatile private var link: BaseLink? = null
     @Volatile var config: Config = config
         private set
 
@@ -71,26 +83,53 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
 
     private fun now() = SystemClock.elapsedRealtime()
 
-    fun start() {
+    /**
+     * Starts the link with [c]: the config wanted now, which may have changed while the base was stopped.
+     * After a [stop] whose close isn't done yet, the new link opens only once the old one has closed its
+     * port (on the new thread, waiting up to [closeWaitMs]).
+     */
+    fun start(c: Config = config) {
+        config = c
+        val old = exec
+        if (old.isShutdown) {
+            exec = newThread()
+            exec.execute {
+                if (!old.awaitTermination(closeWaitMs, TimeUnit.MILLISECONDS)) Log.w(TAG, "the old wall base link still closes after $closeWaitMs ms; opening anyway")
+            }
+        }
         exec.execute { startLink() }
         exec.scheduleWithFixedDelay({ safe("tick") { tick() } }, 1, 1, TimeUnit.SECONDS)
     }
 
+    /**
+     * Closes the link. Waits up to 3 s for it; a slower close goes on to its end on the "s1-base" thread
+     * (shutdown, not shutdownNow: the close isn't cut off), and [start] waits for it.
+     */
     fun stop() {
+        val e = exec
         try {
-            exec.submit { link?.stop(); link = null }.get(3, TimeUnit.SECONDS)
+            // Takes the link out first: a close that outlasts the next start's wait can't clear its successor.
+            // Queued behind a slow task and run after a newer start: that start owns the link (its
+            // startLink() closes one still open), so this one leaves it alone.
+            e.submit { if (exec !== e) return@submit; val l = link; link = null; l?.stop() }.get(3, TimeUnit.SECONDS)
+        } catch (_: java.util.concurrent.TimeoutException) {
+            Log.w(TAG, "the wall base link takes more than 3 s to close; it goes on closing")
         } catch (_: Exception) {}
-        exec.shutdownNow()
+        e.shutdown()
     }
 
     /** Swap the link (blocking until the old one closed its port). The tracker and its values stay. */
     fun reconfigure(c: Config) {
+        val e = exec
         try {
-            exec.submit {
+            e.submit {
                 if (c == config && link != null) return@submit
                 Log.i(TAG, "wall base backend ${link?.describe ?: "-"} -> ${c.backend.pref} ${if (c.backend == BaseBackend.UART) c.transport else ""}")
-                link?.stop()
+                val l = link
                 link = null
+                l?.stop()
+                // Stopped meanwhile (a slow close outlasted the waits): a later start owns the config and the link.
+                if (e.isShutdown) return@submit
                 config = c
                 startLink()
             }.get(5, TimeUnit.SECONDS)
@@ -101,33 +140,41 @@ class WallBase(context: Context, initial: BaseLayout, private val listener: List
 
     val backendDescription: String get() = link?.describe ?: config.backend.pref
 
-    /** From Home Assistant (API connection thread). */
+    /** From Home Assistant (API connection thread). Dropped while the base is stopped. */
     fun setRelay(channel: Int, on: Boolean) {
-        exec.execute {
-            val l = link
-            if (l == null || !l.isConnected) {
-                Log.w(TAG, "relay $channel -> $on ignored: no link to the base")
-                return@execute
-            }
-            val res = BaseRes.relay(channel)
-            l.write(res, if (on) 1 else 0)
-            if (l.confirmWrites) {
-                // Confirm (the base or a report may also answer by itself).
-                exec.schedule({ link?.read(listOf(res)) }, 500, TimeUnit.MILLISECONDS)
-                exec.schedule({ link?.read(listOf(res, BaseRes.POWER)) }, 2_000, TimeUnit.MILLISECONDS)
-            }
+        runCatching { exec.execute { relay(channel, on) } }
+    }
+
+    /** The "s1-base" thread. */
+    private fun relay(channel: Int, on: Boolean) {
+        val l = link
+        if (l == null || !l.isConnected) {
+            Log.w(TAG, "relay $channel -> $on ignored: no link to the base")
+            return
+        }
+        val res = BaseRes.relay(channel)
+        l.write(res, if (on) 1 else 0)
+        if (l.confirmWrites) {
+            // Confirm (the base or a report may also answer by itself).
+            exec.schedule({ link?.read(listOf(res)) }, 500, TimeUnit.MILLISECONDS)
+            exec.schedule({ link?.read(listOf(res, BaseRes.POWER)) }, 2_000, TimeUnit.MILLISECONDS)
         }
     }
 
     // ------------------------------------------------------------------ internals (s1-base thread)
+
+    private fun newThread(): ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "s1-base").apply { isDaemon = true } }
 
     private inline fun safe(what: String, block: () -> Unit) {
         try { block() } catch (t: Throwable) { Log.w(TAG, "$what failed", t) }
     }
 
     private fun startLink() {
+        // Never two links: one already open (start twice) closes its port first.
+        link?.let { it.stop(); link = null }
         val c = config
-        val l: BaseLink = when (c.backend) {
+        val l: BaseLink = newLink?.invoke(c, exec, LinkListener()) ?: when (c.backend) {
             BaseBackend.LOCALSERVICE -> LocalServiceLink(ctx, exec, LinkListener())
             BaseBackend.UART -> {
                 val sp = ctx.getSharedPreferences(ENERGY_PREFS, Context.MODE_PRIVATE)

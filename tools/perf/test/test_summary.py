@@ -126,7 +126,7 @@ class Export(unittest.TestCase):
         """#68: the summary may carry RAM (reference dashboards) and APK sizes; neither is graded."""
         import test_report as TR
         budgets = {"ram": {"app_pss_max_pct_of_ram": 50, "device_available_min_pct": 15},
-                   "panes": {"assist": {"switch": "voice_enabled", "ram_pss_max_kb": 49152}, "radio": {"waiting_on": "#67"}}}
+                   "panes": {"assist": {"switch": "voice_enabled", "ram_pss_max_kb": 49152}, "radio": {"not_switched": "its mode"}}}
         # Samples checked against the kiosk's log (panes_state), as since 2026-11-13.
         ram = R.reference_ram({"ref-idle": [TR.ram_idle("ref-idle", 300_000)] * 2,
                                "ref-panes-off": [TR.ran(TR.ram_idle("ref-panes-off", 100_000), False, False, False)],
@@ -139,7 +139,7 @@ class Export(unittest.TestCase):
                                     # One sample a side: no tolerance, so no claim (s1p1 read ±0.0 MB and "ok").
                                     "panes": [{"id": "assist", "pss_kb": 30_000, "tolerance_kb": None, "measurable": False, "runs": 1,
                                                "budget_kb": 49152, "budget_ok": None, "budget_measurable": False}],
-                                    "panes_waiting": ["radio"], "budget_ok": True})
+                                    "panes_waiting": [], "panes_not_switched": ["radio"], "budget_ok": True})
         self.assertEqual(s["apk"], [{"file": "s1-kiosk.apk", "abis": ["armeabi-v7a"], "bytes": 90_000_000}])
         plain = S.summarise(self.reps["B"])
         self.assertEqual((plain["ram"], plain["apk"]), (None, None))

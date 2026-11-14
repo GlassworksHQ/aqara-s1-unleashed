@@ -35,15 +35,15 @@ class SettingsSection(
 enum class SettingsStatus { OK, WORKING, PROBLEM }
 
 /**
- * The panes' sections as every settings surface shows them (#63, #33): each pane's own, with its
- * setup card's switch as the section's [SettingsSection.master] when it has none; a pane with a card
- * but no section gets one that says so. Definition order.
+ * The panes' sections as every settings surface shows them (#63, #33, #67): each pane's own, with its
+ * on/off as the section's [SettingsSection.master] when it has none: its setup card, else its
+ * [PaneDefinition.switch]. A pane with an on/off but no section gets one that says so. Definition order.
  */
 fun paneSections(definitions: List<PaneDefinition>): List<SettingsSection> = definitions.flatMap { d ->
-    val choice = d.setupChoice
+    val choice = d.setupChoice ?: d.switch?.choice()
     val master = choice?.let { c ->
         // The card's apply can wait on the device (the radio): off the main thread.
-        SettingsItem.Switch(c.title, c.detail, c.on, restartsApp = c.restartsApp) { on, done ->
+        SettingsItem.Switch(c.title, c.detail, c.on) { on, done ->
             Thread({ done(runCatching { c.apply(on) }.getOrElse { it.message ?: "It didn't work." }) }, "gw-pane-switch").apply { isDaemon = true; start() }
         }
     }
