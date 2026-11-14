@@ -270,11 +270,19 @@ on on the device page ([Categories and defaults](#categories-and-defaults)): peo
 | switch `Voice` | `voice` | the voice assistant and timers | `voice_enabled` | no |
 | switch `Music Assistant player (Sendspin)` | `sendspin` | Sendspin (the same entity as before) | `sendspin_enabled` | no |
 | switch `Wall base` | `wall_base` | the wall base driver; off closes the port, and Aqara's daemon may run again unless `Block Aqara cloud` is on | `wall_base_enabled` | no |
-| switch `Keep time zone` | `keep_time_zone` | the time zone; off lets the root helper stop keeping the zone, and on keeps it again | `time_zone_enabled` | no |
+| switch `Keep time zone` | `keep_time_zone` | the time zone; off sets the zone to keep to `(off)`, so the root helper keeps none and adopts none ([radio.md](radio.md#root-helper-contract-v4)), and on keeps the same zone again. *Time zone status* says `off` only once the helper has let go | `time_zone_enabled` | no |
 | switch `Diagnostics` | `diagnostics` | the diagnostic sensors; off stops the sampling | `diagnostics_enabled` | no |
 
 The radio's on/off is `Radio mode` (`Off`). Voice on or off changes the voice features in the device
-info, so the panel asks Home Assistant to reconnect, as it does when the entity list changes.
+info, so the panel asks Home Assistant to reconnect, as it does when the entity list changes. For those
+few seconds every entity of the panel is unavailable (on the dev panel, 2026-11-14: 2 to 8 s, the screen,
+presence and speaker together). Then:
+
+- The **speaker** (`media_player`) is the panel's, not voice's: it stays, and Home Assistant can play on
+  it with Voice off.
+- The **Assist satellite** and HA's own voice entities (*Assist pipeline*, *Wake word*, *Finished
+  speaking detection*) go away while Voice is off, because the panel has no voice features then. They
+  come back when Voice is on.
 
 ### Diagnostics
 
@@ -664,7 +672,8 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 
 - switch `Block Aqara cloud` (`block_aqara_cloud`, default on): stops Aqara's cloud daemon `ha_master`.
   With the UART wall-base backend (default) it is always stopped; with the LocalService backend it is
-  kept while a base is attached. See [frames/aqara-s1-plus/research/debloat.md](../frames/aqara-s1-plus/research/debloat.md).
+  kept only while a switch base is attached (or before the base check has read the dock). With no base,
+  blocking wins and it stays stopped. With the wall base pane off, only this switch counts. See [frames/aqara-s1-plus/research/debloat.md](../frames/aqara-s1-plus/research/debloat.md).
 - text_sensor `Aqara cloud daemon` (`aqara_cloud`): `blocked`, `running`,
   `stopped (UART wall base backend owns /dev/ttyS3)`, `running (needed by the wall base, LocalService
   backend)`, or `error (…)`.

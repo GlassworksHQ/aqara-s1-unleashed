@@ -68,7 +68,7 @@ class TimeZoneKeeperTest {
             val p = java.util.concurrent.ConcurrentHashMap(mapOf(RadioHelper.PROP_VERSION to "4"))
             override fun get(name: String) = p[name] ?: ""
             override fun set(name: String, value: String) {
-                if (value.isNotEmpty()) {
+                if (value.isNotEmpty() && value != TimeZoneKeeper.OFF) {
                     writing.countDown()
                     // Like a setprop child: an interrupt doesn't stop it, it lands 300 ms later.
                     val end = System.nanoTime() + 300_000_000
@@ -85,6 +85,6 @@ class TimeZoneKeeperTest {
         k.stop()
         k.release()
         Thread.sleep(500)
-        assertEquals("the helper keeps no zone", "", props.p[TimeZoneKeeper.PROP])
+        assertEquals("the helper keeps no zone", TimeZoneKeeper.OFF, props.p[TimeZoneKeeper.PROP])
     }
 }

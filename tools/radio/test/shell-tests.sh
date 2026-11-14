@@ -602,6 +602,12 @@ rm -f "$T/props/persist.s1kiosk.timezone"; printf 'America/Los_Angeles' > "$T/pr
 LOOPS=1 helper
 check "the zone in place at boot is adopted when none was chosen" test "$(prop persist.s1kiosk.timezone)" = America/Los_Angeles
 check "...and kept from then on" test "$(prop sys.s1kiosk.timezone.status)" = "ok America/Los_Angeles"
+# The app's time zone pane turned off (#67) writes "(off)": not a zone id, so this helper keeps no zone,
+# adopts none and calls nothing. An empty value would be adopted again, as above.
+printf '(off)' > "$T/props/persist.s1kiosk.timezone"; printf 'America/Los_Angeles' > "$T/props/persist.sys.timezone"; : > "$T/tz-calls"
+LOOPS=1 helper
+check "the app's off marker: no zone kept or adopted" test "$(prop persist.s1kiosk.timezone)" = "(off)" -a ! -s "$T/tz-calls"
+check "...and the status names it, for the app to confirm" has "$(prop sys.s1kiosk.timezone.status)" "error: '(off)' is not a time zone id"
 pkill -f "sleep 1000"
 
 echo

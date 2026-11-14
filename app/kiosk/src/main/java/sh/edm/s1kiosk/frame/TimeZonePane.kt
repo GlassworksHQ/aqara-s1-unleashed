@@ -11,7 +11,8 @@ import sh.edm.esphome.TextSensorEntity
 
 /**
  * The S1's `Time zone` and `Time zone status` entities (docs/install.md "Time zone"), backed by [TimeZoneKeeper].
- * Turned off, the root helper stops keeping the zone, and the pane keeps it in [prefs] for when it is turned on.
+ * Turned off, the root helper stops keeping the zone ([TimeZoneKeeper.OFF]), and the pane keeps it in [prefs]
+ * for when it is turned on.
  */
 class TimeZonePane(
     ctx: PaneContext,
@@ -36,8 +37,9 @@ class TimeZonePane(
     override fun entities(): List<ApiEntity> = entities
 
     override fun start() {
-        // Turned on again: the zone it kept when it was turned off.
-        prefs.kept.takeIf { it.isNotEmpty() }?.let { keeper.keepAgain(it); prefs.kept = "" }
+        // Turned on again: the zone it kept when it was turned off (or none).
+        keeper.keepAgain(prefs.kept)
+        prefs.kept = ""
         keeper.start()
     }
 
