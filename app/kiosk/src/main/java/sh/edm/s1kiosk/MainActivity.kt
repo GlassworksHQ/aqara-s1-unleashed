@@ -779,7 +779,7 @@ class MainActivity : Activity() {
             ),
         )
         val paneSections = paneSections(panes, glassworks::runningPane)
-        return KioskSettingsOverlay.Model(settingsOrder(core.sections(), paneSections), BuildConfig.VERSION_NAME, paneSections.map { it.id }.toSet())
+        return KioskSettingsOverlay.Model(settingsOrder(core.sections(), paneSections), AppVersion.shown, paneSections.map { it.id }.toSet())
     }
 
     private var restartWaitingSince = 0L

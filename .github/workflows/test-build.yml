@@ -16,7 +16,8 @@
 #   - versionName/versionCode of the latest release (or the version in the branch name / the input), so
 #     it installs over the panel's app with `adb install -r` (same or higher versionCode), the panel's
 #     update entity offers nothing, and the next real release replaces it as usual.
-#     The commit is in the artifact name and in the build's summary, not in the app.
+#     The commit is in the artifact name, the build's summary, and the app (S1_TEST_BUILD: the Manage page
+#     and the settings' About say "0.4.3 · test build <commit>").
 #   - No radio bundle: its key is only for releases from main (release.yml, `radio-signing`). Without
 #     a bundle the app leaves the panel's root side (radio helper, otbr-agent…) exactly as it is.
 #   - The JVM unit tests run first.

@@ -14,6 +14,7 @@ import android.system.Os
 import android.system.OsConstants
 import dev.glassworks.platform.Platform
 import dev.glassworks.platform.WifiLink
+import sh.edm.esphome.EspHomeLog
 import java.io.File
 
 /** Where the pane gets its readings. */
@@ -45,7 +46,8 @@ class AndroidProbe(
         // Android 5.1 and later list only this app's own processes.
         val processes = runCatching { am?.runningAppProcesses }.getOrNull().orEmpty()
         val pids = processes.map { it.pid }
-        val wifi = runCatching { WifiLink.of(context) }.getOrNull()
+        // A failed query leaves the Wi-Fi sensors unknown, not "not connected".
+        val wifi = runCatching { WifiLink.of(context) }.onFailure { EspHomeLog.w("diagnostics: can't read the Wi-Fi link", it) }.getOrNull()
         return Sample(
             elapsedMs = SystemClock.elapsedRealtime(),
             wallMs = System.currentTimeMillis(),

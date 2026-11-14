@@ -111,12 +111,13 @@ open class PlatformApi internal constructor(
 
     /**
      * The Wi-Fi link's details: from the network's capabilities from Android 12, where `getConnectionInfo`
-     * hides them from an app without the location permission, and from [wifi] below it.
+     * hides them from an app without the location permission, and from [wifi] below it, or where a
+     * device leaves the capabilities without them.
      */
     @Suppress("DEPRECATION")
     fun wifiInfo(capabilities: NetworkCapabilities?, wifi: WifiManager?): WifiInfo? =
-        if (apiLevel >= 31) capabilities?.transportInfo as? WifiInfo
-        else runCatching { wifi?.connectionInfo }.getOrNull()
+        (if (apiLevel >= 31) capabilities?.transportInfo as? WifiInfo else null)
+            ?: runCatching { wifi?.connectionInfo }.getOrNull()
 
     /** An [Intent] extra, read with the typed getter from Android 13 and the deprecated one below. */
     fun intentExtra(intent: Intent, name: String): Intent? =

@@ -82,6 +82,16 @@ class WifiLinkTest {
         assertEquals("Example-WiFi", WifiLink.of(app)?.ssid)
     }
 
+    /** Some devices leave the capabilities without the details: WifiManager's, and still connected. */
+    @Config(sdk = [34])
+    @Test fun newerAndroidWithoutDetailsInTheCapabilitiesFallsBack() {
+        network(NetworkCapabilities.TRANSPORT_WIFI)
+        wifiManager.setConnectionInfo(wifiInfo("Example-WiFi", -66, 54))
+        assertEquals(WifiLink(ssid = "Example-WiFi", rssi = -66, linkSpeedMbps = 54, ipv4 = "192.0.2.40"), WifiLink.of(app))
+        wifiManager.setConnectionInfo(wifiInfo(WifiManager.UNKNOWN_SSID, -127, -1, networkId = -1))
+        assertEquals("nothing known, still connected", WifiLink(null, null, null, "192.0.2.40"), WifiLink.of(app))
+    }
+
     @Config(sdk = [29])
     @Test fun androidTenReadsTheConnectionInfo() {
         network(NetworkCapabilities.TRANSPORT_WIFI)
