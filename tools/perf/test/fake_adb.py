@@ -401,7 +401,8 @@ def refdash(nonce, url):
         webrtc = {"inbound": True, "frames_received": 75, "frames_decoded": 75, "frames_dropped": 0, "freezes": 0, "freeze_s": 0,
                   "decoder": None, "power_efficient": None, "codec": "video/H264",
                   "candidate": {"local": "relay", "relay": "tcp", "protocol": "udp"}}
-        gw({"t": "camera", "stage": tier, "path": path, "window_ms": 5000, "fps": 15, "expected": n, "found": n,
+        gw({"t": "camera", "stage": tier, "path": path, "window_ms": 5000, "t0_ms": 9000.0, "nav_ms": 5000.0, "fps": 15,
+            "expected": n, "found": n,
             "streams": [{"found": True, "w": 0 if dead else (1280 if i == 0 else 640), "h": 0 if dead else (720 if i == 0 else 360),
                          "first_frame_ms": None if dead else 640.0, "shown_pct": None if dead else 100.0,
                          "max_gap_ms": None if dead else 70.0, "stall_total_ms": None if dead else 0.0,
