@@ -11,8 +11,8 @@ package sh.edm.esphome
  * api.proto. Home Assistant gets these only after it sent `SubscribeHomeassistantServicesRequest`
  * (34), which it does on every connection.
  *
- * Not sent yet: the server learns to send it once the writer queue (#213) is in. The notifications
- * pane (#118) reports a tapped button this way.
+ * [ApiServer.sendHomeAssistantEvent] sends it. The notifications pane (#118) reports a tapped button
+ * this way.
  */
 class HomeAssistantEvent(val event: String, val data: Map<String, String> = emptyMap()) {
     init {
