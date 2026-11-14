@@ -31,6 +31,7 @@ object Msg {
     const val LIGHT_COMMAND = 32
     const val SWITCH_COMMAND = 33
     const val SUBSCRIBE_HA_SERVICES_REQUEST = 34
+    const val HOMEASSISTANT_ACTION_REQUEST = 35
     const val GET_TIME_REQUEST = 36
     const val GET_TIME_RESPONSE = 37
     const val SUBSCRIBE_HA_STATES_REQUEST = 38
