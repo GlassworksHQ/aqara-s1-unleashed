@@ -14,7 +14,7 @@ Breaking into hardware has its own playbook: [`docs/research/bringup.md`](docs/r
 | Path | What | Language |
 |---|---|---|
 | `app/kiosk` | S1 Kiosk, the GeckoView kiosk app (`sh.edm.s1kiosk`, never rename it) | Kotlin, Android |
-| `app/libs/*` | Libraries split out of the app: `esphome-api` (JVM), `esphome-api-android`, `improv` | Kotlin |
+| `app/libs/*` | Libraries split out of the app: `esphome-api` (JVM), `esphome-api-android`, `improv`, `bluetooth-proxy` | Kotlin |
 | `kiln/` | Kiln, the WebUSB installer (FEL → fastboot → boot patch → adb), served at s1.edm.sh. The page in `src/`, protocol modules in `packages/`, the Next.js app in `apps/kiln` | TypeScript, Vite, Next.js, Rust→WASM |
 | `frames/<id>/` | Everything about one frame: its README, its Kiln recipe (`installer/`), its design data (`design/frame.json`, `recovery.json`) and its research notes (`research/`) | TypeScript, JSON, Markdown |
 | `packages/` | Packages Kiln and glassworks.dev share: `frame-card`, the frame card and 3D device mockup | TypeScript, React |
@@ -148,6 +148,7 @@ header from the example in the table, then change the name, the tagline and the 
 | The Glassworks core or a pane | `banner-core` or `banner-pane`, title and tagline, then the part badge, licence, status and roadmap badges | [core](app/kiosk/src/main/java/dev/glassworks/README.md) |
 | Kiln | `banner-kiln`, title and tagline, then the Kiln, MIT, status and roadmap badges | [Kiln](kiln/apps/kiln/README.md) |
 | An app or product built on the core | Title and tagline, then Built on Glassworks, MIT, status and roadmap badges. No banner | [S1 Kiosk](app/README.md) |
+| A frame (`frames/<id>/README.md`) | `banner-frame-<id>`, centred title and tagline, then Built on Glassworks, the Kiln badge if Kiln installs it, the status, roadmap and Clarity badges | [aqara-s1-plus](frames/aqara-s1-plus/README.md) |
 | Kiln's internals and design work | The Kiln badge alone | [docs/design/kiln](docs/design/kiln/README.md) |
 | A Glassworks spec in `docs/` that every frame follows (e.g. the perf grade) | The core badge alone, under the title | [principles.md](docs/principles.md) (its part badges) |
 

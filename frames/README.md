@@ -6,8 +6,10 @@ and glassworks.dev read them from here.
 
 | Folder | What |
 |---|---|
+| `<id>/README.md` | The frame's page: its banner, status, hardware, how it installs, its panes and its research notes |
 | `<id>/installer/` | Kiln's recipe for the device (`@glassworks/<id>-installer`), an npm workspace of the repo root. Only frames that install from Kiln have one |
 | `<id>/design/frame.json` | What the device looks like and what the catalog says about it. Every frame has one |
+| `<id>/research/` | Its research notes (the index of every note: [docs/research](../docs/research/README.md)) |
 | `<id>/design/recovery.json` | The steps into recovery mode, as drawing data (format: [docs/design/kiln](../docs/design/kiln/README.md#the-recovery-section)) |
 
 | Frame | Status | Installer | Design |
