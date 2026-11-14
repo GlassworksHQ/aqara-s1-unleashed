@@ -1,7 +1,24 @@
 package sh.edm.s1kiosk.esphome
 
-import sh.edm.esphome.*
-import sh.edm.esphome.android.EspHomeMdns
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.net.wifi.WifiManager
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
+import android.os.SystemClock
+import dev.glassworks.camera.CameraDefinition
+import dev.glassworks.camera.CameraHub
+import dev.glassworks.camera.CameraIdentity
+import dev.glassworks.camera.CameraPane
+import dev.glassworks.camera.CameraStream
+import dev.glassworks.camera.FrameEgress
+import dev.glassworks.camera.stillGate
 import dev.glassworks.diagnostics.DiagnosticsPane
 import dev.glassworks.frame.Frame
 import dev.glassworks.pane.EntityRegistry
@@ -11,39 +28,6 @@ import dev.glassworks.pane.PaneSwitch
 import dev.glassworks.pane.PanelEvent
 import dev.glassworks.pane.forEachPane
 import dev.glassworks.pane.stopAll
-import android.annotation.SuppressLint
-import android.content.Context
-import android.content.Intent
-import android.content.SharedPreferences
-import android.media.AudioAttributes
-import android.net.wifi.WifiManager
-import android.os.Handler
-import android.os.Looper
-import android.os.PowerManager
-import sh.edm.s1kiosk.BuildConfig
-import sh.edm.s1kiosk.GlassworksRuntime
-import sh.edm.s1kiosk.KioskPrefs
-import sh.edm.s1kiosk.MainActivity
-import sh.edm.s1kiosk.timers.TimersPane
-import sh.edm.s1kiosk.auth.HaAuth
-import sh.edm.s1kiosk.radio.RadioPane
-import sh.edm.s1kiosk.dashboard.Dashboard
-import sh.edm.s1kiosk.dashboard.DashboardOptions
-import sh.edm.s1kiosk.dashboard.Dashboards
-import sh.edm.s1kiosk.dashboard.StableChange
-import sh.edm.s1kiosk.discovery.HaUrls
-import sh.edm.s1kiosk.sendspin.SendspinPane
-import sh.edm.s1kiosk.setup.SetupSignals
-import sh.edm.s1kiosk.update.UpdateManager
-import sh.edm.s1kiosk.voice.AssistPane
-import sh.edm.s1kiosk.voice.TtsPlayer
-import sh.edm.s1kiosk.voice.ExoAudioPlayer
-import sh.edm.s1kiosk.voice.SpeakerMedia
-import sh.edm.s1kiosk.voice.VoiceEngine
-import sh.edm.s1kiosk.voice.VoiceEvent
-import sh.edm.s1kiosk.voice.VoiceLevels
-import sh.edm.s1kiosk.voice.chime
-import sh.edm.s1kiosk.voice.wakeChime
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -52,6 +36,33 @@ import java.security.SecureRandom
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import sh.edm.esphome.*
+import sh.edm.esphome.DeviceIdentity
+import sh.edm.esphome.android.EspHomeMdns
+import sh.edm.s1kiosk.BuildConfig
+import sh.edm.s1kiosk.GlassworksRuntime
+import sh.edm.s1kiosk.KioskPrefs
+import sh.edm.s1kiosk.MainActivity
+import sh.edm.s1kiosk.auth.HaAuth
+import sh.edm.s1kiosk.dashboard.Dashboard
+import sh.edm.s1kiosk.dashboard.DashboardOptions
+import sh.edm.s1kiosk.dashboard.Dashboards
+import sh.edm.s1kiosk.dashboard.StableChange
+import sh.edm.s1kiosk.discovery.HaUrls
+import sh.edm.s1kiosk.radio.RadioPane
+import sh.edm.s1kiosk.sendspin.SendspinPane
+import sh.edm.s1kiosk.setup.SetupSignals
+import sh.edm.s1kiosk.timers.TimersPane
+import sh.edm.s1kiosk.update.UpdateManager
+import sh.edm.s1kiosk.voice.AssistPane
+import sh.edm.s1kiosk.voice.ExoAudioPlayer
+import sh.edm.s1kiosk.voice.SpeakerMedia
+import sh.edm.s1kiosk.voice.TtsPlayer
+import sh.edm.s1kiosk.voice.VoiceEngine
+import sh.edm.s1kiosk.voice.VoiceEvent
+import sh.edm.s1kiosk.voice.VoiceLevels
+import sh.edm.s1kiosk.voice.chime
+import sh.edm.s1kiosk.voice.wakeChime
 
 /**
  * The panel as one ESPHome device for Home Assistant: native API server (port 6053), mDNS,
@@ -178,6 +189,8 @@ class PanelDevice internal constructor(
         // Panes first, while esphome-main still runs: the wall base's thread can still post to it.
         val interrupted = panes.stopAll()
         panes = emptyList()
+        cameraHub?.release()
+        cameraHub = null
         assist = null
         exec.shutdownNow()
         mdns.stop()
@@ -277,6 +290,7 @@ class PanelDevice internal constructor(
                 silence = { synchronized(this) { chimePlayer }?.cancel() },
             ),
         ) + frame.panes(paneContext, exec) + RadioPane(paneContext, runtime, panelIp = ::ipAddress) +
+            listOfNotNull(cameraPane(paneContext, identity)) +
             DiagnosticsPane(paneContext, frame.cpuThermalZone, runtime.engine::isContentProcess, exec)
         // Every pane's on/off, also while the pane is off.
         coreEntities = buildEntities() + switches.values.map { it.entity() }
@@ -286,6 +300,35 @@ class PanelDevice internal constructor(
     }
 
     internal fun entityList(): List<ApiEntity> = entities
+
+    /** The camera, while the camera pane exists. Released in [stop]. */
+    private var cameraHub: CameraHub? = null
+
+    /** The camera pane (#117), on a device with a camera only: elsewhere it has no switch and no entities. */
+    private fun cameraPane(paneContext: PaneContext, identity: DeviceIdentity): CameraPane? {
+        val def = runtime.paneDefinitions(ctx).filterIsInstance<CameraDefinition>().firstOrNull() ?: return null
+        if (def.switch == null) return null
+        val hub = CameraHub(ctx).also { cameraHub = it }
+        val egress = FrameEgress(SystemClock::elapsedRealtime, { ms, r -> main.postDelayed(r, ms) }) { leaving ->
+            EspHomeLog.i("Camera frames ${if (leaving) "leaving the panel" else "no longer leaving"}")
+            runtime.cameraLeaving = leaving
+            main.post { runtime.onCameraLeaving?.invoke() }
+        }
+        val gate = stillGate(hub, { def.prefs.policy }, egress)
+        val stream = CameraStream(
+            ctx, hub, egress,
+            identity = { CameraIdentity(identity.friendlyName, "Glassworks ${BuildConfig.VERSION_NAME}", identity.macAddress) },
+            host = ::ipAddress,
+            snapshot = gate,
+        )
+        return CameraPane(
+            paneContext, def.prefs, hub, hub, stream, egress,
+            permitted = { ctx.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED },
+            ownSensor = { runtime.presence.ownSensor(ctx) },
+            toScreen = runtime.presence::offer,
+            exec = exec,
+        )
+    }
 
     internal fun paneList(): List<Pane> = panes
 

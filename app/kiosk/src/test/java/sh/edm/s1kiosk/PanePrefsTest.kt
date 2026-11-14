@@ -3,6 +3,7 @@ package sh.edm.s1kiosk
 import sh.edm.s1kiosk.frame.AqaraCloud
 import sh.edm.s1kiosk.frame.AqaraS1Plus
 import sh.edm.s1kiosk.frame.TimeZonePrefs
+import dev.glassworks.camera.CameraPrefs
 import dev.glassworks.diagnostics.DiagnosticsPrefs
 import android.app.Application
 import android.content.SharedPreferences
@@ -55,7 +56,7 @@ class PanePrefsTest {
     /** The prefs class of each namespace, built over a file. */
     private val owners: Map<String, (SharedPreferences) -> Any> = mapOf(
         "sendspin" to ::SendspinPrefs, "assist" to ::VoicePrefs, "wall-base" to ::WallBasePrefs, "radio" to ::RadioPrefs,
-        "time-zone" to ::TimeZonePrefs, "diagnostics" to ::DiagnosticsPrefs,
+        "time-zone" to ::TimeZonePrefs, "diagnostics" to ::DiagnosticsPrefs, "camera" to ::CameraPrefs,
     )
 
     @After fun tearDown() {

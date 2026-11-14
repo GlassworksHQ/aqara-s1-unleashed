@@ -70,6 +70,12 @@ below as the release notes.
   Diagnostic section.
 
 ### Added
+- **A camera pane for panels with a camera.** On a tablet with a camera (not the S1), the panel can
+  wake its screen when someone walks up, using motion that ignores lights switching on, dusk and TV
+  light; no image leaves the panel for that. You can also let Home Assistant take snapshots, and
+  turn on an ONVIF and RTSP stream (ports 8554 and 8000) for Home Assistant's ONVIF integration,
+  Frigate or UniFi Protect, with its own username and password. Everything is off until you turn
+  it on, and *Camera privacy* closes the camera.
 - **Turn any pane off, and back on, without a restart.** Voice, music, the wall base, the time zone
   and diagnostics each have an on/off: at the top of the pane's page in the panel's settings, in
   Home Assistant (new switches Voice, Wall base, Keep time zone and Diagnostics, off on the device

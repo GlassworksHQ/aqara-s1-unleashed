@@ -4,7 +4,8 @@
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
  * Changes: package; with no credentials, or a username without a password, every request that needs a
- * user is refused (upstream let everyone in). */
+ * user is refused (upstream let everyone in); the panel's name in place of "AndroidIPCamera"; at most 64
+ * headers and 32 KiB in a request head. */
 
 package dev.glassworks.camera.onvif
 
@@ -57,11 +58,14 @@ class OnvifServer(
     private val snapshot: (() -> ByteArray?)? = null,
     private val onLog: (String) -> Unit = {},
     private val discoveryPort: Int = 3702,
-    private val enableDiscovery: Boolean = true
+    private val enableDiscovery: Boolean = true,
+    /** Glassworks: the panel's name, for the auth realm, the Server header and the host name fallback. */
+    private val name: String = "Glassworks",
 ) {
     companion object {
-        private const val REALM = "AndroidIPCamera"
         private const val MAX_BODY = 1 shl 20
+        private const val MAX_HEADERS = 64
+        private const val MAX_HEADER_BYTES = 32 * 1024
         private const val MAX_SUBSCRIPTIONS = 16
         private const val MAX_QUEUED = 200
         private const val DEFAULT_SUB_MS = 10 * 60_000L
@@ -101,6 +105,8 @@ class OnvifServer(
     private val issuedNonces = object : LinkedHashMap<String, Long>(64, 0.75f, false) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?) = size > 256
     }
+    /** Glassworks: was the constant "AndroidIPCamera". */
+    private val realm = name.replace("\"", "")
     @Volatile private var motion = false
     private val openSockets = ConcurrentHashMap.newKeySet<Socket>()
 
@@ -220,9 +226,13 @@ class OnvifServer(
         val parts = line.split(' ')
         if (parts.size < 2) return null
         val headers = HashMap<String, String>()
+        var headerBytes = 0
         while (true) {
             val h = readLine(input) ?: break
             if (h.isEmpty()) break
+            // Glassworks: a bound on the head, before sign-in can run.
+            headerBytes += h.length
+            if (headers.size >= MAX_HEADERS || headerBytes > MAX_HEADER_BYTES) throw IllegalStateException("request head too large")
             val i = h.indexOf(':')
             if (i > 0) headers[h.substring(0, i).trim().lowercase()] = h.substring(i + 1).trim()
         }
@@ -243,7 +253,7 @@ class OnvifServer(
         val sb = StringBuilder("HTTP/1.1 ${r.status} $reason\r\n")
         sb.append("Content-Type: ${r.contentType}\r\n")
         sb.append("Content-Length: ${r.body.size}\r\n")
-        sb.append("Server: AndroidIPCamera-ONVIF\r\n")
+        sb.append("Server: ${name.replace(Regex("[\r\n]"), " ")} ONVIF\r\n")
         sb.append("Connection: ${if (keepAlive) "keep-alive" else "close"}\r\n")
         r.headers.forEach { (k, v) -> sb.append("$k: $v\r\n") }
         sb.append("\r\n")
@@ -315,8 +325,8 @@ class OnvifServer(
         val nonce = OnvifXml.randomHex()
         synchronized(issuedNonces) { issuedNonces[nonce] = System.currentTimeMillis() }
         return HttpResponse(401, body, ct, listOf(
-            "WWW-Authenticate" to "Digest realm=\"$REALM\", qop=\"auth\", nonce=\"$nonce\", algorithm=MD5",
-            "WWW-Authenticate" to "Basic realm=\"$REALM\""
+            "WWW-Authenticate" to "Digest realm=\"$realm\", qop=\"auth\", nonce=\"$nonce\", algorithm=MD5",
+            "WWW-Authenticate" to "Basic realm=\"$realm\""
         ))
     }
 
@@ -366,8 +376,8 @@ class OnvifServer(
                 if (p["username"] != c.first) return false
                 val nonce = p["nonce"] ?: return false
                 if (synchronized(issuedNonces) { !issuedNonces.containsKey(nonce) }) return false
-                val realm = p["realm"] ?: REALM
-                val ha1 = OnvifXml.md5Hex("${c.first}:$realm:${c.second}")
+                val r = p["realm"] ?: realm
+                val ha1 = OnvifXml.md5Hex("${c.first}:$r:${c.second}")
                 val ha2 = OnvifXml.md5Hex("$method:${p["uri"] ?: uri}")
                 val expected = if (p["qop"] != null)
                     OnvifXml.md5Hex("$ha1:$nonce:${p["nc"]}:${p["cnonce"]}:${p["qop"]}:$ha2")
@@ -457,7 +467,7 @@ class OnvifServer(
                 "<tds:Scopes><tt:ScopeDef>Fixed</tt:ScopeDef><tt:ScopeItem>${e(it)}</tt:ScopeItem></tds:Scopes>"
             } + "</tds:GetScopesResponse>"
             "GetHostname" -> "<tds:GetHostnameResponse><tds:HostnameInformation><tt:FromDHCP>false</tt:FromDHCP>" +
-                "<tt:Name>${e(i.name.replace(Regex("[^A-Za-z0-9-]"), "-").trim('-').ifEmpty { "android-ip-camera" })}</tt:Name></tds:HostnameInformation></tds:GetHostnameResponse>"
+                "<tt:Name>${e(i.name.replace(Regex("[^A-Za-z0-9-]"), "-").trim('-').ifEmpty { "glassworks-camera" })}</tt:Name></tds:HostnameInformation></tds:GetHostnameResponse>"
             "GetNetworkInterfaces" -> "<tds:GetNetworkInterfacesResponse><tds:NetworkInterfaces token=\"eth0\">" +
                 "<tt:Enabled>true</tt:Enabled><tt:Info><tt:Name>wlan0</tt:Name><tt:HwAddress>${e(macColon())}</tt:HwAddress><tt:MTU>1500</tt:MTU></tt:Info>" +
                 "<tt:IPv4><tt:Enabled>true</tt:Enabled><tt:Config><tt:Manual><tt:Address>${e(host())}</tt:Address><tt:PrefixLength>24</tt:PrefixLength></tt:Manual><tt:DHCP>true</tt:DHCP></tt:Config></tt:IPv4>" +

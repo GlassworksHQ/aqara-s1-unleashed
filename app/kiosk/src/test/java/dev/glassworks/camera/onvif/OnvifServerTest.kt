@@ -111,10 +111,10 @@ class OnvifServerTest {
         val challenge = call(s, "<tds:GetDeviceInformation/>", header = "").headers.first { it.second.startsWith("Digest") }.second
         val nonce = Regex("nonce=\"([^\"]+)\"").find(challenge)!!.groupValues[1]
         val uri = "/onvif/device_service"
-        val ha1 = OnvifXml.md5Hex("$user:AndroidIPCamera:$pass")
+        val ha1 = OnvifXml.md5Hex("$user:Glassworks:$pass")
         val ha2 = OnvifXml.md5Hex("POST:$uri")
         val resp = OnvifXml.md5Hex("$ha1:$nonce:00000001:abc:auth:$ha2")
-        val auth = "Digest username=\"$user\", realm=\"AndroidIPCamera\", nonce=\"$nonce\", uri=\"$uri\", qop=auth, nc=00000001, cnonce=\"abc\", response=\"$resp\""
+        val auth = "Digest username=\"$user\", realm=\"Glassworks\", nonce=\"$nonce\", uri=\"$uri\", qop=auth, nc=00000001, cnonce=\"abc\", response=\"$resp\""
         val r = s.handle("POST", uri, mapOf("authorization" to auth), soap("<tds:GetDeviceInformation/>", "").toByteArray())
         assertEquals(r.text, 200, r.status)
     }
@@ -245,6 +245,27 @@ class OnvifServerTest {
         val bomb = "<?xml version=\"1.0\"?><!DOCTYPE s [<!ENTITY a \"aaaaaaaaaa\"><!ENTITY b \"&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;\">]><s>&b;</s>"
         assertNotNull("the stand-in parser would read it", AndroidLikeFactory().newDocumentBuilder().parse(bomb.byteInputStream()))
         assertNull(OnvifXml.parse(bomb) { AndroidLikeFactory() })
+    }
+
+    @Test fun `a request head past the bounds is refused before sign-in`() {
+        val s = newServer().also { it.start() }
+        val sock = java.net.Socket("127.0.0.1", s.localPort).apply { soTimeout = 3000 }
+        val head = StringBuilder("POST /onvif/device_service HTTP/1.1\r\nHost: x\r\n")
+        repeat(80) { head.append("X-Pad-$it: y\r\n") }
+        sock.getOutputStream().write((head.toString() + "Content-Length: 0\r\n\r\n").toByteArray())
+        assertEquals("closed, no answer", -1, sock.getInputStream().read())
+        sock.close()
+    }
+
+    @Test fun `the challenge carries the panel's name`() {
+        val s = OnvifServer(port = 0, host = { "192.0.2.41" }, info = { OnvifDeviceInfo("x", "x", "x", "x", "x", "02:00:00:00:00:02", "") },
+            stream = { OnvifStreamInfo("rtsp://192.0.2.41:8554/live", 1280, 720, 15, 1400) },
+            credentials = { user to pass }, enableDiscovery = false, name = "Hall Panel").also { server = it }
+        val r = call(s, "<tds:GetDeviceInformation/>", header = "")
+        assertEquals(401, r.status)
+        assertTrue(r.headers.any { it.second.contains("realm=\"Hall Panel\"") })
+        val host = call(s, "<tds:GetHostname/>").text
+        assertTrue("an empty device name falls back to a Glassworks host name", host.contains("glassworks-camera"))
     }
 
     @Test fun `nothing listens until start`() {

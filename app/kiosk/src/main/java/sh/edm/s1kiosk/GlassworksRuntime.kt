@@ -2,7 +2,9 @@ package sh.edm.s1kiosk
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.util.Log
+import dev.glassworks.camera.CameraDefinition
 import dev.glassworks.diagnostics.DiagnosticsDefinition
 import dev.glassworks.engine.Engine
 import dev.glassworks.engine.EngineSettings
@@ -10,6 +12,7 @@ import dev.glassworks.engine.gecko.GeckoEngine
 import dev.glassworks.frame.Frame
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SetupStep
+import dev.glassworks.screen.PresenceRelay
 import dev.glassworks.screen.ScreenPolicy
 import sh.edm.s1kiosk.discovery.HaDiscovery
 import sh.edm.s1kiosk.frame.AqaraS1Plus
@@ -34,8 +37,11 @@ class GlassworksRuntime(
     private val paneFrame: Frame = frame,
 ) {
     /** The screen's on/off and brightness, from the frame's sensors. MainActivity and KioskService start it. */
+    /** The frame's presence sensor, plus the camera pane's readings on a device without one (#117). */
+    val presence = PresenceRelay(frame.presence)
+
     val screen = ScreenPolicy(
-        frame.presence, frame.light, AdminReceiver::class.java, settings = ::KioskPrefs,
+        presence, frame.light, AdminReceiver::class.java, settings = ::KioskPrefs,
         logTag = "S1Kiosk.Screen", wakeLockTag = "s1kiosk:wake",
     )
 
@@ -67,8 +73,9 @@ class GlassworksRuntime(
                 setUpBefore = { SetupState.setUpBefore(prefs.haBase != null, prefs.haSeen, prefs.apiEncryption, prefs.haSetupSkipped) },
                 readout = RadioDefinition.AppReadout(this, prefs.radio) { prefs.haBase },
             )
+            val camera = CameraDefinition(prefs.paneFile("camera"), app.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY))
             listOf(AssistDefinition(prefs.paneFile("assist")), SendspinDefinition(prefs.paneFile("sendspin")), radio) +
-                paneFrame.paneDefinitions(app) + DiagnosticsDefinition(prefs.paneFile("diagnostics"))
+                paneFrame.paneDefinitions(app) + camera + DiagnosticsDefinition(prefs.paneFile("diagnostics"))
         }.also { definitions = it }
     }
 
@@ -98,6 +105,13 @@ class GlassworksRuntime(
             } else SetupPane(card, steps)
         }
     }
+
+    /**
+     * Whether camera frames are leaving the panel now (a still to Home Assistant, a stream), for the
+     * privacy indicator (#117). Set by the camera pane; [onCameraLeaving] hears each change.
+     */
+    @Volatile var cameraLeaving = false
+    @Volatile var onCameraLeaving: (() -> Unit)? = null
 
     /** Set while KioskService runs; the radio's setup step and settings section apply radio changes through it. */
     @Volatile var radio: RadioController? = null

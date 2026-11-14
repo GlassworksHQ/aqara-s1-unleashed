@@ -31,6 +31,10 @@ class Vi5300Presence(
 
     private var registered: SensorEventListener? = null
 
+    /** The S1 app also runs on devices without the S1's sensor (a tablet, until #23). */
+    override fun available(context: Context): Boolean =
+        (context.getSystemService(Context.SENSOR_SERVICE) as SensorManager).getDefaultSensor(Sensor.TYPE_PROXIMITY) != null
+
     override fun start(context: Context, onReading: (near: Boolean, raw: Float) -> Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         sm.getDefaultSensor(Sensor.TYPE_PROXIMITY)?.let {

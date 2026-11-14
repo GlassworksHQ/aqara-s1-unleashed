@@ -53,7 +53,8 @@ class MotionDetectorCore(
         private set
 
     fun reset() {
-        // Glassworks: a new start also drops a lighting pause left from before.
+        // Glassworks: a new start also drops a lighting pause left from before. A source that kept
+        // switching between sizes below and above the grid would clear pauses too; CameraHub keeps one size.
         seeded = false; positives = 0; cooldown = 0
         if (active) { active = false; onMotion(false) }
     }

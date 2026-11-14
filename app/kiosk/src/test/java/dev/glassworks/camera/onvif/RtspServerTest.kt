@@ -154,10 +154,10 @@ class RtspServerTest {
         val (r401, _) = c.request("DESCRIBE", url)
         assertTrue(r401.startsWith("RTSP/1.0 401"))
         val nonce = Regex("nonce=\"([0-9a-f]+)\"").find(r401)!!.groupValues[1]
-        val ha1 = RtspAuth.md5Hex("admin:AndroidIPCamera:pw")
+        val ha1 = RtspAuth.md5Hex("admin:Glassworks:pw")
         val resp = RtspAuth.md5Hex("$ha1:$nonce:${RtspAuth.md5Hex("DESCRIBE:$url")}")
         val (ok, _) = c.request("DESCRIBE", url, listOf(
-            "Authorization: Digest username=\"admin\", realm=\"AndroidIPCamera\", nonce=\"$nonce\", uri=\"$url\", response=\"$resp\""))
+            "Authorization: Digest username=\"admin\", realm=\"Glassworks\", nonce=\"$nonce\", uri=\"$url\", response=\"$resp\""))
         assertTrue(ok, ok.startsWith("RTSP/1.0 200"))
         c.sock.close()
     }
@@ -250,6 +250,63 @@ class RtspServerTest {
         Thread.sleep(100)
         assertEquals("the host ends on the true count", listOf(1, 2), counts.toList())
         a.sock.close(); b.sock.close()
+    }
+
+    private fun playOn(c: Client): Pair<String, String> {
+        val url = "rtsp://127.0.0.1:$port/live"
+        val (_, sdp) = c.request("DESCRIBE", url, listOf("Accept: application/sdp"))
+        val setup = c.request("SETUP", "$url/trackID=0", listOf("Transport: RTP/AVP/TCP;unicast;interleaved=0-1")).first
+        val session = Regex("Session: ([0-9A-F]+)").find(setup)!!.groupValues[1]
+        return c.request("PLAY", url, listOf("Session: $session")).first to sdp
+    }
+
+    @Test fun connectionsOverTheCapAreClosedAtOnce() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, maxConnections = 2)
+        server.start()
+        val a = Client(port); val b = Client(port)
+        assertTrue(a.request("OPTIONS", "rtsp://127.0.0.1:$port/live").first.startsWith("RTSP/1.0 200"))
+        assertTrue(b.request("OPTIONS", "rtsp://127.0.0.1:$port/live").first.startsWith("RTSP/1.0 200"))
+        val third = Socket("127.0.0.1", port).apply { soTimeout = 3000 }
+        assertEquals("closed without a word", -1, third.getInputStream().read())
+        a.sock.close(); b.sock.close(); third.close()
+    }
+
+    @Test fun aSilentConnectionIsClosedButAPlayingOneIsNot() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, handshakeTimeoutMs = 300)
+        server.start()
+        Thread { var i = 0; while (feeding.get()) { server.onAccessUnit(if (i++ % 10 == 0) idr else pFrame, i % 10 == 1); Thread.sleep(33) } }
+            .apply { isDaemon = true; start() }
+        Thread.sleep(150)
+        val idle = Socket("127.0.0.1", port).apply { soTimeout = 3000 }
+        assertEquals("nothing sent: closed after the handshake timeout", -1, idle.getInputStream().read())
+        idle.close()
+        val c = Client(port)
+        val play = playOn(c).first
+        assertTrue(play.startsWith("RTSP/1.0 200"))
+        val session = Regex("Session: ([0-9A-F]+)").find(play)!!.groupValues[1]
+        Thread.sleep(900) // three timeouts long, sending nothing
+        // Still open: a request now gets an answer (the reader skips the RTP in between).
+        val (alive, _) = c.request("GET_PARAMETER", "rtsp://127.0.0.1:$port/live", listOf("Session: $session"))
+        assertTrue(alive, alive.startsWith("RTSP/1.0 200"))
+        c.sock.close()
+    }
+
+    @Test fun theStreamCarriesThePanelsName() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, name = "Hall Panel")
+        server.start()
+        server.onAccessUnit(idr, true)
+        val c = Client(port, auth = null)
+        val url = "rtsp://127.0.0.1:$port/live"
+        val (r401, _) = c.request("DESCRIBE", url)
+        assertTrue(r401.contains("realm=\"Hall Panel\""))
+        assertTrue(r401.contains("Server: Hall Panel"))
+        val (_, sdp) = Client(port).request("DESCRIBE", url, listOf("Accept: application/sdp"))
+        assertTrue(sdp.contains("s=Hall Panel"))
+        assertTrue(!sdp.contains("Android") && !r401.contains("Android"))
+        c.sock.close()
     }
 
     @Test fun nothingListensUntilStart() {

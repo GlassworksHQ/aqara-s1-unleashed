@@ -192,6 +192,14 @@ $I --ez release_device_owner true    # escape hatch: clearDeviceOwnerApp()
 adb logcat -s S1Kiosk.Improv          # BLE support report at startup, states, RPCs
 ```
 
+The camera pane (#117, devices with a camera) logs under `S1Kiosk.Camera`: the camera opening and
+closing, its plan, frames leaving the panel, and the stream's clients. Never the stream's password.
+
+```sh
+adb logcat -s S1Kiosk.Camera
+adb shell am start -n sh.edm.s1kiosk/.CameraSignInActivity --es camera_stream_sign_in 'viewer:a-long-password'
+```
+
 `ImprovActivity` only accepts callers holding `WRITE_SECURE_SETTINGS` (i.e. `adb shell`).
 Joining the new network uses `WifiManager.addNetwork`, which Android 10 allows because the app holds
 the SYSTEM_ALERT_WINDOW app-op (see the install step), or because it's device owner

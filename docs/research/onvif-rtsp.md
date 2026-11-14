@@ -130,6 +130,20 @@ setup and two Protect notes (read 2026-11-14):
   `onvif_stream` is on, the camera is in Presence + snapshots, and privacy is off
   (`CameraPolicy.streamMayRun`).
 
+**Limits we accept, and what bounds them** (2026-11-14):
+
+| Limit | Why it stays | What bounds it |
+|---|---|---|
+| Plain HTTP and RTSP, no TLS. Basic auth and WS-Security `PasswordText` send the password in a form anyone on the LAN can read | HA's ONVIF integration and UniFi Protect speak ONVIF over HTTP; they choose Digest or `PasswordDigest` when offered | The stream is off by default and needs its own sign-in, not the panel's or HA's. Use a password for nothing else |
+| HTTP Digest (ONVIF snapshot, RTSP): a nonce stays valid until it is evicted (ONVIF) or for 12 h (RTSP), and `nc` isn't tracked, so a captured `Authorization` header can be replayed | ffmpeg and other RTSP clients reuse the first nonce for a whole session; refusing a reused `nc` breaks them | Replaying needs a captured header from the LAN; it gives what that client already saw. A future round can bind nonces to a connection |
+| WS-Security `UsernameToken`: `Created` isn't range-checked and nonces aren't remembered, so a captured token can be replayed | Panel and client clocks differ, and HA corrects for that skew itself | As above: a LAN capture, for the operations that client already made |
+| RTSP over UDP: a session ends when its control connection closes (upstream's choice), although RTSP 1.0 lets it outlive the connection | HA and Protect stream over TCP; ending with the connection stops video to an address whose client is gone | Clients that keep their control connection open, as ffmpeg does, are unaffected |
+
+Bounds added in the camera pane PR: at most 16 RTSP connections, a 30 s read timeout on an RTSP
+connection until a session plays (none after, since a playing client may stay silent), and at most 64
+headers and 32 KiB in an ONVIF request head. The ONVIF server already had a 30 s read timeout and at
+most 32 connection threads.
+
 **Ports.** 8554 (RTSP) and 8000 (ONVIF), as upstream. Neither clashes with the panel's own listeners,
 read from the code on 2026-11-14: 6053 (ESPHome API), 8099 (Manage page and setup sign-in), 6638 and
 6639 (Zigbee over TCP), 8081 (the Thread border router's REST API, Thread mode only). Sendspin only

@@ -361,6 +361,26 @@ Kiosk actions are applied in the running activity exactly like the `adb am start
 sensors) are pushed to HA right away (pref listener + `ScreenPolicy` listeners), with a 5 s
 poll as a safety net.
 
+### Camera entities
+
+On a device with a camera only (not the S1); the camera pane is off until you turn it on (#117).
+Presence comes from lighting-insensitive motion on the panel; no image leaves it in *Presence only*.
+
+| Entity | object_id | Category, default | What it does |
+|---|---|---|---|
+| camera `Camera` | `camera` | none, on | A still when Home Assistant asks, in *Presence + snapshots* only, and only over an encrypted connection; an empty image otherwise |
+| binary_sensor `Camera presence` (occupancy) | `camera_presence` | none, on | Someone moving in view; ends 8 s after the last movement. Lighting changes don't count |
+| switch `Camera privacy` | `camera_privacy` | none, on | Closes the camera: no presence, no stills, no stream |
+| select `Camera use` | `camera_use` | config, off | `Presence only` or `Presence + snapshots` |
+| switch `ONVIF stream` | `onvif_stream` | config, off | RTSP on 8554 and ONVIF on 8000 for HA's ONVIF integration, Frigate and UniFi Protect. Refused in *Presence only*; needs a stream sign-in; encrypted connections only |
+| number `Camera sensitivity` | `camera_sensitivity` | config, off | 1 (least) to 10 (most), default 5 |
+| switch `Camera pane` | `camera_pane` | config, off | The pane's on/off (#67) |
+
+The stream's sign-in is set from adb until the Manage page edits settings (#178):
+`adb shell am start -n sh.edm.s1kiosk/.CameraSignInActivity --es camera_stream_sign_in 'user:password'`.
+Only `adb shell` may start that activity. There is no default password: without one, the stream
+doesn't start and both servers refuse every request.
+
 ### App updates
 
 `update/UpdateManager.kt`; releases and signing in [releasing.md](releasing.md).

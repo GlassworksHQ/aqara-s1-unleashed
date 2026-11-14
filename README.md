@@ -161,6 +161,7 @@ What works today, on v0.4.1. "Verified" means tested on a real panel in a real h
 | Radio: only Home Assistant can connect | ✅ Verified |
 | Radio firmware updates | 🧪 Experimental · re-flashing Aqara's original firmware verified; no other firmware offered yet |
 | Wall base relays | 🧪 Driver done and checked against Aqara's own tool, but not yet tried on a real base |
+| Camera pane on a tablet: presence from motion, snapshots, ONVIF/RTSP stream ([entities](docs/esphome.md#camera-entities)) | 🧪 New · not yet run on a device; the S1 has no camera |
 | Wi-Fi setup over Bluetooth (Improv) | 🧪 Implemented; lightly tested |
 | A short entity list in HA: settings and troubleshooting entities start turned off ([list](docs/esphome.md#categories-and-defaults)) | 🧪 New · the check on a panel HA already has is pending |
 

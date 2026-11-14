@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Base64
+import dev.glassworks.camera.CameraPrefs
 import dev.glassworks.diagnostics.DiagnosticsPrefs
 import dev.glassworks.screen.ScreenSettings
 import sh.edm.s1kiosk.auth.OAuth
@@ -36,6 +37,7 @@ class KioskPrefs(private val context: Context) : ScreenSettings {
     val radio = RadioPrefs(paneFile("radio"))
     val timeZone = TimeZonePrefs(paneFile("time-zone"))
     val diagnostics = DiagnosticsPrefs(paneFile("diagnostics"))
+    val camera = CameraPrefs(paneFile("camera"))
 
     fun registerListener(l: SharedPreferences.OnSharedPreferenceChangeListener) =
         sp.registerOnSharedPreferenceChangeListener(l)
@@ -264,7 +266,7 @@ class KioskPrefs(private val context: Context) : ScreenSettings {
          */
         val PANE_FILES = mapOf(
             "sendspin" to "kiosk", "assist" to "kiosk", "wall-base" to "kiosk", "radio" to "kiosk",
-            "time-zone" to "kiosk", "diagnostics" to "kiosk",
+            "time-zone" to "kiosk", "diagnostics" to "kiosk", "camera" to "kiosk",
         )
 
         /** Decodes a base64 API key; null unless it is exactly 32 bytes. */
