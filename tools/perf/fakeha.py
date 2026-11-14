@@ -359,8 +359,8 @@ def _history_stream(c, m):
 
 def _camera_stream(c, m):
     """camera/stream: a fresh HLS stream for the camera (homeassistant/components/camera, the stream
-    integration's URL shape). Each request is its own stream, started as if it had been running
-    preRollS already (a camera that has been on), so a view's first frame doesn't wait on segments."""
+    integration's URL shape). Each request is its own stream, started then, as HA starts a stream that
+    isn't preloaded (its default); the master playlist waits for two segments (tiers.json CAMERA)."""
     cam = m.get("entity_id")
     if cam not in D.CAMERA_PROFILES:
         return c.result(m["id"], None, success=False, error={"code": "not_found", "message": "Camera not found"})
@@ -481,7 +481,8 @@ HANDLERS = {
     "camera/webrtc/offer": _webrtc_offer,
     "camera/webrtc/candidate": _webrtc_candidate,
     "camera/stream": _camera_stream,
-    "camera/get_prefs": _const({"preload_stream": True, "orientation": 1}),
+    # HA's default (camera/prefs.py): no preload, so a stream starts when the frontend asks for it.
+    "camera/get_prefs": _const({"preload_stream": False, "orientation": 1}),
     "auth/sign_path": lambda c, m: c.result(m["id"], {"path": f"{m.get('path', '')}{'&' if '?' in m.get('path', '') else '?'}authSig=clarity"}),
     # Read from the frontend's source at the pinned tag (src/data/*.ts): what each one answers.
     "repairs/list_issues": _const({"issues": []}),
@@ -625,6 +626,9 @@ class Handler(BaseHTTPRequestHandler):
         loop = camera.segments(st["profile"])
         name = m.group(2)
         if name == "master_playlist.m3u8":
+            # As HA's HlsMasterPlaylistView: only once the stream has made two segments (it waits).
+            due = st["t0"] + cfg.get("masterAfterSegments", 0) * cfg["segmentS"]
+            time.sleep(max(0.0, min(10.0, due - time.monotonic())))
             w, h = prof["size"].split("x")
             body = (f"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH={int(prof['bitrate'][:-1]) * 1000},CODECS=\"avc1.4d401f\","
                     f"RESOLUTION={w}x{h},FRAME-RATE={cfg['fps']}\nplaylist.m3u8\n")

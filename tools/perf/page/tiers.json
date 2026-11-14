@@ -36,11 +36,13 @@
   "typical-hls": "typical",
   "heavy-hls": "heavy"
  },
+ "_CAMERA": "The streams' timing. Protocol 7 (#202, smoke 7) follows HA 2026.11.0's defaults: a camera doesn't preload its stream (camera/prefs.py preload_stream False), so HLS starts when the frontend asks (no pre-roll), and the master playlist answers once two segments are made (stream/hls.py HlsMasterPlaylistView). Before, the fake served 4 s of segments at once, so HA's HLS players started before WebRTC and took the panel's hardware decoders.",
  "CAMERA": {
   "fps": 15,
   "segmentS": 1,
   "windowSegments": 4,
-  "preRollS": 4,
+  "preRollS": 0,
+  "masterAfterSegments": 2,
   "path": "web_rtc"
  },
  "TIERS": {

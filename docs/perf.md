@@ -345,7 +345,11 @@ feature and plays what it offers: WebRTC first, then HLS, else MJPEG (`ha-camera
 pinned tag). The fake offers HLS, as HA's `stream` integration does, and lists `stream` among HA's
 components (`ha-hls-player.ts` refuses to play without it). `camera/stream` starts a fresh stream
 (`/api/hls/<token>/master_playlist.m3u8`), whose live playlist is a window of the last four whole
-1 s segments, as if the camera had been streaming for 4 s already. The segments are H.264 Main, fMP4,
+1 s segments. Since protocol 7 the stream starts when the frontend asks, as HA's does by default (no
+"preload stream": `camera/prefs.py`), and the master playlist answers once two segments are made,
+as HA's `HlsMasterPlaylistView` waits (`stream/hls.py`, HA 2026.11.0). Protocol 5 started it as if
+the camera had been streaming for 4 s, which on the WebRTC views let HA's HLS players start before
+WebRTC and take the panel's hardware decoders (#202, smoke 7). The segments are H.264 Main, fMP4,
 made once by `tools/perf/camera.py` with ffmpeg from its moving test pattern (`testsrc`, with its
 burnt-in counter): no video is in the repo, and the same ffmpeg makes the same bytes every time
 (bitexact, one encoder thread; `manifest.json` records the version and every file's SHA-256). The loop
@@ -655,6 +659,24 @@ showed one meanwhile.
   are `webrtc_liveness` (disconnected, connected, failed), and an ICE loss is `lost` with `reason`
   (`liveness` or `remote`).
 
+**A view the panel can't finish** (#202, smoke 7). The runner gives each view 300 s from opening
+(`GW_PERF_VIEW_DEADLINE_S`). A view not done by then is recorded as timed out (`timed_out` in the
+run's file and the report): what it measured stands, what it didn't counts as not measured, which
+fails as any missing measurement does (and the grade is provisional, with the reason), and the run's
+later views aren't opened. Before, the whole run waited out its 900 s and was dropped. The runner
+also sends the kiosk's wake intent during a live view once nothing has touched the panel for 30 s
+(`live_wakes`): normal views tap or swipe every few seconds, but a page stuck on a busy panel can
+outlast the kiosk's idle timeout, and with the screen off nothing measured is the panel's. These
+don't move a threshold.
+
+**Stream sizes, against a real setup.** go2rtc passes a camera's own stream through without
+transcoding, so a `picture-entity` card with `camera_view: live` plays what the camera entity
+streams: for most integrations the main stream (often 1080p or more, several Mbit/s), unless the
+user picks a sub-stream entity (UniFi Protect's lower channels, Reolink's "fluent" stream). This is
+general knowledge, not measured here. Clarity's heavy view plays 720p and three 640×360 at 15 fps,
+about 0.45 and 0.35 Mbit/s of `testsrc` (camera.py): lighter than a typical real four-camera grid,
+never heavier.
+
 **Where the video waits** (diagnostics, #202's sixth round). On the S1's heavy view the panel
 stopped receiving video for tens of seconds ([the research note](../frames/aqara-s1-plus/research/webrtc-camera.md)).
 To find where it waits:
@@ -706,10 +728,13 @@ frame callbacks, which give the stalls, see those. Chrome's counters are libwebr
 vendors libwebrtc).
 - **The other player** (`others` on each stream): HLS's first frame while WebRTC started, and
   whether the frontend had removed it by the window's end.
-- **The decoders from logcat**, as for HLS (`media`). On the S1 a real camera over WebRTC logged no
-  `MediaCodec` lines, and Gecko's FFmpeg was loaded: very likely software decoding, where HLS gets
-  the hardware decoder ([frames/aqara-s1-plus/research/webrtc-camera.md](../frames/aqara-s1-plus/research/webrtc-camera.md), 2026-11-13). So the
-  WebRTC number on the S1 may be CPU-bound. That is still the number a real setup gets.
+- **The decoders from logcat**, as for HLS (`media`). GeckoView's WebRTC uses Android's MediaCodec
+  when an instance is free: over the LAN, typical's one camera got the S1's hardware decoder and
+  played 100%. The S1 has 4 hardware H.264 instances; on heavy, HA's HLS players (started with
+  WebRTC, as HA's frontend does with go2rtc) took them first while the fake's HLS started instantly,
+  and the rest fell to Android's software decoder (#202, smoke 7;
+  [frames/aqara-s1-plus/research/webrtc-camera.md](../frames/aqara-s1-plus/research/webrtc-camera.md)).
+  The log doesn't say which player got which decoder.
 
 **The HLS fallback** (detail, never in the grade). After each run's graded views, the runner opens
 `typical-hls` and `heavy-hls`: the same views, card for card, whose cameras offer HLS only (HA's

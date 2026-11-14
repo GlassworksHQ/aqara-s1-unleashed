@@ -250,6 +250,7 @@ class FakeHA(unittest.TestCase):
         ws = self.connect()
         st, _ = ws.call({"type": "camera/stream", "entity_id": "camera.clarity_cam_0"})
         base = st["result"]["url"].rsplit("/", 1)[0]
+        fakeha.Handler.hub.cam_streams[base.rsplit("/", 1)[1]]["t0"] -= 4     # segments 0 to 3 made
 
         def missing():
             raise fakeha.camera.Unavailable("Clarity's camera streams need ffmpeg (with libx264) on this computer")
@@ -276,12 +277,18 @@ class FakeHA(unittest.TestCase):
         url = st["result"]["url"]
         self.assertRegex(url, r"^/api/hls/clarity\d{6}/master_playlist\.m3u8$")
         base = url.rsplit("/", 1)[0]
+        # As HA without preload (its default): the master playlist answers once two 1 s segments are made.
+        t0 = time.monotonic()
         master = self.http("GET", url)[2].decode()
+        self.assertGreaterEqual(time.monotonic() - t0, 1.8)
         self.assertIn("RESOLUTION=1280x720", master)
         self.assertIn('CODECS="avc1.4d401f"', master)
         live = self.http("GET", base + "/playlist.m3u8")[2].decode()
-        self.assertIn("#EXT-X-MEDIA-SEQUENCE:0", live)                        # 4 s already made (preRollS)
-        self.assertEqual(re.findall(r"segment/(\d+)\.m4s", live), ["0", "1", "2", "3"])
+        self.assertIn("#EXT-X-MEDIA-SEQUENCE:0", live)                        # started on request, as HA (no preload)
+        self.assertEqual(re.findall(r"segment/(\d+)\.m4s", live), ["0", "1"])
+        prefs, _ = ws.call({"type": "camera/get_prefs", "entity_id": "camera.clarity_cam_0"})
+        self.assertIs(prefs["result"]["preload_stream"], False)
+        fakeha.Handler.hub.cam_streams[base.rsplit("/", 1)[1]]["t0"] -= 2     # two more seconds made
         self.assertEqual(self.http("GET", base + "/segment/2.m4s")[2], b"seg002-720p")
         self.assertEqual(self.http("GET", base + "/init.mp4")[2], b"init-720p")
         self.assertEqual(self.http("GET", base + "/segment/9.m4s")[0], 404)   # not made yet

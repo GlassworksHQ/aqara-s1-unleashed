@@ -311,6 +311,15 @@ SLEEP_RE = re.compile(r"PowerManagerService.*Going to sleep|Going to sleep due t
 # its idle timeout (20 s at night on the S1) never turns the screen off. Not between a view's warm-up
 # and done: its taps and swipes are touches, which reset the timeout, and nothing extra lands there.
 KEEP_AWAKE_S = float(os.environ.get("GW_PERF_KEEP_AWAKE_S", "8"))     # the off-device test shortens it
+# A live view that hasn't been touched (no tap, swipe or wake) for this long gets the wake intent too:
+# normal views tap or swipe every few seconds, but a page stuck on a busy panel can outlast the
+# kiosk's idle timeout, and with the screen off nothing it measures is the panel's (#202, smoke 7:
+# heavy went 120 s without a gesture, and the screen went off).
+LIVE_IDLE_WAKE_S = float(os.environ.get("GW_PERF_LIVE_IDLE_WAKE_S", "30"))
+# A view not done this long after it opened is recorded as timed out, and the run's views end there:
+# what it measured stands, what it didn't counts as not measured, which fails (#202, smoke 7: heavy
+# never finished, and the whole run was dropped after 900 s).
+VIEW_DEADLINE_S = float(os.environ.get("GW_PERF_VIEW_DEADLINE_S", "300"))
 
 
 def cmd_coldstart(dev, a):
@@ -367,6 +376,10 @@ def cmd_coldstart(dev, a):
             if st.get("restart_done_at") and not st.get("live") and not st.get("break_after"):
                 dev.wake()
                 res["wakes"] = res.get("wakes", 0) + 1
+            elif st.get("live") and time.time() - max(st.get("touched_at", 0), st.get("live_at", 0)) > LIVE_IDLE_WAKE_S:
+                dev.wake()
+                st["touched_at"] = time.time()
+                res.setdefault("live_wakes", []).append([st["current"][0] if st["current"] else None, round(time.time(), 1)])
 
     def quiet_for(secs, cap):
         """Wait until no new frame has been presented for `secs` (at most `cap` s). True if it went quiet."""
@@ -424,6 +437,7 @@ def cmd_coldstart(dev, a):
             if not st["current"] or st["current"][1] != nonce:
                 return
             t0 = time.time()
+            st["touched_at"] = t0
             dev.sh(cmd)
             # When each gesture went over adb and how long `input` took on the panel, on this
             # computer's clock (fakeha.jsonl's): #202, smoke 5's heavy stalled during the taps.
@@ -439,6 +453,7 @@ def cmd_coldstart(dev, a):
         st["gestures"] = []
         slot = slots[st["opened"]]
         st["opened"] += 1
+        st["opened_at"] = time.time()
         nonce = secrets.token_hex(4)
         st["current"], st["measure_mono"], st["next_at"] = (slot, nonce), None, None
         paused.clear()
@@ -550,6 +565,7 @@ def cmd_coldstart(dev, a):
             paused.set()  # no dumpsys while frames are measured, taps are timed or the page scrolls
             dev.wake()
             st["live"] = True
+            st["live_at"] = time.time()
         elif t == "measure":
             st["measure_mono"] = rec["mono"]
             if pl.get("stage") == "updates":
@@ -624,6 +640,14 @@ def cmd_coldstart(dev, a):
             break                         # e.g. a view couldn't be opened
         if st["break_after"] and time.time() > st["break_after"]:
             break
+        if ref and st["current"] and st.get("opened_at") and time.time() - st["opened_at"] > VIEW_DEADLINE_S:
+            entry = entry_of(st["current"][0])
+            if not entry.get("done") and not entry.get("error"):
+                entry["timed_out_s"] = VIEW_DEADLINE_S
+                res.setdefault("timed_out", []).append(st["current"][0])
+                st["live"] = False
+                print(f"  {st['current'][0]} didn't finish within {VIEW_DEADLINE_S:.0f} s; the run's views end here", file=sys.stderr)
+                break
         if res["launch"] is None and time.time() - t0 > a.settle:
             if drain():
                 break
@@ -692,9 +716,10 @@ def cmd_coldstart(dev, a):
         pass
     elif res["engine_mono"] is None:
         res["error"] = f"GeckoView never started a page within {a.timeout:.0f} s"
-    elif ref and st["opened"] < len(slots):
+    elif ref and st["opened"] < len(slots) and not res.get("timed_out"):
         res["error"] = f"the reference dashboards did not finish within {a.timeout:.0f} s"
-    elif ref and st["current"] and not entry_of(st["current"][0]).get("done") and not entry_of(st["current"][0]).get("error"):
+    elif ref and st["current"] and not entry_of(st["current"][0]).get("done") and not entry_of(st["current"][0]).get("error") \
+            and not res.get("timed_out"):
         # The last view never said done (smoke10's heavy, with the screen off): not a lost line.
         res["error"] = f"{st['current'][0]} didn't finish within {a.timeout:.0f} s"
     graded_done = ref and all((res["tiers"].get(t) or {}).get("done") or (res["tiers"].get(t) or {}).get("error") for t in tiers)

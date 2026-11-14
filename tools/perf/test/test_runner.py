@@ -638,6 +638,7 @@ class Restart(unittest.TestCase):
                                timeout=timeout + 60)
             with open(os.path.join(tmp, "refstart-1.json")) as f:
                 c = json.load(f)
+            self.last_out = tmp
             with open(os.path.join(state, "commands.log")) as f:
                 return p, c, f.read().splitlines()
 
@@ -673,6 +674,27 @@ class Restart(unittest.TestCase):
         self.assertNotEqual(p.returncode, 0)
         self.assertIn("the screen went off during the graded run", c["error"])
         self.assertNotIn("fallback_error", c)
+
+    def test_a_view_that_cant_finish_times_out_and_the_run_is_still_graded(self):
+        """#202, smoke 7: heavy went live and never finished; the run used to wait 900 s and be dropped.
+        Now the view times out at the deadline, a live view nothing touches gets the wake intent so the
+        screen stays on, what heavy measured stands, and what it didn't fails as not measured."""
+        p, c, _ = self.run_short(60, FAKE_HANG_LIVE="heavy", GW_PERF_VIEW_DEADLINE_S="12", GW_PERF_LIVE_IDLE_WAKE_S="2",
+                                 GW_PERF_KEEP_AWAKE_S="0.5")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNone(c["error"])
+        self.assertEqual(c["timed_out"], ["heavy"])
+        self.assertEqual(c["tiers"]["heavy"]["timed_out_s"], 12)
+        self.assertIn("heavy", {w[0] for w in c["live_wakes"]})
+        self.assertNotIn("screen_off", c)
+        rep = self.build(self.last_out)
+        ref = rep["graded"]["reference"]
+        self.assertEqual((ref["graded_runs"], ref["timed_out"]), (1, [[1, "heavy"]]))
+        self.assertIsNotNone(ref["tiers"]["heavy"]["load_ms"])                 # what heavy measured stands
+        self.assertIn("heavy.scroll", rep["grade"]["missing"])                  # what it didn't fails
+        self.assertEqual(rep["grade"]["bands"]["heavy"]["scroll"], None)
+        self.assertIn("1 view(s) didn't finish within the runner's deadline (heavy in run 1); what they didn't measure fails",
+                      rep["grade"]["provisional_reasons"])
 
     def test_the_screen_is_kept_awake_while_views_open_but_not_while_live(self):
         p, c, log = self.run_short(120, FAKE_SLOW_VIEW="2.5", GW_PERF_KEEP_AWAKE_S="0.7")

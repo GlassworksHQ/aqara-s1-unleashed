@@ -345,6 +345,8 @@ def refdash(nonce, url):
         return                 # as smoke10's heavy: usable, then nothing more (no done)
     mark(f"page warmup {tier}")
     gw({"t": "warmup", "stage": "updates", "n": 1})
+    if os.environ.get("FAKE_HANG_LIVE") == tier:
+        return                 # as smoke 7's heavy (#202): live, then too slow to say anything more
     time.sleep(0.3)
     gw({"t": "measure", "stage": "updates", "n": 1, "moving": 12, "offscreen": 0, "targets": 10, "update_every_ms": 200,
         "animations": 0, "animations_expected": 0})

@@ -230,6 +230,52 @@ Not Gecko.
 This is the test's link, not the panel: a real setup's video doesn't go through adb. It supports
 option B. Over the LAN (UDP), adb carries only the page's commands and the runner's taps.
 
+**Smoke 7: B works; heavy's run hung, and the decoders kept up** (verified; the root's run at e7231bb,
+2026-11-13; `refstart-1.json`, `fakeha.jsonl`). The probe chose `lan-udp` and the relay wasn't used.
+On heavy, all four WebRTC sessions stayed connected for the whole view, with one session each and no
+ICE loss. The receivers decoded 6998 to 7058 of the 7067 frames each received, with 0 freezes. So the
+video arrived at full rate and was decoded: **the hardware decoders didn't run out in a way that
+stopped WebRTC.** What went wrong:
+
+| | Seconds after heavy's navigation | Evidence |
+|---|---|---|
+| Usable | 51 | `refdash` (smoke 6 over adb: 53) |
+| The updates window: rAF at 3.0 fps, p95 833 ms; one live change 1.7 s late | 54 to 64 | updates step; `fakeha.jsonl` |
+| The 10 taps go out (each `input tap` 3.0 to 4.6 s over adb) | 65 to 109 | `gestures_sent` |
+| The page logs its taps (INP 584 ms) | **525** | the `input` line: the page hardly ran for 7 minutes |
+| The screen goes off (the kiosk's idle timeout, about 2 minutes after the last tap) | 228, 615 | logcat |
+| The run ends: heavy never said done | 900 s | the runner's limit; the run was dropped |
+
+The video element's frame callbacks show 455 s of "stalls" per camera. Those are the screen being
+off (nothing is drawn), not the video.
+
+**Real, or the test's?** Three parts:
+1. **The test's: HA's HLS players took the hardware decoders first.** With go2rtc, HA's frontend
+   starts an HLS and a WebRTC player for each camera and keeps WebRTC once it has video. The fake
+   answered "preload stream" on and served 4 s of HLS segments at once. Heavy's four `camera/stream`
+   requests came 0.6 s before its WebRTC offers, and logcat shows 4 `OMX.allwinner.video.decoder.avc`
+   (the S1's 4 hardware instances), then 6 `c2.android.avc.decoder` (software). Typical, one camera,
+   got 2 OMX instances, and its WebRTC played 100% with HLS never showing a frame. So GeckoView's
+   WebRTC does use MediaCodec when an instance is free. That corrects step 2's guess, which was read
+   from a real camera's logs and not proven. Which player got which decoder isn't in the log; the
+   order points to WebRTC on software for heavy. HA 2026.11.0 defaults to no preload
+   (`camera/prefs.py`), and its master playlist waits for two segments (`stream/hls.py`), so in a
+   real setup HLS starts seconds after go2rtc's WebRTC. The fake now does the same.
+2. **The panel's: heavy is slow.** Heavy was usable after 51 s and drew 3 fps with the cameras
+   playing. Over HLS (s1cam3) it was usable after 36 s at 5.7 fps. Decoding four full-rate streams,
+   some in software, on a panel already busy with heavy costs CPU, and that is what a real home with
+   four cameras on the view would see. Smoke 8 shows how much of it was the software decoders.
+3. **The test's: the hang.** The runner keeps the screen awake between views but not during a live
+   view (wake intents could disturb what's measured), and it waited 900 s for heavy, then dropped
+   the whole run. Now it wakes a live view nothing has touched for 30 s, gives each view 300 s, and
+   records one that runs out as timed out: what it measured counts, the rest fails as not measured.
+
+The stream sizes aren't the cause: Clarity's are lighter than a real grid's (docs/perf.md).
+
+**The 65 processes after the run.** The root counted about 65 processes named `sh.edm.s1kiosk`, one
+in D state, after smoke 7. A read-only `ps` an hour later showed the usual 7. What they were isn't
+known: the runner restarted the app at the end, so leftovers of the hung session are likely.
+
 **The counts now** (`stats.js` `webrtcWindow`): the page samples every connection that carries a
 camera's video once a second. Each receiver (connection, stats id, SSRC) counts only its own
 increments: one first seen after the window's start counts from 0, a counter that goes back counts

@@ -561,6 +561,9 @@ def reference_run(c):
     base["camera_fallback"] = camera_fallback_runs(c)
     base["bad_page_lines"] = c.get("bad_page_lines") or 0
     base["lost_scroll_steps"] = sum((e.get("lost_scroll_steps") or 0) for e in (c.get("tiers") or {}).values())
+    # Views that didn't finish within the runner's deadline (#202): what they measured stands, the rest
+    # is not measured; the run's later views weren't opened.
+    base["timed_out"] = list(c.get("timed_out") or [])
     order = c.get("order") or list(c.get("tiers") or {})
     for t, r in tiers.items():
         r["position"] = order.index(t) + 1 if t in order else None
@@ -672,6 +675,7 @@ def reference_summary(all_runs):
         "orders": [r.get("order") for r in runs],
         "bad_page_lines": sum(r.get("bad_page_lines") or 0 for r in all_runs),
         "lost_scroll_steps": sum(r.get("lost_scroll_steps") or 0 for r in all_runs),
+        "timed_out": [[i + 1, t] for i, r in enumerate(all_runs) for t in r.get("timed_out") or []],
         # The protocol of every page that reported; a page that was lost says nothing about it.
         "protocols": sorted({x.get("protocol") for r in runs for x in r["tiers"].values() if not x.get("error")}, key=str),
         "warmups": [r.get("warmup") for r in runs],
@@ -1202,6 +1206,10 @@ def build(run_dir, apks=(), budgets=None):
     reasons += fake_ha_reasons(fake_log, bool(ref) and G.PROTOCOL_VERSION in (ref.get("protocols") or []))
     if ref and ref.get("bad_page_lines"):
         reasons.append(f"{ref['bad_page_lines']} page line(s) didn't parse or never arrived whole (cut off in logcat?)")
+    if ref and ref.get("timed_out"):
+        # A view the panel couldn't finish: what it measured counts, the rest fails as not measured.
+        reasons.append(f"{len(ref['timed_out'])} view(s) didn't finish within the runner's deadline "
+                       f"({', '.join(f'{t} in run {k}' for k, t in ref['timed_out'])}); what they didn't measure fails")
     if ref and ref.get("lost_scroll_steps"):
         # A swipe whose step never came isn't in the pool, so the scroll level rests on fewer swipes.
         reasons.append(f"{ref['lost_scroll_steps']} swipe(s) answered with no scroll step back")
