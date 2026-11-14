@@ -92,7 +92,7 @@ class ReleasesTest {
             assertTrue(bad, refusal(withUrl(bad)).contains("unexpected download URL"))
         }
         // A renamed/transferred repo keeps working (GitHub redirects the API; the download path shape is the same).
-        // This is how 0.4.3, pinned to GlassworksHQ/aqara-s1-unleashed, takes releases after the 2026-11-13 rename.
+        // This is how 0.4.3, built for aguilaair/aqara-s1-unleashed, takes releases after the moves.
         assertEquals(AppVersion(1, 3, 0), Releases.offer(Releases.parse(withUrl(good.replace("GlassworksHQ/", "newowner/"))), S1).version)
     }
 

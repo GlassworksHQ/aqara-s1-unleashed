@@ -18,11 +18,12 @@ panel needs a manual reinstall, which clears its settings.
 
 ### The repo name
 
-The repo was renamed from `GlassworksHQ/aqara-s1-unleashed` to `GlassworksHQ/glassworks` on
-2026-11-13. Panels on 0.4.3 and older still ask the old name, and reach the releases through
-GitHub's redirect. That redirect only lasts while no repo exists at the old name, so **never create
-or reuse `GlassworksHQ/aqara-s1-unleashed`**, not even as an empty placeholder: it would cut off
-updates for every panel that hasn't moved past 0.4.3.
+The repo started as `aguilaair/aqara-s1-unleashed`, moved to `GlassworksHQ/aqara-s1-unleashed`, and
+was renamed to `GlassworksHQ/glassworks` on 2026-11-13. Panels on 0.4.3 and older ask
+`aguilaair/aqara-s1-unleashed`, the name built into them, and reach the releases through GitHub's
+redirects. A redirect only lasts while no repo exists at the old name, so **never create or reuse
+either old name**, not even as an empty placeholder: it would cut off updates for every panel that
+hasn't moved past 0.4.3.
 
 ## 1. Create the release key (once)
 
