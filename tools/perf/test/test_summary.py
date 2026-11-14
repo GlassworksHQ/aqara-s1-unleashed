@@ -298,16 +298,6 @@ class Parity(unittest.TestCase):
         # Without the flag the same runs are the summary's ordinary records.
         self.assertNotIn("stalls_reported", self.sums["B"]["pages"]["heavy"]["camera"]["runs"][0])
 
-    def test_a_clarity_v1_summary_is_re_measured_under_v2_rules_in_both(self):
-        """Rubric 2 (#264's verifier): a v1 summary (clarity 1, protocol 1) is never graded by v2's rules,
-        in either grader, and says which Clarity it came from."""
-        self.assertEqual(G.CLARITY, 2)
-        s = dict(self.sums["B"], clarity=1, protocol_version=1)
-        ts, py = ts_grades([s])[0], G.grade_summary(s)
-        for g in (py, ts):
-            self.assertEqual((g["status"], g["grade"]), ("re-measure", None))
-            self.assertEqual(g["why"], "measured with Clarity v1; these rules are Clarity v2's: re-measure")
-
     def test_a_pre_release_summary_is_re_measured_in_both(self):
         """Clarity v1 (2026-11-14): a summary without `clarity: 1` is pre-release, even at protocol 1."""
         for extra in ({"clarity": None}, {"clarity": None, "protocol_version": 7}):
@@ -320,6 +310,16 @@ class Parity(unittest.TestCase):
         s = {k: v for k, v in self.sums["B"].items() if k != "clarity"}             # an old summary: no key at all
         self.assertEqual((G.grade_summary(s)["status"], ts_grades([s])[0]["status"]), ("re-measure", "re-measure"))
         self.assertEqual((self.sums["B"]["clarity"], self.sums["B"]["protocol_version"]), (G.CLARITY, G.PROTOCOL_VERSION))
+
+    def test_a_clarity_v1_summary_is_re_measured_under_v2_rules_in_both(self):
+        """Rubric 2 (#264's verifier): a v1 summary (clarity 1, protocol 1) is never graded by v2's rules,
+        in either grader, and says which Clarity it came from."""
+        self.assertEqual(G.CLARITY, 2)
+        s = dict(self.sums["B"], clarity=1, protocol_version=1)
+        ts, py = ts_grades([s])[0], G.grade_summary(s)
+        for g in (py, ts):
+            self.assertEqual((g["status"], g["grade"]), ("re-measure", None))
+            self.assertEqual(g["why"], "measured with Clarity v1; these rules are Clarity v2's: re-measure")
 
     def test_not_comparable_wins_over_a_missing_protocol_in_both(self):
         """--skip-reference: nothing measured, so no protocol either. Both say why, not "re-measure"."""

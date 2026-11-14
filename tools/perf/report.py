@@ -487,7 +487,7 @@ def tier_run(tier, entry, presents_ms):
     """One reference dashboard in one run: open the view (load), live updates (frames), tap (INP),
     scroll (frames while swiping)."""
     page, step = entry.get("page"), entry.get("step")
-    if page is None and entry.get("timed_out_s") and entry.get("drawn"):
+    if page is None and entry.get("timed_out_s") and (entry.get("drawn") or {}).get("tier") == tier:
         # Clarity v2: drawn, but never free within the deadline. The open stands (rubric 2 times it to
         # the draw); blocking takes the deadline (timed_out) and usable isn't measured.
         page = entry["drawn"]
@@ -588,9 +588,11 @@ def tier_run(tier, entry, presents_ms):
 
 def timed_out(tier, out, deadline_s):
     """A view that didn't finish within the runner's deadline (#202): what it measured stands, and each
-    task it didn't measure in this run is measured as failed, not missing: it didn't finish. Open and
-    tap take the deadline as their value (nothing answered within it); scroll, live updates and the
-    cameras a `timed_out` record, which the graders read as below fluid."""
+    task it didn't measure in this run is measured as failed, not missing: it didn't finish. Tap takes
+    the deadline as its value (nothing answered within it), and so do blocking when the main thread
+    was never free and open when the view was never drawn (rubric 2: a view drawn but never free
+    keeps its open, from its `drawn` line); scroll, live updates and the cameras a `timed_out` record,
+    which the graders read as below fluid."""
     out = {k: v for k, v in out.items() if k != "error"}
     for k in ("inp_ms", "input_method", "fcp_ms", "nodes", "cards", "load_ms", "updates", "latency", "arrivals",
               "camera_run", "updates_run", "scroll", "blocking_ms"):

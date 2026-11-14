@@ -541,6 +541,30 @@ class TimedOut(unittest.TestCase):
         self.assertEqual(G.camera_level(run["camera_run"]), G.BELOW)
         self.assertIsNone(R.tier_run("light", {"nonce": "ab12", "swipes": [], "timed_out_s": 300}, [])["camera_run"])  # no streams
 
+    def drawn_only(self, tier, drawn_tier=None):
+        """A view drawn 150 ms after its navigation (on screen at 200 ms) whose main thread was never
+        free: the runner has its `drawn` line and no `refdash`."""
+        nav = NAV[tier]
+        drawn = {"t": "drawn", "tier": drawn_tier or tier, "protocol": G.PROTOCOL_VERSION, "clarity": G.CLARITY, "nav_ms": 0.0,
+                 "usable": {"rendered_tick_ms": 150.0, "first_screen_cards": 14, "head_cards": 10},
+                 "origin_epoch_ms": 1e12 + nav * 1000, "epoch_ms": 1e12 + nav * 1000 + 150, "mono": nav + 0.15}
+        return {"nonce": tier, "drawn": drawn, "swipes": [], "timed_out_s": 300}
+
+    def test_a_view_drawn_but_never_free_keeps_its_open(self):
+        """Rubric 2 (#264's verifiers): the open is the draw, so it stands; blocking takes the deadline
+        and usable isn't measured."""
+        run = R.tier_run("typical", self.drawn_only("typical"), load_frames())
+        self.assertNotIn("error", run)
+        self.assertEqual((run["load_ms"], run["drawn_ms"], run["blocking_ms"], run["inp_ms"]), (200, 150, 300000, 300000))
+        self.assertIsNone(run["usable_ms"])
+        self.assertEqual(run["timed_out_tasks"], ["tap", "blocking", "scroll", "updates", "camera"])
+        self.assertEqual(G.band(run["load_ms"], G.METRICS["load_ms"]), "good")
+
+    def test_a_drawn_line_of_another_view_is_not_this_ones(self):
+        run = R.tier_run("typical", self.drawn_only("typical", drawn_tier="heavy"), load_frames())
+        self.assertEqual(run["load_ms"], 300000)
+        self.assertIn("open", run["timed_out_tasks"])
+
     def test_report_md_says_the_view_didnt_finish(self):
         ok = R.camera_run(camera_line("typical"), "typical")
         late = R.tier_run("typical", {"nonce": "ab12", "swipes": [], "timed_out_s": 300}, [])["camera_run"]

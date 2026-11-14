@@ -880,11 +880,16 @@ class Restart(unittest.TestCase):
         self.assertEqual(c["timed_out"], ["typical"])
         self.assertEqual(c["tiers"]["typical"]["timed_out_after"], "usable")
         self.assertNotIn("page", c["tiers"]["typical"])
-        self.assertEqual(c["tiers"]["typical"]["drawn"]["usable"]["head_cards"], 10)
+        # Its own draw: the fake draws each view at its own time (typical 210 ms after its navigation).
+        d = c["tiers"]["typical"]["drawn"]
+        self.assertEqual(d["tier"], "typical")
+        self.assertEqual(round(d["usable"]["rendered_tick_ms"] - d["nav_ms"]), 210)
+        for v in ("light", "heavy"):
+            self.assertEqual(c["tiers"][v]["drawn"]["tier"], v)
         self.assertTrue(c["tiers"]["heavy"]["done"])
         t = self.build(self.last_out)["graded"]["reference"]["tiers"]["typical"]
         self.assertEqual(t["timed_out_tasks"], ["blocking", "camera", "scroll", "tap", "updates"])
-        self.assertLess(t["load_ms"]["median"], 1000)             # drawn 200 ms after the navigation (and its frame)
+        self.assertLess(t["load_ms"]["median"], 1000)             # drawn 210 ms after the navigation (and its frame)
         self.assertEqual(t["blocking_ms"]["median"], c["tiers"]["typical"]["timed_out_s"] * 1000)
         self.assertIsNone((t.get("usable_ms") or {}).get("median"))
 
