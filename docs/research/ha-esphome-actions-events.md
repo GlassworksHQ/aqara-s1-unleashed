@@ -22,9 +22,11 @@ Can both go over ESPHome alone, with nothing installed in HA?
 
 1. **Optional action arguments** (2026-11-13, read). `homeassistant/components/esphome/manager.py`,
    `_async_register_service`: every argument becomes `probatio.Required(arg.name)`, and the action's
-   field list says `"required": True`. The ESPHome protocol (`ListEntitiesServicesArgument`) has no
-   "optional" flag either. A `notify` action with ten typed arguments would make every script pass
-   all ten.
+   field list says `"required": True` (`manager.py:1699`). The protocol could say more:
+   aioesphomeapi 46.25.0's `ListEntitiesServicesArgument` has `optional` (5) and `default_value`
+   (6), behind `USE_API_USER_DEFINED_ACTION_OPTIONAL_ARGS`. HA 2026.11 ignores both and makes the
+   argument required anyway. So a `notify` action with ten typed arguments would make every script
+   pass all ten, until HA reads those fields.
    A `STRING` argument is checked with `cv.string`, which refuses a YAML mapping
    (`value should be a string`). A template's result reaches it as a `ResultWrapper`, which
    `cv.string` returns as the rendered text, so `data: "{{ {...} | to_json }}"` and a YAML block
@@ -35,7 +37,8 @@ Can both go over ESPHome alone, with nothing installed in HA?
    (`components/esphome/event.py`) passes the device's `event_type` straight to it, and the event
    types come only from `ListEntitiesEventResponse`. An id the script chose at run time can't be
    one of them unless the panel lists its entities again, which makes HA reconnect.
-   `EventResponse` (108) also carries only the type, no attributes.
+   `EventResponse` (108) carries the entity's `key`, the `event_type` and a `device_id` (3, for
+   sub-devices), and no attributes, so there is nowhere else to put the id either.
 3. **A bus event, as ESPHome's `homeassistant.event` sends** (2026-11-13, read).
    `manager.py:351`, `async_on_service_call`: a `HomeassistantActionRequest` with `is_event` fires
    `hass.bus.async_fire(service, {device_id, **data})`. Only the `esphome.` domain is allowed. The
@@ -67,3 +70,5 @@ Read-only: the files and lines above, at the tags named. To print the wire bytes
   triggered by `esphome.notification_action`.
 - A bus event isn't an entity, so it doesn't show on the device page or in the logbook. If HA's
   ESPHome integration ever passes event attributes, an event entity could carry the id instead.
+- If HA starts reading `optional` and `default_value`, `notify` could take its fields as separate
+  arguments. `data` would have to stay, for the scripts already written.
