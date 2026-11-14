@@ -39,7 +39,8 @@ object SettingsChange {
     /** A kind of item a person changes (a Text only while [SettingsItem.Text.enabled]). */
     fun canChange(i: SettingsItem): Boolean = when (i) {
         is SettingsItem.Text -> runCatching { i.enabled() }.getOrDefault(false)
-        is SettingsItem.Switch, is SettingsItem.Slider, is SettingsItem.Duration, is SettingsItem.TimeRange, is SettingsItem.Choice -> true
+        is SettingsItem.Switch, is SettingsItem.Slider, is SettingsItem.Duration, is SettingsItem.TimeRange, is SettingsItem.Choice,
+        is SettingsItem.SignIn -> true
         else -> false
     }
 
@@ -56,6 +57,7 @@ object SettingsChange {
         is SettingsItem.Duration -> i.title
         is SettingsItem.TimeRange -> i.title
         is SettingsItem.Choice -> i.title
+        is SettingsItem.SignIn -> i.title
         is SettingsItem.Link -> i.title
         is SettingsItem.Group -> i.title
         is SettingsItem.States -> i.title
@@ -115,6 +117,31 @@ object SettingsChange {
         }
     }
 
+    /**
+     * Saves a sign-in's [user] and [password] after the checks a stream's sign-in needs (RTSP and ONVIF
+     * put them in `user:password`): a name with no colon or spaces, a password, both within their length.
+     * The password is never in what [done] says.
+     */
+    fun signIn(item: SettingsItem.SignIn, user: String, password: String, done: (String?) -> Unit) {
+        val u = user.trim()
+        val problem = when {
+            u.isEmpty() -> "Type a user name."
+            u.length > USER_MAX -> "Use at most $USER_MAX characters for the user name."
+            u.any { it == ':' || it.isWhitespace() || it.code < 0x20 } -> "A user name can't have a colon or spaces."
+            password.isEmpty() -> "Type a password."
+            password.length > PASSWORD_MAX -> "Use at most $PASSWORD_MAX characters for the password."
+            password.any { it.code < 0x20 || it.code == 0x7f } -> "That password has characters a sign-in can't take."
+            else -> null
+        }
+        if (problem != null) return done(problem)
+        try { item.save(u to password, done) } catch (e: Throwable) { done(COULD_NOT_SIGN_IN) }
+    }
+
+    /** Clear: the sign-in is removed. */
+    fun clear(item: SettingsItem.SignIn, done: (String?) -> Unit) {
+        try { item.save(null, done) } catch (e: Throwable) { done(COULD_NOT_SIGN_IN) }
+    }
+
     /** A typed value as its row shows it: [SettingsItem.Text.shown], else its hint while it's empty. */
     fun shown(i: SettingsItem.Text): String {
         val v = i.value()
@@ -156,6 +183,12 @@ object SettingsChange {
 
     /** Whether a saved change waits for the app to start again. */
     fun restarts(i: SettingsItem): Boolean = (i as? SettingsItem.Text)?.restartsApp == true || (i as? SettingsItem.Switch)?.restartsApp == true
+
+    const val USER_MAX = 64
+    const val PASSWORD_MAX = 128
+
+    /** A sign-in's save that threw: no exception text, which could hold what was typed. */
+    const val COULD_NOT_SIGN_IN = "That sign-in didn't save."
 
     const val CANT_NOW = "This can't change now."
     const val CANT_HERE = "This can't be changed here."

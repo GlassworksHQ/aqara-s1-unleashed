@@ -74,6 +74,7 @@ class PanelManageParityTest {
         is SettingsItem.Duration -> listOf(i.title, i.shown(i.value()))
         is SettingsItem.TimeRange -> listOf(i.title, i.shown(i.value()))
         is SettingsItem.Choice -> listOf(i.title, SettingsChange.shown(i))
+        is SettingsItem.SignIn -> listOf(i.title, i.shown(i.isSet()))
         else -> listOf(SettingsChange.titleOf(i))
     }
 
@@ -130,6 +131,8 @@ class PanelManageParityTest {
             // Each change goes through the item's own save: its value now, sent back, saves and changes nothing.
             for ((key, item) in SettingsChange.changeable(sec)) {
                 if (key == SettingsChange.MASTER && sec.unavailable() != null) continue
+                // A sign-in has no value to send back (write-only): ManageSettingsTest posts one.
+                if (item is SettingsItem.SignIn) continue
                 val before = current(item)
                 val r = b.post("/settings", mapOf("csrf" to b.csrf(), "section" to sec.id, "key" to key, "confirmed" to "1") + before)
                 assertEquals("${sec.id}: \"$key\" saved from the browser (${r.text().substringAfter("class=\"err\"", "").take(120)})", 303, r.status)

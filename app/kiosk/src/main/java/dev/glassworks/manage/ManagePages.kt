@@ -204,6 +204,7 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
             is SettingsItem.Duration -> edit(item.title, safe { item.shown(item.value()) })
             is SettingsItem.TimeRange -> edit(item.title, safe { item.shown(item.value()) })
             is SettingsItem.Choice -> edit(item.title, safe { SettingsChange.shown(item) })
+            is SettingsItem.SignIn -> edit(item.title, safe { item.shown(item.isSet()) })
             is SettingsItem.Info -> row(safe { item.title() }, safe { item.detail() })
             is SettingsItem.Note -> """<div class="row static note"><span>${esc(safe { item.text() })}</span></div>"""
             // Opens something on the panel itself (another app, the licences): say so, rather than drop the row.
@@ -246,10 +247,10 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
     /** The edit for [d.key] in [sec], or the question before a switch: the panel's sheet as a dialog. */
     private fun dialog(v: Viewer, path: String, sec: SettingsSection, d: Dialog): String {
         val item = SettingsChange.find(sec, d.key) ?: return ""
-        fun sheet(title: String, hint: String, body: String, action: String?, problem: String?) =
+        fun sheet(title: String, hint: String, body: String, action: String?, problem: String?, more: String = "") =
             """<div class="scrim"><form class="dlg" method="post" action="/settings" role="dialog" aria-modal="true" aria-labelledby="dlg-t">${fields(v, sec.id, d.key)}<h2 id="dlg-t">${esc(title)}</h2>""" +
                 (if (hint.isNotEmpty()) "<p>${esc(hint)}</p>" else "") + body + (problem?.let { """<p class="err" role="alert">${esc(it)}</p>""" }.orEmpty()) +
-                """<div class="dbtns"><a class="pill" href="${esc(path)}">Cancel</a>${action?.let { """<button class="pill primary" type="submit">${esc(it)}</button>""" }.orEmpty()}</div></form></div>"""
+                """<div class="dbtns"><a class="pill" href="${esc(path)}">Cancel</a>$more${action?.let { """<button class="pill primary" type="submit">${esc(it)}</button>""" }.orEmpty()}</div></form></div>"""
         fun chips(now: String, options: List<Pair<String, String>>) = """<div class="pcs">""" + options.joinToString("") { (value, name) ->
             """<button class="pc${if (value == now) " on" else ""}" type="submit" name="value" value="${esc(value)}"${if (value == now) " aria-current=\"true\" autofocus" else ""}>${esc(name)}</button>"""
         } + "</div>"
@@ -266,6 +267,14 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
                     val now = runCatching { item.value() }.getOrDefault(0)
                     val all = (item.choices + now).distinct().sortedWith(compareBy<Int> { it == 0 }.thenBy { it })
                     sheet(item.title, "", chips(now.toString(), all.map { it.toString() to safe { item.shown(it) }.removePrefix("After ") }), null, d.problem)
+                }
+                // The password field always starts empty: the page never has the password to put in it.
+                is SettingsItem.SignIn -> {
+                    val set = runCatching { item.isSet() }.getOrDefault(false)
+                    sheet(item.title, if (set) "A sign-in is set. Type a new one to replace it." else "",
+                        """<div class="flds"><input class="fld" name="user" value="${esc(safe { item.user() })}" placeholder="User name" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus aria-label="User name">""" +
+                            """<input class="fld" type="password" name="password" value="" placeholder="Password" autocomplete="new-password" aria-label="Password"></div>""",
+                        "Save", d.problem, more = if (set) """<button class="pill" type="submit" name="clear" value="1">Clear</button>""" else "")
                 }
                 is SettingsItem.Choice -> sheet(item.title, "", chips(safe { item.value() }, runCatching { item.options() }.getOrDefault(emptyList())), null, d.problem)
                 is SettingsItem.TimeRange -> {
@@ -475,7 +484,7 @@ details.off summary::-webkit-details-marker{display:none}details.off summary::af
 .scrim .dlg{max-height:calc(100vh - 32px);overflow:auto}
 .pcs{display:flex;flex-wrap:wrap;gap:10px;margin:4px 0}.pc{padding:10px 17px;border-radius:999px;border:1px solid var(--edge);background:var(--glass);color:var(--muted);font:inherit;font-size:15.5px;font-weight:500;cursor:pointer}
 .pc:hover{background:var(--hover)}.pc.on{background:linear-gradient(90deg,var(--sky),var(--violet));color:#0a0b0f;border-color:transparent}
-.fld{width:100%;padding:14px 18px;border-radius:16px;border:1px solid var(--edge);background:var(--field);color:var(--fg);font:inherit;font-size:17px}.fld:focus{outline:none;border-color:rgba(56,189,248,.55)}
+.flds{display:flex;flex-direction:column;gap:12px}.fld{width:100%;padding:14px 18px;border-radius:16px;border:1px solid var(--edge);background:var(--field);color:var(--fg);font:inherit;font-size:17px}.fld:focus{outline:none;border-color:rgba(56,189,248,.55)}
 .sw{display:flex;justify-content:space-between;align-items:center;gap:12px;color:var(--fg);font-size:16.5px;cursor:pointer}
 .sw input{appearance:none;-webkit-appearance:none;margin:0;width:${Tokens.Toggle.W}px;height:${Tokens.Toggle.H}px;border-radius:999px;background:var(--field);border:1px solid var(--edge);position:relative;cursor:pointer;flex:none;order:2}
 .sw input::after{content:"";position:absolute;top:${Tokens.Toggle.KNOB_INSET - 1}px;left:${Tokens.Toggle.KNOB_INSET - 1}px;width:${Tokens.Toggle.H - 2 * Tokens.Toggle.KNOB_INSET}px;height:${Tokens.Toggle.H - 2 * Tokens.Toggle.KNOB_INSET}px;border-radius:50%;background:var(--muted)}

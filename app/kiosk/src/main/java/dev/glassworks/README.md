@@ -344,6 +344,12 @@ browser can't send what the panel wouldn't take. An item's key on a page is its 
 groups' titles (`Who may connect/IP addresses …`), or `on` for the section's `master`: keep titles
 unique within a section.
 
+**A sign-in is write-only.** `SettingsItem.SignIn` (a stream's user name and password) has no way to
+read the password back: the row says Set or Not set, the sheet's password field starts empty on the
+panel and on the Manage page, Clear saves null, and `SettingsChange.signIn` checks the name (no colon
+or spaces, at most 64) and the password (at most 128). Neither the Log, the diagnostics file nor a
+refused save's page ever has it.
+
 **Order.** `settingsOrder` puts the core's Dashboard, Screen and Network first, then the panes'
 sections in definition order (Voice, Music, Radio, Wall base, Time zone), then Log, Security and
 About: the Manage page's nav (#33). A section without items is left out. The panel's menu draws them

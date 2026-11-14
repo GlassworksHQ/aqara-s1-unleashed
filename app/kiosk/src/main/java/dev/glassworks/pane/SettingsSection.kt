@@ -201,6 +201,20 @@ sealed interface SettingsItem {
         val save: (String, done: (String?) -> Unit) -> Unit,
     ) : SettingsItem
 
+    /**
+     * A sign-in: a user name and a password, saved together (the camera stream's, #252). Write-only: the
+     * item can't read the password back, so no surface can show it, send it to a browser or log it.
+     * [isSet]: one is stored, and the row says [shown] of that. [user]: the stored name, to start the sheet
+     * from. `save` gets the pair, or null for Clear. [SettingsChange.signIn] checks it first.
+     */
+    class SignIn(
+        val title: String,
+        val isSet: () -> Boolean,
+        val user: () -> String? = { null },
+        val shown: (Boolean) -> String = { if (it) "Set" else "Not set" },
+        val save: (Pair<String, String>?, done: (String?) -> Unit) -> Unit,
+    ) : SettingsItem
+
     /** Opens something else: another app's settings, the licences. */
     class Link(val title: String, val detail: String, val open: (Context) -> Unit) : SettingsItem
 

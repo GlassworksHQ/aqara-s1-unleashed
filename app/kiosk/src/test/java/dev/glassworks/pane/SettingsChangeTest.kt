@@ -90,6 +90,32 @@ class SettingsChangeTest {
         assertEquals("That didn't save: no microphone.", change(broken, "on"))
     }
 
+    @Test fun aSignInTakesANameWithoutAColonAndAPasswordWithinTheirLimits() {
+        var stored: Pair<String, String>? = "viewer" to "made-up-old"
+        val i = SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }) { v, d -> stored = v; d(null) }
+        fun sign(u: String, p: String): String? { var a: String? = "no answer"; SettingsChange.signIn(i, u, p) { a = it }; return a }
+        assertEquals("A user name can't have a colon or spaces.", sign("a:b", "made-up-pass"))
+        assertEquals("A user name can't have a colon or spaces.", sign("a b", "made-up-pass"))
+        assertEquals("Type a user name.", sign(" ", "made-up-pass"))
+        assertEquals("Type a password.", sign("viewer", ""))
+        assertEquals("Use at most 64 characters for the user name.", sign("u".repeat(65), "made-up-pass"))
+        assertEquals("Use at most 128 characters for the password.", sign("viewer", "p".repeat(129)))
+        assertEquals("viewer" to "made-up-old", stored)
+        assertNull(sign(" viewer2 ", "made up: pass"))
+        assertEquals("the name trimmed, the password as typed", "viewer2" to "made up: pass", stored)
+        var a: String? = "no answer"
+        SettingsChange.clear(i) { a = it }
+        assertNull(a)
+        assertNull("Clear removes it", stored)
+    }
+
+    @Test fun aSignInSaveThatThrowsNeverRepeatsWhatWasTyped() {
+        val i = SettingsItem.SignIn("Sign-in", { false }) { v, _ -> error("bad ${v?.second}") }
+        var a: String? = null
+        SettingsChange.signIn(i, "viewer", "made-up-secret-7", ) { a = it }
+        assertEquals(SettingsChange.COULD_NOT_SIGN_IN, a)
+    }
+
     @Test fun keysAreTheTitlesDownFromTheSectionWithTheOnOffFirst() {
         val allow = SettingsItem.Text("IP addresses", "", SettingsItem.TextKind.ADDRESS, { "" }) { _, d -> d(null) }
         val off = SettingsItem.Text("Greyed", "", SettingsItem.TextKind.ADDRESS, { "" }, enabled = { false }) { _, d -> d(null) }

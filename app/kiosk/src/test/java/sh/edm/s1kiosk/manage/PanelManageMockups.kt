@@ -63,4 +63,26 @@ class PanelManageMockups {
         o.previewSection("radio"); o.previewConfirm("radio"); Mockup.idle(); Mockup.save("parity/radio-confirm-panel", o)
         File(out, "radio-confirm-manage.html").writeBytes(b.post("/settings", mapOf("csrf" to b.csrf(), "section" to "radio", "key" to "on", "value" to "off")).body)
     }
+
+    /** #252's stream sign-in as #242 makes it editable: the sheet on the panel and the dialog on the Manage page, one set. */
+    @Test
+    fun signIn() {
+        assumeTrue("set -Ps1MockupDir=<dir> to write the mock-ups", Mockup.dir != null)
+        val out = File(Mockup.dir!!, "parity").apply { mkdirs() }
+        var stored: Pair<String, String>? = "viewer" to "made-up-pass"
+        val camera = dev.glassworks.pane.SettingsSection("camera", "Camera", listOf(dev.glassworks.pane.SettingsItem.Group("ONVIF stream", listOf(
+            dev.glassworks.pane.SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }) { v, d -> stored = v; d(null) },
+            dev.glassworks.pane.SettingsItem.Info({ "Address" }, { "rtsp://192.0.2.40:8554/camera" }),
+        ))), master = dev.glassworks.pane.SettingsItem.Switch("Camera", "", { true }) { _, d -> d(null) })
+        val m = KioskSettingsOverlay.Model(listOf(camera), "0.4.3", setOf("camera"))
+        val o = Mockup.show(KioskSettingsOverlay(Mockup.activity()))
+        o.show(m)
+        Mockup.idle()
+        o.previewSection("camera"); o.previewEdit("Sign-in"); Mockup.idle()
+        Mockup.save("parity/camera-sign-in-panel", o)
+        val f = ManageFixture()
+        f.statusFn = { f.status.copy(panes = listOf(paneRow("camera", camera)), sections = listOf(camera)) }
+        val b = f.Browser().also { it.signInWithHa() }
+        File(out, "camera-sign-in-manage.html").writeBytes(b.get("/camera?edit=ONVIF+stream%2FSign-in").body)
+    }
 }

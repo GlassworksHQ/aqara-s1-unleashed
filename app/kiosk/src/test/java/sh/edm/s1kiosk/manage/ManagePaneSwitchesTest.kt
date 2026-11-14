@@ -65,6 +65,13 @@ class ManagePaneSwitchesTest {
         assertEquals(setOf("bluetooth-proxy"), cantRun)
     }
 
+    /** The diagnostics file lists a sign-in as set or not, never its password (#252). */
+    @Test fun diagnosticsNeverListASignInsPassword() {
+        val item = dev.glassworks.pane.SettingsItem.SignIn("Sign-in", { true }, { "viewer" }) { _, d -> d(null) }
+        val lines = manage.itemLines(listOf(dev.glassworks.pane.SettingsItem.Group("ONVIF stream", listOf(item))))
+        assertEquals(listOf("ONVIF stream:", "  Sign-in: Set"), lines)
+    }
+
     @Test fun thePanesTheManagePageLists() {
         val ids = manage.status().panes.map { it.id }
         assertTrue(ids.toString(), ids.containsAll(listOf("assist", "sendspin", "radio", "wall-base", "time-zone", "diagnostics")))

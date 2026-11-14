@@ -10,6 +10,7 @@ import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -125,6 +126,37 @@ class ManageSettingsTest {
         assertTrue(page.contains("role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"dlg-t\""))
         assertTrue(page.contains("<aside class=\"side\" inert>") && page.contains("<main class=\"main\" inert>"))
         assertFalse("no dialog, nothing inert", b.get("/dashboard").text().contains(" inert>"))
+    }
+
+    /** #242 for #252: the camera stream's sign-in, write-only. The password is never on a page or in the Log. */
+    @Test fun aSignInIsWriteOnlyAndClears() {
+        var stored: Pair<String, String>? = null
+        val camera = SettingsSection("camera", "Camera", listOf(SettingsItem.Group("ONVIF stream", listOf(
+            SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }) { v, d -> stored = v; d(null) }))))
+        f.statusFn = { f.status.copy(sections = listOf(camera)) }
+        val secret = "made-up-secret-7"
+        val b = signedIn()
+        val pages = ArrayList<String>()
+        fun post(vararg p: Pair<String, String>) = b.post("/settings", form(b, "camera", "ONVIF stream/Sign-in", *p)).also { pages += it.text() }
+        pages += b.get("/camera").text()
+        assertTrue(pages.last().contains("Not set"))
+        val refused = post("user" to "view:er", "password" to secret)
+        assertEquals(422, refused.status)
+        assertTrue(refused.text().contains("A user name can't have a colon or spaces."))
+        assertNull(stored)
+        assertEquals(303, post("user" to "viewer", "password" to secret).status)
+        assertEquals("viewer" to secret, stored)
+        pages += b.get("/camera").text()
+        assertTrue(pages.last().contains("Set"))
+        val dialog = b.get("/camera?edit=ONVIF+stream%2FSign-in").text().also { pages += it }
+        assertTrue("the password field starts empty", dialog.contains("type=\"password\" name=\"password\" value=\"\""))
+        assertTrue("Clear, while one is set", dialog.contains("name=\"clear\" value=\"1\">Clear</button>"))
+        assertEquals(422, post("user" to "viewer", "password" to "").status)
+        assertEquals(303, post("clear" to "1").status)
+        assertNull("Clear removes it", stored)
+        for (p in pages) assertFalse("the password is never sent back to the browser", p.contains(secret))
+        assertFalse("nor in the Log", f.events.any { it.contains(secret) })
+        assertTrue(f.events.contains("Alex set Camera › ONVIF stream › Sign-in") && f.events.contains("Alex cleared Camera › ONVIF stream › Sign-in"))
     }
 
     @Test fun anItemThePageNoLongerHasChangesNothing() {

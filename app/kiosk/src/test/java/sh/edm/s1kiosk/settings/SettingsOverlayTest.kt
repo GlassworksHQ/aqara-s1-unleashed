@@ -82,6 +82,36 @@ class SettingsOverlayTest {
         assertFalse("the switch follows", toggle.checked)
     }
 
+    /** #242 for #252: a sign-in on the panel. The password field starts empty, never shows it back, and Clear removes it. */
+    @Test
+    fun aSignInSavesClearsAndNeverShowsThePassword() {
+        var stored: Pair<String, String>? = null
+        val o = one(listOf(SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }) { v, d -> stored = v; d(null) }))
+        val secret = "made-up-secret-7"
+        fun texts(): List<String> = generateSequence(listOf<View>(o)) { level ->
+            level.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null }
+        }.flatten().filterIsInstance<android.widget.TextView>().map { it.text.toString() }.toList()
+        row(o, "Sign-in").performClick()
+        Mockup.idle()
+        val fields = generateSequence(listOf<View>(o)) { level ->
+            level.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null }
+        }.flatten().filterIsInstance<EditText>().filter { it.isShown }.toList()
+        assertEquals("a user name and a password", 2, fields.size)
+        fields[0].setText("viewer"); fields[1].setText(secret)
+        Mockup.label(o, "Save").performClick()
+        settle()
+        assertEquals("viewer" to secret, stored)
+        assertTrue(shown(o, "Set"))
+        assertFalse("no view holds the password once saved", texts().any { it.contains(secret) })
+        row(o, "Sign-in").performClick()
+        Mockup.idle()
+        assertTrue(texts().none { it.contains(secret) })
+        Mockup.label(o, "Clear").performClick()
+        settle()
+        assertEquals(null, stored)
+        assertTrue(shown(o, "Not set"))
+    }
+
     /** A row whose value and hint are empty still follows: its value view is there, gone until it has words. */
     @Test
     fun anEmptyRowFollowsAValueSetElsewhere() {

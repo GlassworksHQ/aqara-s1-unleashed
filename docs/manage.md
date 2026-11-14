@@ -37,6 +37,9 @@ asks first on the panel (turning the radio off) asks here too. The panel's menu,
 the new value within a couple of seconds, and the page shows a change made on the panel when you
 reload it. Each change goes in the Log with who made it.
 
+A sign-in (a camera stream's user name and password) can be set or cleared, but the page never shows
+or sends back the password: it says Set or Not set, and its password field is always empty.
+
 **Turning a pane on or off needs a Home Assistant sign-in.** In Home Assistant these switches only
 answer the panel's key, so a browser signed in with the panel's code sees them but can't change them.
 

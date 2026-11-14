@@ -157,7 +157,8 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
         runtime.commandSink?.invoke(Intent().putExtra("hide_header", prefs.hideHeader).putExtra("hide_sidebar", prefs.hideSidebar))
     }
 
-    private fun itemLines(items: List<SettingsItem>): List<String> = items.flatMap { i ->
+    /** A section's items as the diagnostics file lists them. */
+    internal fun itemLines(items: List<SettingsItem>): List<String> = items.flatMap { i ->
         fun v(f: () -> Any?) = runCatching { f()?.toString().orEmpty() }.getOrDefault("?")
         when (i) {
             is SettingsItem.Text -> listOf("${i.title}: ${v(i.value)}")
@@ -169,6 +170,8 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
             is SettingsItem.Note -> listOf(v(i.text))
             is SettingsItem.Group -> listOf("${i.title}:") + itemLines(i.items).map { "  $it" }
             is SettingsItem.Choice -> listOf("${i.title}: ${v(i.value)}")
+            // Write-only: whether one is set, never what.
+            is SettingsItem.SignIn -> listOf("${i.title}: ${v { i.shown(i.isSet()) }}")
             is SettingsItem.Status -> listOf(v(i.text))
             is SettingsItem.States -> listOf("${i.title}:") + runCatching { i.rows() }.getOrDefault(emptyList()).map { "  ${it.name}: ${it.value}" }
             is SettingsItem.Tiles -> runCatching { i.tiles() }.getOrDefault(emptyList()).map { "${it.name}: ${it.value} ${it.unit}".trim() }

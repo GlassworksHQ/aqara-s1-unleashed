@@ -268,6 +268,7 @@ class ManageServer(
             event("${who(s)}: refused to change $what: needs a Home Assistant sign-in")
             return settingsPage(status, viewer, page.removePrefix("/"), problem = ManagePages.NEEDS_HA, code = 403)!!
         }
+        if (item is SettingsItem.SignIn) return changeSignIn(req, s, viewer, page, key, what, item)
         // The time window's dialog sends On, From and To; the rest send their value as text.
         val raw = if (item is SettingsItem.TimeRange) (if (req.form["on"] == "1") "${req.form["from"].orEmpty()}-${req.form["to"].orEmpty()}" else "")
             else req.form["value"].orEmpty()
@@ -288,11 +289,31 @@ class ManageServer(
         return settingsPage(host.status(), viewer, page.removePrefix("/"), dialog, problem = if (dialog == null) problem else null, code = 422)!!
     }
 
+    /**
+     * A sign-in's dialog: a user name and a password, or Clear. The password is passed on to the item's
+     * save and nowhere else: not to the Log, not back into the page when it didn't save.
+     */
+    private fun changeSignIn(req: HttpRequest, s: Session, viewer: ManagePages.Viewer, page: String,
+                             key: String, what: String, item: SettingsItem.SignIn): HttpResponse {
+        val clear = req.form["clear"] == "1"
+        val problem = onMain { done ->
+            if (clear) SettingsChange.clear(item, done) else SettingsChange.signIn(item, req.form["user"].orEmpty(), req.form["password"].orEmpty(), done)
+        }
+        val did = if (clear) "cleared $what" else "set $what"
+        if (problem == PENDING) { event("${who(s)} $did (still applying)"); return HttpResponse.seeOther("$page?done=pending") }
+        event(if (problem == null) "${who(s)} $did" else "${who(s)} couldn't change $what: $problem")
+        if (problem == null) return HttpResponse.seeOther(page)
+        return settingsPage(host.status(), viewer, page.removePrefix("/"), ManagePages.Dialog.Edit(key, problem), code = 422)!!
+    }
+
     /** [SettingsChange.change] on the panel's main thread; its answer, or [PENDING] when it takes longer than a page should wait. */
-    private fun apply(item: SettingsItem, raw: String): String? {
+    private fun apply(item: SettingsItem, raw: String): String? = onMain { done -> SettingsChange.change(item, raw, done) }
+
+    /** Runs [f] on the panel's main thread and waits for its answer, or [PENDING] after [saveWaitMs]. */
+    private fun onMain(f: (done: (String?) -> Unit) -> Unit): String? {
         val answered = CountDownLatch(1)
         val answer = AtomicReference<String?>()
-        host.onMain { SettingsChange.change(item, raw) { why -> if (answered.count > 0) { answer.set(why); answered.countDown() } } }
+        host.onMain { f { why -> if (answered.count > 0) { answer.set(why); answered.countDown() } } }
         return if (answered.await(saveWaitMs, TimeUnit.MILLISECONDS)) answer.get() else PENDING
     }
 

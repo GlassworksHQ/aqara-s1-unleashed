@@ -258,6 +258,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             is SettingsItem.Duration -> sheet.duration(i) {}
             is SettingsItem.TimeRange -> sheet.range(i) {}
             is SettingsItem.Choice -> sheet.choice(i) {}
+            is SettingsItem.SignIn -> sheet.signIn(i) {}
             else -> {}
         }
     }
@@ -388,6 +389,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         is SettingsItem.TimeRange -> i.title
         is SettingsItem.Link -> i.title
         is SettingsItem.Choice -> i.title
+        is SettingsItem.SignIn -> i.title
         else -> null
     }
 
@@ -425,6 +427,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         is SettingsItem.Note -> g.text(14.5f, MU).apply { text = i.text(); setLineSpacing(0f, 1.25f); setPadding(0, px(14f), 0, px(14f)) }
         is SettingsItem.Info -> infoRow(i)
         is SettingsItem.Choice -> follow(row(i.title, choiceName(i), chevron = true, dim = false) { sheet.choice(i) { build() } }) { choiceName(i) }
+        is SettingsItem.SignIn -> follow(row(i.title, i.shown(i.isSet()), chevron = true, dim = false) { sheet.signIn(i) { build() } }) { i.shown(i.isSet()) }
         is SettingsItem.Group, is SettingsItem.States, is SettingsItem.Status, is SettingsItem.Tiles -> error("laid out by addItems")
         is SettingsItem.Native -> natives.getOrPut(i.key) { i.create(nativeHost) }.also { it.refresh() }.view
     }
@@ -689,7 +692,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     private inner class Sheet {
         private val name = g.heading(26f)
         private val hint = g.text(15f, MU).apply { setLineSpacing(0f, 1.2f) }
-        val field = EditText(context).apply {
+        private fun edit() = EditText(context).apply {
             textSize = 18f
             typeface = Inter.typeface(context, Inter.REGULAR, 18f)
             setTextColor(TX)
@@ -700,16 +703,27 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             setPadding(px(18f), px(14f), px(18f), px(14f))
             setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_DONE) { onSave?.invoke(); true } else false }
         }
+        val field = edit()
+        /** A sign-in's password ([signIn]): never filled from the model, emptied when the sheet closes. */
+        val password = edit().apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            typeface = Inter.typeface(context, Inter.REGULAR, 18f) // the password type sets monospace
+            hint = "Password"
+        }
         /** What the sheet shows under its name: the field, the choices or the window. */
         private val body = FrameLayout(context)
         private val why = g.text(15f, ROSE)
         private val cancel = g.plain("Cancel").apply { setOnClickListener { close() } }
         private val saveButton = g.primary("Save").apply { setOnClickListener { onSave?.invoke() } }
         private var onSave: (() -> Unit)? = null
+        /** A sign-in's Clear, while one is set. */
+        private val clearButton = g.plain("Clear").apply { setOnClickListener { onClear?.invoke() } }
+        private var onClear: (() -> Unit)? = null
         private val buttons = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
             addView(cancel, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(14f) })
+            addView(clearButton, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(14f) })
             addView(saveButton)
         }
         private val card = LinearLayout(context).apply {
@@ -736,6 +750,10 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             hint.text = hintText
             hint.visibility = if (hintText.isEmpty()) View.GONE else View.VISIBLE
             (field.parent as? android.view.ViewGroup)?.removeView(field)
+            (password.parent as? android.view.ViewGroup)?.removeView(password)
+            password.setText("")
+            clearButton.visibility = View.GONE
+            onClear = null
             body.removeAllViews()
             content?.let { body.addView(it, LayoutParams(-1, -2)) }
             body.visibility = if (content != null) View.VISIBLE else View.GONE
@@ -786,6 +804,25 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
                 field.requestFocus()
                 (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)?.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
             }
+        }
+
+        /** A user name and a password, saved together after [SettingsChange.signIn]'s checks; Clear while one is set. */
+        fun signIn(i: SettingsItem.SignIn, after: () -> Unit) {
+            val fields = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            val set = i.isSet()
+            // open() takes the fields out of the last sheet: add them to this one after it.
+            open(i.title, if (set) "A sign-in is set. Type a new one to replace it." else "", fields, "Save")
+            fields.addView(field, LinearLayout.LayoutParams(-1, -2))
+            fields.addView(password, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12f) })
+            field.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            field.hint = "User name"
+            field.setText(i.user().orEmpty())
+            onSave = { commit(false, after) { done -> SettingsChange.signIn(i, field.text?.toString().orEmpty(), password.text?.toString().orEmpty(), done) } }
+            if (set) {
+                clearButton.visibility = View.VISIBLE
+                onClear = { commit(false, after) { done -> SettingsChange.clear(i, done) } }
+            }
+            field.requestFocus()
         }
 
         /** The choices as chips; picking one applies it. */
@@ -867,6 +904,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         fun close() {
             if (view.visibility != View.VISIBLE) return
             onSave = null
+            password.setText("")
             hideKeyboard()
             view.visibility = View.GONE
         }
