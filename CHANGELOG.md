@@ -90,6 +90,10 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **One stuck connection no longer freezes the panel's entities in Home Assistant.** If a client
+  stopped reading (a Home Assistant that hangs, or a connection that is half gone), states, action
+  replies and keepalive pings for every other client waited behind it, for minutes, until the panel
+  gave up on the stuck one. Now only that client waits, until the panel drops it.
 - **Keeping the radio Off in Kiln finishes the panel's radio step.** A fresh panel installed with
   Kiln no longer asks *Radio* again on its own screen when you left the radio Off. Choosing the mode
   the radio already runs doesn't restart it. Needs the S1 Kiosk release with this fix.
