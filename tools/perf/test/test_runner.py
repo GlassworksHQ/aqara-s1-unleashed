@@ -869,7 +869,7 @@ class Restart(unittest.TestCase):
         self.assertEqual(c["tiers"]["typical"]["timed_out_after"], "usable")
         self.assertTrue(c["tiers"]["heavy"]["done"])
         rep = self.build(self.last_out)
-        self.assertEqual(rep["graded"]["reference"]["tiers"]["typical"]["timed_out_tasks"], ["camera", "open", "scroll", "tap", "updates"])
+        self.assertEqual(rep["graded"]["reference"]["tiers"]["typical"]["timed_out_tasks"], ["blocking", "camera", "open", "scroll", "tap", "updates"])
 
     def test_the_screen_is_kept_awake_while_views_open_but_not_while_live(self):
         p, c, log = self.run_short(120, FAKE_SLOW_VIEW="2.5", GW_PERF_KEEP_AWAKE_S="0.7")
