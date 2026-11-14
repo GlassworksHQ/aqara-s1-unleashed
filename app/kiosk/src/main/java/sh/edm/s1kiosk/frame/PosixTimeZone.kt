@@ -56,8 +56,6 @@ class PosixTimeZone private constructor(
     /** No summer time: one offset all year. HA sends this for zones the rule can't describe too (Casablanca). */
     val fixed: Boolean get() = dst == null || start == null
 
-    /** The standard offset, in seconds east of UTC. */
-    val standardOffsetSeconds: Int get() = std
 
     companion object {
         /** The widest offset a clock can have (`ZoneOffset`'s range): a rule past it is not a zone. */
@@ -97,9 +95,12 @@ class PosixTimeZone private constructor(
         /** `[+-]hh[:mm[:ss]]` in seconds, as written (POSIX counts west of UTC as positive). */
         private fun offset(): Int {
             val sign = when (s.getOrNull(i)) { '-' -> { i++; -1 }; '+' -> { i++; 1 }; else -> 1 }
-            var total = number() * 3600
-            if (s.getOrNull(i) == ':') { i++; total += number() * 60 }
-            if (s.getOrNull(i) == ':') { i++; total += number() }
+            // POSIX allows hours to 167 (a transition time past the day); anything bigger is not a rule, and
+            // bounding each part first keeps the sum far from Int's range (`UTC134217728` wrapped, CodeRabbit on #235).
+            val h = number().also { require(it <= 167) }
+            var total = h * 3600
+            if (s.getOrNull(i) == ':') { i++; total += number().also { require(it <= 59) } * 60 }
+            if (s.getOrNull(i) == ':') { i++; total += number().also { require(it <= 59) } }
             return sign * total
         }
 

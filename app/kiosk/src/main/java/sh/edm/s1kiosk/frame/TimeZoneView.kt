@@ -27,8 +27,8 @@ internal class TimeZoneView(
     private val host: SettingsItem.NativeHost,
     private val pane: TimeZonePane,
     private val choices: TimeZoneChoices,
-    /** Runs the match of Home Assistant's zone, which reads a year of offsets: never on the main thread. */
-    private val background: (Runnable) -> Unit = matcher::execute,
+    /** Runs the match of Home Assistant's zone, which reads a year of offsets: never on the main thread (the pane's own thread). */
+    private val background: (Runnable) -> Unit,
 ) : SettingsItem.NativeView {
     private val context: Context = host.context
     private val g = Glass(context)
@@ -79,6 +79,8 @@ internal class TimeZoneView(
                     matching = null
                     haCache = key to found
                     refresh()
+                    // An open picker gets its card now too, keeping what the person picked (CodeRabbit on #235).
+                    fillHomeAssistant?.invoke()
                 }
             }
         }
@@ -128,7 +130,11 @@ internal class TimeZoneView(
     private fun close() {
         layer?.let { (it.parent as? android.view.ViewGroup)?.removeView(it) }
         layer = null
+        fillHomeAssistant = null
     }
+
+    /** Fills the open picker's Home Assistant card; null while the picker is closed. */
+    private var fillHomeAssistant: (() -> Unit)? = null
 
     /** Opens the picker on the current zone's region. Internal for the mock-ups. */
     internal fun open() {
@@ -203,16 +209,18 @@ internal class TimeZoneView(
                 addView(g.primary("Save").apply { setPadding(px(26f), px(10f), px(26f), px(10f)); setOnClickListener { keep(chosen) } })
             })
             // Home Assistant sends a rule, not a name: "Use it" keeps a zone here with the same clock, and says which.
-            homeAssistant()?.let { ha ->
+            val haSlot = FrameLayout(context)
+            addView(haSlot, LinearLayout.LayoutParams(-1, -2))
+            fillHomeAssistant = { haSlot.removeAllViews(); homeAssistant()?.let { ha ->
                 val (clock, line, use) = when (ha) {
                     is TimeZoneChoices.HomeAssistantZone.Same ->
                         Triple(TimeZoneChoices.offset(ha.zone, now), "The same as the panel's · ${TimeZoneChoices.clock(ha.zone, now)} now", null)
                     is TimeZoneChoices.HomeAssistantZone.Like ->
                         Triple(TimeZoneChoices.offset(ha.zone, now), "Keeps ${ha.zone} · ${TimeZoneChoices.clock(ha.zone, now)} now", ha.zone)
                     is TimeZoneChoices.HomeAssistantZone.Elsewhere ->
-                        Triple(TimeZoneChoices.offsetText(ha.offsetSeconds), "The panel keeps its own zone", null)
+                        Triple(ha.offset(now), "The panel keeps its own zone", null)
                 }
-                addView(LinearLayout(context).apply {
+                haSlot.addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     background = g.surface(16f)
@@ -224,8 +232,9 @@ internal class TimeZoneView(
                         addView(g.text(13.5f, Glass.MU).apply { text = line })
                     }, LinearLayout.LayoutParams(0, -2, 1f))
                     use?.let { z -> addView(g.ghost("Use it").apply { setPadding(px(18f), px(8f), px(18f), px(8f)); setOnClickListener { keep(z) } }) }
-                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14f) })
-            }
+                }, FrameLayout.LayoutParams(-1, -2).apply { topMargin = px(14f) })
+            } }
+            fillHomeAssistant?.invoke()
             addView(why, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -253,8 +262,4 @@ internal class TimeZoneView(
         }
     }
 
-    private companion object {
-        /** One daemon thread for the matches, made on first use. */
-        val matcher by lazy { java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "s1-timezone-match").apply { isDaemon = true } } }
-    }
 }

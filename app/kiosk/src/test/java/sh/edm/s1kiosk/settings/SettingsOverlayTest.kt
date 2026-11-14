@@ -512,4 +512,16 @@ class SettingsOverlayTest {
         assertTrue("the page is the pane's own again", shown(o, "b is on"))
         assertFalse("nothing left to fold", shown(o, "Off · 1"))
     }
+
+    @Test
+    fun aChoiceFollowsAValueChangedElsewhere() {
+        // CodeRabbit on #235: Home Assistant picked another wake word; the open page kept the old name.
+        var word = "okay_nabu"
+        val o = one(listOf(SettingsItem.Choice("Wake word", { word }, { listOf("okay_nabu" to "Okay Nabu", "hey_jarvis" to "Hey Jarvis") }) { v, done -> word = v; done(null) }))
+        assertTrue(shown(o, "Okay Nabu"))
+        word = "hey_jarvis"
+        o.refresh()
+        assertTrue(shown(o, "Hey Jarvis"))
+        assertFalse(shown(o, "Okay Nabu"))
+    }
 }

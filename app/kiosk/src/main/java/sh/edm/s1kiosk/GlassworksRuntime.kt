@@ -28,6 +28,7 @@ import sh.edm.s1kiosk.setup.SetupState
 import sh.edm.s1kiosk.update.UpdateManager
 import sh.edm.s1kiosk.voice.AssistDefinition
 import sh.edm.s1kiosk.voice.VoiceUi
+import java.util.concurrent.Executors
 
 /**
  * What the app's components hand each other while the process runs. [KioskApp] owns the one
@@ -59,6 +60,12 @@ class GlassworksRuntime(
     private var definitions: List<PaneDefinition>? = null
 
     /**
+     * One thread for the settings pages' work that must not run on the main thread and must keep its order
+     * (Music's volume, sent to Music Assistant). Made on first use; idle, it is one parked daemon thread.
+     */
+    private val settingsWorker by lazy { Executors.newSingleThreadExecutor { r -> Thread(r, "s1-settings").apply { isDaemon = true } } }
+
+    /**
      * Every pane's definition, made once: their on/off, setup steps, settings sections and adb extras. The
      * core's panes in the order the settings list them (voice, music, radio, Bluetooth proxy), then the frame's, then diagnostics.
      * MainActivity and KioskService ask for them first thing, before discovery can save an HA URL in
@@ -74,7 +81,7 @@ class GlassworksRuntime(
                 readout = RadioDefinition.AppReadout(this, prefs.radio) { prefs.haBase },
             )
             val bluetoothProxy = BluetoothProxyDefinition(prefs.paneFile("bluetooth-proxy"), AndroidProxyRadio(app), ::BluetoothProxyPage)
-            listOf(AssistDefinition(prefs.paneFile("assist")), SendspinDefinition(prefs.paneFile("sendspin")), radio, bluetoothProxy) +
+            listOf(AssistDefinition(prefs.paneFile("assist")), SendspinDefinition(prefs.paneFile("sendspin"), settingsWorker::execute), radio, bluetoothProxy) +
                 paneFrame.paneDefinitions(app) + DiagnosticsDefinition(prefs.paneFile("diagnostics"))
         }.also { definitions = it }
     }

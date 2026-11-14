@@ -172,6 +172,12 @@ class TimeZoneKeeper(
         }
     }
 
+    /**
+     * Runs [task] on the keeper's thread, behind its own work: for the settings page's slow reads (#212,
+     * matching Home Assistant's zone). False while it isn't running.
+     */
+    fun background(task: () -> Unit): Boolean = post(task)
+
     /** Runs [block] on its thread, or now when [inline]. False while it isn't running. */
     private fun post(block: () -> Unit): Boolean {
         if (inline) { block(); return true }

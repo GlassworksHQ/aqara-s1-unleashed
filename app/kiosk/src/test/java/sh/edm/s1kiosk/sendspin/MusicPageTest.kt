@@ -49,7 +49,9 @@ class MusicPageTest {
             publishStates = {}, emit = {}, entitiesChanged = {}, sendEvent = { _, _ -> },
         )
         val pane = SendspinPane(ctx, haBase = { null })
-        val volume = SendspinDefinition(KioskPrefs(app).paneFile("sendspin")).settings(pane).single().items.filterIsInstance<SettingsItem.Slider>().single()
+        // The app's own definition, with the runtime's settings worker.
+        val definition = sh.edm.s1kiosk.GlassworksRuntime(sh.edm.s1kiosk.frame.AqaraS1Plus()).paneDefinitions(app).single { it.id == "sendspin" }
+        val volume = definition.settings(pane).single().items.filterIsInstance<SettingsItem.Slider>().single()
         val answered = java.util.Collections.synchronizedList(ArrayList<Int>())
         val all = java.util.concurrent.CountDownLatch(50)
         repeat(50) { n -> volume.save(n.toFloat()) { answered += n; all.countDown() } }

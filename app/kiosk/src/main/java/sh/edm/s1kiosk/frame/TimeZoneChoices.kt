@@ -59,7 +59,7 @@ class TimeZoneChoices(
         // The panel's zone may be an old alias of one in the list (Europe/Belfast is Europe/London).
         val here = canonical(current)
         if (here in like) return HomeAssistantZone.Same(here)
-        if (tz.fixed || like.isEmpty()) return HomeAssistantZone.Elsewhere(tz.standardOffsetSeconds)
+        if (tz.fixed || like.isEmpty()) return HomeAssistantZone.Elsewhere(rule)
         val pick = like.minWith(
             compareBy<String>({ regionOf(it) != regionOf(here) }, { REGIONS.indexOf(regionOf(it)).let { i -> if (i < 0) REGIONS.size else i } }, { it }),
         )
@@ -78,8 +78,10 @@ class TimeZoneChoices(
             override fun line(now: Instant) = "${offset(zone, now)} · like $zone, not the panel's"
         }
 
-        data class Elsewhere(val offsetSeconds: Int) : HomeAssistantZone {
-            override fun line(now: Instant) = "${offsetText(offsetSeconds)} · Home Assistant's clock; the panel keeps its zone"
+        /** [rule] is kept, not one offset: a rule with summer time no zone here matches still changes its offset. */
+        data class Elsewhere(val rule: String) : HomeAssistantZone {
+            fun offset(now: Instant): String = offsetText(PosixTimeZone.parse(rule)?.offsetAt(now)?.totalSeconds ?: 0)
+            override fun line(now: Instant) = "${offset(now)} · Home Assistant's clock; the panel keeps its zone"
         }
     }
 

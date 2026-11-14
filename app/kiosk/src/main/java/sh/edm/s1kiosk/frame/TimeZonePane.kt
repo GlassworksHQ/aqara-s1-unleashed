@@ -46,6 +46,9 @@ class TimeZonePane(
     /** How keeping it goes ([TimeZoneKeeper.statusText]). */
     val status: String get() = keeper.statusText()
 
+    /** Runs [task] on the pane's own thread (the keeper's), not the caller's: the settings page's match. */
+    fun inBackground(task: Runnable) { keeper.background { task.run() } }
+
     /** Keeps [zone], as Home Assistant's `time_zone` does: null, or why not. */
     fun keep(zone: String): String? = keeper.set(zone).also { ctx.publishStates() }
 

@@ -47,6 +47,10 @@ class PosixTimeZoneTest {
         assertNull(PosixTimeZone.parse("CET-1CEST,M13.5.0,M10.5.0"))
         // CodeRabbit on #235: these parsed, then threw when matched. No clock is 25 h off UTC.
         assertNull(PosixTimeZone.parse("UTC25"))
+        // Hours that wrapped Int when multiplied, and minutes past 59.
+        assertNull(PosixTimeZone.parse("UTC134217728"))
+        assertNull(PosixTimeZone.parse("UTC99999999999"))
+        assertNull(PosixTimeZone.parse("UTC1:75"))
         assertNull(PosixTimeZone.parse("CET-1CEST-20,M3.5.0,M10.5.0/3"))
         assertNull(TimeZoneChoices(ids).homeAssistant("UTC25", "Europe/Madrid", from))
     }
@@ -75,11 +79,20 @@ class PosixTimeZoneTest {
         // data agrees on it (JDKs encode Morocco differently; CI's and a Mac's disagreed).
         val choices = TimeZoneChoices(ids)
         val lisbon = choices.homeAssistant("<+00>0", "Europe/Lisbon", from)
-        assertEquals("the same offset today is not the same clock", TimeZoneChoices.HomeAssistantZone.Elsewhere(0), lisbon)
+        assertEquals("the same offset today is not the same clock", TimeZoneChoices.HomeAssistantZone.Elsewhere("<+00>0"), lisbon)
         assertEquals("UTC+00:00 · Home Assistant's clock; the panel keeps its zone", lisbon!!.line(from))
         // A fixed offset the panel's zone keeps all year is the same; another one is never offered either.
         assertEquals(TimeZoneChoices.HomeAssistantZone.Same("Asia/Kolkata"), choices.homeAssistant("<+0530>-5:30", "Asia/Kolkata", from))
-        assertEquals(TimeZoneChoices.HomeAssistantZone.Elsewhere(19_800), choices.homeAssistant("<+0530>-5:30", "Europe/Madrid", from))
+        assertEquals(TimeZoneChoices.HomeAssistantZone.Elsewhere("<+0530>-5:30"), choices.homeAssistant("<+0530>-5:30", "Europe/Madrid", from))
+    }
+
+    @Test fun anUnmatchedRuleWithSummerTimeShowsItsOffsetNow() {
+        // CodeRabbit on #235: it kept the standard offset, wrong all summer.
+        val choices = TimeZoneChoices(listOf("Europe/Madrid"))
+        val ha = choices.homeAssistant("EST5EDT,M3.2.0,M11.1.0", "Europe/Madrid", from)!!
+        assertEquals(TimeZoneChoices.HomeAssistantZone.Elsewhere("EST5EDT,M3.2.0,M11.1.0"), ha)
+        assertEquals("UTC−05:00 · Home Assistant's clock; the panel keeps its zone", ha.line(Instant.parse("2027-01-15T12:00:00Z")))
+        assertEquals("UTC−04:00 · Home Assistant's clock; the panel keeps its zone", ha.line(Instant.parse("2027-07-15T12:00:00Z")))
     }
 
     @Test fun anOldAliasIsListedOnceByItsCurrentName() {

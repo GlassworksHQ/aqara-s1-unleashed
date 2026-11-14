@@ -9,16 +9,16 @@ import dev.glassworks.pane.PaneSwitch
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
 import java.net.URI
-import java.util.concurrent.Executors
 
 /** The Sendspin player ([SendspinPane]) for the whole process: its on/off and adb extras (app/README.md). [file] is its settings file. */
 class SendspinDefinition(
     file: SharedPreferences,
     /**
      * Runs the page's volume changes: each writes to Music Assistant's socket, which the main thread must
-     * not do. One thread, so they reach Music Assistant in the order they were made. A test runs them by hand.
+     * not do. One thread, so they reach Music Assistant in the order they were made: the runtime's
+     * settings worker. A test runs them by hand.
      */
-    private val background: (Runnable) -> Unit = volumeWriter::execute,
+    private val background: (Runnable) -> Unit,
 ) : PaneDefinition {
     override val id = "sendspin"
 
@@ -48,9 +48,6 @@ class SendspinDefinition(
     }
 
     companion object {
-        /** Made on first use; idle, it is one parked daemon thread for the process. */
-        private val volumeWriter by lazy { Executors.newSingleThreadExecutor { r -> Thread(r, "s1-sendspin-volume").apply { isDaemon = true } } }
-
         private fun connected(phase: SendspinSession.Phase) = phase == SendspinSession.Phase.READY || phase == SendspinSession.Phase.PLAYING
 
         /** The line under the heading: how the player is connected, and to where. */
