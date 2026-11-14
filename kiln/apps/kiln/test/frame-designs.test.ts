@@ -44,6 +44,11 @@ describe('frame designs', () => {
     expect(f.id).toBe(id);
     for (const k of ['name', 'summary'] as const) expect(f[k], k).toMatch(/\S/);
     expect(['planned', 'development', 'alpha', 'beta', 'stable']).toContain(f.status);
+    if (f.brand !== undefined) expect(f.name.startsWith(`${f.brand} `), `brand "${f.brand}" starts name "${f.name}"`).toBe(true);
+    if (f.tagline !== undefined) {
+      expect(f.tagline, 'tagline').toMatch(/\S/);
+      expect(f.tagline.length, 'tagline: at most 50 characters (glassworks.dev\'s pnpm brand checks the drawn width)').toBeLessThanOrEqual(50);
+    }
     expect(Object.keys(f.ratings).sort()).toEqual([...RATING_KEYS].sort());
     expect(Object.keys(f.panes).sort()).toEqual([...PANE_IDS].sort());
     expect(f.abis?.length, 'abis').toBeGreaterThan(0);

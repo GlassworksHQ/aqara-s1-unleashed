@@ -33,10 +33,14 @@ export type Abi = (typeof ABIS)[number];
 export interface FrameDesign {
   id: string;
   name: string;
+  /** the maker's part of `name`, set light in the frame's banner; the rest of `name` is bold. `name` starts with it and a space */
+  brand?: string;
   aka?: string;
   status: Stage;
   /** one sentence: why this device */
   summary: string;
+  /** the banner's line under `frames/<id>`, at most 50 characters (glassworks.dev scripts/brand/frame.mjs draws it) */
+  tagline?: string;
   project?: { name: string; href: string };
   /** Kiln's route for the frame, once it installs from Kiln */
   kiln?: string;

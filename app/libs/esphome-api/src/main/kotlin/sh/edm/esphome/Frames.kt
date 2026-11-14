@@ -13,7 +13,7 @@ class ProtocolException(message: String) : IOException(message)
 
 /**
  * Framing of the ESPHome native API on one TCP connection (server side).
- * [read] is called from the connection's reader thread; [write] is serialized by the caller.
+ * [read] is called from the connection's reader thread, [write] from its writer thread.
  */
 interface FrameTransport {
     /** Runs the handshake (Noise only). Returns false if the connection must be closed. */
