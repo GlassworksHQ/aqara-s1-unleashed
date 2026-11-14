@@ -75,7 +75,7 @@
       "value": "FEL, then a patched boot image"
     }
   ],
-  "provides": ["microphone", "speaker", "silabs-radio", "s1-wall-base"],
+  "provides": ["microphone", "speaker", "silabs-radio", "s1-wall-base", "bluetooth-le"],
   "panes": {
     "assist": {
       "support": "beta"

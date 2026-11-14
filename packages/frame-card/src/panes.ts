@@ -38,13 +38,18 @@ export const CAPABILITIES: Readonly<Record<string, string>> = {
   speaker: 'a speaker',
   'silabs-radio': 'a Silicon Labs radio',
   's1-wall-base': "the S1's wall base",
+  'bluetooth-le': 'Bluetooth LE',
 };
 
-export const paneById = (id: string) => PANES.find((p) => p.id === (PANE_ALIASES[id] ?? id));
+/** Own keys only: a plain `in` or index would also match Object.prototype's (`constructor`, `toString`). */
+export const isPaneAlias = (id: string) => Object.hasOwn(PANE_ALIASES, id);
+export const isCapability = (word: string) => Object.hasOwn(CAPABILITIES, word);
+
+export const paneById = (id: string) => PANES.find((p) => p.id === (isPaneAlias(id) ? PANE_ALIASES[id] : id));
 
 /** "a microphone and a speaker" */
 export function capabilityText(words: readonly string[]) {
-  const t = words.map((w) => CAPABILITIES[w] ?? w);
+  const t = words.map((w) => (isCapability(w) ? CAPABILITIES[w] : w));
   return t.length < 2 ? (t[0] ?? '') : `${t.slice(0, -1).join(', ')} and ${t[t.length - 1]}`;
 }
 
@@ -60,23 +65,25 @@ export interface PaneSupport {
 
 /** The frame's rating of a pane, under the pane's id or an old alias of it. */
 function rated(f: FrameDesign, id: string) {
-  const own = f.panes[id];
-  if (own) return own;
+  if (Object.hasOwn(f.panes, id)) return f.panes[id];
   const alias = Object.keys(PANE_ALIASES).find((a) => PANE_ALIASES[a] === id);
-  return alias ? f.panes[alias] : undefined;
+  return alias && Object.hasOwn(f.panes, alias) ? f.panes[alias] : undefined;
 }
 
 /**
  * How the frame runs the pane. Its explicit rating in frame.json wins. Otherwise it is worked out:
- * - a frame pane runs on its own frame only;
+ * - a frame pane runs on its own frame only (say which with `frameName`, e.g. the frame's name by id);
  * - a frame that lacks something the pane needs can't run it;
  * - a frame without a fixed `provides` list: it depends on the device;
  * - otherwise it runs at the pane's stage, or is planned while the frame itself doesn't ship.
  */
-export function paneSupport(f: FrameDesign, pane: PaneInfo): PaneSupport {
+export function paneSupport(f: FrameDesign, pane: PaneInfo, frameName?: (id: string) => string | undefined): PaneSupport {
   const own = rated(f, pane.id);
   if (own) return { support: own.support, note: own.note, derived: false };
-  if (pane.frame && pane.frame !== f.id) return { support: 'no', derived: true, reason: `Only on the ${pane.frame} frame.` };
+  if (pane.frame && pane.frame !== f.id) {
+    const name = frameName?.(pane.frame);
+    return { support: 'no', derived: true, reason: name ? `Only on the ${name}.` : `Only on the ${pane.frame} frame.` };
+  }
   if (pane.requires.length === 0) {
     return { support: ships(f.status) ? pane.status : 'planned', derived: true, reason: 'Needs no special hardware.' };
   }
@@ -88,4 +95,4 @@ export function paneSupport(f: FrameDesign, pane: PaneInfo): PaneSupport {
 }
 
 /** Every pane, with how the frame runs it. */
-export const framePanes = (f: FrameDesign) => PANES.map((pane) => ({ pane, ...paneSupport(f, pane) }));
+export const framePanes = (f: FrameDesign, frameName?: (id: string) => string | undefined) => PANES.map((pane) => ({ pane, ...paneSupport(f, pane, frameName) }));

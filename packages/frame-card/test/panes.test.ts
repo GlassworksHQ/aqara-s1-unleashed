@@ -1,10 +1,10 @@
 // The pane catalog (#231): the generated list matches the pane files, the words line up, and a frame's
 // rating of a pane is its own when it gives one and is worked out otherwise.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CAPABILITIES, PANES, PANE_ALIASES, PANE_IDS, capabilityText, framePanes, paneById, paneSupport, type FrameDesign, type PaneInfo } from '../src';
+import { CAPABILITIES, PANES, PANE_ALIASES, PANE_IDS, capabilityText, framePanes, isCapability, isPaneAlias, paneById, paneSupport, type FrameDesign, type PaneInfo } from '../src';
 
 const script = fileURLToPath(new URL('../scripts/panes.mjs', import.meta.url));
 const frame = (id: string) =>
@@ -15,13 +15,18 @@ describe('the pane list', () => {
     expect(() => execFileSync(process.execPath, [script, '--check'], { stdio: 'pipe' })).not.toThrow();
   });
 
-  it('has every pane on main once, wall-base under its app id', () => {
-    expect([...PANE_IDS].sort()).toEqual(['assist', 'diagnostics', 'radio', 'sendspin', 'time-zone', 'timers', 'wall-base']);
+  it('has every pane file once: not empty, no id twice, and the same ids as the files', () => {
+    const java = fileURLToPath(new URL('../../../app/kiosk/src/main/java', import.meta.url));
+    const files = readdirSync(java, { recursive: true }).map(String).filter((f) => f.split(/[\\/]/).pop() === 'pane.json');
+    const ids = files.map((f) => (JSON.parse(readFileSync(`${java}/${f}`, 'utf8')) as { id: string }).id);
+    expect(PANE_IDS.length).toBeGreaterThan(0);
     expect(new Set(PANE_IDS).size).toBe(PANE_IDS.length);
+    expect([...PANE_IDS].sort()).toEqual([...ids].sort());
+    expect(PANE_IDS).toContain(PANE_ALIASES.base);
   });
 
   it('says every requirement in the capability words', () => {
-    for (const p of PANES) expect(p.requires.filter((r) => !(r in CAPABILITIES)), p.id).toEqual([]);
+    for (const p of PANES) expect(p.requires.filter((r) => !isCapability(r)), p.id).toEqual([]);
   });
 
   it('carries each icon as an SVG on the 24 grid', () => {
@@ -36,6 +41,17 @@ describe('the pane list', () => {
     expect(paneById('base')?.id).toBe('wall-base');
     expect(paneById('wall-base')?.id).toBe('wall-base');
     expect(paneById('sensors')).toBeUndefined();
+  });
+
+  it('knows only its own keys, not Object.prototype\'s', () => {
+    for (const k of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect(isPaneAlias(k), k).toBe(false);
+      expect(isCapability(k), k).toBe(false);
+      expect(paneById(k), k).toBeUndefined();
+    }
+    expect(isCapability('microphone')).toBe(true);
+    expect(capabilityText(['constructor'])).toBe('constructor');
+    expect(CAPABILITIES).not.toHaveProperty('constructor');
   });
 
   it('says a list of capabilities in words', () => {
@@ -61,6 +77,7 @@ describe('a frame and a pane', () => {
 
   it('keeps a frame pane to its own frame', () => {
     expect(paneSupport(f({ id: 'other' }), pane({ frame: 'aqara-s1-plus' }))).toEqual({ support: 'no', derived: true, reason: 'Only on the aqara-s1-plus frame.' });
+    expect(paneSupport(f({ id: 'other' }), pane({ frame: 'aqara-s1-plus' }), (id) => (id === 'aqara-s1-plus' ? 'Aqara S1 Plus' : undefined)).reason).toBe('Only on the Aqara S1 Plus.');
     expect(paneSupport(f({ id: 'aqara-s1-plus' }), pane({ frame: 'aqara-s1-plus' }))).toMatchObject({ support: 'beta', derived: true });
   });
 
@@ -89,11 +106,12 @@ describe('the real frames', () => {
   const support = (id: string) => Object.fromEntries(framePanes(frame(id)).map((p) => [p.pane.id, [p.support, p.derived]]));
 
   it('rate every pane, explicitly or worked out', () => {
-    expect(support('aqara-s1-plus')).toEqual({
+    for (const id of ['aqara-s1-plus', 'lululemon-mirror', 'generic-android']) expect(Object.keys(support(id)).sort(), id).toEqual([...PANE_IDS].sort());
+    expect(support('aqara-s1-plus')).toMatchObject({
       assist: ['beta', false], diagnostics: ['alpha', true], radio: ['beta', false], sendspin: ['beta', false],
-      timers: ['beta', false], 'time-zone': ['beta', true], 'wall-base': ['alpha', false],
+      timers: ['beta', false], 'time-zone': ['beta', true], 'wall-base': ['alpha', false], 'bluetooth-proxy': ['alpha', true],
     });
-    expect(support('lululemon-mirror')).toMatchObject({ diagnostics: ['planned', true], 'time-zone': ['no', true], 'wall-base': ['no', false] });
-    expect(support('generic-android')).toMatchObject({ diagnostics: ['planned', true], 'time-zone': ['no', true], 'wall-base': ['no', false] });
+    expect(support('lululemon-mirror')).toMatchObject({ diagnostics: ['planned', true], 'time-zone': ['no', true], 'wall-base': ['no', false], 'bluetooth-proxy': ['planned', true] });
+    expect(support('generic-android')).toMatchObject({ diagnostics: ['planned', true], 'time-zone': ['no', true], 'wall-base': ['no', false], 'bluetooth-proxy': ['depends', true] });
   });
 });

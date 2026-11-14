@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ABIS, CAPABILITIES, PANE_ALIASES, PANE_IDS, RATING_KEYS, framePanes, geometry, type FrameDesign } from '@glassworks/frame-card';
+import { ABIS, PANE_IDS, RATING_KEYS, framePanes, geometry, isCapability, isPaneAlias, type FrameDesign } from '@glassworks/frame-card';
 import { FRAMES, RENDERS } from '../src/frames/catalog';
 
 const frames = fileURLToPath(new URL('../../../../frames', import.meta.url));
@@ -51,8 +51,8 @@ describe('frame designs', () => {
     }
     expect(Object.keys(f.ratings).sort()).toEqual([...RATING_KEYS].sort());
     // it rates only panes that exist (by id or an old alias); every other pane is worked out, with a reason (#231)
-    expect(Object.keys(f.panes).filter((k) => !PANE_IDS.includes(k) && !(k in PANE_ALIASES)), 'panes rated that the app has no pane for').toEqual([]);
-    expect((f.provides ?? []).filter((c) => !(c in CAPABILITIES)), 'provides: unknown capability words').toEqual([]);
+    expect(Object.keys(f.panes).filter((k) => !PANE_IDS.includes(k) && !isPaneAlias(k)), 'panes rated that the app has no pane for').toEqual([]);
+    expect((f.provides ?? []).filter((c) => !isCapability(c)), 'provides: unknown capability words').toEqual([]);
     for (const p of framePanes(f)) {
       expect(p.support, p.pane.id).toBeTruthy();
       if (p.derived) expect(p.reason, `${p.pane.id}: a derived rating says why`).toMatch(/\S/);
