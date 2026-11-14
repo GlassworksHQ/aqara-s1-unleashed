@@ -106,6 +106,13 @@ class AndroidBleScannerTest {
         assertEquals("and no receiver left behind", 0, stateReceivers())
     }
 
+    @Test fun turnBluetoothOnTurnsItOnOnAndroid10() {
+        shadowOf(adapter).setEnabled(false)
+        assertEquals(ScanFailure.BLUETOOTH_OFF, scanner.unavailable())
+        assertEquals(true, scanner.turnBluetoothOn())
+        assertNull(scanner.unavailable())
+    }
+
     @Test fun unavailableSaysWhy() {
         assertNull(scanner.unavailable())
         shadowOf(app.getSystemService(LocationManager::class.java)).setLocationEnabled(false)

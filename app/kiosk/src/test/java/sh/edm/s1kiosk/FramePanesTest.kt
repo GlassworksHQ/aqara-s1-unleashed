@@ -103,7 +103,7 @@ class FramePanesTest {
         val sections = settingsOrder(core.sections(), definitions.flatMap { it.settings() }).map { it.id }
         val radio = sections.indexOf("radio")
         assertTrue(sections.toString(), radio > sections.indexOf("screen"))
-        assertEquals(sections.toString(), radio + 1, sections.indexOf("camera"))
+        assertEquals("the frame's right after the core's last pane: $sections", sections.indexOf("bluetooth-proxy") + 1, sections.indexOf("camera"))
         assertTrue(sections.toString(), sections.indexOf("camera") < sections.indexOf("about"))
     }
 

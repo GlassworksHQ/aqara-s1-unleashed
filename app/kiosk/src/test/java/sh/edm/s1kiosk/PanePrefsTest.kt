@@ -3,6 +3,12 @@ package sh.edm.s1kiosk
 import sh.edm.s1kiosk.frame.AqaraCloud
 import sh.edm.s1kiosk.frame.AqaraS1Plus
 import sh.edm.s1kiosk.frame.TimeZonePrefs
+import dev.glassworks.bluetoothproxy.BluetoothProxyPane
+import dev.glassworks.bluetoothproxy.BluetoothProxyPrefs
+import dev.glassworks.bluetoothproxy.ProxyRadio
+import sh.edm.bluetoothproxy.BleScanner
+import sh.edm.bluetoothproxy.ScanFailure
+import sh.edm.bluetoothproxy.ScanPower
 import dev.glassworks.diagnostics.DiagnosticsPrefs
 import android.app.Application
 import android.content.SharedPreferences
@@ -55,7 +61,7 @@ class PanePrefsTest {
     /** The prefs class of each namespace, built over a file. */
     private val owners: Map<String, (SharedPreferences) -> Any> = mapOf(
         "sendspin" to ::SendspinPrefs, "assist" to ::VoicePrefs, "wall-base" to ::WallBasePrefs, "radio" to ::RadioPrefs,
-        "time-zone" to ::TimeZonePrefs, "diagnostics" to ::DiagnosticsPrefs,
+        "time-zone" to ::TimeZonePrefs, "diagnostics" to ::DiagnosticsPrefs, "bluetooth-proxy" to ::BluetoothProxyPrefs,
     )
 
     @After fun tearDown() {
@@ -83,8 +89,9 @@ class PanePrefsTest {
         for (pane in panes()) {
             val ns = pane.id
             val asked = HashMap(asked)
-            if (ns == "timers") {
-                assertTrue("timers asked for settings: ${asked.keys}", asked.isEmpty())
+            // Timers have no settings; the Bluetooth proxy's one key, its on/off, is the core's (PaneSwitch).
+            if (ns == "timers" || ns == "bluetooth-proxy") {
+                assertTrue("$ns asked for settings: ${asked.keys}", asked.isEmpty())
             } else {
                 assertEquals("${pane.id} asked for other namespaces", setOf(ns), asked.keys)
                 assertTrue("${pane.id} read no settings: the recorder sees nothing", asked.getValue(ns).isNotEmpty())
@@ -115,6 +122,18 @@ class PanePrefsTest {
         yield(drive(WallBasePane(ctx, WallBase.Config(BaseBackend.LOCALSERVICE), device, AqaraCloud()), start = false))
         yield(drive(RadioPane(ctx, GlassworksRuntime(AqaraS1Plus()), panelIp = { null }), start = false))
         yield(drive(TimersPane(ctx, GlassworksRuntime(AqaraS1Plus()).screen, schedule = { _, _ -> device.submit {} }, play = {}, silence = {})))
+        yield(drive(BluetoothProxyPane(ctx, NoRadio, device)))
+    }
+
+    /** No Bluetooth to scan with: the pane runs its lifecycle and entities, and reads what it reads. */
+    private object NoRadio : ProxyRadio {
+        override fun newScanner() = object : BleScanner {
+            override fun start(power: ScanPower, listener: BleScanner.Listener) {}
+            override fun stop() {}
+        }
+        override fun unavailable(): ScanFailure? = null
+        override fun turnBluetoothOn() = false
+        override fun turnLocationOn() = false
     }
 
     private fun assist() = AssistPane(
