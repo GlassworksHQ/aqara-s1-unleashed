@@ -90,18 +90,17 @@ class BluetoothProxyMockups {
         Mockup.save(name, o)
     }
 
-    /** [notifications]: the card #118 adds, to show the step at six. */
-    private fun setup(name: String, withProxy: Boolean, notifications: Boolean = false) {
-        val cards = listOfNotNull(
-            PaneChoice("Voice", "Assist and timers", on = { true }, apply = { null }),
-            PaneChoice("Music", "A Sendspin speaker", on = { true }, apply = { null }),
-            if (notifications) PaneChoice("Notifications", "On-screen alerts", on = { false }, apply = { null }) else null,
-            PaneChoice("Zigbee / Thread radio", "For your devices", on = { false }, apply = { null }),
-            if (withProxy) PaneChoice("Bluetooth proxy", "For BLE sensors", on = { false }, apply = { null }) else null,
-            PaneChoice("Wall base", "The S1's wired base", on = { true }, apply = { null }),
-        )
+    /** The panes setup offers: today's four, then this pane, #118's Notifications, and two made up to show a longer list. */
+    private val allCards = listOf(
+        "Voice" to "Assist and timers", "Music" to "A Sendspin speaker", "Notifications" to "On-screen alerts",
+        "Zigbee / Thread radio" to "For your devices", "Bluetooth proxy" to "For BLE sensors", "Wall base" to "The S1's wired base",
+        "Camera" to "The panel's camera in HA", "Matter" to "Join Matter devices",
+    )
+
+    /** Setup's Panes step with [cards]; [scrolled]: the list scrolled to its end. */
+    private fun setup(name: String, cards: List<Pair<String, String>>, scrolled: Boolean = false) {
         val a = Mockup.activity()
-        val s = SetupOverlay(a, cards.map { SetupPane(it, emptyList()) })
+        val s = SetupOverlay(a, cards.mapIndexed { i, (t, d) -> SetupPane(PaneChoice(t, d, on = { i % 3 != 2 }, apply = { null }), emptyList()) })
         a.setContentView(s, ViewGroup.LayoutParams(-1, -1))
         s.render(SetupOverlay.Model(
             step = SetupFlow.PANES, done = setOf(SetupFlow.WIFI, SetupFlow.HA),
@@ -109,8 +108,16 @@ class BluetoothProxyMockups {
             haUrl = "http://homeassistant.local:8123", haSource = "mdns", panelIp = "192.0.2.10", signedIn = false,
         ))
         Mockup.idle()
+        if (scrolled) {
+            Mockup.layout(s)
+            generateSequence(Mockup.label(s, cards.last().first) as android.view.View) { it.parent as? android.view.View }
+                .firstOrNull { it is android.widget.ScrollView }?.let { v -> (v as android.widget.ScrollView).scrollTo(0, v.getChildAt(0).height - v.height) }
+            Mockup.idle()
+        }
         Mockup.save(name, s)
     }
+
+    private fun named(vararg titles: String) = titles.map { t -> allCards.single { it.first == t } }
 
     @Test
     fun mockups() {
@@ -124,8 +131,11 @@ class BluetoothProxyMockups {
         shot("bt-06-retrying", menu(proxy(true, ProxyPhase.RETRYING, retrying)), id)
         shot("bt-07-no-ble", menu(proxy(false, ProxyPhase.NO_BLE, null, ScanFailure.NO_BLE)), id)
         shot("bt-08-off", menu(proxy(false, ProxyPhase.OFF, null)), id)
-        setup("bt-09-setup-panes-before", withProxy = false)
-        setup("bt-10-setup-panes-after", withProxy = true)
-        setup("bt-11-setup-panes-six", withProxy = true, notifications = true)
+        setup("bt-09-setup-panes-four", named("Voice", "Music", "Zigbee / Thread radio", "Wall base"))
+        setup("bt-10-setup-panes-five", named("Voice", "Music", "Zigbee / Thread radio", "Bluetooth proxy", "Wall base"))
+        setup("bt-11-setup-panes-six", allCards.take(6))
+        setup("bt-12-setup-panes-six-scrolled", allCards.take(6), scrolled = true)
+        setup("bt-13-setup-panes-eight", allCards)
+        setup("bt-14-setup-panes-eight-scrolled", allCards, scrolled = true)
     }
 }
