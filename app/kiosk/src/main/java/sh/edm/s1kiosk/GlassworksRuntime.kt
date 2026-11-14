@@ -29,6 +29,7 @@ import sh.edm.s1kiosk.setup.SetupPane
 import sh.edm.s1kiosk.setup.SetupState
 import sh.edm.s1kiosk.update.UpdateManager
 import sh.edm.s1kiosk.voice.AssistDefinition
+import sh.edm.s1kiosk.voice.OrbBakes
 import sh.edm.s1kiosk.voice.VoiceUi
 import java.util.concurrent.Executors
 
@@ -63,6 +64,9 @@ class GlassworksRuntime(
 
     /** The notifications pane's state, for the overlay and the settings page (#118). */
     val notifications = NotificationsHub()
+
+    /** The glass orb's shared layers: the timer-done stage and the critical alert bake them once. Main thread. */
+    val orbs = OrbBakes()
 
     /**
      * One thread for the settings pages' work that must not run on the main thread and must keep its order
