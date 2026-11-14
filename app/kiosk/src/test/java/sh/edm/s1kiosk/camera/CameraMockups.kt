@@ -231,5 +231,14 @@ class CameraMockups {
         setupShot("camera-10-setup-camera-asks", "camera")
         setupShot("camera-11-setup-camera-refused", "camera") { s -> Mockup.label(s, "Allow the camera").let { if (!it.performClick()) (it.parent as View).performClick() } }
         setupShot("camera-12-setup-camera-allowed", "camera", allowed = true)
+        // The tablet run on 28c157d: Sign in after the camera's step opened from the rail and continued.
+        CameraSetupLeakTest().run {
+            val (s, _) = setUp()
+            tap(s, "Panes")
+            tap(s, "Camera")
+            tap(s, "Continue")
+            Mockup.layout(s)
+            Mockup.save("camera-13-signin-after-camera", s)
+        }
     }
 }
