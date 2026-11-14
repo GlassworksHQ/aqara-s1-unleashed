@@ -6,8 +6,8 @@ body:
     attributes:
       value: |
         If the installer stopped partway, your backup is safe and FEL mode is always there. Don't
-        retry a flash until you've read [Troubleshooting](https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/docs/install.md#troubleshooting).
-        Security problems go through [SECURITY.md](https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/SECURITY.md), not here.
+        retry a flash until you've read [Troubleshooting](https://github.com/GlassworksHQ/glassworks/blob/main/docs/install.md#troubleshooting).
+        Security problems go through [SECURITY.md](https://github.com/GlassworksHQ/glassworks/blob/main/SECURITY.md), not here.
 
   - type: dropdown
     id: area
@@ -104,5 +104,5 @@ body:
     attributes:
       label: Checks
       options:
-        - label: I checked [Known issues](https://github.com/GlassworksHQ/aqara-s1-unleashed#known-issues) and existing issues.
+        - label: I checked [Known issues](https://github.com/GlassworksHQ/glassworks#known-issues) and existing issues.
           required: true

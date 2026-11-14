@@ -6,7 +6,7 @@ openWakeWord's embedding model on every 80 ms of audio, and that model is nearly
 thread's work (inferred from its cost; see Result). That costs 30 to
 36 ms of CPU per frame on the S1 (37 to 45% of a core, by CPU clock), with the screen on or off.
 The model needs that work; no bug wastes it. The options are below,
-and the choice is the maintainer's ([#105](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/105)).
+and the choice is the maintainer's ([#105](https://github.com/GlassworksHQ/glassworks/issues/105)).
 
 Device: Aqara Panel Hub S1 Plus (A133, 4× Cortex-A53, 32-bit userspace), S1 Kiosk 0.4.3, all panes
 on, radio `thread_router`, wake word `hey_jarvis_v0.1`. Tools: adb (read-only, uid `shell`),

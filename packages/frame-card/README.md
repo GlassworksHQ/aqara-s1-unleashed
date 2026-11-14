@@ -100,7 +100,7 @@ should come at the same commit, so the card never draws data it wasn't written f
 **Recommended: a git submodule at a pinned commit.** For example, in the site's repo:
 
 ```sh
-git submodule add https://github.com/GlassworksHQ/aqara-s1-unleashed vendor/s1-unleashed
+git submodule add https://github.com/GlassworksHQ/glassworks vendor/s1-unleashed
 git -C vendor/s1-unleashed checkout <commit>
 pnpm add @glassworks/frame-card@link:vendor/s1-unleashed/packages/frame-card
 ```
@@ -119,7 +119,7 @@ compile it: `transpilePackages: ['@glassworks/frame-card']`. Untested on glasswo
 | Way | For | Against |
 |---|---|---|
 | Git submodule at a commit (recommended) | One pin for code and data; no publish step | Vercel and contributors fetch the whole repo; `git submodule update --init` after cloning |
-| pnpm git dependency at a commit, `github:GlassworksHQ/aqara-s1-unleashed#<commit>&path:/packages/frame-card` | A normal dependency; only this folder lands in `node_modules` | It brings no `frame.json`, so the data needs a second way in and a second pin that can drift; Next needs `transpilePackages` for TypeScript in `node_modules` |
+| pnpm git dependency at a commit, `github:GlassworksHQ/glassworks#<commit>&path:/packages/frame-card` | A normal dependency; only this folder lands in `node_modules` | It brings no `frame.json`, so the data needs a second way in and a second pin that can drift; Next needs `transpilePackages` for TypeScript in `node_modules` |
 | Publishing to npm | Versioned like any library | A release pipeline and a version per change, too much while frames live in this repo |
 
 When frames move to their own repos (#35), the site points at each frame's released `frame.json`

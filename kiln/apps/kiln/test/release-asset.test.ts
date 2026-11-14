@@ -23,7 +23,7 @@ describe('the release asset route', () => {
     const fetch = vi.fn(async () => new Response(new Uint8Array([0x50, 0x4b, 3, 4]), { headers: { 'content-length': '4' } }));
     vi.stubGlobal('fetch', fetch);
     const r = await get('tag=aqara-s1-plus-v0.4.3&name=s1-kiosk-0.4.3.apk');
-    expect(fetch).toHaveBeenCalledWith('https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/aqara-s1-plus-v0.4.3/s1-kiosk-0.4.3.apk', { redirect: 'follow' });
+    expect(fetch).toHaveBeenCalledWith('https://github.com/GlassworksHQ/glassworks/releases/download/aqara-s1-plus-v0.4.3/s1-kiosk-0.4.3.apk', { redirect: 'follow' });
     expect(r.status).toBe(200);
     expect(r.headers.get('content-type')).toBe('application/vnd.android.package-archive');
     expect(r.headers.get('content-length')).toBe('4');
