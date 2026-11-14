@@ -571,6 +571,17 @@ with the Python TFLite runtime that the patched model gives bit-identical output
   `api_pb2` descriptors.
 - **Entity set changes**: `ApiServer.setEntities` swaps the list and asks every client to
   disconnect (`DisconnectRequest`, closed after the ack or 2 s).
+- **Home Assistant's time zone** (#212): once an authenticated client subscribes to states, the
+  panel sends `GetTimeRequest` (36). Home Assistant answers with `GetTimeResponse` (37), and its
+  `timezone` (field 2) is a POSIX `TZ` rule, not an IANA id: aioesphomeapi 46.25.0 sent
+  `Europe/Madrid` as `CET-1CEST,M3.5.0,M10.5.0/3` (verified 2026-11-13, `EspHomeApiTest`). The time
+  zone page matches the rule to the zones the panel knows that keep the same clock all year
+  (`PosixTimeZone`). A plaintext client's answer is ignored. The panel never sets its clock from it.
+- **The wake word, picked on the panel**: Home Assistant reads the satellite's wake words
+  (`VoiceAssistantConfigurationRequest`) only when it sets the satellite up, which it does on every
+  connect: `esphome/manager.py` `on_disconnect` unloads the `assist_satellite` platform (HA core,
+  read 2026-11-13). So a wake word picked on the panel asks HA to reconnect, as an entity set change
+  does.
 - aioesphomeapi sends `SubscribeVoiceAssistantRequest.flags = 4` for API audio while `api.proto`
   defines `VOICE_ASSISTANT_SUBSCRIBE_API_AUDIO = 1`; like ESPHome, the panel ignores the flags and
   uses `VoiceAssistantResponse.port` (0 = API audio).

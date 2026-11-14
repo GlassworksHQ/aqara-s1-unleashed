@@ -7,7 +7,19 @@ below as the release notes.
 
 ## [Unreleased]
 
+### Added
+- **Every pane's settings page shows what it is doing.** No page says "no settings of its own" any
+  more. Diagnostics shows CPU, temperature, RAM, Wi-Fi, storage and uptime, with the last hour as a
+  line. Wall base shows the base, its firmware, protection and power, and each relay with its switch
+  and its button's last press. Time zone lets you pick a zone from a list, or plain UTC offsets, and
+  keep Home Assistant's in one tap. Voice has the wake word, its threshold, mute, mic gain, the wake
+  sound and the overlay. Music shows what plays and its volume. Radio shows its firmware and the root
+  helper. A pane with nothing of its own lists its entities as Home Assistant shows them.
+
 ### Changed
+- **Panes you turned off fold at the bottom of the list.** In the settings menu they sit under
+  "Off · N"; open it, or a pane in it, to see them. An off pane's page says what being off means.
+  The Radio no longer has a dot by its name, so every pane's name starts in line.
 - **Turning a pane on or off from Home Assistant needs the panel's key.** The pane switches, the
   *Music Assistant player (Sendspin)* switch included, only answer an encrypted connection, as *Time
   zone* does. Home Assistant 2026.11 and later sets the key when you add the panel. On a panel without
