@@ -352,11 +352,11 @@ class CpuClock(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         p, c = refstart(tmp, GW_PERF_CPU_CLOCK_S="0.3")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
-        self.assertEqual(c["cpu_max_khz"], [1608000] * 4)
+        self.assertEqual(c["cpu_max_khz"], {"0": 1608000, "1": 1608000, "2": 1608000, "3": 1608000})
         views = {v for v, _, _ in c["cpu_khz"]}
         self.assertLessEqual(views, {"light", "typical-nocam", "typical", "heavy"})
         self.assertTrue(views, c.get("cpu_khz"))
-        self.assertTrue(all(k == [1200000] * 4 for _, _, k in c["cpu_khz"]))
+        self.assertTrue(all(k == {"0": 1200000, "1": 1200000, "2": 1200000, "3": 1200000} for _, _, k in c["cpu_khz"]))
         self.assertEqual(c["cpu_clock_s"], 0.3)
         self.assertNotIn("thread_errors", c)                   # the sampler starts after the run's state exists
         # Only while a view is open, not after its done line: the runner then waits 1.5 s more before it
@@ -368,6 +368,22 @@ class CpuClock(unittest.TestCase):
             log = f.read()
         self.assertIn("cpufreq/scaling_cur_freq", log)
         self.assertNotRegex(log, r"echo .*> */sys|setprop|cpufreq/scaling_(max|min|setspeed)")   # reads only
+
+
+class CpuNumbers(unittest.TestCase):
+    """CodeRabbit on #250: the shell lists cpu10 before cpu2; each reading keeps its CPU's number."""
+
+    def test_numbers_from_the_paths(self):
+        sys.path.insert(0, os.path.dirname(HERE))
+        import perfrun
+
+        class Dev:
+            def sh(self, cmd, timeout=60):
+                assert "scaling_cur_freq" in cmd and "cat" in cmd
+                return "".join(f"/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq {k}\n"
+                               for i, k in ((0, 1200000), (1, 1200000), (10, 1608000), (2, 1008000)))
+        self.assertEqual(perfrun.cpu_khz(Dev(), "scaling_cur_freq"), {"0": 1200000, "1": 1200000, "2": 1008000, "10": 1608000})
+        self.assertEqual(list(perfrun.cpu_khz(Dev(), "scaling_cur_freq")), ["0", "1", "2", "10"])
 
 
 class Threads(unittest.TestCase):

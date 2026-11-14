@@ -342,13 +342,19 @@ CPU_FREQ = "/sys/devices/system/cpu/cpu[0-9]*/cpufreq/"
 
 
 def cpu_khz(dev, name):
-    """Each core's cpufreq `name` (scaling_cur_freq, cpuinfo_max_freq) in kHz, in core order; [] if
-    the device has none."""
+    """Each core's cpufreq `name` (scaling_cur_freq, cpuinfo_max_freq) in kHz, by CPU number from its
+    sysfs path ({"0": khz, ...}); {} if the device has none. The shell sorts cpu10 before cpu2, so the
+    number comes from the path, never the position (CodeRabbit on #250)."""
     try:
-        out = dev.sh(f"cat {CPU_FREQ}{name} 2>/dev/null", timeout=15)
+        out = dev.sh(f"for f in {CPU_FREQ}{name}; do echo \"$f $(cat $f 2>/dev/null)\"; done", timeout=15)
     except (subprocess.SubprocessError, OSError):
-        return []
-    return [int(x) for x in out.split() if x.isdigit()]
+        return {}
+    got = {}
+    for line in out.splitlines():
+        m = re.search(r"/cpu(\d+)/cpufreq/\S+ (\d+)$", line.strip())
+        if m:
+            got[m.group(1)] = int(m.group(2))
+    return dict(sorted(got.items(), key=lambda kv: int(kv[0])))
 # A view not done this long after it opened is recorded as timed out: what it measured stands, and
 # what it didn't fails (#202, smoke 7: heavy never finished, and the whole run was dropped after 900 s).
 # The runner then restarts the kiosk, as at the run's start, and opens the run's remaining views: a
@@ -463,6 +469,10 @@ def cmd_coldstart(dev, a):
             cur = st.get("current") if st.get("view_open") else None
             if cur and not st.get("recovering"):
                 khz = cpu_khz(dev, "scaling_cur_freq")
+                # The read takes a moment: keep it only if the same view is still open (no next view,
+                # recovery or end meanwhile), so it is never put under the view before (CodeRabbit).
+                if st.get("current") != cur or not st.get("view_open") or st.get("recovering") or stop.is_set():
+                    continue
                 if khz:
                     res.setdefault("cpu_khz", []).append([cur[0], round(time.time(), 1), khz])
 

@@ -552,15 +552,19 @@ class CpuClock(unittest.TestCase):
         runs = []
         for k in (1, 2, 3):
             r = refstart(k, 100)
-            r["cpu_max_khz"] = [1608000] * 4
-            r["cpu_khz"] = [["light", 1.0, [1200000] * 4], ["heavy", 2.0, [1200000, 1200000, 1008000, 1608000]]]
+            r["cpu_max_khz"] = {"0": 1608000, "1": 1608000, "2": 1608000, "10": 1608000}
+            # CPU numbers from the sysfs paths: cpu10 is cpu10, whatever order the shell listed it in.
+            r["cpu_khz"] = [["light", 1.0, {"0": 1200000, "1": 1200000, "2": 1200000, "10": 1200000}],
+                            ["heavy", 2.0, {"10": 1608000, "0": 1200000, "1": 1200000, "2": 1008000}]]
             runs.append(R.reference_run(r))
         ref = R.reference_summary(runs)
         self.assertEqual(ref["tiers"]["light"]["cpu_mhz"], {"median": 1200.0, "min": 1200.0, "max": 1200.0, "n": 12})
         self.assertEqual((ref["tiers"]["heavy"]["cpu_mhz"]["min"], ref["tiers"]["heavy"]["cpu_mhz"]["max"]), (1008.0, 1608.0))
         self.assertIsNone(ref["tiers"]["typical"]["cpu_mhz"])
         self.assertEqual(ref["cpu_max_mhz"], 1608.0)
-        self.assertEqual([c["median"] for c in ref["tiers"]["heavy"]["cpu_mhz_by_core"]], [1200.0, 1200.0, 1008.0, 1608.0])
+        self.assertEqual({i: c["median"] for i, c in ref["tiers"]["heavy"]["cpu_mhz_by_core"].items()},
+                         {"0": 1200.0, "1": 1200.0, "2": 1008.0, "10": 1608.0})
+        self.assertEqual(list(ref["tiers"]["heavy"]["cpu_mhz_by_core"]), ["0", "1", "2", "10"])
         # report.md: the interval the run used, and each core when they differ (big.LITTLE).
         for r in runs:
             r["cpu_clock_s"] = 5.0
@@ -568,7 +572,7 @@ class CpuClock(unittest.TestCase):
         clocks = [(t, s_["cpu_mhz"]) for t, s_ in ref["tiers"].items() if (s_.get("cpu_mhz") or {}).get("median") is not None]
         line = R.cpu_clock_line(ref, clocks, ref["cpu_max_mhz"], ref["cpu_clock_s"])
         self.assertEqual(line, "CPU clock while each view was open (detail, every core, every 5 s): light 1200 MHz (1200 to 1200); "
-                               "heavy core 0 1200, core 1 1200, core 2 1008, core 3 1608 MHz (medians); the CPU's top clock is 1608 MHz.")
+                               "heavy cpu0 1200, cpu1 1200, cpu2 1008, cpu10 1608 MHz (medians); the CPU's top clock is 1608 MHz.")
         # And without samples (a run from before): nothing.
         self.assertIsNone(R.reference_summary([R.reference_run(refstart(1, 100))])["cpu_max_mhz"])
 
