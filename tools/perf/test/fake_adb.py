@@ -191,6 +191,10 @@ def shell(cmd):
         if "case" in cmd:
             return "45000\n"
         return "cpu_thermal_zone=45000 gpu_thermal_zone=44000\n" if "=" in cmd else "cpu_thermal_zone 45000\ngpu_thermal_zone 44000\n"
+    if "cpufreq/scaling_cur_freq" in cmd:
+        return "1200000\n1200000\n1200000\n1200000\n"      # as #244 found the S1: held at 1.2 GHz
+    if "cpufreq/cpuinfo_max_freq" in cmd:
+        return "1608000\n1608000\n1608000\n1608000\n"
     if cmd == "cat /proc/loadavg":
         return "0.50 0.60 0.70 1/500 1234\n"
     if cmd.startswith("wm size"):

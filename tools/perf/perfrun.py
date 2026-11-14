@@ -334,6 +334,21 @@ LIVE_IDLE_WAKE_S = float(os.environ.get("GW_PERF_LIVE_IDLE_WAKE_S", "10"))
 # this often, and once at the stop and once at the relaunch: s1rtc7 run 2 lost the screen 20.4 s after
 # the stop, before the kiosk's first frame, which then waited 280 s for the screen to come back.
 RESTART_WAKE_S = float(os.environ.get("GW_PERF_RESTART_WAKE_S", "8"))
+# The CPU clock each view ran at (detail, #244: the S1's power HAL held 1.2 of its 1.608 GHz): every
+# core's scaling_cur_freq this often while a view is open, and each core's cpuinfo_max_freq once.
+# Read-only `cat`s of sysfs over adb; one every 5 s is a fraction of a percent of a core.
+CPU_CLOCK_S = float(os.environ.get("GW_PERF_CPU_CLOCK_S", "5"))
+CPU_FREQ = "/sys/devices/system/cpu/cpu[0-9]*/cpufreq/"
+
+
+def cpu_khz(dev, name):
+    """Each core's cpufreq `name` (scaling_cur_freq, cpuinfo_max_freq) in kHz, in core order; [] if
+    the device has none."""
+    try:
+        out = dev.sh(f"cat {CPU_FREQ}{name} 2>/dev/null", timeout=15)
+    except (subprocess.SubprocessError, OSError):
+        return []
+    return [int(x) for x in out.split() if x.isdigit()]
 # A view not done this long after it opened is recorded as timed out: what it measured stands, and
 # what it didn't fails (#202, smoke 7: heavy never finished, and the whole run was dropped after 900 s).
 # The runner then restarts the kiosk, as at the run's start, and opens the run's remaining views: a
@@ -438,6 +453,16 @@ def cmd_coldstart(dev, a):
                 st["touched_at"] = time.time()
                 res.setdefault("live_wakes", []).append([st["current"][0] if st["current"] else None, round(time.time(), 1)])
 
+    def cpu_clock():
+        """[view, time, [kHz per core]] every CPU_CLOCK_S while a view is open (cpu_khz in the run's file)."""
+        res["cpu_max_khz"] = cpu_khz(dev, "cpuinfo_max_freq")
+        while not stop.wait(CPU_CLOCK_S):
+            cur = st.get("current")
+            if cur and not st.get("recovering"):
+                khz = cpu_khz(dev, "scaling_cur_freq")
+                if khz:
+                    res.setdefault("cpu_khz", []).append([cur[0], round(time.time(), 1), khz])
+
     def quiet_for(secs, cap):
         """Wait until no new frame has been presented for `secs` (at most `cap` s). True if it went quiet."""
         end, last, since = time.time() + cap, len(presents), time.time()
@@ -452,6 +477,7 @@ def cmd_coldstart(dev, a):
     poller.start()
     if ref:
         threading.Thread(target=keep_awake, daemon=True).start()
+        threading.Thread(target=cpu_clock, daemon=True).start()
     res = {"run": a.run, "launch": None, "am_total_ms": None, "ttid_ms": None, "stop_mono": None, "proc_mono": None,
            "displayed_mono": None, "engine_mono": None, "engine_uri": None, "own_page_start_mono": None,
            "own_page_stop_mono": None, "own_page_loads": 0, "own_page_state": None,

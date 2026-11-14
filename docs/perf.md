@@ -674,8 +674,8 @@ minutes. On macOS the first run may show the firewall's "accept incoming connect
 Python; either answer works, since nothing comes from outside the computer.
 
 **The profile in the answer isn't the stream's, as with go2rtc.** The stream is x264's Main
-profile, and the fake's answer gives a Baseline `profile-level-id` (`42001f`), the H.264 entry aiortc
-matches with the offer. go2rtc 1.9.15, which HA 2026.11.0 pins, does the same: its `Codec.Match`
+profile, and the fake's answer lists the two Baseline `profile-level-id`s aiortc has, `42001f`
+first, then `42e01f`. go2rtc 1.9.15, which HA 2026.11.0 pins, does the same: its `Codec.Match`
 (`pkg/core/codec.go:126`) compares only the codec name, clock rate and channels, its own H.264 list
 starts with `42001f` (`pkg/webrtc/api.go:277`), and it passes a camera's Main or High stream
 through unchanged. Gecko, the panel's engine, offers only `42e01f` and `42001f`, so a Main fmtp
@@ -948,6 +948,7 @@ and lags the compositor's first scrolled frame.
 |---|---|
 | Animations it can handle | The animation test page's ladder: five families of animated elements, each doubling from 1 to 1024 (CSS transform, CSS opacity, SVG, canvas 2D, HA-like tiles whose numbers change every frame). The report gives the largest count held at 60 fps and at 30 fps. The same page has a scripted scroll stage and a JS workload (an HA-like state update for 400 entities, checked by a checksum) |
 | Android's TTID | The `Displayed …: +Nms` line of each restart |
+| CPU clock per view | Every core's `scaling_cur_freq` every 5 s while a view is open, and each core's `cpuinfo_max_freq` once (read-only `cat`s of `/sys/devices/system/cpu/cpu*/cpufreq/` over adb). report.md gives each view's median and range in MHz beside the CPU's top clock, so a capped or boosted CPU shows (#244: the S1's power HAL holds 1.2 of its 1.608 GHz). The run's file has `cpu_khz` (`[view, time, [kHz per core]]`) and `cpu_max_khz`; report.json has each tier's `cpu_mhz` and `graded.reference.cpu_max_mhz` |
 | Your dashboard | A restart back to your own dashboard: process start to its `PageStart`, its load to settled, and the whole wait from the force-stop. A run that doesn't finish within 120 s is recorded as an error |
 | RAM on the reference dashboards | PSS per process at idle on the typical reference dashboard and the peak during the graded tasks, and each switchable pane's share. See [RAM](#ram) |
 | Memory on your dashboard | PSS of every app process (the app, Gecko's GPU, content and crash helper processes), the main process's App Summary, each process's peak RSS (`VmHWM`), the radio's processes, and `MemTotal`/`MemAvailable`, at idle on your dashboard and at the run's peak |

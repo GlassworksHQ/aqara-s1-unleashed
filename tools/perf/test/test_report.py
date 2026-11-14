@@ -545,6 +545,25 @@ class TimedOut(unittest.TestCase):
         self.assertEqual(R.camera_cell({"camera_runs": [late]}, {"camera": "slow"}), "the view didn't finish in 1 of 1 run(s), slow")
 
 
+class CpuClock(unittest.TestCase):
+    """#244: the CPU clock each view ran at, as detail (the S1's power HAL held 1.2 of 1.608 GHz)."""
+
+    def test_per_view_clock_and_the_top(self):
+        runs = []
+        for k in (1, 2, 3):
+            r = refstart(k, 100)
+            r["cpu_max_khz"] = [1608000] * 4
+            r["cpu_khz"] = [["light", 1.0, [1200000] * 4], ["heavy", 2.0, [1200000, 1200000, 1008000, 1608000]]]
+            runs.append(R.reference_run(r))
+        ref = R.reference_summary(runs)
+        self.assertEqual(ref["tiers"]["light"]["cpu_mhz"], {"median": 1200.0, "min": 1200.0, "max": 1200.0, "n": 12})
+        self.assertEqual((ref["tiers"]["heavy"]["cpu_mhz"]["min"], ref["tiers"]["heavy"]["cpu_mhz"]["max"]), (1008.0, 1608.0))
+        self.assertIsNone(ref["tiers"]["typical"]["cpu_mhz"])
+        self.assertEqual(ref["cpu_max_mhz"], 1608.0)
+        # And without samples (a run from before): nothing.
+        self.assertIsNone(R.reference_summary([R.reference_run(refstart(1, 100))])["cpu_max_mhz"])
+
+
 class StallsNotReported(unittest.TestCase):
     """#205's verifier: a receiver that reports no freezeCount has stalls n/a, never 0 (which would
     pass the bars), and that run's camera level is not measured."""

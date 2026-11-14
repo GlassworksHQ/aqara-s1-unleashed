@@ -644,6 +644,9 @@ def reference_run(c):
     # Views that timed out (#202): what they measured stands, the rest fails (timed_out above); the
     # runner restarted the kiosk and opened the run's other views.
     base["timed_out"] = list(c.get("timed_out") or [])
+    # The CPU clock while each view was open (detail, #244), in kHz per core per sample.
+    base["cpu_khz"] = c.get("cpu_khz") or []
+    base["cpu_max_khz"] = c.get("cpu_max_khz") or []
     order = c.get("order") or list(c.get("tiers") or {})
     for t, r in tiers.items():
         r["position"] = order.index(t) + 1 if t in order else None
@@ -695,6 +698,8 @@ def reference_summary(all_runs):
             # Detail (#202): the first screen drawn, from the navigation; `load_ms` waits for the main
             # thread to be free as well.
             "drawn_ms": P.spread([x.get("drawn_ms") for x in rs]),
+            # The CPU clock while this view was open (detail, #244): every core's samples, in MHz.
+            "cpu_mhz": P.spread([k / 1000 for r in runs for v, _, ks in r.get("cpu_khz") or [] if v == t for k in ks]),
             # Frames: each run's band, then the median band. Three runs each poor for a different
             # reason are poor, not the band of per-measure medians.
             "scroll": {k: P.spread([f.get(k) for f in sc]) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")},
@@ -761,6 +766,8 @@ def reference_summary(all_runs):
         "launch": sorted({r["launch"] for r in runs if r.get("launch")}),
         "own_page_states": sorted({r["own_page_state"] for r in runs if r.get("own_page_state")}),
         "orders": [r.get("order") for r in runs],
+        # The CPU's top clock (cpuinfo_max_freq, the highest core's), against which cpu_mhz reads.
+        "cpu_max_mhz": max((k / 1000 for r in runs for k in r.get("cpu_max_khz") or []), default=None),
         "bad_page_lines": sum(r.get("bad_page_lines") or 0 for r in all_runs),
         "lost_scroll_steps": sum(r.get("lost_scroll_steps") or 0 for r in all_runs),
         # Graded views that didn't finish within the runner's deadline, as [run, view] (#202). Not a
@@ -1629,6 +1636,12 @@ def markdown(rep):
                 + (f" ({vp['reason']})" if vp.get("reason") else "") + "."]
         if ref["start_errors"]:
             out.append(f"Restart not measured in {len(ref['start_errors'])} run(s) ({'; '.join(sorted(set(ref['start_errors'])))}).")
+        clocks = [(t, s_["cpu_mhz"]) for t, s_ in ref["tiers"].items() if (s_.get("cpu_mhz") or {}).get("median") is not None]
+        if clocks:
+            top = ref.get("cpu_max_mhz")
+            out.append("CPU clock while each view was open (detail, every core, every 5 s): " + "; ".join(
+                f"{t} {c['median']:.0f} MHz ({c['min']:.0f} to {c['max']:.0f})" for t, c in clocks)
+                + (f"; the CPU's top clock is {top:.0f} MHz." if top else "."))
         slow_free = [(t, s_) for t, s_ in ref["tiers"].items()
                      if (s_.get("drawn_ms") or {}).get("median") is not None and (s_.get("load_ms") or {}).get("median") is not None
                      and s_["load_ms"]["median"] - s_["drawn_ms"]["median"] > 5000]

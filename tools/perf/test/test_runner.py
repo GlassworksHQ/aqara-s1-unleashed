@@ -345,6 +345,24 @@ def unasked(tmp):
         return json.load(f)
 
 
+class CpuClock(unittest.TestCase):
+    """#244: the runner samples every core's clock while a view is open (read-only sysfs cats)."""
+
+    def test_each_view_has_its_clock(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, GW_PERF_CPU_CLOCK_S="0.3")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["cpu_max_khz"], [1608000] * 4)
+        views = {v for v, _, _ in c["cpu_khz"]}
+        self.assertLessEqual(views, {"light", "typical-nocam", "typical", "heavy"})
+        self.assertTrue(views, c.get("cpu_khz"))
+        self.assertTrue(all(k == [1200000] * 4 for _, _, k in c["cpu_khz"]))
+        with open(os.path.join(tmp, "state", "..", "state", "commands.log")) as f:
+            log = f.read()
+        self.assertIn("cpufreq/scaling_cur_freq", log)
+        self.assertNotRegex(log, r"echo .*> */sys|setprop|cpufreq/scaling_(max|min|setspeed)")   # reads only
+
+
 class Threads(unittest.TestCase):
     """s1rtc5: a local named like the runner's stream-stop helper made it a bool, and its thread died
     on every view (TypeError: 'bool' object is not callable) while the runs went on. Any exception in
