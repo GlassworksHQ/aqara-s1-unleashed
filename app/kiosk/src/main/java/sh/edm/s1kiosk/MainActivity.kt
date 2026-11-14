@@ -311,7 +311,7 @@ class MainActivity : Activity() {
     private fun openInPage(url: String) {
         if (beforeNotificationPage == null) beforeNotificationPage = currentUrl
         Log.i(TAG, "Notification: opening a view full screen")
-        if (FrontendUrls.sameOrigin(currentUrl, url)) page?.post(JSONObject().put("type", "navigate").put("url", url))
+        if (FrontendUrls.sameOrigin(currentUrl, url)) page?.post(navigate(url))
         else page?.load(externalize(url))
     }
 
@@ -319,9 +319,12 @@ class MainActivity : Activity() {
     private fun backToDashboard() {
         val back = beforeNotificationPage ?: return
         beforeNotificationPage = null
-        if (FrontendUrls.sameOrigin(currentUrl, back)) page?.post(JSONObject().put("type", "navigate").put("url", back))
+        if (FrontendUrls.sameOrigin(currentUrl, back)) page?.post(navigate(back))
         else loadDashboard()
     }
+
+    /** In place, replacing the history entry: dashboard → view → dashboard leaves one entry, not three. */
+    private fun navigate(url: String) = JSONObject().put("type", "navigate").put("url", url).put("replace", true)
 
     /**
      * Pictures from the panel's own HA, with the dashboard's sign-in. Only when that sign-in belongs to

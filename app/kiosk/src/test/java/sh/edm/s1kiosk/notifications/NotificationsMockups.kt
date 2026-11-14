@@ -126,6 +126,12 @@ class NotificationsMockups {
         shot("notify-08-full-screen-page", NotificationsHub.State(page = page, list = listOf(page)), door = true)
         val leak = entry("Water under the kitchen sink", "The leak sensor turned on at 14:32. The main valve is still open.", Priority.CRITICAL, actions = listOf("Close the valve"), tag = "water_leak")
         shot("notify-09-critical", NotificationsHub.State(cards = listOf(leak), list = listOf(leak)))
+        val longLeak = entry(
+            "Water under the kitchen sink and behind the dishwasher",
+            "The leak sensor under the kitchen sink turned on at 14:32. The main valve is still open, and the dishwasher is running. Water is reaching the floor near the fridge.",
+            Priority.CRITICAL, actions = listOf("Close the valve", "Call", "Silence"), tag = "water_leak",
+        )
+        shot("notify-14-critical-long", NotificationsHub.State(cards = listOf(longLeak), list = listOf(longLeak)))
         shot("notify-10-card-no-picture", NotificationsHub.State(cards = listOf(parcel), list = listOf(parcel)), imgs = noSignIn)
 
         settings("notify-11-settings", on = true, listOf(washer, heldWasher, bin))

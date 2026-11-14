@@ -29,8 +29,11 @@ interface NotificationOutputs {
     /** Turn the screen on. [overNight]: at full brightness, past night dimming. */
     fun wake(overNight: Boolean)
 
-    /** Play [sound]. The player claims the speaker (`PanelEvent.SpeakerClaimed`) while it plays. */
-    fun play(sound: Sound)
+    /**
+     * Play [sound]. The player claims the speaker (`PanelEvent.SpeakerClaimed`) while it plays.
+     * [critical]: it belongs to a critical notification, so it repeats while one is up; otherwise once.
+     */
+    fun play(sound: Sound, critical: Boolean)
 }
 
 /**
@@ -81,7 +84,9 @@ class NotificationCenter(
                 val kept = p.entry !in p.dropped
                 try {
                     if (kept && d.wake) out.wake(d.overNight)
-                    if (kept && d.sound && c.notification.sound != Sound.NONE) out.play(c.notification.sound)
+                    if (kept && d.sound && c.notification.sound != Sound.NONE) {
+                        out.play(c.notification.sound, c.notification.priority == Priority.CRITICAL)
+                    }
                 } finally {
                     changed()
                 }
@@ -130,6 +135,9 @@ class NotificationCenter(
 
     /** Takes the snapshot and renders it under one lock, so an older snapshot never lands after a newer one. */
     private fun changed(): Unit = synchronized(lock) {
+        // Closed: the pane stopped and cleared the screen. A call that got the center just before
+        // must not put its cards back.
+        if (closed) return
         store.expire()
         val s = store.snapshot()
         try {

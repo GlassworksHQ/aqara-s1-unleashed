@@ -35,7 +35,7 @@ class NotificationOverlayTest {
             override fun render(cards: List<NotificationStore.Entry>, page: NotificationStore.Entry?, list: List<NotificationStore.Entry>) =
                 hub.publish(NotificationsHub.State(cards, page, list))
             override fun wake(overNight: Boolean) {}
-            override fun play(sound: Sound) {}
+            override fun play(sound: Sound, critical: Boolean) {}
         },
         { reports += it }, { false }, { "http://homeassistant.local:8123" }, { 0L }, { _, _ -> CompletableFuture<Unit>() },
     ).also { hub.attach(it) }
@@ -109,5 +109,40 @@ class NotificationOverlayTest {
         click("Dismiss")
         assertTrue(hub.state.cards.isEmpty())
         assertTrue("dismissing isn't a button press", reports.isEmpty())
+    }
+
+    /** CodeRabbit on #228: with a long title, a long message and three buttons, Dismiss stays on the 480 dp screen. */
+    @Test
+    fun aLongCriticalAlertKeepsItsButtonsOnScreen() {
+        center.handle(
+            "The leak sensor under the kitchen sink turned on at 14:32. The main valve is still open, and the " +
+                "dishwasher is running. Water is reaching the floor near the fridge.",
+            "Water under the kitchen sink and behind the dishwasher",
+            """{"priority":"critical","actions":[{"action":"a","title":"Close the valve"},{"action":"b","title":"Call"},{"action":"c","title":"Silence"}]}""",
+        )
+        Mockup.layout(overlay.rootView)
+        val dismiss = views(overlay).filterIsInstance<TextView>().first { it.text.toString() == "Dismiss" }
+        val at = IntArray(2).also { dismiss.getLocationInWindow(it) }
+        assertTrue("Dismiss has its height (${dismiss.height})", dismiss.height > 0)
+        assertTrue("Dismiss ends on screen (${at[1] + dismiss.height} ≤ ${Mockup.H})", at[1] + dismiss.height <= Mockup.H)
+    }
+
+    /** CodeRabbit on #228: a picture that arrives after the overlay left the window is dropped. */
+    @Test
+    fun aLatePictureAfterDetachIsDropped() {
+        val release = java.util.concurrent.CountDownLatch(1)
+        val root = Mockup.show(FrameLayout(Mockup.activity()))
+        val o = NotificationOverlay(root.context, hub, images = dev.glassworks.notifications.NotificationImages {
+            release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            dev.glassworks.notifications.ImageFetch.Failed("late")
+        }, now = { 0L })
+        root.addView(o, FrameLayout.LayoutParams(-1, -1))
+        hub.addListener { s -> o.update(s) }
+        center.handle("m", "Porch", """{"image":"/api/camera_proxy/camera.porch"}""")
+        root.removeView(o)
+        release.countDown()
+        repeat(10) { Thread.sleep(30); Mockup.idle() }
+        val pictures = NotificationOverlay::class.java.getDeclaredField("pictures").apply { isAccessible = true }.get(o) as Map<*, *>
+        assertTrue("nothing stored after detach", pictures.isEmpty())
     }
 }

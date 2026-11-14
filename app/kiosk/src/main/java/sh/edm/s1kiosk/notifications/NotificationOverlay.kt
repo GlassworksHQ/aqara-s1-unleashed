@@ -74,6 +74,7 @@ class NotificationOverlay(
     private val pictures = HashMap<Long, Picture>()
     private val loading = HashSet<Long>()
     private val worker: ExecutorService by lazy { Executors.newSingleThreadExecutor { r -> Thread(r, "s1-notify-img").apply { isDaemon = true } } }
+    private var detached = false
     private val refold = Runnable { render() }
     private val pageTick = Runnable { renderPage(state.page) }
 
@@ -130,7 +131,14 @@ class NotificationOverlay(
         return false
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        detached = false
+    }
+
     override fun onDetachedFromWindow() {
+        // A picture that arrives later, or a tick, must not keep this (and its activity) alive.
+        detached = true
         main.removeCallbacks(refold)
         main.removeCallbacks(pageTick)
         super.onDetachedFromWindow()
@@ -140,12 +148,13 @@ class NotificationOverlay(
 
     private fun render() {
         main.removeCallbacks(refold)
-        val view = folds.update(state.cards, screenOn(), now())
-        view.nextFoldAt?.let { main.postDelayed(refold, (it - now()).coerceAtLeast(0) + 50) }
+        // The critical alert is never folded, and covers the cards while it is up.
+        val critical = state.cards.firstOrNull { it.notification.priority == Priority.CRITICAL }
+        val view = folds.update(state.cards.filter { it !== critical }, screenOn(), now(), covered = critical != null)
+        view.nextFoldAt?.takeIf { !detached }?.let { main.postDelayed(refold, (it - now()).coerceAtLeast(0) + 50) }
 
-        val critical = view.cards.firstOrNull { it.notification.priority == Priority.CRITICAL }
-        val cards = view.cards.filter { it !== critical }
-        renderStack(cards.take(3))
+        val cards = view.cards
+        renderStack(cards.take(Folds.IN_VIEW))
         renderPill(cards.size)
         renderStage(critical)
         renderPage(state.page)
@@ -205,25 +214,37 @@ class NotificationOverlay(
         stage.addView(View(context).apply { background = Backdrop(); alpha = 0.97f }, LayoutParams(-1, -1))
         stage.addView(Orb(context), LayoutParams(px(300f), px(300f), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = px(12f) })
         val n = e.notification
-        stage.addView(LinearLayout(context).apply {
+        // The buttons sit at the bottom of the screen, so Dismiss is always there; the text gets the
+        // room between the orb and them, and scrolls if HA sent more than fits on 480 dp.
+        val text = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             addView(g.label(if (n.tag != null) "Critical · ${n.tag.replace('_', ' ')}" else "Critical").apply { setTextColor(ROSE); gravity = Gravity.CENTER })
-            addView(g.heading(44f).apply { text = n.title.ifEmpty { n.message }; gravity = Gravity.CENTER; maxLines = 2; ellipsize = TextUtils.TruncateAt.END },
-                LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(14f) })
-            if (n.title.isNotEmpty() && n.message.isNotEmpty()) addView(g.text(17f, MU).apply { text = n.message; gravity = Gravity.CENTER; maxLines = 3 },
-                LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(10f) })
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                n.actions.forEachIndexed { i, a ->
-                    val b = if (i == 0) g.primary(a.title) else g.ghost(a.title)
-                    b.setOnClickListener { tap(e, a.id, a.uri) }
-                    addView(b, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = px(12f) })
-                }
-                addView(g.ghost("Dismiss").apply { setOnClickListener { hub.dismiss(e.id) } },
-                    LinearLayout.LayoutParams(-2, -2).apply { if (n.actions.isNotEmpty()) marginStart = px(12f) })
-            }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(26f) })
-        }, LayoutParams(px(860f), -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = px(252f) })
+            val title = n.title.ifEmpty { n.message }
+            addView(g.heading(if (title.length > LONG_TITLE) 32f else 44f).apply { this.text = title; gravity = Gravity.CENTER },
+                LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(12f) })
+            if (n.title.isNotEmpty() && n.message.isNotEmpty()) addView(g.text(17f, MU).apply { this.text = n.message; gravity = Gravity.CENTER },
+                LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(8f) })
+        }
+        stage.addView(ScrollView(context).apply {
+            isVerticalFadingEdgeEnabled = true
+            setFadingEdgeLength(px(20f))
+            addView(text, LayoutParams(-1, -2))
+        }, LayoutParams(px(860f), -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+            topMargin = px(STAGE_TEXT_TOP_DP)
+            bottomMargin = px(STAGE_BUTTONS_BOTTOM_DP + STAGE_BUTTONS_DP + 16f)
+        })
+        stage.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            n.actions.forEachIndexed { i, a ->
+                val b = if (i == 0) g.primary(a.title) else g.ghost(a.title)
+                b.setOnClickListener { tap(e, a.id, a.uri) }
+                addView(b, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = px(12f) })
+            }
+            addView(g.ghost("Dismiss").apply { setOnClickListener { hub.dismiss(e.id) } },
+                LinearLayout.LayoutParams(-2, -2).apply { if (n.actions.isNotEmpty()) marginStart = px(12f) })
+        }, LayoutParams(-1, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = px(STAGE_BUTTONS_BOTTOM_DP) })
     }
 
     private fun renderPage(e: Entry?) {
@@ -246,7 +267,7 @@ class NotificationOverlay(
             }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(18f) })
             if (left != null && n.timeoutS != null) {
                 addView(TimeLeft(context, left / (n.timeoutS * 1000f)), LinearLayout.LayoutParams(px(80f), px(3f)).apply { marginEnd = px(18f) })
-                main.postDelayed(pageTick, 1_000)
+                if (!detached) main.postDelayed(pageTick, 1_000)
             }
             addView(smallPill("Back now", white = true).apply { setOnClickListener { hub.dismiss(e.id) } })
         })
@@ -322,7 +343,7 @@ class NotificationOverlay(
             }
             main.post {
                 loading.remove(e.id)
-                if (state.list.any { it.id == e.id }) { pictures[e.id] = p; render() }
+                if (!detached && state.list.any { it.id == e.id }) { pictures[e.id] = p; render() }
             }
         }
     }
@@ -509,6 +530,11 @@ class NotificationOverlay(
         const val CARD_DP = 400f
         const val SHEET_DP = 460f
         const val MARGIN_DP = 16f
+        /** The critical alert's layout: the text starts under the orb, the buttons end 28 dp above the bottom. */
+        const val STAGE_TEXT_TOP_DP = 236f
+        const val STAGE_BUTTONS_BOTTOM_DP = 28f
+        const val STAGE_BUTTONS_DP = 52f
+        const val LONG_TITLE = 32
         val CARD = Color.parseColor("#16171c")
 
         fun clock(ms: Long): String {

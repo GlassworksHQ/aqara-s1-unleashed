@@ -54,7 +54,9 @@ variables:
 triggers:
   - trigger: state
     entity_id: !input doorbell
-    not_from: unavailable
+    # Not when it goes away or comes back: only a real ring.
+    not_from: [unknown, unavailable]
+    not_to: [unknown, unavailable]
 
 conditions:
   # An event entity changes state on every ring; a binary sensor only counts when it turns on.

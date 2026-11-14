@@ -44,15 +44,21 @@ class NotificationsHub {
     fun detach(c: NotificationCenter) {
         if (center !== c) return
         center = null
-        publish(State(doNotDisturb = state.doNotDisturb))
+        update { State(doNotDisturb = it.doNotDisturb) }
     }
 
     val running: Boolean get() = center != null
 
+    /** Sets [state] and tells the listeners, in one step: the last state set is the last one they hear. */
+    @Synchronized
     fun publish(s: State) {
         state = s
         for (l in listeners) runCatching { l(s) }
     }
+
+    /** [publish] what [change] makes of the current state, read and set in one step. */
+    @Synchronized
+    fun update(change: (State) -> State) = publish(change(state))
 
     fun tapAction(id: Long, actionId: String) { center?.tapAction(id, actionId) }
     fun dismiss(id: Long) { center?.dismiss(id) }

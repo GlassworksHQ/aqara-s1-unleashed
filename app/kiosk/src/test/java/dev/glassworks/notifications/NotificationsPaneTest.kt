@@ -165,4 +165,35 @@ class NotificationsPaneTest {
         assertTrue(hub.sendTest())
         assertEquals(NotificationsHub.TEST_TITLE, hub.state.cards.single().notification.title)
     }
+
+    /** CodeRabbit on #228: "alert" on a normal one plays once and isn't cut off. */
+    @Test
+    fun theAlertSoundOnANormalOnePlaysOnce() {
+        pane.start()
+        notify("Oven", data = """{"sound":"alert"}""")
+        assertEquals(listOf(Sound.ALERT), played)
+        assertEquals("not silenced by the next render", 0, silenced)
+        assertFalse("no repeat", timers.any { it.first == NotificationsPane.ALERT_REPEAT_MS })
+    }
+
+    /** CodeRabbit on #228: a repeat already due when the pane stops doesn't ring again. */
+    @Test
+    fun aRepeatDueAtStopDoesNotRing() {
+        pane.start()
+        notify("Water leak", data = """{"priority":"critical"}""")
+        val repeat = timers.last { it.first == NotificationsPane.ALERT_REPEAT_MS }.second
+        pane.stop()
+        repeat()
+        assertEquals(listOf(Sound.ALERT), played)
+    }
+
+    /** CodeRabbit on #228: a call that got the center just before stop() doesn't put cards back. */
+    @Test
+    fun aLateCallAfterStopShowsNothing() {
+        pane.start()
+        val center = NotificationsPane::class.java.getDeclaredField("center").apply { isAccessible = true }.get(pane) as NotificationCenter
+        pane.stop()
+        center.handle("late", "Late", "")
+        assertTrue(hub.state.cards.isEmpty())
+    }
 }

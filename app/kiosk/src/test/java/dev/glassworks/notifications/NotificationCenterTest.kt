@@ -31,7 +31,7 @@ class NotificationCenterTest {
             this@NotificationCenterTest.cards = cards; this@NotificationCenterTest.page = page; renders++
         }
         override fun wake(overNight: Boolean) { woke += overNight }
-        override fun play(sound: Sound) { if (playFails) error("no speaker"); played += sound }
+        override fun play(sound: Sound, critical: Boolean) { if (playFails) error("no speaker"); played += sound }
     }
 
     private val center = NotificationCenter(
@@ -144,7 +144,7 @@ class NotificationCenterTest {
                     Thread.yield()
                 }
                 override fun wake(overNight: Boolean) {}
-                override fun play(sound: Sound) {}
+                override fun play(sound: Sound, critical: Boolean) {}
             },
             {}, { false }, { null }, { 0L }, { _, _ -> CompletableFuture<Unit>() },
         )
@@ -177,7 +177,7 @@ class NotificationCenterTest {
                     seen += cards.size to list.size
                 }
                 override fun wake(overNight: Boolean) {}
-                override fun play(sound: Sound) {}
+                override fun play(sound: Sound, critical: Boolean) {}
             },
             {}, { false }, { null }, { 0L }, { _, _ -> CompletableFuture<Unit>() },
         )
@@ -202,7 +202,7 @@ class NotificationCenterTest {
                 object : NotificationOutputs {
                     override fun render(cards: List<NotificationStore.Entry>, page: NotificationStore.Entry?, list: List<NotificationStore.Entry>) { renders++ }
                     override fun wake(overNight: Boolean) {}
-                    override fun play(sound: Sound) {}
+                    override fun play(sound: Sound, critical: Boolean) {}
                 },
                 {}, { false }, { null }, clock,
                 { ms, action -> exec.schedule({ action() }, ms, java.util.concurrent.TimeUnit.MILLISECONDS) },
@@ -228,7 +228,7 @@ class NotificationCenterTest {
             object : NotificationOutputs {
                 override fun render(cards: List<NotificationStore.Entry>, page: NotificationStore.Entry?, list: List<NotificationStore.Entry>) {}
                 override fun wake(overNight: Boolean) { woke++ }
-                override fun play(sound: Sound) { heard += sound }
+                override fun play(sound: Sound, critical: Boolean) { heard += sound }
             },
             {}, { false }, { null }, { 0L }, { _, _ -> CompletableFuture<Unit>() },
         )

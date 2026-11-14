@@ -54,6 +54,8 @@ class NotificationsPane(
     private var alertTimer: Future<*>? = null
     private var alertUntil = 0L
     private var criticalUp = false
+    /** Bumped by [stopAlert], so a repeat already waiting for the lock knows it is stale. */
+    private var alertGen = 0
 
     private val entities = NotificationEntities(
         onNotify = { m, t, d ->
@@ -63,7 +65,7 @@ class NotificationsPane(
         getDoNotDisturb = { prefs.doNotDisturb },
         setDoNotDisturb = { on ->
             prefs.doNotDisturb = on
-            hub.publish(hub.state.copy(doNotDisturb = on))
+            synchronized(lock) { hub.update { it.copy(doNotDisturb = on) } }
             ctx.publishStates()
         },
     )
@@ -72,11 +74,12 @@ class NotificationsPane(
 
     private val outputs = object : NotificationOutputs {
         override fun render(cards: List<NotificationStore.Entry>, page: NotificationStore.Entry?, list: List<NotificationStore.Entry>) {
-            hub.publish(NotificationsHub.State(cards, page, list, prefs.doNotDisturb))
             val urgent = (cards + listOfNotNull(page)).any { it.delivery.overNight }
             val critical = cards.any { it.notification.priority == Priority.CRITICAL } ||
                 page?.notification?.priority == Priority.CRITICAL
             synchronized(lock) {
+                // Under the pane's lock, as Do not disturb's publish: neither overwrites the other with an older state.
+                hub.publish(NotificationsHub.State(cards, page, list, prefs.doNotDisturb))
                 criticalUp = critical
                 if (!critical) stopAlert()
                 if (!urgent) releaseScreen()
@@ -85,8 +88,9 @@ class NotificationsPane(
 
         override fun wake(overNight: Boolean) = synchronized(lock) { holdScreen() }
 
-        override fun play(sound: Sound) {
-            if (sound == Sound.ALERT) synchronized(lock) { startAlert() } else sound(sound)
+        override fun play(sound: Sound, critical: Boolean) {
+            // Only a critical notification's sound repeats. "alert" on a normal one plays once.
+            if (critical) synchronized(lock) { startAlert(sound) } else sound(sound)
         }
     }
 
@@ -108,6 +112,7 @@ class NotificationsPane(
 
     override fun stop() {
         val c = synchronized(lock) {
+            criticalUp = false
             stopAlert()
             releaseScreen()
             center.also { center = null }
@@ -118,7 +123,7 @@ class NotificationsPane(
 
     override fun onEvent(event: PanelEvent) {
         if (event is PanelEvent.SettingChanged && event.key == NotificationsPrefs.KEY_DND) {
-            hub.publish(hub.state.copy(doNotDisturb = prefs.doNotDisturb))
+            synchronized(lock) { hub.update { it.copy(doNotDisturb = prefs.doNotDisturb) } }
         }
     }
 
@@ -136,24 +141,27 @@ class NotificationsPane(
         if (holding) { holding = false; screen.release() }
     }
 
-    private fun startAlert() {
+    private fun startAlert(s: Sound) {
         criticalUp = true
         if (alertTimer != null) return
         alertUntil = now() + ALERT_MAX_MS
-        ring()
+        ring(s, alertGen)
     }
 
-    private fun ring() {
-        sound(Sound.ALERT)
+    private fun ring(s: Sound, gen: Int) {
+        sound(s)
         alertTimer = schedule(ALERT_REPEAT_MS) {
             synchronized(lock) {
+                // A repeat that started waiting before stopAlert() or stop() finds a newer generation and ends.
+                if (gen != alertGen) return@synchronized
                 alertTimer = null
-                if (criticalUp && now() < alertUntil) ring() else EspHomeLog.i("notifications: alert stopped")
+                if (criticalUp && now() < alertUntil) ring(s, gen) else EspHomeLog.i("notifications: alert stopped")
             }
         }
     }
 
     private fun stopAlert() {
+        alertGen++
         alertTimer?.cancel(false)
         if (alertTimer != null) silence()
         alertTimer = null

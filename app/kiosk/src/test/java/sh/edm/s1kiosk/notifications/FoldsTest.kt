@@ -40,4 +40,35 @@ class FoldsTest {
         folds.pin(1)
         assertEquals(listOf(n), folds.update(listOf(n), true, 1_000_000).cards)
     }
+
+    /** CodeRabbit on #228: time counts only on screen, and adds up across a screen-off gap. */
+    @Test
+    fun theScreenGoingOffPausesTheClock() {
+        val n = e(1, Priority.NORMAL)
+        folds.update(listOf(n), screenOn = true, now = 0)
+        folds.update(listOf(n), screenOn = false, now = 5_000)      // read for 5 s, then the screen went off
+        assertEquals(listOf(n), folds.update(listOf(n), false, 60_000).cards)
+        assertEquals("10 s left once it's back on", 40_000L, folds.update(listOf(n), true, 30_000).nextFoldAt)
+        assertEquals(listOf(n), folds.update(listOf(n), true, 39_999).cards)
+        assertEquals(emptyList<Entry>(), folds.update(listOf(n), true, 40_000).cards)
+    }
+
+    /** CodeRabbit on #228: a fourth card, out of the stack, doesn't fold before anyone saw it. */
+    @Test
+    fun onlyTheShownCardsCount() {
+        val four = (1L..4L).map { e(it, Priority.NORMAL) }
+        folds.update(four, true, 0)
+        val v = folds.update(four, true, 15_000)
+        assertEquals("the three shown folded; the fourth is now shown, its clock just started", listOf(four[3]), v.cards)
+        assertEquals(30_000L, v.nextFoldAt)
+    }
+
+    /** CodeRabbit on #228: under the critical alert, nothing is seen, so nothing folds. */
+    @Test
+    fun theCriticalAlertCoversTheCards() {
+        val n = e(1, Priority.NORMAL)
+        folds.update(listOf(n), true, 0, covered = true)
+        assertEquals(listOf(n), folds.update(listOf(n), true, 60_000, covered = true).cards)
+        assertNull(folds.update(listOf(n), true, 60_000, covered = true).nextFoldAt)
+    }
 }
