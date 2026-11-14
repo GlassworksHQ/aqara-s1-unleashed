@@ -43,7 +43,7 @@ sources actually say about later revisions, and can a buyer tell them apart by s
 | A later revision uses an NXP i.MX8 (i.MX8M Mini) board | repairman29 `supported-devices.md`; Onemoremichael `nxp.md` | read, 2026-11-13; no hardware |
 | On it, only hardware-assisted (JTAG) access has been reported | Onemoremichael `nxp.md` | read, 2026-11-13; no hardware |
 | It is not a target for this frame | Different SoC, bootloader, Android and trust chain (repairman29); the frame is built for MSM8916 | Our decision |
-| 40 vs 43 inches is a panel change, not a board change | olm3ca `README.md` | read, 2026-11-13 |
+| 40 vs 43 inches is a panel change; the source doesn't say whether the board changed with it | olm3ca `README.md` | read, 2026-11-13 |
 | Size, year and branding don't identify the board | Onemoremichael `panels.md`; olm3ca | read, 2026-11-13 |
 
 What this rules out: telling a target from its screen size, the year it was bought, or the "Studio"
@@ -53,6 +53,10 @@ branding. The earlier "about 43 inches, a blue button on the top edge" wording i
 
 Use the check the frame already gives (`ratingsNote` in `design/frame.json`): in fastboot, the unit
 must report MSM8916 and the expected partition sizes. If anything differs, stop.
+
+The sizes are known from one unit only: the maintainer's, read from `/sys/class/block/*/uevent` with
+the community image installed (#40). `system` is 1228 MB and `userdata` 5324 MB, the two partitions
+the install writes. Treat them as a reference, not a spec: no other unit has been read.
 
 ## Open questions
 
