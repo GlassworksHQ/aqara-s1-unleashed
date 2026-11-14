@@ -43,11 +43,12 @@ class WallBaseHandOverTest {
         override fun onButton(channel: Int, type: String) {}
     }
 
-    private fun base(closeMs: Long): WallBase {
+    private fun base(closeMs: Long, closeWaitMs: Long = 30_000): WallBase {
         var made = 0
-        return WallBase(RuntimeEnvironment.getApplication(), BaseLayout.NONE, Quiet, WallBase.Config(BaseBackend.UART)) { _, _, _ ->
-            SlowLink(++made, closeMs)
-        }
+        return WallBase(
+            RuntimeEnvironment.getApplication(), BaseLayout.NONE, Quiet, WallBase.Config(BaseBackend.UART),
+            { _, _, _ -> SlowLink(++made, closeMs) }, closeWaitMs,
+        )
     }
 
     private fun waitFor(what: String, cond: () -> Boolean) {
@@ -65,6 +66,22 @@ class WallBaseHandOverTest {
         waitFor("second link open") { "open 2" in log }
         assertEquals(listOf("open 1", "closed 1", "open 2"), log.toList())
         b.stop()
+    }
+
+    /**
+     * #210 review: a close that outlasts the next start's wait. The new link opens anyway; the old close,
+     * ending later, must not clear it, so the next stop still closes it.
+     */
+    @Test fun aCloseOutlastingTheWaitLeavesItsSuccessorClosable() {
+        val b = base(closeMs = 4_000, closeWaitMs = 500)
+        b.start()
+        waitFor("first link open") { "open 1" in log }
+        b.stop()   // returns after 3 s; the close goes on to 4 s
+        b.start()  // waits 0.5 s, then opens anyway
+        waitFor("old link closed") { "closed 1" in log }
+        assertTrue("the second link opened before the first finished closing: $log", log.indexOf("open 2") in 0 until log.indexOf("closed 1"))
+        b.stop()
+        waitFor("the second link closed by stop()") { "closed 2" in log }
     }
 
     @Test fun startingTwiceClosesTheFirstLink() {

@@ -33,6 +33,8 @@ class WallBase internal constructor(
     config: Config,
     /** Makes the link for a config. A test passes one whose close is slow. */
     private val newLink: ((Config, ScheduledExecutorService, BaseLink.Listener) -> BaseLink)?,
+    /** How long a new link waits for the old one to close its port before it opens anyway. */
+    private val closeWaitMs: Long = 30_000,
 ) {
     constructor(context: Context, initial: BaseLayout, listener: Listener, config: Config) :
         this(context, initial, listener, config, null)
@@ -57,8 +59,6 @@ class WallBase internal constructor(
 
     companion object {
         private const val TAG = "S1Base"
-        /** How long a new link waits for the old one to close its port. */
-        private const val CLOSE_WAIT_S = 30L
         private const val DOCK_INTERVAL_MS = 60_000L
         private const val NO_REPLY_MS = 15_000L
         private const val MIN_DOCK_READ_GAP_MS = 2_000L
@@ -70,7 +70,8 @@ class WallBase internal constructor(
     /** The "s1-base" thread. A new one for each [start] after a [stop]: the pane can be turned off and on (#67). */
     @Volatile private var exec: ScheduledExecutorService = newThread()
     val tracker = BaseTracker(initial)
-    private var link: BaseLink? = null
+    /** The open link. Two "s1-base" threads can touch it at a hand-over: volatile. */
+    @Volatile private var link: BaseLink? = null
     @Volatile var config: Config = config
         private set
 
@@ -85,7 +86,7 @@ class WallBase internal constructor(
     /**
      * Starts the link with [c]: the config wanted now, which may have changed while the base was stopped.
      * After a [stop] whose close isn't done yet, the new link opens only once the old one has closed its
-     * port (on the new thread, waiting up to [CLOSE_WAIT_S]).
+     * port (on the new thread, waiting up to [closeWaitMs]).
      */
     fun start(c: Config = config) {
         config = c
@@ -93,7 +94,7 @@ class WallBase internal constructor(
         if (old.isShutdown) {
             exec = newThread()
             exec.execute {
-                if (!old.awaitTermination(CLOSE_WAIT_S, TimeUnit.SECONDS)) Log.w(TAG, "the old wall base link still closes after $CLOSE_WAIT_S s; opening anyway")
+                if (!old.awaitTermination(closeWaitMs, TimeUnit.MILLISECONDS)) Log.w(TAG, "the old wall base link still closes after $closeWaitMs ms; opening anyway")
             }
         }
         exec.execute { startLink() }
@@ -107,7 +108,8 @@ class WallBase internal constructor(
     fun stop() {
         val e = exec
         try {
-            e.submit { link?.stop(); link = null }.get(3, TimeUnit.SECONDS)
+            // Takes the link out first: a close that outlasts the next start's wait can't clear its successor.
+            e.submit { val l = link; link = null; l?.stop() }.get(3, TimeUnit.SECONDS)
         } catch (_: java.util.concurrent.TimeoutException) {
             Log.w(TAG, "the wall base link takes more than 3 s to close; it goes on closing")
         } catch (_: Exception) {}
