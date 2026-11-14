@@ -87,14 +87,14 @@ announcements, with a calm full-screen overlay while you talk.
 
 | | |
 |---|---|
-| 🏠 **One ESPHome device** | HA discovers the panel and sets up encryption automatically. You get the screen as a light, presence, light level, a speaker, voice settings and the wall base, plus the dashboard and radio controls. [More](../../docs/esphome.md) |
-| 🎵 **Music Assistant player** | A native Sendspin player that plays in sync with your other speakers. [More](../../docs/sendspin.md) |
-| 👋 **Wakes when you walk up** | The screen wakes as you approach, turns off when the room is empty, and dims at night. It is driven by the panel's own sensors. [More](../../docs/sensors.md) |
+| 🏠 **One ESPHome device** | HA discovers the panel and sets up encryption automatically. You get the screen as a light, presence, light level, a speaker, voice settings and the wall base, plus the dashboard and radio controls. [The entities](../../docs/esphome.md) |
+| 🎵 **Music Assistant player** | A native Sendspin player that plays in sync with your other speakers. [Sendspin guide](../../docs/sendspin.md) |
+| 👋 **Wakes when you walk up** | The screen wakes as you approach, turns off when the room is empty, and dims at night. It is driven by the panel's own sensors. [Sensors guide](../../docs/sensors.md) |
 | 📡 **Radio for Home Assistant** | The panel's Zigbee/Thread radio can be a Zigbee coordinator for ZHA or (experimental) Zigbee2MQTT, a Thread border router, or a repeater in your existing network. You switch roles from HA. [How to](../../docs/radio-guide.md) |
-| 🔄 **Updates in Home Assistant** | New versions show up under *Settings → Updates*, and one click installs them. Fixes for the radio side come with them. [More](#updates) |
-| 🔌 **Wall base relays** | A driver for the mains relay base that speaks its UART protocol directly, with no Aqara daemon. Not yet tried on a real base. [More](research/bases.md) |
+| 🔄 **Updates in Home Assistant** | New versions show up under *Settings → Updates*, and one click installs them. Fixes for the radio side come with them. [Updates](#updates) |
+| 🔌 **Wall base relays** | A driver for the mains relay base that speaks its UART protocol directly, with no Aqara daemon. Not yet tried on a real base. [Wall bases](research/bases.md) |
 | 🔒 **No Aqara cloud** | Aqara's launcher, apps, updater and cloud daemon are switched off (reversibly), so the panel stops talking to Aqara. |
-| ✨ **Its own boot screen** | The Glassworks splash and boot animation: glass plates drop into place and the top one lights up. [More](../../branding/glass-tile/README.md) |
+| ✨ **Its own boot screen** | The Glassworks splash and boot animation: glass plates drop into place and the top one lights up. [Boot branding](../../branding/glass-tile/README.md) |
 
 <p align="center">
   <img src="../../branding/glass-tile/preview.webp" alt="The Glassworks boot animation: three glass plates drop onto a dashed outline, the top one lights from sky to violet, and the Glassworks wordmark fades in above &quot;On Aqara S1 Plus&quot;." width="60%">
@@ -117,7 +117,7 @@ What works today. "Verified" means tested on a real panel in a real home.
 | Presence wake, idle-off, night mode, auto-brightness | ✅ Works |
 | Aqara cloud and bloat disabled (reversible) | ✅ Works |
 | Boot splash and animation | 🧪 The Glassworks redraw has not yet run on a panel. The Glass Tile one before it works |
-| Web installer, command-line installer, undo | ✅ Verified end to end (firmware 4.5.80); boot patch tested on two firmware versions |
+| Web installer, command-line installer, undo | ✅ Verified end to end (firmware 4.5.80) with the earlier web installer, s1.edm.sh; boot patch tested on two firmware versions. Kiln has not yet done a full install on a panel |
 | Manage page in the browser (`:8099`, sign in through Home Assistant): status, log, diagnostics, signed-in browsers ([guide](../../docs/manage.md)) | 🧪 New · not yet checked on a panel; settings are read-only for now |
 | Panel health in Home Assistant: CPU, temperature, RAM, storage, Wi-Fi, uptime ([entities](../../docs/esphome.md#diagnostics)) | 🧪 New · not yet checked on a panel |
 | Bluetooth proxy for Home Assistant, listening only ([details](../../docs/esphome.md#bluetooth-proxy)) | 🧪 New · its engine met the S1 (HA found it, no Wi-Fi cost, 2026-11-14); the pane itself not yet |
