@@ -158,6 +158,11 @@ def icons(category, integration=None):
     return {}
 
 
+def translations(category):
+    """frontend/get_translations: the text HA core sends for its integrations (none)."""
+    return {}
+
+
 # ---- the dashboards
 
 def head():
