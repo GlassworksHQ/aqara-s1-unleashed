@@ -160,7 +160,8 @@ class AssistPane(
         val again = synchronized(rereadLock) {
             when {
                 rereads == 0 -> false
-                clock() > rereadUntil -> { rereads = 0; false }
+                // The deadline is read before the clock, so the test's interleave lands between them.
+                rereadUntil < clock() -> { rereads = 0; false }
                 else -> --rereads == 1
             }
         }
