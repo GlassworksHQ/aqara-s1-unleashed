@@ -1,0 +1,10 @@
+{
+  "id": "radio",
+  "name": "Zigbee / Thread radio",
+  "does": "Zigbee coordinator or router, Thread border router.",
+  "requires": [
+    "silabs-radio"
+  ],
+  "status": "beta",
+  "docs": "docs/radio.md"
+}

@@ -217,6 +217,15 @@ reacts to `TimersChanged` and `TimerFinished`. The voice assistant
 ([`AssistPane.kt`](../../sh/edm/s1kiosk/voice/AssistPane.kt)) is the pane that raises those: it calls
 `ctx.emit(PanelEvent.TimerFinished(name))`, and `SpeakerClaimed` while it listens and talks.
 
+Every pane also has a **`pane.json` and an `icon.svg`** in its folder, next to its `PaneDefinition` (or its
+`Pane`, for a pane without a definition of its own, like timers). They describe it to Kiln and glassworks.dev:
+`id`, `name`, `does` (one line), `requires` (hardware words), `status`, `frame` for a frame pane, and
+optionally `docs`. The icon is 24 × 24, stroked with `currentColor` at 1.6 with round caps and joins, and
+has no fills or colours; a new icon is UI, so the maintainer approves it.
+[`PaneCatalogTest`](../../../../test/java/dev/glassworks/pane/PaneCatalogTest.kt) fails if a pane
+has no files or a file has no pane. Then run `npm run panes -w @glassworks/frame-card`
+([frames/README.md](../../../../../../../frames/README.md#the-panes-a-frame-runs)).
+
 The core raises `HomeAssistantSubscribed(address, authenticated)` each time Home Assistant subscribes
 to the states. `authenticated` is true when the connection uses the key Home Assistant provisioned.
 Only then is the address proven to be Home Assistant's, so a pane that trusts the address checks it.

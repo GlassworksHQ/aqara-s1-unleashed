@@ -44,7 +44,7 @@ A Glassworks **frame**: the device definition for the lululemon Studio Mirror. I
 
 ## Status
 
-**Status: planned.** Nothing installs on it yet. The target is the Qualcomm (MSM8916) board with stock software 1.x. A later revision uses an NXP i.MX8 board, where only hardware-assisted (JTAG) access has been reported; it is not a target. Screen size doesn't tell them apart ([revisions.md](research/revisions.md)).
+**Status: planned.** Nothing installs on it yet. The target is the Qualcomm (MSM8916) board with stock software 1.x. Later revisions use an NXP i.MX8 board, where only hardware-assisted (JTAG) access has been reported; they are not a target. Screen size doesn't tell them apart ([revisions.md](research/revisions.md)).
 
 The original version runs Android 6.0.1, and S1 Kiosk needs Android 8.0 or newer (`minSdk` 26), so today's app doesn't install on it. Why a newer Android is hard on this board: [mirror-android.md](research/mirror-android.md).
 
@@ -78,15 +78,19 @@ Check before flashing: fastboot must report MSM8916 and the expected partition s
 | Timers | Planned | Needs Assist. |
 | Sendspin | Planned | It has stereo speakers. |
 | Zigbee and Thread radio | No | No Zigbee or Thread radio. |
-| Presence and light | Not checked | Presence would come from the camera. |
+| Time zone | No | Worked out: only on the S1 (`aqara-s1-plus`). |
+| Diagnostics | Planned | Worked out: needs no special hardware. |
+| Bluetooth proxy | Planned | Worked out: has Bluetooth LE (its WCN3660B, read from a teardown). |
 | Wall base | No | S1 only. |
+
+"Worked out" means `frame.json` doesn't rate the pane; its support comes from what the pane needs and what the frame has ([how](../README.md#the-panes-a-frame-runs)).
 
 ## Research notes
 
 What we found on this device, and how ([all notes](../../docs/research/README.md#the-research-notes)):
 
 - [mirror-android.md](research/mirror-android.md): Can the lululemon Mirror run Android 8+ for the current GeckoView? The signed boot image blocks it; the kexec idea, the paths, blobs and read-only probes (desk research, #39)
-- [revisions.md](research/revisions.md): Which Mirror revisions are a target: the later NXP i.MX8 board, and why screen size doesn't identify it (read, no hardware)
+- [revisions.md](research/revisions.md): Which Mirror revisions are a target: the later NXP i.MX8 revisions, and why screen size doesn't identify it (read, no hardware)
 - [mirror-abis.md](research/mirror-abis.md): Which ABIs the Mirror's userspace runs: 64-bit in the community image, stock untested (#98)
 
 ## Files

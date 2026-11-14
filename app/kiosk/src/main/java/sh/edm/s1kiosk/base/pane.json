@@ -1,0 +1,11 @@
+{
+  "id": "wall-base",
+  "name": "Wall base",
+  "does": "The S1's wired wall base.",
+  "requires": [
+    "s1-wall-base"
+  ],
+  "status": "alpha",
+  "frame": "aqara-s1-plus",
+  "docs": "docs/esphome.md#wall-base-entities"
+}

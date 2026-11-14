@@ -151,6 +151,9 @@ tasks.withType<Test>().configureEach {
         .withPathSensitivity(PathSensitivity.NONE)
     // ContentScriptReadyTest runs the web extension's content.js under node: a change to it re-runs the tests.
     inputs.dir("src/main/assets/extension").withPropertyName("webExtension").withPathSensitivity(PathSensitivity.RELATIVE)
+    // PaneCatalogTest reads each pane's pane.json and icon.svg, which no compile task takes in (#231).
+    inputs.files(fileTree("src/main/java") { include("**/pane.json", "**/icon.svg") }).withPropertyName("paneCatalog")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 // Open source licences screen (hidden settings → "Open source licences"): the repo's

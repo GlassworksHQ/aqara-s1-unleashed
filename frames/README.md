@@ -52,7 +52,8 @@ describes the device's look in millimetres"). Kiln's picker reads it, and glassw
 | `display` | `{ width, height }`: the screen in pixels, as Android's boot animation sees it. With `name`, it is all the [boot generator](../branding/boot/README.md) needs |
 | `boot` | Optional. The boot branding's limits: `androidApi` (the API level; 25+ gets trimmed frames), `splash` (the bootloader splash format, `allwinner-boot-resource`), `zipBudget` (the largest `bootanimation.zip`, bytes) |
 | `specs` | Hardware rows: `{ label, value }`. Labels: `Size`, `SoC`, `Android`, `Screen`, `Radio`, `Presence`, `Audio`, `Extras`, `Mount`, `Root` |
-| `panes` | For each pane (`assist`, `timers`, `sendspin`, `radio`, `sensors`, `base`): `{ support, note? }`. Support is a status or `depends`, `unknown`, `no` |
+| `panes` | The panes it rates, by pane id: `{ support, note? }`. Support is a status or `depends`, `unknown`, `no`. The ids are the app's (the pane catalog, below); `base`, the wall base's old id, still works. A pane it doesn't rate is worked out from `provides`, with the reason |
+| `provides` | Optional. The hardware it has, in the pane catalog's words: `microphone`, `speaker`, `silabs-radio`, `s1-wall-base`, `bluetooth-le`. Leave it out when it varies by device (Generic Android); a pane that needs hardware then reads `depends` |
 | `install` | `{ how, href? }`: one sentence on how it installs. `href` is only for a frame that installs from somewhere other than Kiln; a frame with `kiln` has none (the S1 installs from Kiln) |
 | `ratings` | The nine install ratings, each `{ value, detail? }`: `difficulty`, `reversible`, `modifiesAndroid`, `root`, `opensDevice`, `vendorApps`, `wipes`, `backup`, `updates` |
 | `ratingsNote`, `notice` | Optional. A sentence of context; something a buyer must know |
@@ -141,6 +142,22 @@ into `~/.cache/glassworks-perf`. Kiln's `catalog.ts` then imports the new file.
 `kiln/apps/kiln/test/frame-designs.test.ts` checks every `design/frame.json`: Kiln lists it, every
 rating and pane is there, `recovery` exists, the render is a WebP at the screen's size, and the mockup
 draws without NaN.
+
+## The panes a frame runs
+
+Each pane in the app has a `pane.json` and an `icon.svg` next to its code (issue #231): its id, name,
+what it does, what hardware it `requires`, its status, and `frame` for a frame pane such as the wall
+base. `packages/frame-card` collects them (`PANES`, `PANE_IDS`; [its README](../packages/frame-card/README.md#the-pane-catalog)),
+and `PaneCatalogTest` in the app fails if a pane has no file or a file has no pane.
+
+A frame's rating of a pane is the one in its `panes`, if it gives one. Otherwise `paneSupport()` works
+it out, and says why:
+
+1. A frame pane (`frame`) runs on its own frame only: "Only on the aqara-s1-plus frame."
+2. A pane that needs nothing special runs at its own status, or is `planned` while the frame doesn't ship.
+3. A frame without `provides` can't say: `depends`, "Needs a microphone."
+4. A frame that lacks something the pane needs can't run it: `no`, "Needs a microphone."
+5. Otherwise it runs at the pane's status (`planned` while the frame doesn't ship): "Has a microphone."
 
 ## What came from glassworks.dev
 
