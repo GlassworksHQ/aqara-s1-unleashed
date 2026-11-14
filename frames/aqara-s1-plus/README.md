@@ -51,7 +51,11 @@ A Glassworks **frame**: the device definition for the Aqara S1 Plus. Its data is
 
 **Status: beta.**
 
-The Clarity badge shows its Clarity grade ([docs/perf.md](../../docs/perf.md)) once one is published; none is yet.
+**Clarity v1: D**, a good wall panel for light dashboards (2026-11-14, 3 of 3 runs, not provisional;
+held back by typical dashboards, which take 4.9 s to open). The report is in
+[clarity/report.md](clarity/report.md), and the summary the site grades in
+[clarity/clarity.json](clarity/clarity.json) ([how Clarity grades](../../docs/perf.md)). The Clarity
+badge shows the grade once glassworks.dev publishes it.
 
 ## Hardware
 

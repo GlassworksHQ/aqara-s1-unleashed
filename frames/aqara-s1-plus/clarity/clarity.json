@@ -1,0 +1,591 @@
+{
+ "schema": "glassworks.perf-summary/2",
+ "test": "Clarity",
+ "clarity": 1,
+ "protocol_version": 1,
+ "report_schema": "glassworks.perf/4",
+ "measured_on": "2026-11-14",
+ "frame": {
+  "id": "aqara-s1-plus",
+  "name": "Aqara S1 Plus"
+ },
+ "app_version": "pre-v1",
+ "viewport": {
+  "css": [
+   960,
+   480
+  ],
+  "dpr": 1.5,
+  "default_dpr": 1.5
+ },
+ "runs": {
+  "attempted": 3,
+  "graded": 3
+ },
+ "pages": {
+  "light": {
+   "inp_ms": 56,
+   "open_ms": 1796,
+   "scroll": {
+    "fps": 47.0,
+    "p95_ms": 50.0,
+    "scrolled_px": 3387,
+    "sf_valid": [
+     true,
+     true,
+     true
+    ],
+    "during_updates": [
+     6,
+     6,
+     6
+    ],
+    "swipes_moved": 18,
+    "swipes_at_edge": 0,
+    "runs": [
+     {
+      "p95_ms": 50.0,
+      "jank_pct": 23.5,
+      "frozen_pct": 0.0,
+      "fps": 44.22,
+      "n": 234
+     },
+     {
+      "p95_ms": 50.0,
+      "jank_pct": 18.58,
+      "frozen_pct": 0.0,
+      "fps": 47.96,
+      "n": 253
+     },
+     {
+      "p95_ms": 50.0,
+      "jank_pct": 19.76,
+      "frozen_pct": 0.0,
+      "fps": 47.02,
+      "n": 248
+     }
+    ]
+   },
+   "updates": {
+    "latency_p95_ms": 97.3,
+    "latency_median_ms": 76.2,
+    "pacing_p95_ms": 50.0,
+    "runs": [
+     {
+      "latency_n": 22,
+      "latency_median_ms": 74.7,
+      "latency_p95_ms": 97.3,
+      "frames": {
+       "p95_ms": 66.67,
+       "jank_pct": 27.78,
+       "frozen_pct": 0.0,
+       "fps": 41.59,
+       "n": 18
+      },
+      "sent": 22,
+      "arrived": 22
+     },
+     {
+      "latency_n": 21,
+      "latency_median_ms": 76.2,
+      "latency_p95_ms": 95.3,
+      "frames": {
+       "p95_ms": 50.0,
+       "jank_pct": 40.0,
+       "frozen_pct": 0.0,
+       "fps": 39.18,
+       "n": 15
+      },
+      "sent": 22,
+      "arrived": 22
+     },
+     {
+      "latency_n": 21,
+      "latency_median_ms": 81.8,
+      "latency_p95_ms": 132.1,
+      "frames": {
+       "p95_ms": 50.0,
+       "jank_pct": 60.0,
+       "frozen_pct": 0.0,
+       "fps": 34.66,
+       "n": 15
+      },
+      "sent": 22,
+      "arrived": 22
+     }
+    ]
+   },
+   "camera": {
+    "runs": [],
+    "path": null,
+    "fallback": null
+   },
+   "timed_out_runs": 0,
+   "runs": {
+    "tap": 3,
+    "scroll": 3,
+    "updates": 3,
+    "open": 3,
+    "camera": 0
+   }
+  },
+  "typical-nocam": {
+   "inp_ms": 112,
+   "open_ms": 4852,
+   "scroll": {
+    "fps": 37.0,
+    "p95_ms": 66.67,
+    "scrolled_px": 3341,
+    "sf_valid": [
+     true,
+     true,
+     true
+    ],
+    "during_updates": [
+     6,
+     6,
+     6
+    ],
+    "swipes_moved": 18,
+    "swipes_at_edge": 0,
+    "runs": [
+     {
+      "p95_ms": 66.67,
+      "jank_pct": 34.02,
+      "frozen_pct": 0.0,
+      "fps": 37.01,
+      "n": 194
+     },
+     {
+      "p95_ms": 66.67,
+      "jank_pct": 27.4,
+      "frozen_pct": 0.0,
+      "fps": 39.68,
+      "n": 208
+     },
+     {
+      "p95_ms": 83.33,
+      "jank_pct": 29.53,
+      "frozen_pct": 0.0,
+      "fps": 36.35,
+      "n": 193
+     }
+    ]
+   },
+   "updates": {
+    "latency_p95_ms": 101.5,
+    "latency_median_ms": 82.9,
+    "pacing_p95_ms": 66.67,
+    "runs": [
+     {
+      "latency_n": 21,
+      "latency_median_ms": 78.6,
+      "latency_p95_ms": 114.1,
+      "frames": {
+       "p95_ms": 50.0,
+       "jank_pct": 61.54,
+       "frozen_pct": 0.0,
+       "fps": 31.23,
+       "n": 13
+      },
+      "sent": 22,
+      "arrived": 22
+     },
+     {
+      "latency_n": 21,
+      "latency_median_ms": 90.2,
+      "latency_p95_ms": 101.5,
+      "frames": {
+       "p95_ms": 66.67,
+       "jank_pct": 47.06,
+       "frozen_pct": 0.0,
+       "fps": 35.21,
+       "n": 17
+      },
+      "sent": 22,
+      "arrived": 22
+     },
+     {
+      "latency_n": 21,
+      "latency_median_ms": 82.9,
+      "latency_p95_ms": 97.1,
+      "frames": {
+       "p95_ms": 66.67,
+       "jank_pct": 78.57,
+       "frozen_pct": 0.0,
+       "fps": 30.04,
+       "n": 14
+      },
+      "sent": 22,
+      "arrived": 21
+     }
+    ]
+   },
+   "camera": {
+    "runs": [],
+    "path": null,
+    "fallback": null
+   },
+   "timed_out_runs": 0,
+   "runs": {
+    "tap": 3,
+    "scroll": 3,
+    "updates": 3,
+    "open": 3,
+    "camera": 0
+   }
+  },
+  "typical": {
+   "inp_ms": 168,
+   "open_ms": 6567,
+   "scroll": {
+    "fps": 27.7,
+    "p95_ms": 100.0,
+    "scrolled_px": 3345,
+    "sf_valid": [
+     true,
+     true,
+     true
+    ],
+    "during_updates": [
+     6,
+     6,
+     6
+    ],
+    "swipes_moved": 18,
+    "swipes_at_edge": 0,
+    "runs": [
+     {
+      "p95_ms": 100.0,
+      "jank_pct": 44.08,
+      "frozen_pct": 0.0,
+      "fps": 28.72,
+      "n": 152
+     },
+     {
+      "p95_ms": 100.0,
+      "jank_pct": 44.44,
+      "frozen_pct": 0.0,
+      "fps": 27.73,
+      "n": 144
+     },
+     {
+      "p95_ms": 100.0,
+      "jank_pct": 50.74,
+      "frozen_pct": 0.0,
+      "fps": 26.02,
+      "n": 136
+     }
+    ]
+   },
+   "updates": {
+    "latency_p95_ms": 131.1,
+    "latency_median_ms": 82.9,
+    "pacing_p95_ms": 100.0,
+    "runs": [
+     {
+      "latency_n": 21,
+      "latency_median_ms": 78.2,
+      "latency_p95_ms": 112.6,
+      "frames": {
+       "p95_ms": 100.0,
+       "jank_pct": 53.33,
+       "frozen_pct": 0.0,
+       "fps": 32.19,
+       "n": 15
+      },
+      "sent": 22,
+      "arrived": 22
+     },
+     {
+      "latency_n": 21,
+      "latency_median_ms": 85.9,
+      "latency_p95_ms": 131.1,
+      "frames": {
+       "p95_ms": 100.0,
+       "jank_pct": 81.82,
+       "frozen_pct": 0.0,
+       "fps": 22.79,
+       "n": 11
+      },
+      "sent": 22,
+      "arrived": 22
+     },
+     {
+      "latency_n": 22,
+      "latency_median_ms": 82.9,
+      "latency_p95_ms": 136.5,
+      "frames": {
+       "p95_ms": 100.0,
+       "jank_pct": 83.33,
+       "frozen_pct": 0.0,
+       "fps": 23.26,
+       "n": 12
+      },
+      "sent": 23,
+      "arrived": 22
+     }
+    ]
+   },
+   "camera": {
+    "runs": [
+     {
+      "first_frame_ms": 4378,
+      "shown_pct": 100,
+      "max_gap_ms": 216.7,
+      "stall_total_ms": 0
+     },
+     {
+      "first_frame_ms": 6007.6,
+      "shown_pct": 100,
+      "max_gap_ms": 216.68,
+      "stall_total_ms": 0
+     },
+     {
+      "first_frame_ms": 4855.6,
+      "shown_pct": 100,
+      "max_gap_ms": 216.58,
+      "stall_total_ms": 0
+     }
+    ],
+    "path": "web_rtc",
+    "fallback": {
+     "path": "hls",
+     "runs": [
+      {
+       "first_frame_ms": 5787.5,
+       "shown_pct": 100,
+       "max_gap_ms": 216.4,
+       "stall_total_ms": 0
+      },
+      {
+       "first_frame_ms": 5103,
+       "shown_pct": 100,
+       "max_gap_ms": 183.1,
+       "stall_total_ms": 0
+      },
+      {
+       "first_frame_ms": 4300.8,
+       "shown_pct": 100,
+       "max_gap_ms": 233.1,
+       "stall_total_ms": 0
+      }
+     ]
+    }
+   },
+   "timed_out_runs": 0,
+   "runs": {
+    "tap": 3,
+    "scroll": 3,
+    "updates": 3,
+    "open": 3,
+    "camera": 3
+   }
+  },
+  "heavy": {
+   "inp_ms": 360,
+   "open_ms": 37577,
+   "scroll": {
+    "fps": 4.2,
+    "p95_ms": 366.67,
+    "scrolled_px": 3326,
+    "sf_valid": [
+     true,
+     true,
+     true
+    ],
+    "during_updates": [
+     6,
+     6,
+     5
+    ],
+    "swipes_moved": 17,
+    "swipes_at_edge": 0,
+    "runs": [
+     {
+      "p95_ms": 316.67,
+      "jank_pct": 100.0,
+      "frozen_pct": 0.0,
+      "fps": 4.97,
+      "n": 21
+     },
+     {
+      "p95_ms": 366.67,
+      "jank_pct": 100.0,
+      "frozen_pct": 0.0,
+      "fps": 4.16,
+      "n": 20
+     },
+     {
+      "p95_ms": 466.67,
+      "jank_pct": 100.0,
+      "frozen_pct": 0.0,
+      "fps": 3.22,
+      "n": 9
+     }
+    ]
+   },
+   "updates": {
+    "latency_p95_ms": 820.1,
+    "latency_median_ms": 639.6,
+    "pacing_p95_ms": 316.67,
+    "runs": [
+     {
+      "latency_n": 20,
+      "latency_median_ms": 639.6,
+      "latency_p95_ms": 820.1,
+      "frames": {
+       "p95_ms": 350.0,
+       "jank_pct": 88.89,
+       "frozen_pct": 0.0,
+       "fps": 5.15,
+       "n": 9
+      },
+      "sent": 22,
+      "arrived": 18
+     },
+     {
+      "latency_n": 19,
+      "latency_median_ms": 1191.7,
+      "latency_p95_ms": 1497.9,
+      "frames": {
+       "p95_ms": 316.67,
+       "jank_pct": 100.0,
+       "frozen_pct": 0.0,
+       "fps": 4.51,
+       "n": 6
+      },
+      "sent": 22,
+      "arrived": 17
+     },
+     {
+      "latency_n": 18,
+      "latency_median_ms": 524.0,
+      "latency_p95_ms": 804.6,
+      "frames": {
+       "p95_ms": 250.0,
+       "jank_pct": 100.0,
+       "frozen_pct": 0.0,
+       "fps": 5.3,
+       "n": 9
+      },
+      "sent": 22,
+      "arrived": 19
+     }
+    ]
+   },
+   "camera": {
+    "runs": [
+     {
+      "first_frame_ms": 5805.4,
+      "shown_pct": 99.2,
+      "max_gap_ms": 217.23,
+      "stall_total_ms": 0
+     },
+     {
+      "first_frame_ms": 7083.4,
+      "shown_pct": 99.7,
+      "max_gap_ms": 216.87,
+      "stall_total_ms": 0
+     },
+     {
+      "first_frame_ms": 5465.7,
+      "shown_pct": 99.9,
+      "max_gap_ms": 216.76,
+      "stall_total_ms": 0
+     }
+    ],
+    "path": "web_rtc",
+    "fallback": {
+     "path": "hls",
+     "runs": [
+      {
+       "first_frame_ms": 5312.8,
+       "shown_pct": 47.4,
+       "max_gap_ms": 7008.4,
+       "stall_total_ms": 22262.5
+      },
+      {
+       "first_frame_ms": 5455.3,
+       "shown_pct": 36.9,
+       "max_gap_ms": 7807.4,
+       "stall_total_ms": 21657.8
+      },
+      {
+       "first_frame_ms": 5367.2,
+       "shown_pct": 42,
+       "max_gap_ms": 5210.5,
+       "stall_total_ms": 27051.3
+      }
+     ]
+    }
+   },
+   "timed_out_runs": 0,
+   "runs": {
+    "tap": 3,
+    "scroll": 3,
+    "updates": 3,
+    "open": 3,
+    "camera": 3
+   }
+  }
+ },
+ "restart_ms": 13984,
+ "gaps": [],
+ "not_comparable": null,
+ "report": "https://github.com/GlassworksHQ/glassworks/blob/main/frames/aqara-s1-plus/clarity/report.md",
+ "ram": {
+  "idle_app_pss_kb": 951519,
+  "idle_by_process_pss_kb": {
+   "crashhelper": 7911,
+   "gpu": 240715,
+   "main": 209431,
+   "media": 25849,
+   "tab": 440829,
+   "utility": 16181
+  },
+  "peak_app_pss_kb": 946819,
+  "peak_by_process_pss_kb": {
+   "crashhelper": 8760,
+   "gpu": 273771,
+   "main": 205348,
+   "media": 35835,
+   "tab": 413500,
+   "utility": 16307
+  },
+  "panes": [],
+  "panes_waiting": [],
+  "panes_not_switched": [
+   "bluetooth-proxy",
+   "radio",
+   "timers"
+  ],
+  "budget_ok": true
+ },
+ "apk": [
+  {
+   "file": "sh.edm.s1kiosk-pre-v1.apk",
+   "abis": [
+    "armeabi-v7a"
+   ],
+   "bytes": 97981342
+  }
+ ],
+ "notes": {
+  "good": "Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid.",
+  "limits": "Bigger dashboards slow down: typical with a camera scrolls at 28 fps, and heavy takes 360 ms to answer a tap and takes 0.8 s to show a change.",
+  "causes": [
+   "The likely limit is the browser's main thread: it stays busy (81% of a core on typical with a camera playing), and the page draws too few frames.",
+   "Memory isn't the limit (925 of 988 MB)."
+  ],
+  "text": "Light dashboards feel good: taps, live updates and opening a view are quick, and scrolling is fluid. Bigger dashboards slow down: typical with a camera scrolls at 28 fps, and heavy takes 360 ms to answer a tap and takes 0.8 s to show a change. The likely limit is the browser's main thread: it stays busy (81% of a core on typical with a camera playing), and the page draws too few frames. Memory isn't the limit (925 of 988 MB).",
+  "rubric": 1
+ },
+ "webrtc_transport": {
+  "transport": "lan-udp",
+  "chosen_by": "auto",
+  "reason": "the panel reached this computer over UDP on the LAN, as a real setup's video goes",
+  "possibly_limited": false
+ },
+ "complete": true
+}

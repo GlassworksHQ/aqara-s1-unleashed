@@ -545,6 +545,40 @@ class TimedOut(unittest.TestCase):
         self.assertEqual(R.camera_cell({"camera_runs": [late]}, {"camera": "slow"}), "the view didn't finish in 1 of 1 run(s), slow")
 
 
+class Published(unittest.TestCase):
+    """A report published in the frame's folder (frames/<id>/clarity/): written with --out, the run
+    directory untouched, and --app-version shown as given, which the grade never reads."""
+
+    def test_out_and_app_version(self):
+        b = Build()
+        b.setUp()
+        before = sorted(os.listdir(b.dir))
+        out = tempfile.mkdtemp()
+        p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "report.py"), b.dir, "--out", out,
+                            "--app-version", "pre-v1"], capture_output=True, text=True, timeout=120)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(sorted(os.listdir(b.dir)), before)                    # nothing written into the run
+        self.assertEqual(sorted(os.listdir(out)), ["report.json", "report.md"])
+        with open(os.path.join(out, "report.json")) as f:
+            rep = json.load(f)
+        self.assertEqual((rep["frame"]["app"]["version_name"], rep["frame"]["app"]["version_label"]), ("pre-v1", "given"))
+        self.assertIsNone(rep["frame"]["app"]["version_code"])
+        with open(os.path.join(out, "report.md")) as f:
+            md = f.read()
+        self.assertIn("app pre-v1", md)
+        self.assertNotIn("0.4.3", md)
+        self.assertEqual(S.summarise(rep, allow_provisional=True)["app_version"], "pre-v1")
+        # The grade is the same with or without the label.
+        self.assertEqual(rep["grade"]["grade"], b.rep["grade"]["grade"])
+        self.assertEqual(rep["grade"]["bands"], b.rep["grade"]["bands"])
+
+    def test_the_apk_sizes_take_the_label(self):
+        rep = {"frame": {"app": {"package": "sh.edm.s1kiosk", "version_name": "0.4.3", "version_code": "403"}},
+               "apk": [{"file": "baseline-main-5d0a0d2.apk", "abis": ["armeabi-v7a"], "bytes": 1}]}
+        R.label_app_version(rep, "pre-v1")
+        self.assertEqual(rep["apk"][0]["file"], "sh.edm.s1kiosk-pre-v1.apk")
+
+
 class CpuClock(unittest.TestCase):
     """#244: the CPU clock each view ran at, as detail (the S1's power HAL held 1.2 of 1.608 GHz)."""
 
