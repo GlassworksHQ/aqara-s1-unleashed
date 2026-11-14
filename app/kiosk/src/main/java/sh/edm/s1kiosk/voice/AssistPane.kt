@@ -20,7 +20,6 @@ import sh.edm.s1kiosk.esphome.WakeWordCatalog
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 
 /** The microphone and wake word side of the assistant. [VoiceEngine] is the real one. */
 interface VoiceInput : WakeWordCatalog {
@@ -121,24 +120,55 @@ class AssistPane(
      * unless that pick reads "no wake word": the old word is no longer active, so the first read turns
      * it to no_wake_word, and only a second read takes the panel's word (esphome/select.py
      * async_satellite_config_updated, read 2026-11-14; the root's panel run saw no_wake_word after one).
-     * So Home Assistant is asked to connect again twice: now, and once more after its first read.
+     * So Home Assistant is asked to connect again twice: now, and once more after its next read. Only
+     * within [REREAD_WINDOW_MS] of the pick: a read much later (HA was down) is HA's own and buys nothing.
+     * The trade-off: if HA is down for more than that when the word is picked, its select may read
+     * no_wake_word after it comes back, until its next configuration read (any later reconnect) takes the
+     * panel's word.
      */
     fun useWakeWord(id: String) {
         if (id == prefs.wakeWord) return
         prefs.wakeWord = id
-        rereads.set(2)
+        synchronized(rereadLock) {
+            rereadUntil = clock() + REREAD_WINDOW_MS
+            rereads = 2
+        }
         ctx.entitiesChanged()
     }
 
-    /** Home Assistant's configuration reads still to come after a word picked on the panel ([useWakeWord]). */
-    private val rereads = AtomicInteger(0)
+    /** Guards [rereads] and [rereadUntil] together: a late read must not clear a newer pick's count (CodeRabbit on #249). */
+    private val rereadLock = Any()
 
-    /** How long after Home Assistant's first read it is asked to connect again: time for it to apply the read. */
+    /**
+     * Configuration reads by Home Assistant still to count after a word picked on the panel ([useWakeWord]):
+     * any read, the first one after the pick included, whatever started it.
+     */
+    private var rereads = 0
+
+    /** Until when ([clock]) a read still counts toward the second reconnect. */
+    private var rereadUntil = 0L
+
+    /** `SystemClock.elapsedRealtime`; a test moves it. */
+    internal var clock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
+
+    /**
+     * How long after Home Assistant's read it is asked to connect again: time for it to apply the read.
+     * Empirical: 2 s worked in the root's panel run on 2026-11-14, the only evidence; HA applies the read
+     * at once in its event loop (esphome/select.py), so it is a margin, not a measured need.
+     */
     internal var rereadDelayMs = 2_000L
 
-    /** After a read: the first of two asks for the second ([useWakeWord]). Any thread. */
+    /** After a read: the first of two, within the window, asks for the second ([useWakeWord]). Any thread. */
     private fun configurationRead() {
-        if (rereads.get() > 0 && rereads.decrementAndGet() == 1) {
+        val again = synchronized(rereadLock) {
+            when {
+                rereads == 0 -> false
+                // The deadline is read before the clock, so the test's interleave lands between them.
+                rereadUntil < clock() -> { rereads = 0; false }
+                else -> --rereads == 1
+            }
+        }
+        if (again) {
             val w = watchdog
             if (w == null) ctx.entitiesChanged()
             else runCatching { w.schedule({ ctx.entitiesChanged() }, rereadDelayMs, TimeUnit.MILLISECONDS) }.onFailure { ctx.entitiesChanged() }
@@ -239,7 +269,10 @@ class AssistPane(
         try { onVoiceEvent(e) } catch (t: Throwable) { EspHomeLog.w("voice listener failed", t) }
     }
 
-    private companion object {
+    internal companion object {
         const val IDLE = "Idle"
+
+        /** How long after the panel's pick Home Assistant's reads still count ([useWakeWord]). Internal for tests. */
+        internal const val REREAD_WINDOW_MS = 30_000L
     }
 }
