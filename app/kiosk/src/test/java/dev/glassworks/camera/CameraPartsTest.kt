@@ -69,4 +69,16 @@ class CameraPartsTest {
         assertNotEquals(panel, mac)
         assertNotEquals(mac, onvifMac("02:00:00:00:00:02"))
     }
+
+    @Test fun theStreamAsksForARangeThatTopsAtTheEncodersRate() {
+        assertEquals("the steadiest one", 15..15, fpsRangeFor(listOf(7..15, 15..15, 15..30, 30..30), 15))
+        assertEquals(7..15, fpsRangeFor(listOf(7..15, 7..30), 15))
+        assertEquals("none tops at 15: the camera keeps its own rate", null, fpsRangeFor(listOf(15..30, 30..30), 15))
+        assertEquals(null, fpsRangeFor(null, 15))
+    }
+
+    @Test fun theSdpAnnouncesOnlyARateTheCameraIsAskedFor() {
+        assertEquals(15, announcedFps(7..15))
+        assertEquals("no a=framerate", 0, announcedFps(null))
+    }
 }

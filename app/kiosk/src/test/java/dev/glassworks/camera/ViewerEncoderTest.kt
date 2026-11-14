@@ -7,6 +7,7 @@ package dev.glassworks.camera
 import android.view.Surface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -14,16 +15,16 @@ class ViewerEncoderTest {
 
     private val events = mutableListOf<String>()
 
-    private inner class Encoder(val n: Int, val fail: (StreamEncoder) -> Unit) : StreamEncoder {
+    private inner class Encoder(val n: Int, val fail: (StreamEncoder) -> Unit, val releaseThrows: Boolean = false) : StreamEncoder {
         override val surface: Surface? = null
         var keyFrames = 0
         var released = false
         override fun requestKeyFrame() { keyFrames++ }
-        override fun release() { released = true; events += "release $n" }
+        override fun release() { released = true; events += "release $n"; if (releaseThrows) throw IllegalStateException("codec") }
         override fun toString() = "encoder $n"
     }
 
-    private inner class Rig {
+    private inner class Rig(val detach: () -> Unit = {}, val releaseThrows: Boolean = false) {
         var now = 0L
         val posted = mutableListOf<Pair<Long, Runnable>>()
         val made = mutableListOf<Encoder>()
@@ -31,8 +32,8 @@ class ViewerEncoderTest {
         val egressSeen = mutableListOf<Boolean>()
         val egress = FrameEgress({ now }, { _, _ -> }) { egressSeen += it }
         val ve = ViewerEncoder(
-            input = { e -> events += "input ${e ?: "none"}" },
-            encoders = { _, failed -> Encoder(made.size + 1, failed).also { made += it; events += "made ${it.n}" } },
+            input = { e -> events += "input ${e ?: "none"}"; if (e == null) detach() },
+            encoders = { _, failed -> Encoder(made.size + 1, failed, releaseThrows).also { made += it; events += "made ${it.n}" } },
             egress = egress, onAccessUnit = { _, _ -> }, watched = { watching },
             clock = { now }, after = { ms, r -> posted += (now + ms) to r },
         )
@@ -106,5 +107,25 @@ class ViewerEncoderTest {
         r.made[0].fail(r.made[0])
         assertEquals(1, r.made.size)
         assertFalse(r.egress.leaving)
+    }
+
+    @Test fun anInterruptedDetachStillReleasesTheEncoderAndTheIndicator() {
+        val r = Rig(detach = { throw InterruptedException() })
+        r.ve.viewers(1)
+        r.ve.viewers(0)
+        assertTrue("the thread keeps its interrupt", Thread.interrupted())
+        assertTrue("no codec or surface left behind", r.made[0].released)
+        assertFalse("the indicator goes off", r.egress.leaving)
+        r.ve.viewers(1)
+        assertEquals("the next viewer gets a new encoder", 2, r.made.size)
+    }
+
+    @Test fun aFailingReleaseStillLetsGoOfTheIndicator() {
+        val r = Rig(releaseThrows = true)
+        r.ve.viewers(1)
+        assertThrows(IllegalStateException::class.java) { r.ve.viewers(0) }
+        assertFalse(r.egress.leaving)
+        r.ve.viewers(1)
+        assertEquals(2, r.made.size)
     }
 }

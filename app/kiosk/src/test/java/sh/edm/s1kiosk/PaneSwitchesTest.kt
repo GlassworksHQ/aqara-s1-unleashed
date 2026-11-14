@@ -33,6 +33,12 @@ class PaneSwitchesTest {
         assertEquals(listOf("assist", "sendspin", "wall-base", "time-zone", "diagnostics"), waiting.map { it.id })
     }
 
+    @Test fun theS1sCameraPageWhileOffSaysItHasNoCamera() {
+        // The S1 has no camera, so the pane has no entities: not the core's note about them.
+        val camera = paneSections(definitions).single { it.id == "camera" }
+        assertEquals(listOf(dev.glassworks.camera.CameraDefinition.NO_CAMERA_OFF_NOTE), camera.items.map { (it as SettingsItem.Note).text() })
+    }
+
     @Test fun setupsPanesStepHasTheCardsOfTheDesign() {
         // A panel with Bluetooth LE, as the S1: without it the Bluetooth proxy has no card.
         org.robolectric.Shadows.shadowOf(app.packageManager).setSystemFeature(android.content.pm.PackageManager.FEATURE_BLUETOOTH_LE, true)

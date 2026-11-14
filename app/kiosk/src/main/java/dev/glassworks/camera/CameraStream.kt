@@ -62,7 +62,7 @@ class CameraStream(
         var ve: ViewerEncoder? = null
         val r = RtspServer(
             RTSP_PORT, { this.signIn }, { n -> ve?.viewers(n); if (n > 0) log("streaming to $n") },
-            onLog = { log("RTSP: $it") }, name = name, fps = H264Encoder.FPS,
+            onLog = { log("RTSP: $it") }, name = name, fps = hub.streamFps,
         )
         ve = ViewerEncoder(
             hub, encoders, egress, onAccessUnit = { au, key -> r.onAccessUnit(au, key) }, watched = { r.hasClients() },

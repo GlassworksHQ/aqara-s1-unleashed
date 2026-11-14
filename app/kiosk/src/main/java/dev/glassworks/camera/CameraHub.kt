@@ -104,8 +104,10 @@ class CameraHub(
 
     /**
      * The stream encoder whose input the camera draws into, or null to take it out. The capture session
-     * is rebuilt either way. Taking it out returns once the session no longer draws into it, so the
-     * caller can release the encoder's surface (at most [DETACH_WAIT_MS]). Never call from the hub's thread.
+     * is rebuilt either way. Taking it out waits for the hub's thread to stop the session's requests and
+     * close it, and returns after at most [DETACH_WAIT_MS]: that bound, not the session's onClosed (API
+     * 28), is what the caller relies on before it releases the encoder's surface. Never call from the
+     * hub's thread.
      */
     override fun setEncoder(encoder: StreamEncoder?) {
         val surface = encoder?.surface
@@ -190,15 +192,33 @@ class CameraHub(
         }
     }
 
-    private fun pickCamera(): String? {
+    /** The front camera, else the first. */
+    private fun cameraId(): String? {
         val ids = manager.cameraIdList
-        val front = ids.firstOrNull { manager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT }
-        val id = front ?: ids.firstOrNull() ?: return null
+        return ids.firstOrNull { manager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT }
+            ?: ids.firstOrNull()
+    }
+
+    /** The range the camera is asked for while streaming ([fpsRangeFor]); read once, before the camera opens if the stream asks first. */
+    private val streamRange: IntRange? by lazy {
+        try {
+            cameraId()?.let { id ->
+                val ranges = manager.getCameraCharacteristics(id).get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+                fpsRangeFor(ranges?.map { it.lower..it.upper }, H264Encoder.FPS)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    override val streamFps: Int get() = announcedFps(streamRange)
+
+    private fun pickCamera(): String? {
+        val id = cameraId() ?: return null
         val c = manager.getCameraCharacteristics(id)
         facingFront = c.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
         sensorDegrees = c.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
-        fpsRange = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
-            ?.filter { it.upper == H264Encoder.FPS }?.maxByOrNull { it.lower }
+        fpsRange = streamRange?.let { android.util.Range(it.first, it.last) }
         return id
     }
 

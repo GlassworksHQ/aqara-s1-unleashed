@@ -73,7 +73,7 @@ class GlassworksRuntime(
 
     /**
      * Every pane's definition, made once: their on/off, setup steps, settings sections and adb extras. The
-     * core's panes in the order the settings list them (voice, music, radio, Bluetooth proxy), then the frame's, then diagnostics.
+     * core's panes in the order the settings list them (voice, music, radio, Bluetooth proxy), then the frame's, then the camera, then diagnostics.
      * MainActivity and KioskService ask for them first thing, before discovery can save an HA URL in
      * this process (the radio step's one-time check needs that).
      */

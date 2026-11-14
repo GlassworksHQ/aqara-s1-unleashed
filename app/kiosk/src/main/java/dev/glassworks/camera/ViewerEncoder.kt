@@ -22,6 +22,9 @@ fun interface EncoderFactory {
 /** Where the encoder's input comes from: [CameraHub]. Detaching (null) returns once the camera no longer draws into the old one. */
 fun interface EncoderInput {
     fun setEncoder(encoder: StreamEncoder?)
+
+    /** The frame rate the encoder's input runs at while streaming, for the SDP; 0 when it can't say. */
+    val streamFps: Int get() = 0
 }
 
 /**
@@ -80,13 +83,25 @@ internal class ViewerEncoder(
         viewing = egress.stream()
     }
 
-    /** The camera stops drawing into it first, then it is released. */
+    /**
+     * The camera stops drawing into it first, then it is released. Whatever the detach or the release
+     * throws, the encoder is released and the indicator's hold let go: an interrupted wait for the camera
+     * keeps the thread's interrupt and goes on.
+     */
     private fun stop() {
         val e = current ?: return
         current = null
-        input.setEncoder(null)
-        e.release()
-        viewing?.close(); viewing = null
+        try {
+            input.setEncoder(null)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } finally {
+            try {
+                e.release()
+            } finally {
+                viewing?.close(); viewing = null
+            }
+        }
     }
 
     private fun failed(e: StreamEncoder) {

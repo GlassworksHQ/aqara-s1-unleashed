@@ -25,6 +25,8 @@ class CameraDefinition(file: SharedPreferences, val hasCamera: Boolean) : PaneDe
     override val switch = PaneSwitch(
         file, CameraPrefs.KEY_ENABLED, default = false, title = TITLE, detail = "Presence, and snapshots",
         objectId = "camera_pane", entityName = "Camera pane", icon = "mdi:cctv",
+        // Without a camera the pane has no entities, so the core's note about them would be wrong.
+        offNote = if (hasCamera) OFF_NOTE else NO_CAMERA_OFF_NOTE,
     )
 
     override val setupChoice: PaneChoice? get() = null
@@ -37,6 +39,8 @@ class CameraDefinition(file: SharedPreferences, val hasCamera: Boolean) : PaneDe
     companion object {
         const val TITLE = "Camera"
         const val NO_CAMERA = "it has no camera"
+        const val OFF_NOTE = "The camera pane is off. The camera stays closed, and its entities are unavailable in Home Assistant until you turn it on."
+        const val NO_CAMERA_OFF_NOTE = "This panel has no camera, so the camera pane can't run on it."
         const val NO_CAMERA_NOTE = "On a panel with a camera, this pane wakes the screen when someone walks up, and can show the room in Home Assistant."
     }
 }
