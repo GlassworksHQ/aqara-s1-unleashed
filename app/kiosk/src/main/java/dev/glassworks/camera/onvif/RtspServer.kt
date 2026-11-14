@@ -48,6 +48,8 @@ class RtspServer(
     private val maxConnections: Int = MAX_CONNECTIONS,
     /** Glassworks: how long a connection may wait between requests before a session plays. */
     private val handshakeTimeoutMs: Int = HANDSHAKE_TIMEOUT_MS,
+    /** Glassworks: the stream's frame rate for SDP's `a=framerate`, or 0 to leave it out. */
+    private val fps: Int = 0,
 ) {
     private val running = AtomicBoolean(false)
     @Volatile private var serverSocket: ServerSocket? = null
@@ -468,7 +470,7 @@ class RtspServer(
                 if (sps == null || pps == null) onLog("RTSP DESCRIBE: no SPS/PPS yet, sending SDP without sprop-parameter-sets")
             }
             val host = socket.localAddress.hostAddress ?: "0.0.0.0"
-            val sdp = RtspSdp.build(sps, pps, host, sessionVersion, name)
+            val sdp = RtspSdp.build(sps, pps, host, sessionVersion, name, fps)
             respond(req, 200, "OK", listOf("Content-Base: ${baseUrl(req)}"), sdp, "application/sdp")
         }
 

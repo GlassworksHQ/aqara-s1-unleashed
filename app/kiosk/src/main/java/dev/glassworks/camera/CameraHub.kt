@@ -17,6 +17,7 @@ import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CaptureRequest
 import android.hardware.display.DisplayManager
 import android.media.Image
 import android.media.ImageReader
@@ -44,7 +45,7 @@ class CameraHub(
     private val width: Int = WIDTH,
     private val height: Int = HEIGHT,
     private val log: (String) -> Unit = { Log.i(TAG, it) },
-) : FrameSource, StillCamera {
+) : FrameSource, StillCamera, EncoderInput {
     private val app = context.applicationContext
     private val manager = app.getSystemService(Context.CAMERA_SERVICE) as CameraManager
     private val thread = HandlerThread("glassworks-camera").apply { start() }
@@ -61,6 +62,8 @@ class CameraHub(
     private var session: CameraCaptureSession? = null
     private var reader: ImageReader? = null
     private var opening = false
+    /** Set by [release]: a camera that opens after it is closed at once. */
+    private var released = false
     /** Bumped whenever a session is dropped, so a late callback from an older one is ignored. */
     private var generation = 0
     private var configuring = false
@@ -70,6 +73,7 @@ class CameraHub(
     private var luma = ByteArray(0)
     private var facingFront = true
     private var sensorDegrees = 0
+    private var fpsRange: android.util.Range<Int>? = null
 
     private val wanted get() = sinks.isNotEmpty() || waiters.isNotEmpty() || encoder != null ||
         SystemClock.elapsedRealtime() < lingerUntil
@@ -98,14 +102,23 @@ class CameraHub(
         return w.jpeg
     }
 
-    /** The stream encoder's input, or null to take it out. The capture session is rebuilt either way. */
-    fun setEncoder(surface: Surface?) {
+    /**
+     * The stream encoder whose input the camera draws into, or null to take it out. The capture session
+     * is rebuilt either way. Taking it out returns once the session no longer draws into it, so the
+     * caller can release the encoder's surface (at most [DETACH_WAIT_MS]). Never call from the hub's thread.
+     */
+    override fun setEncoder(encoder: StreamEncoder?) {
+        val surface = encoder?.surface
+        val done = CountDownLatch(1)
         handler.post {
-            if (encoder === surface) return@post
-            encoder = surface
-            closeSession()
-            settle()
+            if (this.encoder !== surface) {
+                this.encoder = surface
+                closeSession()
+                settle()
+            }
+            done.countDown()
         }
+        if (surface == null) done.await(DETACH_WAIT_MS, TimeUnit.MILLISECONDS)
     }
 
     /**
@@ -124,15 +137,18 @@ class CameraHub(
     /** Closes the camera and ends the hub's thread. Nothing may use the hub after. */
     fun release() {
         handler.post {
+            released = true
             sinks.clear(); waiters.forEach { it.latch.countDown() }; waiters.clear(); encoder = null
             closeCamera()
-            thread.quitSafely()
+            // An open in flight still calls back: quit only once it has, so it can close that camera.
+            if (!opening) thread.quitSafely()
         }
     }
 
     // ------------------------------------------------------------------ the hub's thread
 
     private fun settle() {
+        if (released) return
         if (!wanted) { closeCamera(); return }
         if (device == null) { if (!opening) openCamera(); return }
         if (session == null && !configuring) startSession()
@@ -147,6 +163,7 @@ class CameraHub(
             manager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
                     opening = false
+                    if (released) { camera.close(); thread.quitSafely(); return }
                     device = camera
                     log("camera $id open (${if (facingFront) "front" else "back"}, ${width}x$height)")
                     settle()
@@ -154,11 +171,13 @@ class CameraHub(
                 override fun onDisconnected(camera: CameraDevice) {
                     opening = false
                     camera.close(); forget(camera)
+                    if (released) { thread.quitSafely(); return }
                     fail("another app took the camera")
                 }
                 override fun onError(camera: CameraDevice, error: Int) {
                     opening = false
                     camera.close(); forget(camera)
+                    if (released) { thread.quitSafely(); return }
                     fail("camera error $error")
                 }
             }, handler)
@@ -178,6 +197,8 @@ class CameraHub(
         val c = manager.getCameraCharacteristics(id)
         facingFront = c.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
         sensorDegrees = c.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+        fpsRange = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+            ?.filter { it.upper == H264Encoder.FPS }?.maxByOrNull { it.lower }
         return id
     }
 
@@ -199,7 +220,11 @@ class CameraHub(
                     session = s
                     try {
                         val template = if (encoder != null) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW
-                        val req = camera.createCaptureRequest(template).apply { targets.forEach(::addTarget) }
+                        val req = camera.createCaptureRequest(template).apply {
+                            targets.forEach(::addTarget)
+                            // While streaming, the encoder's rate when the camera offers it (less CPU, a true a=framerate).
+                            if (encoder != null) fpsRange?.let { set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, it) }
+                        }
                         s.setRepeatingRequest(req.build(), null, handler)
                     } catch (e: Exception) {
                         fail("camera session failed: ${e.javaClass.simpleName}")
@@ -218,13 +243,14 @@ class CameraHub(
     }
 
     private fun onImage(r: ImageReader) {
-        val image = r.acquireLatestImage() ?: return
+        // The reader can be closed between the callback being posted and now: then there is no image.
+        val image = try { r.acquireLatestImage() } catch (e: IllegalStateException) { null } ?: return
         try {
             val now = SystemClock.elapsedRealtime()
             val due = sinks.filter { now - it.lastMs >= (1000f / it.fps).toLong() }
             if (due.isNotEmpty()) {
-                val frame = lumaOf(image)
-                for (s in due) { s.lastMs = now; s.sink.frame(frame) }
+                val frame = try { lumaOf(image) } catch (e: IllegalStateException) { null }
+                if (frame != null) for (s in due) { s.lastMs = now; s.sink.frame(frame) }
             }
             if (waiters.isNotEmpty()) {
                 val jpeg = try { jpegOf(image) } catch (e: Exception) { log("still failed: ${e.javaClass.simpleName}"); null }
@@ -281,7 +307,11 @@ class CameraHub(
     private fun closeSession() {
         generation++
         configuring = false
-        try { session?.close() } catch (_: Exception) {}
+        session?.let { s ->
+            // Stop drawing now, not when close() finishes in the background: the encoder's surface may go next.
+            try { s.stopRepeating(); s.abortCaptures() } catch (_: Exception) {}
+            try { s.close() } catch (_: Exception) {}
+        }
         session = null
     }
 
@@ -304,5 +334,6 @@ class CameraHub(
         const val STILL_WAIT_MS = 2_000L
         const val LINGER_MS = 10_000L
         const val RETRY_MS = 5_000L
+        const val DETACH_WAIT_MS = 1_000L
     }
 }

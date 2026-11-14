@@ -311,10 +311,10 @@ class PanelDevice internal constructor(
     /** The camera, while the camera pane exists. Released in [stop]. */
     private var cameraHub: CameraHub? = null
 
-    /** The camera pane (#117), on a device with a camera only: elsewhere it has no switch and no entities. */
+    /** The camera pane (#117), on a device with a camera only: elsewhere only its on/off exists, and its page says it can't run. */
     private fun cameraPane(paneContext: PaneContext, identity: DeviceIdentity): CameraPane? {
         val def = runtime.paneDefinitions(ctx).filterIsInstance<CameraDefinition>().firstOrNull() ?: return null
-        if (def.switch == null) return null
+        if (!def.hasCamera) return null
         val hub = CameraHub(ctx).also { cameraHub = it }
         val egress = FrameEgress(SystemClock::elapsedRealtime, { ms, r -> main.postDelayed(r, ms) }) { leaving ->
             EspHomeLog.i("Camera frames ${if (leaving) "leaving the panel" else "no longer leaving"}")

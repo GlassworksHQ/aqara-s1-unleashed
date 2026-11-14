@@ -34,12 +34,15 @@ data class CameraIdentity(val name: String, val firmware: String, val panelMac: 
  */
 class CameraStream(
     context: Context,
-    private val hub: CameraHub,
+    private val hub: EncoderInput,
     private val egress: FrameEgress,
     private val identity: () -> CameraIdentity,
     private val host: () -> String?,
     private val snapshot: () -> ByteArray?,
     private val log: (String) -> Unit = { Log.i(TAG, it) },
+    private val encoders: EncoderFactory = EncoderFactory { au, failed ->
+        H264Encoder(CameraHub.WIDTH, CameraHub.HEIGHT, onAccessUnit = au, onFailure = failed)
+    },
 ) : StreamOutput {
     private val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     private val lock = Any()
@@ -47,11 +50,8 @@ class CameraStream(
     private var onvif: OnvifServer? = null
     private var multicast: WifiManager.MulticastLock? = null
     private var signIn: Pair<String, String>? = null
-    private var encoder: H264Encoder? = null
-    private var viewing: AutoCloseable? = null
-    /** Bumped on every start and stop: a viewer report from an older RTSP server is ignored. */
-    private var generation = 0
-    private var lastRestartMs = 0L
+    /** The encoder for the current RTSP server; a new one per start, so a stopped server's reports reach a closed one. */
+    private var viewers: ViewerEncoder? = null
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
     override fun start(signIn: Pair<String, String>): Boolean = synchronized(lock) {
@@ -59,8 +59,15 @@ class CameraStream(
         stopLocked()
         this.signIn = signIn
         val name = identity().name
-        val gen = generation
-        val r = RtspServer(RTSP_PORT, { this.signIn }, { n -> onViewers(gen, n) }, onLog = { log("RTSP: $it") }, name = name)
+        var ve: ViewerEncoder? = null
+        val r = RtspServer(
+            RTSP_PORT, { this.signIn }, { n -> ve?.viewers(n); if (n > 0) log("streaming to $n") },
+            onLog = { log("RTSP: $it") }, name = name, fps = H264Encoder.FPS,
+        )
+        ve = ViewerEncoder(
+            hub, encoders, egress, onAccessUnit = { au, key -> r.onAccessUnit(au, key) }, watched = { r.hasClients() },
+            clock = android.os.SystemClock::elapsedRealtime, after = { ms, go -> main.postDelayed(go, ms) }, log = log,
+        )
         val o = OnvifServer(
             port = ONVIF_PORT,
             host = { host() ?: "0.0.0.0" },
@@ -73,6 +80,7 @@ class CameraStream(
         )
         return try {
             multicast = wifi.createMulticastLock("glassworks-onvif").apply { setReferenceCounted(false); acquire() }
+            viewers = ve
             r.start()
             o.start()
             rtsp = r; onvif = o
@@ -82,6 +90,7 @@ class CameraStream(
             log("stream failed to start: ${e.javaClass.simpleName}: ${e.message}")
             try { r.stop() } catch (_: Exception) {}
             try { o.stop() } catch (_: Exception) {}
+            ve.close(); viewers = null
             releaseMulticast()
             this.signIn = null
             false
@@ -95,66 +104,11 @@ class CameraStream(
     }
 
     private fun stopLocked() {
-        generation++
+        viewers?.close(); viewers = null
         rtsp?.let { r -> try { r.stop() } catch (_: Exception) {} ; log("stream off") }
         try { onvif?.stop() } catch (_: Exception) {}
         rtsp = null; onvif = null; signIn = null
-        stopEncoder()
         releaseMulticast()
-    }
-
-    /** RTSP's count of viewers, waiting ones included: the encoder and the indicator follow it. */
-    private fun onViewers(gen: Int, count: Int) = synchronized(lock) {
-        if (gen != generation) return@synchronized // from a server that was stopped or replaced
-        if (count > 0 && encoder == null) startEncoder()
-        else if (count == 0) stopEncoder()
-        else encoder?.requestKeyFrame()
-        if (count > 0) log("streaming to $count")
-    }
-
-    private fun startEncoder() {
-        val server = rtsp ?: return
-        var self: H264Encoder? = null
-        val e = try {
-            H264Encoder(CameraHub.WIDTH, CameraHub.HEIGHT, onAccessUnit = { au, key -> server.onAccessUnit(au, key) }) {
-                // The codec failed. Only if it is still the one in use: a replaced encoder's late
-                // callback must not stop its replacement.
-                synchronized(lock) {
-                    if (encoder !== self) return@synchronized
-                    stopEncoder()
-                    restartWhenAllowed()
-                }
-            }
-        } catch (ex: Exception) {
-            log("H.264 encoder failed: ${ex.javaClass.simpleName}")
-            return
-        }
-        self = e
-        encoder = e
-        hub.setEncoder(e.surface)
-        viewing = egress.stream()
-    }
-
-    /** A new encoder for the viewers still watching, at most once every [RESTART_MS]; later if sooner. */
-    private fun restartWhenAllowed() {
-        val gen = generation
-        val wait = lastRestartMs + RESTART_MS - android.os.SystemClock.elapsedRealtime()
-        val go = Runnable {
-            synchronized(lock) {
-                if (gen != generation || encoder != null || rtsp?.hasClients() != true) return@synchronized
-                lastRestartMs = android.os.SystemClock.elapsedRealtime()
-                startEncoder()
-            }
-        }
-        if (wait <= 0) go.run() else main.postDelayed(go, wait)
-    }
-
-    private fun stopEncoder() {
-        val e = encoder ?: return
-        encoder = null
-        hub.setEncoder(null)
-        e.release()
-        viewing?.close(); viewing = null
     }
 
     private fun releaseMulticast() {
@@ -166,7 +120,6 @@ class CameraStream(
         private const val TAG = "S1Kiosk.Camera"
         const val RTSP_PORT = 8554
         const val ONVIF_PORT = 8000
-        const val RESTART_MS = 5_000L
     }
 }
 

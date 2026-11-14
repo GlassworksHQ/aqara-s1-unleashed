@@ -26,8 +26,8 @@ class PaneSwitchesTest {
 
     @Test fun everyPaneSectionHasItsOnOffAtTheTop() {
         val sections = paneSections(definitions)
-        assertEquals(listOf("assist", "sendspin", "radio", "bluetooth-proxy", "wall-base", "time-zone", "diagnostics"), sections.map { it.id })
-        assertEquals(listOf("Voice", "Music", "Zigbee / Thread radio", "Bluetooth proxy", "Wall base", "Time zone", "Diagnostics"), sections.map { it.master?.title })
+        assertEquals(listOf("assist", "sendspin", "radio", "bluetooth-proxy", "wall-base", "time-zone", "camera", "diagnostics"), sections.map { it.id })
+        assertEquals(listOf("Voice", "Music", "Zigbee / Thread radio", "Bluetooth proxy", "Wall base", "Time zone", "Camera", "Diagnostics"), sections.map { it.master?.title })
         // Only the radio has settings of its own so far; the others say so (#163's page).
         val noSettings = sections.filter { s -> s.items.singleOrNull().let { it is SettingsItem.Note && it.text() == NO_SETTINGS } }
         assertEquals(listOf("assist", "sendspin", "wall-base", "time-zone", "diagnostics"), noSettings.map { it.id })
@@ -48,12 +48,12 @@ class PaneSwitchesTest {
     /** Ids are permanent in Home Assistant. Only `sendspin` existed, and keeps its name. Each is off in HA until turned on there (#132, #208). */
     @Test fun eachSwitchIsAConfigEntityHomeAssistantKeeps() {
         val s = definitions.mapNotNull { it.switch }.map { it.entity() }
-        assertEquals(listOf("voice", "sendspin", "bluetooth_proxy", "wall_base", "keep_time_zone", "diagnostics"), s.map { it.objectId })
+        assertEquals(listOf("voice", "sendspin", "bluetooth_proxy", "wall_base", "keep_time_zone", "camera_pane", "diagnostics"), s.map { it.objectId })
         assertEquals("Music Assistant player (Sendspin)", s[1].name)
-        assertEquals(List(6) { true }, s.map { it.disabledByDefault })
+        assertEquals(List(7) { true }, s.map { it.disabledByDefault })
         assertEquals(setOf(sh.edm.esphome.EntityCategory.CONFIG), s.map { it.category }.toSet())
         // #210 verifier: turned on, a pane opens the microphone or a port; a keyless LAN client may not.
-        assertEquals("only an authenticated connection changes a pane's on/off", List(6) { true }, s.map { it.authOnly })
+        assertEquals("only an authenticated connection changes a pane's on/off", List(7) { true }, s.map { it.authOnly })
     }
 
     /** The device info's voice features follow the voice pane's switch, which says so: the shell names no pane. */
@@ -62,9 +62,9 @@ class PaneSwitchesTest {
     }
 
     /** The Bluetooth proxy is the one off until turned on: it starts the radio scanning (#67, #121). */
-    @Test fun everyPaneButTheBluetoothProxyIsOnUntilTurnedOff() {
+    @Test fun everyPaneButTheBluetoothProxyAndTheCameraIsOnUntilTurnedOff() {
         assertEquals(
-            listOf("assist" to true, "sendspin" to true, "bluetooth-proxy" to false, "wall-base" to true, "time-zone" to true, "diagnostics" to true),
+            listOf("assist" to true, "sendspin" to true, "bluetooth-proxy" to false, "wall-base" to true, "time-zone" to true, "camera" to false, "diagnostics" to true),
             definitions.mapNotNull { d -> d.switch?.let { d.id to it.on } },
         )
     }

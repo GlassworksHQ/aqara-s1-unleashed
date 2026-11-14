@@ -4,7 +4,7 @@
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
  * Changes: package; "Glassworks" (or the panel's name, from RtspServer) in place of "AndroidIPCamera"
- * in the realm, SDP and RTCP. */
+ * in the realm, SDP and RTCP; `a=framerate` when the frame rate is known. */
 
 package dev.glassworks.camera.onvif
 
@@ -272,7 +272,7 @@ internal object RtspSdp {
         return RtspAuth.hex(sps.copyOfRange(1, 4))
     }
 
-    fun build(sps: ByteArray?, pps: ByteArray?, host: String, sessionId: Long, sessionName: String = "Glassworks"): String {
+    fun build(sps: ByteArray?, pps: ByteArray?, host: String, sessionId: Long, sessionName: String = "Glassworks", fps: Int = 0): String {
         val fmtp = StringBuilder("packetization-mode=1;profile-level-id=${profileLevelId(sps)}")
         if (sps != null && pps != null) {
             fmtp.append(";sprop-parameter-sets=${Base64Lite.encode(sps)},${Base64Lite.encode(pps)}")
@@ -289,6 +289,7 @@ internal object RtspSdp {
             append("m=video 0 RTP/AVP $PAYLOAD_TYPE\r\n")
             append("a=rtpmap:$PAYLOAD_TYPE H264/90000\r\n")
             append("a=fmtp:$PAYLOAD_TYPE $fmtp\r\n")
+            if (fps > 0) append("a=framerate:$fps\r\n") // Glassworks: clients otherwise guess (ffprobe: 90000/1)
             append("a=control:$TRACK_CONTROL\r\n")
         }
     }

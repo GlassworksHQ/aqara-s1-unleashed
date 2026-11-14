@@ -26,10 +26,10 @@ class H264Encoder(
     bitrate: Int = bitrateFor(width, height),
     private val onAccessUnit: (annexB: ByteArray, key: Boolean) -> Unit,
     /** The encoder stopped by itself (a codec error), not through [release]. On the encoder's thread. */
-    private val onFailure: () -> Unit = {},
-) {
+    private val onFailure: (StreamEncoder) -> Unit = {},
+) : StreamEncoder {
     private val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-    val surface: Surface
+    override val surface: Surface
     @Volatile private var running = true
     private val drain: Thread
 
@@ -55,12 +55,12 @@ class H264Encoder(
         drain = Thread(::drainLoop, "glassworks-h264").apply { isDaemon = true; start() }
     }
 
-    fun requestKeyFrame() {
+    override fun requestKeyFrame() {
         try { codec.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) }) } catch (_: Exception) {}
     }
 
     /** Stops the encoder and frees it. Take [surface] out of the camera session first. */
-    fun release() {
+    override fun release() {
         running = false
         if (Thread.currentThread() !== drain) drain.join(1_000) // from onFailure, it is this thread
         try { codec.stop() } catch (_: Exception) {}
@@ -79,7 +79,7 @@ class H264Encoder(
                 if (running) {
                     Log.w(TAG, "H.264 encoder stopped: ${e.javaClass.simpleName}")
                     running = false
-                    onFailure()
+                    onFailure(this)
                 }
                 break
             }

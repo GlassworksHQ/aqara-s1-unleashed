@@ -330,6 +330,16 @@ class RtspServerTest {
         assertTrue(closedWhileSending(byteArrayOf('\r'.code.toByte())))
     }
 
+    @Test fun theSdpCarriesTheFrameRateWhenKnown() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, fps = 15)
+        server.start()
+        server.onAccessUnit(idr, true)
+        val (_, sdp) = Client(port).request("DESCRIBE", "rtsp://127.0.0.1:$port/live", listOf("Accept: application/sdp"))
+        assertTrue(sdp, sdp.contains("a=framerate:15\r\n"))
+        assertTrue(!RtspSdp.build(null, null, "192.0.2.41", 1).contains("a=framerate"))
+    }
+
     @Test fun theStreamCarriesThePanelsName() {
         port = freePort()
         server = RtspServer(port, { USER }, { counts += it }, name = "Hall Panel")

@@ -62,7 +62,7 @@ class ManagePaneSwitchesTest {
             sw.on = sw.default
         }
         // Only the Bluetooth proxy lacks its hardware here; any other pane reading Can't run is a regression.
-        assertEquals(setOf("bluetooth-proxy"), cantRun)
+        assertEquals(setOf("bluetooth-proxy", "camera"), cantRun)
     }
 
     @Test fun thePanesTheManagePageLists() {

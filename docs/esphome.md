@@ -391,7 +391,7 @@ poll as a safety net.
 
 ### Camera entities
 
-On a device with a camera only (not the S1); the camera pane is off until you turn it on (#117).
+The pane's on/off (`camera_pane`) is on every panel, as every pane's is (#67); on a panel without a camera, such as the S1, the pane's page says it can't run and nothing else exists. The rest only on a device with a camera, and the pane is off until you turn it on (#117).
 Presence comes from lighting-insensitive motion on the panel; no image leaves it in *Presence only*.
 
 | Entity | object_id | Category, default | What it does |
@@ -402,7 +402,7 @@ Presence comes from lighting-insensitive motion on the panel; no image leaves it
 | select `Camera use` | `camera_use` | config, off | `Presence only` or `Presence + snapshots` |
 | switch `ONVIF stream` | `onvif_stream` | config, off | RTSP on 8554 and ONVIF on 8000 for HA's ONVIF integration, Frigate and UniFi Protect. Refused in *Presence only*; needs a stream sign-in; encrypted connections only |
 | number `Camera sensitivity` | `camera_sensitivity` | config, off | 1 (least) to 10 (most), default 5 |
-| switch `Camera pane` | `camera_pane` | config, off | The pane's on/off (#67) |
+| switch `Camera pane` | `camera_pane` | config, off | The pane's on/off (#67). On every panel; on one without a camera it changes nothing |
 
 **The stream is not encrypted.** RTSP and ONVIF here are plain TCP: anyone on the network can watch
 the video of a session, and a client that signs in with Basic auth or WS-Security `PasswordText` sends

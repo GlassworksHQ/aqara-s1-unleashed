@@ -94,6 +94,9 @@ class SettingsMockups {
         shot("settings-18-wall-base", menu(radioRunning = true), "wall-base")
         shot("settings-19-time-zone", menu(radioRunning = true), "time-zone")
         shot("settings-20-diagnostics", menu(radioRunning = true), "diagnostics")
+        // #117: the camera pane on a panel without a camera (the S1): greyed in the rail, and its page says why.
+        val noCamera = dev.glassworks.camera.CameraDefinition(KioskPrefs(RuntimeEnvironment.getApplication()).paneFile("camera"), hasCamera = false)
+        shot("settings-21-camera-cant-run", menu(radioRunning = true, extra = listOf(noCamera)), "camera")
         shot("settings-16-screen-scrolled", menu(radioRunning = true), "screen") { o ->
             Mockup.layout(o)
             o.previewScrollTo(Mockup.label(o, "Brightness"), alignBottom = true)

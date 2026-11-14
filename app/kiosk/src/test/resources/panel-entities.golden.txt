@@ -10,6 +10,7 @@ block_aqara_cloud|1672593875|SwitchEntity|Block Aqara cloud|mdi:cloud-off-outlin
 bluetooth_advertisements|-116549064|SensorEntity|Bluetooth advertisements|mdi:bluetooth-audio||DIAGNOSTIC|authOnly=false|options=|disabledByDefault
 bluetooth_proxy|1860802466|SwitchEntity|Bluetooth proxy|mdi:bluetooth||CONFIG|authOnly=true|options=|disabledByDefault
 bluetooth_proxy_status|-602386831|TextSensorEntity|Bluetooth proxy status|mdi:bluetooth-settings||DIAGNOSTIC|authOnly=false|options=|disabledByDefault
+camera_pane|436067397|SwitchEntity|Camera pane|mdi:cctv||CONFIG|authOnly=true|options=|disabledByDefault
 cpu_temperature|577453544|SensorEntity|CPU temperature||temperature|DIAGNOSTIC|authOnly=false|options=
 cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly=false|options=
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|disabledByDefault
