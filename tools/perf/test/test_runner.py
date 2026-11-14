@@ -420,6 +420,26 @@ class FakeMatchesThePanel(unittest.TestCase):
                 self.assertEqual(got[shape], {tuple(keys)})
 
 
+class FakeStateIsAtomic(unittest.TestCase):
+    """#251's CI flake: a fake adb process read a state file another was writing (truncated, not yet
+    written) and got nothing; the fake screen then slept. Writes are now atomic."""
+
+    def test_a_reader_never_sees_a_half_written_file(self):
+        tmp = tempfile.mkdtemp()
+        env = dict(os.environ, FAKE_ADB_STATE=tmp)
+        code = ("import sys, time; sys.path.insert(0, %r); import fake_adb as F\n"
+                "if sys.argv[1] == 'w':\n"
+                "    for i in range(3000): F.save('awake_at.json', time.time())\n"
+                "else:\n"
+                "    F.save('awake_at.json', time.time()); bad = 0\n"
+                "    for i in range(3000): bad += F.state('awake_at.json') is None\n"
+                "    print(bad)\n") % HERE
+        w = subprocess.Popen([sys.executable, "-c", code, "w"], env=env)
+        r = subprocess.run([sys.executable, "-c", code, "r"], env=env, capture_output=True, text=True, timeout=120)
+        w.wait(timeout=120)
+        self.assertEqual(r.stdout.strip(), "0", r.stderr[-800:])
+
+
 class FakeSplitsLikeThePage(unittest.TestCase):
     """The fake's page_lines must give exactly what the page's consoleLines (stats.js) gives."""
 
@@ -797,15 +817,17 @@ class Restart(unittest.TestCase):
     def test_the_screen_stays_on_through_a_slow_restart(self):
         """s1rtc7 run 2: the screen went off 20.4 s after the force-stop, before the kiosk's first
         frame (the S1's 20 s night timeout), and the restart then waited 280 s. Here the fake's
-        screen sleeps 3 s after the last wake or touch, through a 7 s restart: the wake key from the
+        screen sleeps 4 s after the last wake or touch, through a 9 s restart: the wake key from the
         stop on keeps it on, and every later phase has its own nudge."""
-        nudged = dict(FAKE_SCREEN_SLEEP_S="3", FAKE_RESTART_SLOW="7", GW_PERF_RESTART_WAKE_S="1",
+        # The fake's screen sleeps 4 s after the last wake or touch, and every nudge comes each second:
+        # a 4x margin for a slow CI runner's adb stand-ins. The restart (9 s) outlasts the sleep twice.
+        nudged = dict(FAKE_SCREEN_SLEEP_S="4", FAKE_RESTART_SLOW="9", GW_PERF_RESTART_WAKE_S="1",
                       GW_PERF_KEEP_AWAKE_S="1", GW_PERF_LIVE_IDLE_WAKE_S="1")
         p, c, _ = self.run_short(90, **nudged)
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertIsNone(c["error"])
         self.assertNotIn("screen_off", c)
-        self.assertGreaterEqual(c["restart_wakes"], 5)                 # 7 s at one a second, and the relaunch's
+        self.assertGreaterEqual(c["restart_wakes"], 6)                 # 9 s at one a second, and the relaunch's
         # Without the restart's nudges the same fake screen goes off in the restart, as on the S1.
         p, c, _ = self.run_short(90, **dict(nudged, GW_PERF_RESTART_WAKE_S="1000"))
         self.assertEqual(c["screen_off"][0]["during"], "the restart", c.get("screen_off"))

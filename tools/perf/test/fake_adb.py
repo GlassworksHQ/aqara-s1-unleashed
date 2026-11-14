@@ -27,8 +27,14 @@ def state(name, default=None):
 
 
 def save(name, value):
-    with open(os.path.join(STATE, name), "w") as f:
+    """Atomically: written aside, then renamed over the old file. Many fake adb processes read and
+    write these at once, and a reader that met a file mid-write (truncated, not yet written) read
+    nothing: the fake screen then took the last wake for 1970 and slept (#251's CI flake)."""
+    path = os.path.join(STATE, name)
+    tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    with open(tmp, "w") as f:
         json.dump(value, f)
+    os.replace(tmp, path)
 
 
 def paint(start, end):
@@ -546,7 +552,10 @@ def screen_timeout(after_s):
     save("awake_at.json", state("awake_at.json") or time.time())
     while True:
         time.sleep(0.1)
-        if not state("asleep.json") and time.time() - (state("awake_at.json") or 0) > after_s:
+        awake_at = state("awake_at.json")
+        if awake_at is None:
+            continue                     # unreadable: no evidence the screen has been idle
+        if not state("asleep.json") and time.time() - awake_at > after_s:
             save("asleep.json", True)
             line("PowerManagerService", "Going to sleep due to timeout (uid 1000)...", pid=1919)
 
