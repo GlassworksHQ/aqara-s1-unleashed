@@ -30,7 +30,7 @@ thread running every task within 50 ms for 500 ms ([docs/perf.md](../../../docs/
    | Run | Drawn | Usable | `busy_ms` (longest probe wait in each second after drawn) |
    |---|---|---|---|
    | s1rtc6 #1 | 974 ms | 4896 ms | 1089, 767, 359, 211, 40 |
-   | s1rtc6 #2 | 741 ms | 4533 ms | 1192, 762, 332, 161, 23 |
+   | s1rtc6 #3 | 741 ms | 4533 ms | 1192, 762, 332, 161, 23 |
    | s1rtc7 #1 | 960 ms | 4969 ms | 1368, 909, 367, 171, 19 |
    | s1rtc7 #3 | 738 ms | 4463 ms | 1139, 630, 331, 166, 19 |
 
@@ -58,8 +58,9 @@ thread running every task within 50 ms for 500 ms ([docs/perf.md](../../../docs/
    The main thread used 438 and 422 ms of CPU, and the parent process and the renderer about 50 ms
    each. Desktop drew the first screen at 0.17 to 0.22 s and was usable at 1.0 s. The S1 takes 0.86
    and 4.7 s, about the same 1 : 5.5 ratio, about 5× slower. So the open is HA's own JavaScript
-   building cards (Lit templates, custom elements, shadow roots). Layout and painting are about a
-   tenth of it. Gecko prefs for layout, painting or GC can move at most that tenth.
+   building cards (Lit templates, custom elements, shadow roots). Layout and painting together are
+   about a tenth of it (10.4 and 10.8%); with GC they are 11.4 and 16.2%. Gecko prefs for layout,
+   painting or GC can move at most that share.
 
 3. **Lower JIT thresholds** (2026-11-14, verified on desktop). A quarter of the JavaScript time
    runs in the interpreters or in compiling, because this is the first time the view's cards are
@@ -154,7 +155,7 @@ thread running every task within 50 ms for 500 ms ([docs/perf.md](../../../docs/
 
 8. **Who uses the cores, and at what clock, during each open** (2026-11-14, verified by the root:
    plan 1 step 1. Build A, main 5415f64b; Clarity #205 eb9c7af, one graded-only run;
-   `tools/perf-lab/cpu-trace.sh` without root, about 0.45 s per sample; `cpu-align.py`):
+   `tools/perf-lab/cpu-trace.sh` without root, about 0.38 s per sample in this run; `cpu-align.py`):
 
    | View | Opens in | Device busy (4 cores) | Tab process | GPU process | Kiosk main process | `voice-mic` | Clock | CPU zone |
    |---|---|---|---|---|---|---|---|---|
@@ -163,8 +164,10 @@ thread running every task within 50 ms for 500 ms ([docs/perf.md](../../../docs/
    | typical (camera) | 5554 ms | 65% | 111.3% | 32.7% | 19.5% | 2.6% | 1512000 ×18 | 45.3 to 54.0 °C |
    | heavy | 41250 ms | 95% | 110.9% | 69.5% | 30.9% | 2.9% | 1512000 ×85 | 50.9 to 62.2 °C |
 
-   Over the whole run, 1491 of 1600 samples read 1512000, 13 read 1608000 (during heavy, at 60 to
-   64 °C), and the rest were dips to 408000 to 1416000 between bursts (4 at 1200000). The cpufreq
+   Over the whole run, 1491 of 1600 samples read 1512000, 13 read 1608000, and the rest were dips to
+   408000 to 1416000 between bursts (4 at 1200000). None of the 1608000 samples fell inside a view
+   open: 6 came during the warm-up at 48 to 56 °C, and 7 during heavy's later steps, after it was
+   usable, at 58 to 63 °C. The cpufreq
    cooling state was 0 in every sample, and the CPU zone stayed between 38.4 and 64.5 °C.
    `sys.cpu_temp` read 67.5 throughout, so it's a fixed value, not a sensor.
 
@@ -172,7 +175,7 @@ thread running every task within 50 ms for 500 ms ([docs/perf.md](../../../docs/
    - **The open is bound by one thread in the page's process.** The tab process holds a little over
      one core; the device had a third of its cores free on typical-nocam. The trace reads the
      process total, not Gecko's main thread on its own (the process's pid thread is Android's main
-     thread, idle: 9 jiffies over the run), so "the Gecko main thread is saturated" is inferred from
+     thread, idle: 0 jiffies over the run), so "the Gecko main thread is saturated" is inferred from
      that total and from the harness's `busy_ms` (a 1.1 s task right after the first screen), not
      measured per thread.
    - **The clock was 1.512 GHz, the HAL's higher ceiling, in every open.** The 1.2 GHz seen under
@@ -238,7 +241,7 @@ thread running every task within 50 ms for 500 ms ([docs/perf.md](../../../docs/
 | Main thread busy after it | 3.6 to 4.0 s | verified (4 runs) |
 | of which HA's JavaScript | about two-thirds | desktop profile, inferred for the S1 |
 | of which DOM | 11 to 17% | desktop profile |
-| of which layout and painting | about a tenth | desktop profile |
+| of which layout and painting | about a tenth (10.4 to 10.8%; 11.4 to 16.2% with GC) | desktop profile |
 | The page's process during the open | 106 to 118% of a core, device 60 to 64% busy | verified (steps 8 and 10, seven typical-nocam opens) |
 | Background CPU from the kiosk | main process 14%, the wake word 2.6% of a core during the open | verified (step 8) |
 | The clock | 1.512 GHz in every open of the traced run; an earlier 1.2 GHz under load is unexplained | verified (steps 7 and 8) |
@@ -249,9 +252,9 @@ thread running every task within 50 ms for 500 ms ([docs/perf.md](../../../docs/
 | Wake word model off the urgent-audio thread | about 0: 2.6% of a core with a third of the cores idle | verified (step 8) | App, `244-ww-thread`; dropped |
 | JIT tier-up thresholds | none on typical-nocam (+2%, inside the spread); about 15% slower on heavy; 7 to 16% more CPU | verified on the panel (step 10, 3 alternating pairs) and on desktop | App prefs; dropped |
 | A newer GeckoView | small: 159 is one release behind 160.0 (2026-11-04), and the desktop lab already ran 160 | read (Mozilla's Maven) | App dependency, routine |
-| HA's frontend's own work per card (Lit rendering, custom elements, shadow roots; the masonry view builds every card at once) | the bulk of the open | desktop profile | Upstream (HA's frontend), not the kiosk |
+| HA's frontend's own work per card (Lit rendering, custom elements, shadow roots; the view builds all its cards before it is usable) | the bulk of the open | desktop profile | Upstream (HA's frontend), not the kiosk |
 | The dashboard's cost: fewer or lighter cards per view | large: light's 20 cards open in 1.4 to 2.1 s, typical's 50 in 4.3 to 5.4 s | verified (Clarity) | The dashboard's owner; the frame's docs can say so |
-| Layout, paint and GC prefs | about a tenth at most | desktop profile | ruled out as a main lever |
+| Layout, paint and GC prefs | layout and paint about a tenth; with GC 11 to 16% | desktop profile | ruled out as a main lever |
 | Content process priority | none: already foreground | verified | ruled out |
 | Memory pressure | none: 671 MB free at the peak | verified | ruled out |
 
@@ -340,6 +343,19 @@ it reaches panels if its services can do it (no reflash), else the boot patch. C
 it) and restart the HAL or reboot; the HAL then writes its own ceilings again. Option 2: stop the
 service and reboot (sysfs is in RAM). Either way, the installer's restore removes the whole root
 side.
+
+## What has no saved output
+
+Three readings above have no output in the repo or with the Clarity runs. They are reported from
+the session that made them:
+
+- Step 3's desktop JIT runs: their per-run lines are in a local log on the computer that ran them;
+  the profiles they came from were deleted after splitting (each was over 200 MB).
+- Step 7's 30 clock samples at 1.2 GHz under heavy's load: printed to the terminal, not saved.
+- Step 9's touch-boost run (03:12): its output is on the root's computer, not in the repo.
+
+The Clarity runs, the traces and their `cpu-align.py` output for steps 1, 8, 10 and 11 are kept with
+the Clarity runs (s1rtc6, s1rtc7, s1rtc9 and the #244 runs), outside the repo.
 
 ## How to reproduce
 
