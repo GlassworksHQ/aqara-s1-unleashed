@@ -12,7 +12,7 @@ uses. It doesn't restate the rules. When this page and glassworks.dev disagree, 
 | Built on Glassworks badge and its rules | [glassworks.dev/brand#badge](https://www.glassworks.dev/brand#badge) |
 | Core, pane and Kiln badges | [glassworks.dev/brand#parts](https://www.glassworks.dev/brand#parts) |
 | Licence, status and roadmap badges (instead of shields.io) | [glassworks.dev/brand#info](https://www.glassworks.dev/brand#info) |
-| README banners (core, Kiln, libraries) | [glassworks.dev/brand#banners](https://www.glassworks.dev/brand#banners) |
+| README banners (core, Kiln, libraries, frames) | [glassworks.dev/brand#banners](https://www.glassworks.dev/brand#banners) |
 | What you may and may not do with the names | [glassworks.dev/trademarks](https://www.glassworks.dev/trademarks) |
 | Source of the assets, and the generator | [GlassworksHQ/glassworks.dev](https://github.com/GlassworksHQ/glassworks.dev): `public/brand/`, `scripts/brand/` |
 
@@ -32,6 +32,7 @@ image follows GitHub's theme.
 | A pane | **Pane badge** (`badge-pane-on-*.svg`) | The pane's README |
 | [Clarity](perf.md), the perf test and grade every frame follows | **Core badge** (`badge-core-on-*.svg`) alone, under the title. No banner | `docs/perf.md`. Its tools in `tools/perf` stay plain, like every dev tool |
 | The installer (`kiln/`, `tools/install.sh`) | **Kiln badge** (`badge-kiln-on-*.svg`) | Kiln's README. The S1 installer is still S1-branded until it moves into Kiln |
+| A frame (`frames/<id>/`) | **Frame banner** (`banner-frame-<id>-on-*.svg`), then the Built on Glassworks, status and roadmap badges | Top of `frames/<id>/README.md`. glassworks.dev draws it from the frame's `frame.json` (see [Adding a frame banner](#adding-a-frame-banner)) |
 
 Device-specific code lives in the frame, so it doesn't get a badge of its own.
 
@@ -60,6 +61,20 @@ All libraries share one banner drawing, so only its name and one-line descriptio
 
 Don't draw a banner or badge by hand, and don't recolour one. If one is missing, add it to the
 generator.
+
+## Adding a frame banner
+
+Every frame gets its own banner, drawn from its `frames/<id>/design/frame.json`: the device from
+`model`, the name with `brand` set light, `frames/<id>`, and `tagline` (at most 50 characters). It
+has no hue of its own: a frame is hardware, the bottom plate of the stack.
+
+1. In this repo, give the frame's `frame.json` a `brand` (the maker's part of `name`, if any) and a
+   `tagline`, and merge it.
+2. In [glassworks.dev](https://github.com/GlassworksHQ/glassworks.dev), move the `vendor/s1-unleashed`
+   submodule pin to that commit, run `pnpm brand`, and open a PR with the new SVGs. Its build fails
+   if a frame's banner isn't the one its `frame.json` gives.
+3. Once that is deployed, put the banner at the top of the frame's README, with the file name
+   `banner-frame-<id>`.
 
 ## Colour, in short
 

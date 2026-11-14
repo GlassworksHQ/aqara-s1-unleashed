@@ -1,9 +1,11 @@
 {
   "id": "lululemon-mirror",
   "name": "lululemon Studio Mirror",
+  "brand": "lululemon",
   "aka": "Originally sold as Mirror, by Mirror.co",
   "status": "planned",
   "summary": "A full-length mirror with a 40-inch portrait screen behind it. The original version takes a new Android image over fastboot.",
+  "tagline": "A 40-inch mirror with Android behind it.",
   "notice": "Only the original version works: a Qualcomm board, stock software 1.x and a screen of about 40 inches. The later version (software 5.x, about 43 inches, a blue button on the top edge) has a locked NXP board.",
   "model": {
     "body": {
