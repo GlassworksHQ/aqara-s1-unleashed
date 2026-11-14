@@ -1,14 +1,7 @@
 package sh.edm.s1kiosk.esphome
 
-import android.annotation.SuppressLint
-import android.content.Context
-import android.content.Intent
-import android.content.SharedPreferences
-import android.media.AudioAttributes
-import android.net.wifi.WifiManager
-import android.os.Handler
-import android.os.Looper
-import android.os.PowerManager
+import sh.edm.esphome.*
+import sh.edm.esphome.android.EspHomeMdns
 import dev.glassworks.diagnostics.DiagnosticsPane
 import dev.glassworks.frame.Frame
 import dev.glassworks.notifications.NotificationScreen
@@ -21,6 +14,40 @@ import dev.glassworks.pane.PaneSwitch
 import dev.glassworks.pane.PanelEvent
 import dev.glassworks.pane.forEachPane
 import dev.glassworks.pane.stopAll
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
+import android.media.AudioAttributes
+import android.net.wifi.WifiManager
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
+import sh.edm.s1kiosk.BuildConfig
+import sh.edm.s1kiosk.GlassworksRuntime
+import sh.edm.s1kiosk.KioskPrefs
+import sh.edm.s1kiosk.MainActivity
+import sh.edm.s1kiosk.timers.TimersPane
+import sh.edm.s1kiosk.auth.HaAuth
+import sh.edm.s1kiosk.auth.OAuth
+import sh.edm.s1kiosk.radio.RadioPane
+import sh.edm.s1kiosk.dashboard.Dashboard
+import sh.edm.s1kiosk.dashboard.DashboardOptions
+import sh.edm.s1kiosk.dashboard.Dashboards
+import sh.edm.s1kiosk.dashboard.StableChange
+import sh.edm.s1kiosk.discovery.HaUrls
+import sh.edm.s1kiosk.sendspin.SendspinPane
+import sh.edm.s1kiosk.setup.SetupSignals
+import sh.edm.s1kiosk.update.UpdateManager
+import sh.edm.s1kiosk.voice.AssistPane
+import sh.edm.s1kiosk.voice.TtsPlayer
+import sh.edm.s1kiosk.voice.ExoAudioPlayer
+import sh.edm.s1kiosk.voice.SpeakerMedia
+import sh.edm.s1kiosk.voice.VoiceEngine
+import sh.edm.s1kiosk.voice.VoiceEvent
+import sh.edm.s1kiosk.voice.VoiceLevels
+import sh.edm.s1kiosk.voice.chime
+import sh.edm.s1kiosk.voice.wakeChime
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -29,32 +56,6 @@ import java.security.SecureRandom
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
-import sh.edm.esphome.*
-import sh.edm.esphome.android.EspHomeMdns
-import sh.edm.s1kiosk.BuildConfig
-import sh.edm.s1kiosk.GlassworksRuntime
-import sh.edm.s1kiosk.KioskPrefs
-import sh.edm.s1kiosk.MainActivity
-import sh.edm.s1kiosk.auth.HaAuth
-import sh.edm.s1kiosk.dashboard.Dashboard
-import sh.edm.s1kiosk.dashboard.DashboardOptions
-import sh.edm.s1kiosk.dashboard.Dashboards
-import sh.edm.s1kiosk.dashboard.StableChange
-import sh.edm.s1kiosk.discovery.HaUrls
-import sh.edm.s1kiosk.radio.RadioPane
-import sh.edm.s1kiosk.sendspin.SendspinPane
-import sh.edm.s1kiosk.setup.SetupSignals
-import sh.edm.s1kiosk.timers.TimersPane
-import sh.edm.s1kiosk.update.UpdateManager
-import sh.edm.s1kiosk.voice.AssistPane
-import sh.edm.s1kiosk.voice.ExoAudioPlayer
-import sh.edm.s1kiosk.voice.SpeakerMedia
-import sh.edm.s1kiosk.voice.TtsPlayer
-import sh.edm.s1kiosk.voice.VoiceEngine
-import sh.edm.s1kiosk.voice.VoiceEvent
-import sh.edm.s1kiosk.voice.VoiceLevels
-import sh.edm.s1kiosk.voice.chime
-import sh.edm.s1kiosk.voice.wakeChime
 
 /**
  * The panel as one ESPHome device for Home Assistant: native API server (port 6053), mDNS,
@@ -94,8 +95,10 @@ class PanelDevice internal constructor(
     )
 
     companion object {
-        // Keep the library's logs under the tag the docs use (`adb logcat -s S1ESPHome`).
-        init { EspHomeLog.tag = "S1ESPHome" }
+        /** The library's logs go under the tag the docs use (`adb logcat -s S1ESPHome`). */
+        const val ESPHOME_LOG_TAG = "S1ESPHome"
+
+        init { EspHomeLog.tag = ESPHOME_LOG_TAG }
 
         /**
          * The ESPHome node name. Home Assistant's config entry keeps it (`device_name`), the mDNS service
@@ -216,6 +219,8 @@ class PanelDevice internal constructor(
             manufacturer = "Aqara",
             model = "Panel Hub S1 Plus (S1 Kiosk)",
             voiceFeatures = voiceFeatures(),
+            // Home Assistant's "Visit" link on the device page opens the Manage page (#33).
+            webserverPort = OAuth.SIGNIN_PORT,
         )
         EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${id.voiceFeatures != 0}")
         if (!unlessStopped { initEntities(id); acquireLocks() }) return
@@ -467,6 +472,9 @@ class PanelDevice internal constructor(
 
     /** The chime player, made on first use (from the ESPHome, voice or main thread). */
     private fun chimes(): TtsPlayer = synchronized(this) { chimePlayer ?: TtsPlayer().also { chimePlayer = it } }
+
+    /** Home Assistant is connected and listening to the panel's states now. */
+    fun homeAssistantConnected(): Boolean = server?.hasSubscriber == true
 
     /** The user cancelled the current voice run (tap on the overlay). */
     fun cancelVoice() {

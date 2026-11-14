@@ -9,6 +9,7 @@ rules every part follows.
 |---|---|
 | [install.md](install.md) | Installing with the web installer or the command line, updating, undo, troubleshooting |
 | [onboarding.md](onboarding.md) | Design notes for the first boot: Wi-Fi (Improv), adding it to Home Assistant, QR sign-in, dashboard picker (the steps themselves are in install.md) |
+| [manage.md](manage.md) | The Manage page at `http://<panel>:8099/`: signing in through Home Assistant or with the code on the panel, the log, diagnostics, and how it keeps you safe |
 | [esphome.md](esphome.md) | The panel as an ESPHome device: every entity, the voice assistant, encryption, app updates |
 | [notifications.md](notifications.md) | Notifications from Home Assistant: the `notify` action and its fields, button presses, priorities, Do not disturb, the doorbell blueprint |
 | [sendspin.md](sendspin.md) | The native Music Assistant player (Sendspin): setup, pairing, synced playback |

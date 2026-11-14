@@ -370,6 +370,30 @@ The default is on for the S1's panes, as before the switch.
 The radio has no `PaneSwitch`: its on/off is its mode (`Off`), and its card and settings switch are
 its own. Timers have none either: they come only from voice.
 
+## The Manage page
+
+The panel serves `http://<panel>:8099/` ([docs/manage.md](../../../../../../../docs/manage.md), #33),
+on the same port as the QR-code sign-in pages. The core has the whole page; a frame gives it one
+`ManageHost`.
+
+| Part | What it does |
+|---|---|
+| `web.HttpServer`, `web.PageShell` | The small HTTP server, and the one look every page shares, the QR pages included. Change the look in `PageShell` only |
+| `manage.ManageServer` | Routes, the session gate, the `Origin` and CSRF checks, the actions. The QR paths it's given go to the QR server untouched, without a session |
+| `manage.HaSignIn` | Sign in through HA as an OAuth client of the local HA only: PKCE, `auth/current_user` must say `is_admin`, the refresh token revoked at once |
+| `manage.SessionStore` | The page's own sessions: a SHA-256 of the cookie on disk, 30 days when remembered, tied to the HA address |
+| `manage.PanelCode` | The 6-digit code on the panel's screen: one purpose and browser, 5 minutes, 5 tries, 10 wrong in 15 min locks entry |
+| `manage.ManageLog`, `LogcatTail`, `Redact` | The 7-day log across reboots, fed from the app's own logcat, and the redaction for it and the diagnostics file |
+| `manage.ManageHost` | What the frame supplies: `status()` (`PanelStatus`: tiles, `PaneRow`s with a `PaneState`, the settings sections), `actions`, `diagnostics()` |
+
+The settings sections are the ones the panel's menu draws (`paneSections`, `settingsOrder`), and
+they show read-only: `Text`, `Switch`, `Info` and `Note` show their values; `Slider`, `Duration` and
+`TimeRange` show their value in words; `Link` and `Native` say "On the panel". A pane's row
+(`manage.paneRow`) takes its name and on/off from its section: the title, `unavailable` for Can't run,
+the `master` switch (#67) for Off. A pane that is off shows its state and nothing else: no settings,
+no links. The frame adds only what a running pane is doing. Editing in a browser needs a typed value
+and action model instead of closures and views; that is phase 2.
+
 ## Android versions
 
 Code outside `dev.glassworks.platform` never reads `Build.VERSION.SDK_INT`. If you need a version
