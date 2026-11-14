@@ -137,7 +137,14 @@ class CameraPresence(
         val s = Session(onReading)
         val old = synchronized(lock) { session.also { session = s } }
         old?.close()
-        s.attach(camera.open(fps, s))
+        s.begin()
+        val h = try {
+            camera.open(fps, s)
+        } catch (e: Exception) {
+            s.fail("couldn't open the camera: ${e.javaClass.simpleName}")
+            return
+        }
+        s.attach(h)
     }
 
     override fun stop(context: Context) {
@@ -155,6 +162,15 @@ class CameraPresence(
         private var lastFrameMs = 0L
         private var watching = false
         private var failing = false
+        /** Counts [fail]s, so a score that was running when one happened is dropped. */
+        private var fails = 0
+
+        /** Starts the silence watchdog before the camera opens: a source that never sends counts as gone too. */
+        fun begin() = synchronized(lock) {
+            lastFrameMs = clock()
+            watching = true
+            after(STALE_MS, ::checkStale)
+        }
 
         /** The camera [open] returned. A [close] that came first closes it at once. */
         fun attach(h: AutoCloseable) {
@@ -164,12 +180,13 @@ class CameraPresence(
 
         override fun frame(frame: LumaFrame) {
             val now = clock()
-            synchronized(lock) {
+            val epoch = synchronized(lock) {
                 if (closed) return
                 lastFrameMs = now
                 if (!watching) { watching = true; after(STALE_MS, ::checkStale) }
                 if (lastScoredMs != Long.MIN_VALUE && now - lastScoredMs < (1000f / fps).toLong()) return
                 lastScoredMs = now
+                fails
             }
             val score = try {
                 detector.score(frame)
@@ -178,7 +195,7 @@ class CameraPresence(
                 return
             }
             val near = synchronized(lock) {
-                if (closed) return
+                if (closed || fails != epoch) return
                 failing = false
                 filter.update(score, now)
             }
@@ -188,9 +205,10 @@ class CameraPresence(
         override fun lost(why: String) = fail("the camera stopped: $why")
 
         /** Far, and why, once until a frame is scored again. */
-        private fun fail(why: String) {
+        fun fail(why: String) {
             val first = synchronized(lock) {
                 if (closed) return
+                fails++
                 filter.reset()
                 (!failing).also { failing = true }
             }

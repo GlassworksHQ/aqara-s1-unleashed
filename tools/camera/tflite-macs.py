@@ -24,7 +24,7 @@ for path in sys.argv[1:]:
             w = shape(op.Inputs(1))  # conv: [O,kh,kw,I]; depthwise: [1,kh,kw,O]
             macs += int(np.prod(out)) * w[1] * w[2] * (w[3] if n == 'CONV_2D' else 1)
         elif n == 'FULLY_CONNECTED':
-            macs += int(np.prod(shape(op.Inputs(1))))
+            macs += int(np.prod(out)) * shape(op.Inputs(1))[-1]  # each output element sums one weight row
     print(path)
     print("  in: ", [desc(g.Inputs(i)) for i in range(g.InputsLength())])
     print("  out:", [desc(g.Outputs(i)) for i in range(g.OutputsLength())])

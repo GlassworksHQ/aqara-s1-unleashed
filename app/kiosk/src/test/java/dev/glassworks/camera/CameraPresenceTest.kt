@@ -251,6 +251,41 @@ class CameraPresenceTest {
         assertFalse(f.update(0.0f, 5_500))
     }
 
+    @Test fun aCameraThatWontOpenReadsFarAndSaysWhy() {
+        val readings = mutableListOf<Pair<Boolean, Float>>()
+        val problems = mutableListOf<String>()
+        val p = CameraPresence({ _, _ -> throw SecurityException("no permission") }, { 0f }, post = { it.run() },
+            after = { _, _ -> }, onProblem = { problems += it })
+        p.start(ctx) { near, raw -> readings += near to raw }
+        assertEquals(listOf(false to -1f), readings)
+        assertEquals(listOf("couldn't open the camera: SecurityException"), problems)
+    }
+
+    @Test fun aSourceThatNeverSendsReadsFarAfterTheStaleTime() {
+        val cam = FakeCamera()
+        val timers = Timers()
+        val readings = mutableListOf<Pair<Boolean, Float>>()
+        val problems = mutableListOf<String>()
+        presence(cam, ArrayDeque(), { timers.now }, timers, problems).start(ctx) { near, raw -> readings += near to raw }
+        timers.runDue(CameraPresence.STALE_MS - 1)
+        assertTrue(readings.isEmpty())
+        timers.runDue(CameraPresence.STALE_MS)
+        assertEquals(listOf(false to -1f), readings)
+        assertEquals(listOf("no frames for 5 s"), problems)
+    }
+
+    @Test fun aScoreThatOutlivesTheWatchdogIsDropped() {
+        val cam = FakeCamera()
+        val timers = Timers()
+        val readings = mutableListOf<Pair<Boolean, Float>>()
+        // The detector takes longer than STALE_MS: the watchdog fires while it runs.
+        val p = CameraPresence(cam, { timers.runDue(CameraPresence.STALE_MS + 1); 0.9f }, filter = PresenceFilter(enterHits = 1),
+            clock = { timers.now }, post = { it.run() }, after = timers::after)
+        p.start(ctx) { near, raw -> readings += near to raw }
+        cam.sink!!.frame(blank)
+        assertEquals("the late hit doesn't bring near back", listOf(false to -1f), readings)
+    }
+
     @Test fun aRangeIsRefusedInWordsAndZeroIsFine() {
         val p = CameraPresence(FakeCamera(), { 0f }, post = { it.run() }, after = { _, _ -> })
         assertNull(p.setRange(ctx, 0f))

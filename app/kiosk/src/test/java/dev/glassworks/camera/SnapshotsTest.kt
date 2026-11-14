@@ -73,6 +73,13 @@ class SnapshotsTest {
         assertNull(gate())
     }
 
+    @Test fun privacyTurnedOnDuringTheCaptureStillWins() {
+        var policy = CameraPolicy(privacy = false, use = CameraUse.PRESENCE_AND_SNAPSHOTS)
+        val gate = stillGate({ policy = policy.copy(privacy = true); jpeg }, { policy }, egress)
+        assertNull(gate())
+        assertFalse(egress.leaving)
+    }
+
     @Test fun noStillMeansNoIndicator() {
         val gate = stillGate({ null }, { CameraPolicy(false, CameraUse.PRESENCE_AND_SNAPSHOTS) }, egress)
         assertNull(gate())

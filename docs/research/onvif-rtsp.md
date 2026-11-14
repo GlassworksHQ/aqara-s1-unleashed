@@ -5,10 +5,14 @@ is built yet. HA's needs are read from its source; UniFi Protect's from Ubiquiti
 MIT proxy whose author reports that Protect adopts it. No Protect console has met a panel, and we
 haven't run the proxy.
 
-Device: none. Sources: `home-assistant/core` `dev` branch, `homeassistant/components/onvif/`
-(read 2026-11-13); `onvif-zeep-async` 4.3.0 (`openvideolibs/python-onvif-zeep-async`, branch `async`);
-`connorgallopo/rtsp-to-onvif` (MIT; a fork of `p10tyr/rtsp-to-onvif`; its README reports Protect
-7.1.60 with Hikvision-family cameras).
+Device: none. Sources, read 2026-11-13 and pinned to the commits that were current then (the files
+at these commits are byte-identical to the ones read):
+
+| Source | Commit |
+|---|---|
+| `home-assistant/core`, `homeassistant/components/onvif/` | `5b84714499e4` (`dev`, 2026-11-13) |
+| `openvideolibs/python-onvif-zeep-async`, `onvif/client.py` (HA pins 4.3.0) | `ab5664281877` (`async`, 2026-09-28) |
+| `connorgallopo/rtsp-to-onvif` (MIT; a fork of `p10tyr/rtsp-to-onvif`; its README reports Protect 7.1.60 with Hikvision-family cameras) | `d07f08add7e6` (`release`, 2026-10-01) |
 
 ## Question
 
@@ -54,7 +58,21 @@ write it or take a library?
      The panel must keep both stable, and must not put a MAC in logs or the repo (AGENTS.md rule 2).
    - It labels every stream H.264, because ONVIF Media 1 has no H.265.
 
-3. **Libraries** (2026-11-13, read: GitHub's licence field and last push)
+3. **Libraries** (2026-11-13, read: GitHub's licence field and last push, from the API)
+   ```
+   $ for r in pedroSG94/RootEncoder pedroSG94/RTSP-Server fyhertz/libstreaming AlexxIT/go2rtc bluenviron/mediamtx rgaufman/live555; do
+       gh api repos/$r -q '"\(.full_name) \(.license.spdx_id) \(.pushed_at[0:10])"'; done
+   pedroSG94/RootEncoder Apache-2.0 2026-11-13
+   pedroSG94/RTSP-Server Apache-2.0 2026-09-04
+   fyhertz/libstreaming Apache-2.0 2023-01-26
+   AlexxIT/go2rtc MIT 2026-11-05
+   bluenviron/mediamtx MIT 2026-11-13
+   rgaufman/live555 LGPL-3.0 2026-07-29
+   $ gh api repos/AlexxIT/go2rtc/releases/latest -q '.tag_name, (.assets[] | select(.name=="go2rtc_linux_arm") | .size)'
+   v1.9.15
+   5092480
+   ```
+
 
    | Project | Licence | Language | Last push | What it gives us |
    |---|---|---|---|---|
@@ -72,7 +90,7 @@ The panel needs three small servers, all off until the switch is on:
 
 | Part | Size of the job | Build on |
 |---|---|---|
-| WS-Discovery responder (UDP 3702, multicast `239.255.255.250`) | One fixed `ProbeMatch` template, the `name` and `hardware` scopes | Our own code. No library worth a dependency |
+| WS-Discovery responder (UDP 3702, multicast `239.255.255.250`) | One fixed `ProbeMatch` template: type `dn:NetworkVideoTransmitter`, and the scopes `onvif://www.onvif.org/Profile/Streaming` (HA's probe asks for it, so a reply without it isn't listed), `…/name/<panel>` and `…/hardware/<frame>` | Our own code. No library worth a dependency |
 | ONVIF device and media services (SOAP over HTTP) | About 11 operations with fixed answers; WS-Security digest check | Our own code, shaped after go2rtc's and rtsp-to-onvif's (both MIT, as references, not copied) |
 | RTSP server and H.264 | `OPTIONS`, `DESCRIBE`, `SETUP`, `PLAY`, `TEARDOWN`, RTP over TCP, Digest auth; `MediaCodec` from the camera | RootEncoder + RTSP-Server (Apache-2.0), or our own RTP (RFC 6184) if JitPack or the size is a problem |
 
@@ -86,13 +104,16 @@ handler that serves the same JPEG behind the same credentials.
 
 ## How to reproduce
 
-Read the sources named above at their 2026-11-13 heads:
+Read the sources at the pinned commits (read-only):
 
 ```
-curl -sfL https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/components/onvif/device.py | grep -n "await .*Get"
-curl -sfL https://raw.githubusercontent.com/connorgallopo/rtsp-to-onvif/HEAD/src/onvif-server.js | grep -o "Get[A-Za-z]*" | sort -u
-gh api repos/pedroSG94/RTSP-Server -q .license.spdx_id
+curl -sfL https://raw.githubusercontent.com/home-assistant/core/5b84714499e4c50e57c39f336e2790e22d3bc2fa/homeassistant/components/onvif/device.py | grep -n "await .*Get"
+curl -sfL https://raw.githubusercontent.com/home-assistant/core/5b84714499e4c50e57c39f336e2790e22d3bc2fa/homeassistant/components/onvif/config_flow.py | sed -n 58,98p
+curl -sfL https://raw.githubusercontent.com/openvideolibs/python-onvif-zeep-async/ab5664281877870ce2bbe1aa3dd190411b19c1ac/onvif/client.py | grep -n "update_xaddrs\|GetServices\|UsernameToken"
+curl -sfL https://raw.githubusercontent.com/connorgallopo/rtsp-to-onvif/d07f08add7e61d8435b8d09dc1dc5b3dfdf0a8ed/src/onvif-server.js | grep -o "Get[A-Za-z]*" | sort -u
 ```
+
+The library table's commands are in step 3.
 
 ## Open questions
 
