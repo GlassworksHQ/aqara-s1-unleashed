@@ -69,6 +69,22 @@ class DiagnosticsPaneTest {
         assertEquals(12, entities.size)
     }
 
+    @Test fun itKeepsTheLastHourForTheSettingsPage() {
+        val p = pane()
+        repeat(DiagnosticsPane.HOUR_SAMPLES + 5) { n -> samples += sample(n * 60_000L, CpuTimes(1000L + n * 100, 800L + n * 50), ticks = 100L + n, temperature = 40f + n) }
+        repeat(DiagnosticsPane.HOUR_SAMPLES + 5) { p.tick() }
+        val temps = p.lastHour("cpu_temperature")
+        assertEquals("an hour, no more", DiagnosticsPane.HOUR_SAMPLES, temps.size)
+        assertEquals("oldest first, the oldest five gone", 45f, temps.first(), 0f)
+        assertEquals(104f, temps.last(), 0f)
+        // Every sample, also the ones within the band Home Assistant doesn't get.
+        assertEquals(DiagnosticsPane.HOUR_SAMPLES, p.lastHour("memory_available").size)
+        assertEquals(sample(64 * 60_000L, CpuTimes(0, 0), 0).elapsedMs, p.lastSample!!.elapsedMs)
+        p.stop()
+        assertEquals(emptyList<Float>(), p.lastHour("cpu_temperature"))
+        assertEquals(null, p.lastSample)
+    }
+
     @Test fun aFrameWithoutAThermalZoneHasNoTemperatureEntity() {
         val ids = pane(hasTemperature = false).entities().map { it.objectId }
         assertFalse("cpu_temperature" in ids)

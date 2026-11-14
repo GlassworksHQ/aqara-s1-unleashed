@@ -29,6 +29,7 @@ import sh.edm.s1kiosk.ui.GlassSlider
 import sh.edm.s1kiosk.ui.GroupedRail
 import sh.edm.s1kiosk.ui.Inter
 import sh.edm.s1kiosk.ui.StackView
+import sh.edm.s1kiosk.ui.TileView
 import sh.edm.s1kiosk.ui.Wrap
 import java.util.Locale
 
@@ -340,9 +341,11 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
                 addItems(i.items, divided = true)
                 continue
             }
-            if (i is SettingsItem.States) {
-                rows.addView(states(i), LinearLayout.LayoutParams(-1, -2))
-                continue
+            when (i) {
+                is SettingsItem.States -> { rows.addView(states(i), LinearLayout.LayoutParams(-1, -2)); continue }
+                is SettingsItem.Status -> { rows.addView(status(i), LinearLayout.LayoutParams(-1, -2)); continue }
+                is SettingsItem.Tiles -> { rows.addView(tiles(i), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f); bottomMargin = px(6f) }); continue }
+                else -> {}
             }
             if (divided) rows.addView(View(context).apply { setBackgroundColor(BD) }, LinearLayout.LayoutParams(-1, px(1f).coerceAtLeast(1)))
             rows.addView(item(i), LinearLayout.LayoutParams(-1, -2))
@@ -359,7 +362,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         is SettingsItem.Note -> g.text(14.5f, MU).apply { text = i.text(); setLineSpacing(0f, 1.25f); setPadding(0, px(14f), 0, px(14f)) }
         is SettingsItem.Info -> row(i.title(), i.detail(), chevron = false, dim = false, onClick = null)
         is SettingsItem.Choice -> row(i.title, choiceName(i), chevron = true, dim = false) { sheet.choice(i) { build() } }
-        is SettingsItem.Group, is SettingsItem.States -> error("laid out by addItems")
+        is SettingsItem.Group, is SettingsItem.States, is SettingsItem.Status, is SettingsItem.Tiles -> error("laid out by addItems")
         is SettingsItem.Native -> natives.getOrPut(i.key) { i.create(nativeHost) }.also { it.refresh() }.view
     }
 
@@ -396,6 +399,53 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             }
             if (list.any { it.offByDefault }) box.addView(g.text(13.5f, FA).apply { text = OFF_BY_DEFAULT; setLineSpacing(0f, 1.2f) },
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12f) })
+        }
+        bind()
+        live += ::bind
+        return box
+    }
+
+    /** The line under the heading: a green dot while the pane works, a grey one otherwise, and its words. */
+    private fun status(i: SettingsItem.Status): View {
+        val dot = View(context)
+        val words = g.text(15f, MU)
+        fun bind() {
+            dot.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (i.ok()) Glass.GREEN else FA) }
+            words.text = i.text()
+        }
+        bind()
+        live += ::bind
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, px(2f), 0, px(6f))
+            addView(dot, LinearLayout.LayoutParams(px(8f), px(8f)).apply { marginEnd = px(10f) })
+            addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+        }
+    }
+
+    /** Readings as tiles, [SettingsItem.Tiles.columns] to a row; values read again on [refresh]. */
+    private fun tiles(i: SettingsItem.Tiles): View {
+        val box = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val views = ArrayList<TileView>()
+        val gap = px(if (i.columns >= 4) 10f else 12f)
+        fun bind() {
+            val list = i.tiles()
+            if (list.size != views.size) {
+                views.clear()
+                box.removeAllViews()
+                val graph = list.any { it.history != null || it.meter != null }
+                list.chunked(i.columns).forEachIndexed { r, row ->
+                    box.addView(LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        repeat(i.columns) { c ->
+                            val v = if (c < row.size) TileView(context, if (i.columns >= 4) 22f else 27f, graph).also { views += it } else View(context)
+                            addView(v, LinearLayout.LayoutParams(0, -1, 1f).apply { if (c > 0) marginStart = gap })
+                        }
+                    }, LinearLayout.LayoutParams(-1, -2).apply { if (r > 0) topMargin = gap })
+                }
+            }
+            list.forEachIndexed { n, t -> views[n].bind(t) }
         }
         bind()
         live += ::bind

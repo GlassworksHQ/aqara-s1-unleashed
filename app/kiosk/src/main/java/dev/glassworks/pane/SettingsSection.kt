@@ -203,6 +203,25 @@ sealed interface SettingsItem {
 
     class StateRow(val name: String, val value: String, val offByDefault: Boolean = false)
 
+    /** A line under the page's heading that says how the pane is doing now. [ok]: it works (green), else quiet grey. Read again while open. */
+    class Status(val text: () -> String, val ok: () -> Boolean) : SettingsItem
+
+    /** Readings as tiles, [columns] to a row (the diagnostics' six, the wall base's strip). Read again while the page is open. */
+    class Tiles(val columns: Int, val tiles: () -> List<Tile>) : SettingsItem
+
+    /**
+     * One reading: its [name], the [value] large with its [unit], a [detail] line, and under it either its
+     * last hour ([history], oldest first: a line) or how full it is ([meter], 0 to 1).
+     */
+    class Tile(
+        val name: String,
+        val value: String,
+        val unit: String = "",
+        val detail: String = "",
+        val history: List<Float>? = null,
+        val meter: Float? = null,
+    )
+
     /**
      * A view only the panel draws, for what has no typed item yet. [key] names it: the menu makes it
      * once with [create] and keeps it while the activity lives. A section with a native item is drawn

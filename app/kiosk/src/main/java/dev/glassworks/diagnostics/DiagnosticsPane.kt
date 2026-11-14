@@ -27,7 +27,8 @@ import java.util.concurrent.TimeUnit
  */
 class DiagnosticsPane internal constructor(
     private val ctx: PaneContext,
-    hasTemperature: Boolean,
+    /** The frame names a thermal zone for the CPU: there is a temperature entity. */
+    val hasTemperature: Boolean,
     private val device: ScheduledExecutorService,
     private val probe: Probe,
 ) : Pane {
@@ -76,6 +77,19 @@ class DiagnosticsPane internal constructor(
 
     @Volatile private var restartReason: String? = null
 
+    /** Each metric's values, oldest first, as sampled: the settings page's last hour (#212). */
+    private val hour = HashMap<String, ArrayDeque<Float>>()
+
+    /** The last sample, for the settings page. Null until the first, and again once stopped. */
+    @Volatile var lastSample: Sample? = null
+        private set
+
+    /** Why the app last restarted, in words, or null while the pane doesn't run. */
+    val lastRestartReason: String? get() = restartReason
+
+    /** [objectId]'s values over the last hour, oldest first, at most [HOUR_SAMPLES]. Any thread. */
+    fun lastHour(objectId: String): List<Float> = synchronized(hour) { hour[objectId]?.toList().orEmpty() }
+
     private val entities = metrics.map { m ->
         SensorEntity(
             m.objectId, m.name, m.icon, m.unit, m.accuracy, m.deviceClass, m.stateClass,
@@ -112,6 +126,8 @@ class DiagnosticsPane internal constructor(
         }
         values.clear()
         restartReason = null
+        lastSample = null
+        synchronized(hour) { hour.clear() }
         ctx.publishStates()
     }
 
@@ -121,13 +137,20 @@ class DiagnosticsPane internal constructor(
         val cur = probe.sample()
         var changed = false
         for (m in metrics) {
+            val sampled = m.value(prev, cur)?.let { roundTo(it, m.accuracy) }
+            if (sampled != null) synchronized(hour) {
+                val h = hour.getOrPut(m.objectId) { ArrayDeque(HOUR_SAMPLES) }
+                if (h.size == HOUR_SAMPLES) h.removeFirst()
+                h.addLast(sampled)
+            }
             val old = values[m.objectId]
-            val new = settle(old, m.value(prev, cur)?.let { roundTo(it, m.accuracy) }, m.band)
+            val new = settle(old, sampled, m.band)
             if (new == old) continue
             if (new == null) values.remove(m.objectId) else values[m.objectId] = new
             changed = true
         }
         prev = cur
+        lastSample = cur
         if (changed) ctx.publishStates()
         val cost = SystemClock.currentThreadTimeMillis() - cpuStart
         costMs += cost
@@ -136,12 +159,14 @@ class DiagnosticsPane internal constructor(
         if (ticks <= 3 || ticks % 60 == 0) EspHomeLog.i("diagnostics: sample $ticks took $cost ms CPU, $costMs ms in all")
     }
 
-    private companion object {
-        const val PERIOD_S = 60L
-        const val MIB = 1024f * 1024f
-        const val GIB = MIB * 1024f
+    companion object {
+        private const val PERIOD_S = 60L
+        /** An hour of samples, one every [PERIOD_S]: about 60 floats per metric. */
+        const val HOUR_SAMPLES = 60
+        private const val MIB = 1024f * 1024f
+        private const val GIB = MIB * 1024f
 
         /** A Float holds a Unix time to 128 s, so a smaller band would only show rounding. */
-        const val CLOCK_BAND_S = 120f
+        private const val CLOCK_BAND_S = 120f
     }
 }
