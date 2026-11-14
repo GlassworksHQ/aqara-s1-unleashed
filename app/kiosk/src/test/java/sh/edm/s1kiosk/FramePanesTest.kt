@@ -57,6 +57,8 @@ class FramePanesTest {
      */
     private class FakeFrame(private vararg val steps: Pair<String, String>, private val card: Boolean = true) : Frame {
         override val board = "fake-frame"
+        override val hardware = dev.glassworks.frame.Hardware("Fake", "Frame", "none")
+        override val provides = emptySet<dev.glassworks.frame.Capability>()
         override val presence = null
         override val light = null
         override fun systemSettingsIntents() = emptyList<Intent>()

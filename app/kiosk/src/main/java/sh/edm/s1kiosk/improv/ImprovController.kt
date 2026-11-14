@@ -14,13 +14,11 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import android.net.ConnectivityManager
 import android.net.Network
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import sh.edm.s1kiosk.BuildConfig
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.glassworks
 import sh.edm.s1kiosk.setup.ImprovFacts
@@ -59,8 +57,6 @@ object ImprovController {
     const val BOOT_GRACE_MS = 30_000L
     /** Keep advertising PROVISIONED this long so clients see it (ESPHome STOP_ADVERTISING_DELAY). */
     const val STOP_DELAY_MS = 10_000L
-    private const val FIRMWARE = "S1 Kiosk"
-    private const val DEVICE_NAME = "Glassworks Panel"
 
     private val main = Handler(Looper.getMainLooper())
     private lateinit var app: Context
@@ -395,10 +391,7 @@ object ImprovController {
 
         override fun scanNetworks(): List<ScannedNetwork> = wifi.scan()
 
-        override fun deviceInfo(): List<String> = listOf(
-            // Build.MODEL on the panel is the SoC vendor's "QUAD-CORE R818 EVB2"; HARDWARE = sun50iw10p1.
-            FIRMWARE, BuildConfig.VERSION_NAME, "Aqara Panel Hub S1 Plus/${Build.HARDWARE}", DEVICE_NAME,
-        )
+        override fun deviceInfo(): List<String> = ImprovIdentity.ble(app.glassworks.frame)
 
         override fun maxResultSize(): Int = ble?.maxNotify()?.coerceAtMost(Improv.MAX_PACKET) ?: Improv.MAX_PACKET
     }

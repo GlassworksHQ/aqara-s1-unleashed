@@ -31,6 +31,12 @@ interface Frame {
      */
     val displayName: String? get() = null
 
+    /** Who makes the device and what they call it, for Home Assistant's device page, Music Assistant and Improv. */
+    val hardware: Hardware
+
+    /** The hardware panes can use, as frame.json's `provides`. A pane that [dev.glassworks.pane.PaneDefinition.requires] more can't run. */
+    val provides: Set<Capability>
+
     /** Whether someone is near, for the screen policy. Null when the device has no sensor for it. */
     val presence: PresenceSource?
 
@@ -83,6 +89,9 @@ fun Frame.openSystemSettings(context: Context): Boolean {
     val i = systemSettings(context) ?: return false
     return runCatching { context.startActivity(i) }.isSuccess
 }
+
+/** [manufacturer] ("Aqara"), [model] ("Panel Hub S1 Plus") and [chip] ("Allwinner A133", or the board's name where Android gives no chip). */
+class Hardware(val manufacturer: String, val model: String, val chip: String)
 
 /**
  * A boot animation's last frame: a drawable resource, drawn at [left], [top] screen px on flat night,

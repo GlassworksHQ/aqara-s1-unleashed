@@ -15,6 +15,7 @@ import android.os.Process
 import android.provider.Settings
 import dev.glassworks.platform.PlatformApi
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -27,8 +28,10 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ServiceController
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowBuild
 import org.robolectric.shadows.ShadowLooper
 import org.robolectric.shadows.ShadowWifiInfo
+import sh.edm.s1kiosk.frame.AqaraS1Plus
 import sh.edm.s1kiosk.gecko.GeckoPinHarness
 import sh.edm.s1kiosk.gecko.GeckoShadows
 import java.time.Duration
@@ -54,6 +57,9 @@ class KioskForegroundWiringTest {
     private val location = ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
     private val device = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
     private var service: ServiceController<KioskService>? = null
+
+    /** The S1's frame (KioskApp picks it by hardware): its screen-off Wi-Fi scan is part of what these drive. */
+    @Before fun onTheS1() = ShadowBuild.setHardware(AqaraS1Plus.HARDWARE)
 
     @After fun tearDown() { service?.destroy() }
 

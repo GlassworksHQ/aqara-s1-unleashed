@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.sendspin
 
+import dev.glassworks.frame.Capability
 import android.content.SharedPreferences
 import dev.glassworks.pane.IntentExtra
 import dev.glassworks.pane.Pane
@@ -21,6 +22,7 @@ class SendspinDefinition(
     private val background: (Runnable) -> Unit,
 ) : PaneDefinition {
     override val id = "sendspin"
+    override val requires = setOf(Capability.SPEAKER)
 
     private val prefs = SendspinPrefs(file)
 

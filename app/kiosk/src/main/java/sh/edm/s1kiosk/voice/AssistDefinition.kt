@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.voice
 
+import dev.glassworks.frame.Capability
 import android.content.SharedPreferences
 import dev.glassworks.pane.IntentExtra
 import dev.glassworks.pane.Pane
@@ -14,6 +15,7 @@ import java.util.Locale
 /** The voice assistant ([AssistPane]) for the whole process: its on/off and adb extras (app/README.md). [file] is its settings file. */
 class AssistDefinition(file: SharedPreferences) : PaneDefinition {
     override val id = "assist"
+    override val requires = setOf(Capability.MICROPHONE, Capability.SPEAKER)
 
     private val prefs = VoicePrefs(file)
 

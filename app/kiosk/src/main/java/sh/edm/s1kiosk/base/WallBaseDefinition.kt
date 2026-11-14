@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.base
 
+import dev.glassworks.frame.Capability
 import android.content.SharedPreferences
 import dev.glassworks.pane.IntentExtra
 import dev.glassworks.pane.Pane
@@ -11,6 +12,7 @@ import dev.glassworks.pane.SettingsSection
 /** The wall base ([WallBasePane]) for the whole process: its on/off and adb extras (frames/aqara-s1-plus/research/bases.md). */
 class WallBaseDefinition(file: SharedPreferences) : PaneDefinition {
     override val id = "wall-base"
+    override val requires = setOf(Capability.S1_WALL_BASE)
 
     private val prefs = WallBasePrefs(file)
 

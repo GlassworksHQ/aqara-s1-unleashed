@@ -44,7 +44,8 @@ class UpdateManager(
     private val onChange: () -> Unit,
 ) {
     private val ctx = context.applicationContext
-    private val root = runtime.frame.rootUpdates
+    /** The S1 boot image's root update service; null on a frame without one, which installs with PackageInstaller. */
+    private val root = runtime.s1?.rootUpdates
     private val exec: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "s1-update").apply { isDaemon = true } }
     val model = UpdateModel(BuildConfig.VERSION_NAME)
@@ -61,8 +62,12 @@ class UpdateManager(
         runtime.updates = this
         exec.execute {
             cleanup()
-            root.lastFailure()?.let { model.onInfo("Last update failed: $it") }
-            model.installNote = if (root.present()) "" else NO_HELPER_NOTE
+            root?.lastFailure()?.let { model.onInfo("Last update failed: $it") }
+            model.installNote = when {
+                root == null -> CONFIRM_NOTE
+                root.present() -> ""
+                else -> NO_HELPER_NOTE
+            }
             onChange()
         }
         registerNetwork()
@@ -276,8 +281,8 @@ class UpdateManager(
         val pending = File(dir, UpdateHelper.PENDING_NAME)
         if (!part.renameTo(pending)) return fail(a, "cannot move the APK into place")
         Log.i(TAG, "verified ${o.apk.name} (sha256 ${Releases.hex(digest)})")
-        if (!root.present()) return installWithPackageInstaller(a, pending)
-        root.install(
+        val helper = root?.takeIf { it.present() } ?: return installWithPackageInstaller(a, pending)
+        helper.install(
             a.offer.version.toString(),
             installing = { model.onInstalling(a, SystemClock.elapsedRealtime(), it); onChange() },
             over = { expired(a) || stopped },
@@ -377,7 +382,8 @@ class UpdateManager(
                 val flags = PendingIntent.FLAG_UPDATE_CURRENT or Platform.mutablePendingIntentFlag
                 val pending = PendingIntent.getBroadcast(ctx, id, Intent(ctx, UpdateInstallReceiver::class.java), flags)
                 model.onInstalling(a, SystemClock.elapsedRealtime(),
-                    "Installing ${a.offer.version}: confirm on the panel's screen (no root update service in this boot image)")
+                    if (root == null) "Installing ${a.offer.version}: confirm on the screen"
+                    else "Installing ${a.offer.version}: confirm on the panel's screen (no root update service in this boot image)")
                 onChange()
                 s.commit(pending.intentSender)
             }
@@ -451,6 +457,8 @@ class UpdateManager(
         const val CMD_CHECK = 2
         const val NO_HELPER_NOTE =
             "Installing asks for confirmation on the panel's screen: this panel's boot image has no root update service yet."
+        /** A frame with no root update service at all (generic Android). */
+        const val CONFIRM_NOTE = "Installing asks for confirmation on the screen."
         private const val FIRST_CHECK_DELAY_S = 30L
         private const val TICK_S = 15 * 60L
         private const val NETWORK_SETTLE_S = 10L
