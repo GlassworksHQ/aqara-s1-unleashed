@@ -25,6 +25,23 @@ class Isolation(unittest.TestCase):
                     self.assertEqual(hits, [], f"{os.path.relpath(os.path.join(root, f), PERF)} mentions the screen camera")
 
 
+class PixelChange(unittest.TestCase):
+    """debug/pixelchange.py (#202's research note): the raw screencap's header and the count."""
+
+    def test_counts_pixels_past_the_levels(self):
+        spec = importlib.util.spec_from_file_location("pixelchange", os.path.join(PERF, "debug", "pixelchange.py"))
+        px = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(px)
+        import struct
+        a = bytes([10, 10, 10, 255] * 4)
+        b = bytes([10, 10, 10, 255, 14, 10, 10, 255, 13, 10, 10, 255, 10, 10, 10, 0])
+        self.assertEqual(px.changed(a, b, 3), 1)                    # 4 levels counts, 3 doesn't, alpha never
+        for head in (struct.pack("<III", 2, 2, 1), struct.pack("<IIII", 2, 2, 1, 0)):   # Android 10, later
+            self.assertEqual(px.parse(head + a), (2, 2, a))
+        with self.assertRaises(ValueError):
+            px.parse(struct.pack("<III", 3, 3, 1) + a)
+
+
 class Moments(unittest.TestCase):
     def test_page_times_map_to_the_recordings_frames(self):
         c = {"tiers": {"heavy": {

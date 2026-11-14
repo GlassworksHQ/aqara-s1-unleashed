@@ -35,7 +35,17 @@ because go2rtc has been built into HA since 2024.11 (#202). Before grading WebRT
      it from the visible video element: a `MediaStream` in its `srcObject` is WebRTC; HLS plays from a
      `blob:` source. (No `/api/hls/` requests wouldn't settle it: HLS can play from its buffer for a while.)
    - The commands for the pixel count and the CPU numbers below weren't recorded with the results;
-     only the results were reported. Redo them with the commands written down before relying on them.
+     only the results were reported, so they aren't reproducible as they stand. To redo both, with
+     the camera's dialog open as above (both read-only; the panel's serial as for run.sh):
+     ```
+     $ ADB=$ADB ANDROID_SERIAL=<serial> tools/perf/debug/pixelchange.py --seconds 10 --levels 3
+     1440x720, 10.0 s apart: <n> pixels changed by more than 3 levels
+     $ ADB=$ADB tools/perf/threadcpu.py -s <serial> --seconds 36
+     ```
+     `pixelchange.py` (added for this note, 2026-11-14) counts the screen's pixels whose red, green or
+     blue moved by more than 3 levels between two raw screencaps. `threadcpu.py` gives each process's
+     and thread's share of one core over the window, from `/proc/<pid>/task/*/stat`. Neither has
+     been run with this camera since: the numbers below stay as reported, not reproduced.
 2. **Which decoder** (same session, read-only, verified)
    - `libmozavcodec.so` (Gecko's bundled FFmpeg) was loaded in the tab process.
    - logcat had no `MediaCodec`, `CCodec` or `OMXNodeInstance` lines for the stream.
