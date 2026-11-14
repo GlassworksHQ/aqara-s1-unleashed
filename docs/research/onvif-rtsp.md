@@ -1,9 +1,10 @@
 # ONVIF and RTSP: what HA and UniFi Protect need from a panel's camera, and what to build it on
 
-**Status (2026-11-13): untested.** Desk research for the camera pane's opt-in stream (#117). Nothing
-is built yet. HA's needs are read from its source; UniFi Protect's from Ubiquiti's help page and an
-MIT proxy whose author reports that Protect adopts it. No Protect console has met a panel, and we
-haven't run the proxy.
+**Status (2026-11-14): ported, not yet run on a panel.** First desk research for the camera pane's
+opt-in stream (#117). Then the maintainer decided that Glassworks follows their own implementation,
+which they tested against Home Assistant's ONVIF integration and UniFi Protect (see [Result](#result)).
+HA's needs below are read from its source; UniFi Protect's from Ubiquiti's help page and an MIT proxy
+whose author reports that Protect adopts it. No panel has met a Protect console yet.
 
 Device: none. Sources, read 2026-11-13 and pinned to the commits that were current then (the files
 at these commits are byte-identical to the ones read):
@@ -86,21 +87,47 @@ write it or take a library?
 
 ## Result
 
-The panel needs three small servers, all off until the switch is on:
+**Superseded on 2026-11-14 by the maintainer's decision: Glassworks follows the maintainer's own,
+tested implementation** in [aguilaair/android-ip-camera](https://github.com/aguilaair/android-ip-camera)
+(branch `onvif-rtsp-motion`, commit `7b5e6f28`, MIT, a fork of DigitallyRefined/android-ip-camera).
+It is ported, not rewritten, in `app/kiosk/src/main/java/dev/glassworks/camera/onvif/`. The library
+comparison above stays as the record of what was ruled out; RootEncoder and RTSP-Server are no longer
+the plan.
 
-| Part | Size of the job | Build on |
+| Part | In the port | What it does |
 |---|---|---|
-| WS-Discovery responder (UDP 3702, multicast `239.255.255.250`) | One fixed `ProbeMatch` template: type `dn:NetworkVideoTransmitter`, and the scopes `onvif://www.onvif.org/Profile/Streaming` (HA's probe asks for it, so a reply without it isn't listed), `…/name/<panel>` and `…/hardware/<frame>` | Our own code. No library worth a dependency |
-| ONVIF device and media services (SOAP over HTTP) | About 11 operations with fixed answers; WS-Security digest check | Our own code, shaped after go2rtc's and rtsp-to-onvif's (both MIT, as references, not copied) |
-| RTSP server and H.264 | `OPTIONS`, `DESCRIBE`, `SETUP`, `PLAY`, `TEARDOWN`, RTP over TCP, Digest auth; `MediaCodec` from the camera | RootEncoder + RTSP-Server (Apache-2.0), or our own RTP (RFC 6184) if JitPack or the size is a problem |
+| RTSP | `RtspServer`, `RtspProtocol`, `H264Bitstream` | RTSP 1.0 on port 8554, H.264 as RTP (RFC 6184) over TCP-interleaved or UDP, Digest (MD5, qop=auth) and Basic auth, RTCP sender reports |
+| ONVIF | `OnvifServer`, `OnvifSoap` | Profile S device, media (ver10) and media2 (ver20) services on port 8000, WS-Security UsernameToken and HTTP Digest/Basic, a snapshot URI (`/onvif/snapshot.jpg`), pull-point motion events on `tns1:RuleEngine/CellMotionDetector/Motion` and `tns1:VideoSource/MotionAlarm` |
+| Discovery | `OnvifDiscovery` | WS-Discovery on UDP 3702 (2005/04, and 2009/01 probes answered in kind), Hello and Bye, scopes including `onvif://www.onvif.org/Profile/Streaming` |
+| Motion | `MotionDetectorCore` (in `dev.glassworks.camera`) | The panel's presence and the ONVIF events both come from it: see [camera-presence.md](camera-presence.md) |
 
-Recommendation: write the ONVIF and WS-Discovery parts ourselves, in plain Kotlin a JVM test can
-drive against `onvif-zeep-async` (the same client HA uses) and `WSDiscovery` 2.1.2. Prototype RTSP
-on RootEncoder + RTSP-Server first, and replace it only if the APK cost or JitPack is a problem.
-go2rtc would do it all, but it is a second process and a Go binary per ABI.
+**What the maintainer tested** (the maintainer, 2026-11-13; not re-run for this note): Home
+Assistant's ONVIF integration and UniFi Protect's third-party adoption. The fork's README records the
+setup and two Protect notes (read 2026-11-14):
 
-The snapshot can reuse the camera entity's still (#120): `GetSnapshotUri` points at a small HTTP
-handler that serves the same JPEG behind the same credentials.
+1. Home Assistant: add the camera with the ONVIF integration (host = the device's address, port
+   8000), or adopt it in Protect and use the Protect integration. Both give the camera and a motion
+   binary sensor.
+2. Protect: on the console's network the camera shows up under third-party cameras; otherwise use
+   *Try advanced adoption* with `<address>:8000` and the username and password.
+3. Protect: turn **off audio recording** for the camera. The stream has no audio track, and Protect
+   won't record without one while audio recording is on.
+4. Protect: it needs a **motion zone** for a third-party camera before it creates motion events. If
+   there is none, add a full-frame zone through the Protect API; the settings UI offers no zones for
+   third-party cameras.
+
+**What Glassworks changes** (each ported file lists its own changes in its header):
+
+- With no sign-in set, both servers refuse every request that needs a user. Upstream let everyone
+  in. The approved design has no default stream password; the sign-in comes from the Manage page.
+- Nothing listens until the pane starts the servers, and the pane starts them only while
+  `onvif_stream` is on, the camera is in Presence + snapshots, and privacy is off
+  (`CameraPolicy.streamMayRun`).
+
+**Ports.** 8554 (RTSP) and 8000 (ONVIF), as upstream. Neither clashes with the panel's own listeners,
+read from the code on 2026-11-14: 6053 (ESPHome API), 8099 (Manage page and setup sign-in), 6638 and
+6639 (Zigbee over TCP), 8081 (the Thread border router's REST API, Thread mode only). Sendspin only
+connects out. WS-Discovery takes UDP 3702, and RTP over UDP an even port pair between 50000 and 60000.
 
 ## How to reproduce
 
