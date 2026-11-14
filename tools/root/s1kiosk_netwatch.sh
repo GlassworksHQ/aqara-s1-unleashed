@@ -21,6 +21,8 @@
 # system_server: what ends the loop by itself, only sooner. init restarts zygote and the framework;
 # init services (this one, the radio helper) keep running. At most once per 10 min.
 # Status: sys.s1kiosk.am.status, sys.s1kiosk.am.restarts ("<count> <uptime of the last>s")
+# Dry run, by hand only (init passes no environment): S1N_AM_DRY=1 sh s1kiosk_netwatch.sh does all of
+# this but the kill, and reports "would restart the framework".
 INTERVAL=${S1N_SLEEP:-15}
 NEEDED=4
 COOLDOWN=300
@@ -51,6 +53,12 @@ am_check() {
   now=$(cut -d. -f1 /proc/uptime)
   if [ $((now - am_last)) -lt "$AM_COOLDOWN" ]; then
     setprop sys.s1kiosk.am.status "broken: LRU starts $2 $3 of $1; restarted at ${am_last}s, in the cooldown"
+    return
+  fi
+  if [ -n "$S1N_AM_DRY" ]; then
+    am_last=$now; am_bad=0
+    log "LRU start below 0 (starts $2 $3 of $1): would restart the framework (dry run)"
+    setprop sys.s1kiosk.am.status "would restart the framework at uptime ${now}s (dry run; LRU starts $2 $3 of $1)"
     return
   fi
   pid=$(pidof system_server)

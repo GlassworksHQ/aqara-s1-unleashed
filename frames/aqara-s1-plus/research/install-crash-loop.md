@@ -276,8 +276,18 @@ while true; do printf '%s ' "$(date +%T)"; adb shell 'dumpsys activity processes
 # the watchdog: "ok <act> <svc> of <total>", "broken: …", or "restarted the framework at uptime …"
 adb shell 'getprop sys.s1kiosk.am.status; getprop sys.s1kiosk.am.restarts'
 ```
-Attempt 9 ran a standalone dry-run copy of that check (the same `lru_starts` read every 10 s,
-logging instead of killing). On an older boot image, the sampler alone shows the same thing.
+Those two reads are the armed watchdog on a new boot image: it kills `system_server` after two
+reads below 0. To watch the check without it restarting anything, as attempt 9 did (it ran a draft
+of the same check every 10 s), run the script by hand in dry-run mode. This needs root and works on
+any boot image. It changes nothing but the `sys.s1kiosk.am.*` properties:
+```sh
+adb push tools/root/s1kiosk_netwatch.sh /data/local/tmp/
+adb shell "su -c 'S1N_AM_DRY=1 setsid sh /data/local/tmp/s1kiosk_netwatch.sh </dev/null >/dev/null 2>&1 &'"
+adb shell 'getprop sys.s1kiosk.am.status'     # "would restart the framework at uptime …s (dry run; …)"
+adb shell "su -c 'pkill -f /data/local/tmp/s1kiosk_netwatch.sh; rm /data/local/tmp/s1kiosk_netwatch.sh'"   # stop it
+```
+The hand copy also runs netwatch's Wi-Fi check, which cycles Wi-Fi only after about a minute of a
+dead gateway, as the boot image's copy does.
 
 The loop ends in a framework restart by itself (78 s in attempt 9). Nothing is installed, so there is
 nothing to undo. Check that the kiosk is back and the radio mode is unchanged afterwards.

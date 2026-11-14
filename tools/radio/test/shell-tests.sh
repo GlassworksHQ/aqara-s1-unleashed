@@ -631,6 +631,12 @@ check "...and said" test "$(prop sys.s1kiosk.am.status)" = "no answer from dumps
 (system_server 2000 >/dev/null 2>&1 &); sleep 0.2
 echo "18 19 19" > "$T/lru"; S1N_ONCE=2 S1N_SLEEP=0 timeout 60 /system/bin/sh "$TB/s1kiosk_netwatch.sh" >/dev/null 2>&1
 check "two system_server pids: nobody is killed" test "$(pidof system_server | wc -w)" = 2
+pkill -x system_server; (system_server 2000 >/dev/null 2>&1 &); sleep 0.2; pidof system_server > "$T/ss-pid"
+echo "18 19 19" > "$T/lru"; rm -f "$T/props/sys.s1kiosk.am.restarts"
+S1N_AM_DRY=1 S1N_ONCE=2 S1N_SLEEP=0 timeout 60 /system/bin/sh "$TB/s1kiosk_netwatch.sh" >/dev/null 2>&1
+check "dry run: says it would restart" has "$(prop sys.s1kiosk.am.status)" "would restart the framework at uptime"
+check "...and kills nothing" alive
+check "...nor counts a restart" test -z "$(prop sys.s1kiosk.am.restarts)"
 pkill -x system_server; rm -f "$T/lru" "$T/bin/dumpsys"
 
 # ---------------------------------------------------------------------------------- time zone
