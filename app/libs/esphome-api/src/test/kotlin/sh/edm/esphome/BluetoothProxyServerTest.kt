@@ -4,11 +4,13 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.InetAddress
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /** The passive Bluetooth proxy on the wire (#121): DeviceInfo flags, the subscription, raw advertisements. */
@@ -124,6 +126,41 @@ class BluetoothProxyServerTest {
         assertSame(handler, server.bluetooth)
         assertTrue(server.removeBluetooth(handler))
         assertEquals(null, server.bluetooth)
+    }
+
+    /**
+     * The subscription can't change hands while a batch is on its way (#222 review): the send holds
+     * the lock, so a newer client's subscribe waits until the batch is queued, and a batch never
+     * reaches a client that was replaced while it was being sent.
+     */
+    @Test fun aSubscriptionCantChangeHandsWhileABatchIsBeingSent() {
+        start()
+        val parked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        server.onQueued = { type ->
+            if (type == BluetoothMsg.LE_RAW_ADVERTISEMENTS_RESPONSE && Thread.currentThread().name == "test-send") {
+                parked.countDown()
+                release.await(10, TimeUnit.SECONDS)
+            }
+        }
+        PlainClient(server.localPort).use { first ->
+            first.subscribe()
+            PlainClient(server.localPort).use { second ->
+                val sender = Thread({ server.sendBluetoothAdvertisements(listOf(advertisement(1))) }, "test-send").apply { start() }
+                assertTrue("the send is under way", parked.await(10, TimeUnit.SECONDS))
+                second.send(BluetoothMsg.SUBSCRIBE_LE_ADVERTISEMENTS_REQUEST, ProtoWriter().uint32(1, 1))
+                second.send(Msg.PING_REQUEST)
+                assertNull("the subscription changed hands while a batch was being sent", second.read(500))
+
+                release.countDown()
+                sender.join(10_000)
+                second.await(Msg.PING_RESPONSE) // its subscribe went through once the batch was queued
+                assertEquals("the batch went to the first client, once", 1, first.roundTrip().count { it.type == BluetoothMsg.LE_RAW_ADVERTISEMENTS_RESPONSE })
+                assertTrue(server.sendBluetoothAdvertisements(listOf(advertisement(2))))
+                assertEquals(0xC0FFEE000002L, second.await(BluetoothMsg.LE_RAW_ADVERTISEMENTS_RESPONSE).messages(1)[0].long(1))
+                assertTrue("and nothing more to the first", first.roundTrip().none { it.type == BluetoothMsg.LE_RAW_ADVERTISEMENTS_RESPONSE })
+            }
+        }
     }
 
     @Test fun theNewestSubscriberWinsAndTheProxyStopsWhenItLeaves() {
