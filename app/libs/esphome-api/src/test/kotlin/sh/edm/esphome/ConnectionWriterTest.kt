@@ -3,6 +3,7 @@ package sh.edm.esphome
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.FilterOutputStream
@@ -44,8 +45,8 @@ class ConnectionWriterTest {
     private val start = 1_000_000L
     private val now = AtomicLong(start)
 
-    private fun server(vararg entities: ApiEntity, unresponsiveMs: Long = 1_500) =
-        ApiServer(0, { identity }, listOf(sensor) + entities, keys = null, bindAddress = InetAddress.getLoopbackAddress()).apply {
+    private fun server(vararg entities: ApiEntity, unresponsiveMs: Long = 1_500, keys: NoiseKeys? = null) =
+        ApiServer(0, { identity }, listOf(sensor) + entities, keys = keys, bindAddress = InetAddress.getLoopbackAddress()).apply {
             keepaliveMs = 600; this.unresponsiveMs = unresponsiveMs
             // The server's own timer sees a clock that never moves, so only the test's ticks ping.
             clock = { if (Thread.currentThread().name == "esphome-keepalive") start else now.get() }
@@ -192,6 +193,26 @@ class ConnectionWriterTest {
             sock.resume()
             assertEquals(Msg.DISCONNECT_RESPONSE, c.read()?.type)
             assertTrue("the socket is closed after the answer", c.closedByServer())
+        }
+    }
+
+    /**
+     * Activating a new key closes every connection and drops what still waits for it, so the answer to
+     * the request that set the key must be written first. While its client doesn't read, the key waits.
+     */
+    @Test
+    fun aKeyActivatesOnlyOnceItsAnswerIsWritten() {
+        val activated = CountDownLatch(1)
+        val s = server(keys = NoiseKeys(MemoryKeyStore())).apply { onKeyActivated = { activated.countDown() } }
+        val (c, sock) = stuckClient(s)
+        c.use {
+            c.send(Msg.NOISE_ENCRYPTION_SET_KEY_REQUEST, ProtoWriter().string(1, java.util.Base64.getEncoder().encodeToString(ByteArray(32) { 1 })))
+            awaitBlocked(sock)
+            // Long enough for activation (100 ms) and the retired connection's close (500 ms) without the fix.
+            assertFalse("the key activated while its answer was still waiting", activated.await(1_500, TimeUnit.MILLISECONDS))
+            sock.resume()
+            assertTrue("the key answer", c.await(Msg.NOISE_ENCRYPTION_SET_KEY_RESPONSE).bool(1))
+            assertTrue("the key never activated\n${serverThreads()}", activated.await(10, TimeUnit.SECONDS))
         }
     }
 

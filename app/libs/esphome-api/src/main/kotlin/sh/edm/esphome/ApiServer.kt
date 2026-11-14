@@ -576,7 +576,8 @@ class ApiServer(
                     val r = k?.handleSetKey(m.bytes(1)) ?: SetKeyResult(false, false, "encryption not supported")
                     val how = if (transport is NoiseTransport) "Noise" else "plaintext (deprecated by ESPHome)"
                     EspHomeLog.i("[$id] NoiseEncryptionSetKeyRequest over $how: ${r.message}")
-                    reply(Msg.NOISE_ENCRYPTION_SET_KEY_RESPONSE, ProtoWriter().bool(1, r.success))
+                    // Written before the key activates: activation closes every connection and drops what still waits.
+                    send(listOf(Frame(Msg.NOISE_ENCRYPTION_SET_KEY_RESPONSE, ProtoWriter().bool(1, r.success).toByteArray())), wait = true)
                     if (r.activate) scheduleActivation()
                 }
                 Msg.PING_RESPONSE, Msg.GET_TIME_RESPONSE -> Unit
