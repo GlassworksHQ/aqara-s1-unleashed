@@ -251,7 +251,10 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
     private fun dialog(v: Viewer, path: String, sec: SettingsSection, d: Dialog): String {
         val item = SettingsChange.find(sec, d.key) ?: return ""
         fun sheet(title: String, hint: String, body: String, action: String?, problem: String?, more: String = "") =
-            """<div class="scrim"><form class="dlg" method="post" action="/settings" role="dialog" aria-modal="true" aria-labelledby="dlg-t">${fields(v, sec.id, d.key)}<h2 id="dlg-t">${esc(title)}</h2>""" +
+            """<div class="scrim"><form class="dlg" method="post" action="/settings" role="dialog" aria-modal="true" aria-labelledby="dlg-t">${fields(v, sec.id, d.key)}""" +
+                // Enter submits the form's first button: make that the action, not Show or Clear.
+                (if (action != null) """<button class="dflt" type="submit" tabindex="-1" aria-hidden="true">${esc(action)}</button>""" else "") +
+                """<h2 id="dlg-t">${esc(title)}</h2>""" +
                 (if (hint.isNotEmpty()) "<p>${esc(hint)}</p>" else "") + body + (problem?.let { """<p class="err" role="alert">${esc(it)}</p>""" }.orEmpty()) +
                 """<div class="dbtns"><a class="pill" href="${esc(path)}">Cancel</a>$more${action?.let { """<button class="pill primary" type="submit">${esc(it)}</button>""" }.orEmpty()}</div></form></div>"""
         fun chips(now: String, options: List<Pair<String, String>>) = """<div class="pcs">""" + options.joinToString("") { (value, name) ->
@@ -497,7 +500,7 @@ details.off summary::-webkit-details-marker{display:none}details.off summary::af
 .scrim .dlg{max-height:calc(100vh - 32px);overflow:auto}
 .pcs{display:flex;flex-wrap:wrap;gap:10px;margin:4px 0}.pc{padding:10px 17px;border-radius:999px;border:1px solid var(--edge);background:var(--glass);color:var(--muted);font:inherit;font-size:15.5px;font-weight:500;cursor:pointer}
 .pc:hover{background:var(--hover)}.pc.on{background:linear-gradient(90deg,var(--sky),var(--violet));color:#0a0b0f;border-color:transparent}
-.flds{display:flex;flex-direction:column;gap:12px}.pw{display:flex;gap:10px;align-items:center}.pw .fld{flex:1;min-width:0}.fld{width:100%;padding:14px 18px;border-radius:16px;border:1px solid var(--edge);background:var(--field);color:var(--fg);font:inherit;font-size:17px}.fld:focus{outline:none;border-color:rgba(56,189,248,.55)}
+.dflt{position:absolute;width:1px;height:1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.flds{display:flex;flex-direction:column;gap:12px}.pw{display:flex;gap:10px;align-items:center}.pw .fld{flex:1;min-width:0}.fld{width:100%;padding:14px 18px;border-radius:16px;border:1px solid var(--edge);background:var(--field);color:var(--fg);font:inherit;font-size:17px}.fld:focus{outline:none;border-color:rgba(56,189,248,.55)}
 .sw{display:flex;justify-content:space-between;align-items:center;gap:12px;color:var(--fg);font-size:16.5px;cursor:pointer}
 .sw input{appearance:none;-webkit-appearance:none;margin:0;width:${Tokens.Toggle.W}px;height:${Tokens.Toggle.H}px;border-radius:999px;background:var(--field);border:1px solid var(--edge);position:relative;cursor:pointer;flex:none;order:2}
 .sw input::after{content:"";position:absolute;top:${Tokens.Toggle.KNOB_INSET - 1}px;left:${Tokens.Toggle.KNOB_INSET - 1}px;width:${Tokens.Toggle.H - 2 * Tokens.Toggle.KNOB_INSET}px;height:${Tokens.Toggle.H - 2 * Tokens.Toggle.KNOB_INSET}px;border-radius:50%;background:var(--muted)}

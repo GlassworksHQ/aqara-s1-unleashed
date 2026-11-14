@@ -118,6 +118,9 @@ manage a panel. Whether other users get a say is open (#124).
   also answer for Home Assistant and sign in as an administrator. This is a choice: most Home Assistant
   installs on a home network are `http://`, the panel's own dashboard sign-in crosses the same way, and
   the code on the panel is there for whoever would rather not.
+- **A camera password you show.** **Show** on a camera's sign-in sends its password to your browser
+  over the same plain HTTP, as the page sends everything else. Only a Home Assistant sign-in can ask,
+  and the Log records who did. To keep it off the network, read it on the panel's own screen instead.
 - **Nothing stops someone on your network from using up the codes.** Anyone who can reach the panel
   can ask for codes without signing in. After 6 in 10 minutes the panel shows no more, so for up to 10
   minutes nobody can sign in with the code (signing in with Home Assistant still works). The Log says

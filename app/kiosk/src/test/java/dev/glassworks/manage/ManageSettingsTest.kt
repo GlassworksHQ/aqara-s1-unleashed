@@ -165,6 +165,24 @@ class ManageSettingsTest {
         assertTrue(f.events.contains("Alex set Camera › ONVIF stream › Sign-in") && f.events.contains("Alex cleared Camera › ONVIF stream › Sign-in"))
     }
 
+    /** Enter submits a form's first submit button: in a sign-in's dialog that is Save, never Show or Clear. */
+    @Test fun enterInASignInsDialogSaves() {
+        val camera = SettingsSection("camera", "Camera", listOf(SettingsItem.SignIn("Sign-in", { true }, { "viewer" }, { "made-up-secret-7" }) { _, d -> d(null) }))
+        f.statusFn = { f.status.copy(sections = listOf(camera)) }
+        fun firstSubmit(page: String) = Regex("""<button[^>]*type="submit"[^>]*>""").find(page.substringAfter("<form class=\"dlg\""))!!.value
+        val b = signedIn()
+        val before = firstSubmit(b.get("/camera?edit=Sign-in").text())
+        val after = firstSubmit(b.post("/settings/reveal", form(b, "camera", "Sign-in")).text())
+        for (button in listOf(before, after)) {
+            assertTrue(button, button.startsWith("<button class=\"dflt\" type=\"submit\""))
+            assertFalse("no formaction or clear on the default", button.contains("formaction") || button.contains("name="))
+        }
+        val code = f.Browser()
+        code.post("/manage/code", mapOf("next" to "/"))
+        code.post("/manage/code", mapOf("next" to "/", "code" to f.shown.last()!!.code))
+        assertTrue(firstSubmit(code.get("/camera?edit=Sign-in").text()).startsWith("<button class=\"dflt\""))
+    }
+
     @Test fun showingASignInsPasswordNeedsAHomeAssistantSignIn() {
         val secret = "made-up-secret-7"
         val camera = SettingsSection("camera", "Camera", listOf(SettingsItem.SignIn("Sign-in", { true }, { "viewer" }, { secret }) { _, d -> d(null) }))
