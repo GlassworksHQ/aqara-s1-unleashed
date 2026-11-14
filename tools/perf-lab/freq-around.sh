@@ -10,6 +10,8 @@
 # Prints "LABEL <seconds from the action> <kHz>" per sample, then a count per frequency before and
 # after. ACTION "" samples with nothing done (the control). The action runs in the background, so
 # sampling goes on while it runs (an `am start -W` blocks for seconds); its own output goes to stderr.
+# ACTION must be one simple command: `a; b` would run `a` in the foreground and only `b` in the
+# background, and the trailing `>&2` overrides the last command's own redirects.
 set -u
 SERIAL=$1 LABEL=$2 ACTION=${3:-:} BEFORE=${4:-2} AFTER=${5:-4}
 ADB=${ADB:-$HOME/Library/Android/sdk/platform-tools/adb}
