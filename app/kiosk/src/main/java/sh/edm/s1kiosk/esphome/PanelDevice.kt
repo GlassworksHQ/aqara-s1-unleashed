@@ -321,7 +321,9 @@ class PanelDevice internal constructor(
             runtime.cameraLeaving = leaving
             main.post { runtime.onCameraLeaving?.invoke() }
         }
-        val gate = stillGate(hub, { def.prefs.policy }, egress)
+        var pane: CameraPane? = null
+        // The pane's own judgement: no still while it is off or Android doesn't allow the camera.
+        val gate = stillGate(hub, { pane?.stillPolicy() ?: def.prefs.policy.copy(privacy = true) }, egress)
         val stream = CameraStream(
             ctx, hub, egress,
             identity = { CameraIdentity(identity.friendlyName, "Glassworks ${BuildConfig.VERSION_NAME}", identity.macAddress) },
@@ -335,7 +337,7 @@ class PanelDevice internal constructor(
             toScreen = runtime.presence::offer,
             exec = exec,
             release = hub::idle,
-        )
+        ).also { pane = it }
     }
 
     internal fun paneList(): List<Pane> = panes

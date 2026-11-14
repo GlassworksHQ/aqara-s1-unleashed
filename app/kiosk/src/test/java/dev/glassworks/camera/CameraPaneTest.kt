@@ -212,6 +212,19 @@ class CameraPaneTest {
         assertTrue(r.releases > before)
     }
 
+    @Test fun noStillWhileThePaneIsOff() {
+        val r = Rig()
+        r.prefs.use = CameraUse.PRESENCE_AND_SNAPSHOTS
+        assertTrue("before start: judged as privacy", r.pane.stillPolicy().privacy)
+        r.pane.start()
+        assertFalse(r.pane.stillPolicy().privacy)
+        assertTrue(r.pane.stillPolicy().stillsMayLeave)
+        r.pane.stop()
+        assertFalse("stopped: no still leaves", r.pane.stillPolicy().stillsMayLeave)
+        r.pane.start(); r.allowed = false
+        assertFalse("Android took the camera back: no still", r.pane.stillPolicy().stillsMayLeave)
+    }
+
     @Test fun aSettingOfAnotherPaneChangesNothing() {
         val r = Rig()
         r.pane.start()

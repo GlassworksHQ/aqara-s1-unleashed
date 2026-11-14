@@ -58,12 +58,19 @@ class CameraPane(
     private var presence: CameraPresence? = null
     private var check: ScheduledFuture<*>? = null
     /** Between [start] and [stop]: a periodic check that was already waiting when [stop] ran does nothing. */
-    private var running = false
+    @Volatile private var running = false
+
+    /**
+     * The policy a still is judged by now: the settings, but as privacy while the pane isn't running or
+     * Android doesn't allow the camera. The camera entity and the ONVIF snapshot both use it; they are
+     * asked on their own threads, also while the pane is off.
+     */
+    fun stillPolicy(): CameraPolicy = if (running && permitted()) policy else policy.copy(privacy = true)
 
     private val policy get() = prefs.policy
 
     override fun entities(): List<ApiEntity> = listOf(
-        snapshotCamera(stills, { if (permitted()) policy else policy.copy(privacy = true) }, egress),
+        snapshotCamera(stills, ::stillPolicy, egress),
         BinarySensorEntity("camera_presence", "Camera presence", "mdi:motion-sensor", deviceClass = "occupancy") { near },
         SwitchEntity("camera_privacy", "Camera privacy", "mdi:camera-off", get = { prefs.privacy }, set = { prefs.privacy = it }),
         SelectEntity(
