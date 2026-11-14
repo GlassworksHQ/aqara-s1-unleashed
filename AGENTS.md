@@ -148,6 +148,7 @@ header from the example in the table, then change the name, the tagline and the 
 | The Glassworks core or a pane | `banner-core` or `banner-pane`, title and tagline, then the part badge, licence, status and roadmap badges | [core](app/kiosk/src/main/java/dev/glassworks/README.md) |
 | Kiln | `banner-kiln`, title and tagline, then the Kiln, MIT, status and roadmap badges | [Kiln](kiln/apps/kiln/README.md) |
 | An app or product built on the core | Title and tagline, then Built on Glassworks, MIT, status and roadmap badges. No banner | [S1 Kiosk](app/README.md) |
+| A frame (`frames/<id>/README.md`) | `banner-frame-<id>`, centred title and tagline, then Built on Glassworks, the Kiln badge if Kiln installs it, the status, roadmap and Clarity badges | [aqara-s1-plus](frames/aqara-s1-plus/README.md) |
 | Kiln's internals and design work | The Kiln badge alone | [docs/design/kiln](docs/design/kiln/README.md) |
 | A Glassworks spec in `docs/` that every frame follows (e.g. the perf grade) | The core badge alone, under the title | [principles.md](docs/principles.md) (its part badges) |
 
