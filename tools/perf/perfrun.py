@@ -316,10 +316,15 @@ KEEP_AWAKE_S = float(os.environ.get("GW_PERF_KEEP_AWAKE_S", "8"))     # the off-
 # kiosk's idle timeout, and with the screen off nothing it measures is the panel's (#202, smoke 7:
 # heavy went 120 s without a gesture, and the screen went off).
 LIVE_IDLE_WAKE_S = float(os.environ.get("GW_PERF_LIVE_IDLE_WAKE_S", "30"))
-# A view not done this long after it opened is recorded as timed out, and the run's views end there:
-# what it measured stands, what it didn't counts as not measured, which fails (#202, smoke 7: heavy
-# never finished, and the whole run was dropped after 900 s).
+# A view not done this long after it opened is recorded as timed out: what it measured stands, and
+# what it didn't fails (#202, smoke 7: heavy never finished, and the whole run was dropped after 900 s).
+# The runner then restarts the kiosk, as at the run's start, and opens the run's remaining views: a
+# view that can't finish fails its own tasks and nothing else (#202, s1rtc3).
 VIEW_DEADLINE_S = float(os.environ.get("GW_PERF_VIEW_DEADLINE_S", "300"))
+# After that restart: if nothing relaunched the kiosk within this, `am start` it; if its reference
+# dashboard isn't usable within RECOVER_WAIT_S, the run fails.
+RECOVER_LAUNCH_S = float(os.environ.get("GW_PERF_RECOVER_LAUNCH_S", "10"))
+RECOVER_WAIT_S = float(os.environ.get("GW_PERF_RECOVER_WAIT_S", "180"))
 
 
 def cmd_coldstart(dev, a):
@@ -504,7 +509,22 @@ def cmd_coldstart(dev, a):
         if ref:
             note_media(rec, cur)
         if ref and SLEEP_RE.search(msg) and res["proc_mono"] is not None:
-            res.setdefault("screen_off", []).append({"mono": rec["mono"], "during": cur[0] if cur else "the restart"})
+            res.setdefault("screen_off", []).append({"mono": rec["mono"], "during": cur[0] if cur else
+                                                     "recovery" if st.get("recovering") else "the restart"})
+        if st.get("recovering"):
+            # The kiosk coming back after a view timed out: only its restart page's lines count, and
+            # they end the recovery; the run's own restart measurement stays the first one's.
+            if proc_re.search(msg):
+                st["recovering"]["launched"] = True
+            pl = page_lines.feed(msg)
+            if pl and pl.get("nonce") == "" and pl.get("t") in ("done", "error"):
+                rv = st.pop("recovering")
+                res["recoveries"][-1].update(back_s=round(time.time() - rv["at"], 1), launch=rv.get("launch") or "relaunched-by-system",
+                                             **({"error": pl.get("message")} if pl.get("t") == "error" else {}))
+                st["no_memory"] = True        # RAM right after a restart isn't the views' peak
+                st["next_at"] = time.time()
+                print(f"  the kiosk is back after {res['recoveries'][-1]['back_s']} s; carrying on", file=sys.stderr)
+            return False
         pl = page_lines.feed(msg)
         res["bad_page_lines"] = page_lines.bad
         if ref and cur is None and pl and pl.get("nonce") == "":
@@ -643,10 +663,43 @@ def cmd_coldstart(dev, a):
         if ref and st["current"] and st.get("opened_at") and time.time() - st["opened_at"] > VIEW_DEADLINE_S:
             entry = entry_of(st["current"][0])
             if not entry.get("done") and not entry.get("error"):
+                view = st["current"][0]
                 entry["timed_out_s"] = VIEW_DEADLINE_S
-                res.setdefault("timed_out", []).append(st["current"][0])
-                st["live"] = False
-                print(f"  {st['current'][0]} didn't finish within {VIEW_DEADLINE_S:.0f} s; the run's views end here", file=sys.stderr)
+                entry["lost_lines"] = page_lines.close(st["current"][1])
+                res.setdefault("timed_out", []).append(view)
+                st["live"], st["current"] = False, None   # its gestures stop (send checks the page)
+                if st["opened"] == len(slots):
+                    print(f"  {view} didn't finish within {VIEW_DEADLINE_S:.0f} s; it was the run's last view", file=sys.stderr)
+                    break
+                # Carry on: restart the kiosk as at the run's start (the frontend is reloaded, so the
+                # next view isn't measured on what the stuck one left behind), then open the rest.
+                print(f"  {view} didn't finish within {VIEW_DEADLINE_S:.0f} s; restarting the kiosk for the run's other views",
+                      file=sys.stderr)
+                for th in st["gestures"]:
+                    th.join(timeout=15)
+                st["gestures"] = []
+                try:
+                    with urllib.request.urlopen(f"{a.url.rstrip('/')}/clarity/cancel", timeout=10) as r:
+                        r.read()
+                except OSError:
+                    pass
+                paused.clear()
+                st["recovering"] = {"at": time.time()}
+                res.setdefault("recoveries", []).append({"after": view})
+                dev.wake()
+                dev.sh(f"am force-stop {dev.package}")
+                continue
+        if st.get("recovering"):
+            rv = st["recovering"]
+            if not rv.get("launched") and not rv.get("launch") and time.time() - rv["at"] > RECOVER_LAUNCH_S:
+                if drain():
+                    break
+                if st.get("recovering") and not st["recovering"].get("launched"):
+                    rv["launch"] = "am-start"
+                    dev.sh(f"am start -W -n {dev.component}", timeout=120)
+            elif time.time() - rv["at"] > RECOVER_WAIT_S:
+                res["error"] = (f"the kiosk didn't come back within {RECOVER_WAIT_S:.0f} s after "
+                                f"{res['recoveries'][-1]['after']} timed out")
                 break
         if res["launch"] is None and time.time() - t0 > a.settle:
             if drain():
@@ -689,7 +742,7 @@ def cmd_coldstart(dev, a):
             # The page before has stopped its updates; open the next one on a still screen, so no
             # page is measured over the last one's work. (Its teardown on navigation is part of
             # opening a view, as in HA, and the warm-up makes it the same for every page.)
-            if a.memory and st["opened"] and slots[st["opened"] - 1] not in fallback:
+            if a.memory and st["opened"] and slots[st["opened"] - 1] not in fallback and not st.pop("no_memory", False):
                 # RAM after each graded page, between pages: nothing is timed now. The largest of
                 # these is the peak during the graded tasks (report.py, ram); the fallback views
                 # aren't graded tasks.
@@ -708,7 +761,8 @@ def cmd_coldstart(dev, a):
             continue
         if rec and handle(rec):
             break
-    if ref and a.memory and st["opened"] == len(slots) and not res["error"] and slots[-1] not in fallback:
+    if ref and a.memory and st["opened"] == len(slots) and not res["error"] and slots[-1] not in fallback \
+            and not (res.get("timed_out") or [None])[-1] == slots[-1]:
         res["memory"].append(dict(memory_sample(dev, [x for x in a.radio_procs.split(",") if x], summaries=False),
                                   after=slots[-1]))
     lc.terminate()
@@ -716,19 +770,20 @@ def cmd_coldstart(dev, a):
         pass
     elif res["engine_mono"] is None:
         res["error"] = f"GeckoView never started a page within {a.timeout:.0f} s"
-    elif ref and st["opened"] < len(slots) and not res.get("timed_out"):
+    elif ref and (st["opened"] < len(slots) or st.get("recovering")):
         res["error"] = f"the reference dashboards did not finish within {a.timeout:.0f} s"
     elif ref and st["current"] and not entry_of(st["current"][0]).get("done") and not entry_of(st["current"][0]).get("error") \
-            and not res.get("timed_out"):
+            and not entry_of(st["current"][0]).get("timed_out_s"):
         # The last view never said done (smoke10's heavy, with the screen off): not a lost line.
         res["error"] = f"{st['current'][0]} didn't finish within {a.timeout:.0f} s"
-    graded_done = ref and all((res["tiers"].get(t) or {}).get("done") or (res["tiers"].get(t) or {}).get("error") for t in tiers)
-    if res["error"] and graded_done and fallback and st["current"] and st["current"][0] in fallback:
+    graded_done = ref and all(any((res["tiers"].get(t) or {}).get(k) for k in ("done", "error", "timed_out_s")) for t in tiers)
+    if res["error"] and graded_done and fallback and (st["current"] is None or st["current"][0] in fallback):
         # A fallback view that failed fails only itself: the graded views were done. Only the
         # errors above, which come from the view the run stopped in; the screen check comes after.
         res["fallback_error"], res["error"] = res["error"], None
         print(f"  fallback: {res['fallback_error']}", file=sys.stderr)
-    offs = [x for x in res.get("screen_off", []) if x["during"] not in fallback]
+    # Off while the kiosk restarted after a timed-out view: nothing was measured then.
+    offs = [x for x in res.get("screen_off", []) if x["during"] not in fallback and x["during"] != "recovery"]
     if ref and not res["error"] and offs:
         res["error"] = (f"the screen went off during the graded run ({len(offs)} time(s), first "
                         f"{offs[0]['during']}): with the screen off nothing timed is the panel's")
@@ -884,7 +939,8 @@ def main():
     ap.add_argument("--vsync", default="16.667", help="refstart: the display's refresh period in ms")
     a = ap.parse_args()
     if a.timeout is None:
-        a.timeout = {"coldstart": 120, "refstart": 900}.get(a.cmd, 1200)
+        # refstart: room for views that time out (VIEW_DEADLINE_S each) and the restarts after them.
+        a.timeout = {"coldstart": 120, "refstart": 1800}.get(a.cmd, 1200)
     os.makedirs(a.out, exist_ok=True)
     dev = Device(a.serial, a.package, a.activity)
     {"device": cmd_device, "synthetic": cmd_synthetic, "refstart": cmd_coldstart, "coldstart": cmd_coldstart,

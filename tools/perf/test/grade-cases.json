@@ -299,6 +299,18 @@
     "n": 0
    },
    "level": null
+  },
+  {
+   "name": "the view didn't finish before it scrolled (#202): measured, slow",
+   "stats": {
+    "timed_out": true,
+    "n": 0,
+    "fps": null,
+    "p95_ms": null,
+    "jank_pct": null,
+    "frozen_pct": null
+   },
+   "level": "slow"
   }
  ],
  "update_levels": [
@@ -407,6 +419,13 @@
     "frames": null
    },
    "level": "good"
+  },
+  {
+   "name": "the view didn't finish before its updates (#202): measured, slow",
+   "run": {
+    "timed_out": true
+   },
+   "level": "slow"
   }
  ],
  "median_bands": [
@@ -3760,6 +3779,17 @@
     "shown_pct": null,
     "max_gap_ms": 120,
     "stall_total_ms": 0
+   },
+   "level": "slow"
+  },
+  {
+   "name": "the view didn't finish before its streams were measured (#202): measured, slow",
+   "run": {
+    "timed_out": true,
+    "first_frame_ms": null,
+    "shown_pct": null,
+    "max_gap_ms": null,
+    "stall_total_ms": null
    },
    "level": "slow"
   }

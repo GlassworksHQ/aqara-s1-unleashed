@@ -659,15 +659,29 @@ showed one meanwhile.
   are `webrtc_liveness` (disconnected, connected, failed), and an ICE loss is `lost` with `reason`
   (`liveness` or `remote`).
 
-**A view the panel can't finish** (#202, smoke 7). The runner gives each view 300 s from opening
-(`GW_PERF_VIEW_DEADLINE_S`). A view not done by then is recorded as timed out (`timed_out` in the
-run's file and the report): what it measured stands, what it didn't counts as not measured, which
-fails as any missing measurement does (and the grade is provisional, with the reason), and the run's
-later views aren't opened. Before, the whole run waited out its 900 s and was dropped. The runner
-also sends the kiosk's wake intent during a live view once nothing has touched the panel for 30 s
-(`live_wakes`): normal views tap or swipe every few seconds, but a page stuck on a busy panel can
-outlast the kiosk's idle timeout, and with the screen off nothing measured is the panel's. These
-don't move a threshold.
+**A view the panel can't finish** (#202, smoke 7 and s1rtc3). The runner gives each view 300 s
+from opening (`GW_PERF_VIEW_DEADLINE_S`). A view not done by then is recorded as timed out
+(`timed_out` in the run's file and the report). It fails its own tasks and nothing else:
+
+1. What it measured stands.
+2. What it didn't is measured as failing, not as missing: "didn't finish within 300 s" is itself
+   the measurement, as a camera that never shows a frame fails rather than goes unmeasured. Open and
+   tap count as the deadline (300 000 ms), and scroll, live updates and the cameras get a
+   `{"timed_out": true}` record, which every grader (grade.py, grade.ts) puts below the lowest bar.
+   So a timeout doesn't make the grade provisional; report.md names it in the detail, and the
+   report's and summary's `timed_out_runs` count it per page.
+3. The runner then restarts the kiosk as at the run's start (`am force-stop`; `am start` if nothing
+   relaunched it within 10 s), waits for its reference dashboard to be usable again (at most
+   180 s, or the run fails), and opens the run's remaining views (`recoveries` in the run's file).
+   The run's restart time stays the first restart's, and RAM isn't sampled right after this one.
+
+Before, the whole run waited out its 900 s and was dropped (smoke 7); then the run's later views
+weren't opened, so a view that timed out in every run left the others measured in fewer runs than
+attempted, and the summary was refused (s1rtc3). The runner also sends the kiosk's wake intent
+during a live view once nothing has touched the panel for 30 s (`live_wakes`): normal views tap or
+swipe every few seconds, but a page stuck on a busy panel can outlast the kiosk's idle timeout, and
+with the screen off nothing measured is the panel's. A graded run may now take up to 1800 s
+(`--timeout`). None of this moves a threshold.
 
 **Stream sizes, against a real setup.** go2rtc passes a camera's own stream through without
 transcoding, so a `picture-entity` card with `camera_view: live` plays what the camera entity
@@ -1357,7 +1371,7 @@ from real use, and nothing device-unique.
 | `app_version` | The kiosk's version name |
 | `viewport` | `css` (CSS px), `dpr` (device pixel ratio), `default_dpr` (density / 160) |
 | `runs` | `attempted`, `graded` |
-| `pages` | Per page (`light`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
+| `pages` | Per page (`light`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams; a run's record is `{"timed_out": true}` with the numbers `null` when the page didn't finish before its streams were measured), `timed_out_runs` (protocol 7: in how many runs the page didn't finish within the runner's deadline; their unmeasured tasks are in the runs as failing: `open_ms` and `inp_ms` at the deadline, `{"timed_out": true}` records for `scroll`, `updates` and `camera`), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`) |
 | `restart_ms` | Process start to a usable reference dashboard (median; to engine ready before protocol 4) |
 | `gaps` | Measurement facts that leave it short: "1 of 3 graded runs failed or are missing", "heavy: scrolling rests on rAF only in 1 run(s)…". Empty when complete |
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |

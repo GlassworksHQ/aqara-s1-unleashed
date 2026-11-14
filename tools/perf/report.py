@@ -25,6 +25,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # graded run, `ref-panes-off` and `ref-<pane>-on` for the panes. They aren't real use.
 REF_LABEL = "ref-"
 SETTLE_GAP_MS = 750
+VIEW_DEADLINE_S = 300                 # perfrun.py's default, for report.md's words
 # The page's times reach logcat's clock through its log line, which logcat stamps a few ms late
 # (nav start mapped 11 to 23 ms before PageStart on the S1, 2026-11-12). The frame that shows the
 # first paint may so appear up to this much before it; three refreshes at 60 Hz.
@@ -448,6 +449,9 @@ def tier_run(tier, entry, presents_ms):
     page, step = entry.get("page"), entry.get("step")
     out = {"tier": tier, "css": page and page.get("css"), "dpr": page and page.get("dpr"),
            "protocol": page and page.get("protocol")}
+    if entry.get("timed_out_s") and not entry.get("error"):
+        return timed_out(tier, tier_run(tier, dict(entry, timed_out_s=None), presents_ms) if page else out,
+                         entry["timed_out_s"])
     if entry.get("error") or not page:
         return dict(out, error=entry.get("error") or "incomplete")
     # A lost updates step (smoke7: cut off in logcat) leaves only the live updates unmeasured.
@@ -520,6 +524,38 @@ def tier_run(tier, entry, presents_ms):
     return out
 
 
+def timed_out(tier, out, deadline_s):
+    """A view that didn't finish within the runner's deadline (#202): what it measured stands, and each
+    task it didn't measure in this run is measured as failed, not missing: it didn't finish. Open and
+    tap take the deadline as their value (nothing answered within it); scroll, live updates and the
+    cameras a `timed_out` record, which the graders read as below fluid."""
+    out = {k: v for k, v in out.items() if k != "error"}
+    for k in ("inp_ms", "input_method", "fcp_ms", "nodes", "cards", "load_ms", "updates", "latency", "arrivals",
+              "camera_run", "updates_run", "scroll"):
+        out.setdefault(k, None)                  # a view that timed out before it was usable reported none
+    ms = round(deadline_s * 1000)
+    out["timed_out_s"] = deadline_s
+    out["timed_out_tasks"] = []
+    if out.get("load_ms") is None:
+        out.update(load_ms=ms, load_error=None)
+        out["timed_out_tasks"].append("open")
+    if out.get("inp_ms") is None:
+        out["inp_ms"] = ms
+        out["timed_out_tasks"].append("tap")
+    if not out.get("scroll"):
+        out.update(scroll={"timed_out": True, "p95_ms": None, "jank_pct": None, "frozen_pct": None, "fps": None, "n": 0},
+                   scroll_error=None, scroll_source="timed out")
+        out["timed_out_tasks"].append("scroll")
+    if not out.get("updates_run"):
+        out.update(updates_run={"timed_out": True}, updates_error=None)
+        out["timed_out_tasks"].append("updates")
+    if tier in G.CAMERA_PAGES and not out.get("camera_run"):
+        out["camera_run"] = {"timed_out": True, "first_frame_ms": None, "shown_pct": None, "max_gap_ms": None,
+                             "stall_total_ms": None, "streams": 0, "detail": []}
+        out["timed_out_tasks"].append("camera")
+    return out
+
+
 def reference_run(c):
     """One graded run: restart (protocol 4: process start to the reference dashboard the kiosk comes
     back to being usable; before it, to engine ready), then each reference dashboard."""
@@ -577,8 +613,9 @@ median_band = G.median_band
 
 
 def frame_facts(st):
-    """The frame stats a band reads (and their count)."""
-    return {k: st.get(k) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")}
+    """The frame stats a band reads (and their count); a timed-out view's run says so (#202)."""
+    return dict({k: st.get(k) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")},
+                **({"timed_out": True} if st.get("timed_out") else {}))
 
 
 def by_position(rs):
@@ -643,6 +680,10 @@ def reference_summary(all_runs):
             "camera_runs": [x["camera_run"] for x in rs if x.get("camera_run")],
             "camera_levels": [G.camera_level(x["camera_run"]) for x in rs if x.get("camera_run")],
             "camera_level": G.median_level(G.camera_level(x["camera_run"]) for x in rs if x.get("camera_run")),
+            # Runs in which this view didn't finish within the runner's deadline, and the tasks that
+            # failed for it (#202): measured, not missing.
+            "timed_out_runs": sum(1 for x in rs if x.get("timed_out_s")),
+            "timed_out_tasks": sorted({k for x in rs for k in x.get("timed_out_tasks") or []}),
             "camera_fallback": camera_fallback_summary(runs, t),
             "updates_levels": [G.update_level(x["updates_run"]) for x in rs if x.get("updates_run")],
             "updates_level": G.median_level(G.update_level(x["updates_run"]) for x in rs if x.get("updates_run")),
@@ -675,9 +716,12 @@ def reference_summary(all_runs):
         "orders": [r.get("order") for r in runs],
         "bad_page_lines": sum(r.get("bad_page_lines") or 0 for r in all_runs),
         "lost_scroll_steps": sum(r.get("lost_scroll_steps") or 0 for r in all_runs),
-        "timed_out": [[i + 1, t] for i, r in enumerate(all_runs) for t in r.get("timed_out") or []],
+        # Graded views that didn't finish within the runner's deadline, as [run, view] (#202). Not a
+        # reason for "provisional": not finishing is the measurement, and its tasks fail.
+        "timed_out": [[i + 1, t] for i, r in enumerate(all_runs) for t in r.get("timed_out") or [] if t in G.TIERS],
         # The protocol of every page that reported; a page that was lost says nothing about it.
-        "protocols": sorted({x.get("protocol") for r in runs for x in r["tiers"].values() if not x.get("error")}, key=str),
+        "protocols": sorted({x.get("protocol") for r in runs for x in r["tiers"].values()
+                             if not x.get("error") and not (x.get("timed_out_s") and x.get("protocol") is None)}, key=str),
         "warmups": [r.get("warmup") for r in runs],
         "tiers": tiers,
         "errors": [r["error"] for r in all_runs if r.get("error")],
@@ -1206,10 +1250,6 @@ def build(run_dir, apks=(), budgets=None):
     reasons += fake_ha_reasons(fake_log, bool(ref) and G.PROTOCOL_VERSION in (ref.get("protocols") or []))
     if ref and ref.get("bad_page_lines"):
         reasons.append(f"{ref['bad_page_lines']} page line(s) didn't parse or never arrived whole (cut off in logcat?)")
-    if ref and ref.get("timed_out"):
-        # A view the panel couldn't finish: what it measured counts, the rest fails as not measured.
-        reasons.append(f"{len(ref['timed_out'])} view(s) didn't finish within the runner's deadline "
-                       f"({', '.join(f'{t} in run {k}' for k, t in ref['timed_out'])}); what they didn't measure fails")
     if ref and ref.get("lost_scroll_steps"):
         # A swipe whose step never came isn't in the pool, so the scroll level rests on fewer swipes.
         reasons.append(f"{ref['lost_scroll_steps']} swipe(s) answered with no scroll step back")
@@ -1434,11 +1474,14 @@ def camera_cell(s_, b):
         return "not measured"
     med = lambda k: P.spread([r.get(k) for r in runs])  # noqa: E731
     ff = med("first_frame_ms")
+    late = sum(1 for r in runs if r.get("timed_out"))
+    late_note = f"the view didn't finish in {late} of {len(runs)} run(s)" if late else ""
     if ff is None:
-        return f"a stream showed no frame, {b.get('camera') or 'n/a'}"
+        return f"{late_note or 'a stream showed no frame'}, {b.get('camera') or 'n/a'}"
     # The numbers are the runs whose streams all played; say how many didn't (they make the level).
-    failed = sum(1 for r in runs if r.get("first_frame_ms") is None)
-    note = f", {failed} of {len(runs)} run(s) had a stream that showed no frame" if failed else ""
+    failed = sum(1 for r in runs if r.get("first_frame_ms") is None and not r.get("timed_out"))
+    note = (f", {failed} of {len(runs)} run(s) had a stream that showed no frame" if failed else "") \
+        + (f", {late_note}" if late else "")
     return (f"first frame {fmt(ff, ' ms')}, {fmt(med('shown_pct'), ' %')} shown, stalls {fmt(med('stall_total_ms'), ' ms')}, "
             f"{b.get('camera') or 'n/a'}{note}")
 
@@ -1495,6 +1538,11 @@ def markdown(rep):
                 + (f" ({vp['reason']})" if vp.get("reason") else "") + "."]
         if ref["start_errors"]:
             out.append(f"Restart not measured in {len(ref['start_errors'])} run(s) ({'; '.join(sorted(set(ref['start_errors'])))}).")
+        if ref.get("timed_out"):
+            out.append(f"Views that didn't finish within the runner's deadline ({int(VIEW_DEADLINE_S)} s), measured as failing "
+                       f"what they didn't get to (not \"not measured\"): "
+                       + "; ".join(f"{t} in run {k} ({', '.join((ref['tiers'].get(t) or {}).get('timed_out_tasks') or []) or 'nothing left'})"
+                                   for k, t in ref["timed_out"]) + ".")
         out += transport_line(rep)
         out += camera_detail(ref)
         for t, s_ in ref["tiers"].items():

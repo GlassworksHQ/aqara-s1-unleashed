@@ -65,6 +65,9 @@ def page_summary(s):
         # Protocol 6 (#202): `path`, what the graded streams played over (web_rtc), and `fallback`,
         # the same page's cameras over HLS (detail, not graded; null before protocol 6).
         "camera": camera_summary(s),
+        # Runs in which this page didn't finish within the runner's deadline (#202): its unmeasured
+        # tasks are in the runs as failing (`timed_out` records; open and tap at the deadline).
+        "timed_out_runs": s.get("timed_out_runs") or 0,
         "runs": {"tap": _n(s.get("inp_ms")), "scroll": len(s.get("scroll_runs") or []),
                  "updates": len(s.get("updates_runs") or []), "open": _n(s.get("load_ms")),
                  "camera": len(s.get("camera_runs") or [])},
@@ -74,8 +77,9 @@ def page_summary(s):
 def camera_summary(s):
     keys = ("first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms")
     runs = s.get("camera_runs") or []
+    tag = lambda r: {"timed_out": True} if r.get("timed_out") else {}  # noqa: E731
     fb, paths = s.get("camera_fallback"), {r.get("path") or "hls" for r in runs}
-    return {"runs": [{k: r.get(k) for k in keys} for r in runs],
+    return {"runs": [dict({k: r.get(k) for k in keys}, **tag(r)) for r in runs],
             "path": paths.pop() if len(paths) == 1 else None,
             "fallback": fb and {"path": fb["path"], "runs": [{k: r.get(k) for k in keys} for r in fb["runs"]]}}
 

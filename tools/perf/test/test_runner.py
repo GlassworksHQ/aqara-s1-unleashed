@@ -21,6 +21,8 @@ sys.path.insert(0, os.path.dirname(HERE))
 import fakeha  # noqa: E402
 import perfrun  # noqa: E402
 import report  # noqa: E402
+import summary  # noqa: E402
+import grade  # noqa: E402
 import threading  # noqa: E402
 
 
@@ -678,7 +680,8 @@ class Restart(unittest.TestCase):
     def test_a_view_that_cant_finish_times_out_and_the_run_is_still_graded(self):
         """#202, smoke 7: heavy went live and never finished; the run used to wait 900 s and be dropped.
         Now the view times out at the deadline, a live view nothing touches gets the wake intent so the
-        screen stays on, what heavy measured stands, and what it didn't fails as not measured."""
+        screen stays on, what heavy measured stands, and what it didn't fails: measured, not missing,
+        so the grade isn't provisional for it."""
         p, c, _ = self.run_short(60, FAKE_HANG_LIVE="heavy", GW_PERF_VIEW_DEADLINE_S="12", GW_PERF_LIVE_IDLE_WAKE_S="2",
                                  GW_PERF_KEEP_AWAKE_S="0.5")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
@@ -687,14 +690,54 @@ class Restart(unittest.TestCase):
         self.assertEqual(c["tiers"]["heavy"]["timed_out_s"], 12)
         self.assertIn("heavy", {w[0] for w in c["live_wakes"]})
         self.assertNotIn("screen_off", c)
+        self.assertNotIn("recoveries", c)                     # heavy was run 1's last view: nothing to carry on to
         rep = self.build(self.last_out)
         ref = rep["graded"]["reference"]
         self.assertEqual((ref["graded_runs"], ref["timed_out"]), (1, [[1, "heavy"]]))
-        self.assertIsNotNone(ref["tiers"]["heavy"]["load_ms"])                 # what heavy measured stands
-        self.assertIn("heavy.scroll", rep["grade"]["missing"])                  # what it didn't fails
-        self.assertEqual(rep["grade"]["bands"]["heavy"]["scroll"], None)
-        self.assertIn("1 view(s) didn't finish within the runner's deadline (heavy in run 1); what they didn't measure fails",
-                      rep["grade"]["provisional_reasons"])
+        heavy = ref["tiers"]["heavy"]
+        self.assertIsNotNone(heavy["load_ms"])                                  # what heavy measured stands
+        self.assertEqual((heavy["timed_out_runs"], heavy["timed_out_tasks"]), (1, ["camera", "scroll", "tap", "updates"]))
+        self.assertNotIn("heavy.scroll", rep["grade"]["missing"])               # what it didn't fails, measured
+        self.assertEqual(rep["grade"]["bands"]["heavy"]["scroll"], "slow")
+        self.assertFalse(any("deadline" in r for r in rep["grade"]["provisional_reasons"]), rep["grade"]["provisional_reasons"])
+        self.assertIn("heavy in run 1 (camera, scroll, tap, updates)", report.markdown(rep))   # named in the detail
+
+    def test_after_a_view_times_out_the_kiosk_restarts_and_the_run_carries_on(self):
+        """#202, s1rtc3: heavy timed out in every run, and in runs 2 and 3 the views after it were never
+        opened, so the summary was refused. Now the runner restarts the kiosk and opens the rest: the
+        view that can't finish fails its own tasks and nothing else."""
+        p, c, log = self.run_short(90, fallback="typical-hls", FAKE_HANG_LIVE="typical", GW_PERF_VIEW_DEADLINE_S="8",
+                                   GW_PERF_LIVE_IDLE_WAKE_S="2", GW_PERF_KEEP_AWAKE_S="0.5", GW_PERF_RECOVER_LAUNCH_S="1")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNone(c["error"])
+        self.assertEqual(c["timed_out"], ["typical"])
+        self.assertEqual(len(c["recoveries"]), 1)
+        self.assertEqual((c["recoveries"][0]["after"], c["recoveries"][0]["launch"]), ("typical", "am-start"))
+        self.assertTrue(c["tiers"]["heavy"].get("done"))                       # opened after the restart
+        self.assertTrue(c["fallback"]["typical-hls"].get("done"))
+        # The order: typical's open, the stop, the relaunch, then heavy's open.
+        order = [x for x in log if x.startswith(("view ", "shell am force-stop", "shell am start -W -n"))]
+        i = next(k for k, x in enumerate(order) if x.startswith("view typical"))
+        self.assertTrue(order[i + 1].startswith("shell am force-stop"), order)
+        self.assertTrue(order[i + 2].startswith("shell am start -W -n"), order)
+        self.assertTrue(order[i + 3].startswith("view heavy"), order)
+        # The run's restart is the first one's, not the recovery's.
+        self.assertEqual(c["restart_page"]["tier"], "start")
+        self.assertLess(c["restart_page"]["mono"], c["tiers"]["light"]["page"]["mono"])
+        rep = self.build(self.last_out)
+        g = rep["grade"]
+        self.assertNotIn("typical.scroll", g["missing"])
+        self.assertEqual([t for t in ("light", "typical", "heavy") if g["bands"][t]["scroll"] is None], [])
+        self.assertEqual(g["bands"]["typical"]["scroll"], "slow")
+        self.assertNotEqual(g["bands"]["heavy"]["scroll"], "slow")          # heavy measured as any run's
+        self.assertFalse(any("deadline" in r for r in g["provisional_reasons"]), g["provisional_reasons"])
+        # The summary: typical's timed-out run is in it as failing, and nothing reads as not measured.
+        out = summary.summarise(rep, allow_provisional=True)
+        self.assertEqual(out["pages"]["typical"]["timed_out_runs"], 1)
+        self.assertEqual(out["pages"]["typical"]["camera"]["runs"][0]["timed_out"], True)
+        self.assertEqual(out["pages"]["heavy"]["timed_out_runs"], 0)
+        # (This short run sends no taps, so light's and heavy's tap aren't measured; typical's fails.)
+        self.assertEqual([m for m in grade.grade_summary(out).get("missing") or [] if m.startswith("typical.")], [])
 
     def test_the_screen_is_kept_awake_while_views_open_but_not_while_live(self):
         p, c, log = self.run_short(120, FAKE_SLOW_VIEW="2.5", GW_PERF_KEEP_AWAKE_S="0.7")

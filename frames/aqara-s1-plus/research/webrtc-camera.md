@@ -272,6 +272,15 @@ off (nothing is drawn), not the video.
 
 The stream sizes aren't the cause: Clarity's are lighter than a real grid's (docs/perf.md).
 
+**Three graded runs at c5f41a0** (s1rtc3, the root, 2026-11-13; verified from its files). Smoke 8
+was clean, so the root ran the graded set: D, provisional. Heavy timed out in all 3 runs: usable
+after 45 to 53 s, live updates measured in 2 runs (916 ms to screen, p95), then no done within
+300 s. The runner then ended each run's views, and the order turns each run, so runs 2 and 3 never
+opened the views after heavy. Light was measured in 1 run of 3 and typical in 2, and the summary was
+refused. That was the test's rule, not the panel: a view that can't finish now fails its own tasks
+(measured, not missing, so not provisional), and the runner restarts the kiosk and opens the rest
+(docs/perf.md, "A view the panel can't finish"). The next 3 runs are pending.
+
 **The 65 processes after the run.** The root counted about 65 processes named `sh.edm.s1kiosk`, one
 in D state, after smoke 7. A read-only `ps` an hour later showed the usual 7. What they were isn't
 known: the runner restarted the app at the end, so leftovers of the hung session are likely.

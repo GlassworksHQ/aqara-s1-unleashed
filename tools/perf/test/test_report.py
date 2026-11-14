@@ -520,6 +520,29 @@ class CameraFailedRuns(unittest.TestCase):
         self.assertNotIn("showed no frame", R.camera_cell({"camera_runs": [ok, ok]}, {"camera": "good"}))
 
 
+class TimedOut(unittest.TestCase):
+    """#202, s1rtc3: a view that didn't finish within the runner's deadline fails its own unmeasured
+    tasks, measured: open and tap at the deadline, the rest below the lowest bar. Not missing."""
+
+    def test_a_view_that_never_became_usable_fails_every_task(self):
+        run = R.tier_run("heavy", {"nonce": "ab12", "swipes": [], "timed_out_s": 300}, [])
+        self.assertNotIn("error", run)
+        self.assertEqual((run["load_ms"], run["inp_ms"]), (300000, 300000))
+        self.assertEqual(run["timed_out_tasks"], ["open", "tap", "scroll", "updates", "camera"])
+        self.assertEqual(G.scroll_level(run["scroll"]), G.BELOW)
+        self.assertEqual(G.update_level(run["updates_run"]), G.BELOW)
+        self.assertEqual(G.camera_level(run["camera_run"]), G.BELOW)
+        self.assertIsNone(R.tier_run("light", {"nonce": "ab12", "swipes": [], "timed_out_s": 300}, [])["camera_run"])  # no streams
+
+    def test_report_md_says_the_view_didnt_finish(self):
+        ok = R.camera_run(camera_line("typical"), "typical")
+        late = R.tier_run("typical", {"nonce": "ab12", "swipes": [], "timed_out_s": 300}, [])["camera_run"]
+        cell = R.camera_cell({"camera_runs": [ok, late, ok]}, {"camera": "slow"})
+        self.assertIn("the view didn't finish in 1 of 3 run(s)", cell)
+        self.assertNotIn("showed no frame", cell)
+        self.assertEqual(R.camera_cell({"camera_runs": [late]}, {"camera": "slow"}), "the view didn't finish in 1 of 1 run(s), slow")
+
+
 class CameraDetail(unittest.TestCase):
     """Detail for the camera task (smoke-cam1, 2026-11-13): which decoders a view got and where its
     segments were late, so a slow camera can be told apart: the decoder, the link or the page."""

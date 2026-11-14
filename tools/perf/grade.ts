@@ -36,13 +36,13 @@ export interface Rubric {
   };
 }
 
-export interface FrameRun { p95_ms?: number | null; jank_pct?: number | null; frozen_pct?: number | null; fps?: number | null; n?: number | null }
+export interface FrameRun { timed_out?: boolean; p95_ms?: number | null; jank_pct?: number | null; frozen_pct?: number | null; fps?: number | null; n?: number | null }
 
 /** One run's live updates: change to screen, and the frames that had a change to draw. */
-export interface UpdateRun { latency_n?: number | null; latency_median_ms?: number | null; latency_p95_ms?: number | null; frames?: FrameRun | null }
+export interface UpdateRun { timed_out?: boolean; latency_n?: number | null; latency_median_ms?: number | null; latency_p95_ms?: number | null; frames?: FrameRun | null }
 
 /** One run's live camera streams (#174), the worst stream's numbers. */
-export interface CameraRun { first_frame_ms?: number | null; shown_pct?: number | null; max_gap_ms?: number | null; stall_total_ms?: number | null }
+export interface CameraRun { timed_out?: boolean; first_frame_ms?: number | null; shown_pct?: number | null; max_gap_ms?: number | null; stall_total_ms?: number | null }
 
 export interface PageSummary {
   inp_ms?: number | null;
@@ -50,6 +50,7 @@ export interface PageSummary {
   scroll?: { runs?: FrameRun[] } & Record<string, unknown>;
   updates?: { runs?: UpdateRun[] } & Record<string, unknown>;
   camera?: { runs?: CameraRun[] } & Record<string, unknown>;
+  timed_out_runs?: number;     // runs in which the page didn't finish within the runner's deadline (#202)
 }
 
 export interface Summary {
@@ -116,6 +117,7 @@ export function medianBand(bands: (Band | null)[]): Band | null {
 /** One run's scroll level: the first of rubric.json's scroll_levels whose rule holds, or
  * `below` (measured, below fluid); null when it wasn't measured. */
 export function scrollLevel(st: FrameRun | null | undefined, rubric: Rubric): string | null {
+  if (st && st.timed_out) return rubric.grade.below;     // the view didn't finish: measured, failed
   if (!st || !st.n) return null;
   for (const lv of rubric.grade.scroll_levels) {
     if (lv.frames_band) {
@@ -131,6 +133,7 @@ export function scrollLevel(st: FrameRun | null | undefined, rubric: Rubric): st
 /** One run's live-updates level from its change-to-screen p95 (and, for premium, the frames that had
  * a change to draw), or `below`; null when it wasn't measured. */
 export function updateLevel(run: UpdateRun | null | undefined, rubric: Rubric): string | null {
+  if (run && run.timed_out) return rubric.grade.below;
   if (!run || !run.latency_n || run.latency_p95_ms === null || run.latency_p95_ms === undefined) return null;
   for (const lv of rubric.grade.update_levels) {
     if (run.latency_p95_ms > lv.latency_p95_max_ms) continue;
@@ -147,6 +150,7 @@ export function updateLevel(run: UpdateRun | null | undefined, rubric: Rubric): 
  * gaps over 500 ms added up; `below` when a stream showed no frame; null without a camera record. */
 export function cameraLevel(run: CameraRun | null | undefined, rubric: Rubric): string | null {
   if (!run) return null;
+  if (run.timed_out) return rubric.grade.below;
   if (run.first_frame_ms === null || run.first_frame_ms === undefined || run.shown_pct === null || run.shown_pct === undefined) return rubric.grade.below;
   for (const lv of rubric.grade.camera_levels) {
     if (run.first_frame_ms > lv.first_frame_max_ms || run.shown_pct < lv.shown_min_pct) continue;

@@ -91,6 +91,8 @@ def capacity(steps, accept):
 def scroll_level(stats):
     """One run's scroll level: the first of rubric.json's scroll_levels whose rule holds, or "slow"
     (measured, below fluid); None when it wasn't measured."""
+    if stats and stats.get("timed_out"):
+        return BELOW                    # the view didn't finish within the runner's deadline: measured, failed
     if not stats or not stats.get("n"):
         return None
     for lv in SCROLL_LEVELS:
@@ -105,6 +107,8 @@ def scroll_level(stats):
 def update_level(run):
     """One run's live-updates level from its change-to-screen p95 (and, for premium, the frames that
     had a change to draw), or "slow"; None when it wasn't measured."""
+    if run and run.get("timed_out"):
+        return BELOW
     if not run or not run.get("latency_n") or run.get("latency_p95_ms") is None:
         return None
     for lv in UPDATE_LEVELS:
@@ -122,6 +126,8 @@ def camera_level(run):
     camera record."""
     if not run:
         return None
+    if run.get("timed_out"):
+        return BELOW
     if run.get("first_frame_ms") is None or run.get("shown_pct") is None:
         return BELOW
     for lv in CAMERA_LEVELS:
