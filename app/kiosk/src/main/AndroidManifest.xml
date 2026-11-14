@@ -139,10 +139,10 @@
             android:noHistory="true"
             android:theme="@android:style/Theme.NoDisplay" />
 
-        <!-- The camera stream's sign-in from adb (CameraSignInActivity). WRITE_SECURE_SETTINGS: adb shell
+        <!-- The camera pane's settings from adb (CameraAdbActivity). WRITE_SECURE_SETTINGS: adb shell
              holds it, normal apps can't. -->
         <activity
-            android:name=".CameraSignInActivity"
+            android:name=".CameraAdbActivity"
             android:exported="true"
             android:permission="android.permission.WRITE_SECURE_SETTINGS"
             android:excludeFromRecents="true"

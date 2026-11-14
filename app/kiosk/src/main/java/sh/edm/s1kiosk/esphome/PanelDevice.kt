@@ -327,6 +327,7 @@ class PanelDevice internal constructor(
             ownSensor = { runtime.presence.ownSensor(ctx) },
             toScreen = runtime.presence::offer,
             exec = exec,
+            release = hub::idle,
         )
     }
 

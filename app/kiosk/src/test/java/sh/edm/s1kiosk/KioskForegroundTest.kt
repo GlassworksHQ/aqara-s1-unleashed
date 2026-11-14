@@ -141,6 +141,13 @@ class KioskForegroundTest {
         assertEquals(listOf(mic or location or camera, mic or location), s.calls)
     }
 
+    @Test fun twoRefusedTypesStillLeaveTheThird() {
+        val camera = KioskForeground.CAMERA
+        val s = Starts(refuse = mic or camera)
+        assertEquals(location, s.foreground(android14).promote(micGranted = true, locationGranted = true, cameraGranted = true))
+        assertEquals(listOf(mic or location or camera, mic or location, mic or camera, location or camera, mic, location), s.calls)
+    }
+
     /** Android 10 throws when startForeground passes a type the manifest does not declare. */
     @Test fun theManifestDeclaresEveryTypeTheServiceStartsWith() {
         val manifest = File("src/main/AndroidManifest.xml").readText()

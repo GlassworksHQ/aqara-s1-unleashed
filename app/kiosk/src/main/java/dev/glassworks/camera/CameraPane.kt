@@ -40,6 +40,8 @@ class CameraPane(
     private val ownSensor: () -> Boolean,
     private val toScreen: (near: Boolean, raw: Float) -> Unit,
     private val exec: ScheduledExecutorService,
+    /** Called when nothing may use the camera any more (privacy, no permission, the pane stopping): [CameraHub.idle]. */
+    private val release: () -> Unit = {},
     private val presenceFactory: (FrameSource, onMotion: (Boolean) -> Unit, onProblem: (String) -> Unit) -> CameraPresence =
         { source, onMotion, onProblem -> CameraPresence(source, { prefs.sensitivity }, onProblem = onProblem, onMotion = onMotion) },
 ) : Pane {
@@ -55,6 +57,8 @@ class CameraPane(
 
     private var presence: CameraPresence? = null
     private var check: ScheduledFuture<*>? = null
+    /** Between [start] and [stop]: a periodic check that was already waiting when [stop] ran does nothing. */
+    private var running = false
 
     private val policy get() = prefs.policy
 
@@ -77,14 +81,17 @@ class CameraPane(
         sensitivityEntity({ prefs.sensitivity }, { prefs.sensitivity = it }),
     )
 
-    override fun start() {
+    @Synchronized override fun start() {
+        running = true
         reconcile()
         check = exec.scheduleWithFixedDelay({ reconcile() }, CHECK_S, CHECK_S, TimeUnit.SECONDS)
     }
 
-    override fun stop() {
+    @Synchronized override fun stop() {
+        running = false
         check?.cancel(false); check = null
         apply(CameraPlan.NOTHING, null)
+        release()
         near = null
         problem = null
     }
@@ -95,12 +102,14 @@ class CameraPane(
 
     /** Converges on the plan for the settings and the device as they are now. */
     @Synchronized fun reconcile() {
+        if (!running) return
         val allowed = permitted()
         val signIn = prefs.signIn
         val next = CameraPlan.of(policy, allowed, ownSensor(), signIn != null)
         if (!allowed && !policy.privacy) problem = NOT_ALLOWED
         else if (problem == NOT_ALLOWED) problem = null
         apply(next, signIn)
+        if (!allowed || policy.privacy) release() // a still's linger mustn't keep the camera open
     }
 
     @Synchronized private fun apply(next: CameraPlan, signIn: Pair<String, String>?) {

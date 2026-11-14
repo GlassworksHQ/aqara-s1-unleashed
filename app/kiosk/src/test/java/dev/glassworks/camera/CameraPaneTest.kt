@@ -65,6 +65,7 @@ class CameraPaneTest {
         val screen = mutableListOf<Pair<Boolean, Float>>()
         var allowed = permitted
         var publishes = 0
+        var releases = 0
         var now = 0L
         val pane = CameraPane(
             PaneContext(
@@ -75,6 +76,7 @@ class CameraPaneTest {
             prefs, camera, { byteArrayOf(1) }, stream,
             FrameEgress({ now }, { _, _ -> }) {},
             permitted = { allowed }, ownSensor = { ownSensor }, toScreen = { n, r -> screen += n to r }, exec = exec,
+            release = { releases++ },
             presenceFactory = { source, onMotion, onProblem ->
                 CameraPresence(source, { prefs.sensitivity }, clock = { now }, post = { it.run() }, after = { _, _ -> },
                     onProblem = onProblem, onMotion = onMotion)
@@ -188,6 +190,26 @@ class CameraPaneTest {
         assertEquals(1, r.camera.closes)
         assertNull(r.stream.running)
         assertEquals(CameraPlan.NOTHING, r.pane.plan)
+    }
+
+    @Test fun aCheckThatWasAlreadyWaitingWhenThePaneStoppedDoesNothing() {
+        val r = Rig()
+        r.pane.start()
+        r.pane.stop()
+        r.pane.reconcile() // the periodic check, run after stop() released the pane
+        assertEquals(1, r.camera.opens)
+        assertEquals(CameraPlan.NOTHING, r.pane.plan)
+    }
+
+    @Test fun privacyAndStopLetTheCameraCloseAtOnce() {
+        val r = Rig()
+        r.pane.start()
+        assertEquals(0, r.releases)
+        r.prefs.privacy = true; r.changed(CameraPrefs.KEY_PRIVACY)
+        assertTrue("a still's linger is dropped too", r.releases >= 1)
+        val before = r.releases
+        r.pane.stop()
+        assertTrue(r.releases > before)
     }
 
     @Test fun aSettingOfAnotherPaneChangesNothing() {

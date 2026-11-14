@@ -61,6 +61,9 @@ class CameraHub(
     private var session: CameraCaptureSession? = null
     private var reader: ImageReader? = null
     private var opening = false
+    /** Bumped whenever a session is dropped, so a late callback from an older one is ignored. */
+    private var generation = 0
+    private var configuring = false
     private var lingerUntil = 0L
     private var luma = ByteArray(0)
     private var facingFront = true
@@ -102,6 +105,18 @@ class CameraHub(
         }
     }
 
+    /**
+     * Nothing may use the camera now (privacy, the pane stopping): drops the still linger and any waiting
+     * still, so the camera closes at once instead of [LINGER_MS] later. Presence closes its own frames.
+     */
+    fun idle() {
+        handler.post {
+            lingerUntil = 0L
+            waiters.forEach { it.latch.countDown() }; waiters.clear()
+            settle()
+        }
+    }
+
     /** Closes the camera and ends the hub's thread. Nothing may use the hub after. */
     fun release() {
         handler.post {
@@ -116,7 +131,7 @@ class CameraHub(
     private fun settle() {
         if (!wanted) { closeCamera(); return }
         if (device == null) { if (!opening) openCamera(); return }
-        if (session == null) startSession()
+        if (session == null && !configuring) startSession()
     }
 
     @SuppressLint("MissingPermission") // the pane opens the hub only with the permission; a refusal is caught
@@ -170,10 +185,13 @@ class CameraHub(
             reader = r
         }
         val targets = listOfNotNull(r.surface, encoder)
+        val gen = ++generation
+        configuring = true
         try {
             camera.createCaptureSession(targets, object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(s: CameraCaptureSession) {
-                    if (device !== camera) { s.close(); return }
+                    if (gen != generation || device !== camera) { s.close(); return }
+                    configuring = false
                     session = s
                     try {
                         val template = if (encoder != null) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW
@@ -184,10 +202,13 @@ class CameraHub(
                     }
                 }
                 override fun onConfigureFailed(s: CameraCaptureSession) {
+                    if (gen != generation) return
+                    configuring = false
                     fail("the camera refused the session (${targets.size} outputs)")
                 }
             }, handler)
         } catch (e: Exception) {
+            configuring = false
             fail("camera session failed: ${e.javaClass.simpleName}")
         }
     }
@@ -254,6 +275,8 @@ class CameraHub(
     }
 
     private fun closeSession() {
+        generation++
+        configuring = false
         try { session?.close() } catch (_: Exception) {}
         session = null
     }

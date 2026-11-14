@@ -293,6 +293,17 @@ class RtspServerTest {
         c.sock.close()
     }
 
+    @Test fun optionsCantKeepAConnectionOpenWithoutSigningIn() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, handshakeTimeoutMs = 400)
+        server.start()
+        val c = Client(port, auth = null)
+        val url = "rtsp://127.0.0.1:$port/live"
+        val closed = runCatching { repeat(20) { c.request("OPTIONS", url); Thread.sleep(100) } }.isFailure
+        assertTrue("closed within the handshake time although OPTIONS kept coming", closed)
+        c.sock.close()
+    }
+
     @Test fun theStreamCarriesThePanelsName() {
         port = freePort()
         server = RtspServer(port, { USER }, { counts += it }, name = "Hall Panel")

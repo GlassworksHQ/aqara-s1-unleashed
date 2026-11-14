@@ -25,6 +25,8 @@ class H264Encoder(
     fps: Int = FPS,
     bitrate: Int = bitrateFor(width, height),
     private val onAccessUnit: (annexB: ByteArray, key: Boolean) -> Unit,
+    /** The encoder stopped by itself (a codec error), not through [release]. On the encoder's thread. */
+    private val onFailure: () -> Unit = {},
 ) {
     private val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
     val surface: Surface
@@ -39,9 +41,17 @@ class H264Encoder(
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
         }
-        codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        surface = codec.createInputSurface()
-        codec.start()
+        var made: Surface? = null
+        try {
+            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            made = codec.createInputSurface()
+            codec.start()
+        } catch (e: Exception) {
+            made?.release()
+            codec.release()
+            throw e
+        }
+        surface = made
         drain = Thread(::drainLoop, "glassworks-h264").apply { isDaemon = true; start() }
     }
 
@@ -52,7 +62,7 @@ class H264Encoder(
     /** Stops the encoder and frees it. Take [surface] out of the camera session first. */
     fun release() {
         running = false
-        drain.join(1_000)
+        if (Thread.currentThread() !== drain) drain.join(1_000) // from onFailure, it is this thread
         try { codec.stop() } catch (_: Exception) {}
         try { codec.release() } catch (_: Exception) {}
         surface.release()
@@ -63,7 +73,16 @@ class H264Encoder(
         val cache = H264ParameterSetCache()
         val assembler = H264AccessUnitAssembler()
         while (running) {
-            val i = try { codec.dequeueOutputBuffer(info, 100_000) } catch (e: IllegalStateException) { break }
+            val i = try {
+                codec.dequeueOutputBuffer(info, 100_000)
+            } catch (e: IllegalStateException) {
+                if (running) {
+                    Log.w(TAG, "H.264 encoder stopped: ${e.javaClass.simpleName}")
+                    running = false
+                    onFailure()
+                }
+                break
+            }
             if (i < 0) continue
             try {
                 val buf = codec.getOutputBuffer(i) ?: continue

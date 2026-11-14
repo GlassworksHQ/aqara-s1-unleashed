@@ -50,8 +50,13 @@ class KioskForeground(
         val want = wanted(micGranted, locationGranted, cameraGranted)
         val running = types
         if (running == want) return running
-        val tries = listOf(want, want and CAMERA.inv(), want and LOCATION.inv(), want and MICROPHONE.inv())
-            .filter { it != 0 }.plus(CONNECTED_DEVICE).distinct()
+        // Every subset of the wanted types, most types first; among equals, keep the microphone, then
+        // location, then the camera. So two refused types still leave the third.
+        val kinds = listOf(MICROPHONE, LOCATION, CAMERA).filter { want and it != 0 }
+        val subsets = (1 until (1 shl kinds.size)).map { m -> kinds.filterIndexed { i, _ -> m shr i and 1 == 1 }.fold(0) { a, k -> a or k } }
+        val keep = { t: Int -> (if (t and MICROPHONE != 0) 4 else 0) + (if (t and LOCATION != 0) 2 else 0) + (if (t and CAMERA != 0) 1 else 0) }
+        val tries = subsets.sortedWith(compareByDescending<Int> { Integer.bitCount(it) }.thenByDescending(keep))
+            .plus(CONNECTED_DEVICE).distinct()
         for ((i, t) in tries.withIndex()) {
             try {
                 startWith(t)

@@ -7,7 +7,8 @@
  * (upstream let everyone in), so the stream has no default password; start() binds before it counts as
  * running, so a port clash can be retried; client counts are reported in order from one thread; stop()
  * copies its connection and session sets without racing a connection that ends; the panel's name in
- * place of "AndroidIPCamera"; at most 16 connections, and a 30 s read timeout until a session plays. */
+ * place of "AndroidIPCamera"; at most 16 connections, a 30 s read timeout until a session plays, and
+ * 30 s in all to sign in. */
 
 package dev.glassworks.camera.onvif
 
@@ -309,6 +310,10 @@ class RtspServer(
 
     private inner class Connection(val socket: Socket) {
         private val out: OutputStream = socket.getOutputStream()
+        // Glassworks: until it signs in, a connection gets handshakeTimeoutMs in all, so OPTIONS (which
+        // skips sign-in) can't keep a slot forever.
+        private val connectedAt = System.currentTimeMillis()
+        @Volatile private var signedIn = false
         private val writeLock = Any()
         private val mySessions = mutableSetOf<String>()
 
@@ -391,9 +396,15 @@ class RtspServer(
         private fun handle(req: RtspRequest) {
             if (req.version != "RTSP/1.0") return respond(req, 505, "RTSP Version Not Supported")
             sessionFor(req)?.touch()
+            if (!signedIn && System.currentTimeMillis() - connectedAt > handshakeTimeoutMs) {
+                onLog("RTSP: ${socket.inetAddress.hostAddress} didn't sign in in time")
+                close()
+                return
+            }
             if (req.method != "OPTIONS" && !authorized(req)) {
                 return respond(req, 401, "Unauthorized", auth.challengeHeaders())
             }
+            if (req.method != "OPTIONS") signedIn = true
             when (req.method) {
                 "OPTIONS" -> respond(req, 200, "OK", listOf("Public: OPTIONS, DESCRIBE, SETUP, PLAY, PAUSE, TEARDOWN, GET_PARAMETER, SET_PARAMETER"))
                 "DESCRIBE" -> describe(req)

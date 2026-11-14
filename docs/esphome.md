@@ -376,10 +376,17 @@ Presence comes from lighting-insensitive motion on the panel; no image leaves it
 | number `Camera sensitivity` | `camera_sensitivity` | config, off | 1 (least) to 10 (most), default 5 |
 | switch `Camera pane` | `camera_pane` | config, off | The pane's on/off (#67) |
 
-The stream's sign-in is set from adb until the Manage page edits settings (#178):
-`adb shell am start -n sh.edm.s1kiosk/.CameraSignInActivity --es camera_stream_sign_in 'user:password'`.
-Only `adb shell` may start that activity. There is no default password: without one, the stream
-doesn't start and both servers refuse every request.
+**The stream is not encrypted.** RTSP and ONVIF here are plain TCP: anyone on the network can watch
+the video of a session, and a client that signs in with Basic auth or WS-Security `PasswordText` sends
+the password in a form they can read. Turn it on only on a network you trust, and give it a password
+you use nowhere else ([the limits](research/onvif-rtsp.md#result)).
+
+The camera's settings and the stream's sign-in are set from adb until the Manage page edits settings
+(#178), through an activity only `adb shell` may start (another app on a tablet could otherwise turn
+privacy off or open the stream):
+`adb shell am start -n sh.edm.s1kiosk/.CameraAdbActivity --es camera_use snapshots --ez onvif_stream true --es camera_stream_sign_in 'user:password'`.
+There is no default password: without one, the stream doesn't start and both servers refuse every
+request. The pane's on/off is the usual `--ez camera_enabled true` on the main activity.
 
 ### App updates
 

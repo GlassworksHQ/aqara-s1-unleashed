@@ -28,9 +28,7 @@ class PaneExtrasTest {
             listOf(
                 "voice_enabled", "wake_model", "wake_threshold", "mic_gain", "mic_muted",
                 "sendspin_enabled", "sendspin_server", "sendspin_unpaired_access", "sendspin_flac",
-                "wall_base_enabled", "base_backend", "base_transport", "time_zone_enabled",
-                "camera_use", "camera_privacy", "onvif_stream", "camera_sensitivity",
-                "diagnostics_enabled",
+                "wall_base_enabled", "base_backend", "base_transport", "time_zone_enabled", "diagnostics_enabled",
             ),
             extras.map { it.name },
         )
@@ -59,19 +57,15 @@ class PaneExtrasTest {
     }
 
     @Test
-    fun theCameraExtrasWriteItsSettings() {
-        assertFalse(extras.applyFrom(
-            Intent().putExtra("camera_use", "snapshots").putExtra("camera_privacy", true).putExtra("onvif_stream", true)
-                .putExtra("camera_sensitivity", 7.6f).putExtra("camera_stream_sign_in", "viewer:pa:ss"),
-        ))
-        assertEquals("any app may send these: the sign-in isn't one of them", null, KioskPrefs(app).camera.signIn)
+    fun noAppCanChangeTheCameraThroughMainActivity() {
+        extras.applyFrom(
+            Intent().putExtra("camera_use", "snapshots").putExtra("camera_privacy", false).putExtra("onvif_stream", true)
+                .putExtra("camera_stream_sign_in", "viewer:pass"),
+        )
         val c = KioskPrefs(app).camera
-        assertEquals(dev.glassworks.camera.CameraUse.PRESENCE_AND_SNAPSHOTS, c.use)
-        assertTrue(c.privacy)
-        assertTrue(c.onvif)
-        assertEquals(8, c.sensitivity)
-        extras.applyFrom(Intent().putExtra("camera_use", "presence"))
         assertEquals(dev.glassworks.camera.CameraUse.PRESENCE, c.use)
+        assertFalse(c.onvif)
+        assertEquals(null, c.signIn)
     }
 
     @Test
