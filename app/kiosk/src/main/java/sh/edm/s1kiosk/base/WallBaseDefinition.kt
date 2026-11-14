@@ -33,7 +33,7 @@ class WallBaseDefinition(file: SharedPreferences) : PaneDefinition {
         )
         val items = if (layout == null || !layout.attached) listOfNotNull(
             status,
-            SettingsItem.Native("wall-base-none", WallBasePage.NO_BASE_TITLE) { host -> NoBaseView(host.context) },
+            SettingsItem.Native("wall-base-none", "What a wall base adds") { host -> NoBaseView(host.context) },
         ) else listOfNotNull(
             status,
             SettingsItem.Tiles(4) { p.tracker.current()?.takeIf { it.attached }?.let { l -> WallBasePage.strip(l, p.tracker.firmware(), p.tracker.protection(), p.tracker.power()) }.orEmpty() },

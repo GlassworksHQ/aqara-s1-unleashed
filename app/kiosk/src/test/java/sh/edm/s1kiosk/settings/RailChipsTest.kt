@@ -14,6 +14,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import sh.edm.s1kiosk.ui.Glass
 import sh.edm.s1kiosk.ui.Mockup
 
 /**
@@ -35,22 +36,36 @@ class RailChipsTest {
         return o
     }
 
-    /** #253 verifier: a pane that is off and can't run folds under "Off", as on the Manage page (paneState: off wins). */
+    /**
+     * #253 verifiers: the rail reads a pane's state from paneState, as the Manage page's nav. Off wins over
+     * can't run: such a pane folds under "Off" and isn't greyed; a pane that is on but can't run is greyed
+     * with its chip.
+     */
     @Test
-    fun aPaneThatIsOffAndCantRunFoldsAsOnTheWeb() {
+    fun offWinsOverCantRunAndCantRunGreys() {
         fun master(on: Boolean) = SettingsItem.Switch("x", "", { on }) { _, d -> d(null) }
         val o = open { _ ->
             KioskSettingsOverlay.Model(listOf(
                 SettingsSection("radio", "Radio", listOf(SettingsItem.Note { "" }), master = master(true)),
+                SettingsSection("wall-base", "Wall base", listOf(SettingsItem.Note { "" }), master = master(true), unavailable = { "no base port" }),
                 SettingsSection("bluetooth-proxy", "Bluetooth proxy", listOf(SettingsItem.Note { "" }), master = master(false), unavailable = { "it has no Bluetooth LE" }),
-            ), "0.4.3", setOf("radio", "bluetooth-proxy"))
+            ), "0.4.3", setOf("radio", "wall-base", "bluetooth-proxy"))
         }
+        fun railName(title: String) = generateSequence(listOf<View>(o)) { l -> l.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null } }
+            .flatten().filter { it.contentDescription == title && it is ViewGroup }.map { (it as ViewGroup).getChildAt(0) }
+            .filterIsInstance<android.widget.TextView>().single()
+        fun chips() = generateSequence(listOf<View>(o)) { l -> l.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null } }
+            .flatten().filter { it.contentDescription?.startsWith("status ") == true && it.isShown }.map { it.contentDescription.toString() }.toList()
         o.previewSection("radio")
         Mockup.idle()
         assertTrue("folded under Off", runCatching { Mockup.label(o, "Off · 1") }.isSuccess)
-        val chips = generateSequence(listOf<View>(o)) { l -> l.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null } }
-            .flatten().filter { it.contentDescription?.startsWith("status ") == true && it.isShown }.map { it.contentDescription.toString() }.toList()
-        assertFalse("not greyed among the panes that run", "status Can't run" in chips)
+        assertEquals("on but can't run: greyed", Glass.FA, railName("Wall base").currentTextColor)
+        assertEquals(listOf("status On", "status Can't run"), chips())
+        // Picked, the off pane opens its fold: drawn as picked, not greyed, with the Off chip.
+        o.previewSection("bluetooth-proxy")
+        Mockup.idle()
+        assertEquals("off and can't run: not greyed", Glass.TX, railName("Bluetooth proxy").currentTextColor)
+        assertTrue("status Off" in chips())
     }
 
     @Test

@@ -232,6 +232,18 @@ class ManageSettingsTest {
         assertFalse(page.contains("<b>\""))
     }
 
+    /** #253 verifier: the nav's Panel group is every core section in the model, not a fixed list. */
+    @Test fun theNavListsTheModelsCoreSections() {
+        val frame = SettingsSection("frame", "Frame", listOf(SettingsItem.Note { "The panel this app runs on." }))
+        val radio = SettingsSection("radio", "Radio", listOf(SettingsItem.Note { "r" }))
+        f.statusFn = { f.status.copy(panes = listOf(paneRow("radio", radio)), sections = listOf(frame, radio, SettingsSection("about", "About", listOf(SettingsItem.Note { "a" })))) }
+        val nav = signedIn().get("/").text().substringAfter("<aside class=\"side\">").substringBefore("</aside>")
+        val panel = nav.substringAfter("<h3>Panel</h3>").substringBefore("<h3>")
+        assertTrue("a core section the model has", panel.contains("href=\"/frame\""))
+        assertFalse("a pane's section sits under Panes", panel.contains("href=\"/radio\""))
+        assertFalse("About has its own page under System", panel.contains("href=\"/about\""))
+    }
+
     @Test fun everyPaneHasItsChipAfterItsNameAndOffPanesFold() {
         f.statusFn = {
             f.status.copy(panes = listOf(

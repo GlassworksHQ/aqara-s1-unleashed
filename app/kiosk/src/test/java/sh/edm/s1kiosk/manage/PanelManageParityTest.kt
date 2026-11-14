@@ -127,6 +127,7 @@ class PanelManageParityTest {
                     natives += sec.id
                     assertTrue("${sec.id}: a native view (${item.key}) the Manage page can't draw yet must be listed in panelOnly", sec.id in panelOnly)
                     assertTrue("${sec.id}: the Manage page says it's on the panel", page.contains(ManagePages.ON_THE_PANEL))
+                    assertTrue("${sec.id}: ${item.key} names what it is", item.title.isNotEmpty() && page.contains(esc(item.title)))
                 }
                 val form = page.contains("name=\"key\" value=\"${esc(key)}\"")
                 val link = page.contains("$path?edit=${esc(URLEncoder.encode(key, "UTF-8"))}\"")
@@ -146,6 +147,18 @@ class PanelManageParityTest {
         }
         assertEquals("every change ran on the panel's main thread", changed, f.onMainCalls)
         assertTrue("the panes with native views ran: $natives", natives.containsAll(listOf("radio", "time-zone", "wall-base")))
+    }
+
+    /**
+     * The Manage page's nav lists one page per pane (PaneRow.sectionId): a pane with a second section would
+     * land under "Panel". None has one today; this fails the day one does, so the nav is taught first.
+     */
+    @Test fun everyPaneHasOneSection() {
+        val model = panes.model(panes.all())()
+        val ids = GlassworksRuntime(AqaraS1Plus()).paneDefinitions(app).map { it.id }.toSet()
+        val sections = model.sections.filter { it.id in model.panes }.map { it.id }
+        assertTrue("each pane section has its pane's id: $sections", sections.all { it in ids })
+        assertEquals("one section per pane", sections.distinct(), sections)
     }
 
     @Test fun theManagePageReadsThePanelMenusOwnModel() {
