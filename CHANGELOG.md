@@ -70,6 +70,14 @@ below as the release notes.
   Diagnostic section.
 
 ### Added
+- **The panel can be a Bluetooth proxy for Home Assistant.** Turn on *Bluetooth proxy* in the
+  panel's settings or on setup's Panes step, and Home Assistant finds it by itself and hears the
+  Bluetooth thermometers, plant sensors and tags near the panel. It only listens: devices that need a
+  connection, like locks, still need an ESP32 proxy. Off by default. It never logs or keeps the
+  addresses it hears, and sends them only over an encrypted connection with the panel's key, which
+  Home Assistant 2026.11 and later sets when you add the panel.
+- **Setup's Panes step scrolls when there are more panes than fit.** Continue stays where it is,
+  below the list, and every pane's name shows in full.
 - **Notifications from Home Assistant on the panel.** Call `esphome.<panel>_notify` with a title, a
   message and the Companion app's fields, and the panel shows a card over the dashboard, with a
   camera's picture, up to three buttons and a sound. A button press fires `esphome.notification_action`

@@ -3,7 +3,10 @@ package sh.edm.s1kiosk
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import dev.glassworks.bluetoothproxy.AndroidProxyRadio
+import dev.glassworks.bluetoothproxy.BluetoothProxyDefinition
 import dev.glassworks.diagnostics.DiagnosticsDefinition
+import sh.edm.s1kiosk.settings.BluetoothProxyPage
 import dev.glassworks.engine.Engine
 import dev.glassworks.engine.EngineSettings
 import dev.glassworks.engine.gecko.GeckoEngine
@@ -61,7 +64,7 @@ class GlassworksRuntime(
 
     /**
      * Every pane's definition, made once: their on/off, setup steps, settings sections and adb extras. The
-     * core's panes in the order the settings list them (voice, music, notifications, radio), then the frame's, then diagnostics.
+     * core's panes in the order the settings list them (voice, music, notifications, radio, Bluetooth proxy), then the frame's, then diagnostics.
      * MainActivity and KioskService ask for them first thing, before discovery can save an HA URL in
      * this process (the radio step's one-time check needs that).
      */
@@ -79,7 +82,8 @@ class GlassworksRuntime(
                 actionName = "esphome.${sh.edm.s1kiosk.esphome.PanelDevice.NAME.replace('-', '_')}_notify",
                 now = android.os.SystemClock::elapsedRealtime,
             )
-            listOf(AssistDefinition(prefs.paneFile("assist")), SendspinDefinition(prefs.paneFile("sendspin")), notify, radio) +
+            val bluetoothProxy = BluetoothProxyDefinition(prefs.paneFile("bluetooth-proxy"), AndroidProxyRadio(app), ::BluetoothProxyPage)
+            listOf(AssistDefinition(prefs.paneFile("assist")), SendspinDefinition(prefs.paneFile("sendspin")), notify, radio, bluetoothProxy) +
                 paneFrame.paneDefinitions(app) + DiagnosticsDefinition(prefs.paneFile("diagnostics"))
         }.also { definitions = it }
     }

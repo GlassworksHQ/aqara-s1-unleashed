@@ -174,6 +174,7 @@ $A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # manual E
 $A --ez voice_enabled false           # each pane on/off, applied live (default on): voice_enabled, sendspin_enabled,
                                       #   wall_base_enabled, time_zone_enabled, diagnostics_enabled
 $A --ez notifications_enabled true    # notifications on/off, applied live (default off; docs/notifications.md)
+$A --ez bluetooth_proxy_enabled true  # the Bluetooth proxy on/off (default off)
 $A --ez sendspin_enabled false        # Music Assistant player (Sendspin) off/on (default on)
 $A --es sendspin_server 192.168.1.100 # Sendspin server: auto (default: mDNS, else <HA host>:8927) or host[:port][/path] / ws://
 $A --ez sendspin_unpaired_access true # let a server play without pairing (guest mode; default off)
@@ -291,8 +292,8 @@ Parts of the app are standalone modules other projects can use:
   pure-Kotlin protocol and state machines. Its browser client is
   [`kiln/packages/improv-serial`](../kiln/packages/improv-serial/README.md).
 - [`libs/bluetooth-proxy`](libs/bluetooth-proxy/README.md): an ESPHome Bluetooth proxy on Android:
-  BLE scanning on Android's terms, batched into `esphome-api`. Passive only so far, and not in the
-  app yet (#121).
+  BLE scanning on Android's terms, batched into `esphome-api`. Listening only so far; the app's
+  Bluetooth proxy pane runs it (#121).
 
 They build with the app (`./gradlew :esphome-api:test :esphome-api-android:assembleDebug
 :improv:testDebugUnitTest :bluetooth-proxy:testDebugUnitTest`) and aren't published to a Maven repository or npm yet.

@@ -56,6 +56,18 @@ class AndroidBleScanner(context: Context) : BleScanner {
         else -> null
     }
 
+    /**
+     * Turns Bluetooth on, as a "Turn on Bluetooth" button does. False where Android doesn't let apps
+     * (Android 13 and later): open the system's Bluetooth settings there instead.
+     */
+    @SuppressLint("MissingPermission") // BLUETOOTH_ADMIN, install-time below Android 12
+    @Suppress("DEPRECATION")
+    fun turnBluetoothOn(): Boolean {
+        if (!Compat.appsCanEnableBluetooth) return false
+        val a = adapter ?: return false
+        return a.isEnabled || runCatching { a.enable() }.getOrDefault(false)
+    }
+
     @Suppress("DEPRECATION")
     private fun locationEnabled(): Boolean =
         if (Compat.hasIsLocationEnabled) {

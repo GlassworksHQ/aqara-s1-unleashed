@@ -67,6 +67,7 @@ change until Glassworks v1.
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
 | `NotificationsPane` | (`dev.glassworks.notifications`) Notifications from Home Assistant: the `notify` action, Do not disturb, the rules for each priority, and a tapped button as the bus event `esphome.notification_action`. A core pane, off by default. The panel's overlay draws what its `NotificationsHub` holds. How to use it: [docs/notifications.md](../../../../../../../docs/notifications.md). |
 | `DiagnosticsPane` | (`dev.glassworks.diagnostics`) The panel's health as diagnostic entities: CPU, temperature, RAM, storage, Wi-Fi, uptime, the last restart reason. A core pane, so every frame has it. The entities are in [docs/esphome.md](../../../../../../../docs/esphome.md#diagnostics). |
+| `BluetoothProxyPane` | (`dev.glassworks.bluetoothproxy`) The panel as an ESPHome Bluetooth proxy (#121). The work is in the [bluetooth-proxy library](../../../../../../libs/bluetooth-proxy/README.md); the pane gives it the device's server and adds two diagnostic entities. Its page is the frame's to draw ([`BluetoothProxyModel`](bluetoothproxy/ProxyPhase.kt)); the S1's is `BluetoothProxyPage`. See [its README](bluetoothproxy/README.md). |
 | `Engine` | (`dev.glassworks.engine`) The web engine that shows the dashboard: open a page, load, reload, go back, restart after a crash, and talk to the page's scripts. `GeckoEngine` (`dev.glassworks.engine.gecko`) is the only code that uses GeckoView. One per process, on `GlassworksRuntime.engine`. |
 
 ## What makes a pane
@@ -366,6 +367,7 @@ The default is on for the S1's panes, as before the switch.
 | Wall base (`wall-base`) | `wall_base_enabled` | `wall_base` | yes |
 | Time zone (`time-zone`) | `time_zone_enabled` | `keep_time_zone` | no |
 | Diagnostics (`diagnostics`) | `diagnostics_enabled` | `diagnostics` | no |
+| Bluetooth proxy (`bluetooth-proxy`) | `bluetooth_proxy_enabled` (off by default) | `bluetooth_proxy` | yes, unless the panel has no Bluetooth LE |
 
 The radio has no `PaneSwitch`: its on/off is its mode (`Off`), and its card and settings switch are
 its own. Timers have none either: they come only from voice.

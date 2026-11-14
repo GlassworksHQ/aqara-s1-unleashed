@@ -277,9 +277,11 @@ class MemoryBudget(unittest.TestCase):
                     with open(os.path.join(d, f)) as fh:
                         ids |= set(re.findall(r'override val id = "([a-z0-9-]+)"', fh.read()))
         self.assertEqual(set(s1["panes"]), ids)
-        # #67 gave every pane a switch: the radio's is its mode, and timers come with voice.
-        self.assertEqual({k for k, v in s1["panes"].items() if v.get("not_switched")}, {"radio", "timers", "notifications"})
-        self.assertEqual(set(s1["panes"]), switchable | {"radio", "timers", "notifications"})
+        # #67 gave every pane a switch: the radio's is its mode, and timers come with voice. The Bluetooth
+        # proxy has one, but only scans while HA listens, which the reference run doesn't (#121).
+        # Notifications is off by default and idle until a notify call (#118).
+        self.assertEqual({k for k, v in s1["panes"].items() if v.get("not_switched")}, {"radio", "timers", "bluetooth-proxy", "notifications"})
+        self.assertEqual(set(s1["panes"]), switchable | {"radio", "timers", "bluetooth-proxy", "notifications"})
 
     def test_a_pane_over_its_budget(self):
         n3 = {"pss_tolerance_kb": 4_000, "samples_on": 3, "samples_off": 3}

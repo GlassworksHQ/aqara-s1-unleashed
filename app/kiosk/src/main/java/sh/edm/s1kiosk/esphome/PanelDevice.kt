@@ -2,6 +2,7 @@ package sh.edm.s1kiosk.esphome
 
 import sh.edm.esphome.*
 import sh.edm.esphome.android.EspHomeMdns
+import dev.glassworks.bluetoothproxy.BluetoothProxyDefinition
 import dev.glassworks.diagnostics.DiagnosticsPane
 import dev.glassworks.frame.Frame
 import dev.glassworks.notifications.NotificationScreen
@@ -301,6 +302,7 @@ class PanelDevice internal constructor(
                 now = android.os.SystemClock::elapsedRealtime,
             ),
         ) + frame.panes(paneContext, exec) + RadioPane(paneContext, runtime, panelIp = ::ipAddress) +
+            runtime.paneDefinitions(ctx).filterIsInstance<BluetoothProxyDefinition>().map { it.pane(paneContext, exec) } +
             DiagnosticsPane(paneContext, frame.cpuThermalZone, runtime.engine::isContentProcess, exec)
         // Every pane's on/off, also while the pane is off.
         coreEntities = buildEntities() + switches.values.map { it.entity() }

@@ -75,4 +75,15 @@ interface BluetoothProxyHandler {
 
     /** True when the first client subscribes to advertisements, false when the last one leaves. */
     fun onSubscribed(subscribed: Boolean)
+
+    /**
+     * Only an authenticated connection (Noise with the provisioned key) may subscribe, as for
+     * [ApiEntity.authOnly]: advertisements carry the addresses of the devices near the panel, and a
+     * newer subscriber takes the feed from the older one. On a panel without a key, anyone on the LAN
+     * could otherwise listen in plaintext.
+     */
+    val authOnly: Boolean get() = true
+
+    /** A client asked to subscribe and was refused for [authOnly]: the device has no key it holds. */
+    fun onRefused() {}
 }

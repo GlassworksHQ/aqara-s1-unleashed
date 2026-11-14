@@ -17,6 +17,9 @@ internal class CompatApi(private val level: Int) {
     @get:ChecksSdkIntAtLeast(api = 28)
     val hasIsLocationEnabled: Boolean get() = level >= 28
 
+    /** An app may turn Bluetooth on with `BluetoothAdapter.enable()`. From Android 13 the call does nothing. */
+    val appsCanEnableBluetooth: Boolean get() = level < 33
+
     /**
      * The runtime permissions a scan needs to get results: COARSE location up to Android 9, FINE from
      * Android 10 (GattService `checkCallerHasFineLocation`), plus `BLUETOOTH_SCAN` from Android 12.

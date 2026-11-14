@@ -9,6 +9,7 @@ kiosk|base_backend|String|"auto"
 kiosk|base_layout|String|""
 kiosk|base_transport|String|""
 kiosk|block_aqara_cloud|Boolean|true
+kiosk|bluetooth_proxy_enabled|Boolean|false
 kiosk|dashboards|String|""
 kiosk|device_mac|String|""
 kiosk|diagnostics_enabled|Boolean|true

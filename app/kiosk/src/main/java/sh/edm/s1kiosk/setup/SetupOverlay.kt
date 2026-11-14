@@ -26,6 +26,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import dev.glassworks.pane.PaneChoice
 import dev.glassworks.pane.SetupCard
@@ -161,7 +162,10 @@ class SetupOverlay(
     private val cardBody = g.text(16f, MU).apply { setLineSpacing(0f, 1.3f) }
     /** The step's own view: the Bluetooth tile, the waiting line, the URL field, the pane cards. */
     private val slot = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-    private val slotLp = LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(26f) }
+    private val slotLp = LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(SECTION_GAP_DP) }
+    /** Pushes the buttons to the card's foot; a step whose view fills the room ([setContent]) takes its place. */
+    private val stretch = View(context)
+    private val stretchLp = LinearLayout.LayoutParams(-1, 0, 1f)
     private val status = g.text(15f, MU).apply { setLineSpacing(0f, 1.2f) }
     private val foot = g.text(15f, FA)
     private val primary = g.primary("").apply { setPadding(px(30f), px(15f), px(30f), px(15f)) }
@@ -201,7 +205,7 @@ class SetupOverlay(
         addView(cardBody, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(16f) })
         addView(slot, slotLp)
         addView(status, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10f) })
-        addView(View(context), LinearLayout.LayoutParams(-1, 0, 1f))
+        addView(stretch, stretchLp)
         addView(buttonRow, LinearLayout.LayoutParams(-1, -2))
     }
     private val card = LinearLayout(context).apply {
@@ -410,7 +414,7 @@ class SetupOverlay(
         qrGlow.visibility = View.GONE
         cardBody.visibility = View.VISIBLE
         cardTitle.textSize = 45f
-        slotLp.topMargin = px(26f)
+        slotLp.topMargin = px(SECTION_GAP_DP)
         primary.visibility = View.GONE; ghost.visibility = View.GONE
         plain.visibility = View.GONE; plainLeft.visibility = View.GONE; foot.visibility = View.GONE
         primary.isEnabled = true; primary.alpha = 1f
@@ -440,13 +444,28 @@ class SetupOverlay(
         if (content !== urlField) hideKeyboard()
     }
 
+    /**
+     * The step's own view under the heading. The Panes step's list fills the room down to the buttons
+     * and scrolls there, a section gap above them, so Continue stays put however many panes there are.
+     */
     private fun setContent(v: View?) {
+        fill(v != null && v === panes.view)
         if (v == null) { if (slot.childCount > 0) slot.removeAllViews(); slot.visibility = View.GONE; return }
         slot.visibility = View.VISIBLE
         if (slot.childCount == 1 && slot.getChildAt(0) === v) return
         slot.removeAllViews()
         (v.parent as? ViewGroup)?.removeView(v)
-        slot.addView(v, LinearLayout.LayoutParams(-1, -2))
+        slot.addView(v, LinearLayout.LayoutParams(-1, if (v === panes.view) -1 else -2))
+    }
+
+    private fun fill(on: Boolean) {
+        if ((slotLp.weight == 1f) == on) return
+        slotLp.height = if (on) 0 else -2
+        slotLp.weight = if (on) 1f else 0f
+        slotLp.bottomMargin = if (on) px(SECTION_GAP_DP) else 0
+        stretchLp.weight = if (on) 0f else 1f
+        slot.layoutParams = slotLp
+        stretch.layoutParams = stretchLp
     }
 
     private fun bindWifi(m: Model, done: Boolean): View? {
@@ -535,7 +554,9 @@ class SetupOverlay(
     private fun bindPanes(m: Model, stepChanged: Boolean): View {
         cardTitle.text = "What should it do?"
         cardBody.visibility = View.GONE
-        if (stepChanged) panes.load()
+        if (stepChanged) { panes.load(); panes.view.scrollTo(0, 0) }
+        // The tighter gap under the heading leaves the list room to show the top of a row it hides.
+        slotLp.topMargin = px(TIGHT_GAP_DP)
         primary.text = "Continue"
         primary.visibility = View.VISIBLE
         primary.isEnabled = !panes.applying
@@ -549,7 +570,7 @@ class SetupOverlay(
     /** A pane's step: the screen sets the label, the step fills the rest ([paneCard]). */
     private fun bindPaneStep(step: SetupStep, stepChanged: Boolean) {
         cardTitle.textSize = 40f
-        slotLp.topMargin = px(18f)
+        slotLp.topMargin = px(TIGHT_GAP_DP)
         screens.getValue(step.id).bind(paneCard, stepChanged)
     }
 
@@ -693,7 +714,8 @@ class SetupOverlay(
     }
 
     /**
-     * The Panes step: one card per [PaneChoice], two to a row. It only chooses which panes are on: a
+     * The Panes step: one card per [PaneChoice], two to a row, in a list that scrolls above Continue.
+     * It only chooses which panes are on: a
      * pane that is on is set up in its own steps after this one. What the person sets stays here; Continue
      * applies every card, each within [BUDGET_MS].
      */
@@ -713,17 +735,29 @@ class SetupOverlay(
             private set
         val chosen: Boolean get() = applied != null
 
-        val view = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            choices.chunked(2).forEachIndexed { r, pair ->
-                addView(LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    pair.forEachIndexed { k, c ->
-                        addView(card(r * 2 + k, c), LinearLayout.LayoutParams(0, px(68f), 1f).apply { if (k > 0) marginStart = px(11f) })
-                    }
-                    if (pair.size == 1) addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply { marginStart = px(11f) })
-                }, LinearLayout.LayoutParams(-1, -2).apply { if (r > 0) topMargin = px(11f) })
-            }
+        /** Two cards to a row, in a list that scrolls when they don't all fit (#121, the maintainer's review). */
+        val view = ScrollView(context).apply {
+            isVerticalFadingEdgeEnabled = true
+            setFadingEdgeLength(px(28f))
+            isScrollbarFadingEnabled = false
+            // The bar in a gutter of its own, beside the cards rather than over them.
+            scrollBarStyle = View.SCROLLBARS_OUTSIDE_OVERLAY
+            setPadding(0, 0, px(10f), 0)
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                choices.chunked(2).forEachIndexed { r, pair ->
+                    addView(LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        isBaselineAligned = false
+                        pair.forEachIndexed { k, c ->
+                            addView(card(r * 2 + k, c), LinearLayout.LayoutParams(0, -1, 1f).apply { if (k > 0) marginStart = px(CARD_GAP_DP) })
+                        }
+                        // Match-parent like the cards: a row's height comes only from children that aren't,
+                        // so a 1 px spacer squashed a last row's lone card to 1 px.
+                        if (pair.size == 1) addView(View(context), LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = px(CARD_GAP_DP) })
+                    }, LinearLayout.LayoutParams(-1, -2).apply { if (r > 0) topMargin = px(CARD_GAP_DP) })
+                }
+            }, FrameLayout.LayoutParams(-1, -2))
         }
 
         /** Card [i] is on: as Continue applied it, else as the pane runs. A preview reads its own answer. */
@@ -738,11 +772,13 @@ class SetupOverlay(
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 background = g.surface(19f, Glass.S1)
-                setPadding(px(17f), 0, px(16f), 0)
+                minimumHeight = px(68f)
+                setPadding(px(17f), px(12f), px(16f), px(12f))
+                // Names and lines wrap rather than end in "…": a card grows, and its row with it.
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
-                    addView(g.text(16.5f, TX, Inter.MEDIUM).apply { text = c.title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END })
-                    addView(g.text(15f, MU).apply { text = c.detail; setSingleLine(); ellipsize = TextUtils.TruncateAt.END },
+                    addView(g.text(16.5f, TX, Inter.MEDIUM).apply { text = c.title })
+                    addView(g.text(15f, MU).apply { text = c.detail },
                         LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(5f) })
                 }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = px(10f) })
                 addView(t)
@@ -857,6 +893,15 @@ class SetupOverlay(
 
     companion object {
         private val GROUPS = mapOf(SetupFlow.HA to "Home Assistant", SetupFlow.PANES to "Panes")
+
+        /**
+         * The card's spacing (#63): the gap between its heading and the step's view, and between the
+         * Panes list and its buttons; and the gap between two pane cards.
+         */
+        const val SECTION_GAP_DP = 26f
+        /** The gap under the heading when the step's view needs the room (the Panes list). */
+        const val TIGHT_GAP_DP = 18f
+        const val CARD_GAP_DP = 11f
 
         /** Continue on Panes waits this long for every card in all (the radio's Off waits for its helper). */
         const val BUDGET_MS = 30_000L

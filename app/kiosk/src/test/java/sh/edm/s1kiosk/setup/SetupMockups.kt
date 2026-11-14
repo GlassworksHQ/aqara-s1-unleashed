@@ -60,6 +60,7 @@ class SetupMockups {
             SetupPane(PaneChoice("Voice", "Assist and timers", on = { true }, apply = { null }), emptyList()),
             SetupPane(PaneChoice("Music", "A Sendspin speaker", on = { true }, apply = { null }), emptyList()),
             SetupPane(def.setupChoice, def.setupSteps),
+            SetupPane(PaneChoice("Bluetooth proxy", "For BLE sensors", on = { false }, apply = { null }), emptyList()),
             SetupPane(PaneChoice("Wall base", "The S1's wired base", on = { true }, apply = { null }), emptyList()),
         )
     }
@@ -107,6 +108,14 @@ class SetupMockups {
         shot("setup-06-signin", model(SetupFlow.SIGNIN))
         shot("setup-07-signed-in", model(SetupFlow.SIGNIN, done = setOf(SetupFlow.WIFI, SetupFlow.HA, SetupFlow.SIGNIN), preview = true))
         shot("setup-08-panes", model(SetupFlow.PANES))
+        shot("setup-08b-panes-scrolled", model(SetupFlow.PANES)) { s ->
+            // The list scrolls above Continue once the cards don't fit (#121): its end, once the
+            // pending layout passes have run at the panel's size (scrollTo clamps to the end).
+            Mockup.idle()
+            Mockup.layout(s)
+            generateSequence(Mockup.label(s, "Voice") as android.view.View) { it.parent as? android.view.View }
+                .firstOrNull { it is android.widget.ScrollView }?.scrollTo(0, 100_000)
+        }
         shot("setup-09-radio-mode", model("radio"), radio = coordinator) // turned on in Panes, the mode offered
         shot("setup-10-radio-coordinator-next", model("radio"), radio = coordinator, followUp = true)
         shot("setup-11-radio-thread-router-next", model("radio"), radio = threadRouter, followUp = true)

@@ -8,6 +8,8 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import sh.edm.esphome.ApiServer
 import sh.edm.esphome.DeviceIdentity
+import sh.edm.esphome.MemoryKeyStore
+import sh.edm.esphome.NoiseKeys
 import java.io.File
 import java.net.InetAddress
 import java.util.concurrent.CountDownLatch
@@ -55,7 +57,9 @@ class BluetoothProxyHomeAssistantTest {
         val python = System.getenv("ESPHOME_PYTHON")
         assumeTrue("set ESPHOME_PYTHON to a python with aioesphomeapi installed", !python.isNullOrBlank())
 
-        val server = ApiServer(0, { identity }, emptyList(), keys = null, bindAddress = InetAddress.getLoopbackAddress())
+        // The key Home Assistant would have provisioned: the proxy answers only an authenticated connection.
+        val psk = ByteArray(32) { (it * 7 + 1).toByte() }
+        val server = ApiServer(0, { identity }, emptyList(), keys = NoiseKeys(MemoryKeyStore(psk)), bindAddress = InetAddress.getLoopbackAddress())
         val radio = RadioWithNeighbours()
         val engine = BluetoothProxyEngine(
             radio, server::sendBluetoothAdvertisements, ScanPower.LOW_LATENCY,
@@ -66,7 +70,7 @@ class BluetoothProxyHomeAssistantTest {
         try {
             val script = File(javaClass.classLoader!!.getResource("esphome_bluetooth_proxy.py")!!.toURI())
             val log = File.createTempFile("esphome_bluetooth_proxy", ".log").apply { deleteOnExit() }
-            val proc = ProcessBuilder(python, "-I", script.absolutePath, server.localPort.toString(), COUNT.toString())
+            val proc = ProcessBuilder(python, "-I", script.absolutePath, server.localPort.toString(), COUNT.toString(), java.util.Base64.getEncoder().encodeToString(psk))
                 .redirectErrorStream(true).redirectOutput(log).start()
             val finished = try { proc.waitFor(60, TimeUnit.SECONDS) } finally { if (proc.isAlive) proc.destroyForcibly() }
             val out = log.readText()

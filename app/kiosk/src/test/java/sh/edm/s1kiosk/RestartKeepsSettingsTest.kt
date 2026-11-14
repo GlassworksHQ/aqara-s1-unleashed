@@ -39,7 +39,10 @@ class RestartKeepsSettingsTest {
     private fun switches(ctx: Context): Map<String, Boolean> =
         GlassworksRuntime(AqaraS1Plus()).paneDefinitions(ctx).mapNotNull { d -> d.switch?.let { d.id to it.on } }.toMap()
 
-    private val allOff = mapOf("assist" to false, "sendspin" to false, "notifications" to false, "wall-base" to false, "time-zone" to false, "diagnostics" to false)
+    private val allOff = mapOf(
+        "assist" to false, "sendspin" to false, "notifications" to false, "bluetooth-proxy" to false, "wall-base" to false,
+        "time-zone" to false, "diagnostics" to false,
+    )
 
     private fun definitions(ctx: Context): List<PaneDefinition> = GlassworksRuntime(AqaraS1Plus()).paneDefinitions(ctx)
 
@@ -79,7 +82,8 @@ class RestartKeepsSettingsTest {
     @Test fun aPaneTurnedOffWithAnExtraThenRestartedStaysOff() {
         val ctx = process()
         val intent = Intent().putExtra("restart", true)
-        listOf("voice_enabled", "sendspin_enabled", "notifications_enabled", "wall_base_enabled", "time_zone_enabled", "diagnostics_enabled").forEach { intent.putExtra(it, false) }
+        listOf("voice_enabled", "sendspin_enabled", "notifications_enabled", "bluetooth_proxy_enabled", "wall_base_enabled", "time_zone_enabled", "diagnostics_enabled")
+            .forEach { intent.putExtra(it, false) }
         definitions(ctx).intentExtras().applyFrom(intent)
         assertEquals(allOff, switches(process()))
     }
