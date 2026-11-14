@@ -40,11 +40,11 @@ class NotificationsHub {
     /** The pane started. */
     fun attach(c: NotificationCenter) { center = c }
 
-    /** The pane stopped: nothing is shown any more. */
+    /** The pane stopped: nothing is shown any more, Do not disturb's pill included. */
     fun detach(c: NotificationCenter) {
         if (center !== c) return
         center = null
-        update { State(doNotDisturb = it.doNotDisturb) }
+        publish(State())
     }
 
     val running: Boolean get() = center != null

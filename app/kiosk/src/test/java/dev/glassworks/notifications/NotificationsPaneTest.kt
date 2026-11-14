@@ -40,6 +40,9 @@ class NotificationsPaneTest {
     private val played = mutableListOf<Sound>()
     private var silenced = 0
     private var playFails = false
+    /** Hold the play callbacks instead of calling them, as a sound still playing (or cut, never calling back). */
+    private var holdDone = false
+    private val pending = mutableListOf<() -> Unit>()
     private var t = 0L
     private val timers = mutableListOf<Triple<Long, () -> Unit, CompletableFuture<Unit>>>()
 
@@ -52,10 +55,11 @@ class NotificationsPaneTest {
         ),
         prefs, hub,
         screen = object : NotificationScreen {
+            override fun wake() { screen += "wake" }
             override fun hold() { screen += "hold" }
             override fun release() { screen += "release" }
         },
-        play = { s, done -> if (playFails) error("speaker failed"); played += s; done() },
+        play = { s, done -> if (playFails) error("speaker failed"); played += s; if (holdDone) pending += done else done() },
         silence = { silenced++ },
         schedule = { ms, action -> CompletableFuture<Unit>().also { timers += Triple(ms, action, it) } as Future<*> },
         haBase = { "http://homeassistant.local:8123" },
@@ -221,5 +225,72 @@ class NotificationsPaneTest {
         val e = assertThrows(IllegalStateException::class.java) { hub.sendTest() }
         assertEquals("speaker failed", e.message)
         assertFalse("nothing revealed for a test that failed", revealed)
+    }
+
+    private val claims get() = events.filterIsInstance<PanelEvent.SpeakerClaimed>().map { it.claimed }
+
+    /** Verifier L1: dismissing a ringing critical alert lets the music back, once; the cut sound's late end changes nothing. */
+    @Test
+    fun dismissingTheAlertReleasesTheSpeaker() {
+        holdDone = true
+        pane.start()
+        notify("Water leak", data = """{"priority":"critical"}""")
+        assertEquals(listOf(true), claims)
+        hub.dismiss(hub.state.cards.single().id)
+        assertEquals(1, silenced)
+        assertEquals(listOf(true, false), claims)
+        pending.forEach { it() }
+        assertEquals("a late end of the cut sound doesn't release twice", listOf(true, false), claims)
+    }
+
+    /** Verifier L1: stopping the pane mid-sound lets the music back. */
+    @Test
+    fun stoppingMidSoundReleasesTheSpeaker() {
+        holdDone = true
+        pane.start()
+        notify("Washer done")
+        pane.stop()
+        assertEquals(listOf(true, false), claims)
+    }
+
+    /** Verifier L1: with two sounds overlapping, the older one's end doesn't bring the music back under the newer one. */
+    @Test
+    fun anOlderSoundsEndDoesNotReleaseANewerOne() {
+        holdDone = true
+        pane.start()
+        notify("Washer done", data = """{"tag":"washer"}""")
+        notify("Dryer done", data = """{"tag":"dryer"}""")
+        assertEquals("one claim for both", listOf(true), claims)
+        pending[0]()
+        assertEquals(listOf(true), claims)
+        pending[1]()
+        assertEquals(listOf(true, false), claims)
+    }
+
+    /** Verifier L1: a sound cut short somewhere else (the shared player's cancel) never calls back; the fallback lets go. */
+    @Test
+    fun aSoundThatNeverEndsIsReleasedAfterItsLength() {
+        holdDone = true
+        pane.start()
+        notify("Washer done")
+        val fallback = timers.single { it.first == 1_000L + NotificationsPane.RELEASE_SLACK_MS }
+        fallback.second()
+        assertEquals(listOf(true, false), claims)
+    }
+
+    /** Verifier: with Do not disturb on, a pane turned off shows no pill; and DND changed while off doesn't bring it back. */
+    @Test
+    fun offShowsNoDoNotDisturbPill() {
+        pane.start()
+        val dnd = pane.entities().first { it.objectId == "do_not_disturb" } as SwitchEntity
+        dnd.command(ProtoMessage(ProtoWriter().bool(2, true).toByteArray()))
+        assertTrue(hub.state.doNotDisturb)
+        pane.stop()
+        assertFalse(hub.state.doNotDisturb)
+        dnd.command(ProtoMessage(ProtoWriter().bool(2, false).toByteArray()))
+        dnd.command(ProtoMessage(ProtoWriter().bool(2, true).toByteArray()))
+        assertFalse("still nothing while off", hub.state.doNotDisturb)
+        pane.start()
+        assertTrue("back on: the pill comes back", hub.state.doNotDisturb)
     }
 }

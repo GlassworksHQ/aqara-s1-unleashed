@@ -14,9 +14,9 @@ import kotlin.math.sin
  *
  * | Sound | What it is | Length |
  * |---|---|---|
- * | chime | two soft bell notes, high then lower | 0.9 s |
+ * | chime | two soft bell notes, high then lower | 1.0 s |
  * | doorbell | "ding-dong" (E5 then C5), twice | 3.0 s |
- * | alert | three pairs of short bright beeps; the pane repeats it while a critical one is up | 1.4 s |
+ * | alert | three pairs of short bright beeps; the pane repeats it while a critical one is up | 1.45 s |
  */
 object NotificationSounds {
     const val RATE = 16_000
@@ -25,14 +25,22 @@ object NotificationSounds {
         val seconds: Double get() = data.size / 2.0 / rate
     }
 
+    /** How long [sound] plays, without making it. */
+    fun seconds(sound: Sound): Double = when (sound) {
+        Sound.NONE -> 0.0
+        Sound.CHIME -> 1.0
+        Sound.DOORBELL -> 3.0
+        Sound.ALERT -> 1.45
+    }
+
     fun pcm(sound: Sound): Pcm? = when (sound) {
         Sound.NONE -> null
-        Sound.CHIME -> render(1.0, listOf(Note(0.0, 1318.5, 0.55, 0.22), Note(0.18, 1046.5, 0.7, 0.22)))
-        Sound.DOORBELL -> render(3.0, listOf(
+        Sound.CHIME -> render(seconds(sound), listOf(Note(0.0, 1318.5, 0.55, 0.22), Note(0.18, 1046.5, 0.7, 0.22)))
+        Sound.DOORBELL -> render(seconds(sound), listOf(
             Note(0.0, 659.3, 0.9, 0.32), Note(0.55, 523.3, 1.1, 0.32),
             Note(1.35, 659.3, 0.9, 0.32), Note(1.9, 523.3, 1.1, 0.32),
         ))
-        Sound.ALERT -> render(1.45, (0 until 3).flatMap { k ->
+        Sound.ALERT -> render(seconds(sound), (0 until 3).flatMap { k ->
             val t = k * 0.48
             listOf(Note(t, 1760.0, 0.09, 0.30, decay = 0.0), Note(t + 0.13, 1318.5, 0.09, 0.30, decay = 0.0))
         })

@@ -12,8 +12,11 @@ import sh.edm.esphome.EspHomeLog
 import sh.edm.esphome.HomeAssistantEvent
 import java.util.concurrent.Future
 
-/** What the pane asks of the screen. The app runs both on the main thread ([dev.glassworks.screen.ScreenPolicy.hold]). */
+/** What the pane asks of the screen. The app runs these on the main thread ([dev.glassworks.screen.ScreenPolicy.hold]). */
 interface NotificationScreen {
+    /** Turn the screen on, as for any other reason; night dimming and the idle timeout apply. */
+    fun wake()
+
     /** Wake the screen and keep it on at the day's brightness, past night dimming. */
     fun hold()
     fun release()
@@ -28,9 +31,12 @@ interface NotificationScreen {
  *   panel" instead of disappearing from Home Assistant.
  * - A high or critical notification holds the screen ([NotificationScreen.hold]) until no urgent one
  *   is up, and at most [HOLD_MAX_MS]: a notification nobody answers doesn't keep a bedroom lit all night.
- * - The critical alert repeats every [ALERT_REPEAT_MS] while a critical one is up, for at most
- *   [ALERT_MAX_MS].
- * - Sounds claim the speaker ([PanelEvent.SpeakerClaimed]), so music goes quiet meanwhile.
+ * - The critical alert repeats every [ALERT_REPEAT_MS] while a critical one is up. No new repeat
+ *   starts after [ALERT_MAX_MS], so the last one can end up to one sound (1.45 s) past it.
+ * - Sounds claim the speaker ([PanelEvent.SpeakerClaimed]), so music goes quiet meanwhile. One claim
+ *   covers overlapping sounds, and it is let go when the newest sound ends, when the alert is
+ *   silenced or the pane stops, or at the latest [RELEASE_SLACK_MS] after the sound should have
+ *   ended: a sound cut short (`TtsPlayer.cancel`) never calls back.
  *
  * [play] plays one sound and calls back when it ended; [silence] cuts it.
  */
@@ -56,6 +62,10 @@ class NotificationsPane(
     private var criticalUp = false
     /** Bumped by [stopAlert], so a repeat already waiting for the lock knows it is stale. */
     private var alertGen = 0
+    /** The speaker claim ([sound]): held now, its generation, and the fallback that lets it go. */
+    private var claimed = false
+    private var claimGen = 0
+    private var claimTimer: Future<*>? = null
 
     private val entities = NotificationEntities(
         onNotify = { m, t, d ->
@@ -65,7 +75,8 @@ class NotificationsPane(
         getDoNotDisturb = { prefs.doNotDisturb },
         setDoNotDisturb = { on ->
             prefs.doNotDisturb = on
-            synchronized(lock) { hub.update { it.copy(doNotDisturb = on) } }
+            // Off, the pane shows nothing, not even Do not disturb's pill; start() publishes it again.
+            synchronized(lock) { if (center != null) hub.update { it.copy(doNotDisturb = on) } }
             ctx.publishStates()
         },
     )
@@ -77,16 +88,21 @@ class NotificationsPane(
             val urgent = (cards + listOfNotNull(page)).any { it.delivery.overNight }
             val critical = cards.any { it.notification.priority == Priority.CRITICAL } ||
                 page?.notification?.priority == Priority.CRITICAL
-            synchronized(lock) {
+            val silenced = synchronized(lock) {
                 // Under the pane's lock, as Do not disturb's publish: neither overwrites the other with an older state.
                 hub.publish(NotificationsHub.State(cards, page, list, prefs.doNotDisturb))
                 criticalUp = critical
-                if (!critical) stopAlert()
                 if (!urgent) releaseScreen()
+                !critical && stopAlert()
             }
+            // The alert was cut short: its end never comes, so let the music back now.
+            if (silenced) releaseSpeaker()
         }
 
-        override fun wake(overNight: Boolean) = synchronized(lock) { holdScreen() }
+        override fun wake(overNight: Boolean) {
+            // Past night dimming only for one that asks for it; otherwise a plain wake.
+            if (overNight) synchronized(lock) { holdScreen() } else screen.wake()
+        }
 
         override fun play(sound: Sound, critical: Boolean) {
             // Only a critical notification's sound repeats. "alert" on a normal one plays once.
@@ -95,8 +111,36 @@ class NotificationsPane(
     }
 
     private fun sound(s: Sound) {
-        ctx.emit(PanelEvent.SpeakerClaimed(true))
-        play(s) { ctx.emit(PanelEvent.SpeakerClaimed(false)) }
+        val (gen, first) = synchronized(lock) {
+            claimTimer?.cancel(false)
+            val first = !claimed
+            claimed = true
+            ++claimGen to first
+        }
+        if (first) ctx.emit(PanelEvent.SpeakerClaimed(true))
+        synchronized(lock) {
+            if (gen == claimGen) {
+                val ms = (NotificationSounds.seconds(s) * 1000).toLong() + RELEASE_SLACK_MS
+                claimTimer = schedule(ms) { releaseSpeaker(gen) }
+            }
+        }
+        play(s) { releaseSpeaker(gen) }
+    }
+
+    /**
+     * Lets go of the speaker: for [gen], only if no newer sound took the claim since (an older sound's
+     * end, delivered while a newer one plays, must not bring the music back under it); null: now.
+     */
+    private fun releaseSpeaker(gen: Int? = null) {
+        val release = synchronized(lock) {
+            if (!claimed || (gen != null && gen != claimGen)) return@synchronized false
+            claimed = false
+            claimGen++
+            claimTimer?.cancel(false)
+            claimTimer = null
+            true
+        }
+        if (release) ctx.emit(PanelEvent.SpeakerClaimed(false))
     }
 
     override fun start() {
@@ -120,12 +164,13 @@ class NotificationsPane(
             stopAlert()
             releaseScreen()
         }
+        releaseSpeaker()
         hub.detach(c)
     }
 
     override fun onEvent(event: PanelEvent) {
         if (event is PanelEvent.SettingChanged && event.key == NotificationsPrefs.KEY_DND) {
-            synchronized(lock) { hub.update { it.copy(doNotDisturb = prefs.doNotDisturb) } }
+            synchronized(lock) { if (center != null) hub.update { it.copy(doNotDisturb = prefs.doNotDisturb) } }
         }
     }
 
@@ -162,11 +207,14 @@ class NotificationsPane(
         }
     }
 
-    private fun stopAlert() {
+    /** Stops the alert's repeats; true when it was ringing and got cut ([silence]). */
+    private fun stopAlert(): Boolean {
         alertGen++
         alertTimer?.cancel(false)
-        if (alertTimer != null) silence()
+        val ringing = alertTimer != null
+        if (ringing) silence()
         alertTimer = null
+        return ringing
     }
 
     companion object {
@@ -174,5 +222,7 @@ class NotificationsPane(
         const val HOLD_MAX_MS = 10 * 60_000L
         const val ALERT_REPEAT_MS = 4_000L
         const val ALERT_MAX_MS = 2 * 60_000L
+        /** How long after a sound should have ended the claim is let go anyway. */
+        const val RELEASE_SLACK_MS = 1_500L
     }
 }

@@ -289,6 +289,7 @@ class PanelDevice internal constructor(
             NotificationsPane(
                 paneContext, prefs.notifications, runtime.notifications,
                 screen = object : NotificationScreen {
+                    override fun wake() = ui { screen.wake("notification") }
                     override fun hold() = ui { screen.hold("notification") }
                     override fun release() = ui { screen.release("notification") }
                 },
