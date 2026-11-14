@@ -57,6 +57,63 @@ class VoiceAssistantControllerTest {
         assertEquals(State.IDLE, controller.currentState)
     }
 
+    /** #210 review: a closed controller plays nothing Home Assistant sends after it, a response or an announcement. */
+    @Test
+    fun closedItPlaysNoResponseAndNoAnnouncement() {
+        controller.onSubscribe(true)
+        controller.close()
+        events.clear()
+        controller.onEvent(VoiceEventType.TTS_END, mapOf("url" to "http://ha/t.mp3"))
+        assertEquals("not left responding with nothing to play", State.IDLE, controller.currentState)
+        controller.onAnnounce("http://ha/a.mp3", "Dinner is ready", "", startConversation = false)
+        assertEquals(State.IDLE, controller.currentState)
+        assertTrue("nothing played: $played", played.isEmpty())
+        assertTrue("no Speaking: $events", events.none { it == VoiceEvent.Speaking })
+        assertFalse("the announcement is answered as not played",
+            sent.last { it.first == Msg.VOICE_ASSISTANT_ANNOUNCE_FINISHED }.second.bool(1))
+    }
+
+    /**
+     * #210 review: an announcement's playback effect is collected, then the pane closes the controller
+     * before the effect runs. Either the playback starts first and the close stops it, or it doesn't
+     * start: the last word is Idle, so the speaker is released and paused music resumes.
+     */
+    @Test
+    fun aCloseRacingAPlaybackStartEndsIdle() {
+        val log = java.util.Collections.synchronizedList(ArrayList<String>())
+        val inReply = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val c = VoiceAssistantController(
+            send = { _, _ -> true },
+            player = object : UrlPlayer {
+                override fun play(urls: List<String>, onDone: (Boolean) -> Unit) { log += "play" }
+                override fun stop() { log += "stop" }
+            },
+            wakeWords = object : WakeWordCatalog {
+                override fun available() = emptyList<WakeWordInfo>()
+                override fun activeIds() = emptyList<String>()
+                override fun setActive(ids: List<String>) {}
+            },
+            emit = { e ->
+                // The effect pauses in its first event, after the lock was released.
+                if (e is VoiceEvent.Reply) { inReply.countDown(); release.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+                log += e.javaClass.simpleName
+            },
+            clock = { now },
+        )
+        c.onSubscribe(true)
+        val announcer = Thread { c.onAnnounce("http://ha/a.mp3", "Dinner is ready", "", startConversation = false) }.apply { start() }
+        assertTrue(inReply.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        val closer = Thread { c.close() }.apply { start() }
+        val end = System.currentTimeMillis() + 2_000
+        while (closer.isAlive && closer.state != Thread.State.BLOCKED && System.currentTimeMillis() < end) Thread.sleep(5)
+        release.countDown()
+        announcer.join(5_000); closer.join(5_000)
+        val last = log.lastOrNull { it == "Idle" || it == "Speaking" }
+        assertEquals("the voice run ends Idle: $log", "Idle", last)
+        if ("play" in log) assertTrue("a playback that started is stopped: $log", log.lastIndexOf("stop") > log.indexOf("play"))
+    }
+
     @Test
     fun aCancelledRunLeavesTheNextOneFree() {
         startRun()

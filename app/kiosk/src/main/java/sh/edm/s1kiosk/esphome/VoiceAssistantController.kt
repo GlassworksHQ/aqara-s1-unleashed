@@ -78,6 +78,11 @@ class VoiceAssistantController(
     private var discardRun = false
     /** The voice pane stopped ([close]): no new run starts, also from a wake word already on its way. */
     private var closed = false
+    /**
+     * Held while playback starts ([startPlayback]) and while [close] runs, so a playback effect collected
+     * before the close either starts first, and the close stops it, or sees the close and starts nothing.
+     */
+    private val playbackStart = Any()
     private val timers = LinkedHashMap<String, Timer>()
 
     val currentState: State get() = synchronized(lock) { state }
@@ -198,9 +203,9 @@ class VoiceAssistantController(
      * current one ends as [cancel] ends it, so its Idle resumes the music and lets go of the speaker.
      * Unlike [cancel], which the person uses between runs, this controller takes no run again.
      */
-    fun close(): Boolean {
+    fun close(): Boolean = synchronized(playbackStart) {
         locked { closed = true }
-        return cancel()
+        cancel()
     }
 
     /** Called about once a second: watchdogs. */
@@ -320,13 +325,23 @@ class VoiceAssistantController(
     }
 
     private fun playResponse(url: String, fx: MutableList<() -> Unit>) {
+        if (closed) return
         val gen = ++playGen
         setState(State.RESPONDING)
         val resolved = resolveUrl(url)
         VoiceLog.i("voice: playing response $resolved")
-        fx += {
-            emit(VoiceEvent.Speaking)
-            player.play(listOf(resolved)) { ok -> onPlaybackDone(gen, ok, startConversation = false) }
+        fx += { startPlayback(gen, listOf(resolved), startConversation = false) { emit(VoiceEvent.Speaking) } }
+    }
+
+    /**
+     * Effect: starts playback for [gen] unless the run was cancelled or the controller closed since the
+     * effect was collected. [before] runs first (the events that go with it).
+     */
+    private fun startPlayback(gen: Int, urls: List<String>, startConversation: Boolean, before: () -> Unit) {
+        synchronized(playbackStart) {
+            if (synchronized(lock) { closed || gen != playGen }) return
+            before()
+            player.play(urls) { ok -> onPlaybackDone(gen, ok, startConversation) }
         }
     }
 
@@ -344,7 +359,7 @@ class VoiceAssistantController(
     override fun onAnnounce(mediaId: String, text: String, preannounceMediaId: String, startConversation: Boolean) {
         locked {
             VoiceLog.i("voice: announce '$text' media=$mediaId preannounce=$preannounceMediaId")
-            if (mediaId.isEmpty()) {
+            if (mediaId.isEmpty() || closed) {
                 send(Msg.VOICE_ASSISTANT_ANNOUNCE_FINISHED, ProtoWriter().bool(1, false))
                 return@locked
             }
@@ -353,9 +368,10 @@ class VoiceAssistantController(
             setState(State.ANNOUNCING)
             val urls = listOf(preannounceMediaId, mediaId).filter { it.isNotEmpty() }.map(resolveUrl)
             add {
-                emit(VoiceEvent.Reply(text, announcement = true))
-                emit(VoiceEvent.Speaking)
-                player.play(urls) { ok -> onPlaybackDone(gen, ok, startConversation) }
+                startPlayback(gen, urls, startConversation) {
+                    emit(VoiceEvent.Reply(text, announcement = true))
+                    emit(VoiceEvent.Speaking)
+                }
             }
         }
     }
