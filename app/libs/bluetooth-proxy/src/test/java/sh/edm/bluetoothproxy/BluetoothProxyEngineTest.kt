@@ -143,6 +143,19 @@ class BluetoothProxyEngineTest {
         assertNull(engine.status.failure)
     }
 
+    @Test fun anOldScansLateAdvertisementNeitherCountsNorClearsTheNewScansFailure() {
+        subscribe(true)
+        val first = scanner.listener!!
+        loop.advanceBy(25 * 60_000L) // restart: the second scan starts
+        scanner.running = false
+        scanner.listener!!.onFailed(ScanFailure.LOCATION_OFF) // and fails
+        loop.advanceBy(0)
+        first.onAdvertisement(0xC0FFEE000001L, -50, byteArrayOf(2, 1, 6)) // the first scan's, late
+        loop.advanceBy(1_000)
+        assertEquals("the failure stays", ScanFailure.LOCATION_OFF, engine.status.failure)
+        assertEquals("nothing forwarded", emptyList<List<RawAdvertisement>>(), sent)
+    }
+
     @Test fun bluetoothComingBackRetriesAtOnce() {
         subscribe(true)
         repeat(3) {

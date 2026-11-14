@@ -90,17 +90,17 @@ class BluetoothProxyEngine internal constructor(
     val status: ProxyStatus
         get() = ProxyStatus(subscribed, scanning, failure, counter.perMinute(loop.now()))
 
-    /** Counts scan starts and stops. A scan's failure counts only while its generation is current. */
+    /** Counts scan starts and stops. A scan's results and failure count only while its generation is current. */
     private var generation = 0
 
     /**
-     * The listener for the scan [scanGeneration]. The scanner may hand over a failure just before the
-     * engine stops or replaces that scan; the loop handles it after, so it checks the generation.
+     * The listener for the scan [scanGeneration]. The scanner may hand over a result or a failure just
+     * before the engine stops or replaces that scan; the loop handles it after, so it checks the generation.
      */
     private fun listener(scanGeneration: Int) = object : BleScanner.Listener {
         override fun onAdvertisement(address: Long, rssi: Int, data: ByteArray) {
             val adv = RawAdvertisement(address, rssi, addressType = 0, data = adStructures(data))
-            loop.execute { add(adv) }
+            loop.execute { if (scanGeneration == generation && schedule.scanning) add(adv) }
         }
 
         override fun onFailed(failure: ScanFailure) = loop.execute {
