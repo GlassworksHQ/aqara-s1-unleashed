@@ -266,7 +266,7 @@
       "value": "Leans on the wall on its stand, or mounts flat on the wall"
     }
   ],
-  "provides": ["microphone", "speaker", "bluetooth-le"],
+  "provides": ["microphone", "speaker", "bluetooth-le", "camera"],
   "panes": {
     "assist": {
       "support": "planned",
