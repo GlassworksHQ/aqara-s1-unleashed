@@ -57,7 +57,7 @@ class SetupPanesTest {
     private val radioStep = step("radio", "Radio")
 
     private val panes = listOf(
-        SetupPane(PaneChoice("Voice", "Assist and timers", on = { voice }, restartsApp = true, apply = { on -> applied += "voice $on"; null }), emptyList()),
+        SetupPane(PaneChoice("Voice", "Assist and timers", on = { voice }, apply = { on -> applied += "voice $on"; null }), emptyList()),
         SetupPane(PaneChoice("Zigbee / Thread radio", "For your devices", on = { radioOn }, apply = { on -> applied += "radio $on"; null }), listOf(radioStep)),
     )
 
@@ -94,18 +94,17 @@ class SetupPanesTest {
         assertEquals(what, true, cond())
     }
 
-    /** Taps Continue on Panes and waits for the cards to be applied; the answer onPanesDone got. */
-    private fun continueAndWait(s: SetupOverlay): Boolean? {
-        var restart: Boolean? = null
+    /** Taps Continue on Panes and waits for the cards to be applied; whether onPanesDone came. */
+    private fun continueAndWait(s: SetupOverlay): Boolean {
         val done = CountDownLatch(1)
-        s.onPanesDone = { restart = it; done.countDown() }
+        s.onPanesDone = { done.countDown() }
         shown(s, "Continue")!!.performClick()
         val until = System.currentTimeMillis() + 5_000
         while (done.count > 0 && System.currentTimeMillis() < until) {
             shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50))
             done.await(20, TimeUnit.MILLISECONDS)
         }
-        return restart
+        return done.count == 0L
     }
 
     @Test
@@ -114,17 +113,17 @@ class SetupPanesTest {
         assertEquals(null, shown(s, "Zigbee coordinator")) // no mode here: the radio's own step asks it
         assertFalse(s.wanted("radio"))
         all(s, Glass.Toggle::class.java)[1].performClick() // the radio on
-        assertEquals(false, continueAndWait(s))
+        assertTrue(continueAndWait(s))
         assertEquals(setOf("voice true", "radio true"), applied.toSet()) // each card on its own thread: any order
         assertTrue(s.panesChosen)
         assertTrue(s.wanted("radio")) // its step now sits under Panes
     }
 
     @Test
-    fun turningVoiceOffAsksForARestart() {
+    fun turningVoiceOffAppliesItLikeAnyCard() {
         val s = overlay()
         all(s, Glass.Toggle::class.java)[0].performClick()
-        assertEquals(true, continueAndWait(s))
+        assertTrue(continueAndWait(s))
         assertEquals(setOf("voice false", "radio false"), applied.toSet()) // any order
     }
 
@@ -172,23 +171,23 @@ class SetupPanesTest {
     }
 
     @Test
-    fun aRefusalHoldsTheStepAndARestartStaysOwed() {
+    fun aRefusalHoldsTheStepUntilEveryCardApplies() {
         var refuse = true
         val s = overlay(listOf(
-            SetupPane(PaneChoice("Voice", "Assist and timers", on = { voice }, restartsApp = true, apply = { on -> voice = on; null }), emptyList()),
+            SetupPane(PaneChoice("Voice", "Assist and timers", on = { voice }, apply = { on -> voice = on; null }), emptyList()),
             SetupPane(PaneChoice("Music", "A Sendspin speaker", on = { true }, apply = { if (refuse) "the player didn't start" else null }), emptyList()),
         ))
-        var restart: Boolean? = null
-        s.onPanesDone = { restart = it }
-        all(s, Glass.Toggle::class.java)[0].performClick() // voice off: needs a restart
+        var done = false
+        s.onPanesDone = { done = true }
+        all(s, Glass.Toggle::class.java)[0].performClick() // voice off
         shown(s, "Continue")!!.performClick()
         waitFor("refused") { shown(s, "Music: the player didn't start") != null }
         assertTrue(s.holdsPanes)
-        assertEquals(null, restart)
+        assertFalse(done)
+        assertFalse(voice) // applied live: no restart owed
         refuse = false
-        shown(s, "Continue")!!.performClick() // voice is already saved off: the restart is still owed
-        waitFor("done") { restart != null }
-        assertEquals(true, restart)
+        shown(s, "Continue")!!.performClick()
+        waitFor("done") { done }
         assertFalse(s.holdsPanes)
     }
 

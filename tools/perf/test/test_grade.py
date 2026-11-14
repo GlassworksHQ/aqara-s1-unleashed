@@ -266,7 +266,7 @@ class MemoryBudget(unittest.TestCase):
             s1 = json.load(f)
         self.assertEqual(set(s1["ram"]), {"app_pss_max_pct_of_ram", "device_available_min_pct"})
         switchable = {k for k, v in s1["panes"].items() if v.get("switch")}
-        self.assertEqual(switchable, {"assist", "sendspin"})
+        self.assertEqual(switchable, {"assist", "sendspin", "wall-base", "time-zone", "diagnostics"})
         for k in switchable:
             self.assertIsInstance(s1["panes"][k]["ram_pss_max_kb"], int)
         # Every pane in the app's code is in the frame's file, so a new one can't be left out of RAM.
@@ -277,8 +277,9 @@ class MemoryBudget(unittest.TestCase):
                     with open(os.path.join(d, f)) as fh:
                         ids |= set(re.findall(r'override val id = "([a-z0-9-]+)"', fh.read()))
         self.assertEqual(set(s1["panes"]), ids)
-        self.assertEqual({k for k, v in s1["panes"].items() if v.get("waiting_on") == "#67"},
-                         {"radio", "wall-base", "timers", "time-zone", "diagnostics"})
+        # #67 gave every pane a switch: the radio's is its mode, and timers come with voice.
+        self.assertEqual({k for k, v in s1["panes"].items() if v.get("not_switched")}, {"radio", "timers"})
+        self.assertEqual(set(s1["panes"]), switchable | {"radio", "timers"})
 
     def test_a_pane_over_its_budget(self):
         n3 = {"pss_tolerance_kb": 4_000, "samples_on": 3, "samples_off": 3}

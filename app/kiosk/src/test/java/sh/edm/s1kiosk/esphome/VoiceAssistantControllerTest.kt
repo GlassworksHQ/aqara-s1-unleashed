@@ -41,6 +41,104 @@ class VoiceAssistantControllerTest {
         assertEquals(State.STREAMING, controller.currentState)
     }
 
+    /**
+     * #210 review: the voice pane stopping closes its controller. The run ends with Idle, as a cancel
+     * does, and a wake word still on its way starts nothing, unlike after the person's cancel.
+     */
+    @Test
+    fun closedItEndsTheRunAndTakesNoOther() {
+        startRun()
+        events.clear()
+        assertTrue(controller.close())
+        assertEquals(VoiceEvent.Idle, events.last())
+        val requests = requests().size
+        assertFalse("no run after close", controller.onWakeWord("Hey Jarvis"))
+        assertEquals(requests, requests().size)
+        assertEquals(State.IDLE, controller.currentState)
+    }
+
+    /** #210 review: a closed controller plays nothing Home Assistant sends after it, a response or an announcement. */
+    @Test
+    fun closedItPlaysNoResponseAndNoAnnouncement() {
+        controller.onSubscribe(true)
+        controller.close()
+        events.clear()
+        controller.onEvent(VoiceEventType.TTS_END, mapOf("url" to "http://ha/t.mp3"))
+        assertEquals("not left responding with nothing to play", State.IDLE, controller.currentState)
+        controller.onAnnounce("http://ha/a.mp3", "Dinner is ready", "", startConversation = false)
+        assertEquals(State.IDLE, controller.currentState)
+        assertTrue("nothing played: $played", played.isEmpty())
+        assertTrue("no Speaking: $events", events.none { it == VoiceEvent.Speaking })
+        assertFalse("the announcement is answered as not played",
+            sent.last { it.first == Msg.VOICE_ASSISTANT_ANNOUNCE_FINISHED }.second.bool(1))
+    }
+
+    /**
+     * #210 review: an announcement's playback effect is collected, then the pane closes the controller
+     * before the effect runs. Either the playback starts first and the close stops it, or it doesn't
+     * start: the last word is Idle, so the speaker is released and paused music resumes.
+     */
+    @Test
+    fun aCloseRacingAPlaybackStartEndsIdle() = racePlaybackStart({ it.close() })
+
+    /**
+     * #210 review: the person cancels while an announcement's playback is starting, then voice is turned
+     * off. The cancel waits for the start, then stops it; nothing is left playing with the speaker claimed.
+     */
+    @Test
+    fun aCancelRacingAPlaybackStartEndsIdle() = racePlaybackStart({ it.cancel() }, { it.close() })
+
+    /**
+     * Pauses an announcement's playback effect in its first event, after the controller's lock was
+     * released, runs each of [actions] on its own thread in turn, then lets the effect go on.
+     */
+    private fun racePlaybackStart(vararg actions: (VoiceAssistantController) -> Unit) {
+        val log = java.util.Collections.synchronizedList(ArrayList<String>())
+        val inReply = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val c = VoiceAssistantController(
+            send = { _, _ -> true },
+            player = object : UrlPlayer {
+                override fun play(urls: List<String>, onDone: (Boolean) -> Unit) { log += "play" }
+                override fun stop() { log += "stop" }
+            },
+            wakeWords = object : WakeWordCatalog {
+                override fun available() = emptyList<WakeWordInfo>()
+                override fun activeIds() = emptyList<String>()
+                override fun setActive(ids: List<String>) {}
+            },
+            emit = { e ->
+                if (e is VoiceEvent.Reply) { inReply.countDown(); release.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+                log += e.javaClass.simpleName
+            },
+            clock = { now },
+        )
+        c.onSubscribe(true)
+        val announcer = Thread { c.onAnnounce("http://ha/a.mp3", "Dinner is ready", "", startConversation = false) }.apply { start() }
+        assertTrue(inReply.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        val threads = actions.map { a ->
+            Thread { a(c) }.apply {
+                start()
+                // In turn: each has run to its end, or waits for the playback start.
+                val end = System.currentTimeMillis() + 2_000
+                while (isAlive && state != Thread.State.BLOCKED && System.currentTimeMillis() < end) Thread.sleep(5)
+            }
+        }
+        release.countDown()
+        announcer.join(5_000)
+        threads.forEach { it.join(5_000) }
+        val last = log.lastOrNull { it == "Idle" || it == "Speaking" }
+        assertEquals("the voice run ends Idle: $log", "Idle", last)
+        if ("play" in log) assertTrue("a playback that started is stopped: $log", log.lastIndexOf("stop") > log.indexOf("play"))
+    }
+
+    @Test
+    fun aCancelledRunLeavesTheNextOneFree() {
+        startRun()
+        assertTrue(controller.cancel())
+        assertTrue(controller.onWakeWord("Hey Jarvis"))
+    }
+
     @Test
     fun wakeWithoutHomeAssistantIsAnError() {
         assertFalse(controller.onWakeWord("Hey Jarvis"))

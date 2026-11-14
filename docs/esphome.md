@@ -66,7 +66,7 @@ Details and sources: [onboarding.md](onboarding.md#2-adoption--encryption-esphom
 | esphome_version / compilation_time | `2026.10.2` / `S1 Kiosk <app version>` (HA shows "2026.10.2 (S1 Kiosk 0.1.0)") |
 | API version | 1.20 (as ESPHome 2026.10/11); `DeviceCapabilitiesRequest` is answered |
 | Sendspin | `DeviceCapabilitiesResponse.sendspin` = `{feature_flags: PAIRING_TOKEN, client_id}`; `SendspinPairingTokenRequest` (159) → `SendspinPairingTokenResponse` (160), token only over Noise with a key ([sendspin.md](sendspin.md#esphome-hand-off-how-ha-gives-ma-the-token)) |
-| voice_assistant_feature_flags | 61 = VOICE_ASSISTANT 1 + API_AUDIO 4 + TIMERS 8 + ANNOUNCE 16 + START_CONVERSATION 32 (0 when `voice_enabled` is false) |
+| voice_assistant_feature_flags | 61 = VOICE_ASSISTANT 1 + API_AUDIO 4 + TIMERS 8 + ANNOUNCE 16 + START_CONVERSATION 32 (0 when `voice_enabled` is false). Voice turned on or off while the panel runs changes it, and the panel asks Home Assistant to reconnect so it reads it again (#67) |
 
 ## Entities
 
@@ -140,7 +140,9 @@ open the entity, and turn on *Enabled*.
 | Home Assistant URL | `home_assistant_url` | core | diagnostic | off | Troubleshooting |
 | Signed in | `signed_in` | core | diagnostic | off | Troubleshooting |
 | CPU usage, CPU temperature, Wi-Fi signal, Uptime | `cpu_usage`, `cpu_temperature`, `wifi_signal`, `uptime` | diagnostics | diagnostic | on | The few health values people check ([Diagnostics](#diagnostics)) |
+| Diagnostics | `diagnostics` | diagnostics | config | off | Set once: the pane's on/off |
 | App CPU usage, RAM available, App RAM, Storage free, Wi-Fi link speed, App uptime, Web content processes, Last restart reason | `app_cpu_usage`, `memory_available`, `app_memory`, `storage_free`, `wifi_link_speed`, `app_uptime`, `web_content_processes`, `last_restart_reason` | diagnostics | diagnostic | off | Troubleshooting (unchanged since #142) |
+| Voice | `voice` | voice | config | off | Set once: the pane's on/off ([Panes on and off](#panes-on-and-off)) |
 | Mute microphone | `mute_microphone` | voice | config | on | Privacy, toggled day to day |
 | Wake sound | `wake_sound` | voice | config | off | Set once |
 | Voice overlay | `voice_overlay` | voice | config | off | Set once |
@@ -158,8 +160,10 @@ open the entity, and turn on *Enabled*.
 | Thread dataset | `thread_dataset` | radio | config | off | Once per network |
 | Thread join | `thread_join` | radio | diagnostic | off | Only during a join |
 | Radio helper, Radio firmware | `radio_helper`, `radio_firmware` | radio | diagnostic | off | Troubleshooting |
+| Keep time zone | `keep_time_zone` | time zone | config | off | Set once: the pane's on/off |
 | Time zone | `time_zone` | time zone | config | off | Set once |
 | Time zone status | `time_zone_status` | time zone | diagnostic | off | Troubleshooting |
+| Wall base | `wall_base` | wall base | config | off | Set once: the pane's on/off |
 | Block Aqara cloud | `block_aqara_cloud` | wall base | config | off | Set once |
 | Aqara cloud daemon | `aqara_cloud` | wall base | diagnostic | off | Troubleshooting |
 | Base | `base` | wall base | diagnostic | off | Troubleshooting; the base's own entities show what is mounted |
@@ -220,7 +224,7 @@ So on a panel HA already has:
 | button `Start Wi-Fi setup (Bluetooth)` | `improv_ble` | starts Improv over Bluetooth on demand ([onboarding.md](onboarding.md)) |
 | switch `Hide HA header` | `hide_ha_header` | header + sidebar, applied live |
 | media_player `Speaker` | `speaker` | play/pause/stop, volume, mute, play media, announce; formats: mp3 (default + announcement) |
-| switch `Music Assistant player (Sendspin)` | `sendspin` | the native Sendspin player ([sendspin.md](sendspin.md)), default on; off sends `client/goodbye` `user_request` |
+| switch `Music Assistant player (Sendspin)` | `sendspin` | the native Sendspin player ([sendspin.md](sendspin.md)), default on; off sends `client/goodbye` `user_request`; encrypted connection only ([Panes on and off](#panes-on-and-off)) |
 | text_sensor `Music Assistant player status` | `sendspin_status` | diagnostic; e.g. `ready, paired with Music Assistant (…)`, `playing from …: Artist – Title`, `waiting for pairing or approval by …`, `off` |
 | switch `Mute microphone` | `mute_microphone` | releases the microphone entirely |
 | switch `Wake sound` | `wake_sound` | short two-tone chime when the wake word is detected (default on) |
@@ -252,6 +256,37 @@ So on a panel HA already has:
 
 Plus `Block Aqara cloud` and `Aqara cloud daemon` ([below](#aqara-cloud)), the wall base entities, and the entities HA adds itself for a voice device: `assist_satellite.s1_panel_assist_satellite`,
 *Assist pipeline* and *Wake word* selects (two of each), *Finished speaking detection*.
+
+### Panes on and off
+
+Each pane has a config switch that turns it on or off while the panel runs (#67), with two
+exceptions: the radio, whose on/off is `Radio mode` (`Off`), and the timers, which come with voice and
+have no switch of their own. The settings menu (the switch at the top of the pane's page), setup's
+Panes step and the adb extras set the same setting. A pane that is off keeps its entities, with no
+state where it has none to give, so the entity list doesn't change. Each switch is a config entity,
+off in Home Assistant until you turn it on on the device page
+([Categories and defaults](#categories-and-defaults)): people set them once. Only an encrypted
+connection with the panel's key may change one, as for `Time zone`: turned on, a pane can open the
+microphone or a port.
+
+| Entity | object_id | Pane | adb extra | Enabled in HA by default |
+|---|---|---|---|---|
+| switch `Voice` | `voice` | the voice assistant and timers | `voice_enabled` | no |
+| switch `Music Assistant player (Sendspin)` | `sendspin` | Sendspin (the same entity as before) | `sendspin_enabled` | no |
+| switch `Wall base` | `wall_base` | the wall base driver; off closes the port, and Aqara's daemon may run again unless `Block Aqara cloud` is on | `wall_base_enabled` | no |
+| switch `Keep time zone` | `keep_time_zone` | the time zone; off sets the zone to keep to `(off)`, so the root helper keeps none and adopts none ([radio.md](radio.md#root-helper-contract-v4)), and on keeps the same zone again. *Time zone status* says `off` only once the helper has let go | `time_zone_enabled` | no |
+| switch `Diagnostics` | `diagnostics` | the diagnostic sensors; off stops the sampling | `diagnostics_enabled` | no |
+
+The radio's on/off is `Radio mode` (`Off`). Voice on or off changes the voice features in the device
+info, so the panel asks Home Assistant to reconnect, as it does when the entity list changes. For those
+few seconds every entity of the panel is unavailable (on the dev panel, 2026-11-14: 2 to 8 s, the screen,
+presence and speaker together). Then:
+
+- The **speaker** (`media_player`) is the panel's, not voice's: it stays, and Home Assistant can play on
+  it with Voice off.
+- The **Assist satellite** and HA's own voice entities (*Assist pipeline*, *Wake word*, *Finished
+  speaking detection*) go away while Voice is off, because the panel has no voice features then. They
+  come back when Voice is on.
 
 ### Diagnostics
 
@@ -641,7 +676,8 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
 
 - switch `Block Aqara cloud` (`block_aqara_cloud`, default on): stops Aqara's cloud daemon `ha_master`.
   With the UART wall-base backend (default) it is always stopped; with the LocalService backend it is
-  kept while a base is attached. See [frames/aqara-s1-plus/research/debloat.md](../frames/aqara-s1-plus/research/debloat.md).
+  kept only while a switch base is attached (or before the base check has read the dock). With no base,
+  blocking wins and it stays stopped. With the wall base pane off, only this switch counts. See [frames/aqara-s1-plus/research/debloat.md](../frames/aqara-s1-plus/research/debloat.md).
 - text_sensor `Aqara cloud daemon` (`aqara_cloud`): `blocked`, `running`,
   `stopped (UART wall base backend owns /dev/ttyS3)`, `running (needed by the wall base, LocalService
   backend)`, or `error (…)`.

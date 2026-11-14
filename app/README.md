@@ -168,6 +168,8 @@ $A --es screen off         # or on
 $A --ez restart true       # restart the app process
 $A --es wake_model okay_nabu --ef wake_threshold 0.9 --ef mic_gain 2.0 --ez mic_muted false  # wake word id (an old *.tflite name maps to its microWakeWord model); the threshold of that word
 $A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # manual ESPHome API key (HA normally provisions one)
+$A --ez voice_enabled false           # each pane on/off, applied live (default on): voice_enabled, sendspin_enabled,
+                                      #   wall_base_enabled, time_zone_enabled, diagnostics_enabled
 $A --ez sendspin_enabled false        # Music Assistant player (Sendspin) off/on (default on)
 $A --es sendspin_server 192.168.1.100 # Sendspin server: auto (default: mDNS, else <HA host>:8927) or host[:port][/path] / ws://
 $A --ez sendspin_unpaired_access true # let a server play without pairing (guest mode; default off)
@@ -254,7 +256,9 @@ Encryption is automatic: a panel without a key lets HA 2026.11+ provision one wh
 (ESPHome dynamic encryption key). You can also set a key by hand with
 `--es api_key <base64 32 bytes> --ez api_encryption true`. Keys are never logged. Tune the mic with
 `--ef mic_gain 2.0` / `--ef wake_threshold 0.9`, or turn the voice assistant off with
-`--ez voice_enabled false` (the API and the other entities stay).
+`--ez voice_enabled false`, the Voice switch in the settings, or the `voice` switch in Home Assistant
+(the API and the other entities stay). It turns off and on without a restart: Home Assistant
+reconnects to read the panel's voice features again.
 
 Not yet tested on the panel. The previous Wyoming satellite was verified there (HA connected,
 `announce` TTS played, wake-word inference used about 40% of one core); remove its Wyoming entry

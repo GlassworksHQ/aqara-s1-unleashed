@@ -100,7 +100,7 @@ class SetupOverlay(
     /** An inline Improv button (Allow / Not now / Stop / Use Bluetooth / Try again). */
     var onImprovAction: ((WifiStep.Action) -> Unit)? = null
     /** Panes applied with Continue. [restart]: a card that only takes effect at start changed. */
-    var onPanesDone: ((restart: Boolean) -> Unit)? = null
+    var onPanesDone: (() -> Unit)? = null
     /** A pane's step was answered on the screen ([SetupHost.next]). */
     var onStepDone: (() -> Unit)? = null
 
@@ -713,9 +713,6 @@ class SetupOverlay(
             private set
         val chosen: Boolean get() = applied != null
 
-        /** A card that only applies at start changed in an earlier attempt that then failed: still owed. */
-        private var restartOwed = false
-
         val view = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             choices.chunked(2).forEachIndexed { r, pair ->
@@ -770,7 +767,6 @@ class SetupOverlay(
             applying = true
             problem = null
             val wanted = on.copyOf()
-            restartOwed = restartOwed || choices.indices.any { choices[it].restartsApp && choices[it].on() != wanted[it] }
             redraw()
             val results = arrayOfNulls<String>(choices.size)
             val workers = choices.mapIndexed { i, c ->
@@ -791,7 +787,7 @@ class SetupOverlay(
                 problem = problems.joinToString("\n").ifEmpty { null }
                 if (problems.isEmpty()) {
                     applied = wanted
-                    onPanesDone?.invoke(restartOwed.also { restartOwed = false })
+                    onPanesDone?.invoke()
                 } else redraw()
             }
             main.postDelayed(::check, 200)

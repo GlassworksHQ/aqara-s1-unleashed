@@ -198,11 +198,15 @@ def parse_set(spec):
 def expected_state(want, voice_now):
     """What pane_state should read for `want`. The microphone is open only with voice on and not
     muted; when the kiosk didn't apply voice_enabled (S1 Kiosk 0.4.3 saves it asynchronously, then
-    exits to restart, so the write is lost), that is judged with the voice it really runs."""
+    exits to restart, so the write is lost), that is judged with the voice it really runs. Another
+    pane's switch `<id>_enabled` shows as `pane:<id>` (#67: wall_base_enabled, pane:wall-base)."""
     voice = want.get("voice_enabled", voice_now)
     out = {}
     if "sendspin_enabled" in want:
         out["sendspin"] = want["sendspin_enabled"]
+    for k, v in want.items():
+        if k.endswith("_enabled") and k not in ("voice_enabled", "sendspin_enabled"):
+            out["pane:" + k[:-len("_enabled")].replace("_", "-")] = v
     if "mic_muted" in want or "voice_enabled" in want:
         out["mic"] = bool(voice_now if voice_now is not None else voice) and not want.get("mic_muted", False)
     return out
@@ -210,10 +214,11 @@ def expected_state(want, voice_now):
 
 def cmd_panes(dev, a):
     """Set the panes the kiosk runs, then check from its log that it runs them (#158's s1v7: every
-    switch was lost). The settings applied live (Sendspin, the microphone mute, the dashboard URL)
-    go first, in an intent that doesn't restart the app, and are saved while the runner waits; then
-    voice_enabled, which restarts the app. Up to --tries times. Prints the result as JSON; exit 0 when
-    everything but voice_enabled took (voice_applied says whether that did too), else 1."""
+    switch was lost). The settings applied live (the other panes' switches, the microphone mute, the
+    dashboard URL) go first, in an intent that doesn't restart the app, and are saved while the runner
+    waits; then voice_enabled and a restart, so each sample starts from a fresh process (a kiosk
+    before #67 restarts for voice_enabled alone). Up to --tries times. Prints the result as JSON; exit
+    0 when everything but voice_enabled took (voice_applied says whether that did too), else 1."""
     want = parse_set(a.set)
     live = " ".join(f"--ez {k} {'true' if v else 'false'}" for k, v in want.items() if k != "voice_enabled")
     url = f"--es url '{a.url}'" if a.url else ""
@@ -228,14 +233,14 @@ def cmd_panes(dev, a):
                 res["url_taken"] = any(l.strip() == "Status: ok" for l in out.splitlines())
             time.sleep(PANES_SAVE_S)
         if "voice_enabled" in want:
-            dev.sh(f"am start -W -n {dev.component} --ez voice_enabled {'true' if want['voice_enabled'] else 'false'}", timeout=60)
+            dev.sh(f"am start -W -n {dev.component} --ez voice_enabled {'true' if want['voice_enabled'] else 'false'} --ez restart true", timeout=60)
         else:
             dev.sh(f"am start -W -n {dev.component} --ez restart true", timeout=60)
         time.sleep(a.settle)
         st = P.pane_state(dev.sh("logcat -d -v monotonic", timeout=60))
         res["state"] = st
         exp = expected_state(want, st["voice"])
-        res["ok"] = st["voice"] is not None and all(st[k] == v for k, v in exp.items()) and res["url_taken"] is not False
+        res["ok"] = st["voice"] is not None and all(st.get(k) == v for k, v in exp.items()) and res["url_taken"] is not False
         res["voice_applied"] = None if "voice_enabled" not in want else st["voice"] == want["voice_enabled"]
         if res["ok"] and res["voice_applied"] is not False:
             break

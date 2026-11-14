@@ -76,6 +76,13 @@ class VoiceAssistantController(
     private var playGen = 0
     /** The user cancelled the current run: ignore its late events (transcript, response, TTS). */
     private var discardRun = false
+    /** The voice pane stopped ([close]): no new run starts, also from a wake word already on its way. */
+    private var closed = false
+    /**
+     * Held while playback starts ([startPlayback]) and while [cancel] and [close] run, so a playback effect
+     * collected before them either starts first, and they stop it, or sees them and starts nothing.
+     */
+    private val playbackStart = Any()
     private val timers = LinkedHashMap<String, Timer>()
 
     val currentState: State get() = synchronized(lock) { state }
@@ -108,6 +115,7 @@ class VoiceAssistantController(
     }
 
     private fun startRun(phrase: String?, fx: MutableList<() -> Unit>): Boolean {
+        if (closed) return false
         if (!subscribed) {
             fx += { emit(VoiceEvent.Error("Home Assistant is not connected")) }
             return false
@@ -166,7 +174,8 @@ class VoiceAssistantController(
      * esphome `request_stop()`. Late events of the cancelled run are ignored. Returns true if
      * something was running.
      */
-    fun cancel(): Boolean {
+    fun cancel(): Boolean = synchronized(playbackStart) {
+        // After a playback start in progress: it either started, and is stopped here, or saw the cancel.
         var cancelled = false
         locked {
             when (state) {
@@ -187,7 +196,17 @@ class VoiceAssistantController(
             setState(State.IDLE)
             add { emit(VoiceEvent.Idle) }
         }
-        return cancelled
+        cancelled
+    }
+
+    /**
+     * The voice pane stops (voice turned off, or the panel stopping): from now on no run starts, and the
+     * current one ends as [cancel] ends it, so its Idle resumes the music and lets go of the speaker.
+     * Unlike [cancel], which the person uses between runs, this controller takes no run again.
+     */
+    fun close(): Boolean {
+        locked { closed = true }
+        return cancel() // waits for a playback start in progress, as every cancel does
     }
 
     /** Called about once a second: watchdogs. */
@@ -307,13 +326,23 @@ class VoiceAssistantController(
     }
 
     private fun playResponse(url: String, fx: MutableList<() -> Unit>) {
+        if (closed) return
         val gen = ++playGen
         setState(State.RESPONDING)
         val resolved = resolveUrl(url)
         VoiceLog.i("voice: playing response $resolved")
-        fx += {
-            emit(VoiceEvent.Speaking)
-            player.play(listOf(resolved)) { ok -> onPlaybackDone(gen, ok, startConversation = false) }
+        fx += { startPlayback(gen, listOf(resolved), startConversation = false) { emit(VoiceEvent.Speaking) } }
+    }
+
+    /**
+     * Effect: starts playback for [gen] unless the run was cancelled or the controller closed since the
+     * effect was collected. [before] runs first (the events that go with it).
+     */
+    private fun startPlayback(gen: Int, urls: List<String>, startConversation: Boolean, before: () -> Unit) {
+        synchronized(playbackStart) {
+            if (synchronized(lock) { closed || gen != playGen }) return
+            before()
+            player.play(urls) { ok -> onPlaybackDone(gen, ok, startConversation) }
         }
     }
 
@@ -331,7 +360,7 @@ class VoiceAssistantController(
     override fun onAnnounce(mediaId: String, text: String, preannounceMediaId: String, startConversation: Boolean) {
         locked {
             VoiceLog.i("voice: announce '$text' media=$mediaId preannounce=$preannounceMediaId")
-            if (mediaId.isEmpty()) {
+            if (mediaId.isEmpty() || closed) {
                 send(Msg.VOICE_ASSISTANT_ANNOUNCE_FINISHED, ProtoWriter().bool(1, false))
                 return@locked
             }
@@ -340,9 +369,10 @@ class VoiceAssistantController(
             setState(State.ANNOUNCING)
             val urls = listOf(preannounceMediaId, mediaId).filter { it.isNotEmpty() }.map(resolveUrl)
             add {
-                emit(VoiceEvent.Reply(text, announcement = true))
-                emit(VoiceEvent.Speaking)
-                player.play(urls) { ok -> onPlaybackDone(gen, ok, startConversation) }
+                startPlayback(gen, urls, startConversation) {
+                    emit(VoiceEvent.Reply(text, announcement = true))
+                    emit(VoiceEvent.Speaking)
+                }
             }
         }
     }

@@ -128,7 +128,7 @@ class Runner(unittest.TestCase):
         with open(os.path.join(self.out, "refstart-1.json")) as f:
             self.assertEqual([m["after"] for m in json.load(f)["memory"]], ["light", "typical", "heavy"])
         self.assertTrue(ram["budget"]["ok"])
-        self.assertEqual((ram["panes"], ram["panes_waiting"]), ([], []))       # test-frame has no panes
+        self.assertEqual((ram["panes"], ram["panes_not_switched"]), ([], []))       # test-frame has no panes
         with open(os.path.join(self.out, "report.md")) as f:
             self.assertIn("## RAM on the reference dashboards", f.read())
         with open(os.path.join(self.tmp, "state", "opened_still.json")) as f:
@@ -914,7 +914,7 @@ class IdleOnly(unittest.TestCase):
 class PaneRam(unittest.TestCase):
     """#68, --pane-ram: each switchable pane on by itself against every pane off, on the typical
     reference dashboard, with the kiosk's own extras; the panes and the dashboard go back after. The
-    fake's Assist adds 30 MB and Sendspin 10 MB."""
+    fake's Assist adds 30 MB, Sendspin 10 MB, the wall base 3 MB, the time zone 1 MB and diagnostics 2 MB."""
 
     @classmethod
     def setUpClass(cls):
@@ -923,7 +923,7 @@ class PaneRam(unittest.TestCase):
         cls.out = os.path.join(cls.tmp, "out")
         cls.proc = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--runs", "2", "--out", cls.out, "--port", "18091",
                                    "--skip-synthetic", "--skip-reference", "--skip-real-use",
-                                   "--pane-ram", "assist=on,sendspin=off,mic=on", "--restore-dashboard", RESTORE],
+                                   "--pane-ram", "assist=on,sendspin=off,mic=on,wall-base=on,time-zone=on,diagnostics=on", "--restore-dashboard", RESTORE],
                                   env=env, capture_output=True, text=True, timeout=300)
 
     def read(self, name):
@@ -934,22 +934,30 @@ class PaneRam(unittest.TestCase):
         self.assertEqual(self.proc.returncode, 0, self.proc.stderr[-3000:])
 
     def test_each_pane_on_by_itself_then_all_back(self):
-        """Per state: the live settings (Sendspin, the microphone mute) in an intent that doesn't
-        restart the app, then voice_enabled, which does (s1v7: in one intent, the writes were lost)."""
-        def st(voice, mic_muted, sendspin):
-            return [{"mic_muted": mic_muted, "sendspin_enabled": sendspin}, {"voice_enabled": voice}]
-        off, assist, sendspin = st("false", "true", "false"), st("true", "false", "false"), st("false", "true", "true")
+        """Per state: the live settings (the other panes' switches, the microphone mute) in an intent
+        that doesn't restart the app, then voice_enabled and a restart (s1v7: in one intent, the
+        writes were lost; since #67 voice applies live, so the restart is asked for)."""
+        def st(on=None, mic_muted="true"):
+            flag = lambda pid: "true" if pid == on else "false"
+            return [{"mic_muted": mic_muted, "sendspin_enabled": flag("sendspin"), "wall_base_enabled": flag("wall-base"),
+                     "time_zone_enabled": flag("time-zone"), "diagnostics_enabled": flag("diagnostics")},
+                    {"voice_enabled": flag("assist"), "restart": "true"}]
+        cycle = st() + st("assist", mic_muted="false") + st("diagnostics") + st("sendspin") + st("time-zone") + st("wall-base")
+        restore = [{"mic_muted": "false", "sendspin_enabled": "false", "wall_base_enabled": "true", "time_zone_enabled": "true",
+                    "diagnostics_enabled": "true"}, {"voice_enabled": "true", "restart": "true"}]
         # A warm-up cycle first (#186), then the two recorded ones.
-        self.assertEqual(self.read("intents.json"), (off + assist + sendspin) * 3 + st("true", "false", "false"))
-        self.assertEqual(self.read("settings.json"), {"voice_enabled": "true", "sendspin_enabled": "false", "mic_muted": "false"})   # as given
+        self.assertEqual(self.read("intents.json"), cycle * 3 + restore)
+        self.assertEqual(self.read("settings.json"), {"voice_enabled": "true", "sendspin_enabled": "false", "mic_muted": "false",
+                                                      "wall_base_enabled": "true", "time_zone_enabled": "true", "diagnostics_enabled": "true"})   # as given
         self.assertEqual(self.read("saved_url.json"), RESTORE)
-        self.assertEqual(self.read("urls_set.json"), ["http://127.0.0.1:18091/clarity-ref/typical"] * 9 + [RESTORE])
+        self.assertEqual(self.read("urls_set.json"), ["http://127.0.0.1:18091/clarity-ref/typical"] * 18 + [RESTORE])
 
     def test_the_warm_up_cycle_is_sampled_but_not_reported(self):
         """#186: s1p3's first sample had the GPU process 15 MB low. Cycle 0 runs every state and keeps
         its files in warmup/, which the report doesn't read."""
         self.assertEqual(sorted(os.listdir(os.path.join(self.out, "warmup"))),
-                         sorted([f"{k}-ref-{s}-0.json" for k in ("idle", "panes") for s in ("panes-off", "assist-on", "sendspin-on")]
+                         sorted([f"{k}-ref-{s}-0.json" for k in ("idle", "panes")
+                                 for s in ("panes-off", "assist-on", "sendspin-on", "wall-base-on", "time-zone-on", "diagnostics-on")]
                                 + ["thermal.tsv"]))
         self.assertFalse([f for f in os.listdir(self.out) if f.endswith("-0.json")])
         with open(os.path.join(self.out, "thermal.tsv")) as f:
@@ -962,8 +970,10 @@ class PaneRam(unittest.TestCase):
         with open(os.path.join(self.out, "report.json")) as f:
             ram = json.load(f)["ram"]
         panes = {p["id"]: p for p in ram["panes"]}
-        self.assertEqual(set(panes), {"assist", "sendspin"})
-        self.assertEqual((panes["assist"]["pss_kb"], panes["sendspin"]["pss_kb"]), (30000, 10000))
+        self.assertEqual(set(panes), {"assist", "sendspin", "wall-base", "time-zone", "diagnostics"})
+        self.assertEqual([panes[k]["pss_kb"] for k in ("assist", "sendspin", "wall-base", "time-zone", "diagnostics")],
+                         [30000, 10000, 3000, 1000, 2000])
+        self.assertTrue(panes["wall-base"]["verified"])                   # checked against the kiosk's `Pane wall-base on` line
         self.assertEqual(panes["assist"]["by_role_pss_kb"]["main"], 30000)
         self.assertEqual((panes["assist"]["samples_on"], panes["assist"]["samples_off"]), (2, 2))
         self.assertEqual(panes["assist"]["pss_tolerance_kb"], 0)
@@ -972,11 +982,12 @@ class PaneRam(unittest.TestCase):
         self.assertTrue(panes["assist"]["verified"])                      # every sample ran what its label says
         self.assertNotIn("off_by", panes["assist"])
         with open(os.path.join(self.out, "panes-ref-assist-on-1.json")) as f:
-            self.assertEqual(json.load(f)["state"], {"voice": True, "sendspin": False, "mic": True})
+            self.assertEqual(json.load(f)["state"], {"voice": True, "sendspin": False, "mic": True,
+                                                     "pane:wall-base": False, "pane:time-zone": False, "pane:diagnostics": False})
         # Two runs: a share, but no budget verdict (that needs three samples a side).
         self.assertEqual(ram["pane_budget"]["assist"], {"value_kb": 30000, "budget_kb": 49152, "tolerance_kb": 0,
                                                         "measurable": False, "ok": None})
-        self.assertEqual({p["id"] for p in ram["panes_waiting"]}, {"radio", "wall-base", "timers", "time-zone", "diagnostics"})
+        self.assertEqual({p["id"] for p in ram["panes_not_switched"]}, {"radio", "timers"})
         self.assertIsNone(ram["reference_idle"])          # no graded runs here
 
     def test_a_pane_setting_it_cant_put_back_is_refused_before_the_device_is_touched(self):
@@ -996,13 +1007,15 @@ class PaneRam(unittest.TestCase):
         env, state = fake_env(tmp, FAKE_IDLE_FAILS="1")
         p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--runs", "1", "--out", os.path.join(tmp, "out"), "--port", "18093",
                             "--skip-synthetic", "--skip-reference", "--skip-real-use",
-                            "--pane-ram", "assist=off,sendspin=on,mic=on", "--restore-dashboard", RESTORE],
+                            "--pane-ram", "assist=off,sendspin=on,mic=on,wall-base=on,time-zone=on,diagnostics=on", "--restore-dashboard", RESTORE],
                            env=env, capture_output=True, text=True, timeout=120)
         self.assertNotEqual(p.returncode, 0)                       # the first idle sample failed
         with open(os.path.join(state, "intents.json")) as f:
             intents = json.load(f)
         self.assertEqual(len(intents), 4)                          # all off (two intents), then the exit trap's two
-        self.assertEqual(intents[-2:], [{"mic_muted": "false", "sendspin_enabled": "true"}, {"voice_enabled": "false"}])
+        self.assertEqual(intents[-2:], [{"mic_muted": "false", "sendspin_enabled": "true", "wall_base_enabled": "true",
+                                         "time_zone_enabled": "true", "diagnostics_enabled": "true"},
+                                        {"voice_enabled": "false", "restart": "true"}])
         with open(os.path.join(state, "saved_url.json")) as f:
             self.assertEqual(json.load(f), RESTORE)
 
@@ -1017,13 +1030,14 @@ class PaneRam(unittest.TestCase):
         out = os.path.join(tmp, "out")
         p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--runs", "1", "--out", out, "--port", "18099",
                             "--skip-synthetic", "--skip-reference", "--skip-real-use",
-                            "--pane-ram", "assist=on,sendspin=on,mic=on", "--restore-dashboard", RESTORE],
+                            "--pane-ram", "assist=on,sendspin=on,mic=on,wall-base=on,time-zone=on,diagnostics=on", "--restore-dashboard", RESTORE],
                            env=env, capture_output=True, text=True, timeout=300)
         self.assertEqual(p.returncode, 0, p.stderr[-2000:])
         with open(os.path.join(out, "panes-ref-panes-off-1.json")) as f:
             off = json.load(f)
         self.assertEqual((off["ok"], off["voice_applied"], off["attempts"]), (True, False, 2))
-        self.assertEqual(off["state"], {"voice": True, "sendspin": False, "mic": False})
+        self.assertEqual(off["state"], {"voice": True, "sendspin": False, "mic": False,
+                                        "pane:wall-base": False, "pane:time-zone": False, "pane:diagnostics": False})
         with open(os.path.join(out, "report.json")) as f:
             panes = {x["id"]: x for x in json.load(f)["ram"]["panes"]}
         self.assertEqual(panes["assist"]["off_by"], "mute")
@@ -1037,7 +1051,7 @@ class PaneRam(unittest.TestCase):
         env, state = fake_env(tmp, FAKE_RESTORE_FAILS="1")
         p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--runs", "1", "--out", os.path.join(tmp, "out"), "--port", "18085",
                             "--skip-synthetic", "--skip-reference", "--skip-real-use",
-                            "--pane-ram", "assist=off,sendspin=on,mic=off", "--restore-dashboard", RESTORE],
+                            "--pane-ram", "assist=off,sendspin=on,mic=off,wall-base=on,time-zone=on,diagnostics=on", "--restore-dashboard", RESTORE],
                            env=env, capture_output=True, text=True, timeout=300)
         self.assertEqual(p.returncode, 3, p.stderr[-2000:])
         self.assertIn("COULD NOT put the panes back", p.stderr)
@@ -1053,7 +1067,7 @@ class PaneRam(unittest.TestCase):
         out = os.path.join(tmp, "out")
         p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--runs", "1", "--out", out, "--port", "18083",
                             "--skip-synthetic", "--skip-reference", "--skip-real-use",
-                            "--pane-ram", "assist=on,sendspin=on,mic=on", "--restore-dashboard", RESTORE],
+                            "--pane-ram", "assist=on,sendspin=on,mic=on,wall-base=on,time-zone=on,diagnostics=on", "--restore-dashboard", RESTORE],
                            env=env, capture_output=True, text=True, timeout=300)
         self.assertEqual(p.returncode, 0, p.stderr[-2000:])                 # the restore isn't refused
         self.assertIn("no sample taken", p.stderr)
@@ -1065,7 +1079,7 @@ class PaneRam(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         env, _ = fake_env(tmp)
         p = subprocess.run([RUN, "--frame", "aqara-s1-plus", "--out", os.path.join(tmp, "out"), "--skip-synthetic",
-                            "--skip-reference", "--skip-real-use", "--pane-ram", "assist=on,sendspin=on,mic=on"],
+                            "--skip-reference", "--skip-real-use", "--pane-ram", "assist=on,sendspin=on,mic=on,wall-base=on,time-zone=on,diagnostics=on"],
                            env=env, capture_output=True, text=True, timeout=60)
         self.assertEqual(p.returncode, 2)
         self.assertIn("--restore-dashboard", p.stderr)
