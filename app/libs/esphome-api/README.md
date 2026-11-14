@@ -70,6 +70,10 @@ ESPHome device. Package `sh.edm.esphome`, MIT licensed.
 - **Voice assistant:** the messages are wired through `VoiceAssistantHandler`: start and stop, API
   audio, events, timers, announcements and wake word configuration. The audio, wake word and UI
   stay in your app.
+- **Bluetooth proxy (passive):** the feature flags in DeviceInfo, the advertisement subscription
+  (one client at a time; a newer one replaces it, as in ESPHome) and batched raw advertisements,
+  through `BluetoothProxyHandler` and `sendBluetoothAdvertisements`. No GATT connections yet. The
+  Android scanner is [bluetooth-proxy](../bluetooth-proxy/README.md).
 - **Sendspin pairing-token hand-off:** for HA → Music Assistant, through `SendspinTokenSource`.
   Leave it unset if you don't have a Sendspin player.
 - **Noise primitives:** `NoiseCipher` and `NoiseResponder` are reusable on their own. S1 Kiosk's

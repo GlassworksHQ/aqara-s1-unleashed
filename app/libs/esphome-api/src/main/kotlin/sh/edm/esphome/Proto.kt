@@ -29,6 +29,15 @@ class ProtoWriter {
         return this
     }
 
+    /** uint64 (e.g. a Bluetooth address); [v] is read as unsigned. */
+    fun uint64(field: Int, v: Long): ProtoWriter {
+        if (v != 0L) { tag(field, 0); rawVarint(v) }
+        return this
+    }
+
+    /** sint32: zigzag, so small negative values (an RSSI) stay short. */
+    fun sint32(field: Int, v: Int): ProtoWriter = uint32(field, (v shl 1) xor (v shr 31))
+
     /** int32: negative values are sign-extended to 10 bytes, as protobuf does. */
     fun int32(field: Int, v: Int): ProtoWriter {
         if (v != 0) { tag(field, 0); rawVarint(v.toLong()) }
