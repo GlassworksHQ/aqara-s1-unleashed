@@ -4,7 +4,6 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -40,6 +39,11 @@ class BluetoothProxyServerTest {
     private fun advertisement(n: Int) = RawAdvertisement(
         address = 0xC0FFEE000000L + n, rssi = -60 - n, addressType = n % 2, data = byteArrayOf(2, 1, 6, 3, 0xFF.toByte(), n.toByte(), 0),
     )
+
+    /** A server thread is blocked on a monitor inside ApiServer's subscribeBluetooth. */
+    private fun subscribeBlocked() = Thread.getAllStackTraces().any { (t, stack) ->
+        t.state == Thread.State.BLOCKED && stack.any { it.className.startsWith(ApiServer::class.java.name) && it.methodName.contains("subscribeBluetooth") }
+    }
 
     private fun waitFor(what: String, cond: () -> Boolean) {
         val until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
@@ -150,7 +154,8 @@ class BluetoothProxyServerTest {
                 assertTrue("the send is under way", parked.await(10, TimeUnit.SECONDS))
                 second.send(BluetoothMsg.SUBSCRIBE_LE_ADVERTISEMENTS_REQUEST, ProtoWriter().uint32(1, 1))
                 second.send(Msg.PING_REQUEST)
-                assertNull("the subscription changed hands while a batch was being sent", second.read(500))
+                // Seen, not waited out: its reader thread stops at the lock while the batch is sent.
+                waitFor("the second client's subscribe to wait for the lock") { subscribeBlocked() }
 
                 release.countDown()
                 sender.join(10_000)
