@@ -146,4 +146,16 @@ class NotificationStoreTest {
         val e = store.post(n("quiet"), doNotDisturb = true).entry
         assertNull(store.show(e.id)!!.delivery.foldAfterS)
     }
+
+    /** Root decision on #228: Do not disturb turned on holds what's up as it would hold it arriving; critical stays. */
+    @Test
+    fun doNotDisturbOnHoldsWhatIsUpButCritical() {
+        val high = store.post(n("garage", p = Priority.HIGH), false).entry
+        val fire = store.post(n("fire", p = Priority.CRITICAL), false).entry
+        assertTrue(store.holdForDoNotDisturb())
+        assertTrue(store.list().first { it.id == high.id }.held)
+        assertFalse(store.list().first { it.id == fire.id }.held)
+        assertEquals(listOf("fire"), store.cards().map { it.notification.title })
+        assertFalse("nothing more to hold", store.holdForDoNotDisturb())
+    }
 }

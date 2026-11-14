@@ -149,8 +149,10 @@ answers doesn't keep a room lit all night. A sound pauses the music, as the voic
 The panel's `Do not disturb` switch in Home Assistant (`switch.glassworks_panel_do_not_disturb`, or
 `switch.s1_panel_do_not_disturb` on a panel added before #63: [Names](esphome.md#names)), the same
 switch in the panel's list, and on the settings page. While it is on, every notification but a critical one goes to the list without a
-sound or a card, and the screen stays as it is. A pill at the top right says how many are held. When
-it turns off, the held ones stay in the list. Bedtime is one automation:
+sound or a card, and the screen stays as it is. Turning it on also does that to the ones already up:
+a high one's card goes to the list and lets the screen go dark again; a critical one stays, and keeps
+the screen on. A pill at the top right says how many are held. When it turns off, the held ones stay
+in the list. Bedtime is one automation:
 
 ```yaml
 triggers:

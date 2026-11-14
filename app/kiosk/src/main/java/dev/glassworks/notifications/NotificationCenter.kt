@@ -123,6 +123,15 @@ class NotificationCenter(
         changed()
     }
 
+    /**
+     * Do not disturb changed. Turned on, it holds what is up now as it would have held it arriving: a
+     * high one's card goes to the list and lets the screen go; a critical one stays.
+     */
+    fun doNotDisturbChanged(on: Boolean): Unit = synchronized(lock) {
+        if (closed || !on) return
+        if (store.holdForDoNotDisturb()) changed()
+    }
+
     /** Closed by hand: the card's close, a swipe, or Back on a page. */
     fun dismiss(id: Long) {
         if (store.dismiss(id) != null) changed()

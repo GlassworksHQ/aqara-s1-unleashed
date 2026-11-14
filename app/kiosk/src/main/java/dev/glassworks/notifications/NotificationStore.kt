@@ -111,6 +111,24 @@ class NotificationStore(private val now: () -> Long, val max: Int = 20) {
     @Synchronized
     fun dismiss(id: Long): Entry? = entries.firstOrNull { it.id == id }?.also { entries.remove(it) }
 
+    /**
+     * Do not disturb turned on: every entry it would have held now is held too, so its card and its
+     * page go to the list. Critical ones stay. True when something changed. (Turning it off holds
+     * nothing back out: the list keeps them, #118.)
+     */
+    @Synchronized
+    fun holdForDoNotDisturb(): Boolean {
+        var changed = false
+        for (i in entries.indices) {
+            val e = entries[i]
+            if (!e.held && Delivery.of(e.notification.priority, doNotDisturb = true).held) {
+                entries[i] = e.copy(held = true)
+                changed = true
+            }
+        }
+        return changed
+    }
+
     /** Shows a held entry (tapped in the list). A page takes the screen from any other page. */
     @Synchronized
     fun show(id: Long): Entry? {

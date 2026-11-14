@@ -79,6 +79,8 @@ class NotificationsPane(
             prefs.doNotDisturb = on
             // Off, the pane shows nothing, not even Do not disturb's pill; start() publishes it again.
             synchronized(lock) { if (center != null) hub.update { it.copy(doNotDisturb = on) } }
+            // Outside the pane's lock: the center renders under its own, then takes the pane's.
+            synchronized(lock) { center }?.doNotDisturbChanged(on)
             ctx.publishStates()
         },
     )
@@ -172,6 +174,7 @@ class NotificationsPane(
     override fun onEvent(event: PanelEvent) {
         if (event is PanelEvent.SettingChanged && event.key == NotificationsPrefs.KEY_DND) {
             synchronized(lock) { if (center != null) hub.update { it.copy(doNotDisturb = prefs.doNotDisturb) } }
+            synchronized(lock) { center }?.doNotDisturbChanged(prefs.doNotDisturb)
         }
     }
 

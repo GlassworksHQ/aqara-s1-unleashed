@@ -329,4 +329,25 @@ class NotificationsPaneTest {
         outputs.wake(overNight = true)
         assertEquals(listOf("wake", "hold"), screen)
     }
+
+    /** Root decision on #228: DND turned on with a high one up lets the screen go; a critical one keeps it. */
+    @Test
+    fun doNotDisturbOnReleasesAHighOnesHoldButNotACriticalOnes() {
+        pane.start()
+        val dnd = pane.entities().first { it.objectId == "do_not_disturb" } as SwitchEntity
+        notify("Garage door open", data = """{"priority":"high"}""")
+        assertEquals(listOf("hold"), screen)
+        dnd.command(ProtoMessage(ProtoWriter().bool(2, true).toByteArray()))
+        assertEquals("the high one is held now: the screen goes", listOf("hold", "release"), screen)
+        assertTrue(hub.state.cards.isEmpty())
+        assertEquals(1, hub.state.list.size)
+
+        dnd.command(ProtoMessage(ProtoWriter().bool(2, false).toByteArray()))
+        notify("Water leak", data = """{"priority":"critical","tag":"leak"}""")
+        assertEquals(listOf("hold", "release", "hold"), screen)
+        dnd.command(ProtoMessage(ProtoWriter().bool(2, true).toByteArray()))
+        assertEquals("critical keeps the screen", listOf("hold", "release", "hold"), screen)
+        assertEquals(listOf("Water leak"), hub.state.cards.map { it.notification.message })
+        dnd.command(ProtoMessage(ProtoWriter().bool(2, false).toByteArray()))
+    }
 }
