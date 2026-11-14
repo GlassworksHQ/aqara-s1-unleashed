@@ -278,16 +278,21 @@ adb shell 'getprop sys.s1kiosk.am.status; getprop sys.s1kiosk.am.restarts'
 ```
 Those two reads are the armed watchdog on a new boot image: it kills `system_server` after two
 reads below 0. To watch the check without it restarting anything, as attempt 9 did (it ran a draft
-of the same check every 10 s), run the script by hand in dry-run mode. This needs root and works on
-any boot image. It changes nothing but the `sys.s1kiosk.am.*` properties:
+of the same check every 10 s), stop the boot image's netwatch and run the script by hand in dry-run
+mode. This needs root and works on any boot image:
 ```sh
+adb shell "su -c 'setprop ctl.stop s1kiosk_netwatch'"      # the armed copy (or the old one) stops
+adb shell getprop init.svc.s1kiosk_netwatch                  # stopped
 adb push tools/root/s1kiosk_netwatch.sh /data/local/tmp/
 adb shell "su -c 'S1N_AM_DRY=1 setsid sh /data/local/tmp/s1kiosk_netwatch.sh </dev/null >/dev/null 2>&1 &'"
 adb shell 'getprop sys.s1kiosk.am.status'     # "would restart the framework at uptime …s (dry run; …)"
-adb shell "su -c 'pkill -f /data/local/tmp/s1kiosk_netwatch.sh; rm /data/local/tmp/s1kiosk_netwatch.sh'"   # stop it
+# afterwards: stop the hand copy, put the boot image's copy back
+adb shell "su -c 'pkill -f /data/local/tmp/s1kiosk_netwatch.sh; rm /data/local/tmp/s1kiosk_netwatch.sh'"
+adb shell "su -c 'setprop ctl.start s1kiosk_netwatch'"
 ```
-The hand copy also runs netwatch's Wi-Fi check, which cycles Wi-Fi only after about a minute of a
-dead gateway, as the boot image's copy does.
+Dry run means only that it never kills `system_server`. The hand copy is still the whole netwatch:
+it sets the `sys.s1kiosk.am.*` and `sys.s1kiosk.net.status` properties, and it cycles Wi-Fi after
+about a minute of a dead gateway, as the boot image's copy would.
 
 The loop ends in a framework restart by itself (78 s in attempt 9). Nothing is installed, so there is
 nothing to undo. Check that the kiosk is back and the radio mode is unchanged afterwards.
