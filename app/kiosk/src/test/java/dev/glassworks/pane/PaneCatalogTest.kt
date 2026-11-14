@@ -16,14 +16,18 @@ import org.robolectric.annotation.Config
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.frame.AqaraS1Plus
 import java.io.File
+import java.lang.reflect.Modifier
+import java.net.URI
+import java.util.jar.JarFile
 
 /**
  * The pane catalog (#231): each pane has a `pane.json` and an `icon.svg` next to its code, which
  * `packages/frame-card` and glassworks.dev read. Every pane the app registers has exactly one of each,
  * and every file belongs to a pane, so a new pane can't ship without them.
  *
- * "Registered" is every [PaneDefinition] the runtime makes (the S1's), plus every class that implements
- * [Pane] (found in the sources). Timers is a pane without a definition of its own: Assist's on/off covers it.
+ * "Registered" is every [PaneDefinition] the runtime makes (the S1's), plus every concrete class that
+ * implements [Pane] (found in the compiled classes). Timers is a pane without a definition of its own:
+ * Assist's on/off covers it.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
@@ -46,41 +50,41 @@ class PaneCatalogTest {
         GlassworksRuntime(AqaraS1Plus()).paneDefinitions(RuntimeEnvironment.getApplication()).map { it.id }
     }
 
-    /** The id of each class that implements [Pane]: a file with such a class ([implementsPane]) and its `override val id = "…"`. */
+    /**
+     * Every concrete class in the app that implements [Pane], found in the compiled classes (not by
+     * parsing source), with the id from its source file's `override val id = "…"`.
+     */
     private val paneClassIds by lazy {
-        val idLine = Regex("""override val id = "([^"]+)"""")
-        main.walkTopDown().filter { it.isFile && it.extension == "kt" }.mapNotNull { f ->
-            val text = f.readText()
-            if (!implementsPane(text)) return@mapNotNull null
-            val ids = idLine.findAll(text).map { it.groupValues[1] }.toList()
-            assertEquals("${f.name}: one `override val id` per Pane file", 1, ids.size)
-            ids.single()
-        }.toList()
+        val loader = Pane::class.java.classLoader!!
+        val url = loader.getResource("dev/glassworks/pane/Pane.class")!!
+        // the app's classes are a jar or a directory on the test classpath, depending on the build
+        val paths: Sequence<String> = when (url.protocol) {
+            "jar" -> JarFile(File(URI(url.path.substringBefore("!/")))).use { jar -> jar.entries().asSequence().map { it.name }.toList() }.asSequence()
+            "file" -> File(url.toURI()).parentFile.parentFile.parentFile.parentFile.let { root ->
+                root.walkTopDown().filter { it.isFile }.map { it.relativeTo(root).path.replace(File.separatorChar, '/') }
+            }
+            else -> error("the app's classes come from $url, neither a jar nor a directory")
+        }
+        paths.filter { it.endsWith(".class") && !Regex("""\$\d""").containsMatchIn(it) }
+            .map { it.removeSuffix(".class").replace('/', '.') }
+            .mapNotNull { name -> runCatching { Class.forName(name, false, loader) }.getOrNull() }
+            .filter { Pane::class.java.isAssignableFrom(it) && !it.isInterface && !Modifier.isAbstract(it.modifiers) }
+            .map { idOf(it) }
+            .toList()
+    }
+
+    /** The id in [c]'s source file: the one `override val id = "…"` of the file that declares it. */
+    private fun idOf(c: Class<*>): String {
+        val simple = c.name.substringAfterLast('.').substringAfterLast('$')
+        val dir = File(main, c.name.substringBeforeLast('.').replace('.', File.separatorChar))
+        val file = dir.listFiles().orEmpty().filter { it.extension == "kt" }.singleOrNull { Regex("""\bclass\s+$simple\b""").containsMatchIn(it.readText()) }
+            ?: error("${c.name}: no single source file in $dir declares it")
+        val ids = Regex("""override val id = "([^"]+)"""").findAll(file.readText()).map { it.groupValues[1] }.toList()
+        assertEquals("${file.name}: one `override val id` per Pane file", 1, ids.size)
+        return ids.single()
     }
 
     private fun rel(f: File) = f.relativeTo(repo).path
-
-    @Test
-    fun theScanSeesPaneAnywhereInTheSupertypes() {
-        // a pane can have other supertypes, before or after Pane, and a constructor over several lines
-        assertTrue(implementsPane("class A(ctx: PaneContext) : Pane {"))
-        assertTrue(implementsPane("class B : Pane, AutoCloseable {"))
-        assertTrue(implementsPane("class C internal constructor(\n    x: Int,\n    f: (Int) -> Unit = {},\n) : AutoCloseable, Pane {"))
-        assertTrue(implementsPane("class D<T>(x: T) : dev.glassworks.pane.Pane by delegate {"))
-        // a Pane as a parameter, or another type whose name starts with Pane, isn't one
-        assertTrue(!implementsPane("class E(val pane: Pane) : AutoCloseable {"))
-        assertTrue(!implementsPane("class F(file: SharedPreferences) : PaneDefinition {"))
-        assertTrue(!implementsPane("data class G(val p: Pane)"))
-        // a bracket inside a string, char or comment doesn't end the constructor
-        assertTrue(implementsPane("class H(val label: String = \")\", val c: Char = ')') : Pane {"))
-        assertTrue(implementsPane("class I(\n    x: Int, // a ) in a comment\n) : AutoCloseable, Pane {"))
-        // Pane as a type argument isn't a supertype
-        assertTrue(!implementsPane("class Holder : Container<Foo, Pane>() {"))
-        assertTrue(implementsPane("class J : Container<Foo, Bar>(), Pane {"))
-        // a function type's arrow inside the type arguments or the constructor isn't a bracket
-        assertTrue(implementsPane("class K : Container<(Int) -> Unit>(), Pane {"))
-        assertTrue(implementsPane("class L(val f: (Int) -> Unit) : Pane {"))
-    }
 
     @Test
     fun theScanFindsTheKnownPanes() {
@@ -147,66 +151,5 @@ class PaneCatalogTest {
             assertTrue("$where: colours other than none/currentColor: $bad", bad.isEmpty())
             assertTrue("$where: must stroke with currentColor", Regex("""\bstroke="currentColor"""").containsMatchIn(svg))
         }
-    }
-}
-
-/**
- * Whether [text] declares a class that has `Pane` among its supertypes: after the class name, any type
- * parameters, a constructor modifier and the constructor parameters, the list after `:` up to the class
- * body, split at its top-level commas. `Pane` counts anywhere in it, by simple or qualified name. String
- * and char literals and comments don't count when balancing brackets or splitting.
- */
-internal fun implementsPane(text: String): Boolean {
-    /** The index just past the literal or comment that starts at [at], or [at] if none does. */
-    fun skipLiteral(at: Int): Int {
-        if (text.startsWith("\"\"\"", at)) return text.indexOf("\"\"\"", at + 3).let { if (it < 0) text.length else it + 3 }
-        if (text.startsWith("//", at)) return text.indexOf('\n', at).let { if (it < 0) text.length else it + 1 }
-        if (text.startsWith("/*", at)) return text.indexOf("*/", at + 2).let { if (it < 0) text.length else it + 2 }
-        val q = text[at]
-        if (q != '"' && q != '\'') return at
-        var i = at + 1
-        while (i < text.length && text[i] != q) i += if (text[i] == '\\') 2 else 1
-        return i + 1
-    }
-    /** Past the bracket that closes the one at [at]. */
-    fun skipBalanced(at: Int, open: Char, close: Char): Int {
-        var depth = 0
-        var i = at
-        while (i < text.length) {
-            val past = skipLiteral(i)
-            if (past != i) { i = past; continue }
-            if (text.startsWith("->", i)) { i += 2; continue } // a function type's arrow isn't a bracket
-            when (text[i]) { open -> depth++; close -> if (--depth == 0) return i + 1 }
-            i++
-        }
-        return i
-    }
-    fun skipSpace(at: Int): Int { var i = at; while (i < text.length && text[i].isWhitespace()) i++; return i }
-    /** The supertypes from [from] to the class body: split at commas outside <>, () and literals. */
-    fun supertypes(from: Int): List<String> {
-        val parts = mutableListOf<String>()
-        var start = from
-        var depth = 0
-        var i = from
-        while (i < text.length) {
-            val past = skipLiteral(i)
-            if (past != i) { i = past; continue }
-            if (text.startsWith("->", i)) { i += 2; continue } // a function type's arrow isn't a bracket
-            val c = text[i]
-            if (depth == 0 && c == '{') break
-            when (c) { '<', '(' -> depth++; '>', ')' -> depth--; ',' -> if (depth == 0) { parts += text.substring(start, i); start = i + 1 } }
-            i++
-        }
-        parts += text.substring(start, i)
-        return parts
-    }
-    val modifier = Regex("""\G(?:(?:public|internal|private|protected)\s+)?constructor\b""")
-    return Regex("""\bclass\s+\w+""").findAll(text).any { m ->
-        var i = skipSpace(m.range.last + 1)
-        if (i < text.length && text[i] == '<') i = skipSpace(skipBalanced(i, '<', '>'))
-        modifier.find(text, i)?.let { i = skipSpace(it.range.last + 1) }
-        if (i < text.length && text[i] == '(') i = skipSpace(skipBalanced(i, '(', ')'))
-        if (i >= text.length || text[i] != ':') return@any false
-        supertypes(i + 1).any { type -> Regex("""^\s*([\w.]+)""").find(type)?.groupValues?.get(1)?.substringAfterLast('.') == "Pane" }
     }
 }
