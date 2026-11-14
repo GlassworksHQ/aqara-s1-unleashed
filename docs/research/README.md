@@ -249,6 +249,7 @@ This page is the index of every note. Notes about one device live with its frame
 | [webrtc-camera.md](../../frames/aqara-s1-plus/research/webrtc-camera.md) | A real camera over WebRTC in GeckoView on the S1: it plays, very likely with software decoding (Gecko's FFmpeg) where HLS gets the hardware decoder (#202) |
 | [bluetooth.md](../../frames/aqara-s1-plus/research/bluetooth.md) | The panel's Bluetooth (RTL8821CS, shared with Wi-Fi), Android 10's scan rules from AOSP, and what HA needs from an ESPHome Bluetooth proxy (#121) |
 | [view-open.md](../../frames/aqara-s1-plus/research/view-open.md) | Where typical's 4.7 s view open goes: HA's JavaScript on one Gecko thread at 1.5 GHz; the app candidates tried on the panel (none helped), and what's left upstream (#244) |
+| [install-crash-loop.md](../../frames/aqara-s1-plus/research/install-crash-loop.md) | Why the kiosk crash-looped after installs: Android 10's ActivityManager LRU bug (one step per kiosk force-stop), not dex2oat; the netwatch check that restarts the framework (#248) |
 
 ### lululemon Studio Mirror ([`frames/lululemon-mirror/`](../../frames/lululemon-mirror/README.md#research-notes))
 
