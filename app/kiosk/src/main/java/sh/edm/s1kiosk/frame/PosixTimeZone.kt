@@ -3,7 +3,7 @@ package sh.edm.s1kiosk.frame
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
+import java.util.TimeZone
 import java.time.ZoneOffset
 import java.time.temporal.TemporalAdjusters
 
@@ -42,14 +42,22 @@ class PosixTimeZone private constructor(
      */
     fun zonesLike(ids: Collection<String>, from: Instant): List<String> {
         val noon = from.atOffset(ZoneOffset.UTC).toLocalDate().atTime(12, 0).toInstant(ZoneOffset.UTC)
-        val days = (0 until 366).map { noon.plusSeconds(it * 86_400L) }
-        val want = days.map { offsetAt(it) }
-        // Today's offset first: it leaves a few dozen zones of the panel's ~600 for the whole year.
-        return ids.mapNotNull { id -> runCatching { ZoneId.of(id).rules }.getOrNull()?.let { id to it } }
-            .filter { (_, rules) -> rules.getOffset(days[0]) == want[0] }
-            .filter { (_, rules) -> days.indices.all { rules.getOffset(days[it]) == want[it] } }
-            .map { it.first }
+        val days = (0 until 366).map { noon.plusSeconds(it * 86_400L).toEpochMilli() }
+        val want = days.map { offsetAt(Instant.ofEpochMilli(it)).totalSeconds * 1000 }
+        // java.util.TimeZone, not java.time's rules: on Android it reads libcore's tz data, where ZoneId
+        // builds each zone's rules from ICU (176 ms cold for all of them in a test, #235 verifier). Today's
+        // offset first: it leaves a few dozen zones of the panel's ~600 for the whole year.
+        return ids.mapNotNull { id -> TimeZone.getTimeZone(id).takeIf { it.id == id } }
+            .filter { it.getOffset(days[0]) == want[0] }
+            .filter { tz -> days.indices.all { tz.getOffset(days[it]) == want[it] } }
+            .map { it.id }
     }
+
+    /** No summer time: one offset all year. HA sends this for zones the rule can't describe too (Casablanca). */
+    val fixed: Boolean get() = dst == null || start == null
+
+    /** The standard offset, in seconds east of UTC. */
+    val standardOffsetSeconds: Int get() = std
 
     companion object {
         /** The widest offset a clock can have (`ZoneOffset`'s range): a rule past it is not a zone. */

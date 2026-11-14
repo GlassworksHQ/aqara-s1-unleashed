@@ -54,9 +54,8 @@ class PosixTimeZoneTest {
     @Test fun usingItKeepsAZoneInThePanelsRegion() {
         val choices = TimeZoneChoices(ids)
         val same = choices.homeAssistant("CET-1CEST,M3.5.0,M10.5.0/3", "Europe/Madrid", from)!!
-        assertEquals(TimeZoneChoices.HomeAssistantZone(true, "Europe/Madrid"), same)
-        val other = choices.homeAssistant("GMT0BST,M3.5.0/1,M10.5.0", "Europe/Madrid", from)!!
-        assertEquals(false, other.same)
+        assertEquals(TimeZoneChoices.HomeAssistantZone.Same("Europe/Madrid"), same)
+        val other = choices.homeAssistant("GMT0BST,M3.5.0/1,M10.5.0", "Europe/Madrid", from) as TimeZoneChoices.HomeAssistantZone.Like
         assertEquals("Europe", choices.regionOf(other.zone))
         assertNull(choices.homeAssistant("not a rule", "Europe/Madrid", from))
         // CodeRabbit on #235: the line's offset is read when shown, so it follows summer time while the page stays open.
@@ -64,8 +63,29 @@ class PosixTimeZoneTest {
         assertEquals("UTC+02:00 · the same as the panel's", same.line(Instant.parse("2027-07-01T12:00:00Z")))
         // An old alias is named by its current zone.
         val aliases = TimeZoneChoices(listOf("Europe/Belfast", "Europe/London")) { if (it == "Europe/Belfast") "Europe/London" else it }
-        assertEquals("Europe/London", aliases.homeAssistant("GMT0BST,M3.5.0/1,M10.5.0", "Europe/Madrid", from)!!.zone)
+        assertEquals(TimeZoneChoices.HomeAssistantZone.Like("Europe/London"), aliases.homeAssistant("GMT0BST,M3.5.0/1,M10.5.0", "Europe/Madrid", from))
         // CodeRabbit on #235: a panel kept on the alias has Home Assistant's clock already.
-        assertEquals(TimeZoneChoices.HomeAssistantZone(true, "Europe/Belfast"), aliases.homeAssistant("GMT0BST,M3.5.0/1,M10.5.0", "Europe/Belfast", from))
+        assertEquals(TimeZoneChoices.HomeAssistantZone.Same("Europe/London"), aliases.homeAssistant("GMT0BST,M3.5.0/1,M10.5.0", "Europe/Belfast", from))
+    }
+
+    @Test fun aFixedOffsetNeverOffersAZoneThePanelDoesntKeep() {
+        // #235 verifier N3: HA sends Casablanca as <+00>0. Africa/Abidjan keeps +00 all year, an hour off
+        // Casablanca most of it, so nothing is offered: HA's clock, and the panel keeps its zone.
+        val choices = TimeZoneChoices(ids)
+        val casablanca = choices.homeAssistant("<+00>0", "Africa/Casablanca", from)
+        assertEquals(TimeZoneChoices.HomeAssistantZone.Elsewhere(0), casablanca)
+        assertEquals("UTC+00:00 · Home Assistant's clock; the panel keeps its zone", casablanca!!.line(from))
+        // A fixed offset the panel's zone keeps all year is the same; another one is never offered either.
+        assertEquals(TimeZoneChoices.HomeAssistantZone.Same("Asia/Kolkata"), choices.homeAssistant("<+0530>-5:30", "Asia/Kolkata", from))
+        assertEquals(TimeZoneChoices.HomeAssistantZone.Elsewhere(19_800), choices.homeAssistant("<+0530>-5:30", "Europe/Madrid", from))
+    }
+
+    @Test fun anOldAliasIsListedOnceByItsCurrentName() {
+        val icu = mapOf("Asia/Calcutta" to "Asia/Kolkata")
+        val choices = TimeZoneChoices(listOf("Asia/Calcutta", "Asia/Kolkata", "Asia/Tokyo")) { icu[it] ?: it }
+        assertEquals(listOf("Kolkata", "Tokyo"), choices.zones("Asia").map { it.second })
+        assertEquals("Asia/Kolkata", choices.name("Asia/Calcutta"))
+        // A panel kept on the alias has India's clock.
+        assertEquals(TimeZoneChoices.HomeAssistantZone.Same("Asia/Kolkata"), choices.homeAssistant("IST-5:30", "Asia/Calcutta", from))
     }
 }

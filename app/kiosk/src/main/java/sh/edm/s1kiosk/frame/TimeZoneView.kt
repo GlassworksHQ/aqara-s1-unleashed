@@ -23,7 +23,13 @@ import java.util.TimeZone
  * one tap, then regions on the left and their cities on the right, each with its offset and time now.
  * Nothing is typed, so no keyboard hides the list. Main thread.
  */
-internal class TimeZoneView(private val host: SettingsItem.NativeHost, private val pane: TimeZonePane, private val choices: TimeZoneChoices) : SettingsItem.NativeView {
+internal class TimeZoneView(
+    private val host: SettingsItem.NativeHost,
+    private val pane: TimeZonePane,
+    private val choices: TimeZoneChoices,
+    /** Runs the match of Home Assistant's zone, which reads a year of offsets: never on the main thread. */
+    private val background: (Runnable) -> Unit = matcher::execute,
+) : SettingsItem.NativeView {
     private val context: Context = host.context
     private val g = Glass(context)
     private fun px(v: Float) = g.px(v)
@@ -45,22 +51,38 @@ internal class TimeZoneView(private val host: SettingsItem.NativeHost, private v
         addView(haRow)
     }
 
-    /** The zone the panel shows now: the one it keeps, else the system's. */
-    private fun current() = pane.kept.ifEmpty { TimeZone.getDefault().id }
+    /** The zone the panel shows now, by its current name: the one it keeps, else the system's. */
+    private fun current() = choices.name(pane.kept.ifEmpty { TimeZone.getDefault().id })
 
     private var haCache: Pair<Pair<String, String>, TimeZoneChoices.HomeAssistantZone?>? = null
+    /** The rule and zone being matched now, on [background]. */
+    private var matching: Pair<String, String>? = null
 
-    /** Home Assistant's zone matched to the panel's zones; worked out once per rule and zone, not on every refresh. */
+    /**
+     * Home Assistant's zone matched to the panel's zones, once per rule and zone. Null until the match,
+     * which runs on [background] and posts its answer back: the row shows then.
+     */
     private fun homeAssistant(): TimeZoneChoices.HomeAssistantZone? {
         val rule = pane.homeAssistantRule ?: return null
-        val key = rule to current()
+        val zone = current()
+        val key = rule to zone
         haCache?.let { (k, v) -> if (k == key) return v }
-        val started = SystemClock.elapsedRealtimeNanos()
-        return choices.homeAssistant(rule, current(), Instant.now()).also {
-            haCache = key to it
-            // On the main thread: the panel run checks this stays under a frame (16 ms).
-            Log.i(TimeZoneKeeper.TAG, "matched Home Assistant's zone in ${(SystemClock.elapsedRealtimeNanos() - started) / 1_000_000} ms: ${it?.zone ?: "none"}")
+        if (matching != key) {
+            matching = key
+            background {
+                val started = SystemClock.elapsedRealtimeNanos()
+                val found = runCatching { choices.homeAssistant(rule, zone, Instant.now()) }.getOrNull()
+                // The panel run records this (#235).
+                Log.i(TimeZoneKeeper.TAG, "matched Home Assistant's zone in ${(SystemClock.elapsedRealtimeNanos() - started) / 1_000_000} ms: $found")
+                view.post {
+                    if (matching != key) return@post
+                    matching = null
+                    haCache = key to found
+                    refresh()
+                }
+            }
         }
+        return null
     }
 
     override fun refresh() {
@@ -182,6 +204,14 @@ internal class TimeZoneView(private val host: SettingsItem.NativeHost, private v
             })
             // Home Assistant sends a rule, not a name: "Use it" keeps a zone here with the same clock, and says which.
             homeAssistant()?.let { ha ->
+                val (clock, line, use) = when (ha) {
+                    is TimeZoneChoices.HomeAssistantZone.Same ->
+                        Triple(TimeZoneChoices.offset(ha.zone, now), "The same as the panel's · ${TimeZoneChoices.clock(ha.zone, now)} now", null)
+                    is TimeZoneChoices.HomeAssistantZone.Like ->
+                        Triple(TimeZoneChoices.offset(ha.zone, now), "Keeps ${ha.zone} · ${TimeZoneChoices.clock(ha.zone, now)} now", ha.zone)
+                    is TimeZoneChoices.HomeAssistantZone.Elsewhere ->
+                        Triple(TimeZoneChoices.offsetText(ha.offsetSeconds), "The panel keeps its own zone", null)
+                }
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
@@ -190,11 +220,10 @@ internal class TimeZoneView(private val host: SettingsItem.NativeHost, private v
                     minimumHeight = px(62f)
                     addView(LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
-                        addView(g.text(15.5f, Glass.TX).apply { text = "Home Assistant's clock: ${TimeZoneChoices.offset(ha.zone, now)}" })
-                        val clock = TimeZoneChoices.clock(ha.zone, now)
-                        addView(g.text(13.5f, Glass.MU).apply { text = if (ha.same) "The same as the panel's · $clock now" else "Keeps ${ha.zone} · $clock now" })
+                        addView(g.text(15.5f, Glass.TX).apply { text = "Home Assistant's clock: $clock" })
+                        addView(g.text(13.5f, Glass.MU).apply { text = line })
                     }, LinearLayout.LayoutParams(0, -2, 1f))
-                    if (!ha.same) addView(g.ghost("Use it").apply { setPadding(px(18f), px(8f), px(18f), px(8f)); setOnClickListener { keep(ha.zone) } })
+                    use?.let { z -> addView(g.ghost("Use it").apply { setPadding(px(18f), px(8f), px(18f), px(8f)); setOnClickListener { keep(z) } }) }
                 }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14f) })
             }
             addView(why, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8f) })
@@ -222,5 +251,10 @@ internal class TimeZoneView(private val host: SettingsItem.NativeHost, private v
             val i = choices.zones(region).indexOfFirst { it.first == chosen }
             if (i > 0) zoneScroll.scrollTo(0, (i - 1) * (px(46f) + px(1f).coerceAtLeast(1)))
         }
+    }
+
+    private companion object {
+        /** One daemon thread for the matches, made on first use. */
+        val matcher by lazy { java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "s1-timezone-match").apply { isDaemon = true } } }
     }
 }

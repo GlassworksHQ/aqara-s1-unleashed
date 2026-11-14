@@ -177,6 +177,9 @@ class PanePagesMockups {
         return o
     }
 
+    /** The time zone page matches Home Assistant's zone on a background thread and posts the answer: let it land. */
+    private fun matched() = repeat(40) { Thread.sleep(25); Mockup.idle() }
+
     private fun shot(name: String, o: KioskSettingsOverlay, id: String, then: (KioskSettingsOverlay) -> Unit = {}) {
         o.previewSection(id)
         then(o)
@@ -205,14 +208,14 @@ class PanePagesMockups {
         shot("212-07b-off-panes-folded", menu(listOf(radio(), music(), timeZone()), off = setOf("sendspin", "time-zone")), "radio")
         shot("212-07c-off-pane-open", menu(listOf(radio(), music(), timeZone()), off = setOf("sendspin", "time-zone")), "sendspin")
         val tz = timeZone()
-        shot("212-04-time-zone", menu(listOf(tz)), "time-zone")
+        shot("212-04-time-zone", menu(listOf(tz)), "time-zone") { matched() }
         shot("212-05-time-zone-picker", menu(listOf(tz)), "time-zone") { o ->
-            (o.previewNative("time-zone-${System.identityHashCode(tz)}") as TimeZoneView).open()
+            matched(); (o.previewNative("time-zone-${System.identityHashCode(tz)}") as TimeZoneView).open()
         }
         // Home Assistant on another clock than the panel's: "Use it" keeps a zone with HA's clock.
         val london = timeZone("GMT0BST,M3.5.0/1,M10.5.0")
         shot("212-05b-time-zone-picker-use-it", menu(listOf(london)), "time-zone") { o ->
-            (o.previewNative("time-zone-${System.identityHashCode(london)}") as TimeZoneView).open()
+            matched(); (o.previewNative("time-zone-${System.identityHashCode(london)}") as TimeZoneView).open()
         }
     }
 }

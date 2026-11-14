@@ -19,10 +19,17 @@ class TimeZoneChoices(
     /** The regions that have zones here, in [REGIONS] order, then [UTC] for the plain offsets. */
     val regions: List<String> = REGIONS.filter { r -> known.any { it.startsWith("$r/") } } + UTC
 
-    /** A region's zones as (id, name), by name: `Europe/Madrid` is `Madrid`, `America/Argentina/Salta` is `Argentina / Salta`. */
+    /**
+     * A region's zones as (id, name), by name: `Europe/Madrid` is `Madrid`, `America/Argentina/Salta` is
+     * `Argentina / Salta`. An old alias of a zone listed here is left out (Asia/Calcutta for Asia/Kolkata).
+     */
     fun zones(region: String): List<Pair<String, String>> =
         if (region == UTC) offsets()
-        else known.filter { it.startsWith("$region/") }.map { it to it.removePrefix("$region/").replace('_', ' ').replace("/", " / ") }.sortedBy { it.second }
+        else known.filter { it.startsWith("$region/") && (canonical(it) == it || canonical(it) !in known) }
+            .map { it to it.removePrefix("$region/").replace('_', ' ').replace("/", " / ") }.sortedBy { it.second }
+
+    /** A zone by its current name, when Android knows one (`Asia/Calcutta` is `Asia/Kolkata`). */
+    fun name(zone: String): String = canonical(zone)
 
     /**
      * UTC, then whole-hour offsets from −12 to +14. The tz database names them backwards (`Etc/GMT-1` is
@@ -36,29 +43,43 @@ class TimeZoneChoices(
     fun regionOf(zone: String): String = regions.firstOrNull { zone.startsWith("$it/") } ?: UTC
 
     /**
-     * Home Assistant's time zone, from the POSIX rule it sends ([PosixTimeZone]): whether the panel's
-     * [current] zone keeps the same clock all year, and the zone "Use it" keeps, one in [current]'s region
-     * first. Null when the rule can't be read or no zone here keeps its clock. Its offset changes with
-     * summer time, so it is read from [HomeAssistantZone.zone] when it is shown ([offset]).
+     * Home Assistant's time zone, from the POSIX rule it sends ([PosixTimeZone]), against the panel's
+     * [current] zone. Null when the rule can't be read. Slow (a year of offsets for each candidate): call
+     * it off the main thread.
+     *
+     * - [HomeAssistantZone.Same]: the panel's zone keeps the same clock all year.
+     * - [HomeAssistantZone.Like]: another zone does; "Use it" keeps it, one in the panel's region first.
+     * - [HomeAssistantZone.Elsewhere]: HA's rule is one fixed offset that the panel's zone doesn't keep.
+     *   HA sends such a rule also for a zone the rule can't describe (Casablanca's comes as `<+00>0`, an hour
+     *   off most of the year), so no zone is offered: the panel keeps its own (#235 verifier, N3).
      */
     fun homeAssistant(rule: String, current: String, now: Instant): HomeAssistantZone? {
-        val like = PosixTimeZone.parse(rule)?.zonesLike(known, now).orEmpty().map(canonical).distinct()
-        if (like.isEmpty()) return null
+        val tz = PosixTimeZone.parse(rule) ?: return null
+        val like = tz.zonesLike(known, now).map(canonical).distinct()
         // The panel's zone may be an old alias of one in the list (Europe/Belfast is Europe/London).
         val here = canonical(current)
-        if (here in like) return HomeAssistantZone(true, current)
+        if (here in like) return HomeAssistantZone.Same(here)
+        if (tz.fixed || like.isEmpty()) return HomeAssistantZone.Elsewhere(tz.standardOffsetSeconds)
         val pick = like.minWith(
             compareBy<String>({ regionOf(it) != regionOf(here) }, { REGIONS.indexOf(regionOf(it)).let { i -> if (i < 0) REGIONS.size else i } }, { it }),
         )
-        return HomeAssistantZone(false, pick)
+        return HomeAssistantZone.Like(pick)
     }
 
-    /** See [homeAssistant]. */
-    data class HomeAssistantZone(val same: Boolean, val zone: String) {
-        /** The page's line at [now]: `UTC+01:00 · the same as the panel's`. The offset is read then, so it follows summer time. */
-        fun line(now: Instant): String {
-            val o = offset(zone, now)
-            return if (same) "$o · the same as the panel's" else "$o · like $zone, not the panel's"
+    /** See [homeAssistant]. Each says its line at a given time, so the offset follows summer time. */
+    sealed interface HomeAssistantZone {
+        fun line(now: Instant): String
+
+        data class Same(val zone: String) : HomeAssistantZone {
+            override fun line(now: Instant) = "${offset(zone, now)} · the same as the panel's"
+        }
+
+        data class Like(val zone: String) : HomeAssistantZone {
+            override fun line(now: Instant) = "${offset(zone, now)} · like $zone, not the panel's"
+        }
+
+        data class Elsewhere(val offsetSeconds: Int) : HomeAssistantZone {
+            override fun line(now: Instant) = "${offsetText(offsetSeconds)} · Home Assistant's clock; the panel keeps its zone"
         }
     }
 
@@ -67,10 +88,13 @@ class TimeZoneChoices(
         val REGIONS = listOf("Africa", "America", "Antarctica", "Asia", "Atlantic", "Australia", "Europe", "Indian", "Pacific")
 
         /** `UTC+01:00` at [now]. */
-        fun offset(zone: String, now: Instant): String {
-            val s = runCatching { ZoneId.of(zone).rules.getOffset(now).totalSeconds }.getOrDefault(0)
-            val m = kotlin.math.abs(s) / 60
-            return "UTC${if (s < 0) "−" else "+"}${pad(m / 60)}:${pad(m % 60)}"
+        fun offset(zone: String, now: Instant): String =
+            offsetText(runCatching { ZoneId.of(zone).rules.getOffset(now).totalSeconds }.getOrDefault(0))
+
+        /** [seconds] east of UTC as `UTC+05:30`. */
+        fun offsetText(seconds: Int): String {
+            val m = kotlin.math.abs(seconds) / 60
+            return "UTC${if (seconds < 0) "−" else "+"}${pad(m / 60)}:${pad(m % 60)}"
         }
 
         /** The time on the zone's clocks at [now]: `14:32`. */
