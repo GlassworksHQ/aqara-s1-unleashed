@@ -451,7 +451,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/hls/"):
             return self.hls(path)
         if path.startswith("/api/camera_proxy/"):
-            # The camera's still (the card's poster): a generated picture, the home's own if it has one.
+            # The camera's still (the card's poster): the home's own if it has one, else a generated picture.
             still = D.asset(f"still-{path[len('/api/camera_proxy/'):]}.png") or D.asset("picture-0.png")
             return self.send_bytes(200, still[1], still[0])
         if path == "/clarity/cancel":

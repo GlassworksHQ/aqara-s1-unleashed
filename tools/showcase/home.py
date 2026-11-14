@@ -1,11 +1,13 @@
-"""The showcase home (MIT): made-up rooms, states, pictures and a day of history, and the dashboard every
+"""The showcase home (MIT): made-up rooms and states, a day of history, pictures, and the dashboard every
 frame's render shows (render.mjs; maintainer, #144: one dashboard for all frames, so they compare).
 
 It is a home for Clarity's fake Home Assistant (tools/perf/fakeha.py `serve(home=...)`): states, config,
-panels, the dashboard, history and statistics, the weather forecast, a camera still and album art.
-What it doesn't set comes from Clarity's dashboards.py. Everything is seeded and anchored to NOW, which
-render.mjs also gives the browser's clock, so every run draws the same picture. Names are made up, the
-pictures are drawn here (no camera, no real place, no faces), and nothing comes from a real home.
+panels, the dashboard, history and statistics, the weather forecast, camera stills, a TV still and
+album art. What it doesn't set comes from Clarity's dashboards.py. Everything is seeded and anchored to
+NOW, which render.mjs also gives the browser's clock, so every run draws the same picture. Names and
+states are made up and nothing comes from a real home. The two camera stills are CC0 photos
+(photos/README.md: cropped, nothing readable left, no faces); the TV still and the album art are drawn
+here.
 
 One dashboard, one view, nine sections. Every section is SECTION_ROWS grid rows tall, so on any screen
 each row of sections ends level and no column stops early.
@@ -432,7 +434,7 @@ def translations(category):
     return out
 
 
-# ---- the pictures: drawn here, so nothing in them is real
+# ---- the pictures: the TV still and the album art are drawn here; the camera stills are CC0 photos
 
 def _png(w, h, pixel):
     rows = b"".join(b"\0" + bytes(c for x in range(w) for c in pixel(x / w, y / h)) for y in range(h))
@@ -446,64 +448,6 @@ def _png(w, h, pixel):
 def _mix(a, b, f):
     f = max(0.0, min(1.0, f))
     return tuple(a[i] + (b[i] - a[i]) * f for i in range(3))
-
-
-def _garden(u, v):
-    """A garden at dusk as a camera sees it: sky, hills, a lawn, a path, a lit porch on the left."""
-    horizon = 0.46 + 0.035 * math.sin(u * 7.0) + 0.02 * math.sin(u * 17.0 + 1)
-    if v < horizon:
-        c = _mix((22, 34, 66), (196, 120, 92), (v / horizon) ** 2.2)
-    elif v < 0.58:
-        c = _mix((30, 40, 44), (24, 34, 30), (v - horizon) / 0.12)
-    else:
-        c = _mix((30, 52, 34), (46, 74, 44), (v - 0.58) / 0.42)
-        half = 0.03 + (v - 0.58) * 0.55
-        if abs(u - (0.58 - (v - 0.58) * 0.35)) < half:
-            c = _mix((112, 104, 92), (150, 140, 124), (v - 0.58) / 0.42)
-    if 0.7 < u and 0.5 < v < 0.62 and (u * 40) % 1 < 0.18:
-        c = (58, 50, 42)
-    if u < 0.22 and v > 0.14 - 0.25 * u:
-        c = (40, 36, 36)
-        if 0.07 < u < 0.15 and v > 0.5:
-            c = (34, 28, 26) if (0.072 < u < 0.148 and v > 0.515) else (70, 60, 52)
-            if 0.09 < u < 0.13 and 0.54 < v < 0.68:
-                c = (230, 186, 120)
-        if 0.02 < u < 0.055 and 0.3 < v < 0.42:
-            c = (236, 196, 132)
-    for bx, by, br in ((0.3, 0.6, 0.05), (0.36, 0.63, 0.04), (0.9, 0.66, 0.06), (0.82, 0.7, 0.045)):
-        if (u - bx) ** 2 * 3.2 + (v - by) ** 2 < br * br:
-            c = (22, 40, 26)
-    glow = math.exp(-((u - 0.11) ** 2 * 120 + (v - 0.44) ** 2 * 90))
-    c = _mix(c, (255, 206, 140), glow * 0.35)
-    vig = 1 - 0.35 * ((u - 0.5) ** 2 + (v - 0.5) ** 2) * 2
-    return tuple(int(max(0, min(255, x * vig))) for x in c)
-
-
-def _driveway(u, v):
-    """A driveway at night as a camera sees it: a garage with a lit door, a parked car, a lamp."""
-    if v < 0.34:
-        c = _mix((10, 16, 34), (34, 44, 74), v / 0.34)
-    else:
-        c = _mix((44, 44, 48), (70, 68, 66), (v - 0.34) / 0.66)
-        if abs(u - 0.5) < 0.08 + (v - 0.34) * 0.5:
-            c = _mix((58, 56, 56), (96, 92, 86), (v - 0.34) / 0.66)
-    if 0.08 < u < 0.62 and 0.16 < v < 0.52:
-        c = (46, 40, 38)
-        if 0.16 < u < 0.54 and 0.26 < v < 0.52:
-            c = _mix((150, 120, 84), (98, 80, 60), (v - 0.26) / 0.26) if int(v * 60) % 3 else (84, 68, 52)
-    if 0.56 < u < 0.92 and 0.52 < v < 0.76:
-        body = (0.56 < u < 0.92 and 0.62 < v < 0.76) or (0.62 < u < 0.86 and 0.52 < v < 0.62)
-        if body:
-            c = (24, 28, 36) if not (0.65 < u < 0.83 and 0.54 < v < 0.61) else (54, 64, 82)
-    for wx in (0.62, 0.86):
-        if (u - wx) ** 2 * 4 + (v - 0.78) ** 2 < 0.0012:
-            c = (14, 14, 16)
-    glow = math.exp(-((u - 0.94) ** 2 * 60 + (v - 0.18) ** 2 * 50))
-    c = _mix(c, (255, 214, 150), glow * 0.6)
-    if abs(u - 0.94) < 0.006 and v > 0.18:
-        c = (30, 30, 34)
-    vig = 1 - 0.35 * ((u - 0.5) ** 2 + (v - 0.5) ** 2) * 2
-    return tuple(int(max(0, min(255, x * vig))) for x in c)
 
 
 def _poster(u, v):
@@ -533,14 +477,16 @@ def _art(u, v):
 
 
 _assets = {}
+HERE = os.path.dirname(os.path.abspath(__file__))
+# The cameras' stills, by the name fakeha asks for (its camera_proxy): CC0 photos, photos/README.md.
+PHOTOS = {"still-camera.front_garden.png": "front-garden.jpg", "still-camera.driveway.png": "driveway.jpg"}
 
 
 def asset(name):
     if name not in _assets:
-        if name == "still-camera.front_garden.png":
-            _assets[name] = ("image/png", _png(640, 360, _garden))
-        elif name == "still-camera.driveway.png":
-            _assets[name] = ("image/png", _png(640, 360, _driveway))
+        if name in PHOTOS:
+            with open(os.path.join(HERE, "photos", PHOTOS[name]), "rb") as f:
+                _assets[name] = ("image/jpeg", f.read())
         elif name == "showcase-tv.png":
             _assets[name] = ("image/png", _png(320, 180, _poster))
         elif name == "showcase-art.png":

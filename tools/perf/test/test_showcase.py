@@ -1,8 +1,8 @@
 """python3 -m unittest discover -s tools/perf/test
 
 The showcase home (tools/showcase/home.py) served by the fake Home Assistant, as render.mjs serves it
-for the device renders: its own dashboard (nine sections, each the same height) and made-up states, the forecast, the energy statistics, the shopping list, the camera stills and the album
-art, HA's icons and state names, nothing that shows a date, the same data and pictures every time, and
+for the device renders: its own dashboard (nine sections, each the same height) and made-up states, the forecast, the energy statistics, the shopping list, the CC0 camera photos, the drawn
+TV still and album art, HA's icons and state names, nothing that shows a date, the same data and pictures every time, and
 every command the frontend sends still answered.
 Runs on a stub frontend."""
 import datetime
@@ -133,26 +133,64 @@ class Showcase(unittest.TestCase):
         ev = ws.recv()
         self.assertEqual([i["summary"] for i in ev["event"]["items"]], [t for t, _ in home.SHOPPING])
 
-    def test_the_camera_stills_and_the_album_art(self):
+    def test_the_camera_stills_are_the_cc0_photos(self):
+        """The two cameras show the committed photos (photos/README.md), small JPEGs at 16:9."""
         port = self.srv.server_address[1]
-        for path in ("/api/camera_proxy/camera.front_garden?token=showcase", "/api/camera_proxy/camera.driveway?token=showcase",
-                     "/clarity/showcase-art.png", "/clarity/showcase-tv.png"):
+        for cam, name in (("camera.front_garden", "front-garden.jpg"), ("camera.driveway", "driveway.jpg")):
+            with self.subTest(cam):
+                with open(os.path.join(home.HERE, "photos", name), "rb") as f:
+                    photo = f.read()
+                self.assertLess(len(photo), 100 * 1024)
+                self.assertEqual(self._jpeg_size(photo), (800, 450))
+                status, ctype, body = self._get(port, f"/api/camera_proxy/{cam}?token=showcase")
+                self.assertEqual((status, ctype, body), (200, "image/jpeg", photo))
+        # every photo is listed with its licence
+        with open(os.path.join(home.HERE, "photos", "README.md")) as f:
+            readme = f.read()
+        for name in home.PHOTOS.values():
+            self.assertIn(f"`{name}`", readme)
+        self.assertEqual(readme.count("CC0 1.0"), len(home.PHOTOS))
+
+    def test_the_drawn_pictures(self):
+        port = self.srv.server_address[1]
+        for path in ("/clarity/showcase-art.png", "/clarity/showcase-tv.png"):
             with self.subTest(path):
-                conn = http.client.HTTPConnection("127.0.0.1", port)
-                conn.request("GET", path)
-                r = conn.getresponse()
-                body = r.read()
-                conn.close()
-                self.assertEqual((r.status, r.getheader("Content-Type"), body[:8]), (200, "image/png", b"\x89PNG\r\n\x1a\n"))
+                status, ctype, body = self._get(port, path)
+                self.assertEqual((status, ctype, body[:8]), (200, "image/png", b"\x89PNG\r\n\x1a\n"))
                 self.assertNotEqual(body, fakeha.CLARITY.asset("picture-0.png")[1], "the showcase's own picture")
+
+    def test_a_camera_without_a_still_gets_clarity_picture(self):
+        status, ctype, body = self._get(self.srv.server_address[1], "/api/camera_proxy/camera.nowhere?token=x")
+        self.assertEqual((status, body), (200, fakeha.CLARITY.asset("picture-0.png")[1]))
+
+    @staticmethod
+    def _get(port, path):
+        conn = http.client.HTTPConnection("127.0.0.1", port)
+        try:
+            conn.request("GET", path)
+            r = conn.getresponse()
+            return r.status, r.getheader("Content-Type"), r.read()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _jpeg_size(b):
+        """(width, height) from a JPEG's SOF marker."""
+        i = 2
+        while i < len(b):
+            marker, length = b[i + 1], int.from_bytes(b[i + 2:i + 4], "big")
+            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                return int.from_bytes(b[i + 7:i + 9], "big"), int.from_bytes(b[i + 5:i + 7], "big")
+            i += 2 + length
+        return None
 
     def test_the_same_data_and_pictures_every_time(self):
         ids = ["sensor.home_power", "sensor.outdoor_temperature"]
         first = home.history(ids, None, None)
         self.assertEqual(first, home.history(ids, None, None))
         self.assertGreater(len(first["sensor.home_power"]), 100)
-        self.assertEqual(home._png(32, 18, home._garden), home._png(32, 18, home._garden))
-        self.assertNotEqual(home._png(32, 18, home._garden), home._png(32, 18, home._driveway))
+        self.assertEqual(home._png(32, 18, home._poster), home._png(32, 18, home._poster))
+        self.assertNotEqual(home._png(32, 18, home._poster), home._png(32, 18, home._art))
 
     def test_has_icons_and_state_names(self):
         ws = self.connect()

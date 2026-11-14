@@ -1,9 +1,3 @@
-| Frame | Size | Density | Shown | File |
-|---|---|---|---|---|
-| `aqara-s1-plus` | 1440×720 | 0.989 (fitted) | 1 row of 4 sections | 41.5 KiB |
-| `lululemon-mirror` | 1080×1920 | 0.94 (pinned) | 3 rows of 3 | 74.7 KiB |
-| `generic-android` | 1920×1200 | 0.867 (fitted) | 2 rows of 4 (the ninth section is below the edge) | 65.1 KiB |
-
 # Frames
 
 A **frame** is one device's definition: its installer recipe, and the design data that describes it to
@@ -107,8 +101,10 @@ Every frame's card shows the same dashboard (maintainer, #144), so the renders a
   the front garden (camera, lock, lights, garage door, scenes); energy (the week's use, today's
   power); the kitchen (lights, appliances, a shopping list); the bedroom (thermostat, light, blinds);
   air (humidity, CO₂, PM2.5, the purifier); security (a driveway camera, the alarm, the vacuum);
-  media (the TV with its show's still, the kitchen radio, the soundbar and more). The camera stills,
-  the TV still and the album art are drawn by `home.py` itself: no camera, no real place, no faces.
+  media (the TV with its show's still, the kitchen radio, the soundbar and more). The two camera
+  stills are CC0 photos from Wikimedia Commons, graded to dusk, with nothing readable and no faces
+  ([`tools/showcase/photos/`](../tools/showcase/photos/README.md)); the TV still and the album art are
+  drawn by `home.py`.
   The clock shows a time and no date; the graphs cover today only, so their axes name no day.
 - **Full screens.** Every section is 10 grid rows tall (`SECTION_ROWS`, tested), so each row of
   sections ends level and no column stops early. For each landscape frame the script picks the zoom,
@@ -132,11 +128,11 @@ its render too**: run `node tools/showcase/render.mjs <id>` and add `"render": "
 Node 22+ and python3; the first run fetches the pinned frontend from PyPI (117 MB, checked by SHA-256)
 into `~/.cache/glassworks-perf`. Kiln's `catalog.ts` then imports the new file.
 
-| Frame | Size | View, density | Rows of sections shown | File |
+| Frame | Size | Density | Shown | File |
 |---|---|---|---|---|
-| `aqara-s1-plus` | 1440×720 | `home`, 0.989 | 1 (4 columns) | 48.0 KiB |
-| `lululemon-mirror` | 1080×1920 | `portrait`, 0.712 | 4 (2 columns) | 59.6 KiB |
-| `generic-android` | 1920×1200 | `home`, 0.867 | 2 (4 columns) | 75.0 KiB |
+| `aqara-s1-plus` | 1440×720 | 0.989 (fitted) | 1 row of 4 sections | 42.4 KiB |
+| `lululemon-mirror` | 1080×1920 | 0.94 (pinned) | 3 rows of 3 | 77.5 KiB |
+| `generic-android` | 1920×1200 | 0.867 (fitted) | 2 rows of 4 (the ninth section is below the edge) | 73.4 KiB |
 
 `kiln/apps/kiln/test/frame-designs.test.ts` checks every `design/frame.json`: Kiln lists it, every
 rating and pane is there, `recovery` exists, the render is a WebP at the screen's size, and the mockup

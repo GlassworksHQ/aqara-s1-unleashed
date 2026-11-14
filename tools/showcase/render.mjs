@@ -31,7 +31,8 @@ const PINNED = {
 const BOTTOM_PAD = 12;
 // A frame without one screen size (generic-android) is drawn as a common 10" tablet.
 const DEFAULT_DISPLAY = { width: 1920, height: 1200 };
-const QUALITY = 76;
+// WebP quality: 60 keeps every render under 80 KiB with the camera photos in, and text still sharp.
+const QUALITY = 60;
 
 // The kiosk's own look: no sidebar, no header (app/kiosk/src/main/assets/extension/content.js), and
 // HA's default theme in dark mode.

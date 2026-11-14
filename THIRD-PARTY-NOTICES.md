@@ -366,9 +366,16 @@ file, its `package.json` licence and author are given. What it adds:
 - **The device renders** (`frames/<id>/design/render.webp`, on the frame cards): screenshots of the
   **Home Assistant frontend** 20261028.5 (Apache-2.0, Copyright Home Assistant contributors,
   https://github.com/home-assistant/frontend) drawing a made-up dashboard, made by
-  `tools/showcase/render.mjs`. The camera stills, the TV still and the album art in them are drawn by
-  `tools/showcase/home.py` (this project's, MIT). The images show the frontend's own look, with the **Material Design
-  Icons** it bundles (`@mdi/js`, Apache-2.0, Copyright Pictogrammers, https://github.com/Templarian/MaterialDesign)
+  `tools/showcase/render.mjs`. The TV still and the album art in them are drawn by
+  `tools/showcase/home.py` (this project's, MIT). The two camera stills are photos from Wikimedia
+  Commons, both **CC0 1.0** (public domain), cropped, graded to dusk, resized and, for the first, a sign post blurred
+  (`tools/showcase/photos/`, with `make.py` and a README):
+  - `front-garden.jpg`: "Aigantighe Art Gallery - 06 - House and driveway", David Nind, 2019,
+    https://commons.wikimedia.org/wiki/File:Aigantighe_Art_Gallery_-_06_-_House_and_driveway.jpg
+  - `driveway.jpg`: "Driveway - 30 May 2026", Aethonatic,
+    https://commons.wikimedia.org/wiki/File:Driveway_-_30_May_2026.jpg
+
+  The images show the frontend's own look, with the **Material Design Icons** it bundles (`@mdi/js`, Apache-2.0, Copyright Pictogrammers, https://github.com/Templarian/MaterialDesign)
   and text in the **Roboto** font it serves (Google). Only rendered pixels are kept: no code, icon file
   or font file from the frontend is in the images or in Kiln. The frontend's licence was read from its
   wheel's `METADATA` (`License-Expression: Apache-2.0`) on 2026-11-13. [`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt).
