@@ -3,6 +3,7 @@ package sh.edm.s1kiosk.screen
 import android.app.Application
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.robolectric.Shadows.shadowOf
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -352,5 +353,66 @@ class ScreenBehaviourPinTest {
         assertEquals(4, h.changes)
         h.light(12f)
         assertEquals(4, h.changes)
+    }
+
+    // ---- a wake after an idle sleep lasts the idle timeout (#257)
+
+    private fun admin() = shadowOf(h.context.getSystemService(android.app.admin.DevicePolicyManager::class.java))
+        .setActiveAdmin(android.content.ComponentName(h.context, sh.edm.s1kiosk.AdminReceiver::class.java))
+
+    private val awake: android.os.PowerManager.WakeLock? get() = org.robolectric.shadows.ShadowPowerManager.getLatestWakeLock()
+
+    /**
+     * #257: the kiosk sleeps on idle with lockNow(), then a wake that isn't a touch (Home Assistant, a
+     * notification). Android's own timeout (15 s on the S1) would turn the screen off again; the wake
+     * lock holds it until the kiosk's idle timeout, 120 s after the wake.
+     */
+    @Test fun aWakeAfterALockNowSleepLastsTheIdleTimeout() {
+        admin()
+        h.setClock(12, 0)
+        h.start()
+        h.advance(121_000)                       // idle: sleep (lockNow)
+        h.screenOff()
+        h.wake("home assistant")
+        h.screenOn()
+        h.advance(30_000)
+        assertTrue("still on 30 s after the wake, past Android's own timeout", awake!!.isHeld)
+        h.advance(88_000)
+        assertTrue("still on at 118 s", awake!!.isHeld)
+        h.advance(3_000)
+        assertFalse("the kiosk's idle timeout let it go", awake!!.isHeld)
+    }
+
+    /** #257: a touch while woken counts as activity: the idle timeout starts again from it. */
+    @Test fun aTouchAfterAWakeMovesTheTimeout() {
+        h.setClock(12, 0)
+        h.start()
+        h.wake("home assistant")
+        h.advance(100_000)
+        h.userActivity()
+        h.advance(100_000)
+        assertTrue(awake!!.isHeld)
+        h.advance(21_000)
+        assertFalse(awake!!.isHeld)
+    }
+
+    /** #257: the power key (the screen going off without the kiosk) lets go: no fighting it. */
+    @Test fun theScreenGoingOffOtherwiseLetsGo() {
+        h.setClock(12, 0)
+        h.start()
+        h.wake("home assistant")
+        assertTrue(awake!!.isHeld)
+        h.screenOff()
+        assertFalse(awake!!.isHeld)
+    }
+
+    /** #257: with the idle timeout off ("never"), a wake keeps the screen on past the lock's own safety timeout. */
+    @Test fun withNoIdleTimeoutAWakeLastsPastTheLocksOwnTimeout() {
+        prefs.idleOffSec = 0
+        h.setClock(12, 0)
+        h.start()
+        h.wake("home assistant")
+        h.advance(30 * 60_000L)
+        assertTrue(awake!!.isHeld)
     }
 }
