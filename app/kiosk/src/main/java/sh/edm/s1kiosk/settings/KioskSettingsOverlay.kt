@@ -17,13 +17,11 @@ import android.widget.ScrollView
 import android.widget.TextView
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
-import dev.glassworks.pane.SettingsStatus
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.ui.Glass
 import sh.edm.s1kiosk.ui.Glass.Companion.AMBER
 import sh.edm.s1kiosk.ui.Glass.Companion.BD
 import sh.edm.s1kiosk.ui.Glass.Companion.FA
-import sh.edm.s1kiosk.ui.Glass.Companion.GREEN
 import sh.edm.s1kiosk.ui.Glass.Companion.MU
 import sh.edm.s1kiosk.ui.Glass.Companion.ROSE
 import sh.edm.s1kiosk.ui.Glass.Companion.TX
@@ -38,8 +36,8 @@ import java.util.Locale
  * The kiosk settings menu, as drawn in #63. Left: the mark, "Settings" and the rail ([GroupedRail], the
  * same as setup's): the core's Dashboard, Screen and Network, then a Panes group with each pane's
  * section, then Log, Security and About, in the order [Model.sections] has them
- * (dev.glassworks.pane.settingsOrder, #33's nav), and Done. A pane that can't run is greyed; a pane's
- * status is its dot. Right: the section that is picked, in a glass card: a pane's on/off at top right
+ * (dev.glassworks.pane.settingsOrder, #33's nav), and Done. A pane that can't run is greyed; panes that
+ * are off fold under "Off · N" at the end of the group (#212). No pane has a dot in the rail. Right: the section that is picked, in a glass card: a pane's on/off at top right
  * ([SettingsSection.master]), then its rows, each a name with its value under it. A switch applies when
  * tapped, a slider when let go, a duration or a time window when picked, a typed value on Save. A change
  * that only takes effect at start shows #33's banner with Restart now.
@@ -57,6 +55,12 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
 
     /** "Restart now": a change waits for the app to start again. */
     var onRestart: (() -> Unit)? = null
+
+    /**
+     * The model as it is now. After a pane is turned on or off its page changes (#212: an off pane's page
+     * says what that means), so the menu asks again.
+     */
+    var reload: (() -> Model)? = null
 
     var isShowing = false
         private set
@@ -196,13 +200,17 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         animate().alpha(0f).setDuration(200).withEndAction { if (!isShowing) visibility = View.GONE }.start()
     }
 
-    /** While the menu is open (MainActivity, every couple of seconds): native views and the rail's dots read their state again. */
+    /** While the menu is open (MainActivity, every couple of seconds): native views, live rows and the rail read their state again. */
     fun refresh() {
         if (!isShowing) return
         natives.values.forEach { it.refresh() }
+        live.forEach { it() }
         bindRail()
         bindMaster()
     }
+
+    /** The page's read-only rows ([SettingsItem.States]) that read their values again on [refresh]. */
+    private val live = ArrayList<() -> Unit>()
 
     /** Previews (the mock-ups): a section's page, an open editor or picker, a native view, the restart banner. */
     internal fun previewSection(id: String) { current = id; build() }
@@ -211,6 +219,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             is SettingsItem.Text -> { sheet.text(i) {}; typed?.let { sheet.field.setText(it) } }
             is SettingsItem.Duration -> sheet.duration(i) {}
             is SettingsItem.TimeRange -> sheet.range(i) {}
+            is SettingsItem.Choice -> sheet.choice(i) {}
             else -> {}
         }
     }
@@ -249,22 +258,21 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         bindMaster()
         banner.bind()
         rows.removeAllViews()
+        live.clear()
         natives.values.forEach { n -> (n.view.parent as? android.view.ViewGroup)?.removeView(n.view); n.reset() }
         addItems(s.items, divided = s.items.none { it is SettingsItem.Native })
         scroll.scrollTo(0, 0)
     }
 
-    /** The rail: core sections on their own, the panes' under Panes; a pane that can't run is greyed. */
+    /** The rail: core sections on their own, the panes' under Panes; a pane that can't run is greyed, one that is off folds. */
     private fun bindRail() {
         val m = model ?: return
         nav.bind(m.sections.map { s ->
-            val status = s.status()
             val why = s.unavailable()
             GroupedRail.Row(
                 s.id, s.title, group = if (s.id in m.panes) PANES else null,
-                mark = if (status != null && why == null) GroupedRail.Mark.STATUS else GroupedRail.Mark.NONE,
-                color = when (status) { SettingsStatus.WORKING -> AMBER; SettingsStatus.PROBLEM -> ROSE; else -> GREEN },
                 dim = why != null, detail = if (why != null) "Can't run" else null,
+                off = why == null && s.master?.value() == false,
             )
         }, mapOf(PANES to "Panes"), current)
     }
@@ -304,6 +312,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             else {
                 problem.visibility = View.GONE
                 if (m.restartsApp) restartPending = true
+                reload?.invoke()?.let { model = it }
                 build()
             }
         }
@@ -319,6 +328,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         is SettingsItem.Duration -> i.title
         is SettingsItem.TimeRange -> i.title
         is SettingsItem.Link -> i.title
+        is SettingsItem.Choice -> i.title
         else -> null
     }
 
@@ -328,6 +338,10 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             if (i is SettingsItem.Group) {
                 rows.addView(g.label(i.title), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(26f); bottomMargin = px(4f) })
                 addItems(i.items, divided = true)
+                continue
+            }
+            if (i is SettingsItem.States) {
+                rows.addView(states(i), LinearLayout.LayoutParams(-1, -2))
                 continue
             }
             if (divided) rows.addView(View(context).apply { setBackgroundColor(BD) }, LinearLayout.LayoutParams(-1, px(1f).coerceAtLeast(1)))
@@ -344,8 +358,48 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         is SettingsItem.Link -> row(i.title, i.detail, chevron = true, dim = i.detail.isEmpty()) { i.open(context) }
         is SettingsItem.Note -> g.text(14.5f, MU).apply { text = i.text(); setLineSpacing(0f, 1.25f); setPadding(0, px(14f), 0, px(14f)) }
         is SettingsItem.Info -> row(i.title(), i.detail(), chevron = false, dim = false, onClick = null)
-        is SettingsItem.Group -> error("groups are laid out by addItems")
+        is SettingsItem.Choice -> row(i.title, choiceName(i), chevron = true, dim = false) { sheet.choice(i) { build() } }
+        is SettingsItem.Group, is SettingsItem.States -> error("laid out by addItems")
         is SettingsItem.Native -> natives.getOrPut(i.key) { i.create(nativeHost) }.also { it.refresh() }.view
+    }
+
+    private fun choiceName(i: SettingsItem.Choice): String { val v = i.value(); return i.options().firstOrNull { it.first == v }?.second ?: v }
+
+    /**
+     * "In Home Assistant" (#212): its label, then a name on the left and its value on the right, one line
+     * each. Rows off by default in Home Assistant are dimmed, with a line that says why. Read again on [refresh].
+     */
+    private fun states(i: SettingsItem.States): View {
+        val box = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        var names: List<String>? = null
+        val values = ArrayList<TextView>()
+        fun bind() {
+            val list = i.rows()
+            if (list.map { it.name } == names) {
+                list.forEachIndexed { n, r -> if (values[n].text != r.value) values[n].text = r.value }
+                return
+            }
+            names = list.map { it.name }
+            values.clear()
+            box.removeAllViews()
+            box.addView(g.label(i.title), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(22f); bottomMargin = px(6f) })
+            list.forEach { r ->
+                box.addView(View(context).apply { setBackgroundColor(BD) }, LinearLayout.LayoutParams(-1, px(1f).coerceAtLeast(1)))
+                box.addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    minimumHeight = px(46f)
+                    addView(g.text(15.5f, if (r.offByDefault) MU else TX).apply { text = r.name; setSingleLine(); ellipsize = TextUtils.TruncateAt.END },
+                        LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = px(16f) })
+                    addView(g.text(15f, if (r.offByDefault) FA else MU).apply { text = r.value; setSingleLine() }.also { values += it })
+                }, LinearLayout.LayoutParams(-1, -2))
+            }
+            if (list.any { it.offByDefault }) box.addView(g.text(13.5f, FA).apply { text = OFF_BY_DEFAULT; setLineSpacing(0f, 1.2f) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12f) })
+        }
+        bind()
+        live += ::bind
+        return box
     }
 
     private fun shownOf(i: SettingsItem.Text): String {
@@ -634,6 +688,20 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             open(i.title, "", content, "Save")
         }
 
+        /** The options as chips; picking one applies it. */
+        fun choice(i: SettingsItem.Choice, after: () -> Unit) {
+            val now = i.value()
+            val chips = Wrap(context, px(10f), px(10f))
+            onSave = null
+            i.options().forEach { (id, name) ->
+                chips.addView(g.chip(name).apply {
+                    chosen = id == now
+                    setOnClickListener { onSave = {}; commit(false, after) { done -> i.save(id, done) } }
+                })
+            }
+            open(i.title, "", chips, null)
+        }
+
         /** A question before a change: its words, Cancel and the action. */
         fun confirm(c: SettingsItem.Confirm, yes: () -> Unit) {
             onSave = { close(); yes() }
@@ -652,6 +720,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
 
     companion object {
         const val RESTART_TEXT = "This takes effect after the app restarts. It takes about 5 seconds."
+        const val OFF_BY_DEFAULT = "Dimmed: off by default in Home Assistant. Turn them on there to keep their history."
         private const val PANES = "panes"
 
         /** What a save that threw says. */

@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Shader
 import android.text.TextUtils
 import android.view.Gravity
@@ -16,20 +17,23 @@ import android.widget.LinearLayout
  * The left rail of setup and of the settings menu (#63 round 2): rows, some under a group (setup's
  * Home Assistant and Panes, settings' Panes). A group shows its rows while one of them is selected and
  * folds to one row otherwise. Tapping a row selects it; tapping a folded group selects its first open
- * row. Main thread.
+ * row. Rows that are [Row.off] (a pane turned off, #212) go last in their group, folded under "Off · N";
+ * the fold opens while one of them is selected, and tapping it selects the first. Main thread.
  */
 class GroupedRail(context: Context) : LinearLayout(context) {
 
     /** The dot before a row's name. */
-    enum class Mark { DONE, CURRENT, PENDING, STATUS, NONE }
+    enum class Mark { DONE, CURRENT, PENDING, NONE }
 
     /**
-     * One row. [group]: the group it sits under, or null. [color]: the dot for [Mark.STATUS]. [dim]: greyed
-     * (a pane that can't run), [detail] then says why. [enabled]: it can be tapped.
+     * One row. [group]: the group it sits under, or null. [dim]: greyed
+     * (a pane that can't run), [detail] then says why. [enabled]: it can be tapped. [off]: folded at the
+     * end of its group.
      */
     class Row(
         val id: String, val title: String, val group: String? = null, val mark: Mark = Mark.NONE,
-        val color: Int = Glass.GREEN, val enabled: Boolean = true, val dim: Boolean = false, val detail: String? = null,
+        val enabled: Boolean = true, val dim: Boolean = false, val detail: String? = null,
+        val off: Boolean = false,
     )
 
     var onTap: ((String) -> Unit)? = null
@@ -52,7 +56,7 @@ class GroupedRail(context: Context) : LinearLayout(context) {
             val r = rows[i]
             val group = r.group
             if (group == null) {
-                add(row(r.title, r.mark, r.color, selected == r.id, child = false, dim = r.dim, detail = r.detail, enabled = r.enabled) { onTap?.invoke(r.id) })
+                add(row(r.title, r.mark, selected == r.id, child = false, dim = r.dim, detail = r.detail, enabled = r.enabled) { onTap?.invoke(r.id) })
                 i++
                 continue
             }
@@ -61,14 +65,24 @@ class GroupedRail(context: Context) : LinearLayout(context) {
                 open == group -> Mark.CURRENT
                 members.all { it.mark == Mark.DONE } -> Mark.DONE
                 members.any { it.mark == Mark.CURRENT } -> Mark.CURRENT
-                members.all { it.mark == Mark.NONE || it.mark == Mark.STATUS } -> Mark.NONE
+                members.all { it.mark == Mark.NONE } -> Mark.NONE
                 else -> Mark.PENDING
             }
             val first = members.firstOrNull { it.enabled && it.mark != Mark.DONE } ?: members.firstOrNull { it.enabled }
-            add(row(groups[group] ?: group, mark, Glass.GREEN, selected = false, child = false, dim = false, detail = null,
+            add(row(groups[group] ?: group, mark, selected = false, child = false, dim = false, detail = null,
                 enabled = first != null, emphasis = open == group) { first?.let { onTap?.invoke(it.id) } })
-            if (open == group) members.forEach { m ->
-                add(row(m.title, m.mark, m.color, selected == m.id, child = true, dim = m.dim, detail = m.detail, enabled = m.enabled) { onTap?.invoke(m.id) })
+            if (open == group) {
+                val (offs, ons) = members.partition { it.off }
+                ons.forEach { m ->
+                    add(row(m.title, m.mark, selected == m.id, child = true, dim = m.dim, detail = m.detail, enabled = m.enabled) { onTap?.invoke(m.id) })
+                }
+                if (offs.isNotEmpty()) {
+                    val unfolded = offs.any { it.id == selected }
+                    add(fold(offs.size, unfolded) { onTap?.invoke(offs.first().id) })
+                    if (unfolded) offs.forEach { m ->
+                        add(row(m.title, Mark.NONE, selected == m.id, child = true, dim = m.dim, detail = m.detail, enabled = m.enabled, off = true) { onTap?.invoke(m.id) })
+                    }
+                }
             }
             i += members.size
         }
@@ -80,16 +94,17 @@ class GroupedRail(context: Context) : LinearLayout(context) {
     }
 
     private fun row(
-        title: String, mark: Mark, color: Int, selected: Boolean, child: Boolean, dim: Boolean, detail: String?,
-        enabled: Boolean, emphasis: Boolean = false, onClick: () -> Unit,
+        title: String, mark: Mark, selected: Boolean, child: Boolean, dim: Boolean, detail: String?,
+        enabled: Boolean, emphasis: Boolean = false, off: Boolean = false, onClick: () -> Unit,
     ) = LinearLayout(context).apply {
         tag = if (child) CHILD else null
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(g.px(if (child) 36f else 15f), 0, g.px(12f), 0)
-        if (mark != Mark.NONE) addView(Dot(context, mark, color), LayoutParams(g.px(if (child) 7f else 9f), g.px(if (child) 7f else 9f)).apply { marginEnd = g.px(13f) })
+        if (mark != Mark.NONE) addView(Dot(context, mark), LayoutParams(g.px(if (child) 7f else 9f), g.px(if (child) 7f else 9f)).apply { marginEnd = g.px(13f) })
         val color2 = when {
             dim -> Glass.FA
+            off && !selected -> OFF
             selected || emphasis || mark == Mark.CURRENT -> Glass.TX
             mark == Mark.PENDING -> Glass.FA
             else -> Glass.MU
@@ -102,8 +117,37 @@ class GroupedRail(context: Context) : LinearLayout(context) {
         if (enabled) { isClickable = true; setOnClickListener { onClick() } }
     }
 
-    /** Done: green. Current: sky to violet. Pending: a dashed ring. Status: its colour. */
-    private class Dot(context: Context, private val mark: Mark, private val color: Int) : View(context) {
+    /** "Off · N" and a chevron, quieter than a row: right while folded, down while open. */
+    private fun fold(n: Int, open: Boolean, onClick: () -> Unit) = LinearLayout(context).apply {
+        tag = CHILD
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(g.px(36f), 0, g.px(14f), 0)
+        addView(g.text(13f, Glass.FA, Inter.MEDIUM).apply { text = "Off · $n"; isAllCaps = true; letterSpacing = 0.12f }, LayoutParams(0, -2, 1f))
+        addView(Chevron(context, open), LayoutParams(g.px(12f), g.px(12f)))
+        contentDescription = "Off: $n panes"
+        isClickable = true
+        setOnClickListener { onClick() }
+    }
+
+    private class Chevron(context: Context, private val down: Boolean) : View(context) {
+        private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = 1.6f * resources.displayMetrics.density; color = Glass.FA
+            strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
+        }
+        private val path = Path()
+
+        override fun onDraw(c: Canvas) {
+            val w = width.toFloat(); val h = height.toFloat()
+            path.reset()
+            if (down) { path.moveTo(w * 0.15f, h * 0.35f); path.lineTo(w * 0.5f, h * 0.7f); path.lineTo(w * 0.85f, h * 0.35f) }
+            else { path.moveTo(w * 0.35f, h * 0.15f); path.lineTo(w * 0.7f, h * 0.5f); path.lineTo(w * 0.35f, h * 0.85f) }
+            c.drawPath(path, p)
+        }
+    }
+
+    /** Done: green. Current: sky to violet. Pending: a dashed ring. */
+    private class Dot(context: Context, private val mark: Mark) : View(context) {
         private val dp = resources.displayMetrics.density
         private val p = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -112,7 +156,6 @@ class GroupedRail(context: Context) : LinearLayout(context) {
             p.shader = null; p.pathEffect = null; p.style = Paint.Style.FILL
             when (mark) {
                 Mark.DONE -> { p.color = Glass.GREEN; c.drawCircle(r, r, r, p) }
-                Mark.STATUS -> { p.color = color; c.drawCircle(r, r, r, p) }
                 Mark.CURRENT -> {
                     p.color = Color.WHITE
                     p.shader = LinearGradient(0f, 0f, width.toFloat(), height.toFloat(), Glass.SKY, Glass.VIOLET, Shader.TileMode.CLAMP)
@@ -130,5 +173,7 @@ class GroupedRail(context: Context) : LinearLayout(context) {
 
     private companion object {
         const val CHILD = "child"
+        /** An off pane's name: [Glass.MU] at about 47 %, a little less white (#212). */
+        val OFF = Color.argb(120, 0xa1, 0xa1, 0xaa)
     }
 }

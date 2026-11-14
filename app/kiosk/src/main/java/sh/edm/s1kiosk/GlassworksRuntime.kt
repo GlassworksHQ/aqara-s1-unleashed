@@ -8,6 +8,7 @@ import dev.glassworks.engine.Engine
 import dev.glassworks.engine.EngineSettings
 import dev.glassworks.engine.gecko.GeckoEngine
 import dev.glassworks.frame.Frame
+import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SetupStep
 import dev.glassworks.screen.ScreenPolicy
@@ -101,6 +102,14 @@ class GlassworksRuntime(
 
     /** Set while KioskService runs; the radio's setup step and settings section apply radio changes through it. */
     @Volatile var radio: RadioController? = null
+
+    /**
+     * The panes the device shell built, also the ones that are off; empty while it isn't running. Each
+     * pane's settings page reads its own (#212).
+     */
+    @Volatile var panes: List<Pane> = emptyList()
+
+    fun runningPane(id: String): Pane? = panes.firstOrNull { it.id == id }
 
     /** Set while KioskService runs; the sign-in screen uses it for manual HA URL entry. */
     @Volatile var discovery: HaDiscovery? = null

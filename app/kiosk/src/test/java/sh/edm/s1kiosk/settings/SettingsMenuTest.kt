@@ -50,6 +50,8 @@ class SettingsMenuTest {
             is SettingsItem.Info -> listOf("info")
             is SettingsItem.Group -> listOf("[${i.title}]") + titles(i.items)
             is SettingsItem.Native -> listOf("native ${i.key}")
+            is SettingsItem.Choice -> listOf(i.title)
+            is SettingsItem.States -> listOf("states ${i.title}")
         }
     }
 
@@ -92,13 +94,13 @@ class SettingsMenuTest {
 
     @Test
     fun everyPaneHasItsOnOff() {
-        // #63 round 2: a pane's on/off is its section's, at the top right. Voice and Music have nothing
-        // else yet and say so; the radio gives its own, which asks before turning off.
+        // #63 round 2: a pane's on/off is its section's, at the top right. With no device running, Voice and
+        // Music can't show their state and say so (#212); the radio gives its own, which asks before turning off.
         val m = menu().associateBy { it.id }
         assertEquals("Voice", m.getValue("voice").master!!.title)
         assertFalse("voice turns on and off live (#67)", m.getValue("voice").master!!.restartsApp)
         assertEquals(listOf("note"), titles(m.getValue("voice").items))
-        assertEquals(dev.glassworks.pane.NO_SETTINGS, (m.getValue("sendspin").items[0] as SettingsItem.Note).text())
+        assertEquals(dev.glassworks.pane.NOT_RUNNING, (m.getValue("sendspin").items[0] as SettingsItem.Note).text())
         assertEquals(null, m.getValue("dashboard").master)
         val radio = m.getValue("radio").master!!
         assertFalse(radio.value()) // the fixture's radio is off
