@@ -117,6 +117,8 @@ class ScreenPinHarness {
 
     fun userActivity() { screen.userActivity(); idle() }
     fun wake(reason: String) { screen.wake(reason); idle() }
+    fun hold(reason: String) { screen.hold(reason); idle() }
+    fun release(reason: String) { screen.release(reason); idle() }
     fun sleep(reason: String) { screen.sleep(reason); idle() }
     fun applyPresenceRange() = screen.applyPresenceRange()
     fun refreshBrightness() { screen.refreshBrightness(); idle() }

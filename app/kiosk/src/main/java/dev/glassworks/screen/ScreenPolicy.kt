@@ -31,6 +31,11 @@ import kotlin.math.log10
  *    while something urgent is on it (a high or critical notification), until [release].
  *
  * Turning the screen off uses DevicePolicyManager.lockNow() when [admin] is an active device admin.
+ *
+ * A wake that comes without a touch ([wake]: Home Assistant, a timer, voice, Improv, a notification)
+ * holds a screen wake lock until the kiosk's own idle timeout puts the screen to sleep (#257). After a
+ * lockNow() the window's keep-screen-on flag doesn't keep the screen on, so without the lock Android's
+ * own `screen_off_timeout` turned it off again about 20 s after the wake.
  * Otherwise it releases KEEP_SCREEN_ON and lets the system screen_off_timeout expire.
  *
  * One per process (on the app's runtime). Everything runs on the main thread unless a member says otherwise.
@@ -48,6 +53,12 @@ class ScreenPolicy(
 ) {
     internal companion object {
         const val TICK_MS = 1000L
+        /**
+         * The wake lock's own timeout, a safety net if the tick stops: the tick takes it again every
+         * [AWAKE_REFRESH_MS] while the screen should stay on.
+         */
+        const val AWAKE_MAX_MS = 10 * 60_000L
+        const val AWAKE_REFRESH_MS = 60_000L
 
         /** The most automatic brightness may reach: lower at night, unless something [held] the screen. */
         fun brightnessCap(night: Boolean, held: Boolean, max: Float, nightMax: Float): Float =
@@ -96,6 +107,9 @@ class ScreenPolicy(
     }
 
     private var keepOn = true
+    /** Keeps the screen on after a [wake], until [sleep] (#257). Main thread. */
+    private var awake: PowerManager.WakeLock? = null
+    private var awakeSince = 0L
 
     fun start(context: Context) {
         if (started) return
@@ -131,6 +145,7 @@ class ScreenPolicy(
         runCatching { ctx.unregisterReceiver(screenReceiver) }
         brightnessObserver?.let { ctx.contentResolver.unregisterContentObserver(it) }
         brightnessObserver = null
+        letGo()
     }
 
     /** Passes the saved presence range to the presence source: null, or why it didn't take. */
@@ -159,18 +174,30 @@ class ScreenPolicy(
         return if (start <= end) now in start until end else now >= start || now < end
     }
 
+    /**
+     * Turns the screen on and keeps it on until the idle timeout counts down from now (#257), also after
+     * a lockNow() sleep, when nothing else would keep it on.
+     */
     fun wake(reason: String) {
         Log.i(logTag, "wake ($reason)")
         lastActivity = SystemClock.elapsedRealtime()
         setKeepOn(true)
-        if (!pm.isInteractive) {
-            @Suppress("DEPRECATION")
-            val wl = pm.newWakeLock(
-                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                    PowerManager.ON_AFTER_RELEASE, wakeLockTag
-            )
-            wl.acquire(3000)
-        }
+        keepAwake()
+    }
+
+    private fun keepAwake() {
+        @Suppress("DEPRECATION")
+        val wl = awake ?: pm.newWakeLock(
+            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                PowerManager.ON_AFTER_RELEASE, wakeLockTag
+        ).apply { setReferenceCounted(false) }.also { awake = it }
+        wl.acquire(AWAKE_MAX_MS)
+        awakeSince = SystemClock.elapsedRealtime()
+    }
+
+    /** The screen may go off now: the idle timeout said so, or something else turned it off. */
+    private fun letGo() {
+        awake?.takeIf { it.isHeld }?.release()
     }
 
     /**
@@ -194,6 +221,7 @@ class ScreenPolicy(
 
     fun sleep(reason: String) {
         Log.i(logTag, "sleep ($reason) admin=$isAdmin")
+        letGo()
         if (isAdmin) {
             try {
                 dpm.lockNow()
@@ -216,6 +244,8 @@ class ScreenPolicy(
         override fun run() {
             handler.postDelayed(this, TICK_MS)
             if (!screenOn) return
+            // Still wanted on: take the wake lock again before its own timeout runs out.
+            if (awake?.isHeld == true && SystemClock.elapsedRealtime() - awakeSince >= AWAKE_REFRESH_MS) keepAwake()
             if (prefs.screenMode == "always") {
                 setKeepOn(true)
                 return
@@ -233,6 +263,9 @@ class ScreenPolicy(
         override fun onReceive(c: Context, i: Intent) {
             screenOn = i.action == Intent.ACTION_SCREEN_ON
             Log.i(logTag, "screen ${if (screenOn) "ON" else "OFF"}")
+            // Turned off by the power key or anything else: don't hold it against that. Not when a wake
+            // already turned it on again (a late broadcast from the sleep before it).
+            if (!screenOn && !pm.isInteractive) letGo()
             if (screenOn) {
                 lastActivity = SystemClock.elapsedRealtime()
                 setKeepOn(true)

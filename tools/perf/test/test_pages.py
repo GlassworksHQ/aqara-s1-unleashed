@@ -60,7 +60,7 @@ class Pages(unittest.TestCase):
             text = self.read(name)
             with self.subTest(name):
                 self.assertLessEqual({h.lower() for h in re.findall(r"#[0-9a-f]{6}\b|#[0-9a-f]{3}\b", text, re.I)}
-                                     - {"#174"}, allowed)                     # #174 is an issue number in a comment
+                                     - {"#174", "#202"}, allowed)             # issue numbers in comments
                 self.assertEqual([c for c in re.findall(r"rgba?\([^)]*\)", text) if not c.startswith("rgba(0,0,0,")], [])
                 self.assertNotIn("rnd() * 360", text)
         root = dict(re.findall(r"--([\w-]+):\s*([^;]+);", re.search(r":root \{([^}]*)\}", self.read("index.html")).group(1)))
@@ -123,9 +123,16 @@ class FixedHome(unittest.TestCase):
     """dashboards.py: real Lovelace configs with HA's own card types, the counts of page/tiers.json."""
 
     def test_counts_and_card_types(self):
-        want = {"start": 23, "light": 20, "typical": 50, "heavy": 120}
+        want = {"start": 23, "light": 20, "typical-nocam": 50, "typical": 50, "heavy": 120}
         views = {v["path"]: v["cards"] for v in D.lovelace(D.DASHBOARD)["views"]}
-        self.assertEqual(list(views), ["start", "light", "typical", "heavy"])
+        self.assertEqual(list(views), ["start", "light", "typical-nocam", "typical", "heavy", "typical-hls", "heavy-hls"])
+        # Rubric v10 (#205): typical without its camera is typical card for card, a still picture where
+        # the camera was.
+        diff = [(a, b) for a, b in zip(views["typical"], views["typical-nocam"]) if a != b]
+        self.assertEqual(len(diff), 1)
+        self.assertEqual((diff[0][0]["type"], diff[0][0]["camera_view"]), ("picture-entity", "live"))
+        self.assertEqual(diff[0][1], {"type": "picture", "image": "/clarity/picture-1.png"})
+        self.assertNotIn("picture-entity", {c["type"] for c in views["typical-nocam"]})
         for tier, n in want.items():
             with self.subTest(tier):
                 self.assertEqual(len(views[tier]), n)
@@ -141,6 +148,19 @@ class FixedHome(unittest.TestCase):
         self.assertEqual((grid["type"], grid["columns"], [c["entity"] for c in grid["cards"]]),
                          ("grid", 3, ["camera.clarity_cam_1", "camera.clarity_cam_2", "camera.clarity_cam_3"]))
         self.assertNotIn("picture-entity", {c["type"] for c in views["light"]})
+
+    def test_the_fallback_views_are_their_view_with_hls_only_cameras(self):
+        """#202: typical-hls and heavy-hls are typical and heavy, card for card, but their cameras
+        offer HLS only, so the frontend plays them with hls.js; the graded views' offer WebRTC too."""
+        views = {v["path"]: v["cards"] for v in D.lovelace(D.DASHBOARD)["views"]}
+        for fb, base in D.FALLBACK.items():
+            with self.subTest(fb):
+                self.assertEqual(json.dumps(views[fb]).replace("clarity_hls_", "clarity_cam_"), json.dumps(views[base]))
+                cams = [c for c in json.dumps(views[fb]).split('"') if c.startswith("camera.")]
+                self.assertTrue(cams)
+                self.assertEqual({tuple(D.CAMERA_STREAM_TYPES[c]) for c in cams}, {("hls",)})
+                graded = [c for c in json.dumps(views[base]).split('"') if c.startswith("camera.")]
+                self.assertEqual({tuple(sorted(D.CAMERA_STREAM_TYPES[c])) for c in graded}, {("hls", "web_rtc")})
 
     def test_the_start_view_loads_every_lazy_card_type(self):
         """HA loads history-graph, picture and clock lazily (create-card-element.ts L86, L94, L100).

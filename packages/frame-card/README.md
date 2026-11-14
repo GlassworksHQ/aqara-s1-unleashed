@@ -51,7 +51,23 @@ Kiln was the first to use it, and #114 moved it here, so there is one copy.
 | `StatusPill` | The stage pill, as on the status badges |
 | `DeviceModel` | The 3D mockup alone: the body's sides as SVG behind a CSS-3D front glass. Props: `id`, `model`, `label`, `aspect`, the stage's width / height, and `screen`. `aspect` is 2 (2:1, as on the cards) by default; a portrait frame's own page can ask for a taller stage, e.g. `0.8`. `screen` is the URL of the frame's render for the glass; without it, an example dashboard |
 | `geometry()` | The projection `DeviceModel` draws, as plain data. Pure, so tests can call it |
-| `FrameDesign`, `FrameModel`, `Stage`, `Support`, `RatingKey`, `cardTags()`, `STAGE_TEXT`, `ships()`, `RATING_KEYS`, `PANE_IDS` | The `frame.json` types and the card's words for them. `ships()` takes a frame's `Stage` or a pane's `Support`: true for alpha, beta and stable, false for the rest, including `depends`, `unknown` and `no` |
+| `PANES`, `PANE_IDS`, `PaneInfo`, `paneById()`, `PANE_ALIASES` | The pane catalog: every pane in the app, from its `pane.json`, with its `icon` (the SVG's markup). `paneById('base')` finds the wall base by its old id |
+| `paneSupport()`, `framePanes()`, `PaneSupport`, `CAPABILITIES`, `capabilityText()` | How a frame runs a pane: its own rating, or worked out from the pane's `requires` and the frame's `provides`, with the reason ([frames/README.md](../../frames/README.md#the-panes-a-frame-runs)) |
+| `FrameDesign`, `FrameModel`, `Stage`, `Support`, `RatingKey`, `cardTags()`, `STAGE_TEXT`, `ships()`, `RATING_KEYS` | The `frame.json` types and the card's words for them. `ships()` takes a frame's `Stage` or a pane's `Support`: true for alpha, beta and stable, false for the rest, including `depends`, `unknown` and `no` |
+
+## The pane catalog
+
+`src/panes.generated.ts` holds every pane's `pane.json` and `icon.svg`, which live next to each pane's
+code in `app/kiosk/src/main/java`. After you add or change one, run:
+
+```sh
+npm run panes -w @glassworks/frame-card
+```
+
+`test/panes.test.ts` fails when the generated file is stale. `PANES` lists general panes first, then
+frame panes, each by stage (stable first) and then by name, as the frame catalog orders frames. The icons are 24 × 24, stroked with
+`currentColor` at 1.6 with round caps and joins, and have no fills or colours. A page draws one by
+putting `icon` in an element whose `color` it sets.
 
 The page provides the Glassworks tokens (`--sky`, `--edge`, `--r-tile`, `--muted`, …) and the global
 `glass` surface class: Kiln from `@glassworks/brand`, the site from its own `globals.css`. The only

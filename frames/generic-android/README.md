@@ -69,8 +69,12 @@ It will install as a normal app. It doesn't install from Kiln yet.
 | Timers | Depends on the device | Needs Assist. |
 | Sendspin | Planned |  |
 | Zigbee and Thread radio | No | No supported radio. |
-| Presence and light | Depends on the device | Needs a proximity or light sensor. |
+| Time zone | No | Worked out: only on the S1 (`aqara-s1-plus`). |
+| Diagnostics | Planned | Worked out: needs no special hardware. |
+| Bluetooth proxy | Depends on the device | Worked out: needs Bluetooth LE. |
 | Wall base | No | S1 only. |
+
+"Worked out" means `frame.json` doesn't rate the pane; its support comes from what the pane needs and what the frame has ([how](../README.md#the-panes-a-frame-runs)).
 
 ## Research notes
 

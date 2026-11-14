@@ -159,10 +159,13 @@
         if (b.t - a.t > 500 && a.pf != null && b.pf != null) presented += Math.max(0, b.pf - a.pf - 1);
       }
     }
+    // Detail: the longest gaps, where they were (page clock), longest first.
+    const at = gaps.map((g, k) => [g, pts[k], pts[k + 1]]).filter(([g]) => g > 500).sort((a, b) => b[0] - a[0]).slice(0, 10);
     return {
       max_gap_ms: Math.max(...gaps),
       stall_total_ms: gaps.filter((g) => g > 500).reduce((x, y) => x + y, 0),
       stall_presented: presented,
+      stalls_at: at.map(([, a, b]) => [round2(a), round2(b)]),
     };
   }
 
@@ -207,8 +210,191 @@
     return out;
   }
 
+  // A WebRTC camera over a window, from getStats() samples of every connection that carried its
+  // video (HA's player can make a new one, or renegotiate the same one, mid-window: #202, the S1's
+  // heavy view). `samples`: [{t, pcs: [{pc, reports}]}] in time order, the first at the window's
+  // start. Each inbound video receiver (its connection, id and SSRC) counts its own increments only:
+  // one first seen after the window's start counts from 0, a counter that goes back (a receiver
+  // reset) counts on from 0, and two receivers are never subtracted, so no count is negative.
+  // `no_video_ms`: the time between samples in which no receiver decoded a frame (between
+  // sessions, or a stalled one).
+  //
+  // Protocol 8 (#202, s1rtc4): the graded gaps and stalls come from here, not from the page's frame
+  // callbacks. On the S1's heavy view a busy main thread ran rVFC 127 times in 147 s while the
+  // compositor showed 2198 frames (1866 of them inside the callbacks' "stalls"), and the receiver
+  // counted 2 freezes, 0.49 s. Per interval between two samples: nothing decoded by any receiver is
+  // a stall for the whole interval; else each receiver's new freezes (libwebrtc's
+  // VideoQualityObserver: an inter-frame gap of at least max(3x the mean of the last 30, the mean +
+  // 150 ms), counted at its full length) and pauses (the stream inactive) are stalls, less the time
+  // with nothing decoded just before, which they cover too. `max_gap_ms`: the longest freeze or
+  // pause (a sample with two counts the sum: an upper bound) or run with nothing decoded; without
+  // any, every gap was under the freeze rule, and it is that rule's bound for the window's mean
+  // frame interval (`max_gap_bound`). Samples come when the page can take them, so a stalled
+  // interval is as coarse as the sampling, never shorter than the stall.
+  const RX = ["framesReceived", "framesDecoded", "framesDropped", "keyFramesDecoded", "freezeCount", "totalFreezesDuration",
+              "pauseCount", "totalPausesDuration", "packetsLost", "nackCount", "pliCount", "jitterBufferDelay",
+              "jitterBufferEmittedCount"];
+  const EMPTY_MIN_MS = 200;                // an interval with nothing decoded this short is the sampling's
+  // A sample's time: when its counts were taken. The inbound reports' own `timestamp` (Gecko sets it
+  // on its call thread as it reads them, RTCRtpReceiver.cpp GetTimestampMaker().GetNow(), right
+  // after the ask; a busy main thread delays only the answer), on the page's clock from the first
+  // sample's ask; the ask time when a sample has none. So a late answer can't count frames or
+  // freezes past the time it says (#205's verifier, harness.js's end-of-window sample).
+  function sampleTimes(samples) {
+    const ts = samples.map((smp) => {
+      const v = [];
+      for (const { reports } of smp.pcs || []) {
+        for (const r of reports || []) {
+          if (r.type === "inbound-rtp" && (r.kind || r.mediaType) === "video" && typeof r.timestamp === "number") v.push(r.timestamp);
+        }
+      }
+      return v.length ? Math.max(...v) : null;
+    });
+    // One sample without a timestamp (an engine that doesn't fill it, or a test's samples): the
+    // reports' clock can't be tied to the page's for that sample, so every interval runs on the ask
+    // times instead (`clock: "asked"`). Then a late answer can count frames and freezes up to its
+    // own snapshot against an interval that ends at the ask: at most the end sample's wait,
+    // statsWaitMs (10 s), on the window's last interval. Gecko and Chrome both fill it.
+    if (ts.some((x) => x === null)) return { times: samples.map((s) => s.t), clock: "asked" };
+    return { times: ts.map((x) => samples[0].t + (x - ts[0])), clock: "stats" };
+  }
+
+  function webrtcWindow(samples) {
+    if (!samples || !samples.length) return null;
+    const total = Object.fromEntries(RX.map((k) => [k, null]));
+    const prev = new Map(), pcs = new Set();
+    let last = null, noVideo = 0, lastT = null, run = 0, stall = 0, maxGap = 0, gaps = 0;
+    const where = [];                      // detail: where the stalls were, on the page's clock (a window each)
+    const { times, clock } = sampleTimes(samples);
+    samples.forEach((smp0, i) => {
+      const smp = { t: times[i], pcs: smp0.pcs };
+      let decoded = 0;                     // frames decoded since the sample before, all receivers
+      let frozenMs = 0, longest = 0;       // the freezes and pauses that ended since then
+      for (const { pc, reports } of smp.pcs || []) {
+        const byId = new Map((reports || []).map((r) => [r.id, r]));
+        for (const r of reports || []) {
+          if (r.type !== "inbound-rtp" || (r.kind || r.mediaType) !== "video") continue;
+          const key = `${pc}|${r.id}|${r.ssrc}`;
+          pcs.add(pc);
+          const was = prev.get(key) || (i === 0 ? r : {});
+          for (const k of RX) {
+            if (typeof r[k] !== "number") continue;
+            const before = typeof was[k] === "number" ? was[k] : 0;
+            const add = r[k] >= before ? r[k] - before : r[k];       // a reset counts on from 0
+            total[k] = (total[k] || 0) + add;
+            if (k === "framesDecoded") decoded += add;
+          }
+          // This receiver's new freezes and pauses, in ms (each counter on its own, as above). One
+          // outage that a receiver reports as both a freeze and a pause in the same interval counts
+          // once, the longer (libwebrtc counts a gap as one or the other, but an engine needn't: #205's
+          // verifier gave 4000 ms for one 2 s outage); different receivers add up.
+          const moved = [["freezeCount", "totalFreezesDuration"], ["pauseCount", "totalPausesDuration"]].map(([n, d]) => {
+            const cnt = typeof r[n] === "number" ? r[n] - (typeof was[n] === "number" && r[n] >= was[n] ? was[n] : 0) : 0;
+            const dur = typeof r[d] === "number" ? r[d] - (typeof was[d] === "number" && r[d] >= was[d] ? was[d] : 0) : 0;
+            return cnt > 0 && dur > 0 ? { cnt, ms: 1000 * dur } : null;
+          }).filter(Boolean);
+          if (moved.length) {
+            const ms = moved.length === 2 ? Math.max(moved[0].ms, moved[1].ms) : moved[0].ms;
+            frozenMs += ms;
+            longest = Math.max(longest, ms);               // two in one interval: their sum, an upper bound
+            gaps += Math.max(...moved.map((m) => m.cnt));
+          }
+          prev.set(key, r);
+          const transport = (reports || []).find((x) => x.type === "transport" && x.selectedCandidatePairId);
+          const pair = (transport && byId.get(transport.selectedCandidatePairId)) ||
+            (reports || []).find((x) => x.type === "candidate-pair" && (x.nominated || x.selected) && x.state === "succeeded");
+          last = { r, codec: byId.get(r.codecId) || {}, local: pair ? byId.get(pair.localCandidateId) || {} : null };
+        }
+      }
+      if (lastT !== null && decoded === 0 && smp.t - lastT < EMPTY_MIN_MS && frozenMs === 0) {
+        noVideo += smp.t - lastT;          // two samples too close to say (the window's end): neither
+      } else if (lastT !== null && decoded === 0) {
+        noVideo += smp.t - lastT;
+        if (!run) where.push([lastT, smp.t]); else where[where.length - 1][1] = smp.t;
+        run += smp.t - lastT;
+        stall += smp.t - lastT;
+        maxGap = Math.max(maxGap, run);
+      } else if (lastT !== null) {
+        stall += Math.max(0, frozenMs - run);               // the run before is already counted
+        if (frozenMs > run) where.push([Math.max(samples[0].t, smp.t - frozenMs - (smp.t - lastT)), smp.t]);
+        maxGap = Math.max(maxGap, longest, run);
+        run = 0;
+      }
+      lastT = smp.t;
+    });
+    if (!last) return { inbound: false, sessions: 0, receivers: 0 };
+    const r2 = (k) => (total[k] === null ? null : round2(total[k]));
+    const span = times[times.length - 1] - times[0];
+    // A receiver that never reported freezes (freezeCount): its stalls and gaps are n/a, not 0.
+    if (total.freezeCount === null) {
+      maxGap = null;
+      stall = null;
+    }
+    // No freeze, pause or empty interval: every gap was under the freeze rule for the mean interval.
+    const mean = total.framesDecoded ? span / total.framesDecoded : null;
+    const bound = maxGap === 0 && mean !== null ? Math.max(3 * mean, mean + 150) : null;
+    return {
+      inbound: true, sessions: pcs.size, receivers: prev.size, no_video_ms: round2(noVideo),
+      span_ms: round2(span), clock, stalls_reported: total.freezeCount !== null,
+      stall_ms: stall === null ? null : round2(stall),
+      max_gap_ms: maxGap === null ? null : bound !== null ? round2(bound) : (maxGap || total.framesDecoded ? round2(maxGap) : null),
+      max_gap_bound: bound !== null, gaps,
+      stalls_at: where.slice(0, 20).map(([a, b]) => [round2(a), round2(b)]),
+      frames_received: r2("framesReceived"), frames_decoded: r2("framesDecoded"), frames_dropped: r2("framesDropped"),
+      key_frames: r2("keyFramesDecoded"), freezes: r2("freezeCount"), freeze_s: r2("totalFreezesDuration"),
+      pauses: r2("pauseCount"), pause_s: r2("totalPausesDuration"), packets_lost: r2("packetsLost"),
+      nacks: r2("nackCount"), plis: r2("pliCount"),
+      jitter_buffer_ms: total.jitterBufferDelay !== null && total.jitterBufferEmittedCount
+        ? round2((1000 * total.jitterBufferDelay) / total.jitterBufferEmittedCount) : null,
+      decoder: last.r.decoderImplementation || null,
+      power_efficient: typeof last.r.powerEfficientDecoder === "boolean" ? last.r.powerEfficientDecoder : null,
+      codec: last.codec.mimeType || null, fmtp: last.codec.sdpFmtpLine || null,
+      candidate: last.local ? { local: last.local.candidateType || null, relay: last.local.relayProtocol || null,
+                                protocol: last.local.protocol || null } : null,
+    };
+  }
+
+  // A wait of `ms` that ends at the first of a timer and an animation frame past the time (protocol
+  // 8, #202: on the S1's heavy view a 30 s wait checked by a timer took 140 s, the timers queued
+  // behind the frontend's work while frames, which Gecko runs first, kept coming). The timer still
+  // ends it when no frame comes (a hidden page draws none). `env`: now, setTimeout,
+  // requestAnimationFrame (the page's own; a test's fakes).
+  function pacedSleep(ms, env) {
+    return new Promise((resolve) => {
+      const end = env.now() + ms;
+      let over = false;
+      const finish = () => { if (!over) { over = true; resolve(); } };
+      env.setTimeout(finish, ms);
+      const tick = () => { if (over) return; if (env.now() >= end) finish(); else env.requestAnimationFrame(tick); };
+      env.requestAnimationFrame(tick);
+    });
+  }
+
+  // A stream's frames shown over the window, from the best count the engine gives, and which:
+  // - "webrtc": the WebRTC receiver's framesDecoded: frames the decoder handed to the renderer. Its
+  //   framesDropped are frames that never came out of the decoder (the frame buffer's drops, and
+  //   frames the decoder skipped or lost on a reset: libwebrtc video_stream_buffer_controller.cc and
+  //   generic_decoder.cc in GeckoView 159), so they are not in framesDecoded and aren't subtracted;
+  //   drops after the decoder are in no count ("Not including frames dropped in the rendering pipe",
+  //   Gecko's RTCRtpReceiver.cpp). #202's smoke 4 on the S1: 1090 decoded, 690 dropped on heavy;
+  // - "quality": getVideoPlaybackQuality (totalVideoFrames less dropped), the decoder's count. Gecko
+  //   fills it only for an element with a media decoder, not for a MediaStream (HTMLVideoElement.cpp,
+  //   GetVideoPlaybackQuality), where it reads 0: so 0 while rVFC saw frames is "not reported";
+  // - "rvfc": requestVideoFrameCallback's callbacks, which can undercount (one callback for two frames
+  //   in one rendering update: Chrome, 2026-11-13, 60 callbacks for 77 frames).
+  function shownFrames({ quality, webrtc, callbacks, rvfc }) {
+    if (webrtc && typeof webrtc.frames_decoded === "number") {
+      return { frames: Math.max(0, webrtc.frames_decoded), source: "webrtc" };
+    }
+    if (quality && typeof quality.decoded === "number" && !(quality.decoded === 0 && callbacks > 0)) {
+      return { frames: Math.max(0, quality.decoded - (quality.dropped || 0)), source: "quality" };
+    }
+    return rvfc ? { frames: callbacks, source: "rvfc" } : { frames: null, source: "none" };
+  }
+
   const api = { BUDGET_MS, FROZEN_MS, LINE_MAX, frameStats, intervals, nearestRank, band, frameBand, measureMs, consoleLines,
-                skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps };
+                skyToViolet, usableStep, freeStep, hlsFetches, cardRendered, videoGaps, webrtcWindow, shownFrames,
+                pacedSleep };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GWStats = api;
 })(this);

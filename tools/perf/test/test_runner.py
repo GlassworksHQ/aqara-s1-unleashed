@@ -1,8 +1,10 @@
 """run.sh and perfrun.py end to end against test/fake_adb.py (no device)."""
+import contextlib
 import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -20,6 +22,8 @@ sys.path.insert(0, os.path.dirname(HERE))
 import fakeha  # noqa: E402
 import perfrun  # noqa: E402
 import report  # noqa: E402
+import summary  # noqa: E402
+import grade  # noqa: E402
 import threading  # noqa: E402
 
 
@@ -62,8 +66,10 @@ class Runner(unittest.TestCase):
         os.chmod(adb, 0o755)
         env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="2",
                    GW_PERF_COLD_SETTLE="0", GW_PERF_RUN_GAP="0", GW_PERF_BETWEEN_QUIET="0.5", GW_PERF_FRONTEND=STUB_FRONTEND,
-                   GW_PERF_SWITCH_SETTLE="0", FAKE_HA_URL="http://127.0.0.1:18089", GW_PERF_CAMERA=STUB_CAMERA)
+                   GW_PERF_SWITCH_SETTLE="0", FAKE_HA_URL="http://127.0.0.1:18089", GW_PERF_CAMERA=STUB_CAMERA,
+                   GW_PERF_FAKE_PYTHON=sys.executable)
         env.pop("ANDROID_SERIAL", None)
+        cls.state = state
         cls.out = os.path.join(cls.tmp, "out")
         cls.proc = subprocess.run([RUN, "--frame", "test-frame", "--runs", "1", "--out", cls.out, "--port", "18089", "--taps", "2",
                                    "--restore-dashboard", RESTORE],
@@ -91,15 +97,16 @@ class Runner(unittest.TestCase):
         self.assertEqual(g["viewport"]["state"], "ok")
         ref = r["graded"]["reference"]
         self.assertEqual(ref["errors"], [])
-        self.assertEqual(set(ref["tiers"]), {"light", "typical", "heavy"})
+        self.assertEqual(set(ref["tiers"]), {"light", "typical-nocam", "typical", "heavy"})
         self.assertEqual(ref["engine_uris"], ["about:blank"])
         self.assertEqual(ref["own_page_states"], ["reference"])        # the kiosk came back to the fake HA
         self.assertGreater(ref["start_ms"]["median"], 0)                  # restart: process start to usable
         self.assertEqual(ref["restart_to"], "usable")
         self.assertEqual(ref["engine_ready_ms"]["n"], 1)                  # kept as detail
-        self.assertEqual(ref["orders"], [["light", "typical", "heavy"]])
-        self.assertEqual(ref["per_run"][0]["between"], ["still", "still", "still"])   # after the restart page and each page
-        for t in ("light", "typical", "heavy"):
+        self.assertEqual(ref["orders"], [["light", "typical-nocam", "typical", "heavy"]])
+        # After the restart page and each page, the HLS copies included (#202).
+        self.assertEqual(ref["per_run"][0]["between"], ["still"] * 6)
+        for t in ("light", "typical-nocam", "typical", "heavy"):
             s = ref["tiers"][t]
             self.assertIsNotNone(s["load_ms"], t)
             self.assertIsNotNone(s["inp_ms"], t)
@@ -115,6 +122,44 @@ class Runner(unittest.TestCase):
         self.assertEqual(r["real_use"]["idle"]["samples"], 1)        # the reference dashboard's samples aren't real use
         self.assertEqual({p["id"] for p in r["real_use"]["panes"]}, {"radio"})
 
+    def test_the_camera_videos_path_was_asked_and_recorded(self):
+        """Protocol 7 (#202, option B): run.sh asked the panel (UDP, then TCP; this fake panel reaches
+        nothing), fell back to adb, and the report says so beside the cameras."""
+        with open(os.path.join(self.state, "lan_checks.json")) as f:
+            self.assertEqual(json.load(f), ["udp", "tcp"])
+        t = self.rep["webrtc_transport"]
+        self.assertEqual((t["transport"], t["chosen_by"]), ("adb", "auto"))
+        self.assertTrue(t["limited"])
+        with open(os.path.join(self.out, "report.md")) as f:
+            self.assertIn("Camera video through the test's adb link (USB)", f.read())
+
+    def test_the_hls_copies_come_after_the_graded_views(self):
+        """#202: run.sh opens the camera pages' HLS copies after each run's graded views, without
+        swipes; they're detail beside the graded WebRTC cameras and never in the grade."""
+        with open(os.path.join(self.state, "opened.json")) as f:
+            self.assertEqual(json.load(f), ["light", "typical-nocam", "typical", "heavy", "typical-hls", "heavy-hls"])
+        with open(os.path.join(self.out, "refstart-1.json")) as f:
+            c = json.load(f)
+        self.assertEqual(sorted(c["fallback"]), ["heavy-hls", "typical-hls"])
+        self.assertEqual(c["fallback"]["heavy-hls"]["swipes"], [])
+        # Each gesture's time on this computer's clock and how long `input` took (#202, smoke 5).
+        sent = c["gestures_sent"]
+        self.assertEqual({g[2] for g in sent}, {"tap", "swipe"})
+        self.assertTrue(all(isinstance(g[1], float) and g[3] >= 0 for g in sent))
+        self.assertEqual(sum(1 for g in sent if g[0] == "heavy" and g[2] == "tap"), 2)
+        self.assertEqual(c["order"], ["light", "typical-nocam", "typical", "heavy"])
+        ref = self.rep["graded"]["reference"]
+        for t in ("typical", "heavy"):
+            self.assertEqual({r["path"] for r in ref["tiers"][t]["camera_runs"]}, {"web_rtc"}, t)
+            fb = ref["tiers"][t]["camera_fallback"]
+            self.assertEqual((fb["path"], [r["view"] for r in fb["runs"]]), ("hls", [f"{t}-hls"]), t)
+        # The decoders: over HLS the hardware one per stream; over WebRTC none logged (software).
+        self.assertEqual(ref["tiers"]["heavy"]["camera_fallback"]["runs"][0]["media"],
+                         {"codecs": ["OMX.allwinner.video.decoder.avc"] * 4, "flushes": 2, "eos": 1})
+        self.assertEqual(ref["tiers"]["typical"]["camera_fallback"]["runs"][0]["media"]["codecs"],
+                         ["OMX.allwinner.video.decoder.avc"])
+        self.assertIsNone(ref["tiers"]["heavy"]["camera_runs"][0]["media"])
+
     def test_ram_on_the_reference_dashboards(self):
         """#68: RAM per process at idle on the typical reference dashboard after the graded run, and the
         peak from the samples between the graded pages (one after each)."""
@@ -122,11 +167,11 @@ class Runner(unittest.TestCase):
         self.assertEqual(ram["reference_idle"]["samples"], 1)
         self.assertEqual(ram["reference_idle"]["app_pss_kb"]["median"], 570000)
         self.assertEqual(set(ram["reference_idle"]["by_role_pss_kb"]), {"main", "gpu", "tab"})
-        self.assertEqual(ram["graded_peak"]["samples"], 3)
+        self.assertEqual(ram["graded_peak"]["samples"], 4)
         self.assertEqual(ram["graded_peak"]["app_pss_kb"], 570000)
         self.assertEqual(ram["graded_peak"]["app_rss_hwm_kb"], 900000)      # VmHWM of the three processes
         with open(os.path.join(self.out, "refstart-1.json")) as f:
-            self.assertEqual([m["after"] for m in json.load(f)["memory"]], ["light", "typical", "heavy"])
+            self.assertEqual([m["after"] for m in json.load(f)["memory"]], ["light", "typical-nocam", "typical", "heavy"])
         self.assertTrue(ram["budget"]["ok"])
         self.assertEqual((ram["panes"], ram["panes_not_switched"]), ([], []))       # test-frame has no panes
         with open(os.path.join(self.out, "report.md")) as f:
@@ -152,8 +197,8 @@ class Runner(unittest.TestCase):
         inputs = sorted({c for c in shell if c.startswith("input ")})
         # Taps on the toggle and swipes where the page asked, with its coordinates: nothing else.
         self.assertEqual(inputs, ["input keyevent KEYCODE_WAKEUP", "input swipe 720 612 720 108 300", "input tap 720 360"])
-        self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 6)                 # 2 on each page
-        self.assertEqual(sum(1 for c in shell if c.startswith("input swipe ")), 6)            # 2 on each page
+        self.assertEqual(sum(1 for c in shell if c == "input tap 720 360"), 12)    # 2 on each page and HLS copy (#202)
+        self.assertEqual(sum(1 for c in shell if c.startswith("input swipe ")), 8)            # 2 on each page; none on a copy
         forbidden = re.compile(r"(^|[;&|]\s*)(settings|svc|cmd|setprop|am broadcast|pm (?!path\b))|--ez ")   # no pane is switched without --pane-ram
         self.assertEqual([c for c in shell if forbidden.search(c)], [])
         extras = {m for c in shell for m in re.findall(r"--e\w \w+", c)}
@@ -165,7 +210,8 @@ class Runner(unittest.TestCase):
         self.assertTrue(opens[0].startswith("http://127.0.0.1:18089/clarity/page/index.html?"), opens[0])
         self.assertEqual(opens[1], "http://127.0.0.1:18089/clarity-ref/typical")       # the idle sample's page, no nonce
         views = [c.split()[1:4:2] for c in self.commands if c.startswith("view ")]
-        self.assertEqual(views, [["light", "taps=2"], ["typical", "taps=2"], ["heavy", "taps=2"]])
+        self.assertEqual(views, [["light", "taps=2"], ["typical-nocam", "taps=2"], ["typical", "taps=2"], ["heavy", "taps=2"],
+                                 ["typical-hls", "taps=2"], ["heavy-hls", "taps=2"]])
 
     def test_no_gesture_without_the_current_pages_request(self):
         """The fake rejects any tap or swipe that no current *-ready line asked for."""
@@ -203,7 +249,8 @@ def fake_env(tmp, **extra):
     os.chmod(adb, 0o755)
     extra.setdefault("FAKE_HA_URL", HA.url if HA else "")
     env = dict(os.environ, ADB=adb, FAKE_ADB_STATE=state, GW_PERF_IDLE_SETTLE="0", GW_PERF_IDLE_WINDOW="1",
-               GW_PERF_FRONTEND=STUB_FRONTEND, GW_PERF_CAMERA=STUB_CAMERA, GW_PERF_SWITCH_SETTLE="0", GW_PERF_PANES_SAVE_S="0", **extra)
+               GW_PERF_FRONTEND=STUB_FRONTEND, GW_PERF_CAMERA=STUB_CAMERA, GW_PERF_SWITCH_SETTLE="0", GW_PERF_PANES_SAVE_S="0",
+               GW_PERF_FAKE_PYTHON=sys.executable, **extra)
     env.pop("ANDROID_SERIAL", None)
     return env, state
 
@@ -273,7 +320,7 @@ class HomeRelaunch(unittest.TestCase):
             c = json.load(f)
         self.assertEqual(c["launch"], "relaunched-by-system")
         self.assertEqual(c["own_page_state"], "finished-still")
-        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
+        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical", "typical-nocam"])
         self.assertTrue(all("step" in e and "page" in e for e in c["tiers"].values()))
         self.assertGreater(c["engine_mono"], c["proc_mono"])
 
@@ -298,6 +345,75 @@ def unasked(tmp):
         return json.load(f)
 
 
+class CpuClock(unittest.TestCase):
+    """#244: the runner samples every core's clock while a view is open (read-only sysfs cats)."""
+
+    def test_each_view_has_its_clock(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, GW_PERF_CPU_CLOCK_S="0.3")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["cpu_max_khz"], {"0": 1608000, "1": 1608000, "2": 1608000, "3": 1608000})
+        views = {v for v, _, _ in c["cpu_khz"]}
+        self.assertLessEqual(views, {"light", "typical-nocam", "typical", "heavy"})
+        self.assertTrue(views, c.get("cpu_khz"))
+        self.assertTrue(all(k == {"0": 1200000, "1": 1200000, "2": 1200000, "3": 1200000} for _, _, k in c["cpu_khz"]))
+        self.assertEqual(c["cpu_clock_s"], 0.3)
+        self.assertNotIn("thread_errors", c)                   # the sampler starts after the run's state exists
+        # Only while a view is open, not after its done line: the runner then waits 1.5 s more before it
+        # stops (break_after), and the old rule went on sampling the last view through it.
+        last = c["order"][-1]
+        swipe_end = max(t for v, t, kind, _ in c["gestures_sent"] if v == last)
+        self.assertLess(max(t for v, t, _ in c["cpu_khz"] if v == last), swipe_end + 1.2)
+        with open(os.path.join(tmp, "state", "..", "state", "commands.log")) as f:
+            log = f.read()
+        self.assertIn("cpufreq/scaling_cur_freq", log)
+        self.assertNotRegex(log, r"echo .*> */sys|setprop|cpufreq/scaling_(max|min|setspeed)")   # reads only
+
+
+class CpuNumbers(unittest.TestCase):
+    """CodeRabbit on #250: the shell lists cpu10 before cpu2; each reading keeps its CPU's number."""
+
+    def test_numbers_from_the_paths(self):
+        sys.path.insert(0, os.path.dirname(HERE))
+        import perfrun
+
+        class Dev:
+            def sh(self, cmd, timeout=60):
+                assert "scaling_cur_freq" in cmd and "cat" in cmd
+                return "".join(f"/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq {k}\n"
+                               for i, k in ((0, 1200000), (1, 1200000), (10, 1608000), (2, 1008000)))
+        self.assertEqual(perfrun.cpu_khz(Dev(), "scaling_cur_freq"), {"0": 1200000, "1": 1200000, "2": 1008000, "10": 1608000})
+        self.assertEqual(list(perfrun.cpu_khz(Dev(), "scaling_cur_freq")), ["0", "1", "2", "10"])
+
+
+class Threads(unittest.TestCase):
+    """s1rtc5: a local named like the runner's stream-stop helper made it a bool, and its thread died
+    on every view (TypeError: 'bool' object is not callable) while the runs went on. Any exception in
+    a runner thread now fails the run, and a graded run raises none."""
+
+    def test_a_graded_run_raises_nothing_in_any_thread(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, taps=2)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertNotIn("Exception in thread", p.stderr)
+        self.assertNotIn("thread_errors", c)
+        self.assertIsNone(c["error"])
+
+    def test_a_thread_that_raises_is_recorded(self):
+        sys.path.insert(0, os.path.dirname(HERE))
+        import perfrun
+        old = threading.excepthook
+        try:
+            errors = perfrun.watch_threads()
+            th = threading.Thread(target=lambda: True(), name="still")
+            with open(os.devnull, "w") as quiet, contextlib.redirect_stderr(quiet):
+                th.start()
+                th.join()
+        finally:
+            threading.excepthook = old
+        self.assertEqual(errors, ["still: TypeError: 'bool' object is not callable"])
+
+
 class FakeMatchesThePanel(unittest.TestCase):
     """smoke7 failed on the panel while CI was green: the fake logged shorter lines than the page
     does. The fake must log the reference page's lines in the shapes the S1 logged them
@@ -318,6 +434,26 @@ class FakeMatchesThePanel(unittest.TestCase):
         for shape, keys in want.items():
             with self.subTest(shape):
                 self.assertEqual(got[shape], {tuple(keys)})
+
+
+class FakeStateIsAtomic(unittest.TestCase):
+    """#251's CI flake: a fake adb process read a state file another was writing (truncated, not yet
+    written) and got nothing; the fake screen then slept. Writes are now atomic."""
+
+    def test_a_reader_never_sees_a_half_written_file(self):
+        tmp = tempfile.mkdtemp()
+        env = dict(os.environ, FAKE_ADB_STATE=tmp)
+        code = ("import sys, time; sys.path.insert(0, %r); import fake_adb as F\n"
+                "if sys.argv[1] == 'w':\n"
+                "    for i in range(3000): F.save('awake_at.json', time.time())\n"
+                "else:\n"
+                "    F.save('awake_at.json', time.time()); bad = 0\n"
+                "    for i in range(3000): bad += F.state('awake_at.json') is None\n"
+                "    print(bad)\n") % HERE
+        w = subprocess.Popen([sys.executable, "-c", code, "w"], env=env)
+        r = subprocess.run([sys.executable, "-c", code, "r"], env=env, capture_output=True, text=True, timeout=120)
+        w.wait(timeout=120)
+        self.assertEqual(r.stdout.strip(), "0", r.stderr[-800:])
 
 
 class FakeSplitsLikeThePage(unittest.TestCase):
@@ -376,16 +512,16 @@ class LongLines(unittest.TestCase):
         p, c = refstart(tmp, FAKE_NO_SPLIT="1")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertIsNone(c["error"])
-        self.assertEqual(c["missing_steps"], ["light", "typical", "heavy"])
-        # Each page's updates step, and heavy's camera line (four streams and the HLS fetches: also
-        # longer than a logcat line).
-        self.assertEqual(c["bad_page_lines"], 4)
+        self.assertEqual(c["missing_steps"], ["light", "typical-nocam", "typical", "heavy"])
+        # Each page's updates step, and the camera lines: since protocol 6 (#202) even typical's one
+        # stream carries its WebRTC receiver's counts, so it is longer than a logcat line too.
+        self.assertEqual(c["bad_page_lines"], 6)
         self.assertNotIn("camera", c["tiers"]["heavy"])
-        self.assertIn("camera", c["tiers"]["typical"])                   # one stream: short enough
+        self.assertNotIn("camera", c["tiers"]["typical"])
         with open(os.path.join(tmp, "device.json"), "w") as f:
             json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
         rep = report.build(tmp)
-        self.assertIn("4 page line(s) didn't parse or never arrived whole (cut off in logcat?)", rep["grade"]["provisional_reasons"])
+        self.assertIn("6 page line(s) didn't parse or never arrived whole (cut off in logcat?)", rep["grade"]["provisional_reasons"])
         t = rep["graded"]["reference"]["tiers"]["light"]
         self.assertIsNotNone(t["scroll"])
         self.assertEqual(t["updates_errors"], ["the page's updates step never arrived"])
@@ -396,21 +532,21 @@ class LongLines(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         p, c = refstart(tmp, FAKE_DROP_LAST_PART="1")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
-        self.assertEqual(c["missing_steps"], ["light", "typical", "heavy"])
-        self.assertEqual(c["bad_page_lines"], 3)                         # each page's
-        self.assertEqual([e["lost_lines"] for e in c["tiers"].values()], [1, 1, 1])
+        self.assertEqual(c["missing_steps"], ["light", "typical-nocam", "typical", "heavy"])
+        self.assertEqual(c["bad_page_lines"], 4)                         # each page's
+        self.assertEqual([e["lost_lines"] for e in c["tiers"].values()], [1, 1, 1, 1])
 
     def test_a_lost_scroll_step_is_counted_and_makes_it_provisional(self):
         """A swipe answered with no scroll step back would leave 5 of 6 swipes pooled, unremarked."""
         tmp = tempfile.mkdtemp()
         p, c = refstart(tmp, FAKE_DROP_SCROLL_STEP="1")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
-        self.assertEqual([e["lost_scroll_steps"] for e in c["tiers"].values()], [1, 1, 1])
+        self.assertEqual([e["lost_scroll_steps"] for e in c["tiers"].values()], [1, 1, 1, 1])
         self.assertEqual(c["bad_page_lines"], 0)                         # nothing cut: the line never came
         with open(os.path.join(tmp, "device.json"), "w") as f:
             json.dump({"frame": "f", "mem_total_kb": 1, "display": {"density": "240"}, "app": {"package": "sh.edm.s1kiosk"}}, f)
         g = report.build(tmp)["grade"]
-        self.assertIn("3 swipe(s) answered with no scroll step back", g["provisional_reasons"])
+        self.assertIn("4 swipe(s) answered with no scroll step back", g["provisional_reasons"])
 
     def test_page_lines_joins_parts_and_counts_what_doesnt_parse(self):
         pl = perfrun.P.PageLines()
@@ -458,7 +594,7 @@ class NonceGate(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertEqual(unasked(tmp), [])
         with open(os.path.join(tmp, "state", "swipes.json")) as f:
-            self.assertEqual(json.load(f), 6)                 # 2 on each graded page, none on the warm-up
+            self.assertEqual(json.load(f), 8)                 # 2 on each graded page, none on the warm-up
         self.assertIsNone(c["error"])
 
 
@@ -531,16 +667,16 @@ class Order(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         p, c = refstart(tmp, run=2)
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
-        self.assertEqual(c["order"], ["typical", "heavy", "light"])
-        self.assertEqual(self.opened(tmp), ["typical", "heavy", "light"])
+        self.assertEqual(c["order"], ["typical-nocam", "typical", "heavy", "light"])
+        self.assertEqual(self.opened(tmp), ["typical-nocam", "typical", "heavy", "light"])
         self.assertIsNotNone(c["restart_page"])
-        self.assertEqual(len(c["between"]), 3)
+        self.assertEqual(len(c["between"]), 4)
 
     def test_run_3(self):
         tmp = tempfile.mkdtemp()
         p, c = refstart(tmp, run=3)
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
-        self.assertEqual(self.opened(tmp), ["heavy", "light", "typical"])
+        self.assertEqual(self.opened(tmp), ["typical", "heavy", "light", "typical-nocam"])
 
 
 class Restart(unittest.TestCase):
@@ -580,19 +716,21 @@ class Restart(unittest.TestCase):
         p, c = refstart(tmp, FAKE_NO_RESTART_DONE="1")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertTrue(c["restart_done_missing"])
-        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
+        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical", "typical-nocam"])
         self.assertIsNone(self.build(tmp)["graded"]["reference"]["per_run"][0]["start_error"])
 
-    def run_short(self, timeout, **env):
+    def run_short(self, timeout, fallback="", **env):
         with FakeHA() as ha:
             tmp = tempfile.mkdtemp()
             env.setdefault("FAKE_SAVED_URL", ha.url + "/clarity-ref/start")
             e, state = fake_env(tmp, GW_PERF_COLD_SETTLE="0", FAKE_HA_URL=ha.url, **env)
             p = subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "perfrun.py"), "refstart", "--out", tmp,
                                 "--run", "1", "--settle", "0", "--url", ha.url, "--taps", "0", "--timeout", str(timeout),
-                                "--between-quiet", "0.3"], env=e, capture_output=True, text=True, timeout=timeout + 60)
+                                "--between-quiet", "0.3", "--fallback", fallback], env=e, capture_output=True, text=True,
+                               timeout=timeout + 60)
             with open(os.path.join(tmp, "refstart-1.json")) as f:
                 c = json.load(f)
+            self.last_out = tmp
             with open(os.path.join(state, "commands.log")) as f:
                 return p, c, f.read().splitlines()
 
@@ -609,6 +747,129 @@ class Restart(unittest.TestCase):
         p, c, _ = self.run_short(25, FAKE_HANG="heavy")
         self.assertNotEqual(p.returncode, 0)
         self.assertEqual(c["error"], "heavy didn't finish within 25 s")
+
+    def test_a_fallback_view_that_never_finishes_fails_only_itself(self):
+        """#202: the HLS copies come after the graded views; one that hangs (or a screen that goes off
+        during it) leaves the graded run standing, and says why."""
+        p, c, _ = self.run_short(40, fallback="typical-hls,heavy-hls", FAKE_HANG="heavy-hls", FAKE_SCREEN_OFF="heavy-hls")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNone(c["error"])
+        self.assertEqual(c["fallback_error"], "heavy-hls didn't finish within 40 s")
+        self.assertTrue(c["fallback"]["typical-hls"]["done"])
+        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical", "typical-nocam"])
+        self.assertTrue(all(e.get("done") for e in c["tiers"].values()))
+        self.assertEqual(c["fallback"]["heavy-hls"]["error"], "the screen went off during this view")
+
+    def test_a_screen_off_in_a_graded_view_stays_the_runs_error_when_a_copy_follows(self):
+        """CodeRabbit on #205: the copies after it must not take a graded view's screen-off away."""
+        p, c, _ = self.run_short(90, fallback="typical-hls,heavy-hls", FAKE_SCREEN_OFF="typical")
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("the screen went off during the graded run", c["error"])
+        self.assertNotIn("fallback_error", c)
+
+    def test_a_view_that_cant_finish_times_out_and_the_run_is_still_graded(self):
+        """#202, smoke 7: heavy went live and never finished; the run used to wait 900 s and be dropped.
+        Now the view times out at the deadline, a live view nothing touches gets the wake intent so the
+        screen stays on, what heavy measured stands, and what it didn't fails: measured, not missing,
+        so the grade isn't provisional for it."""
+        p, c, _ = self.run_short(60, FAKE_HANG_LIVE="heavy", GW_PERF_STAGE_IDLE_S="12", GW_PERF_LIVE_IDLE_WAKE_S="2",
+                                 GW_PERF_KEEP_AWAKE_S="0.5")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNone(c["error"])
+        self.assertEqual(c["timed_out"], ["heavy"])
+        self.assertGreaterEqual(c["tiers"]["heavy"]["timed_out_s"], 12)     # usable, then nothing for 12 s
+        self.assertEqual(c["tiers"]["heavy"]["timed_out_after"], "warmup")
+        self.assertIn("heavy", {w[0] for w in c["live_wakes"]})
+        self.assertNotIn("screen_off", c)
+        self.assertNotIn("recoveries", c)                     # heavy was run 1's last view: nothing to carry on to
+        rep = self.build(self.last_out)
+        ref = rep["graded"]["reference"]
+        self.assertEqual((ref["graded_runs"], ref["timed_out"]), (1, [[1, "heavy"]]))
+        heavy = ref["tiers"]["heavy"]
+        self.assertIsNotNone(heavy["load_ms"])                                  # what heavy measured stands
+        self.assertEqual((heavy["timed_out_runs"], heavy["timed_out_tasks"]), (1, ["camera", "scroll", "tap", "updates"]))
+        self.assertNotIn("heavy.scroll", rep["grade"]["missing"])               # what it didn't fails, measured
+        self.assertEqual(rep["grade"]["bands"]["heavy"]["scroll"], "slow")
+        self.assertFalse(any("deadline" in r for r in rep["grade"]["provisional_reasons"]), rep["grade"]["provisional_reasons"])
+        self.assertIn("heavy in run 1 (camera, scroll, tap, updates)", report.markdown(rep))   # named in the detail
+
+    def test_after_a_view_times_out_the_kiosk_restarts_and_the_run_carries_on(self):
+        """#202, s1rtc3: heavy timed out in every run, and in runs 2 and 3 the views after it were never
+        opened, so the summary was refused. Now the runner restarts the kiosk and opens the rest: the
+        view that can't finish fails its own tasks and nothing else."""
+        p, c, log = self.run_short(90, fallback="typical-hls", FAKE_HANG_LIVE="typical", GW_PERF_STAGE_IDLE_S="8",
+                                   GW_PERF_LIVE_IDLE_WAKE_S="2", GW_PERF_KEEP_AWAKE_S="0.5", GW_PERF_RECOVER_LAUNCH_S="1")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNone(c["error"])
+        self.assertEqual(c["timed_out"], ["typical"])
+        self.assertEqual(len(c["recoveries"]), 1)
+        self.assertEqual((c["recoveries"][0]["after"], c["recoveries"][0]["launch"]), ("typical", "am-start"))
+        self.assertTrue(c["tiers"]["heavy"].get("done"))                       # opened after the restart
+        self.assertTrue(c["fallback"]["typical-hls"].get("done"))
+        # The order: typical's open, the stop, the relaunch, then heavy's open.
+        order = [x for x in log if x.startswith(("view ", "shell am force-stop", "shell am start -W -n"))]
+        i = next(k for k, x in enumerate(order) if x.startswith("view typical "))
+        self.assertTrue(order[i + 1].startswith("shell am force-stop"), order)
+        self.assertTrue(order[i + 2].startswith("shell am start -W -n"), order)
+        self.assertTrue(order[i + 3].startswith("view heavy"), order)
+        # The run's restart is the first one's, not the recovery's.
+        self.assertEqual(c["restart_page"]["tier"], "start")
+        self.assertLess(c["restart_page"]["mono"], c["tiers"]["light"]["page"]["mono"])
+        rep = self.build(self.last_out)
+        g = rep["grade"]
+        self.assertNotIn("typical.scroll", g["missing"])
+        self.assertEqual([t for t in ("light", "typical", "heavy") if g["bands"][t]["scroll"] is None], [])
+        self.assertEqual(g["bands"]["typical"]["scroll"], "slow")
+        self.assertNotEqual(g["bands"]["heavy"]["scroll"], "slow")          # heavy measured as any run's
+        self.assertFalse(any("deadline" in r for r in g["provisional_reasons"]), g["provisional_reasons"])
+        # The summary: typical's timed-out run is in it as failing, and nothing reads as not measured.
+        out = summary.summarise(rep, allow_provisional=True)
+        self.assertEqual(out["pages"]["typical"]["timed_out_runs"], 1)
+        self.assertEqual(out["pages"]["typical"]["camera"]["runs"][0]["timed_out"], True)
+        self.assertEqual(out["pages"]["heavy"]["timed_out_runs"], 0)
+        # (This short run sends no taps, so light's and heavy's tap aren't measured; typical's fails.)
+        self.assertEqual([m for m in grade.grade_summary(out).get("missing") or [] if m.startswith("typical.")], [])
+
+    def test_the_screen_stays_on_through_a_slow_restart(self):
+        """s1rtc7 run 2: the screen went off 20.4 s after the force-stop, before the kiosk's first
+        frame (the S1's 20 s night timeout), and the restart then waited 280 s. Here the fake's
+        screen sleeps 4 s after the last wake or touch, through a 9 s restart: the wake key from the
+        stop on keeps it on, and every later phase has its own nudge."""
+        # The fake's screen sleeps 4 s after the last wake or touch, and every nudge comes each second:
+        # a 4x margin for a slow CI runner's adb stand-ins. The restart (9 s) outlasts the sleep twice.
+        nudged = dict(FAKE_SCREEN_SLEEP_S="4", FAKE_RESTART_SLOW="9", GW_PERF_RESTART_WAKE_S="1",
+                      GW_PERF_KEEP_AWAKE_S="1", GW_PERF_LIVE_IDLE_WAKE_S="1")
+        p, c, _ = self.run_short(90, **nudged)
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNone(c["error"])
+        self.assertNotIn("screen_off", c)
+        self.assertGreaterEqual(c["restart_wakes"], 6)                 # 9 s at one a second, and the relaunch's
+        # Without the restart's nudges the same fake screen goes off in the restart, as on the S1.
+        p, c, _ = self.run_short(90, **dict(nudged, GW_PERF_RESTART_WAKE_S="1000"))
+        self.assertEqual(c["screen_off"][0]["during"], "the restart", c.get("screen_off"))
+        self.assertIn("first the restart", c["error"])
+
+    def test_a_slow_view_that_keeps_going_isnt_cut_off(self):
+        """Protocol 8 (#202, s1rtc4): heavy was usable after 43 s and still working at 300 s, before its
+        swipes. The usable deadline covers only a view that never became usable; one that keeps
+        saying what it does runs every task."""
+        p, c, _ = self.run_short(90, FAKE_STAGE_DELAY="1.2", FAKE_STAGE_VIEW="heavy", GW_PERF_VIEW_DEADLINE_S="4",
+                                 GW_PERF_STAGE_IDLE_S="5")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNone(c["error"])
+        self.assertNotIn("timed_out", c)
+        self.assertTrue(c["tiers"]["heavy"]["done"])
+        self.assertGreater(len(c["tiers"]["heavy"]["swipes"]), 0)
+
+    def test_a_view_that_never_becomes_usable_times_out_at_the_deadline(self):
+        p, c, _ = self.run_short(90, FAKE_NEVER_USABLE="typical", GW_PERF_VIEW_DEADLINE_S="5", GW_PERF_STAGE_IDLE_S="60",
+                                 GW_PERF_RECOVER_LAUNCH_S="1")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["timed_out"], ["typical"])
+        self.assertEqual(c["tiers"]["typical"]["timed_out_after"], "usable")
+        self.assertTrue(c["tiers"]["heavy"]["done"])
+        rep = self.build(self.last_out)
+        self.assertEqual(rep["graded"]["reference"]["tiers"]["typical"]["timed_out_tasks"], ["camera", "open", "scroll", "tap", "updates"])
 
     def test_the_screen_is_kept_awake_while_views_open_but_not_while_live(self):
         p, c, log = self.run_short(120, FAKE_SLOW_VIEW="2.5", GW_PERF_KEEP_AWAKE_S="0.7")
@@ -673,11 +934,11 @@ class Cameras(unittest.TestCase):
         self.assertGreater(len(json.dumps({k: v for k, v in heavy.items() if k != "mono"}, separators=(",", ":"))), line_max)
         self.assertEqual((heavy["fetches"]["streams"], len(heavy["streams"])), (4, 4))
         self.assertEqual(tiers["heavy"]["camera_runs"][0]["fetches"]["segment"]["n"], 20)
-        # Which decoders each view got, from logcat (detail): one hardware decoder per stream.
-        self.assertEqual(c["media"]["heavy"], {"codecs": ["OMX.allwinner.video.decoder.avc"] * 4, "flushes": 2, "eos": 1})
-        self.assertEqual(c["media"]["typical"]["codecs"], ["OMX.allwinner.video.decoder.avc"])
-        self.assertNotIn("light", c["media"])
-        self.assertEqual(tiers["heavy"]["camera_runs"][0]["media"]["flushes"], 2)
+        # Protocol 6: the graded streams play over WebRTC, which the S1 decodes in software (#202's
+        # step 0): no hardware decoder in logcat. The HLS copies' decoders: FullRun.
+        self.assertEqual({r["path"] for r in tiers["heavy"]["camera_runs"]}, {"web_rtc"})
+        self.assertEqual(c.get("media") or {}, {})
+        self.assertIsNone(tiers["heavy"]["camera_runs"][0]["media"])
 
     def test_a_stream_that_never_plays_fails_the_task(self):
         tmp = tempfile.mkdtemp()
@@ -695,7 +956,7 @@ class NoisyLogcat(unittest.TestCase):
     def test_unrelated_lines_twice_a_second(self):
         p, c = refstart(tempfile.mkdtemp(), FAKE_LOGCAT_NOISE="0.5")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
-        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical"])
+        self.assertEqual(sorted(c["tiers"]), ["heavy", "light", "typical", "typical-nocam"])
 
     def test_unrelated_lines_twenty_a_second(self):
         p, c = refstart(tempfile.mkdtemp(), FAKE_LOGCAT_NOISE="0.05")
@@ -823,6 +1084,23 @@ class PortInUse(unittest.TestCase):
         self.assertIn(f"port {port} is already in use", p.stderr)
         with open(os.path.join(state, "commands.log")) as f:
             self.assertNotIn("--es url", f.read())           # the kiosk was never pointed anywhere
+
+
+    def test_the_relays_port_held_is_refused(self):
+        """#202: the WebRTC relay listens on --port + 1; a fake left there would answer the panel's TURN."""
+        tmp = tempfile.mkdtemp()
+        env, state = fake_env(tmp)
+        held = socket.socket()
+        held.bind(("127.0.0.1", 0))
+        held.listen(1)
+        self.addCleanup(held.close)
+        port = str(held.getsockname()[1] - 1)
+        p = subprocess.run([RUN, "--frame", "test-frame", "--out", os.path.join(tmp, "out"), "--port", port, "--skip-synthetic",
+                            "--skip-real-use", "--restore-dashboard", RESTORE], env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 2, p.stderr[-800:])
+        self.assertIn(f"port {held.getsockname()[1]} (the WebRTC relay's, --port + 1) is already in use", p.stderr)
+        with open(os.path.join(state, "commands.log")) as f:
+            self.assertNotIn("--es url", f.read())
 
 
 class CamerasOnlyWhenNeeded(unittest.TestCase):

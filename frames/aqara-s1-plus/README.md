@@ -82,8 +82,12 @@ Without root, the app can install over adb on its own, but you lose the radio mo
 | Timers | Beta |  |
 | Sendspin | Beta |  |
 | Zigbee and Thread radio | Beta | Zigbee coordinator or router, and Thread. |
-| Presence and light | Beta | Presence from the time-of-flight sensor. |
-| Wall base | Beta | The driver passes against an emulator that Aqara's own `bracket_cli` accepts. It has not yet been tried on a real base ([base-protocol.md](research/base-protocol.md), [bases.md](research/bases.md)). |
+| Time zone | Beta | Worked out: needs no special hardware. |
+| Diagnostics | Alpha | Worked out: needs no special hardware. Not yet checked on a panel. |
+| Bluetooth proxy | Alpha | Worked out: has Bluetooth LE. Its engine met the S1 (2026-11-14); the pane itself not yet. |
+| Wall base | Alpha | The driver passes against an emulator that Aqara's own `bracket_cli` accepts. It has not yet been tried on a real base ([base-protocol.md](research/base-protocol.md), [bases.md](research/bases.md)). |
+
+"Worked out" means `frame.json` doesn't rate the pane; its support comes from what the pane needs and what the frame has ([how](../README.md#the-panes-a-frame-runs)).
 
 ## Research notes
 
@@ -105,6 +109,7 @@ What we found on this device, and how ([all notes](../../docs/research/README.md
 - [boot-animation.md](research/boot-animation.md): What Android 10's boot animation and the 32 MiB boot image allow: texture caching, trim, the size budget, and what was cut from the #63 design
 - [idle-cpu.md](research/idle-cpu.md): Why the kiosk uses ~40% of a core at idle: the wake word's embedding model, per-thread numbers, and the options (#105)
 - [bluetooth.md](research/bluetooth.md): The panel's Bluetooth (RTL8821CS, shared with Wi-Fi), Android 10's scan rules from AOSP, and what HA needs from an ESPHome Bluetooth proxy (#121)
+- [view-open.md](research/view-open.md): Where typical's 4.7 s view open goes: HA's JavaScript on one Gecko thread at 1.5 GHz; the app candidates tried on the panel (none helped), and what's left upstream (#244)
 
 ## Files
 

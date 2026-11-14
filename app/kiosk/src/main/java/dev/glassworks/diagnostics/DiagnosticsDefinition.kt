@@ -28,7 +28,7 @@ class DiagnosticsDefinition(file: SharedPreferences) : PaneDefinition {
         // The tiles and the footer cover every entity: nothing to list again.
         return listOf(SettingsSection(id, "Diagnostics", covers = p.entities().map { it.objectId }.toSet(), items = listOf(
             SettingsItem.Tiles(3) { DiagnosticsPage.tiles(p::current, p::lastHour, p.lastSample, SystemClock.elapsedRealtime(), p.hasTemperature) },
-            SettingsItem.Note { DiagnosticsPage.footer(p.lastRestartReason, p.lastSample?.contentProcesses) },
+            SettingsItem.Note { DiagnosticsPage.footer(p.lastExitReason, p.lastSample?.contentProcesses) },
         )))
     }
 }

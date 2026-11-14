@@ -137,6 +137,10 @@ below as the release notes.
   it straight away. The *Thread join* sensor says how it went. Pasting the dataset still works.
 
 ### Fixed
+- **The screen stays on after Home Assistant wakes it.** After the panel had gone dark on its own,
+  a wake that wasn't a touch (Home Assistant's screen switch, a timer, voice, Wi-Fi setup) turned the
+  screen off again after about 20 seconds. Now it stays on until the panel's idle timeout, as after
+  a touch.
 - **A pane you turn off stays off after a restart.** Turning voice or music off, then restarting
   the app at once, could bring the pane back on: the setting was saved after the app had gone.
   Zoom, secure hosts and remote debugging, which restart the app, could lose their change the same

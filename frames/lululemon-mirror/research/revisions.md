@@ -1,7 +1,7 @@
 # Mirror revisions: which ones are a target, and how not to tell them apart
 
-**Status (2026-11-13): read only, no hardware.** One later revision of the Mirror is reported to use
-an NXP i.MX8 board, where only hardware-assisted (JTAG) access has been reported. It is not a target.
+**Status (2026-11-13): read only, no hardware.** Later revisions of the Mirror are reported to use
+an NXP i.MX8 board, where only hardware-assisted (JTAG) access has been reported. They are not a target.
 Screen size, year bought and branding don't tell you which board a unit has.
 
 Device: none. This note is read from three public sources at the commits below. Nothing was run, and
@@ -40,9 +40,9 @@ sources actually say about later revisions, and can a buyer tell them apart by s
 
 | Claim | Evidence | Grade |
 |---|---|---|
-| A later revision uses an NXP i.MX8 (i.MX8M Mini) board | repairman29 `supported-devices.md`; Onemoremichael `nxp.md` | read, 2026-11-13; no hardware |
+| Later revisions use an NXP i.MX8 (i.MX8M Mini) board | repairman29 `supported-devices.md`; Onemoremichael `nxp.md` | read, 2026-11-13; no hardware |
 | On it, only hardware-assisted (JTAG) access has been reported | Onemoremichael `nxp.md` | read, 2026-11-13; no hardware |
-| It is not a target for this frame | Different SoC, bootloader, Android and trust chain (repairman29); the frame is built for MSM8916 | Our decision |
+| They are not a target for this frame | Different SoC, bootloader, Android and trust chain (repairman29); the frame is built for MSM8916 | Our decision |
 | 40 vs 43 inches is a panel change; the source doesn't say whether the board changed with it | olm3ca `README.md` | read, 2026-11-13 |
 | Size, year and branding don't identify the board | Onemoremichael `panels.md`; olm3ca | read, 2026-11-13 |
 
@@ -57,6 +57,10 @@ must report MSM8916 and the expected partition sizes. If anything differs, stop.
 The sizes are known from one unit only: the maintainer's, read from `/sys/class/block/*/uevent` with
 the community image installed (#40). `system` is 1228 MB and `userdata` 5324 MB, the two partitions
 the install writes. Treat them as a reference, not a spec: no other unit has been read.
+
+The units differ: #40's sizes are megabytes, rounded, while `fastboot getvar partition-size:<name>` gives
+bytes, in hex. So compare to the nearest megabyte, and record the exact byte values the next time a unit
+is read in fastboot.
 
 ## Open questions
 
