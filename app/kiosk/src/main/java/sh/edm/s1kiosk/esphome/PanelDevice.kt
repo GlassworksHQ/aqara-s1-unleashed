@@ -133,7 +133,7 @@ class PanelDevice internal constructor(
     /** Read by the API server on its connection threads; replaced when voice is turned on or off. */
     @Volatile private lateinit var identity: DeviceIdentity
 
-    /** The node name it announces, or null before it has started. The Manage page answers to it as `.local`. */
+    /** The node name it announces, or null before it has started. The Manage page allows it as a Host header (`<name>.local`). */
     val nodeName: String? get() = if (::identity.isInitialized) identity.name else null
     private lateinit var entities: List<ApiEntity>
     private lateinit var coreEntities: List<ApiEntity>

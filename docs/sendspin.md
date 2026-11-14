@@ -3,7 +3,7 @@
 The kiosk app is a **native Sendspin player**. Music Assistant (MA) sees the panel as one of its
 own players, called **Glassworks Panel** (**S1 Panel** before #63), plays to it in sync with your other Sendspin speakers and can
 group it with them. You no longer need MA's "Home Assistant MediaPlayers" bridge for the panel.
-That bridge goes MA → HA → `media_player.s1_panel_speaker` and has no sync.
+That bridge goes MA → HA → `media_player.<device>_speaker` and has no sync.
 
 Code: `app/kiosk/src/main/java/sh/edm/s1kiosk/sendspin/`. The protocol core is pure
 JVM (`SendspinSession`, `SsCrypto`, `TimeFilter`, `PlaybackScheduler`, `WsClient`, `Flac`,
@@ -20,7 +20,7 @@ key, which HA provisions automatically):
    to MA. MA pairs with the panel on the open connection.
 3. MA creates the player **Glassworks Panel**. Its HA entity is `media_player.glassworks_panel` on a
    new panel, `media_player.s1_panel` on one MA met before #63 (from the `music_assistant`
-   integration; an entity id never changes once made). It is separate from the ESPHome `media_player.s1_panel_speaker`,
+   integration; an entity id never changes once made). It is separate from the ESPHome `media_player.<device>_speaker`,
    which keeps working for TTS, announcements and HA media.
 
 Verified on the panel on 2026-11-09 (MA 2.10.9, HA 2026.11.0):
@@ -44,8 +44,8 @@ web player and for the HA Voice PE.
 
 | Where | Setting | Default |
 |---|---|---|
-| HA switch `switch.s1_panel_music_assistant_player_sendspin` / `--ez sendspin_enabled` | Run the player | on |
-| HA diagnostic `sensor.s1_panel_music_assistant_player_status` | e.g. `ready, paired with Music Assistant (…)`, `playing from … (FLAC): Artist – Title`, `waiting for pairing or approval by …`; `…; FLAC off, using PCM: <reason>` after a [FLAC fallback](#flac) | |
+| HA switch `switch.<device>_music_assistant_player_sendspin` / `--ez sendspin_enabled` | Run the player | on |
+| HA diagnostic `sensor.<device>_music_assistant_player_status` | e.g. `ready, paired with Music Assistant (…)`, `playing from … (FLAC): Artist – Title`, `waiting for pairing or approval by …`; `…; FLAC off, using PCM: <reason>` after a [FLAC fallback](#flac) | |
 | `--es sendspin_server <host[:port][/path] or ws://…>` | Server address; `auto` = discovery | `auto` |
 | `--ez sendspin_unpaired_access true` | Let a server play **without pairing** (Sendspin "unpaired access", guest mode). MA then approves it automatically | off |
 | `--ez sendspin_flac false` | Offer only PCM (no FLAC). Switching it back on also retries FLAC after a fallback | on (FLAC first, PCM fallback) |
@@ -54,7 +54,7 @@ web player and for the HA Voice PE.
 [app/README.md](../app/README.md). Changing the server address or unpaired access reconnects
 (`client/goodbye` `restart`) so the new `client/hello` carries the new value (also for `sendspin_flac`). Volume, mute and
 the output delay are the Sendspin player's own (stored in `sendspin.xml`). They don't affect the
-voice/TTS volume of `media_player.s1_panel_speaker`, and vice versa. Android's media volume
+voice/TTS volume of `media_player.<device>_speaker`, and vice versa. Android's media volume
 (stream 3) still scales everything.
 
 ### If pairing needs you
@@ -304,7 +304,7 @@ What the panel does (`Flac.kt`, `AudioPipeline.kt`, `MediaCodecFlacDecoder.kt`):
 - Volume: `amplitude = (volume/100)^1.5` applied with `AudioTrack.setVolume` (the mixer ramps it).
   Mute sets the gain to 0. Both are persisted and reported back in `client/state`.
 - **Voice coexistence**: on wake word / listening / speaking, and during announcements on
-  `media_player.s1_panel_speaker`, the Sendspin output is muted locally while the stream keeps its
+  `media_player.<device>_speaker`, the Sendspin output is muted locally while the stream keeps its
   timeline. Afterwards it comes back in sync. The ESPHome media player still pauses its own
   music as before (`mediaPausedForVoice`).
 

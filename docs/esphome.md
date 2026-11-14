@@ -5,7 +5,7 @@ The kiosk app makes the panel look like **one ESPHome device** to Home Assistant
 
 - an **Assist satellite** with an on-device wake word (microWakeWord on TFLite, as Home Assistant
   Voice PE runs it), like Voice PE: wake word select, pipeline select, VAD sensitivity, announcements, timers;
-- a **media player** (`media_player.s1_panel_speaker`) for TTS, announcements and audio;
+- a **media player** (`media_player.<device>_speaker`) for TTS, announcements and audio;
 - the **screen** as a light, the presence and light sensors, and the kiosk/screen settings;
 - the switch for the panel's native **Music Assistant player** (Sendspin, [sendspin.md](sendspin.md)),
   and the Sendspin pairing-token hand-off that lets Music Assistant pair with it automatically.
@@ -72,8 +72,8 @@ Details and sources: [onboarding.md](onboarding.md#2-adoption--encryption-esphom
 
 HA names entities `<friendly name> <entity name>`, so they show as "Aqara S1 Plus Screen" and so
 on. The `object_id` is the ESPHome-style snake_case name, the key is FNV-1a of the `object_id`
-(stable). The entity ids in this page are those of a panel added before #63 (`light.s1_panel_screen`);
-[Names](#names) says when they read `aqara_s1_plus_*` instead.
+(stable). The entity ids in this page are those of a panel added before #63 (`light.s1_panel_screen`).
+One added before #260 has `glassworks_panel_*`, and a new S1 `aqara_s1_plus_*` ([Names](#names)). Elsewhere `<device>` stands for that prefix.
 
 ### Names
 
@@ -102,7 +102,7 @@ that runs it announces itself as `aqara-s1-plus-…` until the generic frame exi
 | Discovery | The new mDNS name carries the same MAC, so the zeroconf flow finds the entry by MAC and ends as "already configured". No new device shows up |
 | Device name | Becomes "Aqara S1 Plus" on the next connection (HA's device registry follows the friendly name), unless you renamed the device in HA |
 | Config entry title | Stays as it was ("S1 Panel" or "Glassworks Panel"). HA doesn't retitle an entry. Rename it yourself if you like |
-| Entity ids | Unchanged (`light.s1_panel_screen`, …). An entity id is made once, and the unique id (`<mac>/<device_id>/<domain>/<entity name>`) holds no device name |
+| Entity ids | Unchanged: `s1_panel_*` on a panel added before #63, `glassworks_panel_*` on one added before #260. An entity id is made once, and the unique id (`<mac>/<device_id>/<domain>/<entity name>`) holds no device name |
 | Entities that appear later (a new feature's, or one re-added) | HA 2025.12 and later: from the device's name as HA shows it, so `aqara_s1_plus_*` next to the old ones. Up to 2025.11: from the node name, `aqara_s1_plus_a1b2c3_*` |
 | Reconnects | Until HA reloads the entry (an HA restart, or **Reload** on the entry), its reconnect logic still listens for the old name's mDNS record. A panel that restarts is found on the retry timer (at most 60 s) instead of at once |
 
@@ -270,7 +270,7 @@ So on a panel HA already has:
 | text_sensor `Signed in` | `signed_in` | diagnostic; `yes` / `no`: whether a QR sign-in refresh token is stored (never the token) |
 | button `Sign out` | `sign_out` | revokes the refresh token at HA (`/auth/revoke`), deletes it, shows the sign-in screen |
 
-Plus `Block Aqara cloud` and `Aqara cloud daemon` ([below](#aqara-cloud)), the wall base entities, and the entities HA adds itself for a voice device: `assist_satellite.s1_panel_assist_satellite`,
+Plus `Block Aqara cloud` and `Aqara cloud daemon` ([below](#aqara-cloud)), the wall base entities, and the entities HA adds itself for a voice device: `assist_satellite.<device>_assist_satellite`,
 *Assist pipeline* and *Wake word* selects (two of each), *Finished speaking detection*.
 
 ### Panes on and off
@@ -378,7 +378,7 @@ Only *Base* is always present; the rest exist only while a matching base is dete
 | event `Base button N` (button) | `base_button_1`..`3` | switch base, per channel | `13.N.85` clicks (LocalService only; the UART protocol has no click frames); event types `single`, `double`, `triple`, `long`, `release`, `unknown` (mapping unverified, raw value logged) |
 
 On a panel added before #63 the entity ids are `switch.s1_panel_base_relay_1`,
-`event.s1_panel_base_button_1`, and so on (`aqara_s1_plus_*` on a new S1, see [Names](#names)). The names are fixed and don't follow the channel names
+`event.s1_panel_base_button_1`, and so on (`glassworks_panel_*` on one added before #260, `aqara_s1_plus_*` on a new S1, see [Names](#names)). The names are fixed and don't follow the channel names
 configured in the Aqara app: HA 2026.11 derives the ESPHome unique id from the entity *name*
 (aioesphomeapi `build_unique_id` v3), so a rename on the Aqara side would orphan the HA entity.
 Rename them in HA.
@@ -722,7 +722,7 @@ ESPHOME_PYTHON=/tmp/esphome-venv/bin/python OWW_MODELS_DIR=/tmp/oww-models ./gra
   time, one of the two captures may get silence. *Mute microphone* releases it.
 - Music Assistant: the panel is a native, synced Sendspin player (`media_player.s1_panel`, see
   [sendspin.md](sendspin.md)), so MA's *Home Assistant* player provider is no longer needed for it.
-  `media_player.s1_panel_speaker` stays for TTS, announcements and HA media; while it announces,
+  `media_player.<device>_speaker` stays for TTS, announcements and HA media; while it announces,
   the Sendspin output is muted locally.
 - Chromecast: not possible. A Cast receiver must be a Google-certified device.
 - Radio modes other than `Off` need the root helper from the boot-image patch ([radio.md](radio.md)).
