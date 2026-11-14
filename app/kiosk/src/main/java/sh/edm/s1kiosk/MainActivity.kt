@@ -52,6 +52,7 @@ import sh.edm.s1kiosk.setup.WifiSetupStatus
 import sh.edm.s1kiosk.setup.WifiStep
 import sh.edm.s1kiosk.improv.ImprovController
 import sh.edm.s1kiosk.improv.ImprovWifiStatus
+import sh.edm.s1kiosk.update.AppVersion
 import org.json.JSONObject
 import kotlin.system.exitProcess
 
@@ -767,7 +768,7 @@ class MainActivity : Activity() {
     /** The menu's sections as they are now: each pane's page reads its running pane (#212). */
     private fun settingsModel(): KioskSettingsOverlay.Model {
         val core = CoreSettings(
-            prefs, BuildConfig.VERSION_NAME,
+            prefs, AppVersion.shown,
             status = { glassworks.screen.statusLine() + " · voice=" + glassworks.voiceState },
             deviceSettings = deviceSettingsLink,
             licences = SettingsItem.Link(CoreSettings.LICENCES_TITLE, CoreSettings.LICENCES_DETAIL) { Licences.show(this) },

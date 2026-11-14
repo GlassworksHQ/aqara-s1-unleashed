@@ -43,7 +43,9 @@ data class PanelStatus(
     val name: String,
     /** The frame's name in words ("S1 Plus"). */
     val frame: String,
+    /** The app's version as people see it ("0.4.3", or "0.4.3 · test build 28c157d"). */
     val version: String,
+    /** How long the app has run (since its process started), not the device. */
     val uptimeMs: Long,
     /** The HA address the panel uses, or null when it has none yet. */
     val haBase: String?,

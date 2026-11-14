@@ -1,5 +1,7 @@
 package sh.edm.s1kiosk.update
 
+import sh.edm.s1kiosk.BuildConfig
+
 /**
  * A release version, `MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]` (SemVer 2.0.0), with an optional
  * leading `v` as in git tags. Ordering follows SemVer precedence: numeric core, then a pre-release
@@ -39,6 +41,15 @@ data class AppVersion(
         "$major.$minor.$patch" + if (preRelease.isEmpty()) "" else "-" + preRelease.joinToString(".")
 
     companion object {
+        /**
+         * The version people see (#263): "0.4.3", or "0.4.3 · test build 28c157d" for a test build, which
+         * reuses the release's versionName so it installs over it. [testBuild] is `BuildConfig.TEST_BUILD`.
+         */
+        fun label(version: String, testBuild: String): String = if (testBuild.isEmpty()) version else "$version · test build $testBuild"
+
+        /** [label] of this build. */
+        val shown: String get() = label(BuildConfig.VERSION_NAME, BuildConfig.TEST_BUILD)
+
         private val RE = Regex(
             """^[vV]?(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})""" +
                 """(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$""",

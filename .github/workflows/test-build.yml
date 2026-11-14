@@ -109,6 +109,7 @@ jobs:
         working-directory: app
         env:
           S1_VERSION: ${{ env.VERSION }}
+          S1_TEST_BUILD: ${{ env.SHORT_SHA }}
           S1_REQUIRE_RELEASE_SIGNING: 'true'
           S1_KEYSTORE_PASSWORD: ${{ secrets.S1_KEYSTORE_PASSWORD }}
           S1_KEY_ALIAS: ${{ secrets.S1_KEY_ALIAS }}

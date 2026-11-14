@@ -14,6 +14,11 @@ val s1VersionCode: Int? = s1Version?.let { v ->
     major.toInt() * 10000 + minor.toInt() * 100 + patch.toInt()
 }
 
+// A test build's commit: -Ps1TestBuild=28c157d or S1_TEST_BUILD (.github/workflows/test-build.yml sets it).
+// Shown next to the version (AppVersion.label); releases leave it empty. It never changes versionName or versionCode.
+val s1TestBuild: String = ((findProperty("s1TestBuild") as String?) ?: System.getenv("S1_TEST_BUILD")).orEmpty().trim()
+    .also { if (!Regex("^[0-9a-f]{0,40}$").matches(it)) throw GradleException("S1_TEST_BUILD '$it' must be a commit hash") }
+
 // The ABI this APK is built for: -Ps1Abi=arm64-v8a or S1_ABI. Unset: the S1's. One APK per ABI, because
 // each per-ABI GeckoView AAR carries its own classes.jar and omni.ja, so two cannot share a classpath
 // (docs/releasing.md "ABIs"). Every ABI's APK has the same versionCode. Each frame declares the ABIs its
@@ -54,6 +59,7 @@ android {
         targetSdk = 34
         versionCode = s1VersionCode ?: 1
         versionName = s1Version ?: "0.1.0"
+        buildConfigField("String", "TEST_BUILD", "\"$s1TestBuild\"")
 
         // The Panel Hub S1 Plus runs 32-bit Android 10 (A133 with an armeabi-v7a userspace): the default.
         ndk { abiFilters += listOf(s1Abi) }
