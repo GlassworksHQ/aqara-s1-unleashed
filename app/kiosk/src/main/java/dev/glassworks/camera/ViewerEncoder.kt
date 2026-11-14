@@ -102,7 +102,9 @@ internal class ViewerEncoder(
                 e.release()
             } finally {
                 try {
-                    viewing?.close(); viewing = null
+                    val v = viewing
+                    viewing = null
+                    v?.close()
                 } finally {
                     if (interrupted) Thread.currentThread().interrupt()
                 }

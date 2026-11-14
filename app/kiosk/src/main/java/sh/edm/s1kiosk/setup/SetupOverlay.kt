@@ -410,6 +410,9 @@ class SetupOverlay(
         previewChip.visibility = if (m.preview) View.VISIBLE else View.GONE
     }
 
+    /** The step the card was last drawn for: another one clears what that step left (its status line). */
+    private var cardStep: String? = null
+
     private fun bindCard(m: Model, stepChanged: Boolean) {
         qrGlow.visibility = View.GONE
         cardBody.visibility = View.VISIBLE
@@ -419,8 +422,13 @@ class SetupOverlay(
         plain.visibility = View.GONE; plainLeft.visibility = View.GONE; foot.visibility = View.GONE
         primary.isEnabled = true; primary.alpha = 1f
         listOf(primary, ghost, plain, plainLeft).forEach { it.setOnClickListener(null) }
-        if (stepChanged) status.visibility = View.GONE
-        val shown = shown() ?: return
+        val shown = shown()
+        // Also when the caller saw no change: a pane step's Continue clears `viewing` before the screen draws
+        // the current step again, so that draw can't tell (the tablet run on 28c157d: the camera's
+        // "Android allows the camera." stayed on Sign in).
+        if (stepChanged || shown != cardStep) status.visibility = View.GONE
+        cardStep = shown
+        if (shown == null) return
         // A step that is done says so, also as a preview's current step (reopened on a set-up panel).
         val done = shown in m.done
         cardLabel.text = SetupFlow.group(shown)?.let { grp -> "${GROUPS.getValue(grp)} · ${title(shown)}" } ?: title(shown)
@@ -433,8 +441,10 @@ class SetupOverlay(
             SetupFlow.SIGNIN -> bindSignin(m, done)
             SetupFlow.PANES -> content = bindPanes(m, stepChanged)
             else -> {
-                // A pane's step fills the card itself (SetupCard.content), slot included.
+                // A pane's step fills the card itself (SetupCard.content), slot included, and sets its status
+                // on every draw: it starts from none (SetupCard's promise).
                 setContent(null)
+                status.visibility = View.GONE
                 stepsById[shown]?.let { (_, step) -> bindPaneStep(step, stepChanged) }
                 hideKeyboard()
                 return

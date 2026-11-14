@@ -117,11 +117,13 @@ class RtspServerTest {
         assertTrue(setup.contains("interleaved=0-1")); assertTrue(setup.contains(";ssrc="))
         val session = Regex("Session: ([0-9A-F]+);timeout=60").find(setup)!!.groupValues[1]
         assertEquals(0, server.let { if (it.hasClients()) 1 else 0 }) // SETUP alone is not playing
+        assertEquals("nor listed as watching", emptyList<String>(), server.watchers())
 
         val (play, _) = c.request("PLAY", url, listOf("Session: $session", "Range: npt=0.000-"))
         assertTrue(play.startsWith("RTSP/1.0 200")); assertTrue(play.contains("RTP-Info: url=$url/trackID=0;seq="))
         // The server answers PLAY before it marks the session playing: wait for it, bounded.
         assertTrue(waitFor { server.hasClients() })
+        assertEquals("the camera's page lists who watches", listOf("127.0.0.1"), server.watchers())
 
         // First packets must start with SPS (keyframe sync), share timestamp, have increasing seq.
         val all = (1..14).map { c.readInterleaved() }
@@ -250,6 +252,7 @@ class RtspServerTest {
         assertTrue(waitFor { counts.size >= 2 })
         Thread.sleep(100)
         assertEquals("the host ends on the true count", listOf(1, 2), counts.toList())
+        assertEquals("one address per session: two viewers from one host are two", listOf("127.0.0.1", "127.0.0.1"), server.watchers())
         a.sock.close(); b.sock.close()
     }
 

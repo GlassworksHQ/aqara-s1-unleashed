@@ -42,9 +42,11 @@ class CameraPane(
     private val exec: ScheduledExecutorService,
     /** Called when nothing may use the camera any more (privacy, no permission, the pane stopping): [CameraHub.idle]. */
     private val release: () -> Unit = {},
+    /** Which camera and its rate, for the page: [CameraHub]. */
+    private val facts: CameraFacts? = null,
     private val presenceFactory: (FrameSource, onMotion: (Boolean) -> Unit, onProblem: (String) -> Unit) -> CameraPresence =
         { source, onMotion, onProblem -> CameraPresence(source, { prefs.sensitivity }, onProblem = onProblem, onMotion = onMotion) },
-) : Pane {
+) : Pane, CameraReadout {
     override val id = ID
 
     @Volatile var plan = CameraPlan.NOTHING
@@ -53,6 +55,8 @@ class CameraPane(
     @Volatile var problem: String? = null
         private set
     @Volatile private var near: Boolean? = null
+    /** When [near] last changed (time of day), for the page. */
+    @Volatile private var nearSince: Long? = null
     @Volatile private var streaming = false
 
     private var presence: CameraPresence? = null
@@ -68,6 +72,21 @@ class CameraPane(
     fun stillPolicy(): CameraPolicy = if (running && permitted()) policy else policy.copy(privacy = true)
 
     private val policy get() = prefs.policy
+
+    /** What the camera's page shows ([CameraPage]), read in one go. Any thread. */
+    override fun reading(): CameraReading {
+        val p = policy
+        val open = streaming
+        return CameraReading(
+            use = p.use, privacy = p.privacy, onvif = p.onvif && p.stillsMayLeave, signedIn = prefs.signIn != null,
+            running = running, problem = problem, detecting = plan.detect, near = near, nearSince = nearSince,
+            leaving = egress.leaving, lastStill = egress.lastStillAt, streaming = open,
+            watchers = if (open) stream.watchers() else emptyList(),
+            lens = facts?.lens, frameRate = facts?.frameRate() ?: 0,
+        )
+    }
+
+    override fun address(): StreamAddress? = stream.address()
 
     override fun entities(): List<ApiEntity> = listOf(
         snapshotCamera(stills, ::stillPolicy, egress),
@@ -100,6 +119,7 @@ class CameraPane(
         apply(CameraPlan.NOTHING, null)
         release()
         near = null
+        nearSince = null
         problem = null
     }
 
@@ -127,6 +147,7 @@ class CameraPane(
         } else if (!next.detect && presence != null) {
             presence?.stop(ctx.context); presence = null
             near = null
+            nearSince = null
             if (plan.feedScreen) toScreen(false, -1f)
         }
         if (next.stream && signIn != null) {
@@ -144,6 +165,7 @@ class CameraPane(
     private fun onReading(isNear: Boolean, raw: Float) {
         if (raw >= 0f && problem != null && problem != NOT_ALLOWED && problem != STREAM_FAILED) problem = null
         val changed = near != isNear
+        if (changed) nearSince = System.currentTimeMillis()
         near = isNear
         if (plan.feedScreen) toScreen(isNear, raw)
         if (changed) ctx.publishStates()

@@ -207,8 +207,11 @@ sealed interface SettingsItem {
     /** A line of status text. */
     class Note(val text: () -> String) : SettingsItem
 
-    /** A name and a status line under it (the app's version, what plays now). Read again while the page is open. */
-    class Info(val title: () -> String, val detail: () -> String) : SettingsItem
+    /**
+     * A name and a status line under it (the app's version, what plays now). Read again while the page is
+     * open. [fixable]: the line says what's missing that the person can set (amber).
+     */
+    class Info(val title: () -> String, val detail: () -> String, val fixable: () -> Boolean = { false }) : SettingsItem
 
     /** Items under their own heading, in a card of their own. */
     class Group(val title: String, val items: List<SettingsItem>) : SettingsItem
@@ -233,8 +236,11 @@ sealed interface SettingsItem {
 
     class StateRow(val name: String, val value: String, val offByDefault: Boolean = false)
 
-    /** A line under the page's heading that says how the pane is doing now. [ok]: it works (green), else quiet grey. Read again while open. */
-    class Status(val text: () -> String, val ok: () -> Boolean) : SettingsItem
+    /**
+     * A line under the page's heading that says how the pane is doing now. [ok]: it works (green), else
+     * quiet grey; [problem]: something is wrong that the person can fix (rose, over [ok]). Read again while open.
+     */
+    class Status(val text: () -> String, val ok: () -> Boolean, val problem: () -> Boolean = { false }) : SettingsItem
 
     /** Readings as tiles, [columns] to a row (the diagnostics' six, the wall base's strip). Read again while the page is open. */
     class Tiles(val columns: Int, val tiles: () -> List<Tile>) : SettingsItem

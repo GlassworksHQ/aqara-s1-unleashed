@@ -66,6 +66,12 @@ open class PlatformApi internal constructor(
     /** `WindowInsetsController` and `setDecorFitsSystemWindows` exist (Android 11). */
     val hasWindowInsetsController: Boolean get() = apiLevel >= 30
 
+    /** `WindowInsets.getInsetsIgnoringVisibility` gives the status bar's height while it is hidden (Android 11). */
+    val hasInsetsIgnoringVisibility: Boolean get() = apiLevel >= 30
+
+    /** `WindowInsets.getPrivacyIndicatorBounds` says where Android draws its camera and microphone dot (Android 12). */
+    val hasPrivacyIndicatorBounds: Boolean get() = apiLevel >= 31
+
     /** `ActivityManager.getHistoricalProcessExitReasons` exists (Android 11). Below it, the reason a process ended is not kept. */
     val hasApplicationExitInfo: Boolean get() = apiLevel >= 30
 

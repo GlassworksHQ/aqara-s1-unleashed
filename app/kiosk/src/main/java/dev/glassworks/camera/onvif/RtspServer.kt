@@ -107,6 +107,10 @@ class RtspServer(
 
     fun hasClients(): Boolean = activeCount() > 0
 
+    /** The address of each session playing now, one per session: the camera's page counts and lists them (Glassworks). */
+    fun watchers(): List<String> =
+        sessions.values.filter { it.playing }.mapNotNull { it.connection.socket.inetAddress?.hostAddress }
+
     private fun activeCount(): Int = describeWaiters.get() + sessions.values.count { it.playing }
 
     /** Hand one Annex-B access unit to all playing sessions. Never blocks. */
