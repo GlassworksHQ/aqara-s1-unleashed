@@ -13,7 +13,8 @@
 #   web     the npm workspaces from the repo root (job id kept, as branch protection names it):
 #            Kiln, its packages, the frame recipes and packages/*: typecheck, tests, both builds
 #   scripts  tools/install.sh's off-device tests, the perf test's rubric, report and grade
-#            (tools/perf), and the docs' relative links
+#            (tools/perf), the docs' relative links, and that every glassworks.dev brand image the
+#            Markdown uses is live (a 404 fails; an unreachable site only warns)
 #   perf-webrtc  Clarity's WebRTC camera (#202): the fake's peer and TURN relay under the hash-locked
 #            venv, HA's real frontend (the pinned build, 117 MB) playing it in the runner's Chrome, and
 #            the relay in the runner's Firefox (Gecko, the panel's engine)
@@ -287,6 +288,8 @@ jobs:
         run: python3 -m unittest discover -s branding/boot/test -v
       - name: Docs links
         run: python3 tools/check-doc-links.py
+      - name: Brand images are live on glassworks.dev
+        run: python3 tools/check-brand-images.py
 
   perf-webrtc:
     runs-on: ubuntu-24.04

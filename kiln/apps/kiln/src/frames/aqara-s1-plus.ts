@@ -6,7 +6,7 @@ import photo from '../../../../../docs/img/fel-button.jpg';
 import type { RecoveryData } from '../recovery/player';
 import type { RadioPlan, RadioStep } from '../wizard/state';
 
-const DOCS = 'https://github.com/GlassworksHQ/aqara-s1-unleashed/blob/main/docs';
+const DOCS = 'https://github.com/GlassworksHQ/glassworks/blob/main/docs';
 
 export interface AskCopy { title: string; body: string; pick: string }
 

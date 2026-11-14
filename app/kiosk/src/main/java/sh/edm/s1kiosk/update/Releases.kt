@@ -67,8 +67,8 @@ class ReleasePick(val offer: UpdateOffer?, val problem: String?)
  * the newest of its own ([newest]) instead of reading `releases/latest`.
  */
 object Releases {
-    /** owner/repo of the official releases. */
-    const val REPO = "GlassworksHQ/aqara-s1-unleashed"
+    /** owner/repo of the official releases. Renamed on 2026-11-13; the old name must never be reused (docs/releasing.md "The repo name"). */
+    const val REPO = "GlassworksHQ/glassworks"
     /** Recent releases, newest first. 30 leaves room for other frames' and libraries' releases. */
     const val LIST_URL = "https://api.github.com/repos/$REPO/releases?per_page=30"
 

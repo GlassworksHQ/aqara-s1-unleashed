@@ -17,7 +17,7 @@ S1's A133.
 
 1. **Read `ro.product.cpu.abilist` from the community image** (2026-11-12, read). This is from the
    research for #40, posted in
-   [that issue](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues/40#issuecomment-6829959406).
+   [that issue](https://github.com/GlassworksHQ/glassworks/issues/40#issuecomment-6829959406).
    The steps, as that comment describes them:
    - Download `system.img` from the Glass Panes `mirror-android-1` release (published 2026-11-05,
      850,905,808 bytes).

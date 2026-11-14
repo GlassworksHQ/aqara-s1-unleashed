@@ -223,6 +223,7 @@ This page is the index of every note. Notes about one device live with its frame
 | [TEMPLATE.md](TEMPLATE.md) | Start a new note from this |
 | [microwakeword.md](microwakeword.md) | Replacing openWakeWord with microWakeWord: the Kotlin port of TFLite Micro's audio frontend, the models, test speech, and what is left for the panel |
 | [gecko-turn.md](gecko-turn.md) | Gecko won't use a TURN server at a loopback IP or a relayed candidate on loopback (Chrome does): why the S1 never connected to Clarity's WebRTC camera, and the fix (#202) |
+| [ha-esphome-actions-events.md](ha-esphome-actions-events.md) | What a notification can carry over ESPHome each way: why `notify` takes one JSON `data` argument, and why a tapped button goes to HA as a bus event, not an event entity (#118) |
 
 ### Aqara S1 Plus ([`frames/aqara-s1-plus/research/`](../../frames/aqara-s1-plus/research/))
 

@@ -453,4 +453,4 @@ here, and `semver` (ISC) needs `LICENSES/ISC.txt`.
 | GNU C Library, `sisdk/lib/` | LGPL-2.1-or-later | radio bundle | The Ubuntu source packages named in `sisdk/NOTICE.txt` (Ubuntu snapshot `20261101T000000Z`, see `tools/radio/build-sisdk-runtime.sh`). The libraries can be replaced: the bundle loads them from that directory. |
 | libstdc++, libgcc_s | GPL-3.0-or-later WITH GCC-exception-3.1 | installer, radio bundle | The Ubuntu GCC cross source packages: `gcc-11-cross` for the static copies in `otbr-agent`/`ot-ctl`, and those named in `sisdk/NOTICE.txt` for `sisdk/lib/`. All are on https://launchpad.net/ubuntu |
 
-Questions about source: open an issue at https://github.com/GlassworksHQ/aqara-s1-unleashed/issues.
+Questions about source: open an issue at https://github.com/GlassworksHQ/glassworks/issues.

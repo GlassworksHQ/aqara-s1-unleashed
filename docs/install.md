@@ -173,7 +173,7 @@ software from before the first releases, Android asks on the panel's screen). De
 - **On v0.4.0 or older, update by hand once.** Those versions can't install an update from Home
   Assistant: it always fails with "the APK is not signed". Plug the panel in, open the installer,
   choose **Already installed? Finish setting it up** (`#/resume`) and let it update S1 Kiosk. Or
-  download the APK from the [latest release](https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/latest)
+  download the APK from the [latest release](https://github.com/GlassworksHQ/glassworks/releases/latest)
   and run `adb install -r s1-kiosk-<version>.apk`. From v0.4.1 on, updates from Home Assistant work.
 - **The boot software** (the patched `boot` with the root helper) is not updated by the app. Since
   v0.4.0 the radio side updates with the app instead, but only on a panel with that version's boot
@@ -329,7 +329,7 @@ fastboot reboot
 | The browser lists no `1f3a:efe8` device | The panel isn't in FEL. Unplug it, hold the board button (not the case button), plug in, and hold for 10 s. Try another cable or port, preferably directly on the computer rather than through a hub. |
 | Windows: the device shows but won't open | The Zadig step: `1f3a:efe8` needs **WinUSB**. |
 | Linux: "access denied" | The udev rule, then unplug and replug. |
-| "Unknown hardware" | The installer stopped before writing anything. That panel isn't a layout it knows; please [open an issue](https://github.com/GlassworksHQ/aqara-s1-unleashed/issues). |
+| "Unknown hardware" | The installer stopped before writing anything. That panel isn't a layout it knows; please [open an issue](https://github.com/GlassworksHQ/glassworks/issues). |
 | A read-back didn't match | The installer stops and doesn't restart the panel. Retry, or restore from your backup with *Undo*. FEL is always available. |
 | `adb` or another tool already holds the panel | Run `adb kill-server` and close other flashing tools. |
 | The screen turns off at night | That's the kiosk's night mode, which you can tune in Home Assistant. With `install.sh --keep-dnd`, Aqara's own Do Not Disturb (22:00–07:00) also forces it off; see [frames/aqara-s1-plus/research/screen-policy.md](../frames/aqara-s1-plus/research/screen-policy.md). |
