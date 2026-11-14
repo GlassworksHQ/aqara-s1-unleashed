@@ -47,18 +47,19 @@ class CameraStreamTest {
     @Test fun aThrowingEncoderReleaseStillClosesThePortsAndTheMulticastLock() {
         val rtsp = freePort()
         val onvif = generateSequence { freePort() }.first { it != rtsp }
-        val made = CountDownLatch(1)
+        // The encoder is made before the viewer's hold on the indicator is taken: wait for the hold.
+        val held = CountDownLatch(1)
         val encoder = object : StreamEncoder {
             override val surface: Surface? = null
             override fun requestKeyFrame() {}
             override fun release() = throw IllegalStateException("codec")
         }
-        val egress = FrameEgress({ 0L }, { _, _ -> }) {}
+        val egress = FrameEgress({ 0L }, { _, _ -> }) { leaving -> if (leaving) held.countDown() }
         val stream = CameraStream(
             app, hub = {}, egress = egress,
             identity = { CameraIdentity("Test panel", "1.0", "02:00:00:00:00:01") },
             host = { "127.0.0.1" }, snapshot = { null }, log = {},
-            encoders = { _, _ -> made.countDown(); encoder },
+            encoders = { _, _ -> encoder },
             rtspPort = rtsp, onvifPort = onvif, discovery = false,
         )
         assertTrue(stream.start("viewer" to "made-up-pass"))
@@ -68,7 +69,7 @@ class CameraStreamTest {
         Socket("127.0.0.1", rtsp).use { viewer ->
             val auth = Base64.getEncoder().encodeToString("viewer:made-up-pass".toByteArray())
             viewer.getOutputStream().write("DESCRIBE rtsp://127.0.0.1:$rtsp/live RTSP/1.0\r\nCSeq: 1\r\nAuthorization: Basic $auth\r\n\r\n".toByteArray())
-            assertTrue("the encoder started", made.await(5, TimeUnit.SECONDS))
+            assertTrue("the encoder started and holds the indicator on", held.await(5, TimeUnit.SECONDS))
             assertTrue(egress.leaving)
 
             stream.stop()

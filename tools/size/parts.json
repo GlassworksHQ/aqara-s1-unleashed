@@ -31,6 +31,8 @@
   "time-zone": {"dex": ["sh.edm.s1kiosk.frame.TimeZonePane", "sh.edm.s1kiosk.frame.TimeZoneKeeper"],
                 "_why": "TimeZoneKeeper is used only by TimeZonePane"},
   "diagnostics": {"dex": ["dev.glassworks.diagnostics."]},
-  "bluetooth-proxy": {"dex": ["dev.glassworks.bluetoothproxy.", "sh.edm.bluetoothproxy.", "sh.edm.s1kiosk.settings.BluetoothProxyPage"]}
+  "bluetooth-proxy": {"dex": ["dev.glassworks.bluetoothproxy.", "sh.edm.bluetoothproxy.", "sh.edm.s1kiosk.settings.BluetoothProxyPage"]},
+  "camera": {"dex": ["dev.glassworks.camera.", "sh.edm.s1kiosk.CameraAdbActivity"],
+             "_why": "the camera pane (#117); CameraAdbActivity sets its settings from adb and is used by nothing else"}
  }
 }

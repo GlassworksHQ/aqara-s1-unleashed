@@ -18,6 +18,8 @@ TOOL = os.path.join(os.path.dirname(HERE), "apksize.py")
 ROOT = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
 sys.path.insert(0, os.path.dirname(HERE))
 import apksize as A  # noqa: E402
+sys.path.insert(0, os.path.join(HERE, "..", ".."))
+from pane_ids import pane_ids_in  # noqa: E402
 
 PARTS = A.read_json(os.path.join(os.path.dirname(HERE), "parts.json"))
 
@@ -298,12 +300,10 @@ class Comment(unittest.TestCase):
 
 class Parts(unittest.TestCase):
     def test_every_pane_in_the_code_has_its_parts(self):
-        ids = set()
-        for d, _, fs in os.walk(os.path.join(ROOT, "app", "kiosk", "src", "main", "java")):
-            for f in fs:
-                if f.endswith(".kt"):
-                    with open(os.path.join(d, f)) as fh:
-                        ids |= set(re.findall(r'override val id = "([a-z0-9-]+)"', fh.read()))
+        # Ids written as literals and as constants (CameraPane.ID): a pane can't escape its size row (#117).
+        ids = pane_ids_in(os.path.join(ROOT, "app", "kiosk", "src", "main", "java"))
+        self.assertIn("camera", ids)
+        self.assertEqual(set(), ids - set(PARTS["panes"]), "panes in the code without parts in parts.json")
         self.assertEqual(set(PARTS["panes"]), ids)
 
     def test_ids_are_safe_in_the_comment(self):
