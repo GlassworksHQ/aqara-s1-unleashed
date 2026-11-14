@@ -17,6 +17,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { guard } from "./browserguard.mjs";
 
 const PERF = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MUST = process.env.GW_PERF_E2E === "1";
@@ -93,6 +94,7 @@ test("HA's frontend plays the fake's cameras over WebRTC through the TURN relay,
   assert.ok(python3(["camera.py"]), "camera.py couldn't make the streams");
 
   const dir = mkdtempSync(join(tmpdir(), "gw-e2e-"));
+  const unguard = guard(dir);           // Chrome and the fake die with this test, however it ends
   const port = await freePort(), base = `http://127.0.0.1:${port}`;
   const fake = spawn(py, [join(PERF, "fakeha.py"), "--port", String(port), "--log", join(dir, "fakeha.jsonl")],
                      { stdio: ["ignore", "pipe", "pipe"] });
@@ -103,6 +105,7 @@ test("HA's frontend plays the fake's cameras over WebRTC through the TURN relay,
     "--window-size=1280,800", ...(process.env.CI ? ["--no-sandbox"] : []), "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
   t.after(() => {
     browser.kill("SIGKILL");
+    unguard();
     fake.kill();
     if (!t.passed && fakeErr) t.diagnostic(`the fake's stderr:\n${fakeErr.slice(-4000)}`);
     if (process.env.GW_PERF_E2E_KEEP) spawnSync("cp", [join(dir, "fakeha.jsonl"), process.env.GW_PERF_E2E_KEEP]);

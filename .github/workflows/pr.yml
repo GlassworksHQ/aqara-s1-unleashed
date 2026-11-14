@@ -284,7 +284,7 @@ jobs:
       - name: Perf test rubric, report, grade and page statistics
         run: |
           python3 -m unittest discover -s tools/perf/test -v
-          node --test tools/perf/test/page.test.mjs tools/perf/test/grade.test.mjs
+          node --test tools/perf/test/page.test.mjs tools/perf/test/grade.test.mjs tools/perf/test/browserguard.test.mjs
       - name: APK size tool
         run: python3 -m unittest discover -s tools/size/test -v
       - name: Boot generator targets and layout

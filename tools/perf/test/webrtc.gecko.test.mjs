@@ -35,6 +35,10 @@ import { createServer as httpServer } from "node:http";
 import { tmpdir, platform } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { guard, sweepStale } from "./browserguard.mjs";
+
+// A browser or fake left by an earlier test that was killed (its directory is gone): not ours to keep.
+sweepStale(["gw-gecko-", "gw-e2e-"]);
 
 const PERF = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MUST = process.env.GW_PERF_E2E === "1";
@@ -133,6 +137,7 @@ test(`Gecko plays the fake's WebRTC stream over ${transport}`, { timeout: 300000
   assert.equal(spawnSync("python3", ["hafrontend.py"], { cwd: PERF }).status, 0, "hafrontend.py couldn't fetch the frontend");
 
   const dir = mkdtempSync(join(tmpdir(), "gw-gecko-"));
+  const unguard = guard(dir);           // Firefox and the fake die with this test, however it ends
   const port = await freePort(), base = `http://127.0.0.1:${port}`;
   const fake = spawn(py, [join(PERF, "fakeha.py"), "--port", String(port), "--log", join(dir, "fakeha.jsonl"),
                           "--webrtc-transport", transport], { stdio: ["ignore", "pipe", "pipe"] });
@@ -143,8 +148,8 @@ test(`Gecko plays the fake's WebRTC stream over ${transport}`, { timeout: 300000
   let browser = null;
   t.after(() => {
     if (browser) browser.kill("SIGKILL");
-    spawnSync("pkill", ["-f", profile]);
     fake.kill();
+    unguard();
     if (!t.passed && fakeErr) t.diagnostic(`the fake's stderr:\n${fakeErr.slice(-3000)}`);
     rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
   });
@@ -277,6 +282,7 @@ test("in Gecko, the harness grades a WebRTC camera's frames shown from the recei
   }
   const py = process.env.GW_PERF_FAKE_PYTHON || spawnSync("python3", ["webrtcenv.py"], { cwd: PERF, encoding: "utf8" }).stdout.trim();
   const dir = mkdtempSync(join(tmpdir(), "gw-gecko-ha-"));
+  const unguard = guard(dir);
   const port = await freePort(), base = `http://127.0.0.1:${port}`;
   const fake = spawn(py, [join(PERF, "fakeha.py"), "--port", String(port), "--log", join(dir, "fakeha.jsonl")],
                      { stdio: ["ignore", "pipe", "pipe"] });
@@ -288,8 +294,8 @@ test("in Gecko, the harness grades a WebRTC camera's frames shown from the recei
   t.after(() => {
     try { ws && ws.close(); } catch (e) { /* closing */ }
     if (browser) browser.kill("SIGKILL");
-    spawnSync("pkill", ["-f", profile]);
     fake.kill();
+    unguard();
     rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
   });
   await until("the fake", () => banner.includes("WebRTC over"), 60000);
