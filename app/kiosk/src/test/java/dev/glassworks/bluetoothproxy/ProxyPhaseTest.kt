@@ -4,6 +4,7 @@ import dev.glassworks.bluetoothproxy.ProxyPhase.BLUETOOTH_OFF
 import dev.glassworks.bluetoothproxy.ProxyPhase.LISTENING
 import dev.glassworks.bluetoothproxy.ProxyPhase.LOCATION_OFF
 import dev.glassworks.bluetoothproxy.ProxyPhase.NO_BLE
+import dev.glassworks.bluetoothproxy.ProxyPhase.NEEDS_KEY
 import dev.glassworks.bluetoothproxy.ProxyPhase.NO_PERMISSION
 import dev.glassworks.bluetoothproxy.ProxyPhase.OFF
 import dev.glassworks.bluetoothproxy.ProxyPhase.RETRYING
@@ -28,6 +29,8 @@ class ProxyPhaseTest {
             Triple(Triple(true, ScanFailure.LOCATION_OFF, status()), LOCATION_OFF, ""),
             Triple(Triple(true, null, null), WAITING, "on, no engine yet"),
             Triple(Triple(true, null, status(subscribed = false)), WAITING, "nobody listening"),
+            Triple(Triple(true, null, status(subscribed = false).copy(needsKey = true)), NEEDS_KEY, "a client was refused: no key"),
+            Triple(Triple(true, null, status().copy(needsKey = true)), LISTENING, "subscribed wins"),
             Triple(Triple(true, null, status(failure = ScanFailure.TOO_FREQUENT)), RETRYING, ""),
             Triple(Triple(true, null, status()), LISTENING, ""),
         )

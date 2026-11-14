@@ -83,4 +83,7 @@ interface BluetoothProxyHandler {
      * could otherwise listen in plaintext.
      */
     val authOnly: Boolean get() = true
+
+    /** A client asked to subscribe and was refused for [authOnly]: the device has no key it holds. */
+    fun onRefused() {}
 }

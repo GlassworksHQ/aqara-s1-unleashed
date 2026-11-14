@@ -303,7 +303,8 @@ services › Bluetooth*, and hears the BLE sensors near the panel through it. No
 - **It scans only while Home Assistant listens**, full time then. On the S1 that cost nothing
   measurable: Wi-Fi on 5 GHz kept its throughput and Sendspin had no underruns (2026-11-14, #121).
 - *Bluetooth advertisements* is how many it forwarded in the last full minute. *Bluetooth proxy
-  status* is `Listening`, `Waiting for Home Assistant`, `Bluetooth off`, `Location off`,
+  status* is `Listening`, `Waiting for Home Assistant`, `Waiting for the panel's key` (a client was
+  refused for want of the key), `Bluetooth off`, `Location off`,
   `No permission`, `Retrying` or `No Bluetooth LE`. Both are diagnostic and off in HA until you turn
   them on there; the panel's settings page shows both anyway. Both are unavailable while the pane is off.
 - Android hands Bluetooth results to apps only while **location** is on. The settings page offers to

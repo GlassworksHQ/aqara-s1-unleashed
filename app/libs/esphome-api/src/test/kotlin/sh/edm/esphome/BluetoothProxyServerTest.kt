@@ -191,9 +191,11 @@ class BluetoothProxyServerTest {
      */
     @Test fun anUnprovisionedPanelRefusesTheSubscription() {
         val unprovisioned = ApiServer(0, { identity }, emptyList(), keys = NoiseKeys(MemoryKeyStore()), bindAddress = InetAddress.getLoopbackAddress())
+        var refused = 0
         unprovisioned.bluetooth = object : BluetoothProxyHandler {
             override val featureFlags = handler.featureFlags
             override fun onSubscribed(subscribed: Boolean) { calls += subscribed }
+            override fun onRefused() { refused++ }
         }
         unprovisioned.start()
         try {
@@ -202,6 +204,7 @@ class BluetoothProxyServerTest {
                 assertTrue("the key can still be provisioned", c.await(Msg.DEVICE_INFO_RESPONSE).bool(26))
                 c.subscribe()
                 assertEquals("refused: the proxy heard of no subscriber", emptyList<Boolean>(), calls)
+                assertEquals("and was told why, so the panel can say so", 1, refused)
                 assertFalse(unprovisioned.sendBluetoothAdvertisements(listOf(advertisement(1))))
             }
         } finally { unprovisioned.stop() }

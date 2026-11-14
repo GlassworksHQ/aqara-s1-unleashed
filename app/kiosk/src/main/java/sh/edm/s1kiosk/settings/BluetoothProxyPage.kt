@@ -19,6 +19,7 @@ import dev.glassworks.bluetoothproxy.ProxyPhase.BLUETOOTH_OFF
 import dev.glassworks.bluetoothproxy.ProxyPhase.LISTENING
 import dev.glassworks.bluetoothproxy.ProxyPhase.LOCATION_OFF
 import dev.glassworks.bluetoothproxy.ProxyPhase.NO_BLE
+import dev.glassworks.bluetoothproxy.ProxyPhase.NEEDS_KEY
 import dev.glassworks.bluetoothproxy.ProxyPhase.NO_PERMISSION
 import dev.glassworks.bluetoothproxy.ProxyPhase.OFF
 import dev.glassworks.bluetoothproxy.ProxyPhase.RETRYING
@@ -112,7 +113,7 @@ class BluetoothProxyPage(private val host: SettingsItem.NativeHost, private val 
             if (s?.scanning == true) "On" else "Off",
             when (phase) {
                 LISTENING -> "Listening all the time"
-                WAITING -> "Not needed yet"
+                WAITING, NEEDS_KEY -> "Not needed yet"
                 RETRYING -> retry(s)
                 else -> "Off"
             },
@@ -124,6 +125,7 @@ class BluetoothProxyPage(private val host: SettingsItem.NativeHost, private val 
     private fun line(phase: ProxyPhase, s: ProxyStatus?) = when (phase) {
         LISTENING -> "Listening for Home Assistant" + (s?.devicesPerMinute?.takeIf { it > 0 }?.let { " · $it devices nearby" } ?: "")
         WAITING -> "Waiting for Home Assistant. The radio stays quiet until it listens."
+        NEEDS_KEY -> NEEDS_KEY_LINE
         BLUETOOTH_OFF -> "Bluetooth is off"
         LOCATION_OFF -> "Location is off"
         NO_PERMISSION -> "A permission is missing"
@@ -248,7 +250,8 @@ class BluetoothProxyPage(private val host: SettingsItem.NativeHost, private val 
     }
 
     private companion object {
-        val TILES = setOf(LISTENING, WAITING, RETRYING)
+        val TILES = setOf(LISTENING, WAITING, NEEDS_KEY, RETRYING)
+        const val NEEDS_KEY_LINE = "Waiting for Home Assistant: it needs this panel's encryption key. Home Assistant 2026.11 and later sets it when it adds the panel."
         const val OFF_NOTE = "The Bluetooth proxy is off. The panel doesn't scan, and Home Assistant no longer hears devices through it."
         const val NO_BLE_NOTE = "Home Assistant can still use other Bluetooth proxies, such as an ESP32 near the sensors."
         const val REFUSED = "This panel doesn't let apps do that. Turn it on in the panel's own settings."

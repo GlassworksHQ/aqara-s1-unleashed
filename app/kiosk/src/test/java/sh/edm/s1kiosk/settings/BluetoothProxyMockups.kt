@@ -126,6 +126,7 @@ class BluetoothProxyMockups {
         shot("bt-00-before-menu", menu(null), "radio")
         shot("bt-01-listening", menu(proxy(true, ProxyPhase.LISTENING, listening)), id)
         shot("bt-03-waiting-for-ha", menu(proxy(true, ProxyPhase.WAITING, waiting)), id)
+        shot("bt-03b-needs-the-key", menu(proxy(true, ProxyPhase.NEEDS_KEY, waiting.copy(needsKey = true))), id)
         shot("bt-04-bluetooth-off", menu(proxy(true, ProxyPhase.BLUETOOTH_OFF, waiting, ScanFailure.BLUETOOTH_OFF)), id)
         shot("bt-05-location-off", menu(proxy(true, ProxyPhase.LOCATION_OFF, waiting, ScanFailure.LOCATION_OFF)), id)
         shot("bt-06-retrying", menu(proxy(true, ProxyPhase.RETRYING, retrying)), id)

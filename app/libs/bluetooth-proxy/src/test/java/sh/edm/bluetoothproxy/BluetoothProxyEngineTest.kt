@@ -2,6 +2,7 @@ package sh.edm.bluetoothproxy
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -181,6 +182,15 @@ class BluetoothProxyEngineTest {
         loop.advanceBy(1_000)
         assertEquals("the failure stays", ScanFailure.LOCATION_OFF, engine.status.failure)
         assertEquals("nothing forwarded", emptyList<List<RawAdvertisement>>(), sent)
+    }
+
+    @Test fun aRefusedSubscriberShowsAsNeedingTheKeyUntilOneSubscribes() {
+        engine.onRefused()
+        loop.advanceBy(0)
+        assertTrue(engine.status.needsKey)
+        assertEquals("no scan for a refused client", emptyList<String>(), scanner.calls)
+        subscribe(true)
+        assertFalse("a subscriber came: the key works", engine.status.needsKey)
     }
 
     @Test fun bluetoothComingBackRetriesAtOnce() {

@@ -22,6 +22,8 @@ enum class ProxyPhase(val entityText: String?) {
     LOCATION_OFF("Location off"),
     /** On, but Home Assistant isn't listening: the radio stays quiet. */
     WAITING("Waiting for Home Assistant"),
+    /** Like [WAITING], and a client was refused: the proxy answers only a connection with the panel's key. */
+    NEEDS_KEY("Waiting for the panel's key"),
     LISTENING("Listening"),
     /** Android stopped or refused the scan; the engine tries again. */
     RETRYING("Retrying");
@@ -34,7 +36,7 @@ enum class ProxyPhase(val entityText: String?) {
             unavailable == ScanFailure.NO_PERMISSION -> NO_PERMISSION
             unavailable == ScanFailure.BLUETOOTH_OFF -> BLUETOOTH_OFF
             unavailable == ScanFailure.LOCATION_OFF -> LOCATION_OFF
-            status == null || !status.subscribed -> WAITING
+            status == null || !status.subscribed -> if (status?.needsKey == true) NEEDS_KEY else WAITING
             status.failure != null -> RETRYING
             else -> LISTENING
         }

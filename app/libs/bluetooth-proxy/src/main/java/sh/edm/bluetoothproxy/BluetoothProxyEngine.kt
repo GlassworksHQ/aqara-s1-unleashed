@@ -23,6 +23,8 @@ data class ProxyStatus(
     val lastHour: List<Int> = emptyList(),
     /** After a failure: when the next try is due, in ms from now. Null when none is waiting. */
     val retryInMs: Long? = null,
+    /** A client was refused for want of the device's key, and none has subscribed since. */
+    val needsKey: Boolean = false,
 )
 
 /**
@@ -93,12 +95,13 @@ class BluetoothProxyEngine internal constructor(
     @Volatile private var failure: ScanFailure? = null
     private val counter = MinuteStats()
     @Volatile private var retryAt: Long? = null
+    @Volatile private var needsKey = false
 
     val status: ProxyStatus
         get() {
             val now = loop.now()
             val m = counter.snapshot(now)
-            return ProxyStatus(subscribed, scanning, failure, m.advertisements, m.devices, m.lastHour, retryAt?.let { (it - now).coerceAtLeast(0) })
+            return ProxyStatus(subscribed, scanning, failure, m.advertisements, m.devices, m.lastHour, retryAt?.let { (it - now).coerceAtLeast(0) }, needsKey)
         }
 
     /** Counts scan starts and stops. A scan's results and failure count only while its generation is current. */
@@ -128,8 +131,11 @@ class BluetoothProxyEngine internal constructor(
         }
     }
 
+    override fun onRefused() = loop.execute { if (!closed && !subscribed) needsKey = true }
+
     override fun onSubscribed(subscribed: Boolean) = loop.execute {
         if (closed) return@execute
+        if (subscribed) needsKey = false
         this.subscribed = subscribed
         schedule.setSubscribed(subscribed, loop.now())
         if (!subscribed) pending.clear()

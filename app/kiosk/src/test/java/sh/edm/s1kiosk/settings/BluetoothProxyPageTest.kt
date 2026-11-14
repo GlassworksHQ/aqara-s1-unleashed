@@ -46,6 +46,12 @@ class BluetoothProxyPageTest {
         assertTrue(shown(v, "Listening"))
     }
 
+    @Test fun withoutThePanelsKeyThePageSaysWhy() {
+        val v = page(Model(ProxyPhase.NEEDS_KEY, ProxyStatus(false, false, null, 0, needsKey = true)))
+        assertTrue(shown(v, "Waiting for Home Assistant: it needs this panel's encryption key. Home Assistant 2026.11 and later sets it when it adds the panel."))
+        assertTrue(shown(v, "Waiting for the panel's key"))
+    }
+
     @Test fun bluetoothOffOffersToTurnItOn() {
         val m = Model(ProxyPhase.BLUETOOTH_OFF)
         val v = page(m)
