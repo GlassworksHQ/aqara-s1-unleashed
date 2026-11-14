@@ -20,9 +20,10 @@ import report as R  # noqa: E402
 import summary as S  # noqa: E402
 import test_report as T  # noqa: E402
 
-SUMMARY_KEYS = {"schema", "test", "protocol_version", "report_schema", "measured_on", "frame", "app_version", "viewport",
-                "runs", "pages", "restart_ms", "gaps", "not_comparable", "report", "complete", "ram", "apk", "notes"}
-PAGE_KEYS = {"inp_ms", "open_ms", "scroll", "updates", "camera", "runs"}
+SUMMARY_KEYS = {"schema", "test", "clarity", "protocol_version", "report_schema", "measured_on", "frame", "app_version", "viewport",
+                "runs", "pages", "restart_ms", "gaps", "not_comparable", "report", "complete", "ram", "apk", "notes",
+                "webrtc_transport"}
+PAGE_KEYS = {"inp_ms", "open_ms", "scroll", "updates", "camera", "runs", "timed_out_runs"}
 GRADE_KEYS = ("grade", "meaning", "levels", "bands", "capped_by_start", "missing", "provisional", "start")
 
 
@@ -39,6 +40,7 @@ def fixture(variant):
         elif variant == "E":           # smoke5's shape
             run["tiers"]["light"]["swipes"] = [T.swipe(30.0, i, T.late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["typical"]["swipes"] = [T.swipe(40.0, i, T.late(60, 45, 66.67)) for i in range(3)]
+            run["tiers"]["typical-nocam"]["swipes"] = [T.swipe(70.0, i, T.late(60, 45, 66.67)) for i in range(3)]
             run["tiers"]["light"]["page"]["fcp_ms"] = 900
         elif variant == "capped":
             run["proc_mono"], run["engine_mono"] = 20.0, 26.0
@@ -50,6 +52,8 @@ def fixture(variant):
             run["tiers"]["heavy"]["swipes"] = [T.swipe(50.0, i, T.late(60, 6)) for i in range(3)]   # good, not premium
         elif variant == "raf-only":
             run["tiers"]["heavy"]["swipes"] = [T.swipe(50.0, i, T.late(60, 20), sf=False) for i in range(3)]
+        elif variant == "pre-v10":      # a report without typical-nocam: C's page is missing, provisional
+            del run["tiers"]["typical-nocam"]
         elif variant == "even":         # two runs: the worse middle band
             if k == 3:
                 continue
@@ -65,7 +69,7 @@ def fixture(variant):
     return rep
 
 
-VARIANTS = ["B", "A", "premium", "E", "capped", "zoom", "raf-only", "even", "missing-run"]
+VARIANTS = ["B", "A", "premium", "E", "capped", "zoom", "raf-only", "even", "missing-run", "pre-v10"]
 
 
 def ts_grades(summaries):
@@ -115,7 +119,12 @@ class Export(unittest.TestCase):
         self.assertEqual((heavy["inp_ms"], heavy["open_ms"]), (150, 400))
         self.assertEqual(heavy["camera"]["runs"][0], {"first_frame_ms": 600.0, "shown_pct": 100.0, "max_gap_ms": 70.0, "stall_total_ms": 0.0})
         self.assertEqual(heavy["runs"]["camera"], 3)
-        self.assertEqual(s["pages"]["light"]["camera"], {"runs": []})
+        self.assertEqual(s["pages"]["light"]["camera"], {"runs": [], "path": None, "fallback": None})
+        # #202 (additive): the graded path, and the page's cameras over HLS as detail.
+        self.assertEqual(heavy["camera"]["path"], "web_rtc")
+        self.assertEqual(heavy["camera"]["fallback"]["path"], "hls")
+        self.assertEqual(heavy["camera"]["fallback"]["runs"][0],
+                         {"first_frame_ms": 3700.0, "shown_pct": 35.0, "max_gap_ms": 4600.0, "stall_total_ms": 26600.0})
         self.assertEqual((heavy["scroll"]["fps"], heavy["scroll"]["p95_ms"], heavy["scroll"]["scrolled_px"]), (45.0, 33.33, 2100))
         self.assertEqual(heavy["scroll"]["sf_valid"], [True, True, True])
         self.assertEqual((heavy["scroll"]["swipes_moved"], heavy["scroll"]["swipes_at_edge"]), (9, 0))
@@ -222,6 +231,11 @@ class Parity(unittest.TestCase):
         self.assertEqual(letters["capped"], "C")
         self.assertIsNone(letters["zoom"])
         self.assertTrue(self.reps["raf-only"]["grade"]["provisional"])
+        # Rubric v10 (#205): without typical-nocam, B still stands on typical with its camera, and the
+        # grade is provisional: the camera-free typical wasn't measured.
+        g = self.reps["pre-v10"]["grade"]
+        self.assertEqual((g["grade"], g["provisional"]), ("B", True))
+        self.assertIn("typical-nocam.scroll", g["missing"])
 
     def test_python_from_the_summary_equals_the_report(self):
         for v in VARIANTS:
@@ -243,6 +257,21 @@ class Parity(unittest.TestCase):
                     if k in py:
                         self.assertEqual(ts[k], py[k], k)
 
+    def test_the_transport_goes_with_the_letter_in_both_and_never_changes_it(self):
+        """Protocol 7 (#202, option B): the camera video's path is in the summary, and both graders pass
+        it on with the letter (results over different paths aren't comparable); over adb, a caveat."""
+        rep = dict(self.reps["B"], webrtc_transport={"transport": "adb", "chosen_by": "auto", "reason": "no LAN",
+                                                     "limited": "heavy's camera video went through adb"})
+        s = S.summarise(rep, allow_provisional=True)
+        self.assertEqual(s["webrtc_transport"], {"transport": "adb", "chosen_by": "auto", "reason": "no LAN", "possibly_limited": True})
+        lan = dict(s, webrtc_transport={"transport": "lan-udp", "chosen_by": "auto", "reason": "LAN", "possibly_limited": False})
+        for summ, want in ((s, ("adb", G.TRANSPORT_CAVEAT)), (lan, ("lan-udp", None)), (dict(s, webrtc_transport=None), (None, None))):
+            py, ts = G.grade_summary(summ), ts_grades([summ])[0]
+            self.assertEqual((py["transport"], py["transport_caveat"]), want)
+            self.assertEqual((ts["transport"], ts["transport_caveat"]), want)
+            self.assertEqual(py["grade"], G.grade_summary(self.sums["B"])["grade"])     # the letter doesn't move
+        self.assertIsNone(self.sums["B"]["webrtc_transport"])                           # a run without transport.json
+
     def test_another_protocol_is_re_measured_in_both(self):
         for v in (G.PROTOCOL_VERSION + 1, None):
             with self.subTest(protocol=v):
@@ -252,6 +281,34 @@ class Parity(unittest.TestCase):
                 self.assertEqual((py["status"], py["grade"]), ("re-measure", None))
                 self.assertEqual((ts["status"], ts["grade"], ts["why"]), ("re-measure", None, py["why"]))
         self.assertIn("measured with protocol unknown", G.grade_summary(dict(self.sums["B"], protocol_version=None))["why"])
+
+    def test_stalls_not_reported_survive_the_round_trip_in_both(self):
+        """#205's verifier: a camera run whose stalls are n/a (stalls_reported false) must reach the
+        summary as such, and both graders must read that run as not measured, not as 0 stalls."""
+        rep = json.loads(json.dumps(self.reps["B"]))
+        heavy = rep["graded"]["reference"]["tiers"]["heavy"]
+        heavy["camera_runs"] = [dict(r, stall_total_ms=None, max_gap_ms=None, stalls_reported=False) for r in heavy["camera_runs"]]
+        s = S.summarise(rep, allow_provisional=True)
+        runs = s["pages"]["heavy"]["camera"]["runs"]
+        self.assertTrue(all(r["stalls_reported"] is False and r["stall_total_ms"] is None for r in runs), runs)
+        ts, py = ts_grades([s])[0], G.grade_summary(s)
+        self.assertIn("heavy.camera", py["missing"])
+        self.assertEqual((ts["grade"], ts["missing"]), (py["grade"], py["missing"]))
+        # Without the flag the same runs are the summary's ordinary records.
+        self.assertNotIn("stalls_reported", self.sums["B"]["pages"]["heavy"]["camera"]["runs"][0])
+
+    def test_a_pre_release_summary_is_re_measured_in_both(self):
+        """Clarity v1 (2026-11-14): a summary without `clarity: 1` is pre-release, even at protocol 1."""
+        for extra in ({"clarity": None}, {"clarity": None, "protocol_version": 7}):
+            with self.subTest(**{k: str(v) for k, v in extra.items()}):
+                s = dict(self.sums["B"], **extra)
+                ts, py = ts_grades([s])[0], G.grade_summary(s)
+                self.assertEqual((py["status"], py["grade"]), ("re-measure", None))
+                self.assertIn("measured with a pre-release version of Clarity", py["why"])
+                self.assertEqual((ts["status"], ts["why"]), (py["status"], py["why"]))
+        s = {k: v for k, v in self.sums["B"].items() if k != "clarity"}             # an old summary: no key at all
+        self.assertEqual((G.grade_summary(s)["status"], ts_grades([s])[0]["status"]), ("re-measure", "re-measure"))
+        self.assertEqual((self.sums["B"]["clarity"], self.sums["B"]["protocol_version"]), (1, 1))
 
     def test_not_comparable_wins_over_a_missing_protocol_in_both(self):
         """--skip-reference: nothing measured, so no protocol either. Both say why, not "re-measure"."""

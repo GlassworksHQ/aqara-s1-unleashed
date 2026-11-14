@@ -1,0 +1,11 @@
+{
+  "id": "timers",
+  "name": "Timers",
+  "does": "Voice timers on screen.",
+  "requires": [
+    "microphone",
+    "speaker"
+  ],
+  "status": "beta",
+  "docs": "docs/esphome.md#timers-on-screen"
+}

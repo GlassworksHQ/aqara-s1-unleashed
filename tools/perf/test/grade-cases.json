@@ -1,6 +1,6 @@
 {
  "_comment": "Shared grade cases (MIT): every scroll level, live-update level, page level and letter boundary from test_grade.py, with the answer. grade.py (test_grade.py) and grade.ts (grade.test.mjs) must both give it. Regenerate only on purpose, with the rubric and the docs.",
- "rubric_version": 6,
+ "rubric_version": 1,
  "bands": [
   {
    "metric": "frame_p95_ms",
@@ -299,6 +299,18 @@
     "n": 0
    },
    "level": null
+  },
+  {
+   "name": "the view didn't finish before it scrolled (#202): measured, slow",
+   "stats": {
+    "timed_out": true,
+    "n": 0,
+    "fps": null,
+    "p95_ms": null,
+    "jank_pct": null,
+    "frozen_pct": null
+   },
+   "level": "slow"
   }
  ],
  "update_levels": [
@@ -407,6 +419,13 @@
     "frames": null
    },
    "level": "good"
+  },
+  {
+   "name": "the view didn't finish before its updates (#202): measured, slow",
+   "run": {
+    "timed_out": true
+   },
+   "level": "slow"
   }
  ],
  "median_bands": [
@@ -498,6 +517,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -519,11 +544,19 @@
     "meaning": "premium",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "premium"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -564,6 +597,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -585,11 +624,19 @@
     "meaning": "premium",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "premium"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -630,6 +677,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -647,15 +700,23 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": null
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -687,7 +748,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "load"
       ]
@@ -699,6 +760,12 @@
    "name": "page level: scroll good",
    "tiers": {
     "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
@@ -725,11 +792,19 @@
     "meaning": "a good wall panel even for large dashboards",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "good"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -778,6 +853,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -799,11 +880,19 @@
     "meaning": "a good wall panel even for large dashboards",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "good"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -852,6 +941,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -870,14 +965,22 @@
    "start_ms": 1000,
    "expect": {
     "grade": "B",
-    "meaning": "a good wall panel for typical dashboards; large ones stay fluid",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "fluid"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -926,6 +1029,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -943,15 +1052,23 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": null
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -983,7 +1100,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "scroll"
       ]
@@ -995,6 +1112,12 @@
    "name": "page level: live updates good (within 100 ms), pacing not 60 fps",
    "tiers": {
     "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
@@ -1021,11 +1144,19 @@
     "meaning": "a good wall panel even for large dashboards",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "good"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -1074,6 +1205,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -1092,14 +1229,22 @@
    "start_ms": 1000,
    "expect": {
     "grade": "B",
-    "meaning": "a good wall panel for typical dashboards; large ones stay fluid",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "fluid"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -1148,6 +1293,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -1166,14 +1317,22 @@
    "start_ms": 1000,
    "expect": {
     "grade": "B",
-    "meaning": "a good wall panel for typical dashboards; large ones stay fluid",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "fluid"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -1222,6 +1381,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -1239,15 +1404,23 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": null
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -1279,7 +1452,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "updates"
       ]
@@ -1291,6 +1464,12 @@
    "name": "page level: live updates not measured",
    "tiers": {
     "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
@@ -1313,15 +1492,23 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": null
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -1355,7 +1542,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "updates"
       ]
@@ -1367,6 +1554,12 @@
    "name": "page level: a tap over 200 ms",
    "tiers": {
     "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
@@ -1389,15 +1582,23 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": null
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -1429,7 +1630,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "tap"
       ]
@@ -1441,6 +1642,12 @@
    "name": "page level: a tap over 500 ms",
    "tiers": {
     "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
@@ -1463,15 +1670,23 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": null
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -1503,7 +1718,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "tap"
       ]
@@ -1515,6 +1730,12 @@
    "name": "page level: scroll not measured",
    "tiers": {
     "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
@@ -1537,15 +1758,23 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": null
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -1579,7 +1808,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "scroll"
       ]
@@ -1591,6 +1820,12 @@
    "name": "letter: heavy premium: every task at 60 fps",
    "tiers": {
     "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
@@ -1617,11 +1852,19 @@
     "meaning": "premium",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "premium"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -1662,6 +1905,12 @@
      "scroll_level": "slow",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -1683,11 +1932,19 @@
     "meaning": "premium",
     "levels": {
      "light": null,
+     "typical-nocam": null,
      "typical": null,
      "heavy": "premium"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
@@ -1728,6 +1985,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -1749,11 +2012,19 @@
     "meaning": "a good wall panel even for large dashboards",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "good"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -1802,6 +2073,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -1823,11 +2100,19 @@
     "meaning": "a good wall panel even for large dashboards",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "good"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -1876,6 +2161,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -1893,15 +2184,23 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": null
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -1933,7 +2232,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "tap"
       ]
@@ -1948,6 +2247,12 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "good",
      "updates_level": "premium"
     },
     "typical": {
@@ -1968,9 +2273,10 @@
    "start_ms": 1000,
    "expect": {
     "grade": "B",
-    "meaning": "a good wall panel for typical dashboards; large ones stay fluid",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "good",
      "typical": "good",
      "heavy": "fluid"
     },
@@ -1978,6 +2284,13 @@
      "light": {
       "tap": "good",
       "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "good",
       "updates": "premium",
       "load": "good",
       "camera": "none"
@@ -2024,6 +2337,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "good",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -2041,10 +2360,11 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "good",
      "typical": "good",
      "heavy": null
     },
@@ -2052,6 +2372,13 @@
      "light": {
       "tap": "good",
       "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "good",
       "updates": "premium",
       "load": "good",
       "camera": "none"
@@ -2081,7 +2408,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "scroll"
       ]
@@ -2096,6 +2423,12 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "fluid",
      "updates_level": "premium"
     },
     "typical": {
@@ -2116,9 +2449,10 @@
    "start_ms": 1000,
    "expect": {
     "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "meaning": "a good wall panel for typical dashboards without a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "fluid",
      "typical": "fluid",
      "heavy": "fluid"
     },
@@ -2126,6 +2460,13 @@
      "light": {
       "tap": "good",
       "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "fluid",
       "updates": "premium",
       "load": "good",
       "camera": "none"
@@ -2172,6 +2513,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "fluid",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -2190,9 +2537,10 @@
    "start_ms": 1000,
    "expect": {
     "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "meaning": "a good wall panel for typical dashboards without a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "fluid",
      "typical": "fluid",
      "heavy": null
     },
@@ -2200,6 +2548,13 @@
      "light": {
       "tap": "good",
       "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "fluid",
       "updates": "premium",
       "load": "good",
       "camera": "none"
@@ -2233,13 +2588,6 @@
       "tasks": [
        "scroll"
       ]
-     },
-     {
-      "page": "heavy",
-      "needs": "fluid",
-      "tasks": [
-       "scroll"
-      ]
      }
     ]
    }
@@ -2251,6 +2599,12 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "fluid",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
      "updates_level": "premium"
     },
     "typical": {
@@ -2274,6 +2628,7 @@
     "meaning": "a good wall panel for light dashboards",
     "levels": {
      "light": "fluid",
+     "typical-nocam": null,
      "typical": null,
      "heavy": null
     },
@@ -2281,6 +2636,13 @@
      "light": {
       "tap": "good",
       "scroll": "fluid",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "slow",
       "updates": "premium",
       "load": "good",
       "camera": "none"
@@ -2309,7 +2671,7 @@
     },
     "limits": [
      {
-      "page": "typical",
+      "page": "typical-nocam",
       "needs": "fluid",
       "tasks": [
        "scroll"
@@ -2325,6 +2687,12 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
      "updates_level": "premium"
     },
     "typical": {
@@ -2348,6 +2716,7 @@
     "meaning": "a good wall panel for light dashboards",
     "levels": {
      "light": "premium",
+     "typical-nocam": null,
      "typical": null,
      "heavy": null
     },
@@ -2355,6 +2724,13 @@
      "light": {
       "tap": "good",
       "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "slow",
       "updates": "premium",
       "load": "good",
       "camera": "none"
@@ -2383,7 +2759,7 @@
     },
     "limits": [
      {
-      "page": "typical",
+      "page": "typical-nocam",
       "needs": "fluid",
       "tasks": [
        "scroll"
@@ -2396,6 +2772,12 @@
    "name": "letter: light below fluid",
    "tiers": {
     "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "slow",
@@ -2422,11 +2804,19 @@
     "meaning": "not a good wall panel, even for light dashboards",
     "levels": {
      "light": null,
+     "typical-nocam": null,
      "typical": null,
      "heavy": null
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
@@ -2475,6 +2865,12 @@
      "scroll_level": "slow",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -2496,11 +2892,19 @@
     "meaning": "a good wall panel even for large dashboards",
     "levels": {
      "light": null,
+     "typical-nocam": null,
      "typical": null,
      "heavy": "good"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "slow",
       "updates": "premium",
@@ -2549,6 +2953,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -2567,14 +2977,22 @@
    "start_ms": 1000,
    "expect": {
     "grade": "B",
-    "meaning": "a good wall panel for typical dashboards; large ones stay fluid",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "fluid"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -2623,6 +3041,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -2644,11 +3068,19 @@
     "meaning": "a good wall panel even for large dashboards",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "good"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -2698,6 +3130,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 300,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 300,
      "load_ms": 1000,
@@ -2719,12 +3157,20 @@
     "meaning": "a good wall panel for light dashboards",
     "levels": {
      "light": "premium",
+     "typical-nocam": null,
      "typical": null,
      "heavy": null
     },
     "bands": {
      "light": {
       "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "needs-improvement",
       "scroll": "premium",
       "updates": "premium",
       "load": "good",
@@ -2754,7 +3200,7 @@
     },
     "limits": [
      {
-      "page": "typical",
+      "page": "typical-nocam",
       "needs": "fluid",
       "tasks": [
        "tap"
@@ -2770,6 +3216,12 @@
      "inp_ms": 100,
      "load_ms": 5000,
      "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
      "updates_level": "premium"
     },
     "typical": {
@@ -2793,6 +3245,7 @@
     "meaning": "not a good wall panel, even for light dashboards",
     "levels": {
      "light": null,
+     "typical-nocam": null,
      "typical": null,
      "heavy": null
     },
@@ -2802,6 +3255,13 @@
       "scroll": "premium",
       "updates": "premium",
       "load": "poor",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
       "camera": "none"
      },
      "typical": {
@@ -2846,6 +3306,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -2867,11 +3333,19 @@
     "meaning": "premium",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "premium"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -2912,6 +3386,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -2930,14 +3410,22 @@
    "start_ms": 5000,
    "expect": {
     "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "meaning": "a good wall panel for typical dashboards without a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "premium"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -2978,6 +3466,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -2996,14 +3490,22 @@
    "start_ms": 5000,
    "expect": {
     "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "meaning": "a good wall panel for typical dashboards without a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "good"
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -3044,6 +3546,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -3065,6 +3573,7 @@
     "meaning": "a good wall panel for light dashboards",
     "levels": {
      "light": "premium",
+     "typical-nocam": null,
      "typical": null,
      "heavy": null
     },
@@ -3072,6 +3581,13 @@
      "light": {
       "tap": "good",
       "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "slow",
       "updates": "premium",
       "load": "good",
       "camera": "none"
@@ -3100,7 +3616,7 @@
     },
     "limits": [
      {
-      "page": "typical",
+      "page": "typical-nocam",
       "needs": "fluid",
       "tasks": [
        "scroll"
@@ -3116,6 +3632,12 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "fluid",
      "updates_level": "premium"
     },
     "typical": {
@@ -3136,9 +3658,10 @@
    "start_ms": 5000,
    "expect": {
     "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "meaning": "a good wall panel for typical dashboards without a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "fluid",
      "typical": "fluid",
      "heavy": null
     },
@@ -3146,6 +3669,13 @@
      "light": {
       "tap": "good",
       "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "fluid",
       "updates": "premium",
       "load": "good",
       "camera": "none"
@@ -3179,13 +3709,6 @@
       "tasks": [
        "scroll"
       ]
-     },
-     {
-      "page": "heavy",
-      "needs": "fluid",
-      "tasks": [
-       "scroll"
-      ]
      }
     ]
    }
@@ -3197,6 +3720,12 @@
      "inp_ms": 100,
      "load_ms": 1000,
      "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "good",
      "updates_level": "premium"
     },
     "typical": {
@@ -3217,9 +3746,10 @@
    "start_ms": 5000,
    "expect": {
     "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "meaning": "a good wall panel for typical dashboards without a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "good",
      "typical": "good",
      "heavy": "fluid"
     },
@@ -3227,6 +3757,13 @@
      "light": {
       "tap": "good",
       "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "good",
       "updates": "premium",
       "load": "good",
       "camera": "none"
@@ -3265,6 +3802,12 @@
      "scroll_level": "premium",
      "updates_level": "premium"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -3275,15 +3818,23 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
-    "meaning": "a good wall panel for typical dashboards",
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": null
     },
     "bands": {
      "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": "good",
       "scroll": "premium",
       "updates": "premium",
@@ -3321,7 +3872,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "tap",
        "scroll",
@@ -3342,11 +3893,19 @@
     "meaning": "not a good wall panel, even for light dashboards",
     "levels": {
      "light": null,
+     "typical-nocam": null,
      "typical": null,
      "heavy": null
     },
     "bands": {
      "light": {
+      "tap": null,
+      "scroll": null,
+      "updates": null,
+      "load": null,
+      "camera": "none"
+     },
+     "typical-nocam": {
       "tap": null,
       "scroll": null,
       "updates": null,
@@ -3374,6 +3933,10 @@
      "light.scroll",
      "light.updates",
      "light.load",
+     "typical-nocam.tap",
+     "typical-nocam.scroll",
+     "typical-nocam.updates",
+     "typical-nocam.load",
      "typical.tap",
      "typical.scroll",
      "typical.updates",
@@ -3415,6 +3978,12 @@
      "updates_level": "premium",
      "camera_level": "good"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -3435,6 +4004,7 @@
     "grade": "B",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "fluid"
     },
@@ -3451,7 +4021,7 @@
    }
   },
   {
-   "name": "camera: heavy's streams below fluid: heavy fails, typical decides (C)",
+   "name": "camera: heavy's streams below fluid: heavy fails, typical decides (B since rubric v11)",
    "tiers": {
     "light": {
      "inp_ms": 100,
@@ -3459,6 +4029,12 @@
      "scroll_level": "premium",
      "updates_level": "premium",
      "camera_level": "good"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
     },
     "typical": {
      "inp_ms": 100,
@@ -3477,9 +4053,10 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
+    "grade": "B",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": null
     },
@@ -3487,7 +4064,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "camera"
       ]
@@ -3496,7 +4073,7 @@
    }
   },
   {
-   "name": "camera: heavy's streams not measured: missing, C",
+   "name": "camera: heavy's streams not measured: missing, B (rubric v11)",
    "tiers": {
     "light": {
      "inp_ms": 100,
@@ -3504,6 +4081,12 @@
      "scroll_level": "premium",
      "updates_level": "premium",
      "camera_level": "good"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
     },
     "typical": {
      "inp_ms": 100,
@@ -3522,9 +4105,10 @@
    },
    "start_ms": 1000,
    "expect": {
-    "grade": "C",
+    "grade": "B",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": null
     },
@@ -3534,7 +4118,7 @@
     "limits": [
      {
       "page": "heavy",
-      "needs": "fluid",
+      "needs": "good",
       "tasks": [
        "camera"
       ]
@@ -3551,6 +4135,12 @@
      "scroll_level": "premium",
      "updates_level": "premium",
      "camera_level": "slow"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
     },
     "typical": {
      "inp_ms": 100,
@@ -3572,6 +4162,7 @@
     "grade": "A+",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "premium"
     },
@@ -3588,6 +4179,12 @@
      "scroll_level": "premium",
      "updates_level": "premium",
      "camera_level": "good"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
     },
     "typical": {
      "inp_ms": 100,
@@ -3609,6 +4206,7 @@
     "grade": "C",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "fluid",
      "heavy": "fluid"
     },
@@ -3634,6 +4232,12 @@
      "updates_level": "premium",
      "camera_level": "good"
     },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
     "typical": {
      "inp_ms": 100,
      "load_ms": 1000,
@@ -3654,11 +4258,456 @@
     "grade": "A+",
     "levels": {
      "light": "premium",
+     "typical-nocam": "premium",
      "typical": "premium",
      "heavy": "premium"
     },
     "missing": [],
     "limits": []
+   }
+  },
+  {
+   "name": "v10: typical's camera below fluid, typical without it fluid: C (D before v10)",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "fluid",
+     "updates_level": "premium"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "fluid",
+     "updates_level": "premium",
+     "camera_level": "slow"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "camera_level": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards without a camera",
+    "levels": {
+     "light": "premium",
+     "typical-nocam": "fluid",
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "fluid",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "fluid",
+      "updates": "premium",
+      "load": "good",
+      "camera": "slow"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "typical",
+      "needs": "good",
+      "tasks": [
+       "scroll",
+       "camera"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "v10: typical good with its camera playing, heavy fluid: B",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "good",
+     "updates_level": "premium",
+     "camera_level": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "fluid",
+     "updates_level": "premium",
+     "camera_level": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "B",
+    "meaning": "a good wall panel for typical dashboards, with a camera",
+    "levels": {
+     "light": "premium",
+     "typical-nocam": "premium",
+     "typical": "good",
+     "heavy": "fluid"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "good",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "fluid",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "heavy",
+      "needs": "good",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "v10: typical only fluid with its camera, heavy fluid: B needs it good, so C",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "fluid",
+     "updates_level": "premium",
+     "camera_level": "fluid"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "fluid",
+     "updates_level": "premium",
+     "camera_level": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "C",
+    "meaning": "a good wall panel for typical dashboards without a camera",
+    "levels": {
+     "light": "premium",
+     "typical-nocam": "premium",
+     "typical": "fluid",
+     "heavy": "fluid"
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "fluid",
+      "updates": "premium",
+      "load": "good",
+      "camera": "fluid"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "fluid",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "typical",
+      "needs": "good",
+      "tasks": [
+       "scroll",
+       "camera"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "v10: typical without a camera not measured (a report from before v10): missing, D, provisional",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "fluid",
+     "updates_level": "premium",
+     "camera_level": "fluid"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "camera_level": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "D",
+    "meaning": "a good wall panel for light dashboards",
+    "levels": {
+     "light": "premium",
+     "typical-nocam": null,
+     "typical": "fluid",
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": null,
+      "scroll": null,
+      "updates": null,
+      "load": null,
+      "camera": "none"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "fluid",
+      "updates": "premium",
+      "load": "good",
+      "camera": "fluid"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [
+     "typical-nocam.tap",
+     "typical-nocam.scroll",
+     "typical-nocam.updates",
+     "typical-nocam.load"
+    ],
+    "provisional": true,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "typical-nocam",
+      "needs": "fluid",
+      "tasks": [
+       "tap",
+       "scroll",
+       "updates",
+       "load"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "v10: typical without a camera below fluid: D",
+   "tiers": {
+    "light": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "premium",
+     "updates_level": "premium"
+    },
+    "typical-nocam": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium"
+    },
+    "typical": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "camera_level": "good"
+    },
+    "heavy": {
+     "inp_ms": 100,
+     "load_ms": 1000,
+     "scroll_level": "slow",
+     "updates_level": "premium",
+     "camera_level": "good"
+    }
+   },
+   "start_ms": 1000,
+   "expect": {
+    "grade": "D",
+    "meaning": "a good wall panel for light dashboards",
+    "levels": {
+     "light": "premium",
+     "typical-nocam": null,
+     "typical": null,
+     "heavy": null
+    },
+    "bands": {
+     "light": {
+      "tap": "good",
+      "scroll": "premium",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical-nocam": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "none"
+     },
+     "typical": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good"
+     },
+     "heavy": {
+      "tap": "good",
+      "scroll": "slow",
+      "updates": "premium",
+      "load": "good",
+      "camera": "good"
+     }
+    },
+    "capped_by_start": false,
+    "missing": [],
+    "provisional": false,
+    "start": {
+     "value": 1000,
+     "band": "good"
+    },
+    "limits": [
+     {
+      "page": "typical-nocam",
+      "needs": "fluid",
+      "tasks": [
+       "scroll"
+      ]
+     }
+    ]
    }
   }
  ],
@@ -3762,6 +4811,28 @@
     "stall_total_ms": 0
    },
    "level": "slow"
+  },
+  {
+   "name": "the view didn't finish before its streams were measured (#202): measured, slow",
+   "run": {
+    "timed_out": true,
+    "first_frame_ms": null,
+    "shown_pct": null,
+    "max_gap_ms": null,
+    "stall_total_ms": null
+   },
+   "level": "slow"
+  },
+  {
+   "name": "a receiver without freeze counts (#205): stalls n/a, the run not measured",
+   "run": {
+    "stalls_reported": false,
+    "first_frame_ms": 1200,
+    "shown_pct": 99.0,
+    "max_gap_ms": null,
+    "stall_total_ms": null
+   },
+   "level": null
   }
  ]
 }

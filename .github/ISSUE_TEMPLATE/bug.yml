@@ -104,5 +104,5 @@ body:
     attributes:
       label: Checks
       options:
-        - label: I checked [Known issues](https://github.com/GlassworksHQ/glassworks#known-issues) and existing issues.
+        - label: I checked [Known issues](https://github.com/GlassworksHQ/glassworks/blob/main/frames/aqara-s1-plus/README.md#known-issues) and existing issues.
           required: true

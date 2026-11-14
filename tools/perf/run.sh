@@ -11,24 +11,33 @@
 #     (`--ez voice_enabled`, `--ez sendspin_enabled`, `--ez wall_base_enabled`, `--ez time_zone_enabled`,
 #     `--ez diagnostics_enabled`), restarts the app after each change (`--ez restart true`), and puts
 #     them back to the given settings on exit.
-#   - Sends `--es screen on` (the kiosk's own wake intent) during warm-ups, so the screen stays on
-#     without changing the idle timeout.
+#   - Sends `--es screen on` (the kiosk's own wake intent) during warm-ups, and Android's wake key
+#     (`input keyevent KEYCODE_WAKEUP`) through each restart, so the screen stays on without changing
+#     the idle timeout.
 #   - Taps each reference dashboard's "Living room" toggle (`input tap`) and swipes it (`input swipe`),
 #     only where and when the page asks, to measure taps and scrolling.
 #   - Force-stops the app for each cold start (KEYCODE_WAKEUP first, so the screen is on); the app
 #     comes back on the saved dashboard. If the run stops early or the last cold start fails, the
 #     exit trap restarts the app.
 #   Read-only otherwise: getprop, /proc, dumpsys meminfo and SurfaceFlinger, logcat.
+#   On this computer: a Python venv for the fake's WebRTC peer (aiortc, from webrtc-requirements.txt,
+#   locked with hashes) in ~/.cache/glassworks-perf, and two `adb reverse` ports (--port and the
+#   WebRTC relay's, --port + 1), removed on exit.
 #
 # Usage: tools/perf/run.sh --frame aqara-s1-plus [--name "Aqara S1 Plus"] [--serial S] [--runs 3] [--out DIR]
 #          --restore-dashboard URL|auto [--pane-ram assist=on,sendspin=on,mic=on]
 #          [--skip-synthetic] [--skip-reference] [--skip-real-use] [--taps 10] [--quick] [--apk FILE]...
+#          [--webrtc-transport auto|adb|lan-turn|lan-udp]   # the camera video's path; auto (default) asks the panel
+#
+# Camera video (protocol 7, #202): with --webrtc-transport auto, lanprobe.py first has the panel send one
+# UDP datagram and open one TCP connection to this computer's LAN address (two `toybox nc` over adb
+# shell: connections from the panel, nothing written on it), and picks lan-udp, lan-turn or adb.
 #        tools/perf/run.sh --frame ID --out DIR --idle-only LABEL   # one idle sample (pane diffs)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ADB="${ADB:-adb}"
-FRAME="" NAME="" RUNS=3 OUT="" PORT=8089 PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
+FRAME="" NAME="" RUNS=3 OUT="" PORT=8089 TURN_PORT="" WEBRTC_TRANSPORT=auto PACKAGE=sh.edm.s1kiosk TAPS=10 QUICK=0
 SYNTH=1 REF=1 REAL=1 IDLE_ONLY="" MAX_TEMP_C=50 APKS=() RESTORE="" PANE_RAM=""
 # Waits, in seconds. Only the off-device test (test/test_runner.py) shortens them.
 IDLE_SETTLE="${GW_PERF_IDLE_SETTLE:-30}" IDLE_WINDOW="${GW_PERF_IDLE_WINDOW:-15}"
@@ -54,12 +63,14 @@ while [ $# -gt 0 ]; do
     --apk) APKS+=(--apk "$2"); shift 2 ;;
     --restore-dashboard) RESTORE="$2"; shift 2 ;;
     --pane-ram) PANE_RAM="$2"; shift 2 ;;
+    --webrtc-transport) WEBRTC_TRANSPORT="$2"; shift 2 ;;
     -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
 [ -n "$FRAME" ] || { echo "--frame is required (e.g. aqara-s1-plus)" >&2; exit 2; }
 [ "$RUNS" -ge 1 ] || { echo "--runs must be at least 1" >&2; exit 2; }
+TURN_PORT=$((PORT + 1))
 OUT="${OUT:-perf-$FRAME-$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$OUT"
 export ADB
@@ -170,6 +181,7 @@ cleanup() {
   fi
   [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true
   "$ADB" reverse --remove "tcp:$PORT" 2>/dev/null || true
+  "$ADB" reverse --remove "tcp:$TURN_PORT" 2>/dev/null || true
   restored || exit 3
   exit "$status"
 }
@@ -237,17 +249,41 @@ if [ "$SYNTH" = 1 ] || [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
   if [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
     python3 "$HERE/camera.py" >/dev/null || { echo "Clarity's camera streams need ffmpeg with libx264 (camera.py)" >&2; exit 2; }
   fi
-  # Something else on the port (an earlier run's fake left behind) would answer for ours.
+  # Protocol 6 (#202): the fake answers HA's WebRTC offers with aiortc, from a venv of
+  # webrtc-requirements.txt (hashes checked, wheels only; made once, about 93 MB on macOS, 2026-11-14).
+  # The animation test page alone plays no camera: plain python3 then.
+  FAKE_PY="${GW_PERF_FAKE_PYTHON:-}"
+  if [ -z "$FAKE_PY" ] && { [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; }; then
+    FAKE_PY=$(python3 "$HERE/webrtcenv.py") || { echo "the fake's WebRTC peer needs Python 3.11+ and its venv (webrtcenv.py)" >&2; exit 2; }
+  fi
+  FAKE_PY="${FAKE_PY:-python3}"
+  # The camera video's path (lanprobe.py: lan-udp, lan-turn or adb), before the fake takes the port;
+  # report.py reads transport.json. Without cameras (the animation page alone) it stays adb.
+  if [ "$REF" = 1 ] || [ -n "$PANE_RAM" ]; then
+    WEBRTC_TRANSPORT=$("$FAKE_PY" "$HERE/lanprobe.py" --port "$TURN_PORT" --out "$OUT" --transport "$WEBRTC_TRANSPORT") \
+      || { echo "lanprobe.py failed" >&2; exit 2; }
+    log "camera video over $WEBRTC_TRANSPORT ($(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["reason"])' "$OUT/transport.json"))"
+  elif [ "$WEBRTC_TRANSPORT" = auto ]; then
+    WEBRTC_TRANSPORT=adb
+  fi
+  # Something else on the ports (an earlier run's fake left behind) would answer for ours.
   if curl -s -o /dev/null --connect-timeout 1 --max-time 3 "http://127.0.0.1:$PORT/manifest.json"; then
     echo "port $PORT is already in use (an earlier run's fake Home Assistant?); stop it or use --port" >&2
     exit 2
   fi
+  if (exec 3<>"/dev/tcp/127.0.0.1/$TURN_PORT") 2>/dev/null; then
+    echo "port $TURN_PORT (the WebRTC relay's, --port + 1) is already in use (an earlier run's fake?); stop it or use --port" >&2
+    exit 2
+  fi
   # fakeha.jsonl: every command the frontend sent, and the stream's sends (report.py checks them).
-  python3 "$HERE/fakeha.py" --port "$PORT" --log "$OUT/fakeha.jsonl" >"$OUT/server.log" 2>&1 &
+  "$FAKE_PY" "$HERE/fakeha.py" --port "$PORT" --turn-port "$TURN_PORT" --webrtc-transport "$WEBRTC_TRANSPORT" \
+    --log "$OUT/fakeha.jsonl" >"$OUT/server.log" 2>&1 &
   SERVER_PID=$!
   for _ in $(seq 1 60); do curl -s -o /dev/null --connect-timeout 1 --max-time 3 "http://127.0.0.1:$PORT/manifest.json" && break; sleep 0.5; done
   kill -0 "$SERVER_PID" 2>/dev/null || { echo "the fake Home Assistant didn't start; see $OUT/server.log" >&2; exit 2; }
   "$ADB" reverse "tcp:$PORT" "tcp:$PORT" >/dev/null
+  # The WebRTC relay (TURN over TCP): the panel's only way to this computer's WebRTC peer.
+  "$ADB" reverse "tcp:$TURN_PORT" "tcp:$TURN_PORT" >/dev/null
 fi
 
 if [ "$SYNTH" = 1 ]; then
@@ -265,10 +301,11 @@ if [ "$SYNTH" = 1 ]; then
 fi
 
 if [ "$REF" = 1 ]; then
+  FALLBACK=$(python3 -c 'import json,sys; print(",".join(json.load(open(sys.argv[1])).get("FALLBACK", {})))' "$HERE/page/tiers.json")
   # How many graded runs were attempted, so a run that left no file still counts against the grade.
   printf '{"runs": %d}\n' "$RUNS" > "$OUT/plan.json"
   # The graded part. The kiosk is pointed at the reference dashboard's start view; each run
-  # force-stops it, times the restart to that view being usable, then opens the three reference
+  # force-stops it, times the restart to that view being usable, then opens the four reference
   # views in turn within the loaded frontend (the order turns each run).
   log "pointing the kiosk at the reference dashboard for the graded runs (it goes back to $RESTORE after)"
   DASHBOARD_OK=0
@@ -276,10 +313,11 @@ if [ "$REF" = 1 ]; then
   sh_dev am start -n "$PACKAGE/.MainActivity" --es url "'http://127.0.0.1:$PORT/clarity-ref/start'" >/dev/null
   sleep "$SWITCH_SETTLE"
   for k in $(seq 1 "$RUNS"); do
-    log "graded run $k/$RUNS: restart to the reference dashboard, then the three reference dashboards"
+    log "graded run $k/$RUNS: restart to the reference dashboard, then the four reference dashboards"
     thermal "refstart-$k"
+    # Protocol 6: then the camera pages' HLS copies, the fallback (detail, not graded).
     if run refstart --run "$k" --settle "$COLD_SETTLE" --url "http://127.0.0.1:$PORT" \
-      --vsync "$VSYNC" --taps "$TAPS" --between-quiet "$BETWEEN_QUIET"; then
+      --vsync "$VSYNC" --taps "$TAPS" --between-quiet "$BETWEEN_QUIET" --fallback "$FALLBACK"; then
       # RAM at idle on the typical reference dashboard, opened with no nonce: nothing is timed and
       # the live updates stay off (docs/perf.md, "RAM").
       log "idle on the typical reference dashboard $k/$RUNS"

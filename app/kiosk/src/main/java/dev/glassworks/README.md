@@ -217,6 +217,15 @@ reacts to `TimersChanged` and `TimerFinished`. The voice assistant
 ([`AssistPane.kt`](../../sh/edm/s1kiosk/voice/AssistPane.kt)) is the pane that raises those: it calls
 `ctx.emit(PanelEvent.TimerFinished(name))`, and `SpeakerClaimed` while it listens and talks.
 
+Every pane also has a **`pane.json` and an `icon.svg`** in its folder, next to its `PaneDefinition` (or its
+`Pane`, for a pane without a definition of its own, like timers). They describe it to Kiln and glassworks.dev:
+`id`, `name`, `does` (one line), `requires` (hardware words), `status`, `frame` for a frame pane, and
+optionally `docs`. The icon is 24 × 24, stroked with `currentColor` at 1.6 with round caps and joins, and
+has no fills or colours; a new icon is UI, so the maintainer approves it.
+[`PaneCatalogTest`](../../../../test/java/dev/glassworks/pane/PaneCatalogTest.kt) fails if a pane
+has no files or a file has no pane. Then run `npm run panes -w @glassworks/frame-card`
+([frames/README.md](../../../../../../../frames/README.md#the-panes-a-frame-runs)).
+
 The core raises `HomeAssistantSubscribed(address, authenticated)` each time Home Assistant subscribes
 to the states. `authenticated` is true when the connection uses the key Home Assistant provisioned.
 Only then is the address proven to be Home Assistant's, so a pane that trusts the address checks it.
@@ -389,6 +398,7 @@ The default is on for the S1's panes, as before the switch.
 | Time zone (`time-zone`) | `time_zone_enabled` | `keep_time_zone` | no |
 | Diagnostics (`diagnostics`) | `diagnostics_enabled` | `diagnostics` | no |
 | Bluetooth proxy (`bluetooth-proxy`) | `bluetooth_proxy_enabled` (off by default) | `bluetooth_proxy` | yes, unless the panel has no Bluetooth LE |
+| Camera (`camera`) | `camera_enabled` (off by default) | `camera_pane` | no; on a panel without a camera its page says it can't run |
 
 The radio has no `PaneSwitch`: its on/off is its mode (`Off`), and its card and settings switch are
 its own. Timers have none either: they come only from voice.

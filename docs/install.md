@@ -21,7 +21,7 @@ Both back up the panel first and both can undo.
 
 ## Before you start
 
-- **Panel:** Aqara Panel Hub S1 Plus (MP-K03D). See [supported hardware](../README.md#supported-hardware).
+- **Panel:** Aqara Panel Hub S1 Plus (MP-K03D). See [supported hardware](../frames/aqara-s1-plus/README.md#supported-hardware).
 - **Cable:** a USB-C **data** cable. Many charging cables carry no data.
 - **Tool:** a small screwdriver to open the back cover. You need to reach one button on the board.
 - **Computer:** Chrome or Edge on Windows, macOS or Linux (WebUSB). Firefox and Safari don't
@@ -43,8 +43,10 @@ soon as it has power, within about two seconds. The screen stays black. That's e
 
 ## Web installer
 
-Open **[the installer](https://s1.edm.sh/)** in Chrome or Edge. Nothing
+Open **[Kiln](https://kiln.glassworks.dev/aqara-s1-plus)** in Chrome or Edge. Nothing
 is uploaded anywhere: the page talks to the panel over USB and keeps its backup in the browser.
+The screenshots and step names below are still the old S1 installer's, so Kiln's screens look
+different.
 
 ### 1 · Check this browser
 

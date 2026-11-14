@@ -10,6 +10,9 @@ import statistics
 import grade as G
 
 PAGES = G.TIERS
+# How each page reads in a sentence. Rubric v10 (#205): typical is measured without its camera
+# (typical-nocam, which C grades) and with it (typical, which B grades).
+NAME = {"typical-nocam": "typical", "typical": "typical with a camera"}
 GOOD = {"good", "premium"}
 FLUID = {"fluid"}
 NOT_A_LIMIT = GOOD | FLUID | {"none", None}
@@ -139,6 +142,27 @@ def best_page(rep):
     return (p, False) if count[p] else (None, False)
 
 
+def _name(p, rep=None):
+    """A page in words; a report from before rubric v10 has no camera-free typical, and its typical
+    keeps its own name (s1v7's had no camera at all)."""
+    return NAME.get(p, p) if rep is None or "typical-nocam" in _tiers(rep) else p
+
+
+def _with_camera(rep):
+    """When typical reaches a level without its camera and not with it: (task, phrase) of the worst
+    thing the camera page fails on, to say beside it ("with one, it ..."); else None."""
+    levels = (rep.get("grade") or {}).get("levels") or {}
+    if not levels.get("typical-nocam") or levels.get("typical") or "typical" not in _tiers(rep):
+        return None
+    b = _bands(rep).get("typical") or {}
+    scored = [(s, G.TASKS.index(t), t) for t in G.TASKS if b.get(t) not in NOT_A_LIMIT
+              for s in [_limit(t, _tiers(rep).get("typical"))] if s]
+    if not scored:
+        return None
+    (how_far, phrase), _, task = max(scored, key=lambda x: (x[0][0], -x[1]))
+    return task, phrase
+
+
 def good_sentence(rep):
     page, reached = best_page(rep)
     if not page:
@@ -155,7 +179,14 @@ def good_sentence(rep):
     fluid = [word[t] for t in ("scroll", "updates", "camera") if b.get(t) in FLUID]
     if fluid:
         parts.append(f"{_join(fluid)} {'is' if fluid == ['scrolling'] else 'are'} fluid")
-    lead = f"{_cap(page)} dashboards {'feel good' if reached else 'come closest'}"
+    if page == "typical-nocam":
+        # "Typical dashboards feel good without a camera: ...; with one, it shows 40% of its camera's frames."
+        lead = f"Typical dashboards {'feel good' if reached else 'come closest'} without a camera"
+        cam = _with_camera(rep) if reached else None
+        tail = f"; with one, it {cam[1]}" if cam else ""
+        body = (', '.join(parts[:-1]) + ', and ' + parts[-1] if len(parts) > 1 else parts[0]) if parts else ""
+        return f"{lead}: {body}{tail}." if body else f"{lead}{tail}."
+    lead = f"{_cap(_name(page, rep))} dashboards {'feel good' if reached else 'come closest'}"
     return f"{lead}: {', '.join(parts[:-1]) + ', and ' + parts[-1] if len(parts) > 1 else parts[0]}." if parts else f"{lead}."
 
 
@@ -165,8 +196,10 @@ def limits_sentence(rep):
     slow restart only when it caps the letter."""
     bands, tiers = _bands(rep), _tiers(rep)
     found = []
+    best, reached = best_page(rep)
+    said = _with_camera(rep) if best == "typical-nocam" and reached else None   # in the good sentence already
     for t in G.TASKS:
-        bad = [p for p in PAGES if (bands.get(p) or {}).get(t) not in NOT_A_LIMIT]
+        bad = [p for p in PAGES if (bands.get(p) or {}).get(t) not in NOT_A_LIMIT and not (said and p == "typical" and t == said[0])]
         scored = [(p, _limit(t, tiers.get(p))) for p in bad]
         scored = [(p, s) for p, s in scored if s]
         if scored:
@@ -183,10 +216,9 @@ def limits_sentence(rep):
     for p in PAGES:
         phrases = [f[4] for f in sorted(chosen, key=lambda f: f[2]) if f[3] == p]
         if phrases:
-            by_page.append(f"{p} {_join(phrases)}")
+            by_page.append(f"{_name(p, rep)} {_join(phrases)}")
     if restart:
         by_page.insert(0, f"a restart takes {_time(restart)}")
-    best, _ = best_page(rep)
     lead = "Bigger dashboards slow down" if best and all(PAGES.index(f[3]) > PAGES.index(best) for f in chosen) \
         else "It slows down"
     clauses = by_page[:-1] + ["and " + by_page[-1]] if len(by_page) > 2 else by_page
@@ -195,7 +227,11 @@ def limits_sentence(rep):
 
 def _starving_run(r):
     """True when one run shows a player that gets video late while its decoder keeps up; None when
-    the run lacks any of the three kinds of evidence (they are never combined across runs)."""
+    the run lacks any of the three kinds of evidence (they are never combined across runs). HLS runs
+    only: a WebRTC run's segment fetches are the HLS player's, which runs only until WebRTC has video
+    (#202), so they say nothing about the stream that was graded."""
+    if (r.get("path") or "hls") != "hls":
+        return None
     seg = ((r.get("fetches") or {}).get("segment")) or {}
     gap, fetch = seg.get("arrival_gap_max_ms"), (seg.get("total_ms") or {}).get("p95")
     decoded = sum(s.get("decoded") or 0 for s in r.get("detail") or [])
@@ -228,7 +264,7 @@ def _slow_fetch(rep):
         if (_bands(rep).get(p) or {}).get("camera") in NOT_A_LIMIT:
             continue
         p95 = [((r.get("fetches") or {}).get("segment") or {}).get("total_ms", {}).get("p95")
-               for r in _tiers(rep).get(p, {}).get("camera_runs") or []]
+               for r in _tiers(rep).get(p, {}).get("camera_runs") or [] if (r.get("path") or "hls") == "hls"]
         if any(x is not None and x >= SLOW_FETCH_MS for x in p95):
             return True
     return False
@@ -287,16 +323,19 @@ def provisional_sentence(rep):
     g = rep.get("grade") or {}
     if not g.get("provisional"):
         return None
-    protocols = (((rep.get("graded") or {}).get("reference") or {}).get("protocols")) or []
-    other = [p for p in protocols if p != G.PROTOCOL_VERSION]
+    ref = (rep.get("graded") or {}).get("reference") or {}
+    protocols = ref.get("protocols") or []
+    # A report from before Clarity v1 (2026-11-14) has no `clarity`: pre-release, whatever its
+    # protocol's number (they start again from 1 in v1).
+    pre = bool(protocols) and None in (ref.get("clarity") or [None])
+    other = protocols if pre else [p for p in protocols if p != G.PROTOCOL_VERSION]
     missing = list(g.get("missing") or [])
     parts = []
     if other:
-        older = all(isinstance(p, int) and p < G.PROTOCOL_VERSION for p in other)
-        clause = f"measured with {'an older' if older else 'another'} version of the test"
+        clause = f"measured with a {'pre-release' if pre else 'different'} version of {G.NAME}"
         cams = [m for m in missing if m.endswith(".camera")]
-        if older and cams:
-            # Cameras came with protocol 5 (#174): an older run has none to measure.
+        if pre and cams and all(isinstance(p, int) and p < 5 for p in protocols):
+            # Cameras came with pre-release protocol 5 (#174): an older run has none to measure.
             clause += ", without cameras"
             missing = [m for m in missing if m not in cams]
         parts.append(clause)

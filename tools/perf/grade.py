@@ -11,6 +11,9 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "page", "rubr
     RUBRIC = json.load(_f)
 
 RUBRIC_VERSION = RUBRIC["version"]
+# Clarity's version (v1 from 2026-11-14). A report or summary without it is pre-release: re-measure.
+CLARITY = RUBRIC["clarity"]
+PRE_RELEASE = "measured with a pre-release version of Clarity"
 NAME = RUBRIC["name"]          # "Clarity": the test's name, kept in rubric.json only
 GOOD, NI, POOR = "good", "needs-improvement", "poor"
 ORDER = {GOOD: 0, NI: 1, POOR: 2}
@@ -91,6 +94,8 @@ def capacity(steps, accept):
 def scroll_level(stats):
     """One run's scroll level: the first of rubric.json's scroll_levels whose rule holds, or "slow"
     (measured, below fluid); None when it wasn't measured."""
+    if stats and stats.get("timed_out"):
+        return BELOW                    # the view didn't finish within the runner's deadline: measured, failed
     if not stats or not stats.get("n"):
         return None
     for lv in SCROLL_LEVELS:
@@ -105,6 +110,8 @@ def scroll_level(stats):
 def update_level(run):
     """One run's live-updates level from its change-to-screen p95 (and, for premium, the frames that
     had a change to draw), or "slow"; None when it wasn't measured."""
+    if run and run.get("timed_out"):
+        return BELOW
     if not run or not run.get("latency_n") or run.get("latency_p95_ms") is None:
         return None
     for lv in UPDATE_LEVELS:
@@ -122,8 +129,12 @@ def camera_level(run):
     camera record."""
     if not run:
         return None
+    if run.get("timed_out"):
+        return BELOW
     if run.get("first_frame_ms") is None or run.get("shown_pct") is None:
         return BELOW
+    if run.get("stalls_reported") is False:
+        return None                     # its receiver reported no freezes: stalls n/a, not measured
     for lv in CAMERA_LEVELS:
         if run["first_frame_ms"] > lv["first_frame_max_ms"] or run["shown_pct"] < lv["shown_min_pct"]:
             continue
@@ -236,11 +247,15 @@ def protocol_name(v):
 
 def grade_summary(summary):
     """The letter from a summary (glassworks.perf-summary/2), as the site computes it with grade.ts.
-    status: graded, re-measure (another protocol: these rules don't apply) or not-comparable (the
+    status: graded, re-measure (pre-release, or another protocol: these rules don't apply) or not-comparable (the
     measurement says why, e.g. not at the default zoom)."""
     # Not comparable first: it says why there is nothing to grade, whatever the protocol.
     if summary.get("not_comparable"):
         return {"status": "not-comparable", "grade": None, "meaning": None, "why": summary["not_comparable"]}
+    if summary.get("clarity") != CLARITY:
+        # Before v1 (pre-release protocols 1 to 8): the numbers can repeat, so the marker decides.
+        return {"status": "re-measure", "grade": None, "meaning": None,
+                "why": f"{PRE_RELEASE} (protocol {protocol_name(summary.get('protocol_version'))}): re-measure"}
     if summary.get("protocol_version") != PROTOCOL_VERSION:
         return {"status": "re-measure", "grade": None, "meaning": None,
                 "why": f"measured with protocol {protocol_name(summary.get('protocol_version'))}, "
@@ -249,7 +264,15 @@ def grade_summary(summary):
     g["provisional"] = bool(g["missing"] or summary.get("gaps"))
     g["status"] = "graded"
     g["limits"] = next_limits(g)
+    # The camera video's path (protocol 7): letters from different transports aren't comparable, so
+    # it goes with the letter, and over adb a caveat for heavy's cameras. Never changes the letter.
+    t = summary.get("webrtc_transport") or {}
+    g["transport"] = t.get("transport")
+    g["transport_caveat"] = TRANSPORT_CAVEAT if t.get("possibly_limited") else None
     return g
+
+
+TRANSPORT_CAVEAT = "heavy's cameras went through the test's adb link and may be limited by it, not by the panel"
 
 
 def memory_budget(memory, budget):

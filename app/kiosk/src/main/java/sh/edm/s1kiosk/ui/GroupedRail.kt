@@ -134,7 +134,9 @@ class GroupedRail(context: Context) : LinearLayout(context) {
         background = g.surface(999f, Glass.S1)
         setPadding(g.px(8f), g.px(2f), g.px(9f), g.px(2f))
         addView(g.dot(c.dot), LayoutParams(g.px(6f), g.px(6f)).apply { marginEnd = g.px(6f) })
-        addView(g.text(12f, Glass.MU).apply { text = c.word; setSingleLine() })
+        // A backstop: the row gives the chip its whole width, but a word longer than any of today's
+        // shortens, so the name keeps room beside it and nothing overflows the rail.
+        addView(g.text(12f, Glass.MU).apply { text = c.word; setSingleLine(); ellipsize = TextUtils.TruncateAt.END; maxWidth = g.px(CHIP_WORD_MAX_DP) })
         contentDescription = "status ${c.word}"
     }
 
@@ -192,9 +194,14 @@ class GroupedRail(context: Context) : LinearLayout(context) {
         }
     }
 
-    private companion object {
-        const val CHILD = "child"
+    internal companion object {
+        /**
+         * The widest a chip's word gets (#249): "Can't run", the longest today, is about 53 dp at 12 sp. At
+         * 110 dp a long word left a pane's name no room in the 216 dp rail (the mock-up showed it).
+         */
+        const val CHIP_WORD_MAX_DP = 64f
+        private const val CHILD = "child"
         /** An off pane's name: [Glass.MU] at about 47 %, a little less white (#212). */
-        val OFF = Color.argb(120, 0xa1, 0xa1, 0xaa)
+        private val OFF = Color.argb(120, 0xa1, 0xa1, 0xaa)
     }
 }
