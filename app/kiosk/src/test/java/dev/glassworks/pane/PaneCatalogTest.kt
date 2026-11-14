@@ -46,13 +46,12 @@ class PaneCatalogTest {
         GlassworksRuntime(AqaraS1Plus()).paneDefinitions(RuntimeEnvironment.getApplication()).map { it.id }
     }
 
-    /** The id of each class that implements [Pane]: a file that declares `: Pane {` and its `override val id = "…"`. */
+    /** The id of each class that implements [Pane]: a file with such a class ([implementsPane]) and its `override val id = "…"`. */
     private val paneClassIds by lazy {
-        val implementsPane = Regex("""\)\s*:\s*Pane\s*\{|class\s+\w+\s*:\s*Pane\s*\{""")
         val idLine = Regex("""override val id = "([^"]+)"""")
         main.walkTopDown().filter { it.isFile && it.extension == "kt" }.mapNotNull { f ->
             val text = f.readText()
-            if (!implementsPane.containsMatchIn(text)) return@mapNotNull null
+            if (!implementsPane(text)) return@mapNotNull null
             val ids = idLine.findAll(text).map { it.groupValues[1] }.toList()
             assertEquals("${f.name}: one `override val id` per Pane file", 1, ids.size)
             ids.single()
@@ -60,6 +59,19 @@ class PaneCatalogTest {
     }
 
     private fun rel(f: File) = f.relativeTo(repo).path
+
+    @Test
+    fun theScanSeesPaneAnywhereInTheSupertypes() {
+        // a pane can have other supertypes, before or after Pane, and a constructor over several lines
+        assertTrue(implementsPane("class A(ctx: PaneContext) : Pane {"))
+        assertTrue(implementsPane("class B : Pane, AutoCloseable {"))
+        assertTrue(implementsPane("class C internal constructor(\n    x: Int,\n    f: (Int) -> Unit = {},\n) : AutoCloseable, Pane {"))
+        assertTrue(implementsPane("class D<T>(x: T) : dev.glassworks.pane.Pane by delegate {"))
+        // a Pane as a parameter, or another type whose name starts with Pane, isn't one
+        assertTrue(!implementsPane("class E(val pane: Pane) : AutoCloseable {"))
+        assertTrue(!implementsPane("class F(file: SharedPreferences) : PaneDefinition {"))
+        assertTrue(!implementsPane("data class G(val p: Pane)"))
+    }
 
     @Test
     fun theScanFindsTheKnownPanes() {
@@ -125,6 +137,36 @@ class PaneCatalogTest {
             val bad = paint.findAll(svg).map { it.groupValues[1] to it.groupValues[2] }.filter { (_, v) -> v != "none" && v != "currentColor" }.toList()
             assertTrue("$where: colours other than none/currentColor: $bad", bad.isEmpty())
             assertTrue("$where: must stroke with currentColor", Regex("""\bstroke="currentColor"""").containsMatchIn(svg))
+        }
+    }
+}
+
+/**
+ * Whether [text] declares a class that has `Pane` among its supertypes: after the class name, any type
+ * parameters, a constructor modifier and the (balanced) constructor parameters, the list after `:` up
+ * to the class body. `Pane` counts anywhere in it, by simple or qualified name.
+ */
+internal fun implementsPane(text: String): Boolean {
+    fun skipBalanced(at: Int, open: Char, close: Char): Int {
+        var depth = 0
+        var i = at
+        while (i < text.length) {
+            when (text[i]) { open -> depth++; close -> if (--depth == 0) return i + 1 }
+            i++
+        }
+        return i
+    }
+    fun skipSpace(at: Int): Int { var i = at; while (i < text.length && text[i].isWhitespace()) i++; return i }
+    val modifier = Regex("""\G(?:(?:public|internal|private|protected)\s+)?constructor\b""")
+    return Regex("""\bclass\s+\w+""").findAll(text).any { m ->
+        var i = skipSpace(m.range.last + 1)
+        if (i < text.length && text[i] == '<') i = skipSpace(skipBalanced(i, '<', '>'))
+        modifier.find(text, i)?.let { i = skipSpace(it.range.last + 1) }
+        if (i < text.length && text[i] == '(') i = skipSpace(skipBalanced(i, '(', ')'))
+        if (i >= text.length || text[i] != ':') return@any false
+        val end = text.indexOf('{', i).let { if (it < 0) text.length else it }
+        text.substring(i + 1, end).split(',').any { type ->
+            Regex("""^\s*([\w.]+)""").find(type)?.groupValues?.get(1)?.substringAfterLast('.') == "Pane"
         }
     }
 }
