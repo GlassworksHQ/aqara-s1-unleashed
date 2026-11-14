@@ -20,6 +20,8 @@
 # (start = total - non-act, total - non-svc). If one is below 0 on 2 reads in a row, it kills
 # system_server: what ends the loop by itself, only sooner. init restarts zygote and the framework;
 # init services (this one, the radio helper) keep running. At most once per 10 min.
+# The cap lives in this process: if netwatch itself restarts, it resets. That is harmless, because
+# a framework restart resets the starts too, so the next one needs ~24 more kiosk force-stops.
 # Status: sys.s1kiosk.am.status, sys.s1kiosk.am.restarts ("<count> <uptime of the last>s")
 # Dry run, by hand only (init passes no environment): S1N_AM_DRY=1 sh s1kiosk_netwatch.sh does all of
 # this but the kill, and reports "would restart the framework".
