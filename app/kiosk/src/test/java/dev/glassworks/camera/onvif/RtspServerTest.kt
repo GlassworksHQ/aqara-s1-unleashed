@@ -252,6 +252,7 @@ class RtspServerTest {
         assertTrue(waitFor { counts.size >= 2 })
         Thread.sleep(100)
         assertEquals("the host ends on the true count", listOf(1, 2), counts.toList())
+        assertEquals("one address per session: two viewers from one host are two", listOf("127.0.0.1", "127.0.0.1"), server.watchers())
         a.sock.close(); b.sock.close()
     }
 

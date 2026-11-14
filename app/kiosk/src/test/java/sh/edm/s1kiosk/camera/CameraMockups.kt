@@ -220,6 +220,7 @@ class CameraMockups {
         shot("camera-03b-onvif-addresses", menu(streaming), scrollTo = "Sign-in", bottom = false)
         shot("camera-04-onvif-no-sign-in", menu(Rig { it.use = CameraUse.PRESENCE_AND_SNAPSHOTS; it.onvif = true }.someoneWalksUp()), scrollTo = "Sign-in", bottom = false)
         shot("camera-05-privacy-on", menu(Rig { it.privacy = true }))
+        shot("camera-05b-privacy-stream-refused", menu(Rig { it.use = CameraUse.PRESENCE_AND_SNAPSHOTS; it.privacy = true }), scrollTo = "Privacy", bottom = false)
         shot("camera-06-not-allowed", menu(Rig(allowed = false)))
         val off = Rig()
         off.pane.stop()

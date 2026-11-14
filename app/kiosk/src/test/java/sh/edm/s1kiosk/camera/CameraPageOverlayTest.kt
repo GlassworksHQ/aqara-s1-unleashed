@@ -70,7 +70,9 @@ class CameraPageOverlayTest {
         val o = menu(def, pane())
         val forWhat = CameraPage.streamDetail(false, CameraUse.PRESENCE_AND_SNAPSHOTS)
         Mockup.label(o, forWhat) // drawn
-        Mockup.label(o, "Presence only").let { (it.parent.parent as android.view.View).performClick() }
+        val cards = o.previewNative(CameraDefinition.USE_KEY)!!.view as CameraUseCards
+        val clicked = cards.getChildAt(0).performClick()
+        assertEquals("the card picked it (clicked=$clicked, enabled=${cards.alpha})", CameraUse.PRESENCE, def.prefs.use)
         o.refresh()
         Mockup.idle()
         Mockup.label(o, CameraPage.NEEDS_SNAPSHOTS) // the switch's line follows the card
