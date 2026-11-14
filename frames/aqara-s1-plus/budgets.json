@@ -1,5 +1,5 @@
 {
-  "_comment": "The Aqara S1 Plus's budgets (#68). Project choices, not published standards; docs/perf.md, \"RAM\", and docs/size.md say why and how each is measured. Clarity's report (tools/perf/report.py) reads ram and panes.*.ram_pss_max_kb; CI's size check (tools/size/apksize.py) reads size and panes.*.size_max_bytes, and fails a PR that goes over unless the same PR raises the budget. The pane RAM budgets were set before the first per-pane measurement (2026-11-13); revisit them once one exists. The size budgets are the 2026-11-13 release build as it ships (101.17 MB armeabi-v7a, with the radio bundle as release.yml adds it; 100.78 MB arm64-v8a, without) plus about 2.5%, and each pane's size about twice its own then (at least 100 kB; the radio's includes the bundle, 3.49 MB), so growth is a decision, not a drift. A switchable pane's `switch` is its on/off extra, and `state` how its log shows it running (tools/perf/perflib.py pane_state): Assist by the wake word's microphone, Sendspin by its player, the others by the `Pane <id> on|off` line the kiosk logs at start (`pane:<id>`, #67). Assist is turned off with voice_enabled and its microphone mute (`mute`), because S1 Kiosk 0.4.3 loses a voice_enabled change across its restart (#158, s1v7). `not_switched` says why a pane isn't measured on its own. The 16 MB budgets of the wall base, time zone and diagnostics were set with #67, before they were measured.",
+  "_comment": "The Aqara S1 Plus's budgets (#68). Project choices, not published standards; docs/perf.md, \"RAM\", and docs/size.md say why and how each is measured. Clarity's report (tools/perf/report.py) reads ram and panes.*.ram_pss_max_kb; CI's size check (tools/size/apksize.py) reads size and panes.*.size_max_bytes, and fails a PR that goes over unless the same PR raises the budget. The pane RAM budgets were set before the first per-pane measurement (2026-11-13); revisit them once one exists. The size budgets are the 2026-11-13 release build as it ships (101.17 MB armeabi-v7a, with the radio bundle as release.yml adds it; 100.78 MB arm64-v8a, without) plus about 2.5%, and each pane's size about twice its own then (at least 100 kB; the radio's includes the bundle, 3.49 MB), so growth is a decision, not a drift. A switchable pane's `switch` is its on/off extra, and `state` how its log shows it running (tools/perf/perflib.py pane_state): Assist by the wake word's microphone, Sendspin by its player, the others by the `Pane <id> on|off` line the kiosk logs at start (`pane:<id>`, #67). Assist is turned off with voice_enabled and its microphone mute (`mute`), because S1 Kiosk 0.4.3 loses a voice_enabled change across its restart (#158, s1v7). `not_switched` says why a pane isn't measured on its own; the camera's code ships in the S1's APK although the S1 has no camera to run it, so it has a size budget and nothing else (#117: 84.5 kB on 2026-11-14). The 16 MB budgets of the wall base, time zone and diagnostics were set with #67, before they were measured.",
   "ram": {
     "app_pss_max_pct_of_ram": 50,
     "device_available_min_pct": 15
@@ -55,6 +55,11 @@
       "not_switched": "it scans only while Home Assistant listens, and Clarity's reference run has no Home Assistant listening, so on by itself it would measure an idle pane; measured by hand with HA listening (#121)",
       "size_max_bytes": 100000,
       "note": "0.02 MB on 2026-11-14 with its engine library"
+    },
+    "camera": {
+      "not_switched": "the S1 has no camera, so the pane can't run here",
+      "size_max_bytes": 170000,
+      "note": "0.08 MB (84,539 bytes) in the armeabi-v7a release build on 2026-11-14 (#239)"
     }
   }
 }

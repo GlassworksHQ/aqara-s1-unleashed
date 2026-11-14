@@ -3,12 +3,15 @@ import json
 import re
 import os
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 import grade as G  # noqa: E402
 import perflib as P  # noqa: E402
+sys.path.insert(0, os.path.join(HERE, "..", ".."))
+from pane_ids import pane_ids_in  # noqa: E402
 
 GOOD, NI, POOR = G.GOOD, G.NI, G.POOR
 
@@ -269,18 +272,35 @@ class MemoryBudget(unittest.TestCase):
         self.assertEqual(switchable, {"assist", "sendspin", "wall-base", "time-zone", "diagnostics"})
         for k in switchable:
             self.assertIsInstance(s1["panes"][k]["ram_pss_max_kb"], int)
-        # Every pane in the app's code is in the frame's file, so a new one can't be left out of RAM.
-        ids = set()
-        for d, _, fs in os.walk(os.path.join(root, "app", "kiosk", "src", "main", "java")):
-            for f in fs:
-                if f.endswith(".kt"):
-                    with open(os.path.join(d, f)) as fh:
-                        ids |= set(re.findall(r'override val id = "([a-z0-9-]+)"', fh.read()))
+        # Every pane in the app's code is in the frame's file, so a new one can't be left out of RAM or size.
+        ids = pane_ids_in(os.path.join(root, "app", "kiosk", "src", "main", "java"))
+        self.assertIn("camera", ids, "a pane declared by a constant is found")
+        self.assertEqual(set(), ids - set(s1["panes"]), "panes in the code without a budget in budgets.json")
         self.assertEqual(set(s1["panes"]), ids)
         # #67 gave every pane a switch: the radio's is its mode, and timers come with voice. The Bluetooth
-        # proxy has one, but only scans while HA listens, which the reference run doesn't (#121).
-        self.assertEqual({k for k, v in s1["panes"].items() if v.get("not_switched")}, {"radio", "timers", "bluetooth-proxy"})
-        self.assertEqual(set(s1["panes"]), switchable | {"radio", "timers", "bluetooth-proxy"})
+        # proxy has one, but only scans while HA listens, which the reference run doesn't (#121). The S1
+        # has no camera, so the camera pane can't run there (#117).
+        unswitched = {"radio", "timers", "bluetooth-proxy", "camera"}
+        self.assertEqual({k for k, v in s1["panes"].items() if v.get("not_switched")}, unswitched)
+        self.assertEqual(set(s1["panes"]), switchable | unswitched)
+
+    def test_pane_ids_are_found_however_they_are_declared(self):
+        """A pane's id as a literal, as its own `const val ID`, or as another class's (CameraPane.ID)."""
+        d = tempfile.mkdtemp()
+        files = {
+            "Literal.kt": 'class LiteralPane : Pane {\n    override val id = "literal"\n}\n',
+            "Own.kt": 'class OwnPane : Pane {\n    override val id = ID\n    companion object {\n        const val ID = "own"\n    }\n}\n',
+            "Other.kt": 'class OtherDefinition : PaneDefinition {\n    override val id = OwnPane.ID\n}\n',
+            "Far.kt": 'class FarPane : Pane {\n    override val id = FarPane.ID\n    companion object { const val ID = "far" }\n}\n',
+        }
+        for name, text in files.items():
+            with open(os.path.join(d, name), "w") as f:
+                f.write(text)
+        self.assertEqual(pane_ids_in(d), {"literal", "own", "far"})
+        with open(os.path.join(d, "Lost.kt"), "w") as f:
+            f.write("class LostPane : Pane {\n    override val id = Nowhere.ID\n}\n")
+        with self.assertRaises(AssertionError):
+            pane_ids_in(d)
 
     def test_a_pane_over_its_budget(self):
         n3 = {"pss_tolerance_kb": 4_000, "samples_on": 3, "samples_off": 3}

@@ -987,7 +987,7 @@ class PaneRam(unittest.TestCase):
         # Two runs: a share, but no budget verdict (that needs three samples a side).
         self.assertEqual(ram["pane_budget"]["assist"], {"value_kb": 30000, "budget_kb": 49152, "tolerance_kb": 0,
                                                         "measurable": False, "ok": None})
-        self.assertEqual({p["id"] for p in ram["panes_not_switched"]}, {"radio", "timers", "bluetooth-proxy"})
+        self.assertEqual({p["id"] for p in ram["panes_not_switched"]}, {"radio", "timers", "bluetooth-proxy", "camera"})
         self.assertIsNone(ram["reference_idle"])          # no graded runs here
 
     def test_a_pane_setting_it_cant_put_back_is_refused_before_the_device_is_touched(self):
