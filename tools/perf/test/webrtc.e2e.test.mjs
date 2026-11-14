@@ -154,6 +154,14 @@ test("HA's frontend plays the fake's cameras over WebRTC through the TURN relay,
   t.diagnostic(`typical over WebRTC: ${JSON.stringify(rtc.streams)}`);
   assert.equal(rtc.path, "web_rtc");
   assert.equal(rtc.found, 1);
+  // Clarity v2: each open, in a real browser, records the blocking from the draw to usable.
+  const opens = page.lines.filter((l) => l.t === "refdash");
+  assert.ok(opens.length >= 2, "no refdash line for the start view and typical");
+  for (const o of opens) {
+    assert.equal(typeof o.usable.blocking_ms, "number", `no blocking_ms: ${JSON.stringify(o.usable)}`);
+    assert.ok(o.usable.blocking_ms >= 0 && Number.isInteger(o.usable.long_frames) && o.usable.longest_frame_ms > 0);
+    assert.ok(o.usable.rendered_tick_ms <= o.usable.interactive_ms);
+  }
   const s = rtc.streams[0];
   assert.equal(s.path, "web_rtc");
   assert.deepEqual([s.w, s.h], [1280, 720]);
