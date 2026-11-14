@@ -673,6 +673,15 @@ into a session would take a spoofed source address on that network: a low risk f
 minutes. On macOS the first run may show the firewall's "accept incoming connections" prompt for
 Python; either answer works, since nothing comes from outside the computer.
 
+**The profile in the answer isn't the stream's, as with go2rtc.** The stream is x264's Main
+profile, and the fake's answer gives a Baseline `profile-level-id` (`42001f`), the H.264 entry aiortc
+matches with the offer. go2rtc 1.9.15, which HA 2026.11.0 pins, does the same: its `Codec.Match`
+(`pkg/core/codec.go:126`) compares only the codec name, clock rate and channels, its own H.264 list
+starts with `42001f` (`pkg/webrtc/api.go:277`), and it passes a camera's Main or High stream
+through unchanged. Gecko, the panel's engine, offers only `42e01f` and `42001f`, so a Main fmtp
+wouldn't negotiate with it at all. Re-encoding to Baseline would make the stream less like a real
+camera's (read 2026-11-14, CodeRabbit on #205).
+
 **The video has no B-frames** (protocol 6, both paths). Protocol 5's segments had them (x264's
 default, I B B B P). Browsers' WebRTC receivers don't reorder B-frames, and IP cameras send I and P
 frames only, so `camera.py` encodes with `-bf 0`. So the HLS numbers aren't comparable with protocol 5's
