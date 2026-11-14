@@ -345,6 +345,47 @@ def unasked(tmp):
         return json.load(f)
 
 
+class CpuClock(unittest.TestCase):
+    """#244: the runner samples every core's clock while a view is open (read-only sysfs cats)."""
+
+    def test_each_view_has_its_clock(self):
+        tmp = tempfile.mkdtemp()
+        p, c = refstart(tmp, GW_PERF_CPU_CLOCK_S="0.3")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["cpu_max_khz"], {"0": 1608000, "1": 1608000, "2": 1608000, "3": 1608000})
+        views = {v for v, _, _ in c["cpu_khz"]}
+        self.assertLessEqual(views, {"light", "typical-nocam", "typical", "heavy"})
+        self.assertTrue(views, c.get("cpu_khz"))
+        self.assertTrue(all(k == {"0": 1200000, "1": 1200000, "2": 1200000, "3": 1200000} for _, _, k in c["cpu_khz"]))
+        self.assertEqual(c["cpu_clock_s"], 0.3)
+        self.assertNotIn("thread_errors", c)                   # the sampler starts after the run's state exists
+        # Only while a view is open, not after its done line: the runner then waits 1.5 s more before it
+        # stops (break_after), and the old rule went on sampling the last view through it.
+        last = c["order"][-1]
+        swipe_end = max(t for v, t, kind, _ in c["gestures_sent"] if v == last)
+        self.assertLess(max(t for v, t, _ in c["cpu_khz"] if v == last), swipe_end + 1.2)
+        with open(os.path.join(tmp, "state", "..", "state", "commands.log")) as f:
+            log = f.read()
+        self.assertIn("cpufreq/scaling_cur_freq", log)
+        self.assertNotRegex(log, r"echo .*> */sys|setprop|cpufreq/scaling_(max|min|setspeed)")   # reads only
+
+
+class CpuNumbers(unittest.TestCase):
+    """CodeRabbit on #250: the shell lists cpu10 before cpu2; each reading keeps its CPU's number."""
+
+    def test_numbers_from_the_paths(self):
+        sys.path.insert(0, os.path.dirname(HERE))
+        import perfrun
+
+        class Dev:
+            def sh(self, cmd, timeout=60):
+                assert "scaling_cur_freq" in cmd and "cat" in cmd
+                return "".join(f"/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq {k}\n"
+                               for i, k in ((0, 1200000), (1, 1200000), (10, 1608000), (2, 1008000)))
+        self.assertEqual(perfrun.cpu_khz(Dev(), "scaling_cur_freq"), {"0": 1200000, "1": 1200000, "2": 1008000, "10": 1608000})
+        self.assertEqual(list(perfrun.cpu_khz(Dev(), "scaling_cur_freq")), ["0", "1", "2", "10"])
+
+
 class Threads(unittest.TestCase):
     """s1rtc5: a local named like the runner's stream-stop helper made it a bool, and its thread died
     on every view (TypeError: 'bool' object is not callable) while the runs went on. Any exception in
@@ -393,6 +434,26 @@ class FakeMatchesThePanel(unittest.TestCase):
         for shape, keys in want.items():
             with self.subTest(shape):
                 self.assertEqual(got[shape], {tuple(keys)})
+
+
+class FakeStateIsAtomic(unittest.TestCase):
+    """#251's CI flake: a fake adb process read a state file another was writing (truncated, not yet
+    written) and got nothing; the fake screen then slept. Writes are now atomic."""
+
+    def test_a_reader_never_sees_a_half_written_file(self):
+        tmp = tempfile.mkdtemp()
+        env = dict(os.environ, FAKE_ADB_STATE=tmp)
+        code = ("import sys, time; sys.path.insert(0, %r); import fake_adb as F\n"
+                "if sys.argv[1] == 'w':\n"
+                "    for i in range(3000): F.save('awake_at.json', time.time())\n"
+                "else:\n"
+                "    F.save('awake_at.json', time.time()); bad = 0\n"
+                "    for i in range(3000): bad += F.state('awake_at.json') is None\n"
+                "    print(bad)\n") % HERE
+        w = subprocess.Popen([sys.executable, "-c", code, "w"], env=env)
+        r = subprocess.run([sys.executable, "-c", code, "r"], env=env, capture_output=True, text=True, timeout=120)
+        w.wait(timeout=120)
+        self.assertEqual(r.stdout.strip(), "0", r.stderr[-800:])
 
 
 class FakeSplitsLikeThePage(unittest.TestCase):
@@ -772,15 +833,17 @@ class Restart(unittest.TestCase):
     def test_the_screen_stays_on_through_a_slow_restart(self):
         """s1rtc7 run 2: the screen went off 20.4 s after the force-stop, before the kiosk's first
         frame (the S1's 20 s night timeout), and the restart then waited 280 s. Here the fake's
-        screen sleeps 3 s after the last wake or touch, through a 7 s restart: the wake key from the
+        screen sleeps 4 s after the last wake or touch, through a 9 s restart: the wake key from the
         stop on keeps it on, and every later phase has its own nudge."""
-        nudged = dict(FAKE_SCREEN_SLEEP_S="3", FAKE_RESTART_SLOW="7", GW_PERF_RESTART_WAKE_S="1",
+        # The fake's screen sleeps 4 s after the last wake or touch, and every nudge comes each second:
+        # a 4x margin for a slow CI runner's adb stand-ins. The restart (9 s) outlasts the sleep twice.
+        nudged = dict(FAKE_SCREEN_SLEEP_S="4", FAKE_RESTART_SLOW="9", GW_PERF_RESTART_WAKE_S="1",
                       GW_PERF_KEEP_AWAKE_S="1", GW_PERF_LIVE_IDLE_WAKE_S="1")
         p, c, _ = self.run_short(90, **nudged)
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertIsNone(c["error"])
         self.assertNotIn("screen_off", c)
-        self.assertGreaterEqual(c["restart_wakes"], 5)                 # 7 s at one a second, and the relaunch's
+        self.assertGreaterEqual(c["restart_wakes"], 6)                 # 9 s at one a second, and the relaunch's
         # Without the restart's nudges the same fake screen goes off in the restart, as on the S1.
         p, c, _ = self.run_short(90, **dict(nudged, GW_PERF_RESTART_WAKE_S="1000"))
         self.assertEqual(c["screen_off"][0]["during"], "the restart", c.get("screen_off"))

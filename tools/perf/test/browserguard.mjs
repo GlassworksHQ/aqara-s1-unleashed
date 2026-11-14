@@ -3,9 +3,10 @@
 // left it running (the root found one at ~97% CPU for 2 h 46 min, through s1rtc6 to s1rtc8, loading
 // the computer that serves the panel's fake Home Assistant). So, for each profile the test starts a
 // browser with:
-// - on the test's way out (exit, SIGINT, SIGTERM, SIGHUP, an uncaught exception): pkill -f <profile>;
+// - on the test's way out (exit, SIGINT, SIGTERM, SIGHUP, an uncaught exception): SIGKILL, by pid,
+//   to every process whose command line contains the profile's path (matched as literal text);
 // - a detached watchdog that waits for the test's process to be gone, then does the same: this one
-//   also covers SIGKILL, which no handler sees;
+//   also covers SIGKILL of the test, which no handler sees (its pkill -f pattern is ERE-escaped);
 // - at the start, sweepStale(): a leftover browser whose profile's directory is gone (its test's
 //   temporary directory was removed) is killed. One whose directory is there may be another
 //   session's live test, and is left alone.

@@ -128,6 +128,75 @@ class Turn(unittest.TestCase):
         self.assertFalse(self.svc.is_peer(("192.0.2.10", 5002)))
         self.assertFalse(self.svc.is_peer((self.svc.addr, "x")))
 
+    def gated(self):
+        """A relay connection with a stand-in server (peers at ADDR:5002 while `live`) and relay
+        socket, to check what it forwards (#205's verifier)."""
+        test = self
+
+        class Server:
+            addr, conns, live = "192.0.2.20", set(), True
+
+            def is_peer(self, peer):
+                return self.live and tuple(peer) == (self.addr, 5002)
+
+            def record(self, e):
+                pass
+
+        class Relay:
+            sent = []
+
+            def sendto(self, data, peer):
+                self.sent.append((data, tuple(peer)))
+
+        class Tr:
+            out = []
+
+            def write(self, data):
+                self.out.append(data)
+
+            def is_closing(self):
+                return False
+
+        srv = Server()
+        conn = webrtc.TurnConn(srv)
+        conn.tr, conn.client, conn.relay = Tr(), ("127.0.0.1", 40000), Relay()
+        conn.perms.add(srv.addr)
+        test.addCleanup(lambda: Relay.sent.clear() or Tr.out.clear())
+        return srv, conn
+
+    def test_a_stale_channel_forwards_nothing(self):
+        """N1: a channel bound while a peer was live mustn't reach its port after the session closed."""
+        srv, conn = self.gated()
+        conn.chan[0x4002], conn.peer_chan[(srv.addr, 5002)] = (srv.addr, 5002), 0x4002
+        data = b"\x00\x01" + bytes(22)
+        frame = struct.pack("!HH", 0x4002, len(data)) + data + bytes(-len(data) % 4)
+        conn.data_received(frame)
+        self.assertEqual(len(conn.relay.sent), 1)
+        srv.live = False                                          # the session closed
+        conn.data_received(frame)
+        self.assertEqual(len(conn.relay.sent), 1)
+
+    def test_send_goes_only_to_a_peer(self):
+        """N2: a Send indication to the media address at a port no peer has is dropped."""
+        srv, conn = self.gated()
+        for port, want in ((5001, 0), (5002, 1)):
+            m = webrtc.stun.Message(webrtc.stun.Method.SEND, webrtc.stun.Class.INDICATION,
+                                    attributes={"XOR-PEER-ADDRESS": (srv.addr, port), "DATA": b"hello"})
+            before = len(conn.relay.sent)
+            conn.data_received(bytes(m))
+            self.assertEqual(len(conn.relay.sent) - before, want, port)
+
+    def test_only_a_peers_datagrams_reach_the_browser(self):
+        """N2: from_peer passes on what a peer's port sends, and nothing from another port."""
+        srv, conn = self.gated()
+        conn.from_peer(b"other", (srv.addr, 5001))
+        self.assertEqual(conn.tr.out, [])
+        conn.from_peer(b"video", (srv.addr, 5002))
+        self.assertEqual(len(conn.tr.out), 1)
+        srv.live = False
+        conn.from_peer(b"late", (srv.addr, 5002))
+        self.assertEqual(len(conn.tr.out), 1)
+
     def test_the_diagnostic_transports(self):
         """#202, smoke 5: lan-turn is the same relay over this computer's network; lan-udp has no relay,
         as a real setup on a LAN. adb stays the test's."""

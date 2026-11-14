@@ -545,6 +545,38 @@ class TimedOut(unittest.TestCase):
         self.assertEqual(R.camera_cell({"camera_runs": [late]}, {"camera": "slow"}), "the view didn't finish in 1 of 1 run(s), slow")
 
 
+class CpuClock(unittest.TestCase):
+    """#244: the CPU clock each view ran at, as detail (the S1's power HAL held 1.2 of 1.608 GHz)."""
+
+    def test_per_view_clock_and_the_top(self):
+        runs = []
+        for k in (1, 2, 3):
+            r = refstart(k, 100)
+            r["cpu_max_khz"] = {"0": 1608000, "1": 1608000, "2": 1608000, "10": 1608000}
+            # CPU numbers from the sysfs paths: cpu10 is cpu10, whatever order the shell listed it in.
+            r["cpu_khz"] = [["light", 1.0, {"0": 1200000, "1": 1200000, "2": 1200000, "10": 1200000}],
+                            ["heavy", 2.0, {"10": 1608000, "0": 1200000, "1": 1200000, "2": 1008000}]]
+            runs.append(R.reference_run(r))
+        ref = R.reference_summary(runs)
+        self.assertEqual(ref["tiers"]["light"]["cpu_mhz"], {"median": 1200.0, "min": 1200.0, "max": 1200.0, "n": 12})
+        self.assertEqual((ref["tiers"]["heavy"]["cpu_mhz"]["min"], ref["tiers"]["heavy"]["cpu_mhz"]["max"]), (1008.0, 1608.0))
+        self.assertIsNone(ref["tiers"]["typical"]["cpu_mhz"])
+        self.assertEqual(ref["cpu_max_mhz"], 1608.0)
+        self.assertEqual({i: c["median"] for i, c in ref["tiers"]["heavy"]["cpu_mhz_by_core"].items()},
+                         {"0": 1200.0, "1": 1200.0, "2": 1008.0, "10": 1608.0})
+        self.assertEqual(list(ref["tiers"]["heavy"]["cpu_mhz_by_core"]), ["0", "1", "2", "10"])
+        # report.md: the interval the run used, and each core when they differ (big.LITTLE).
+        for r in runs:
+            r["cpu_clock_s"] = 5.0
+        ref = R.reference_summary(runs)
+        clocks = [(t, s_["cpu_mhz"]) for t, s_ in ref["tiers"].items() if (s_.get("cpu_mhz") or {}).get("median") is not None]
+        line = R.cpu_clock_line(ref, clocks, ref["cpu_max_mhz"], ref["cpu_clock_s"])
+        self.assertEqual(line, "CPU clock while each view was open (detail, every core, every 5 s): light 1200 MHz (1200 to 1200); "
+                               "heavy cpu0 1200, cpu1 1200, cpu2 1008, cpu10 1608 MHz (medians); the CPU's top clock is 1608 MHz.")
+        # And without samples (a run from before): nothing.
+        self.assertIsNone(R.reference_summary([R.reference_run(refstart(1, 100))])["cpu_max_mhz"])
+
+
 class StallsNotReported(unittest.TestCase):
     """#205's verifier: a receiver that reports no freezeCount has stalls n/a, never 0 (which would
     pass the bars), and that run's camera level is not measured."""

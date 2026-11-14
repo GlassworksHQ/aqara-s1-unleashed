@@ -334,6 +334,27 @@ LIVE_IDLE_WAKE_S = float(os.environ.get("GW_PERF_LIVE_IDLE_WAKE_S", "10"))
 # this often, and once at the stop and once at the relaunch: s1rtc7 run 2 lost the screen 20.4 s after
 # the stop, before the kiosk's first frame, which then waited 280 s for the screen to come back.
 RESTART_WAKE_S = float(os.environ.get("GW_PERF_RESTART_WAKE_S", "8"))
+# The CPU clock each view ran at (detail, #244: the S1's power HAL held 1.2 of its 1.608 GHz): every
+# core's scaling_cur_freq this often while a view is open, and each core's cpuinfo_max_freq once.
+# Read-only `cat`s of sysfs over adb; one every 5 s is a fraction of a percent of a core.
+CPU_CLOCK_S = float(os.environ.get("GW_PERF_CPU_CLOCK_S", "5"))
+CPU_FREQ = "/sys/devices/system/cpu/cpu[0-9]*/cpufreq/"
+
+
+def cpu_khz(dev, name):
+    """Each core's cpufreq `name` (scaling_cur_freq, cpuinfo_max_freq) in kHz, by CPU number from its
+    sysfs path ({"0": khz, ...}); {} if the device has none. The shell sorts cpu10 before cpu2, so the
+    number comes from the path, never the position (CodeRabbit on #250)."""
+    try:
+        out = dev.sh(f"for f in {CPU_FREQ}{name}; do echo \"$f $(cat $f 2>/dev/null)\"; done", timeout=15)
+    except (subprocess.SubprocessError, OSError):
+        return {}
+    got = {}
+    for line in out.splitlines():
+        m = re.search(r"/cpu(\d+)/cpufreq/\S+ (\d+)$", line.strip())
+        if m:
+            got[m.group(1)] = int(m.group(2))
+    return dict(sorted(got.items(), key=lambda kv: int(kv[0])))
 # A view not done this long after it opened is recorded as timed out: what it measured stands, and
 # what it didn't fails (#202, smoke 7: heavy never finished, and the whole run was dropped after 900 s).
 # The runner then restarts the kiosk, as at the run's start, and opens the run's remaining views: a
@@ -438,6 +459,23 @@ def cmd_coldstart(dev, a):
                 st["touched_at"] = time.time()
                 res.setdefault("live_wakes", []).append([st["current"][0] if st["current"] else None, round(time.time(), 1)])
 
+    def cpu_clock():
+        """[view, time, [kHz per core]] every CPU_CLOCK_S while a view is open, from its open to its
+        done (cpu_khz in the run's file); each core's top clock once, when the thread starts. It runs
+        while the poller is paused too (the one adb call inside timed windows: a sysfs cat)."""
+        res["cpu_max_khz"] = cpu_khz(dev, "cpuinfo_max_freq")
+        res["cpu_clock_s"] = CPU_CLOCK_S
+        while not stop.wait(CPU_CLOCK_S):
+            cur = st.get("current") if st.get("view_open") else None
+            if cur and not st.get("recovering"):
+                khz = cpu_khz(dev, "scaling_cur_freq")
+                # The read takes a moment: keep it only if the same view is still open (no next view,
+                # recovery or end meanwhile), so it is never put under the view before (CodeRabbit).
+                if st.get("current") != cur or not st.get("view_open") or st.get("recovering") or stop.is_set():
+                    continue
+                if khz:
+                    res.setdefault("cpu_khz", []).append([cur[0], round(time.time(), 1), khz])
+
     def quiet_for(secs, cap):
         """Wait until no new frame has been presented for `secs` (at most `cap` s). True if it went quiet."""
         end, last, since = time.time() + cap, len(presents), time.time()
@@ -448,10 +486,6 @@ def cmd_coldstart(dev, a):
         return time.time() - since >= secs
 
     thread_errors = watch_threads()
-    poller = threading.Thread(target=poll, daemon=True)
-    poller.start()
-    if ref:
-        threading.Thread(target=keep_awake, daemon=True).start()
     res = {"run": a.run, "launch": None, "am_total_ms": None, "ttid_ms": None, "stop_mono": None, "proc_mono": None,
            "displayed_mono": None, "engine_mono": None, "engine_uri": None, "own_page_start_mono": None,
            "own_page_stop_mono": None, "own_page_loads": 0, "own_page_state": None,
@@ -461,6 +495,12 @@ def cmd_coldstart(dev, a):
     page_lines = P.PageLines()
     st = {"engine_at": None, "own_stop_at": 0.0, "current": None, "measure_mono": None, "break_after": None,
           "opened": 0, "next_at": None, "gestures": []}
+    # The threads start once `res` and `st` exist: they write to both at once (#250's verifier).
+    poller = threading.Thread(target=poll, daemon=True)
+    poller.start()
+    if ref:
+        threading.Thread(target=keep_awake, daemon=True).start()
+        threading.Thread(target=cpu_clock, daemon=True).start()
     size = screen_size(dev) if ref else None
     proc_re = re.compile(rf"Start proc \d+:{re.escape(dev.package)}/")
 
@@ -516,6 +556,7 @@ def cmd_coldstart(dev, a):
         st["opened_at"] = time.time()
         nonce = secrets.token_hex(4)
         st["current"], st["measure_mono"], st["next_at"] = (slot, nonce), None, None
+        st["view_open"] = True                 # until its done or error (or its timeout): cpu_clock
         st["line_at"], st["last_line"] = None, None
         paused.clear()
         if slot == "warmup":
@@ -681,7 +722,7 @@ def cmd_coldstart(dev, a):
         elif t == "camera":
             entry["camera"] = pl
         elif t in ("done", "error"):
-            st["live"] = False
+            st["live"] = st["view_open"] = False
             # Stop the view's stream at the fake (protocol 8: the page asks too, but doesn't wait on a
             # busy main thread for the answer); a stop for this view's nonce only.
             threading.Thread(target=still, args=(pl.get("nonce") or st["current"][1],), daemon=True).start()
@@ -743,7 +784,7 @@ def cmd_coldstart(dev, a):
                 entry["timed_out_after"] = late[0]      # the last thing it said (or "usable": never was)
                 entry["lost_lines"] = page_lines.close(st["current"][1])
                 res.setdefault("timed_out", []).append(view)
-                st["live"], st["current"] = False, None   # its gestures stop (send checks the page)
+                st["live"], st["current"], st["view_open"] = False, None, False   # its gestures stop (send checks the page)
                 if st["opened"] == len(slots):
                     print(f"  {view} timed out ({'not usable within' if late[0] == 'usable' else 'nothing after ' + late[0] + ' for'} "
                           f"{late[1]:.0f} s); it was the run's last view", file=sys.stderr)
