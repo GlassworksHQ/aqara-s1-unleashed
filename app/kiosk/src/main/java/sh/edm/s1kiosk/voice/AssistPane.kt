@@ -20,6 +20,7 @@ import sh.edm.s1kiosk.esphome.WakeWordCatalog
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /** The microphone and wake word side of the assistant. [VoiceEngine] is the real one. */
 interface VoiceInput : WakeWordCatalog {
@@ -115,14 +116,33 @@ class AssistPane(
 
     /**
      * A wake word picked on the panel's settings page (#212). Home Assistant reads the satellite's wake
-     * words only when the satellite is set up, which it does again on each reconnect
-     * (esphome/manager.py on_disconnect unloads the assist_satellite platform), so it is asked to
-     * reconnect; its wake word select then shows the panel's choice.
+     * words only when it sets the satellite up, which it does on each connect (esphome/manager.py
+     * on_disconnect unloads the assist_satellite platform). Its wake word select then keeps its own pick
+     * unless that pick reads "no wake word": the old word is no longer active, so the first read turns
+     * it to no_wake_word, and only a second read takes the panel's word (esphome/select.py
+     * async_satellite_config_updated, read 2026-11-14; the root's panel run saw no_wake_word after one).
+     * So Home Assistant is asked to connect again twice: now, and once more after its first read.
      */
     fun useWakeWord(id: String) {
         if (id == prefs.wakeWord) return
         prefs.wakeWord = id
+        rereads.set(2)
         ctx.entitiesChanged()
+    }
+
+    /** Home Assistant's configuration reads still to come after a word picked on the panel ([useWakeWord]). */
+    private val rereads = AtomicInteger(0)
+
+    /** How long after Home Assistant's first read it is asked to connect again: time for it to apply the read. */
+    internal var rereadDelayMs = 2_000L
+
+    /** After a read: the first of two asks for the second ([useWakeWord]). Any thread. */
+    private fun configurationRead() {
+        if (rereads.get() > 0 && rereads.decrementAndGet() == 1) {
+            val w = watchdog
+            if (w == null) ctx.entitiesChanged()
+            else runCatching { w.schedule({ ctx.entitiesChanged() }, rereadDelayMs, TimeUnit.MILLISECONDS) }.onFailure { ctx.entitiesChanged() }
+        }
     }
 
     /** Hands Home Assistant's voice requests to the controller. Called again if the server restarts. */
@@ -146,6 +166,7 @@ class AssistPane(
                 ctx.emit(PanelEvent.TimersChanged(list.map { PanelTimer(it.id, it.name, it.totalSeconds, it.secondsLeft, it.active) }))
             },
             maxStreamMs = cfg.maxStreamMs,
+            onConfigurationRead = ::configurationRead,
         )
         engine.controller = c
         controller = c

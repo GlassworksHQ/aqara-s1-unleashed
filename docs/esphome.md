@@ -609,7 +609,11 @@ with the Python TFLite runtime that the patched model gives bit-identical output
   (`VoiceAssistantConfigurationRequest`) only when it sets the satellite up, which it does on every
   connect: `esphome/manager.py` `on_disconnect` unloads the `assist_satellite` platform (HA core,
   read 2026-11-13). So a wake word picked on the panel asks HA to reconnect, as an entity set change
-  does.
+  does. Once is not enough: HA's wake word select keeps its own pick unless that pick reads
+  `no_wake_word`, and a pick that isn't active turns into `no_wake_word`
+  (`esphome/select.py` `async_satellite_config_updated`, read 2026-11-14). After one reconnect it read
+  `no_wake_word` (verified on the panel, 2026-11-14). So the panel asks again about 2 s after HA's
+  first configuration read, and HA's select then takes the panel's word (`AssistPaneTest`).
 - aioesphomeapi sends `SubscribeVoiceAssistantRequest.flags = 4` for API audio while `api.proto`
   defines `VOICE_ASSISTANT_SUBSCRIBE_API_AUDIO = 1`; like ESPHome, the panel ignores the flags and
   uses `VoiceAssistantResponse.port` (0 = API audio).
