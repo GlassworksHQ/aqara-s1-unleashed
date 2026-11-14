@@ -218,7 +218,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
                 return
             }
         }
-        natives.values.forEach { it.refresh() }
+        // Only the page on screen: the others' views wait until they are shown again.
+        natives.values.forEach { if (it.view.parent != null) it.refresh() }
         live.forEach { it() }
         bindRail()
         bindMaster()
@@ -260,6 +261,9 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     }
     internal fun previewRestart() { restartPending = true; banner.bind() }
     internal fun previewNative(key: String): SettingsItem.NativeView? = natives[key]
+
+    /** The native views kept now, by key (tests). */
+    internal val keptNatives: Set<String> get() = natives.keys.toSet()
     internal fun previewScrollTo(v: View, alignBottom: Boolean = false) {
         val r = Rect()
         v.getDrawingRect(r)
@@ -291,6 +295,9 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         rows.removeAllViews()
         live.clear()
         natives.values.forEach { n -> (n.view.parent as? android.view.ViewGroup)?.removeView(n.view); n.reset() }
+        // A key no section has now (a pane from before a device restart, another base) is let go of.
+        val keys = m.sections.flatMap { nativeKeys(it.items) }.toSet()
+        natives.keys.retainAll(keys)
         addItems(s.items, divided = s.items.none { it is SettingsItem.Native })
         scroll.scrollTo(0, 0)
     }
@@ -348,6 +355,14 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
                 reload?.invoke()?.let { model = it }
                 build()
             }
+        }
+    }
+
+    private fun nativeKeys(items: List<SettingsItem>): List<String> = items.flatMap { i ->
+        when (i) {
+            is SettingsItem.Native -> listOf(i.key)
+            is SettingsItem.Group -> nativeKeys(i.items)
+            else -> emptyList()
         }
     }
 

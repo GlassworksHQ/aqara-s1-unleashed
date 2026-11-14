@@ -452,4 +452,34 @@ class SettingsOverlayTest {
         Mockup.idle()
         assertTrue(shown(o, "9 % (new pane)"))
     }
+
+    @Test
+    fun nativeViewsOfAnOldPaneAreLetGoAndOnlyTheShownOneRefreshes() {
+        // #235 verifier N5: views keyed by the running pane piled up across device restarts, and every
+        // kept view refreshed every tick, shown or not.
+        var run = 1
+        val refreshed = HashMap<String, Int>()
+        fun native(key: String) = SettingsItem.Native(key) { host ->
+            object : SettingsItem.NativeView {
+                override val view = android.widget.TextView(host.context).apply { text = key }
+                override fun refresh() { refreshed[key] = (refreshed[key] ?: 0) + 1 }
+            }
+        }
+        fun model() = KioskSettingsOverlay.Model(listOf(
+            SettingsSection("a", "A", listOf(native("a-run$run"))),
+            SettingsSection("b", "B", listOf(native("b-run$run"))),
+        ), "0.4.3", setOf("a", "b"))
+        val o = open(model = { model() }).apply { reload = ::model }
+        o.previewSection("b")
+        o.previewSection("a")
+        Mockup.idle()
+        assertEquals(setOf("a-run1", "b-run1"), o.keptNatives)
+        refreshed.clear()
+        o.refresh()
+        assertEquals("only the page on screen", mapOf("a-run1" to 1), refreshed.toMap())
+        run = 2 // the device restarted: new panes, new keys
+        o.refresh()
+        Mockup.idle()
+        assertEquals("the old pane's views are let go of", setOf("a-run2"), o.keptNatives)
+    }
 }
