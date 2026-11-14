@@ -340,7 +340,13 @@ class RtspServer(
             val reader = RtspRequestReader(socket.getInputStream())
             try {
                 while (running.get()) {
-                    when (val item = reader.next() ?: break) {
+                    val item = reader.next() ?: break
+                    // Every item counts, interleaved frames too: nothing keeps an unsigned connection past it.
+                    if (!signedIn && System.currentTimeMillis() - connectedAt > handshakeTimeoutMs) {
+                        onLog("RTSP: ${socket.inetAddress.hostAddress} didn't sign in in time")
+                        break
+                    }
+                    when (item) {
                         is RtspRequestReader.Item.Interleaved -> touchAll()  // RTCP RR over TCP
                         is RtspRequestReader.Item.Malformed -> respond(null, 400, "Bad Request")
                         is RtspRequestReader.Item.Request -> handle(item.request)
@@ -396,11 +402,6 @@ class RtspServer(
         private fun handle(req: RtspRequest) {
             if (req.version != "RTSP/1.0") return respond(req, 505, "RTSP Version Not Supported")
             sessionFor(req)?.touch()
-            if (!signedIn && System.currentTimeMillis() - connectedAt > handshakeTimeoutMs) {
-                onLog("RTSP: ${socket.inetAddress.hostAddress} didn't sign in in time")
-                close()
-                return
-            }
             if (req.method != "OPTIONS" && !authorized(req)) {
                 return respond(req, 401, "Unauthorized", auth.challengeHeaders())
             }

@@ -65,6 +65,8 @@ class CameraHub(
     private var generation = 0
     private var configuring = false
     private var lingerUntil = 0L
+    /** Bumped by [idle]: a still asked for before it doesn't keep the camera open after it. */
+    private var stillEpoch = 0
     private var luma = ByteArray(0)
     private var facingFront = true
     private var sensorDegrees = 0
@@ -85,11 +87,12 @@ class CameraHub(
      */
     override fun jpeg(): ByteArray? {
         val w = Waiter(CountDownLatch(1))
-        handler.post { waiters += w; settle() }
+        var epoch = 0
+        handler.post { epoch = stillEpoch; waiters += w; settle() }
         w.latch.await(STILL_WAIT_MS, TimeUnit.MILLISECONDS)
         handler.post {
             waiters -= w
-            lingerUntil = SystemClock.elapsedRealtime() + LINGER_MS
+            if (epoch == stillEpoch) lingerUntil = SystemClock.elapsedRealtime() + LINGER_MS
             handler.postDelayed(::settle, LINGER_MS + 50)
         }
         return w.jpeg
@@ -111,6 +114,7 @@ class CameraHub(
      */
     fun idle() {
         handler.post {
+            stillEpoch++
             lingerUntil = 0L
             waiters.forEach { it.latch.countDown() }; waiters.clear()
             settle()

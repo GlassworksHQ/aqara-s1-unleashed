@@ -52,6 +52,7 @@ class CameraStream(
     /** Bumped on every start and stop: a viewer report from an older RTSP server is ignored. */
     private var generation = 0
     private var lastRestartMs = 0L
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
     override fun start(signIn: Pair<String, String>): Boolean = synchronized(lock) {
         if (rtsp != null && this.signIn == signIn) return true
@@ -113,25 +114,39 @@ class CameraStream(
 
     private fun startEncoder() {
         val server = rtsp ?: return
-        val gen = generation
+        var self: H264Encoder? = null
         val e = try {
             H264Encoder(CameraHub.WIDTH, CameraHub.HEIGHT, onAccessUnit = { au, key -> server.onAccessUnit(au, key) }) {
-                // The codec failed: drop it, and start a new one if anyone still watches.
+                // The codec failed. Only if it is still the one in use: a replaced encoder's late
+                // callback must not stop its replacement.
                 synchronized(lock) {
-                    if (gen != generation) return@synchronized
+                    if (encoder !== self) return@synchronized
                     stopEncoder()
-                    // At most once every 5 s: a codec that keeps failing mustn't spin.
-                    val now = android.os.SystemClock.elapsedRealtime()
-                    if (server.hasClients() && now - lastRestartMs > 5_000) { lastRestartMs = now; startEncoder() }
+                    restartWhenAllowed()
                 }
             }
         } catch (ex: Exception) {
             log("H.264 encoder failed: ${ex.javaClass.simpleName}")
             return
         }
+        self = e
         encoder = e
         hub.setEncoder(e.surface)
         viewing = egress.stream()
+    }
+
+    /** A new encoder for the viewers still watching, at most once every [RESTART_MS]; later if sooner. */
+    private fun restartWhenAllowed() {
+        val gen = generation
+        val wait = lastRestartMs + RESTART_MS - android.os.SystemClock.elapsedRealtime()
+        val go = Runnable {
+            synchronized(lock) {
+                if (gen != generation || encoder != null || rtsp?.hasClients() != true) return@synchronized
+                lastRestartMs = android.os.SystemClock.elapsedRealtime()
+                startEncoder()
+            }
+        }
+        if (wait <= 0) go.run() else main.postDelayed(go, wait)
     }
 
     private fun stopEncoder() {
@@ -151,6 +166,7 @@ class CameraStream(
         private const val TAG = "S1Kiosk.Camera"
         const val RTSP_PORT = 8554
         const val ONVIF_PORT = 8000
+        const val RESTART_MS = 5_000L
     }
 }
 

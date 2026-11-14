@@ -304,6 +304,19 @@ class RtspServerTest {
         c.sock.close()
     }
 
+    @Test fun interleavedFramesCantKeepAConnectionOpenWithoutSigningIn() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, handshakeTimeoutMs = 400)
+        server.start()
+        val sock = Socket("127.0.0.1", port).apply { soTimeout = 3000 }
+        val out = sock.getOutputStream()
+        val closed = runCatching {
+            repeat(20) { out.write(byteArrayOf('$'.code.toByte(), 1, 0, 4, 0x80.toByte(), 201.toByte(), 0, 1)); out.flush(); Thread.sleep(100) }
+        }.isFailure || sock.getInputStream().read() == -1
+        assertTrue("closed within the handshake time although RTCP-like frames kept coming", closed)
+        sock.close()
+    }
+
     @Test fun theStreamCarriesThePanelsName() {
         port = freePort()
         server = RtspServer(port, { USER }, { counts += it }, name = "Hall Panel")
