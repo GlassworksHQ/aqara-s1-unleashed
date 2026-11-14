@@ -187,8 +187,8 @@ class MainActivity : Activity() {
             onCancel = { glassworks.voiceCancel?.invoke() }
             onShowingChanged = { timerOverlay.voiceShowing(it) } // a timer set by voice flies out of the orb
         }
-        timerOverlay = TimerOverlay(this)
-        notificationOverlay = NotificationOverlay(this, glassworks.notifications, notificationImages()).apply {
+        timerOverlay = TimerOverlay(this, glassworks.orbs)
+        notificationOverlay = NotificationOverlay(this, glassworks.notifications, notificationImages(), orbs = glassworks.orbs).apply {
             screenOn = { glassworks.screen.screenOn }
             onPage = { url -> if (url != null) openInPage(url) else backToDashboard() }
             onDoNotDisturb = { on -> prefs.notifications.doNotDisturb = on }

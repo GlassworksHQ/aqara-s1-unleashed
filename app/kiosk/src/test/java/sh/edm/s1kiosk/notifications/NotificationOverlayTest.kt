@@ -182,4 +182,21 @@ class NotificationOverlayTest {
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1_000))
         assertEquals("no frames after", after, orb.frames)
     }
+
+    /** Verifier on #228: with the screen off the critical orb doesn't tick; it resumes when the screen is on. */
+    @Test
+    fun theCriticalOrbRestsWhileTheScreenIsOff() {
+        var screen = false
+        overlay.screenOn = { screen }
+        center.handle("Under the sink", "Water leak", """{"priority":"critical"}""")
+        val orb = overlay.criticalOrb
+        assertFalse("the screen is off: no ticks", orb.running)
+        val frames = orb.frames
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(2_000))
+        assertEquals(frames, orb.frames)
+        screen = true
+        overlay.update(hub.state)   // MainActivity does this when the screen state changes
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(300))
+        assertTrue("the screen is on: it moves", orb.frames > frames + 5)
+    }
 }

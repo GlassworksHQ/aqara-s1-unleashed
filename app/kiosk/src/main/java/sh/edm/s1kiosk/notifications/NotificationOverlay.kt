@@ -39,6 +39,7 @@ import sh.edm.s1kiosk.ui.Glass.Companion.TX
 import sh.edm.s1kiosk.ui.Glass.Companion.VIOLET
 import sh.edm.s1kiosk.ui.Inter
 import sh.edm.s1kiosk.voice.OrbArt
+import sh.edm.s1kiosk.voice.OrbBakes
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -56,6 +57,8 @@ class NotificationOverlay(
     private val hub: NotificationsHub,
     private val images: NotificationImages?,
     private val now: () -> Long = SystemClock::elapsedRealtime,
+    /** The orb layers the critical alert shares with the timer-done stage. */
+    orbs: OrbBakes = OrbBakes(),
 ) : FrameLayout(context) {
 
     /** Whether the screen is on: a card's fold time counts only then. */
@@ -84,7 +87,7 @@ class NotificationOverlay(
     private val pageBar = FrameLayout(context)
     private val stage = FrameLayout(context)
     /** The critical alert's animated orb: one, kept while the stage's text is rebuilt, so its motion runs on. */
-    internal val criticalOrb = CriticalOrb(context)
+    internal val criticalOrb = CriticalOrb(context, orbs)
     /** The stage's text and buttons, rebuilt on each change. */
     private val stageContent = FrameLayout(context)
     private val sheetLayer = FrameLayout(context)
@@ -144,7 +147,6 @@ class NotificationOverlay(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         detached = false
-        if (stage.visibility == View.VISIBLE) criticalOrb.start()
     }
 
     override fun onDetachedFromWindow() {
@@ -159,6 +161,7 @@ class NotificationOverlay(
 
     private fun render() {
         main.removeCallbacks(refold)
+        criticalOrb.screenOn = screenOn()
         // The critical alert is never folded, and covers the cards while it is up.
         val critical = state.cards.firstOrNull { it.notification.priority == Priority.CRITICAL }
         val view = folds.update(state.cards.filter { it !== critical }, screenOn(), now(), covered = critical != null)
@@ -226,8 +229,9 @@ class NotificationOverlay(
         }
         stage.visibility = View.VISIBLE
         stage.isClickable = true // nothing behind it takes a tap until it's answered
-        // The ripple and the pulse, until it's answered or dismissed (or the overlay leaves the window).
-        if (!detached) criticalOrb.start()
+        // The ripple and the pulse, until it's answered or dismissed; the orb pauses itself while the
+        // screen is off or the window hidden.
+        criticalOrb.start()
         val n = e.notification
         // The buttons sit at the bottom of the screen, so Dismiss is always there; the text gets the
         // room between the orb and them, and scrolls if HA sent more than fits on 480 dp.
