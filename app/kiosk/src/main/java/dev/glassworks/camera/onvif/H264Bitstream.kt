@@ -3,7 +3,8 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 90f9f80f (upstream); a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package only. */
+ * Changes: package; with a length-size hint from avcC, a clean length-prefixed parse wins over the
+ * Annex-B reading (a 4-byte length 00 00 01 xx also reads as a start code). */
 
 package dev.glassworks.camera.onvif
 
@@ -29,6 +30,12 @@ internal object H264Bitstream {
      */
     fun normalize(input: ByteArray, nalLengthSizeHint: Int? = null): Normalized? {
         if (input.isEmpty()) return null
+
+        // Glassworks: when the stream's own framing (avcC) says length-prefixed, believe it first. A NAL
+        // of 0x165 to 0x1FF bytes has a length prefix 00 00 01 xx that also reads as a start code.
+        if (nalLengthSizeHint != null && nalLengthSizeHint in 1..4) {
+            parseLengthPrefixed(input, nalLengthSizeHint)?.let { return Normalized(joinNals(it), nalLengthSizeHint) }
+        }
 
         annexBRanges(input)?.let { ranges ->
             val alreadyCanonical = ranges.first().startCodeStart == 0 &&

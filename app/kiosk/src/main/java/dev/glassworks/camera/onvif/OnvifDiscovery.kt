@@ -3,7 +3,8 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package only. */
+ * Changes: package; the socket is closed when joining the multicast group fails (upstream leaked one
+ * on every retry); the socket factory and the join can be replaced in tests. */
 
 package dev.glassworks.camera.onvif
 
@@ -26,7 +27,9 @@ internal class OnvifDiscovery(
     private val xaddr: () -> String,            // http://ip:port/onvif/device_service
     private val scopes: () -> List<String>,
     private val port: Int = 3702,
-    private val onLog: (String) -> Unit = {}
+    private val onLog: (String) -> Unit = {},
+    private val newSocket: (Int) -> MulticastSocket = ::MulticastSocket,
+    private val join: ((MulticastSocket, InetAddress) -> Unit)? = null,
 ) {
     companion object {
         const val GROUP = "239.255.255.250"
@@ -82,11 +85,12 @@ internal class OnvifDiscovery(
             try {
                 // MulticastSocket(port) sets SO_REUSEADDR before binding; the unbound
                 // MulticastSocket(null) + bind() path throws "port out of range:-1" on Android.
-                val s = MulticastSocket(port).apply {
+                val s = newSocket(port).apply {
                     soTimeout = 2000
                     timeToLive = 4
                 }
-                joinAll(s, group)
+                // Glassworks: closed here if joining fails, before the loop's finally can see it.
+                try { (join ?: ::joinAll)(s, group) } catch (e: Exception) { s.close(); throw e }
                 socket = s
                 onLog("ONVIF WS-Discovery listening on udp/$port")
                 try { sendMulticast(buildAnnounce(bye = false)) } catch (_: Exception) {}

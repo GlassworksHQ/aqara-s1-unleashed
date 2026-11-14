@@ -3,7 +3,7 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package only. */
+ * Changes: package; tests for frames smaller than the grid and for sizes that don't divide by it. */
 
 package dev.glassworks.camera
 
@@ -89,5 +89,60 @@ class MotionDetectorCoreTest {
         d.processGrid(withBlob(100.0, 10, 10, 6, 220.0), 200)
         d.processGrid(flat(100.0), 400)
         assertTrue(events.isEmpty())
+    }
+
+    /** A [w]x[h] luma frame, row stride [w], [px] at each pixel. */
+    private fun run(d: MotionDetectorCore, w: Int, h: Int, t: Long, px: (Int, Int) -> Int) {
+        val f = ByteArray(w * h) { i -> px(i % w, i / w).toByte() }
+        d.process({ i -> f[i].toInt() and 0xff }, w, h, w, 1, t)
+    }
+
+    @Test fun framesTooSmallForTheGridEndMotion() {
+        val events = mutableListOf<Boolean>()
+        val d = MotionDetectorCore(onMotion = { events += it })
+        d.processGrid(flat(100.0), 0)
+        for (i in 1..3) d.processGrid(withBlob(100.0, i * 4, 8, 6, 200.0), i * 200L)
+        assertTrue(d.active)
+        run(d, 40, 20, 1_000) { _, _ -> 100 }
+        assertFalse("a 40x20 frame can't be judged: motion ends rather than staying on", d.active)
+        assertEquals(listOf(true, false), events)
+    }
+
+    @Test fun theEdgesOfASizeThatDoesntDivideAreSampled() {
+        // 95x53: integer cells of 1x1 would only cover the top-left 48x27 pixels.
+        val events = mutableListOf<Boolean>()
+        val d = MotionDetectorCore(onMotion = { events += it })
+        run(d, 95, 53, 0) { _, _ -> 100 }
+        for (i in 1..3) run(d, 95, 53, i * 200L) { x, y -> if (x >= 70 && y >= 36) 220 else 100 }
+        assertEquals("motion in the bottom-right corner is seen", listOf(true), events)
+    }
+
+    @Test fun aSizeThatDividesIsSampledExactlyAsUpstreamDid() {
+        // Upstream's sampling, written out: cells of width/48 by height/27, four points each way.
+        fun upstreamGrid(f: ByteArray, width: Int, height: Int): DoubleArray {
+            val cw = width / w; val ch = height / h
+            return DoubleArray(w * h) { c ->
+                val gx = c % w; val gy = c / w
+                var sum = 0
+                for (sy in 0 until 4) for (sx in 0 until 4) {
+                    val y = gy * ch + (sy * ch) / 4 + ch / 8; val x = gx * cw + (sx * cw) / 4 + cw / 8
+                    sum += f[y * width + x].toInt() and 0xff
+                }
+                sum / 16.0
+            }
+        }
+        val rnd = java.util.Random(117)
+        val ours = MotionDetectorCore(onMotion = {})
+        val theirs = MotionDetectorCore(onMotion = {})
+        for (size in listOf(48 to 27, 480 to 270, 1920 to 1080)) {
+            val (fw, fh) = size
+            repeat(6) { t ->
+                val f = ByteArray(fw * fh) { (60 + rnd.nextInt(40) + if (t % 2 == 1 && it % fw < fw / 5) 120 else 0).toByte() }
+                ours.process({ i -> f[i].toInt() and 0xff }, fw, fh, fw, 1, t * 200L)
+                theirs.processGrid(upstreamGrid(f, fw, fh), t * 200L)
+                assertEquals("${fw}x$fh frame $t", theirs.lastChangedFraction, ours.lastChangedFraction, 0.0)
+                assertEquals(theirs.active, ours.active)
+            }
+        }
     }
 }

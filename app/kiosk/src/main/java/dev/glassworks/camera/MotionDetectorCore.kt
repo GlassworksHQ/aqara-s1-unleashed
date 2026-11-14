@@ -3,7 +3,9 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package only. */
+ * Changes: package; a frame smaller than the grid ends motion (upstream kept it); cell bounds are
+ * spread over the whole frame, so sizes that don't divide by 48x27 are sampled to the edges (the same
+ * samples as upstream when they divide). */
 
 package dev.glassworks.camera
 
@@ -59,16 +61,20 @@ class MotionDetectorCore(
      * Evaluate one frame. [luma] is read as unsigned bytes at index `y * rowStride + x * pixelStride`.
      */
     fun process(luma: (Int) -> Int, width: Int, height: Int, rowStride: Int, pixelStride: Int, nowMs: Long) {
-        if (width < GRID_W || height < GRID_H) return
+        // Glassworks: a frame too small for the grid ends motion rather than keeping it forever.
+        if (width < GRID_W || height < GRID_H) { reset(); return }
         // Block averages over a sparse 4×4 sample per cell — plenty for motion and cheap at 1080p.
-        val cw = width / GRID_W; val ch = height / GRID_H
+        // Glassworks: each cell's bounds come from the full size, so a remainder isn't left unsampled
+        // (the same samples as upstream when the size divides evenly).
         for (gy in 0 until GRID_H) for (gx in 0 until GRID_W) {
+            val y0 = gy * height / GRID_H; val ch = (gy + 1) * height / GRID_H - y0
+            val x0 = gx * width / GRID_W; val cw = (gx + 1) * width / GRID_W - x0
             var sum = 0
             for (sy in 0 until 4) {
-                val y = gy * ch + (sy * ch) / 4 + ch / 8
+                val y = y0 + (sy * ch) / 4 + ch / 8
                 val row = y * rowStride
                 for (sx in 0 until 4) {
-                    val x = gx * cw + (sx * cw) / 4 + cw / 8
+                    val x = x0 + (sx * cw) / 4 + cw / 8
                     sum += luma(row + x * pixelStride)
                 }
             }

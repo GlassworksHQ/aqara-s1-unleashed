@@ -73,9 +73,14 @@ class RtspServerTest {
             while (true) {
                 input.mark(1)
                 val b = input.read()
+                if (b < 0) throw java.io.EOFException("closed before a response")
                 if (b == '$'.code) { skipInterleavedBody(); continue }
                 val head = StringBuilder().append(b.toChar())
-                while (!head.endsWith("\r\n\r\n")) head.append(input.read().toChar())
+                while (!head.endsWith("\r\n\r\n")) {
+                    val c = input.read()
+                    if (c < 0) throw java.io.EOFException("closed inside a response head: $head")
+                    head.append(c.toChar())
+                }
                 val len = Regex("Content-Length: (\\d+)").find(head)?.groupValues?.get(1)?.toInt() ?: 0
                 val body = ByteArray(len).also { input.readFully(it) }
                 return head.toString() to String(body)
@@ -115,7 +120,8 @@ class RtspServerTest {
 
         val (play, _) = c.request("PLAY", url, listOf("Session: $session", "Range: npt=0.000-"))
         assertTrue(play.startsWith("RTSP/1.0 200")); assertTrue(play.contains("RTP-Info: url=$url/trackID=0;seq="))
-        assertTrue(server.hasClients())
+        // The server answers PLAY before it marks the session playing: wait for it, bounded.
+        assertTrue(waitFor { server.hasClients() })
 
         // First packets must start with SPS (keyframe sync), share timestamp, have increasing seq.
         val all = (1..14).map { c.readInterleaved() }
@@ -135,9 +141,8 @@ class RtspServerTest {
 
         val (td, _) = c.request("TEARDOWN", url, listOf("Session: $session"))
         assertTrue(td.startsWith("RTSP/1.0 200"))
-        Thread.sleep(100)
-        assertTrue(!server.hasClients())
-        assertTrue(counts.contains(1) && counts.last() == 0)
+        assertTrue(waitFor { !server.hasClients() && counts.lastOrNull() == 0 })
+        assertTrue(counts.contains(1))
         c.sock.close()
     }
 
@@ -216,6 +221,37 @@ class RtspServerTest {
         c.sock.close()
     }
 
+    @Test fun clientCountsReachTheHostInOrderEvenWhenItsCallbackIsSlow() {
+        port = freePort()
+        val firstIn = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        server = RtspServer(port, { USER }, { n ->
+            if (n == 1 && firstIn.count > 0) { firstIn.countDown(); release.await() } // a host that takes its time
+            counts += n
+        })
+        server.start()
+        Thread { var i = 0; while (feeding.get()) { server.onAccessUnit(if (i++ % 10 == 0) idr else pFrame, i % 10 == 1); Thread.sleep(33) } }
+            .apply { isDaemon = true; start() }
+        Thread.sleep(150)
+        fun play(c: Client): String {
+            val url = "rtsp://127.0.0.1:$port/live"
+            c.request("DESCRIBE", url, listOf("Accept: application/sdp"))
+            val setup = c.request("SETUP", "$url/trackID=0", listOf("Transport: RTP/AVP/TCP;unicast;interleaved=0-1")).first
+            val session = Regex("Session: ([0-9A-F]+)").find(setup)!!.groupValues[1]
+            return c.request("PLAY", url, listOf("Session: $session")).first
+        }
+        val a = Client(port); val b = Client(port)
+        assertTrue(play(a).startsWith("RTSP/1.0 200"))
+        assertTrue(firstIn.await(5, java.util.concurrent.TimeUnit.SECONDS)) // the host is busy with "1"
+        assertTrue(play(b).startsWith("RTSP/1.0 200"))
+        Thread.sleep(200)
+        release.countDown()
+        assertTrue(waitFor { counts.size >= 2 })
+        Thread.sleep(100)
+        assertEquals("the host ends on the true count", listOf(1, 2), counts.toList())
+        a.sock.close(); b.sock.close()
+    }
+
     @Test fun nothingListensUntilStart() {
         port = freePort()
         server = RtspServer(port, { USER }, { counts += it })
@@ -224,6 +260,12 @@ class RtspServerTest {
         assertTrue(runCatching { ServerSocket(port).close() }.isFailure)
         server.stop()
         ServerSocket(port).close() // and stop() let it go
+    }
+
+    private fun waitFor(ms: Long = 3_000, ok: () -> Boolean): Boolean {
+        val until = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < until) { if (ok()) return true; Thread.sleep(10) }
+        return ok()
     }
 
     private companion object {

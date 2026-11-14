@@ -5,7 +5,7 @@
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
  * Changes: package; with no credentials, or a username without a password, every request is refused
  * (upstream let everyone in), so the stream has no default password; start() binds before it counts as
- * running, so a port clash can be retried. */
+ * running, so a port clash can be retried; client counts are reported in order from one thread. */
 
 package dev.glassworks.camera.onvif
 
@@ -177,11 +177,20 @@ class RtspServer(
         }
     }
 
+    // Glassworks: each report is a task on one thread that reads the count, compares and calls back,
+    // so two reports can't cross (one reading 0, the other suppressing 1) and no lock is held over the
+    // callback, which may stop this server.
+    private val reports = java.util.concurrent.ThreadPoolExecutor(0, 1, 30L, TimeUnit.SECONDS, java.util.concurrent.LinkedBlockingQueue()) { r ->
+        Thread(r, "RtspClients").apply { isDaemon = true }
+    }
+
     private fun reportClients() {
-        val n = activeCount()
-        if (n != lastReportedCount) {
-            lastReportedCount = n
-            try { onClientsChanged(n) } catch (e: Exception) { onLog("onClientsChanged: ${e.message}") }
+        reports.execute {
+            val n = activeCount()
+            if (n != lastReportedCount) {
+                lastReportedCount = n
+                try { onClientsChanged(n) } catch (e: Exception) { onLog("onClientsChanged: ${e.message}") }
+            }
         }
     }
 

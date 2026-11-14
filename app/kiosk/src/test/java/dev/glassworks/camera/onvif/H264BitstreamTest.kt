@@ -3,7 +3,8 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 90f9f80f (upstream); a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package only. */
+ * Changes: package; a test with a generated avcC stream whose 357-byte NAL's length prefix reads as a
+ * start code. */
 
 package dev.glassworks.camera.onvif
 
@@ -143,5 +144,27 @@ class H264BitstreamTest {
             offset += array.size
         }
         return result
+    }
+
+    /**
+     * A MediaCodec-style AVCC stream, generated here: the avcC record (4-byte lengths, one SPS, one
+     * PPS), then an access unit whose IDR is 357 bytes. Its length prefix 00 00 01 65 also reads as a
+     * start code followed by a NAL header 0x65. The body has no start codes.
+     */
+    @Test
+    fun `an avcC stream's length prefix that reads as a start code is still a length`() {
+        val avcC = byteArrayOf(1, 0x64, 0x00, 0x1f, 0xff.toByte(), 0xe1.toByte(), 0, sps.size.toByte()) + sps +
+            byteArrayOf(1, 0, pps.size.toByte()) + pps
+        val idr = ByteArray(357) { i -> if (i == 0) 0x65 else (0x10 + i % 0x60).toByte() }
+        val au = byteArrayOf(0, 0, 1, 0x65) + idr
+        assertEquals(listOf(0, 0, 1, 0x65), au.take(4).map { it.toInt() })
+
+        val cache = H264ParameterSetCache()
+        assertNull("the config buffer carries no picture", cache.prepare(avcC, keyframeFlag = false))
+        val out = cache.prepare(au, keyframeFlag = true)!!
+        val nals = H264Bitstream.nalRanges(out.bytes).map { out.bytes.copyOfRange(it.start, it.end) }
+        assertEquals(listOf(7, 8, 5), nals.map { it[0].toInt() and 0x1f })
+        assertArrayEquals("the IDR comes through whole", idr, nals[2])
+        assertTrue(out.isKeyframe)
     }
 }

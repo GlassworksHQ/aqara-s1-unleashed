@@ -76,8 +76,9 @@ class CameraPresence(
 
     override fun start(context: Context, onReading: (near: Boolean, raw: Float) -> Unit) {
         val s = Session(onReading)
-        val old = synchronized(lock) { session.also { session = s } }
-        old?.close()
+        // The old session ends in the same hold of the lock that replaces it, so nothing it does can
+        // reach the new one; only its camera handle closes outside.
+        synchronized(lock) { session.also { session = s }?.closeLocked() }?.close()
         s.begin()
         val h = try {
             camera.open(fps, s)
@@ -89,7 +90,7 @@ class CameraPresence(
     }
 
     override fun stop(context: Context) {
-        synchronized(lock) { session.also { session = null } }?.close()
+        synchronized(lock) { session.also { session = null }?.closeLocked() }?.close()
     }
 
     /** A camera has no distance to set: what counts is how much of the picture moves. */
@@ -176,14 +177,12 @@ class CameraPresence(
 
         private fun isOpen() = synchronized(lock) { !closed }
 
-        fun close() {
-            val h = synchronized(lock) {
-                closed = true
-                detector.reset()
-                tellMotion()
-                handle.also { handle = null }
-            }
-            h?.close()
+        /** Under [lock]: ends the session and returns its camera handle, for the caller to close outside. */
+        fun closeLocked(): AutoCloseable? {
+            closed = true
+            detector.reset()
+            tellMotion()
+            return handle.also { handle = null }
         }
     }
 
