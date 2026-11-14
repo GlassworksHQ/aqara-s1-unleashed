@@ -17,7 +17,21 @@
   "use strict";
   const S = window.GWStats, C = window.GW_CLARITY;
   const EVERY = 1000 / C.LIVE.updatesPerS, FLIP = C.LIVE.flipEveryMs;
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // The harness's own waits end at the first of a timer and an animation frame past the time.
+  // Protocol 8 (#202, s1rtc4): on the S1's heavy view a 30 s tap wait, checked by a timer, ended
+  // after 140 s: the page's timers wait behind the frontend's queue, while the refresh driver's
+  // frames come first (5 to 8 a second there). The timer still ends a wait when no frame comes (a
+  // hidden page draws none).
+  const sleep = (ms) => new Promise((r) => {
+    const end = performance.now() + ms;
+    let over = false;
+    const finish = () => { if (!over) { over = true; r(); } };
+    setTimeout(finish, ms);
+    const tick = () => { if (over) return; if (performance.now() >= end) finish(); else requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  });
+  // A promise, or after `ms` (the harness's own clock) undefined: for answers a busy page may hold.
+  const within = (p, ms) => Promise.race([p, sleep(ms).then(() => undefined)]);
   const frame = () => new Promise((r) => requestAnimationFrame(r));
   const r1 = (x) => Math.round(x * 10) / 10;
   const sr = (e) => e && e.shadowRoot;
@@ -214,14 +228,22 @@
   // One quick task isn't enough: HA keeps building the cards below the first screen in many tasks,
   // and a single probe can land in a gap between two long ones (smoke9's heavy did, 47 ms after
   // its render, while typical's main thread stayed busy for 3 s). Returns when that stretch began.
+  // `busy` (detail, #202): each second of the wait, the longest a probe waited, in ms, so a long
+  // wait says whether the page was busy throughout or in bursts.
   async function freeFrom() {
     let st = { start: null, done: false };
+    const t0 = performance.now(), busy = [];
     while (!st.done) {
       const posted = performance.now();
       const ran = await new Promise((r) => setTimeout(() => r(performance.now()), 0));
+      const k = Math.floor((posted - t0) / 1000);
+      if (k < 600) {
+        while (busy.length <= k) busy.push(0);
+        busy[k] = Math.max(busy[k], Math.round(ran - posted));
+      }
       st = S.freeStep(posted, ran, st.start, C.PHASES.freeWindowMs);
     }
-    return st.start;
+    return { start: st.start, busy };
   }
 
   // The view's head: its first HEAD_CARDS configured cards (the same on every view), from the
@@ -246,8 +268,9 @@
         onScreen: onScreen.map(([r, i]) => ({ rendered: rendered(all[i]), top: r.top })),
       }, st, C.HEAD_CARDS);
     }
-    const interactive = await freeFrom();
-    return { rendered_tick_ms: r1(ts), first_screen_cards: onScreen.length, head_cards: C.HEAD_CARDS, interactive_ms: r1(interactive) };
+    const free = await freeFrom();
+    return { rendered_tick_ms: r1(ts), first_screen_cards: onScreen.length, head_cards: C.HEAD_CARDS,
+             interactive_ms: r1(free.start), busy_ms: free.busy };
   }
 
   function nodeCount(root) {
@@ -359,7 +382,12 @@
   // One getStats() sample of every connection carrying the camera's video (stats.js webrtcWindow),
   // timed when it is asked for. HA's player may change connections mid-window, so the window is
   // sampled every second, not diffed between two snapshots.
-  function sample(rec) {
+  // One getStats per receiver at a time (protocol 8): on a busy page answers come late, and one a
+  // second each piled up (s1rtc4's heavy: the camera line came 93 s after its window, waiting for
+  // all of them). A sample's time is when it was asked; the counts are cumulative, so a late or
+  // skipped one loses no frame, only resolution. `force`: the window's ends, always asked.
+  function sample(rec, force) {
+    if (rec.inflight && !force) return;
     const t = performance.now(), pcs = peersOf(rec.el);
     for (const pc of pcs) rec.pcsSeen.add(pc);
     const p = Promise.all(pcs.map((pc) => pc.getStats().then((stats) => {
@@ -367,6 +395,8 @@
       stats.forEach((x) => reports.push(x));
       return { pc: peerInfo.get(pc).n, reports };
     }, () => null))).then((got) => { rec.samples.push({ t, pcs: got.filter(Boolean) }); });
+    rec.inflight = p.then(() => { if (rec.inflight === q) rec.inflight = null; });
+    const q = rec.inflight;
     rec.pending.push(p);
   }
 
@@ -429,23 +459,29 @@
         r.q0 = r.el.getVideoPlaybackQuality ? r.el.getVideoPlaybackQuality() : null;
         r.samples = [];
         r.pending = [];
+        r.inflight = null;
         r.pcsSeen = new Set();
       }
     }
     if (cams.path === "web_rtc") {
       const graded = () => cams.list.map((c) => c.recs.web_rtc).filter(Boolean);
-      for (const r of graded()) sample(r);
+      for (const r of graded()) sample(r, true);
       cams.sampler = setInterval(() => { for (const r of graded()) sample(r); }, 1000);
     }
   }
 
-  // Playback from the view going live to its first swipe: the cameras on screen, the updates and the
-  // taps running (the swipes scroll them away, and an engine may rightly stop decoding a video no
-  // one can see). Shown: frames presented against fps x the time; stalls: gaps over 500 ms. Each
-  // camera is graded on its view's path (CAMERA path; HLS on a fallback view).
+  // Playback over a fixed window from the view going live (protocol 8: CAMERA.windowMs, 30 s, while
+  // the updates and the taps run; before, it ran to the end of the taps, 147 s on s1rtc4's heavy),
+  // always before the first swipe (the swipes scroll the cameras away, and an engine may rightly
+  // stop decoding a video no one can see). Each camera is graded on its view's path (CAMERA path;
+  // HLS on a fallback view). Over WebRTC the frames shown, the gaps and the stalls are the
+  // receiver's (getStats, stats.js webrtcWindow); the frame callbacks' gaps are detail, as how busy
+  // the page was (`callback_gaps`). Over HLS, frames presented against fps x the time, and stalls
+  // are the callbacks' gaps over 500 ms.
   async function camerasEnd() {
     if (!cams.expected) return;
-    const t1 = performance.now(), dur = t1 - cams.t0, fps = C.CAMERA.fps;
+    const t1 = performance.now(), fps = C.CAMERA.fps;
+    const dur = t1 - cams.t0;
     clearInterval(cams.sampler);
     // Everything at t1 that can be read at once; the receiver's getStats is asked for now too, and
     // read after the loop (an await here would let the other players count on).
@@ -455,7 +491,7 @@
       const q1 = r.el.getVideoPlaybackQuality ? r.el.getVideoPlaybackQuality() : null;
       const decoded = q1 && r.q0 ? q1.totalVideoFrames - r.q0.totalVideoFrames : null;
       const dropped = q1 && r.q0 ? q1.droppedVideoFrames - r.q0.droppedVideoFrames : null;
-      if (cams.path === "web_rtc") sample(r);
+      if (cams.path === "web_rtc") sample(r, true);
       const g = S.videoGaps(times, r.el.requestVideoFrameCallback ? r.pfs : null, cams.t0, t1);
       return {
         found: true, w: r.el.videoWidth, h: r.el.videoHeight,
@@ -463,6 +499,8 @@
         max_gap_ms: r.first === null ? null : r1(g.max_gap_ms),
         stall_total_ms: r.first === null ? null : r1(g.stall_total_ms),
         stall_presented: r.first === null ? null : g.stall_presented,
+        stalls_at: g.stalls_at,
+        gaps_source: r.el.requestVideoFrameCallback ? "rvfc" : "timeupdate",
         callbacks: r.frames.length, decoded, dropped, waiting: r.waiting,
       };
     };
@@ -490,8 +528,24 @@
       const out = streams[i], r = cams.list[i] && cams.list[i].recs[cams.path];
       if (!r) continue;
       if (webrtcRecs[i]) {
-        await Promise.all(r.pending);
-        out.webrtc = S.webrtcWindow(r.samples.slice().sort((a, b) => a.t - b.t));
+        // The samples that answered within statsWaitMs of the window's end (a busy page holds them):
+        // the counts run from the first to the last of those, and so does the time they're shown over.
+        await within(Promise.all(r.pending), C.PHASES.statsWaitMs);
+        const smp = r.samples.filter((x) => x.t <= t1 + 1).sort((a, b) => a.t - b.t);
+        out.webrtc = S.webrtcWindow(smp);
+        if (out.webrtc && out.webrtc.inbound && out.webrtc.span_ms > 0) {
+          // The graded gaps and stalls: the receiver's. The callbacks' stay beside them.
+          out.callback_gaps = { max_gap_ms: out.max_gap_ms, stall_total_ms: out.stall_total_ms,
+                                presented: out.stall_presented, callbacks: out.callbacks, source: out.gaps_source,
+                                stalls_at: out.stalls_at };
+          out.stalls_at = out.webrtc.stalls_at;
+          if (out.first_frame_ms !== null) {
+            out.max_gap_ms = out.webrtc.max_gap_ms;
+            out.stall_total_ms = out.webrtc.stall_ms;
+          }
+          out.gaps_source = out.webrtc.max_gap_bound ? "webrtc (bound)" : "webrtc";
+          out.span_ms = out.webrtc.span_ms;
+        }
         // Each connection the camera's video came over in the window: when HA's player made it, its
         // offers (a restartIce is a second one) and its ICE states, after the navigation.
         if (out.webrtc) {
@@ -505,7 +559,9 @@
       const s = S.shownFrames({ quality: out.decoded === null ? null : { decoded: out.decoded, dropped: out.dropped },
                                 webrtc: out.webrtc || null, callbacks: out.callbacks, rvfc: !!r.el.requestVideoFrameCallback });
       out.frames = s.frames;
-      out.shown_pct = s.frames === null || r.first === null ? null : r1(Math.min(100, (100 * s.frames) / ((fps * dur) / 1000)));
+      // Over the receiver's samples, shown is over their span (the counts' own time).
+      const over = s.source === "webrtc" && out.span_ms ? out.span_ms : dur;
+      out.shown_pct = s.frames === null || r.first === null ? null : r1(Math.min(100, (100 * s.frames) / ((fps * over) / 1000)));
       out.source = s.source + (r.el.requestVideoFrameCallback ? "+rvfc" : "+timeupdate");
     }
     if (cams.obs) {
@@ -513,7 +569,9 @@
       cams.obs.disconnect();
     }
     const fetches = cams.obs ? S.hlsFetches(cams.fetches.filter((e) => e.startTime >= cams.t0 && e.startTime <= t1)) : null;
-    log({ t: "camera", stage: V.tier, path: cams.path, window_ms: Math.round(dur), fps, expected: cams.expected,
+    // t0_ms, nav_ms: the window's start and the navigation on the page's clock (detail, to find moments).
+    log({ t: "camera", stage: V.tier, path: cams.path, window_ms: Math.round(dur), t0_ms: r1(cams.t0), nav_ms: r1(cams.nav),
+          fps, expected: cams.expected,
           found: cams.list.filter((c) => c.recs[cams.path]).length, streams, fetches });
   }
 
@@ -628,7 +686,10 @@
     addEventListener("pointerdown", onDown, true);
     const r = toggle.getBoundingClientRect();
     log({ t: "input-ready", taps: V.taps, x: Math.round((r.left + r.width / 2) * devicePixelRatio), y: Math.round((r.top + r.height / 2) * devicePixelRatio) });
-    const end = performance.now() + Math.max(C.PHASES.tapWaitMinMs, V.taps * 2000 + 5000);
+    // Each tap goes over `adb shell input`, which took 2.4 to 4.7 s a tap on s1rtc4's heavy; the
+    // budget allows tapEachMs a tap. INP is the page's own Event Timing: from when the tap reached
+    // the page (the event's timestamp), never from when the runner sent it.
+    const end = performance.now() + Math.max(C.PHASES.tapWaitMinMs, V.taps * C.PHASES.tapEachMs + 5000);
     while (taps < V.taps && performance.now() < end) await sleep(100);
     await sleep(500);
     removeEventListener("pointerdown", onDown, true);
@@ -706,11 +767,15 @@
     const head = watch(H.sensors.concat(H.rows, H.switches));
     await camerasFound;
     camerasStart();
+    // Each task its own budget (protocol 8): the cameras' fixed window runs beside the updates and
+    // the taps, and the swipes come after both, so a slow page still gets every task tried.
+    const camerasDone = cams.expected ? sleep(C.CAMERA.windowMs).then(camerasEnd) : Promise.resolve();
     await updatesWindow(head);
     if (V.taps) await input();
-    await camerasEnd();
+    await camerasDone;
     for (let i = 0; i < V.swipes; i++) await swipe(i);
-    await stream(false);
+    // The fake stops the stream when told; the runner tells it too once the view is done.
+    await within(stream(false), C.PHASES.endStreamWaitMs);
     unwatch();
     frames.ticking = false;
     log({ t: "done", stage: V.tier });

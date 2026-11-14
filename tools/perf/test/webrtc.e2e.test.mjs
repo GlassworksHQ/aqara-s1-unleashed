@@ -173,6 +173,28 @@ test("HA's frontend plays the fake's cameras over WebRTC through the TURN relay,
   assert.deepEqual(hls.streams[0].others, []);
   assert.equal(hls.streams[0].webrtc, undefined);
 
+  // Protocol 8 (#202, s1rtc4): a busy main thread starves the page's frame callbacks while the
+  // compositor goes on showing the video. Block the page 900 ms of every second through the camera
+  // window: the callbacks see a long stall, the receiver's counts (the graded ones) see it playing.
+  const nonce = "e2e0a003";
+  const q = new URLSearchParams({ view: "typical", nonce, run: "1", taps: "0", swipes: "0", vsync: "16.667" });
+  assert.equal((await fetch(`${base}/clarity/open?${q}`)).status, 204);
+  await until("typical live", () => page.lines.find((l) => l.nonce === nonce && l.t === "warmup"), 120000);
+  await cdp("Runtime.evaluate", { expression: `(() => { const stop = performance.now() + 28000;
+    const id = setInterval(() => { const e = performance.now() + 900; while (performance.now() < e) {}
+      if (performance.now() > stop) clearInterval(id); }, 1000); })()` }, sessionId);
+  await until("busy typical done", () => page.lines.find((l) => l.nonce === nonce && (l.t === "done" || l.t === "error")), 180000);
+  const busy = page.lines.find((l) => l.nonce === nonce && l.t === "camera");
+  assert.ok(busy, "busy typical logged no camera line");
+  const b0 = busy.streams[0];
+  t.diagnostic(`typical with a busy page: ${JSON.stringify(b0)}`);
+  assert.ok(Math.abs(busy.window_ms - 30000) < 3000, `the camera window is fixed at 30 s: ${busy.window_ms}`);
+  assert.ok(b0.callback_gaps.stall_total_ms >= 10000, `the callbacks stalled: ${b0.callback_gaps.stall_total_ms}`);
+  assert.equal(b0.gaps_source.startsWith("webrtc"), true);
+  assert.ok(b0.stall_total_ms <= 3000, `graded stalls are the receiver's: ${b0.stall_total_ms}`);
+  assert.ok(b0.max_gap_ms > 100 && b0.max_gap_ms < b0.callback_gaps.max_gap_ms, `graded max gap ${b0.max_gap_ms}`);
+  assert.ok(b0.shown_pct >= 80, `shown ${b0.shown_pct}%`);
+
   const log = readFileSync(join(dir, "fakeha.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
   assert.deepEqual(log.filter((e) => e.unknown || e.failed || e.webrtc_error), []);
   const answers = log.filter((e) => e.webrtc_answer === "camera.clarity_cam_0");

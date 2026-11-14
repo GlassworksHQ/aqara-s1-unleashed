@@ -367,8 +367,9 @@ hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
 **What is measured.** For each stream, by the harness, on the views with streams:
 - **First frame**: from the navigation to the stream's first presented frame
   (`requestVideoFrameCallback`, or `loadeddata` without it).
-- **Frames shown**: over the view's live phase up to its first swipe (the updates window and the
-  taps, with the cameras on screen), the frames the decoder presented against 15 fps × the time:
+- **Frames shown**: over the camera window, a fixed 30 s from the view going live (protocol 8,
+  `CAMERA.windowMs`; the updates window and the taps run in it, with the cameras on screen, and the
+  swipes come after it), the frames the decoder presented against 15 fps × the time:
   over WebRTC the receiver's `framesDecoded` (`getStats`: the frames the decoder handed to the
   renderer; its `framesDropped` are frames that never came out of the decoder, so they aren't
   subtracted, below), over HLS
@@ -381,8 +382,31 @@ hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
   measured with the streams playing. (`requestVideoFrameCallback` can fire once for two frames that
   land in one rendering update: in Chrome, 60 callbacks for 77 decoded frames. So it is used for the
   first frame and the gaps only.)
-- **Stalls**: gaps over 500 ms between presented frames in that window, the longest and their sum,
-  and the `waiting` events.
+- **Gaps and stalls over WebRTC (graded, protocol 8)**: the receiver's own, from `getStats` samples
+  about once a second (`stats.js` `webrtcWindow`). Per interval between two samples: if no receiver
+  decoded a frame, the whole interval is a stall; otherwise each receiver's new freezes and pauses
+  are stalls at their full length, less the time with nothing decoded just before, which they cover
+  too. A freeze is libwebrtc's (`VideoQualityObserver`, read in Firefox's tree,
+  `third_party/libwebrtc/video/video_quality_observer2.cc`, 2026-11-13): a gap between frames
+  handed to the renderer of at least 3 × the mean of the last 30, or the mean + 150 ms, counted at
+  its full length. A pause is the stream going inactive. The longest gap is the longest freeze,
+  pause or run with nothing decoded (two in one interval count as their sum, an upper bound).
+  Without any, every gap was under the freeze rule, and the longest gap is that rule's bound for
+  the window's mean interval (217 ms at 15 fps; `gaps_source` `webrtc (bound)`). Each stream's
+  `stalls_at` says where they were.
+- **Gaps and stalls over HLS (the fallback, not graded)**: gaps over 500 ms between frames
+  presented by `requestVideoFrameCallback`, the longest and their sum, and the `waiting` events.
+
+**Why the receiver's and not the page's frame callbacks** (protocol 8; #202, s1rtc4). On the S1's
+heavy view the page's frame callbacks ran 127 times in a 147 s window: 132 s of "stalls", with no
+gap over 4.8 s. In the same window the receiver decoded 2198 frames (99.3% of 15 fps) with 2
+freezes, 0.49 s in all, and the compositor presented 1866 frames inside the callbacks' "stalls"
+(`presentedFrames`). The maintainer, watching the panel, saw all four test patterns' counters
+ticking smoothly. A busy main thread delays the callbacks, not the video, which the compositor
+shows on its own thread. The callbacks' gaps stay as detail (`callback_gaps`: how busy the page
+was). Checked in Chrome (`webrtc.e2e.test.mjs`): with the page blocked 900 ms of every second through
+typical's camera window, the callbacks read 25 s of stalls and the receiver none, 450 of 450
+frames.
 - Scroll, taps and live updates run with the streams playing, as on a panel showing a camera; RAM and
   CPU per process too.
 
@@ -659,29 +683,67 @@ showed one meanwhile.
   are `webrtc_liveness` (disconnected, connected, failed), and an ICE loss is `lost` with `reason`
   (`liveness` or `remote`).
 
-**A view the panel can't finish** (#202, smoke 7 and s1rtc3). The runner gives each view 300 s
-from opening (`GW_PERF_VIEW_DEADLINE_S`). A view not done by then is recorded as timed out
-(`timed_out` in the run's file and the report). It fails its own tasks and nothing else:
+**A view the panel can't finish** (#202: smoke 7, s1rtc3, s1rtc4). Each task has its own budget
+(protocol 8), so a slow view still gets every task tried:
+
+| Task | Budget |
+|---|---|
+| Open the view (usable) | 300 s from opening (`GW_PERF_VIEW_DEADLINE_S`): the only per-view deadline |
+| Live updates | 1 s warm-up and a 4 s window |
+| Taps | 5 s a tap (`PHASES.tapEachMs`; at least 30 s): `adb shell input` took 2.4 to 4.7 s a tap on s1rtc4's heavy |
+| Cameras | a fixed 30 s from the view going live, beside the updates and the taps |
+| Scroll | each swipe up to 4 s, after the cameras' window |
+
+The harness checks each budget on waits paced by animation frames: on s1rtc4's heavy a 30 s tap
+wait, checked by a timer, ended after 140 s, because the page's timers wait behind the frontend's
+queue while the refresh driver's frames come first. It doesn't wait for answers a busy page holds:
+its camera line came 93 s after the window, waiting on a getStats a second for each of 4 receivers
+(now one at a time, and at most 10 s at the end), and the stream's stop at the end (at most 5 s;
+the runner stops it at the fake too, and the fake ignores a stop for a view that isn't the current
+one). INP is the page's own Event Timing, from when each tap reached the page, never from when the
+runner sent it.
+
+After the view is usable, the runner times it out only when it says nothing for 180 s
+(`GW_PERF_STAGE_IDLE_S`): stuck in one task. A view that times out (`timed_out` in the run's file
+and the report, with `timed_out_after`: the last thing it said, or `usable`) fails its own tasks and
+nothing else:
 
 1. What it measured stands.
-2. What it didn't is measured as failing, not as missing: "didn't finish within 300 s" is itself
-   the measurement, as a camera that never shows a frame fails rather than goes unmeasured. Open and
-   tap count as the deadline (300 000 ms), and scroll, live updates and the cameras get a
-   `{"timed_out": true}` record, which every grader (grade.py, grade.ts) puts below the lowest bar.
-   So a timeout doesn't make the grade provisional; report.md names it in the detail, and the
-   report's and summary's `timed_out_runs` count it per page.
+2. What it didn't is measured as failing, not as missing: "didn't finish" is itself the
+   measurement, as a camera that never shows a frame fails rather than goes unmeasured. Open and tap
+   count as the time it ran (`timed_out_s`, at least the deadline when it was never usable), and
+   scroll, live updates and the cameras get a `{"timed_out": true}` record, which every grader
+   (grade.py, grade.ts) puts below the lowest bar. So a timeout doesn't make the grade provisional;
+   report.md names it in the detail, and the report's and summary's `timed_out_runs` count it per
+   page.
 3. The runner then restarts the kiosk as at the run's start (`am force-stop`; `am start` if nothing
    relaunched it within 10 s), waits for its reference dashboard to be usable again (at most
    180 s, or the run fails), and opens the run's remaining views (`recoveries` in the run's file).
    The run's restart time stays the first restart's, and RAM isn't sampled right after this one.
 
 Before, the whole run waited out its 900 s and was dropped (smoke 7); then the run's later views
-weren't opened, so a view that timed out in every run left the others measured in fewer runs than
-attempted, and the summary was refused (s1rtc3). The runner also sends the kiosk's wake intent
-during a live view once nothing has touched the panel for 30 s (`live_wakes`): normal views tap or
-swipe every few seconds, but a page stuck on a busy panel can outlast the kiosk's idle timeout, and
-with the screen off nothing measured is the panel's. A graded run may now take up to 1800 s
-(`--timeout`). None of this moves a threshold.
+weren't opened (s1rtc3); then heavy, usable after 43 s and still working, ran out of a 300 s
+per-view deadline before its swipes (s1rtc4). The runner also sends the kiosk's wake intent during a
+live view once nothing has touched the panel for 30 s (`live_wakes`): normal views tap or swipe
+every few seconds, but a page stuck on a busy panel can outlast the kiosk's idle timeout, and with
+the screen off nothing measured is the panel's. A graded run may take up to 1800 s (`--timeout`).
+None of this moves a threshold.
+
+**Drawn long before usable** (detail). A view is usable when its first screen is drawn and its main
+thread is free: every probe (a `setTimeout(0)`) runs within 50 ms, for 500 ms. On s1rtc4's heavy
+the first screen was drawn 1.1 to 1.3 s after the navigation, and the main thread was free after 43
+to 46 s; its live updates then drew 5 to 8 frames a second. So the wait is the frontend's own work,
+not a starved callback of the harness's: a tap in that time waits as the probes do. Each view's
+`drawn_ms` and `busy_ms` (the longest a probe waited, each second of the wait) are detail, and
+report.md says when the two are more than 5 s apart.
+
+**Checking Clarity against the screen** (debugging only). `tools/perf/debug/screencam_moments.py`
+lists, for a view in a run, when it was opened, drawn, usable, each camera's first frame and each
+stall, in this computer's epoch ms, and the frames of a screen-camera recording to look at, with how
+far the test pattern's counter should move if the video played. It reads a run's files and nothing
+reads it: no part of the grading path (run.sh, perfrun.py, report.py, summary.py, the graders)
+uses it or anything a screen camera records (`test_screencam_moments.py` checks this). Recordings
+show the room: keep them local.
 
 **Stream sizes, against a real setup.** go2rtc passes a camera's own stream through without
 transcoding, so a `picture-entity` card with `camera_view: live` plays what the camera entity
@@ -917,11 +979,12 @@ the two middles for an even count):
 | Open the view | ≤ 2.5 s, or up to 4 s | the same | the same |
 | Cameras (typical and heavy only; over WebRTC since protocol 6) | as good | first frame within 2 s, at least 95% of frames shown, no gap over 500 ms | first frame within 4 s, at least 85% shown, stalls under 1 s in all |
 
-Below fluid, a measured scroll, live-update or camera level is `slow`. A camera's gaps and stalls
-come from `requestVideoFrameCallback`, which a busy main thread delays while the compositor goes on
-showing frames, so on a page whose main thread is blocked a stall can be the page's, not the stream's.
-Each stream's `stall_presented` (detail) is the cross-check: the frames rVFC's `presentedFrames` says
-were shown inside the stalls. Many means the callbacks stalled, not the video. The camera bars are #174's
+Below fluid, a measured scroll, live-update or camera level is `slow`. Over WebRTC (graded) a
+camera's gaps and stalls are the receiver's own counts (protocol 8, "What is measured"). Over HLS
+they come from `requestVideoFrameCallback`, which a busy main thread delays while the compositor
+goes on showing frames, so there a stall can be the page's, not the stream's; each stream's
+`stall_presented` (detail) is the cross-check: the frames rVFC's `presentedFrames` says were shown
+inside the stalls. The camera bars are #174's
 proposal, to be calibrated on the S1 before they're final (a decision for the maintainer, in its own
 PR, never to move a letter); there is no separate premium bar for cameras. A page without streams
 (light) has camera `none`, which every level accepts. The p95 caps are whole frames at
@@ -1419,8 +1482,13 @@ streams to typical and heavy (and the start view), and the camera task (rubric v
 the video without B-frames; and opens the camera views' HLS copies after each run's graded views, as
 detail (rubric v7, the same rules). Protocol 7 (#202 option B, 2026-11-13) sends that video over the
 LAN when the panel can reach the computer (UDP first, then TCP to the relay) and through adb reverse
-otherwise, and records which (rubric v8, the same rules). Every protocol 5 and 6 summary is now
-"re-measure"; protocol 6 ran only in #202's smokes.
+otherwise, and records which (rubric v8, the same rules). Protocol 8 (#202, s1rtc4, 2026-11-13)
+gives each task its own budget, so a slow view still gets every task tried, and grades a WebRTC
+camera's gaps and stalls on the receiver's counts (rubric v9, the same rules): the camera window is a
+fixed 30 s from the view going live; the harness's own waits are paced by animation frames, which a
+busy main thread delays less than its timers; the taps wait 5 s each; and the runner's per-view
+deadline covers only a view that never became usable ("A view the panel can't finish"). Every
+protocol 5 to 7 summary is now "re-measure"; protocols 6 and 7 ran only in #202's runs.
 
 ### Showing the grade
 
@@ -1482,14 +1550,14 @@ load) and `t`:
 
 | `t` | Fields |
 |---|---|
-| `refdash` | A reference view, usable: `tier` (the view: `start` for the restart page, or `light`, `typical`, `heavy`), `protocol`, `frontend` (HA's frontend release), `nodes`, `cards` (the view's cards), `cards_rendered` (how many HA had built when it was usable), `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (the frontend's own load: the restart page only, else `null`), `nav_ms` (the navigation to the view; 0 for the frontend's own load), `video_caps` (`mse_h264`, `native_hls`, `rvfc`, `webrtc`: which camera player paths the engine offers), `usable` (`rendered_tick_ms`, the frame in which it was drawn; `first_screen_cards`; `head_cards`, the 10 head cards it waited for; `interactive_ms`, when the main thread's free stretch began) (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
+| `refdash` | A reference view, usable: `tier` (the view: `start` for the restart page, or `light`, `typical`, `heavy`), `protocol`, `frontend` (HA's frontend release), `nodes`, `cards` (the view's cards), `cards_rendered` (how many HA had built when it was usable), `css` (viewport), `dpr`, `scroll_height`, `fcp_ms`, `lcp_ms`, `load_ms` (the frontend's own load: the restart page only, else `null`), `nav_ms` (the navigation to the view; 0 for the frontend's own load), `video_caps` (`mse_h264`, `native_hls`, `rvfc`, `webrtc`: which camera player paths the engine offers), `usable` (`rendered_tick_ms`, the frame in which it was drawn; `first_screen_cards`; `head_cards`, the 10 head cards it waited for; `interactive_ms`, when the main thread's free stretch began; `busy_ms`, protocol 8, the longest a probe waited each second until then) (all after `performance.timeOrigin`), `origin_epoch_ms` and `epoch_ms`, which tie the page's clock to logcat's |
 | `warmup` | `stage`, `n`. The page goes live; the runner wakes the screen and stops polling SurfaceFlinger |
 | `measure` | `stage`, `n`. A window starts. For `updates`, the live check: `moving`, `offscreen`, `targets`, `update_every_ms` |
 | `step` | `stage` (`updates`, `scroll`, or a ladder family), `n`, `window_ms` (the window's length on the page's clock), `raf` (frame stats). For `updates`: `t0` (the window's start on the page's clock), `pacing_ms` (the stretch `raf_times` covers), `from` (`sent`: the changes start when the fake sent them), `stream_at_ms` (when the harness asked for the stream), `raf_times` and `changes` (`[sent, arrived, transition ms, kind, tick]`: every change the fake sent up to the window's end, from its schedule; `arrived` and `tick` are `null` for one that hadn't reached the page when the window was logged; kind 0 a sensor value, 2 an on/off change (1, the clock, was protocol 3's); tick, the animation frame it was drawn in), all ms after `t0`. For `scroll`: `scrolled_px`, `hit_edge`, `changes_during`, `first_scroll_ms`, `raf_intervals`. The runner reads SurfaceFlinger |
 | `input-ready` | `x`, `y` (device pixels), `taps`. The runner taps |
 | `swipe-ready` | `n`, `x`, `y1`, `y2` (device pixels), `ms`. The runner swipes once |
 | `input` | `stage`, `method`, `taps`, `values`, `inp_ms` |
-| `camera` | Views with streams (#174), logged before the swipes: `stage`, `path` (`web_rtc` or `hls`, protocol 6), `window_ms`, `fps`, `expected`, `found`, and per stream `w`, `h`, `first_frame_ms` (after the navigation), `shown_pct`, `max_gap_ms`, `stall_total_ms`, `frames` (presented, from the decoder), `callbacks` (`requestVideoFrameCallback`), `decoded`, `dropped`, `waiting`, `source`, `stall_presented` (frames presented inside the stalls, from rVFC's `presentedFrames`; `null` without rVFC), `path`, `others` (the camera's other players: `path`, `first_frame_ms`, `connected`), `webrtc` (WebRTC only: `stats.js` `webrtcStats`); then `fetches` (`segment` and `playlist`: `n`, `queued_ms`, `wait_ms`, `total_ms`, each `median`, `p95`, `max`; `segment.kb`, `segment.arrival_gap_max_ms`; `streams`) |
+| `camera` | Views with streams (#174), logged before the swipes: `stage`, `path` (`web_rtc` or `hls`, protocol 6), `window_ms`, `t0_ms` and `nav_ms` (the window's start and the navigation, page clock; protocol 8), `fps`, `expected`, `found`, and per stream `w`, `h`, `first_frame_ms` (after the navigation), `shown_pct`, `max_gap_ms`, `stall_total_ms`, `frames` (presented, from the decoder), `callbacks` (`requestVideoFrameCallback`), `decoded`, `dropped`, `waiting`, `source`, `stall_presented` (frames presented inside the stalls, from rVFC's `presentedFrames`; `null` without rVFC), `gaps_source` (`webrtc`, `webrtc (bound)`, `rvfc` or `timeupdate`: where `max_gap_ms` and `stall_total_ms` come from), `stalls_at` (where the stalls were, page clock), `callback_gaps` (WebRTC, protocol 8: the frame callbacks' `max_gap_ms`, `stall_total_ms`, `presented`, `callbacks`, `stalls_at`; detail), `span_ms` (WebRTC: the receiver samples' span, which shown is over), `path`, `others` (the camera's other players: `path`, `first_frame_ms`, `connected`), `webrtc` (WebRTC only: `stats.js` `webrtcStats`); then `fetches` (`segment` and `playlist`: `n`, `queued_ms`, `wait_ms`, `total_ms`, each `median`, `p95`, `max`; `segment.kb`, `segment.arrival_gap_max_ms`; `streams`) |
 | `hello`, `js` | Animation test page: `ua`, `dpr`, `css`, `cores`, `load`; the JS workload's `runs`, `median_ms`, `p95_ms`, `checksum`, `expected` |
 | `done`, `error` | `message` on error. At `done` the page has stopped its updates |
 

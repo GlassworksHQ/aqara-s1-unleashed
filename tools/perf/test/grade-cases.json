@@ -1,6 +1,6 @@
 {
  "_comment": "Shared grade cases (MIT): every scroll level, live-update level, page level and letter boundary from test_grade.py, with the answer. grade.py (test_grade.py) and grade.ts (grade.test.mjs) must both give it. Regenerate only on purpose, with the rubric and the docs.",
- "rubric_version": 8,
+ "rubric_version": 9,
  "bands": [
   {
    "metric": "frame_p95_ms",

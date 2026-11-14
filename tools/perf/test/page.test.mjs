@@ -375,3 +375,67 @@ test("shownFrames: WebRTC's own counts first; a quality that reads 0 while frame
   assert.deepEqual(S.shownFrames({ quality: null, webrtc: { frames_decoded: 10, frames_dropped: 40 }, callbacks: 3, rvfc: true }),
                    { frames: 10, source: "webrtc" });
 });
+
+// ---- protocol 8 (#202, s1rtc4): a WebRTC camera's gaps and stalls are the receiver's own
+
+const steady = (t, n, freezes = 0, frozen = 0, extra = {}) =>
+  at(t, ["pc1", [{ id: "IT1", ssrc: 1, type: "inbound-rtp", kind: "video", framesDecoded: n, freezeCount: freezes,
+                   totalFreezesDuration: frozen, ...extra }]]);
+
+test("webrtcWindow: steady decoding with no freeze has no stall, and its longest gap is the freeze rule's bound", () => {
+  // 30 s at 15 fps, sampled each second.
+  const w = S.webrtcWindow(Array.from({ length: 31 }, (_, k) => steady(k * 1000, 15 * k)));
+  assert.equal(w.stall_ms, 0);
+  assert.equal(w.max_gap_bound, true);
+  assert.equal(w.max_gap_ms, 216.67);              // max(3 x 66.7, 66.7 + 150): every gap was under it
+  assert.equal(w.span_ms, 30000);
+});
+
+test("webrtcWindow: a freeze is a stall at its full length, and the longest gap", () => {
+  const smp = [steady(0, 0), steady(1000, 15), steady(2000, 25, 1, 0.8), steady(3000, 40, 1, 0.8)];
+  const w = S.webrtcWindow(smp);
+  assert.equal(w.stall_ms, 800);
+  assert.equal(w.max_gap_ms, 800);
+  assert.equal(w.max_gap_bound, false);
+  // A pause (the stream inactive) counts the same way.
+  const p = S.webrtcWindow([steady(0, 0, 0, 0, { pauseCount: 0, totalPausesDuration: 0 }),
+                            steady(1000, 5, 0, 0, { pauseCount: 1, totalPausesDuration: 0.6 })]);
+  assert.equal(p.stall_ms, 600);
+});
+
+test("webrtcWindow: time with nothing decoded is a stall, and a freeze ending it isn't counted twice", () => {
+  // Nothing from 1 s to 3 s, then the first frame ends a 2.2 s freeze.
+  const w = S.webrtcWindow([steady(0, 0), steady(1000, 15), steady(2000, 15), steady(3000, 15), steady(4000, 30, 1, 2.2)]);
+  assert.equal(w.no_video_ms, 2000);
+  assert.equal(w.stall_ms, 2200);                  // 2000 with nothing, and the 200 ms of the freeze before them
+  assert.equal(w.max_gap_ms, 2200);
+});
+
+test("s1rtc4's heavy: frame callbacks starved by a busy page, the receiver decoding steadily: graded as playing", async () => {
+  // The page's frame callbacks: one every 1.2 s for 147 s (127 of them, as on the S1), while the
+  // compositor presented every frame (presentedFrames moved by 18 each time) ...
+  const times = Array.from({ length: 123 }, (_, k) => 1000 + k * 1200), pfs = times.map((_, k) => 18 * k);
+  const cb = S.videoGaps(times, pfs, 0, 147500);
+  assert.ok(cb.stall_total_ms > 140000, "the callbacks alone read as a 2-minute stall");
+  assert.ok(cb.stall_presented > 2000, "but the compositor presented frames inside it");
+  // ... and the receiver decoded 15 a second, with 2 freezes, 0.49 s in all (s1rtc4 run 2, camera 0).
+  const smp = Array.from({ length: 31 }, (_, k) => steady(k * 1000, 15 * k, k >= 20 ? 2 : k >= 10 ? 1 : 0, k >= 20 ? 0.49 : k >= 10 ? 0.25 : 0));
+  const w = S.webrtcWindow(smp);
+  assert.equal(w.stall_ms, 490);
+  assert.equal(w.max_gap_ms, 250);
+  const shown = S.shownFrames({ quality: { decoded: 0, dropped: 0 }, webrtc: w, callbacks: times.length, rvfc: true });
+  assert.equal(shown.source, "webrtc");
+  // The camera bars (rubric.json camera_levels): playing, not stalled.
+  const run = { first_frame_ms: 2281, shown_pct: Math.min(100, (100 * shown.frames) / (15 * w.span_ms / 1000)),
+                max_gap_ms: w.max_gap_ms, stall_total_ms: w.stall_ms };
+  const G = await import("../grade.ts");
+  assert.notEqual(G.cameraLevel(run, rubric), rubric.grade.below);
+  assert.equal(G.cameraLevel(Object.assign({}, run, { max_gap_ms: cb.max_gap_ms, stall_total_ms: cb.stall_total_ms }), rubric),
+               rubric.grade.below, "graded on the callbacks it would have failed");
+});
+
+test("webrtcWindow: two samples a moment apart (the window's end) aren't a gap", () => {
+  const w = S.webrtcWindow([steady(0, 0), steady(1000, 15), steady(1000.4, 15)]);
+  assert.equal(w.stall_ms, 0);
+  assert.equal(w.max_gap_bound, true);
+});

@@ -682,12 +682,13 @@ class Restart(unittest.TestCase):
         Now the view times out at the deadline, a live view nothing touches gets the wake intent so the
         screen stays on, what heavy measured stands, and what it didn't fails: measured, not missing,
         so the grade isn't provisional for it."""
-        p, c, _ = self.run_short(60, FAKE_HANG_LIVE="heavy", GW_PERF_VIEW_DEADLINE_S="12", GW_PERF_LIVE_IDLE_WAKE_S="2",
+        p, c, _ = self.run_short(60, FAKE_HANG_LIVE="heavy", GW_PERF_STAGE_IDLE_S="12", GW_PERF_LIVE_IDLE_WAKE_S="2",
                                  GW_PERF_KEEP_AWAKE_S="0.5")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertIsNone(c["error"])
         self.assertEqual(c["timed_out"], ["heavy"])
-        self.assertEqual(c["tiers"]["heavy"]["timed_out_s"], 12)
+        self.assertGreaterEqual(c["tiers"]["heavy"]["timed_out_s"], 12)     # usable, then nothing for 12 s
+        self.assertEqual(c["tiers"]["heavy"]["timed_out_after"], "warmup")
         self.assertIn("heavy", {w[0] for w in c["live_wakes"]})
         self.assertNotIn("screen_off", c)
         self.assertNotIn("recoveries", c)                     # heavy was run 1's last view: nothing to carry on to
@@ -706,7 +707,7 @@ class Restart(unittest.TestCase):
         """#202, s1rtc3: heavy timed out in every run, and in runs 2 and 3 the views after it were never
         opened, so the summary was refused. Now the runner restarts the kiosk and opens the rest: the
         view that can't finish fails its own tasks and nothing else."""
-        p, c, log = self.run_short(90, fallback="typical-hls", FAKE_HANG_LIVE="typical", GW_PERF_VIEW_DEADLINE_S="8",
+        p, c, log = self.run_short(90, fallback="typical-hls", FAKE_HANG_LIVE="typical", GW_PERF_STAGE_IDLE_S="8",
                                    GW_PERF_LIVE_IDLE_WAKE_S="2", GW_PERF_KEEP_AWAKE_S="0.5", GW_PERF_RECOVER_LAUNCH_S="1")
         self.assertEqual(p.returncode, 0, p.stderr[-1500:])
         self.assertIsNone(c["error"])
@@ -738,6 +739,28 @@ class Restart(unittest.TestCase):
         self.assertEqual(out["pages"]["heavy"]["timed_out_runs"], 0)
         # (This short run sends no taps, so light's and heavy's tap aren't measured; typical's fails.)
         self.assertEqual([m for m in grade.grade_summary(out).get("missing") or [] if m.startswith("typical.")], [])
+
+    def test_a_slow_view_that_keeps_going_isnt_cut_off(self):
+        """Protocol 8 (#202, s1rtc4): heavy was usable after 43 s and still working at 300 s, before its
+        swipes. The usable deadline covers only a view that never became usable; one that keeps
+        saying what it does runs every task."""
+        p, c, _ = self.run_short(90, FAKE_STAGE_DELAY="1.2", FAKE_STAGE_VIEW="heavy", GW_PERF_VIEW_DEADLINE_S="4",
+                                 GW_PERF_STAGE_IDLE_S="5")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertIsNone(c["error"])
+        self.assertNotIn("timed_out", c)
+        self.assertTrue(c["tiers"]["heavy"]["done"])
+        self.assertGreater(len(c["tiers"]["heavy"]["swipes"]), 0)
+
+    def test_a_view_that_never_becomes_usable_times_out_at_the_deadline(self):
+        p, c, _ = self.run_short(90, FAKE_NEVER_USABLE="typical", GW_PERF_VIEW_DEADLINE_S="5", GW_PERF_STAGE_IDLE_S="60",
+                                 GW_PERF_RECOVER_LAUNCH_S="1")
+        self.assertEqual(p.returncode, 0, p.stderr[-1500:])
+        self.assertEqual(c["timed_out"], ["typical"])
+        self.assertEqual(c["tiers"]["typical"]["timed_out_after"], "usable")
+        self.assertTrue(c["tiers"]["heavy"]["done"])
+        rep = self.build(self.last_out)
+        self.assertEqual(rep["graded"]["reference"]["tiers"]["typical"]["timed_out_tasks"], ["camera", "open", "scroll", "tap", "updates"])
 
     def test_the_screen_is_kept_awake_while_views_open_but_not_while_live(self):
         p, c, log = self.run_short(120, FAKE_SLOW_VIEW="2.5", GW_PERF_KEEP_AWAKE_S="0.7")

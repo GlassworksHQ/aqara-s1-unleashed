@@ -279,7 +279,32 @@ after 45 to 53 s, live updates measured in 2 runs (916 ms to screen, p95), then 
 opened the views after heavy. Light was measured in 1 run of 3 and typical in 2, and the summary was
 refused. That was the test's rule, not the panel: a view that can't finish now fails its own tasks
 (measured, not missing, so not provisional), and the runner restarts the kiosk and opens the rest
-(docs/perf.md, "A view the panel can't finish"). The next 3 runs are pending.
+(docs/perf.md, "A view the panel can't finish").
+
+**Three graded runs at fe81157** (s1rtc4, the root, 2026-11-13; runs 1 and 2 read from their files
+while run 3 ran; verified). The restart after a timeout worked: the kiosk was back after 13.3 and
+14.2 s, and the views after heavy were measured. Heavy still timed out, and two things were the
+test's:
+1. **Heavy wasn't hung; the 300 s per-view deadline ran out before its swipes.** Heavy's first screen
+   was drawn 1.1 to 1.3 s after the navigation; its main thread was free (usable) after 43 to 46 s.
+   Its 10 taps took 2.4 to 4.7 s each to send over `adb shell input`. On the page's own clock the tap
+   stage, whose wait ends after 30 s by a timer, took about 140 s: the page's timers waited behind
+   the frontend's queue (its live updates drew 5 to 8 frames a second). Then the camera line came
+   93 s after its window ended, waiting on a pile of getStats answers (one a second for each of 4
+   receivers). No swipe was ever sent. INP was the page's Event Timing (176 to 592 ms in run 2), from
+   when each tap reached the page.
+2. **Heavy's camera stalls were the page's, not the video's.** Run 2, camera 0: first frame 2281 ms,
+   99.3% shown by the receiver's count (2198 frames in 147.5 s), yet 131.6 s of "stalls" with no gap
+   over 4.8 s. The stalls came from the page's frame callbacks: 127 in 147 s. The compositor
+   presented 1866 frames inside those "stalls" (`presentedFrames`), and the receiver counted 2
+   freezes, 0.49 s in all. Each stream's stalls were its own (the four read 130.6 to 133.5 s), not a
+   sum across streams. The maintainer, watching the panel during run 3, saw heavy fully loaded and all
+   four test patterns' counters ticking smoothly.
+
+Protocol 8 fixes both (docs/perf.md): each task gets its own budget, the harness's waits are paced by
+animation frames, and a WebRTC camera's gaps and stalls are the receiver's own counts, with the
+callbacks' as detail. Usable stays as it is: the probes it waits for are the frontend's own work,
+which a tap meets too; `busy_ms` now records it each second. The 3 runs under protocol 8 are pending.
 
 **The 65 processes after the run.** The root counted about 65 processes named `sh.edm.s1kiosk`, one
 in D state, after smoke 7. A read-only `ps` an hour later showed the usual 7. What they were isn't

@@ -1,6 +1,6 @@
 {
  "_comment": "Clarity reference dashboards (MIT): the counts, the first screen, the update stream and the phases. The one source for the fake Home Assistant (dashboards.py), the in-page harness and the node tests. Project choices, fixed before any frame was graded under them; change one only on purpose, with the docs and the tests, never to move a frame's letter.",
- "PROTOCOL": 7,
+ "PROTOCOL": 8,
  "ORDER": [
   "light",
   "typical",
@@ -43,7 +43,7 @@
   "windowSegments": 4,
   "preRollS": 0,
   "masterAfterSegments": 2,
-  "path": "web_rtc"
+  "path": "web_rtc", "windowMs": 30000
  },
  "TIERS": {
   "light": {
@@ -96,6 +96,9 @@
   "freeWindowMs": 500,
   "warmupMs": 1000,
   "tapWaitMinMs": 30000,
+  "tapEachMs": 5000,
+  "endStreamWaitMs": 5000,
+  "statsWaitMs": 10000,
   "swipes": 6,
   "swipeMs": 300,
   "scrollQuietMs": 400,

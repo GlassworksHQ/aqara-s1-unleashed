@@ -352,4 +352,12 @@ test("in Gecko, the harness grades a WebRTC camera's frames shown from the recei
   assert.ok(s.webrtc.connections.length >= 1 && s.webrtc.connections[0].ice.some(([, st]) => st === "connected"),
             JSON.stringify(s.webrtc.connections));
   assert.ok(s.webrtc.frames_decoded > 0 && s.webrtc.receivers >= 1);
+  // Protocol 8: the graded gaps and stalls are the receiver's, so Gecko must fill freezeCount and
+  // totalFreezesDuration (RTCRtpReceiver.cpp, from libwebrtc's VideoQualityObserver).
+  t.diagnostic(`gaps ${s.gaps_source}: longest ${s.max_gap_ms} ms, stalls ${s.stall_total_ms} ms; freezes ${s.webrtc.freezes}` +
+               ` (${s.webrtc.freeze_s} s), pauses ${s.webrtc.pauses}; callbacks' ${JSON.stringify(s.callback_gaps)}`);
+  assert.ok(s.gaps_source.startsWith("webrtc"), s.gaps_source);
+  assert.equal(typeof s.webrtc.freezes, "number");
+  assert.equal(typeof s.webrtc.freeze_s, "number");
+  assert.ok(Math.abs(cam.window_ms - 30000) < 3000, `the camera window is fixed at 30 s: ${cam.window_ms}`);
 });

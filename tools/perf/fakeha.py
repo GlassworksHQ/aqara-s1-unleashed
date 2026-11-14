@@ -547,6 +547,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_bytes(200, json.dumps(D.MANIFEST).encode(), "application/manifest+json")
         if path in ("/clarity/live", "/clarity/still"):
             # The harness asks for the live updates while it measures them, and stops them when done.
+            # A view's stop that comes after the next view opened (a busy page holds it: protocol 8
+            # doesn't wait for it; the runner sends one too) mustn't stop or cancel that one.
+            nonce = urllib.parse.parse_qs(url.query).get("nonce", [""])[0]
+            cur = Handler.hub.cmd
+            if path.endswith("still") and nonce and cur is not None and cur.get("nonce") != nonce:
+                return self.send_bytes(200, json.dumps({"stale": True}).encode(), "application/json")
             out = Handler.hub.stream(path.endswith("live"))
             if path.endswith("still"):
                 Handler.hub.done_view()

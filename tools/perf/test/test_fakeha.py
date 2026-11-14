@@ -348,6 +348,19 @@ class FakeHA(unittest.TestCase):
         for bad in ("view=kitchen&nonce=ab12", "view=light&nonce=ZZ", "view=light&nonce=ab12&taps=1;rm"):
             self.assertEqual(self.http("GET", "/clarity/open?" + bad)[0], 400, bad)
 
+    def test_a_late_stop_from_the_last_view_leaves_the_next_one_alone(self):
+        """Protocol 8: the harness doesn't wait for its stop on a busy page, so it can come after the
+        runner opened the next view. A stop for another view's nonce does nothing."""
+        self.assertEqual(self.http("GET", "/clarity/open?view=light&nonce=aa11&run=1&taps=0&vsync=16.667")[0], 204)
+        self.assertEqual(self.http("GET", "/clarity/still?nonce=aa11")[0], 200)
+        self.assertEqual(self.http("GET", "/clarity/open?view=typical&nonce=bb22&run=1&taps=0&vsync=16.667")[0], 204)
+        status, _, body, _ = self.http("GET", "/clarity/still?nonce=aa11")      # light's, late
+        self.assertEqual((status, json.loads(body)), (200, {"stale": True}))
+        status, _, body, _ = self.http("GET", "/clarity/next?after=aa11")
+        self.assertEqual((status, json.loads(body)["nonce"]), (200, "bb22"))     # typical's command stands
+        self.http("GET", "/clarity/still?nonce=bb22")
+        self.assertEqual(self.http("GET", "/clarity/next?after=aa11")[0], 204)   # its own stop ends it
+
     def test_a_page_that_died_mid_poll_cant_use_up_a_command(self):
         """A force-stopped frontend leaves its long poll behind. The command stays until its view's
         stream stops, and a page asks for one other than the last it ran."""
@@ -381,7 +394,7 @@ class FakeHA(unittest.TestCase):
         self.assertNotIn("{{", html)
         status, _, js, cache = self.http("GET", m.group(1))
         self.assertIn("window.GW_CLARITY = ", js.decode())
-        self.assertIn('"PROTOCOL": 7', js.decode())
+        self.assertIn('"PROTOCOL": 8', js.decode())
         self.assertIn('"HEAD_CARDS": 10', js.decode())
 
     def test_the_harness_is_never_cached_at_a_fixed_url(self):

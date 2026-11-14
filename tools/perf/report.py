@@ -25,7 +25,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # graded run, `ref-panes-off` and `ref-<pane>-on` for the panes. They aren't real use.
 REF_LABEL = "ref-"
 SETTLE_GAP_MS = 750
-VIEW_DEADLINE_S = 300                 # perfrun.py's default, for report.md's words
+VIEW_DEADLINE_S = 300                 # perfrun.py's defaults, for report.md's words
+STAGE_IDLE_S = 180
 # The page's times reach logcat's clock through its log line, which logcat stamps a few ms late
 # (nav start mapped 11 to 23 ms before PageStart on the S1, 2026-11-12). The frame that shows the
 # first paint may so appear up to this much before it; three refreshes at 60 Hz.
@@ -310,7 +311,8 @@ def camera_run(line, tier):
         "stall_total_ms": max((s.get("stall_total_ms") or 0) for s in played) if whole and played else None,
         "streams": len(streams), "expected": line.get("expected"), "window_ms": line.get("window_ms"),
         "detail": [{k: s.get(k) for k in ("w", "h", "first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms", "stall_presented",
-                                            "frames", "decoded", "dropped", "waiting", "source", "webrtc", "others")}
+                                            "frames", "decoded", "dropped", "waiting", "source", "webrtc", "others",
+                                            "gaps_source", "callback_gaps", "span_ms", "stalls_at")}
                    for s in streams],
         # Detail, not graded: the streams' HLS fetches in the window (stats.js hlsFetches), and the
         # decoders the view got (reference_run adds `media`, from logcat).
@@ -450,8 +452,8 @@ def tier_run(tier, entry, presents_ms):
     out = {"tier": tier, "css": page and page.get("css"), "dpr": page and page.get("dpr"),
            "protocol": page and page.get("protocol")}
     if entry.get("timed_out_s") and not entry.get("error"):
-        return timed_out(tier, tier_run(tier, dict(entry, timed_out_s=None), presents_ms) if page else out,
-                         entry["timed_out_s"])
+        return dict(timed_out(tier, tier_run(tier, dict(entry, timed_out_s=None), presents_ms) if page else out,
+                              entry["timed_out_s"]), timed_out_after=entry.get("timed_out_after"))
     if entry.get("error") or not page:
         return dict(out, error=entry.get("error") or "incomplete")
     # A lost updates step (smoke7: cut off in logcat) leaves only the live updates unmeasured.
@@ -465,6 +467,13 @@ def tier_run(tier, entry, presents_ms):
         else:
             out["load_ms"] = round(when - P.page_to_mono_ms(page, page.get("nav_ms") or 0))
             out["first_screen_cards"] = page["usable"].get("first_screen_cards")
+        # Detail (#202): when the first screen was drawn, and how long the main thread's probes
+        # waited each second until it was free (the usable time waits for that).
+        u = page["usable"]
+        if u.get("rendered_tick_ms") is not None:
+            out["drawn_ms"] = round(u["rendered_tick_ms"] - (page.get("nav_ms") or 0))
+        if u.get("busy_ms") is not None:
+            out["busy_ms"] = u["busy_ms"]
     elif not page.get("load_ms") or not page.get("fcp_ms"):
         out["load_error"] = "no load event or first paint reported"
     else:
@@ -597,8 +606,8 @@ def reference_run(c):
     base["camera_fallback"] = camera_fallback_runs(c)
     base["bad_page_lines"] = c.get("bad_page_lines") or 0
     base["lost_scroll_steps"] = sum((e.get("lost_scroll_steps") or 0) for e in (c.get("tiers") or {}).values())
-    # Views that didn't finish within the runner's deadline (#202): what they measured stands, the rest
-    # is not measured; the run's later views weren't opened.
+    # Views that timed out (#202): what they measured stands, the rest fails (timed_out above); the
+    # runner restarted the kiosk and opened the run's other views.
     base["timed_out"] = list(c.get("timed_out") or [])
     order = c.get("order") or list(c.get("tiers") or {})
     for t, r in tiers.items():
@@ -648,6 +657,9 @@ def reference_summary(all_runs):
             "input_method": sorted({x["input_method"] for x in rs if x["input_method"]}),
             "load_ms": P.spread([x.get("load_ms") for x in rs]),
             "load_errors": [x["load_error"] for x in rs if x.get("load_error")],
+            # Detail (#202): the first screen drawn, from the navigation; `load_ms` waits for the main
+            # thread to be free as well.
+            "drawn_ms": P.spread([x.get("drawn_ms") for x in rs]),
             # Frames: each run's band, then the median band. Three runs each poor for a different
             # reason are poor, not the band of per-measure medians.
             "scroll": {k: P.spread([f.get(k) for f in sc]) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")},
@@ -1459,9 +1471,14 @@ def webrtc_detail(c):
     again = [w for w in ws if (w.get("sessions") or 0) > 1 or any((cn.get("offers") or 0) > 1 for cn in w.get("connections") or [])]
     restarts = (f", {len(again)} of {len(ws)} streams needed another WebRTC session"
                 f" (no video for {sum(w.get('no_video_ms') or 0 for w in again) / 1000:.1f} s in all)") if again else ""
+    # The frame callbacks' gaps beside the graded ones (protocol 8): how busy the page was, not the video.
+    cbs = [s["callback_gaps"] for s in c.get("detail") or [] if s.get("callback_gaps")]
+    busy = (f"; the page's frame callbacks (detail, how busy the page was): {sum(x.get('callbacks') or 0 for x in cbs)} "
+            f"for {total('frames_decoded')} frames, stalls by them up to {max((x.get('stall_total_ms') or 0) for x in cbs) / 1000:.1f} s"
+            if cbs else "")
     return (f"decoder {', '.join(decs)}" + (f" ({', '.join(hw)})" if hw else "")
             + f", {total('frames_decoded')} frames decoded, {total('frames_dropped')} dropped, "
-            f"{total('freezes')} freezes ({total('freeze_s', '{:.1f}')} s), candidate {', '.join(cand) or 'n/a'}{restarts}")
+            f"{total('freezes')} freezes ({total('freeze_s', '{:.1f}')} s), candidate {', '.join(cand) or 'n/a'}{restarts}{busy}")
 
 
 def camera_cell(s_, b):
@@ -1538,9 +1555,17 @@ def markdown(rep):
                 + (f" ({vp['reason']})" if vp.get("reason") else "") + "."]
         if ref["start_errors"]:
             out.append(f"Restart not measured in {len(ref['start_errors'])} run(s) ({'; '.join(sorted(set(ref['start_errors'])))}).")
+        slow_free = [(t, s_) for t, s_ in ref["tiers"].items()
+                     if (s_.get("drawn_ms") or {}).get("median") is not None and (s_.get("load_ms") or {}).get("median") is not None
+                     and s_["load_ms"]["median"] - s_["drawn_ms"]["median"] > 5000]
+        if slow_free:
+            out.append("Drawn long before usable (detail): " + "; ".join(
+                f"{t}'s first screen was drawn {s_['drawn_ms']['median'] / 1000:.1f} s after the navigation, and its main "
+                f"thread was free (usable) after {s_['load_ms']['median'] / 1000:.1f} s" for t, s_ in slow_free)
+                + ". Each run's `busy_ms` in report.json says how long the probes waited each second.")
         if ref.get("timed_out"):
-            out.append(f"Views that didn't finish within the runner's deadline ({int(VIEW_DEADLINE_S)} s), measured as failing "
-                       f"what they didn't get to (not \"not measured\"): "
+            out.append(f"Views that timed out (not usable within {int(VIEW_DEADLINE_S)} s, or stuck in a task, saying nothing "
+                       f"for {int(STAGE_IDLE_S)} s), measured as failing what they didn't get to (not \"not measured\"): "
                        + "; ".join(f"{t} in run {k} ({', '.join((ref['tiers'].get(t) or {}).get('timed_out_tasks') or []) or 'nothing left'})"
                                    for k, t in ref["timed_out"]) + ".")
         out += transport_line(rep)

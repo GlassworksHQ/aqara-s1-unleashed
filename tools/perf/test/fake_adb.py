@@ -306,10 +306,16 @@ def refdash(nonce, url):
     dpr = float(os.environ.get("FAKE_DPR", "1.5"))
 
     def gw(obj):
+        # FAKE_STAGE_DELAY (protocol 8): a slow view that keeps going: this long before each line
+        # after it is usable, so the whole view outlasts the usable deadline but no stage stops.
+        if obj.get("t") not in ("refdash",) and os.environ.get("FAKE_STAGE_DELAY") and tier == os.environ.get("FAKE_STAGE_VIEW", tier):
+            time.sleep(float(os.environ["FAKE_STAGE_DELAY"]))
         page_log(dict(obj, nonce=nonce, run=1), split=not os.environ.get("FAKE_NO_SPLIT"))
 
     # FAKE_SLOW_VIEW: the view takes this long to be usable (the runner keeps the screen awake).
     time.sleep(float(os.environ.get("FAKE_SLOW_VIEW", "0")))
+    if os.environ.get("FAKE_NEVER_USABLE") == tier:
+        return                 # never usable: not a line
     if os.environ.get("FAKE_SCREEN_OFF") == tier:
         # As smoke10: the kiosk's idle timeout turns the screen off while the view opens.
         line("PowerManagerService", "Going to sleep due to device_admin (uid 1000)...", pid=1919)

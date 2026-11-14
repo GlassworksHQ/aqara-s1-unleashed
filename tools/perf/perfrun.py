@@ -321,6 +321,11 @@ LIVE_IDLE_WAKE_S = float(os.environ.get("GW_PERF_LIVE_IDLE_WAKE_S", "30"))
 # The runner then restarts the kiosk, as at the run's start, and opens the run's remaining views: a
 # view that can't finish fails its own tasks and nothing else (#202, s1rtc3).
 VIEW_DEADLINE_S = float(os.environ.get("GW_PERF_VIEW_DEADLINE_S", "300"))
+# Protocol 8 (#202, s1rtc4): that deadline covers only a view that never became usable. After that the
+# page gives each task its own budget, and a view is timed out only when it says nothing for
+# STAGE_IDLE_S (stuck in one task); s1rtc4's heavy was usable after 43 s and still busy at 300 s,
+# before its swipes, which never ran.
+STAGE_IDLE_S = float(os.environ.get("GW_PERF_STAGE_IDLE_S", "180"))
 # After that restart: if nothing relaunched the kiosk within this, `am start` it; if its reference
 # dashboard isn't usable within RECOVER_WAIT_S, the run fails.
 RECOVER_LAUNCH_S = float(os.environ.get("GW_PERF_RECOVER_LAUNCH_S", "10"))
@@ -461,6 +466,7 @@ def cmd_coldstart(dev, a):
         st["opened_at"] = time.time()
         nonce = secrets.token_hex(4)
         st["current"], st["measure_mono"], st["next_at"] = (slot, nonce), None, None
+        st["line_at"], st["last_line"] = None, None
         paused.clear()
         if slot == "warmup":
             tier, extra = a.warmup_tier, {"taps": 0, "swipes": 0, "warmup": 1}
@@ -482,6 +488,13 @@ def cmd_coldstart(dev, a):
                 r.read()
         except OSError as e:
             res["error"] = f"the fake Home Assistant didn't take the command to open {tier}: {e}"
+
+    def still(nonce):
+        try:
+            with urllib.request.urlopen(f"{a.url.rstrip('/')}/clarity/still?nonce={nonce}", timeout=10) as r:
+                r.read()
+        except OSError:
+            pass
 
     def read_sf(pl, rec):
         """SurfaceFlinger's history just after a window, cut to the window the page logged."""
@@ -578,6 +591,7 @@ def cmd_coldstart(dev, a):
     def handle_page(tier, pl, rec):
         entry, t = entry_of(tier), pl.get("t")
         pl["mono"] = rec["mono"]
+        st["line_at"], st["last_line"] = time.time(), t
         if t == "refdash":
             entry["page"] = pl
         elif t == "warmup":
@@ -618,6 +632,9 @@ def cmd_coldstart(dev, a):
             entry["camera"] = pl
         elif t in ("done", "error"):
             st["live"] = False
+            # Stop the view's stream at the fake (protocol 8: the page asks too, but doesn't wait on a
+            # busy main thread for the answer); a stop for this view's nonce only.
+            threading.Thread(target=still, args=(pl.get("nonce") or st["current"][1],), daemon=True).start()
             if t == "error":
                 entry["error"] = pl.get("message")
             else:
@@ -660,20 +677,29 @@ def cmd_coldstart(dev, a):
             break                         # e.g. a view couldn't be opened
         if st["break_after"] and time.time() > st["break_after"]:
             break
-        if ref and st["current"] and st.get("opened_at") and time.time() - st["opened_at"] > VIEW_DEADLINE_S:
+        late = None
+        if ref and st["current"] and st.get("opened_at"):
             entry = entry_of(st["current"][0])
+            if not entry.get("page") and time.time() - st["opened_at"] > VIEW_DEADLINE_S:
+                late = ("usable", VIEW_DEADLINE_S)
+            elif entry.get("page") and time.time() - max(st.get("line_at") or 0, st["opened_at"]) > STAGE_IDLE_S:
+                late = (st.get("last_line") or "usable", STAGE_IDLE_S)
+        if late:
             if not entry.get("done") and not entry.get("error"):
                 view = st["current"][0]
-                entry["timed_out_s"] = VIEW_DEADLINE_S
+                entry["timed_out_s"] = round(time.time() - st["opened_at"], 1)
+                entry["timed_out_after"] = late[0]      # the last thing it said (or "usable": never was)
                 entry["lost_lines"] = page_lines.close(st["current"][1])
                 res.setdefault("timed_out", []).append(view)
                 st["live"], st["current"] = False, None   # its gestures stop (send checks the page)
                 if st["opened"] == len(slots):
-                    print(f"  {view} didn't finish within {VIEW_DEADLINE_S:.0f} s; it was the run's last view", file=sys.stderr)
+                    print(f"  {view} timed out ({'not usable within' if late[0] == 'usable' else 'nothing after ' + late[0] + ' for'} "
+                          f"{late[1]:.0f} s); it was the run's last view", file=sys.stderr)
                     break
                 # Carry on: restart the kiosk as at the run's start (the frontend is reloaded, so the
                 # next view isn't measured on what the stuck one left behind), then open the rest.
-                print(f"  {view} didn't finish within {VIEW_DEADLINE_S:.0f} s; restarting the kiosk for the run's other views",
+                print(f"  {view} timed out ({'not usable within' if late[0] == 'usable' else 'nothing after ' + late[0] + ' for'} "
+                      f"{late[1]:.0f} s); restarting the kiosk for the run's other views",
                       file=sys.stderr)
                 for th in st["gestures"]:
                     th.join(timeout=15)
