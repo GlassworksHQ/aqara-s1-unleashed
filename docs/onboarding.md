@@ -118,7 +118,8 @@ hostname.
 - From the Mac (bleak 3.1 + py-improv-ble-client 2.0.1): found as "MagicPad S1 Plus" (the BT
   adapter name, unchanged) with RSSI around -50, `device_filter()` = True (HA would discover it),
   MTU 517, capabilities 7, `need_authorization` True, identify OK (screen wakes, card pulses, 3 beeps),
-  device info `S1 Kiosk, 0.1.0, Aqara Panel Hub S1 Plus/sun50iw10p1, Glassworks Panel`, hostname RPC →
+  device info `S1 Kiosk, 0.1.0, Aqara Panel Hub S1 Plus/sun50iw10p1, Glassworks Panel` (the name is the
+  friendly name since #266, "Aqara S1 Plus" on the S1), hostname RPC →
   error 0x02. Scan returned 0 networks because the app doesn't hold the location permission yet
   (see below). After `--ez improv false` nothing advertises the Improv service.
 - **At the time not tested on the device**: sending Wi-Fi credentials / joining a network (unit
@@ -211,7 +212,8 @@ glue `app/kiosk/…/improv/ImprovSerialServer.kt`). [Improv Serial](https://www.
   the same `WifiProvisioner` as Improv via BLE (it turns Wi-Fi on first). Then state Provisioned +
   an RPC result with `http://<ip>:8099/signin`, or error 0x03 and back to Ready.
 - Request state (+ the URL as a result when provisioned), request device info (`S1 Kiosk`, app
-  version, `Allwinner A133`, `Glassworks Panel`).
+  version, the frame's chip (`Allwinner A133` on the S1), and the friendly name as Home Assistant shows
+  it, "Aqara S1 Plus" on the S1).
 - Scan: a fresh WifiManager scan (Wi-Fi turned on if off; results on `SCAN_RESULTS_AVAILABLE` or after
   15 s at most, cached ones at once if the scan is throttled). Hidden SSIDs are skipped, one entry per
   SSID keeping the strongest, strongest first; one RPC result `[ssid, rssi, YES|NO]` each, then an

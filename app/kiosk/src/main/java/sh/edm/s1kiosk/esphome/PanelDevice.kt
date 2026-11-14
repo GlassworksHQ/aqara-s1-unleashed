@@ -290,7 +290,11 @@ class PanelDevice internal constructor(
         // A pane the frame lacks the hardware for (CantRun) isn't built: no entities, nothing started.
         val cantRun = runtime.paneDefinitions(ctx).filterIsInstance<CantRun>().map { it.id }.toSet()
         panes = panes.filter { it.id !in cantRun }
-        if (assistPane !in panes) assist = null
+        // Timers ride with Assist (their pane.json requires the same): without it they go too.
+        if (assistPane !in panes) {
+            assist = null
+            panes = panes.filter { it !is TimersPane }
+        }
         runtime.panes = panes
         // Every pane's on/off, also while the pane is off.
         coreEntities = buildEntities() + switches.values.map { it.entity() }

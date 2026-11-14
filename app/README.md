@@ -87,7 +87,7 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
   `/dev/ttyS3` itself (relays, power, energy, protection), so `ha_master` and Aqara's cloud stay stopped.
   The LocalService path through `ha_master` remains as a fallback (`base_backend`). See
   [frames/aqara-s1-plus/research/bases.md](../frames/aqara-s1-plus/research/bases.md) and [frames/aqara-s1-plus/research/base-protocol.md](../frames/aqara-s1-plus/research/base-protocol.md).
-- **Native Music Assistant player (Sendspin)**: MA sees the panel as its own player "Glassworks Panel" and plays
+- **Native Music Assistant player (Sendspin)**: MA sees the panel as its own player, named as Home Assistant names the device ("Aqara S1 Plus" on the S1), and plays
   to it in sync with your other Sendspin speakers (groupable). It pairs automatically: HA hands MA the
   panel's pairing token over the ESPHome API. See below and [docs/sendspin.md](../docs/sendspin.md).
 - **Wi-Fi setup over Bluetooth (Improv via BLE)**: a panel with no network (30 s after boot), or one

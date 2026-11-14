@@ -80,7 +80,12 @@ class AqaraS1Plus : Frame {
         /** frame.json's `name` (PanelNameTest checks it). */
         const val DISPLAY_NAME = "Aqara S1 Plus"
 
-        /** `Build.HARDWARE` on the S1's A133 (read 2026-11-14). Its model and maker are Allwinner's dev board's, so they don't tell. */
+        /**
+         * `Build.HARDWARE` on the S1's A133 (read 2026-11-14), the S1 frame's only check. Its other build
+         * properties don't tell it apart either: model "QUAD-CORE R818 EVB2", maker "Allwinner",
+         * `ro.product.board` exdroid, device peony-perf1, name peony_evb2, `ro.board.platform` peony are all
+         * Allwinner A133 SDK defaults. Accepted for v1: another A133 board on those defaults takes the S1 frame.
+         */
         const val HARDWARE = "sun50iw10p1"
 
         /** The frame for the device the app runs on: the S1's on its hardware, else [generic]. */

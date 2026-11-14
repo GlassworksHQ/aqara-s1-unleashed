@@ -19,6 +19,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowBuild
+import org.robolectric.shadows.ShadowLog
 import sh.edm.esphome.DeviceIdentity
 import sh.edm.s1kiosk.auth.HaTokenClient
 import sh.edm.s1kiosk.auth.HttpPoster
@@ -137,6 +138,7 @@ class GenericFrameTest {
         val (id, device) = run(runtime)
         assertEquals("no voice features although Assist's switch is on", 0, id.voiceFeatures)
         assertFalse(device.paneList().any { it.id == "assist" })
+        assertFalse("timers ride with Assist", device.paneList().any { it.id == "timers" })
         assertFalse(device.entityList().any { it.objectId == "mute_microphone" })
     }
 
@@ -161,6 +163,15 @@ class GenericFrameTest {
         assertEquals("tangorpro", ImprovIdentity.serial(GenericAndroid(app))[2])
     }
 
+    @Test fun theAppLogsTheFrameItPicked() {
+        ShadowLog.clear()
+        KioskApp().glassworks
+        assertTrue(ShadowLog.getLogsForTag("S1Kiosk").any { it.msg == "Frame: generic-android (tangorpro)" })
+        ShadowBuild.setHardware(AqaraS1Plus.HARDWARE)
+        KioskApp().glassworks
+        assertTrue(ShadowLog.getLogsForTag("S1Kiosk").any { it.msg == "Frame: aqara-s1-plus (sun50iw10p1)" })
+    }
+
     @Test fun theDeviceSettingsLinkNamesTheDevicesOwnApp() {
         assertEquals("Aqara's own settings", SettingsMenu.deviceSettingsTitle(AqaraS1Plus()))
         assertEquals("Android settings", SettingsMenu.deviceSettingsTitle(GenericAndroid(app)))
@@ -177,6 +188,14 @@ class GenericFrameTest {
             .map { JSONObject(it.readText()) }.associate { it.getString("id") to words(it.getJSONArray("requires")) }
         val definitions = GlassworksRuntime(AqaraS1Plus()).paneDefinitions(app)
         for (d in definitions) assertEquals(d.id, paneJson.getValue(d.id), d.requires.map { it.id }.toSet())
+        // The other way: a pane.json that requires something has a definition that gates it, or rides with one.
+        val ridesWith = mapOf("timers" to "assist")
+        val byId = definitions.associateBy { it.id }
+        for ((id, req) in paneJson.filterValues { it.isNotEmpty() }) {
+            val gate = byId[ridesWith[id] ?: id]
+            assertTrue("$id requires $req but no definition gates it", gate != null)
+            assertEquals(id, req, gate!!.requires.map { it.id }.toSet())
+        }
         val known = Capability.entries.map { it.id }.toSet()
         for ((id, req) in paneJson) assertTrue("$id requires a word the app doesn't know: $req", known.containsAll(req))
     }

@@ -44,7 +44,7 @@ A Glassworks **frame**: the device definition for the Generic Android. Its data 
 
 ## Status
 
-**Status: planned.** It needs Android 8.0 or newer: S1 Kiosk's `minSdk` is 26. S1 Kiosk runs as this frame on any device that isn't an Aqara S1 (`Build.HARDWARE` other than `sun50iw10p1`). It names itself after the device, and runs the panes the device's features allow. So far it has been tried on a Pixel Tablet only.
+**Status: planned.** It needs Android 8.0 or newer: S1 Kiosk's `minSdk` is 26. S1 Kiosk runs as this frame on any device that isn't an Aqara S1 (`Build.HARDWARE` other than `sun50iw10p1`). It names itself after the device, and runs the panes the device's features allow. Not yet run on a device.
 
 The Clarity badge shows its Clarity grade ([docs/perf.md](../../docs/perf.md)) once one is published; none is yet.
 
