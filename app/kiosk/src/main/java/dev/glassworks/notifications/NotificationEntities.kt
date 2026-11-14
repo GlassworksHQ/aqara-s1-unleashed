@@ -13,8 +13,7 @@ import sh.edm.esphome.EntityCategory
 import sh.edm.esphome.SwitchEntity
 
 /**
- * The notifications pane's Home Assistant entities (#118). Not registered yet: the pane joins the
- * panel after the pane switches (#210) and the design approval.
+ * The notifications pane's Home Assistant entities (#118), made once by [NotificationsPane].
  *
  * - `notify`, the action HA lists as `esphome.<panel>_notify`, with `message`, `title` and `data`
  *   ([NotifyRequest]). It answers with success or the problem in words (`STATUS`), so a mistake shows
@@ -26,7 +25,8 @@ import sh.edm.esphome.SwitchEntity
  * action id is whatever the script chose.
  */
 class NotificationEntities(
-    center: NotificationCenter,
+    /** One `notify` call: `message`, `title`, `data`. Throws to fail the call with its message. */
+    onNotify: (message: String, title: String, data: String) -> Unit,
     getDoNotDisturb: () -> Boolean,
     setDoNotDisturb: (Boolean) -> Unit,
 ) {
@@ -39,7 +39,7 @@ class NotificationEntities(
         ),
         supportsResponse = ActionResponse.STATUS,
     ) { call ->
-        center.handle(call.string("message"), call.string("title"), call.string("data"))
+        onNotify(call.string("message"), call.string("title"), call.string("data"))
         null
     }
 

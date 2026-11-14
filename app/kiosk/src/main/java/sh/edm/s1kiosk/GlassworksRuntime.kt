@@ -8,6 +8,8 @@ import dev.glassworks.engine.Engine
 import dev.glassworks.engine.EngineSettings
 import dev.glassworks.engine.gecko.GeckoEngine
 import dev.glassworks.frame.Frame
+import dev.glassworks.notifications.NotificationsDefinition
+import dev.glassworks.notifications.NotificationsHub
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SetupStep
 import dev.glassworks.screen.ScreenPolicy
@@ -52,9 +54,12 @@ class GlassworksRuntime(
 
     private var definitions: List<PaneDefinition>? = null
 
+    /** The notifications pane's state, for the overlay and the settings page (#118). */
+    val notifications = NotificationsHub()
+
     /**
      * Every pane's definition, made once: their on/off, setup steps, settings sections and adb extras. The
-     * core's panes in the order the settings list them (voice, music, radio), then the frame's, then diagnostics.
+     * core's panes in the order the settings list them (voice, music, notifications, radio), then the frame's, then diagnostics.
      * MainActivity and KioskService ask for them first thing, before discovery can save an HA URL in
      * this process (the radio step's one-time check needs that).
      */
@@ -67,7 +72,12 @@ class GlassworksRuntime(
                 setUpBefore = { SetupState.setUpBefore(prefs.haBase != null, prefs.haSeen, prefs.apiEncryption, prefs.haSetupSkipped) },
                 readout = RadioDefinition.AppReadout(this, prefs.radio) { prefs.haBase },
             )
-            listOf(AssistDefinition(prefs.paneFile("assist")), SendspinDefinition(prefs.paneFile("sendspin")), radio) +
+            val notify = NotificationsDefinition(
+                prefs.paneFile("notifications"), notifications,
+                actionName = "esphome.${sh.edm.s1kiosk.esphome.PanelDevice.NAME.replace('-', '_')}_notify",
+                now = android.os.SystemClock::elapsedRealtime,
+            )
+            listOf(AssistDefinition(prefs.paneFile("assist")), SendspinDefinition(prefs.paneFile("sendspin")), notify, radio) +
                 paneFrame.paneDefinitions(app) + DiagnosticsDefinition(prefs.paneFile("diagnostics"))
         }.also { definitions = it }
     }

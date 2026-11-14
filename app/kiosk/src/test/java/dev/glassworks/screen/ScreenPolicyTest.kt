@@ -33,7 +33,7 @@ class ScreenPolicyTest {
     ) : ScreenSettings {
         override val screenMode = "presence"
         override val idleOffSec = 120
-        override val nightWindow = ""
+        override var nightWindow = ""
         override val nightIdleOffSec = 20
         override val wakeOnApproach = true
         override val presenceRangeM = 0f
@@ -48,7 +48,8 @@ class ScreenPolicyTest {
         var stops = 0
         var presence: ((Boolean, Float) -> Unit)? = null
         override fun start(context: Context, onReading: (near: Boolean, raw: Float) -> Unit) { starts++; presence = onReading }
-        override fun start(context: Context, onLux: (Float) -> Unit) { starts++ }
+        var lux: ((Float) -> Unit)? = null
+        override fun start(context: Context, onLux: (Float) -> Unit) { starts++; lux = onLux }
         override fun stop(context: Context) { stops++; presence = null }
     }
 
@@ -147,6 +148,47 @@ class ScreenPolicyTest {
 
         assertEquals(-1f, screen.brightness)
         assertEquals(emptyList<Float>(), calls)
+        screen.stop()
+    }
+
+    @Test fun nightCapsBrightnessUnlessHeld() {
+        assertEquals(0.2f, ScreenPolicy.brightnessCap(night = true, held = false, max = 1f, nightMax = 0.2f))
+        assertEquals(1f, ScreenPolicy.brightnessCap(night = true, held = true, max = 1f, nightMax = 0.2f))
+        assertEquals(0.8f, ScreenPolicy.brightnessCap(night = false, held = false, max = 0.8f, nightMax = 0.2f))
+    }
+
+    /** A high or critical notification (#118): full brightness at night, at once, and back after release. */
+    @Test fun aHoldLiftsNightDimmingAtOnce() {
+        val light = FakeSource()
+        val settings = Settings().apply { nightWindow = "00:00-23:59" }
+        val screen = policy(light = light, settings = settings)
+        screen.start(context)
+        light.lux!!(1000f)
+        advance(10)
+        assertEquals(0.2f, screen.brightness, 0.001f)
+        screen.hold("notification")
+        assertEquals(1f, screen.brightness, 0.001f)
+        assertTrue(screen.held)
+        screen.release("notification")
+        assertEquals(0.2f, screen.brightness, 0.001f)
+        screen.stop()
+    }
+
+    /** Held, the idle timeout doesn't turn the screen off; after release it counts from the release. */
+    @Test fun aHoldKeepsTheScreenOnPastTheIdleTimeout() {
+        val screen = policy()
+        screen.start(context)
+        val keepOn = mutableListOf<Boolean>()
+        screen.onKeepScreenOn = { keepOn += it }
+        keepOn.clear()
+        screen.hold("notification")
+        advance(300_000)
+        assertEquals(emptyList<Boolean>(), keepOn.filter { !it })
+        screen.release("notification")
+        advance(119_000)
+        assertEquals(emptyList<Boolean>(), keepOn.filter { !it })
+        advance(1_000)
+        assertEquals(listOf(false), keepOn.filter { !it })
         screen.stop()
     }
 }

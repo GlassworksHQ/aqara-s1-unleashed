@@ -1,16 +1,5 @@
 package sh.edm.s1kiosk.esphome
 
-import sh.edm.esphome.*
-import sh.edm.esphome.android.EspHomeMdns
-import dev.glassworks.diagnostics.DiagnosticsPane
-import dev.glassworks.frame.Frame
-import dev.glassworks.pane.EntityRegistry
-import dev.glassworks.pane.Pane
-import dev.glassworks.pane.PaneContext
-import dev.glassworks.pane.PaneSwitch
-import dev.glassworks.pane.PanelEvent
-import dev.glassworks.pane.forEachPane
-import dev.glassworks.pane.stopAll
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -20,30 +9,18 @@ import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
-import sh.edm.s1kiosk.BuildConfig
-import sh.edm.s1kiosk.GlassworksRuntime
-import sh.edm.s1kiosk.KioskPrefs
-import sh.edm.s1kiosk.MainActivity
-import sh.edm.s1kiosk.timers.TimersPane
-import sh.edm.s1kiosk.auth.HaAuth
-import sh.edm.s1kiosk.radio.RadioPane
-import sh.edm.s1kiosk.dashboard.Dashboard
-import sh.edm.s1kiosk.dashboard.DashboardOptions
-import sh.edm.s1kiosk.dashboard.Dashboards
-import sh.edm.s1kiosk.dashboard.StableChange
-import sh.edm.s1kiosk.discovery.HaUrls
-import sh.edm.s1kiosk.sendspin.SendspinPane
-import sh.edm.s1kiosk.setup.SetupSignals
-import sh.edm.s1kiosk.update.UpdateManager
-import sh.edm.s1kiosk.voice.AssistPane
-import sh.edm.s1kiosk.voice.TtsPlayer
-import sh.edm.s1kiosk.voice.ExoAudioPlayer
-import sh.edm.s1kiosk.voice.SpeakerMedia
-import sh.edm.s1kiosk.voice.VoiceEngine
-import sh.edm.s1kiosk.voice.VoiceEvent
-import sh.edm.s1kiosk.voice.VoiceLevels
-import sh.edm.s1kiosk.voice.chime
-import sh.edm.s1kiosk.voice.wakeChime
+import dev.glassworks.diagnostics.DiagnosticsPane
+import dev.glassworks.frame.Frame
+import dev.glassworks.notifications.NotificationScreen
+import dev.glassworks.notifications.NotificationSounds
+import dev.glassworks.notifications.NotificationsPane
+import dev.glassworks.pane.EntityRegistry
+import dev.glassworks.pane.Pane
+import dev.glassworks.pane.PaneContext
+import dev.glassworks.pane.PaneSwitch
+import dev.glassworks.pane.PanelEvent
+import dev.glassworks.pane.forEachPane
+import dev.glassworks.pane.stopAll
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -52,6 +29,32 @@ import java.security.SecureRandom
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import sh.edm.esphome.*
+import sh.edm.esphome.android.EspHomeMdns
+import sh.edm.s1kiosk.BuildConfig
+import sh.edm.s1kiosk.GlassworksRuntime
+import sh.edm.s1kiosk.KioskPrefs
+import sh.edm.s1kiosk.MainActivity
+import sh.edm.s1kiosk.auth.HaAuth
+import sh.edm.s1kiosk.dashboard.Dashboard
+import sh.edm.s1kiosk.dashboard.DashboardOptions
+import sh.edm.s1kiosk.dashboard.Dashboards
+import sh.edm.s1kiosk.dashboard.StableChange
+import sh.edm.s1kiosk.discovery.HaUrls
+import sh.edm.s1kiosk.radio.RadioPane
+import sh.edm.s1kiosk.sendspin.SendspinPane
+import sh.edm.s1kiosk.setup.SetupSignals
+import sh.edm.s1kiosk.timers.TimersPane
+import sh.edm.s1kiosk.update.UpdateManager
+import sh.edm.s1kiosk.voice.AssistPane
+import sh.edm.s1kiosk.voice.ExoAudioPlayer
+import sh.edm.s1kiosk.voice.SpeakerMedia
+import sh.edm.s1kiosk.voice.TtsPlayer
+import sh.edm.s1kiosk.voice.VoiceEngine
+import sh.edm.s1kiosk.voice.VoiceEvent
+import sh.edm.s1kiosk.voice.VoiceLevels
+import sh.edm.s1kiosk.voice.chime
+import sh.edm.s1kiosk.voice.wakeChime
 
 /**
  * The panel as one ESPHome device for Home Assistant: native API server (port 6053), mDNS,
@@ -254,6 +257,7 @@ class PanelDevice internal constructor(
             emit = ::emit,
             entitiesChanged = { runCatching { exec.execute { rebuildEntities() } } },
             sendEvent = { entity, type -> runCatching { exec.execute { server?.sendEvent(entity, type) } } },
+            fireEvent = { event -> runCatching { exec.execute { server?.sendHomeAssistantEvent(event) } } },
         )
         val assistPane = AssistPane(
             paneContext,
@@ -275,6 +279,21 @@ class PanelDevice internal constructor(
                 schedule = { ms, action -> exec.schedule({ action() }, ms, TimeUnit.MILLISECONDS) },
                 play = { chimes().chime() },
                 silence = { synchronized(this) { chimePlayer }?.cancel() },
+            ),
+            NotificationsPane(
+                paneContext, prefs.notifications, runtime.notifications,
+                screen = object : NotificationScreen {
+                    override fun hold() = ui { screen.hold("notification") }
+                    override fun release() = ui { screen.release("notification") }
+                },
+                play = { sound, done ->
+                    val pcm = NotificationSounds.pcm(sound)
+                    if (pcm == null) done() else chimes().run { begin(pcm.rate, 2, 1); write(pcm.data); end(done) }
+                },
+                silence = { synchronized(this) { chimePlayer }?.cancel() },
+                schedule = { ms, action -> exec.schedule({ action() }, ms, TimeUnit.MILLISECONDS) },
+                haBase = { prefs.haBase },
+                now = android.os.SystemClock::elapsedRealtime,
             ),
         ) + frame.panes(paneContext, exec) + RadioPane(paneContext, runtime, panelIp = ::ipAddress) +
             DiagnosticsPane(paneContext, frame.cpuThermalZone, runtime.engine::isContentProcess, exec)

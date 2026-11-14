@@ -11,23 +11,12 @@ import sh.edm.esphome.ActionArg
 import sh.edm.esphome.ActionArgType
 import sh.edm.esphome.ActionResponse
 import sh.edm.esphome.EntityCategory
-import java.util.concurrent.CompletableFuture
 
 class NotificationEntitiesTest {
-    private val center = NotificationCenter(
-        NotificationStore({ 0L }),
-        object : NotificationOutputs {
-            override fun render(cards: List<NotificationStore.Entry>, page: NotificationStore.Entry?, list: List<NotificationStore.Entry>) {}
-            override fun wake(overNight: Boolean) {}
-            override fun play(sound: Sound) {}
-        },
-        {}, { false }, { null }, { 0L }, { _, _ -> CompletableFuture<Unit>() },
-    )
-
     @Test
     fun theNotifyActionHasCompanionsShape() {
         var dnd = false
-        val e = NotificationEntities(center, { dnd }, { dnd = it })
+        val e = NotificationEntities({ _, _, _ -> }, { dnd }, { dnd = it })
         assertEquals("notify", e.notify.name)
         assertEquals(
             listOf(ActionArg("message", ActionArgType.STRING), ActionArg("title", ActionArgType.STRING), ActionArg("data", ActionArgType.STRING)),
