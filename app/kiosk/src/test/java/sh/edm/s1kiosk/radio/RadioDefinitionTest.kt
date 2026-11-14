@@ -178,6 +178,24 @@ class RadioDefinitionTest {
     }
 
     @Test
+    fun theRadiosFirmwareAndHelperAreOnItsPageButNotWhoIsConnected() {
+        // #212: "Connected now" waits for the root helper to report the live peer (#217).
+        val pane = object : dev.glassworks.pane.Pane {
+            override val id = "radio"
+            override fun entities() = listOf(
+                sh.edm.esphome.TextSensorEntity("radio_firmware", "Radio firmware", get = { "EmberZNet 7.4.4 · EZSP v13" }),
+                sh.edm.esphome.TextSensorEntity("radio_helper", "Radio helper", get = { "v4 · root side ready" }),
+            )
+        }
+        val d = radioDefinition(app, FixedReadout(null, running = false))
+        val block = d.settings(pane).single().items.last() as dev.glassworks.pane.SettingsItem.Group
+        assertEquals("The radio", block.title)
+        assertEquals(listOf("Firmware" to "EmberZNet 7.4.4 · EZSP v13", "Radio helper" to "v4 · root side ready"),
+            block.items.map { (it as dev.glassworks.pane.SettingsItem.Info).let { i -> i.title() to i.detail() } })
+        assertEquals("no pane, no block", d.settings().single().items.size, d.settings(null).single().items.size)
+    }
+
+    @Test
     fun aRequestThatNeverQueuedIsntPending() {
         // Verifier bd94c950: after stop() the radio thread refuses work; the count must not leak.
         val c = RadioController(TestInit(), load = { prefs.radio.mode }, store = { prefs.radio.mode = it }, inline = false, log = {}, filesDir = tmp.root)

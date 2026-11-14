@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
@@ -325,6 +326,21 @@ class RadioDefinition(
             // helperInstalled() can spawn getprop. Unknown until the radio's first refresh: not "can't run".
             unavailable = { if (readout.controller()?.helperShownIfKnown()?.installed == false) NO_HELPER else null },
         ))
+    }
+
+    /**
+     * The same section and, while the radio's pane is built, "The radio": its firmware and the root
+     * helper, as Home Assistant has them (#212). "Connected now" waits for the helper to report the live
+     * peer (#217).
+     */
+    override fun settings(running: Pane?): List<SettingsSection> {
+        val own = settings()
+        val entities = running?.entities().orEmpty().associateBy { it.objectId }
+        val rows = listOf("radio_firmware" to "Firmware", "radio_helper" to "Radio helper").mapNotNull { (objectId, title) ->
+            entities[objectId]?.let { e -> SettingsItem.Info({ title }, { e.shownState() ?: dev.glassworks.pane.UNKNOWN }) }
+        }
+        if (rows.isEmpty()) return own
+        return own.map { s -> SettingsSection(s.id, s.title, s.items + SettingsItem.Group("The radio", rows), s.heading, s.master, s.unavailable) }
     }
 
     /** The section's on/off: on shows the roles; off asks first, then turns the radio off (settings' log source). */

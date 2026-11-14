@@ -17,6 +17,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import sh.edm.esphome.DeviceIdentity
+import sh.edm.esphome.TextSensorEntity
 import sh.edm.s1kiosk.GlassworksRuntime
 import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.base.BaseBackend
@@ -152,11 +153,22 @@ class PanePagesMockups {
         return p
     }
 
-    private fun menu(running: List<Pane>): KioskSettingsOverlay {
+    /** The radio's two entities the page shows, as Home Assistant has them. */
+    private fun radio() = object : Pane {
+        override val id = "radio"
+        override fun entities() = listOf(
+            TextSensorEntity("radio_helper", "Radio helper", get = { "v4 · root side ready" }),
+            TextSensorEntity("radio_firmware", "Radio firmware", get = { "EmberZNet 7.4.4 · EZSP v13" }),
+        )
+    }
+
+    /** The menu with [running] panes; the panes in [off] are turned off. */
+    private fun menu(running: List<Pane>, off: Set<String> = emptySet()): KioskSettingsOverlay {
         val o = Mockup.show(KioskSettingsOverlay(Mockup.activity()))
         KioskPrefs(app).apply { urlSetting = "http://homeassistant.local:8123/lovelace/panel" }
         val radio = radioDefinition(app, FixedReadout(coordinator, running = true, allowedNow = "192.0.2.20"))
         val definitions = GlassworksRuntime(AqaraS1Plus()).paneDefinitions(app).map { if (it.id == "radio") radio else it }
+        definitions.forEach { d -> d.switch?.on = d.id !in off }
         val byId = running.associateBy { it.id }
         val model = { MenuFixture.model(app, radio, status = "screen on · presence near · voice=idle", panes = definitions, running = { byId[it] }) }
         o.reload = model
@@ -185,6 +197,13 @@ class PanePagesMockups {
             o.previewScrollTo(Mockup.label(o, "Timers running"), alignBottom = true)
         }
         shot("212-10-music", menu(listOf(music())), "sendspin")
+        shot("212-11-radio-addition", menu(listOf(radio())), "radio") { o ->
+            Mockup.layout(o)
+            o.previewScrollTo(Mockup.label(o, "v4 · root side ready"), alignBottom = true)
+        }
+        shot("212-12-rail-radio", menu(listOf(radio())), "radio")
+        shot("212-07b-off-panes-folded", menu(listOf(radio(), music(), timeZone()), off = setOf("sendspin", "time-zone")), "radio")
+        shot("212-07c-off-pane-open", menu(listOf(radio(), music(), timeZone()), off = setOf("sendspin", "time-zone")), "sendspin")
         val tz = timeZone()
         shot("212-04-time-zone", menu(listOf(tz)), "time-zone")
         shot("212-05-time-zone-picker", menu(listOf(tz)), "time-zone") { o ->
