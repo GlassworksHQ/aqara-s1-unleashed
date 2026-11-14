@@ -197,6 +197,8 @@ class ApiServer(
     @Volatile internal var clock: () -> Long = System::currentTimeMillis
     /** Makes the listening socket; a test passes one whose sockets it can hold mid-write. Set before [start]. */
     @Volatile internal var newServerSocket: () -> ServerSocket = { ServerSocket() }
+    /** Called on the sending thread for each frame a send has queued, before it returns; a test holds a caller there. */
+    @Volatile internal var onQueued: ((type: Int) -> Unit)? = null
     private var keepaliveTimer: java.util.concurrent.ScheduledExecutorService? = null
     /** Runs [ApiAction] handlers, one at a time, off the connections' reader threads. */
     @Volatile private var actionThread: java.util.concurrent.ExecutorService? = null
@@ -481,7 +483,10 @@ class ApiServer(
          */
         fun send(frames: List<Frame>, wait: Boolean = false): Boolean {
             if (!isOpen || !ready) return false
-            if (if (wait) outbox.offerAndWait(frames) else outbox.offer(frames)) return true
+            if (if (wait) outbox.offerAndWait(frames) else outbox.offer(frames)) {
+                onQueued?.let { queued -> frames.forEach { queued(it.type) } }
+                return true
+            }
             if (isOpen) {
                 EspHomeLog.w("[$id] $remote is not reading: ${MAX_QUEUED_BYTES / 1024} KiB waiting to be sent; closing")
                 close()

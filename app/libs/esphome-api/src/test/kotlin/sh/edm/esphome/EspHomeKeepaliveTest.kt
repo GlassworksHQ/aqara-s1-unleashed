@@ -107,20 +107,28 @@ class EspHomeKeepaliveTest {
     }
 
     /**
-     * Holds the server's write of its keepalive ping, after the bytes have left, until the reader thread
-     * has read and handled the client's answer. The ping is told apart by its bytes, not by a flag the
-     * test sets: a flag could be taken by the flush of an earlier reply still in progress (#204).
+     * Holds the keepalive tick's send of its ping, after the ping is queued, until the reader thread has
+     * read and handled the client's answer: the answer then always comes before send() returns (#171).
+     * The reads are counted from the ping's bytes, marked before they leave, not from a flag the test
+     * sets: a flag could be taken while an earlier reply was still on its way (#204).
      */
     private class PingHold {
         @Volatile private var pingWritten = false
         @Volatile private var readAfterPing = 0
         private val handled = CountDownLatch(1)
-        /** Counted down once the held write returns, so the answer was handled before it did. */
+        /** Counted down once the held send goes on, so the answer was handled before it returned. */
         val released = CountDownLatch(1)
 
-        /** Accepts into a socket whose streams are held; it is the accepted socket, so close() closes it. */
+        /** Accepts into a socket whose streams are watched; it is the accepted socket, so close() closes it. */
         fun serverSocket() = object : ServerSocket() {
             override fun accept(): Socket = HeldSocket().also { implAccept(it) }
+        }
+
+        /** [ApiServer.onQueued]: only the test's tick, and only its ping, waits. */
+        fun queued(type: Int) {
+            if (type != Msg.PING_REQUEST || Thread.currentThread().name != "test-tick") return
+            handled.await()
+            released.countDown()
         }
 
         fun giveUp() = handled.countDown()
@@ -135,11 +143,10 @@ class EspHomeKeepaliveTest {
         inner class HeldOut(o: OutputStream) : FilterOutputStream(o) {
             override fun write(b: ByteArray, off: Int, len: Int) {
                 // A write of just a plaintext PingRequest: 00, length 0, type 7.
-                val ping = !pingWritten && len == 3 && b[off].toInt() == 0 && b[off + 1].toInt() == 0 &&
-                    b[off + 2].toInt() == Msg.PING_REQUEST
-                if (ping) pingWritten = true
+                if (len == 3 && b[off].toInt() == 0 && b[off + 1].toInt() == 0 && b[off + 2].toInt() == Msg.PING_REQUEST) {
+                    pingWritten = true
+                }
                 out.write(b, off, len)
-                if (ping) { handled.await(); released.countDown() }
             }
         }
 
@@ -153,7 +160,7 @@ class EspHomeKeepaliveTest {
     }
 
     /**
-     * #171: the answer to a keepalive ping can be read before the ping's write returns. Here it always
+     * #171: the answer to a keepalive ping can be read before the ping's send returns. Here it always
      * is, and the client must not be dropped at unresponsiveMs for a ping it answered. Without real
      * traffic after the answer: the test above sends its own ping, which hides this. Only latches order
      * it, and no step gives up after a time (#204). A hang guard for the whole test (2 min, far past the
@@ -169,6 +176,7 @@ class EspHomeKeepaliveTest {
             // The server's own timer sees a clock that never moves, so only this test's ticks act.
             clock = { if (Thread.currentThread().name == "esphome-keepalive") start else now.get() }
             newServerSocket = hold::serverSocket
+            onQueued = hold::queued
         }
         s.start()
         try {
@@ -196,7 +204,7 @@ class EspHomeKeepaliveTest {
 
                 val pinged = now.get() + keepalive + 1
                 now.set(pinged)
-                // On its own thread: before #213 the tick itself wrote the ping, and the hold held it.
+                // On its own thread: the hold keeps it in send() until the answer is handled.
                 val tick = Thread({ s.keepaliveTick() }, "test-tick").apply { isDaemon = true; start() }
                 await(Msg.PING_REQUEST, "keepalive ping")
                 send(Msg.PING_RESPONSE)
