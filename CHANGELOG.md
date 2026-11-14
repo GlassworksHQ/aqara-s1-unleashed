@@ -15,6 +15,11 @@ below as the release notes.
   threshold* now means the new engine's cutoff: each word starts at its own (0.9 to 0.97), lower
   is more sensitive, and a threshold you set for openWakeWord doesn't carry over. The old
   openWakeWord words stay in the list as "(openWakeWord)" for this release.
+- **Kiln's panel cards show a real Home Assistant dashboard.** Each device on kiln.glassworks.dev now
+  shows the same made-up home, drawn by Home Assistant's own frontend and filling that device's
+  screen: the clock and weather, nine rooms and areas with thermostats, lights, music and TV, two
+  cameras, a shopping list, the alarm and the day's graphs. Before, it was a sketch with a fixed date. The
+  Mirror's is portrait.
 - **A new boot screen.** The power-on logo and the boot animation now show the Glassworks mark:
   three glass plates drop into place, the top one lights up from sky to violet, and "Glassworks" and
   "On Aqara S1 Plus" fade in. While the panel finishes starting, the stack floats and the top plate

@@ -34,12 +34,25 @@ describe('DeviceModel', () => {
     expect(stage(render(<DeviceModel id="s1" model={s1.model} label="S1" />))).toEqual({ aspect: '2', viewBox: '0 0 100 50' });
   });
 
+  it('shows the frame\'s render on the glass when given one, and the example dashboard without', () => {
+    const shown = render(<DeviceModel id="s1" model={s1.model} label="S1" screen="/r/render.webp" />);
+    expect(shown.querySelector('img')!.getAttribute('src')).toBe('/r/render.webp');
+    expect(shown.textContent).not.toMatch(/Living room/);
+    const example = render(<DeviceModel id="s1" model={s1.model} label="S1" />);
+    expect(example.querySelector('img')).toBeNull();
+    expect(example.textContent).toMatch(/Living room/);
+  });
+
   it('draws a portrait frame on a taller stage when asked', () => {
     expect(stage(render(<DeviceModel id="mirror" model={mirror.model} label="Mirror" aspect={0.8} />))).toEqual({ aspect: '0.8', viewBox: '0 0 100 125' });
   });
 });
 
 describe('FrameCardBody', () => {
+  it('passes the render to the model', () => {
+    expect(render(<FrameCardBody f={s1} screen="/r/render.webp" />).querySelector('img')!.getAttribute('src')).toBe('/r/render.webp');
+  });
+
   it('keeps the name a span by default, so the body fits in a button', () => {
     const el = render(<FrameCardBody f={s1} />);
     expect(el.querySelector('h1, h2, h3, h4, h5, h6')).toBeNull();
