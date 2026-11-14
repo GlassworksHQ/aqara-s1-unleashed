@@ -99,8 +99,8 @@ in HA. If a request goes against it, say so and point at the page instead of bui
   - Say if it needs something to reach panels, e.g. "Comes with the radio bundle."
   - The release workflow publishes this section as the release notes, and the first line of each
     version is what Home Assistant shows on the update card.
-- **Docs.** Update `README.md` (status table) and `docs/` when behaviour, entities or install
-  steps change. Keep `python3 tools/check-doc-links.py` passing.
+- **Docs.** Update the frame README's status table (`frames/<id>/README.md`) and `docs/` when
+  behaviour, entities or install steps change. Keep `python3 tools/check-doc-links.py` passing.
 - Labels: `frame: …`, `pane: …`, `area: …` ([CONTRIBUTING.md](CONTRIBUTING.md#labels)).
 - To try a branch on a panel without wiping app data, push it to `test-build/<name>` (admins only)
   and `adb install -r` the artifact. Details in [`app/AGENTS.md`](app/AGENTS.md#trying-a-branch-on-the-panel).
