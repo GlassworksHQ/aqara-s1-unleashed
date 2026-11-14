@@ -2,7 +2,7 @@
 // through Kiln's own domain. Browsers can't fetch GitHub release downloads directly (no CORS headers),
 // and the APK (~100 MB) is too big to ship as a static file. Only this repo's `s1-kiosk-X.Y.Z.apk`
 // assets of a `vX.Y.Z` tag pass; the installer checks the SHA-256 published with the release.
-const REPO = 'GlassworksHQ/aqara-s1-unleashed';
+const REPO = 'GlassworksHQ/glassworks';
 
 export async function GET(req: Request): Promise<Response> {
   const q = new URL(req.url).searchParams;

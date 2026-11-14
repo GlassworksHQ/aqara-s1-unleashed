@@ -8,6 +8,8 @@ below as the release notes.
 ## [Unreleased]
 
 ### Changed
+- **The repo is now GlassworksHQ/glassworks.** Panels check for updates at the new name; older
+  versions still find updates through GitHub's redirect.
 - **The wake word uses far less CPU.** The panel now listens with microWakeWord, the engine Home
   Assistant Voice PE uses, instead of openWakeWord. On the S1, the microphone's thread went from
   about 37% of a core to about 4%. Your wake word stays as it was (Hey Jarvis, Alexa or Hey
@@ -417,11 +419,11 @@ below as the release notes.
 - Panels running a development build need a one-time reinstall to switch to release builds (Android
   won't update an app across signing keys). That resets the app's settings.
 
-[Unreleased]: https://github.com/GlassworksHQ/aqara-s1-unleashed/compare/v0.4.3...HEAD
-[0.4.3]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.3
-[0.4.2]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.2
-[0.4.1]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.1
-[0.4.0]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.4.0
-[0.3.1]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.3.1
-[0.3.0]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.3.0
-[0.2.0]: https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v0.2.0
+[Unreleased]: https://github.com/GlassworksHQ/glassworks/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.4.3
+[0.4.2]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.4.2
+[0.4.1]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.4.1
+[0.4.0]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.4.0
+[0.3.1]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.3.1
+[0.3.0]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.3.0
+[0.2.0]: https://github.com/GlassworksHQ/glassworks/releases/tag/v0.2.0

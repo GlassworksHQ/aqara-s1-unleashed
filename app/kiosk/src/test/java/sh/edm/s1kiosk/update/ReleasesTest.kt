@@ -43,9 +43,9 @@ class ReleasesTest {
         val o = Releases.offer(Releases.parse(latest), S1)
         assertEquals(AppVersion(1, 3, 0), o.version)
         assertEquals("s1-kiosk-1.3.0.apk", o.apk.name)
-        assertEquals("https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-1.3.0.apk", o.apk.url)
+        assertEquals("https://github.com/GlassworksHQ/glassworks/releases/download/v1.3.0/s1-kiosk-1.3.0.apk", o.apk.url)
         assertEquals("s1-kiosk-1.3.0.apk.sha256", o.sha256.name)
-        assertEquals("https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/tag/v1.3.0", o.releaseUrl)
+        assertEquals("https://github.com/GlassworksHQ/glassworks/releases/tag/v1.3.0", o.releaseUrl)
         assertTrue(o.notes.startsWith("## What's Changed"))
         // The fixture's .sha256 file and GitHub's own digest agree, as the manager requires.
         assertArrayEquals(o.apk.digest, Releases.parseSha256(resource("s1-kiosk-1.3.0.apk.sha256"), o.apk.name))
@@ -54,7 +54,7 @@ class ReleasesTest {
     @Test fun extraAssetsAreIgnored() {
         val json = edited {
             getJSONArray("assets").put(JSONObject().put("name", "s1-kiosk-1.3.0-debug.apk").put("size", 9)
-                .put("browser_download_url", "https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-1.3.0-debug.apk"))
+                .put("browser_download_url", "https://github.com/GlassworksHQ/glassworks/releases/download/v1.3.0/s1-kiosk-1.3.0-debug.apk"))
         }
         assertEquals("s1-kiosk-1.3.0.apk", Releases.offer(Releases.parse(json), S1).apk.name)
     }
@@ -80,18 +80,19 @@ class ReleasesTest {
 
     @Test fun refusesUnexpectedDownloadUrls() {
         fun withUrl(u: String) = edited { getJSONArray("assets").getJSONObject(0).put("browser_download_url", u) }
-        val good = "https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-1.3.0.apk"
+        val good = "https://github.com/GlassworksHQ/glassworks/releases/download/v1.3.0/s1-kiosk-1.3.0.apk"
         for (bad in listOf(
             good.replace("https://", "http://"),
             good.replace("github.com", "evil.example"),
             good.replace("github.com", "github.com.evil.example"),
             good.replace("/v1.3.0/", "/v1.2.0/"),
             "$good?x=1",
-            "https://github.com/GlassworksHQ/aqara-s1-unleashed/raw/main/s1-kiosk-1.3.0.apk",
+            "https://github.com/GlassworksHQ/glassworks/raw/main/s1-kiosk-1.3.0.apk",
         )) {
             assertTrue(bad, refusal(withUrl(bad)).contains("unexpected download URL"))
         }
         // A renamed/transferred repo keeps working (GitHub redirects the API; the download path shape is the same).
+        // This is how 0.4.3, pinned to GlassworksHQ/aqara-s1-unleashed, takes releases after the 2026-11-13 rename.
         assertEquals(AppVersion(1, 3, 0), Releases.offer(Releases.parse(withUrl(good.replace("GlassworksHQ/", "newowner/"))), S1).version)
     }
 
@@ -188,7 +189,7 @@ class ReleasesTest {
     @Test fun prefixedTagIsInstallable() {
         val o = Releases.offer(Releases.parse(release("aqara-s1-plus-v1.3.0").toString()), S1)
         assertEquals(AppVersion(1, 3, 0), o.version)
-        assertEquals("https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/aqara-s1-plus-v1.3.0/s1-kiosk-1.3.0.apk", o.apk.url)
+        assertEquals("https://github.com/GlassworksHQ/glassworks/releases/download/aqara-s1-plus-v1.3.0/s1-kiosk-1.3.0.apk", o.apk.url)
     }
 
     @Test fun picksThisAppsNewestReleaseAmongOthers() {
@@ -247,7 +248,7 @@ class ReleasesTest {
         for (abis in listOf(listOf("arm64-v8a"), listOf("arm64-v8a", "armeabi-v7a", "armeabi"))) {
             val o = Releases.offer(Releases.parse(withArm64()), abis)
             assertEquals("$abis", "s1-kiosk-arm64-v8a-1.3.0.apk", o.apk.name)
-            assertEquals("https://github.com/GlassworksHQ/aqara-s1-unleashed/releases/download/v1.3.0/s1-kiosk-arm64-v8a-1.3.0.apk", o.apk.url)
+            assertEquals("https://github.com/GlassworksHQ/glassworks/releases/download/v1.3.0/s1-kiosk-arm64-v8a-1.3.0.apk", o.apk.url)
             assertEquals("s1-kiosk-arm64-v8a-1.3.0.apk.sha256", o.sha256.name)
             assertEquals(15L, o.apk.size)
         }

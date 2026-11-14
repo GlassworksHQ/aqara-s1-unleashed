@@ -33,7 +33,7 @@ const KIOSK = env('KIOSK_APK', join(REPO, 'app/kiosk/build/outputs/apk/debug/kio
 const KEYBOARD = process.env.KEYBOARD_APK;
 
 const repo = (p) => join(REPO, p);
-const SRC = 'https://github.com/GlassworksHQ/aqara-s1-unleashed';
+const SRC = 'https://github.com/GlassworksHQ/glassworks';
 const assets = [
   { name: 'uboot-spl', file: join(UBOOT, 'u-boot-sunxi-with-spl.bin'), license: 'GPL-2.0-or-later', source: `${SRC}/tree/main/tools/fel/uboot (U-Boot + our patches)` },
   { name: 'uboot', file: join(UBOOT, 'u-boot.bin'), license: 'GPL-2.0-or-later', source: `${SRC}/tree/main/tools/fel/uboot (U-Boot + our patches)` },
@@ -74,7 +74,7 @@ async function download(url) {
 async function latestKiosk() {
   const gh = { 'user-agent': 's1-unleashed-installer-build', accept: 'application/vnd.github+json',
     ...(process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}) };
-  const r = await fetch('https://api.github.com/repos/GlassworksHQ/aqara-s1-unleashed/releases?per_page=30', { headers: gh });
+  const r = await fetch('https://api.github.com/repos/GlassworksHQ/glassworks/releases?per_page=30', { headers: gh });
   if (!r.ok) throw new Error(`GitHub releases: HTTP ${r.status}`);
   const rel = (await r.json()).find((x) => !x.draft && !x.prerelease && /^(aqara-s1-plus-)?v\d+\.\d+\.\d+$/.test(x.tag_name));
   if (!rel) throw new Error('no S1 Kiosk release yet');
