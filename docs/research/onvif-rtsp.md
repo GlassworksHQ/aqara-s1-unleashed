@@ -120,6 +120,12 @@ setup and two Protect notes (read 2026-11-14):
 
 - With no sign-in set, both servers refuse every request that needs a user. Upstream let everyone
   in. The approved design has no default stream password; the sign-in comes from the Manage page.
+  A username with a blank password counts as no sign-in.
+- XML with a DTD is refused before it is parsed, in SOAP and in WS-Discovery: parsing runs before
+  any sign-in, and Android's parser ignores upstream's `disallow-doctype-decl` flag, so an entity
+  bomb or an external entity would otherwise reach it. An entity resolver refuses the rest.
+- The RTSP server binds its port before it counts as running, so a port clash throws and a later
+  start can still bind.
 - Nothing listens until the pane starts the servers, and the pane starts them only while
   `onvif_stream` is on, the camera is in Presence + snapshots, and privacy is off
   (`CameraPolicy.streamMayRun`).

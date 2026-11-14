@@ -3,7 +3,8 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package; with no credentials every request that needs a user is refused (upstream let everyone in). */
+ * Changes: package; with no credentials, or a username without a password, every request that needs a
+ * user is refused (upstream let everyone in). */
 
 package dev.glassworks.camera.onvif
 
@@ -323,7 +324,7 @@ class OnvifServer(
 
     internal enum class AuthResult { OK, MISSING, BAD }
 
-    private fun creds(): Pair<String, String>? = credentials()?.takeIf { it.first.isNotBlank() }
+    private fun creds(): Pair<String, String>? = credentials()?.takeIf { it.first.isNotBlank() && it.second.isNotEmpty() }
 
     internal fun checkAuth(header: Element?, method: String, uri: String, headers: Map<String, String>): AuthResult {
         // Glassworks: no sign-in set means nobody gets in (upstream let everyone in).

@@ -3,7 +3,9 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package; with no credentials every request is refused (upstream let everyone in), so the stream has no default password. */
+ * Changes: package; with no credentials, or a username without a password, every request is refused
+ * (upstream let everyone in), so the stream has no default password; start() binds before it counts as
+ * running, so a port clash can be retried. */
 
 package dev.glassworks.camera.onvif
 
@@ -59,11 +61,14 @@ class RtspServer(
     private val describeWaiters = java.util.concurrent.atomic.AtomicInteger()
     @Volatile private var lastReportedCount = -1
 
+    /** Binds first and throws if it can't (the port is taken): only a bound server counts as running. */
+    @Synchronized
     fun start() {
-        if (!running.compareAndSet(false, true)) return
+        if (running.get()) return
         val ss = ServerSocket()
         ss.reuseAddress = true
-        ss.bind(InetSocketAddress(port))
+        try { ss.bind(InetSocketAddress(port)) } catch (e: Exception) { ss.close(); throw e }
+        running.set(true)
         serverSocket = ss
         openUdpPair()
         thread("RtspAccept") { acceptLoop(ss) }
@@ -72,6 +77,7 @@ class RtspServer(
         onLog("RTSP server listening on port $port")
     }
 
+    @Synchronized
     fun stop() {
         if (!running.compareAndSet(true, false)) return
         try { serverSocket?.close() } catch (_: Exception) {}
@@ -339,7 +345,7 @@ class RtspServer(
 
         private fun authorized(req: RtspRequest): Boolean {
             // Glassworks: no sign-in set means nobody gets the stream (upstream let everyone in).
-            val cred = credentials()?.takeIf { it.first.isNotBlank() } ?: return false
+            val cred = credentials()?.takeIf { it.first.isNotBlank() && it.second.isNotEmpty() } ?: return false
             return auth.verify(req.header("Authorization"), req.method, cred.first, cred.second)
         }
 

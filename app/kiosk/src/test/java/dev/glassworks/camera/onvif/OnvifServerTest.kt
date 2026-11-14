@@ -204,6 +204,49 @@ class OnvifServerTest {
         assertEquals(401, s.handle("GET", "/onvif/snapshot.jpg", basic, ByteArray(0)).status)
     }
 
+    @Test fun `a username with a blank password is no sign-in`() {
+        val s = OnvifServer(port = 0, host = { "192.0.2.41" }, info = { OnvifDeviceInfo("x", "x", "x", "x", "x", "02:00:00:00:00:02", "x") },
+            stream = { OnvifStreamInfo("rtsp://192.0.2.41:8554/live", 1280, 720, 15, 1400) },
+            credentials = { user to "" }, snapshot = { byteArrayOf(1) }, enableDiscovery = false).also { server = it }
+        assertEquals(401, call(s, "<tds:GetDeviceInformation/>", header = usernameToken(password = "")).status)
+        val basic = mapOf("authorization" to "Basic " + OnvifBase64.encode("$user:".toByteArray()))
+        assertEquals(401, s.handle("GET", "/onvif/snapshot.jpg", basic, ByteArray(0)).status)
+    }
+
+    @Test fun `a DTD is refused before parsing, so no entity expands`() {
+        val s = newServer(withCreds = false)
+        val xxe = "<?xml version=\"1.0\"?><!DOCTYPE e [<!ENTITY x SYSTEM \"file:///etc/hosts\">]>" +
+            "<s:Envelope xmlns:s=\"${OnvifNs.SOAP}\" xmlns:tds=\"${OnvifNs.TDS}\"><s:Body><tds:GetSystemDateAndTime>&x;</tds:GetSystemDateAndTime></s:Body></s:Envelope>"
+        val r = s.handle("POST", "/onvif/device_service", emptyMap(), xxe.toByteArray())
+        assertEquals(400, r.status)
+        assertTrue(r.text.contains("ter:WellFormed"))
+        // Even a harmless DTD: the guard is the check before the parser, not the parser's own flags.
+        assertNull(OnvifXml.parse("<!doctype s><s/>"))
+        assertNull(OnvifXml.parse("<s/><!ENTITY x \"y\">"))
+        assertNotNull(OnvifXml.parse(soap("<tds:GetSystemDateAndTime/>", "")))
+        assertNull(discovery.buildProbeMatch(xxe))
+    }
+
+    /** Like AOSP's factory: every feature flag is refused, so only the check before parsing is left. */
+    private class AndroidLikeFactory : javax.xml.parsers.DocumentBuilderFactory() {
+        private val real = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+        override fun newDocumentBuilder(): javax.xml.parsers.DocumentBuilder {
+            real.isNamespaceAware = isNamespaceAware
+            real.isExpandEntityReferences = isExpandEntityReferences
+            return real.newDocumentBuilder()
+        }
+        override fun setFeature(name: String, value: Boolean) = throw javax.xml.parsers.ParserConfigurationException(name)
+        override fun getFeature(name: String) = throw javax.xml.parsers.ParserConfigurationException(name)
+        override fun setAttribute(name: String, value: Any?) = throw IllegalArgumentException(name)
+        override fun getAttribute(name: String): Any = throw IllegalArgumentException(name)
+    }
+
+    @Test fun `an internal entity bomb is refused even by a parser that ignores the feature flags`() {
+        val bomb = "<?xml version=\"1.0\"?><!DOCTYPE s [<!ENTITY a \"aaaaaaaaaa\"><!ENTITY b \"&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;\">]><s>&b;</s>"
+        assertNotNull("the stand-in parser would read it", AndroidLikeFactory().newDocumentBuilder().parse(bomb.byteInputStream()))
+        assertNull(OnvifXml.parse(bomb) { AndroidLikeFactory() })
+    }
+
     @Test fun `nothing listens until start`() {
         val port = java.net.ServerSocket(0).use { it.localPort }
         val s = OnvifServer(port = port, host = { "192.0.2.41" }, info = { error("unused") }, stream = { error("unused") },

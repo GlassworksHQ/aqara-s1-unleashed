@@ -3,7 +3,8 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package only. */
+ * Changes: package; parse() refuses a DTD or an entity before parsing, and an entity resolver refuses
+ * the rest, because Android's parser ignores upstream's feature flag. */
 
 package dev.glassworks.camera.onvif
 
@@ -57,13 +58,29 @@ internal object OnvifXml {
         return sb.toString()
     }
 
-    fun parse(xml: String): Document? = try {
-        val f = DocumentBuilderFactory.newInstance()
-        f.isNamespaceAware = true
-        f.isExpandEntityReferences = false
-        try { f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) } catch (_: Exception) {}
-        f.newDocumentBuilder().parse(ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8)))
-    } catch (_: Exception) { null }
+    /**
+     * Parses a SOAP message, or null. It runs before any sign-in and on WS-Discovery's UDP port, so a
+     * DTD is refused before the parser sees it: no ONVIF message has one, and Android's parser ignores
+     * the feature flags below (they stay as a second guard on the JVM). An entity resolver refuses the
+     * rest.
+     */
+    fun parse(xml: String, factory: () -> DocumentBuilderFactory = DocumentBuilderFactory::newInstance): Document? {
+        if (xml.contains("<!DOCTYPE", ignoreCase = true) || xml.contains("<!ENTITY", ignoreCase = true)) return null
+        return try {
+            val f = factory()
+            f.isNamespaceAware = true
+            f.isExpandEntityReferences = false
+            for ((feature, on) in listOf(
+                "http://apache.org/xml/features/disallow-doctype-decl" to true,
+                "http://xml.org/sax/features/external-general-entities" to false,
+                "http://xml.org/sax/features/external-parameter-entities" to false,
+                "http://apache.org/xml/features/nonvalidating/load-external-dtd" to false,
+            )) try { f.setFeature(feature, on) } catch (_: Exception) {}
+            val b = f.newDocumentBuilder()
+            b.setEntityResolver { _, _ -> throw org.xml.sax.SAXException("entities are refused") }
+            b.parse(ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8)))
+        } catch (_: Exception) { null }
+    }
 
     fun children(e: Node?): List<Element> {
         if (e == null) return emptyList()

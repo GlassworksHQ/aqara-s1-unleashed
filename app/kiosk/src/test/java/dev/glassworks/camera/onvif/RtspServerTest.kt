@@ -195,6 +195,27 @@ class RtspServerTest {
         c.sock.close()
     }
 
+    @Test fun aUsernameWithABlankPasswordIsNoSignIn() {
+        startServer("admin" to "")
+        val c = Client(port, auth = "admin" to "")
+        val url = "rtsp://127.0.0.1:$port/live"
+        assertTrue(c.request("DESCRIBE", url).first.startsWith("RTSP/1.0 401"))
+        assertTrue(c.request("PLAY", url, listOf("Session: DEADBEEF")).first.startsWith("RTSP/1.0 401"))
+        c.sock.close()
+    }
+
+    @Test fun aPortClashThrowsAndALaterStartBinds() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it })
+        val squatter = ServerSocket(port)
+        assertTrue(runCatching { server.start() }.isFailure)
+        squatter.close()
+        server.start()
+        val c = Client(port)
+        assertTrue(c.request("OPTIONS", "rtsp://127.0.0.1:$port/live").first.startsWith("RTSP/1.0 200"))
+        c.sock.close()
+    }
+
     @Test fun nothingListensUntilStart() {
         port = freePort()
         server = RtspServer(port, { USER }, { counts += it })
