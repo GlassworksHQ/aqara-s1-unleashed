@@ -98,8 +98,9 @@ scanner mode switch (`FEATURE_STATE_AND_MODE`).
 
 ## Privacy
 
-Nothing here logs an address. Addresses go only to the subscribed client, as with an ESPHome
-proxy.
+Nothing here logs an address. Addresses go only to the subscribed client, and only an authenticated
+connection (Noise with the device's provisioned key) may subscribe: `BluetoothProxyHandler.authOnly`,
+on by default. On a device without a key, nobody on the LAN can listen in plaintext.
 
 ## Tests
 

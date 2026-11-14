@@ -419,6 +419,10 @@ class ApiServer(
     private fun subscribeBluetooth(c: Connection) {
         synchronized(bluetoothLock) {
             val bt = bluetooth ?: return
+            if (bt.authOnly && !c.authenticated) {
+                EspHomeLog.w("[${c.id}] Bluetooth subscription refused: only from an authenticated (encrypted, provisioned) connection")
+                return
+            }
             val previous = bluetoothConn
             if (previous === c || !c.isOpen) return
             bluetoothConn = c

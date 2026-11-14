@@ -307,7 +307,9 @@ services › Bluetooth*, and hears the BLE sensors near the panel through it. No
   `No permission`, `Retrying` or `No Bluetooth LE`. Both are unavailable while the pane is off.
 - Android hands Bluetooth results to apps only while **location** is on. The settings page offers to
   turn Bluetooth and location on when they are off.
-- The panel never logs or keeps the addresses it hears. They go only to Home Assistant.
+- The panel never logs or keeps the addresses it hears. They go only to Home Assistant, and only
+  over an encrypted connection with the panel's key: Home Assistant 2026.11 and later sets it when
+  you add the panel. Without a key, the proxy answers nobody, so no one else on the LAN can listen.
 
 How it works, and Android's limits on scanning, are in the
 [bluetooth-proxy library](../app/libs/bluetooth-proxy/README.md).

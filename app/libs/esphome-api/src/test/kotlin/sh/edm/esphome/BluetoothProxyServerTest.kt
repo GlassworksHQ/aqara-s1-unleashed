@@ -20,9 +20,11 @@ class BluetoothProxyServerTest {
         voiceFeatures = 0,
     )
     private val calls = CopyOnWriteArrayList<Boolean>()
+    /** These tests drive the server in plaintext ([PlainClient]): the subscription's own rules, the key aside. */
     private val handler = object : BluetoothProxyHandler {
         override val featureFlags = BluetoothProxyFeature.PASSIVE_SCAN or BluetoothProxyFeature.RAW_ADVERTISEMENTS
         override fun onSubscribed(subscribed: Boolean) { calls += subscribed }
+        override val authOnly = false
     }
     private val server = ApiServer(0, { identity }, emptyList(), keys = null, bindAddress = InetAddress.getLoopbackAddress())
 
@@ -101,6 +103,7 @@ class BluetoothProxyServerTest {
         val b = object : BluetoothProxyHandler {
             override val featureFlags = handler.featureFlags
             override fun onSubscribed(subscribed: Boolean) { other += subscribed }
+            override val authOnly = false
         }
         PlainClient(server.localPort).use { c ->
             c.subscribe()
@@ -165,6 +168,20 @@ class BluetoothProxyServerTest {
                 assertEquals(0xC0FFEE000002L, second.await(BluetoothMsg.LE_RAW_ADVERTISEMENTS_RESPONSE).messages(1)[0].long(1))
                 assertTrue("and nothing more to the first", first.roundTrip().none { it.type == BluetoothMsg.LE_RAW_ADVERTISEMENTS_RESPONSE })
             }
+        }
+    }
+
+    /** A proxy as the engine is one: a plaintext client on a panel without a key hears nothing (#226 review). */
+    @Test fun aPlaintextClientCantListenToAKeyedProxy() {
+        server.bluetooth = object : BluetoothProxyHandler {
+            override val featureFlags = handler.featureFlags
+            override fun onSubscribed(subscribed: Boolean) { calls += subscribed }
+        }
+        server.start()
+        PlainClient(server.localPort).use { stranger ->
+            stranger.subscribe()
+            assertEquals("the proxy wasn't told of a subscriber", emptyList<Boolean>(), calls)
+            assertFalse("and nothing is sent", server.sendBluetoothAdvertisements(listOf(advertisement(1))))
         }
     }
 

@@ -2,7 +2,9 @@
 pins, reads the device info and decides on a Bluetooth scanner as HA's esphome integration does
 (manager.py: any flag connects one; bleak-esphome connect.py connect_scanner: raw advertisements,
 connectable), subscribes to raw advertisements and collects <count> of them, then disconnects.
-Usage: esphome_bluetooth_proxy.py <port> <count>; prints RESULT {json}."""
+It connects with the device's Noise key, as Home Assistant does once it has provisioned one: the
+proxy only answers an authenticated connection.
+Usage: esphome_bluetooth_proxy.py <port> <count> <noise psk, base64>; prints RESULT {json}."""
 import asyncio
 import json
 import sys
@@ -11,8 +13,8 @@ from aioesphomeapi import APIClient
 from aioesphomeapi.model import BluetoothProxyFeature
 
 
-async def main(port: int, count: int) -> None:
-    cli = APIClient("127.0.0.1", port, None, client_info="Home Assistant test")
+async def main(port: int, count: int, psk: str) -> None:
+    cli = APIClient("127.0.0.1", port, None, client_info="Home Assistant test", noise_psk=psk)
     await cli.connect(login=True)
     info = await cli.device_info()
     flags = info.bluetooth_proxy_feature_flags_compat(cli.api_version)
@@ -50,4 +52,4 @@ async def main(port: int, count: int) -> None:
     print("RESULT " + json.dumps(out), flush=True)
 
 
-asyncio.run(main(int(sys.argv[1]), int(sys.argv[2])))
+asyncio.run(main(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]))
