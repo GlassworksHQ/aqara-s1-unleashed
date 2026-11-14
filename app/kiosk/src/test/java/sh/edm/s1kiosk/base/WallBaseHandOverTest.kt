@@ -48,12 +48,15 @@ class WallBaseHandOverTest {
     /** The transport of each link, as it opened. */
     private val opened = Collections.synchronizedList(ArrayList<String>())
 
+    /** The "s1-base" executor each link was made on, in order. */
+    private val executors = Collections.synchronizedList(ArrayList<java.util.concurrent.ScheduledExecutorService>())
+
     /** A base whose link [gated] closes only when the test releases [gate]; the others take [closeMs]. */
     private fun base(closeMs: Long, closeWaitMs: Long = 30_000, gated: Int = 0, gate: CountDownLatch? = null): WallBase {
         var made = 0
         return WallBase(
             RuntimeEnvironment.getApplication(), BaseLayout.NONE, Quiet, WallBase.Config(BaseBackend.UART, "tcp:c0"),
-            { c, _, _ -> ++made; SlowLink(made, c.transport, closeMs, gate.takeIf { made == gated }) }, closeWaitMs,
+            { c, ex, _ -> ++made; executors += ex; SlowLink(made, c.transport, closeMs, gate.takeIf { made == gated }) }, closeWaitMs,
         )
     }
 
@@ -112,10 +115,15 @@ class WallBaseHandOverTest {
             b.start(WallBase.Config(BaseBackend.UART, "tcp:c2"))
             waitFor("the new config's link open") { "tcp:c2" in opened }
             gate.countDown()
-            waitFor("old link closed") { "closed 1" in log }
-            Thread.sleep(300) // the stale reconfigure's turn, if it took one
+            // The old thread runs the stale reconfigure, then the stop queued behind it, then ends.
+            assertTrue("the old thread ran its queued tasks",
+                executors.first().awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue("closed 1" in log)
             assertEquals("tcp:c2", b.config.transport)
             assertEquals("only the first link and the new config's: $opened", listOf("tcp:c0", "tcp:c2"), opened.toList())
+            assertTrue("the stale stop left the new link open: $log", "closed 2" !in log)
+            b.stop()
+            waitFor("the new link closed by the next stop") { "closed 2" in log }
         } finally {
             gate.countDown()
             b.stop()
