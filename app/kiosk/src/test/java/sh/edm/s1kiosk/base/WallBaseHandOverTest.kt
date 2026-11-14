@@ -113,9 +113,12 @@ class WallBaseHandOverTest {
             waitFor("the new config's link open") { "tcp:c2" in opened }
             gate.countDown()
             waitFor("old link closed") { "closed 1" in log }
-            Thread.sleep(300) // the stale reconfigure's turn, if it took one
+            Thread.sleep(300) // the stale tasks' turn: the reconfigure, then the stop queued behind it
             assertEquals("tcp:c2", b.config.transport)
             assertEquals("only the first link and the new config's: $opened", listOf("tcp:c0", "tcp:c2"), opened.toList())
+            assertTrue("the stale stop left the new link open: $log", "closed 2" !in log)
+            b.stop()
+            waitFor("the new link closed by the next stop") { "closed 2" in log }
         } finally {
             gate.countDown()
             b.stop()

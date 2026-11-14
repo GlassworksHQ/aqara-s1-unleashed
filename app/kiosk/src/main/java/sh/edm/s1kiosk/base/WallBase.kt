@@ -109,7 +109,9 @@ class WallBase internal constructor(
         val e = exec
         try {
             // Takes the link out first: a close that outlasts the next start's wait can't clear its successor.
-            e.submit { val l = link; link = null; l?.stop() }.get(3, TimeUnit.SECONDS)
+            // Queued behind a slow task and run after a newer start: that start owns the link (its
+            // startLink() closes one still open), so this one leaves it alone.
+            e.submit { if (exec !== e) return@submit; val l = link; link = null; l?.stop() }.get(3, TimeUnit.SECONDS)
         } catch (_: java.util.concurrent.TimeoutException) {
             Log.w(TAG, "the wall base link takes more than 3 s to close; it goes on closing")
         } catch (_: Exception) {}

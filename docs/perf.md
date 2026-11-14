@@ -1200,8 +1200,9 @@ per frame and pane, with budgets. Its two halves come from different places:
   and the frame's size budget in the same `frames/<id>/budgets.json`. See [APK size](size.md).
   `--apk` still adds sizes to a device report.
 - **Panes** use the ids from the code (`assist`, `sendspin`, `radio`, `wall-base`, `timers`,
-  `time-zone`, `diagnostics`). Only `assist` and `sendspin` can be switched today; the others wait on
-  [#67](https://github.com/GlassworksHQ/glassworks/issues/67).
+  `time-zone`, `diagnostics`). Since [#67](https://github.com/GlassworksHQ/glassworks/issues/67),
+  `assist`, `sendspin`, `wall-base`, `time-zone` and `diagnostics` can be switched; `radio` and
+  `timers` are `not_switched`, and [RAM](#ram) says why.
 
 ## Page log lines
 
