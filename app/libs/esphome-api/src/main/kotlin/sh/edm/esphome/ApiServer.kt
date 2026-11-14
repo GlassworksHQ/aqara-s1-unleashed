@@ -165,6 +165,23 @@ class ApiServer(
      */
     @Volatile var sendspin: SendspinTokenSource? = null
 
+    /**
+     * The device's Bluetooth proxy, or null for none (no flags in DeviceInfo, subscriptions ignored).
+     * Its [BluetoothProxyHandler.onSubscribed] is called under a lock, so it must not block. Replacing
+     * it while a client is subscribed tells the old one the subscriber left and the new one it came.
+     */
+    @Volatile var bluetooth: BluetoothProxyHandler? = null
+        set(value) {
+            synchronized(bluetoothLock) {
+                val old = field
+                if (old === value) return
+                field = value
+                if (bluetoothConn == null) return
+                old?.onSubscribed(false)
+                if (value == null) bluetoothConn = null else value.onSubscribed(true)
+            }
+        }
+
     /** Called after a command message was handled (state may have changed). */
     @Volatile var onCommand: (() -> Unit)? = null
 
@@ -205,6 +222,8 @@ class ApiServer(
     /** [CAMERA_STREAM_MS]; shorter in tests. Set before [start]. */
     @Volatile internal var cameraStreamMs = CAMERA_STREAM_MS
     @Volatile private var voiceConn: Connection? = null
+    private val bluetoothLock = Any()
+    @Volatile private var bluetoothConn: Connection? = null
 
     private val stateLock = Any()
     private val lastStates = HashMap<Int, ByteArray>()
@@ -380,6 +399,42 @@ class ApiServer(
         null
     }
 
+    /** Sends one batch of advertisements to the client that subscribed to them. False if none did. */
+    fun sendBluetoothAdvertisements(batch: List<RawAdvertisement>): Boolean {
+        val frame = Frame(BluetoothMsg.LE_RAW_ADVERTISEMENTS_RESPONSE, rawAdvertisements(batch).toByteArray())
+        // Under the lock, so a batch never reaches a client another one has just replaced. send only queues.
+        synchronized(bluetoothLock) {
+            val c = bluetoothConn ?: return false
+            return c.send(listOf(frame))
+        }
+    }
+
+    /** Takes [handler] out if it is still [bluetooth] (not if another one replaced it). True if it was. */
+    fun removeBluetooth(handler: BluetoothProxyHandler): Boolean = synchronized(bluetoothLock) {
+        if (bluetooth !== handler) return false
+        bluetooth = null
+        true
+    }
+
+    private fun subscribeBluetooth(c: Connection) {
+        synchronized(bluetoothLock) {
+            val bt = bluetooth ?: return
+            val previous = bluetoothConn
+            if (previous === c || !c.isOpen) return
+            bluetoothConn = c
+            if (previous == null) bt.onSubscribed(true)
+            else EspHomeLog.w("[${c.id}] Bluetooth subscription replaces [${previous.id}]")
+        }
+    }
+
+    private fun unsubscribeBluetooth(c: Connection) {
+        synchronized(bluetoothLock) {
+            if (bluetoothConn !== c) return
+            bluetoothConn = null
+            bluetooth?.onSubscribed(false)
+        }
+    }
+
     /** Sends a voice assistant message to the subscribed Home Assistant connection. */
     fun sendVoice(type: Int, payload: ProtoWriter): Boolean {
         val c = voiceConn ?: return false
@@ -527,6 +582,7 @@ class ApiServer(
                 voiceConn = null
                 voice?.onSubscribe(false)
             }
+            unsubscribeBluetooth(this)
             if (!reply(Msg.DISCONNECT_REQUEST)) { close(); return }
             Thread({
                 try { Thread.sleep(500) } catch (_: InterruptedException) {}
@@ -545,6 +601,7 @@ class ApiServer(
                 voiceConn = null
                 voice?.onSubscribe(false)
             }
+            unsubscribeBluetooth(this)
             EspHomeLog.i("[$id] $remote disconnected")
         }
 
@@ -594,6 +651,8 @@ class ApiServer(
                         Frame(Msg.LIST_ENTITIES_DONE, ByteArray(0))
                     send(frames)
                 }
+                BluetoothMsg.SUBSCRIBE_LE_ADVERTISEMENTS_REQUEST -> subscribeBluetooth(this)
+                BluetoothMsg.UNSUBSCRIBE_LE_ADVERTISEMENTS_REQUEST -> unsubscribeBluetooth(this)
                 Msg.SUBSCRIBE_STATES_REQUEST -> {
                     subscribeStates()
                     try { onStatesSubscribed?.invoke(clientInfo, socket.inetAddress, authenticated) } catch (t: Throwable) { EspHomeLog.w("onStatesSubscribed failed", t) }
@@ -752,6 +811,7 @@ class ApiServer(
                 .uint32(10, d.webserverPort)
                 .string(12, d.manufacturer, force = true)
                 .string(13, d.friendlyName, force = true)
+                .uint32(15, bluetooth?.featureFlags ?: 0)
                 .uint32(17, d.voiceFeatures)
                 // api_encryption_supported (19) / api_encryption_provisionable (26), as an ESPHome
                 // build with `api: encryption:` and no YAML key (api_connection.cpp device_info).

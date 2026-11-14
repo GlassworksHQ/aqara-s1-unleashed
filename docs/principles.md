@@ -159,7 +159,8 @@ and HA's device page stays short. So every entity has a place:
 
 <a href="https://www.glassworks.dev/brand#parts"><picture><source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/brand/badge-library-on-dark.svg"><img alt="Glassworks Library" src="https://www.glassworks.dev/brand/badge-library-on-light.svg" height="30"></picture></a>
 
-Protocols, written so anyone can use them: `esphome-api`, `esphome-api-android`, `improv`.
+Protocols, written so anyone can use them: `esphome-api`, `esphome-api-android`, `improv`,
+`bluetooth-proxy`.
 
 - **One protocol per library**, with no Glassworks dependency. Someone building something else
   should be able to take it as it is.
