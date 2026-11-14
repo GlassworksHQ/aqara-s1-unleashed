@@ -224,7 +224,8 @@ class CameraPresence(
             post {
                 if (!isOpen()) return@post
                 if (first) onProblem(why)
-                onReading(false, -1f)
+                // A frame scored since the failure has already said where things stand.
+                if (synchronized(lock) { failing }) onReading(false, -1f)
             }
         }
 

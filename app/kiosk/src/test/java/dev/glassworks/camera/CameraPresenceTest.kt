@@ -335,6 +335,27 @@ class CameraPresenceTest {
         assertEquals("one frame at a time in the detector", 1, most)
     }
 
+    @Test fun aFrameScoredBeforeAFailureIsDeliveredWinsOverIt() {
+        val cam = FakeCamera()
+        val queue = mutableListOf<Runnable>()
+        var scoreFirst = false
+        val readings = mutableListOf<Pair<Boolean, Float>>()
+        val problems = mutableListOf<String>()
+        val p = CameraPresence(cam, { 0.9f }, filter = PresenceFilter(enterHits = 1), clock = { 0L }, after = { _, _ -> },
+            onProblem = { problems += it },
+            post = { r ->
+                // The camera came back: a frame is scored and posted before the failure's reading is.
+                if (scoreFirst) { scoreFirst = false; cam.sink!!.frame(blank) }
+                queue += r
+            })
+        p.start(ctx) { near, raw -> readings += near to raw }
+        scoreFirst = true
+        cam.sink!!.lost("glitch")
+        queue.forEach { it.run() }
+        assertEquals(listOf(true to 0.9f), readings)
+        assertEquals(listOf("the camera stopped: glitch"), problems)
+    }
+
     @Test fun aRangeIsRefusedInWordsAndZeroIsFine() {
         val p = CameraPresence(FakeCamera(), { 0f }, post = { it.run() }, after = { _, _ -> })
         assertNull(p.setRange(ctx, 0f))
