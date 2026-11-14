@@ -84,8 +84,8 @@ conflict" dialog.
 
 | The frame | Node name (`device_name`, mDNS) | Friendly name (the device page) |
 |---|---|---|
-| One device (the S1) | The frame's id and the suffix: `aqara-s1-plus-a1b2c3` | The frame's name: "Aqara S1 Plus" |
-| Many devices (generic-android: any device that isn't an S1) | The model as a host name and the suffix: `pixel-tablet-a1b2c3` | The model: "Pixel Tablet" |
+| `namedBy = FRAME`: one product (the S1) | The frame's id and the suffix: `aqara-s1-plus-a1b2c3` | The frame's name: "Aqara S1 Plus" |
+| `namedBy = MODEL`: many devices (generic-android: any device that isn't an S1) | The model as a host name and the suffix: `pixel-tablet-a1b2c3` | The model: "Pixel Tablet" |
 
 The node name is lowercase `a-z0-9-` and at most 63 characters. It is the same on every start and after
 an update, because the MAC is kept in prefs (`device_mac`). The code is `dev.glassworks.frame.DeviceName`,

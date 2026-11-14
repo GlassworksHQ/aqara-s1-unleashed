@@ -11,6 +11,7 @@ import dev.glassworks.frame.Capability.SILABS_RADIO
 import dev.glassworks.frame.Capability.SPEAKER
 import dev.glassworks.frame.Frame
 import dev.glassworks.frame.Hardware
+import dev.glassworks.frame.NamedBy
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PaneDefinition
 import sh.edm.s1kiosk.KioskPrefs
@@ -22,6 +23,8 @@ import java.util.concurrent.ScheduledExecutorService
 /** The Aqara Panel Hub S1 Plus, the frame this app is built for. Chosen on its hardware only ([orElse]). */
 class AqaraS1Plus : Frame {
     override val board = "aqara-s1-plus"
+
+    override val namedBy = NamedBy.FRAME
 
     override val displayName = DISPLAY_NAME
 

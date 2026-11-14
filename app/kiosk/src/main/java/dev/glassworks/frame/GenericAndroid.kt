@@ -19,6 +19,8 @@ import java.util.concurrent.ScheduledExecutorService
 class GenericAndroid(private val context: Context) : Frame {
     override val board = "generic-android"
 
+    override val namedBy = NamedBy.MODEL
+
     override val hardware = Hardware(Platform.manufacturer, Platform.model, Platform.hardware)
 
     override val provides: Set<Capability> by lazy { Capability.ofDevice(context.packageManager::hasSystemFeature) }

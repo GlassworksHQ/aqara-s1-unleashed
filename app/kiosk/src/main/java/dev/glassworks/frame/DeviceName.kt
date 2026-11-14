@@ -21,16 +21,17 @@ object DeviceName {
     private val MARKS = Regex("\\p{M}+")
     private val NOT_HOSTNAME = Regex("[^a-z0-9]+")
 
-    /** [frameName] ([Frame.displayName]), or [model] on a frame that stands for many devices. */
-    fun friendly(frameName: String?, model: String): String = frameName ?: model.trim().ifEmpty { "Android" }
+    /** [frameName] ([Frame.displayName]) on a frame [NamedBy.FRAME], unless it is blank; else [model]. */
+    fun friendly(namedBy: NamedBy, frameName: String?, model: String): String =
+        frameName?.trim()?.takeIf { namedBy == NamedBy.FRAME && it.isNotEmpty() } ?: model.trim().ifEmpty { "Android" }
 
     /**
-     * `aqara-s1-plus-a1b2c3`, `pixel-tablet-a1b2c3`: [frameId] when the frame has a [frameName], else
-     * [model] as a host name, then the MAC's last three bytes. Null when [mac] isn't `AA:BB:CC:DD:EE:FF`.
+     * `aqara-s1-plus-a1b2c3`, `pixel-tablet-a1b2c3`: [frameId] on a frame [NamedBy.FRAME], else [model] as a
+     * host name, then the MAC's last three bytes. Null when [mac] isn't `AA:BB:CC:DD:EE:FF`.
      */
-    fun node(frameId: String, frameName: String?, model: String, mac: String): String? {
+    fun node(namedBy: NamedBy, frameId: String, model: String, mac: String): String? {
         val suffix = MAC.matchEntire(mac)?.groupValues?.drop(1)?.joinToString("")?.lowercase(Locale.ROOT) ?: return null
-        val what = hostname(if (frameName != null) frameId else model).ifEmpty { "android" }
+        val what = hostname(if (namedBy == NamedBy.FRAME) frameId else model).ifEmpty { "android" }
         return what.take(MAX_LENGTH - suffix.length - 1).trimEnd('-') + "-" + suffix
     }
 
@@ -41,7 +42,7 @@ object DeviceName {
 }
 
 /** What Home Assistant shows for this device. */
-fun Frame.friendlyName(): String = DeviceName.friendly(displayName, Platform.model)
+fun Frame.friendlyName(): String = DeviceName.friendly(namedBy, displayName, Platform.model)
 
 /** This device's ESPHome node name, for the [mac] it reports. Null when [mac] isn't `AA:BB:CC:DD:EE:FF`. */
-fun Frame.nodeName(mac: String): String? = DeviceName.node(board, displayName, Platform.model, mac)
+fun Frame.nodeName(mac: String): String? = DeviceName.node(namedBy, board, Platform.model, mac)
