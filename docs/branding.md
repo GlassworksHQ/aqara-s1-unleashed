@@ -39,8 +39,8 @@ Device-specific code lives in the frame, so it doesn't get a badge of its own.
 ## Licence, status and roadmap
 
 Use the Glassworks info badges, not shields.io: a licence badge, `badge-roadmap`, and one status
-badge for the stage the project is at: `badge-status-under-development`, `badge-status-alpha`,
-`badge-status-beta` or `badge-status-stable`. Each comes as `-on-dark.svg` and `-on-light.svg`. They're on [/brand#info](https://www.glassworks.dev/brand#info), with a README snippet.
+badge for the stage the project is at: `badge-status-planned`, `badge-status-under-development`,
+`badge-status-alpha`, `badge-status-beta` or `badge-status-stable`. Each comes as `-on-dark.svg` and `-on-light.svg`. They're on [/brand#info](https://www.glassworks.dev/brand#info), with a README snippet.
 The licence badge is `badge-license` (MPL-2.0) for the Glassworks core and `badge-license-mit` (MIT)
 for the libraries in `app/libs/`, which are MIT like the rest of this repo.
 They sit on the same field as the part badges, so a header reads as one set. If you need one that
@@ -81,7 +81,7 @@ has no hue of its own: a frame is hardware, the bottom plate of the stack.
 
 The frame's README also carries its Clarity badge, `https://www.glassworks.dev/frames/<id>/clarity-on-dark.svg`
 and `-on-light.svg`. The site draws it at build time from the frame's `design/clarity.json` (none
-yet reads "not measured"), and `tools/check-brand-images.py` doesn't check it: that tool covers
+exists yet, so it reads "not measured"), and `tools/check-brand-images.py` doesn't check it: that tool covers
 `/brand/` images only.
 
 ## Colour, in short
