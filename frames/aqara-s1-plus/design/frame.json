@@ -1,8 +1,10 @@
 {
   "id": "aqara-s1-plus",
   "name": "Aqara S1 Plus",
+  "brand": "Aqara",
   "status": "beta",
   "summary": "The reference frame. Every pane runs on it, including the Zigbee/Thread radio and the wall base.",
+  "tagline": "A133 wall panel, rooted. The reference frame.",
   "project": {
     "name": "S1 Unleashed",
     "href": "https://github.com/GlassworksHQ/aqara-s1-unleashed"

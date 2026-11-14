@@ -36,9 +36,11 @@ describes the device's look in millimetres"). Kiln's picker reads it, and glassw
 |---|---|
 | `id` | The frame's id, the same as its folder (and Kiln's route, `/<id>`) |
 | `name` | The product's name, e.g. `Aqara S1 Plus` |
+| `brand` | Optional. The maker's part of `name` (`Aqara`), set light in the frame's banner; the rest of `name` is bold. `name` must start with it and a space |
 | `aka` | Optional. Other names it is sold under |
 | `status` | `planned`, `development`, `alpha`, `beta` or `stable` (the status badges) |
 | `summary` | One sentence on why this device |
+| `tagline` | Optional. The frame's banner's line under `frames/<id>`, at most 50 characters. glassworks.dev's `pnpm brand` draws the banner and fails if it doesn't fit |
 | `project` | Optional. `{ name, href }` of the frame's own project |
 | `kiln` | Optional. Kiln's route, once the frame installs from Kiln |
 | `model` | The device's look in mm, for the 3D mockup (below) |
