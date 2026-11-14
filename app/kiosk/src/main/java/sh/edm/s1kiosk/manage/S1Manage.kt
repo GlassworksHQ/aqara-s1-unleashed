@@ -25,7 +25,6 @@ import dev.glassworks.manage.PanelActions
 import dev.glassworks.manage.PanelStatus
 import dev.glassworks.manage.SessionStore
 import dev.glassworks.manage.Tile
-import dev.glassworks.pane.PaneState
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
 import dev.glassworks.pane.paneSections
@@ -49,11 +48,9 @@ import sh.edm.s1kiosk.auth.ThreadJoin
 import sh.edm.s1kiosk.auth.TokenResult
 import sh.edm.s1kiosk.auth.WsHaSocket
 import sh.edm.s1kiosk.esphome.PanelDevice
-import sh.edm.s1kiosk.radio.RadioMode
 import sh.edm.s1kiosk.settings.CoreSettings
 import sh.edm.s1kiosk.setup.SetupState
 import sh.edm.s1kiosk.update.UpdateManager
-import sh.edm.s1kiosk.voice.WakeWords
 import java.io.File
 import java.io.IOException
 import java.net.NetworkInterface
@@ -211,23 +208,10 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
     }
 
     /** A pane's row ([paneRow]): what the S1 can say about a running Voice, Music and Radio. */
+    /** Each pane's state is its section's own ([dev.glassworks.pane.paneState]), as the panel's rail shows it (#243). */
     private fun s1PaneRow(id: String, section: SettingsSection?): PaneRow = when (id) {
-        "assist" -> paneRow(id, section) {
-            val w = prefs.voice.wakeWord
-            PaneState(PaneState.Kind.RUNNING, if (w.isEmpty()) "No wake word · Assist" else "Wake word “${WakeWords.parse(w)?.phrase ?: w}” · Assist")
-        }
-        "sendspin" -> paneRow(id, section) { PaneState(PaneState.Kind.RUNNING, "Sendspin · Music Assistant") }
-        "radio" -> paneRow(id, section, listOf("Share Home Assistant's Thread network (start it on the panel first)" to ThreadJoin.PATH)) { radioState() }
+        "radio" -> paneRow(id, section, listOf("Share Home Assistant's Thread network (start it on the panel first)" to ThreadJoin.PATH))
         else -> paneRow(id, section)
-    }
-
-    private fun radioState(): PaneState {
-        val c = runtime.radio
-        val mode = c?.mode ?: RadioMode.parse(prefs.radio.mode)
-        if (mode == RadioMode.OFF) return PaneState(PaneState.Kind.OFF, "Turned off")
-        val status = c?.statusText().orEmpty()
-        val problem = status.startsWith("error") || status.contains("failed", ignoreCase = true)
-        return PaneState(if (problem) PaneState.Kind.PROBLEM else PaneState.Kind.RUNNING, listOf(mode.label, status).filter { it.isNotEmpty() }.joinToString(" · "))
     }
 
     private inner class Actions : PanelActions {

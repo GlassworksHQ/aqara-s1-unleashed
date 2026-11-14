@@ -372,22 +372,36 @@ class SettingsOverlayTest {
     }
 
     @Test
-    fun aStatusDotFollowsTheNameSoNamesLineUp() {
-        // Maintainer, 2026-11-13: "Radio ●", not "● Radio".
+    fun everyPaneHasItsStatusChipAfterItsName() {
+        // Maintainer, #243 (2026-11-14): a chip after every pane's name, Running / On / Off / Can't run, the
+        // Manage page's words; every name starts at the same x.
+        fun master(on: Boolean) = SettingsItem.Switch("x", "", { on }) { _, d -> d(null) }
+        val running = dev.glassworks.pane.PaneState(dev.glassworks.pane.PaneState.Kind.RUNNING, "Zigbee coordinator")
         val o = open(model = { _ ->
             KioskSettingsOverlay.Model(listOf(
-                SettingsSection("voice", "Voice", listOf(SettingsItem.Note { "" })),
-                SettingsSection("radio", "Radio", listOf(SettingsItem.Note { "" }), status = { dev.glassworks.pane.SettingsStatus.OK }),
-            ), "0.4.3", setOf("voice", "radio"))
+                SettingsSection("dashboard", "Dashboard", listOf(SettingsItem.Note { "" })),
+                SettingsSection("voice", "Voice", listOf(SettingsItem.Note { "" }), master = master(true)),
+                SettingsSection("radio", "Radio", listOf(SettingsItem.Note { "" }), master = master(true), status = { running }),
+                SettingsSection("base", "Wall base", listOf(SettingsItem.Note { "" }), master = master(true), unavailable = { "no base port" }),
+                SettingsSection("music", "Music", listOf(SettingsItem.Note { "" }), master = master(false)),
+            ), "0.4.3", setOf("voice", "radio", "base", "music"))
         })
-        o.previewSection("voice")
+        o.previewSection("music") // opens the fold too
         Mockup.layout(o)
-        val radio = Mockup.label(o, "Radio")
-        val voice = Mockup.label(o, "Voice")
-        val row = radio.parent as ViewGroup
-        assertEquals("the name first, then its dot", listOf(radio as View, row.findViewsWithText("status").single()), List(2) { row.getChildAt(it) })
+        fun chipOf(name: String): String? {
+            val row = Mockup.label(o, name).parent as ViewGroup
+            assertEquals("the name first", Mockup.label(o, name), row.getChildAt(0))
+            return (1 until row.childCount).map { row.getChildAt(it) }.firstOrNull { it.contentDescription?.startsWith("status ") == true }
+                ?.contentDescription?.removePrefix("status ")?.toString()
+        }
+        assertEquals("On", chipOf("Voice"))
+        assertEquals("Running", chipOf("Radio"))
+        assertEquals("Can't run", chipOf("Wall base"))
+        assertEquals("Off", chipOf("Music"))
+        assertEquals("a core section has none", null, runCatching { chipOf("Dashboard") }.getOrNull())
         fun x(v: View) = IntArray(2).also { v.getLocationInWindow(it) }[0]
-        assertEquals("every name starts at the same x", x(voice), x(radio))
+        val xs = listOf("Voice", "Radio", "Wall base", "Music").map { x(Mockup.label(o, it)) }.toSet()
+        assertEquals("every pane's name starts at the same x", 1, xs.size)
     }
 
     @Test

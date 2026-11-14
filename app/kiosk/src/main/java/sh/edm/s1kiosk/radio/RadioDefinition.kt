@@ -9,7 +9,7 @@ import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
-import dev.glassworks.pane.SettingsStatus
+import dev.glassworks.pane.PaneState
 import dev.glassworks.pane.PaneChoice
 import dev.glassworks.pane.SetupHost
 import dev.glassworks.pane.SetupOp
@@ -364,17 +364,18 @@ class RadioDefinition(
     }
 
     /**
-     * The nav's dot, the same health the radio's card shows (RadioFollowUp.health): green when the role
-     * runs or has joined, amber while it starts or waits, rose when it failed (also a Zigbee router whose
-     * router host failed under an `ok` helper); none when off.
+     * The radio's chip and line (#243), from the same health the radio's card shows (RadioFollowUp.health):
+     * Problem when it failed (also a Zigbee router whose router host failed under an `ok` helper), else
+     * Running, with its role and status under it. Off is the switch's ([paneState]). Null until the radio's
+     * first report.
      */
-    private fun settingsStatus(): SettingsStatus? {
+    private fun settingsStatus(): PaneState? {
         val f = readout.facts() ?: return null
+        val detail = listOf(f.mode.label, f.status).filter { it.isNotEmpty() }.joinToString(" · ")
         return when (RadioFollowUp.health(f)) {
             RadioFollowUp.Health.OFF -> null
-            RadioFollowUp.Health.RUNNING, RadioFollowUp.Health.JOINED -> SettingsStatus.OK
-            RadioFollowUp.Health.STARTING, RadioFollowUp.Health.WAITING -> SettingsStatus.WORKING
-            RadioFollowUp.Health.ERROR -> SettingsStatus.PROBLEM
+            RadioFollowUp.Health.ERROR -> PaneState(PaneState.Kind.PROBLEM, detail)
+            else -> PaneState(PaneState.Kind.RUNNING, detail)
         }
     }
 

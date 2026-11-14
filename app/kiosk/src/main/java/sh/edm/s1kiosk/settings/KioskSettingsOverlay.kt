@@ -17,7 +17,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
-import dev.glassworks.pane.SettingsStatus
+import dev.glassworks.pane.PaneState
+import dev.glassworks.pane.chipWord
+import dev.glassworks.pane.paneState
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.ui.Glass
 import sh.edm.s1kiosk.ui.Glass.Companion.AMBER
@@ -307,12 +309,16 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         val m = model ?: return
         nav.bind(m.sections.map { s ->
             val why = s.unavailable()
-            val status = s.status().takeIf { why == null }
+            val pane = s.id in m.panes
+            // Every pane's chip after its name, the Manage page's state and word (#243). Status colours mean status only.
+            val state = if (pane) paneState(s) else null
             GroupedRail.Row(
-                s.id, s.title, group = if (s.id in m.panes) PANES else null,
-                dim = why != null, detail = if (why != null) "Can't run" else null,
+                s.id, s.title, group = if (pane) PANES else null,
+                dim = why != null,
                 off = why == null && s.master?.value() == false,
-                badge = when (status) { null -> null; SettingsStatus.OK -> Glass.GREEN; SettingsStatus.WORKING -> AMBER; SettingsStatus.PROBLEM -> ROSE },
+                chip = state?.chipWord?.let { word ->
+                    GroupedRail.Chip(word, when (state.kind) { PaneState.Kind.RUNNING -> Glass.GREEN; PaneState.Kind.PROBLEM -> ROSE; else -> FA })
+                },
             )
         }, mapOf(PANES to "Panes"), current)
     }

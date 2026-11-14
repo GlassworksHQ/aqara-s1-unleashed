@@ -28,8 +28,12 @@ class SettingsSection(
      * pane's setup card ([PaneChoice]) unless the pane gives its own (the radio asks before turning off).
      */
     val master: SettingsItem.Switch? = null,
-    /** The dot after its name in the nav: how the pane is doing now, or null for none. */
-    val status: () -> SettingsStatus? = { null },
+    /**
+     * How the pane is doing now, in its own words (the radio's role, Voice's wake word), or null when it
+     * has none: [paneState] then says On or Off from its [master]. The chip after its name in the panel's
+     * rail and on the Manage page (#243).
+     */
+    val status: () -> PaneState? = { null },
     /** Why the pane can't run here, or null: the nav greys it and the page says why. */
     val unavailable: () -> String? = { null },
     /**
@@ -46,8 +50,6 @@ class SettingsSection(
     val covers: Set<String>? = null,
 )
 
-/** A section's dot in the nav, after its name. Status colours mean status only: green, amber, rose. */
-enum class SettingsStatus { OK, WORKING, PROBLEM }
 
 /**
  * The panes' sections as every settings surface shows them (#63, #33, #67, #212): each pane's own, with

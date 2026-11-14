@@ -182,10 +182,11 @@ class RadioDefinitionTest {
         // CodeRabbit on #163: the helper says ok while its router host fails; the card said Error, the nav green.
         fun status(mode: RadioMode, text: String) = radioDefinition(app, FixedReadout(
             RadioFollowUp.Facts(mode, text, HelperFacts(true, 4), ZigbeeStack.AQARA, null, null, "http://homeassistant.local:8123", "192.0.2.10"),
-        )).settings().single().status()
-        assertEquals(dev.glassworks.pane.SettingsStatus.PROBLEM, status(RadioMode.ZIGBEE_ROUTER, "ok Zigbee router (repeater): router host error: no answer"))
-        assertEquals(dev.glassworks.pane.SettingsStatus.OK, status(RadioMode.ZIGBEE_TCP, "ok Zigbee coordinator (TCP): listening on :6638"))
-        assertEquals(dev.glassworks.pane.SettingsStatus.WORKING, status(RadioMode.ZIGBEE_TCP, "applying Zigbee coordinator (TCP)…"))
+        )).settings().single().status()?.kind
+        // #243: the chip says Problem or Running, as on the Manage page; Off is the switch's.
+        assertEquals(dev.glassworks.pane.PaneState.Kind.PROBLEM, status(RadioMode.ZIGBEE_ROUTER, "ok Zigbee router (repeater): router host error: no answer"))
+        assertEquals(dev.glassworks.pane.PaneState.Kind.RUNNING, status(RadioMode.ZIGBEE_TCP, "ok Zigbee coordinator (TCP): listening on :6638"))
+        assertEquals(dev.glassworks.pane.PaneState.Kind.RUNNING, status(RadioMode.ZIGBEE_TCP, "applying Zigbee coordinator (TCP)…"))
         assertEquals(null, status(RadioMode.OFF, "ok Off: Aqara radio services stopped"))
     }
 

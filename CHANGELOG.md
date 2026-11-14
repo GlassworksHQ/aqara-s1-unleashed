@@ -19,7 +19,8 @@ below as the release notes.
 ### Changed
 - **Panes you turned off fold at the bottom of the list.** In the settings menu they sit under
   "Off · N"; open it, or a pane in it, to see them. An off pane's page says what being off means.
-  The Radio's status dot now sits after its name, so every pane's name starts in line.
+  Every pane shows its state after its name, Running, On, Off or Can't run, as the Manage page does,
+  so every pane's name starts in line.
 - **Turning a pane on or off from Home Assistant needs the panel's key.** The pane switches, the
   *Music Assistant player (Sendspin)* switch included, only answer an encrypted connection, as *Time
   zone* does. Home Assistant 2026.11 and later sets the key when you add the panel. On a panel without

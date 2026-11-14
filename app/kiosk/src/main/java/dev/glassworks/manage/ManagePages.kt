@@ -6,6 +6,7 @@ package dev.glassworks.manage
 
 import dev.glassworks.pane.NOT_RUNNING
 import dev.glassworks.pane.PaneState
+import dev.glassworks.pane.chipWord
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
 import dev.glassworks.web.PageShell
@@ -97,13 +98,13 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
     private fun action(v: Viewer, path: String, label: String, cls: String = "pill") =
         """<form method="post" action="${esc(path)}">${csrf(v)}<button class="$cls" type="submit">${esc(label)}</button></form>"""
 
+    /** The pane's chip: its word ([chipWord], the same as the panel's rail, #243) and its dot. */
     private fun chip(state: PaneState): String {
-        val (tone, label) = when (state.kind) {
-            PaneState.Kind.RUNNING -> "ok" to (state.chip ?: "Running")
-            PaneState.Kind.OFF -> "off" to (state.chip ?: "Off")
-            PaneState.Kind.CANT_RUN -> "off" to (state.chip ?: "Can't run")
-            PaneState.Kind.PROBLEM -> "bad" to (state.chip ?: "Problem")
-            PaneState.Kind.UNKNOWN -> return ""
+        val label = state.chipWord ?: return ""
+        val tone = when (state.kind) {
+            PaneState.Kind.RUNNING -> "ok"
+            PaneState.Kind.PROBLEM -> "bad"
+            else -> "off"
         }
         return """<span class="chip"><i class="dot $tone"></i>${esc(label)}</span>"""
     }

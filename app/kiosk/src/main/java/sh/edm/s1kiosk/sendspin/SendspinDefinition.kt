@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import dev.glassworks.pane.IntentExtra
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneDefinition
+import dev.glassworks.pane.PaneState
 import dev.glassworks.pane.PaneSwitch
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
@@ -36,7 +37,7 @@ class SendspinDefinition(
         val p = running as? SendspinPane ?: return emptyList()
         val player = p.player
         // The player's status is the line under the heading; Home Assistant's own sensor is listed too.
-        return listOf(SettingsSection(id, "Music", covers = emptySet(), items = listOfNotNull(
+        return listOf(SettingsSection(id, "Music", covers = emptySet(), status = { PaneState(PaneState.Kind.RUNNING, "Sendspin · Music Assistant") }, items = listOfNotNull(
             SettingsItem.Status(text = { status(player.status, player.serverUrl) }, ok = { connected(player.status.phase) }),
             SettingsItem.Info({ "Now playing" }, { player.nowPlayingText ?: "Nothing" }),
             SettingsItem.Slider("Volume", { player.volume.toFloat() }, 0f, 100f, 1f, { "${it.toInt()} %" }) { v, done ->

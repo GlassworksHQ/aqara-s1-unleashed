@@ -28,14 +28,17 @@ class GroupedRail(context: Context) : LinearLayout(context) {
     /**
      * One row. [group]: the group it sits under, or null. [dim]: greyed
      * (a pane that can't run), [detail] then says why. [enabled]: it can be tapped. [off]: folded at the
-     * end of its group. [badge]: a status dot's colour, drawn after the name ("Radio ●"), so every name
-     * starts at the same x (maintainer, 2026-11-13); null for none.
+     * end of its group. [chip]: the pane's status after its name ("Radio  ● Running"), so every name starts
+     * at the same x (#243); null for none.
      */
     class Row(
         val id: String, val title: String, val group: String? = null, val mark: Mark = Mark.NONE,
         val enabled: Boolean = true, val dim: Boolean = false, val detail: String? = null,
-        val off: Boolean = false, val badge: Int? = null,
+        val off: Boolean = false, val chip: Chip? = null,
     )
+
+    /** A status chip: its word and its dot's colour (a status colour, or [Glass.FA] for off). */
+    data class Chip(val word: String, val dot: Int)
 
     var onTap: ((String) -> Unit)? = null
 
@@ -57,7 +60,7 @@ class GroupedRail(context: Context) : LinearLayout(context) {
             val r = rows[i]
             val group = r.group
             if (group == null) {
-                add(row(r.title, r.mark, selected == r.id, child = false, dim = r.dim, detail = r.detail, enabled = r.enabled, badge = r.badge) { onTap?.invoke(r.id) })
+                add(row(r.title, r.mark, selected == r.id, child = false, dim = r.dim, detail = r.detail, enabled = r.enabled, chip = r.chip) { onTap?.invoke(r.id) })
                 i++
                 continue
             }
@@ -75,13 +78,13 @@ class GroupedRail(context: Context) : LinearLayout(context) {
             if (open == group) {
                 val (offs, ons) = members.partition { it.off }
                 ons.forEach { m ->
-                    add(row(m.title, m.mark, selected == m.id, child = true, dim = m.dim, detail = m.detail, enabled = m.enabled, badge = m.badge) { onTap?.invoke(m.id) })
+                    add(row(m.title, m.mark, selected == m.id, child = true, dim = m.dim, detail = m.detail, enabled = m.enabled, chip = m.chip) { onTap?.invoke(m.id) })
                 }
                 if (offs.isNotEmpty()) {
                     val unfolded = offs.any { it.id == selected }
                     add(fold(offs.size, unfolded) { onTap?.invoke(offs.first().id) })
                     if (unfolded) offs.forEach { m ->
-                        add(row(m.title, Mark.NONE, selected == m.id, child = true, dim = m.dim, detail = m.detail, enabled = m.enabled, off = true) { onTap?.invoke(m.id) })
+                        add(row(m.title, Mark.NONE, selected == m.id, child = true, dim = m.dim, detail = m.detail, enabled = m.enabled, off = true, chip = m.chip) { onTap?.invoke(m.id) })
                     }
                 }
             }
@@ -96,7 +99,7 @@ class GroupedRail(context: Context) : LinearLayout(context) {
 
     private fun row(
         title: String, mark: Mark, selected: Boolean, child: Boolean, dim: Boolean, detail: String?,
-        enabled: Boolean, emphasis: Boolean = false, off: Boolean = false, badge: Int? = null, onClick: () -> Unit,
+        enabled: Boolean, emphasis: Boolean = false, off: Boolean = false, chip: Chip? = null, onClick: () -> Unit,
     ) = LinearLayout(context).apply {
         tag = if (child) CHILD else null
         orientation = HORIZONTAL
@@ -111,17 +114,31 @@ class GroupedRail(context: Context) : LinearLayout(context) {
             else -> Glass.MU
         }
         val name = g.text(if (child) 15f else 16.5f, color2).apply { text = title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
-        if (badge == null) addView(name, LayoutParams(0, -2, 1f))
+        if (chip == null) addView(name, LayoutParams(0, -2, 1f))
         else {
-            // The name keeps its x; the dot follows it, and the rest of the row stays empty.
+            // The name keeps its x; the chip follows it, and the rest of the row stays empty.
             addView(name, LayoutParams(-2, -2))
-            addView(g.dot(badge).apply { contentDescription = "status" }, LayoutParams(g.px(7f), g.px(7f)).apply { marginStart = g.px(9f) })
+            addView(chip(chip), LayoutParams(-2, -2).apply { marginStart = g.px(8f) })
             addView(View(context), LayoutParams(0, 0, 1f))
         }
         detail?.let { d -> addView(g.text(12.5f, Glass.FA).apply { text = d; setSingleLine() }, LayoutParams(-2, -2).apply { marginStart = g.px(8f) }) }
         background = if (selected) g.surface(12f) else null
         contentDescription = title
         if (enabled) { isClickable = true; setOnClickListener { onClick() } }
+    }
+
+    /**
+     * The status chip, in the Manage page's style (#243): a pill with a hairline edge on glass, a dot in
+     * the status colour, the word in the muted colour.
+     */
+    private fun chip(c: Chip) = LinearLayout(context).apply {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        background = g.surface(999f, Glass.S1)
+        setPadding(g.px(8f), g.px(2f), g.px(9f), g.px(2f))
+        addView(g.dot(c.dot), LayoutParams(g.px(6f), g.px(6f)).apply { marginEnd = g.px(6f) })
+        addView(g.text(12f, Glass.MU).apply { text = c.word; setSingleLine() })
+        contentDescription = "status ${c.word}"
     }
 
     /** "Off · N" and a chevron, quieter than a row: right while folded, down while open. */

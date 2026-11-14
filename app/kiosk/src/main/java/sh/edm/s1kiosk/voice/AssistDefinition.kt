@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import dev.glassworks.pane.IntentExtra
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneDefinition
+import dev.glassworks.pane.PaneState
 import dev.glassworks.pane.PaneSwitch
 import dev.glassworks.pane.PanelTimer
 import dev.glassworks.pane.SettingsItem
@@ -33,7 +34,10 @@ class AssistDefinition(file: SharedPreferences) : PaneDefinition {
         fun done(d: (String?) -> Unit) = d(null)
         // Its controls cover the pane's entities; a new one would be listed after them.
         val covers = setOf("mute_microphone", "wake_sound", "voice_overlay", "mic_gain", "wake_word_threshold")
-        return listOf(SettingsSection(id, "Voice", covers = covers, items = listOf(
+        return listOf(SettingsSection(id, "Voice", covers = covers, status = {
+            val w = prefs.wakeWord
+            PaneState(PaneState.Kind.RUNNING, if (w.isEmpty()) "No wake word · Assist" else "Wake word “${WakeWords.parse(w)?.phrase ?: w}” · Assist")
+        }, items = listOf(
             SettingsItem.Status(text = { status(prefs.micMuted, prefs.wakeWord) }, ok = { !prefs.micMuted && prefs.wakeWord.isNotEmpty() }),
             SettingsItem.Group("Listening", listOf(
                 SettingsItem.Choice("Wake word", { prefs.wakeWord }, { wakeWords(prefs.wakeWord) }) { v, d -> p.useWakeWord(v); done(d) },

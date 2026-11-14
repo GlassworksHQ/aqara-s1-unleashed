@@ -330,8 +330,10 @@ sections in definition order (Voice, Music, Radio, Wall base, Time zone), then L
 About: the Manage page's nav (#33). A section without items is left out. The panel's menu draws them
 in the same rail as setup (`ui/GroupedRail`): the panes' sections under a Panes group that opens while
 one of them is picked. Panes whose `master` is off fold under "Off · N" at the end of the group
-(#212); the fold opens while one of them is picked. A section's `status` is a dot after its name
-("Radio ●": green, amber, rose, status only), so every name starts at the same x.
+(#212); the fold opens while one of them is picked. Every pane's row has a status chip after its name
+(#243): Running, On, Off, Can't run or Problem, from `paneState`, which the Manage page uses too. A
+section's `status` is the pane's own state and line (the radio's role, Voice's wake word); without
+one, its switch says On or Off. Status colours mean status only, and every name starts at the same x.
 
 **A pane's section has its on/off.** `paneSections` gives each pane's section a `master`, the
 switch at the top right of its page, made from the pane's setup card (`setupChoice`), else from its
