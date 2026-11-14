@@ -60,6 +60,73 @@ class SettingsOverlayTest {
         level.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null }
     }.flatten().filterIsInstance<EditText>().firstOrNull { it.isShown }
 
+    /** #242: a change made on the Manage page (or in Home Assistant) shows on the open menu at its next refresh. */
+    @Test
+    fun rowsFollowAChangeMadeElsewhere() {
+        prefs.idleOffSec = 120
+        prefs.autoBrightness = true
+        val o = open()
+        o.reload = { MenuFixture.model(o.context, radioDefinition(o.context, FixedReadout(null, running = true))) }
+        o.previewSection("screen")
+        Mockup.idle()
+        assertTrue(shown(o, "After 2 minutes"))
+        prefs.idleOffSec = 300
+        prefs.autoBrightness = false
+        o.refresh()
+        Mockup.idle()
+        assertTrue("the duration's row follows", shown(o, "After 5 minutes"))
+        assertFalse(shown(o, "After 2 minutes"))
+        val toggle = generateSequence(listOf<View>(row(o, "Brightness"))) { level ->
+            level.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null }
+        }.flatten().filterIsInstance<sh.edm.s1kiosk.ui.Glass.Toggle>().single()
+        assertFalse("the switch follows", toggle.checked)
+    }
+
+    /** #242 for #252: a sign-in on the panel. Its password is hidden until Show, gone when the sheet closes; Clear removes it. */
+    @Test
+    fun aSignInsPasswordShowsOnlyOnRequest() {
+        val secret = "made-up-secret-7"
+        var stored: Pair<String, String>? = "viewer" to secret
+        val o = one(listOf(SettingsItem.SignIn("Sign-in", { stored != null }, { stored?.first }, { stored?.second }) { v, d -> stored = v; d(null) }))
+        fun views() = generateSequence(listOf<View>(o)) { level ->
+            level.flatMap { v -> (v as? ViewGroup)?.let { g -> List(g.childCount) { g.getChildAt(it) } }.orEmpty() }.ifEmpty { null }
+        }.flatten().toList()
+        fun texts() = views().filterIsInstance<android.widget.TextView>().map { it.text.toString() }
+        assertTrue(shown(o, "Set"))
+        row(o, "Sign-in").performClick()
+        Mockup.idle()
+        assertFalse("hidden when the sheet opens", texts().any { it.contains(secret) })
+        Mockup.label(o, "Show").performClick()
+        Mockup.idle()
+        val fields = views().filterIsInstance<EditText>().filter { it.isShown }
+        assertEquals("a user name and a password", 2, fields.size)
+        assertEquals("shown on request", secret, fields[1].text.toString())
+        fields[0].setText("viewer2")
+        Mockup.label(o, "Save").performClick()
+        settle()
+        assertEquals("viewer2" to secret, stored)
+        assertFalse("gone once the sheet closes", texts().any { it.contains(secret) })
+        row(o, "Sign-in").performClick()
+        Mockup.idle()
+        assertFalse("hidden again when it opens again", texts().any { it.contains(secret) })
+        Mockup.label(o, "Clear").performClick()
+        settle()
+        assertEquals(null, stored)
+        assertTrue(shown(o, "Not set"))
+    }
+
+    /** A row whose value and hint are empty still follows: its value view is there, gone until it has words. */
+    @Test
+    fun anEmptyRowFollowsAValueSetElsewhere() {
+        var now = ""
+        val o = one(listOf(SettingsItem.Text("Allowed", "", SettingsItem.TextKind.ADDRESS, { now }) { _, d -> d(null) }))
+        assertFalse(shown(o, "192.0.2.20"))
+        now = "192.0.2.20"
+        o.refresh()
+        Mockup.idle()
+        assertTrue(shown(o, "192.0.2.20"))
+    }
+
     @Test
     fun aSwitchAppliesWhenTapped() {
         val o = open()

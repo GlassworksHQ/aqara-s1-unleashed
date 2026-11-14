@@ -4,6 +4,8 @@
 
 package dev.glassworks.web
 
+import dev.glassworks.brand.Tokens
+
 /**
  * The one look of every page the panel serves: the QR-code pages (sign in, Thread join, their results)
  * and the Manage page. glassworks.dev's tokens, night by default and daylight when the computer or phone
@@ -35,14 +37,15 @@ object PageShell {
         "Referrer-Policy" to "same-origin",
     )
 
-    /** glassworks.dev's tokens (kiln/packages/brand/src/tokens.css): night, then daylight. */
-    const val TOKENS = """:root{--bg:#0a0b0f;--bg-2:#111319;--glass:rgba(255,255,255,.045);--edge:rgba(255,255,255,.08);--fg:#f4f4f5;--muted:#a1a1aa;--faint:#6b6b74;
---ink-sky:#7dd3fc;--ok-ink:#34d399;--work-ink:#fbbf24;--sky:#38bdf8;--violet:#a78bfa;--green:#34d399;--amber:#fbbf24;--rose:#fb7185;
---lit:linear-gradient(135deg,var(--sky),var(--violet));--btn:#f4f4f5;--btx:#0a0b0f;--pl:#f4f4f5;--g1:rgba(56,189,248,.13);--g2:rgba(167,139,250,.14);
---field:rgba(255,255,255,.06);--hover:rgba(255,255,255,.06);color-scheme:dark}
-@media (prefers-color-scheme:light){:root{--bg:#eceef2;--bg-2:#e2e5eb;--glass:rgba(255,255,255,.66);--edge:rgba(16,20,32,.1);--fg:#0c0e13;--muted:#4f525c;--faint:#7d808b;
---ink-sky:#0369a1;--ok-ink:#047857;--work-ink:#b45309;--btn:#0c0e13;--btx:#f4f4f5;--pl:#0c0e13;--g1:rgba(56,189,248,.22);--g2:rgba(167,139,250,.22);
---field:rgba(255,255,255,.8);--hover:rgba(16,20,32,.05);color-scheme:light}}
+    /**
+     * glassworks.dev's tokens, from the one source the panel's screens read too ([Tokens], #243): night,
+     * then daylight. Then what only the pages use: the lit gradient, the button, the glows, fields.
+     */
+    val TOKENS = Tokens.css() + """
+:root{--lit:linear-gradient(135deg,var(--sky),var(--violet));--btn:#f4f4f5;--btx:#0a0b0f;--pl:#f4f4f5;--g1:rgba(56,189,248,.13);--g2:rgba(167,139,250,.14);
+--field:rgba(255,255,255,.06);--hover:rgba(255,255,255,.06)}
+@media (prefers-color-scheme:light){:root{--btn:#0c0e13;--btx:#f4f4f5;--pl:#0c0e13;--g1:rgba(56,189,248,.22);--g2:rgba(167,139,250,.22);
+--field:rgba(255,255,255,.8);--hover:rgba(16,20,32,.05)}}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%}
 body{min-height:100vh;color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 background:radial-gradient(900px 600px at -10% -20%,var(--g1),transparent 60%),radial-gradient(800px 600px at 110% 120%,var(--g2),transparent 60%),var(--bg);background-attachment:fixed}

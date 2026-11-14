@@ -20,6 +20,8 @@ class ManageFixture(
     var setUp: Boolean = true,
     /** When set, the HA address the server reads, call by call (an address that changes mid-request). */
     var haBaseFn: (() -> String?)? = null,
+    /** How long the server waits for a settings change to answer. */
+    saveWaitMs: Long = 20_000,
     /** The QR pages; by default a stub that names the path. */
     private val qrPages: ((HttpRequest) -> HttpResponse)? = null,
 ) {
@@ -93,9 +95,16 @@ class ManageFixture(
         about = listOf("Glassworks Panel" to "S1 Kiosk 0.9.2", "Frame" to "Aqara Panel Hub S1 Plus", "Android" to "10"),
     )
 
+    /** When set, the status the server reads, page by page (a model that changes with each save). */
+    var statusFn: (() -> PanelStatus)? = null
+
+    /** Settings changes the server ran through [ManageHost.onMain]. */
+    var onMainCalls = 0
+
     val host = object : ManageHost {
         override val name = "Glassworks Panel"
-        override fun status() = status
+        override fun status() = statusFn?.invoke() ?: status
+        override fun onMain(f: () -> Unit) { onMainCalls++; f() }
         override val actions = this@ManageFixture.actions
         override fun diagnostics() = "Home Assistant: http://192.0.2.10:8123\naccess_token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJl\nnoise key: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
     }
@@ -107,6 +116,7 @@ class ManageFixture(
         pages = ManagePages(clock = { now }),
         event = { events += it },
         ownHosts = { setOf("192.0.2.40", "glassworks-panel.local", "fd00::40", "127.0.0.1") },
+        saveWaitMs = saveWaitMs,
     )
 
     init {

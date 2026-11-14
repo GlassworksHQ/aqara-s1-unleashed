@@ -22,21 +22,17 @@ import android.widget.Toast
 import dev.glassworks.engine.Page
 import dev.glassworks.engine.PageHost
 import dev.glassworks.engine.PagePort
-import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.applyFrom
 import dev.glassworks.pane.intentExtras
-import dev.glassworks.pane.paneSections
-import dev.glassworks.pane.settingsOrder
 import dev.glassworks.platform.Platform
 import sh.edm.s1kiosk.auth.FrontendUrls
 import sh.edm.s1kiosk.auth.HaAuth
 import dev.glassworks.frame.openSystemSettings
-import dev.glassworks.frame.systemSettings
 import sh.edm.s1kiosk.dashboard.DashboardOptions
 import sh.edm.s1kiosk.dashboard.Dashboards
 import sh.edm.s1kiosk.discovery.HaUrls
-import sh.edm.s1kiosk.settings.CoreSettings
 import sh.edm.s1kiosk.settings.KioskSettingsOverlay
+import sh.edm.s1kiosk.settings.S1Settings
 import sh.edm.s1kiosk.settings.SettingsMenu
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.setup.LoadingOverlay
@@ -751,35 +747,18 @@ class MainActivity : Activity() {
      */
     private fun showSettings() {
         // Resolved once per opening: the model is made again on each refresh tick (#235 N4).
-        val frame = glassworks.frame
-        deviceSettingsLink = if (frame.systemSettings(this) == null) null else SettingsItem.Link(SettingsMenu.AQARA_TITLE, SettingsMenu.AQARA_DETAIL) { c ->
-            if (!frame.openSystemSettings(c)) Toast.makeText(c, "No settings app on this panel", Toast.LENGTH_LONG).show()
-        }
+        deviceSettings = S1Settings.hasDeviceSettings(glassworks, this)
         settingsOverlay.reload = ::settingsModel
         settingsOverlay.show(settingsModel())
         handler.removeCallbacks(settingsTick)
         handler.postDelayed(settingsTick, 500)
     }
 
-    /** The device's own settings app, resolved when the menu opens ([showSettings]). */
-    private var deviceSettingsLink: SettingsItem.Link? = null
+    /** The frame has its own settings app, resolved when the menu opens ([showSettings]). */
+    private var deviceSettings = false
 
-    /** The menu's sections as they are now: each pane's page reads its running pane (#212). */
-    private fun settingsModel(): KioskSettingsOverlay.Model {
-        val core = CoreSettings(
-            prefs, BuildConfig.VERSION_NAME,
-            status = { glassworks.screen.statusLine() + " · voice=" + glassworks.voiceState },
-            deviceSettings = deviceSettingsLink,
-            licences = SettingsItem.Link(CoreSettings.LICENCES_TITLE, CoreSettings.LICENCES_DETAIL) { Licences.show(this) },
-            live = CoreSettings.Live(
-                fullScreen = ::pushConfig,
-                presenceRange = { glassworks.screen.applyPresenceRange() },
-                brightness = { glassworks.screen.refreshBrightness() },
-            ),
-        )
-        val paneSections = paneSections(panes, glassworks::runningPane)
-        return KioskSettingsOverlay.Model(settingsOrder(core.sections(), paneSections), BuildConfig.VERSION_NAME, paneSections.map { it.id }.toSet())
-    }
+    /** The menu's sections as they are now, the Manage page's too (#242): each pane's page reads its running pane (#212). */
+    private fun settingsModel(): KioskSettingsOverlay.Model = S1Settings.model(glassworks, prefs, panes, deviceSettings, fullScreen = ::pushConfig)
 
     private var restartWaitingSince = 0L
 

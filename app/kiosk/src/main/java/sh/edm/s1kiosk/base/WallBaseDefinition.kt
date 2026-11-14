@@ -33,13 +33,13 @@ class WallBaseDefinition(file: SharedPreferences) : PaneDefinition {
         )
         val items = if (layout == null || !layout.attached) listOfNotNull(
             status,
-            SettingsItem.Native("wall-base-none") { host -> NoBaseView(host.context) },
+            SettingsItem.Native("wall-base-none", "What a wall base adds") { host -> NoBaseView(host.context) },
         ) else listOfNotNull(
             status,
             SettingsItem.Tiles(4) { p.tracker.current()?.takeIf { it.attached }?.let { l -> WallBasePage.strip(l, p.tracker.firmware(), p.tracker.protection(), p.tracker.power()) }.orEmpty() },
             // A view per base and pane: another base or a new device run makes its own.
             if (layout.kind == BaseKind.SWITCH && layout.channels.isNotEmpty()) {
-                SettingsItem.Native("wall-base-relays-${System.identityHashCode(p)}-${layout.channels}") { host -> RelaysView(host.context, p, layout.channels) }
+                SettingsItem.Native("wall-base-relays-${System.identityHashCode(p)}-${layout.channels}", "Relays and buttons") { host -> RelaysView(host.context, p, layout.channels) }
             } else null,
         )
         // A mounted base's tiles and cards cover its entities, energy too: it stays hidden until #216 settles

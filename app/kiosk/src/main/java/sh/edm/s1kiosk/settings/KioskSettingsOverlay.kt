@@ -18,8 +18,14 @@ import android.widget.ScrollView
 import android.widget.TextView
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
-import dev.glassworks.pane.PaneState
 import dev.glassworks.pane.chipWord
+import dev.glassworks.pane.ChipTone
+import dev.glassworks.pane.chipTone
+import dev.glassworks.pane.PaneState
+import dev.glassworks.pane.SettingsChange
+import dev.glassworks.pane.SettingsChange.couldNot
+import dev.glassworks.pane.SettingsChange.hhmm
+import dev.glassworks.pane.SettingsChange.parseRange
 import dev.glassworks.pane.paneState
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.ui.Glass
@@ -35,7 +41,6 @@ import sh.edm.s1kiosk.ui.Inter
 import sh.edm.s1kiosk.ui.StackView
 import sh.edm.s1kiosk.ui.TileView
 import sh.edm.s1kiosk.ui.Wrap
-import java.util.Locale
 
 /**
  * The kiosk settings menu, as drawn in #63. Left: the mark, "Settings" and the rail ([GroupedRail], the
@@ -254,6 +259,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             is SettingsItem.Duration -> sheet.duration(i) {}
             is SettingsItem.TimeRange -> sheet.range(i) {}
             is SettingsItem.Choice -> sheet.choice(i) {}
+            is SettingsItem.SignIn -> sheet.signIn(i) {}
             else -> {}
         }
     }
@@ -309,16 +315,16 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     private fun bindRail() {
         val m = model ?: return
         nav.bind(m.sections.map { s ->
-            val why = s.unavailable()
             val pane = s.id in m.panes
-            // Every pane's chip after its name, the Manage page's state and word (#243). Status colours mean status only.
+            // Every pane's state from paneState, as the Manage page's nav (#243): its chip after its name, Off
+            // folds (off wins over can't run), Can't run greys. Status colours mean status only.
             val state = if (pane) paneState(s) else null
             GroupedRail.Row(
                 s.id, s.title, group = if (pane) PANES else null,
-                dim = why != null,
-                off = why == null && s.master?.value() == false,
+                dim = state?.kind == PaneState.Kind.CANT_RUN,
+                off = state?.kind == PaneState.Kind.OFF,
                 chip = state?.chipWord?.let { word ->
-                    GroupedRail.Chip(word, when (state.kind) { PaneState.Kind.RUNNING -> Glass.GREEN; PaneState.Kind.PROBLEM -> ROSE; else -> FA })
+                    GroupedRail.Chip(word, when (state.chipTone) { ChipTone.OK -> Glass.GREEN; ChipTone.PROBLEM -> ROSE; ChipTone.QUIET -> FA })
                 },
             )
         }, mapOf(PANES to "Panes"), current)
@@ -384,6 +390,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         is SettingsItem.TimeRange -> i.title
         is SettingsItem.Link -> i.title
         is SettingsItem.Choice -> i.title
+        is SettingsItem.SignIn -> i.title
         else -> null
     }
 
@@ -412,23 +419,28 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     }
 
     private fun item(i: SettingsItem): View = when (i) {
-        is SettingsItem.Text -> row(i.title, shownOf(i), chevron = i.enabled(), dim = !i.enabled()) { if (i.enabled()) sheet.text(i) { build() } }
+        is SettingsItem.Text -> follow(row(i.title, shownOf(i), chevron = i.enabled(), dim = !i.enabled()) { if (i.enabled()) sheet.text(i) { build() } }) { shownOf(i) }
         is SettingsItem.Switch -> toggleRow(i)
         is SettingsItem.Slider -> sliderRow(i)
-        is SettingsItem.Duration -> row(i.title, i.shown(i.value()), chevron = true, dim = false) { sheet.duration(i) { build() } }
-        is SettingsItem.TimeRange -> row(i.title, i.shown(i.value()), chevron = true, dim = false) { sheet.range(i) { build() } }
+        is SettingsItem.Duration -> follow(row(i.title, i.shown(i.value()), chevron = true, dim = false) { sheet.duration(i) { build() } }) { i.shown(i.value()) }
+        is SettingsItem.TimeRange -> follow(row(i.title, i.shown(i.value()), chevron = true, dim = false) { sheet.range(i) { build() } }) { i.shown(i.value()) }
         is SettingsItem.Link -> row(i.title, i.detail, chevron = true, dim = i.detail.isEmpty()) { i.open(context) }
         is SettingsItem.Note -> g.text(14.5f, MU).apply { text = i.text(); setLineSpacing(0f, 1.25f); setPadding(0, px(14f), 0, px(14f)) }
         is SettingsItem.Info -> infoRow(i)
-        is SettingsItem.Choice -> row(i.title, choiceName(i), chevron = true, dim = false) { sheet.choice(i) { build() } }.also { r ->
-            // The picked one's name follows a change made elsewhere (Home Assistant's wake word select). The
-            // value view is always there today (a choice always has a name); the null branch is a guard only.
-            ((r.getChildAt(0) as? ViewGroup)?.getChildAt(1) as? TextView)?.let { value ->
-                live += { val n = choiceName(i); if (value.text != n) value.text = n }
-            }
-        }
+        is SettingsItem.Choice -> follow(row(i.title, choiceName(i), chevron = true, dim = false) { sheet.choice(i) { build() } }) { choiceName(i) }
+        is SettingsItem.SignIn -> follow(row(i.title, i.shown(i.isSet()), chevron = true, dim = false) { sheet.signIn(i) { build() } }) { i.shown(i.isSet()) }
         is SettingsItem.Group, is SettingsItem.States, is SettingsItem.Status, is SettingsItem.Tiles -> error("laid out by addItems")
         is SettingsItem.Native -> natives.getOrPut(i.key) { i.create(nativeHost) }.also { it.refresh() }.view
+    }
+
+    /**
+     * The row's value follows a change made elsewhere: Home Assistant (the wake word select) or the Manage
+     * page (#242). The value view is always there ([texts]); the null branch is a guard only.
+     */
+    private fun follow(r: LinearLayout, now: () -> String): LinearLayout = r.also {
+        ((r.getChildAt(0) as? ViewGroup)?.getChildAt(1) as? TextView)?.let { value ->
+            live += { val n = now(); if (value.text != n) { value.text = n; value.visibility = if (n.isEmpty()) View.GONE else View.VISIBLE } }
+        }
     }
 
     /** A name and a status line under it, read again on [refresh] (#212: what plays now). */
@@ -456,7 +468,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         }
     }
 
-    private fun choiceName(i: SettingsItem.Choice): String { val v = i.value(); return i.options().firstOrNull { it.first == v }?.second ?: v }
+    private fun choiceName(i: SettingsItem.Choice): String = SettingsChange.shown(i)
 
     /**
      * "In Home Assistant" (#212): its label, then a name on the left and its value on the right, one line
@@ -542,10 +554,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         return box
     }
 
-    private fun shownOf(i: SettingsItem.Text): String {
-        val v = i.value()
-        return if (v.isBlank()) i.shown(v).ifBlank { i.hint } else i.shown(v)
-    }
+    private fun shownOf(i: SettingsItem.Text): String = SettingsChange.shown(i)
 
     /** A name, its value under it and, when it opens something, a chevron. [dim]: a quieter row (Aqara's own settings). */
     private fun row(name: String, value: String, chevron: Boolean, dim: Boolean, onClick: (() -> Unit)?) = LinearLayout(context).apply {
@@ -574,6 +583,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             if (ask == null) apply(on)
             else { t.checked = !on; sheet.confirm(ask) { t.checked = on; apply(on) } }
         }
+        // Follows a change made elsewhere (the Manage page, #242), as the master does.
+        live += { val v = i.value(); if (t.checked != v) t.checked = v }
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -621,7 +632,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     private fun texts(name: String, value: String, color: Int) = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         addView(g.text(16.5f, color).apply { text = name })
-        if (value.isNotEmpty()) addView(g.text(15f, MU).apply { text = value; setLineSpacing(0f, 1.15f) },
+        // Always there, gone while empty: a row that follows a change ([follow]) can fill it later.
+        addView(g.text(15f, MU).apply { text = value; setLineSpacing(0f, 1.15f); visibility = if (value.isEmpty()) View.GONE else View.VISIBLE },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f) })
     }
 
@@ -681,7 +693,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     private inner class Sheet {
         private val name = g.heading(26f)
         private val hint = g.text(15f, MU).apply { setLineSpacing(0f, 1.2f) }
-        val field = EditText(context).apply {
+        private fun edit() = EditText(context).apply {
             textSize = 18f
             typeface = Inter.typeface(context, Inter.REGULAR, 18f)
             setTextColor(TX)
@@ -692,16 +704,34 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             setPadding(px(18f), px(14f), px(18f), px(14f))
             setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_DONE) { onSave?.invoke(); true } else false }
         }
+        val field = edit()
+        /** A sign-in's password ([signIn]): empty until Show, emptied and hidden again when the sheet closes. */
+        val password = edit()
+        private fun hidePassword() {
+            password.setText("")
+            password.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            password.typeface = Inter.typeface(context, Inter.REGULAR, 18f) // the password type sets monospace
+        }
+        /** Shows the stored password, on request only. */
+        private val showButton = g.plain("Show")
+        private val passwordRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
         /** What the sheet shows under its name: the field, the choices or the window. */
         private val body = FrameLayout(context)
         private val why = g.text(15f, ROSE)
         private val cancel = g.plain("Cancel").apply { setOnClickListener { close() } }
         private val saveButton = g.primary("Save").apply { setOnClickListener { onSave?.invoke() } }
         private var onSave: (() -> Unit)? = null
+        /** A sign-in's Clear, while one is set. */
+        private val clearButton = g.plain("Clear").apply { setOnClickListener { onClear?.invoke() } }
+        private var onClear: (() -> Unit)? = null
         private val buttons = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
             addView(cancel, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(14f) })
+            addView(clearButton, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = px(14f) })
             addView(saveButton)
         }
         private val card = LinearLayout(context).apply {
@@ -728,6 +758,11 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             hint.text = hintText
             hint.visibility = if (hintText.isEmpty()) View.GONE else View.VISIBLE
             (field.parent as? android.view.ViewGroup)?.removeView(field)
+            passwordRow.removeAllViews()
+            (passwordRow.parent as? android.view.ViewGroup)?.removeView(passwordRow)
+            hidePassword()
+            clearButton.visibility = View.GONE
+            onClear = null
             body.removeAllViews()
             content?.let { body.addView(it, LayoutParams(-1, -2)) }
             body.visibility = if (content != null) View.VISIBLE else View.GONE
@@ -765,7 +800,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
                 SettingsItem.TextKind.NUMBER -> InputType.TYPE_CLASS_NUMBER
                 SettingsItem.TextKind.DECIMAL -> InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             }
-            onSave = { commit(i.restartsApp, after) { done -> i.save(field.text?.toString().orEmpty(), done) } }
+            // Checked as the Manage page checks it (#242): one path for a typed value.
+            onSave = { commit(i.restartsApp, after) { done -> SettingsChange.change(i, field.text?.toString().orEmpty(), done) } }
             open(i.title, i.hint, field, "Save")
             field.setText(i.value())
             field.hint = i.hint
@@ -777,6 +813,40 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
                 field.requestFocus()
                 (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)?.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
             }
+        }
+
+        /**
+         * A user name and a password, saved together after [SettingsChange.signIn]'s checks. While one is set:
+         * Show puts the stored password in its field, an empty field keeps it, and Clear removes it.
+         */
+        fun signIn(i: SettingsItem.SignIn, after: () -> Unit) {
+            val fields = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            val set = i.isSet()
+            // open() takes the fields out of the last sheet: add them to this one after it.
+            open(i.title, "", fields, "Save")
+            fields.addView(field, LinearLayout.LayoutParams(-1, -2))
+            passwordRow.addView(password, LinearLayout.LayoutParams(0, -2, 1f))
+            if (set) {
+                password.hint = "Password · leave empty to keep it"
+                showButton.visibility = View.VISIBLE
+                showButton.setOnClickListener {
+                    password.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                    password.typeface = Inter.typeface(context, Inter.REGULAR, 18f)
+                    password.setText(runCatching { i.reveal() }.getOrNull().orEmpty())
+                    showButton.visibility = View.GONE
+                }
+                passwordRow.addView(showButton, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(6f) })
+            } else password.hint = "Password"
+            fields.addView(passwordRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12f) })
+            field.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            field.hint = "User name"
+            field.setText(i.user().orEmpty())
+            onSave = { commit(false, after) { done -> SettingsChange.signIn(i, field.text?.toString().orEmpty(), password.text?.toString().orEmpty(), done) } }
+            if (set) {
+                clearButton.visibility = View.VISIBLE
+                onClear = { commit(false, after) { done -> SettingsChange.clear(i, done) } }
+            }
+            field.requestFocus()
         }
 
         /** The choices as chips; picking one applies it. */
@@ -858,27 +928,16 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         fun close() {
             if (view.visibility != View.VISIBLE) return
             onSave = null
+            hidePassword()
             hideKeyboard()
             view.visibility = View.GONE
         }
     }
 
     companion object {
-        const val RESTART_TEXT = "This takes effect after the app restarts. It takes about 5 seconds."
-        const val OFF_BY_DEFAULT = "Dimmed: off by default in Home Assistant. Turn them on there to keep their history."
+        const val RESTART_TEXT = SettingsChange.RESTART_TEXT
+        const val OFF_BY_DEFAULT = SettingsChange.OFF_BY_DEFAULT
         private const val PANES = "panes"
 
-        /** What a save that threw says. */
-        fun couldNot(e: Throwable): String = "That didn't save: ${e.message ?: e.javaClass.simpleName}."
-
-        fun hhmm(min: Int): String = String.format(Locale.ROOT, "%02d:%02d", min / 60, min % 60)
-
-        /** `22:00-07:00` as minutes after midnight, or null. */
-        fun parseRange(w: String): Pair<Int, Int>? {
-            val m = Regex("""^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$""").find(w) ?: return null
-            val (h1, m1, h2, m2) = m.destructured
-            val a = h1.toInt() * 60 + m1.toInt(); val b = h2.toInt() * 60 + m2.toInt()
-            return if (a < 24 * 60 && b < 24 * 60) a to b else null
-        }
     }
 }

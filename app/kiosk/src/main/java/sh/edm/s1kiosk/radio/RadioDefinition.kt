@@ -319,7 +319,7 @@ class RadioDefinition(
         )
         val allowedNow = SettingsItem.Note { allowedNow(running, readout.allowedNow()) }
         val items = if (running) listOf(
-            SettingsItem.Native(NATIVE_KEY) { host -> RadioSettingsView(host, this) },
+            SettingsItem.Native(NATIVE_KEY, "Roles, pairing and Thread network") { host -> RadioSettingsView(host, this) },
             SettingsItem.Group("Who may connect", listOf(allow, allowedNow)),
         ) else listOf(allow, allowedNow) // nothing to drive without the controller: no picker or card
         return listOf(SettingsSection(

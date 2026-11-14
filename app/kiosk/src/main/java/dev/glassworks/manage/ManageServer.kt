@@ -4,6 +4,8 @@
 
 package dev.glassworks.manage
 
+import dev.glassworks.pane.SettingsChange
+import dev.glassworks.pane.SettingsItem
 import dev.glassworks.web.HttpRequest
 import dev.glassworks.web.HttpResponse
 import dev.glassworks.web.PageShell
@@ -14,6 +16,9 @@ import java.text.SimpleDateFormat
 import java.util.Base64
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * The panel's Manage page at `http://<panel>:8099/` (#33). It shares the port with the QR-code pages:
@@ -47,6 +52,8 @@ class ManageServer(
     private val ownHosts: () -> Set<String>,
     private val pages: ManagePages = ManagePages(),
     private val event: (String) -> Unit = {},
+    /** How long a settings change may take before the page answers "still applying" (the radio's off waits on the radio). */
+    private val saveWaitMs: Long = 20_000,
 ) {
     private val random = SecureRandom()
 
@@ -196,7 +203,7 @@ class ManageServer(
     // ------------------------------------------------------------------ signed in
 
     private fun signedIn(req: HttpRequest, s: Session): HttpResponse {
-        val viewer = ManagePages.Viewer(who(s), s.csrf)
+        val viewer = ManagePages.Viewer(who(s), s.csrf, homeAssistant = s.with == SignedInWith.HOME_ASSISTANT)
         if (req.method == "POST") {
             if (!csrfOk(req, s)) return HttpResponse.text(403, "This form has expired. Go back and try again.")
             return posted(req, s, viewer)
@@ -215,17 +222,121 @@ class ManageServer(
             path == "/about" -> html(200, pages.about(status, viewer))
             path == "/confirm/reboot" -> html(200, rebootDialog(status, viewer, null))
             else -> {
-                val id = path.removePrefix("/")
-                val pane = status.panes.firstOrNull { it.id == id }
-                val section = status.sections.firstOrNull { it.id == id }
-                when {
-                    pane != null -> html(200, pages.section(status, viewer, path, pane.title, null, pane.state,
-                        status.sections.filter { it.id == pane.sectionId }, pane.links))
-                    section != null -> html(200, pages.section(status, viewer, path, section.title, null, null, listOf(section)))
-                    else -> html(404, pages.notFound(status, viewer))
-                }
+                val edit = req.query["edit"]?.let { ManagePages.Dialog.Edit(it) }
+                settingsPage(status, viewer, path.removePrefix("/"), dialog = edit, done = req.query["done"])
+                    ?: html(404, pages.notFound(status, viewer))
             }
         }
+    }
+
+    /** A pane's or a core section's page by [id], or null when the panel has no such page. */
+    private fun settingsPage(status: PanelStatus, viewer: ManagePages.Viewer, id: String, dialog: ManagePages.Dialog? = null,
+                             problem: String? = null, done: String? = null, code: Int = 200): HttpResponse? {
+        val pane = status.panes.firstOrNull { it.id == id }
+        val section = status.sections.firstOrNull { it.id == (pane?.sectionId ?: id) }
+        if (pane == null && section == null) return null
+        // An edit link for an item the page doesn't have now, or one changed in its row (a switch, a slider), is the page itself.
+        val shown = dialog?.takeIf { d ->
+            val item = section?.let { SettingsChange.find(it, d.key) }
+            d is ManagePages.Dialog.Confirm || (item != null && item !is SettingsItem.Switch && item !is SettingsItem.Slider)
+        }
+        return html(code, pages.section(status, viewer, "/$id", pane?.title ?: section!!.title, pane?.state, section, pane?.links.orEmpty(),
+            dialog = shown, problem = problem, restart = done == "restart", notice = sectionNotice(done)))
+    }
+
+    private fun sectionNotice(done: String?): String? = when (done) {
+        "gone" -> "That setting isn't on this page now. Here is the page as it is."
+        "pending" -> "The panel is still applying that. Reload in a moment to see it."
+        else -> null
+    }
+
+    /**
+     * `/settings`, POST: change one item, as the panel's menu does (#242). The form names the section, the
+     * item's key ([SettingsChange.changeable]) and the value; [SettingsChange.change] checks it and calls the
+     * item's own save, on the panel's main thread ([ManageHost.onMain]). A switch that asks first on the panel
+     * asks here too, then comes back with `confirmed`. A pane's on/off needs a Home Assistant sign-in.
+     */
+    private fun changeSetting(req: HttpRequest, s: Session, viewer: ManagePages.Viewer): HttpResponse {
+        val status = host.status()
+        val id = req.form["section"].orEmpty()
+        val section = status.sections.firstOrNull { it.id == id } ?: return HttpResponse.seeOther("/")
+        val page = "/" + (status.panes.firstOrNull { it.sectionId == id }?.id ?: id)
+        val key = req.form["key"].orEmpty()
+        val item = SettingsChange.find(section, key) ?: return HttpResponse.seeOther("$page?done=gone")
+        val what = "${section.title} › " + if (key == SettingsChange.MASTER) "on/off" else key.replace("/", " › ")
+        if (SettingsChange.needsHomeAssistant(key) && s.with != SignedInWith.HOME_ASSISTANT) {
+            event("${who(s)}: refused to change $what: needs a Home Assistant sign-in")
+            return settingsPage(status, viewer, page.removePrefix("/"), problem = ManagePages.NEEDS_HA, code = 403)!!
+        }
+        if (item is SettingsItem.SignIn) return changeSignIn(req, s, viewer, page, key, what, item)
+        // The time window's dialog sends On, From and To; the rest send their value as text.
+        val raw = if (item is SettingsItem.TimeRange) (if (req.form["on"] == "1") "${req.form["from"].orEmpty()}-${req.form["to"].orEmpty()}" else "")
+            else req.form["value"].orEmpty()
+        if (item is SettingsItem.Switch && req.form["confirmed"] != "1" && (raw == "on" || raw == "off")) {
+            val ask = runCatching { item.confirm(raw == "on") }.getOrNull()
+            if (ask != null) return settingsPage(status, viewer, page.removePrefix("/"), ManagePages.Dialog.Confirm(key, raw, ask))!!
+        }
+        val problem = apply(item, raw)
+        if (problem == PENDING) {
+            event("${who(s)} changed $what (still applying)")
+            return HttpResponse.seeOther("$page?done=pending")
+        }
+        event(if (problem == null) "${who(s)} changed $what" else "${who(s)} couldn't change $what: $problem")
+        if (problem == null) return HttpResponse.seeOther(if (SettingsChange.restarts(item)) "$page?done=restart" else page)
+        // As the panel: a typed value, a duration, a choice or a window keeps its sheet open with why; the rest say it on the page.
+        val dialog = if (item is SettingsItem.Switch || item is SettingsItem.Slider) null
+            else ManagePages.Dialog.Edit(key, problem, typed = raw.takeIf { item is SettingsItem.Text })
+        return settingsPage(host.status(), viewer, page.removePrefix("/"), dialog, problem = if (dialog == null) problem else null, code = 422)!!
+    }
+
+    /**
+     * A sign-in's dialog: a user name and a password, or Clear. The password is passed on to the item's
+     * save and nowhere else: not to the Log, not back into the page when it didn't save.
+     */
+    private fun changeSignIn(req: HttpRequest, s: Session, viewer: ManagePages.Viewer, page: String,
+                             key: String, what: String, item: SettingsItem.SignIn): HttpResponse {
+        val clear = req.form["clear"] == "1"
+        val problem = onMain { done ->
+            if (clear) SettingsChange.clear(item, done) else SettingsChange.signIn(item, req.form["user"].orEmpty(), req.form["password"].orEmpty(), done)
+        }
+        val did = if (clear) "cleared $what" else "set $what"
+        if (problem == PENDING) { event("${who(s)} $did (still applying)"); return HttpResponse.seeOther("$page?done=pending") }
+        event(if (problem == null) "${who(s)} $did" else "${who(s)} couldn't change $what: $problem")
+        if (problem == null) return HttpResponse.seeOther(page)
+        return settingsPage(host.status(), viewer, page.removePrefix("/"), ManagePages.Dialog.Edit(key, problem), code = 422)!!
+    }
+
+    /**
+     * `/settings/reveal`, POST: a sign-in's password, on its dialog, because the person asked (Show). Only for
+     * a browser signed in with Home Assistant. The Log says who looked, never what they saw; the page is
+     * no-store, as every page is.
+     */
+    private fun revealSignIn(req: HttpRequest, s: Session, viewer: ManagePages.Viewer): HttpResponse {
+        val status = host.status()
+        val id = req.form["section"].orEmpty()
+        val section = status.sections.firstOrNull { it.id == id } ?: return HttpResponse.seeOther("/")
+        val page = "/" + (status.panes.firstOrNull { it.sectionId == id }?.id ?: id)
+        val key = req.form["key"].orEmpty()
+        val item = SettingsChange.find(section, key) as? SettingsItem.SignIn ?: return HttpResponse.seeOther("$page?done=gone")
+        val what = "${section.title} › ${key.replace("/", " › ")}"
+        if (s.with != SignedInWith.HOME_ASSISTANT) {
+            event("${who(s)}: refused to show $what's password: needs a Home Assistant sign-in")
+            return settingsPage(status, viewer, page.removePrefix("/"), ManagePages.Dialog.Edit(key, ManagePages.NEEDS_HA_REVEAL), code = 403)!!
+        }
+        val password = runCatching { item.reveal() }.getOrNull()
+        event("${who(s)} showed $what's password")
+        return settingsPage(status, viewer, page.removePrefix("/"), ManagePages.Dialog.Edit(key, revealed = password))!!
+    }
+
+    /** [SettingsChange.change] on the panel's main thread; its answer, or [PENDING] when it takes longer than a page should wait. */
+    private fun apply(item: SettingsItem, raw: String): String? = onMain { done -> SettingsChange.change(item, raw, done) }
+
+    /** Runs [f] on the panel's main thread and waits for its answer, or [PENDING] after [saveWaitMs]. */
+    private fun onMain(f: (done: (String?) -> Unit) -> Unit): String? {
+        val answered = CountDownLatch(1)
+        val answer = AtomicReference<String?>()
+        host.onMain { f { why -> if (answered.count > 0) { answer.set(why); answered.countDown() } } }
+        return if (answered.await(saveWaitMs, TimeUnit.MILLISECONDS)) answer.get() else PENDING
     }
 
     private fun posted(req: HttpRequest, s: Session, viewer: ManagePages.Viewer): HttpResponse {
@@ -259,6 +370,8 @@ class ManageServer(
                 PanelCode.Check.NoCode -> html(401, rebootDialog(host.status(), viewer, "That code has run out. Cancel and start again."))
                 is PanelCode.Check.Locked -> html(429, rebootDialog(host.status(), viewer, lockedText()))
             }
+            "/settings" -> changeSetting(req, s, viewer)
+            "/settings/reveal" -> revealSignIn(req, s, viewer)
             "/security/signout" -> {
                 val id = req.form["id"].orEmpty()
                 val target = sessions.list(haBase()).firstOrNull { it.id == id }
@@ -382,6 +495,9 @@ class ManageServer(
             return if (q.isEmpty()) req.path else req.path + "?" + q.entries.joinToString("&") { (k, v) -> dev.glassworks.web.HttpServer.enc(k) + "=" + dev.glassworks.web.HttpServer.enc(v) }
         }
         const val PRE = "gw_pre"
+
+        /** [apply]'s answer while a change is still running. */
+        private const val PENDING = "\u0000pending"
         const val PURPOSE_SIGN_IN = "signin"
         const val PURPOSE_REBOOT = "reboot"
 

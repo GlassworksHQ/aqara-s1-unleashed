@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.ui
 
+import dev.glassworks.brand.Tokens
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -119,7 +120,7 @@ class GroupedRail(context: Context) : LinearLayout(context) {
         addView(name, LayoutParams(0, -2, 1f))
         chip?.let { addView(chip(it), LayoutParams(-2, -2).apply { marginStart = g.px(8f) }) }
         detail?.let { d -> addView(g.text(12.5f, Glass.FA).apply { text = d; setSingleLine() }, LayoutParams(-2, -2).apply { marginStart = g.px(8f) }) }
-        background = if (selected) g.surface(12f) else null
+        background = if (selected) g.surface(Tokens.R_PANE.toFloat()) else null
         contentDescription = title
         if (enabled) { isClickable = true; setOnClickListener { onClick() } }
     }
@@ -132,11 +133,12 @@ class GroupedRail(context: Context) : LinearLayout(context) {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         background = g.surface(999f, Glass.S1)
-        setPadding(g.px(8f), g.px(2f), g.px(9f), g.px(2f))
-        addView(g.dot(c.dot), LayoutParams(g.px(6f), g.px(6f)).apply { marginEnd = g.px(6f) })
+        val k = Tokens.Chip
+        setPadding(g.px(k.PAD_START.toFloat()), g.px(k.PAD_V.toFloat()), g.px(k.PAD_END.toFloat()), g.px(k.PAD_V.toFloat()))
+        addView(g.dot(c.dot), LayoutParams(g.px(k.DOT.toFloat()), g.px(k.DOT.toFloat())).apply { marginEnd = g.px(k.GAP.toFloat()) })
         // A backstop: the row gives the chip its whole width, but a word longer than any of today's
         // shortens, so the name keeps room beside it and nothing overflows the rail.
-        addView(g.text(12f, Glass.MU).apply { text = c.word; setSingleLine(); ellipsize = TextUtils.TruncateAt.END; maxWidth = g.px(CHIP_WORD_MAX_DP) })
+        addView(g.text(k.TEXT.toFloat(), Glass.MU).apply { text = c.word; setSingleLine(); ellipsize = TextUtils.TruncateAt.END; maxWidth = g.px(CHIP_WORD_MAX_DP) })
         contentDescription = "status ${c.word}"
     }
 

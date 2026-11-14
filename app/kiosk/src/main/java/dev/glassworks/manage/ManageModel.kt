@@ -73,4 +73,10 @@ interface ManageHost {
     val actions: PanelActions
     /** The panel's diagnostics, as text, before redaction (the server redacts the whole file). */
     fun diagnostics(): String
+
+    /**
+     * Runs [f] where the panel's own settings menu changes settings (Android: the main thread), so a change
+     * from the Manage page takes the same path as one made on the panel (#242). Called from a request's thread.
+     */
+    fun onMain(f: () -> Unit) = f()
 }
