@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import dev.glassworks.frame.nodeName
 import dev.glassworks.manage.HaGateway
 import dev.glassworks.manage.HaSignIn
 import dev.glassworks.manage.HaUser
@@ -97,7 +98,7 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
     private inner class Host : ManageHost {
         override val actions: PanelActions = Actions()
 
-        override val name = PanelDevice.FRIENDLY_NAME
+        override val name = PanelDevice.PRODUCT_NAME
 
         override fun status(): PanelStatus {
             val defs = runtime.paneDefinitions(app)
@@ -258,7 +259,8 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
 
     /** The panel's IP addresses now, `localhost`, its ESPHome name and its Android host name, as `.local`. */
     private fun ownHosts(): Set<String> {
-        val out = hashSetOf("localhost", "${PanelDevice.NAME}.local")
+        val out = hashSetOf("localhost")
+        runtime.frame.nodeName(prefs.deviceMac)?.let { out += "$it.local" }
         runCatching {
             for (i in NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()) for (a in i.inetAddresses.toList()) {
                 a.hostAddress?.let { out += it.substringBefore('%').lowercase() }

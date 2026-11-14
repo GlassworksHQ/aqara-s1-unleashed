@@ -209,7 +209,7 @@ class PanelDeviceRacesTest {
     /** Guard: the first step, `if (!unlessStopped { initEntities(...); acquireLocks() }) return`. */
     @Test fun aStopBeforeTheEntitiesAreBuiltBuildsNothingAndHoldsNothing() {
         logHook = { msg ->
-            if (msg.startsWith("ESPHome device '${PanelDevice.NAME}'")) { logHook = null; device.stop() }
+            if (msg.startsWith("ESPHome device 'aqara-s1-plus-")) { logHook = null; device.stop() }
         }
 
         startup()

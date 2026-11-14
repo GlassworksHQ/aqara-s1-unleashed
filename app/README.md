@@ -246,7 +246,7 @@ while the screen is off, and talking to it wakes the screen. See [docs/esphome.m
 
 ```sh
 tools/voice/fetch-models.sh            # optional: downloads the microWakeWord models on the host and adb-pushes them
-# HA: the panel is auto-discovered (Settings -> Devices & services -> ESPHome "Glassworks Panel" -> Add), or
+# HA: the panel is auto-discovered (Settings -> Devices & services -> ESPHome "Aqara S1 Plus" -> Add), or
 #     Add integration -> ESPHome -> <panel IP>, port 6053
 ```
 

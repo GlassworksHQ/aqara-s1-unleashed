@@ -321,7 +321,7 @@ class SignInServer(
             status: Int, reason: String, title: String, text: String, look: Look = Look.PROBLEM,
             tile: String = "", button: String = "", foot: String = "", footHtml: String = "",
         ): Response {
-            val html = PageShell.qrPage(sh.edm.s1kiosk.esphome.PanelDevice.FRIENDLY_NAME, title, text, look, tile, button, foot, footHtml,
+            val html = PageShell.qrPage(sh.edm.s1kiosk.esphome.PanelDevice.PRODUCT_NAME, title, text, look, tile, button, foot, footHtml,
                 headerRight = PageShell.HEADER_SLOT)
             return Response(status, reason, mapOf("Content-Type" to "text/html; charset=utf-8", "Cache-Control" to "no-store") +
                 PageShell.securityHeaders(formAction = "'none'"), html.toByteArray(Charsets.UTF_8))
